@@ -73,9 +73,10 @@ name = "RiftboundTest"
 - `autoImplicit` と `relaxedAutoImplicit` は、Lean 本体の既定では `true`。綴りの誤りが、意図しない暗黙引数として受け入れられてしまうため、Mathlib と同じく `false` にする。
 - `linter.missingDocs` は、公開する宣言（帰納型のコンストラクタを含む）すべてに docstring を求める。[確認済]
   - ルールの定義に CR の根拠を書かせるために有効にする（§4）。
-- `lake lint` について:
-  - 組み込みの環境 linter（`builtinLint = true`）は、手元の試験では "No environment linters were run" と表示された。
-  - M0 で `lake lint --builtin-only` などを試し、設定を確定する。
+- **`lake lint` は使わない。**
+  - [確認済] 未使用の変数や docstring の欠落などの構文系の linter は、ビルドの中で走る。`--wfail` を付けるとエラーになる。
+  - [確認済] `lake lint --builtin-only`（`--linters=.all` を付けても）は、"No environment linters were run" と表示し、ビルドの警告を再掲するだけだった。core には環境 linter が無い（それは Batteries / Mathlib にある）。
+  - だから、ビルドの `--wfail` で足りる。環境 linter が要る事情が出たら、その時点で見直す。
 
 ## 3. module system
 
@@ -109,7 +110,10 @@ end
 
 - テストのモジュールは、同じパッケージ内なので `import all Riftbound.X` で非公開部分まで読める。
 - [確認済] `import Std.Data.HashMap` と `import Plausible` は、module の中から使える。
-- 注意: lean-beam の文書には、module 用に `-Dexperimental.module=true` が要るという古い記述がある。M0 で lean-beam と併用できるかを確認する。
+- [確認済] lean-beam は、module のファイルにそのまま使える（`-Dexperimental.module=true` は要らない）。`sync`、`goals before`、`hover` が動いた（§8）。
+- [確認済] **module の中の `#guard` には `meta import` が要る。** `#guard` は式をコンパイルして実行するので、評価に使う定義を持つモジュールを `meta import` する。無いと `RulesDate.mk is not accessible here; consider adding public meta import ...` というエラーになる。
+  - テストのモジュールは、`import X` と `meta import X` を両方書く（`RiftboundTest/RulesVersion.lean` が例）。
+  - `decide` や `simp` は `meta` を必要としない。
 
 ## 4. 命名・ファイル・docstring
 
@@ -183,7 +187,8 @@ end
   - プロファイルで遅いと分かった箇所だけ `Array` に替える。証明の上では、`Array` は `List` を包んだものとして扱える。
 - **検証コアの状態に入れる写像は、`Std.ExtTreeMap` にする。** 外延的な等しさを持つ写像で、内容が同じなら `=` になる。
   - [確認済] `Std.ExtTreeMap` をフィールドに持つ structure は、`deriving DecidableEq, Repr` が通る。
-  - [確認済] `decide` で、検索（`(∅.insert 1 2)[1]? = some 2`）、挿入して削除すると元に戻ること、挿入の順序によらない等しさ、Exhaust を 2 回行っても 1 回と同じ状態になること、が閉じる。
+  - [確認済] 小さな例（数個の要素）では、素の `decide` で、検索（`(∅.insert 1 2)[1]? = some 2`）、挿入して削除すると元に戻ること、挿入の順序によらない等しさ、が閉じる。
+  - [確認済] 状態が大きくなると、素の `decide` は使えない。Exhaust の冪等性を示すと、20〜50 個のオブジェクトでは heartbeat の上限（200000）に達し、100 個では再帰の深さの上限に達した。**`decide +kernel` なら、100 個でも約 0.5 秒で閉じ、使う axiom は `propext`、`Classical.choice`、`Quot.sound` だけ**だった（§5.5）。
   - [確認済] `(m.insert k v)[k]? = some v` のような基本補題は、`simp` で閉じる。`toList` と `keys` は、挿入の順序によらず鍵の順に並ぶ。`foldl` も使える。
   - [確認済] `Std.TreeMap` をフィールドに持つ structure は、`deriving DecidableEq` が失敗する（`Decidable (a = b)` を合成できない）。
   - [確認済] `Std.HashMap` の検索は、`decide` で評価できない（kernel の簡約が途中で止まる）。
@@ -216,8 +221,11 @@ end
   - 新しいインスタンスは `decidable_of_iff` か `decidable_of_bool` で作る。
 - 検証のコアでは **`native_decide` を使わない**。コンパイラ全体を信頼の対象に加えることになるからである。
   - 大きな計算の検査は、`#guard` か `#eval` によるテストで行う。
-- `decide` で展開する定義は、モジュールをまたぐ場合 `@[expose]` が必要になる（§3）。
-- 数百件のカード定義に対する整形性の検査（`CardDB.WF`）は、kernel で評価する `decide` では重すぎる可能性がある。M0 のスパイクで測り、重ければコンパイル実行の `#guard` で検査する。
+- **`decide +kernel` は使ってよい。** kernel で直接評価し、コンパイラを信頼に加えない。[確認済] 300 件のカード定義の整形性（`cards.all CardDef.Valid = true`）は、`decide +kernel` の定理で示せ、`#print axioms` は "does not depend on any axioms" だった。`lake check` の監査も通る。
+  - [確認済] **素の `decide` は、要素が数十を超えると使えない。** 同じ 300 件の検査は、"maximum recursion depth has been reached" で失敗した。素の `decide` は、小さな例と、`Decidable` のインスタンスを作るときの確認に使う。
+  - [確認済] `#guard` は、同じ検査を約 0.2 秒で行う（コンパイルして実行する）。ただし定理ではなく、axiom の監査にも現れない。
+  - 使い分け: 定理として残したい性質（`CardDB.WF`、状態の等式）は `decide +kernel`。実行して確かめるだけのテストは `#guard`。
+- `decide` や `decide +kernel` で展開する定義は、モジュールをまたぐ場合 `@[expose]` が必要になる（§3）。
 
 ### 5.6 タクティク
 
@@ -245,7 +253,8 @@ end
 |---|---|
 | `#guard e` | 定義の直後や、テストのモジュールに置く小さな実行検査 |
 | `#guard_msgs in ...` | 出力やエラーメッセージの固定 |
-| `example : p := by decide` | kernel で評価できる性質の検査 |
+| `example : p := by decide` | 小さな性質の検査（要素が数十を超えるなら `decide +kernel`。§5.5） |
+| `theorem t : p := by decide +kernel` | 大きな性質を kernel で評価して、定理として残す |
 | `RiftboundTest`（`lake test` の test driver） | シナリオテスト、公式 FAQ の回帰、性質ベーステスト |
 | Plausible | `Arbitrary` を derive して、ランダムな合法手の列の後でも `WF` が成り立つことを検査する（証明の前の早期発見） |
 
@@ -322,6 +331,8 @@ Lean では、ビルドが通ることが「証明が kernel の検査を通っ�
   ```
 
   - beta 版である。読むのは保存済みのファイルなので、最後は必ずクリーンな `lake build` で確認する。
+  - [確認済] CLI で使うときは、先に `lean-beam --root <リポジトリ> --session-dir <リポジトリ>/.beam serve` を常駐させる（常駐が無いと `noLiveSession` になる）。止めるときは `lean-beam --root <リポジトリ> stop`。`.beam/` は `.gitignore` に入れてある。
+  - [確認済] `sync`（診断と準備完了の確認）、`goals before`（証明のゴールの表示）、`hover` が、module のファイルで動いた。MCP サーバ（`lean-beam-mcp`）経由なら、常駐の起動は要らない。
 - **lean-lsp-mcp**（`uvx lean-lsp-mcp`）: LSP を MCP 経由で使う。検索系の機能は Mathlib 向けなので、このプロジェクトでは lean-beam を主に使う。
 
 ## 9. 参考資料
