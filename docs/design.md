@@ -159,7 +159,7 @@ RiftboundCards/
                                -- 1 弾 1 ファイル。カードごとに公式文面（docstring）と効果を並べる（card-data.md §4）
   Tokens.lean                  -- トークンの定義（CR 187）
   Registry.lean                -- 具体的な CardDB
-RiftboundDriver/               -- 乱数の供給、自動対戦、ログ再生
+RiftboundDriver/               -- 乱数の供給、自動対戦、ログ再生（`Trace.lean` が 1 ゲームを JSON に書き出す。`viewer/` が再生する: viewer.md）
 RiftboundTest/
   Scenario/  Faq/  Property/
 Main.lean                      -- CLI（後期）
