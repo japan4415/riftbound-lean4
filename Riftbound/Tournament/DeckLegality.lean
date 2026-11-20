@@ -189,8 +189,8 @@ def LimitedDeck.Resolved.Valid (env : LegalityEnv) (minMain : Nat)
     (∀ b ∈ r.battlefields, b.hasType .battlefield = true) ∧
     (∀ c ∈ r.legend.toList ++ r.main ++ r.runes ++ r.battlefields, NotBanned env c)
 
-instance (env : LegalityEnv) (n : Nat) (r : LimitedDeck.Resolved) :
-    Decidable (r.Valid env n) := by
+instance LimitedDeck.Resolved.decidableValid (env : LegalityEnv) (n : Nat)
+    (r : LimitedDeck.Resolved) : Decidable (r.Valid env n) := by
   unfold LimitedDeck.Resolved.Valid; infer_instance
 
 /-- A Limited deck is legal with at least `minMain` Main Deck cards (TR 602.4). -/
