@@ -20,6 +20,7 @@ step "3/5 axiom audit (lake check)"
 lake check --inadvisably-no-sandbox
 
 step "4/5 card data staleness"
+uv run --no-project python scripts/normalize.py --check
 if [ -f scripts/gen_lean.py ]; then
   uv run scripts/gen_lean.py --check
 else
