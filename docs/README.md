@@ -9,6 +9,7 @@
 | [tournament-model.md](tournament-model.md) | Riftbound Tournament Rules（2026-10-09 版）のうち形式化の対象にする部分（フォーマット、マッチ、時間切れ、ループ） | エージェント・人間 |
 | [lean-guidelines.md](lean-guidelines.md) | Lean 4 のコーディング規約（ツールチェーン、Lake、module system、命名、証明しやすい書き方、テスト、作業の単位とローカルでの検証） | エージェント・人間 |
 | [card-data.md](card-data.md) | カードデータの取り込み、効果 IR への写像、新カードと新キーワードの追加手順、権利面の注意 | エージェント・人間 |
+| [coverage.md](coverage.md) | カードの実装状況の表（`scripts/coverage.py` が作る。編集しない） | スクリプト |
 | [ir-gaps.md](ir-gaps.md) | 効果 IR に転記して分かった不足の一覧（IR を直したもの、書けなかった文、近似したもの） | エージェント・人間 |
 | [viewer.md](viewer.md) | エンジンが動かした 1 ゲームをアニメーションで再生するビューア（トレースの書き出しと再生。何が保証されて、何がされないか） | エージェント・人間 |
 

@@ -5,6 +5,7 @@
 - 論理カードのキーは「名前 + subtitle」（docs/card-data.md §3）。印刷違いは 1 枚に束ねる。
 - `cardId` は最初の印刷の公開コードから、通し番号の分母を除いたもの（例: OGN-029）。
 - 型は、公式ギャラリーの欄が空か食い違うとき、代替テキスト（"Riftbound Unit: ..."）で補う。
+- 装備品の `effect` 欄（付けた Unit に与える文）は、`text` と別に `effectText` として持つ。
 - supertype（Champion / Signature）は公式ギャラリーに無いので、ここでは埋めない。
 """
 from __future__ import annotations
@@ -72,7 +73,7 @@ def plain(body: str | None) -> list[str]:
 
 def rules_text(p: dict) -> tuple[str, ...]:
     """比較用の文面: 注釈文（括弧の中）と「文面なし」の印を除く。"""
-    lines = plain(p["text"]) or plain(p["effect"])
+    lines = plain(p["text"]) + plain(p["effect"])
     lines = [re.sub(r"\s*\([^)]*\)", "", line).strip() for line in lines]
     return tuple(line for line in lines if line and line != "[NO TEXT]")
 
@@ -91,7 +92,8 @@ def normalize(snap: dict) -> dict:
         if why:
             fixes.append({"code": first["code"], "name": name, "reason": why,
                           "given": first["types"], "used": types})
-        text = plain(first["text"]) or plain(first["effect"])
+        text = plain(first["text"])
+        effect_text = plain(first["effect"])
         variants = sorted({rules_text(p) for p in ps} - {()})
         cards.append({
             "cardId": card_id(first["code"]),
@@ -105,6 +107,7 @@ def normalize(snap: dict) -> dict:
             "might": first["might"],
             "mightBonus": first["mightBonus"],
             "text": text,
+            "effectText": effect_text,
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],

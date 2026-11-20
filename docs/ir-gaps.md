@@ -64,8 +64,30 @@
 | Forgotten Monument | 「その場所で、プレイヤーが自分の 3 ターン目まで得点できない」を `untilTurn := 3` で表した |
 | Lux, Illuminated ほか | 「コストが 5 以上の Spell をプレイしたとき」を、トリガーの subject に Spell のフィルタを置いて表した。subject は「イベントの対象」と「世界にあるもの」の両方を表せてしまい、解釈器で意味を決める必要がある |
 
-## 5. 次にすること
+## 5. 2 回目の転記（文の型で機械的に書いた）
+
+`scripts/transcribe.py` が、次の型の文だけを IR の値にする。型に合わない文が 1 つでもあるカードは、書かずに残す。
+
+| 型 | IR |
+|---|---|
+| `Deal N to a unit.`（`at a battlefield`・`here`・`friendly`・`enemy` つき） | 対象を宣言して `deal` |
+| `Kill / Ready a unit.`、`[Stun] an enemy unit.` | 対象を宣言して `kill`・`ready`・`stun` |
+| `Give a unit +N / -N :rb_might: this turn.`、`Give me +N ...` | 対象を宣言して `grant`（`mightPlus`・`mightMinus`） |
+| `Draw N.`、`Discard N.` | `draw`・`discard` |
+| `Return a spell from your trash to your hand.` | `returnToHand` |
+| `When you play me / I attack / defend / conquer / hold, ...`、`[Deathknell] — ...`、`At the end of your turn, ...`（`you may` つき） | `Ability.triggered` |
+| `I enter ready.`、`[Empowered][>] I have +N :rb_might:.` | `Ability.passive` |
+| キーワードだけの行 | 何も足さない（生成ブロックの `keywords` に入っている） |
+
+結果: 78 枚を書いた（効果ありが 22 枚、キーワードだけが 56 枚）。合計は 117 枚（1,103 枚の 10.6%）。表は [coverage.md](coverage.md)。
+
+**長い裾野が確かめられた。** 書けなかったカードの 1,159 行は、1,105 種類の文の型に分かれ、最も多い型でも 6 回しか出ない（`S: [Reaction] — [Add] S.`）。次に多いのは 5 回（`This enters exhausted.`）、4 回（`When you play me, draw N.` の条件つき、`You may play me to an open battlefield.`）。型を 1 つ足すと 2〜6 行しか減らない。**文の型を 1 つずつ足す方式は、収穫が急に減る。** 先に進むには、解釈器と並行して、文を部品（対象の名詞句、動詞、条件、誘発）から組み立てる方式にするか、カードを 1 枚ずつ手で書くかを選ぶことになる。
+
+また、装備品 35 枚の「付けた Unit に与える文」（`effect` 欄）を、M3b-1 の正規化が落としていた。`text` を優先して `effect` を捨てていたため。直して、`effectText` として別に持つようにした（生成ブロックにも載る）。この 35 枚は、付けた Unit に与える文を IR で表す手段がまだ無いので、転記しない。
+
+## 6. 次にすること
 
 - 静的な検査（`CardDB.WF`）は済んだ（[roadmap.md](roadmap.md) M3b-5）。転記したカード 39 枚は通る。
-- 出現の多いテンプレートの上位 100 種を転記して、不足の洗い出しを続ける。
+- 装備品の「付けた Unit に与える文」（`effectText`）を IR で書く手段（`Attach` に連動する能力の付与）。
+- 文を部品から組み立てる方式（§5 の末尾）を決める。
 - 書けなかった文のうち、トークンの定義とコピーは、M4 の設計（トークンと Copy 層）に合わせて足す。

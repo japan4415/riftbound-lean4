@@ -53,8 +53,12 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards written down as IR values (docs/ir-gaps.md): 39 of the 46 tried
-#guard (allCards.filter (·.status == .drafted)).length == 39
+-- the cards written down as IR values (docs/coverage.md): 39 by hand, 78 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 117
+-- an Equipment's effect text is kept apart, and such a card is not written down yet
+#guard match db.find? ⟨"UNL-019"⟩ with
+  | some c => c.status == .todo
+  | none => false
 
 -- Firestorm: one choice (the Battlefield), a spell effect and no abilities
 #guard match db.find? ⟨"OGS-002"⟩ with
