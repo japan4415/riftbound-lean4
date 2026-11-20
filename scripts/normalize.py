@@ -1,0 +1,142 @@
+"""スナップショットを正規化し、論理カードの一覧 data/cards/logical.json を作る。
+
+    uv run --no-project python scripts/normalize.py [snapshot.json]   # 省略時は最新のスナップショット
+
+- 論理カードのキーは「名前 + subtitle」（docs/card-data.md §3）。印刷違いは 1 枚に束ねる。
+- `cardId` は最初の印刷の公開コードから、通し番号の分母を除いたもの（例: OGN-029）。
+- 型は、公式ギャラリーの欄が空か食い違うとき、代替テキスト（"Riftbound Unit: ..."）で補う。
+- supertype（Champion / Signature）は公式ギャラリーに無いので、ここでは埋めない。
+"""
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+# 同じ発売日のときの順序（docs/card-data.md §1 の表の上から）。LGC は予告で、まだ無い。
+SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
+TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
+
+
+def latest_snapshot() -> Path:
+    files = sorted((ROOT / "data" / "snapshots").glob("gallery-*.json"))
+    if not files:
+        raise SystemExit("no snapshot: run scripts/fetch.py first")
+    return files[-1]
+
+
+def card_id(code: str) -> str:
+    """OGN-029/298 -> OGN-029、OGN-029a/298 -> OGN-029、UNL-T04 -> UNL-T04。"""
+    head = code.split("/")[0]
+    return re.sub(r"[a-z*]+$", "", head)
+
+
+def print_key(p: dict) -> tuple:
+    """最初の印刷を決める順序: 弾の順、通し番号。発売日は弾の順で代用する。"""
+    s = SET_ORDER.index(p["set"]) if p["set"] in SET_ORDER else len(SET_ORDER)
+    return (s, p["num"], p["code"])
+
+
+def alt_types(alt: str) -> list[str]:
+    m = re.match(r"Riftbound ([^:]*):", alt)
+    if not m:
+        return []
+    return [t.strip().lower() for t in m.group(1).split(",") if t.strip()]
+
+
+def fixed_types(p: dict) -> tuple[list[str], str | None]:
+    """型と、補正したときの理由。"""
+    given = p["types"]
+    alt = [t for t in alt_types(p["alt"]) if t in TYPE_IDS]
+    if not alt:
+        return given, None
+    if sorted(given) == sorted(alt):
+        return given, None
+    return alt, "empty" if not given else "mismatch"
+
+
+def plain(body: str | None) -> list[str]:
+    """HTML の文面を、段落ごとの行にする。キーワードの [ ] はそのまま残す。"""
+    if not body:
+        return []
+    s = re.sub(r"<br\s*/?>", "\n", body)
+    s = re.sub(r"</p>\s*<p>", "\n", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return [line.strip() for line in html.unescape(s).split("\n") if line.strip()]
+
+
+def rules_text(p: dict) -> tuple[str, ...]:
+    """比較用の文面: 注釈文（括弧の中）と「文面なし」の印を除く。"""
+    lines = plain(p["text"]) or plain(p["effect"])
+    lines = [re.sub(r"\s*\([^)]*\)", "", line).strip() for line in lines]
+    return tuple(line for line in lines if line and line != "[NO TEXT]")
+
+
+def normalize(snap: dict) -> dict:
+    groups: dict[tuple, list[dict]] = {}
+    for p in snap["items"]:
+        groups.setdefault((p["name"], p["subtitle"]), []).append(p)
+
+    cards = []
+    fixes = []
+    for (name, subtitle), ps in groups.items():
+        ps.sort(key=print_key)
+        first = ps[0]
+        types, why = fixed_types(first)
+        if why:
+            fixes.append({"code": first["code"], "name": name, "reason": why,
+                          "given": first["types"], "used": types})
+        text = plain(first["text"]) or plain(first["effect"])
+        variants = sorted({rules_text(p) for p in ps} - {()})
+        cards.append({
+            "cardId": card_id(first["code"]),
+            "name": name,
+            "subtitle": subtitle,
+            "types": types,
+            "domains": first["domains"],
+            "tags": first["tags"],
+            "energy": first["energy"],
+            "power": first["power"],
+            "might": first["might"],
+            "mightBonus": first["mightBonus"],
+            "text": text,
+            "textVariants": max(len(variants), 1),
+            "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
+            "printings": [p["code"] for p in ps],
+        })
+    cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))
+    ids = [c["cardId"] for c in cards]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    if dup:
+        raise SystemExit(f"cardId collision: {dup}")
+    return {"snapshot": snap["fetched"], "count": len(cards), "typeFixes": fixes, "cards": cards}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("snapshot", nargs="?")
+    ap.add_argument("--out", default=str(ROOT / "data" / "cards" / "logical.json"))
+    ap.add_argument("--check", action="store_true", help="書き換えず、差分があれば失敗する")
+    args = ap.parse_args()
+    path = Path(args.snapshot) if args.snapshot else latest_snapshot()
+    result = normalize(json.loads(path.read_text(encoding="utf8")))
+    out = Path(args.out)
+    text = json.dumps(result, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+    if args.check:
+        if not out.exists() or out.read_text(encoding="utf8") != text:
+            raise SystemExit(f"{out} is out of date: run scripts/normalize.py")
+        print(f"{out} is up to date ({result['count']} logical cards)", file=sys.stderr)
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf8")
+    print(f"wrote {out}: {result['count']} logical cards, {len(result['typeFixes'])} type fixes",
+          file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
