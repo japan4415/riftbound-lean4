@@ -53,6 +53,7 @@ def actionJson (a : Action) : String :=
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
+    | .playCard c _ => [("card", toString c.n)]
     | .mulliganPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
@@ -141,15 +142,21 @@ def cardJson (c : CardDef) : String :=
     ("cost", match c.cost with | some k => toString k.energy | none => "null"),
     ("might", match c.might with | some m => toString m | none => "null")]
 
-/-- The answer of the demo player in the Main Phase: exhaust the Runes that are ready, recycle
-one Rune on even turns when no Power is in the Pool, and pass. Everything else is answered as
-`autoAnswer` does. Only a legal answer is chosen: the list of `legalActions` is searched. -/
+/-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise
+exhaust the Runes that are ready, recycle one Rune on even turns when no Power is in the Pool, and
+pass. Everything else is answered as `autoAnswer` does. Only a legal answer is chosen: the list of
+`legalActions` is searched. -/
 def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   match s.pending with
   | .priority p :: _ =>
     let legal := legalActions s
     let isAb (ab : RuneAbility) (a : Action) : Bool :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
+    let isPlay (a : Action) : Bool :=
+      match a.kind with | .playCard _ _ => true | _ => false
+    match legal.find? isPlay with
+    | some a => some (a, r)
+    | none =>
     match legal.find? (isAb .exhaust) with
     | some a => some (a, r)
     | none =>

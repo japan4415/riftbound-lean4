@@ -6,6 +6,7 @@ public import Riftbound.State.GameConfig
 public import Riftbound.State.Decision
 public import Riftbound.State.Phase
 public import Riftbound.State.Pool
+public import Riftbound.Card.CardDB
 public import Std.Data.ExtTreeMap
 
 /-!
@@ -24,6 +25,9 @@ namespace Riftbound
 structure GameState where
   /-- The rules of this game. -/
   config : GameConfig
+  /-- The cards of this game. It is part of the game as the rules are: the engine reads the
+  definitions of the cards from it and never changes it (design.md §6.1). -/
+  cards : CardDB
   /-- The attributes of every object, keyed by `ObjId.n`. -/
   objects : Std.ExtTreeMap Nat Object
   /-- The contents of the zones, keyed by `Zone.key`. A missing zone is empty. -/

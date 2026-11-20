@@ -49,6 +49,34 @@ theorem applyRune_adds_one {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : R
     obtain ⟨d, h1, h2⟩ := applyRune_recycle_pool h
     exact ⟨by rw [h1, RunePool.total_addPower], h2⟩
 
+/-- **Playing a card pays exactly its cost** (I8) (CR 356, 357, 445): the Pool of the player is
+smaller by the total of the card's cost, and no other player's Pool changes. -/
+theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {es : List Event} (hp : playable s p c pay = true)
+    (h : applyPlay s p c pay = some (s', es)) :
+    ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
+      (s'.poolOf p).total + cost.total = (s.poolOf p).total ∧
+      ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
+  obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
+  obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
+  rw [hpool] at hpool'
+  cases hpool'
+  refine ⟨d, cost, hd, hc, ?_, hq⟩
+  rw [hs']
+  have h1 := RunePool.total_spend hpool
+  have h2 := Cost.total_of_paidBy hpaid
+  omega
+
+/-- **A Unit that is played enters exhausted** (CR 359). -/
+theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {es : List Event} {d : CardDef}
+    (h : applyPlay s p c pay = some (s', es)) (hd : s.cardDef? c = some d)
+    (hu : d.hasType .unit = true) :
+    ∃ id', es = [Event.moved c id' (.player p .base)] ∧
+      ∀ o, s'.obj? id' = some o → o.exhausted = true := by
+  obtain ⟨id', hes, hex⟩ := applyPlay_events h
+  exact ⟨id', hes, hex d hd hu⟩
+
 end Riftbound
 
 end

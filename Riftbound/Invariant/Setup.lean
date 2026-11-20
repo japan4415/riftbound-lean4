@@ -402,6 +402,10 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p rest c pay hp hk
+    obtain ⟨hcfg, -, -, -, hpend, -⟩ := applyPlay_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.priority p]) (by rw [hpend, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

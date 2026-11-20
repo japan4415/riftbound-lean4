@@ -14,6 +14,7 @@ public import RiftboundTest.Tournament
 public import RiftboundTest.Cards
 public import RiftboundTest.IR
 public import RiftboundTest.Check
+public import RiftboundTest.Play
 
 /-!
 # RiftboundTest

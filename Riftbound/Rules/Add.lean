@@ -15,9 +15,9 @@ tokens (milestone M4).
 
 namespace Riftbound
 
-/-- The state with no objects, for the given rules. -/
-def GameState.empty (config : GameConfig) : GameState :=
-  { config, objects := {}, zones := {}, points := {}, nextId := 0, nextTimestamp := 0,
+/-- The state with no objects, for the given rules and cards. -/
+def GameState.empty (config : GameConfig) (cards : CardDB) : GameState :=
+  { config, cards, objects := {}, zones := {}, points := {}, nextId := 0, nextTimestamp := 0,
     pending := [], turnOrder := [], phase := .setup, turn := 0, active := none, result := none,
     pools := {} }
 
@@ -40,10 +40,11 @@ def addObject (s : GameState) (o : Object) (z : Zone) (pos : Pos := .top) :
   else none
 
 /-- A game with no objects is well formed. -/
-theorem GameState.wf_empty (config : GameConfig) : (GameState.empty config).WF := by
-  have hz : ∀ z, (GameState.empty config).zone z = [] := fun z => by
+theorem GameState.wf_empty (config : GameConfig) (cards : CardDB) :
+    (GameState.empty config cards).WF := by
+  have hz : ∀ z, (GameState.empty config cards).zone z = [] := fun z => by
     simp [GameState.zone, GameState.empty]
-  have hids : (GameState.empty config).zoneIds = [] := by
+  have hids : (GameState.empty config cards).zoneIds = [] := by
     unfold GameState.zoneIds
     simp [hz]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩

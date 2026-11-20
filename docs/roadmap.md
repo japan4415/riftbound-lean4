@@ -319,6 +319,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M4a の実装の記録（2026-11-21）: Unit と Gear をプレイする
+
+- **`GameState.cards`**: カードの集合を、対局の固定の部分として状態に入れた（[design.md §6.1](design.md#61-中核-api)）。`GameState.initial` が入れる。エンジンの引数は増やしていない。
+- **`playCard card pay` の答え**（`Rules/Play.lean`、`Rules/Pay.lean`）: Main Phase の `priority` で、手番のプレイヤーが、手札の Unit か Gear を、Rune Pool から払ってプレイする。カードは Base に出て、Unit は Exhausted で入る（CR 359）。Unit と Gear は finalize 直後に解決する（CR 337.2）ので、Chain には何も残らない。
+- **コストと支払い**: `Cost.paidBy`（支払いがコストを払うか）、`Cost.payments`（払い方の全列挙）、`Cost.mem_payments`（列挙は、払う支払いだけ）。`[A]` の Power はどのドメインでもよく、`legalActions` は `[A]` の割り当てごとに別の手として並べる。
+- **証明**: `applyPlay_pays_cost`（**Pool は、カードのコストの合計だけ減り、他のプレイヤーの Pool は変わらない**: I8）、`applyPlay_unit_exhausted`、`applyPlay_zones`（手札が 1 枚減り、Base が 1 枚増える）、`mem_legalPlays`（列挙は、プレイできる組だけ）。`WF`・`OwnerOk`・I1・`HandInv`・`StackInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5 は、新しい答えを含めて引き続き証明済み。
+- **ビューア**: デモのプレイヤーは、払えるカードがあればプレイする。トレースに `playCard` の行が出る（手札から Base へ動く）。
+- **まだ無いもの**: Spell と Chain（Priority の受け渡し、Reaction）、プレイ先の選択（Battlefield）、追加コストと割引、プレイの巻き戻し（CR 358.5）、能力の起動、効果の解釈器。`Accelerate` や `I enter ready` で Ready のまま入ることも、まだ無い。
+
 **実装**
 - プレイ手順の 6 段階（354-359）。
   - 選択（355）。何を選ぶかは、カードの選択の宣言から決める。
