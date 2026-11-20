@@ -61,8 +61,10 @@ def SFD_002.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Armed Assailant: the effect is not written yet. -/
-def SFD_002 : CardDef := SFD_002.meta
+/-- Armed Assailant. -/
+def SFD_002 : CardDef :=
+  { SFD_002.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-003
 /--
@@ -145,8 +147,11 @@ def SFD_006.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Eager Drakehound: the effect is not written yet. -/
-def SFD_006 : CardDef := SFD_006.meta
+/-- Eager Drakehound. -/
+def SFD_006 : CardDef :=
+  { SFD_006.meta with
+    abilities := [.passive .always [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-007
 /--
@@ -190,8 +195,10 @@ def SFD_008.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sentinel Adept: the effect is not written yet. -/
-def SFD_008 : CardDef := SFD_008.meta
+/-- Sentinel Adept. -/
+def SFD_008 : CardDef :=
+  { SFD_008.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-009
 /--
@@ -199,6 +206,10 @@ def SFD_008 : CardDef := SFD_008.meta
 Printings: SFD-009/221
 
 > [Equip] :rb_rune_fury: (:rb_rune_fury:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Assault 2] (+2 :rb_might: while I'm an attacker.)
 -/
 def SFD_009.meta : CardDef :=
   { id := ⟨"SFD-009"⟩,
@@ -351,6 +362,10 @@ def SFD_015 : CardDef := SFD_015.meta
 Printings: SFD-016/221
 
 > [Equip] :rb_rune_fury: (:rb_rune_fury:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I attack or defend, deal 2 to an enemy unit here.
 -/
 def SFD_016.meta : CardDef :=
   { id := ⟨"SFD-016"⟩,
@@ -502,8 +517,10 @@ def SFD_022.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Long Sword: the effect is not written yet. -/
-def SFD_022 : CardDef := SFD_022.meta
+/-- Long Sword. -/
+def SFD_022 : CardDef :=
+  { SFD_022.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-023
 /--
@@ -683,6 +700,10 @@ Printings: SFD-030/221
 
 > [Equip] :rb_energy_1::rb_rune_fury: (:rb_energy_1::rb_rune_fury:: Attach this to a unit you
 > control.)
+
+Effect (given to the unit it is attached to):
+
+> My hold effects are also conquer effects, and vice versa.
 -/
 def SFD_030.meta : CardDef :=
   { id := ⟨"SFD-030"⟩,
@@ -748,6 +769,10 @@ def SFD_032 : CardDef := SFD_032.meta
 Printings: SFD-033/221
 
 > [Equip] :rb_rune_calm: (:rb_rune_calm:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Tank] (I must be assigned combat damage first.)
 -/
 def SFD_033.meta : CardDef :=
   { id := ⟨"SFD-033"⟩,
@@ -785,8 +810,12 @@ def SFD_034.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Feral Strength: the effect is not written yet. -/
-def SFD_034 : CardDef := SFD_034.meta
+/-- Feral Strength. -/
+def SFD_034 : CardDef :=
+  { SFD_034.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-035
 /--
@@ -851,8 +880,10 @@ def SFD_037.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Navori Scout: the effect is not written yet. -/
-def SFD_037 : CardDef := SFD_037.meta
+/-- Navori Scout. -/
+def SFD_037 : CardDef :=
+  { SFD_037.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-038
 /--
@@ -947,6 +978,10 @@ def SFD_041 : CardDef := SFD_041.meta
 Printings: SFD-042/221
 
 > [Equip] :rb_rune_calm: (:rb_rune_calm:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> If this was attached to me this turn, I have an additional +2 :rb_might:.
 -/
 def SFD_042.meta : CardDef :=
   { id := ⟨"SFD-042"⟩,
@@ -1144,6 +1179,10 @@ def SFD_050 : CardDef := SFD_050.meta
 Printings: SFD-051/221
 
 > [Equip] :rb_rune_calm: (:rb_rune_calm:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> If I would die, kill Guardian Angel instead. Heal me, exhaust me, and recall me.
 -/
 def SFD_051.meta : CardDef :=
   { id := ⟨"SFD-051"⟩,
@@ -1277,8 +1316,10 @@ def SFD_056.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sterak's Gage: the effect is not written yet. -/
-def SFD_056 : CardDef := SFD_056.meta
+/-- Sterak's Gage. -/
+def SFD_056 : CardDef :=
+  { SFD_056.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-057
 /--
@@ -1445,6 +1486,10 @@ Printings: SFD-064/221
 
 > [Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)
 > [Equip] :rb_rune_mind: (:rb_rune_mind:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Shield 2] (+2 :rb_might: while I'm a defender.)
 -/
 def SFD_064.meta : CardDef :=
   { id := ⟨"SFD-064"⟩,
@@ -1505,8 +1550,12 @@ def SFD_066.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Frigid Touch: the effect is not written yet. -/
-def SFD_066 : CardDef := SFD_066.meta
+/-- Frigid Touch. -/
+def SFD_066 : CardDef :=
+  { SFD_066.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-067
 /--
@@ -1648,6 +1697,10 @@ def SFD_072 : CardDef := SFD_072.meta
 Printings: SFD-073/221
 
 > [Equip] :rb_rune_mind: (:rb_rune_mind:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> I am a Mech.
 -/
 def SFD_073.meta : CardDef :=
   { id := ⟨"SFD-073"⟩,
@@ -1943,6 +1996,10 @@ def SFD_085 : CardDef := SFD_085.meta
 Printings: SFD-086/221
 
 > [Equip] :rb_rune_mind: (:rb_rune_mind:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I hold, play two Gold gear tokens exhausted.
 -/
 def SFD_086.meta : CardDef :=
   { id := ⟨"SFD-086"⟩,
@@ -1978,8 +2035,12 @@ def SFD_087.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Premonition: the effect is not written yet. -/
-def SFD_087 : CardDef := SFD_087.meta
+/-- Premonition. -/
+def SFD_087 : CardDef :=
+  { SFD_087.meta with
+    spellEffect := some (.of []
+      (.prim (.draw .you (.const 3)))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-088
 /--
@@ -2038,6 +2099,10 @@ Printings: SFD-090/221
 > control.)
 > :rb_energy_3::rb_rune_mind:, Banish this: Play all units banished with this, ignoring their
 > costs. (Use only if unattached.)
+
+Effect (given to the unit it is attached to):
+
+> [Deathknell] — Banish me. (When I die, get the effect.)
 -/
 def SFD_090.meta : CardDef :=
   { id := ⟨"SFD-090"⟩,
@@ -2097,8 +2162,10 @@ def SFD_092.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Combat Chef: the effect is not written yet. -/
-def SFD_092 : CardDef := SFD_092.meta
+/-- Combat Chef. -/
+def SFD_092 : CardDef :=
+  { SFD_092.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-093
 /--
@@ -2162,8 +2229,10 @@ def SFD_095.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Doran's Blade: the effect is not written yet. -/
-def SFD_095 : CardDef := SFD_095.meta
+/-- Doran's Blade. -/
+def SFD_095 : CardDef :=
+  { SFD_095.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-096
 /--
@@ -2204,8 +2273,12 @@ def SFD_097.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Punch First: the effect is not written yet. -/
-def SFD_097 : CardDef := SFD_097.meta
+/-- Punch First. -/
+def SFD_097 : CardDef :=
+  { SFD_097.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightPlus .it (.const 5)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-098
 /--
@@ -2250,8 +2323,10 @@ def SFD_099.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Veteran Poro: the effect is not written yet. -/
-def SFD_099 : CardDef := SFD_099.meta
+/-- Veteran Poro. -/
+def SFD_099 : CardDef :=
+  { SFD_099.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-100
 /--
@@ -2303,6 +2378,10 @@ def SFD_101 : CardDef := SFD_101.meta
 Printings: SFD-102/221
 
 > [Equip] :rb_rune_body: (:rb_rune_body:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)
 -/
 def SFD_102.meta : CardDef :=
   { id := ⟨"SFD-102"⟩,
@@ -2435,6 +2514,10 @@ def SFD_107 : CardDef := SFD_107.meta
 Printings: SFD-108/221
 
 > [Equip] :rb_rune_body: (:rb_rune_body:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer, buff me. (If I don't have a buff, I get a +1 :rb_might: buff.)
 -/
 def SFD_108.meta : CardDef :=
   { id := ⟨"SFD-108"⟩,
@@ -2603,6 +2686,10 @@ def SFD_114 : CardDef := SFD_114.meta
 Printings: SFD-115/221
 
 > [Equip] :rb_rune_body: (:rb_rune_body:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I hold, score 1 point.
 -/
 def SFD_115.meta : CardDef :=
   { id := ⟨"SFD-115"⟩,
@@ -2672,6 +2759,10 @@ Printings: SFD-118/221
 
 > [Equip] :rb_energy_1::rb_rune_body: (:rb_energy_1::rb_rune_body:: Attach this to a unit you
 > control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer, channel 1 rune exhausted.
 -/
 def SFD_118.meta : CardDef :=
   { id := ⟨"SFD-118"⟩,
@@ -2812,6 +2903,10 @@ def SFD_123 : CardDef := SFD_123.meta
 Printings: SFD-124/221
 
 > [Equip] :rb_rune_chaos: (:rb_rune_chaos:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer, discard 1, then draw 1.
 -/
 def SFD_124.meta : CardDef :=
   { id := ⟨"SFD-124"⟩,
@@ -2892,8 +2987,10 @@ def SFD_127.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Master Bingwen: the effect is not written yet. -/
-def SFD_127 : CardDef := SFD_127.meta
+/-- Master Bingwen. -/
+def SFD_127 : CardDef :=
+  { SFD_127.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-128
 /--
@@ -3010,6 +3107,10 @@ def SFD_132 : CardDef := SFD_132.meta
 Printings: SFD-133/221
 
 > [Equip] :rb_rune_chaos: (:rb_rune_chaos:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Ganking] (I can move from battlefield to battlefield.)
 -/
 def SFD_133.meta : CardDef :=
   { id := ⟨"SFD-133"⟩,
@@ -3033,6 +3134,10 @@ def SFD_133 : CardDef := SFD_133.meta
 Printings: SFD-134/221
 
 > [Equip] :rb_rune_chaos: (:rb_rune_chaos:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer, play a Gold gear token exhausted.
 -/
 def SFD_134.meta : CardDef :=
   { id := ⟨"SFD-134"⟩,
@@ -3396,6 +3501,10 @@ Printings: SFD-150/221
 
 > [Equip] — :rb_rune_chaos:, Recycle 2 cards from your trash (Pay the cost: Attach this to a
 > unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer or hold, you may play a unit from your trash. (You still pay its costs.)
 -/
 def SFD_150.meta : CardDef :=
   { id := ⟨"SFD-150"⟩,
@@ -3463,6 +3572,10 @@ def SFD_152 : CardDef := SFD_152.meta
 Printings: SFD-153/221
 
 > [Equip] :rb_rune_order: (:rb_rune_order:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I move, play a 1 :rb_might: Recruit unit token here.
 -/
 def SFD_153.meta : CardDef :=
   { id := ⟨"SFD-153"⟩,
@@ -3542,8 +3655,10 @@ def SFD_156.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Laurent Duelist: the effect is not written yet. -/
-def SFD_156 : CardDef := SFD_156.meta
+/-- Laurent Duelist. -/
+def SFD_156 : CardDef :=
+  { SFD_156.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-157
 /--
@@ -3650,8 +3765,10 @@ def SFD_161.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- B.F. Sword: the effect is not written yet. -/
-def SFD_161 : CardDef := SFD_161.meta
+/-- B.F. Sword. -/
+def SFD_161 : CardDef :=
+  { SFD_161.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-162
 /--
@@ -3879,6 +3996,10 @@ def SFD_171 : CardDef := SFD_171.meta
 Printings: SFD-172/221
 
 > [Equip] :rb_rune_order: (:rb_rune_order:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Deathknell] — Draw 1. (When I die, get the effect.)
 -/
 def SFD_172.meta : CardDef :=
   { id := ⟨"SFD-172"⟩,
@@ -4213,8 +4334,10 @@ def SFD_186.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Spinning Axe: the effect is not written yet. -/
-def SFD_186 : CardDef := SFD_186.meta
+/-- Spinning Axe. -/
+def SFD_186 : CardDef :=
+  { SFD_186.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-187
 /--
@@ -4284,6 +4407,10 @@ Printings: SFD-190/221
 
 > [Unique] (Your deck can have only 1 card with this name.)
 > [Equip] :rb_rune_rainbow: (:rb_rune_rainbow:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I attack or defend, deal 2 to all enemy units here.
 -/
 def SFD_190.meta : CardDef :=
   { id := ⟨"SFD-190"⟩,
@@ -4309,6 +4436,10 @@ Printings: SFD-191/221
 
 > [Unique] (Your deck can have only 1 card with this name.)
 > [Equip] :rb_rune_rainbow: (:rb_rune_rainbow:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> Your spells and abilities deal 3 Bonus Damage (while this is attached).
 -/
 def SFD_191.meta : CardDef :=
   { id := ⟨"SFD-191"⟩,
@@ -4335,6 +4466,10 @@ Printings: SFD-192/221
 > [Unique] (Your deck can have only 1 card with this name.)
 > [Equip] :rb_rune_rainbow: (:rb_rune_rainbow:: Attach this to a unit you control.)
 > When you play this, ready your units.
+
+Effect (given to the unit it is attached to):
+
+> Your units here have [Ganking]. (We can move from battlefield to battlefield.)
 -/
 def SFD_192.meta : CardDef :=
   { id := ⟨"SFD-192"⟩,

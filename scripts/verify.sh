@@ -22,6 +22,7 @@ lake check --inadvisably-no-sandbox
 step "4/5 card data staleness"
 uv run --no-project python scripts/normalize.py --check
 uv run --no-project python scripts/gen_lean.py --check
+uv run --no-project python scripts/coverage.py --check
 
 step "5/5 rule citations"
 uv run --no-project python scripts/cr_citations.py

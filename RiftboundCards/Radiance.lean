@@ -1142,8 +1142,10 @@ def RAD_054.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Trinket Peddler: the effect is not written yet. -/
-def RAD_054 : CardDef := RAD_054.meta
+/-- Trinket Peddler. -/
+def RAD_054 : CardDef :=
+  { RAD_054.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-055
 /--
@@ -1247,8 +1249,13 @@ def RAD_059.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Supernova: the effect is not written yet. -/
-def RAD_059 : CardDef := RAD_059.meta
+/-- Supernova. -/
+def RAD_059 : CardDef :=
+  { RAD_059.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 10)),
+        .prim (.draw .you (.const 2))])),
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-060
 /--
@@ -1489,6 +1496,10 @@ def RAD_070 : CardDef := RAD_070.meta
 Printings: RAD-071/167
 
 > Equip :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Shield 2] (+2 :rb_might: while I'm a defender.)
 -/
 def RAD_071.meta : CardDef :=
   { id := ⟨"RAD-071"⟩,
@@ -1630,8 +1641,11 @@ def RAD_077.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Wrath of the Freljord: the effect is not written yet. -/
-def RAD_077 : CardDef := RAD_077.meta
+/-- Wrath of the Freljord. -/
+def RAD_077 : CardDef :=
+  { RAD_077.meta with
+    abilities := [.passive .always [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-078
 /--
@@ -1875,8 +1889,10 @@ def RAD_088.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Staunch Survivor: the effect is not written yet. -/
-def RAD_088 : CardDef := RAD_088.meta
+/-- Staunch Survivor. -/
+def RAD_088 : CardDef :=
+  { RAD_088.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-089
 /--
@@ -2079,8 +2095,10 @@ def RAD_097.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Siren of the Shallows: the effect is not written yet. -/
-def RAD_097 : CardDef := RAD_097.meta
+/-- Siren of the Shallows. -/
+def RAD_097 : CardDef :=
+  { RAD_097.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-098
 /--
@@ -2619,6 +2637,10 @@ Printings: RAD-123/167
 
 > [Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)
 > [Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Tank] (I must be assigned combat damage first.)
 -/
 def RAD_123.meta : CardDef :=
   { id := ⟨"RAD-123"⟩,
@@ -3188,6 +3210,10 @@ Printings: RAD-150/167
 
 > [Equip] — :rb_rune_rainbow: or exhaust a friendly unit. (Pay the cost: Attach this to a unit
 > you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Ganking] (I can move from battlefield to battlefield.)
 -/
 def RAD_150.meta : CardDef :=
   { id := ⟨"RAD-150"⟩,

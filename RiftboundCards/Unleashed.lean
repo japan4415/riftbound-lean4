@@ -60,8 +60,10 @@ def UNL_002.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Inferna: the effect is not written yet. -/
-def UNL_002 : CardDef := UNL_002.meta
+/-- Inferna. -/
+def UNL_002 : CardDef :=
+  { UNL_002.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-003
 /--
@@ -152,8 +154,10 @@ def UNL_006.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Sharkling: the effect is not written yet. -/
-def UNL_006 : CardDef := UNL_006.meta
+/-- Sharkling. -/
+def UNL_006 : CardDef :=
+  { UNL_006.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-007
 /--
@@ -225,8 +229,12 @@ def UNL_009.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Upstage Comedy: the effect is not written yet. -/
-def UNL_009 : CardDef := UNL_009.meta
+/-- Upstage Comedy. -/
+def UNL_009 : CardDef :=
+  { UNL_009.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.ready (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-010
 /--
@@ -430,6 +438,10 @@ Printings: UNL-019/219
 
 > [Equip] :rb_energy_1::rb_rune_fury: (:rb_energy_1::rb_rune_fury:: Attach this to a unit you
 > control.)
+
+Effect (given to the unit it is attached to):
+
+> At the end of your turn, if I didn't conquer this turn, unattach this and deal 4 to me.
 -/
 def UNL_019.meta : CardDef :=
   { id := ⟨"UNL-019"⟩,
@@ -567,8 +579,10 @@ def UNL_024.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Rengar, Unseen: the effect is not written yet. -/
-def UNL_024 : CardDef := UNL_024.meta
+/-- Rengar, Unseen. -/
+def UNL_024 : CardDef :=
+  { UNL_024.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-025
 /--
@@ -846,8 +860,10 @@ def UNL_036.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Mutated Mouser: the effect is not written yet. -/
-def UNL_036 : CardDef := UNL_036.meta
+/-- Mutated Mouser. -/
+def UNL_036 : CardDef :=
+  { UNL_036.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-037
 /--
@@ -898,6 +914,10 @@ def UNL_038 : CardDef := UNL_038.meta
 Printings: UNL-039/219
 
 > [Equip] :rb_rune_calm: (:rb_rune_calm:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Level 3][>] I have an additional +1 :rb_might:. (While you have 3+ XP, get the effect.)
 -/
 def UNL_039.meta : CardDef :=
   { id := ⟨"UNL-039"⟩,
@@ -1432,8 +1452,12 @@ def UNL_061.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Downstage Dramatics: the effect is not written yet. -/
-def UNL_061 : CardDef := UNL_061.meta
+/-- Downstage Dramatics. -/
+def UNL_061 : CardDef :=
+  { UNL_061.meta with
+    spellEffect := some (.of []
+      (.prim (.draw .you (.const 1)))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-062
 /--
@@ -1541,8 +1565,12 @@ def UNL_066.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Moonlight Affliction: the effect is not written yet. -/
-def UNL_066 : CardDef := UNL_066.meta
+/-- Moonlight Affliction. -/
+def UNL_066 : CardDef :=
+  { UNL_066.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightMinus .it (.const 10)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-067
 /--
@@ -2214,6 +2242,10 @@ def UNL_095 : CardDef := UNL_095.meta
 Printings: UNL-096/219
 
 > [Equip] :rb_rune_body: (:rb_rune_body:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> [Hunt] (When I conquer or hold, gain 1 XP.)
 -/
 def UNL_096.meta : CardDef :=
   { id := ⟨"UNL-096"⟩,
@@ -2295,8 +2327,10 @@ def UNL_099.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Towering Combatant: the effect is not written yet. -/
-def UNL_099 : CardDef := UNL_099.meta
+/-- Towering Combatant. -/
+def UNL_099 : CardDef :=
+  { UNL_099.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-100
 /--
@@ -2317,8 +2351,10 @@ def UNL_100.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Voracious Gromp: the effect is not written yet. -/
-def UNL_100 : CardDef := UNL_100.meta
+/-- Voracious Gromp. -/
+def UNL_100 : CardDef :=
+  { UNL_100.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-101
 /--
@@ -4030,8 +4066,13 @@ def UNL_176.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Vi, Peacekeeper: the effect is not written yet. -/
-def UNL_176 : CardDef := UNL_176.meta
+/-- Vi, Peacekeeper. -/
+def UNL_176 : CardDef :=
+  { UNL_176.meta with
+    abilities := [.triggered (.onSelf .attack)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.stun (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-177
 /--
@@ -4280,6 +4321,10 @@ Printings: UNL-188/219
 
 > [Equip] :rb_energy_3::rb_rune_rainbow:. This ability's Energy cost is reduced by the Might of
 > the unit you choose. (Pay the cost: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I conquer, if you assigned 3 or more excess damage, draw 1.
 -/
 def UNL_188.meta : CardDef :=
   { id := ⟨"UNL-188"⟩,
@@ -4945,8 +4990,10 @@ def UNL_T02.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Bird: the effect is not written yet. -/
-def UNL_T02 : CardDef := UNL_T02.meta
+/-- Bird. -/
+def UNL_T02 : CardDef :=
+  { UNL_T02.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-T03
 /--
@@ -4999,8 +5046,10 @@ def UNL_T06.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Reflection: the effect is not written yet. -/
-def UNL_T06 : CardDef := UNL_T06.meta
+/-- Reflection. -/
+def UNL_T06 : CardDef :=
+  { UNL_T06.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-T08
 /--

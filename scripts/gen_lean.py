@@ -152,6 +152,11 @@ def card_block(c: dict) -> str:
     for t in c["text"] or ["(no text)"]:
         lines += [f"> {w}" for w in textwrap.wrap(doc_safe(t), 94, break_long_words=False,
                                                   break_on_hyphens=False)]
+    if c.get("effectText"):
+        lines += ["", "Effect (given to the unit it is attached to):", ""]
+        for t in c["effectText"]:
+            lines += [f"> {w}" for w in textwrap.wrap(doc_safe(t), 94, break_long_words=False,
+                                                      break_on_hyphens=False)]
     lines += ["-/", f"def {ident(cid)}.meta : CardDef :="]
     fields = [f"id := ⟨{lean_str(cid)}⟩", f"name := {lean_str(c['name'])}"]
     if c["subtitle"]:

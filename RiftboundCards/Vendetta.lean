@@ -249,6 +249,10 @@ def VEN_010 : CardDef := VEN_010.meta
 Printings: VEN-011/166
 
 > [Equip] :rb_rune_fury: (:rb_rune_fury:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> When I move to a battlefield, give me +2 :rb_might: this turn.
 -/
 def VEN_011.meta : CardDef :=
   { id := ⟨"VEN-011"⟩,
@@ -621,6 +625,10 @@ def VEN_026 : CardDef := VEN_026.meta
 Printings: VEN-027/166
 
 > [Equip] :rb_rune_calm: (:rb_rune_calm:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> I have +2 :rb_might: while I'm at a battlefield with exactly one other unit you control.
 -/
 def VEN_027.meta : CardDef :=
   { id := ⟨"VEN-027"⟩,
@@ -997,8 +1005,11 @@ def VEN_043.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Steel Paws: the effect is not written yet. -/
-def VEN_043 : CardDef := VEN_043.meta
+/-- Steel Paws. -/
+def VEN_043 : CardDef :=
+  { VEN_043.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 7)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-044
 /--
@@ -1136,8 +1147,12 @@ def VEN_049.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dredge Up: the effect is not written yet. -/
-def VEN_049 : CardDef := VEN_049.meta
+/-- Dredge Up. -/
+def VEN_049 : CardDef :=
+  { VEN_049.meta with
+    spellEffect := some (.of []
+      (.prim (.draw .you (.const 1)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-050
 /--
@@ -1668,6 +1683,10 @@ def VEN_072 : CardDef := VEN_072.meta
 Printings: VEN-073/166
 
 > Equip :rb_rune_body: (:rb_rune_body:: Attach this to a unit you control.)
+
+Effect (given to the unit it is attached to):
+
+> I can't be moved by enemy spells and abilities.
 -/
 def VEN_073.meta : CardDef :=
   { id := ⟨"VEN-073"⟩,
@@ -1867,8 +1886,12 @@ def VEN_081.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Onslaught: the effect is not written yet. -/
-def VEN_081 : CardDef := VEN_081.meta
+/-- Onslaught. -/
+def VEN_081 : CardDef :=
+  { VEN_081.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightPlus .it (.const 6)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-082
 /--
@@ -2355,6 +2378,10 @@ def VEN_102 : CardDef := VEN_102.meta
 Printings: VEN-103/166
 
 > Return up to 2 units from trashes to their owners' hands.
+
+Effect (given to the unit it is attached to):
+
+> 1
 -/
 def VEN_103.meta : CardDef :=
   { id := ⟨"VEN-103"⟩,
@@ -2710,8 +2737,10 @@ def VEN_118.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Horns of the Dragon: the effect is not written yet. -/
-def VEN_118 : CardDef := VEN_118.meta
+/-- Horns of the Dragon. -/
+def VEN_118 : CardDef :=
+  { VEN_118.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-119
 /--
@@ -2822,8 +2851,10 @@ def VEN_123.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Soulspinner: the effect is not written yet. -/
-def VEN_123 : CardDef := VEN_123.meta
+/-- Soulspinner. -/
+def VEN_123 : CardDef :=
+  { VEN_123.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-124
 /--
@@ -3142,6 +3173,10 @@ Printings: VEN-137/166
 > control.)
 > As this is attached to a unit, choose another friendly unit. The equipped unit becomes a copy
 > of that unit for as long as this is attached to it.
+
+Effect (given to the unit it is attached to):
+
+> (I am a copy of the chosen unit.)
 -/
 def VEN_137.meta : CardDef :=
   { id := ⟨"VEN-137"⟩,
@@ -3771,8 +3806,10 @@ def VEN_T04.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Recruit: the effect is not written yet. -/
-def VEN_T04 : CardDef := VEN_T04.meta
+/-- Recruit. -/
+def VEN_T04 : CardDef :=
+  { VEN_T04.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Vendetta. -/
