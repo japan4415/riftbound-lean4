@@ -5,6 +5,7 @@ public import Riftbound.State.Object
 public import Riftbound.State.GameConfig
 public import Riftbound.State.Decision
 public import Riftbound.State.Phase
+public import Riftbound.State.Pool
 public import Std.Data.ExtTreeMap
 
 /-!
@@ -45,6 +46,9 @@ structure GameState where
   active : Option PlayerId
   /-- How the game ended, if it has (CR 193-196). -/
   result : Option GameResult
+  /-- The Rune Pool of each player, keyed by `PlayerId.n`. A missing player has an empty Pool
+  (CR 166). -/
+  pools : Std.ExtTreeMap Nat RunePool
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/
@@ -112,6 +116,13 @@ def setZone (s : GameState) (z : Zone) (l : List ObjId) : GameState :=
 
 /-- The attributes of an object. -/
 def obj? (s : GameState) (id : ObjId) : Option Object := s.objects[id.n]?
+
+/-- The Rune Pool of a player (CR 166). -/
+def poolOf (s : GameState) (p : PlayerId) : RunePool := s.pools.getD p.n RunePool.empty
+
+/-- Replace the Rune Pool of a player. -/
+def setPool (s : GameState) (p : PlayerId) (pool : RunePool) : GameState :=
+  { s with pools := s.pools.insert p.n pool }
 
 /-- The points of a player. -/
 def pointsOf (s : GameState) (p : PlayerId) : Nat := s.points.getD p.n 0

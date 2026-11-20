@@ -113,6 +113,75 @@ theorem readyOf_ready {p : PlayerId} {o : Object} (h : o.controller = p) :
 theorem readyOf_other {p : PlayerId} {o : Object} (h : o.controller ≠ p) : readyOf p o = o := by
   simp [readyOf, h]
 
+/-- Exhaust an object (CR 415). -/
+def exhaustOf (o : Object) : Object := { o with exhausted := true }
+
+/-- Exhaust one object. -/
+def GameState.exhaustObj (s : GameState) (id : ObjId) : GameState :=
+  { s with objects := s.objects.modify id.n exhaustOf }
+
+namespace GameState
+
+/-- The same objects are in the table. -/
+theorem mem_exhaustObj (s : GameState) (id : ObjId) (k : Nat) :
+    k ∈ (s.exhaustObj id).objects ↔ k ∈ s.objects := by
+  simp [exhaustObj, Std.ExtTreeMap.mem_modify]
+
+/-- The object exhausted is exhausted; the others are as they were. -/
+theorem obj?_exhaustObj (s : GameState) (id x : ObjId) :
+    (s.exhaustObj id).obj? x = if id.n = x.n then (s.obj? id).map exhaustOf else s.obj? x := by
+  simp only [exhaustObj, obj?, Std.ExtTreeMap.getElem?_modify]
+  by_cases h : id.n = x.n
+  · simp [h]
+  · have : ¬ compare id.n x.n = .eq := fun e => h (Nat.compare_eq_eq.mp e)
+    simp [h, this]
+
+/-- Exhausting changes nothing but the object table. -/
+theorem sameMeta_exhaustObj (s : GameState) (id : ObjId) : SameMeta s (s.exhaustObj id) := rfl
+
+/-- The zones do not change. -/
+theorem zone_exhaustObj (s : GameState) (id : ObjId) (z : Zone) :
+    (s.exhaustObj id).zone z = s.zone z := rfl
+
+/-- Exhausting keeps the game well formed. -/
+theorem wf_exhaustObj {s : GameState} (hwf : s.WF) (id : ObjId) : (s.exhaustObj id).WF :=
+  hwf.congr_mem rfl (mem_exhaustObj s id) rfl rfl
+
+/-- Exhausting keeps `OwnerOk`. -/
+theorem ownerOk_exhaustObj {s : GameState} (hown : s.OwnerOk) (id : ObjId) :
+    (s.exhaustObj id).OwnerOk := by
+  refine ⟨fun p k hk id2 hid2 o ho => ?_⟩
+  rw [obj?_exhaustObj] at ho
+  rw [zone_exhaustObj] at hid2
+  split at ho
+  · cases hs : s.obj? id with
+    | none => rw [hs] at ho; simp at ho
+    | some o0 =>
+      rw [hs] at ho
+      simp only [Option.map_some, Option.some.injEq] at ho
+      subst ho
+      have h2 : id2 = id := by
+        rename_i hn
+        cases id2; cases id; simp_all
+      subst h2
+      exact hown.owner p k hk id2 hid2 o0 hs
+  · exact hown.owner p k hk id2 hid2 o ho
+
+/-- Exhausting keeps the physical cards. -/
+theorem physIds_exhaustObj (s : GameState) (id : ObjId) :
+    (s.exhaustObj id).physIds = s.physIds := by
+  unfold physIds
+  apply filterMap_congr_mem
+  intro x _
+  rw [obj?_exhaustObj]
+  by_cases h : id.n = x.n
+  · have hx : id = x := by cases id; cases x; simp_all
+    subst hx
+    cases s.obj? id <;> simp [exhaustOf]
+  · simp [h]
+
+end GameState
+
 end Riftbound
 
 end

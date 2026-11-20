@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Core.Ids
+public import Riftbound.Core.Domain
 
 /-!
 # Game objects
@@ -43,6 +44,10 @@ structure Object where
   damage : Nat := 0
   /-- When it became an object (CR 482). -/
   timestamp : Timestamp
+  /-- For a Rune: its domain, the domain of the Power it adds (CR 164.2). `none` for what is not
+  a Rune. A copy of the printed domain made when the object is made; the derived value comes with
+  the Layers (milestone M6). -/
+  runeDomain : Option Domain := none
 deriving DecidableEq, Repr
 
 end Riftbound

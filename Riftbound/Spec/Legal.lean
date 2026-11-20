@@ -54,6 +54,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ opp ≠ p ∧ opp.n < s.playerCount
   -- the turn player has priority in the Main Phase (CR 312, 316): passing ends the phase (CR 305)
   | .priority p :: _, .pass => a.actor = .player p
+  -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)
+  | .priority p :: _, .runeAbility c ab =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

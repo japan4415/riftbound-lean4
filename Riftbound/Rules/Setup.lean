@@ -18,31 +18,40 @@ engine works through (design.md §6.2).
 
 namespace Riftbound
 
+/-- The domain of a Rune card: the one domain of a card of type Rune (CR 161, 164). -/
+def runeDomainOf (db : CardDB) (c : CardId) : Option Domain :=
+  match db.find? c with
+  | some def_ => if def_.hasType .rune then def_.domains.head? else none
+  | none => none
+
 /-- A card as an object: a physical card of its own, owned and controlled by `owner`. -/
-def newCard (s : GameState) (owner : PlayerId) (c : CardId) : Object :=
-  { kind := .card ⟨s.nextId⟩ c, owner := owner, controller := owner, timestamp := ⟨0⟩ }
+def newCard (db : CardDB) (s : GameState) (owner : PlayerId) (c : CardId) : Object :=
+  { kind := .card ⟨s.nextId⟩ c, owner := owner, controller := owner, timestamp := ⟨0⟩,
+    runeDomain := runeDomainOf db c }
 
 /-- Add cards to a zone, the first card first (so a deck's head is its top). -/
-def addCards (owner : PlayerId) (z : Zone) : GameState → List CardId → Option GameState
+def addCards (db : CardDB) (owner : PlayerId) (z : Zone) :
+    GameState → List CardId → Option GameState
   | s, [] => some s
   | s, c :: cs => do
-    let r ← addObject s (newCard s owner c) z .bottom
-    addCards owner z r.1 cs
+    let r ← addObject s (newCard db s owner c) z .bottom
+    addCards db owner z r.1 cs
 
 /-- Add the cards of one player's deck. -/
-def GameState.addDeck (s : GameState) (p : PlayerId) (d : Deck) : Option GameState := do
-  let s ← addCards p (.player p .legendZone) s [d.legend]
-  let s ← addCards p (.player p .championZone) s [d.chosenChampion]
-  let s ← addCards p (.player p .mainDeck) s (d.main.erase d.chosenChampion)
-  let s ← addCards p (.player p .runeDeck) s d.runes
-  addCards p (.player p .outOfGame) s d.battlefields
+def GameState.addDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : Deck) :
+    Option GameState := do
+  let s ← addCards db p (.player p .legendZone) s [d.legend]
+  let s ← addCards db p (.player p .championZone) s [d.chosenChampion]
+  let s ← addCards db p (.player p .mainDeck) s (d.main.erase d.chosenChampion)
+  let s ← addCards db p (.player p .runeDeck) s d.runes
+  addCards db p (.player p .outOfGame) s d.battlefields
 
 /-- Add the decks of the players, seat 0 first. -/
-def GameState.addDecks : GameState → Nat → List Deck → Option GameState
+def GameState.addDecks (db : CardDB) : GameState → Nat → List Deck → Option GameState
   | s, _, [] => some s
   | s, i, d :: ds => do
-    let s ← s.addDeck ⟨i⟩ d
-    s.addDecks (i + 1) ds
+    let s ← s.addDeck db ⟨i⟩ d
+    s.addDecks db (i + 1) ds
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order (CR 113-115).
 The first frame is the first to be answered. Answering the turn order puts the opening hands and
@@ -57,29 +66,30 @@ def startFrames (n : Nat) : List Frame :=
 
 /-- The state a game starts from. `none` if the number of decks is not the number of players, or
 a card cannot be placed. -/
-def GameState.initial (config : GameConfig) (decks : List Deck) : Option GameState :=
+def GameState.initial (db : CardDB) (config : GameConfig) (decks : List Deck) :
+    Option GameState :=
   if decks.length = config.mode.players then
-    ((GameState.empty config).addDecks 0 decks).map
+    ((GameState.empty config).addDecks db 0 decks).map
       (fun s => { s with pending := startFrames config.mode.players })
   else none
 
 /-- Adding cards keeps the game well formed. -/
-theorem addCards_wf (owner : PlayerId) (z : Zone) :
-    ∀ (cs : List CardId) {s s' : GameState}, s.WF → addCards owner z s cs = some s' → s'.WF
+theorem addCards_wf {db : CardDB} (owner : PlayerId) (z : Zone) :
+    ∀ (cs : List CardId) {s s' : GameState}, s.WF → addCards db owner z s cs = some s' → s'.WF
   | [], s, s', hwf, h => by
-    rw [show addCards owner z s [] = some s from rfl] at h
+    rw [show addCards db owner z s [] = some s from rfl] at h
     cases h
     exact hwf
   | c :: cs, s, s', hwf, h => by
-    cases hr : addObject s (newCard s owner c) z .bottom with
+    cases hr : addObject s (newCard db s owner c) z .bottom with
     | none => simp [addCards, hr] at h
     | some r =>
-      have h' : addCards owner z r.1 cs = some s' := by simpa [addCards, hr] using h
+      have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact addCards_wf owner z cs (addObject_wf hwf hr) h'
 
 /-- Adding a deck keeps the game well formed. -/
-theorem GameState.addDeck_wf {s s' : GameState} {p : PlayerId} {d : Deck} (hwf : s.WF)
-    (h : s.addDeck p d = some s') : s'.WF := by
+theorem GameState.addDeck_wf {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck} (hwf : s.WF)
+    (h : s.addDeck db p d = some s') : s'.WF := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
@@ -87,22 +97,23 @@ theorem GameState.addDeck_wf {s s' : GameState} {p : PlayerId} {d : Deck} (hwf :
     (addCards_wf _ _ _ hwf h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps the game well formed. -/
-theorem GameState.addDecks_wf :
-    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.WF → s.addDecks i ds = some s' → s'.WF
+theorem GameState.addDecks_wf {db : CardDB} :
+    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.WF →
+      s.addDecks db i ds = some s' → s'.WF
   | [], s, s', i, hwf, h => by
-    rw [show s.addDecks i [] = some s from rfl] at h
+    rw [show s.addDecks db i [] = some s from rfl] at h
     cases h
     exact hwf
   | d :: ds, s, s', i, hwf, h => by
-    cases hr : s.addDeck ⟨i⟩ d with
+    cases hr : s.addDeck db ⟨i⟩ d with
     | none => simp [GameState.addDecks, hr] at h
     | some s1 =>
-      have h' : s1.addDecks (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
+      have h' : s1.addDecks db (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
       exact GameState.addDecks_wf ds (GameState.addDeck_wf hwf hr) h'
 
 /-- A game that has been set up is well formed. -/
-theorem GameState.initial_wf {config : GameConfig} {decks : List Deck} {s : GameState}
-    (h : GameState.initial config decks = some s) : s.WF := by
+theorem GameState.initial_wf {db : CardDB} {config : GameConfig} {decks : List Deck}
+    {s : GameState} (h : GameState.initial db config decks = some s) : s.WF := by
   unfold GameState.initial at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
@@ -112,23 +123,24 @@ theorem GameState.initial_wf {config : GameConfig} {decks : List Deck} {s : Game
   · exact absurd h (by simp)
 
 /-- Adding cards keeps `OwnerOk`. -/
-theorem addCards_ownerOk (owner : PlayerId) (z : Zone) :
+theorem addCards_ownerOk {db : CardDB} (owner : PlayerId) (z : Zone) :
     ∀ (cs : List CardId) {s s' : GameState}, s.WF → s.OwnerOk →
-      addCards owner z s cs = some s' → s'.OwnerOk
+      addCards db owner z s cs = some s' → s'.OwnerOk
   | [], s, s', _, hown, h => by
-    rw [show addCards owner z s [] = some s from rfl] at h
+    rw [show addCards db owner z s [] = some s from rfl] at h
     cases h
     exact hown
   | c :: cs, s, s', hwf, hown, h => by
-    cases hr : addObject s (newCard s owner c) z .bottom with
+    cases hr : addObject s (newCard db s owner c) z .bottom with
     | none => simp [addCards, hr] at h
     | some r =>
-      have h' : addCards owner z r.1 cs = some s' := by simpa [addCards, hr] using h
+      have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact addCards_ownerOk owner z cs (addObject_wf hwf hr) (addObject_ownerOk hwf hown hr) h'
 
 /-- Adding a deck keeps `OwnerOk`. -/
-theorem GameState.addDeck_ownerOk {s s' : GameState} {p : PlayerId} {d : Deck} (hwf : s.WF)
-    (hown : s.OwnerOk) (h : s.addDeck p d = some s') : s'.OwnerOk := by
+theorem GameState.addDeck_ownerOk {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
+    (hwf : s.WF)
+    (hown : s.OwnerOk) (h : s.addDeck db p d = some s') : s'.OwnerOk := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
@@ -141,18 +153,18 @@ theorem GameState.addDeck_ownerOk {s s' : GameState} {p : PlayerId} {d : Deck} (
       (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ hwf hown h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps `OwnerOk`. -/
-theorem GameState.addDecks_ownerOk :
+theorem GameState.addDecks_ownerOk {db : CardDB} :
     ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.WF → s.OwnerOk →
-      s.addDecks i ds = some s' → s'.OwnerOk
+      s.addDecks db i ds = some s' → s'.OwnerOk
   | [], s, s', i, _, hown, h => by
-    rw [show s.addDecks i [] = some s from rfl] at h
+    rw [show s.addDecks db i [] = some s from rfl] at h
     cases h
     exact hown
   | d :: ds, s, s', i, hwf, hown, h => by
-    cases hr : s.addDeck ⟨i⟩ d with
+    cases hr : s.addDeck db ⟨i⟩ d with
     | none => simp [GameState.addDecks, hr] at h
     | some s1 =>
-      have h' : s1.addDecks (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
+      have h' : s1.addDecks db (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
       exact GameState.addDecks_ownerOk ds (GameState.addDeck_wf hwf hr)
         (GameState.addDeck_ownerOk hwf hown hr) h'
 
@@ -165,8 +177,8 @@ theorem GameState.ownerOk_empty (config : GameConfig) : (GameState.empty config)
   simp at hid
 
 /-- A game that has been set up satisfies `OwnerOk`. -/
-theorem GameState.initial_ownerOk {config : GameConfig} {decks : List Deck} {s : GameState}
-    (h : GameState.initial config decks = some s) : s.OwnerOk := by
+theorem GameState.initial_ownerOk {db : CardDB} {config : GameConfig} {decks : List Deck}
+    {s : GameState} (h : GameState.initial db config decks = some s) : s.OwnerOk := by
   unfold GameState.initial at h
   split at h
   · simp only [Option.map_eq_some_iff] at h

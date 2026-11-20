@@ -34,6 +34,14 @@ def Actor.isPlayer : Actor → Bool
   | .player _ => true
   | _ => false
 
+/-- The two abilities every Basic Rune has (CR 164.2). -/
+inductive RuneAbility where
+  /-- Exhaust the Rune to add one Energy. -/
+  | exhaust
+  /-- Recycle the Rune to add one Power of its domain. -/
+  | recycle
+deriving DecidableEq, Repr
+
 /-- What an action says. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
@@ -53,6 +61,8 @@ inductive ActionKind where
   | pass
   /-- Concede the game (CR 649-651). -/
   | concede
+  /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
+  | runeAbility (card : ObjId) (ability : RuneAbility)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/

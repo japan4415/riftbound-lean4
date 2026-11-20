@@ -294,6 +294,12 @@ theorem active {s s' : GameState} (h : SameMeta s s') : s'.active = s.active := 
   have h2 := congrArg GameState.active h
   exact h2
 
+/-- The Rune Pools are as they were. -/
+theorem pools {s s' : GameState} (h : SameMeta s s') : s'.pools = s.pools := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.pools h
+  exact h2
+
 /-- The result is as it was. -/
 theorem result {s s' : GameState} (h : SameMeta s s') : s'.result = s.result := by
   unfold SameMeta at h
