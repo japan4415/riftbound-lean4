@@ -9,7 +9,7 @@ export PATH="$HOME/.elan/bin:$PATH"
 step() { printf '\n==> %s\n' "$*"; }
 
 step "1/5 build (--wfail)"
-lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest --wfail
+lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest riftbound-trace --wfail
 
 step "2/5 test"
 lake test

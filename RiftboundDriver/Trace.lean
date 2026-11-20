@@ -1,0 +1,195 @@
+module
+
+public import Std.Data.HashSet
+public import RiftboundDriver.Run
+public import RiftboundDriver.Demo
+
+/-!
+# Driver: the trace of a game
+
+Plays a game with the engine and writes down every answer as JSON: the answer, the events it
+caused, and the state after it. A viewer replays the file as an animation (`viewer/`). The viewer
+has no rules of its own: everything it shows was computed by `step`. This library is not part of
+the verified core, so the JSON written here is not covered by the proofs (design.md §4).
+-/
+
+@[expose] public section
+
+namespace RiftboundDriver
+
+open Riftbound
+
+/-- A JSON string. Names in the databases are plain text; quotes and backslashes are escaped. -/
+def jstr (s : String) : String :=
+  "\"" ++ (s.replace "\\" "\\\\").replace "\"" "\\\"" ++ "\""
+
+/-- A JSON array of already written items. -/
+def jarr (l : List String) : String := "[" ++ ",".intercalate l ++ "]"
+
+/-- A JSON object of already written values. -/
+def jobj (l : List (String × String)) : String :=
+  "{" ++ ",".intercalate (l.map fun (k, v) => jstr k ++ ":" ++ v) ++ "}"
+
+/-- The last part of a dotted name: `Riftbound.Phase.main` is `main`. -/
+def lastSeg (s : String) : String := (s.splitOn ".").getLast?.getD s
+
+/-- The name of a constructor, from its `Repr`. -/
+def ctorName {α : Type} [Repr α] (a : α) : String :=
+  lastSeg (((reprStr a).takeWhile (fun c => !c.isWhitespace)).toString)
+
+/-- A zone as text: `p0.hand`, `battlefield`, `chain`. -/
+def zoneName : Zone → String
+  | .player p k => s!"p{p.n}.{ctorName k}"
+  | .battlefieldZone => "battlefield"
+  | .chain => "chain"
+
+/-- An action as JSON. -/
+def actionJson (a : Action) : String :=
+  let who := match a.actor with
+    | .player p => s!"p{p.n}"
+    | .chance => "chance"
+    | .clock => "clock"
+    | .judge => "judge"
+  let kind := ctorName a.kind
+  let extra : List (String × String) := match a.kind with
+    | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
+    | .mulliganPick c => [("card", toString c.n)]
+    | .burnOutTarget o => [("opponent", toString o.n)]
+    | .pick i => [("index", toString i)]
+    | _ => []
+  jobj ([("actor", jstr who), ("kind", jstr kind)] ++ extra)
+
+/-- An event as JSON. -/
+def eventJson : Event → String
+  | .moved o n dst =>
+    jobj [("t", jstr "moved"), ("old", toString o.n), ("new", toString n.n),
+      ("dst", jstr (zoneName dst))]
+  | .pointsGained p n =>
+    jobj [("t", jstr "points"), ("player", toString p.n), ("n", toString n)]
+  | .burnedOut p => jobj [("t", jstr "burnout"), ("player", toString p.n)]
+
+/-- All the zones to show, with the player count. -/
+def shownZones (n : Nat) : List Zone :=
+  (allPlayers n).flatMap (fun p => ZoneKind.all.map (fun k => Zone.player p k)) ++
+    [.battlefieldZone, .chain]
+
+/-- The identifiers of all objects in the zones. -/
+def shownIds (s : GameState) : List ObjId :=
+  (shownZones s.playerCount).flatMap (fun z => s.zone z)
+
+/-- A new object as JSON: its card, its owner, and its Rune domain. -/
+def objJson (s : GameState) (id : ObjId) : String :=
+  match s.obj? id with
+  | some o =>
+    let card := match o.kind with
+      | .card _ c => c.code
+      | .token c => c.code
+      | .chainAbility _ => ""
+    jobj [("card", jstr card), ("owner", toString o.owner.n),
+      ("rune", match o.runeDomain with | some d => jstr (ctorName d) | none => "null")]
+  | none => "null"
+
+/-- The Rune Pool of a player as JSON. -/
+def poolJson (p : RunePool) : String :=
+  jobj [("energy", toString p.energy), ("fury", toString p.fury), ("calm", toString p.calm),
+    ("mind", toString p.mind), ("body", toString p.body), ("chaos", toString p.chaos),
+    ("order", toString p.order)]
+
+/-- The state as JSON. `seen` are the identifiers already sent: only new objects are described. -/
+def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=
+  let ids := shownIds s
+  let fresh := ids.filter (fun id => !seen.contains id.n)
+  let seen' := fresh.foldl (fun acc id => acc.insert id.n) seen
+  let zones := (shownZones s.playerCount).filterMap fun z =>
+    match s.zone z with
+    | [] => none
+    | l => some (zoneName z, jarr (l.map (fun id => toString id.n)))
+  let exhausted := ids.filter (fun id => (s.obj? id).any (·.exhausted))
+  let damaged := ids.filterMap (fun id =>
+    match s.obj? id with
+    | some o => if 0 < o.damage then some (jarr [toString id.n, toString o.damage]) else none
+    | none => none)
+  let players := allPlayers s.playerCount
+  let json := jobj [
+    ("turn", toString s.turn), ("phase", jstr (ctorName s.phase)),
+    ("active", match s.active with | some p => toString p.n | none => "null"),
+    ("pending", match s.pending with | f :: _ => jstr (ctorName f) | [] => "null"),
+    ("result", match s.result with
+      | some (.won w) => jobj [("won", jarr (w.map (fun p => toString p.n)))]
+      | some .draw => jstr "draw"
+      | none => "null"),
+    ("points", jarr (players.map (fun p => toString (s.pointsOf p)))),
+    ("pools", jarr (players.map (fun p => poolJson (s.poolOf p)))),
+    ("zones", jobj zones),
+    ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
+    ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
+    ("damaged", jarr damaged)]
+  (json, seen')
+
+/-- One step of the trace: the answer given (if any), its events, and the state after it. -/
+def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
+    (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=
+  let (st, seen') := stateJson s seen
+  (jobj [("i", toString i),
+    ("action", match a with | some a => actionJson a | none => "null"),
+    ("events", jarr (es.map eventJson)), ("state", st)], seen')
+
+/-- A card of the database as JSON. -/
+def cardJson (c : CardDef) : String :=
+  jobj [("name", jstr c.name), ("types", jarr (c.types.map (fun t => jstr (ctorName t)))),
+    ("domains", jarr (c.domains.map (fun d => jstr (ctorName d)))),
+    ("cost", match c.cost with | some k => toString k.energy | none => "null"),
+    ("might", match c.might with | some m => toString m | none => "null")]
+
+/-- The answer of the demo player in the Main Phase: exhaust the Runes that are ready, recycle
+one Rune on even turns when no Power is in the Pool, and pass. Everything else is answered as
+`autoAnswer` does. Only a legal answer is chosen: the list of `legalActions` is searched. -/
+def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
+  match s.pending with
+  | .priority p :: _ =>
+    let legal := legalActions s
+    let isAb (ab : RuneAbility) (a : Action) : Bool :=
+      match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
+    match legal.find? (isAb .exhaust) with
+    | some a => some (a, r)
+    | none =>
+      if s.turn % 2 == 0 && (s.poolOf p).fury == 0 then
+        match legal.find? (isAb .recycle) with
+        | some a => some (a, r)
+        | none => some (⟨.player p, .pass⟩, r)
+      else some (⟨.player p, .pass⟩, r)
+  | _ => autoAnswer r s
+
+/-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
+of the trace come back in reverse order. -/
+def playTrace (turns : Nat) :
+    Nat → Nat → Rng → GameState → Std.HashSet Nat → List String →
+      Except RuleError (List String)
+  | 0, _, _, _, _, acc => .ok acc
+  | n + 1, i, r, s, seen, acc =>
+    match demoAnswer r s with
+    | none => .ok acc
+    | some (a, r') =>
+      match step 100 s a with
+      | .error e => .error e
+      | .ok (s', es) =>
+        let (j, seen') := stepJson i (some a) es s' seen
+        if a.kind == .pass && turns ≤ s.turn then .ok (j :: acc)
+        else playTrace turns n (i + 1) r' s' seen' (j :: acc)
+
+/-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. -/
+def demoTrace (seed turns : Nat) : Except String String :=
+  match GameState.initial demoDB demoConfig [demoDeck, demoDeck] with
+  | none => .error "the demo game cannot be set up"
+  | some s0 =>
+    let (j0, seen) := stepJson 0 none [] s0 {}
+    match playTrace turns 100000 1 (Rng.ofSeed seed) s0 seen [j0] with
+    | .error e => .error s!"the engine refused an answer: {repr e}"
+    | .ok acc =>
+      .ok (jobj [("seed", toString seed), ("players", toString s0.playerCount),
+        ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c)))),
+        ("steps", jarr acc.reverse)])
+
+end RiftboundDriver
+
+end

@@ -25,3 +25,7 @@ name = "RiftboundDriver"    # 乱数の供給・自動対戦・ログ再生（IO
 
 [[lean_lib]]
 name = "RiftboundTest"
+
+[[lean_exe]]
+name = "riftbound-trace"    # 1 ゲームを JSON のトレースにして書き出す（viewer/ が再生する）
+root = "RiftboundTrace"

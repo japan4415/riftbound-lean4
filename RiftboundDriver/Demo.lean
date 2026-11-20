@@ -1,0 +1,49 @@
+module
+
+public import Riftbound
+
+/-!
+# Driver: a demo game
+
+A small card database and a deck for showing a game: the same shape as the fixtures of the tests
+(a legal Duel deck of 40 Main Deck cards, 12 Runes, 3 Battlefields), made of values that can be
+run. The tests keep their own copies, which are only evaluated at compile time.
+-/
+
+@[expose] public section
+
+namespace RiftboundDriver
+
+open Riftbound
+
+/-- The cards of the demo database. -/
+def demoCards : List CardDef :=
+  [ { id := ⟨"L1"⟩, name := "Demo Legend", types := [.legend], tags := [⟨"Hero"⟩],
+      domains := [.fury, .calm] },
+    { id := ⟨"C1"⟩, name := "Hero", subtitle := some "Champion", types := [.unit],
+      supertypes := [.champion], tags := [⟨"Hero"⟩], domains := [.fury],
+      cost := some ⟨3, [.domain .fury]⟩, might := some 4 },
+    { id := ⟨"R1"⟩, name := "Fury Rune", types := [.rune], domains := [.fury] } ] ++
+  (List.range 13).map (fun n =>
+    { id := ⟨s!"V{n}"⟩, name := s!"Vanilla {n}", types := [.unit], domains := [.fury],
+      cost := some ⟨1, []⟩, might := some 2 : CardDef }) ++
+  (List.range 3).map (fun n =>
+    { id := ⟨s!"B{n}"⟩, name := s!"Battlefield {n}", types := [.battlefield] : CardDef })
+
+/-- The demo database. -/
+def demoDB : CardDB := { cards := demoCards }
+
+/-- The demo deck: the champion and three copies of each of 13 vanilla Units, 12 Runes and 3
+Battlefields. -/
+def demoDeck : Deck :=
+  { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
+    main := ⟨"C1"⟩ :: (List.range 13).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩),
+    runes := List.replicate 12 ⟨"R1"⟩,
+    battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
+
+/-- The configuration of the demo: a Duel under the Core Rules. -/
+def demoConfig : GameConfig := { ruleSet := .coreOnly, mode := Mode.duel }
+
+end RiftboundDriver
+
+end
