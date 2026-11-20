@@ -26,9 +26,15 @@ namespace CardDB
 def find? (db : CardDB) (id : CardId) : Option CardDef :=
   db.cards.find? (fun c => c.id == id)
 
-/-- Well-formedness of a database: identifiers are unique. Only decidable, static conditions
-belong here (design.md §7.1). -/
-def WF (db : CardDB) : Prop := (db.cards.map (·.id)).Nodup
+/-- The identifiers of the cards are unique. -/
+def IdsUnique (db : CardDB) : Prop := (db.cards.map (·.id)).Nodup
+
+instance (db : CardDB) : Decidable db.IdsUnique := by unfold IdsUnique; infer_instance
+
+/-- Well-formedness of a database: identifiers are unique, and the effects of every card refer
+only to what is there (`CardDef.StaticOk`). Only decidable, static conditions belong here
+(design.md §7.1). -/
+def WF (db : CardDB) : Prop := db.IdsUnique ∧ ∀ c ∈ db.cards, c.StaticOk
 
 instance (db : CardDB) : Decidable db.WF := by unfold WF; infer_instance
 
@@ -65,7 +71,7 @@ theorem find?_of_mem_list {c : CardDef} :
 /-- In a well-formed database, a card is found by its own identifier. -/
 theorem find?_of_mem {db : CardDB} (hwf : db.WF) {c : CardDef} (h : c ∈ db.cards) :
     db.find? c.id = some c :=
-  find?_of_mem_list db.cards hwf h
+  find?_of_mem_list db.cards hwf.1 h
 
 end CardDB
 

@@ -13,6 +13,7 @@ public import RiftboundTest.Deck
 public import RiftboundTest.Tournament
 public import RiftboundTest.Cards
 public import RiftboundTest.IR
+public import RiftboundTest.Check
 
 /-!
 # RiftboundTest
