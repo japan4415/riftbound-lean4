@@ -254,6 +254,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 4. 書けなかった文を一覧にする。足りない語彙（プリミティブ、Selector、Trigger、hook の種類）を洗い出し、design.md §7.2 と §7.3 を更新する。
 5. カバレッジ表に、「IR で書けた割合」と「`custom` を使った数」を出す。
 
+### M3b-3 IR の構文の型の実装の記録（2026-11-21）
+
+- **ファイル**: `Card/IR/{Basic,Value,Expr,Prim,Effect,Ability}.lean`。`CardDef` に `abilities : List Ability` と `spellEffect : Option EffectDef` を足した（生成済みのカードは、どちらも空のまま）。テストは `RiftboundTest/IR.lean`。解釈器はまだ無い。
+- **型**: `Side`・`Place`・`Quantity`・`Cmp`・`PlayerSel`・`Timing`・`Act`（小さな列挙型）、`VarId`・`CustomId`、`Value` と `Env`、`Amount`・`Filter`・`FilterList`・`Selector`・`Condition`（相互再帰）、`Prim`（34 のゲームアクション）、`Duration`、`Arg`・`ArgList`、`StaticMod`、`AbilityCost`、`TriggerEvent`・`Trigger`、`Effect`・`EffectList`（相互再帰）、`Choice`・`EffectDef`・`Limit`・`ReplaceEvent`・`Ability`。
+- **等値性**: すべて `DecidableEq`・`Repr`・`Hashable` を derive できた。理由は、再帰する型が `List` や `Option` を自分自身の入れ子に持たず、専用のリスト型（`FilterList`・`EffectList`・`ArgList`）にしたから。**`Option` でも入れ子の帰納型になり、derive が失敗する**ことを確かめた。`BEq` を別に derive しない（`DecidableEq` から得る）。
+- **設計の判断**: 条件分岐の else は `ifThen c t e` に `Effect.nop` を入れる。`Selector.slot i` が、`EffectDef.choices` で宣言した i 番目の対象を指す。`Amount` は自然数で、負の増減は `mightPlus` / `mightMinus` のように別の構成子にした。
+- **まだ無いもの**: 変数の束縛・対象枠の番号の範囲の静的な検査（`CardDB.WF` の一部）、Replacement の `Effect` への組み込み、トークンの定義、Reflexive Trigger の細部。次の転記（M3b-4）で、書けなかった文から洗い出す。
+
 ### M3b-2 `gen_lean.py`（カードの Lean ファイルの生成）の実装の記録（2026-11-21）
 
 - **作ったもの**: `scripts/gen_lean.py`（`--check` つき）。`RiftboundCards/<Set>.lean`（6 弾）と `RiftboundCards/Registry.lean` を生成する。`scripts/verify.sh` の 4 段目で `gen_lean.py --check` を実行する。テストは `RiftboundTest/Cards.lean`。
@@ -277,7 +285,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   - 型の補正は 37 件（欄が空 15 件、食い違い 22 件）。代替テキストの接頭辞で補った。トークン 2 種（UNL-T04 Buff、UNL-T08 XP Tracker）は型が空のまま。
   - supertype（Champion / Signature）は、公式ギャラリーに無いので、まだ埋めていない。Riftcodex で補うか、別の手がかりで推定するかは、`gen_lean.py` を作るときに決める。
   - 論理カードのうち 17 種は、印刷によって文面が違う（注釈文の違いは除く）。現時点の `cardId` は最初の印刷のもの。
-- **次**: `gen_lean.py`（M3b-2、済）、IR の構文（M3b-3）、構文だけの転記（M3b-4）。
+- **次**: `gen_lean.py`（M3b-2、済）、IR の構文（M3b-3、済）、構文だけの転記（M3b-4）。
 
 **証明（L0）**
 - IR の型の等値性と `Repr`。入れ子の帰納型なので、等値性は相互再帰で書く（[lean-guidelines.md §5.4](lean-guidelines.md#54-deriving-と等値性)）。

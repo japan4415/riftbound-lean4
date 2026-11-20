@@ -498,6 +498,10 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `Ability` | passive / replacement / activated / triggered（361）と回数制限（once each turn: 371, 386） |
 | `StaticMod` | Might 修正、キーワード付与、コスト修正、制限（can't ...）、許可（may play from ...）、Victory Score の修正、得点規則の修正 |
 
+- **実装した形（2026-11-21、M3b-3）**: 上の表は初期案で、型は `Riftbound/Card/IR/` にある（[roadmap.md](roadmap.md) の M3b-3 の記録）。初期案との違いは 3 つ。
+  - 再帰する型は、`List` と `Option` を自分自身の入れ子に持たない。v4.36.0 では `Option` でも入れ子の帰納型になり、`DecidableEq` を derive できないため。専用のリスト型を同じ `mutual` に置いた。
+  - `Cost`（Energy と Power）は `Core.Cost` のまま。能力のコスト（Exhaust、Recycle、Discard、味方の kill など）は `AbilityCost` として別に持つ。
+  - `Replace` と `Prevent` は `Effect` のコンストラクタにせず、`Ability.replacement` にした（`ReplaceEvent` と、置き換わる `EffectDef`）。
 - **プレイ時の選択は、効果の本体から分けて宣言する。**
   - Spell と能力の効果は、「選択の宣言 + 本体」の組（`EffectDef`）で持つ。対象枠は宣言に並べ、本体は `.slot i` のように番号で参照する（例は [card-data.md §4.1](card-data.md#41-ファイルの構成-1-弾-1-ファイル)）。
   - 対象とモードは、コストを払う前に選ぶ（355）。宣言が本体から分かれていれば、プレイの時点で必要な選択が、`Effect` を実行せずに分かる。

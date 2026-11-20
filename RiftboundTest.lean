@@ -12,6 +12,7 @@ public import RiftboundTest.Fixtures
 public import RiftboundTest.Deck
 public import RiftboundTest.Tournament
 public import RiftboundTest.Cards
+public import RiftboundTest.IR
 
 /-!
 # RiftboundTest
