@@ -1,0 +1,293 @@
+module
+
+public import Riftbound.Engine.Step
+
+/-!
+# Properties of the engine
+
+Well-formedness (I3), conservation of physical cards (I1), completeness of `step` against `Legal`
+and monotonicity in the fuel (I15) (roadmap.md).
+
+Not yet proved, and tracked in roadmap.md: that a legal answer is never refused for any reason but
+the fuel (soundness, with I4). It needs an invariant on the frames, which come in milestone M3.
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- Applying a legal answer keeps the game well formed. -/
+theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) : s'.WF := by
+  unfold applyAction at h
+  unfold Legal at hl
+  split at h
+  · rename_i z rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr (GameState.wf_reorder hwf hl.2.1 hl.2.2) rfl rfl rfl rfl
+  · rename_i p rest i hp hk
+    split at h
+    · rename_i id hid
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      exact GameState.WF.congr (moveObj_wf hwf hm) rfl rfl rfl rfl
+    · exact absurd h (by simp)
+  · rename_i rest l hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p chosen rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p chosen rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr hwf rfl rfl rfl rfl
+    · simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, news⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      exact GameState.WF.congr (moveAll_wf _ _ _ hwf hm) rfl rfl rfl rfl
+  · rename_i p cards rest l hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact GameState.WF.congr (recycleAll_wf p _ hwf hm) rfl rfl rfl rfl
+  · rename_i p rest l hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p order rest opp hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact GameState.WF.congr (burnOut_wf hwf hm) rfl rfl rfl rfl
+  · exact absurd h (by simp)
+
+/-- The automatic work keeps the game well formed. -/
+theorem advance_wf :
+    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
+      advance n s es = .ok (s', es') → s'.WF
+  | 0, s, s', es, es', hwf, h => by
+    unfold advance at h
+    split at h
+    · rename_i f rest hp
+      split at h
+      · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hwf
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hwf
+  | n + 1, s, s', es, es', hwf, h => by
+    unfold advance at h
+    split at h
+    · rename_i f rest hp
+      split at h
+      · split at h
+        · rename_i s1 es1 hm
+          exact advance_wf n (microStep_wf hwf hm) h
+        · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hwf
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hwf
+
+/-- **I3** (engine). A step keeps the game well formed. -/
+theorem step_wf {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (h : step fuel s a = .ok (s', es)) : s'.WF := by
+  unfold step at h
+  split at h
+  · rename_i hl
+    split at h
+    · rename_i s1 es1 ha
+      exact advance_wf fuel (applyAction_wf hwf hl ha) h
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- A step is accepted only for a legal answer: `step` is complete against `Legal`
+(design.md §6.3, I6). -/
+theorem legal_of_step_ok {fuel : Nat} {s : GameState} {a : Action} {r : GameState × List Event}
+    (h : step fuel s a = .ok r) : Legal s a := by
+  unfold step at h
+  split at h
+  · assumption
+  · exact absurd h (by simp)
+
+/-- An answer that is not legal is refused as illegal. -/
+theorem step_illegal {fuel : Nat} {s : GameState} {a : Action} (h : ¬ Legal s a) :
+    step fuel s a = .error .illegal := by
+  simp [step, h]
+
+/-- **I15** (work). More fuel gives the same result: if the work reaches the next decision with
+`n` steps, it does with any number of steps from `n` up. -/
+theorem advance_mono :
+    ∀ (n : Nat) {m : Nat} {s : GameState} {es : List Event} {r : GameState × List Event},
+      advance n s es = .ok r → n ≤ m → advance m s es = .ok r
+  | 0, m, s, es, r, h, _ => by
+    cases m with
+    | zero => exact h
+    | succ k =>
+      unfold advance at h ⊢
+      split at h
+      · split at h
+        · exact absurd h (by simp)
+        · rename_i hf
+          simpa [hf] using h
+      · exact h
+  | n + 1, m, s, es, r, h, hnm => by
+    obtain ⟨k, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
+    unfold advance at h ⊢
+    split at h
+    · split at h
+      · rename_i hf
+        simp only [hf, ite_true] at h ⊢
+        split at h
+        · exact advance_mono n h (by omega)
+        · exact absurd h (by simp)
+      · rename_i hf
+        simpa [hf] using h
+    · exact h
+
+/-- **I15.** More fuel gives the same result for a whole step. -/
+theorem step_mono {n m : Nat} {s : GameState} {a : Action} {r : GameState × List Event}
+    (h : step n s a = .ok r) (hnm : n ≤ m) : step m s a = .ok r := by
+  by_cases hl : Legal s a
+  · cases ha : applyAction s a with
+    | none => simp [step, hl, ha] at h
+    | some r1 =>
+      simp only [step, hl, ha, ite_true] at h ⊢
+      exact advance_mono n h hnm
+  · simp [step, hl] at h
+
+/-- Applying a legal answer keeps the physical cards. -/
+theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    s'.physIds.Perm s.physIds := by
+  unfold applyAction at h
+  unfold Legal at hl
+  split at h
+  · rename_i z rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.physIds_reorder hl.2.1 hl.2.2
+  · rename_i p rest i hp hk
+    split at h
+    · rename_i id hid
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      have hp' := moveObj_physIds hwf hm
+      exact hp'
+    · exact absurd h (by simp)
+  · rename_i rest l hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p chosen rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p chosen rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
+    · simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, news⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      have hp' := moveAll_physIds _ _ _ hwf hm
+      exact hp'
+  · rename_i p cards rest l hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have hp' := recycleAll_physIds p _ hwf hm
+    exact hp'
+  · rename_i p rest l hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p order rest opp hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have hp' := burnOut_physIds hwf hm
+    exact hp'
+  · exact absurd h (by simp)
+
+/-- The automatic work keeps the physical cards. -/
+theorem advance_physIds :
+    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
+      advance n s es = .ok (s', es') → s'.physIds.Perm s.physIds
+  | 0, s, s', es, es', hwf, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact List.Perm.refl _
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
+  | n + 1, s, s', es, es', hwf, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · split at h
+        · rename_i s1 es1 hm
+          exact (advance_physIds n (microStep_wf hwf hm) h).trans (microStep_physIds hwf hm)
+        · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact List.Perm.refl _
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
+
+/-- **I1** (engine). A step keeps the physical cards: the list of physical cards in the zones is
+rearranged, nothing is lost or made. -/
+theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (h : step fuel s a = .ok (s', es)) : s'.physIds.Perm s.physIds := by
+  unfold step at h
+  split at h
+  · rename_i hl
+    split at h
+    · rename_i s1 es1 ha
+      exact (advance_physIds fuel (applyAction_wf hwf hl ha) h).trans
+        (applyAction_physIds hwf hl ha)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- **I6** (enumeration). The answers of the players that `legalActions` lists are exactly the legal
+answers by a player: nothing legal is missing and nothing illegal is listed (design.md §6.3).
+Chance answers are not listed. -/
+theorem legalActions_iff (s : GameState) (a : Action) :
+    a ∈ legalActions s ↔ Legal s a ∧ a.actor.isPlayer = true := by
+  obtain ⟨actor, kind⟩ := a
+  unfold legalActions Legal
+  rcases hp : s.pending with _ | ⟨f, rest⟩
+  · simp
+  · cases f <;> cases kind <;> cases actor <;> simp [Actor.isPlayer]
+    all_goals grind
+
+end Riftbound
+
+end

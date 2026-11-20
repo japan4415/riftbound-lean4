@@ -277,7 +277,8 @@ inductive RuleError where
   | fuelExhausted                     -- 自動処理が上限内に終わらない
   | internal (msg : String)           -- 実装の不整合（WF の下では起きないことを証明対象にする）
 
-/-- 現在の決定要求に対する、プレイヤーの合法手をすべて列挙する（偶然・時計・ジャッジの Action は列挙しない）。 -/
+/-- 現在の決定要求に対する、プレイヤーの合法手をすべて列挙する（偶然・時計・ジャッジの Action は列挙しない）。
+M2b の実装は `CardDB` を取らない（カードの文面を使う決定が入る M4 で足す）。 -/
 def legalActions (db : CardDB) (s : GameState) : List Action
 /-- 自動処理を 1 歩だけ進める。再帰しない。 -/
 def microStep (db : CardDB) (s : GameState) : Except RuleError (GameState × List Event)
@@ -330,6 +331,8 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `priority p` | 決定 | Discretionary Action（411.1）を選ぶ: カードのプレイ、能力の起動、Standard Move（144）、Hide（422）、Pass、ターン終了 |
 | `choose` | 決定 | 対象・モード・移動先・プレイ先（355）、任意の追加コストを払うか（355.1.a）、"may" に従うか、誘発能力を Chain に積む順序（383.3.d。戦闘開始時は 466.2.d.1 の例外順）、置換効果の適用順（372）、マリガン（117）、Burn Out で点を与える相手（432.2.c）、Showdown / Combat を開く Battlefield（323.11-12）、戦闘ダメージの割り当て（467.2.c）、Secret / Private なカードへの指示を拒否するか（128.6） |
 | `chance` | 決定（偶然） | シャッフル（114）、Main Deck の下へ同時に Recycle するときの順序（417.5）、Burn Out での Trash のランダム化（432.2.b）、手番順（115）、Battlefield のランダムな選択（487.5, 489.5, 490.5, 491.5.a） |
+| `chooseBurnOut` | 決定 | Burn Out で点を与える相手（432.2.c）。`chanceBurnOut`（Trash の並べ替え: 432.2.b）の次に積まれる |
+| `setupHands` / `draw p n` | 作業 | 開幕の手札とマリガンの並べ方（116-117）、`p` が `n` 枚引く（414）。空の山札に当たると Burn Out のフレームを積む（432） |
 | `playProc` | 作業 | プレイ手順（354-359）の途中。どの段にいるか、それまでの選択、**巻き戻し用の盤面のスナップショット** |
 | `effectResume` | 作業 | 効果の解決途中。残りの効果と、変数の束縛環境 |
 | `cleanupResume` / `combatResume` | 作業 | Cleanup や戦闘の途中。どの手順にいるか。HOT FEPR のタスクも同じ形で持つ |

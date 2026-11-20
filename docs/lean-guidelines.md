@@ -254,6 +254,13 @@ end
 - [確認済] `Std.ExtTreeMap` の鍵の比較は、`simp` のあとに `Ordering.eq = compare a k` の形で残る。`Nat.compare_eq_eq` で等式に直す。
 - [確認済] **名前を付けない `instance` は、型から名前が作られ、別のモジュールの同名のものと衝突する。** `Decidable (r.Valid ..)` を別々の型に作ったら、`Riftbound.instDecidableValid` が重なって import が失敗した。`Valid` のような短い述語の `Decidable` には、`instance GameConfig.decidableValid ...` と名前を付ける。
 
+### 5.6c 証明で分かったこと
+
+- [確認済] `split at h ⊢` のように仮定と目標の両方を指定すると、同じ分岐が両方に適用される。そのあとに `rw [hp]` を書くと、"did not find an occurrence" になる。
+- [確認済] 構造体の更新（`{ s with pending := .. }`）は、`WF` のような述語の引数では `exact` が通らないことがある。補題を `have h := lemma ..` で作ってから `exact h` で渡すと通る。構造の項目に触れない更新は、`WF.congr` で扱う。
+- [確認済] `List.Perm` の列に `mergeSort` を使うには `LE` が要る。`PhysId` のような ID は、`.n` を取ってから並べる。
+- [確認済] 場合分けのあとに残る、リストと論理積の同値は `grind` が閉じる（`legalActions_iff`）。
+
 ### 5.7 モナドと純粋性
 
 - ルールの関数は純粋な `Except RuleError α` か、状態を明示的に受け渡す関数にする。transformer は重ねない。

@@ -62,6 +62,18 @@ theorem flatMap_two {α β : Type} [DecidableEq α] (L : List α)
   refine List.Perm.append_left _ ?_
   exact flatMap_split (L.erase a) f b ((List.mem_erase_of_ne (Ne.symm hab)).mpr hb)
 
+/-- The rest of a `flatMap` is unchanged when `f` changes only at the pulled-out member. -/
+theorem flatMap_one_congr {α β : Type} [DecidableEq α] (L : List α) (hnd : L.Nodup)
+    (f g : α → List β) (a : α) (hg : ∀ x ∈ L, x ≠ a → g x = f x) :
+    (L.erase a).flatMap g = (L.erase a).flatMap f := by
+  apply flatMap_congr_mem
+  intro x hx
+  have h1 := List.mem_of_mem_erase hx
+  have hxa : x ≠ a := fun e => by
+    subst e
+    exact ((List.Nodup.mem_erase_iff hnd).mp hx).1 rfl
+  exact hg x h1 hxa
+
 /-- The rest of a `flatMap` is unchanged when `f` changes only at the two pulled-out members. -/
 theorem flatMap_two_congr {α β : Type} [DecidableEq α] (L : List α) (hnd : L.Nodup)
     (f g : α → List β) (a b : α)
