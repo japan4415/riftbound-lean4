@@ -40,6 +40,11 @@ meta def p1 : PlayerId := ⟨1⟩
   | none => false
 -- the number of decks must be the number of players
 #guard (GameState.initial db cfg [goodDeck]).isNone
+-- a deck that is not legal (CR 101-103) is refused: no Rune Deck
+#guard (GameState.initial db cfg [goodDeck, { goodDeck with runes := [] }]).isNone
+-- so is a game that cannot be played: one player
+#guard (GameState.initial db { cfg with mode := { Mode.duel with players := 1 } }
+  [goodDeck]).isNone
 
 -- after the setup, for several seeds: every question is answered, and
 #guard (List.range 8).all fun seed => match finished seed with

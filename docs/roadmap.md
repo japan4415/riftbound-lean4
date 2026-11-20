@@ -26,7 +26,7 @@
 | I2 | **位置の一意性**: 各 ObjId はちょうど 1 つのゾーンにある（ゾーン列の連結が `Nodup`） | L1 | M2 |
 | I3 | **整形性の保存**: 初期状態は `WF`。`WF s` かつ `step fuel db s a = .ok (s', es)` なら `WF s'`。したがって `Reachable s → WF s`。`WF` は構造の条件だけを含む（[design.md §5.2](design.md#52-ゾーンとオブジェクト)） | L3 | M2（以後、マイルストーンごとに対象の遷移を広げる） |
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
-| I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。偶然の決定の答えが存在することは、`chance_answer_exists` が条件つきで述べる） | L3 | M3 |
+| I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。`Reachable.exists_legal` が、偶然の決定を含めて合法な答えの存在を述べる） | L3 | M3 |
 | I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
@@ -183,8 +183,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **不変条件 `StackInv`**: ゲームが終わっていなければ、スタックの底のフレームは `priority`・`beginTurn`・`setupHands`・`chanceTurnOrder` のどれか（`BottomOk`）。この 4 つは、別の底のフレームに置き換わることはあっても、空になることがない。`applyFrame`・`microStep`・`advance`・`step` のすべての腕で保たれることを示した（`applyFrame_stack`・`microStep_stack`・`advance_stack`・`step_stack`）。補題 `BottomOk.replace`・`pop`・`swap` が、フレームを降ろす・差し替える腕を一括で片づける。
 - **`TopIdle`**: `step` が返す状態の先頭は作業フレームでない（`advance_idle`・`step_idle`）。
 - **定理 `Reachable.progress`（I5）**: 到達可能で、終わっておらず、プレイヤーが 2 人以上のゲームでは、`legalActions` に投了以外の答えがあるか、先頭のフレームが偶然の決定を求めている。マリガン（`mulliganDone`）、Burn Out の相手の選択（2 人以上なら相手がいる）、Main Phase（`pass`）は、必ず答えがある。
-- **定理 `chance_answer_exists`**: 偶然の決定にも合法な答えがある。ただし、シャッフルする場所がゲームのゾーンであること、Battlefield を選ぶプレイヤーに Battlefield が 1 枚あることは、**まだ証明していない前提**（`Frame.chanceReady`）。`GameState.initial` がデッキの合法性（`DeckValid`）を求めていないため。デッキが Battlefield を持たなければ、`chanceBattlefield` で行き止まりになる。
+- **定理 `chance_answer_exists`**: 偶然の決定にも合法な答えがある。シャッフルする場所がゲームのゾーンであること、Battlefield を選ぶプレイヤーに Battlefield が 1 枚あること（`Frame.chanceReady`）を前提にした。この前提は、次の節で不変条件から導いた。
 - **追加ターン（CR 734-738）は、まだ作っていない。** 追加ターンを与えるカード効果は M4 以降に入るので、そこで作る。
+
+### M3 I5 を無条件にする（2026-11-21）
+
+- **`GameState.initial` がデッキの合法性を求めるようにした。** `GameConfig.Valid`、デッキの数がプレイヤーの数であること、すべてのデッキが `DeckValid`（CR 101-103）であること。どれかが偽なら `none`。`GameConfig.Valid` には「デッキが Battlefield を 1 枚以上持つモード」（CR 487.5）を足した。
+- ファイル: `Invariant/Setup.lean`。
+- **`GameState.initial_setup`**: セットアップした状態は、プレイヤーが 2 人以上で、どのプレイヤーも Battlefield を 1 枚以上 `outOfGame` に持つ。デッキに足したカードは、どのゾーンからも減らない（`Grows`、`addDecks_grows`）ことと、合法なデッキの Battlefield の枚数がモードの値であること（`DeckValid.battlefields_length`）から出す。
+- **不変条件 `SetupInv`**: プレイヤーが 2 人以上で、スタックがセットアップのフレームの後ろ半分のままか（このとき、まだ選ばれていない Battlefield は、選ぶカードがある）、セットアップのフレームが残っていない。セットアップのフレームは 1 つずつしかない（`startFrames_nodup`）ので、あるプレイヤーの選択が他のプレイヤーの Battlefield を減らすことはない。`applyFrame`・`microStep`・`advance`・`step` と投了で保たれる。
+- **定理 `Reachable.progress`（I5）** は、プレイヤーが 2 人以上という前提が要らなくなった（前の版は `progress_of_players`）。**`Reachable.exists_legal`**: 終わっていない到達可能なゲームには、投了以外の合法な答えが必ずある（プレイヤーの答えか、偶然の答え）。
+- **注意**: 求めているのは Core Rules の合法性（`DeckValid`）。大会フォーマットの合法なデッキは、`constructedDeckValid_deckValid`（I13）で Core Rules の合法性に落ちるので、そこを経由したデッキも通る。
 
 ### M3 後半（資源）の実装の記録（2026-11-20）
 

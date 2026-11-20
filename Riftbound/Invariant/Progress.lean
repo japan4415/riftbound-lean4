@@ -413,12 +413,14 @@ theorem exists_other_player {n : Nat} (hn : 2 ≤ n) (p : PlayerId) :
     simp only [List.mem_filter, mem_allPlayers, decide_eq_true_eq]
     exact ⟨by omega, fun e => hp e.symm⟩
 
-/-- **I5, progress.** In a reachable game of at least two players that is not over, either there is
-an answer other than a concession in `legalActions`, or the top frame asks for a chance decision.
-The decisions that are split into steps (the mulligan, the choice of the opponent of a Burn Out,
-the Main Phase) always have such an answer, so no choice leads into a dead end. -/
-theorem Reachable.progress {s : GameState} (h : Reachable s) (hres : s.result = none)
-    (hv : 2 ≤ s.playerCount) :
+/-- **I5, progress, for a game of at least two players.** In a reachable game of at least two
+players that is not over, either there is an answer other than a concession in `legalActions`, or
+the top frame asks for a chance decision. The decisions that are split into steps (the mulligan, the
+choice of the opponent of a Burn Out, the Main Phase) always have such an answer, so no choice leads
+into a dead end. `Reachable.progress` in `Invariant/Setup.lean` drops the assumption on the players.
+-/
+theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
+    (hres : s.result = none) (hv : 2 ≤ s.playerCount) :
     (∃ a ∈ legalActions s, a.kind ≠ .concede) ∨
       ∃ f rest, s.pending = f :: rest ∧ f.isChance = true := by
   obtain ⟨hs, ht⟩ := h.stack
@@ -469,10 +471,8 @@ def Frame.chanceReady (s : GameState) : Frame → Prop
   | _ => True
 
 /-- **A chance decision has a legal answer** when the frame has what it needs: an arrangement of
-what is there, or the first Battlefield. That every player has a Battlefield when the pick comes,
-and that every shuffle is of a zone of the game, is not proved yet: `GameState.initial` does not ask
-the decks to be legal (`DeckValid`, milestone M1), and the frames of the setup are not tied to the
-players. -/
+what is there, or the first Battlefield. That the two needs are met in every reachable game is
+proved in `Invariant/Setup.lean` (`Reachable.exists_legal`). -/
 theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     (hres : s.result = none) (hp : s.pending = f :: rest) (hc : f.isChance = true)
     (hr : f.chanceReady s) : ∃ a, a.actor = .chance ∧ Legal s a := by

@@ -64,11 +64,13 @@ def startFrames (n : Nat) : List Frame :=
   (List.range n).map (fun i => Frame.chanceBattlefield ⟨i⟩) ++
   [Frame.chanceTurnOrder]
 
-/-- The state a game starts from. `none` if the number of decks is not the number of players, or
-a card cannot be placed. -/
+/-- The state a game starts from. `none` if the rules cannot be played (`GameConfig.Valid`), if the
+number of decks is not the number of players, if a deck is not legal (`DeckValid`) (CR 101-103), or
+if a card cannot be placed. -/
 def GameState.initial (db : CardDB) (config : GameConfig) (decks : List Deck) :
     Option GameState :=
-  if decks.length = config.mode.players then
+  if decks.length = config.mode.players ∧ config.Valid ∧
+      ∀ d ∈ decks, DeckValid db config.mode d then
     ((GameState.empty config).addDecks db 0 decks).map
       (fun s => { s with pending := startFrames config.mode.players })
   else none
