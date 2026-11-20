@@ -68,7 +68,8 @@ meta def testSet : SetCode := ⟨"TST"⟩
 
 /-- The database of all fixtures. -/
 meta def db : CardDB :=
-  { cards := ([legend, champion, unique, offDomain, furyRune, drawSpell] ++ (List.range 20).map vanilla ++
+  { cards := ([legend, champion, unique, offDomain, furyRune, drawSpell] ++
+      (List.range 20).map vanilla ++
       (List.range 4).map signature ++ (List.range 4).map battlefield).map
         (fun c => { c with sets := [testSet] }) }
 

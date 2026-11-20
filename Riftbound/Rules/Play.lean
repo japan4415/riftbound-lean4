@@ -425,7 +425,8 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
 /-- The plays listed are exactly the card-and-payment pairs that are playable or castable. -/
 theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     a ∈ legalPlays s p ↔ ∃ c pay, a = ⟨.player p, .playCard c pay⟩ ∧
-      c ∈ s.zone (.player p .hand) ∧ (playable s p c pay = true ∨ castable s p c pay = true) := by
+      c ∈ s.zone (.player p .hand) ∧
+        (playable s p c pay = true ∨ castable s p c pay = true) := by
   unfold legalPlays
   simp only [List.mem_flatMap]
   constructor

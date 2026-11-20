@@ -105,7 +105,8 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
       ∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-        moveObj s item (.player o.owner .trash) = some (s2, id') ∧ (finishItem s item).1 = s2 := by
+        moveObj s item (.player o.owner .trash) = some (s2, id') ∧
+          (finishItem s item).1 = s2 := by
   by_cases hex : ∃ o r, s.obj? item = some o ∧ item ∈ s.zone .chain ∧
       moveObj s item (.player o.owner .trash) = some r
   · obtain ⟨o, r, ho, hc, hm⟩ := hex
