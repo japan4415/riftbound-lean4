@@ -3,6 +3,7 @@ module
 public import Riftbound.Rules.Move
 public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.Draw
+public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Reorder
 
@@ -286,6 +287,29 @@ theorem drawOne_lengths_of_ownerOk {s s' : GameState} {p : PlayerId} {es : List 
   have hp : p.n < s.playerCount :=
     Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hid)
   exact drawOne_lengths hwf hp h (fun id2 hid2 o ho => hown.owner p .mainDeck rfl id2 hid2 o ho)
+
+/-- One Channel keeps `OwnerOk`. -/
+theorem channelOne_ownerOk {s s' : GameState} {p : PlayerId} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (h : channelOne s p = some (s', es)) : s'.OwnerOk := by
+  unfold channelOne at h
+  split at h
+  · exact absurd h (by simp)
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact moveObj_ownerOk hwf hown hm
+
+/-- Channeling keeps `OwnerOk`. -/
+theorem channel_ownerOk (p : PlayerId) :
+    ∀ (n : Nat) {s : GameState}, s.WF → s.OwnerOk → (channel p n s).1.OwnerOk
+  | 0, s, _, hown => hown
+  | n + 1, s, hwf, hown => by
+    unfold channel
+    cases hc : channelOne s p with
+    | none => simpa using hown
+    | some r =>
+      simpa using channel_ownerOk p n (channelOne_wf hwf hc) (channelOne_ownerOk hwf hown hc)
 
 end Riftbound
 

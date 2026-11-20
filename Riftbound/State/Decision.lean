@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.State.Zone
+public import Riftbound.State.Phase
 
 /-!
 # Decisions
@@ -47,6 +48,11 @@ inductive ActionKind where
   | mulliganDone
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
   | burnOutTarget (opponent : PlayerId)
+  /-- Pass priority. In the Main Phase with an empty Chain, the turn player passing ends the
+  phase (CR 305). -/
+  | pass
+  /-- Concede the game (CR 649-651). -/
+  | concede
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -82,12 +88,20 @@ inductive Frame where
   | setupHands
   /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/
   | draw (p : PlayerId) (n : Nat)
+  /-- Work: begin the next turn: the turn player is the next in the turn order (CR 301, 118). -/
+  | beginTurn
+  /-- Work: the phase `ph` of the turn (CR 314-317). -/
+  | phase (ph : Phase)
+  /-- Choice: the turn player has priority in the Main Phase (CR 311-312, 316). -/
+  | priority (p : PlayerId)
 deriving DecidableEq, Repr
 
 /-- Frames the engine advances by itself. -/
 def Frame.isWork : Frame → Bool
   | .setupHands => true
   | .draw _ _ => true
+  | .beginTurn => true
+  | .phase _ => true
   | _ => false
 
 end Riftbound

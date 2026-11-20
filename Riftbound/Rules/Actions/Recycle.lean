@@ -71,19 +71,17 @@ theorem recycleAll_points (p : PlayerId) :
     obtain ⟨src, d, hs⟩ := moveObj_spec hr
     rw [recycleAll_points p ids h, hs.points]
 
-/-- Recycling does not change the rules, the turn order or the stack of frames. -/
+/-- Recycling changes nothing but the zones, the object table and the counters. -/
 theorem recycleAll_meta (p : PlayerId) :
-    ∀ (ids : List ObjId) {s s' : GameState}, recycleAll p s ids = some s' →
-      s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.pending = s.pending
+    ∀ (ids : List ObjId) {s s' : GameState}, recycleAll p s ids = some s' → SameMeta s s'
   | [], s, s', h => by
     rw [show recycleAll p s [] = some s from rfl] at h
     cases h
-    exact ⟨rfl, rfl, rfl⟩
+    exact SameMeta.refl _
   | id :: ids, s, s', h => by
     obtain ⟨r, hr, h⟩ := recycleAll_cons h
     obtain ⟨src, d, hs⟩ := moveObj_spec hr
-    obtain ⟨c, t, pe⟩ := recycleAll_meta p ids h
-    exact ⟨c.trans hs.config, t.trans hs.turnOrder, pe.trans hs.pending⟩
+    exact hs.other.trans (recycleAll_meta p ids h)
 
 end Riftbound
 

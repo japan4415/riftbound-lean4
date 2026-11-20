@@ -230,6 +230,78 @@ theorem mem_zoneIds {s : GameState} {z : Zone} {id : ObjId}
 
 end GameState
 
+/-- Everything but the zones, the object table and the counters is as it was: the rules, the
+stack, the turn order, the phase, the result, and whatever the state will hold later. -/
+def SameMeta (s s' : GameState) : Prop :=
+  { s' with objects := s.objects, zones := s.zones,
+            nextId := s.nextId, nextTimestamp := s.nextTimestamp } = s
+
+namespace SameMeta
+
+/-- A state is like itself. -/
+theorem refl (s : GameState) : SameMeta s s := rfl
+
+/-- Chaining. -/
+theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'') :
+    SameMeta s s'' := by
+  unfold SameMeta at *
+  have := congrArg (fun x : GameState =>
+    ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
+              nextTimestamp := s.nextTimestamp } : GameState)) h2
+  simp only at this
+  rw [← h1]
+  exact this
+
+/-- The rules are as they were. -/
+theorem config {s s' : GameState} (h : SameMeta s s') : s'.config = s.config := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.config h
+  exact h2
+
+/-- The points are as they were. -/
+theorem points {s s' : GameState} (h : SameMeta s s') : s'.points = s.points := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.points h
+  exact h2
+
+/-- The stack is as it was. -/
+theorem pending {s s' : GameState} (h : SameMeta s s') : s'.pending = s.pending := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.pending h
+  exact h2
+
+/-- The turn order is as it was. -/
+theorem turnOrder {s s' : GameState} (h : SameMeta s s') : s'.turnOrder = s.turnOrder := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.turnOrder h
+  exact h2
+
+/-- The phase is as it was. -/
+theorem phase {s s' : GameState} (h : SameMeta s s') : s'.phase = s.phase := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.phase h
+  exact h2
+
+/-- The turn counter is as it was. -/
+theorem turn {s s' : GameState} (h : SameMeta s s') : s'.turn = s.turn := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.turn h
+  exact h2
+
+/-- The player whose turn it is, is as it was. -/
+theorem active {s s' : GameState} (h : SameMeta s s') : s'.active = s.active := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.active h
+  exact h2
+
+/-- The result is as it was. -/
+theorem result {s s' : GameState} (h : SameMeta s s') : s'.result = s.result := by
+  unfold SameMeta at h
+  have h2 := congrArg GameState.result h
+  exact h2
+
+end SameMeta
+
 /-- What `moveObj` did, in the terms the proofs need. `src` and `dst` are the zone the object
 left and the zone it went to, after `Zone.normalize`. -/
 structure MoveSpec (s s' : GameState) (id id' : ObjId) (pos : Pos) (src dst : Zone) : Prop where
@@ -271,6 +343,9 @@ structure MoveSpec (s s' : GameState) (id id' : ObjId) (pos : Pos) (src dst : Zo
   turnOrder : s'.turnOrder = s.turnOrder
   /-- The stack of frames is not touched. -/
   pending : s'.pending = s.pending
+  /-- Nothing but the zones, the object table and the counters changes: every other part of the
+  state, present or future, is as it was. -/
+  other : SameMeta s s'
 
 /-- The shape of a successful move, with the link between the asked destination and the one the
 object went to (CR 056). -/
@@ -298,7 +373,7 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inr rfl, ⟨by simp, Or.inr (by simp)⟩,
-          ?_, ?_, ?_, ?_, ?_, hloc, rfl, ?_, rfl, rfl⟩
+          ?_, ?_, ?_, ?_, ?_, hloc, rfl, ?_, rfl, rfl, rfl⟩
         · intro k
           simp only [Std.ExtTreeMap.mem_insert, Std.ExtTreeMap.mem_erase, Nat.compare_eq_eq,
             ne_eq]
@@ -326,7 +401,7 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inl rfl, ⟨Nat.le_refl _, Or.inl rfl⟩,
-          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl, rfl, rfl, rfl⟩
+          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl, rfl, rfl, rfl, rfl⟩
         · intro k
           change k ∈ s.objects ↔ _
           by_cases hk : k = id.n

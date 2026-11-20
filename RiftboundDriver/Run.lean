@@ -74,6 +74,28 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     | [] => none
   | _ => none
 
+/-- The default answer while playing turns: as `autoAnswer`, and pass when the turn player has
+priority. -/
+def playAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
+  match s.pending with
+  | .priority p :: _ => some (⟨.player p, .pass⟩, r)
+  | _ => autoAnswer r s
+
+/-- Play until `turns` turns have begun and the turn player has priority in the Main Phase, or
+`steps` answers were given. Every answer goes through `step`. -/
+def runUntilTurn (fuel : Nat) (turns : Nat) :
+    Nat → Rng → GameState → Except RuleError GameState
+  | 0, _, s => .ok s
+  | n + 1, r, s =>
+    if turns ≤ s.turn && (match s.pending with | .priority _ :: _ => true | _ => false) then .ok s
+    else
+      match playAnswer r s with
+      | none => .ok s
+      | some (a, r') =>
+        match step fuel s a with
+        | .ok (s', _) => runUntilTurn fuel turns n r' s'
+        | .error e => .error e
+
 /-- Answer the questions with the defaults until none is left or `steps` answers were given.
 Every answer goes through `step`. -/
 def runAuto (fuel : Nat) : Nat → Rng → GameState → Except RuleError GameState
