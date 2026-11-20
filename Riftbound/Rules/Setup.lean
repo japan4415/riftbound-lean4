@@ -71,7 +71,7 @@ def GameState.initial (db : CardDB) (config : GameConfig) (decks : List Deck) :
     Option GameState :=
   if decks.length = config.mode.players ∧ config.Valid ∧
       ∀ d ∈ decks, DeckValid db config.mode d then
-    ((GameState.empty config).addDecks db 0 decks).map
+    ((GameState.empty config db).addDecks db 0 decks).map
       (fun s => { s with pending := startFrames config.mode.players })
   else none
 
@@ -120,7 +120,7 @@ theorem GameState.initial_wf {db : CardDB} {config : GameConfig} {decks : List D
   split at h
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨s1, h1, rfl⟩ := h
-    exact GameState.WF.congr (GameState.addDecks_wf decks (GameState.wf_empty config) h1)
+    exact GameState.WF.congr (GameState.addDecks_wf decks (GameState.wf_empty config db) h1)
       rfl rfl rfl rfl
   · exact absurd h (by simp)
 
@@ -171,9 +171,10 @@ theorem GameState.addDecks_ownerOk {db : CardDB} :
         (GameState.addDeck_ownerOk hwf hown hr) h'
 
 /-- A game with no objects satisfies `OwnerOk`. -/
-theorem GameState.ownerOk_empty (config : GameConfig) : (GameState.empty config).OwnerOk := by
+theorem GameState.ownerOk_empty (config : GameConfig) (cards : CardDB) :
+    (GameState.empty config cards).OwnerOk := by
   refine ⟨fun p k hk id hid o ho => ?_⟩
-  have : (GameState.empty config).zone (.player p k) = [] := by
+  have : (GameState.empty config cards).zone (.player p k) = [] := by
     simp [GameState.zone, GameState.empty]
   rw [this] at hid
   simp at hid
@@ -185,8 +186,8 @@ theorem GameState.initial_ownerOk {db : CardDB} {config : GameConfig} {decks : L
   split at h
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨s1, h1, rfl⟩ := h
-    exact (GameState.addDecks_ownerOk decks (GameState.wf_empty config)
-      (GameState.ownerOk_empty config) h1).congr rfl rfl
+    exact (GameState.addDecks_ownerOk decks (GameState.wf_empty config db)
+      (GameState.ownerOk_empty config db) h1).congr rfl rfl
   · exact absurd h (by simp)
 
 end Riftbound

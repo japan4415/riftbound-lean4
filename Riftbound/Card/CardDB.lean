@@ -18,7 +18,7 @@ namespace Riftbound
 structure CardDB where
   /-- The definitions. -/
   cards : List CardDef
-deriving Repr
+deriving DecidableEq, Repr
 
 namespace CardDB
 

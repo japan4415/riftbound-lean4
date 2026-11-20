@@ -4,6 +4,7 @@ public import Riftbound.Rules.Reorder
 public import Riftbound.Rules.Setup
 public import Riftbound.Rules.Objects
 public import Riftbound.Rules.Resources
+public import Riftbound.Rules.Play
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
@@ -75,6 +76,7 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
   | .priority _ :: rest, .pass =>
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
+  | .priority p :: _, .playCard c pay => applyPlay s p c pay
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

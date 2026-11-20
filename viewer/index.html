@@ -193,6 +193,7 @@ function describe(i) {
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
+    case 'playCard': return [who + ': ' + cardName(a.card) + ' をプレイ', 'コストを払って Base に出す（Unit は Exhaust で入る）'];
     default: return [who + ': ' + a.kind, ''];
   }
 }
@@ -336,7 +337,7 @@ function tick() {
   if (!playing) return;
   if (cur >= steps.length - 1) { pause(); return; }
   show(cur + 1, true);
-  const s = steps[cur], busy = s.events.length > 0 || s.action && s.action.kind === 'runeAbility' || s.action && s.action.kind === 'pass';
+  const s = steps[cur], busy = s.events.length > 0 || s.action && (s.action.kind === 'runeAbility' || s.action.kind === 'playCard') || s.action && s.action.kind === 'pass';
   timer = setTimeout(tick, (busy ? 800 : 160) / speed);
 }
 

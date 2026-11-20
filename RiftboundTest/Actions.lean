@@ -29,6 +29,7 @@ meta def put (z : Zone) (l : List Nat) : Nat × List ObjId := (z.key, l.map (⟨
 
 meta def s0 : GameState :=
   { config := { ruleSet := .coreOnly, mode := Mode.duel }
+    cards := { cards := [] }
     objects := Std.ExtTreeMap.ofList
       ((List.range 8).map (fun i => (i, card i p0)) ++ [(8, card 8 p1)])
     zones := Std.ExtTreeMap.ofList

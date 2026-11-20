@@ -2,6 +2,7 @@ module
 
 public import Riftbound.State.Zone
 public import Riftbound.State.Phase
+public import Riftbound.State.Pool
 
 /-!
 # Decisions
@@ -63,6 +64,9 @@ inductive ActionKind where
   | concede
   /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
   | runeAbility (card : ObjId) (ability : RuneAbility)
+  /-- Play a card from the hand, paying with the Power of the domains listed (CR 349-359). The
+  Energy and the Power are taken from the player's Rune Pool (CR 357, 445). -/
+  | playCard (card : ObjId) (pay : RunePool.Payment)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/

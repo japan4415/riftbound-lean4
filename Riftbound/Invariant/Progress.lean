@@ -90,6 +90,9 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p rest c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i p rest c pay hp hk
+    obtain ⟨-, -, -, hres, hpend, -⟩ := applyPlay_meta h
+    exact hinv.of_next hres (fun hb => by rw [hpend]; exact hb)
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

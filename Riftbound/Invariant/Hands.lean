@@ -186,6 +186,19 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
+  · rename_i p _ c pay hp hk
+    rw [hp, hk] at hl
+    obtain ⟨-, -, -, -, hmain, -⟩ := playable_spec hl.2.2
+    obtain ⟨hcfg, hto, hphase, -, hpend, -⟩ := applyPlay_meta h
+    have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
+    refine ⟨fun hm => ?_, fun hph => ?_⟩
+    · rw [hpend] at hm
+      show s'.turnOrder.Perm (allPlayers s'.playerCount)
+      rw [hto, hcount]
+      exact hinv.turn hm
+    · exfalso
+      rw [hphase, hmain] at hph
+      cases hph
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

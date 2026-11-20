@@ -295,8 +295,10 @@ def view (p : PlayerId) (s : GameState) : PlayerView
   - 規則を `step` の引数にしないのは、対局の途中で規則を変えられる型にしないためである。合法性は規則に依存する（合意の引き分け、時計、2v2 の招待）ので、`Legal` と `legalActions` も同じ規則を見る必要がある。
   - 成り立たない組合せを除くために、設定の妥当性 `GameConfig.Valid` を置く（TR が手続きを定めていない、モードとフォーマットの組など。どの組が有効かは TR 600 番台で確かめる）。
   - fuel は実行時の引数で、状態には入れない。
-- **カードの集合 `CardDB` は引数で受け取る。**
-  - `Riftbound` は具体的なカードを import しない。
+- **カードの集合 `CardDB` は、対局の規則（`GameConfig`）と同じく、対局の固定の部分として扱う。**
+  - **実装（2026-11-21、M4a）**: `CardDB` は引数で渡さず、`GameState.cards` に入れた。`GameState.initial db config decks` が入れ、`step` と `Legal` と `legalActions` の引数は増やさない。対局の途中では変わらない（`SameMeta` が保つ）。理由は、`step`・`advance`・`microStep`・`Legal`・`Reachable` のすべてに `db` を通す書き換えが、不変条件の証明 3,000 行に及ぶためで、得るものは何も無い。定理は「`CardDB.WF` を満たす任意の `s.cards`」について述べることになり、引数で渡す形と同じ強さである。
+  - 以下の「引数で受け取る」は、この実装では「状態から読む」と読み替える。
+  - `Riftbound` は具体的なカードを import しない。エンジンは、カード名で分岐せず、`GameState.cards` から読んだ定義だけで動く。
   - 定理は「`CardDB.WF db` を満たす任意の `db`」について述べる。`CardDB.WF` は判定可能な静的な条件だけからなる（§7.1）。
   - 具体的なカード集合が `CardDB.WF` を満たすことは、セットごとに検査する（[roadmap.md](roadmap.md) M7）。
 - **自動処理は、1 歩の関数 `microStep` を fuel の回数だけ繰り返して進める。**
