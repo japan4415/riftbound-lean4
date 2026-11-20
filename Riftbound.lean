@@ -32,6 +32,7 @@ public import Riftbound.Spec.Legal
 public import Riftbound.Engine.Step
 public import Riftbound.Invariant.Step
 public import Riftbound.Invariant.Sound
+public import Riftbound.Invariant.Hands
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality
 

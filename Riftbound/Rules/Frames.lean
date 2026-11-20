@@ -43,7 +43,7 @@ def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) 
         (fun r => ({ r.1 with pending := rest }, [Event.moved id r.2 .battlefieldZone]))
     | none => none
   | .chanceTurnOrder :: rest, .arrangePlayers l =>
-    some ({ s with turnOrder := l, pending := rest }, [])
+    some ({ s with turnOrder := l, pending := .setupHands :: rest }, [])
   | .mulligan p n :: rest, .mulliganPick c =>
     (moveObj s c (.player p .setAside)).map
       (fun r => ({ r.1 with pending := .mulligan p (n + 1) :: rest },

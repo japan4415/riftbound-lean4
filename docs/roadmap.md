@@ -104,6 +104,14 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 
 **M2 は 2 つに分けて進める。** M2a（状態・ゾーン・`moveObj`・プリミティブとその証明）を先に作り、M2b（エンジンの骨格・セットアップ・Driver）をその上に作る。以下の項目のうち、M2a が済んだものには「（M2a 済）」を付けた。
 
+### M2d の実装の記録（2026-11-20）: セットアップ後の手札は 4 枚
+
+- 定理 **`Reachable.opening_hands`**: セットアップが終わった（`pending` が空の）到達可能な状態では、**どのプレイヤーの手札もちょうど 4 枚**（CR 116, 117）。どう答えたかによらない（マリガンで何枚脇に置いても、同じ枚数を引くので 4 枚）。
+- 証明は不変条件 `HandInv`（`Invariant/Hands.lean`）。各プレイヤーについて「手札の枚数 + スタックがこれから手札に入れる分 = 4」を、すべての `step` で保つ。「スタックが入れる分」は、手番順のフレーム（4）、`setupHands`（4）、`draw p n`（n）、`mulligan p k`（k: 脇に置いた k 枚はマリガンが終わると引き直される）。手番順は `setupHands` が積まれる時点で決まっている（`HandInv.turn`）。
+- そのためにエンジンを少し変えた: **手番順の答えが `setupHands` フレームを積む**（以前は初期のスタックに入っていた）。`setupHands` が実行されるとき手番順が決まっていることが、構造から明らかになる。
+- 補助の定理: `drawOne_hand`、`mulliganPick_hand`、`battlefield_hands`、`recycleAll_hands`（ドロー・マリガン・Recycle・Battlefield の選択が、他のプレイヤーの手札を変えない）、`moveObj_zone_unchanged`、`applyAction_handInv`、`microStep_handInv`、`advance_handInv`、`step_handInv`、`GameState.initial_handInv`。`MoveSpec` に `turnOrder` と `pending` が変わらないことを足した。
+- これで M2 で残していた「セットアップ後の手札が 4 枚」は、テストだけでなく定理になった。残るのは、一般の置換効果の枠組み（M6）。
+
 ### M2c の実装の記録（2026-11-20）: I4 と健全性
 
 M2b で残した 3 点のうち、1 と 2 を済ませた。
@@ -112,7 +120,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **所有者の不変条件 `OwnerOk`**（CR 056）。Non-Board ゾーンのカードの Owner は、そのゾーンの持ち主。`WF` とは別の述語にした。`moveObj`、並べ替え、Recycle、ドロー、オブジェクトの追加、初期状態、`step` が保つ（`moveObj_ownerOk`、`step_ownerOk`、`GameState.initial_ownerOk`）。`addObject` は、行き先がその Owner のゾーンでないと失敗する。
 - 証明した定理: `moveObj_isSome`（移動が成功する条件）、`recycleAll_some`、`applyAction_isSome`（合法な答えは `applyAction` が必ず適用できる）、`advance_error`（作業の失敗は fuel 切れだけ）、**`step_sound`**（合法な答えは fuel 切れ以外で拒否されない。I6 の健全性）、**`step_not_internal`**（**I4**）、`Reachable`、`Reachable.inv`（到達可能な状態は `WF` と `OwnerOk`）、`Reachable.not_internal`、`drawOne_lengths_of_ownerOk`（ドローで山札 −1、手札 +1。所有者の仮定が要らなくなった）。
 - テスト: マリガンで 2 枚を脇に置き、2 枚引き、2 枚が山札の下に戻ること。Burn Out の一連の流れ（空の山札のドロー → Trash の並べ替え → 相手の選択 → ドローの再開、相手が 1 点を得る）。
-- **まだ証明していないこと**: セットアップ後の手札が 4 枚であることの定理（テストでのみ確認。`OwnerOk` が揃ったので、`step` の実行列についての帰納法で示せる）、一般の置換効果の枠組み（M6）。
+- **まだ証明していないこと**: 一般の置換効果の枠組み（M6）。セットアップ後の手札が 4 枚であることは、M2d で定理にした。
 
 ### M2b の実装の記録（2026-11-20）
 

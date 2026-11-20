@@ -44,14 +44,16 @@ def GameState.addDecks : GameState → Nat → List Deck → Option GameState
     let s ← s.addDeck ⟨i⟩ d
     s.addDecks (i + 1) ds
 
-/-- The frames of the setup: the shuffles, the Battlefield picks, the turn order, then the
-opening hands and the mulligans (CR 113-117). The first frame is the first to be answered. -/
+/-- The frames of the setup: the shuffles, the Battlefield picks and the turn order (CR 113-115).
+The first frame is the first to be answered. Answering the turn order puts the opening hands and
+the mulligans on the stack (CR 116-117), so they are never laid out before the turn order is
+known. -/
 def startFrames (n : Nat) : List Frame :=
   (List.range n).flatMap (fun i =>
     [Frame.chanceShuffle (.player ⟨i⟩ .mainDeck),
       Frame.chanceShuffle (.player ⟨i⟩ .runeDeck)]) ++
   (List.range n).map (fun i => Frame.chanceBattlefield ⟨i⟩) ++
-  [Frame.chanceTurnOrder, Frame.setupHands]
+  [Frame.chanceTurnOrder]
 
 /-- The state a game starts from. `none` if the number of decks is not the number of players, or
 a card cannot be placed. -/
