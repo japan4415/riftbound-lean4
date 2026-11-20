@@ -37,7 +37,9 @@ meta def s0 : GameState :=
         put (.player p1 .mainDeck) [8] ]
     points := {}
     nextId := 9
-    nextTimestamp := 9 }
+    nextTimestamp := 9
+    pending := []
+    turnOrder := [] }
 
 meta def ids (l : List Nat) : List ObjId := l.map (⟨·⟩)
 

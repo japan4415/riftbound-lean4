@@ -1,0 +1,92 @@
+module
+
+public import Riftbound.State.Zone
+
+/-!
+# Decisions
+
+The stack of frames the engine works through, and the actions that answer its questions
+(design.md §6.2). A frame is either a **decision** (the engine waits for an `Action`) or
+**work** (`microStep` advances it by itself). A decision frame holds the question only, never a
+list of candidates: the candidates are computed from the board by `Legal` and `legalActions`.
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- Who acts: a player, chance (shuffles and random picks, design.md §6.4), the clock
+(TR 408) or the judge (TR 505.6). The last two are used from milestone M5b. -/
+inductive Actor where
+  /-- A player. -/
+  | player (p : PlayerId)
+  /-- A chance decision, answered from outside. -/
+  | chance
+  /-- The clock. -/
+  | clock
+  /-- The judge. -/
+  | judge
+deriving DecidableEq, Repr
+
+/-- Whether the actor is a player. -/
+def Actor.isPlayer : Actor → Bool
+  | .player _ => true
+  | _ => false
+
+/-- What an action says. -/
+inductive ActionKind where
+  /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
+  | arrange (order : List ObjId)
+  /-- An arrangement of players: the turn order (CR 115). -/
+  | arrangePlayers (order : List PlayerId)
+  /-- A random pick: the index among the candidates. -/
+  | pick (index : Nat)
+  /-- Set this card aside in the mulligan (CR 117.1). -/
+  | mulliganPick (card : ObjId)
+  /-- Finish the mulligan. -/
+  | mulliganDone
+  /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
+  | burnOutTarget (opponent : PlayerId)
+deriving DecidableEq, Repr
+
+/-- An action: who acts, and what they say (design.md §6.2). -/
+structure Action where
+  /-- Who acts. -/
+  actor : Actor
+  /-- What they say. -/
+  kind : ActionKind
+deriving DecidableEq, Repr
+
+/-- A frame of the stack. The first four are decisions; the last is work. -/
+inductive Frame where
+  /-- Chance: the shuffle of a zone (CR 114). The answer arranges the zone's contents. -/
+  | chanceShuffle (z : Zone)
+  /-- Chance: the random Battlefield of a player (CR 487.5). The answer picks an index among the
+  player's Battlefields that are out of the game. -/
+  | chanceBattlefield (p : PlayerId)
+  /-- Chance: the turn order (CR 115). -/
+  | chanceTurnOrder
+  /-- Choice: a player's mulligan (CR 117). `chosen` are the hand cards picked so far. -/
+  | mulligan (p : PlayerId) (chosen : List ObjId)
+  /-- Chance: the order in which cards are put at the bottom of the Main Deck (CR 417.5). -/
+  | chanceRecycle (p : PlayerId) (cards : List ObjId)
+  /-- Chance: the order in which the Trash is put into the Main Deck by a Burn Out
+  (CR 432.2.b). -/
+  | chanceBurnOut (p : PlayerId)
+  /-- Choice: the opponent who gains the point of a Burn Out (CR 432.2.c). -/
+  | chooseBurnOut (p : PlayerId) (order : List ObjId)
+  /-- Work: lay out the opening hands and the mulligans of all players (CR 116-117). -/
+  | setupHands
+  /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/
+  | draw (p : PlayerId) (n : Nat)
+deriving DecidableEq, Repr
+
+/-- Frames the engine advances by itself. -/
+def Frame.isWork : Frame → Bool
+  | .setupHands => true
+  | .draw _ _ => true
+  | _ => false
+
+end Riftbound
+
+end

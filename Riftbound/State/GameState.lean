@@ -3,6 +3,7 @@ module
 public import Riftbound.State.Zone
 public import Riftbound.State.Object
 public import Riftbound.State.GameConfig
+public import Riftbound.State.Decision
 public import Std.Data.ExtTreeMap
 
 /-!
@@ -31,6 +32,10 @@ structure GameState where
   nextId : Nat
   /-- The next `Timestamp` to hand out (CR 482). -/
   nextTimestamp : Nat
+  /-- The stack of frames; the head is the current one (design.md §6.2). -/
+  pending : List Frame
+  /-- The turn order, first player first (CR 115). Empty until it has been decided. -/
+  turnOrder : List PlayerId
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/
@@ -134,6 +139,25 @@ structure WF (s : GameState) : Prop where
   lt_nextId : ∀ id ∈ s.zoneIds, id.n < s.nextId
   /-- No zone outside the game holds an object. -/
   zones_valid : ∀ k, k ∈ s.zones → ∃ z ∈ allZones s.playerCount, z.key = k
+
+/-- `WF` only looks at the rules, the object table, the zones and the identifier counter. States
+that agree on these are well formed together. -/
+theorem WF.congr {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
+    (ho : s2.objects = s.objects) (hz : s2.zones = s.zones) (hn : s2.nextId = s.nextId) :
+    s2.WF := by
+  have hcount : s2.playerCount = s.playerCount := by simp [playerCount, hc]
+  have hzone : ∀ z, s2.zone z = s.zone z := fun z => by simp [zone, hz]
+  have hids : s2.zoneIds = s.zoneIds := by
+    unfold zoneIds
+    rw [hcount]
+    have : s2.zone = s.zone := funext hzone
+    rw [this]
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · rw [hids]; exact hwf.nodup
+  · intro x hx; rw [hids] at hx; rw [ho]; exact hwf.table_of_zone x hx
+  · intro k hk; rw [ho] at hk; rw [hids]; exact hwf.zone_of_table k hk
+  · intro x hx; rw [hids] at hx; rw [hn]; exact hwf.lt_nextId x hx
+  · intro k hk; rw [hz] at hk; rw [hcount]; exact hwf.zones_valid k hk
 
 end GameState
 
