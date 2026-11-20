@@ -57,7 +57,8 @@ structure Action where
   kind : ActionKind
 deriving DecidableEq, Repr
 
-/-- A frame of the stack. The first four are decisions; the last is work. -/
+/-- A frame of the stack. A frame holds no part of the board: everything a decision is about is read
+from the state when the decision is made, so a frame cannot go out of date (design.md §6.2). -/
 inductive Frame where
   /-- Chance: the shuffle of a zone (CR 114). The answer arranges the zone's contents. -/
   | chanceShuffle (z : Zone)
@@ -66,15 +67,17 @@ inductive Frame where
   | chanceBattlefield (p : PlayerId)
   /-- Chance: the turn order (CR 115). -/
   | chanceTurnOrder
-  /-- Choice: a player's mulligan (CR 117). `chosen` are the hand cards picked so far. -/
-  | mulligan (p : PlayerId) (chosen : List ObjId)
-  /-- Chance: the order in which cards are put at the bottom of the Main Deck (CR 417.5). -/
-  | chanceRecycle (p : PlayerId) (cards : List ObjId)
+  /-- Choice: a player's mulligan (CR 117). A card picked is set aside at once; `setAside` is how
+  many have been picked so far. -/
+  | mulligan (p : PlayerId) (setAside : Nat)
+  /-- Chance: the order in which the cards set aside are put at the bottom of the Main Deck
+  (CR 417.5). The answer arranges everything in the player's set-aside zone. -/
+  | chanceRecycle (p : PlayerId)
   /-- Chance: the order in which the Trash is put into the Main Deck by a Burn Out
-  (CR 432.2.b). -/
+  (CR 432.2.b). The answer arranges the player's Trash. -/
   | chanceBurnOut (p : PlayerId)
   /-- Choice: the opponent who gains the point of a Burn Out (CR 432.2.c). -/
-  | chooseBurnOut (p : PlayerId) (order : List ObjId)
+  | chooseBurnOut (p : PlayerId)
   /-- Work: lay out the opening hands and the mulligans of all players (CR 116-117). -/
   | setupHands
   /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/

@@ -19,6 +19,7 @@ public import Riftbound.Rules.Deck
 public import Riftbound.State.Event
 public import Riftbound.State.Decision
 public import Riftbound.Rules.Move
+public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Reorder
 public import Riftbound.Rules.Setup
@@ -30,6 +31,7 @@ public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Spec.Legal
 public import Riftbound.Engine.Step
 public import Riftbound.Invariant.Step
+public import Riftbound.Invariant.Sound
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality
 

@@ -25,9 +25,9 @@
 | I1 | **物理カードの保存**: セットアップ後、全ゾーン（エンジン内部用の `setAside` と `outOfGame` を含む）にある PhysId の列は、`step` の前後で互いに並べ替え（`List.Perm`）の関係にある。トークンは PhysId を持たないので影響しない | L1 | M2 |
 | I2 | **位置の一意性**: 各 ObjId はちょうど 1 つのゾーンにある（ゾーン列の連結が `Nodup`） | L1 | M2 |
 | I3 | **整形性の保存**: 初期状態は `WF`。`WF s` かつ `step fuel db s a = .ok (s', es)` なら `WF s'`。したがって `Reachable s → WF s`。`WF` は構造の条件だけを含む（[design.md §5.2](design.md#52-ゾーンとオブジェクト)） | L3 | M2（以後、マイルストーンごとに対象の遷移を広げる） |
-| I4 | **内部エラーが起きない**: `WF s` かつ `CardDB.WF db` なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので） | L3 | M2〜 |
+| I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
 | I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない | L3 | M3 |
-| I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)） | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
+| I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される | L1 | M3 |
 | I9 | **ターン構造**: フェイズの順序が固定されている。Chain は後入れ先出し（340.1）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M4 |
@@ -104,6 +104,16 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 
 **M2 は 2 つに分けて進める。** M2a（状態・ゾーン・`moveObj`・プリミティブとその証明）を先に作り、M2b（エンジンの骨格・セットアップ・Driver）をその上に作る。以下の項目のうち、M2a が済んだものには「（M2a 済）」を付けた。
 
+### M2c の実装の記録（2026-11-20）: I4 と健全性
+
+M2b で残した 3 点のうち、1 と 2 を済ませた。
+
+- **フレームの再設計。** 健全性の証明に、フレームが「盤面の古い写し」を持たないことが要る。そこでフレームから盤面のデータを除いた（design.md §6.2）。`mulligan p n` は選んだ枚数だけを持ち、選んだカードはその場で `setAside` に移す。`chanceRecycle p` と `chanceBurnOut p` は、脇に置いたカードと Trash の全体を並べ替える。`chooseBurnOut p` は相手だけを選ぶ。Burn Out の順序は CR 432.2 の文面どおり（Trash を山札に戻す → 相手を選んで点を与える）。
+- **所有者の不変条件 `OwnerOk`**（CR 056）。Non-Board ゾーンのカードの Owner は、そのゾーンの持ち主。`WF` とは別の述語にした。`moveObj`、並べ替え、Recycle、ドロー、オブジェクトの追加、初期状態、`step` が保つ（`moveObj_ownerOk`、`step_ownerOk`、`GameState.initial_ownerOk`）。`addObject` は、行き先がその Owner のゾーンでないと失敗する。
+- 証明した定理: `moveObj_isSome`（移動が成功する条件）、`recycleAll_some`、`applyAction_isSome`（合法な答えは `applyAction` が必ず適用できる）、`advance_error`（作業の失敗は fuel 切れだけ）、**`step_sound`**（合法な答えは fuel 切れ以外で拒否されない。I6 の健全性）、**`step_not_internal`**（**I4**）、`Reachable`、`Reachable.inv`（到達可能な状態は `WF` と `OwnerOk`）、`Reachable.not_internal`、`drawOne_lengths_of_ownerOk`（ドローで山札 −1、手札 +1。所有者の仮定が要らなくなった）。
+- テスト: マリガンで 2 枚を脇に置き、2 枚引き、2 枚が山札の下に戻ること。Burn Out の一連の流れ（空の山札のドロー → Trash の並べ替え → 相手の選択 → ドローの再開、相手が 1 点を得る）。
+- **まだ証明していないこと**: セットアップ後の手札が 4 枚であることの定理（テストでのみ確認。`OwnerOk` が揃ったので、`step` の実行列についての帰納法で示せる）、一般の置換効果の枠組み（M6）。
+
 ### M2b の実装の記録（2026-11-20）
 
 - ファイル: `State/Decision.lean`（`Actor`・`ActionKind`・`Action`・`Frame`）、`Rules/{Add,Reorder,Setup,Frames}.lean`、`Spec/Legal.lean`、`Engine/Step.lean`、`Invariant/Step.lean`、`RiftboundDriver/Run.lean`。テストは `RiftboundTest/Setup.lean`。
@@ -111,7 +121,7 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 - **ドローと Burn Out がつながった。** `draw p n` フレームは、空の山札に当たると `chanceBurnOut` フレーム（Trash の並べ替え）と `chooseBurnOut` フレーム（点を与える相手）を積んでから、ドローを続ける。山札も Trash も空なら繰り返し、fuel が尽きる。
 - 証明した定理: `GameState.initial_wf`（初期状態は `WF`）、`step_wf`（**I3**）、`step_physIds`（**I1**: セットアップの全体で物理カードが保存される）、`step_mono`・`advance_mono`（**I15**: fuel の単調性）、`legal_of_step_ok`（`step` は `Legal` でない答えを受理しない。完全性）、`step_illegal`、`legalActions_iff`（**I6 の列挙の一致**）、`wf_reorder`・`physIds_reorder`、`addObject_wf`、`moveAll_*`。
 - テスト: 8 つの seed で、セットアップが最後まで進み、各手札が 4 枚、山札が 35 枚、Battlefield が 2 枚場に出ることを検査する。同じ seed で同じ結果、物理カードの集合が開始から終了まで同じ、マリガンで 2 枚を脇に置いて 2 枚引き `chanceRecycle` が積まれること、違法な答えが拒否されること、fuel 不足が `fuelExhausted` になることも検査する。
-- **この PR で証明していないこと**（M3 の前に済ませる）:
+- **M2b の PR で証明していなかったこと**（1 と 2 は M2c で済んだ。3 は残る）:
   1. **I4（内部エラーが起きない）と、`step` の健全性**（合法な答えが fuel 切れ以外で失敗しない）。`applyAction` が `none` を返さないことを、フレームの不変条件（フレームが指すカードが実際にそのゾーンにあること、など）を立てて示す必要がある。
   2. **セットアップ後の手札が 4 枚であることの定理**。テストで確かめただけ。`WF` に「Non-Board ゾーンのカードはそのゾーンの持ち主が Owner」（CR 056）を足す必要がある。
   3. **イベントの経路の置換の段**（design.md §6.6）。Burn Out は、フレームによる置換として動くが、一般の置換の枠組みは M6。

@@ -54,12 +54,11 @@ def step (fuel : Nat) (s : GameState) (a : Action) :
 /-- The answers of the players to the current question. Chance answers are not listed. -/
 def legalActions (s : GameState) : List Action :=
   match s.pending with
-  | .mulligan p chosen :: _ =>
-    (if chosen.length < 2 then
-      ((s.zone (.player p .hand)).filter (fun c => c ∉ chosen)).map
-        (fun c => ⟨.player p, .mulliganPick c⟩)
+  | .mulligan p n :: _ =>
+    (if n < 2 then
+      (s.zone (.player p .hand)).map (fun c => ⟨.player p, .mulliganPick c⟩)
     else []) ++ [⟨.player p, .mulliganDone⟩]
-  | .chooseBurnOut p _ :: _ =>
+  | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | _ => []

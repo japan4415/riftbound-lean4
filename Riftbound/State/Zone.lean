@@ -67,6 +67,12 @@ theorem ZoneKind.idx_lt (k : ZoneKind) : k.idx < 10 := by
 theorem ZoneKind.idx_inj {a b : ZoneKind} (h : a.idx = b.idx) : a = b := by
   cases a <;> cases b <;> simp_all [ZoneKind.idx]
 
+/-- Board kinds of zone (CR 105-109). The others are Non-Board. -/
+def ZoneKind.isBoard : ZoneKind → Bool
+  | .base => true
+  | .legendZone => true
+  | _ => false
+
 /-- Every kind is in `ZoneKind.all`. -/
 theorem ZoneKind.mem_all (k : ZoneKind) : k ∈ ZoneKind.all := by
   cases k <;> decide
@@ -92,6 +98,10 @@ def isBoard : Zone → Bool
   | .player _ .legendZone => true
   | .battlefieldZone => true
   | _ => false
+
+/-- A zone of a player is Board exactly when its kind is. -/
+theorem isBoard_player (p : PlayerId) (k : ZoneKind) : (Zone.player p k).isBoard = k.isBoard := by
+  cases k <;> rfl
 
 /-- A number for each zone: 0 and 1 for the shared zones, then ten per seat. -/
 def key : Zone → Nat

@@ -18,63 +18,12 @@ decision frame on top of the stack. Neither checks that the answer is legal: tha
 
 namespace Riftbound
 
-/-- Move several objects to one zone, in order. Returns the new identifiers, in the same
-order. -/
-def moveAll (dst : Zone) (pos : Pos) : GameState → List ObjId →
-    Option (GameState × List ObjId)
-  | s, [] => some (s, [])
-  | s, id :: ids => do
-    let r ← moveObj s id dst pos
-    let r2 ← moveAll dst pos r.1 ids
-    pure (r2.1, r.2 :: r2.2)
-
-/-- Unfold one step of `moveAll`. -/
-theorem moveAll_cons {dst : Zone} {pos : Pos} {s s' : GameState} {id : ObjId}
-    {ids : List ObjId} {news : List ObjId} (h : moveAll dst pos s (id :: ids) = some (s', news)) :
-    ∃ r r2, moveObj s id dst pos = some r ∧ moveAll dst pos r.1 ids = some r2 ∧
-      s' = r2.1 := by
-  cases hr : moveObj s id dst pos with
-  | none => simp [moveAll, hr] at h
-  | some r =>
-    cases hr2 : moveAll dst pos r.1 ids with
-    | none => simp [moveAll, hr, hr2] at h
-    | some r2 =>
-      refine ⟨r, r2, rfl, hr2, ?_⟩
-      simp [moveAll, hr, hr2] at h
-      exact h.1.symm
-
-/-- Moving several objects keeps the game well formed. -/
-theorem moveAll_wf (dst : Zone) (pos : Pos) :
-    ∀ (ids : List ObjId) {s s' : GameState} {news : List ObjId}, s.WF →
-      moveAll dst pos s ids = some (s', news) → s'.WF
-  | [], s, s', news, hwf, h => by
-    rw [show moveAll dst pos s [] = some (s, []) from rfl] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact hwf
-  | id :: ids, s, s', news, hwf, h => by
-    obtain ⟨r, r2, hr, hr2, rfl⟩ := moveAll_cons h
-    exact moveAll_wf dst pos ids (moveObj_wf hwf hr) hr2
-
-/-- **I1** (moving several objects). -/
-theorem moveAll_physIds (dst : Zone) (pos : Pos) :
-    ∀ (ids : List ObjId) {s s' : GameState} {news : List ObjId}, s.WF →
-      moveAll dst pos s ids = some (s', news) → s'.physIds.Perm s.physIds
-  | [], s, s', news, hwf, h => by
-    rw [show moveAll dst pos s [] = some (s, []) from rfl] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
-  | id :: ids, s, s', news, hwf, h => by
-    obtain ⟨r, r2, hr, hr2, rfl⟩ := moveAll_cons h
-    exact (moveAll_physIds dst pos ids (moveObj_wf hwf hr) hr2).trans (moveObj_physIds hwf hr)
-
 /-- Advance one work frame by one step. `none` if the top frame is not work. -/
 def microStep (s : GameState) : Option (GameState × List Event) :=
   match s.pending with
   | .setupHands :: rest =>
     some ({ s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++
-                                s.turnOrder.map (fun p => Frame.mulligan p []) ++ rest }, [])
+                                s.turnOrder.map (fun p => Frame.mulligan p 0) ++ rest }, [])
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
   | .draw p (n + 1) :: rest =>
     match drawOne s p with
@@ -95,21 +44,21 @@ def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) 
     | none => none
   | .chanceTurnOrder :: rest, .arrangePlayers l =>
     some ({ s with turnOrder := l, pending := rest }, [])
-  | .mulligan p chosen :: rest, .mulliganPick c =>
-    some ({ s with pending := .mulligan p (chosen ++ [c]) :: rest }, [])
-  | .mulligan p chosen :: rest, .mulliganDone =>
-    match chosen with
-    | [] => some ({ s with pending := rest }, [])
-    | _ :: _ =>
-      (moveAll (.player p .setAside) .top s chosen).map
-        (fun r => ({ r.1 with pending := .draw p chosen.length :: .chanceRecycle p r.2 :: rest },
-                   []))
-  | .chanceRecycle p _ :: rest, .arrange l =>
+  | .mulligan p n :: rest, .mulliganPick c =>
+    (moveObj s c (.player p .setAside)).map
+      (fun r => ({ r.1 with pending := .mulligan p (n + 1) :: rest },
+                 [Event.moved c r.2 (.player p .setAside)]))
+  | .mulligan p n :: rest, .mulliganDone =>
+    match n with
+    | 0 => some ({ s with pending := rest }, [])
+    | k + 1 => some ({ s with pending := .draw p (k + 1) :: .chanceRecycle p :: rest }, [])
+  | .chanceRecycle p :: rest, .arrange l =>
     (recycleAll p s l).map (fun s' => ({ s' with pending := rest }, []))
   | .chanceBurnOut p :: rest, .arrange l =>
-    some ({ s with pending := .chooseBurnOut p l :: rest }, [])
-  | .chooseBurnOut p order :: rest, .burnOutTarget opp =>
-    (burnOut s p order opp).map (fun r => ({ r.1 with pending := rest }, r.2))
+    (recycleAll p s l).map
+      (fun s' => ({ s' with pending := .chooseBurnOut p :: rest }, [Event.burnedOut p]))
+  | .chooseBurnOut _ :: rest, .burnOutTarget opp =>
+    some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
   | _, _ => none
 
 /-- A step of work keeps the game well formed. -/
