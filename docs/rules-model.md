@@ -14,6 +14,7 @@ Riftbound の公式 Core Rules を、Lean で形式化する観点で整理し�
 | 古い二次資料 | hyperlinked 版（jeff425）と riftbound.gg/rules は 2026-07-16 版（Vendetta 期）であり、**規則番号の根拠に使わない** |
 | 補助資料 | 各セットのパッチノート、Radiance Rules FAQ（2026-10-27）。パッチノートは「新しい Core Rules がノートより優先する」と述べている |
 | 今後 | 2027-01 の Legacy で全面的な書式刷新が予告されている（規則番号が変わる見込み） |
+| Tournament Rules | 大会では Tournament Rules（2026-10-09 版）が Core Rules に優先する（TR 104.1）。形式化の範囲は [tournament-model.md](tournament-model.md) |
 
 規則番号の引用形式: docstring やコメントに `(CR 323.4)` と書く。
 
@@ -61,7 +62,7 @@ Riftbound の公式 Core Rules を、Lean で形式化する観点で整理し�
 | 103.5 | Battlefield の枚数はモードが決める。2 枚以上必要な場合は、同名の Battlefield を入れられない（103.5.c） |
 | 825 | Unique: 同名は 1 枚まで |
 
-補足: Tournament Rules（二次情報）では「Main Deck はちょうど 40 枚（Chosen Champion を含む）、Battlefield はちょうど 3 枚」となっている。本リポジトリでは Core Rules を正とし、大会規定は別の述語として後から扱う（design.md §12 Q5）。
+補足: Tournament Rules の Constructed では「Main Deck はちょうど 40 枚（Chosen Champion を含む）、名前の異なる Battlefield ちょうど 3 枚、サイドボード 10 枚以下」となっている（TR 402.1, 601）。Limited（Sealed / Draft）はさらに別の規則を持つ。本リポジトリでは両方に対応し、フォーマットごとの別の述語として持つ（[tournament-model.md §2](tournament-model.md#2-フォーマットとデッキの合法性)）。
 
 ### 3.2 セットアップ（110-118）
 
@@ -69,7 +70,7 @@ Riftbound の公式 Core Rules を、Lean で形式化する観点で整理し�
 2. Chosen Champion を Champion Zone に置く（112）。
 3. モードの規定に従って Battlefield を用意する（113）。
 4. Main Deck と Rune Deck を別々にシャッフルする（114）。
-5. 公平なランダムな方法で手番順を決める。手番順は First Player から時計回りに繰り返す（115）。
+5. 公平なランダムな方法で手番順を決める。手番順は First Player から時計回りに繰り返す（115）。大会では、ランダムに決めたプレイヤーが先手か後手かを選ぶ（TR 407）。
 6. 全員が 4 枚引く（116）。
 7. 手番順にマリガンする: 最大 2 枚を脇に置き、同じ枚数を引き、脇に置いたカードを Recycle する（117）。
 8. First Player がターンを始める（118）。
@@ -456,7 +457,7 @@ Draw 414、Exhaust 415、Ready 416、Recycle 417、Deal 418（有効なダメー
   - この制限は Conquer にだけかかる（473.1.a.1）。
 - **勝利**: Cleanup の手順 1（323.1, 474）で判定する。効果による勝利、最後の 1 人になった場合もある（195）。
   - Victory Score の既定は 8（194.3）。
-  - 同点なら続行する（194.2.b）。**引き分けの規定は無い。**
+  - 同点なら続行する（194.2.b）。**Core Rules に引き分けの規定は無い。** 大会のルールでは、ループ（TR 505.6）、時間切れ（TR 408.2.b）、合意（TR 410.1）で引き分けになる（[tournament-model.md](tournament-model.md)）。
 - **得点は 0 未満にならない**。0 点のときに点を失っても何も起きず、それに誘発する効果も起きない（194.4）。→ 得点は単調増加ではない。
 - **Burn Out**（432）:
   - 置換効果である（432.5）。Main Deck の残りより多く引いたり移したりしようとすると起きる。
@@ -550,7 +551,7 @@ Draw 414、Exhaust 415、Ready 416、Recycle 417、Deal 418（有効なダメー
 | 乱数 | 偶然の決定として外から受け取る | 114, 115, 417.5, 432.2.b, 487.5 |
 | 支払い | Rune の Add 能力と Rune Pool を忠実に表し、支払い方をプレイヤーが選ぶ | 164, 357, 430, 445 |
 | 勝利 | Cleanup の手順 1 で判定する。Burn Out の連続による即時勝利は例外として扱う | 323.1, 432.3.c.1 |
-| ループ | CR に無限ループの規定は無い。自動処理は fuel つきで回し、尽きたらエラーにする | — |
+| ループ | CR に無限ループの規定は無い。自動処理は fuel つきで回し、尽きたらエラーにする。大会のルールでは、自動処理の中で状態が繰り返したら引き分けにする | TR 505.6 |
 | 初期の対象モード | 1v1 Duel から。型は N 人で作る | 487 |
 
 ## 21. 曖昧な点と要確認事項
@@ -566,9 +567,9 @@ Draw 414、Exhaust 415、Ready 416、Recycle 417、Deal 418（有効なダメー
 6. **2v2 の Final Point**: 491.8.g.1 は「味方が occupied」、315.2.b.3 と 491.8.b.1 は「味方が control」と、用語が揺れている。
 7. **同時に誘発したもの**: Chain に積む順序（383.3.d）と、後入れ先出しの解決（340.1）を組み合わせると、解決順は逆になる。これは推論であり、明文ではない。
 8. **Rune Deck**: 同名の枚数制限、ドメインごとの内訳、Basic 以外の Rune の定義が Core Rules に無い。
-9. **Main Deck の枚数**: Core Rules（40 枚以上）と Tournament Rules（ちょうど 40 枚）の差。
+9. **Main Deck の枚数**: Core Rules（40 枚以上）と Tournament Rules の Constructed（ちょうど 40 枚）の差。大会では TR が優先する（TR 104.1）ので、フォーマットごとの述語で扱う。
 10. **Public ゾーンの一覧の不一致**: 355.10.a.1 の一覧は Chain と Banishment を含まない。一方、108.1.b と 108.6.e はそれらを Public としている。対象としての Public と、情報としての Public が別物かどうかは不明。
-11. **ループ**: 無限ループの扱いの規定が無い。Cleanup の反復、Expiration のループ、Burn Out の繰り返し、No Result の後の再戦闘で、止まらない可能性がある。
+11. **ループ**: Core Rules には無限ループの扱いの規定が無い。Cleanup の反復、Expiration のループ、Burn Out の繰り返し、No Result の後の再戦闘で、止まらない可能性がある。Tournament Rules は、誰も維持していない止まらないループを引き分けとする（TR 505.6）。モデルでの扱いは [tournament-model.md §5](tournament-model.md#5-ループtr-505)。
 12. **Layers の依存判定**（480）は、「適用順を入れ替えると結果が変わるか」を判定する必要があり、決定的に実装するには試行計算が要る。
 13. **巻き戻しの範囲**（358.5）: CR は「undone」と書くだけである。支払い中に起動した Add 能力の結果（Rune の Exhaust、Rune Pool）まで戻るかは明記されていない。806.4.b は、カードを元のゾーンに戻すとも書いている。モデルでは「プレイ手順の開始時の盤面にすべて戻す」と決め、FAQ で確認する。
 14. **戦闘の手順の記述の関係**: 467.3 は「FEPR を飛ばして Resolution Step へ進む」とし、468.2 にも注記がある。両者の関係は、戦闘を実装するときに原文で確かめる。

@@ -13,9 +13,20 @@
   - stable が出たら、専用の PR で上げる。
   - リリースノートの破壊的変更を確認する。
   - 依存（Plausible など）にも、同じ版のタグがあることを確認する。
-- Mathlib は使わない（design.md §12 Q3）。
-  - 入れると、Lean の版を Mathlib の追従に合わせる必要が生じる。
-  - 再検討するのは、`Finset` / `Multiset` での推論や `aesop` が本当に必要になったときである。
+- **Mathlib は使わない**（design.md §12 Q3 で決定）。理由:
+  - 1 ファイルあたりの読み込みが重くなる。2026-11-20 に 1 ファイルを単体で処理して測った結果は次のとおり。Mathlib は Lean 本体と同等以上の規模である。
+
+    | import するもの | 時間 | メモリ |
+    |---|---|---|
+    | なし（Init のみ） | 1.2 秒 | 385 MB |
+    | `Std` | 2.1 秒 | 609 MB |
+    | `Lean`（Lean 本体） | 6.3 秒 | 1.3 GB |
+
+  - 依存の取得に、数 GB のビルド済みキャッシュ（`lake exe cache get`）が必要になる。
+  - Lean の版を Mathlib の対応に合わせる必要が生じる。更新のたびに、補題の改名や `simp` の正規形の変化で証明が壊れうる。
+  - 古典論理と、実行できない（noncomputable な）定義が多く、エンジンの定義では使いにくい。
+- core（v4.36.0）には、`List.Perm` の補題、`omega` / `lia`、`grind`、`simp`、`decide`、`Std.HashMap` / `Std.TreeMap` の補題がある。M1〜M5 の証明はこれで足りる見込み。
+- それでも `Finset` / `Multiset` での推論や `aesop` が必要になったら、**証明専用の別パッケージ**（例: `proofs/` に別の lakefile を置き、このパッケージを参照する）でだけ Mathlib を使う案を検討する。エンジンとカードのビルドには影響させない。
 
 ## 2. Lake の設定
 
@@ -117,13 +128,15 @@ end
 - **型に属する操作は、型と同名の namespace に置き、dot notation が使えるようにする**（例: `GameState.moveObj` なら `s.moveObj`）。
   - エンジンの入口（`step`、`legalActions`、`view`）のように特定の型に属さないものは、`Riftbound.Engine` などの機能の namespace に置く。設計文書で素の名前（`step`、`moveObj`）を使っているのは略記である。
 - **カード定義の名前**:
-  - セットの namespace の下に、名前と subtitle を lowerCamelCase にしたものを置く（例: `Cards.Origins.fallingStar`、`Cards.Origins.ahriAlluring`）。
+  - 弾の namespace の下に、名前と subtitle を lowerCamelCase にしたものを置く（例: `RiftboundCards.Origins.fallingStar`、`RiftboundCards.Origins.ahriAlluring`）。
+  - 生成ブロックのメタデータは `<名前>.meta` とする（例: `fallingStar.meta`）。
   - 一意性は生成スクリプトが保証する。
 
 ### 4.2 ファイル
 
 - ファイル名は UpperCamelCase で、モジュール名と対応させる（`Riftbound/Rules/Combat.lean` は `Riftbound.Rules.Combat`）。
 - 1 ファイルは目安として 1,000 行以内にする。Mathlib の linter が警告する上限は 1,500 行。
+  - **例外**: カードの定義（`RiftboundCards/<Set>.lean`）は 1 弾 1 ファイルとし、この上限を適用しない（design.md §12 Q1、card-data.md §4.1）。
 - 行長は 100 文字以内。インデントは 2 スペースで、複数行にわたる宣言ヘッダの続きは 4 スペース。
 - `by` は行末に置く。`fun x ↦ ...` を使い、`λ` は使わない。
 
@@ -131,9 +144,10 @@ end
 
 - 各ファイルの先頭に、module docstring（`/-! # 題名 ... -/`）を書く。
 - 公開する宣言には、docstring（`/-- ... -/`）を書く（`linter.missingDocs` が強制する）。
-- **ルールに由来する定義には、CR の規則番号を `(CR 323.4)` の形で書く。** 複数あるときは `(CR 323.4, 142.4.b)`。
+- **ルールに由来する定義には、規則番号を `(CR 323.4)` の形で書く。** Tournament Rules は `(TR 402.1)` と書く。複数あるときは `(CR 323.4, 142.4.b)`。
   - この形式を崩さないこと。スクリプトで抽出して、規則のカバレッジ表や改番時の置換に使う（design.md §9）。
 - docstring は英語を基本とする。CR の用語をそのまま使えるからである。`docs/` の設計文書は日本語で書く。
+- カードの定義の docstring には、公式の英語の文面をそのまま入れる（card-data.md §4.1）。
 - Verso 形式の docstring（`doc.verso`）は、まだ experimental なので使わない。
 
 ## 5. 証明しやすいコードの書き方
