@@ -89,7 +89,7 @@ name = "RiftboundTest"
 ```lean
 module
 
-public import Riftbound.Core.State
+public import Riftbound.State.GameState
 
 /-!
 # Cleanup
@@ -158,25 +158,37 @@ end
   - `partial` な定義は kernel にとって不透明で、展開も簡約もできず、証明できない。
   - `RiftboundDriver` と `Main`（対局ループや IO）では使ってよい。これらは証明の対象外で、`Riftbound` から import しない。
 - 構造再帰を優先する。意図を明示するときは `termination_by structural x` と書く。
-- 測度を見つけにくい自動処理（Cleanup の反復など）は、`fuel : Nat` を引数に取る構造再帰にする。
+- 測度を見つけにくい自動処理（Cleanup の反復、効果の解決など）は、**再帰しない 1 歩の関数 `microStep` と、それを `fuel : Nat` の回数だけ繰り返す構造再帰 `advance`** に分ける（design.md §6.1）。
   - fuel が尽きたらエラーを返す。
-  - 「fuel が十分なら結果は fuel に依存しない」といった補題は後から足す。
+  - fuel の単調性（ある fuel で成功するなら、それ以上の fuel でも同じ結果になる）は、`advance` を作るのと同時に証明する（roadmap.md の I15）。
+  - 性質の証明は、`microStep` の場合分けと、fuel についての帰納法に分かれる。
+- **[確認済] 効果の解釈器は、`Effect` の構造再帰では書けない。** `custom` の展開のように、解釈の途中で別の `Effect` を実行する箇所があると、v4.36.0 は停止性を示せない（"failed to infer structural recursion"）。これが 1 歩の関数にする理由の 1 つである。
+- 上限が内側で決まる反復（Layers の反復など）は、その上限を回数にした構造再帰にし、fuel を外から受け取らない（design.md §5.4）。
 - 整礎再帰（`termination_by` で測度を与えるもの）は、定義上は簡約されにくい。`decide` で評価したい関数には使わない。
 
 ### 5.2 状態と不変条件
 
-- 状態は素直な `structure` / `inductive` にし、不変条件は別の述語（`WF`）で持つ。Subtype に埋め込むのは `Fin n` などの局所的なものだけにする。
-- `WF` には `Decidable` のインスタンスを用意し、テストで実行時の自己検査に使えるようにする。
+- 状態は素直な `structure` / `inductive` にし、不変条件は別の述語で持つ。Subtype に埋め込むのは `Fin n` などの局所的なものだけにする。
+- 不変条件は 2 つに分ける（design.md §5.2）。
+  - `WF`: 構造の条件。どの中間状態でも成り立つ。
+  - `Settled`: Cleanup の不動点で成り立つ条件。規則の上で一時的に破れるものは、こちらに入れる。
+- `WF` と `Settled` には `Decidable` のインスタンスを用意し、テストで実行時の自己検査に使えるようにする。
+- 状態の型（`GameState` と、その部品）は `deriving DecidableEq, Repr` が通る形に保つ。巻き戻しの一致や冪等性を `=` で述べ、小さな例を `decide` で検査するためである（§5.3）。
 - 導出できる値は状態に持たない（例: Open / Closed は Chain から導出する）。
 
 ### 5.3 データ構造
 
 - **まず `List` で書く。** 証明の補題が最も揃っている。
   - プロファイルで遅いと分かった箇所だけ `Array` に替える。証明の上では、`Array` は `List` を包んだものとして扱える。
-- 写像は `Std.TreeMap` か `Std.HashMap` を使う。
-  - [確認済] `(m.insert k v)[k]? = some v` のような基本補題は、`simp` で閉じる。
-  - 結果が hash の順序に依存する処理は書かない。順序が観測されるなら `TreeMap` を使う。
-  - `Lean.RBMap` は v4.32.0 で deprecated になった。
+- **検証コアの状態に入れる写像は、`Std.ExtTreeMap` にする。** 外延的な等しさを持つ写像で、内容が同じなら `=` になる。
+  - [確認済] `Std.ExtTreeMap` をフィールドに持つ structure は、`deriving DecidableEq, Repr` が通る。
+  - [確認済] `decide` で、検索（`(∅.insert 1 2)[1]? = some 2`）、挿入して削除すると元に戻ること、挿入の順序によらない等しさ、Exhaust を 2 回行っても 1 回と同じ状態になること、が閉じる。
+  - [確認済] `(m.insert k v)[k]? = some v` のような基本補題は、`simp` で閉じる。`toList` と `keys` は、挿入の順序によらず鍵の順に並ぶ。`foldl` も使える。
+  - [確認済] `Std.TreeMap` をフィールドに持つ structure は、`deriving DecidableEq` が失敗する（`Decidable (a = b)` を合成できない）。
+  - [確認済] `Std.HashMap` の検索は、`decide` で評価できない（kernel の簡約が途中で止まる）。
+  - `Std.TreeMap` と `Std.HashMap` の `==` は内容を比べるが、`=` は内部の形まで比べる。状態の等しさを定理で述べるには向かない。
+- `Std.HashMap` は、`RiftboundDriver` とテストの補助でだけ使う。結果が hash の順序に依存する処理は書かない。
+- `Lean.RBMap` は v4.32.0 で deprecated になった。
 - 固定長のものは `Vector α n` や `Fin n` を使う。
 
 ### 5.4 `deriving` と等値性
@@ -188,8 +200,9 @@ end
   2. `List` の代わりに専用のリスト型を `mutual` で定義する。`deriving DecidableEq` が通る。
   3. 等値性が要らない型なら、`Repr` と `BEq` だけにする。
 - **[確認済] 入れ子の帰納型には、v4.36.0 の `induction` タクティクが使えない**（"does not support ... nested inductive type" というエラーになる）。
-  - 代わりに、解釈器と同じ形の相互再帰で定理を書く（`mutual` の中で `theorem` をパターンマッチで定義する）。こちらは通ることを確認した。
-  - 効果 IR に関する証明（design.md §8 の L4）は、この書き方を前提にする。
+  - 代わりに、関数と同じ形の相互再帰で定理を書く（`mutual` の中で `theorem` をパターンマッチで定義する）。こちらは通ることを確認した。
+  - この書き方が要るのは、`Effect` を静的に走査する関数（等値性、変数の束縛の検査、対象枠の検査）についての定理である。
+  - 解釈器は 1 歩の関数にするので（§5.1）、`WF` の保存（design.md §8 の L4）は場合分けで示せ、`Effect` についての帰納法は要らない。
 - **カードを巨大な列挙型のコンストラクタにしない。**
   - derive される `ReflBEq` / `LawfulBEq` の証明はコンストラクタ数の二乗で重くなる。
   - v4.35 では `deriving DecidableEq` が遅くなったという報告もある。
@@ -236,6 +249,8 @@ end
 | Plausible | `Arbitrary` を derive して、ランダムな合法手の列の後でも `WF` が成り立つことを検査する（証明の前の早期発見） |
 
 - **シナリオテスト**は、「状態を組み立てる → Action の列を流す → 結果を検査する」の形に揃える。そのための小さな DSL を `RiftboundTest/Scenario` に用意する。
+  - 解釈器が指示を飛ばしたときの診断用のイベント（design.md §7.1）が発行されていないことを、DSL の側で常に検査する。
+- **列挙の照合テスト**: 小さな状態で、`legalActions` の結果を、「候補を作って `step` で試し、通ったものを残す」方法の結果と比べる（design.md §11）。この方法を `legalActions` の定義に使うことは禁止している。
 - テストでは `native_decide` を使ってもよい。ただし `Riftbound` ライブラリの定理から参照しないこと。
 
 ## 7. CI

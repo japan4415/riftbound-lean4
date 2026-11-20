@@ -43,14 +43,21 @@ scripts/gen_lean.py   RiftboundCards/<Set>.lean の生成ブロックを更新�
 scripts/coverage.py   実装状況の表を生成（docs/ か CI のサマリーに出す）
 ```
 
+- パイプラインは、解釈器より前に作る（[roadmap.md](roadmap.md) M3b）。IR の形を、実際のカードの転記で確かめるためである。
 - Python は `uv` で管理し、`uv run` で実行する。依存の追加は `uv add` で行う。
 - Lean からビルド時に JSON を読む方式は取らない。標準的な手順が確立しておらず、ビルドの再現性とキャッシュが複雑になるためである。
 - 取得したスナップショット JSON と、生成ブロックを含む `RiftboundCards/<Set>.lean` はコミットする。差分をレビューでき、ビルド時にネットワークが要らない。
 - CI では `gen_lean.py --check` を実行し、生成ブロックがスナップショットと一致していることを確かめる。
 - 定期実行の CI（週 1 回など）で取得し、スナップショットとの差分を報告する。対象は新カード、文面の変更、エラッタ。
 - **論理カードの同一性**:
-  - キーは「名前 + subtitle」と、ルール文面のハッシュの組。
+  - キーは「名前 + subtitle」。名前は subtitle を含めた全体で 1 つである（CR 103.3.b, 132）。
+  - ルール文面のハッシュは、キーに含めない。変更の検出にだけ使う。キーに含めると、エラッタのたびに別のカードになり、手書きの効果との対応が切れる。
   - 印刷のキーは `publicCode`（例: `OGN-029/298`）か `id`。`collectorNumber` は一意でない。
+- **`CardId` の決め方**:
+  - 最初の印刷の `publicCode` から、通し番号の分母を除いたもの（例: `OGN-029`）を `CardId` にする。
+  - 「最初の印刷」は、発売日が最も早い印刷とする。同じ日なら §1 の表で上にある弾、その中では通し番号が最も小さい印刷とする。
+  - 一度決めた `CardId` は変えない。エラッタや再録があっても同じ値を使う。
+  - 再録されたカードは、同じ `CardId` の印刷として列挙する。定義は、最初の印刷の弾のファイルに置く（§4.1）。
 - 外部サービスに送る User-Agent に、個人の連絡先を入れるかどうかはユーザーが決める。既定では入れない。
 
 ## 4. Lean 側の表現
@@ -70,11 +77,12 @@ structure CardDef where
   mightBonus : Option Int          -- Equipment（CR 137）
   keywords   : List KeywordInst    -- 印刷されたキーワード（パラメータつき。design.md §7.4）
   abilities  : List Ability        -- Passive / Replacement / Activated / Triggered（CR 361）
-  spellEffect : Option Effect      -- Spell が解決するときに実行する指示（CR 359.3）
-  status     : ImplStatus          -- todo / partial / full（roadmap.md 末尾）
+  spellEffect : Option EffectDef   -- Spell の選択の宣言と、解決するときに実行する指示（CR 355, 359.3）
+  status     : ImplStatus          -- todo / drafted / partial / full（roadmap.md 末尾）
 ```
 
 - `keywords` と `abilities` は別に持つ。キーワードの意味は `abilities` に書き込まず、実効のキーワードから導出する（design.md §7.4）。
+- `EffectDef` は「選択の宣言 + 本体」の組である。プレイ時に選ぶもの（対象枠、モードなど）を宣言に並べ、本体の `Effect` からは番号で参照する（design.md §7.2）。能力の効果も同じ形で持つ。
 
 ### 4.1 ファイルの構成: 1 弾 1 ファイル
 
@@ -87,6 +95,7 @@ structure CardDef where
   - docstring の必須チェック（`linter.missingDocs`）を満たす。
   - スクリプトで抽出して、スナップショットと照合できる。
 - showcase などの印刷違いは別のカードにせず、同じ生成ブロックの中に印刷コードを列挙する。エラッタがあれば、現行の文面を載せ、出典を記す。
+- 別の弾に再録されたカードは、最初の印刷の弾のファイルにだけ定義を置く。再録先の印刷コードは、その生成ブロックに列挙する（`CardId` の決め方は §3）。
 - 生成スクリプトの動き:
   - 新しいカードには、生成ブロックと手書き部分の雛形（`status := .todo`）を足す。
   - 既存のカードは、生成ブロックだけを書き換える。
@@ -98,6 +107,7 @@ structure CardDef where
   - 時間の大半はファイルごとの固定費なので、ファイル数を弾の数（6〜7）に抑える。
 - ファイルの長さの規約（[lean-guidelines.md §4.2](lean-guidelines.md#42-ファイル)）からは例外とする。エディタでの再検査が重くなったら、弾の中で分ける（例: `Origins/Part1.lean`）。
 - カードのファイルは、効果 IR とカード定義（`Riftbound.Card`）だけを import する。エンジン全体やテスト用の DSL は import しない。シナリオテストは `RiftboundTest` に置く。
+  - `custom` ハンドラも、この層の型（`Value` と `Effect`）だけで書ける。ハンドラは `GameState` を受け取らない（design.md §7.1）。
 
 ```lean
 -- RiftboundCards/Origins.lean の一部（イメージ。IR の名前は design.md §7.2 の初期案）
@@ -118,11 +128,16 @@ def fallingStar.meta : CardMeta :=
 /-- Falling Star の効果。 -/
 def fallingStar : CardDef :=
   { fallingStar.meta.toDef with
-    spellEffect := some (.seq [
-      .deal (.choose 0 .anyUnit) (.const 3),
-      .deal (.choose 1 .anyUnit) (.const 3)])
+    spellEffect := some {
+      -- プレイ時に選ぶ対象枠（CR 355）。本体からは番号で参照する
+      choices := [.target .anyUnit, .target .anyUnit],
+      body := .seq [
+        .deal (.slot 0) (.const 3),
+        .deal (.slot 1) (.const 3)] }
     status := .full }
 ```
+
+- [確認済] `fallingStar.meta` と `fallingStar` を同じ namespace に並べて定義する形は、`module` の下の v4.36.0 で通る。
 
 - `Registry.lean` で、全カードと `custom` ハンドラを集めて `CardDB` を作る。一覧は生成スクリプトが作る。
 
@@ -147,9 +162,10 @@ def fallingStar : CardDef :=
 
 ## 6. 実装状況の管理
 
-- `ImplStatus` の定義は [roadmap.md](roadmap.md) の末尾にある（`todo` / `partial` / `full`。多人数の仕組みを待つカードは `partial` で、理由を `needs-M9` と書く）。
-- `custom` を使ったカードは、表で区別する。`custom` はハンドラ表への参照で、ハンドラは状態を見て IR を組み立てて返す（design.md §7.1）。
-- `scripts/coverage.py` がセットごとの表を作る。表には件数、`full` の割合、`custom` の一覧、テストの有無を出す。
+- `ImplStatus` の定義は [roadmap.md](roadmap.md) の末尾にある（`todo` / `drafted` / `partial` / `full`。多人数の仕組みを待つカードは `partial` で、理由を `needs-M9` と書く）。
+  - `drafted` は、効果を IR の値として転記しただけの状態である。解釈器とテストを作る前に、IR の形を実際のカードで確かめるために使う（roadmap.md M3b）。
+- `custom` を使ったカードは、表で区別する。`custom` はハンドラ表への参照で、ハンドラは解釈器が評価した値を受け取り、IR を組み立てて返す（design.md §7.1）。
+- `scripts/coverage.py` がセットごとの表を作る。表には件数、IR で書けた割合（`drafted` 以上）、`full` の割合、`custom` の一覧、テストの有無を出す。
 - 1 枚のカードの完了条件は [roadmap.md](roadmap.md) の末尾を参照。
 
 ## 7. モデルにとって難しいカード（先に設計で考慮しておくもの）
@@ -167,7 +183,7 @@ def fallingStar : CardDef :=
 | 可変コスト | Rhasa the Sunderer（Trash の枚数だけ安くなる）、Atakhan（追加コストで kill した Unit のコストだけ安くなる） | コスト計算（356）、支払いの順序（357） |
 | 構築とゲーム外への参照 | Neeko, Blending In（構築時に Legend を追加で選ぶ） | 103.1、Legend Zone |
 | 名前の指定 | Fallen Feline（Spell の名前を指定し、それを禁止する） | 名前を値として持つ |
-| 導出値への誘発 | Renekton, Brute（Might が 10 以上になったとき）、Grand Duelist（Mighty になったとき） | 状態変化の検出（709） |
+| 導出値への誘発 | Renekton, Brute（Might が 10 以上になったとき）、Grand Duelist（Mighty になったとき） | 状態変化の検出（709）。処理の 1 歩の前後で実効特性を比べる（design.md §5.4） |
 | 回数つきの遅延誘発 | Fanfare（このターン、次の 3 回の Unit のプレイで引く） | Delayed 能力（390-393）と回数 |
 | 多人数向けの文 | Whirlwind（次のプレイヤーから順に）、2v2 の "you or an ally" | 手番順の走査、味方（740.1） |
 
@@ -184,10 +200,11 @@ def fallingStar : CardDef :=
 
 1. 公式のパッチノートと、更新された Core Rules を確認する。ルールが変わっていれば、先に [design.md §9](design.md#9-ルールとカードの版管理) の手順で反映する。
 2. `scripts/fetch.py` でスナップショットを取得し、`gen_lean.py` で `RiftboundCards/<Set>.lean` を作る（生成ブロックと、手書き部分の雛形）。
-3. 新しいキーワード（§8）と、新しいプリミティブ・hook を IR に足す。
-4. カードの効果を書き、シナリオテストを書く。
-5. 公式 FAQ と裁定を、回帰テストにする。
-6. カバレッジ表を更新する。
+3. 構文だけの転記で、新しいカードが今の IR で書けるかを確かめる（実装状況は `drafted`）。書けなかった文から、足りない語彙を洗い出す。
+4. 新しいキーワード（§8）と、新しいプリミティブ・hook を IR に足す。
+5. カードの効果に意味を与え、シナリオテストを書く（`full` にする）。
+6. 公式 FAQ と裁定を、回帰テストにする。
+7. カバレッジ表を更新する。
 
 ## 10. 権利面の注意（法的助言ではない）
 
