@@ -53,4 +53,23 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
+-- the cards written down as IR values (docs/ir-gaps.md): 39 of the 46 tried
+#guard (allCards.filter (·.status == .drafted)).length == 39
+
+-- Firestorm: one choice (the Battlefield), a spell effect and no abilities
+#guard match db.find? ⟨"OGS-002"⟩ with
+  | some c => c.spellEffect.isSome && c.abilities.isEmpty && c.status == .drafted &&
+      (match c.spellEffect with | some e => e.choices.length == 1 | none => false)
+  | none => false
+
+-- Karthus, Eternal: a passive ability that makes triggers fire once more
+#guard match db.find? ⟨"OGN-236"⟩ with
+  | some c => c.abilities == [.passive .always [.triggersExtra .die .anywhere]]
+  | none => false
+
+-- Recruit the Vanguard cannot be written yet, and says so
+#guard match db.find? ⟨"OGS-015"⟩ with
+  | some c => c.status == .todo && c.spellEffect.isNone
+  | none => false
+
 end RiftboundTest

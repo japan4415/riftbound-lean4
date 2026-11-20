@@ -7,6 +7,7 @@ public import Riftbound.Core.Cost
 public import Riftbound.Core.Might
 public import Riftbound.Core.Keyword
 public import Riftbound.Card.IR.Ability
+public import Riftbound.Card.IR.Build
 
 /-!
 # Card definitions

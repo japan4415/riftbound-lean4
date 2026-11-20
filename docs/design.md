@@ -520,7 +520,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 
 - エンジンは導出関数（例: `restrictions db s`、`permissions db s`、`costMods db s`、`replacements db s ev`）を通して判定し、カード側は `StaticMod` と置換効果のデータを持つだけにする。
 - 最小版（常に空リストを返すもの）を先に作る。イベントの置換（§6.6）は最初のプリミティブと同時に（[roadmap.md](roadmap.md) M2）、その他は最初にプレイを実装するマイルストーン（M4）で作る。
-- hook の種類の一覧は、カードを IR に転記する試行（[roadmap.md](roadmap.md) M3b）で洗い出して確定する。
+- hook の種類の一覧は、カードを IR に転記する試行（[roadmap.md](roadmap.md) M3b）で洗い出して確定する。最初の転記（46 枚）で、次の hook が `StaticMod` として必要になった: 誘発回数（`triggersExtra`）、ダメージの増加（`bonusDamage`）、場に出る状態（`entersReady`）、場所を限った禁止（`cantPlayer`）とキーワードの無視（`ignoreKeyword`）、勝利に必要な点（`victoryScorePlus`・`victoryScoreMinus`）。置換は `Ability.replacement`（常に有効）と `Effect.replaceNext`（1 回だけ）の 2 通り。詳しくは [ir-gaps.md](ir-gaps.md)。
 
 | hook | 例 |
 |---|---|

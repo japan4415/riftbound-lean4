@@ -4700,8 +4700,11 @@ def SFD_209.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Forgotten Monument: the effect is not written yet. -/
-def SFD_209 : CardDef := SFD_209.meta
+/-- Forgotten Monument. -/
+def SFD_209 : CardDef :=
+  { SFD_209.meta with
+    abilities := [.passive .always [.cantPlayer .eachPlayer .score .here 3]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-210
 /--

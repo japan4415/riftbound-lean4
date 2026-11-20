@@ -2673,8 +2673,11 @@ def OGN_122.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Time Warp: the effect is not written yet. -/
-def OGN_122 : CardDef := OGN_122.meta
+/-- Time Warp. -/
+def OGN_122 : CardDef :=
+  { OGN_122.meta with
+    spellEffect := some (.of [] (.seqOf [.prim (.extraTurn .you), .prim (.banish .self)])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-123
 /--
@@ -4241,8 +4244,11 @@ def OGN_195.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Rhasa the Sunderer: the effect is not written yet. -/
-def OGN_195 : CardDef := OGN_195.meta
+/-- Rhasa the Sunderer. -/
+def OGN_195 : CardDef :=
+  { OGN_195.meta with
+    abilities := [.passive .always [.costMinus .self (.count (.all .friendly .inTrash []))]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-196
 /--
@@ -4417,8 +4423,12 @@ def OGN_203.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Possession: the effect is not written yet. -/
-def OGN_203 : CardDef := OGN_203.meta
+/-- Possession. -/
+def OGN_203 : CardDef :=
+  { OGN_203.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+    (.seqOf [.prim (.takeControl (.slot 0)), .prim (.recall (.slot 0) false)])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-204
 /--
@@ -5132,8 +5142,15 @@ def OGN_236.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Karthus, Eternal: the effect is not written yet. -/
-def OGN_236 : CardDef := OGN_236.meta
+/--
+Karthus, Eternal.
+Approximation: Deathknell is the keyword for a trigger on dying; every trigger on dying is
+taken to be one.
+-/
+def OGN_236 : CardDef :=
+  { OGN_236.meta with
+    abilities := [.passive .always [.triggersExtra .die .anywhere]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-237
 /--
@@ -5989,8 +6006,11 @@ def OGN_276.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Aspirant's Climb: the effect is not written yet. -/
-def OGN_276 : CardDef := OGN_276.meta
+/-- Aspirant's Climb. -/
+def OGN_276 : CardDef :=
+  { OGN_276.meta with
+    abilities := [.passive .always [.victoryScorePlus (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-277
 /--
@@ -6283,8 +6303,14 @@ def OGN_293.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Grand Plaza: the effect is not written yet. -/
-def OGN_293 : CardDef := OGN_293.meta
+/-- The Grand Plaza. -/
+def OGN_293 : CardDef :=
+  { OGN_293.meta with
+    abilities := [.triggered
+      { event := .youHold,
+        condition := .cmp .ge (.count (.all .friendly .here [.ofType .unit])) (.const 7) }
+      (.of [] (.prim (.win .you))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-294
 /--

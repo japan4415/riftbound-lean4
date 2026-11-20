@@ -173,8 +173,16 @@ def UNL_007.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Smite: the effect is not written yet. -/
-def UNL_007 : CardDef := UNL_007.meta
+/--
+Smite.
+Approximation: "if it would die this turn" is the next time it would die; a unit dies once.
+-/
+def UNL_007 : CardDef :=
+  { UNL_007.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+    (.seqOf [.prim (.deal (.slot 0) (.const 3)),
+             .replaceNext .die (.slot 0) (.prim (.banish (.slot 0))) .thisTurn])),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-008
 /--
@@ -2007,8 +2015,15 @@ def UNL_087.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Blue Sentinel: the effect is not written yet. -/
-def UNL_087 : CardDef := UNL_087.meta
+/-- Blue Sentinel. -/
+def UNL_087 : CardDef :=
+  { UNL_087.meta with
+    abilities := [
+      .passive .always [.triggersExtra .hold .here],
+      .triggered (.onSelf .hold)
+        (.of [] (.delayed { event := .at_ .startOfMain, occurrence := .next 1 }
+          (.prim (.addPower .you (.const 1) none none)) .permanent)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-088
 /--

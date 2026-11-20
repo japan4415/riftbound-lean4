@@ -104,8 +104,11 @@ def VEN_004.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dune Surfer: the effect is not written yet. -/
-def VEN_004 : CardDef := VEN_004.meta
+/-- Dune Surfer. -/
+def VEN_004 : CardDef :=
+  { VEN_004.meta with
+    abilities := [.passive .always [.ignoreKeyword .tank .here]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-005
 /--
@@ -444,8 +447,14 @@ def VEN_019.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Renekton, Rage Fueled: the effect is not written yet. -/
-def VEN_019 : CardDef := VEN_019.meta
+/-- Renekton, Rage Fueled. -/
+def VEN_019 : CardDef :=
+  { VEN_019.meta with
+    abilities := [.triggered
+      { event := .attack,
+        condition := .cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4) }
+      (.of [] (.prim (.deal (.all .enemy .here [.ofType .unit]) (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-020
 /--
@@ -1218,8 +1227,15 @@ def VEN_053.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Otterpus: the effect is not written yet. -/
-def VEN_053 : CardDef := VEN_053.meta
+/-- Otterpus. -/
+def VEN_053 : CardDef :=
+  { VEN_053.meta with
+    abilities := [.replacement .score
+      (.and (.or (.scoreFrom .conquer) (.scoreFrom .hold))
+        (.and (.cmp .le (.turnsTaken .eventPlayer) (.const 2))
+          (.cmp .eq .eventAmount (.const 1))))
+      (.of [] (.prim (.draw .eventPlayer (.const 1))))],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-054
 /--
@@ -2098,8 +2114,17 @@ def VEN_092.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Renekton, Brute: the effect is not written yet. -/
-def VEN_092 : CardDef := VEN_092.meta
+/-- Renekton, Brute. -/
+def VEN_092 : CardDef :=
+  { VEN_092.meta with
+    abilities := [
+      .activated [.pay ⟨1, []⟩] .normal
+        (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited,
+      .triggered { event := .mightAtLeast 10 } (.of [] (.prim (.empower .self))) .unlimited,
+      .passive (.empowered .self)
+        [.keyword .self { keyword := .deflect, arg := .amount 1 },
+         .keyword .self { keyword := .ganking }]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-093
 /--
@@ -2864,8 +2889,12 @@ def VEN_126.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ki Barrier: the effect is not written yet. -/
-def VEN_126 : CardDef := VEN_126.meta
+/-- Ki Barrier. -/
+def VEN_126 : CardDef :=
+  { VEN_126.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+    (.preventNext (.slot 0) (.const 7) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-127
 /--

@@ -40,10 +40,15 @@ inductive Effect where
   | bind (v : VarId) (a : Amount) (e : Effect)
   /-- A game action. -/
   | prim (p : Prim)
-  /-- Change objects for a while. -/
+  /-- Change objects for a while. The modification is made to each of the objects, which the
+  modification calls `it`. -/
   | grant (s : Selector) (m : StaticMod) (d : Duration)
   /-- Do the effect later, when the trigger fires (CR 390-393). -/
   | delayed (t : Trigger) (e : Effect) (d : Duration)
+  /-- Prevent the next `n` damage that would be dealt to the objects, for a while (CR 438). -/
+  | preventNext (s : Selector) (n : Amount) (d : Duration)
+  /-- The next time the event would happen to the objects, do the effect instead (CR 367-375). -/
+  | replaceNext (ev : ReplaceEvent) (s : Selector) (instead : Effect) (d : Duration)
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
 deriving DecidableEq, Repr, Hashable

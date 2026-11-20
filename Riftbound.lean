@@ -15,6 +15,7 @@ public import Riftbound.Card.IR.Expr
 public import Riftbound.Card.IR.Prim
 public import Riftbound.Card.IR.Effect
 public import Riftbound.Card.IR.Ability
+public import Riftbound.Card.IR.Build
 public import Riftbound.Card.CardDef
 public import Riftbound.Card.CardDB
 public import Riftbound.State.Zone
