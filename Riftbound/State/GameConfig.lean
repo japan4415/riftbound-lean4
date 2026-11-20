@@ -31,11 +31,12 @@ structure GameConfig where
 deriving DecidableEq, Repr
 
 /-- A configuration that can be played. For now: at least two players. Which pairs of mode and
-format the Tournament Rules provide procedures for is to be checked against TR 600
-(tournament-model.md §7). -/
+format the Tournament Rules provide procedures for is still to be checked
+in the 600 series of the Tournament Rules (tournament-model.md §7). -/
 def GameConfig.Valid (c : GameConfig) : Prop := 2 ≤ c.mode.players
 
-instance GameConfig.decidableValid (c : GameConfig) : Decidable c.Valid := by unfold GameConfig.Valid; infer_instance
+instance GameConfig.decidableValid (c : GameConfig) : Decidable c.Valid := by
+  unfold GameConfig.Valid; infer_instance
 
 end Riftbound
 

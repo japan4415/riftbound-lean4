@@ -261,11 +261,17 @@ structure MoveSpec (s s' : GameState) (id id' : ObjId) (pos : Pos) (src dst : Zo
   id'_mem : id' ∈ s'.zone dst
   /-- It crossed exactly when it got a new identifier. -/
   crosses : Zone.crosses src dst = true ∨ id' = id
+  /-- The source is the zone `locate` finds the object on. -/
+  locate : s.locate id = some src
+  /-- Points are not touched. -/
+  points : s'.points = s.points
 
-/-- The shape of a successful move. -/
-theorem moveObj_spec {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
+/-- The shape of a successful move, with the link between the asked destination and the one the
+object went to (CR 056). -/
+theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
     (h : moveObj s id dst pos = some (s', id')) :
-    ∃ src d, MoveSpec s s' id id' pos src d := by
+    ∃ src d, MoveSpec s s' id id' pos src d ∧
+      ∃ o, s.obj? id = some o ∧ d = Zone.normalize o.owner dst := by
   unfold moveObj at h
   split at h
   · rename_i src o hloc hobj
@@ -284,8 +290,9 @@ theorem moveObj_spec {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos
       · rename_i hcr
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
-        refine ⟨src, Zone.normalize o.owner dst, ?_⟩
-        refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inr rfl, ⟨by simp, Or.inr (by simp)⟩, ?_, ?_, ?_, ?_, ?_⟩
+        refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
+        refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inr rfl, ⟨by simp, Or.inr (by simp)⟩,
+          ?_, ?_, ?_, ?_, ?_, hloc, rfl⟩
         · intro k
           simp only [Std.ExtTreeMap.mem_insert, Std.ExtTreeMap.mem_erase, Nat.compare_eq_eq,
             ne_eq]
@@ -309,9 +316,9 @@ theorem moveObj_spec {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos
       · rename_i hcr
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
-        refine ⟨src, Zone.normalize o.owner dst, ?_⟩
+        refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inl rfl, ⟨Nat.le_refl _, Or.inl rfl⟩,
-          ?_, ?_, rfl, ?_, Or.inr rfl⟩
+          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl⟩
         · intro k
           change k ∈ s.objects ↔ _
           by_cases hk : k = id.n
@@ -323,6 +330,13 @@ theorem moveObj_spec {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos
           rw [GameState.zone_move hne]
           simpa using Pos.mem_insert pos _ _
   · exact absurd h (by simp)
+
+/-- The shape of a successful move. -/
+theorem moveObj_spec {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
+    (h : moveObj s id dst pos = some (s', id')) :
+    ∃ src d, MoveSpec s s' id id' pos src d := by
+  obtain ⟨src, d, hs, -⟩ := moveObj_spec_dst h
+  exact ⟨src, d, hs⟩
 
 namespace GameState
 
@@ -396,6 +410,65 @@ theorem moveObj_physIds {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : 
   have p1 := List.Perm.filterMap (fun x => (s'.obj? x).bind (·.kind.phys?)) h2
   rw [heq] at p1
   exact p1.trans (List.Perm.filterMap _ h1).symm
+
+namespace GameState
+
+/-- In a well-formed game, an object on a zone is on no other zone. -/
+theorem zone_unique {s : GameState} (hwf : s.WF) {z z' : Zone} {id : ObjId}
+    (hz : z ∈ allZones s.playerCount) (hz' : z' ∈ allZones s.playerCount)
+    (h : id ∈ s.zone z) (h' : id ∈ s.zone z') : z' = z := by
+  by_cases hne : z' = z
+  · exact hne
+  exfalso
+  have hperm := flatMap_split (allZones s.playerCount) s.zone z hz
+  have hnd : (s.zone z ++ ((allZones s.playerCount).erase z).flatMap s.zone).Nodup :=
+    (hperm.nodup_iff).mp hwf.nodup
+  rw [List.nodup_append] at hnd
+  have hmem : id ∈ ((allZones s.playerCount).erase z).flatMap s.zone :=
+    List.mem_flatMap.mpr ⟨z', (List.mem_erase_of_ne hne).mpr hz', h'⟩
+  exact hnd.2.2 id h id hmem rfl
+
+/-- In a well-formed game, `locate` finds the zone an object is on. -/
+theorem locate_eq {s : GameState} (hwf : s.WF) {z : Zone} {id : ObjId}
+    (hz : z ∈ allZones s.playerCount) (h : id ∈ s.zone z) : s.locate id = some z := by
+  unfold locate
+  apply find?_eq_some_of_unique _ _ z hz
+  intro x hx
+  simp only [List.contains_iff_mem]
+  exact ⟨fun hm => zone_unique hwf hz hx h hm, fun e => e ▸ h⟩
+
+end GameState
+
+namespace MoveSpec
+
+variable {s s' : GameState} {id id' : ObjId} {pos : Pos} {src dst : Zone}
+
+/-- After the move, the destination holds the object (under its new identifier) in front of what
+was there. -/
+theorem zone_dst (hs : MoveSpec s s' id id' pos src dst) :
+    s'.zone dst = pos.insert id' (s.zone dst) := by
+  have : s'.zone dst = ((s.setZone src ((s.zone src).erase id)).setZone dst
+      (pos.insert id' (s.zone dst))).zone dst := by simp [GameState.zone, hs.zones]
+  rw [this, GameState.zone_move hs.ne]
+  simp
+
+/-- After the move, the source no longer holds the object. -/
+theorem zone_src (hs : MoveSpec s s' id id' pos src dst) :
+    s'.zone src = (s.zone src).erase id := by
+  have : s'.zone src = ((s.setZone src ((s.zone src).erase id)).setZone dst
+      (pos.insert id' (s.zone dst))).zone src := by simp [GameState.zone, hs.zones]
+  rw [this, GameState.zone_move hs.ne]
+  simp [hs.ne]
+
+/-- Every other zone is unchanged. -/
+theorem zone_other (hs : MoveSpec s s' id id' pos src dst) {z : Zone} (h1 : z ≠ src)
+    (h2 : z ≠ dst) : s'.zone z = s.zone z := by
+  have : s'.zone z = ((s.setZone src ((s.zone src).erase id)).setZone dst
+      (pos.insert id' (s.zone dst))).zone z := by simp [GameState.zone, hs.zones]
+  rw [this, GameState.zone_move hs.ne]
+  simp [h1, h2]
+
+end MoveSpec
 
 end Riftbound
 

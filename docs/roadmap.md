@@ -102,6 +102,18 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 
 ## M2: ゾーン・オブジェクト・セットアップ・エンジンの骨格（CR 105-124, 110-118, 414, 417, 431, 432）
 
+**M2 は 2 つに分けて進める。** M2a（状態・ゾーン・`moveObj`・プリミティブとその証明）を先に作り、M2b（エンジンの骨格・セットアップ・Driver）をその上に作る。以下の項目のうち、M2a が済んだものには「（M2a 済）」を付けた。
+
+### M2a の実装の記録（2026-11-20）
+
+- ファイル: `Core/Ids.lean`（`PlayerId`・`PhysId`・`ObjId`・`Timestamp`）、`State/{Zone,Object,GameConfig,Event,GameState}.lean`、`Rules/Move.lean`、`Rules/Actions/{Draw,Recycle,Channel,BurnOut}.lean`、`Basic/ListLemmas.lean`。テストは `RiftboundTest/Actions.lean`。
+- 証明した定理: `allZones_nodup`、`Zone.key_inj`、`moveObj_wf`、`moveObj_fresh`（新しい ObjId は既存のどれとも異なる）、`moveObj_physIds`（I1 の 1 手）、`GameState.zone_unique`、`GameState.locate_eq`、ドローの `drawOne_wf`・`drawOne_physIds`・`drawOne_lengths`（山札 −1、手札 +1）、`recycleAll_wf`・`recycleAll_physIds`、`channel_wf`・`channel_physIds`、`burnOut_wf`・`burnOut_physIds`、`burnOut_points`（ちょうど 1 人の対戦相手が 1 点）。
+- **イベントの経路（`perform`）は、M2a では型だけ。** `Event` を定義し、各プリミティブが発行する。置換・防止の段（design.md §6.6）は、Burn Out が決定（順序の偶然、対戦相手の選択）を必要とするので、フレームを作る M2b で足す。カードの置換効果は M6。
+- **Burn Out** は、決定を引数で受ける純粋な関数にした（`order` と `opp`）。「ドローが空の山札に当たったら Burn Out に置き換える」手続きは M2b。
+- **所有者の不変条件は M2b に回した。** `drawOne_lengths` は「山札のカードの所有者がそのプレイヤーである」を仮定に取る。M2b で `WF` に「Non-Board ゾーンのカードは、そのゾーンの持ち主が Owner」と「Owner と Controller が席に収まる」を足し、仮定を外す（CR 056）。
+- `moveObj` は、Non-Board を出入りしたら、Controller を Owner に戻し、疲労とダメージをリセットする（CR 124.1）。
+
+
 **実装**
 - `PlayerId` / `PhysId` / `ObjId` / `CardId` / `Timestamp` を定義する。
 - ゲームオブジェクト（種別: カード / トークン / Chain 上の能力）、ゾーン（エンジン内部用の `setAside` と `outOfGame` を含む）、`GameConfig`、`GameState`、`WF`（構造の条件だけ）を定義する。オブジェクトの表は `Std.ExtTreeMap` にする。

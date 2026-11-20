@@ -41,7 +41,8 @@ def allZones (n : Nat) : List Zone :=
 /-- A zone of a game with `n` players is in `allZones n`. -/
 def Zone.Valid (n : Nat) (z : Zone) : Prop := z ∈ allZones n
 
-instance Zone.decidableValid (n : Nat) (z : Zone) : Decidable (z.Valid n) := by unfold Zone.Valid; infer_instance
+instance Zone.decidableValid (n : Nat) (z : Zone) : Decidable (z.Valid n) := by
+  unfold Zone.Valid; infer_instance
 
 /-- Each zone is listed once. -/
 theorem allZones_nodup (n : Nat) : (allZones n).Nodup := by

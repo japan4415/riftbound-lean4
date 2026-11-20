@@ -29,6 +29,25 @@ theorem filterMap_congr_mem {α β : Type} (l : List α) (f g : α → Option β
     simp only [List.filterMap_cons]
     rw [h x (List.mem_cons_self), ih (fun y hy => h y (List.mem_cons_of_mem _ hy))]
 
+/-- `find?` finds the one member that satisfies the predicate. -/
+theorem find?_eq_some_of_unique {α : Type} (p : α → Bool) (L : List α) (z : α) (hz : z ∈ L)
+    (h : ∀ x ∈ L, p x = true ↔ x = z) : L.find? p = some z := by
+  induction L with
+  | nil => simp at hz
+  | cons x xs ih =>
+    by_cases hx : p x = true
+    · have : x = z := (h x List.mem_cons_self).mp hx
+      subst this
+      simp [hx]
+    · have hxz : x ≠ z := fun e => hx ((h x List.mem_cons_self).mpr e)
+      have hz' : z ∈ xs := by
+        rcases List.mem_cons.mp hz with e | e
+        · exact absurd e.symm hxz
+        · exact e
+      have hx' : p x = false := by simpa using hx
+      rw [List.find?_cons, hx']
+      exact ih hz' (fun y hy => h y (List.mem_cons_of_mem _ hy))
+
 /-- Pull one member out of a `flatMap`. -/
 theorem flatMap_split {α β : Type} [DecidableEq α] (L : List α) (f : α → List β) (z : α)
     (hz : z ∈ L) : (L.flatMap f).Perm (f z ++ (L.erase z).flatMap f) := by
