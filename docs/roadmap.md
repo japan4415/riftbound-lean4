@@ -26,7 +26,7 @@
 | I2 | **位置の一意性**: 各 ObjId はちょうど 1 つのゾーンにある（ゾーン列の連結が `Nodup`） | L1 | M2 |
 | I3 | **整形性の保存**: 初期状態は `WF`。`WF s` かつ `step fuel db s a = .ok (s', es)` なら `WF s'`。したがって `Reachable s → WF s`。`WF` は構造の条件だけを含む（[design.md §5.2](design.md#52-ゾーンとオブジェクト)） | L3 | M2（以後、マイルストーンごとに対象の遷移を広げる） |
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
-| I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない | L3 | M3 |
+| I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。偶然の決定の答えが存在することは、`chance_answer_exists` が条件つきで述べる） | L3 | M3 |
 | I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
@@ -177,6 +177,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 **M3 は 2 つに分けて進める。** 前半（ターンの骨格: フェイズ、手番の受け渡し、投了と勝敗）を先に作り、後半（資源: Rune Pool、Add 能力、Pay、I8、I5、追加ターン）をその上に作る。
 
+### M3 I5（進行性）の実装の記録（2026-11-21）
+
+- ファイル: `Invariant/Progress.lean`。
+- **不変条件 `StackInv`**: ゲームが終わっていなければ、スタックの底のフレームは `priority`・`beginTurn`・`setupHands`・`chanceTurnOrder` のどれか（`BottomOk`）。この 4 つは、別の底のフレームに置き換わることはあっても、空になることがない。`applyFrame`・`microStep`・`advance`・`step` のすべての腕で保たれることを示した（`applyFrame_stack`・`microStep_stack`・`advance_stack`・`step_stack`）。補題 `BottomOk.replace`・`pop`・`swap` が、フレームを降ろす・差し替える腕を一括で片づける。
+- **`TopIdle`**: `step` が返す状態の先頭は作業フレームでない（`advance_idle`・`step_idle`）。
+- **定理 `Reachable.progress`（I5）**: 到達可能で、終わっておらず、プレイヤーが 2 人以上のゲームでは、`legalActions` に投了以外の答えがあるか、先頭のフレームが偶然の決定を求めている。マリガン（`mulliganDone`）、Burn Out の相手の選択（2 人以上なら相手がいる）、Main Phase（`pass`）は、必ず答えがある。
+- **定理 `chance_answer_exists`**: 偶然の決定にも合法な答えがある。ただし、シャッフルする場所がゲームのゾーンであること、Battlefield を選ぶプレイヤーに Battlefield が 1 枚あることは、**まだ証明していない前提**（`Frame.chanceReady`）。`GameState.initial` がデッキの合法性（`DeckValid`）を求めていないため。デッキが Battlefield を持たなければ、`chanceBattlefield` で行き止まりになる。
+- **追加ターン（CR 734-738）は、まだ作っていない。** 追加ターンを与えるカード効果は M4 以降に入るので、そこで作る。
+
 ### M3 後半（資源）の実装の記録（2026-11-20）
 
 - ファイル: `State/Pool.lean`（`RunePool`・`Payment`）、`Rules/Resources.lean`（`applyRune`）、`Rules/Objects.lean`（`exhaustObj`）、`Invariant/Resources.lean`。テストは `RiftboundTest/Resources.lean`。`GameState` に `pools`、`Object` に `runeDomain` を追加。
@@ -185,7 +194,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Pay**（CR 445）: `RunePool.spend`。Energy と、ドメインを選んだ Power の列を払う。足りなければ `none`。カードのコストをこの `Payment` に直す部分（`[A]` と `[C]` の解決）は、カードをプレイする M4 で作る。
 - 証明した定理（**I8**）: `RunePool.total_spend`（**払うと、ちょうど払っただけ Pool から減る**）、`total_addEnergy`・`total_addPower`、`applyRune_adds_one`（**Add 能力が加えるのはちょうど 1**、他のプレイヤーの Pool は変わらない）、`applyRune_recycle_zones`・`channelOne_zones`（**Recycle と Channel で、Base と Rune Deck にある Rune の総数が保存される**）、`microStep_main_pools`・`microStep_ending_pools`（**Main Phase の開始時とターン終了時に Pool が空**）。`WF`・`OwnerOk`・I1・`HandInv`・`step_sound`・`legalActions_iff` は、Rune の能力を含めて引き続き証明済み。
 - **設計の判断**: Rune のドメインは、オブジェクトを作るときに `CardDB` から**写し**として `Object.runeDomain` に持つ（`GameState.initial` が `CardDB` を取る）。エンジンの `step` と `Legal` は引き続き `CardDB` を取らない。導出（Layers）は M6。Rune の能力は、Owner が使うプレイヤーである Rune にだけ使える（Control の変更は M6）。
-- **I5（進行性）と追加ターンは、さらに次の PR にした。** I5 は、スタックの底のフレームについての不変条件（ゲームが終わっていなければスタックが空にならない）が要り、証明が大きい。
+- **追加ターンは、さらに次の PR にした。** I5 は次の節のとおり済んだ。
 
 ### M3 前半の実装の記録（2026-11-20）
 
