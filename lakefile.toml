@@ -1,0 +1,27 @@
+name = "riftbound"
+version = "0.1.0"
+# axiom の監査（lake check）はデフォルトのビルド対象を見る。検証コアだけを対象にする。
+defaultTargets = ["Riftbound"]
+testDriver = "RiftboundTest"
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+linter.missingDocs = true
+
+[[require]]
+name = "plausible"
+scope = "leanprover-community"
+rev = "v4.36.0"
+
+[[lean_lib]]
+name = "Riftbound"          # 検証コア（P8 の禁止事項と axiom 監査の対象）
+
+[[lean_lib]]
+name = "RiftboundCards"     # カード定義と具体的な CardDB
+
+[[lean_lib]]
+name = "RiftboundDriver"    # 乱数の供給・自動対戦・ログ再生（IO を使う。監査の対象外）
+
+[[lean_lib]]
+name = "RiftboundTest"

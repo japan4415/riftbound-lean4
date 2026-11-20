@@ -56,14 +56,14 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 - 全体の検証スクリプト `scripts/verify.sh` を作る: 全ライブラリのビルド（`--wfail`）、`lake test`、axiom の監査（`lake check --inadvisably-no-sandbox`）。`sorry` は `--wfail` で止まる。GitHub Actions は置かない（[lean-guidelines.md §7](lean-guidelines.md#7-作業の単位とローカルでの検証)）。
 - docstring 中の CR 引用を抽出するスクリプト（のちのカバレッジ集計用）を作り、`verify.sh` から呼ぶ。
 - リポジトリ直下の `README.md` に免責文を置き、`NOTICE` にカード由来のデータの権利を書く（[design.md §10](design.md#10-カードデータと権利)）。2026-11-20 に設置済み。
-- **技術的な確認（スパイク）**:
-  - `lake lint` の組み込み linter の設定
-  - `lake check --inadvisably-no-sandbox` が、このリポジトリの構成（複数のライブラリ、`defaultTargets` は `Riftbound` だけ）で検証コアだけを監査すること
-  - lean-beam と module system の併用
-  - 数百件の `CardDef` に対する検査を `decide` でするか `#guard` でするか
-  - `Std.ExtTreeMap` を持つ状態に対する `decide` の速さ（数十オブジェクトの規模で）
+- **技術的な確認（スパイク）**: 2026-11-20 に済み。結果は [lean-guidelines.md](lean-guidelines.md) に [確認済] として書いた。
+  - `lake lint`: 環境 linter が無いので使わない。構文系の linter は `--wfail` で足りる（§2）
+  - `lake check --inadvisably-no-sandbox`: `defaultTargets` の `Riftbound` だけを監査する。`RiftboundDriver` の `native_decide` は対象外で、コアの `native_decide` は拒否される（§7.2）
+  - lean-beam と module system: 併用できる。module の中の `#guard` には `meta import` が要る（§3、§8）
+  - 数百件の `CardDef` の検査: `decide +kernel` で定理にでき、`#guard` なら約 0.2 秒。素の `decide` は使えない（§5.5）
+  - `Std.ExtTreeMap` を持つ状態: 素の `decide` は 20 個で失敗し、`decide +kernel` は 100 個で約 0.5 秒（§5.3）
 
-**完了条件**: `scripts/verify.sh` がローカルで通る（`lake build`、`lake test`、axiom の監査）。
+**完了条件**: `scripts/verify.sh` がローカルで通る（`lake build`、`lake test`、axiom の監査）。2026-11-20 に達成した。
 
 ## M1: 静的データとデッキ構築（CR 101-103, 125-187）
 
