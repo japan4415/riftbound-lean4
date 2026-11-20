@@ -218,6 +218,7 @@ ObjId の払い出しで、次の 2 つの性質がデータ構造から直接�
   - 分ける理由: 後者は規則の上で一時的に破れる。たとえば容量を決める Passive の持ち主が盤面を離れると、超過分を Trash に置くまでの間は容量を超えている。`step` は効果の解決の途中の決定点でも戻るので、これを `WF` に入れると `step` が `WF` を保存しなくなる。
   - Attach の後始末がどの時点で起きるか（716-719）は、Attach を実装するとき（[roadmap.md](roadmap.md) M8a）に原文で確かめる。離れるのと同時に外れるなら、Attach 先の存在は `WF` の側へ移す。
   - どちらも `Decidable` にし、テストで実行時の検査に使う。
+- **所有者の不変条件 `OwnerOk`**（CR 056）: Non-Board ゾーンにあるカードの Owner は、そのゾーンの持ち主である。`WF` とは別の述語で、`moveObj`（行き先を Owner のゾーンに直す）、並べ替え、`addObject`、`step` が保つ。`step` の健全性（合法な答えは fuel 切れ以外で拒否されない）は、`WF` と `OwnerOk` の下で示す。
 - Board と Non-Board を区別する（105-109）。
   - Base と Battlefield は Location（197-200）。Battlefield は Location であると同時にゲームオブジェクトでもある（170）。
   - Facedown Zone は Battlefield ごとの副ゾーンで、Location ではない（107.3.e）。
@@ -331,7 +332,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `priority p` | 決定 | Discretionary Action（411.1）を選ぶ: カードのプレイ、能力の起動、Standard Move（144）、Hide（422）、Pass、ターン終了 |
 | `choose` | 決定 | 対象・モード・移動先・プレイ先（355）、任意の追加コストを払うか（355.1.a）、"may" に従うか、誘発能力を Chain に積む順序（383.3.d。戦闘開始時は 466.2.d.1 の例外順）、置換効果の適用順（372）、マリガン（117）、Burn Out で点を与える相手（432.2.c）、Showdown / Combat を開く Battlefield（323.11-12）、戦闘ダメージの割り当て（467.2.c）、Secret / Private なカードへの指示を拒否するか（128.6） |
 | `chance` | 決定（偶然） | シャッフル（114）、Main Deck の下へ同時に Recycle するときの順序（417.5）、Burn Out での Trash のランダム化（432.2.b）、手番順（115）、Battlefield のランダムな選択（487.5, 489.5, 490.5, 491.5.a） |
-| `chooseBurnOut` | 決定 | Burn Out で点を与える相手（432.2.c）。`chanceBurnOut`（Trash の並べ替え: 432.2.b）の次に積まれる |
+| `chooseBurnOut` | 決定 | Burn Out で点を与える相手（432.2.c）。`chanceBurnOut`（Trash を山札に戻す順序: 432.2.b。答えた時点で Recycle する）の次に積まれる |
 | `setupHands` / `draw p n` | 作業 | 開幕の手札とマリガンの並べ方（116-117）、`p` が `n` 枚引く（414）。空の山札に当たると Burn Out のフレームを積む（432） |
 | `playProc` | 作業 | プレイ手順（354-359）の途中。どの段にいるか、それまでの選択、**巻き戻し用の盤面のスナップショット** |
 | `effectResume` | 作業 | 効果の解決途中。残りの効果と、変数の束縛環境 |
@@ -339,6 +340,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 
 作業のフレームは、選択が必要になると、その上に決定のフレームを積む。
 
+- **フレームは、盤面のデータを持たない。** `mulligan p n` は選んだ枚数だけを持ち（選んだカードはその場で脇に置く）、並べ替えのフレームはゾーンを指すだけで、並べるカードは答えのときにゾーンから読む。盤面の写しを持つと、フレームが積まれてから答えられるまでの間に盤面が変わったとき、写しが古くなる。写しが無ければ、フレームの正しさを別の不変条件として保つ必要がない（`step` の健全性の証明が、`WF` と `OwnerOk` だけで済む理由）。
 - **決定のフレームは「問い」だけを持ち、候補の一覧を持たない。**
   - 対象なら Selector と制約、順序なら並べるもの、という形で持つ。分割した決定（下記）では、それまでの選択も持つ。
   - 候補は、`Legal` と `legalActions` がそれぞれ盤面から計算する。

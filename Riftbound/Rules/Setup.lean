@@ -109,6 +109,70 @@ theorem GameState.initial_wf {config : GameConfig} {decks : List Deck} {s : Game
       rfl rfl rfl rfl
   · exact absurd h (by simp)
 
+/-- Adding cards keeps `OwnerOk`. -/
+theorem addCards_ownerOk (owner : PlayerId) (z : Zone) :
+    ∀ (cs : List CardId) {s s' : GameState}, s.WF → s.OwnerOk →
+      addCards owner z s cs = some s' → s'.OwnerOk
+  | [], s, s', _, hown, h => by
+    rw [show addCards owner z s [] = some s from rfl] at h
+    cases h
+    exact hown
+  | c :: cs, s, s', hwf, hown, h => by
+    cases hr : addObject s (newCard s owner c) z .bottom with
+    | none => simp [addCards, hr] at h
+    | some r =>
+      have h' : addCards owner z r.1 cs = some s' := by simpa [addCards, hr] using h
+      exact addCards_ownerOk owner z cs (addObject_wf hwf hr) (addObject_ownerOk hwf hown hr) h'
+
+/-- Adding a deck keeps `OwnerOk`. -/
+theorem GameState.addDeck_ownerOk {s s' : GameState} {p : PlayerId} {d : Deck} (hwf : s.WF)
+    (hown : s.OwnerOk) (h : s.addDeck p d = some s') : s'.OwnerOk := by
+  unfold GameState.addDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have w1 := addCards_wf _ _ _ hwf h1
+  have w2 := addCards_wf _ _ _ w1 h2
+  have w3 := addCards_wf _ _ _ w2 h3
+  have w4 := addCards_wf _ _ _ w3 h4
+  exact addCards_ownerOk _ _ _ w4
+    (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
+      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ hwf hown h1) h2) h3) h4) h5
+
+/-- Adding the decks keeps `OwnerOk`. -/
+theorem GameState.addDecks_ownerOk :
+    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.WF → s.OwnerOk →
+      s.addDecks i ds = some s' → s'.OwnerOk
+  | [], s, s', i, _, hown, h => by
+    rw [show s.addDecks i [] = some s from rfl] at h
+    cases h
+    exact hown
+  | d :: ds, s, s', i, hwf, hown, h => by
+    cases hr : s.addDeck ⟨i⟩ d with
+    | none => simp [GameState.addDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addDecks (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
+      exact GameState.addDecks_ownerOk ds (GameState.addDeck_wf hwf hr)
+        (GameState.addDeck_ownerOk hwf hown hr) h'
+
+/-- A game with no objects satisfies `OwnerOk`. -/
+theorem GameState.ownerOk_empty (config : GameConfig) : (GameState.empty config).OwnerOk := by
+  refine ⟨fun p k hk id hid o ho => ?_⟩
+  have : (GameState.empty config).zone (.player p k) = [] := by
+    simp [GameState.zone, GameState.empty]
+  rw [this] at hid
+  simp at hid
+
+/-- A game that has been set up satisfies `OwnerOk`. -/
+theorem GameState.initial_ownerOk {config : GameConfig} {decks : List Deck} {s : GameState}
+    (h : GameState.initial config decks = some s) : s.OwnerOk := by
+  unfold GameState.initial at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    exact (GameState.addDecks_ownerOk decks (GameState.wf_empty config)
+      (GameState.ownerOk_empty config) h1).congr rfl rfl
+  · exact absurd h (by simp)
+
 end Riftbound
 
 end

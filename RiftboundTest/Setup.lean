@@ -100,33 +100,80 @@ meta def atMulligan : Option GameState :=
     !decide (Legal s ⟨.chance, .mulliganDone⟩)
   | none => false
 
--- a mulligan of two cards: they are set aside, two are drawn, the two go to the bottom
+-- a mulligan of two cards: each is set aside at once, finishing draws two, and the two set
+-- aside go to the bottom in the order chance gives (CR 117, 417.5)
 #guard match atMulligan with
   | some s =>
     match s.pending with
     | .mulligan p _ :: _ =>
       let hand := s.zone (.player p .hand)
       match hand with
-      | c1 :: c2 :: _ =>
+      | c1 :: c2 :: c3 :: _ =>
         match step 100 s ⟨.player p, .mulliganPick c1⟩ with
         | .ok (s1, _) => match step 100 s1 ⟨.player p, .mulliganPick c2⟩ with
           | .ok (s2, _) =>
+            count p .setAside s2 == 2 && count p .hand s2 == 2 &&
             -- a third pick is refused, finishing is allowed
-            (match step 100 s2 ⟨.player p, .mulliganPick (hand.getD 2 c1)⟩ with
+            (match step 100 s2 ⟨.player p, .mulliganPick c3⟩ with
               | .error .illegal => true | _ => false) &&
             (match step 100 s2 ⟨.player p, .mulliganDone⟩ with
               | .ok (s3, _) =>
-                -- a chance decision comes next: the order of the two set-aside cards
+                -- two cards were drawn; the next question is the order of the two set aside
                 (match s3.pending with
-                  | .chanceRecycle q cards :: _ => q == p && cards.length == 2
+                  | .chanceRecycle q :: _ => q == p
                   | _ => false) &&
                 count p .hand s3 == 4 && count p .setAside s3 == 2 &&
-                count p .mainDeck s3 == count p .mainDeck s - 2
+                count p .mainDeck s3 == count p .mainDeck s - 2 &&
+                -- answering puts them at the bottom, and the set-aside zone is empty
+                (let order := (s3.zone (.player p .setAside)).reverse
+                 match step 100 s3 ⟨.chance, .arrange order⟩ with
+                 | .ok (s4, _) =>
+                   count p .setAside s4 == 0 && count p .mainDeck s4 == count p .mainDeck s &&
+                   -- the two last cards of the Main Deck are the two recycled ones
+                   ((s4.zone (.player p .mainDeck)).drop (count p .mainDeck s4 - 2)).length == 2
+                 | .error _ => false)
               | .error _ => false)
           | .error _ => false
         | .error _ => false
       | _ => false
     | _ => false
+  | none => false
+
+-- Burn Out (CR 432): a draw from an empty Main Deck recycles the Trash in a random order, an
+-- opponent gains a point, and the draw goes on. Here the whole deck is put in the Trash first.
+meta def burnOutScenario : Option (GameState × GameState) :=
+  match finished 4 with
+  | none => none
+  | some s =>
+    let deck := s.zone (.player p0 .mainDeck)
+    let s' : GameState :=
+      { s with zones := (s.zones.insert (Zone.player p0 .mainDeck).key []).insert
+                 (Zone.player p0 .trash).key deck,
+               pending := [.draw p0 1] }
+    match advance 10 s' [] with
+    | .error _ => none
+    | .ok (s1, _) =>
+      match s1.pending with
+      | .chanceBurnOut q :: _ =>
+        match step 100 s1 ⟨.chance, .arrange (s1.zone (.player p0 .trash)).reverse⟩ with
+        | .error _ => none
+        | .ok (s2, _) =>
+          match s2.pending with
+          | .chooseBurnOut q' :: _ =>
+            if q == p0 && q' == p0 then
+              match step 100 s2 ⟨.player p0, .burnOutTarget p1⟩ with
+              | .ok (s3, _) => some (s', s3)
+              | .error _ => none
+            else none
+          | _ => none
+      | _ => none
+
+#guard match burnOutScenario with
+  | some (s', s3) =>
+    -- the Trash went to the Main Deck, one card was drawn, p1 has the point, p0 has none
+    count p0 .trash s3 == 0 && count p0 .mainDeck s3 == count p0 .trash s' - 1 &&
+    count p0 .hand s3 == count p0 .hand s' + 1 && s3.pointsOf p1 == 1 && s3.pointsOf p0 == 0 &&
+    s3.pending.isEmpty
   | none => false
 
 -- illegal answers are refused

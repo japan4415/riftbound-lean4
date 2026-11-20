@@ -1,0 +1,277 @@
+module
+
+public import Riftbound.Invariant.Step
+public import Riftbound.Rules.Owner
+
+/-!
+# Soundness of the engine
+
+A legal answer is never refused for any reason but the fuel (invariant I4 and the soundness half of
+I6, roadmap.md). This needs, besides `WF`, the ownership invariant `OwnerOk` (CR 056): it is what
+makes a card in a player's Non-Board zone go to that player's zones. Both are kept by `step`, so
+they hold in every state reached from a set-up game.
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- The work frames always have a step to take. -/
+theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
+    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep s = some r := by
+  unfold microStep
+  rw [hp]
+  cases f <;> simp [Frame.isWork] at hf
+  · exact ⟨_, rfl⟩
+  · rename_i p n
+    cases n with
+    | zero => exact ⟨_, rfl⟩
+    | succ n =>
+      simp only
+      split <;> exact ⟨_, rfl⟩
+
+/-- The automatic work fails for no reason but the fuel. -/
+theorem advance_error :
+    ∀ (n : Nat) {s : GameState} {es : List Event} {e : RuleError},
+      advance n s es = .error e → e = .fuelExhausted
+  | 0, s, es, e, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · simpa using h.symm
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  | n + 1, s, es, e, h => by
+    unfold advance at h
+    split at h
+    · rename_i f rest hp
+      split at h
+      · rename_i hf
+        obtain ⟨r, hr⟩ := microStep_isSome hp hf
+        obtain ⟨s1, es1⟩ := r
+        simp only [hr] at h
+        exact advance_error n h
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+
+/-- A legal answer can be applied: `applyAction` does not fail on it. -/
+theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : Legal s a) : ∃ r, applyAction s a = some r := by
+  unfold applyAction
+  unfold Legal at hl
+  split
+  · exact ⟨_, rfl⟩
+  · rename_i p rest i hp hk
+    rw [hp, hk] at hl
+    have hi : i < (s.zone (.player p .outOfGame)).length := hl.2
+    have hget : (s.zone (.player p .outOfGame))[i]? = some ((s.zone (.player p .outOfGame))[i]) :=
+      List.getElem?_eq_getElem hi
+    rw [hget]
+    simp only
+    obtain ⟨r, hr⟩ := moveObj_isSome hwf (List.getElem_mem hi) .battlefieldZone .top
+      (fun o _ => ⟨by simp [Zone.normalize, Zone.valid_battlefieldZone],
+        by simp [Zone.normalize]⟩)
+    rw [hr]
+    exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · rename_i p n rest c hp hk
+    rw [hp, hk] at hl
+    have hc : c ∈ s.zone (.player p .hand) := hl.2.1
+    obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf hc
+    have howner : o.owner = p := hown.owner p .hand rfl c hc o ho
+    have hpn : p.n < s.playerCount :=
+      Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hc)
+    obtain ⟨r, hr⟩ := moveObj_isSome hwf hc (.player p .setAside) .top (fun o' ho' => by
+      have : o' = o := Option.some.inj (ho'.symm.trans ho)
+      subst this
+      rw [howner]
+      simp only [Zone.normalize, Zone.isBoard, Bool.false_eq_true, ite_false]
+      exact ⟨Zone.valid_player hpn _, by simp⟩)
+    rw [hr]
+    exact ⟨_, rfl⟩
+  · rename_i p n rest hp hk
+    split <;> exact ⟨_, rfl⟩
+  · rename_i p rest l hp hk
+    rw [hp, hk] at hl
+    have hperm : l.Perm (s.zone (.player p .setAside)) := hl.2
+    have hnd : l.Nodup := hperm.nodup_iff.mpr (GameState.zone_nodup_any hwf _)
+    obtain ⟨s2, hs2⟩ := recycleAll_some (p := p) (q := p) (k := .setAside) rfl (by simp) l hwf
+      hown hnd (fun id hid => hperm.mem_iff.mp hid)
+    simp only [hs2]
+    exact ⟨_, rfl⟩
+  · rename_i p rest l hp hk
+    rw [hp, hk] at hl
+    have hperm : l.Perm (s.zone (.player p .trash)) := hl.2
+    have hnd : l.Nodup := hperm.nodup_iff.mpr (GameState.zone_nodup_any hwf _)
+    obtain ⟨s2, hs2⟩ := recycleAll_some (p := p) (q := p) (k := .trash) rfl (by simp) l hwf
+      hown hnd (fun id hid => hperm.mem_iff.mp hid)
+    simp only [hs2]
+    exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact absurd hl (by simp)
+
+/-- Applying a legal answer keeps `OwnerOk`. -/
+theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    s'.OwnerOk := by
+  unfold applyAction at h
+  unfold Legal at hl
+  split at h
+  · rename_i z rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_reorder hown hl.2.2).congr rfl rfl
+  · rename_i p rest i hp hk
+    split at h
+    · rename_i id hid
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      exact (moveObj_ownerOk hwf hown hm).congr rfl rfl
+    · exact absurd h (by simp)
+  · rename_i rest l hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p n rest c hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (moveObj_ownerOk hwf hown hm).congr rfl rfl
+  · rename_i p n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
+  · rename_i p rest l hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (recycleAll_ownerOk p _ hwf hown hm).congr rfl rfl
+  · rename_i p rest l hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (recycleAll_ownerOk p _ hwf hown hm).congr rfl rfl
+  · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
+  · exact absurd h (by simp)
+
+/-- A step of work keeps `OwnerOk`. -/
+theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : microStep s = some (s', es)) : s'.OwnerOk := by
+  unfold microStep at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p n rest hp
+    split at h
+    · rename_i s1 es1 hd
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact (drawOne_ownerOk hwf hown hd).congr rfl rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
+  · exact absurd h (by simp)
+
+/-- The automatic work keeps `OwnerOk`. -/
+theorem advance_ownerOk :
+    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk →
+      advance n s es = .ok (s', es') → s'.OwnerOk
+  | 0, s, s', es, es', hwf, hown, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hown
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown
+  | n + 1, s, s', es, es', hwf, hown, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · split at h
+        · rename_i s1 es1 hm
+          exact advance_ownerOk n (microStep_wf hwf hm) (microStep_ownerOk hwf hown hm) h
+        · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hown
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown
+
+/-- A step keeps `OwnerOk`. -/
+theorem step_ownerOk {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (h : step fuel s a = .ok (s', es)) : s'.OwnerOk := by
+  unfold step at h
+  split at h
+  · rename_i hl
+    split at h
+    · rename_i s1 es1 ha
+      exact advance_ownerOk fuel (applyAction_wf hwf hl ha) (applyAction_ownerOk hwf hown hl ha) h
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- **Soundness of `step`** (I6, design.md §6.3): a legal answer is refused for no reason but the
+fuel. With `step_illegal` and `legal_of_step_ok`, `step` accepts exactly the legal answers, except
+that it may run out of fuel. -/
+theorem step_sound {fuel : Nat} {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : Legal s a) {e : RuleError} (h : step fuel s a = .error e) : e = .fuelExhausted := by
+  obtain ⟨⟨s1, es1⟩, ha⟩ := applyAction_isSome hwf hown hl
+  simp only [step, hl, ha, ite_true] at h
+  exact advance_error fuel h
+
+/-- **I4.** A step never fails by the engine's own bookkeeping: in a well-formed game, whatever the
+answer, the error is `illegal` or `fuelExhausted`, never `internal`. -/
+theorem step_not_internal {fuel : Nat} {s : GameState} {a : Action} (hwf : s.WF)
+    (hown : s.OwnerOk) {msg : String} : step fuel s a ≠ .error (.internal msg) := by
+  intro h
+  by_cases hl : Legal s a
+  · have := step_sound hwf hown hl h
+    simp at this
+  · rw [step_illegal hl] at h
+    simp at h
+
+/-- The states a game can reach: the set-up game, and whatever `step` makes of a reachable state
+(design.md §8). -/
+inductive Reachable : GameState → Prop where
+  /-- The state a game starts from. -/
+  | init {config : GameConfig} {decks : List Deck} {s : GameState}
+      (h : GameState.initial config decks = some s) : Reachable s
+  /-- A step from a reachable state. -/
+  | next {s s' : GameState} {fuel : Nat} {a : Action} {es : List Event} (hs : Reachable s)
+      (h : Riftbound.step fuel s a = .ok (s', es)) : Reachable s'
+
+/-- Every reachable state is well formed and keeps cards in their owners' zones. -/
+theorem Reachable.inv {s : GameState} (h : Reachable s) : s.WF ∧ s.OwnerOk := by
+  induction h with
+  | init h => exact ⟨GameState.initial_wf h, GameState.initial_ownerOk h⟩
+  | next hs h ih => exact ⟨step_wf ih.1 h, step_ownerOk ih.1 ih.2 h⟩
+
+/-- **I4**, for the reachable states: `step` never returns an internal error. -/
+theorem Reachable.not_internal {s : GameState} (h : Reachable s) {fuel : Nat} {a : Action}
+    {msg : String} : Riftbound.step fuel s a ≠ .error (.internal msg) :=
+  Riftbound.step_not_internal h.inv.1 h.inv.2
+
+end Riftbound
+
+end

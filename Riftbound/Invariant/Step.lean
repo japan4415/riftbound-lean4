@@ -40,36 +40,36 @@ theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · rename_i p chosen rest c hp hk
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · rename_i p chosen rest hp hk
+  · rename_i p n rest c hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact GameState.WF.congr (moveObj_wf hwf hm) rfl rfl rfl rfl
+  · rename_i p n rest hp hk
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact GameState.WF.congr hwf rfl rfl rfl rfl
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨s2, news⟩, hm, hr⟩ := h
-      simp only [Prod.mk.injEq] at hr
-      obtain ⟨rfl, -⟩ := hr
-      exact GameState.WF.congr (moveAll_wf _ _ _ hwf hm) rfl rfl rfl rfl
-  · rename_i p cards rest l hp hk
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p rest l hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨s2, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact GameState.WF.congr (recycleAll_wf p _ hwf hm) rfl rfl rfl rfl
   · rename_i p rest l hp hk
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · rename_i p order rest opp hp hk
     simp only [Option.map_eq_some_iff] at h
-    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    obtain ⟨s2, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
-    exact GameState.WF.congr (burnOut_wf hwf hm) rfl rfl rfl rfl
+    exact GameState.WF.congr (recycleAll_wf p _ hwf hm) rfl rfl rfl rfl
+  · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the game well formed. -/
@@ -197,22 +197,22 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i p chosen rest c hp hk
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
-  · rename_i p chosen rest hp hk
+  · rename_i p n rest c hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have hp' := moveObj_physIds hwf hm
+    exact hp'
+  · rename_i p n rest hp hk
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact List.Perm.refl _
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨s2, news⟩, hm, hr⟩ := h
-      simp only [Prod.mk.injEq] at hr
-      obtain ⟨rfl, -⟩ := hr
-      have hp' := moveAll_physIds _ _ _ hwf hm
-      exact hp'
-  · rename_i p cards rest l hp hk
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
+  · rename_i p rest l hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨s2, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -220,16 +220,16 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
     have hp' := recycleAll_physIds p _ hwf hm
     exact hp'
   · rename_i p rest l hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have hp' := recycleAll_physIds p _ hwf hm
+    exact hp'
+  · rename_i p rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i p order rest opp hp hk
-    simp only [Option.map_eq_some_iff] at h
-    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
-    simp only [Prod.mk.injEq] at hr
-    obtain ⟨rfl, -⟩ := hr
-    have hp' := burnOut_physIds hwf hm
-    exact hp'
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the physical cards. -/

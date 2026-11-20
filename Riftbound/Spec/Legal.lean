@@ -40,16 +40,17 @@ def Legal (s : GameState) (a : Action) : Prop :=
   | .chanceTurnOrder :: _, .arrangePlayers l =>
     a.actor = .chance ∧ l.Perm (allPlayers s.playerCount)
   -- the mulligan (CR 117): set aside up to two cards of the hand, or finish
-  | .mulligan p chosen :: _, .mulliganPick c =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ c ∉ chosen ∧ chosen.length < 2
+  | .mulligan p n :: _, .mulliganPick c =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ n < 2
   | .mulligan p _ :: _, .mulliganDone => a.actor = .player p
-  -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards
-  | .chanceRecycle _ cards :: _, .arrange l => a.actor = .chance ∧ l.Perm cards
+  -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards set aside
+  | .chanceRecycle p :: _, .arrange l =>
+    a.actor = .chance ∧ l.Perm (s.zone (.player p .setAside))
   -- the order of the Trash in a Burn Out (CR 432.2.b): an arrangement of the Trash
   | .chanceBurnOut p :: _, .arrange l =>
     a.actor = .chance ∧ l.Perm (s.zone (.player p .trash))
   -- the opponent of a Burn Out (CR 432.2.c): a player other than the one who burned out
-  | .chooseBurnOut p _ :: _, .burnOutTarget opp =>
+  | .chooseBurnOut p :: _, .burnOutTarget opp =>
     a.actor = .player p ∧ opp ≠ p ∧ opp.n < s.playerCount
   | _, _ => False
 

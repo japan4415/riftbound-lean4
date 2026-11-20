@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Move
+public import Riftbound.Rules.Owner
 
 /-!
 # Creating objects
@@ -19,11 +20,18 @@ def GameState.empty (config : GameConfig) : GameState :=
   { config, objects := {}, zones := {}, points := {}, nextId := 0, nextTimestamp := 0,
     pending := [], turnOrder := [] }
 
+/-- The zone can hold an object of this owner: a Non-Board zone of a player holds only that player's
+cards (CR 056). -/
+def Zone.fits (z : Zone) (owner : PlayerId) : Bool :=
+  match z with
+  | .player q k => k.isBoard || q == owner
+  | _ => true
+
 /-- Add a new object to a zone. Its identifier and timestamp are the next ones. `none` if the zone
-is not a zone of the game. -/
+is not a zone of the game, or cannot hold an object of this owner. -/
 def addObject (s : GameState) (o : Object) (z : Zone) (pos : Pos := .top) :
     Option (GameState × ObjId) :=
-  if z.Valid s.playerCount then
+  if z.Valid s.playerCount ∧ z.fits o.owner = true then
     let id : ObjId := ⟨s.nextId⟩
     some ({ s.setZone z (pos.insert id (s.zone z)) with
             objects := s.objects.insert id.n { o with timestamp := ⟨s.nextTimestamp⟩ },
@@ -49,7 +57,8 @@ theorem addObject_wf {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {id 
     (hwf : s.WF) (h : addObject s o z pos = some (s', id)) : s'.WF := by
   unfold addObject at h
   split at h
-  · rename_i hz
+  · rename_i hzc
+    have hz : z.Valid s.playerCount := hzc.1
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     have hz' : z ∈ allZones s.playerCount := hz
@@ -111,6 +120,61 @@ theorem addObject_wf {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {id 
       rcases hk' with hk' | hk'
       · exact ⟨z, hz, Nat.compare_eq_eq.mp hk'⟩
       · exact hwf.zones_valid k hk'
+  · exact absurd h (by simp)
+
+/-- Adding an object keeps `OwnerOk`. -/
+theorem addObject_ownerOk {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {id : ObjId}
+    (hwf : s.WF) (hown : s.OwnerOk) (h : addObject s o z pos = some (s', id)) :
+    s'.OwnerOk := by
+  unfold addObject at h
+  split at h
+  · rename_i hzc
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    refine ⟨fun p k hk id2 hid2 o2 ho2 => ?_⟩
+    by_cases hzz : Zone.player p k = z
+    · have hz2 : id2 ∈ (pos.insert ⟨s.nextId⟩ (s.zone z)) := by
+        have : ({ s.setZone z (pos.insert ⟨s.nextId⟩ (s.zone z)) with
+            objects := s.objects.insert s.nextId { o with timestamp := ⟨s.nextTimestamp⟩ },
+            nextId := s.nextId + 1, nextTimestamp := s.nextTimestamp + 1 } : GameState).zone
+            (.player p k) = pos.insert ⟨s.nextId⟩ (s.zone z) := by
+          rw [hzz]
+          exact GameState.zone_setZone_self s z _
+        rwa [this] at hid2
+      rcases List.mem_cons.mp ((Pos.insert_perm pos _ _).mem_iff.mp hz2) with rfl | hold2
+      · -- the new object
+        simp only [GameState.obj?] at ho2
+        rw [Std.ExtTreeMap.getElem?_insert_self] at ho2
+        have := Option.some.inj ho2
+        subst this
+        have hf := hzc.2
+        rw [← hzz] at hf
+        simp only [Zone.fits, hk, Bool.false_or, beq_iff_eq] at hf
+        exact hf.symm
+      · -- an old object
+        have hlt := hwf.lt_nextId id2 (GameState.mem_zoneIds
+          (GameState.zone_valid_of_mem hwf hold2) hold2)
+        have hne : id2.n ≠ s.nextId := by omega
+        simp only [GameState.obj?] at ho2
+        rw [Std.ExtTreeMap.getElem?_insert] at ho2
+        have hcmp : ¬ compare s.nextId id2.n = .eq := fun e => hne (Nat.compare_eq_eq.mp e).symm
+        simp only [hcmp, ite_false] at ho2
+        rw [← hzz] at hold2
+        exact hown.owner p k hk id2 hold2 o2 ho2
+    · have hzone : id2 ∈ s.zone (.player p k) := by
+        have : ({ s.setZone z (pos.insert ⟨s.nextId⟩ (s.zone z)) with
+            objects := s.objects.insert s.nextId { o with timestamp := ⟨s.nextTimestamp⟩ },
+            nextId := s.nextId + 1, nextTimestamp := s.nextTimestamp + 1 } : GameState).zone
+            (.player p k) = s.zone (.player p k) := GameState.zone_setZone_ne s hzz _
+        rwa [this] at hid2
+      have hlt := hwf.lt_nextId id2 (GameState.mem_zoneIds
+        (GameState.zone_valid_of_mem hwf hzone) hzone)
+      have hne : id2.n ≠ s.nextId := by omega
+      simp only [GameState.obj?] at ho2
+      rw [Std.ExtTreeMap.getElem?_insert] at ho2
+      have hcmp : ¬ compare s.nextId id2.n = .eq := fun e => hne (Nat.compare_eq_eq.mp e).symm
+      simp only [hcmp, ite_false] at ho2
+      exact hown.owner p k hk id2 hzone o2 ho2
   · exact absurd h (by simp)
 
 end Riftbound

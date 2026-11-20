@@ -61,14 +61,14 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .chanceTurnOrder :: _ =>
     let (l, r) := shuffle r (allPlayers s.playerCount)
     some (⟨.chance, .arrangePlayers l⟩, r)
-  | .chanceRecycle _ cards :: _ =>
-    let (l, r) := shuffle r cards
+  | .chanceRecycle p :: _ =>
+    let (l, r) := shuffle r (s.zone (.player p .setAside))
     some (⟨.chance, .arrange l⟩, r)
   | .chanceBurnOut p :: _ =>
     let (l, r) := shuffle r (s.zone (.player p .trash))
     some (⟨.chance, .arrange l⟩, r)
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
-  | .chooseBurnOut p _ :: _ =>
+  | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)
     | [] => none

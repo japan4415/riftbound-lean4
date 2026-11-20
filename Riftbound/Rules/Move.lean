@@ -265,6 +265,8 @@ structure MoveSpec (s s' : GameState) (id id' : ObjId) (pos : Pos) (src dst : Zo
   locate : s.locate id = some src
   /-- Points are not touched. -/
   points : s'.points = s.points
+  /-- The object keeps its owner. -/
+  owner : (s'.objects[id'.n]?).map (·.owner) = (s.objects[id.n]?).map (·.owner)
 
 /-- The shape of a successful move, with the link between the asked destination and the one the
 object went to (CR 056). -/
@@ -292,7 +294,7 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inr rfl, ⟨by simp, Or.inr (by simp)⟩,
-          ?_, ?_, ?_, ?_, ?_, hloc, rfl⟩
+          ?_, ?_, ?_, ?_, ?_, hloc, rfl, ?_⟩
         · intro k
           simp only [Std.ExtTreeMap.mem_insert, Std.ExtTreeMap.mem_erase, Nat.compare_eq_eq,
             ne_eq]
@@ -313,12 +315,14 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
           rw [GameState.zone_move hne]
           simpa using Pos.mem_insert pos _ _
         · exact Or.inl hcr
+        · have hobj' : s.objects[id.n]? = some o := hobj
+          simp [hobj']
       · rename_i hcr
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inl rfl, ⟨Nat.le_refl _, Or.inl rfl⟩,
-          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl⟩
+          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl, rfl⟩
         · intro k
           change k ∈ s.objects ↔ _
           by_cases hk : k = id.n

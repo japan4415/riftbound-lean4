@@ -159,6 +159,23 @@ theorem WF.congr {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
   · intro x hx; rw [hids] at hx; rw [hn]; exact hwf.lt_nextId x hx
   · intro k hk; rw [hz] at hk; rw [hcount]; exact hwf.zones_valid k hk
 
+/-- The owner of every card in a Non-Board zone of a player is that player (CR 056): a card never
+sits in the Non-Board zone of someone who does not own it. -/
+structure OwnerOk (s : GameState) : Prop where
+  /-- The owner of an object in a Non-Board zone of player `p` is `p`. -/
+  owner : ∀ (p : PlayerId) (k : ZoneKind), k.isBoard = false →
+    ∀ id ∈ s.zone (.player p k), ∀ o, s.obj? id = some o → o.owner = p
+
+/-- `OwnerOk` only looks at the object table and the zones. -/
+theorem OwnerOk.congr {s s2 : GameState} (h : s.OwnerOk) (ho : s2.objects = s.objects)
+    (hz : s2.zones = s.zones) : s2.OwnerOk := by
+  refine ⟨fun p k hk id hid o hobj => ?_⟩
+  have hzone : s2.zone (.player p k) = s.zone (.player p k) := by simp [zone, hz]
+  have hobj' : s2.obj? id = s.obj? id := by simp [obj?, ho]
+  rw [hzone] at hid
+  rw [hobj'] at hobj
+  exact h.owner p k hk id hid o hobj
+
 end GameState
 
 end Riftbound
