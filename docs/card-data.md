@@ -138,6 +138,7 @@ def fallingStar : CardDef :=
     status := .full }
 ```
 
+- **実装では、識別子はカード名ではなく `cardId`**（`OGN_029.meta`、`OGN_029`）にした。メタデータの型は `CardMeta` ではなく `CardDef` そのもの（効果の欄が入るまで、手書きの部分は `def OGN_029 : CardDef := OGN_029.meta`）。
 - [確認済] `fallingStar.meta` と `fallingStar` を同じ namespace に並べて定義する形は、`module` の下の v4.36.0 で通る。
 
 - `Registry.lean` で、全カードと `custom` ハンドラを集めて `CardDB` を作る。一覧は生成スクリプトが作る。
