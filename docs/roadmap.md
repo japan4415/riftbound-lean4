@@ -4,6 +4,7 @@
 
 ## 進め方の原則
 
+- **小さな単位で進め、単位ごとに証明が通ることを確かめる。** 1 単位は、1 つの定義か、1 つの定理とする。ビルドが通ってから次へ進み、証明が通っていない定理の上に次を積まない。検証はローカルで行う（[lean-guidelines.md §7](lean-guidelines.md#7-作業の単位とローカルでの検証)、[design.md §12](design.md#12-決定事項2026-11-20) Q7）。
 - **ルールの骨格を、効果を持たない（バニラの）カードで先に完成させる。** 能力システムとカード群は、その後に載せる。
 - 各マイルストーンは「実装」「テスト」「証明」の 3 つを同時に満たして完了とする。証明だけ、実装だけを先行させない。
   - 後のマイルストーンで本実装に差し替える仮の実装（スタブ）は、そう明記する。
@@ -52,17 +53,17 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 **実装**
 - `lean-toolchain`（`leanprover/lean4:v4.36.0`）と `lakefile.toml` を置く。設定は [lean-guidelines.md](lean-guidelines.md) に従う。
 - ライブラリの骨組みを作る: `Riftbound`、`RiftboundCards`、`RiftboundDriver`、`RiftboundTest`（test driver）。全ファイルを `module` にする。
-- GitHub Actions を置く: `leanprover/lean-action@v1` で build・test・axiom 監査を行い、`--wfail` を付ける。
-- `sorry` の検出と、docstring 中の CR 引用を抽出するスクリプト（のちのカバレッジ集計用）を作る。
+- 全体の検証スクリプト `scripts/verify.sh` を作る: 全ライブラリのビルド（`--wfail`）、`lake test`、axiom の監査（`lake check --inadvisably-no-sandbox`）。`sorry` は `--wfail` で止まる。GitHub Actions は置かない（[lean-guidelines.md §7](lean-guidelines.md#7-作業の単位とローカルでの検証)）。
+- docstring 中の CR 引用を抽出するスクリプト（のちのカバレッジ集計用）を作り、`verify.sh` から呼ぶ。
 - リポジトリ直下の `README.md` に免責文を置き、`NOTICE` にカード由来のデータの権利を書く（[design.md §10](design.md#10-カードデータと権利)）。2026-11-20 に設置済み。
 - **技術的な確認（スパイク）**:
   - `lake lint` の組み込み linter の設定
-  - lean-action の入力（`axiom-audit` など）
+  - `lake check --inadvisably-no-sandbox` が、このリポジトリの構成（複数のライブラリ、`defaultTargets` は `Riftbound` だけ）で検証コアだけを監査すること
   - lean-beam と module system の併用
   - 数百件の `CardDef` に対する検査を `decide` でするか `#guard` でするか
   - `Std.ExtTreeMap` を持つ状態に対する `decide` の速さ（数十オブジェクトの規模で）
 
-**完了条件**: CI が通る。`lake build` と `lake test` が通る。
+**完了条件**: `scripts/verify.sh` がローカルで通る（`lake build`、`lake test`、axiom の監査）。
 
 ## M1: 静的データとデッキ構築（CR 101-103, 125-187）
 
@@ -307,7 +308,7 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 3. `Legal` が全フレームの種類を覆い、全種類について I6 が証明されている。
 4. I1〜I19 が証明されている。I12 のうち fuel で扱う部分は、その範囲を明記している。
 5. [tournament-model.md](tournament-model.md) の対象範囲（フォーマット、マッチ、時間切れ、ループ、合意の引き分け、2v2 の席順）が実装されている。
-6. CI のすべての検査（build、test、axiom 監査、カードデータの陳腐化検査）が通る。
+6. 全体の検証（`scripts/verify.sh`: build、test、axiom の監査、カードデータの陳腐化検査）がローカルで通る。
 
 証明（3 と 4）を完了条件に含めることは、決定済みである（[design.md §12](design.md#12-決定事項2026-11-20) Q6）。
 
@@ -324,7 +325,7 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 
 ## 1 枚のカードの完了条件
 
-1. 生成ブロック（公式文面の docstring とメタデータ）が最新である（`RiftboundCards/<Set>.lean`。CI の検査で確かめる）。
+1. 生成ブロック（公式文面の docstring とメタデータ）が最新である（`RiftboundCards/<Set>.lean`。全体の検証 `scripts/verify.sh` で確かめる）。
 2. 効果が IR で書かれている。`custom` を使う場合は、ハンドラにシナリオテストがある。
 3. 実装状況が `full` である。
 4. シナリオテストが 1 つ以上ある。

@@ -69,6 +69,7 @@ name = "RiftboundTest"
 - Plausible v4.36.0 の取得とビルド
 
 設定の意図:
+- `defaultTargets` は `Riftbound`（検証コア）だけにする。axiom の監査（§7.2）は、デフォルトのビルド対象を見るからである。全ライブラリをビルドするときは、名前を並べて指定する。
 - `autoImplicit` と `relaxedAutoImplicit` は、Lean 本体の既定では `true`。綴りの誤りが、意図しない暗黙引数として受け入れられてしまうため、Mathlib と同じく `false` にする。
 - `linter.missingDocs` は、公開する宣言（帰納型のコンストラクタを含む）すべてに docstring を求める。[確認済]
   - ルールの定義に CR の根拠を書かせるために有効にする（§4）。
@@ -253,36 +254,60 @@ end
 - **列挙の照合テスト**: 小さな状態で、`legalActions` の結果を、「候補を作って `step` で試し、通ったものを残す」方法の結果と比べる（design.md §11）。この方法を `legalActions` の定義に使うことは禁止している。
 - テストでは `native_decide` を使ってもよい。ただし `Riftbound` ライブラリの定理から参照しないこと。
 
-## 7. CI
+## 7. 作業の単位とローカルでの検証
 
-`lake new` のテンプレートが生成する workflow を元にする。[確認済] テンプレートは `actions/checkout@v7` と `leanprover/lean-action@v1` を使っている。
+開発者が 1 人の間は、検証をすべてローカルで行う。GitHub Actions は使わない（design.md §12 Q7）。
 
-```yaml
-name: CI
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: leanprover/lean-action@v1
-        with:
-          test: true
-          build-args: "--wfail"
-          axiom-audit: true
-```
+Lean では、ビルドが通ることが「証明が kernel の検査を通った」ことを意味する。だから小さな単位で書き、単位ごとにビルドを通してから先へ進む。
 
-- `--wfail` は警告をエラーにする。`sorry` は警告として出るので、これで `sorry` の混入も止まる。
-- `axiom-audit` は、`propext`、`Classical.choice`、`Quot.sound` 以外の axiom に依存する宣言があると失敗する。
-  - `axiom-audit`、`build-args`、`test` の各入力は lean-action の README に基づくもので、ローカルでは確かめていない。M0 で実際に動かして確認する。
-  - 監査の対象は `Riftbound` ライブラリにする（`axiom-audit-root`）。`RiftboundDriver` とテストは対象外。
-- `lake check` は、kernel で再生して非標準の axiom を拒否する（v4.35.0 で追加）。bubblewrap が必要なので、Linux の CI で使う。
-- 追加するジョブ（M0 以降）:
-  - CR の引用の抽出とカバレッジ表の生成
-  - カードデータの陳腐化検査（[card-data.md](card-data.md)）
+### 7.1 作業の単位
+
+- **1 単位は、1 つの定義か、1 つの定理とする。** 切り離せないもの（相互再帰の定義、定義とその `Decidable` のインスタンスなど）は、まとめて 1 単位にしてよい。
+- 単位ごとに、次の順に進める。
+  1. 定義か、定理の主張を書く。
+  2. 定理なら証明を書く。定義なら、直後に `#guard` か `example` で小さな検査を書く（§6）。
+  3. そのモジュールをビルドする（§7.2）。エラーも警告も無いことを確かめる。
+  4. 通ってから、次の単位に進む。
+- **証明が通っていない定理の上に、次の単位を積まない。**
+  - 書いている途中で `sorry` を置くのはよい。ただし、`sorry` を残したまま次の単位に進まず、コミットもしない。
+  - 証明に行き詰まったら、先へ進まずに、主張か定義を見直す。
+  - 後回しにする定理は、コードに残さない。メモか Issue に書く。
+- 定理は、それを使う側より先に書く。下の層から積む順序（roadmap.md）が、そのまま単位の順序になる。
+- **コミットは、1 単位か、密接に関連する数単位ごとに行う**（例: 1 つの定義と、その補題）。
+  - どのコミットも、`--wfail` を付けた全体のビルドが通る状態にする。
+  - コミットメッセージに、足した定義と定理の名前を書く。
+- **PR は、1 つのまとまりごとに作る**（1 つのファイル、1 つの手続きなど）。マイルストーンをまるごと 1 つの PR にしない。
+- エージェントが実装する場合も、同じ単位で進める。
+  - 単位ごとに、ビルドの結果を自分で確かめる。
+  - 報告には、足した定理の名前と、実行した検証コマンドとその結果を書く。
+  - lean-beam（§8）で試した結果は、確認の代わりにしない。最後は必ず `lake build` で確かめる。
+
+### 7.2 検証のコマンド
+
+| いつ | コマンド | 確かめること |
+|---|---|---|
+| 単位ごと | `lake build Riftbound.Rules.Move --wfail`（書いているモジュールを指定する） | その定義と定理が検査を通る。警告と `sorry` が無い |
+| コミットの前 | `lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest --wfail` と `lake test` | 全体が通る。下流のモジュールを壊していない |
+| main へのマージの前 | `scripts/verify.sh`（全体の検証） | 下の一覧のすべて |
+
+`scripts/verify.sh` は、次を順に実行する。1 つでも失敗したら、そこで止まる。
+
+1. 全ライブラリのビルド（`--wfail`）
+2. `lake test`
+3. axiom の監査（`lake check --inadvisably-no-sandbox`）
+4. カードデータの陳腐化検査（`uv run scripts/gen_lean.py --check`。[card-data.md](card-data.md)）
+5. CR の引用の抽出と、カバレッジ表の生成
+
+- **`--wfail`** は警告をエラーにする。
+  - [確認済] `sorry` を含むモジュールは、`--wfail` を付けるとビルドが失敗する（"declaration uses `sorry`" の警告がエラーになる）。付けないと、警告が出るだけでビルドは成功する。
+  - [確認済] モジュール名を指定したビルド（`lake build Chk.Basic --wfail`）は、そのモジュールと依存先だけをビルドする。
+- **axiom の監査**には `lake check` を使う（v4.35.0 で追加）。デフォルトのビルド対象を kernel で再生し、`propext`、`Classical.choice`、`Quot.sound` 以外の axiom を使う宣言があると失敗する。
+  - [確認済] `lake check` は、対象のコードを bubblewrap のサンドボックスの中でビルドする。macOS ではサンドボックスが使えず、そのままではエラーになる。
+  - [確認済] macOS では、`--inadvisably-no-sandbox` を付けると動く。サンドボックスは、信頼できないコードを検査するときの備えである。自分で書いたコードを自分のマシンで検査するので、無くても差し支えない。
+  - [確認済] この形で、自分で宣言した `axiom` を使う定理と、`native_decide` を使う定理が、どちらも拒否される。
+  - 監査の対象は `Riftbound` ライブラリだけにする。`lake check` はデフォルトのビルド対象を見るので、`defaultTargets` を `["Riftbound"]` にしておけばよい（§2）。`RiftboundDriver` とテストは対象外。
+- **マージの前に、`scripts/verify.sh` の結果を PR の説明に書く。** CI が無いので、これが検証を通した記録になる。
+- 開発者が増えたら、同じ `scripts/verify.sh` を GitHub Actions で実行する（`leanprover/lean-action`）。そのときは Linux なので、`lake check` をサンドボックスつきで使える。
 
 ## 8. 開発支援ツール
 
