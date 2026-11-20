@@ -39,6 +39,7 @@ public import Riftbound.Invariant.Sound
 public import Riftbound.Invariant.Hands
 public import Riftbound.Invariant.Turn
 public import Riftbound.Invariant.Progress
+public import Riftbound.Invariant.Setup
 public import Riftbound.Invariant.Resources
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality

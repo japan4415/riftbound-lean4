@@ -30,10 +30,12 @@ structure GameConfig where
   mode : Mode
 deriving DecidableEq, Repr
 
-/-- A configuration that can be played. For now: at least two players. Which pairs of mode and
+/-- A configuration that can be played. For now: at least two players, and a deck holds at least
+one Battlefield, since one is picked at random from each (CR 487.5). Which pairs of mode and
 format the Tournament Rules provide procedures for is still to be checked
 in the 600 series of the Tournament Rules (tournament-model.md §7). -/
-def GameConfig.Valid (c : GameConfig) : Prop := 2 ≤ c.mode.players
+def GameConfig.Valid (c : GameConfig) : Prop :=
+  2 ≤ c.mode.players ∧ 1 ≤ c.mode.deckBattlefields
 
 instance GameConfig.decidableValid (c : GameConfig) : Decidable c.Valid := by
   unfold GameConfig.Valid; infer_instance
