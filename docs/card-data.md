@@ -38,13 +38,15 @@
 ```text
 scripts/fetch.py      公式ギャラリーから取得し、日付つきのスナップショット JSON を作る
 scripts/normalize.py  正規化: 型の補正、supertype の補完、印刷違いを論理カードに束ねる、エラッタの適用
-scripts/gen_lean.py   RiftboundCards/<Set>/Meta.lean を生成（コミットする）
+scripts/gen_lean.py   RiftboundCards/<Set>.lean の生成ブロックを更新し、新しいカードの雛形を足す（§4）
+                      --check を付けると書き換えずに差分の有無だけを返す（CI 用）
 scripts/coverage.py   実装状況の表を生成（docs/ か CI のサマリーに出す）
 ```
 
 - Python は `uv` で管理し、`uv run` で実行する。依存の追加は `uv add` で行う。
 - Lean からビルド時に JSON を読む方式は取らない。標準的な手順が確立しておらず、ビルドの再現性とキャッシュが複雑になるためである。
-- 生成物（`Meta.lean`）はコミットする。差分をレビューでき、ビルド時にネットワークが要らない。
+- 取得したスナップショット JSON と、生成ブロックを含む `RiftboundCards/<Set>.lean` はコミットする。差分をレビューでき、ビルド時にネットワークが要らない。
+- CI では `gen_lean.py --check` を実行し、生成ブロックがスナップショットと一致していることを確かめる。
 - 定期実行の CI（週 1 回など）で取得し、スナップショットとの差分を報告する。対象は新カード、文面の変更、エラッタ。
 - **論理カードの同一性**:
   - キーは「名前 + subtitle」と、ルール文面のハッシュの組。
@@ -73,22 +75,56 @@ structure CardDef where
 ```
 
 - `keywords` と `abilities` は別に持つ。キーワードの意味は `abilities` に書き込まず、実効のキーワードから導出する（design.md §7.4）。
-- `Meta.lean`（生成）は、メタデータとキーワードだけを持つ既定値（`status := .todo`）を定義する。
-  - カード文面のキーワードは `[Keyword]` の形で印がついているので、機械的に抽出できる。
-  - 効果の文が無い「キーワードだけのカード」（調査時点で 63 種）は、生成だけで `full` にできる（完了条件の免除は roadmap.md 末尾）。
-- 効果は、セットごとのファイルに手で書く。生成した既定値を上書きする形にする。
+
+### 4.1 ファイルの構成: 1 弾 1 ファイル
+
+- **1 つの弾（セット）を 1 つのファイルにする**: `RiftboundCards/Origins.lean`、`RiftboundCards/Spiritforged.lean` など。namespace は `RiftboundCards.Origins` のように弾ごとに分ける。
+- ファイルの中に、論理カード 1 種ごとに次の 2 つを並べる。
+  1. **生成ブロック**（`-- BEGIN GENERATED <publicCode>` 〜 `-- END GENERATED`）: 生成スクリプトが管理する。中身は、公式文面を入れた docstring と、メタデータ（`CardMeta`: 名前、型、コスト、Might、タグ、印刷されたキーワード）。
+  2. **手書きの部分**: 生成ブロックの直後に置く。効果（`abilities`、`spellEffect`）と実装状況を書く。生成スクリプトはここに触れない。
+- 公式文面は、コメントではなく docstring に入れる。理由は次の 3 つ。
+  - エディタのホバー表示と API ドキュメントで見える。
+  - docstring の必須チェック（`linter.missingDocs`）を満たす。
+  - スクリプトで抽出して、スナップショットと照合できる。
+- showcase などの印刷違いは別のカードにせず、同じ生成ブロックの中に印刷コードを列挙する。エラッタがあれば、現行の文面を載せ、出典を記す。
+- 生成スクリプトの動き:
+  - 新しいカードには、生成ブロックと手書き部分の雛形（`status := .todo`）を足す。
+  - 既存のカードは、生成ブロックだけを書き換える。
+  - 文面が変わった（エラッタなど）カードは、CI の検査で差分として現れるので、手書きの効果を見直すきっかけになる。
+- カード文面のキーワードは `[Keyword]` の形で印がついているので、機械的に抽出できる。効果の文が無い「キーワードだけのカード」（調査時点で 63 種）は、生成だけで `full` にできる（完了条件の免除は roadmap.md 末尾）。
+- 1 弾 1 ファイルを選んだ理由（2026-11-20 の計測）:
+  - 200 枚を 200 ファイルに分けると、クリーンビルドは 52 秒（10 コア）。
+  - 同じ 200 枚を 1 ファイルにすると 1.9 秒。
+  - 時間の大半はファイルごとの固定費なので、ファイル数を弾の数（6〜7）に抑える。
+- ファイルの長さの規約（[lean-guidelines.md §4.2](lean-guidelines.md#42-ファイル)）からは例外とする。エディタでの再検査が重くなったら、弾の中で分ける（例: `Origins/Part1.lean`）。
+- カードのファイルは、効果 IR とカード定義（`Riftbound.Card`）だけを import する。エンジン全体やテスト用の DSL は import しない。シナリオテストは `RiftboundTest` に置く。
 
 ```lean
--- RiftboundCards/Origins/FallingStar.lean（イメージ。IR の名前は design.md §7.2 の初期案）
+-- RiftboundCards/Origins.lean の一部（イメージ。IR の名前は design.md §7.2 の初期案）
+
+-- BEGIN GENERATED OGN-029/298
+/--
+**Falling Star** — Spell · Fury · Cost 2 Energy + 2 Fury Power
+Printings: OGN-029/298
+
+> Deal 3 to a unit.
+> Deal 3 to a unit.
+-/
+def fallingStar.meta : CardMeta :=
+  { id := ⟨"OGN-029"⟩, name := "Falling Star", types := [.spell], domains := [.fury],
+    cost := some { energy := 2, power := [.fury, .fury] }, keywords := [] }
+-- END GENERATED
+
+/-- Falling Star の効果。 -/
 def fallingStar : CardDef :=
-  { Meta.fallingStar with
+  { fallingStar.meta.toDef with
     spellEffect := some (.seq [
       .deal (.choose 0 .anyUnit) (.const 3),
       .deal (.choose 1 .anyUnit) (.const 3)])
     status := .full }
 ```
 
-- `Registry.lean` で、全カードと `custom` ハンドラを集めて `CardDB` を作る。生成スクリプトが一覧を作る。
+- `Registry.lean` で、全カードと `custom` ハンドラを集めて `CardDB` を作る。一覧は生成スクリプトが作る。
 
 ## 5. 文面のパターンと IR への写像
 
@@ -147,7 +183,7 @@ def fallingStar : CardDef :=
 ## 9. 新しいセットを追加する手順
 
 1. 公式のパッチノートと、更新された Core Rules を確認する。ルールが変わっていれば、先に [design.md §9](design.md#9-ルールとカードの版管理) の手順で反映する。
-2. `scripts/fetch.py` でスナップショットを取得し、`gen_lean.py` で `Meta.lean` を生成する。
+2. `scripts/fetch.py` でスナップショットを取得し、`gen_lean.py` で `RiftboundCards/<Set>.lean` を作る（生成ブロックと、手書き部分の雛形）。
 3. 新しいキーワード（§8）と、新しいプリミティブ・hook を IR に足す。
 4. カードの効果を書き、シナリオテストを書く。
 5. 公式 FAQ と裁定を、回帰テストにする。
@@ -164,10 +200,12 @@ def fallingStar : CardDef :=
   - 無料・非商用のファンプロジェクトを、取り消し可能な許諾として認めている。
   - 所定の免責文の表示を求めている。
 - このリポジトリは **公開** で、コードは Apache-2.0 である。
-- **推奨**:
-  - コードのライセンス（Apache-2.0）は、カード由来のデータ（名前・文面）には及ばないと README に明記する。
-  - 非商用とし、Riot が推奨・後援していない旨の免責文を README に置く。
+- **決定（design.md §12 Q1）**: カードの公式文面（英語）をコミットする。あわせて次を守る。
+  - **免責文は必須。** リポジトリ直下の `README.md` に、Legal Jibber Jabber が求める次の文を置く。
+
+    > riftbound-lean4 was created under Riot Games' "Legal Jibber Jabber" policy using assets owned by Riot Games. Riot Games does not endorse or sponsor this project.
+
+  - `NOTICE` に、カード名・カード文面・ルール文書は Riot Games の著作物で、Apache-2.0 はコードにだけ適用されることを書く。
+  - 非商用にする。
   - カード画像とフレーバーテキストは扱わない。
-  - カード全文（英語の文面）をリポジトリにコミットするかは、ユーザーが判断する（design.md §12 Q1）。
-    - 慎重にする場合: スナップショット JSON はコミットせず、取得スクリプトだけを置く。`Meta.lean` には名前・数値・キーワードだけを入れ、文面は入れない。
   - 必要なら、Developer Portal を通じて Riot に確認する。

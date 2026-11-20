@@ -1,0 +1,23 @@
+riftbound-lean4
+Copyright 2026 The riftbound-lean4 Authors
+
+The source code in this repository is licensed under the Apache License,
+Version 2.0 (see LICENSE).
+
+Third-party content
+-------------------
+
+Riot Games, Riftbound, League of Legends, and all associated properties are
+trademarks or registered trademarks of Riot Games, Inc.
+
+Card names, card text, and the contents of the Riftbound Core Rules and the
+Riftbound Tournament Rules are the property of Riot Games, Inc. They appear
+in this repository for non-commercial use under Riot Games' "Legal Jibber
+Jabber" policy (https://www.riotgames.com/en/legal). They are NOT licensed
+under the Apache License, Version 2.0.
+
+riftbound-lean4 was created under Riot Games' "Legal Jibber Jabber" policy
+using assets owned by Riot Games. Riot Games does not endorse or sponsor this
+project.
+
+Card images and flavor text are not included in this repository.

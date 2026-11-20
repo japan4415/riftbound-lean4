@@ -6,6 +6,7 @@
 
 - [rules-model.md](rules-model.md) — Riftbound Core Rules を形式化の観点で整理したもの（規則番号つき）
   - 本書で定義なしに使うルール用語（Chain、Pending / Finalize、HOT FEPR、Cleanup、Contested、Staged、Showdown、Mighty など）は、こちらを参照。
+- [tournament-model.md](tournament-model.md) — Riftbound Tournament Rules のうち形式化の対象にする部分（フォーマット、マッチ、時間切れ、ループ）
 - [lean-guidelines.md](lean-guidelines.md) — このリポジトリの Lean 4 コーディング規約
 - [card-data.md](card-data.md) — カードデータの取り込みと、効果 IR への落とし込み
 - [roadmap.md](roadmap.md) — マイルストーンと、証明を積み上げる順序
@@ -19,7 +20,7 @@
 | ID | 要求（original.md） | 設計上の解釈 |
 |---|---|---|
 | R1 | Lean4 で実装する | 実行できるルールエンジンと、その性質の証明を、同じ Lean コードベースに置く |
-| R2 | ルールは公式のルールに則る | 各定義から Core Rules の規則番号を辿れるようにする。合法性は、CR から直接書いた仕様 `Legal` として独立に持つ。ルール改訂に追従する手順を持つ |
+| R2 | ルールは公式のルールに則る | 公式ルールは Core Rules と Tournament Rules の両方とする。各定義から規則番号を辿れるようにする。合法性は、ルールから直接書いた仕様 `Legal` として独立に持つ。ルール改訂に追従する手順を持つ |
 | R3 | 新カードの追加時にその効果を反映できる | カードは「データ + 効果 IR（中間表現）」で表す。エンジンはカードの集合（`CardDB`）を引数に取り、定理はすべての `CardDB` について述べる。新カードの追加は、原則としてデータの追加で済ませる |
 | R4 | 小さいところから証明を積み上げる | ゾーン移動などのプリミティブで一度だけ証明し、手続き・大域不変条件・カードへと積み上げる |
 | R5 | 全カードをコード化し、カードでできること全てができる | エンジンはプレイヤーの選択肢を勝手に狭めない。すべての選択を決定要求として外に出し、合法手を漏れなく列挙する |
@@ -36,6 +37,7 @@ R5 の「できること全て」は、本書では次の 2 点の両立と定�
 | 対象 | 版 | 備考 |
 |---|---|---|
 | ルール | **Riftbound Core Rules, Last Updated 2026-10-09**（Radiance 版、2026-10-16 発効） | 以下「CR」と略す。規則番号はすべてこの版のもの |
+| 大会のルール | **Riftbound Tournament Rules, Last Updated October 9, 2026** | 以下「TR」と略す。大会では CR に優先する（TR 104.1）。[tournament-model.md](tournament-model.md) |
 | カードプール | Origins, Proving Grounds, Spiritforged, Unleashed, Vendetta, Radiance | 2026-11-20 時点。公式ギャラリー上で 1,416 件の印刷、論理カードは約 1,100 種 |
 | Lean | `leanprover/lean4:v4.36.0` | 2026-11-16 公開の最新 stable。ローカルの elan 既定と一致 |
 
@@ -49,13 +51,13 @@ R5 の「できること全て」は、本書では次の 2 点の両立と定�
 
 | # | 原則 | 理由 |
 |---|---|---|
-| P1 | **状態遷移は実行できる関数 `step` で定義し、合法性は CR から直接書く仕様 `Legal`（`Prop`）として独立に持つ。** 両者の一致を定理として積む。遷移そのものを関係で書く仕様は、検証したい一部（戦闘ダメージなど）にだけ足す | `#eval` で対戦を進められ、`simp` で展開できる。合法性の仕様が実装と独立していれば、R2 と R5 の根拠になる |
+| P1 | **状態遷移は実行できる関数 `step` で定義し、合法性は公式ルール（CR / TR）から直接書く仕様 `Legal`（`Prop`）として独立に持つ。** 両者の一致を定理として積む。遷移そのものを関係で書く仕様は、検証したい一部（戦闘ダメージなど）にだけ足す | `#eval` で対戦を進められ、`simp` で展開できる。合法性の仕様が実装と独立していれば、R2 と R5 の根拠になる |
 | P2 | **状態は素直なデータにし、不変条件は別の述語 `WF` で持つ。** 依存型で縛るのは `Fin` などの葉に限る | 失敗しうる遷移（`Except`）と相性がよい。カード追加のたびに証明を求められない |
 | P3 | **エンジンはカードを知らない。** カード名で分岐せず、カードの集合 `CardDB` を引数で受け取る。ルールを曲げるカードのための差し込み口（hook）を最初から用意する | 成熟した TCG エンジン（MTG Arena の GRE、Argentum Engine）がこの形で拡張性を得ている。定理を特定のカード集合に固定しないためでもある |
 | P4 | **プレイヤーの選択はすべて明示的な決定要求にする。** 状態の中に「誰が何を決める番か」を継続のスタックとして持ち、`Action` で答えを受け取る。**コアは選択を自動で決めない**（自動化は Driver の機能） | R5（選択の完全性）。直列化・再生・合法手の列挙が容易になる |
 | P5 | **乱数をコアに持たない。** シャッフルなどは「偶然の決定」として外から結果を受け取り、エンジンは妥当性（置換であること）だけを検査する | `step` が決定的な全域関数のままになり、「どのシャッフル結果でも成り立つ」を量化で述べられる |
 | P6 | **ゾーン移動は 1 つのプリミティブ `moveObj` に集約する** | 保存則・一意性を一度だけ証明すれば、それを使う全効果・全カードに効く |
-| P7 | **規則番号を辿れるようにする。** 各定義の docstring に `(CR 323.4)` の形で根拠を書く | 公式ルールへの準拠（R2）を確認でき、改訂時の影響範囲を機械的に洗い出せる |
+| P7 | **規則番号を辿れるようにする。** 各定義の docstring に `(CR 323.4)` や `(TR 402.1)` の形で根拠を書く | 公式ルールへの準拠（R2）を確認でき、改訂時の影響範囲を機械的に洗い出せる |
 | P8 | **検証コアに `partial` / `unsafe` / `native_decide` / `sorry` を入れない。** CI で axiom を監査する | `partial` な定義は kernel から不透明で証明できない。`native_decide` はコンパイラを信頼対象に加えてしまう |
 
 ## 4. 全体構成
@@ -64,7 +66,7 @@ R5 の「できること全て」は、本書では次の 2 点の両立と定�
  カードデータ（公式ギャラリー等）
         │  scripts/（uv + Python）: 取得・正規化・Lean 生成
         ▼
- RiftboundCards（ライブラリ）: セットごとの CardDef と、具体的な CardDB
+ RiftboundCards（ライブラリ）: 1 弾 1 ファイルの CardDef と、具体的な CardDB
         │ CardDB を引数として渡す（Riftbound 側は RiftboundCards を import しない）
         ▼
  Riftbound（検証コア）
@@ -126,6 +128,12 @@ Riftbound/
     Combat.lean                -- 戦闘（461-468）
     Scoring.lean               -- 得点と勝利（469-474, 193-196）
     Modes.lean                 -- ゲームモード（483-491）
+  Tournament/                  -- Tournament Rules（tournament-model.md）。import 上の位置はファイルごとに違う
+    Format.lean                -- フォーマット（Constructed / Sealed / Draft）と、フォーマットによるゲーム中の変更。Card 層の直後（EngineConfig が参照する）
+    DeckLegality.lean          -- フォーマットごとのデッキの合法性、カードの合法性、禁止カード（TR 402, 403, 601, 602）。Card 層の直後
+    TimeLimit.lean             -- 時間切れの手順（TR 408）。Rules 層（ターンの進行の中で数える）
+    Loop.lean                  -- ループの検出と引き分け（TR 505）。Rules 層（自動処理の中で検出する）
+    Match.lean                 -- マッチ: ゲームの結果の列、サイドボード、先手の決め方（TR 404, 406, 407, 410）。Engine 層の後
   Engine/
     Action.lean  Step.lean  LegalActions.lean  View.lean
   Spec/
@@ -133,7 +141,9 @@ Riftbound/
     Combat.lean ...            -- 遷移の関係仕様（必要な部分だけ）
   Invariant/                   -- WF 保存、一致の定理、Reachable
 RiftboundCards/
-  Origins/ ProvingGrounds/ Spiritforged/ Unleashed/ Vendetta/ Radiance/
+  Origins.lean ProvingGrounds.lean Spiritforged.lean Unleashed.lean Vendetta.lean Radiance.lean
+                               -- 1 弾 1 ファイル。カードごとに公式文面（docstring）と効果を並べる（card-data.md §4）
+  Tokens.lean                  -- トークンの定義（CR 187）
   Registry.lean                -- 具体的な CardDB
 RiftboundDriver/               -- 乱数の供給、自動対戦、ログ再生
 RiftboundTest/
@@ -210,9 +220,21 @@ ObjId の払い出しで、次の 2 つの性質がデータ構造から直接�
 ### 6.1 中核 API
 
 ```lean
+/-- どのルールで遊ぶか。 -/
+inductive RuleSet where
+  | coreOnly                       -- Core Rules だけ
+  | tournament (format : Format)   -- Tournament Rules を Core Rules に優先して適用する（TR 104.1）
+
 /-- エンジンの設定。fuel は自動処理の上限。 -/
 structure EngineConfig where
-  fuel : Nat
+  fuel    : Nat
+  ruleSet : RuleSet
+  mode    : Mode                   -- Duel などのゲームモード（CR 483-491）
+
+/-- ゲームの終わり方。Core Rules には勝利しかないが、大会のルールでは引き分けがある。 -/
+inductive GameResult where
+  | won (winners : List PlayerId)  -- 2v2 では勝者はチーム（CR 491.6.a）
+  | draw (reason : DrawReason)     -- ループ（TR 505.6）、時間切れ（TR 408.2.b）、合意（TR 410.1）
 
 inductive RuleError where
   | illegal (reason : IllegalReason)  -- 合法でない Action
@@ -234,7 +256,8 @@ def view (p : PlayerId) (s : GameState) : PlayerView
   - 具体的なカード集合が `CardDB.WF` を満たすことは、セットごとに検査する（[roadmap.md](roadmap.md) M7）。
 - 自動処理は、`cfg.fuel` を持つ構造再帰の `advance` で回す。
   - 対象: Cleanup の反復（322）、HOT FEPR、Start of Turn、戦闘の各 Step、Expiration Step のループ（317.2.f）、Burn Out の繰り返し（432.3）、Layers の反復（478.3）。
-  - fuel が尽きたら `fuelExhausted` を返す。CR には無限ループを処理する規定が見当たらないため、強制ループの検出も兼ねる。
+  - fuel が尽きたら `fuelExhausted` を返す。CR には無限ループを処理する規定が見当たらない。
+  - **大会のルールでは**、誰も維持していない止まらないループは引き分けになる（TR 505.6）。自動処理の中で状態が完全に繰り返されたら、決定的に無限に続くことが確定するので、ゲームを `draw` で終える。状態が繰り返さずに増え続けるループは検出できないので、fuel を安全弁として残す（[tournament-model.md §5](tournament-model.md#5-ループtr-505)）。
   - 「到達可能な状態では、ある fuel で足りる」という補題は、測度が見つかった部分から積む。
 - プレイヤーが自分の意思で続けるループ（同じ起動能力を繰り返すなど）は、決定の列が続くだけなので問題にならない。
 
@@ -257,8 +280,10 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `choose` | 対象・モード・移動先・プレイ先（355）、任意の追加コストを払うか（355.1.a）、"may" に従うか、誘発能力を Chain に積む順序（383.3.d。戦闘開始時は 466.2.d.1 の例外順）、置換効果の適用順（372）、マリガン（117）、Burn Out で点を与える相手（432.2.c）、Secret / Private なカードへの指示を拒否するか（128.6） |
 | `chance` | シャッフル（114）、Main Deck の下へ同時に Recycle するときの順序（417.5）、Burn Out での Trash のランダム化（432.2.b）、手番順（115）、Battlefield のランダムな選択（487.5, 489.5, 490.5, 491.5.a） |
 
-- **`Action` は「行為者 + 内容」とする。** 行為者はプレイヤーか、偶然（chance）。
+- **`Action` は「行為者 + 内容」とする。** 行為者は、プレイヤー、偶然（chance）、時計（clock）のいずれか。
   - **投了（649-650）は、決定要求と無関係に、残っているどのプレイヤーにも常に合法**とする。
+  - 大会のルールでは、合意による引き分け（TR 410.1）も、決定要求と無関係に提案できる。全員が同意したらゲームを `draw` で終える。
+  - 時計は、時間切れ（TR 408.2）を知らせる行為者である。以後、エンジンが残りターン数を数え、終わったら点差で結果を決める。
   - 2v2 で味方が行動に招かれる規則（491.8.a）も、行為者として表す。
 - **巻き戻し**（358.5）:
   - プレイ手順の開始時に、盤面の部分（決定スタックを含まない）をフレームに保存する。
@@ -276,7 +301,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
   def Legal (db : CardDB) (s : GameState) (a : Action) : Prop
   ```
 
-  - フレームの種類ごとに、CR から直接書く。
+  - フレームの種類ごとに、CR（大会の設定では TR も）から直接書く。
   - `step` の実装は参照しない。共有してよいのは、状態の読み出しと特性の導出（`characteristics`）だけ。
   - 人が CR と並べて読める大きさに保つ。これが R2 の主な根拠になる。
   - 偶然の決定の `Legal` は「妥当な順列であること」（`List.Perm`）とし、列挙はしない（40 枚のデッキの順列は列挙できない）。
@@ -286,7 +311,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
   |---|---|
   | `step` の健全性 | `Legal db s a → WF s → ∀ e, step cfg db s a = .error e → e = .fuelExhausted`（合法手は、fuel 切れ以外の理由で拒否されない） |
   | `step` の完全性 | `(∃ r, step cfg db s a = .ok r) → Legal db s a`（合法でない手は受理されない） |
-  | 列挙の一致 | `a ∈ legalActions db s ↔ Legal db s a ∧ a.actor ≠ .chance` |
+  | 列挙の一致 | `a ∈ legalActions db s ↔ Legal db s a ∧ a.actor.isPlayer`（偶然と時計の Action は列挙しない） |
 
 - **`legalActions` を「候補を作って `step` で試し、通ったものを残す」形で定義してはならない。** そうすると列挙の一致の定理が無意味になる。`legalActions` は、フレームの種類ごとに候補を構成的に列挙する。
 - `Legal` が未整備のフレームの種類については、その間はテストだけで担保する。どの種類まで整備済みかを、カバレッジ表に出す。
@@ -399,8 +424,8 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 ## 9. ルールとカードの版管理
 
 - **ルール**:
-  - コードに `RulesVersion` 定数（`"2026-10-09"`）を置く。
-  - 規則番号の引用は常に `(CR 323.4)` の形式で書く。引用はすべてその版を指す。
+  - コードに `RulesVersion` 定数（CR と TR の版の日付）を置く。
+  - 規則番号の引用は常に `(CR 323.4)` / `(TR 402.1)` の形式で書く。引用はすべてその版を指す。
 - **パッチノートが出たとき**:
   1. 公式パッチノートとルール PDF の差分を確認し、影響する規則を Issue にする
   2. 該当モジュールと `Legal` を直し、引用を更新する
@@ -417,11 +442,12 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 - このリポジトリは GitHub 上で **公開（PUBLIC）** されており、ライセンスは Apache-2.0 である。
 - Riot の Riftbound 開発者ポリシーは、承認しない用途として「自動ルール適用によるデジタルゲームプレイ」を挙げている。これは API キーを使うプロダクト向けの規定で、研究目的の形式化リポジトリに当てはまるかは不明。
 - カード名・カードテキスト・画像は Riot の IP である。Apache-2.0 はコードにだけ適用し、カード由来のデータは対象外と明記する必要がある。
-- 推奨:
+- **決定（§12 Q1）**: カードの公式文面はリポジトリにコミットする。そのうえで次を守る。
+  - **免責文は必須**とする。リポジトリ直下の `README.md` に、Riot の "Legal Jibber Jabber" 方針が求める免責文を置く。
+  - `NOTICE` に、カード名・カード文面・ルール文書は Riot Games の著作物で、Apache-2.0 の対象外であることを書く。
   - 非商用にする。
-  - **リポジトリ直下の `README.md`** に、Riot のファンコンテンツ方針に沿った免責文を置く。
   - カード画像とフレーバーテキストは扱わない。
-  - カード全文をリポジトリに入れるかどうかは、§12 の Q1 としてユーザーが判断する。カードの効果を IR で書く作業は、実質的に文面の構造化なので、**Q1 の決着はカードを本格的に入れる M7 の着手条件**とする。
+- 文面は、各カードの定義の docstring に入れる（[card-data.md §4](card-data.md#4-lean-側の表現)）。
 
 ## 11. テストと CI
 
@@ -432,15 +458,15 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 
 詳細は [lean-guidelines.md](lean-guidelines.md) に置く。
 
-## 12. 未決事項（ユーザーの判断が要るもの）
+## 12. 決定事項（2026-11-20）
 
-| # | 論点 | 推奨 |
+| # | 論点 | 決定 |
 |---|---|---|
-| Q1 | カード名・カードテキストを公開リポジトリにコミットするか | M6 まではルールの中核とテスト用の少数カードだけで進める。M7 に入る前に方針を決める（§10） |
-| Q2 | 初期スコープを 1v1（Duel）に絞ってよいか | 型と手番の走査は最初から N 人対応で作り、実装と定理は 1v1 から始める。多人数固有の規則は M9 |
-| Q3 | Mathlib を依存に入れるか | 入れない（core + Std + Plausible）。`Finset` などが本当に必要になったら再判断する |
-| Q4 | Core Rules の Legacy 改訂を待つか | 待たない。2026-10-09 版で始め、改訂時に追従する |
-| Q5 | Tournament Rules（Main Deck ちょうど 40 枚、Battlefield 3 枚など）をどこまで扱うか | Core Rules（40 枚以上）を正とし、大会規定は別の述語として後から足す |
+| Q1 | カード名・カード文面を公開リポジトリにコミットするか | **コミットする。** 1 弾 1 ファイルとし、各カードの定義の docstring に公式文面を入れる（[card-data.md §4](card-data.md#4-lean-側の表現)）。免責文は必須（§10） |
+| Q2 | 初期スコープを 1v1（Duel）に絞ってよいか | **絞る。** 型と手番の走査は最初から N 人対応で作り、実装と定理は 1v1 から始める。多人数固有の規則は M9 |
+| Q3 | Mathlib を依存に入れるか | **入れない**（core + Std + Plausible）。理由は、1 ファイルあたりの読み込みが重くなること、Lean の版が Mathlib に縛られること、エンジンの定義では使いにくいこと（[lean-guidelines.md §1](lean-guidelines.md#1-ツールチェーン)）。どうしても必要になったら、証明専用の別パッケージでだけ使う案を検討する |
+| Q4 | Core Rules の Legacy 改訂を待つか | **待たない。** 2026-10-09 版で始め、改訂時に追従する |
+| Q5 | Tournament Rules をどこまで扱うか | **Core Rules と両方に対応する。** 範囲は [tournament-model.md](tournament-model.md) のとおり（フォーマット、マッチ、時間切れ、ループ、合意の引き分け、2v2 の席順）。大会の運営・罰則は対象外 |
 
 ## 13. リスクと対策
 
@@ -453,4 +479,6 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | 証明コストの膨張（Cedar の例では証明がモデルの約 3.4 倍） | 証明はプリミティブと手続きに集中させ、カード単位の証明義務をほぼゼロにする |
 | 巨大な列挙型での `deriving` の性能（`LawfulBEq` の証明は構築子数の二乗で重くなり、`DecidableEq` の導出が遅いという報告もある） | カードを構築子にしない。カードはデータとして持つ |
 | 入れ子の帰納型（`List Effect` を持つ `Effect`）では、v4.36.0 の `deriving DecidableEq` と `induction` タクティクが使えない（ローカルで確認） | 等値性は手書きするか、専用のリスト型を `mutual` で定義する。帰納法の代わりに、相互再帰の定理で書く（[lean-guidelines.md §5.4](lean-guidelines.md#54-deriving-と等値性)） |
-| 権利 | §10。公開範囲をユーザーが決める |
+| 権利 | §10。免責文と NOTICE を置き、非商用にする。カード画像とフレーバーテキストは扱わない |
+| 1 弾 1 ファイルのため、カードのファイルが長くなる（Origins は約 300 枚） | 長さの規約からは例外にする（[lean-guidelines.md §4.2](lean-guidelines.md#42-ファイル)）。200 枚を 1 ファイルにした試験では、ビルドは約 2 秒だった。編集時の再検査が重くなったら、弾の中でファイルを分ける |
+| Tournament Rules の改訂 | Core Rules と同じ版管理（§9）で追う |
