@@ -68,6 +68,7 @@ def eventJson : Event → String
   | .pointsGained p n =>
     jobj [("t", jstr "points"), ("player", toString p.n), ("n", toString n)]
   | .burnedOut p => jobj [("t", jstr "burnout"), ("player", toString p.n)]
+  | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
 
 /-- All the zones to show, with the player count. -/
 def shownZones (n : Nat) : List Zone :=
@@ -181,7 +182,8 @@ def playTrace (turns : Nat) :
       | .error e => .error e
       | .ok (s', es) =>
         let (j, seen') := stepJson i (some a) es s' seen
-        if a.kind == .pass && turns ≤ s.turn then .ok (j :: acc)
+        let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
+        if a.kind == .pass && atPriority && turns ≤ s.turn then .ok (j :: acc)
         else playTrace turns n (i + 1) r' s' seen' (j :: acc)
 
 /-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. -/

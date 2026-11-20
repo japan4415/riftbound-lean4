@@ -319,6 +319,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M4b の実装の記録（2026-11-21）: Spell と Chain の最小版、効果の解釈器 v0
+
+- **Spell をプレイする**: `playCard` は Spell にも使える（対象や選択の無い Spell だけ。`castable`）。コストを払い、Spell は手札から Chain に載る（CR 354）。手番のプレイヤーから順に Priority が回り（`chainPass p n`）、全員がパスすると、Chain の一番上が解決する（`resolveChain`）。解決のあと、Spell は持ち主の Trash に行き（`finishSpell`）、手番のプレイヤーの `priority` に戻る。
+- **効果の解釈器 v0**（`Rules/Effects.lean`）: `run` フレームが、残りの効果を 1 歩ずつ進める。意味を与えたのは、何もしない、列（`seq`）、変数の束縛（`bind`）、`draw`（`draw` フレームを積む）だけ。**実行できない指示は飛ばして、`Event.skipped` を出す**（エラーにしない。design.md §7.1）。`eval` できる量は、定数、変数、加減乗と min・max。
+- **新しいフレーム**: `chainPass`（決定）、`resolveChain`・`run`・`finishSpell`（作業）。
+- **証明**: `applyCast_pays_cost`（Pool がコストの合計だけ減る: I8）、`applyCast_zones`（手札が 1 枚減り、Chain が 1 枚増える）、`chainPass_last_resolves`（最後にパスした人が Chain を解決に回す）、`finishItem_trash`（解決した Spell は持ち主の Trash へ）。**不変条件**は、新しいフレームを含めて引き続き証明済み（`WF`・`OwnerOk`・I1・`StackInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5）。`HandInv` には「Spell のフレームはセットアップ中にスタックに無い」（`play`）を足した。
+- **ビューア**: Chain の欄を足した。デモのデッキに、1 枚引く Spell が入り、プレイされると Chain に載り、全員のパスで解決する。
+- **まだ無いもの**: 対象と選択の宣言（`choose` のフレーム）、Reaction と、Chain に複数の項目が載ること（I9: 後入れ先出し）、Spell の Action・Reaction の速さ、プレイ先の選択、プレイの巻き戻し（CR 358.5）、追加コストと割引、`deal`・`kill` など `draw` 以外のプリミティブと Selector、条件（`ifThen`）、能力の起動と誘発。転記済みの Spell で今プレイできるのは、`draw` だけで書けるもの。
+
 ### M4a の実装の記録（2026-11-21）: Unit と Gear をプレイする
 
 - **`GameState.cards`**: カードの集合を、対局の固定の部分として状態に入れた（[design.md §6.1](design.md#61-中核-api)）。`GameState.initial` が入れる。エンジンの引数は増やしていない。

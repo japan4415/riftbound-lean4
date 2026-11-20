@@ -77,6 +77,56 @@ theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
   obtain ⟨id', hes, hex⟩ := applyPlay_events h
   exact ⟨id', hes, hex d hd hu⟩
 
+/-- **Casting a Spell pays exactly its cost** (I8) (CR 356, 357, 445): the Pool of the player is
+smaller by the total of the card's cost, and no other player's Pool changes. -/
+theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {es : List Event} (hp : castable s p c pay = true)
+    (h : applyCast s p c pay = some (s', es)) :
+    ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
+      (s'.poolOf p).total + cost.total = (s.poolOf p).total ∧
+      ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
+  obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
+  obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h
+  rw [hpool] at hpool'
+  cases hpool'
+  refine ⟨d, cost, hd, hc, ?_, hq⟩
+  rw [hs']
+  have h1 := RunePool.total_spend hpool
+  have h2 := Cost.total_of_paidBy hpaid
+  omega
+
+/-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
+hands the Chain to `resolveChain`. -/
+theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    (h : applyFrame s ⟨.player p, .pass⟩ = some (s', es)) :
+    s'.pending = .resolveChain :: rest := by
+  unfold applyFrame at h
+  rw [hp] at h
+  simp only [show ¬ n + 1 < s.playerCount by omega, ite_false, Option.some.injEq,
+    Prod.mk.injEq] at h
+  obtain ⟨rfl, -⟩ := h
+  rfl
+
+/-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
+theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
+    (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
+    (hm : ∃ r, moveObj s item (.player o.owner .trash) = some r) :
+    ∃ id', (finishItem s item).2 = [Event.moved item id' (.player o.owner .trash)] ∧
+      id' ∈ (finishItem s item).1.zone (.player o.owner .trash) := by
+  obtain ⟨⟨s2, id'⟩, hm⟩ := hm
+  have hf : finishItem s item = (s2, [Event.moved item id' (.player o.owner .trash)]) := by
+    simp [finishItem, ho, hc, hm]
+  refine ⟨id', by rw [hf], ?_⟩
+  rw [hf]
+  obtain ⟨src, d, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
+  have hoo : o' = o := Option.some.inj (ho'.symm.trans ho)
+  have h2 := hs.id'_mem
+  have hd2 : d = .player o.owner .trash := by
+    rw [hdd, hoo]; simp [Zone.normalize, Zone.isBoard]
+  rw [hd2] at h2
+  exact h2
+
 end Riftbound
 
 end

@@ -65,6 +65,7 @@ def legalFrameActions (s : GameState) : List Action :=
     ⟨.player p, .pass⟩ :: ((s.zone (.player p .base)).flatMap (fun c =>
       ([RuneAbility.exhaust, .recycle].filter (fun ab => runeUsable s p c ab)).map
         (fun ab => ⟨.player p, .runeAbility c ab⟩)) ++ legalPlays s p)
+  | .chainPass p _ :: _ => [⟨.player p, .pass⟩]
   | _ => []
 
 /-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/

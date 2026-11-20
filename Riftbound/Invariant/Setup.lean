@@ -403,9 +403,23 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i p rest c pay hp hk
-    obtain ⟨hcfg, -, -, -, hpend, -⟩ := applyPlay_meta h
-    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.priority p]) (by rw [hpend, hp]; rfl) (by simp [Frame.isSetup])
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
+    rcases hpend with e | e
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass p 0, Frame.priority p]) (by rw [e]; rfl)
+        (by simp [Frame.isSetup])
+  · rename_i p n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.chainPass (s.nextPlayer p) (n + 1)]) rfl (by simp [Frame.isSetup])
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
+        (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -544,6 +558,32 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.chanceBurnOut q, Frame.draw q (n + 1)]) rfl (by simp [Frame.isSetup])
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    obtain ⟨pre, hpre, hplay⟩ := resolveFrames_eq s rest
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := pre) hpre
+      (fun g hg => by
+        have := hplay g hg
+        cases g <;> simp_all [Frame.isPlay, Frame.isSetup])
+  · rename_i p src env rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · rename_i p src env e es rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := (runEffect s p src env e es).1)
+      rfl (fun g hg => by
+        rcases runEffect_mem hg with h1 | ⟨q, k, rfl⟩
+        · cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
+        · rfl)
+  · rename_i item rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (finishItem_sameMeta s item).config]) (new := []) rfl
+      (by simp)
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the setup invariant. -/

@@ -91,8 +91,26 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p rest c pay hp hk
-    obtain ⟨-, -, -, hres, hpend, -⟩ := applyPlay_meta h
-    exact hinv.of_next hres (fun hb => by rw [hpend]; exact hb)
+    obtain ⟨-, -, -, hres, -, hpend⟩ := applyPlayCard_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rcases hpend with e | e
+    · rw [e, hp]; exact hb
+    · rw [e]
+      exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
+        (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
+  · rename_i p n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.chainPass (s.nextPlayer p) (n + 1)]
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.resolveChain]
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -258,6 +276,33 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.chanceBurnOut q, Frame.draw q (n + 1)]
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    obtain ⟨pre, hpre, -⟩ := resolveFrames_eq s rest
+    show BottomOk (resolveFrames s rest)
+    rw [hpre]
+    exact hb.swap rfl pre
+  · rename_i p src env rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
+  · rename_i p src env e es rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl (runEffect s p src env e es).1
+  · rename_i item rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (finishItem_sameMeta s item).result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the stack invariant. -/
@@ -465,6 +510,15 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | draw p n => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
   | phase ph => exact absurd hw (by simp [Frame.isWork])
+  | chainPass p n =>
+    left
+    refine ⟨⟨.player p, .pass⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
+  | resolveChain => exact absurd hw (by simp [Frame.isWork])
+  | run p src env todo => exact absurd hw (by simp [Frame.isWork])
+  | finishSpell item => exact absurd hw (by simp [Frame.isWork])
 
 /-- What a chance frame needs for a chance answer to exist: the zone to shuffle is a zone of the
 game, and a player has a Battlefield to pick. The other chance frames need nothing. -/
@@ -512,6 +566,10 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | beginTurn => exact absurd hc (by simp [Frame.isChance])
   | phase ph => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
+  | chainPass p n => exact absurd hc (by simp [Frame.isChance])
+  | resolveChain => exact absurd hc (by simp [Frame.isChance])
+  | run p src env todo => exact absurd hc (by simp [Frame.isChance])
+  | finishSpell item => exact absurd hc (by simp [Frame.isChance])
 
 end Riftbound
 

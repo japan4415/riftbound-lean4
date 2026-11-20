@@ -26,7 +26,12 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
-  · exact applyPlay_wf hwf h
+  · exact applyPlayCard_wf hwf h
+  · rename_i p n rest hp hk
+    split at h <;>
+      (simp only [Option.some.injEq, Prod.mk.injEq] at h
+       obtain ⟨rfl, -⟩ := h
+       exact GameState.WF.congr hwf rfl rfl rfl rfl)
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -199,7 +204,12 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
-  · exact applyPlay_physIds hwf h
+  · exact applyPlayCard_physIds hwf h
+  · rename_i p n rest hp hk
+    split at h <;>
+      (simp only [Option.some.injEq, Prod.mk.injEq] at h
+       obtain ⟨rfl, -⟩ := h
+       exact List.Perm.refl _)
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
