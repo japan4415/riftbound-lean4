@@ -51,8 +51,8 @@ def step (fuel : Nat) (s : GameState) (a : Action) :
     | none => .error (.internal "applyAction")
   else .error .illegal
 
-/-- The answers of the players to the current question. Chance answers are not listed. -/
-def legalActions (s : GameState) : List Action :=
+/-- The answers of the players to the open question. Chance answers are not listed. -/
+def legalFrameActions (s : GameState) : List Action :=
   match s.pending with
   | .mulligan p n :: _ =>
     (if n < 2 then
@@ -61,7 +61,17 @@ def legalActions (s : GameState) : List Action :=
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
+  | .priority p :: _ => [⟨.player p, .pass⟩]
   | _ => []
+
+/-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/
+def concedeActions (s : GameState) : List Action :=
+  if s.playerCount = 2 then (allPlayers 2).map (fun p => ⟨.player p, .concede⟩) else []
+
+/-- The answers of the players: to the open question, and the concessions. Nothing once the game
+is over. -/
+def legalActions (s : GameState) : List Action :=
+  if s.result = none then legalFrameActions s ++ concedeActions s else []
 
 end Riftbound
 

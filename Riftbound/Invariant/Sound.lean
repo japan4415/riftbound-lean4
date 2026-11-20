@@ -21,14 +21,17 @@ theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
     (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep s = some r := by
   unfold microStep
   rw [hp]
-  cases f <;> simp [Frame.isWork] at hf
-  · exact ⟨_, rfl⟩
-  · rename_i p n
+  cases f with
+  | setupHands => exact ⟨_, rfl⟩
+  | beginTurn => exact ⟨_, rfl⟩
+  | phase ph => cases ph <;> exact ⟨_, rfl⟩
+  | draw p n =>
     cases n with
     | zero => exact ⟨_, rfl⟩
     | succ n =>
       simp only
       split <;> exact ⟨_, rfl⟩
+  | _ => simp [Frame.isWork] at hf
 
 /-- The automatic work fails for no reason but the fuel. -/
 theorem advance_error :
@@ -54,12 +57,13 @@ theorem advance_error :
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
-/-- A legal answer can be applied: `applyAction` does not fail on it. -/
-theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
-    (hl : Legal s a) : ∃ r, applyAction s a = some r := by
-  unfold applyAction
-  unfold Legal at hl
+/-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
+theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : LegalFrame s a) : ∃ r, applyFrame s a = some r := by
+  unfold applyFrame
+  unfold LegalFrame at hl
   split
+  · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · rename_i p rest i hp hk
     rw [hp, hk] at hl
@@ -110,13 +114,25 @@ theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · exact absurd hl (by simp)
 
-/-- Applying a legal answer keeps `OwnerOk`. -/
-theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hown : s.OwnerOk) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+/-- A legal answer can be applied: `applyAction` does not fail on it. -/
+theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : Legal s a) : ∃ r, applyAction s a = some r := by
+  by_cases hk : a.kind = .concede
+  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
+    exact ⟨_, applyAction_concede hk hp⟩
+  · rw [applyAction_of_ne hk]
+    exact applyFrame_isSome hwf hown (hl.frame hk)
+
+/-- Applying a legal answer to the open question keeps `OwnerOk`. -/
+theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
     s'.OwnerOk := by
-  unfold applyAction at h
-  unfold Legal at hl
+  unfold applyFrame at h
+  unfold LegalFrame at hl
   split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -167,11 +183,48 @@ theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
   · exact absurd h (by simp)
 
+/-- Applying a legal answer keeps `OwnerOk`. -/
+theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    s'.OwnerOk := by
+  by_cases hk : a.kind = .concede
+  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
+    rw [applyAction_concede hk hp] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rw [applyAction_of_ne hk] at h
+    exact applyFrame_ownerOk hwf hown (hl.frame hk) h
+
 /-- A step of work keeps `OwnerOk`. -/
 theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : microStep s = some (s', es)) : s'.OwnerOk := by
   unfold microStep at h
   split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_mapObjects hown (fun o => readyOf_owner _ o)).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (channel_ownerOk _ _ hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_mapObjects hown (fun o => healObj_owner o)).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl

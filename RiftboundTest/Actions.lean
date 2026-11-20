@@ -39,7 +39,11 @@ meta def s0 : GameState :=
     nextId := 9
     nextTimestamp := 9
     pending := []
-    turnOrder := [] }
+    turnOrder := []
+    phase := .setup
+    turn := 0
+    active := none
+    result := none }
 
 meta def ids (l : List Nat) : List ObjId := l.map (⟨·⟩)
 

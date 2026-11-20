@@ -30,7 +30,7 @@
 | I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される | L1 | M3 |
-| I9 | **ターン構造**: フェイズの順序が固定されている。Chain は後入れ先出し（340.1）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M4 |
+| I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M4 |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
 | I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b） | L2 | M5 |
 | I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)） | L2 | M5〜 |
@@ -174,6 +174,18 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - セットアップ直後の各手札が 4 枚である。
 
 ## M3: ターン骨格と資源（CR 301-317, 160-168, 430, 445, 649-651, 734-738）
+
+**M3 は 2 つに分けて進める。** 前半（ターンの骨格: フェイズ、手番の受け渡し、投了と勝敗）を先に作り、後半（資源: Rune Pool、Add 能力、Pay、I8、I5、追加ターン）をその上に作る。
+
+### M3 前半の実装の記録（2026-11-20）
+
+- ファイル: `State/Phase.lean`（`Phase`・`GameResult`）、`Rules/Objects.lean`（`mapObjects`）、`Rules/Frames.lean`（`beginTurn`・`phase`・`priority` のフレーム）、`Invariant/Turn.lean`。テストは `RiftboundTest/Turn.lean`。`GameState` に `phase`・`turn`・`active`・`result` を追加。
+- **ターンの流れ**: 手番順が決まりマリガンが終わると `beginTurn` が走る。手番のプレイヤーは手番順を回して決まる（CR 118）。ターンは Awaken（手番のプレイヤーが Control する物を Ready: CR 315.1）→ Beginning（スタブ）→ Channel（2 枚。後手の最初のターンは 3 枚: CR 315.3, 487.7）→ Draw（1 枚。空なら Burn Out）→ Main の順で、手番のプレイヤーが `priority` を持つ。`pass` で Ending（全 Unit を Heal: CR 317.2）に進み、次のターンが始まる。
+- **投了**（CR 649-651）: 決定要求と無関係に、どのプレイヤーにもいつでも合法。1v1 では相手が勝ち、スタックが空になる。終わったゲームは、どんな答えも違法。3 人以上は M9。
+- 証明した定理: `turnFrames_eq`・`turnPhases_chain`（**I9 のフェイズの順序**）、`microStep_phase`（フェイズのフレームは、ゲームのフェイズをそのフェイズにする）、`step_concede`（投了の効果）、`step_over`（終わったゲームは何も受け付けない）、`turnPlayerAt_alternates`（**1v1 で手番が交互になる**）、`readyOf_idem`（**Ready の冪等性**: CR 416.1.b）、`mapObjects_ready_idem`、`channel_ownerOk`・`channel_sameMeta`。`WF`・`OwnerOk`・I1・`step_sound`・`legalActions_iff` は、新しいフレームと投了を含めて引き続き証明済み。
+- **`HandInv` の変更**: 手札が 4 枚という条件は、セットアップの間（`phase = setup` かつ `result = none`）だけに限った（ターンが始まると手札は増える）。`Reachable.opening_hands` は「最初のターンの開始だけが残っている（`pending = [beginTurn]`）」ときの定理になった。
+- **設計の変更**: `applyAction` を、投了と、フレームへの答え（`applyFrame`）に分けた。`Legal` は、フレームへの答え（`LegalFrame`）か投了（`LegalConcede`）で、ゲームが終わっていないこと。`MoveSpec` に「ゾーン・オブジェクト表・カウンタ以外は変わらない」（`SameMeta`）を足し、将来の状態の項目が増えても移動の補題が壊れないようにした。
+- **まだ作っていないもの（M3 後半）**: Rune Pool と Basic Rune の Add 能力、Pay（資源の会計 I8）、Main Phase の開始時と Ending に Rune Pool を空にすること、I5（進行性）、追加ターン（CR 734-738）、Beginning Step の Scoring（M5）、Ending Step の「このターン」効果の失効。Pass と「ターン終了」は、Chain が無い Main Phase では同じなので `pass` 1 つにした。
 
 **実装**
 - フェイズを順に作る。

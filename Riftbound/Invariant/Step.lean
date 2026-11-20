@@ -17,11 +17,14 @@ the fuel (soundness, with I4). It needs an invariant on the frames, which come i
 namespace Riftbound
 
 /-- Applying a legal answer keeps the game well formed. -/
-theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) : s'.WF := by
-  unfold applyAction at h
-  unfold Legal at hl
+theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) : s'.WF := by
+  unfold applyFrame at h
+  unfold LegalFrame at hl
   split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -71,6 +74,18 @@ theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
   · exact absurd h (by simp)
+
+/-- Applying a legal answer keeps the game well formed. -/
+theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) : s'.WF := by
+  by_cases hk : a.kind = .concede
+  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
+    rw [applyAction_concede hk hp] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rw [applyAction_of_ne hk] at h
+    exact applyFrame_wf hwf (hl.frame hk) h
 
 /-- The automatic work keeps the game well formed. -/
 theorem advance_wf :
@@ -172,12 +187,15 @@ theorem step_mono {n m : Nat} {s : GameState} {a : Action} {r : GameState × Lis
   · simp [step, hl] at h
 
 /-- Applying a legal answer keeps the physical cards. -/
-theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  unfold applyAction at h
-  unfold Legal at hl
+  unfold applyFrame at h
+  unfold LegalFrame at hl
   split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -232,6 +250,19 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
     exact List.Perm.refl _
   · exact absurd h (by simp)
 
+/-- Applying a legal answer keeps the physical cards. -/
+theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    s'.physIds.Perm s.physIds := by
+  by_cases hk : a.kind = .concede
+  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
+    rw [applyAction_concede hk hp] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rw [applyAction_of_ne hk] at h
+    exact applyFrame_physIds hwf (hl.frame hk) h
+
 /-- The automatic work keeps the physical cards. -/
 theorem advance_physIds :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
@@ -276,17 +307,43 @@ theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+/-- The answers of the players to the open question that `legalFrameActions` lists are exactly
+the legal ones by a player. -/
+theorem legalFrameActions_iff (s : GameState) (a : Action) :
+    a ∈ legalFrameActions s ↔ LegalFrame s a ∧ a.actor.isPlayer = true := by
+  obtain ⟨actor, kind⟩ := a
+  unfold legalFrameActions LegalFrame
+  rcases hp : s.pending with _ | ⟨f, rest⟩
+  · simp
+  · cases f <;> cases kind <;> cases actor <;> simp [Actor.isPlayer]
+    all_goals grind
+
+/-- The concessions listed are exactly the legal concessions. -/
+theorem concedeActions_iff (s : GameState) (a : Action) :
+    a ∈ concedeActions s ↔ LegalConcede s a ∧ a.actor.isPlayer = true := by
+  obtain ⟨actor, kind⟩ := a
+  unfold concedeActions LegalConcede
+  cases kind <;> cases actor <;> by_cases h : s.playerCount = 2 <;>
+    simp [Actor.isPlayer, h, allPlayers]
+  all_goals grind
+
 /-- **I6** (enumeration). The answers of the players that `legalActions` lists are exactly the legal
 answers by a player: nothing legal is missing and nothing illegal is listed (design.md §6.3).
 Chance answers are not listed. -/
 theorem legalActions_iff (s : GameState) (a : Action) :
     a ∈ legalActions s ↔ Legal s a ∧ a.actor.isPlayer = true := by
-  obtain ⟨actor, kind⟩ := a
   unfold legalActions Legal
-  rcases hp : s.pending with _ | ⟨f, rest⟩
-  · simp
-  · cases f <;> cases kind <;> cases actor <;> simp [Actor.isPlayer]
-    all_goals grind
+  by_cases h : s.result = none
+  · simp only [h, ite_true, true_and, List.mem_append]
+    rw [legalFrameActions_iff, concedeActions_iff]
+    constructor
+    · rintro (⟨h1, h2⟩ | ⟨h1, h2⟩)
+      · exact ⟨Or.inl h1, h2⟩
+      · exact ⟨Or.inr h1, h2⟩
+    · rintro ⟨h1 | h1, h2⟩
+      · exact Or.inl ⟨h1, h2⟩
+      · exact Or.inr ⟨h1, h2⟩
+  · simp [h]
 
 end Riftbound
 

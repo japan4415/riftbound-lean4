@@ -44,12 +44,20 @@ meta def p1 : PlayerId := ⟨1⟩
 -- after the setup, for several seeds: every question is answered, and
 #guard (List.range 8).all fun seed => match finished seed with
   | some s =>
-    s.pending.isEmpty &&
-    -- opening hands of 4 (CR 116)
-    count p0 .hand s == 4 && count p1 .hand s == 4 &&
-    -- the decks are the rest
-    count p0 .mainDeck s == 35 && count p1 .mainDeck s == 35 &&
-    count p0 .runeDeck s == 12 &&
+    -- the setup is over and the first turn has begun: the first player has priority in the Main
+    -- Phase, having drawn one card for the turn (CR 118, 315.4)
+    (match s.pending, s.active with
+      | [.priority q], some tp => q == tp && tp == s.turnOrder.headD p0
+      | _, _ => false) &&
+    s.turn == 1 && s.phase == .main &&
+    -- opening hands of 4 (CR 116); the first player drew one more
+    (let first := s.turnOrder.headD p0
+     let second := if first == p0 then p1 else p0
+     count first .hand s == 5 && count second .hand s == 4 &&
+     count first .mainDeck s == 34 && count second .mainDeck s == 35 &&
+     -- the first player channeled two Runes (CR 315.3)
+     count first .runeDeck s == 10 && count first .base s == 2 &&
+     count second .runeDeck s == 12) &&
     -- one Battlefield each in play (CR 113, 487.5), the other two out of the game
     (s.zone .battlefieldZone).length == 2 && count p0 .outOfGame s == 2 &&
     count p1 .outOfGame s == 2 &&
@@ -93,7 +101,7 @@ meta def atMulligan : Option GameState :=
 #guard match atMulligan with
   | some s =>
     -- four hand cards may be set aside, or the player may finish
-    (legalActions s).length == 5 &&
+    (legalActions s).length == 7 &&
     (legalActions s).all (fun a => a.actor.isPlayer) &&
     -- each listed answer is legal, and a chance answer is not
     (legalActions s).all (fun a => decide (Legal s a)) &&
@@ -185,15 +193,18 @@ meta def burnOutScenario : Option (GameState × GameState) :=
       | .error .illegal => true | _ => false)
   | none => false
 
--- fuel (design.md §6.1): too little fuel stops the work between the turn order and the hands
+-- fuel (design.md §6.1): too little fuel stops the work between the turn order and the Main Phase
 #guard match start with
   | some s => (match runAuto 0 200 (Rng.ofSeed 1) s with
       | .error .fuelExhausted => true | _ => false) &&
     (match runAuto 1 200 (Rng.ofSeed 1) s with
       | .error .fuelExhausted => true | _ => false) &&
-    -- the opening draws and mulligan frames need 1 + 2 * 5 steps; with more fuel they run
+    -- the opening hands take 11 steps (laying them out, then four draws and one pop each); the
+    -- first turn up to the Main Phase takes 8 more
+    (match runAuto 10 200 (Rng.ofSeed 1) s with
+      | .error .fuelExhausted => true | _ => false) &&
     (match runAuto 11 200 (Rng.ofSeed 1) s with
-      | .ok s' => s'.pending.isEmpty | _ => false)
+      | .ok s' => s'.pending.length == 1 | _ => false)
   | none => false
 
 end RiftboundTest

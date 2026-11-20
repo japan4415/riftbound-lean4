@@ -4,6 +4,7 @@ public import Riftbound.State.Zone
 public import Riftbound.State.Object
 public import Riftbound.State.GameConfig
 public import Riftbound.State.Decision
+public import Riftbound.State.Phase
 public import Std.Data.ExtTreeMap
 
 /-!
@@ -36,6 +37,14 @@ structure GameState where
   pending : List Frame
   /-- The turn order, first player first (CR 115). Empty until it has been decided. -/
   turnOrder : List PlayerId
+  /-- The phase the game is in (CR 314-317). -/
+  phase : Phase
+  /-- How many turns have begun. -/
+  turn : Nat
+  /-- The player whose turn it is, once a turn has begun (CR 301). -/
+  active : Option PlayerId
+  /-- How the game ended, if it has (CR 193-196). -/
+  result : Option GameResult
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/
@@ -140,11 +149,11 @@ structure WF (s : GameState) : Prop where
   /-- No zone outside the game holds an object. -/
   zones_valid : ∀ k, k ∈ s.zones → ∃ z ∈ allZones s.playerCount, z.key = k
 
-/-- `WF` only looks at the rules, the object table, the zones and the identifier counter. States
-that agree on these are well formed together. -/
-theorem WF.congr {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
-    (ho : s2.objects = s.objects) (hz : s2.zones = s.zones) (hn : s2.nextId = s.nextId) :
-    s2.WF := by
+/-- `WF` only looks at the rules, which objects are in the object table, the zones and the
+identifier counter. States that agree on these are well formed together. -/
+theorem WF.congr_mem {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
+    (ho : ∀ k, k ∈ s2.objects ↔ k ∈ s.objects) (hz : s2.zones = s.zones)
+    (hn : s2.nextId = s.nextId) : s2.WF := by
   have hcount : s2.playerCount = s.playerCount := by simp [playerCount, hc]
   have hzone : ∀ z, s2.zone z = s.zone z := fun z => by simp [zone, hz]
   have hids : s2.zoneIds = s.zoneIds := by
@@ -154,10 +163,16 @@ theorem WF.congr {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
     rw [this]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · rw [hids]; exact hwf.nodup
-  · intro x hx; rw [hids] at hx; rw [ho]; exact hwf.table_of_zone x hx
-  · intro k hk; rw [ho] at hk; rw [hids]; exact hwf.zone_of_table k hk
+  · intro x hx; rw [hids] at hx; exact (ho _).mpr (hwf.table_of_zone x hx)
+  · intro k hk; rw [hids]; exact hwf.zone_of_table k ((ho k).mp hk)
   · intro x hx; rw [hids] at hx; rw [hn]; exact hwf.lt_nextId x hx
   · intro k hk; rw [hz] at hk; rw [hcount]; exact hwf.zones_valid k hk
+
+/-- `WF` for a state with the same object table. -/
+theorem WF.congr {s s2 : GameState} (hwf : s.WF) (hc : s2.config = s.config)
+    (ho : s2.objects = s.objects) (hz : s2.zones = s.zones) (hn : s2.nextId = s.nextId) :
+    s2.WF :=
+  WF.congr_mem hwf hc (fun k => by rw [ho]) hz hn
 
 /-- The owner of every card in a Non-Board zone of a player is that player (CR 056): a card never
 sits in the Non-Board zone of someone who does not own it. -/

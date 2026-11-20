@@ -79,6 +79,32 @@ theorem channel_physIds (p : PlayerId) :
       simp only
       exact (channel_physIds p n (channelOne_wf hwf hc)).trans (channelOne_physIds hwf hc)
 
+/-- One Channel changes nothing but the zones, the object table and the counters. -/
+theorem channelOne_meta {s s' : GameState} {p : PlayerId} {es : List Event}
+    (h : channelOne s p = some (s', es)) : SameMeta s s' := by
+  unfold channelOne at h
+  split at h
+  · exact absurd h (by simp)
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    obtain ⟨src, d, hs⟩ := moveObj_spec hm
+    exact hs.other
+
+/-- Channeling changes nothing but the zones, the object table and the counters. -/
+theorem channel_sameMeta (p : PlayerId) :
+    ∀ (n : Nat) (s : GameState), SameMeta s (channel p n s).1
+  | 0, s => SameMeta.refl s
+  | n + 1, s => by
+    unfold channel
+    cases hc : channelOne s p with
+    | none => simpa using SameMeta.refl s
+    | some r =>
+      have h1 := channelOne_meta hc
+      have h2 := channel_sameMeta p n r.1
+      simpa using h1.trans h2
+
 end Riftbound
 
 end

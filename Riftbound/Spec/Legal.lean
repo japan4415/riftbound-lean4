@@ -28,7 +28,7 @@ def allPlayers (n : Nat) : List PlayerId := (List.range n).map (fun i => ⟨i⟩
   · intro h; exact ⟨p.n, h, by cases p; rfl⟩
 
 /-- `a` is a legal answer to the frame on top of the stack. -/
-def Legal (s : GameState) (a : Action) : Prop :=
+def LegalFrame (s : GameState) (a : Action) : Prop :=
   match s.pending, a.kind with
   -- the shuffle of a zone (CR 114): an arrangement of its contents
   | .chanceShuffle z :: _, .arrange l =>
@@ -52,11 +52,65 @@ def Legal (s : GameState) (a : Action) : Prop :=
   -- the opponent of a Burn Out (CR 432.2.c): a player other than the one who burned out
   | .chooseBurnOut p :: _, .burnOutTarget opp =>
     a.actor = .player p ∧ opp ≠ p ∧ opp.n < s.playerCount
+  -- the turn player has priority in the Main Phase (CR 312, 316): passing ends the phase (CR 305)
+  | .priority p :: _, .pass => a.actor = .player p
   | _, _ => False
+
+instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by
+  unfold LegalFrame
+  split <;> infer_instance
+
+/-- A player concedes (CR 649-650): at any time, whatever question is open. In a 1v1 game the
+other player wins (CR 651.1); with more players a concession removes the player from the game
+(CR 651.2, 652), which comes with the multiplayer rules (roadmap.md, M9). -/
+def LegalConcede (s : GameState) (a : Action) : Prop :=
+  a.kind = .concede ∧
+    match a.actor with
+    | .player p => p.n < s.playerCount ∧ s.playerCount = 2
+    | _ => False
+
+instance LegalConcede.decidable (s : GameState) (a : Action) : Decidable (LegalConcede s a) := by
+  unfold LegalConcede
+  split <;> infer_instance
+
+/-- A legal concession is made by a player of the game, in a 1v1 game. -/
+theorem LegalConcede.actor {s : GameState} {a : Action} (h : LegalConcede s a) :
+    ∃ p, a.actor = .player p ∧ p.n < s.playerCount ∧ s.playerCount = 2 := by
+  obtain ⟨-, h2⟩ := h
+  cases hac : a.actor with
+  | player p =>
+    rw [hac] at h2
+    exact ⟨p, rfl, h2⟩
+  | chance => rw [hac] at h2; exact h2.elim
+  | clock => rw [hac] at h2; exact h2.elim
+  | judge => rw [hac] at h2; exact h2.elim
+
+/-- `a` is a legal answer: the game is not over, and the answer is to the open question or a
+concession. -/
+def Legal (s : GameState) (a : Action) : Prop :=
+  s.result = none ∧ (LegalFrame s a ∨ LegalConcede s a)
 
 instance Legal.decidable (s : GameState) (a : Action) : Decidable (Legal s a) := by
   unfold Legal
-  split <;> infer_instance
+  infer_instance
+
+/-- A legal answer that is not a concession answers the open question. -/
+theorem Legal.frame {s : GameState} {a : Action} (h : Legal s a) (hk : a.kind ≠ .concede) :
+    LegalFrame s a := by
+  rcases h.2 with h2 | h2
+  · exact h2
+  · exact absurd h2.1 hk
+
+/-- A legal concession. -/
+theorem Legal.of_concede {s : GameState} {a : Action} (h : Legal s a) (hk : a.kind = .concede) :
+    LegalConcede s a := by
+  rcases h.2 with h2 | h2
+  · -- a frame answer never concedes
+    exfalso
+    unfold LegalFrame at h2
+    rw [hk] at h2
+    split at h2 <;> first | exact h2.elim | simp_all
+  · exact h2
 
 end Riftbound
 

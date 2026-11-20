@@ -18,7 +18,7 @@ namespace Riftbound
 /-- The state with no objects, for the given rules. -/
 def GameState.empty (config : GameConfig) : GameState :=
   { config, objects := {}, zones := {}, points := {}, nextId := 0, nextTimestamp := 0,
-    pending := [], turnOrder := [] }
+    pending := [], turnOrder := [], phase := .setup, turn := 0, active := none, result := none }
 
 /-- The zone can hold an object of this owner: a Non-Board zone of a player holds only that player's
 cards (CR 056). -/
