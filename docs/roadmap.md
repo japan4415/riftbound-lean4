@@ -254,12 +254,21 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 4. 書けなかった文を一覧にする。足りない語彙（プリミティブ、Selector、Trigger、hook の種類）を洗い出し、design.md §7.2 と §7.3 を更新する。
 5. カバレッジ表に、「IR で書けた割合」と「`custom` を使った数」を出す。
 
+### M3b-5 静的な検査（`CardDB.WF`）の実装の記録（2026-11-21）
+
+- **ファイル**: `Card/IR/Check.lean`。テストは `RiftboundTest/Check.lean`。
+- **検査すること**（Boolean の関数で、`decide` と `#guard` で動く）: 変数が束縛されてから使われる（`Amount.var`・`Selector.var`）、`Selector.slot i` の番号が `EffectDef.choices` の対象枠の数より小さい、X は X を選ぶ宣言があるときだけ使う、`chooseOne` のモードの数が `Choice.mode` の宣言と一致する、`it` は `forEach`・`grant`・`delayed` と、誘発型の能力でだけ使う、置換前の量とプレイヤー（`eventAmount`・`eventPlayer`）は置換の中でだけ使う。
+- **`CardDB.WF`** は、「識別子が一意」（`IdsUnique`）と「すべてのカードが `CardDef.StaticOk` を満たす」の組になった。
+- **結果**: **転記した 39 枚は、すべて検査を通った。** 1,103 枚の `CardDB.WF` が `decide` で通る。転記が間違っているときに落ちることは、1 つの誤りだけを持つカードなどのテスト 22 件で確かめた。
+- **証明した定理**: `Selector.ok_slot`（宣言した番号だけが有効）、`Amount.ok_var`、`Effect.ok_bind`、`EffectDef.slot_ok_iff`（有効な番号は、宣言した対象の数より小さいものすべて）、`Effect.ok_nop`、`CardDef.staticOk_of_no_effects`。
+- **まだ検査しないもの**: `CustomId` の存在（ハンドラの表がまだ無い）、トークンや Tag の存在、解決時の型（`Selector` の指すものが Unit かどうか）。
+
 ### M3b-4 最初の転記の実装の記録（2026-11-21）
 
 - **転記した範囲**: Proving Grounds の 24 枚と、設計で挙げた難しいカードなどの 22 枚。**46 枚のうち 39 枚が IR の値として書けた**（`drafted`）。書けなかったのは 7 枚（トークン、コピー、Spell の Control 奪取、多人数、トークンの置換）。一覧は [ir-gaps.md](ir-gaps.md)。
 - **IR の改訂**: 転記で見つかった不足 20 件を IR に足して直した（`ir-gaps.md` §2）。主なもの: `Ability.passive` の条件、`Speed`、`Occurrence`、`Dest`、`Filter.at_` と `alone`、`Effect.replaceNext` と `preventNext`、プレイヤーに起きる誘発（`youConquer`・`youHold`）、誘発回数・得点・資源の hook（`triggersExtra`・`victoryScorePlus`・`entersReady` など）。補助関数は `Card/IR/Build.lean`。
 - **近似したもの**: 6 件（Deathknell、Smite の「死ぬとき」、Forgotten Monument の期間など。`ir-gaps.md` §4）。**転記した文が意味どおりかは、解釈器とシナリオテストができるまで確かめられない。**
-- **まだ無いもの**: 静的な検査（`CardDB.WF`）、出現の多いテンプレートの上位 100 種の転記、カバレッジ表（`coverage.py`）。
+- **まだ無いもの**: 出現の多いテンプレートの上位 100 種の転記、カバレッジ表（`coverage.py`）。静的な検査は次の節で済んだ。
 
 ### M3b-3 IR の構文の型の実装の記録（2026-11-21）
 

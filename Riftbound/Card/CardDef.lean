@@ -8,6 +8,7 @@ public import Riftbound.Core.Might
 public import Riftbound.Core.Keyword
 public import Riftbound.Card.IR.Ability
 public import Riftbound.Card.IR.Build
+public import Riftbound.Card.IR.Check
 
 /-!
 # Card definitions
@@ -103,6 +104,21 @@ theorem copyLimit_of_unique {c : CardDef} (h : c.hasKeyword .unique = true) :
 theorem copyLimit_of_not_unique {c : CardDef} (h : c.hasKeyword .unique = false) :
     c.copyLimit = 3 := by
   simp [copyLimit, h]
+
+/-- The effects of the card refer only to what is there: bound variables, declared choices, and
+`it` and the replaced event where they mean something (`Riftbound.Card.IR.Check`). -/
+def StaticOk (c : CardDef) : Prop :=
+  c.abilities.all Ability.ok = true ∧
+    (match c.spellEffect with
+      | none => true
+      | some d => d.ok {}) = true
+
+instance (c : CardDef) : Decidable c.StaticOk := by unfold StaticOk; infer_instance
+
+/-- A card with no effect refers to nothing, so it passes the check. -/
+theorem staticOk_of_no_effects {c : CardDef} (h1 : c.abilities = []) (h2 : c.spellEffect = none) :
+    c.StaticOk := by
+  simp [StaticOk, h1, h2]
 
 end CardDef
 

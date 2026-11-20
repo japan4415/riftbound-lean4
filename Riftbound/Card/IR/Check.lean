@@ -1,0 +1,284 @@
+module
+
+public import Riftbound.Card.IR.Build
+
+/-!
+# The effect IR: the static check
+
+A card can be written down as an IR value that no game could run: a variable that is not bound, a
+chosen object that was never declared, a mode to choose in an effect with no modes. These checks
+decide, from the shape of an effect alone, whether such a mistake is there (design.md §7.1,
+`CardDB.WF`). They are Boolean functions, so that `decide` and `#guard` can run them.
+
+The context of a check (`Ctx`) says what an effect may refer to at that point: the variables bound
+so far, how many objects were chosen when the card was played, whether an X and a mode were
+chosen, whether `it` (the object of a loop or a trigger) means something, and whether the amount and
+the player of a replaced event do.
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- What an effect may refer to at a point. -/
+structure Ctx where
+  /-- The variables bound so far. -/
+  vars : List VarId := []
+  /-- The number of objects chosen when the card was played: the slots `0` to `slots - 1`. -/
+  slots : Nat := 0
+  /-- An X was chosen when the card was played. -/
+  hasX : Bool := false
+  /-- The number of modes the card asks to choose from, if it does. -/
+  modes : Option Nat := none
+  /-- `it` means the object of a loop or of a trigger. -/
+  itOk : Bool := false
+  /-- The amount and the player of a replaced event are known. -/
+  eventOk : Bool := false
+deriving DecidableEq, Repr
+
+/-- The players an effect names can be found. -/
+def PlayerSel.ok (c : Ctx) : PlayerSel → Bool
+  | .chosen i => decide (i < c.slots)
+  | .eventPlayer => c.eventOk
+  | _ => true
+
+mutual
+
+/-- An amount refers only to what is there. -/
+def Amount.ok (c : Ctx) : Amount → Bool
+  | .const _ => true
+  | .x => c.hasX
+  | .var v => c.vars.contains v
+  | .eventAmount => c.eventOk
+  | .turnsTaken p => p.ok c
+  | .count s => Selector.ok c s
+  | .mightOf s => Selector.ok c s
+  | .costOf s => Selector.ok c s
+  | .xp => true
+  | .pointsLeft => true
+  | .handSize p => p.ok c
+  | .add a b => Amount.ok c a && Amount.ok c b
+  | .sub a b => Amount.ok c a && Amount.ok c b
+  | .mul a b => Amount.ok c a && Amount.ok c b
+  | .min a b => Amount.ok c a && Amount.ok c b
+  | .max a b => Amount.ok c a && Amount.ok c b
+
+/-- A filter refers only to what is there. -/
+def Filter.ok (c : Ctx) : Filter → Bool
+  | .might _ a => Amount.ok c a
+  | .cost _ a => Amount.ok c a
+  | .at_ s => Selector.ok c s
+  | _ => true
+
+/-- Every filter of a list refers only to what is there. -/
+def FilterList.ok (c : Ctx) : FilterList → Bool
+  | .nil => true
+  | .cons f rest => Filter.ok c f && FilterList.ok c rest
+
+/-- A selector refers only to what is there. -/
+def Selector.ok (c : Ctx) : Selector → Bool
+  | .self => true
+  | .slot i => decide (i < c.slots)
+  | .it => c.itOk
+  | .var v => c.vars.contains v
+  | .pick _ _ _ fs => FilterList.ok c fs
+  | .attachedTo s => Selector.ok c s
+  | .attachments s => Selector.ok c s
+
+/-- A condition refers only to what is there. -/
+def Condition.ok (c : Ctx) : Condition → Bool
+  | .always => true
+  | .not d => Condition.ok c d
+  | .and a b => Condition.ok c a && Condition.ok c b
+  | .or a b => Condition.ok c a && Condition.ok c b
+  | .cmp _ a b => Amount.ok c a && Amount.ok c b
+  | .exists s => Selector.ok c s
+  | .matches s f => Selector.ok c s && Filter.ok c f
+  | .empowered s => Selector.ok c s
+  | _ => true
+
+end
+
+/-- A destination refers only to what is there. -/
+def Dest.ok (c : Ctx) : Dest → Bool
+  | .base => true
+  | .at_ s => Selector.ok c s
+
+/-- A game action refers only to what is there. -/
+def Prim.ok (c : Ctx) : Prim → Bool
+  | .draw p n => p.ok c && Amount.ok c n
+  | .discard p n => p.ok c && Amount.ok c n
+  | .deal s n => Selector.ok c s && Amount.ok c n
+  | .heal s n => Selector.ok c s && Amount.ok c n
+  | .kill s => Selector.ok c s
+  | .banish s => Selector.ok c s
+  | .recall s _ => Selector.ok c s
+  | .returnToHand s => Selector.ok c s
+  | .move s d => Selector.ok c s && d.ok c
+  | .ready s => Selector.ok c s
+  | .exhaust s => Selector.ok c s
+  | .stun s => Selector.ok c s
+  | .buff s => Selector.ok c s
+  | .recycle s => Selector.ok c s
+  | .channel p n e => p.ok c && Amount.ok c n && Amount.ok c e
+  | .addEnergy p n _ => p.ok c && Amount.ok c n
+  | .addPower p n _ _ => p.ok c && Amount.ok c n
+  | .counter s => Selector.ok c s
+  | .play s => Selector.ok c s
+  | .hide s => Selector.ok c s
+  | .reveal s => Selector.ok c s
+  | .create _ n _ => Amount.ok c n
+  | .attach s t => Selector.ok c s && Selector.ok c t
+  | .detach s => Selector.ok c s
+  | .gainXP p n => p.ok c && Amount.ok c n
+  | .score p n => p.ok c && Amount.ok c n
+  | .burn p n => p.ok c && Amount.ok c n
+  | .predict n => Amount.ok c n
+  | .copy s => Selector.ok c s
+  | .double s => Selector.ok c s
+  | .swap a b => Selector.ok c a && Selector.ok c b
+  | .empower s => Selector.ok c s
+  | .disempower s => Selector.ok c s
+  | .takeControl s => Selector.ok c s
+  | .extraTurn p => p.ok c
+  | .win p => p.ok c
+
+/-- A duration refers only to what is there. -/
+def Duration.ok (c : Ctx) : Duration → Bool
+  | .whileCond d => Condition.ok c d
+  | _ => true
+
+/-- An argument of a custom handler refers only to what is there. -/
+def Arg.ok (c : Ctx) : Arg → Bool
+  | .amount a => Amount.ok c a
+  | .selector s => Selector.ok c s
+  | .condition d => Condition.ok c d
+
+/-- The arguments of a custom handler refer only to what is there. -/
+def ArgList.ok (c : Ctx) : ArgList → Bool
+  | .nil => true
+  | .cons a rest => a.ok c && ArgList.ok c rest
+
+/-- A static modification refers only to what is there. -/
+def StaticMod.ok (c : Ctx) : StaticMod → Bool
+  | .mightPlus s a => Selector.ok c s && Amount.ok c a
+  | .mightMinus s a => Selector.ok c s && Amount.ok c a
+  | .keyword s _ => Selector.ok c s
+  | .costPlus s a => Selector.ok c s && Amount.ok c a
+  | .costMinus s a => Selector.ok c s && Amount.ok c a
+  | .cant s _ => Selector.ok c s
+  | .may s _ => Selector.ok c s
+  | .victoryScorePlus a => Amount.ok c a
+  | .victoryScoreMinus a => Amount.ok c a
+  | .ignoreKeyword _ _ => true
+  | .entersReady s => Selector.ok c s
+  | .bonusDamage a => Amount.ok c a
+  | .triggersExtra _ _ => true
+  | .cantPlayer p _ _ _ => p.ok c
+  | .custom _ args => args.ok c
+
+/-- A cost of an ability refers only to what is there. -/
+def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
+  | .killFriendly _ fs => FilterList.ok c fs
+  | _ => true
+
+/-- A trigger refers only to what is there. -/
+def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
+  Selector.ok c t.subject && Condition.ok c t.condition
+
+/-- How many effects a list holds. -/
+def EffectList.length : EffectList → Nat
+  | .nil => 0
+  | .cons _ rest => rest.length + 1
+
+mutual
+
+/-- An effect refers only to what is there, and a mode is chosen only where modes were declared. -/
+def Effect.ok (c : Ctx) : Effect → Bool
+  | .nop => true
+  | .seq es => EffectList.ok c es
+  | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
+  | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
+  | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
+  | .may e => Effect.ok c e
+  | .doThen a b => Effect.ok c a && Effect.ok c b
+  | .repeatN n e => Amount.ok c n && Effect.ok c e
+  | .bind v a e => Amount.ok c a && Effect.ok { c with vars := v :: c.vars } e
+  | .prim p => Prim.ok c p
+  | .grant s m d => Selector.ok c s && StaticMod.ok { c with itOk := true } m && Duration.ok c d
+  | .delayed t e d =>
+    Trigger.ok { c with itOk := true } t && Effect.ok { c with itOk := true } e && Duration.ok c d
+  | .preventNext s n d => Selector.ok c s && Amount.ok c n && Duration.ok c d
+  | .replaceNext _ s instead d =>
+    Selector.ok c s && Effect.ok { c with eventOk := true } instead && Duration.ok c d
+  | .custom _ args => ArgList.ok c args
+
+/-- Every effect of a list refers only to what is there. -/
+def EffectList.ok (c : Ctx) : EffectList → Bool
+  | .nil => true
+  | .cons e rest => Effect.ok c e && EffectList.ok c rest
+
+end
+
+/-- A choice refers only to what is there. A target is chosen before anything else is known. -/
+def Choice.ok : Choice → Bool
+  | .target _ _ _ fs => FilterList.ok {} fs
+  | .mode _ => true
+  | .xValue => true
+  | .extraCost cs _ => cs.all (AbilityCost.ok {})
+
+/-- Whether the choice is a target, which fills a slot. -/
+def Choice.isTarget : Choice → Bool
+  | .target .. => true
+  | _ => false
+
+/-- The number of the mode choice, if the declaration has one. -/
+def Choice.modeCount : Choice → Option Nat
+  | .mode n => some n
+  | _ => none
+
+/-- What the body of an effect may refer to, given the choices declared for it. -/
+def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
+  { base with
+    slots := (d.choices.filter Choice.isTarget).length,
+    hasX := d.choices.any (· == .xValue),
+    modes := (d.choices.filterMap Choice.modeCount).head? }
+
+/-- An effect with its choices refers only to what is there. -/
+def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
+  d.choices.all Choice.ok && Effect.ok (d.ctx base) d.body
+
+/-- An ability refers only to what is there. -/
+def Ability.ok : Ability → Bool
+  | .passive cond mods => Condition.ok {} cond && mods.all (StaticMod.ok {})
+  | .replacement _ cond instead =>
+    Condition.ok { eventOk := true } cond && instead.ok { eventOk := true }
+  | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
+  | .triggered t body _ => Trigger.ok { itOk := true } t && body.ok { itOk := true }
+
+/-- A chosen object is found exactly when its slot was declared. -/
+theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by
+  simp [Selector.ok]
+
+/-- A variable is found exactly when it was bound. -/
+theorem Amount.ok_var (c : Ctx) (v : VarId) : Amount.ok c (.var v) = true ↔ v ∈ c.vars := by
+  simp [Amount.ok]
+
+/-- A bound variable can be used in the effect it is bound for, and in nothing else. -/
+theorem Effect.ok_bind (c : Ctx) (v : VarId) (a : Amount) (e : Effect) :
+    Effect.ok c (.bind v a e) = (Amount.ok c a && Effect.ok { c with vars := v :: c.vars } e) := by
+  simp [Effect.ok]
+
+/-- Inside an effect with choices, a slot is valid exactly when it is below the number of targets
+declared (CR 355). -/
+theorem EffectDef.slot_ok_iff (base : Ctx) (d : EffectDef) (i : Nat) :
+    Selector.ok (d.ctx base) (.slot i) = true ↔
+      i < (d.choices.filter Choice.isTarget).length := by
+  simp [EffectDef.ctx, Selector.ok]
+
+/-- The empty effect refers to nothing. -/
+theorem Effect.ok_nop (c : Ctx) : Effect.ok c .nop = true := rfl
+
+end Riftbound
+
+end
