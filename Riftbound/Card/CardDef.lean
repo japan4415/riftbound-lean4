@@ -6,12 +6,13 @@ public import Riftbound.Core.CardType
 public import Riftbound.Core.Cost
 public import Riftbound.Core.Might
 public import Riftbound.Core.Keyword
+public import Riftbound.Card.IR.Ability
 
 /-!
 # Card definitions
 
-The static data of a logical card (card-data.md §4). At this stage a definition holds
-metadata only. Abilities and effects are added with the effect IR (milestone M3b).
+The static data of a logical card (card-data.md §4): the metadata, and the effects written in the
+effect IR (`Riftbound.Card.IR`).
 -/
 
 @[expose] public section
@@ -54,6 +55,11 @@ structure CardDef where
   mightBonus : Option Int := none
   /-- The printed keywords. -/
   keywords : List KeywordInst := []
+  /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
+  abilities that a printed keyword stands for are not here (design.md §7.4). -/
+  abilities : List Ability := []
+  /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
+  spellEffect : Option EffectDef := none
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
