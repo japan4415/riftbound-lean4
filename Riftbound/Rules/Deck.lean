@@ -91,11 +91,15 @@ def SignatureOk (r : Resolved) : Prop :=
   (r.main.filter (·.hasSupertype .signature)).length ≤ 3 ∧
     ∀ c ∈ r.main, c.hasSupertype .signature = true → SharesTag r.legend c
 
-/-- Every domain on a Main Deck or Rune Deck card is in the Domain Identity, which is the
-domains of the Legend (CR 103.2.b). A card of a single domain needs that domain; a card of
-several domains needs all of them; a card without a domain fits anywhere. -/
-def IdentityOk (r : Resolved) : Prop :=
-  ∀ c ∈ r.main ++ r.runes, ∀ d ∈ c.domains, d ∈ r.legend.domains
+/-- Every domain on the cards is in the Domain Identity `identity` (CR 103.2.b). A card of a
+single domain needs that domain; a card of several domains needs all of them; a card without
+a domain fits anywhere. -/
+def DomainsIn (identity : List Domain) (cards : List CardDef) : Prop :=
+  ∀ c ∈ cards, ∀ d ∈ c.domains, d ∈ identity
+
+/-- Main Deck and Rune Deck cards fit the Domain Identity, which is the domains of the Legend
+(CR 103.2.b). -/
+def IdentityOk (r : Resolved) : Prop := DomainsIn r.legend.domains (r.main ++ r.runes)
 
 /-- The Rune Deck holds exactly 12 Runes (CR 103.4). -/
 def RuneDeckOk (r : Resolved) : Prop :=
@@ -114,7 +118,10 @@ instance (r : Resolved) : Decidable (MainSizeOk r) := by unfold MainSizeOk; infe
 instance (l : List CardDef) : Decidable (MainTypesOk l) := by unfold MainTypesOk; infer_instance
 instance (l : List CardDef) : Decidable (CopyLimitOk l) := by unfold CopyLimitOk; infer_instance
 instance (r : Resolved) : Decidable (SignatureOk r) := by unfold SignatureOk; infer_instance
-instance (r : Resolved) : Decidable (IdentityOk r) := by unfold IdentityOk; infer_instance
+instance (i : List Domain) (l : List CardDef) : Decidable (DomainsIn i l) := by
+  unfold DomainsIn; infer_instance
+instance (r : Resolved) : Decidable (IdentityOk r) := by
+  unfold IdentityOk; infer_instance
 instance (r : Resolved) : Decidable (RuneDeckOk r) := by unfold RuneDeckOk; infer_instance
 instance (m : Mode) (r : Resolved) : Decidable (BattlefieldsOk m r) := by
   unfold BattlefieldsOk; infer_instance

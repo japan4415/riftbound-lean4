@@ -42,7 +42,7 @@ def total (c : Cost) : Nat := c.energy + c.power.length
 (CR 356.6). -/
 def addEnergy (c : Cost) (d : Int) : Cost := { c with energy := ((c.energy : Int) + d).toNat }
 
-/-- Remove up to `n` Power symbols, from the front (a discount on the Power part, CR 356.4).
+/-- Remove up to `n` Power symbols, from the front (a discount on the Power part) (CR 356.4).
 Removing more than there are leaves none (CR 356.6). -/
 def dropPower (c : Cost) (n : Nat) : Cost := { c with power := c.power.drop n }
 

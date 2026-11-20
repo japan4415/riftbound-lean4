@@ -1,6 +1,7 @@
 module
 
-public import Riftbound.Rules.Deck
+public import Riftbound.Tournament.DeckLegality
+meta import Riftbound.Tournament.DeckLegality
 meta import Riftbound.Rules.Deck
 
 /-!
@@ -56,10 +57,17 @@ meta def furyRune : CardDef :=
 meta def battlefield (n : Nat) : CardDef :=
   { id := cid s!"B{n}", name := s!"Battlefield {n}", types := [.battlefield] }
 
+/-- The set every fixture card is printed in. -/
+meta def testSet : SetCode := ⟨"TST"⟩
+
 /-- The database of all fixtures. -/
 meta def db : CardDB :=
-  { cards := [legend, champion, unique, offDomain, furyRune] ++ (List.range 20).map vanilla ++
-      (List.range 4).map signature ++ (List.range 4).map battlefield }
+  { cards := ([legend, champion, unique, offDomain, furyRune] ++ (List.range 20).map vanilla ++
+      (List.range 4).map signature ++ (List.range 4).map battlefield).map
+        (fun c => { c with sets := [testSet] }) }
+
+/-- The legality environment of the fixtures: the test set is legal, nothing is banned. -/
+meta def env : LegalityEnv := { legalSets := [testSet], banned := [] }
 
 /-- A legal Duel deck: the champion and three copies of each of 13 vanilla Units
 (40 cards), 12 Runes and 3 Battlefields. -/

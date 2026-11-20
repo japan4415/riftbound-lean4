@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE_DIRS = ["Riftbound", "RiftboundCards"]
 
 NUM = r"\d+(?:\.[0-9a-z]+)*"
-CITATION = re.compile(rf"\((CR|TR) ({NUM}(?:, ?{NUM})*)\)")
+ITEM = rf"{NUM}(?:-{NUM})?"  # 単独の番号か、範囲（805-832、601.2-3）
+CITATION = re.compile(rf"\((CR|TR) ({ITEM}(?:, ?{ITEM})*)\)")
 BARE = re.compile(r"\b(?:CR|TR) \d")
 
 

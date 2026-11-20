@@ -3,7 +3,8 @@ module
 /-!
 # Card types, supertypes and tags
 
-(CR 133, 140-178.) Tokens are not cards (CR 185.1) and have no `CardType`.
+Card types, supertypes and tags (CR 133, 140-178).
+Tokens are not cards (CR 185.1) and have no `CardType`.
 -/
 
 @[expose] public section
@@ -34,7 +35,7 @@ inductive Supertype where
   | signature
 deriving DecidableEq, Repr, Hashable
 
-/-- A tag (CR 133.8, list in CR 763.1). Tags have no rules meaning in general; the exceptions
+/-- A tag (CR 133.8, 763.1). Tags have no rules meaning in general; the exceptions
 are matched by name. The set of tags is open, so a tag is its name. -/
 structure Tag where
   /-- The tag's name as printed. -/

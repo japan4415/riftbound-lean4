@@ -92,6 +92,14 @@ I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正し
 
 このマイルストーンはゲーム進行から独立しているので、最初の証明の練習台にちょうどよい。
 
+**実装の記録（2026-11-20）**
+- 実装したファイル: `Core/{Ids,Domain,CardType,Cost,Might,Keyword,Mode}.lean`、`Card/{CardDef,CardDB}.lean`、`Rules/Deck.lean`、`Tournament/{Format,DeckLegality}.lean`。テストは `RiftboundTest/{Core,Deck,Tournament,Fixtures}.lean`。
+- **`deckValid_iff` は作らなかった。** `DeckValid` の各規則を `Decidable` なモジュール化された述語として書き、判定は `decide` が行う。手書きの Bool の検査をもう 1 つ持つと、両者を揃える作業が増え、一致の定理は自明に近くなるため。述語の正しさは、規則ごとに 1 点だけ壊したデッキのテストで確かめる（`RiftboundTest/Deck.lean`、`Tournament.lean`）。
+- `CardDef` に `sets : List SetCode` を足した（TR 601.2 の「合法なセットで印刷されたか」の判定に要る）。
+- 実装状況の `partial` は予約語なので、コンストラクタは `«partial»` と書く。
+- Sealed と Draft の合法性は、tournament-model.md §7 の項目 8〜9 のとおり簡略にした。
+- I13 は `constructedDeckValid_deckValid`（`Tournament/DeckLegality.lean`）。Battlefield を 3 枚求めるモードで述べる。
+
 ## M2: ゾーン・オブジェクト・セットアップ・エンジンの骨格（CR 105-124, 110-118, 414, 417, 431, 432）
 
 **実装**

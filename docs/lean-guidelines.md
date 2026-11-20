@@ -109,6 +109,10 @@ end
 ```
 
 - テストのモジュールは、同じパッケージ内なので `import all Riftbound.X` で非公開部分まで読める。
+- [確認済] **テストの補助（fixture）を別のモジュールに置いて使うには、3 つが要る**（`RiftboundTest/Fixtures.lean`）。
+  - 定義を `meta def` にし、`public section` の中に置く。`public` が無いと、他のモジュールから見えない。
+  - 型に使う `Riftbound` のモジュールは、`public import` する。private な import だと、公開する宣言の型に使えない。
+  - 使う側は、`meta import RiftboundTest.Fixtures` と、`Riftbound` 側の `import` と `meta import` を両方書く。
 - [確認済] `import Std.Data.HashMap` と `import Plausible` は、module の中から使える。
 - [確認済] lean-beam は、module のファイルにそのまま使える（`-Dexperimental.module=true` は要らない）。`sync`、`goals before`、`hover` が動いた（§8）。
 - [確認済] **module の中の `#guard` には `meta import` が要る。** `#guard` は式をコンパイルして実行するので、評価に使う定義を持つモジュールを `meta import` する。無いと `RulesDate.mk is not accessible here; consider adding public meta import ...` というエラーになる。
@@ -149,7 +153,7 @@ end
 
 - 各ファイルの先頭に、module docstring（`/-! # 題名 ... -/`）を書く。
 - 公開する宣言には、docstring（`/-- ... -/`）を書く（`linter.missingDocs` が強制する）。
-- **ルールに由来する定義には、規則番号を `(CR 323.4)` の形で書く。** Tournament Rules は `(TR 402.1)` と書く。複数あるときは `(CR 323.4, 142.4.b)`。
+- **ルールに由来する定義には、規則番号を `(CR 323.4)` の形で書く。** Tournament Rules は `(TR 402.1)` と書く。複数あるときは `(CR 323.4, 142.4.b)`、範囲は `(CR 805-832)` / `(TR 601.2-3)`。括弧の中に説明の文を混ぜない（説明は括弧の外に書く）。
   - この形式を崩さないこと。スクリプトで抽出して、規則のカバレッジ表や改番時の置換に使う（design.md §9）。
 - docstring は英語を基本とする。CR の用語をそのまま使えるからである。`docs/` の設計文書は日本語で書く。
 - カードの定義の docstring には、公式の英語の文面をそのまま入れる（card-data.md §4.1）。
@@ -229,6 +233,7 @@ end
 
 ### 5.6 タクティク
 
+- [確認済] **`omega` は、`abbrev` の型を見通さない。** `abbrev Might := Int` のとき、`(m : Might)` についての仮定と目標は `omega` に認識されず、"possible counterexample" で失敗する。算術を使う定義と定理の引数は、`Int` や `Nat` で直接書く（`Riftbound/Core/Might.lean`）。
 - **`simp` 補題**:
   - 左辺より右辺が単純な向きにする。
   - 可換律に `@[simp]` を付けない。

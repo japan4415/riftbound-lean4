@@ -11,6 +11,8 @@ public import Riftbound.Core.Mode
 public import Riftbound.Card.CardDef
 public import Riftbound.Card.CardDB
 public import Riftbound.Rules.Deck
+public import Riftbound.Tournament.Format
+public import Riftbound.Tournament.DeckLegality
 
 /-!
 # Riftbound

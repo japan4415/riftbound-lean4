@@ -76,6 +76,7 @@ structure CardDef where
   might      : Option Int
   mightBonus : Option Int          -- Equipment（CR 137）
   keywords   : List KeywordInst    -- 印刷されたキーワード（パラメータつき。design.md §7.4）
+  sets       : List SetCode        -- 印刷された弾（TR 601.2 の合法性の判定に使う）
   abilities  : List Ability        -- Passive / Replacement / Activated / Triggered（CR 361）
   spellEffect : Option EffectDef   -- Spell の選択の宣言と、解決するときに実行する指示（CR 355, 359.3）
   status     : ImplStatus          -- todo / drafted / partial / full（roadmap.md 末尾）
