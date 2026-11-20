@@ -18,7 +18,7 @@ open Riftbound RiftboundDriver
 
 meta def cfg : GameConfig := { ruleSet := .coreOnly, mode := Mode.duel }
 
-meta def start : Option GameState := GameState.initial cfg [goodDeck, goodDeck]
+meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDeck]
 
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
 
@@ -39,7 +39,7 @@ meta def p1 : PlayerId := ⟨1⟩
       count p1 .mainDeck s == 39 && s.nextId == 112 && s.pending.length == 7
   | none => false
 -- the number of decks must be the number of players
-#guard (GameState.initial cfg [goodDeck]).isNone
+#guard (GameState.initial db cfg [goodDeck]).isNone
 
 -- after the setup, for several seeds: every question is answered, and
 #guard (List.range 8).all fun seed => match finished seed with

@@ -3,6 +3,7 @@ module
 public import Riftbound.Rules.Reorder
 public import Riftbound.Rules.Setup
 public import Riftbound.Rules.Objects
+public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
@@ -53,10 +54,10 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
   | .phase .draw :: rest =>
     some ({ s with phase := .draw, pending := .draw (s.active.getD ⟨0⟩) 1 :: rest }, [])
   | .phase .ending :: rest =>
-    some ({ s.mapObjects healObj with phase := .ending, pending := rest }, [])
+    some ({ s.mapObjects healObj with phase := .ending, pending := rest, pools := {} }, [])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest => some ({ s with phase := .beginning, pending := rest }, [])
-  | .phase .main :: rest => some ({ s with phase := .main, pending := rest }, [])
+  | .phase .main :: rest => some ({ s with phase := .main, pending := rest, pools := {} }, [])
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
   | .draw p (n + 1) :: rest =>
     match drawOne s p with
@@ -73,6 +74,7 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
   match s.pending, a.kind with
   | .priority _ :: rest, .pass =>
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
+  | .priority p :: _, .runeAbility c ab => applyRune s p c ab
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

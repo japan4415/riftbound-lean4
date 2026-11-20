@@ -61,7 +61,10 @@ def legalFrameActions (s : GameState) : List Action :=
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
-  | .priority p :: _ => [⟨.player p, .pass⟩]
+  | .priority p :: _ =>
+    ⟨.player p, .pass⟩ :: (s.zone (.player p .base)).flatMap (fun c =>
+      ([RuneAbility.exhaust, .recycle].filter (fun ab => runeUsable s p c ab)).map
+        (fun ab => ⟨.player p, .runeAbility c ab⟩))
   | _ => []
 
 /-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/

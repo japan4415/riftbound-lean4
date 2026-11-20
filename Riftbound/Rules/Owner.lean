@@ -311,6 +311,21 @@ theorem channel_ownerOk (p : PlayerId) :
     | some r =>
       simpa using channel_ownerOk p n (channelOne_wf hwf hc) (channelOne_ownerOk hwf hown hc)
 
+/-- A move leaves a zone alone when the zone is neither the one the object left nor the one it
+went to. -/
+theorem moveObj_zone_unchanged {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
+    {z0 : Zone} (hwf : s.WF) (hid : id ∈ s.zone z0)
+    (h : moveObj s id dst pos = some (s', id')) {z : Zone} (hz0 : z ≠ z0)
+    (hd : ∀ o, s.obj? id = some o → z ≠ Zone.normalize o.owner dst) :
+    s'.zone z = s.zone z := by
+  obtain ⟨src, d, hs, o, ho, hdd⟩ := moveObj_spec_dst h
+  have hsrc : src = z0 :=
+    Option.some.inj (hs.locate.symm.trans
+      (GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid))
+  refine hs.zone_other ?_ ?_
+  · rw [hsrc]; exact hz0
+  · rw [hdd]; exact hd o ho
+
 end Riftbound
 
 end

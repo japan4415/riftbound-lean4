@@ -24,7 +24,7 @@ meta def cnt (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.pl
 
 /-- The game after `turns` turns, seed `seed`. -/
 meta def afterTurns (seed turns : Nat) : Option GameState :=
-  match GameState.initial tcfg [goodDeck, goodDeck] with
+  match GameState.initial db tcfg [goodDeck, goodDeck] with
   | none => none
   | some s => match runUntilTurn 100 turns 2000 (Rng.ofSeed seed) s with
       | .ok s => some s
@@ -98,11 +98,13 @@ meta def afterTurns (seed turns : Nat) : Option GameState :=
       | _ => false)
   | none => false
 
--- the legal answers in the Main Phase: pass for the turn player, and the concessions
+-- the legal answers in the Main Phase: pass and the Rune abilities for the turn player, and the
+-- concessions
 #guard match afterTurns 2 1 with
   | some s =>
     let first := s.turnOrder.headD tp0
-    (legalActions s).length == 3 &&
+    -- pass, the two abilities of each of the two Runes on the Base, and the two concessions
+    (legalActions s).length == 7 &&
     (legalActions s).contains ⟨.player first, .pass⟩ &&
     (legalActions s).contains ⟨.player tp0, .concede⟩ &&
     (legalActions s).contains ⟨.player tp1, .concede⟩ &&

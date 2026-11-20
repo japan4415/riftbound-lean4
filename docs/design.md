@@ -333,7 +333,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `choose` | 決定 | 対象・モード・移動先・プレイ先（355）、任意の追加コストを払うか（355.1.a）、"may" に従うか、誘発能力を Chain に積む順序（383.3.d。戦闘開始時は 466.2.d.1 の例外順）、置換効果の適用順（372）、マリガン（117）、Burn Out で点を与える相手（432.2.c）、Showdown / Combat を開く Battlefield（323.11-12）、戦闘ダメージの割り当て（467.2.c）、Secret / Private なカードへの指示を拒否するか（128.6） |
 | `chance` | 決定（偶然） | シャッフル（114）、Main Deck の下へ同時に Recycle するときの順序（417.5）、Burn Out での Trash のランダム化（432.2.b）、手番順（115）、Battlefield のランダムな選択（487.5, 489.5, 490.5, 491.5.a） |
 | `chooseBurnOut` | 決定 | Burn Out で点を与える相手（432.2.c）。`chanceBurnOut`（Trash を山札に戻す順序: 432.2.b。答えた時点で Recycle する）の次に積まれる |
-| `priority p` | 決定 | Main Phase で、手番のプレイヤーが Priority を持つ（311-312, 316）。答えは `pass`（Chain が無いので、Main Phase を終えて Ending に進む: 305）。Discretionary Action（カードのプレイなど）は M4 で足す |
+| `priority p` | 決定 | Main Phase で、手番のプレイヤーが Priority を持つ（311-312, 316）。答えは `pass`（Chain が無いので、Main Phase を終えて Ending に進む: 305）か、Basic Rune の Add 能力（`runeAbility`: Exhaust で Energy、Recycle で Power: 164.2。即座に解決し、`priority` のまま）。Discretionary Action（カードのプレイなど）は M4 で足す |
 | `beginTurn` / `phase ph` | 作業 | 次のターンを始める（手番のプレイヤーは手番順を回す: 118, 301）。各フェイズの処理（Awaken: Ready、Channel、Draw、Ending: Heal。314-317） |
 | `setupHands` / `draw p n` | 作業 | 開幕の手札とマリガンの並べ方（116-117）、`p` が `n` 枚引く（414）。空の山札に当たると Burn Out のフレームを積む（432） |
 | `playProc` | 作業 | プレイ手順（354-359）の途中。どの段にいるか、それまでの選択、**巻き戻し用の盤面のスナップショット** |

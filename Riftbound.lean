@@ -19,9 +19,11 @@ public import Riftbound.Rules.Deck
 public import Riftbound.State.Event
 public import Riftbound.State.Decision
 public import Riftbound.State.Phase
+public import Riftbound.State.Pool
 public import Riftbound.Rules.Move
 public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Objects
+public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Reorder
 public import Riftbound.Rules.Setup
@@ -36,6 +38,7 @@ public import Riftbound.Invariant.Step
 public import Riftbound.Invariant.Sound
 public import Riftbound.Invariant.Hands
 public import Riftbound.Invariant.Turn
+public import Riftbound.Invariant.Resources
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality
 

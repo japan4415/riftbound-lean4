@@ -25,6 +25,7 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · exact applyRune_wf hwf h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -196,6 +197,7 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · exact applyRune_physIds hwf h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -316,7 +318,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · simp
   · cases f <;> cases kind <;> cases actor <;> simp [Actor.isPlayer]
-    all_goals grind
+    all_goals try grind
+    all_goals (rename_i _ _ ab _; cases ab <;> grind)
 
 /-- The concessions listed are exactly the legal concessions. -/
 theorem concedeActions_iff (s : GameState) (a : Action) :

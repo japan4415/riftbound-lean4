@@ -43,7 +43,8 @@ meta def s0 : GameState :=
     phase := .setup
     turn := 0
     active := none
-    result := none }
+    result := none
+    pools := {} }
 
 meta def ids (l : List Nat) : List ObjId := l.map (⟨·⟩)
 

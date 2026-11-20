@@ -6,6 +6,7 @@ public import RiftboundTest.Core
 public import RiftboundTest.Actions
 public import RiftboundTest.Setup
 public import RiftboundTest.Turn
+public import RiftboundTest.Resources
 public import RiftboundTest.Fixtures
 public import RiftboundTest.Deck
 public import RiftboundTest.Tournament

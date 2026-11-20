@@ -64,6 +64,9 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
   unfold LegalFrame at hl
   split
   · exact ⟨_, rfl⟩
+  · rename_i p _ c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2
   · exact ⟨_, rfl⟩
   · rename_i p rest i hp hk
     rw [hp, hk] at hl
@@ -133,6 +136,7 @@ theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
+  · exact applyRune_ownerOk hwf hown h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -308,8 +312,8 @@ theorem step_not_internal {fuel : Nat} {s : GameState} {a : Action} (hwf : s.WF)
 (design.md §8). -/
 inductive Reachable : GameState → Prop where
   /-- The state a game starts from. -/
-  | init {config : GameConfig} {decks : List Deck} {s : GameState}
-      (h : GameState.initial config decks = some s) : Reachable s
+  | init {db : CardDB} {config : GameConfig} {decks : List Deck} {s : GameState}
+      (h : GameState.initial db config decks = some s) : Reachable s
   /-- A step from a reachable state. -/
   | next {s s' : GameState} {fuel : Nat} {a : Action} {es : List Event} (hs : Reachable s)
       (h : Riftbound.step fuel s a = .ok (s', es)) : Reachable s'

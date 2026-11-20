@@ -60,21 +60,6 @@ structure Keeps (s s2 : GameState) : Prop where
 theorem Keeps.of_sameMeta {s s2 : GameState} (h : SameMeta s s2) : Keeps s s2 :=
   ⟨h.config, h.turnOrder, h.phase, h.result⟩
 
-/-- A move leaves a zone alone when the zone is neither the one the object left nor the one it
-went to. -/
-theorem moveObj_zone_unchanged {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
-    {z0 : Zone} (hwf : s.WF) (hid : id ∈ s.zone z0)
-    (h : moveObj s id dst pos = some (s', id')) {z : Zone} (hz0 : z ≠ z0)
-    (hd : ∀ o, s.obj? id = some o → z ≠ Zone.normalize o.owner dst) :
-    s'.zone z = s.zone z := by
-  obtain ⟨src, d, hs, o, ho, hdd⟩ := moveObj_spec_dst h
-  have hsrc : src = z0 :=
-    Option.some.inj (hs.locate.symm.trans
-      (GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid))
-  refine hs.zone_other ?_ ?_
-  · rw [hsrc]; exact hz0
-  · rw [hdd]; exact hd o ho
-
 /-- Rearranging a zone does not change the length of any zone. -/
 theorem GameState.length_reorder {s : GameState} {z : Zone} {l : List ObjId}
     (hp : l.Perm (s.zone z)) (z' : Zone) :
@@ -194,6 +179,13 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
       simp [Frame.contrib]
     · have : Frame.setupHands ∈ rest := by simpa using hmem
       rw [hp]; exact List.mem_cons_of_mem _ this
+  · rename_i p _ c ab hp hk
+    rw [hp, hk] at hl
+    have hmeta := applyRune_meta h
+    have hhand := applyRune_hand hwf hl.2.1 hl.2.2 h
+    exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
+      (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
+      (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -562,24 +554,25 @@ theorem addObject_zone_ne {s s' : GameState} {o : Object} {z z' : Zone} {pos : P
   · exact absurd h (by simp)
 
 /-- Adding cards to a zone that is not a hand leaves the hands alone. -/
-theorem addCards_hand (owner : PlayerId) (z : Zone) (hz : ∀ r, z ≠ .player r .hand) :
-    ∀ (cs : List CardId) {s s' : GameState}, addCards owner z s cs = some s' →
+theorem addCards_hand {db : CardDB} (owner : PlayerId) (z : Zone)
+    (hz : ∀ r, z ≠ .player r .hand) :
+    ∀ (cs : List CardId) {s s' : GameState}, addCards db owner z s cs = some s' →
       ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
   | [], s, s', h, r => by
-    rw [show addCards owner z s [] = some s from rfl] at h
+    rw [show addCards db owner z s [] = some s from rfl] at h
     cases h
     rfl
   | c :: cs, s, s', h, r => by
-    cases hr : addObject s (newCard s owner c) z .bottom with
+    cases hr : addObject s (newCard db s owner c) z .bottom with
     | none => simp [addCards, hr] at h
     | some r1 =>
-      have h' : addCards owner z r1.1 cs = some s' := by simpa [addCards, hr] using h
+      have h' : addCards db owner z r1.1 cs = some s' := by simpa [addCards, hr] using h
       rw [addCards_hand owner z hz cs h' r]
       exact addObject_zone_ne hr (fun e => hz r e.symm)
 
 /-- Adding a deck leaves the hands alone. -/
-theorem GameState.addDeck_hand {s s' : GameState} {p : PlayerId} {d : Deck}
-    (h : s.addDeck p d = some s') (r : PlayerId) :
+theorem GameState.addDeck_hand {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
+    (h : s.addDeck db p d = some s') (r : PlayerId) :
     s'.zone (.player r .hand) = s.zone (.player r .hand) := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
@@ -589,25 +582,25 @@ theorem GameState.addDeck_hand {s s' : GameState} {p : PlayerId} {d : Deck}
     addCards_hand _ _ (fun _ => by simp) _ h1]
 
 /-- Adding the decks leaves the hands alone. -/
-theorem GameState.addDecks_hand :
-    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.addDecks i ds = some s' →
+theorem GameState.addDecks_hand {db : CardDB} :
+    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.addDecks db i ds = some s' →
       ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
   | [], s, s', i, h, r => by
-    rw [show s.addDecks i [] = some s from rfl] at h
+    rw [show s.addDecks db i [] = some s from rfl] at h
     cases h
     rfl
   | d :: ds, s, s', i, h, r => by
-    cases hr : s.addDeck ⟨i⟩ d with
+    cases hr : s.addDeck db ⟨i⟩ d with
     | none => simp [GameState.addDecks, hr] at h
     | some s1 =>
-      have h' : s1.addDecks (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
+      have h' : s1.addDecks db (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
       rw [GameState.addDecks_hand ds h' r]
       exact GameState.addDeck_hand hr r
 
 /-- **The hand invariant holds at the start.** No hand has a card yet, and the stack accounts for
 the four opening cards through the turn order. -/
-theorem GameState.initial_handInv {config : GameConfig} {decks : List Deck} {s : GameState}
-    (h : GameState.initial config decks = some s) : HandInv s := by
+theorem GameState.initial_handInv {db : CardDB} {config : GameConfig} {decks : List Deck}
+    {s : GameState} (h : GameState.initial db config decks = some s) : HandInv s := by
   unfold GameState.initial at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
