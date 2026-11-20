@@ -247,6 +247,13 @@ end
 - `erw` は使わない。
 - `set_option maxHeartbeats` は宣言単位（`in`）でだけ上げる。上げる前に原因を潰す。
 
+### 5.6b core に無いタクティクと補題
+
+- [確認済] **`set`、`push_neg`、`by_contra` は Mathlib のタクティクで、core には無い。** 代わりに、`obtain ⟨x, hx⟩ : ∃ x, x = e := ⟨_, rfl⟩`、`simp only [not_or, Decidable.not_not]`、`by_cases h : p` と `exfalso` を使う。
+- [確認済] `List.Nodup.map`、`List.nodup_flatMap`、`List.filterMap_congr`、`List.flatMap_congr`、`Std.ExtTreeMap.mem_of_getElem?` は無い。代わりに、`List.Pairwise.map`、`List.pairwise_flatMap`、`Std.ExtTreeMap.mem_iff_isSome_getElem?` を使う。自前の補題は `Basic/ListLemmas.lean` に置いた。
+- [確認済] `Std.ExtTreeMap` の鍵の比較は、`simp` のあとに `Ordering.eq = compare a k` の形で残る。`Nat.compare_eq_eq` で等式に直す。
+- [確認済] **名前を付けない `instance` は、型から名前が作られ、別のモジュールの同名のものと衝突する。** `Decidable (r.Valid ..)` を別々の型に作ったら、`Riftbound.instDecidableValid` が重なって import が失敗した。`Valid` のような短い述語の `Decidable` には、`instance GameConfig.decidableValid ...` と名前を付ける。
+
 ### 5.7 モナドと純粋性
 
 - ルールの関数は純粋な `Except RuleError α` か、状態を明示的に受け渡す関数にする。transformer は重ねない。
@@ -287,6 +294,7 @@ Lean では、ビルドが通ることが「証明が kernel の検査を通っ�
   - 証明に行き詰まったら、先へ進まずに、主張か定義を見直す。
   - 後回しにする定理は、コードに残さない。メモか Issue に書く。
 - 定理は、それを使う側より先に書く。下の層から積む順序（roadmap.md）が、そのまま単位の順序になる。
+- **ビルドと `git commit` は `&&` でつなぐ。** `;` でつなぐと、ビルドが失敗してもコミットされる（M2a で一度起きて、コミットを直した）。
 - **コミットは、1 単位か、密接に関連する数単位ごとに行う**（例: 1 つの定義と、その補題）。
   - どのコミットも、`--wfail` を付けた全体のビルドが通る状態にする。
   - コミットメッセージに、足した定義と定理の名前を書く。
