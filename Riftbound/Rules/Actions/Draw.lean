@@ -84,6 +84,20 @@ theorem drawOne_lengths {s s' : GameState} {p : PlayerId} {es : List Event}
     · rw [h2, (Pos.insert_perm _ _ _).length_eq]
       simp
 
+/-- Drawing does not change the rules, the turn order or the stack of frames. -/
+theorem drawOne_meta {s s' : GameState} {p : PlayerId} {es : List Event}
+    (h : drawOne s p = some (s', es)) :
+    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.pending = s.pending := by
+  unfold drawOne at h
+  split at h
+  · exact absurd h (by simp)
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    obtain ⟨src, d, hs⟩ := moveObj_spec hm
+    exact ⟨hs.config, hs.turnOrder, hs.pending⟩
+
 end Riftbound
 
 end

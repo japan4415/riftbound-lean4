@@ -65,7 +65,7 @@ inductive Frame where
   /-- Chance: the random Battlefield of a player (CR 487.5). The answer picks an index among the
   player's Battlefields that are out of the game. -/
   | chanceBattlefield (p : PlayerId)
-  /-- Chance: the turn order (CR 115). -/
+  /-- Chance: the turn order (CR 115). Answering it pushes `setupHands`. -/
   | chanceTurnOrder
   /-- Choice: a player's mulligan (CR 117). A card picked is set aside at once; `setAside` is how
   many have been picked so far. -/

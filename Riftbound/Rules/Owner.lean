@@ -169,12 +169,15 @@ theorem moveObj_isSome {s : GameState} (hwf : s.WF) {z : Zone} {id : ObjId}
     · exact absurd hv hc
   · split <;> exact ⟨_, rfl⟩
 
-/-- Recycling the objects of a Non-Board zone of a player (other than the Main Deck) succeeds. -/
+/-- Recycling the objects of a Non-Board zone of a player (other than the Main Deck and the hand)
+succeeds, and no hand changes. -/
 theorem recycleAll_some {p q : PlayerId} {k : ZoneKind} (hk : k.isBoard = false)
-    (hk2 : k ≠ .mainDeck) :
+    (hk2 : k ≠ .mainDeck) (hk3 : k ≠ .hand) :
     ∀ (ids : List ObjId) {s : GameState}, s.WF → s.OwnerOk → ids.Nodup →
-      (∀ id ∈ ids, id ∈ s.zone (.player q k)) → ∃ s', recycleAll p s ids = some s'
-  | [], s, _, _, _, _ => ⟨s, rfl⟩
+      (∀ id ∈ ids, id ∈ s.zone (.player q k)) →
+      ∃ s', recycleAll p s ids = some s' ∧
+        ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
+  | [], s, _, _, _, _ => ⟨s, rfl, fun _ => rfl⟩
   | id :: ids, s, hwf, hown, hnd, hall => by
     have hid := hall id List.mem_cons_self
     obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf hid
@@ -202,13 +205,25 @@ theorem recycleAll_some {p q : PlayerId} {k : ZoneKind} (hk : k.isBoard = false)
       have hne : id2 ≠ id := fun e => hnd'.1 (e ▸ hid2)
       exact (List.Nodup.mem_erase_iff (GameState.zone_nodup hwf (hsrc ▸ hs.src_mem))).mpr
         ⟨hne, hall id2 (List.mem_cons_of_mem _ hid2)⟩
-    obtain ⟨s', hs'⟩ := recycleAll_some hk hk2 ids (moveObj_wf hwf hr)
+    obtain ⟨s', hs', hhand⟩ := recycleAll_some hk hk2 hk3 ids (moveObj_wf hwf hr)
       (moveObj_ownerOk hwf hown hr) hnd'.2 hrest
-    refine ⟨s', ?_⟩
-    have : recycleAll p s (id :: ids) = (moveObj s id (.player p .mainDeck) .bottom).bind
-        (fun r => recycleAll p r.1 ids) := rfl
-    rw [this, hr]
-    exact hs'
+    refine ⟨s', ?_, fun r' => ?_⟩
+    · have : recycleAll p s (id :: ids) = (moveObj s id (.player p .mainDeck) .bottom).bind
+          (fun r => recycleAll p r.1 ids) := rfl
+      rw [this, hr]
+      exact hs'
+    · rw [hhand r']
+      have hd2 : d = .player q .mainDeck := by
+        have hoo : o' = o := Option.some.inj (ho'.symm.trans ho)
+        rw [hd, hoo, hnorm]
+      refine hs.zone_other ?_ ?_
+      · rw [hsrc]
+        intro e
+        simp only [Zone.player.injEq] at e
+        exact hk3 e.2.symm
+      · rw [hd2]
+        intro e
+        simp at e
 
 /-- Recycling keeps `OwnerOk`. -/
 theorem recycleAll_ownerOk (p : PlayerId) :

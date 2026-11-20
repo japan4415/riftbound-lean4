@@ -36,7 +36,7 @@ meta def p1 : PlayerId := ⟨1⟩
 #guard match start with
   | some s => count p0 .legendZone s == 1 && count p0 .championZone s == 1 &&
       count p0 .mainDeck s == 39 && count p0 .runeDeck s == 12 && count p0 .outOfGame s == 3 &&
-      count p1 .mainDeck s == 39 && s.nextId == 112 && s.pending.length == 8
+      count p1 .mainDeck s == 39 && s.nextId == 112 && s.pending.length == 7
   | none => false
 -- the number of decks must be the number of players
 #guard (GameState.initial cfg [goodDeck]).isNone

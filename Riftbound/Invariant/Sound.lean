@@ -95,16 +95,16 @@ theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     rw [hp, hk] at hl
     have hperm : l.Perm (s.zone (.player p .setAside)) := hl.2
     have hnd : l.Nodup := hperm.nodup_iff.mpr (GameState.zone_nodup_any hwf _)
-    obtain ⟨s2, hs2⟩ := recycleAll_some (p := p) (q := p) (k := .setAside) rfl (by simp) l hwf
-      hown hnd (fun id hid => hperm.mem_iff.mp hid)
+    obtain ⟨s2, hs2, -⟩ := recycleAll_some (p := p) (q := p) (k := .setAside) rfl (by simp)
+      (by simp) l hwf hown hnd (fun id hid => hperm.mem_iff.mp hid)
     simp only [hs2]
     exact ⟨_, rfl⟩
   · rename_i p rest l hp hk
     rw [hp, hk] at hl
     have hperm : l.Perm (s.zone (.player p .trash)) := hl.2
     have hnd : l.Nodup := hperm.nodup_iff.mpr (GameState.zone_nodup_any hwf _)
-    obtain ⟨s2, hs2⟩ := recycleAll_some (p := p) (q := p) (k := .trash) rfl (by simp) l hwf
-      hown hnd (fun id hid => hperm.mem_iff.mp hid)
+    obtain ⟨s2, hs2, -⟩ := recycleAll_some (p := p) (q := p) (k := .trash) rfl (by simp)
+      (by simp) l hwf hown hnd (fun id hid => hperm.mem_iff.mp hid)
     simp only [hs2]
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩

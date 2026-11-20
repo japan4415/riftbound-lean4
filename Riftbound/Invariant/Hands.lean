@@ -1,0 +1,520 @@
+module
+
+public import Riftbound.Invariant.Sound
+
+/-!
+# The opening hands
+
+After the setup every player has four cards in hand (CR 116, 117): the opening draw gives four, and
+a mulligan sets aside as many cards as it draws. The proof tracks the size of each hand together
+with the draws that are still on the stack: the invariant `HandInv` says that the hand and the cards
+the frames will still put in it add up to four, and each step keeps it.
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- How many cards of player `p`'s hand the frame accounts for: the opening hands, the draws still
+to do, and the cards a mulligan has set aside (they are drawn again when it ends). -/
+def Frame.contrib (p : PlayerId) : Frame → Nat
+  | .chanceTurnOrder => 4
+  | .setupHands => 4
+  | .draw q n => if q = p then n else 0
+  | .mulligan q k => if q = p then k else 0
+  | _ => 0
+
+/-- What the frames on the stack account for in the hand of `p`. -/
+def stackContrib (p : PlayerId) (l : List Frame) : Nat := (l.map (Frame.contrib p)).sum
+
+/-- One more frame adds its share. -/
+theorem stackContrib_cons (p : PlayerId) (f : Frame) (l : List Frame) :
+    stackContrib p (f :: l) = f.contrib p + stackContrib p l := by
+  simp [stackContrib]
+
+/-- The size of a player's hand. -/
+def GameState.handLen (s : GameState) (p : PlayerId) : Nat := (s.zone (.player p .hand)).length
+
+/-- **The hand invariant.** The turn order is known when the opening hands are laid out, and every
+player's hand together with what the stack still accounts for is four cards. -/
+structure HandInv (s : GameState) : Prop where
+  /-- The turn order is an arrangement of the players as soon as `setupHands` is on the stack. -/
+  turn : Frame.setupHands ∈ s.pending → s.turnOrder.Perm (allPlayers s.playerCount)
+  /-- Each player: hand plus what is still to come is four. -/
+  hands : ∀ p : PlayerId, p.n < s.playerCount → s.handLen p + stackContrib p s.pending = 4
+
+/-- A move leaves a zone alone when the zone is neither the one the object left nor the one it
+went to. -/
+theorem moveObj_zone_unchanged {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos : Pos}
+    {z0 : Zone} (hwf : s.WF) (hid : id ∈ s.zone z0)
+    (h : moveObj s id dst pos = some (s', id')) {z : Zone} (hz0 : z ≠ z0)
+    (hd : ∀ o, s.obj? id = some o → z ≠ Zone.normalize o.owner dst) :
+    s'.zone z = s.zone z := by
+  obtain ⟨src, d, hs, o, ho, hdd⟩ := moveObj_spec_dst h
+  have hsrc : src = z0 :=
+    Option.some.inj (hs.locate.symm.trans
+      (GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid))
+  refine hs.zone_other ?_ ?_
+  · rw [hsrc]; exact hz0
+  · rw [hdd]; exact hd o ho
+
+/-- Rearranging a zone does not change the length of any zone. -/
+theorem GameState.length_reorder {s : GameState} {z : Zone} {l : List ObjId}
+    (hp : l.Perm (s.zone z)) (z' : Zone) :
+    ((s.reorder z l).zone z').length = (s.zone z').length := by
+  by_cases h : z' = z
+  · subst h
+    have : (s.reorder z' l).zone z' = l := GameState.zone_setZone_self s z' l
+    rw [this]
+    exact hp.length_eq
+  · rw [show (s.reorder z l).zone z' = s.zone z' from GameState.zone_setZone_ne s h l]
+
+/-- A draw puts a card in the player's hand and leaves the other hands alone (CR 414). -/
+theorem drawOne_hand {s s' : GameState} {p : PlayerId} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (h : drawOne s p = some (s', es)) :
+    s'.handLen p = s.handLen p + 1 ∧
+      ∀ q, q ≠ p → s'.zone (.player q .hand) = s.zone (.player q .hand) := by
+  refine ⟨(drawOne_lengths_of_ownerOk hwf hown h).2, fun q hq => ?_⟩
+  unfold drawOne at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i top rest hz
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have htop : top ∈ s.zone (.player p .mainDeck) := by rw [hz]; exact List.mem_cons_self
+    refine moveObj_zone_unchanged hwf htop hm (by simp) (fun o ho => ?_)
+    have howner : o.owner = p := hown.owner p .mainDeck rfl top htop o ho
+    rw [howner]
+    simp [Zone.normalize, Zone.isBoard, hq]
+
+/-- Setting a card aside in the mulligan takes it out of the player's hand and leaves the other
+hands alone (CR 117.1). -/
+theorem mulliganPick_hand {s s' : GameState} {p : PlayerId} {c id' : ObjId}
+    (hwf : s.WF) (hown : s.OwnerOk) (hc : c ∈ s.zone (.player p .hand))
+    (h : moveObj s c (.player p .setAside) = some (s', id')) :
+    s'.handLen p + 1 = s.handLen p ∧
+      ∀ q, q ≠ p → s'.zone (.player q .hand) = s.zone (.player q .hand) := by
+  refine ⟨?_, fun q hq => ?_⟩
+  · obtain ⟨src, d, hs, o, ho, hd⟩ := moveObj_spec_dst h
+    have hsrc : src = .player p .hand :=
+      Option.some.inj (hs.locate.symm.trans
+        (GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hc) hc))
+    have h1 := hs.zone_src
+    rw [hsrc] at h1
+    simp only [GameState.handLen]
+    rw [h1, List.length_erase_of_mem hc]
+    have : 0 < (s.zone (.player p .hand)).length := List.length_pos_of_mem hc
+    omega
+  · refine moveObj_zone_unchanged hwf hc h (fun e => hq (by simpa using e)) (fun o ho => ?_)
+    have howner : o.owner = p := hown.owner p .hand rfl c hc o ho
+    rw [howner]
+    simp [Zone.normalize, Zone.isBoard]
+
+/-- Picking the Battlefield leaves every hand alone. -/
+theorem battlefield_hands {s s' : GameState} {p : PlayerId} {id id' : ObjId}
+    (hwf : s.WF) (hid : id ∈ s.zone (.player p .outOfGame))
+    (h : moveObj s id .battlefieldZone .top = some (s', id')) (r : PlayerId) :
+    s'.zone (.player r .hand) = s.zone (.player r .hand) :=
+  moveObj_zone_unchanged hwf hid h (by simp) (fun o _ => by simp [Zone.normalize])
+
+/-- The turn order is known as soon as the opening hands are on the stack, whatever the step
+changed, as long as the turn order is the same and `setupHands` was already there. -/
+theorem HandInv.of_same {s s2 : GameState} (hinv : HandInv s) (hc : s2.config = s.config)
+    (hto : s2.turnOrder = s.turnOrder)
+    (hlen : ∀ r, (s2.zone (.player r .hand)).length = (s.zone (.player r .hand)).length)
+    (hcontrib : ∀ p : PlayerId, p.n < s.playerCount →
+      stackContrib p s2.pending = stackContrib p s.pending)
+    (hsub : Frame.setupHands ∈ s2.pending → Frame.setupHands ∈ s.pending) : HandInv s2 := by
+  have hcount : s2.playerCount = s.playerCount := by simp [GameState.playerCount, hc]
+  refine ⟨fun hm => ?_, fun p hp => ?_⟩
+  · rw [hcount, hto]; exact hinv.turn (hsub hm)
+  · rw [hcount] at hp
+    have := hinv.hands p hp
+    simp only [GameState.handLen] at this ⊢
+    rw [hlen p, hcontrib p hp]
+    exact this
+
+/-- `HandInv` for a step that pops a frame which accounts for nothing. -/
+theorem HandInv.of_pop {s s2 : GameState} {f : Frame} {rest : List Frame} (hinv : HandInv s)
+    (hp : s.pending = f :: rest) (hf : ∀ p, f.contrib p = 0) (hc : s2.config = s.config)
+    (hto : s2.turnOrder = s.turnOrder)
+    (hlen : ∀ r, (s2.zone (.player r .hand)).length = (s.zone (.player r .hand)).length)
+    (hpend : s2.pending = rest) : HandInv s2 := by
+  refine hinv.of_same hc hto hlen (fun p _ => ?_) (fun hm => ?_)
+  · rw [hpend, hp, stackContrib_cons, hf p]; simp
+  · rw [hpend] at hm
+    rw [hp]
+    exact List.mem_cons_of_mem _ hm
+
+/-- Recycling an arrangement of a Non-Board zone leaves every hand alone. -/
+theorem recycleAll_hands {s s2 : GameState} {p q : PlayerId} {k : ZoneKind} {l : List ObjId}
+    (hk : k.isBoard = false) (hk2 : k ≠ .mainDeck) (hk3 : k ≠ .hand) (hwf : s.WF)
+    (hown : s.OwnerOk) (hperm : l.Perm (s.zone (.player q k))) (h : recycleAll p s l = some s2)
+    (r : PlayerId) : s2.zone (.player r .hand) = s.zone (.player r .hand) := by
+  have hnd : l.Nodup := hperm.nodup_iff.mpr (GameState.zone_nodup_any hwf _)
+  obtain ⟨s3, hs3, hh⟩ := recycleAll_some (p := p) (q := q) hk hk2 hk3 l hwf hown hnd
+    (fun id hid => hperm.mem_iff.mp hid)
+  rw [hs3] at h
+  cases h
+  exact hh r
+
+/-- Applying a legal answer keeps the hand invariant. -/
+theorem applyAction_handInv {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : Legal s a)
+    (h : applyAction s a = some (s', es)) : HandInv s' := by
+  unfold applyAction at h
+  unfold Legal at hl
+  split at h
+  · rename_i z rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_pop hp (by simp [Frame.contrib]) rfl rfl
+      (fun r => GameState.length_reorder hl.2.2 _) rfl
+  · rename_i p rest i hp hk
+    split at h
+    · rename_i id hid
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      obtain ⟨src, d, hs⟩ := moveObj_spec hm
+      have hmem : id ∈ s.zone (.player p .outOfGame) := List.mem_of_getElem? hid
+      exact hinv.of_pop hp (by simp [Frame.contrib]) hs.config hs.turnOrder
+        (fun r => congrArg List.length (battlefield_hands hwf hmem hm r)) rfl
+    · exact absurd h (by simp)
+  · rename_i rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine ⟨fun _ => hl.2, fun q hq => ?_⟩
+    have h0 := hinv.hands q hq
+    rw [hp, stackContrib_cons] at h0
+    show s.handLen q + stackContrib q (Frame.setupHands :: rest) = 4
+    rw [stackContrib_cons]
+    simp only [Frame.contrib] at h0 ⊢
+    exact h0
+  · rename_i p n rest c hp hk
+    rw [hp, hk] at hl
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    obtain ⟨src, d, hs⟩ := moveObj_spec hm
+    obtain ⟨hp1, hq⟩ := mulliganPick_hand hwf hown hl.2.1 hm
+    have hcount : s2.playerCount = s.playerCount := by simp [GameState.playerCount, hs.config]
+    refine ⟨fun hmem => ?_, fun q hq' => ?_⟩
+    · have : Frame.setupHands ∈ rest := by simpa using hmem
+      have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
+      show s2.turnOrder.Perm (allPlayers s2.playerCount)
+      rw [hs.turnOrder, hcount]
+      exact h1
+    · change q.n < s2.playerCount at hq'
+      rw [hcount] at hq'
+      have h0 := hinv.hands q hq'
+      rw [hp, stackContrib_cons] at h0
+      show s2.handLen q + stackContrib q (Frame.mulligan p (n + 1) :: rest) = 4
+      rw [stackContrib_cons]
+      by_cases hqp : q = p
+      · subst hqp
+        simp only [Frame.contrib, ite_true] at h0 ⊢
+        omega
+      · simp only [GameState.handLen] at h0 ⊢
+        rw [hq q hqp]
+        have hpq : ¬ p = q := fun e => hqp e.symm
+        simp only [Frame.contrib, hpq, ite_false] at h0 ⊢
+        omega
+  · rename_i p n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hinv.of_pop hp (by simp [Frame.contrib]) rfl rfl (fun _ => rfl) rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_same rfl rfl (fun _ => rfl) (fun q _ => ?_) (fun hmem => ?_)
+      · show stackContrib q (Frame.draw p (_ + 1) :: Frame.chanceRecycle p :: rest) =
+          stackContrib q s.pending
+        rw [hp, stackContrib_cons, stackContrib_cons, stackContrib_cons]
+        simp [Frame.contrib]
+      · have : Frame.setupHands ∈ rest := by simpa using hmem
+        rw [hp]; exact List.mem_cons_of_mem _ this
+  · rename_i p rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    obtain ⟨c, to, -⟩ := recycleAll_meta p _ hm
+    exact hinv.of_pop hp (by simp [Frame.contrib]) c to
+      (fun r => congrArg List.length
+        (recycleAll_hands (q := p) (k := .setAside) rfl (by simp) (by simp) hwf hown hl.2 hm r))
+      rfl
+  · rename_i p rest l hp hk
+    rw [hp, hk] at hl
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    obtain ⟨c, to, -⟩ := recycleAll_meta p _ hm
+    have hh := recycleAll_hands (q := p) (k := .trash) rfl (by simp) (by simp) hwf hown hl.2 hm
+    refine hinv.of_same c to (fun r => congrArg List.length (hh r)) (fun q _ => ?_)
+      (fun hmem => ?_)
+    · show stackContrib q (Frame.chooseBurnOut p :: rest) = stackContrib q s.pending
+      rw [hp, stackContrib_cons, stackContrib_cons]
+      simp [Frame.contrib]
+    · have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]; exact List.mem_cons_of_mem _ this
+  · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_pop hp (by simp [Frame.contrib]) rfl rfl (fun _ => rfl) rfl
+  · exact absurd h (by simp)
+
+/-- The stack accounts for the sum of its parts. -/
+theorem stackContrib_append (p : PlayerId) (l1 l2 : List Frame) :
+    stackContrib p (l1 ++ l2) = stackContrib p l1 + stackContrib p l2 := by
+  simp [stackContrib]
+
+/-- Frames that account for nothing add nothing. -/
+theorem stackContrib_zero {p : PlayerId} {l : List Frame} (h : ∀ f ∈ l, f.contrib p = 0) :
+    stackContrib p l = 0 := by
+  induction l with
+  | nil => rfl
+  | cons f fs ih =>
+    rw [stackContrib_cons, h f List.mem_cons_self,
+      ih (fun g hg => h g (List.mem_cons_of_mem _ hg))]
+
+/-- The opening draws of the players account for four cards for each player listed. -/
+theorem stackContrib_draws (p : PlayerId) (l : List PlayerId) :
+    stackContrib p (l.map (fun q => Frame.draw q 4)) = 4 * l.count p := by
+  induction l with
+  | nil => rfl
+  | cons q qs ih =>
+    rw [List.map_cons, stackContrib_cons, ih, List.count_cons]
+    by_cases h : q = p
+    · subst h; simp [Frame.contrib]; omega
+    · have hpq : ¬ (q == p) = true := by simpa using h
+      simp [Frame.contrib, h, hpq]
+
+/-- The players are listed once each. -/
+theorem allPlayers_nodup (n : Nat) : (allPlayers n).Nodup := by
+  show List.Pairwise (· ≠ ·) _
+  refine List.Pairwise.map (fun i => (⟨i⟩ : PlayerId)) ?_ List.nodup_range
+  intro a b hab h
+  exact hab (by simpa using h)
+
+/-- A step of work keeps the hand invariant. -/
+theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (hinv : HandInv s) (h : microStep s = some (s', es)) : HandInv s' := by
+  unfold microStep at h
+  split at h
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hto := hinv.turn (by rw [hp]; exact List.mem_cons_self)
+    refine hinv.of_same rfl rfl (fun _ => rfl) (fun q hq => ?_) (fun hmem => ?_)
+    · show stackContrib q (s.turnOrder.map (fun p => Frame.draw p 4) ++
+        s.turnOrder.map (fun p => Frame.mulligan p 0) ++ rest) = stackContrib q s.pending
+      rw [stackContrib_append, stackContrib_append, stackContrib_draws,
+        stackContrib_zero (l := s.turnOrder.map (fun p => Frame.mulligan p 0)) (fun f hf => by
+          simp only [List.mem_map] at hf
+          obtain ⟨x, -, rfl⟩ := hf
+          simp [Frame.contrib]),
+        hto.count_eq q, hp, stackContrib_cons]
+      have : (allPlayers s.playerCount).count q = 1 :=
+        List.Nodup.count_of_mem (allPlayers_nodup _) ((mem_allPlayers _ _).mpr hq)
+      rw [this]
+      simp [Frame.contrib]
+    · have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]; exact List.mem_cons_of_mem _ this
+  · rename_i q rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_pop hp (by simp [Frame.contrib]) rfl rfl (fun _ => rfl) rfl
+  · rename_i q n rest hp
+    split at h
+    · rename_i s1 es1 hd
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      obtain ⟨hc, hto, hpe⟩ := drawOne_meta hd
+      obtain ⟨hlen, hoth⟩ := drawOne_hand hwf hown hd
+      have hcount : s1.playerCount = s.playerCount := by simp [GameState.playerCount, hc]
+      refine ⟨fun hmem => ?_, fun r hr => ?_⟩
+      · have : Frame.setupHands ∈ rest := by simpa using hmem
+        have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
+        show s1.turnOrder.Perm (allPlayers s1.playerCount)
+        rw [hto, hcount]
+        exact h1
+      · change r.n < s1.playerCount at hr
+        rw [hcount] at hr
+        have h0 := hinv.hands r hr
+        rw [hp, stackContrib_cons] at h0
+        show s1.handLen r + stackContrib r (Frame.draw q n :: rest) = 4
+        rw [stackContrib_cons]
+        by_cases hrq : r = q
+        · subst hrq
+          simp only [Frame.contrib, ite_true] at h0 ⊢
+          omega
+        · simp only [GameState.handLen] at h0 ⊢
+          rw [hoth r hrq]
+          have hqr : ¬ q = r := fun e => hrq e.symm
+          simp only [Frame.contrib, hqr, ite_false] at h0 ⊢
+          omega
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_same rfl rfl (fun _ => rfl) (fun r _ => ?_) (fun hmem => ?_)
+      · show stackContrib r (Frame.chanceBurnOut q :: Frame.draw q (n + 1) :: rest) =
+          stackContrib r s.pending
+        rw [hp, stackContrib_cons, stackContrib_cons]
+        simp [Frame.contrib]
+      · have : Frame.setupHands ∈ rest := by simpa using hmem
+        rw [hp]; exact List.mem_cons_of_mem _ this
+  · exact absurd h (by simp)
+
+/-- The automatic work keeps the hand invariant. -/
+theorem advance_handInv :
+    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk → HandInv s →
+      advance n s es = .ok (s', es') → HandInv s'
+  | 0, s, s', es, es', _, _, hinv, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hinv
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hinv
+  | n + 1, s, s', es, es', hwf, hown, hinv, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · split at h
+        · rename_i s1 es1 hm
+          exact advance_handInv n (microStep_wf hwf hm) (microStep_ownerOk hwf hown hm)
+            (microStep_handInv hwf hown hinv hm) h
+        · exact absurd h (by simp)
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact hinv
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hinv
+
+/-- A step keeps the hand invariant. -/
+theorem step_handInv {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (h : step fuel s a = .ok (s', es)) :
+    HandInv s' := by
+  unfold step at h
+  split at h
+  · rename_i hl
+    split at h
+    · rename_i s1 es1 ha
+      exact advance_handInv fuel (applyAction_wf hwf hl ha) (applyAction_ownerOk hwf hown hl ha)
+        (applyAction_handInv hwf hown hinv hl ha) h
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Adding an object changes no zone but the one it is added to. -/
+theorem addObject_zone_ne {s s' : GameState} {o : Object} {z z' : Zone} {pos : Pos} {id : ObjId}
+    (h : addObject s o z pos = some (s', id)) (hz : z' ≠ z) : s'.zone z' = s.zone z' := by
+  unfold addObject at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.zone_setZone_ne s hz _
+  · exact absurd h (by simp)
+
+/-- Adding cards to a zone that is not a hand leaves the hands alone. -/
+theorem addCards_hand (owner : PlayerId) (z : Zone) (hz : ∀ r, z ≠ .player r .hand) :
+    ∀ (cs : List CardId) {s s' : GameState}, addCards owner z s cs = some s' →
+      ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
+  | [], s, s', h, r => by
+    rw [show addCards owner z s [] = some s from rfl] at h
+    cases h
+    rfl
+  | c :: cs, s, s', h, r => by
+    cases hr : addObject s (newCard s owner c) z .bottom with
+    | none => simp [addCards, hr] at h
+    | some r1 =>
+      have h' : addCards owner z r1.1 cs = some s' := by simpa [addCards, hr] using h
+      rw [addCards_hand owner z hz cs h' r]
+      exact addObject_zone_ne hr (fun e => hz r e.symm)
+
+/-- Adding a deck leaves the hands alone. -/
+theorem GameState.addDeck_hand {s s' : GameState} {p : PlayerId} {d : Deck}
+    (h : s.addDeck p d = some s') (r : PlayerId) :
+    s'.zone (.player r .hand) = s.zone (.player r .hand) := by
+  unfold GameState.addDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  rw [addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
+    addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
+    addCards_hand _ _ (fun _ => by simp) _ h1]
+
+/-- Adding the decks leaves the hands alone. -/
+theorem GameState.addDecks_hand :
+    ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.addDecks i ds = some s' →
+      ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
+  | [], s, s', i, h, r => by
+    rw [show s.addDecks i [] = some s from rfl] at h
+    cases h
+    rfl
+  | d :: ds, s, s', i, h, r => by
+    cases hr : s.addDeck ⟨i⟩ d with
+    | none => simp [GameState.addDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addDecks (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
+      rw [GameState.addDecks_hand ds h' r]
+      exact GameState.addDeck_hand hr r
+
+/-- **The hand invariant holds at the start.** No hand has a card yet, and the stack accounts for
+the four opening cards through the turn order. -/
+theorem GameState.initial_handInv {config : GameConfig} {decks : List Deck} {s : GameState}
+    (h : GameState.initial config decks = some s) : HandInv s := by
+  unfold GameState.initial at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    have hhand : ∀ r, s1.zone (.player r .hand) = [] := fun r => by
+      rw [GameState.addDecks_hand decks h1 r]
+      simp [GameState.zone, GameState.empty]
+    refine ⟨fun hm => ?_, fun p _ => ?_⟩
+    · simp [startFrames] at hm
+    · show (s1.zone (.player p .hand)).length +
+        stackContrib p (startFrames config.mode.players) = 4
+      rw [hhand p]
+      simp only [startFrames, stackContrib_append, List.length_nil]
+      rw [stackContrib_zero (l := (List.range config.mode.players).flatMap _) (fun f hf => by
+          simp only [List.mem_flatMap, List.mem_range, List.mem_cons, List.not_mem_nil,
+            or_false] at hf
+          obtain ⟨i, -, rfl | rfl⟩ := hf <;> simp [Frame.contrib]),
+        stackContrib_zero (l := (List.range config.mode.players).map _) (fun f hf => by
+          simp only [List.mem_map] at hf
+          obtain ⟨i, -, rfl⟩ := hf
+          simp [Frame.contrib])]
+      simp [stackContrib, Frame.contrib]
+  · exact absurd h (by simp)
+
+/-- Every reachable state satisfies the hand invariant. -/
+theorem Reachable.handInv {s : GameState} (h : Reachable s) : HandInv s := by
+  induction h with
+  | init h => exact GameState.initial_handInv h
+  | next hs h ih => exact step_handInv (Reachable.inv hs).1 (Reachable.inv hs).2 ih h
+
+/-- **The opening hands.** When the setup is over (no frame is left on the stack), every player
+has exactly four cards in hand (CR 116, 117): the opening draw gives four, and a mulligan draws as
+many cards as it sets aside. This holds for every game that runs through `step` from a set-up
+game, whatever the answers. -/
+theorem Reachable.opening_hands {s : GameState} (h : Reachable s) (hdone : s.pending = [])
+    (p : PlayerId) (hp : p.n < s.playerCount) : (s.zone (.player p .hand)).length = 4 := by
+  have := h.handInv.hands p hp
+  rw [hdone] at this
+  simpa [GameState.handLen, stackContrib] using this
+
+end Riftbound
+
+end
