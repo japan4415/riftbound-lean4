@@ -254,6 +254,20 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 4. 書けなかった文を一覧にする。足りない語彙（プリミティブ、Selector、Trigger、hook の種類）を洗い出し、design.md §7.2 と §7.3 を更新する。
 5. カバレッジ表に、「IR で書けた割合」と「`custom` を使った数」を出す。
 
+### M3b-2 `gen_lean.py`（カードの Lean ファイルの生成）の実装の記録（2026-11-21）
+
+- **作ったもの**: `scripts/gen_lean.py`（`--check` つき）。`RiftboundCards/<Set>.lean`（6 弾）と `RiftboundCards/Registry.lean` を生成する。`scripts/verify.sh` の 4 段目で `gen_lean.py --check` を実行する。テストは `RiftboundTest/Cards.lean`。
+- **ファイルの形**: 弾ごとに、カード 1 種につき生成ブロック（公式文面の docstring と `def OGN_029.meta : CardDef`）と、その直後の手書きの部分（`def OGN_029 : CardDef := OGN_029.meta`、実装状況 `todo`）。生成スクリプトは生成ブロックだけを書き換え、手書きの部分とヘッダには触れない（手書きの編集を残し、改ざんした生成ブロックを戻すことを確かめた）。弾ごとの `cards`、全体の `allCards` と `db : CardDB` も生成する。
+- **識別子**: カードの名前ではなく `cardId`（例: `OGN_029`）。エラッタや表記の揺れで名前が変わっても、手書きの効果との対応が切れない。読みやすさはドキュメントコメントの名前で補う。
+- **ビルド**: 1,103 枚（約 2.5 万行）で `lake build RiftboundCards` は約 2 秒。`CardDB.WF`（識別子の一意性）は、テストの `#guard decide` で確かめる。
+- **読み取れたもの**: 型、ドメイン、Energy と Power、Might、Might ボーナス、タグ、弾、先頭の行に並ぶキーワード（数値の引数、Equip・Repeat・Flow・Empower のコスト、Show Off の対象）。
+- **読み取れなかったもの**:
+  - supertype（Champion / Signature）は、公式ギャラリーに無いので空のまま。Chosen Champion の判定に使えない。
+  - 2 つのドメインを持つカード（48 枚）と、ドメインの無いカードの Power のドメインは、分からないので任意のドメイン（`.any`）にして、コメントで印を付けた（全体で 56 枚）。
+  - キーワードのコストを読めなかったもの（15 枚。Empower の「— Discard 1」など）は、引数なしにして印を付けた。
+  - 型が空のトークン 2 種（Buff、XP Tracker）は `types := []`。
+- **効果はまだ無い**: `CardDef` に `abilities` と `spellEffect` を足すのは IR を定義するとき（次の M3b-3）。
+
 ### M3b-1 取り込みのパイプライン（取得と正規化）の実装の記録（2026-11-21）
 
 - **作ったもの**: `scripts/fetch.py`（公式ギャラリーから取得し、文面と数値だけを日付つきスナップショットにする）、`scripts/normalize.py`（論理カードに束ねる。`--check` で最新かを確かめる）。`scripts/verify.sh` の 4 段目で `normalize.py --check` を実行する。標準ライブラリだけで動く。
@@ -263,7 +277,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   - 型の補正は 37 件（欄が空 15 件、食い違い 22 件）。代替テキストの接頭辞で補った。トークン 2 種（UNL-T04 Buff、UNL-T08 XP Tracker）は型が空のまま。
   - supertype（Champion / Signature）は、公式ギャラリーに無いので、まだ埋めていない。Riftcodex で補うか、別の手がかりで推定するかは、`gen_lean.py` を作るときに決める。
   - 論理カードのうち 17 種は、印刷によって文面が違う（注釈文の違いは除く）。現時点の `cardId` は最初の印刷のもの。
-- **次**: `gen_lean.py`（`RiftboundCards/<Set>.lean` の生成ブロック）、IR の構文（M3b-2）、構文だけの転記（M3b-3）。
+- **次**: `gen_lean.py`（M3b-2、済）、IR の構文（M3b-3）、構文だけの転記（M3b-4）。
 
 **証明（L0）**
 - IR の型の等値性と `Repr`。入れ子の帰納型なので、等値性は相互再帰で書く（[lean-guidelines.md §5.4](lean-guidelines.md#54-deriving-と等値性)）。

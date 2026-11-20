@@ -21,11 +21,7 @@ lake check --inadvisably-no-sandbox
 
 step "4/5 card data staleness"
 uv run --no-project python scripts/normalize.py --check
-if [ -f scripts/gen_lean.py ]; then
-  uv run scripts/gen_lean.py --check
-else
-  echo "skipped: scripts/gen_lean.py does not exist yet (milestone M3b)"
-fi
+uv run --no-project python scripts/gen_lean.py --check
 
 step "5/5 rule citations"
 uv run --no-project python scripts/cr_citations.py
