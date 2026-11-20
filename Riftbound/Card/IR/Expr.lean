@@ -28,6 +28,10 @@ inductive Amount where
   | x
   /-- A bound variable. -/
   | var (v : VarId)
+  /-- The amount of the event a replacement ability changes (draw N, channel N, score N). -/
+  | eventAmount
+  /-- How many turns the players have taken so far. -/
+  | turnsTaken (p : PlayerSel)
   /-- How many objects the selector matches. -/
   | count (s : Selector)
   /-- The Might of an object. -/
@@ -90,6 +94,10 @@ inductive Filter where
   | defender
   /-- Is not the object the effect belongs to ("another"). -/
   | notSelf
+  /-- Is at the place the selector gives (a Battlefield, for example the one that was chosen). -/
+  | at_ (s : Selector)
+  /-- Is the only unit of its side in the combat ("alone"). -/
+  | alone
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/
@@ -144,6 +152,8 @@ inductive Condition where
   | inCombat
   /-- A showdown is going on. -/
   | inShowdown
+  /-- The point being scored comes from this source. -/
+  | scoreFrom (src : ScoreSource)
 deriving DecidableEq, Repr, Hashable
 
 end

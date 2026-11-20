@@ -87,6 +87,8 @@ inductive PlayerSel where
   | eachOpponent
   /-- The player who chose a slot of the effect. -/
   | chosen (slot : Nat)
+  /-- The player the replaced event is about ("they draw 1 instead"). -/
+  | eventPlayer
 deriving DecidableEq, Repr, Hashable
 
 /-- A point of the turn a delayed effect or a trigger waits for (CR 314-317). -/
@@ -97,6 +99,8 @@ inductive Timing where
   | beginning
   /-- The end of the turn (the Ending Step). -/
   | endOfTurn
+  /-- The start of the Main Phase. -/
+  | startOfMain
   /-- The start of a combat. -/
   | startOfCombat
   /-- The end of a combat. -/
@@ -128,6 +132,34 @@ inductive Act where
   | draw
   /-- Be recalled. -/
   | recall
+deriving DecidableEq, Repr, Hashable
+
+/-- How fast an ability can be used (CR 806, 813). -/
+inductive Speed where
+  /-- Only when the player has priority on their own turn, with an empty Chain. -/
+  | normal
+  /-- Like an Action (CR 806). -/
+  | action
+  /-- Like a Reaction (CR 813). -/
+  | reaction
+deriving DecidableEq, Repr, Hashable
+
+/-- How many times a trigger or a delayed effect fires. -/
+inductive Occurrence where
+  /-- Every time. -/
+  | every
+  /-- On the `n`-th time only. -/
+  | nth (n : Nat)
+  /-- On the next `n` times, then no more. -/
+  | next (n : Nat)
+deriving DecidableEq, Repr, Hashable
+
+/-- Where a point comes from when a player scores. -/
+inductive ScoreSource where
+  /-- Conquering a Battlefield. -/
+  | conquer
+  /-- Holding a Battlefield. -/
+  | hold
 deriving DecidableEq, Repr, Hashable
 
 /-- The name of a variable bound in an effect (design.md §7.2). -/

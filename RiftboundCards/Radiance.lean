@@ -988,8 +988,14 @@ def RAD_047.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Fanfare: the effect is not written yet. -/
-def RAD_047 : CardDef := RAD_047.meta
+/-- Fanfare. -/
+def RAD_047 : CardDef :=
+  { RAD_047.meta with
+    spellEffect := some (.of []
+    (.delayed { event := .play, subject := .all .friendly .anywhere [.ofType .unit],
+                occurrence := .next 3 }
+      (.prim (.draw .you (.const 1))) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-048
 /--
@@ -1958,8 +1964,12 @@ def RAD_092.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Seraphic Wyvern: the effect is not written yet. -/
-def RAD_092 : CardDef := RAD_092.meta
+/-- Seraphic Wyvern. -/
+def RAD_092 : CardDef :=
+  { RAD_092.meta with
+    abilities := [.replacement .channel .always
+      (.of [] (.prim (.channel .you .eventAmount (.const 1))))],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-093
 /--

@@ -44,30 +44,15 @@ inductive Limit where
   | perTurn (n : Nat)
 deriving DecidableEq, Repr, Hashable
 
-/-- Something that happens in the game that a replacement ability can change (CR 367-375). -/
-inductive ReplaceEvent where
-  /-- The object would die. -/
-  | die
-  /-- The object would be dealt damage. -/
-  | takeDamage
-  /-- The player would draw. -/
-  | draw
-  /-- The player would score. -/
-  | score
-  /-- The player would channel. -/
-  | channel
-  /-- The object would enter play exhausted. -/
-  | enterExhausted
-deriving DecidableEq, Repr, Hashable
-
 /-- An ability of a card (CR 361). -/
 inductive Ability where
-  /-- A passive ability: it changes the game as long as the card is in play. -/
-  | passive (mods : List StaticMod)
+  /-- A passive ability: it changes the game as long as the card is in play and the condition
+  holds. -/
+  | passive (cond : Condition) (mods : List StaticMod)
   /-- A replacement ability: when the event would happen, the effect happens instead. -/
   | replacement (ev : ReplaceEvent) (cond : Condition) (instead : EffectDef)
-  /-- An activated ability: pay the costs to use it. -/
-  | activated (costs : List AbilityCost) (body : EffectDef) (limit : Limit)
+  /-- An activated ability: pay the costs to use it, at the given speed. -/
+  | activated (costs : List AbilityCost) (speed : Speed) (body : EffectDef) (limit : Limit)
   /-- A triggered ability: it fires when the trigger does. -/
   | triggered (t : Trigger) (body : EffectDef) (limit : Limit)
 deriving DecidableEq, Repr, Hashable

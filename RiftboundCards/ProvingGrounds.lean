@@ -37,8 +37,11 @@ def OGS_001.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Annie, Fiery: the effect is not written yet. -/
-def OGS_001 : CardDef := OGS_001.meta
+/-- Annie, Fiery. -/
+def OGS_001 : CardDef :=
+  { OGS_001.meta with
+    abilities := [.passive .always [.bonusDamage (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-002
 /--
@@ -56,8 +59,16 @@ def OGS_002.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Firestorm: the effect is not written yet. -/
-def OGS_002 : CardDef := OGS_002.meta
+/--
+Firestorm.
+Reading: a Battlefield is chosen when the card is played, and every enemy unit there is
+dealt 3.
+-/
+def OGS_002 : CardDef :=
+  { OGS_002.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield]]
+    (.prim (.deal (.all .enemy .atBattlefield [.ofType .unit, .at_ (.slot 0)]) (.const 3)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-003
 /--
@@ -77,8 +88,12 @@ def OGS_003.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Incinerate: the effect is not written yet. -/
-def OGS_003 : CardDef := OGS_003.meta
+/-- Incinerate. -/
+def OGS_003 : CardDef :=
+  { OGS_003.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+    (.prim (.deal (.slot 0) (.const 2)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-004
 /--
@@ -99,8 +114,13 @@ def OGS_004.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Master Yi, Meditative: the effect is not written yet. -/
-def OGS_004 : CardDef := OGS_004.meta
+/-- Master Yi, Meditative. -/
+def OGS_004 : CardDef :=
+  { OGS_004.meta with
+    abilities := [.passive
+      (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 8))
+      [.mightPlus .self (.const 4)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-005
 /--
@@ -121,8 +141,10 @@ def OGS_005.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Zephyr Sage: the effect is not written yet. -/
-def OGS_005 : CardDef := OGS_005.meta
+/-- Zephyr Sage. -/
+def OGS_005 : CardDef :=
+  { OGS_005.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-006
 /--
@@ -143,8 +165,13 @@ def OGS_006.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Lux, Illuminated: the effect is not written yet. -/
-def OGS_006 : CardDef := OGS_006.meta
+/-- Lux, Illuminated. -/
+def OGS_006 : CardDef :=
+  { OGS_006.meta with
+    abilities := [.triggered
+      { event := .play, subject := .all .friendly .anywhere [.ofType .spell, .cost .ge (.const 5)] }
+      (.of [] (.grant .self (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-007
 /--
@@ -167,8 +194,10 @@ def OGS_007.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Garen, Rugged: the effect is not written yet. -/
-def OGS_007 : CardDef := OGS_007.meta
+/-- Garen, Rugged. -/
+def OGS_007 : CardDef :=
+  { OGS_007.meta with
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-008
 /--
@@ -189,8 +218,23 @@ def OGS_008.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Gentlemen's Duel: the effect is not written yet. -/
-def OGS_008 : CardDef := OGS_008.meta
+/--
+Gentlemen's Duel.
+The two amounts are bound before either unit is dealt damage, so the exchange is
+simultaneous.
+-/
+def OGS_008 : CardDef :=
+  { OGS_008.meta with
+    spellEffect := some (.of
+    [.targetOf .one .friendly .anywhere [.ofType .unit],
+     .targetOf .one .enemy .anywhere [.ofType .unit]]
+    (.seqOf [
+      .grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn,
+      .bind ⟨"mine"⟩ (.mightOf (.slot 0))
+        (.bind ⟨"theirs"⟩ (.mightOf (.slot 1))
+          (.seqOf [.prim (.deal (.slot 1) (.var ⟨"mine"⟩)),
+                   .prim (.deal (.slot 0) (.var ⟨"theirs"⟩))]))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-009
 /--
@@ -213,8 +257,11 @@ def OGS_009.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Master Yi, Honed: the effect is not written yet. -/
-def OGS_009 : CardDef := OGS_009.meta
+/-- Master Yi, Honed. -/
+def OGS_009 : CardDef :=
+  { OGS_009.meta with
+    abilities := [.passive .always [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-010
 /--
@@ -235,8 +282,12 @@ def OGS_010.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Annie, Stubborn: the effect is not written yet. -/
-def OGS_010 : CardDef := OGS_010.meta
+/-- Annie, Stubborn. -/
+def OGS_010 : CardDef :=
+  { OGS_010.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.returnToHand (.one .friendly .inTrash [.ofType .spell])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-011
 /--
@@ -256,8 +307,12 @@ def OGS_011.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Flash: the effect is not written yet. -/
-def OGS_011 : CardDef := OGS_011.meta
+/-- Flash. -/
+def OGS_011 : CardDef :=
+  { OGS_011.meta with
+    spellEffect := some (.of [.targetOf (.upTo 2) .friendly .anywhere [.ofType .unit]]
+    (.prim (.move (.slot 0) .base))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-012
 /--
@@ -277,8 +332,12 @@ def OGS_012.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Blast of Power: the effect is not written yet. -/
-def OGS_012 : CardDef := OGS_012.meta
+/-- Blast of Power. -/
+def OGS_012 : CardDef :=
+  { OGS_012.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+    (.prim (.kill (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-013
 /--
@@ -299,8 +358,12 @@ def OGS_013.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Garen, Commander: the effect is not written yet. -/
-def OGS_013 : CardDef := OGS_013.meta
+/-- Garen, Commander. -/
+def OGS_013 : CardDef :=
+  { OGS_013.meta with
+    abilities := [.passive .always
+      [.mightPlus (.all .friendly .here [.ofType .unit, .notSelf]) (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-014
 /--
@@ -322,8 +385,12 @@ def OGS_014.meta : CardDef :=
     sets := [⟨"OGS"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Lux, Crownguard: the effect is not written yet. -/
-def OGS_014 : CardDef := OGS_014.meta
+/-- Lux, Crownguard. -/
+def OGS_014 : CardDef :=
+  { OGS_014.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+      (.of [] (.prim (.addEnergy .you (.const 2) (some .play)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-015
 /--
@@ -344,8 +411,14 @@ def OGS_015.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Recruit the Vanguard: the effect is not written yet. -/
-def OGS_015 : CardDef := OGS_015.meta
+/--
+Recruit the Vanguard.
+Not written: the Recruit token needs a definition (name, type, Might), and the tokens are
+played to a place chosen then (docs/ir-gaps.md).
+-/
+def OGS_015 : CardDef :=
+  { OGS_015.meta with
+    status := .todo }
 
 -- BEGIN GENERATED OGS-016
 /--
@@ -365,8 +438,11 @@ def OGS_016.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Vanguard Attendant: the effect is not written yet. -/
-def OGS_016 : CardDef := OGS_016.meta
+/-- Vanguard Attendant. -/
+def OGS_016 : CardDef :=
+  { OGS_016.meta with
+    abilities := [.passive .always [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-017
 /--
@@ -385,8 +461,13 @@ def OGS_017.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Dark Child, Starter: the effect is not written yet. -/
-def OGS_017 : CardDef := OGS_017.meta
+/-- Dark Child, Starter. -/
+def OGS_017 : CardDef :=
+  { OGS_017.meta with
+    abilities := [.triggered { event := .at_ .endOfTurn, condition := .yourTurn }
+      (.of [] (.prim (.ready (.pick (.exactly 2) .friendly .anywhere
+        (FilterList.ofList [.ofType .rune]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-018
 /--
@@ -407,8 +488,12 @@ def OGS_018.meta : CardDef :=
     sets := [⟨"OGS"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Tibbers, Annie: the effect is not written yet. -/
-def OGS_018 : CardDef := OGS_018.meta
+/-- Tibbers, Annie. -/
+def OGS_018 : CardDef :=
+  { OGS_018.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.deal (.all .any .atBattlefield [.ofType .unit]) (.const 3)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-019
 /--
@@ -427,8 +512,12 @@ def OGS_019.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Wuju Bladesman, Starter: the effect is not written yet. -/
-def OGS_019 : CardDef := OGS_019.meta
+/-- Wuju Bladesman, Starter. -/
+def OGS_019 : CardDef :=
+  { OGS_019.meta with
+    abilities := [.passive .always
+      [.mightPlus (.all .friendly .anywhere [.ofType .unit, .defender, .alone]) (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-020
 /--
@@ -451,8 +540,12 @@ def OGS_020.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Highlander, Yi: the effect is not written yet. -/
-def OGS_020 : CardDef := OGS_020.meta
+/-- Highlander, Yi. -/
+def OGS_020 : CardDef :=
+  { OGS_020.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+    (.replaceNext .die (.slot 0) (.prim (.recall (.slot 0) true)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-021
 /--
@@ -471,8 +564,13 @@ def OGS_021.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Lady of Luminosity, Starter: the effect is not written yet. -/
-def OGS_021 : CardDef := OGS_021.meta
+/-- Lady of Luminosity, Starter. -/
+def OGS_021 : CardDef :=
+  { OGS_021.meta with
+    abilities := [.triggered
+      { event := .play, subject := .all .friendly .anywhere [.ofType .spell, .cost .ge (.const 5)] }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-022
 /--
@@ -494,8 +592,12 @@ def OGS_022.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Final Spark, Lux: the effect is not written yet. -/
-def OGS_022 : CardDef := OGS_022.meta
+/-- Final Spark, Lux. -/
+def OGS_022 : CardDef :=
+  { OGS_022.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+    (.prim (.deal (.slot 0) (.const 8)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-023
 /--
@@ -514,8 +616,14 @@ def OGS_023.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/-- Might of Demacia, Starter: the effect is not written yet. -/
-def OGS_023 : CardDef := OGS_023.meta
+/-- Might of Demacia, Starter. -/
+def OGS_023 : CardDef :=
+  { OGS_023.meta with
+    abilities := [.triggered
+      { event := .youConquer,
+        condition := .cmp .ge (.count (.all .friendly .here [.ofType .unit])) (.const 4) }
+      (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGS-024
 /--
@@ -537,8 +645,12 @@ def OGS_024.meta : CardDef :=
     sets := [⟨"OGS"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Decisive Strike, Garen: the effect is not written yet. -/
-def OGS_024 : CardDef := OGS_024.meta
+/-- Decisive Strike, Garen. -/
+def OGS_024 : CardDef :=
+  { OGS_024.meta with
+    spellEffect := some (.of []
+    (.grant (.all .friendly .anywhere [.ofType .unit]) (.mightPlus .it (.const 2)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Proving Grounds. -/
