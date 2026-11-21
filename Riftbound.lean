@@ -45,6 +45,7 @@ public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Reorder
 public import Riftbound.Rules.Setup
+public import Riftbound.Rules.Temporary
 public import Riftbound.Rules.Frames
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle

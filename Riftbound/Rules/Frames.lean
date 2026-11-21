@@ -15,6 +15,7 @@ public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Battlefield
 public import Riftbound.Rules.Combat
+public import Riftbound.Rules.Temporary
 
 /-!
 # Working through the frames
@@ -66,9 +67,9 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ s.mapObjects endTurnObj with phase := .ending, pending := rest, pools := {} }, [])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
-    some ({ (hold s (s.active.getD ⟨0⟩)).1 with
+    some ({ (beginStep s (s.active.getD ⟨0⟩)).1 with
               phase := .beginning, pending := .cleanup :: rest },
-      (hold s (s.active.getD ⟨0⟩)).2)
+      (beginStep s (s.active.getD ⟨0⟩)).2)
   | .phase .main :: rest =>
     some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} }, [])
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
@@ -233,7 +234,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((hold_safeP s _).wf hwf).congr rfl rfl rfl rfl
+    exact ((beginStep_safeP s _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
@@ -313,7 +314,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (hold_safeP s _).phys hwf
+    exact (beginStep_safeP s _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _

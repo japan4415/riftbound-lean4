@@ -460,6 +460,16 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7h の実装の記録（2026-11-22）: Temporary と、キーワードの意味の洗い出し
+
+- **おすすめの変更（データで確かめた結果）**: 前の報告では「起動型能力の費用を広げる」をおすすめしたが、費用が語になっている起動型能力の行を数えると、効果まで書ける行は十数行（Spend N XP が 2、Kill this が 3、Disempower が 5、Discard が 1 など）で、1 回の PR で増えるカードが少なかった。そこで、**キーワードの意味がエンジンに入っているかを洗い出し**、枚数の多い Temporary を先に入れた。
+- **洗い出しの結果**（データの文に `[キーワード` が出るカード数。エンジンに意味がある: Reaction・Action・Assault・Shield・Ganking・Tank・Hunt・Level・Equip、Deathknell は誘発として書ける）: **意味がまだ無い**のは Deflect 52、Hidden 50、Empower 47、Accelerate 32、Repeat 24、Temporary 24（今回）、Flow 17、Ambush 15、Weaponmaster 12、Legion 10、Vision 9、Disarm 9、Quick-Draw 6、Backline 4。**これらのキーワードだけを持つカードは、すでに「IR で書けた」に数えているが、そのキーワードの意味は動かない**。カードの数は、意味まで動くカードの数ではない。
+- **Temporary**（`Rules/Temporary.lean`: `tempUnits`、`killAll`、`beginStep`）: Beginning Phase の始まりに、ターンプレイヤーの Temporary の Unit を kill してから、Hold の得点をする（CR 816、315.2.a）。Frame を足さず、`phase .beginning` の腕の `hold` を、`beginStep`（kill してから hold）に置き換えた。`beginStep_safeP`（`SafeP`）を証明したので、不変条件の腕は `hold_safeP` を `beginStep_safeP` に直しただけで保たれた。
+- **テスト**（`RiftboundTest/Temporary.lean`）: Temporary の Unit だけが見つかること、`beginStep` で kill されて Trash へ行き `died` が出ること、実際のゲームで、置いたターンの次の自分のターンの始まりに消えること。
+- **ビューア・デモ**: デモの Summoner が、Recruit の代わりに ready の Sprite（3 Might、Temporary）を出す。seed 1 の 95 番で、Hold の得点より前に死ぬ。
+- **まだ無いもの**: 上の一覧のほかのキーワード。Deflect（対象にする追加コスト）は、行動に追加コストの項を足す必要がある。Backline は、致死ダメージを割り当てる順序（Tank の逆）で、進行の定理の見直しが要る。
+- **次の候補**: Deflect（52 枚）、Accelerate（32 枚）、Backline（4 枚）。
+
 ### M7g の実装の記録（2026-11-22）: Discard（選ぶ決定）と Channel の効果
 
 - **何を数えたか**: 止まっている効果の部品のうち、Discard N（5 枚: 「Discard N, then draw N」）と Channel N runes exhausted（6 枚）が最も多い。Score は 3 枚だけで、点が変わる（`Safe` から外れる）ので、証明の手間に合わず後回しにした。
