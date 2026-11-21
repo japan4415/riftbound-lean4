@@ -1662,8 +1662,13 @@ def SFD_069.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Plundering Poro: the effect is not written yet. -/
-def SFD_069 : CardDef := SFD_069.meta
+/-- Plundering Poro. -/
+def SFD_069 : CardDef :=
+  { SFD_069.meta with
+    abilities := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-070
 /--
@@ -1685,8 +1690,13 @@ def SFD_070.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Wages of Pain: the effect is not written yet. -/
-def SFD_070 : CardDef := SFD_070.meta
+/-- Wages of Pain. -/
+def SFD_070 : CardDef :=
+  { SFD_070.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 3)),
+        .prim (.create "Gold" (.const 1) .atBase false)])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-071
 /--
@@ -2055,8 +2065,13 @@ def SFD_086.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- World Atlas: the effect is not written yet. -/
-def SFD_086 : CardDef := SFD_086.meta
+/-- World Atlas. -/
+def SFD_086 : CardDef :=
+  { SFD_086.meta with
+    grants := [.triggered (.onSelf .hold)
+        (.of []
+        (.prim (.create "Gold" (.const 2) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-087
 /--
@@ -3101,8 +3116,13 @@ def SFD_130.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Treasure Hunter: the effect is not written yet. -/
-def SFD_130 : CardDef := SFD_130.meta
+/-- Treasure Hunter. -/
+def SFD_130 : CardDef :=
+  { SFD_130.meta with
+    abilities := [.triggered (.onSelf .move)
+        (.of []
+        (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-131
 /--
@@ -3204,8 +3224,13 @@ def SFD_134.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Cull: the effect is not written yet. -/
-def SFD_134 : CardDef := SFD_134.meta
+/-- Cull. -/
+def SFD_134 : CardDef :=
+  { SFD_134.meta with
+    grants := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-135
 /--
@@ -3615,8 +3640,13 @@ def SFD_152.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Eminent Benefactor: the effect is not written yet. -/
-def SFD_152 : CardDef := SFD_152.meta
+/-- Eminent Benefactor. -/
+def SFD_152 : CardDef :=
+  { SFD_152.meta with
+    abilities := [.triggered (.onSelf .hold)
+        (.of []
+        (.prim (.create "Gold" (.const 2) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-153
 /--
@@ -3690,8 +3720,13 @@ def SFD_155.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Honest Broker: the effect is not written yet. -/
-def SFD_155 : CardDef := SFD_155.meta
+/-- Honest Broker. -/
+def SFD_155 : CardDef :=
+  { SFD_155.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-156
 /--
@@ -4131,8 +4166,13 @@ def SFD_174.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Trove Golem: the effect is not written yet. -/
-def SFD_174 : CardDef := SFD_174.meta
+/-- Trove Golem. -/
+def SFD_174 : CardDef :=
+  { SFD_174.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Gold" (.const 4) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-175
 /--
@@ -5136,8 +5176,12 @@ def SFD_T03.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Gold: the effect is not written yet. -/
-def SFD_T03 : CardDef := SFD_T03.meta
+/-- Gold: "Kill this, [Exhaust]: [Reaction] — [Add] one Power of any domain." -/
+def SFD_T03 : CardDef :=
+  { SFD_T03.meta with
+    abilities := [.activated [.killSelf, .exhaustSelf] .reaction
+      (.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Spiritforged. -/

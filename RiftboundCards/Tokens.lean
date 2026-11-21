@@ -6,10 +6,12 @@ public import Riftbound.Card.CardDef
 # Tokens
 
 The tokens that cards make (CR 179-187): a token has a definition and no physical card. `create`
-makes the object from the card with the identifier `TKN-<name>`. Only the tokens whose rules are
-written down are here: the Units with a Might and, for some, a keyword the token prints.
+looks the token up by name: first here (the identifier `TKN-<name>`), then among the tokens the
+data prints (the cards whose number has a T: Gold, Bird, Recruit, Reflection). Here are the tokens
+that cards name and the data does not print: the Units with the Might the cards say, and, for
+some, a keyword the token prints.
 
-The Gold and Bomb gear tokens are not here yet: their abilities are not written down.
+The Bomb gear token is not here yet: its text is not written down in the data.
 -/
 
 @[expose] public section
@@ -25,10 +27,8 @@ def unitToken (name : String) (might : Int) (keywords : List KeywordInst := []) 
 
 /-- The Unit tokens. -/
 def cards : List CardDef :=
-  [ unitToken "Recruit" 1,
-    unitToken "Mech" 3,
+  [ unitToken "Mech" 3,
     unitToken "Sprite" 3 [{ keyword := .temporary }],
-    unitToken "Bird" 1 [{ keyword := .deflect, arg := .amount 1 }],
     unitToken "Sand Soldier" 2,
     unitToken "Shadow Clone" 0,
     unitToken "Tentacle" 1 ]

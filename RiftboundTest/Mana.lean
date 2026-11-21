@@ -1,5 +1,7 @@
 module
 
+import RiftboundCards
+meta import RiftboundCards
 import RiftboundDriver.Run
 meta import RiftboundDriver.Run
 import RiftboundTest.Fixtures
@@ -120,6 +122,30 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
               (s4.poolOf p).energy == (s3.poolOf p).energy + 1
           | .error _ => false)
       | .error _ => false
+  | none => false
+
+-- Gold, a Gear token that a card plays exhausted: "Kill this, [Exhaust]: [Add] Power of any
+-- domain" (CR 183, 430). It can be used when it is ready; using it kills it, and a token off the
+-- Board ceases to exist
+#guard match mainN with
+  | some s0 =>
+    let p := s0.active.getD ⟨0⟩
+    let s1 := { s0 with cards := { cards := RiftboundCards.db.cards ++ s0.cards.cards } }
+    match applyCreate s1 p ⟨0⟩ {} "Gold" (.const 1) .atBase false with
+    | some (s2, _) =>
+      match (s2.zone (.player p .base)).find? (fun t => (s2.obj? t).any (fun o =>
+          match o.kind with | .token c => c == cid "SFD-T03" | _ => false)) with
+      | some g =>
+        !manaReady s2 p g 0 &&
+        (let s3 := s2.modObj g (fun o => { o with exhausted := false })
+        manaReady s3 p g 0 &&
+        (match step 100 s3 ⟨.player p, .manaAbility g 0⟩ with
+          | .ok (s4, _) =>
+            (s4.poolOf p).any == 1 && !(s4.zone (.player p .base)).contains g &&
+            (s4.zone (.player p .trash)).length == (s3.zone (.player p .trash)).length
+          | .error _ => false))
+      | none => false
+    | none => false
   | none => false
 
 end RiftboundTest

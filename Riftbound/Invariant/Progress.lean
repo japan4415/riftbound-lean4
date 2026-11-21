@@ -186,10 +186,10 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
   · rename_i p tail src idx hp hk
     have hmeta := applyMana_meta h
-    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2.1]; exact hb)
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p n tail src idx hp hk
     have hmeta := applyMana_meta h
-    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2.1]; exact hb)
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7f の実装の記録（2026-11-22）: Gold トークンと「Kill this」の費用
+
+- **おすすめの変更（データで確かめた結果）**: 前の報告では「Spend N XP などの費用を広げる」をおすすめしたが、残りの文を数え直すと、Spend N XP は 7 行、Spend a buff は 2 行で、1 回の PR で増えるカードが少ない。いっぽう **Gold トークン**（Gear。「Kill this, Exhaust: Add 任意の領域の Power 1」）を作る文は 8 枚あり、M7e の Add 能力と合わせるとそのまま書ける。そこで、費用の拡張は「Kill this」だけにして、Gold を先に入れた。
+- **「Kill this」の費用**（`AbilityCost.killSelf`、`manaPlan`、`killNow`）: Add 能力の費用に、自分を kill することを足した。Add は Cleanup を通らないので、トークンが Board を離れて消える手順（`tokenStep`）を、その場で行う（`killNow`、`killNow_safe`）。起動型能力（Chain を通るもの）の `killSelf` は、まだ払えない。
+- **データが持つトークンを名前で探す**（`GameState.tokenCard`）: `create` は、まずモデルが決めた `TKN-<name>` を探し、なければデータのカード（番号に T を含む: Gold、Bird、Recruit、Reflection）を名前で探す。`Tokens.lean` から、データにある Recruit と Bird を除いた（7 → 5 種）。
+- **Gold**（`SFD-T03`）: 「Kill this, Exhaust: [Reaction] Add 任意の領域の Power 1」を IR に書いた。カードが「Play a Gold gear token exhausted」と言う文を転記する型を足した（`exhausted`、`gear token`）。**転記済みは 182 枚から 191 枚**。
+- **証明**: `tokenStep_safe`（`cleanupStep_safe` から切り出した）、`killNow_safe`、`applyMana_*` を、費用の「kill」を含む形に直した。不変条件の腕は、`applyMana_meta` の形（事項が 5 つ）に合わせて直した。
+- **テスト**: `RiftboundTest/Mana.lean`（Gold は Exhaust して出るので、準備できるまで使えない。使うと kill されて消え、Trash は増えない。任意の Power が 1 入る）、`RiftboundTest/Token.lean`（データのトークンが名前で見つかる）。
+- **ビューア・デモ**: デモのデッキに Prospector（出たとき Gold を出す Unit）が入る。
+- **まだ無いもの**: Bomb（データに文が無い）、Gold を「Chain を通る起動型能力」として払う費用（kill / Spend XP / Spend a buff / Discard / Recycle me）。
+
 ### M7e の実装の記録（2026-11-22）: Add 能力と起動型能力の転記
 
 - **何を数えたか**: 「X: 効果」の形（起動型能力）は 75 行ほどで、費用は Exhaust（37）、Energy + Exhaust（13）、Spend N XP（7）が多い。エンジンは Exhaust と Energy / Power の費用を知っているので、転記の型を足すだけで書ける。「[Add]」は 36 行あり、起動型能力のうち最も多い失敗の理由だった。
