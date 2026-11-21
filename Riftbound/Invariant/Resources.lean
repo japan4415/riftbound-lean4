@@ -80,8 +80,9 @@ theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
 /-- **Casting a Spell pays exactly its cost** (I8) (CR 356, 357, 445): the Pool of the player is
 smaller by the total of the card's cost, and no other player's Pool changes. -/
 theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {es : List Event} (hp : castable s p c pay = true)
-    (h : applyCast s p c pay = some (s', es)) :
+    {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
+    (hp : castable s p c pay targets = true)
+    (h : applyCast s p c pay targets = some (s', es)) :
     ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
       (s'.poolOf p).total + cost.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
@@ -126,6 +127,47 @@ theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
     rw [hdd, hoo]; simp [Zone.normalize, Zone.isBoard]
   rw [hd2] at h2
   exact h2
+
+/-- **A Spell on the Chain carries the objects chosen when it was cast** (CR 355): the object that
+`applyCast` puts on the Chain has exactly the targets of the action. -/
+theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
+    ∃ id', es = [Event.moved c id' .chain] ∧
+      ∀ o, s'.obj? id' = some o → o.targets = targets := by
+  obtain ⟨pool, s2, id', -, -, rfl, hes⟩ := applyCast_cases h
+  refine ⟨id', hes, fun o ho => ?_⟩
+  rw [GameState.obj?_modObj] at ho
+  simp only [ite_true] at ho
+  cases hx : (s2.setPool p pool).obj? id' with
+  | none => rw [hx] at ho; simp at ho
+  | some o0 =>
+    rw [hx] at ho
+    simp only [Option.map_some, Option.some.injEq] at ho
+    subst ho
+    rfl
+
+/-- **The targets of a Spell are objects in play** (CR 355): a Spell that can be cast with some
+targets has all of them in play. -/
+theorem castable_targets_inPlay {s : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {targets : List ObjId} (h : castable s p c pay targets = true) :
+    ∀ t ∈ targets, t ∈ s.inPlay := by
+  obtain ⟨d, e, -, -, hok⟩ := castable_targets h
+  exact targetsOk_mem_inPlay hok
+
+/-- **A Spell resolves with the targets it was cast with** (CR 340, 355): the effect is run with
+the chosen objects as its slots, and the Spell goes to the Trash when the effect is done. -/
+theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {more : List ObjId}
+    {o : Object} {d : CardDef} (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
+    (hd : s.cardDef? item = some d) :
+    resolveFrames s rest =
+      .run o.controller item { slots := o.targets.map Value.obj }
+        (match d.spellEffect with
+          | some e => .cons e.body .nil
+          | none => .nil) :: .finishSpell item :: rest := by
+  unfold resolveFrames
+  rw [hc]
+  simp only [ho, hd]
+  rfl
 
 end Riftbound
 

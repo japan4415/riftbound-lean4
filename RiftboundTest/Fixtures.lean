@@ -63,12 +63,20 @@ meta def drawSpell : CardDef :=
     cost := some ⟨1, []⟩,
     spellEffect := some (EffectDef.of [] (.prim (.draw .you (.const 1)))) }
 
+/-- A Spell that deals 2 damage to an enemy Unit on a Base. -/
+meta def spark : CardDef :=
+  { id := cid "SP1", name := "Spark", types := [.spell], domains := [.fury],
+    cost := some ⟨1, []⟩,
+    spellEffect := some (EffectDef.of
+      [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.const 2)))) }
+
 /-- The set every fixture card is printed in. -/
 meta def testSet : SetCode := ⟨"TST"⟩
 
 /-- The database of all fixtures. -/
 meta def db : CardDB :=
-  { cards := ([legend, champion, unique, offDomain, furyRune, drawSpell] ++
+  { cards := ([legend, champion, unique, offDomain, furyRune, drawSpell, spark] ++
       (List.range 20).map vanilla ++
       (List.range 4).map signature ++ (List.range 4).map battlefield).map
         (fun c => { c with sets := [testSet] }) }

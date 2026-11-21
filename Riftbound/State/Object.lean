@@ -48,6 +48,9 @@ structure Object where
   a Rune. A copy of the printed domain made when the object is made; the derived value comes with
   the Layers (milestone M6). -/
   runeDomain : Option Domain := none
+  /-- For a Spell on the Chain: the objects chosen when it was played, in the order of its
+  choices (CR 355). Slot `i` of the effect is `targets[i]`. It means nothing off the Chain. -/
+  targets : List ObjId := []
 deriving DecidableEq, Repr
 
 end Riftbound

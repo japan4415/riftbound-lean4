@@ -402,7 +402,7 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p rest c pay hp hk
+  · rename_i p rest c pay ts hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
     rcases hpend with e | e
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
@@ -573,8 +573,9 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := (runEffect s p src env e es).1)
-      rfl (fun g hg => by
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (runEffect_safe s p src env e es).same.config])
+      (new := (runEffect s p src env e es).2.1) rfl (fun g hg => by
         rcases runEffect_mem hg with h1 | ⟨q, k, rfl⟩
         · cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
         · rfl)

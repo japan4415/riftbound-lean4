@@ -338,7 +338,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `priority p` | 決定 | Main Phase で、手番のプレイヤーが Priority を持つ（311-312, 316）。答えは `pass`（Chain が無いので、Main Phase を終えて Ending に進む: 305）か、Basic Rune の Add 能力（`runeAbility`: Exhaust で Energy、Recycle で Power: 164.2。即座に解決し、`priority` のまま）。Discretionary Action（カードのプレイなど）は M4 で足す |
 | `beginTurn` / `phase ph` | 作業 | 次のターンを始める（手番のプレイヤーは手番順を回す: 118, 301）。各フェイズの処理（Awaken: Ready、Channel、Draw、Ending: Heal。314-317） |
 | `setupHands` / `draw p n` | 作業 | 開幕の手札とマリガンの並べ方（116-117）、`p` が `n` 枚引く（414）。空の山札に当たると Burn Out のフレームを積む（432） |
-| `chainPass p n` / `resolveChain` / `run` / `finishSpell` | 決定 / 作業 | 実装した最小版（M4b）: Chain に Spell が載っている間、`p` が Priority を持ち（`n` 人が続けてパスした）、全員がパスすると一番上を解決する。`run` は、残りの効果と変数の束縛環境を持つ（効果の解決途中）。`finishSpell` は、解決した Spell を Trash へ送る |
+| `chainPass p n` / `resolveChain` / `run` / `finishSpell` | 決定 / 作業 | 実装した最小版（M4b, M4c）: Chain に Spell が載っている間、`p` が Priority を持ち（`n` 人が続けてパスした）、全員がパスすると一番上を解決する。`run` は、残りの効果と、変数の束縛と選んだ対象（`Env.slots`）の環境を持つ（効果の解決途中）。`finishSpell` は、解決した Spell を Trash へ送る。対象の選択は `playCard` の行動に載る（`targets`）ので、選択のフレームは無い |
 | `playProc` | 作業 | プレイ手順（354-359）の途中。どの段にいるか、それまでの選択、**巻き戻し用の盤面のスナップショット** |
 | `effectResume` | 作業 | 効果の解決途中。残りの効果と、変数の束縛環境 |
 | `cleanupResume` / `combatResume` | 作業 | Cleanup や戦闘の途中。どの手順にいるか。HOT FEPR のタスクも同じ形で持つ |

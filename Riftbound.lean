@@ -30,6 +30,7 @@ public import Riftbound.State.Pool
 public import Riftbound.Rules.Move
 public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Objects
+public import Riftbound.Rules.Select
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Play

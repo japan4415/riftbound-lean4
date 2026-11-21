@@ -25,6 +25,14 @@ inductive Event where
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)
+  /-- An object was dealt damage (CR 142). -/
+  | damaged (target : ObjId) (amount : Nat)
+  /-- Damage was healed from an object (CR 419). -/
+  | healed (target : ObjId) (amount : Nat)
+  /-- An object became ready (CR 416). -/
+  | readied (target : ObjId)
+  /-- An object became exhausted (CR 415). -/
+  | exhausted (target : ObjId)
 deriving DecidableEq, Repr
 
 end Riftbound

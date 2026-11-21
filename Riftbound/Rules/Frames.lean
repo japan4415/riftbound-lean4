@@ -68,8 +68,9 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
   | .resolveChain :: rest => some ({ s with pending := resolveFrames s rest }, [])
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])
   | .run p src env (.cons e es) :: rest =>
-    some ({ s with pending := (runEffect s p src env e es).1 ++ rest },
-      (runEffect s p src env e es).2)
+    some ({ (runEffect s p src env e es).1 with
+              pending := (runEffect s p src env e es).2.1 ++ rest },
+      (runEffect s p src env e es).2.2)
   | .finishSpell item :: rest =>
     some ({ (finishItem s item).1 with pending := rest }, (finishItem s item).2)
   | _ => none
@@ -84,7 +85,7 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
   | .priority _ :: rest, .pass =>
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
-  | .priority p :: rest, .playCard c pay => applyPlayCard s p c pay rest
+  | .priority p :: rest, .playCard c pay ts => applyPlayCard s p c pay ts rest
   | .chainPass p n :: rest, .pass =>
     if n + 1 < s.playerCount then
       some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
@@ -195,7 +196,7 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
+    exact ((runEffect_safe _ _ _ _ _ _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_wf hwf _).congr rfl rfl rfl rfl
@@ -256,7 +257,7 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
+    exact (runEffect_safe _ _ _ _ _ _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact finishItem_physIds hwf _

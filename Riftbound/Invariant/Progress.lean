@@ -90,7 +90,7 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p rest c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p rest c pay hp hk
+  · rename_i p rest c pay ts hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := applyPlayCard_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -294,9 +294,9 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next rfl (fun hb => ?_)
+    refine hinv.of_next (runEffect_safe s p src env e es).same.result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl (runEffect s p src env e es).1
+    exact hb.swap rfl (runEffect s p src env e es).2.1
   · rename_i item rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

@@ -32,6 +32,8 @@ deriving DecidableEq, Repr, Hashable
 structure Env where
   /-- The bindings. -/
   bindings : List (VarId × Value) := []
+  /-- The values chosen when the card was played: slot `i` is `slots[i]` (CR 355). -/
+  slots : List Value := []
 deriving DecidableEq, Repr
 
 namespace Env
@@ -40,7 +42,7 @@ namespace Env
 def empty : Env := {}
 
 /-- Bind a variable. It shadows an older binding of the same name. -/
-def bind (e : Env) (v : VarId) (x : Value) : Env := { bindings := (v, x) :: e.bindings }
+def bind (e : Env) (v : VarId) (x : Value) : Env := { e with bindings := (v, x) :: e.bindings }
 
 /-- The value of a variable, if it is bound. -/
 def lookup (e : Env) (v : VarId) : Option Value :=

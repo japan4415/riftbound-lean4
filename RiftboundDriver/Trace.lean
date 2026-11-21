@@ -53,7 +53,8 @@ def actionJson (a : Action) : String :=
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c _ => [("card", toString c.n)]
+    | .playCard c _ ts =>
+      [("card", toString c.n), ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .mulliganPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
@@ -69,6 +70,10 @@ def eventJson : Event → String
     jobj [("t", jstr "points"), ("player", toString p.n), ("n", toString n)]
   | .burnedOut p => jobj [("t", jstr "burnout"), ("player", toString p.n)]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
+  | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
+  | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
+  | .readied o => jobj [("t", jstr "readied"), ("target", toString o.n)]
+  | .exhausted o => jobj [("t", jstr "exhausted"), ("target", toString o.n)]
 
 /-- All the zones to show, with the player count. -/
 def shownZones (n : Nat) : List Zone :=
@@ -154,7 +159,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let isAb (ab : RuneAbility) (a : Action) : Bool :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ => true | _ => false
     match legal.find? isPlay with
     | some a => some (a, r)
     | none =>
