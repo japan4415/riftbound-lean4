@@ -51,6 +51,15 @@ structure Object where
   /-- For a Spell on the Chain: the objects chosen when it was played, in the order of its
   choices (CR 355). Slot `i` of the effect is `targets[i]`. It means nothing off the Chain. -/
   targets : List ObjId := []
+  /-- For a Unit at a Battlefield: that Battlefield (CR 106, 144). `none` for a Unit on a Base and
+  for what is not a Unit. Leaving the Board clears it. -/
+  loc : Option ObjId := none
+  /-- For a Battlefield: the player who controls it, if any (CR 190.6). -/
+  control : Option PlayerId := none
+  /-- For a Battlefield: the player whose Unit made it Contested (CR 190.3). -/
+  contested : Option PlayerId := none
+  /-- For a Battlefield: the players who have scored it this turn (CR 472). -/
+  scored : List PlayerId := []
 deriving DecidableEq, Repr
 
 end Riftbound

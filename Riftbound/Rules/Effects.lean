@@ -80,30 +80,18 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event := sendObj .t
 theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 :=
   sendObj_safe .trash s id
 
-/-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed at
-once. That is the state-based check of the cleanup (CR 417), done early: the cleanup itself comes
-with combat (roadmap.md, M5). -/
+/-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
+the next Cleanup (CR 323.4), not here. -/
 def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
-  | some o =>
-    let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
-    let ev := [Event.damaged id n]
-    if 0 < o.damage + n && (s.mightOf id).any (fun m => decide (Might.eff m ≤ o.damage + n)) then
-      let r := killObj s1 id
-      (r.1, ev ++ r.2)
-    else (s1, ev)
+  | some _ => (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
   unfold dealObj
   split
-  · rename_i o ho
-    have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
-      Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-    split
-    · exact h1.trans (killObj_safe _ id)
-    · exact h1
+  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/

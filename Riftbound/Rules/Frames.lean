@@ -10,6 +10,7 @@ public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.BurnOut
+public import Riftbound.Rules.Battlefield
 
 /-!
 # Working through the frames
@@ -46,7 +47,8 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
                                 [Frame.beginTurn] ++ rest }, [])
   | .beginTurn :: rest =>
     let tp := s.nextTurnPlayer
-    some ({ s with pending := turnFrames tp ++ rest, turn := s.turn + 1, active := some tp }, [])
+    some ({ s.mapObjects clearScored with
+              pending := turnFrames tp ++ rest, turn := s.turn + 1, active := some tp }, [])
   | .phase .awaken :: rest =>
     let s1 := s.mapObjects (readyOf (s.active.getD ⟨0⟩))
     some ({ s1 with phase := .awaken, pending := rest }, [])
@@ -58,8 +60,12 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
   | .phase .ending :: rest =>
     some ({ s.mapObjects healObj with phase := .ending, pending := rest, pools := {} }, [])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
-  | .phase .beginning :: rest => some ({ s with phase := .beginning, pending := rest }, [])
-  | .phase .main :: rest => some ({ s with phase := .main, pending := rest, pools := {} }, [])
+  | .phase .beginning :: rest =>
+    some ({ (hold s (s.active.getD ⟨0⟩)).1 with
+              phase := .beginning, pending := .cleanup :: rest },
+      (hold s (s.active.getD ⟨0⟩)).2)
+  | .phase .main :: rest =>
+    some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} }, [])
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
   | .draw p (n + 1) :: rest =>
     match drawOne s p with
@@ -72,7 +78,8 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
               pending := (runEffect s p src env e es).2.1 ++ rest },
       (runEffect s p src env e es).2.2)
   | .finishSpell item :: rest =>
-    some ({ (finishItem s item).1 with pending := rest }, (finishItem s item).2)
+    some ({ (finishItem s item).1 with pending := .cleanup :: rest }, (finishItem s item).2)
+  | .cleanup :: rest => some (cleanupFrame s rest)
   | _ => none
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
@@ -86,6 +93,14 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .playCard c pay ts => applyPlayCard s p c pay ts rest
+  | .priority p :: rest, .standardMove u d =>
+    (applyMove s p u d).map
+      (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
+  | .showdown bf q n :: rest, .pass =>
+    if n + 1 < s.playerCount then
+      some ({ s with pending := .showdown bf (s.nextPlayer q) (n + 1) :: rest }, [])
+    else some ({ (endShowdown s bf).1 with pending := (endShowdown s bf).2.1 ++ rest },
+      (endShowdown s bf).2.2)
   | .chainPass p n :: rest, .pass =>
     if n + 1 < s.playerCount then
       some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
@@ -154,7 +169,7 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
+    exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
@@ -172,7 +187,7 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
+    exact ((hold_safeP s _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
@@ -200,6 +215,17 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_wf hwf _).congr rfl rfl rfl rfl
+  · rename_i rest hp
+    have hs' : s' = (cleanupFrame s rest).1 := by
+      have := Option.some.inj h
+      rw [this]
+    subst hs'
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+      rw [e]
+    · exact hwf.congr rfl rfl rfl rfl
+    · exact (hr.wf hwf).congr rfl rfl rfl rfl
+    · exact hwf.congr rfl rfl rfl rfl
+    · exact hwf.congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
@@ -212,7 +238,8 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
+    exact (GameState.physIds_mapObjects s (f := clearScored) (fun o => rfl)).symm ▸
+      List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.physIds_mapObjects s (fun o => readyOf_kind _ o)).symm ▸ List.Perm.refl _
@@ -231,7 +258,7 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
+    exact (hold_safeP s _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
@@ -261,6 +288,17 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact finishItem_physIds hwf _
+  · rename_i rest hp
+    have hs' : s' = (cleanupFrame s rest).1 := by
+      have := Option.some.inj h
+      rw [this]
+    subst hs'
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+      rw [e]
+    · exact List.Perm.refl _
+    · exact hr.phys hwf
+    · exact List.Perm.refl _
+    · exact List.Perm.refl _
   · exact absurd h (by simp)
 
 end Riftbound

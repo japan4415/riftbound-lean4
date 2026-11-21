@@ -27,6 +27,20 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
   · exact applyPlayCard_wf hwf h
+  · rename_i p rest u d hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact GameState.WF.congr ((applyMove_safe (es := es2) hm).wf hwf) rfl rfl rfl rfl
+  · rename_i bf q n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr hwf rfl rfl rfl rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr ((endShowdown_safeP s bf).wf hwf) rfl rfl rfl rfl
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -205,6 +219,20 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
   · exact applyPlayCard_physIds hwf h
+  · rename_i p rest u d hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (applyMove_safe (es := es2) hm).phys hwf
+  · rename_i bf q n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact (endShowdown_safeP s bf).phys hwf
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -329,7 +357,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   unfold legalFrameActions LegalFrame
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · simp
-  · cases f <;> cases kind <;> cases actor <;> simp [Actor.isPlayer, mem_legalPlays]
+  · cases f <;> cases kind <;> cases actor <;>
+      simp [Actor.isPlayer, mem_legalPlays, mem_legalMoves]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

@@ -299,13 +299,17 @@ meta def other (p : PlayerId) : PlayerId := if p == ⟨0⟩ then ⟨1⟩ else �
     | .error _ => false
   | none => false
 
--- damage that does not reach the Might stays on the Unit; damage that does kills it
+-- damage stays on the Unit until the Cleanup: it is lethal when it reaches the Might, and the
+-- Cleanup kills the Unit then (CR 323.4)
 #guard match sparkReady with
   | some (s, _, _, v) =>
     let r1 := dealObj 1 s v
     let r2 := dealObj 2 s v
-    (r1.1.obj? v).any (·.damage == 1) && r1.2 == [Event.damaged v 1] &&
-    (r2.1.obj? v).isNone && r2.1.zone .battlefieldZone == s.zone .battlefieldZone
+    (r1.1.obj? v).any (·.damage == 1) && r1.2 == [Event.damaged v 1] && !r1.1.lethal v &&
+    (r2.1.obj? v).any (·.damage == 2) && r2.1.lethal v &&
+    (cleanupStep r1.1).isNone &&
+    ((cleanupStep r2.1).map fun r => (r.1.obj? v).isNone) == some true &&
+    r2.1.zone .battlefieldZone == s.zone .battlefieldZone
   | none => false
 
 /-- The exhausted flag of an object after a change, if the change was made and the object is
@@ -361,8 +365,9 @@ meta def enemyUnits : Selector := Selector.all .enemy .atBase [.ofType .unit]
       == some 0 &&
     dmg (runBody s p c {} (.ifThen (.cmp .ge (.count enemyUnits) (.const 2))
       (.forEach enemyUnits (hit 1)) .nop)) == some 0 &&
-    -- repeatN: twice makes lethal damage (Might 2), and the Unit goes to the Trash
-    (runBody s p c {} (.repeatN (.const 2) (.forEach enemyUnits (hit 1)))).map
+    -- repeatN: twice makes lethal damage (Might 2); the Cleanup then sends the Unit to the Trash
+    ((runBody s p c {} (.repeatN (.const 2) (.forEach enemyUnits (hit 1)))).bind
+      fun s' => (cleanupStep s').map (·.1)).map
       (fun s' => (s'.obj? v).isNone && cnt (other p) .trash s' == cnt (other p) .trash s + 1) ==
         some true &&
     -- bind: an amount that counts is bound, then used

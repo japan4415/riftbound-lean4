@@ -28,17 +28,17 @@
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
 | I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。`Reachable.exists_legal` が、偶然の決定を含めて合法な答えの存在を述べる） | L3 | M3 |
 | I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
-| I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」） | L2 | M5 |
+| I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」）。M5a で証明（`win_condition_unique`、`winner_spec`） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M4 |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
-| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b） | L2 | M5 |
+| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
 | I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)） | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
 | I16 | **Priority の受け渡し**: Closed でプレイヤーがパスしたら、次の `priority` フレームは手番順で次のプレイヤーのものになる。全員が続けてパスしたら、最も新しい Finalized の項目が解決される（312.2, 339, 340） | L2 | M4 |
-| I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323） | L2 | M5 |
+| I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。M5a では局所版だけ証明（`cleanupFrame_pop_settled`、`Settled.no_lethal`）。全体の形は未 | L2 | M5 |
 | I18 | **任意の選択は必ず問われる**: 解釈器は、`may`、任意の追加コスト、Pick を自分では決めない。必ず `choose` フレームを出す（[design.md §3](design.md#3-設計原則) の P4） | L4 | M4 |
 | I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
 
@@ -319,6 +319,23 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M5a の実装の記録（2026-11-21）: Battlefield、Standard Move、Cleanup、Showdown、得点、勝利（戦闘を除く）
+
+- **M5 を 2 つに分けた**: M5a は戦闘を除く部分（この記録）、**M5c が戦闘**（Attacker / Defender、ダメージの割り当て、Recall、戦闘のキーワード）。M5b（マッチと大会の手続き）は名前を変えない。
+- **Battlefield の属性**（`Object`）: `loc`（Battlefield にいる Unit の、その Battlefield。Non-Board ゾーンへ出ると消える）、`control`（支配者。CR 190.6）、`contested`（Contested を付けたプレイヤー。CR 190.3）、`scored`（今ターンにこの Battlefield を Score したプレイヤー。CR 472）。Unit は Battlefield Zone に置かれ、どの Battlefield にいるかは `loc` で持つ。
+- **Standard Move**（`standardMove unit dest`、`Rules/Battlefield.lean`）: 自分の Main Phase に、Ready の Unit が、Base から Battlefield へ、または Battlefield から Base へ動く。Exhaust する。支配していない Battlefield に来た Unit は、その Battlefield を Contested にする。`moveOk`（合法）、`applyMove`、`legalMoves`（列挙）、`mem_legalMoves`（列挙は合法な手だけ）、`applyMove_isSome`、`applyMove_safe`。**1 回に 1 体だけ**（複数を同時に動かす CR 144.3 は後）。
+- **Cleanup**（`cleanup` フレーム。作業）: 状態が変わらなくなるまで 1 手ずつ繰り返す（CR 322）。手順は、勝者の宣言（323.1）、致死ダメージの Unit を Trash へ（323.4）、Unit のいない支配者から Control を外す（323.5）、Contested の整理（323.10）、Neutral Open なら Contested な Battlefield の Showdown を始める（323.11）。**ダメージで死ぬのは、解決の直後ではなく Cleanup になった**（M4c の前倒しをやめた。`dealObj` は damage を足すだけ）。Cleanup は、Spell の解決の後（`finishSpell`）、Beginning Phase と Main Phase の始まり、Standard Move の後に走る。
+- **Showdown**（`showdown bf focus passes` フレーム。決定）: Focus は Contested を付けたプレイヤー。今は `pass` だけ（Action の Spell はまだ無い）。全員がパスすると、Unit が残っているプレイヤーが 1 人だけで、まだ支配していなければ、Control を得て Conquer で Score する（CR 348.2、`endShowdown`）。
+- **得点**（`scoreBf`、`hold`）: Conquer は Showdown の終わり、Hold は Beginning Phase の Scoring Step（CR 315.2.b）。1 人が 1 つの Battlefield を 1 ターンに 1 回だけ（CR 472）。**Final Point**（CR 473.1.b）: Conquer で、点が Victory Score の 1 点手前以上なら、今ターンにすべての Battlefield を Score していないとき、点の代わりに 1 枚引く。勝者は、Victory Score 以上で、全員より点が多いプレイヤー（`GameState.winner`）。
+- **証明**:
+  - **I7**: `win_condition_unique`（2 人が互いより多い点を持つことはない）、`winner_spec`。
+  - **I11**: `scoreBf_twice`（同じプレイヤーが同じ Battlefield を同じターンに 2 回 Score しても、何も変わらない。Conquer でも Hold でも）。
+  - **I17（局所版）**: `Settled`（勝者がおらず、Cleanup の手順がどれも当てはまらない）、`Settled.no_lethal`（致死ダメージの Unit は盤面に無い）、`Settled.no_lostControl`、`cleanupFrame_pop_settled`（`cleanup` フレームが何もせず抜けるのは `Settled` のとき）。**「`priority` が先頭にある到達可能な状態は全部 `Settled`」という全体の形はまだ証明していない**（`runeAbility` や `playCard` が `Settled` を壊さないことの証明が要る）。
+  - 新しい行動とフレームについて、`WF`・I1・`OwnerOk`・`StackInv`・`HandInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5 が成り立つ。`Safe` に点の変更を足した `SafeP`（`scoreBf_safeP`、`hold_safeP`、`endShowdown_safeP`）で、既存の証明は 1〜2 行の追加で済んだ。
+- **テスト**: `RiftboundTest/Battlefield.lean`（Move の合法・違法、Contested、Showdown の開始と Focus、Conquer、2 体目は Contested にならない、相手の Unit は入れない、Base へ戻ると Control を失う、致死ダメージの Cleanup、Contested の整理、勝者、Hold、2 回目は 0、Final Point）。デモの 1 ゲームが最後まで進んで勝つこと（`RiftboundTest/Trace.lean`）。
+- **ビューア**: Battlefield ごとの列に、Unit、支配者、Contested を表示する。Standard Move、Showdown でのパス、得点、勝者がログに出る。デモは、払えるカードがなければ Unit を Battlefield に送る。seed 1 は 19 ターン目に P0 が 8 対 7 で勝つ。
+- **まだ無いもの（M5c 以降）**: 戦闘。**暫定の制限として、相手の Unit がいる Battlefield へは動けない**ので、Battlefield に 2 人の Unit が並ぶことはなく、Control を奪う手段もない。Ganking（Battlefield から Battlefield へ）、複数の Unit の同時の Move（144.3）、Recall（Gear や他人の Base の Permanent）、Showdown の中での Action と Reaction、Contested の Combat の Staged 化（323.8-323.9）、Hidden。I12（Cleanup の停止）と、I17 の全体の形。0 点のときに点を失う指示（194.4.a）は、点を失う手段が無いのでまだ。
+
 ### M4d の実装の記録（2026-11-21）: 効果の言語を広げる
 
 - **解釈器に足したもの**（`Rules/Effects.lean`）: `ifThen`（条件で枝を選ぶ）、`forEach`（選んだ物ごとに本体を走らせる。`it` は `Env.it`）、`repeatN`、`banish`・`returnToHand`（`sendObj`: 持ち主のゾーンへ送る。`kill` も同じ）。`bind` と `draw` と `deal` の量は、盤面を読める `Amount.evalS`（`count`・`handSize` と四則・min・max）で計算する。
@@ -382,6 +399,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 合法性の確認に失敗したら、盤面がプレイ開始時のスナップショットと一致する（358.5 のモデル化）。
 
 ## M5: 移動・Showdown・戦闘・得点・Cleanup（CR 144, 190, 318-324, 341-348, 447-474）
+
+**M5a（戦闘を除く部分）は実装済み**（下の「M5a の実装の記録」）。残りの戦闘は **M5c** として続ける。以下は M5 全体の計画で、M5a で済んだ項目は M5a の記録を参照する。
 
 **実装**
 - Standard Move（144）、Contested（190.3）。

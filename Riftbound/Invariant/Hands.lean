@@ -147,6 +147,16 @@ theorem HandInv.of_same {s s2 : GameState} (hinv : HandInv s) (hk : Keeps s s2)
     obtain ⟨g, hg, hgp⟩ := hplay f hf hpf
     exact hinv.play g hg hgp
 
+/-- `HandInv` for a step that leaves the setup behind or never was in it: the phase is not the
+setup, so the hands are not accounted for, and what is left to check is the turn order. -/
+theorem HandInv.of_play {s s2 : GameState} (hinv : HandInv s) (hph : s2.phase ≠ .setup)
+    (hto : s2.turnOrder = s.turnOrder) (hc : s2.config = s.config)
+    (hsub : Frame.setupHands ∈ s2.pending → Frame.setupHands ∈ s.pending) : HandInv s2 := by
+  have hcount : s2.playerCount = s.playerCount := by simp [GameState.playerCount, hc]
+  refine ⟨fun hm => ?_, fun hph' => absurd hph' hph, fun f _ _ => hph⟩
+  rw [hcount, hto]
+  exact hinv.turn (hsub hm)
+
 /-- `HandInv` for a step that pops a frame which accounts for nothing. -/
 theorem HandInv.of_pop {s s2 : GameState} {f : Frame} {rest : List Frame} (hinv : HandInv s)
     (hp : s.pending = f :: rest) (hf : ∀ p, f.contrib p = 0) (hk : Keeps s s2)
@@ -228,6 +238,42 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
     · rw [hphase, hmain]
       intro hh
       cases hh
+  · rename_i p rest u d hp hk
+    rw [hp, hk] at hl
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    have hsafe := applyMove_safe (es := es2) hm
+    have hmain := moveOk_main hl.2
+    refine hinv.of_play ?_ hsafe.same.turnOrder hsafe.same.config (fun hmem => ?_)
+    · show s2.phase ≠ .setup
+      rw [hsafe.same.phase, hmain]
+      intro hh
+      cases hh
+    · have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]
+      exact List.mem_cons_of_mem _ this
+  · rename_i bf q n rest hp hk
+    have hph0 := hinv.play (.showdown bf q n) (by rw [hp]; exact List.mem_cons_self) rfl
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]
+      exact List.mem_cons_of_mem _ this
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have hP := endShowdown_safeP s bf
+      refine hinv.of_play (by show (endShowdown s bf).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
+        hP.turnOrder hP.config (fun hmem => ?_)
+      have hm2 : Frame.setupHands ∈ (endShowdown s bf).2.1 ++ rest := hmem
+      rcases List.mem_append.mp hm2 with h1 | h1
+      · obtain ⟨r, hr⟩ := endShowdown_frames s bf _ h1
+        cases hr
+      · rw [hp]
+        exact List.mem_cons_of_mem _ h1
   · rename_i p n rest hp hk
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -590,9 +636,14 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    have hP := hold_safeP s (s.active.getD ⟨0⟩)
     refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
+    show (hold s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
+      (allPlayers (hold s (s.active.getD ⟨0⟩)).1.playerCount)
+    rw [hP.turnOrder, show (hold s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
+      simp [GameState.playerCount, hP.config]]
     exact h1
   · -- Main
     rename_i rest hp
@@ -692,7 +743,25 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     have hm := finishItem_sameMeta s item
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hm.config, hm.turnOrder, hm.phase, hm.result⟩ (fun hm' => ?_)
-    rw [hp]; exact List.mem_cons_of_mem _ hm'
+    have hm2 : Frame.setupHands ∈ rest := by simpa using hm'
+    rw [hp]; exact List.mem_cons_of_mem _ hm2
+  · -- Cleanup
+    rename_i rest hp
+    have hs' : s' = (cleanupFrame s rest).1 := by
+      have := Option.some.inj h
+      rw [this]
+    subst hs'
+    have hph0 := hinv.play .cleanup (by rw [hp]; exact List.mem_cons_self) rfl
+    have hsub : Frame.setupHands ∈ rest → Frame.setupHands ∈ s.pending := fun hm => by
+      rw [hp]
+      exact List.mem_cons_of_mem _ hm
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+      rw [e]
+    · exact hinv.of_play hph0 rfl rfl (fun hm => absurd hm (by simp))
+    · exact hinv.of_play (by show r.phase ≠ .setup; rw [hr.same.phase]; exact hph0)
+        hr.same.turnOrder hr.same.config (fun hm => hsub (by simpa using hm))
+    · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
+    · exact hinv.of_play hph0 rfl rfl (fun hm => hsub hm)
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the hand invariant. -/
