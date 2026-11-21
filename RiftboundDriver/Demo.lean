@@ -58,6 +58,9 @@ def demoCards : List CardDef :=
       abilities := [.triggered (Trigger.onSelf .die)
         (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] },
     { id := ⟨"TKN-Recruit"⟩, name := "Recruit", types := [.unit], might := some 1 },
+    { id := ⟨"G0"⟩, name := "Training Sword", types := [.gear], domains := [.fury],
+      cost := some ⟨1, []⟩, keywords := [{ keyword := .equip, arg := .cost ⟨1, []⟩ }],
+      mightBonus := some 2, grants := [.passive .always [.keyword .self { keyword := .tank }]] },
     { id := ⟨"T0"⟩, name := "Summoner", types := [.unit], domains := [.fury],
       cost := some ⟨2, []⟩, might := some 1,
       abilities := [.triggered (Trigger.onSelf .play)
@@ -88,7 +91,8 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of a vanilla Unit, three copies each of a Unit that
+/-- The demo deck: the champion, three copies of an Equipment (+2 Might and Tank), three copies
+each of a Unit that
 plays a Recruit token when it is played, a Unit that draws when it is played, a Unit that deals
 1 damage to an enemy Unit when it is played,
 a Unit that draws when it dies, a Unit that pings (an activated ability), a Unit that gives
@@ -98,7 +102,7 @@ an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction th
 to an enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: List.replicate 3 ⟨"V0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
+    main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
       List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"E0"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
       List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++

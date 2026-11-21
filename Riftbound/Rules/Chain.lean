@@ -65,7 +65,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
       o.controller == p && s.usesAbilitiesOf p src &&
-        match d.abilities[idx]? with
+        match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
           match costPlan costs with
           | some (ex, pc) =>
@@ -88,7 +88,7 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (pay : RunePool.Payment) (ts : List ObjId) : Option (GameState × List Event) :=
   match s.cardDef? src, (s.poolOf p).spend pay with
   | some d, some pool =>
-    match d.abilities[idx]? with
+    match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
       (addObject (((s.modObj src (useOf idx (costExhausts costs))).setPool p pool))
         (abilityItem d.id idx src p ts) .chain).map
@@ -111,7 +111,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
     cases hs : (s.poolOf p).spend pay with
     | none => simp [hd, hs] at h
     | some pool =>
-      cases ha : d.abilities[idx]? with
+      cases ha : d.fullAbilities[idx]? with
       | none => simp [hd, hs, ha] at h
       | some ab =>
         cases ab with
@@ -204,7 +204,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
     | some d =>
       simp only [ho, hd, Bool.and_eq_true] at h
       obtain ⟨-, h⟩ := h
-      cases ha : d.abilities[idx]? with
+      cases ha : d.fullAbilities[idx]? with
       | none => simp [ha] at h
       | some ab =>
         cases ab with
@@ -237,7 +237,8 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     {pay : RunePool.Payment} {ts : List ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ = true) :
     ∃ d costs sp body lim pc, s.phase = .main ∧ s.usesAbilitiesOf p src = true ∧
-      s.cardDef? src = some d ∧ d.abilities[idx]? = some (Ability.activated costs sp body lim) ∧
+      s.cardDef? src = some d ∧
+        d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
         costPlan costs = some (costExhausts costs, pc) ∧
           (match pc with
             | some c => c.paidBy d.domains pay = true
@@ -255,7 +256,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     | some d =>
       simp only [ho, hd, Bool.and_eq_true, beq_iff_eq] at h
       obtain ⟨⟨hctl, huse⟩, h⟩ := h
-      cases ha : d.abilities[idx]? with
+      cases ha : d.fullAbilities[idx]? with
       | none => simp [ha] at h
       | some ab =>
         cases ab with
@@ -295,8 +296,8 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
     (fun src =>
       match s.cardDef? src with
       | some d =>
-        (List.range d.abilities.length).flatMap (fun (idx : Nat) =>
-          match d.abilities[idx]? with
+        (List.range d.fullAbilities.length).flatMap (fun (idx : Nat) =>
+          match d.fullAbilities[idx]? with
           | some (Ability.activated costs _ body _) =>
             (match costPlan costs with
               | some (_, some c) => c.payments d.domains
@@ -330,7 +331,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
     | some d =>
       simp only [hd, List.mem_flatMap, List.mem_range] at ha
       obtain ⟨idx, hidx, ha⟩ := ha
-      cases hab : d.abilities[idx]? with
+      cases hab : d.fullAbilities[idx]? with
       | none => simp [hab] at ha
       | some ab =>
         cases ab with
@@ -560,7 +561,8 @@ item could not be finished, nothing changes. -/
 theorem finishItem_chain {s : GameState} (hwf : s.WF) (item : ObjId) :
     (finishItem s item).1.zone .chain = (s.zone .chain).erase item ∨
       (finishItem s item).1 = s := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, hc, hm, h⟩ | ⟨o, s2, -, hc, -, hr, h⟩
+  rcases finishItem_cases s item with
+      h | ⟨o, s2, id', -, hc, hm, h⟩ | ⟨o, s2, -, hc, -, hr, h⟩
   · exact Or.inr h
   · left
     rw [h]

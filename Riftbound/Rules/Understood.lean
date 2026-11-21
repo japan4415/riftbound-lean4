@@ -104,6 +104,7 @@ def Prim.understood : Prim → Bool
   | .ready s => s.understood
   | .exhaust s => s.understood
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
+  | .attach g t => g.understood && t.understood
   | _ => false
 
 mutual

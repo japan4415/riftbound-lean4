@@ -36,8 +36,24 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
 /-- Whether an object is a Unit. -/
 def isUnit (s : GameState) (id : ObjId) : Bool := s.hasType id .unit
 
-/-- Whether the card of an object prints the keyword. -/
-def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool := (s.cardDef? id).any (·.hasKeyword k)
+/-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
+no condition that give the object the keyword. -/
+def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
+  s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      if o.attached == some id then
+        d.grants.flatMap (fun ab =>
+          match ab with
+          | Ability.passive .always mods =>
+            mods.filterMap (fun m => match m with | .keyword .self k => some k | _ => none)
+          | _ => [])
+      else []
+    | _, _ => [])
+
+/-- Whether the object has the keyword: its card prints it, or an Equipment gives it. -/
+def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
+  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)
 
 /-- Whether an object is a Battlefield. -/
 def isBattlefield (s : GameState) (id : ObjId) : Bool := s.hasType id .battlefield
@@ -316,12 +332,28 @@ def tokenStep (s : GameState) : Option (GameState × List Event) :=
   | some id => (removeObj s id).map (fun s' => (s', []))
   | none => none
 
-/-- One step of the Cleanup (CR 323): a token off the Board ceases to exist (CR 183), or else the
-first step of `cleanupStep0`. `none` if none applies. -/
+/-- An Equipment attached to something that is not a Unit in play (CR 137). -/
+def GameState.looseGear (s : GameState) : Option ObjId :=
+  s.inPlay.find? (fun g => (s.obj? g).any (fun o =>
+    match o.attached with
+    | some u => !(s.inPlay.contains u && s.isUnit u)
+    | none => false))
+
+/-- The step of the Cleanup for an Equipment whose Unit is gone: it is not attached any more
+(CR 137). -/
+def detachStep (s : GameState) : Option (GameState × List Event) :=
+  s.looseGear.map (fun g => (s.modObj g (fun o => { o with attached := none }), []))
+
+/-- One step of the Cleanup (CR 323): a token off the Board ceases to exist (CR 183), an Equipment
+whose Unit is gone is detached (CR 137), or else the first step of `cleanupStep0`. `none` if none
+applies. -/
 def cleanupStep (s : GameState) : Option (GameState × List Event) :=
   match tokenStep s with
   | some r => some r
-  | none => cleanupStep0 s
+  | none =>
+    match detachStep s with
+    | some r => some r
+    | none => cleanupStep0 s
 
 /-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
 player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
@@ -467,7 +499,9 @@ theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :
   unfold cleanupStep at h
   split at h
   · simp at h
-  · exact h
+  · split at h
+    · simp at h
+    · exact h
 
 /-- The token that is found is a token, which has no physical card. -/
 theorem offBoardToken_spec {s : GameState} {id : ObjId} (h : s.offBoardToken = some id) :
@@ -529,7 +563,17 @@ theorem cleanupStep_safe {s s' : GameState} {es : List Event}
       exact ⟨fun hwf => removeObj_wf hwf hrm, fun hwf => removeObj_physIds hwf hrm ho hk,
         fun hwf hown => removeObj_ownerOk hwf hown hrm, removeObj_sameMeta hrm⟩
     · simp at hr
-  · exact cleanupStep0_safe h
+  · split at h
+    · rename_i r hr
+      unfold detachStep at hr
+      simp only [Option.map_eq_some_iff] at hr
+      obtain ⟨g, -, hg⟩ := hr
+      simp only [Option.some.injEq] at h
+      rw [h] at hg
+      simp only [Prod.mk.injEq] at hg
+      rw [← hg.1]
+      exact Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+    · exact cleanupStep0_safe h
 
 /-- Scoring a Battlefield is a safe change, then points. -/
 theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :

@@ -60,6 +60,9 @@ structure CardDef where
   /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
   abilities that a printed keyword stands for are not here (design.md §7.4). -/
   abilities : List Ability := []
+  /-- For an Equipment: the abilities the Unit it is attached to has (CR 137): the text the card
+  gives. They are not abilities of the card itself. -/
+  grants : List Ability := []
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
   /-- The sets the card has been printed in. -/
@@ -69,6 +72,24 @@ structure CardDef where
 deriving DecidableEq, Repr
 
 namespace CardDef
+
+/-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
+activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825). -/
+def keywordAbilities (c : CardDef) : List Ability :=
+  c.keywords.filterMap (fun k =>
+    match k.keyword, k.arg with
+    | .equip, .cost cost =>
+      some (.activated [.pay cost] .normal
+        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.prim (.attach .self (.slot 0)))) .unlimited)
+    | _, _ => none)
+
+/-- The abilities of the card itself: the written ones, and those of its keywords. -/
+def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities
+
+/-- The abilities of the card itself, and then the abilities it gives to the Unit it is attached
+to. The place of an ability in this list is what a trigger on the Chain remembers. -/
+def allAbilities (c : CardDef) : List Ability := c.fullAbilities ++ c.grants
 
 /-- The identity of a card's name: short name and subtitle together (CR 103.3.b, 132). Two
 cards have the same name exactly when their name keys are equal. -/
@@ -108,7 +129,7 @@ theorem copyLimit_of_not_unique {c : CardDef} (h : c.hasKeyword .unique = false)
 /-- The effects of the card refer only to what is there: bound variables, declared choices, and
 `it` and the replaced event where they mean something (`Riftbound.Card.IR.Check`). -/
 def StaticOk (c : CardDef) : Prop :=
-  c.abilities.all Ability.ok = true ∧
+  c.abilities.all Ability.ok = true ∧ c.grants.all Ability.ok = true ∧
     (match c.spellEffect with
       | none => true
       | some d => d.ok {}) = true
@@ -116,9 +137,9 @@ def StaticOk (c : CardDef) : Prop :=
 instance (c : CardDef) : Decidable c.StaticOk := by unfold StaticOk; infer_instance
 
 /-- A card with no effect refers to nothing, so it passes the check. -/
-theorem staticOk_of_no_effects {c : CardDef} (h1 : c.abilities = []) (h2 : c.spellEffect = none) :
-    c.StaticOk := by
-  simp [StaticOk, h1, h2]
+theorem staticOk_of_no_effects {c : CardDef} (h1 : c.abilities = []) (h2 : c.spellEffect = none)
+    (h3 : c.grants = []) : c.StaticOk := by
+  simp [StaticOk, h1, h2, h3]
 
 end CardDef
 

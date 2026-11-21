@@ -84,6 +84,9 @@ structure Object where
   /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
   Board clears them. -/
   mightMods : List MightMod := []
+  /-- For an Equipment in play: the Unit it is attached to (CR 137, 825). Leaving the Board clears
+  it; a Cleanup step clears it when the Unit is gone. -/
+  attached : Option ObjId := none
 deriving DecidableEq, Repr
 
 end Riftbound
