@@ -36,7 +36,8 @@ def demoCards : List CardDef :=
       cost := some ⟨1, []⟩,
       spellEffect := some (EffectDef.of []
         (.ifThen (.exists (Selector.all .enemy .atBase [.ofType .unit]))
-          (.forEach (Selector.all .enemy .atBase [.ofType .unit]) (.prim (.deal .it (.const 1))))
+          (.forEach (Selector.all .enemy .atBase [.ofType .unit])
+            (.prim (.deal .it (.const 1))))
           .nop)) } ] ++
   (List.range 13).map (fun n =>
     { id := ⟨s!"V{n}"⟩, name := s!"Vanilla {n}", types := [.unit], domains := [.fury],
