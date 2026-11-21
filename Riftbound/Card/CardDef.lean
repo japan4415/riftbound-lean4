@@ -74,7 +74,8 @@ deriving DecidableEq, Repr
 namespace CardDef
 
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
-activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825). -/
+activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
+fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def keywordAbilities (c : CardDef) : List Ability :=
   c.keywords.filterMap (fun k =>
     match k.keyword, k.arg with
@@ -82,7 +83,15 @@ def keywordAbilities (c : CardDef) : List Ability :=
       some (.activated [.pay cost] .normal
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
           (.prim (.attach .self (.slot 0)))) .unlimited)
-    | _, _ => none)
+    | _, _ => none) ++
+  c.keywords.flatMap (fun k =>
+    match k.keyword, k.arg with
+    | .hunt, .amount n =>
+      [.triggered (Trigger.onSelf .conquer) (EffectDef.of [] (.prim (.gainXP .you (.const n))))
+        .unlimited,
+       .triggered (Trigger.onSelf .hold) (EffectDef.of [] (.prim (.gainXP .you (.const n))))
+        .unlimited]
+    | _, _ => [])
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities

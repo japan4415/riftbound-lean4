@@ -2571,8 +2571,13 @@ def SFD_108.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Warmog's Armor: the effect is not written yet. -/
-def SFD_108 : CardDef := SFD_108.meta
+/-- Warmog's Armor. -/
+def SFD_108 : CardDef :=
+  { SFD_108.meta with
+    grants := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.buff .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-109
 /--

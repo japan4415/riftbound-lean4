@@ -204,6 +204,46 @@ theorem createN_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready
   | 0, s => Safe.refl s
   | n + 1, s => (createOne_safe name p dest ready s).trans (createN_safe name p dest ready n _)
 
+/-- Stun an object: it deals no combat damage this turn (CR 424). -/
+def stunObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with stunned := true }), [])
+
+/-- Stunning is a safe change. -/
+theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
+def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with buffed := true }), [])
+
+/-- Buffing is a safe change. -/
+theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- The player gains XP (CR 728): it goes to their Legend. -/
+def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
+  match s.zone (.player p .legendZone) with
+  | l :: _ => s.modObj l (fun o => { o with xp := o.xp + n })
+  | [] => s
+
+/-- Gaining XP is a safe change. -/
+theorem gainXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (gainXPOf n s p) := by
+  unfold gainXPOf
+  split
+  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
+/-- The players gain XP, one after the other. -/
+def gainXPAll (n : Nat) : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, p :: ps => gainXPAll n (gainXPOf n s p) ps
+
+/-- Gaining XP is a safe change, for any players. -/
+theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
+    Safe s (gainXPAll n s ps)
+  | [], s => Safe.refl s
+  | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
+
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := some u }), [])
@@ -301,6 +341,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
+  | .stun sel => onSelected s p src env sel stunObj
+  | .buff sel => onSelected s p src env sel buffObj
+  | .gainXP ps n =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -328,6 +372,19 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
   | attach gears to => exact applyAttach_safe h
+  | stun sel => exact onSelected_safe stunObj_safe h
+  | buff sel => exact onSelected_safe buffObj_safe h
+  | gainXP ps n =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      cases hn : n.evalS s p src env with
+      | none => simp [hl, hn] at h
+      | some k =>
+        simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+        rw [← h]
+        exact gainXPAll_safe k l s
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/

@@ -74,7 +74,8 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
-  (s.mightOf id).map (fun m => m + s.equipBonus id + s.passiveMight id)
+  (s.mightOf id).map (fun m => m + s.equipBonus id + s.passiveMight id +
+    (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0))
 
 end GameState
 

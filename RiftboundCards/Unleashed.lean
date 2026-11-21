@@ -825,8 +825,13 @@ def UNL_034.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Herald of Spring: the effect is not written yet. -/
-def UNL_034 : CardDef := UNL_034.meta
+/-- Herald of Spring. -/
+def UNL_034 : CardDef :=
+  { UNL_034.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.gainXP .you (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-035
 /--
@@ -2189,8 +2194,13 @@ def UNL_092.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Demacian Diplomat: the effect is not written yet. -/
-def UNL_092 : CardDef := UNL_092.meta
+/-- Demacian Diplomat. -/
+def UNL_092 : CardDef :=
+  { UNL_092.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.gainXP .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-093
 /--
@@ -2236,8 +2246,11 @@ def UNL_094.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Gemhand Hunter: the effect is not written yet. -/
-def UNL_094 : CardDef := UNL_094.meta
+/-- Gemhand Hunter. -/
+def UNL_094 : CardDef :=
+  { UNL_094.meta with
+    abilities := [.passive (.cmp .ge .xp (.const 6)) [.mightPlus .self (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-095
 /--
@@ -2327,8 +2340,11 @@ def UNL_098.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Targonian Visionary: the effect is not written yet. -/
-def UNL_098 : CardDef := UNL_098.meta
+/-- Targonian Visionary. -/
+def UNL_098 : CardDef :=
+  { UNL_098.meta with
+    abilities := [.passive (.cmp .ge .xp (.const 11)) [.mightPlus .self (.const 4)]],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-099
 /--
@@ -2707,8 +2723,13 @@ def UNL_115.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Nilah, Joyful Ascetic: the effect is not written yet. -/
-def UNL_115 : CardDef := UNL_115.meta
+/-- Nilah, Joyful Ascetic. -/
+def UNL_115 : CardDef :=
+  { UNL_115.meta with
+    abilities := [.triggered (.onSelf .move)
+        (.of []
+        (.prim (.gainXP .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-116
 /--

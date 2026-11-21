@@ -43,6 +43,7 @@ def Amount.understood : Amount → Bool
   | .var _ => true
   | .count s => Selector.understood s
   | .handSize p => p.understood
+  | .xp => true
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -63,6 +64,8 @@ def Filter.understood : Filter → Bool
   | .ready => true
   | .damaged => true
   | .notSelf => true
+  | .stunned => true
+  | .buffed => true
   | _ => false
 
 /-- Every filter of a list is understood. -/
@@ -105,6 +108,9 @@ def Prim.understood : Prim → Bool
   | .exhaust s => s.understood
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
+  | .stun s => s.understood
+  | .buff s => s.understood
+  | .gainXP p n => p.understood && n.understood
   | _ => false
 
 mutual

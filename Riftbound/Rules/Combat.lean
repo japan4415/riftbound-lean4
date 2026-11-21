@@ -45,7 +45,8 @@ def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
 /-- The Might a Unit adds to the damage of its side: Assault X while attacking (CR 807), Shield X
 while defending (CR 814). -/
 def combatMight (s : GameState) (u : ObjId) (attacking : Bool) : Nat :=
-  s.mightEff u + (if attacking then s.kwAmount u .assault else s.kwAmount u .shield)
+  if ((s.obj? u).map (·.stunned)).getD false then 0
+  else s.mightEff u + (if attacking then s.kwAmount u .assault else s.kwAmount u .shield)
 
 /-- The damage a side assigns: the sum of the Might of its Units at the Battlefield (CR 467.2). -/
 def combatTotal (s : GameState) (bf : ObjId) (att side : PlayerId) : Nat :=
