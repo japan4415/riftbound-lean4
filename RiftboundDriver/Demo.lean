@@ -48,10 +48,9 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 10 vanilla Units, three copies of a Spell
-that draws a card, three copies of a Spell that deals 2 damage to an enemy Unit, three copies of a Spell that deals 1 damage to each enemy
-Unit, 12 Runes and 3
-Battlefields. -/
+/-- The demo deck: the champion, three copies of each of 10 vanilla Units, three copies each of a
+Spell that draws a card, a Spell that deals 2 damage to an enemy Unit, and a Spell that deals 1
+damage to each enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: (List.range 10).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
