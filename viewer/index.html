@@ -67,6 +67,8 @@ h1 { font-size: 1.15rem; margin: 0; }
 .tag.ctl1 { border-color: var(--chaos); color: var(--chaos); }
 .tag.hot { border-color: var(--fury); color: var(--fury); }
 .card.bfcard .card-in { border-style: double; border-width: 3px; }
+.card .bst { position: absolute; left: 3px; top: 3px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
+  background: var(--accent); color: #fff; }
 .card.ability .card-in { border-style: dashed; border-width: 2px; }
 .card .ab { position: absolute; left: 4px; bottom: 3px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
   background: var(--fury); color: #fff; }
@@ -286,6 +288,8 @@ function decorate(e, st, id) {
   e.firstChild.classList.toggle('exh', st.exhausted.includes(+id));
   let d = e.querySelector('.dmg'); const dm = st.damaged.find((x) => x[0] === +id);
   if (dm) { if (!d) { d = document.createElement('span'); d.className = 'dmg'; e.append(d); } d.textContent = dm[1]; } else if (d) d.remove();
+  let b = e.querySelector('.bst'); const bo = (st.boosted || []).find((x) => x[0] === +id);
+  if (bo) { if (!b) { b = document.createElement('span'); b.className = 'bst'; e.append(b); } b.textContent = (bo[1] > 0 ? '+' : '') + bo[1]; } else if (b) b.remove();
 }
 
 // The Battlefield Zone holds the Battlefields and the Units at them: one column per Battlefield,

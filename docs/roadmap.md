@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M6d の実装の記録（2026-11-22）: 持続する Might の変更（Layers の最初の一歩）
+
+- **方針を変えた**: 前の報告のおすすめは「Spell のモード・X・複数の対象・`may`」だったが、転記済みの Spell 34 枚を調べると、モードや X を使うものはほとんど無く、動かない 18 枚の主因は**持続する Might の変更（`grant`）**だった。そこで先にこれを入れた。選択のフレーム（モード・X・`may`）は、それを使うカードが転記されたときに足す。
+- **仕組み**: Object に `mightMods`（変更の量と、いつ終わるか）を持たせた。`grant sel (mightPlus / mightMinus .it a) d` は、選んだ各オブジェクトに変更を足す（`applyGrant`）。`mightOf`（Might を読む唯一の入口）は、印刷された Might と変更の合計になった。したがって、致死ダメージ、Combat の合計と致死に要る量、効果の `Filter.might` が、すべて変更後の Might を読む。
+- **期限**: `thisTurn` はターンの終わり（Ending）に消える（`endTurnObj`）。`permanent` は消えない。Board を離れると消える（`moveObj`）。`thisCombat`・`thisShowdown`・`whileCond`・`nextTurn` はまだ（解釈器は飛ばす）。
+- **証明**: `applyGrant_safe`（変更の追加は安全な変更）。`Safe` に載るので、既存の不変条件は数行の変更で保たれる（`endTurnObj_kind`・`endTurnObj_owner`）。
+- **効果**: 動く Spell が 16 枚から 24 枚に増えた（`grant` を使う 8 枚）。
+- **テスト**（`RiftboundTest/Might.lean`）: +3 の Spell で Might が 5 になる、他の Unit は変わらない、ターンの終わりで消える、`permanent` は残る、-10 で 0 以下になる、`Filter.might` が変更後を読む、Board を離れると消える、期限が `thisCombat` の変更は解釈器が知らない。
+- **ビューア・デモ**: 変更のある札に `+3` が出る。デモのデッキに、味方の Unit に +3 Might を与える Surge が入る。
+- **まだ無いもの**: `Ability.passive` の Might の変更（Master Yi の「Rune が 8 枚以上のとき +4」など。条件の評価が Might を読むので、依存関係の整理が要る）、キーワードや能力の付与、Controller の変更、Layers の順序（timestamp と依存）、コピー。
+
 ### M6c の実装の記録（2026-11-22）: 誘発の順序と対象の選択
 
 - **決定のフレーム `triggerOrder`**（行動 `putTrigger idx targets`）: 同じプレイヤーの待っている誘発能力から 1 つを選んで Chain に載せ、その対象も選ぶ（CR 383.3.d, 355）。残りは `triggers` に戻り、また選ぶ。最後に載せたものが上になり、先に解決する。選ぶものが無い 1 つの能力（対象なし）は、決定なしで載る。手番のプレイヤーの能力から先に載せる。

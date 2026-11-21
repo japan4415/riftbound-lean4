@@ -42,9 +42,14 @@ def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (f
 def inPlay (s : GameState) : List ObjId :=
   s.players.flatMap (fun p => s.zone (.player p .base)) ++ s.zone .battlefieldZone
 
-/-- The Might an object has. For now this is the printed Might: the Layers come later
-(roadmap.md, M6). -/
-def mightOf (s : GameState) (id : ObjId) : Option Int := (s.cardDef? id).bind (·.might)
+/-- The Might an object has: the printed Might and the lasting changes effects made to it
+(CR 475-478). The abilities that change Might as long as a condition holds come with the full
+Layers (roadmap.md, M6). -/
+def mightOf (s : GameState) (id : ObjId) : Option Int :=
+  ((s.cardDef? id).bind (·.might)).map (fun m =>
+    m + match s.obj? id with
+      | some o => (o.mightMods.map (·.amount)).sum
+      | none => 0)
 
 end GameState
 

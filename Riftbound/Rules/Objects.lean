@@ -25,6 +25,11 @@ def readyOf (p : PlayerId) (o : Object) : Object :=
 /-- Heal an object: remove its damage (CR 419). -/
 def healObj (o : Object) : Object := { o with damage := 0 }
 
+/-- What the end of the turn does to an object: it is healed, and the changes of Might that last
+until the end of the turn end (CR 317.2, 478). -/
+def endTurnObj (o : Object) : Object :=
+  { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != .turn) }
+
 namespace GameState
 
 /-- The same objects are in the table. -/
@@ -91,6 +96,12 @@ theorem healObj_owner (o : Object) : (healObj o).owner = o.owner := rfl
 
 /-- Healing does not change the kind. -/
 theorem healObj_kind (o : Object) : (healObj o).kind = o.kind := rfl
+
+/-- The end of the turn keeps the owner. -/
+theorem endTurnObj_owner (o : Object) : (endTurnObj o).owner = o.owner := rfl
+
+/-- The end of the turn keeps the kind. -/
+theorem endTurnObj_kind (o : Object) : (endTurnObj o).kind = o.kind := rfl
 
 /-- Readying twice is readying once (CR 416.1.b). -/
 theorem readyOf_idem (p : PlayerId) (o : Object) : readyOf p (readyOf p o) = readyOf p o := by

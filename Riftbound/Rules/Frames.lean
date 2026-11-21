@@ -62,7 +62,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .draw :: rest =>
     some ({ s with phase := .draw, pending := .draw (s.active.getD ⟨0⟩) 1 :: rest }, [])
   | .phase .ending :: rest =>
-    some ({ s.mapObjects healObj with phase := .ending, pending := rest, pools := {} }, [])
+    some ({ s.mapObjects endTurnObj with phase := .ending, pending := rest, pools := {} }, [])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     some ({ (hold s (s.active.getD ⟨0⟩)).1 with
@@ -300,7 +300,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (GameState.physIds_mapObjects s (fun o => healObj_kind o)).symm ▸ List.Perm.refl _
+    exact (GameState.physIds_mapObjects s (fun o => endTurnObj_kind o)).symm ▸ List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
