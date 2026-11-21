@@ -148,8 +148,10 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     | none => none)
   let boosted := ids.filterMap (fun id =>
     match s.obj? id with
-    | some o =>
-      let d := (o.mightMods.map (·.amount)).sum
+    | some _ =>
+      let d : Int := match s.mightNow id, (s.cardDef? id).bind (·.might) with
+        | some now, some printed => now - printed
+        | _, _ => 0
       if d != 0 then some (jarr [toString id.n, toString d]) else none
     | none => none)
   let players := allPlayers s.playerCount

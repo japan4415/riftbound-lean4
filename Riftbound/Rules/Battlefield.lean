@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Effects
+public import Riftbound.Rules.Passive
 
 /-!
 # Battlefields: Standard Move, Cleanup, Showdown and scoring
@@ -68,7 +69,7 @@ def controlOf (s : GameState) (bf : ObjId) : Option PlayerId := (s.obj? bf).bind
 def lethal (s : GameState) (id : ObjId) : Bool :=
   match s.obj? id with
   | some o =>
-    decide (0 < o.damage) && (s.mightOf id).any (fun m => decide (Might.eff m ≤ o.damage))
+    decide (0 < o.damage) && (s.mightNow id).any (fun m => decide (Might.eff m ≤ o.damage))
   | none => false
 
 end GameState

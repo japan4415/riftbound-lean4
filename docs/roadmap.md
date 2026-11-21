@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M6e の実装の記録（2026-11-22）: Passive 能力（場に出たとき Ready、Might の変更）
+
+- **データを見て範囲を決めた**: 全カードの効果文を数えると、最も多いのは「場に出たとき」の誘発（188 行）で、その次が Passive の「I enter ready」（17 行）、「[Empowered] I have +N Might」（19 行）、「I cost less」（11 行）だった。転記済みのカードの Passive は少ないので、仕組み（`Rules/Passive.lean`）を作り、よく出る 2 つを動かした。
+- **`entersReady`**: 条件なしの Passive `entersReady .self` を持つ Unit は、Ready で場に出る（CR 359 の例外）。`applyPlay_unit_exhausted` は「`entersReady` が無い Unit は Exhaust で入る」になった。
+- **Might の導出**（`mightNow`）: 印刷された Might + 持続する変更（M6d）+ Passive の変更。Passive は、場にある Unit と Legend の `Ability.passive cond mods` のうち、条件が成り立つもの。`mightPlus` と `mightMinus` を、選択子が指すオブジェクトに足す。**致死ダメージと Combat は `mightNow` を読む**。選択子と条件が読む Might（`Filter.might`）は `mightOf`（Passive を含まない）のままで、Passive どうしが依存しない（Layers の最後の層に Arithmetic が来る: CR 479.4。依存の整理（CR 480-481）は、必要なカードが来てから）。
+- **テスト**（`RiftboundTest/Passive.lean`）: 場に出たとき Ready か Exhaust か、味方の Unit に +1 を与える Unit（自分と相手には効かない、場を離れると消える）、致死ダメージと Combat が変更後の Might を読むこと、Rune の数による条件、Might が下がる Passive、手札の Passive は効かないこと。
+- **ビューア・デモ**: 札の `+N` は、持続する変更と Passive の合計。デモのデッキに、味方を強くする Banner と、Ready で出る Scout が入る。
+- **まだ無いもの**: `here` の場所を使う Passive、Empowered の状態、`costMinus`・`bonusDamage`・`victoryScorePlus`・`triggersExtra`・`cantPlayer`・`ignoreKeyword` などの hook、キーワードの付与、Layers の順序と依存。
+
 ### M6d の実装の記録（2026-11-22）: 持続する Might の変更（Layers の最初の一歩）
 
 - **方針を変えた**: 前の報告のおすすめは「Spell のモード・X・複数の対象・`may`」だったが、転記済みの Spell 34 枚を調べると、モードや X を使うものはほとんど無く、動かない 18 枚の主因は**持続する Might の変更（`grant`）**だった。そこで先にこれを入れた。選択のフレーム（モード・X・`may`）は、それを使うカードが転記されたときに足す。
