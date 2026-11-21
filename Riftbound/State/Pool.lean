@@ -30,6 +30,9 @@ structure RunePool where
   chaos : Nat := 0
   /-- Order Power. -/
   order : Nat := 0
+  /-- Power of any domain (an `[Add]` of the rainbow Power): it can pay a Power symbol of any
+  domain, when the Power of that domain is not there. -/
+  any : Nat := 0
 deriving DecidableEq, Repr
 
 namespace RunePool
@@ -56,10 +59,14 @@ def addPower (p : RunePool) (d : Domain) (n : Nat) : RunePool :=
   | .chaos => { p with chaos := p.chaos + n }
   | .order => { p with order := p.order + n }
 
+/-- Add Power of any domain (CR 430). -/
+def addAny (p : RunePool) (n : Nat) : RunePool := { p with any := p.any + n }
+
 /-- Add Energy (CR 430). -/
 def addEnergy (p : RunePool) (n : Nat) : RunePool := { p with energy := p.energy + n }
 
-/-- Take one Power of a domain out, if there is one. -/
+/-- Take one Power of a domain out, if there is one: Power of that domain, or else Power of any
+domain. -/
 def takePower (p : RunePool) (d : Domain) : Option RunePool :=
   if 0 < p.get d then
     some (match d with
@@ -69,10 +76,12 @@ def takePower (p : RunePool) (d : Domain) : Option RunePool :=
       | .body => { p with body := p.body - 1 }
       | .chaos => { p with chaos := p.chaos - 1 }
       | .order => { p with order := p.order - 1 })
+  else if 0 < p.any then some { p with any := p.any - 1 }
   else none
 
 /-- All the Power in the Pool, over every domain. -/
-def totalPower (p : RunePool) : Nat := p.fury + p.calm + p.mind + p.body + p.chaos + p.order
+def totalPower (p : RunePool) : Nat :=
+  p.fury + p.calm + p.mind + p.body + p.chaos + p.order + p.any
 
 /-- Everything in the Pool: Energy and Power. -/
 def total (p : RunePool) : Nat := p.energy + p.totalPower
@@ -132,7 +141,13 @@ theorem total_takePower {p p' : RunePool} {d : Domain} (h : p.takePower d = some
   · rename_i hp
     cases d <;> simp only [get] at hp <;> simp only [Option.some.injEq] at h <;> subst h <;>
       simp only [total, totalPower] <;> omega
-  · exact absurd h (by simp)
+  · split at h
+    · rename_i hp
+      simp only [Option.some.injEq] at h
+      subst h
+      simp only [total, totalPower]
+      omega
+    · exact absurd h (by simp)
 
 /-- Taking the listed Powers takes exactly that many (CR 445). -/
 theorem total_takePowers :

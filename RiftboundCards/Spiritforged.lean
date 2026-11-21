@@ -1244,8 +1244,13 @@ def SFD_052.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Heart of Dark Ice: the effect is not written yet. -/
-def SFD_052 : CardDef := SFD_052.meta
+/-- Heart of Dark Ice. -/
+def SFD_052 : CardDef :=
+  { SFD_052.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-053
 /--
@@ -3979,8 +3984,13 @@ def SFD_168.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Vanguard Armory: the effect is not written yet. -/
-def SFD_168 : CardDef := SFD_168.meta
+/-- Vanguard Armory. -/
+def SFD_168 : CardDef :=
+  { SFD_168.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+        (.of []
+        (.prim (.create "Recruit" (.const 3) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-169
 /--

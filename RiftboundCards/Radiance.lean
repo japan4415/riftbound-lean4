@@ -1640,8 +1640,13 @@ def RAD_076.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Sneaky Zeebles: the effect is not written yet. -/
-def RAD_076 : CardDef := RAD_076.meta
+/-- Sneaky Zeebles. -/
+def RAD_076 : CardDef :=
+  { RAD_076.meta with
+    abilities := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.addPower .you (.const 1) none none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-077
 /--
@@ -2270,8 +2275,13 @@ def RAD_104.meta : CardDef :=
     sets := [⟨"RAD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Pitiless Stalker: the effect is not written yet. -/
-def RAD_104 : CardDef := RAD_104.meta
+/-- Pitiless Stalker. -/
+def RAD_104 : CardDef :=
+  { RAD_104.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.prim (.stun (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-105
 /--

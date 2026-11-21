@@ -36,8 +36,14 @@ def UNL_001.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Arena Kingpin: the effect is not written yet. -/
-def UNL_001 : CardDef := UNL_001.meta
+/-- Arena Kingpin. -/
+def UNL_001 : CardDef :=
+  { UNL_001.meta with
+    abilities := [.passive .always [.entersReady .self],
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-002
 /--
@@ -2222,8 +2228,13 @@ def UNL_093.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Dragonsoul Sage: the effect is not written yet. -/
-def UNL_093 : CardDef := UNL_093.meta
+/-- Dragonsoul Sage. -/
+def UNL_093 : CardDef :=
+  { UNL_093.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addEnergy .you (.const 1) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-094
 /--

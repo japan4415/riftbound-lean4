@@ -8,6 +8,7 @@ public import Riftbound.Rules.Play
 public import Riftbound.Rules.Effects
 public import Riftbound.Rules.Chain
 public import Riftbound.Rules.Trigger
+public import Riftbound.Rules.Mana
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
@@ -138,6 +139,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .triggerOrder _ t more others :: rest, .putTrigger i ts =>
     some ({ putPick s (t :: more) i ts with
               pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
+  | .priority p :: _, .manaAbility src idx => applyMana s p src idx
+  | .chainPass p _ :: _, .manaAbility src idx => applyMana s p src idx
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

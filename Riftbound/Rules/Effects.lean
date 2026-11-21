@@ -244,6 +244,26 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
 
+/-- Move an object to its controller's Base: a move, not a Recall (CR 144, 456). Its damage and
+status stay. -/
+def sendHome (s : GameState) (u : ObjId) : GameState × List Event :=
+  match s.obj? u with
+  | some o =>
+    match moveObj s u (.player o.controller .base) with
+    | some r => (r.1.modObj r.2 (fun o => { o with loc := none }), [])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Moving to the Base is a safe change. -/
+theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := by
+  unfold sendHome
+  split
+  · split
+    · rename_i r hm
+      exact (Safe.moveObj hm).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := some u }), [])
@@ -341,6 +361,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
+  | .move sel .base => onSelected s p src env sel sendHome
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
   | .gainXP ps n =>
@@ -372,6 +393,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
   | attach gears to => exact applyAttach_safe h
+  | move sel dest =>
+    cases dest with
+    | base => exact onSelected_safe sendHome_safe h
+    | at_ t => simp [applyPrim] at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | buff sel => exact onSelected_safe buffObj_safe h
   | gainXP ps n =>

@@ -59,6 +59,7 @@ def actionJson (a : Action) : String :=
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
     | .assignPick u => [("unit", toString u.n)]
+    | .manaAbility src idx => [("source", toString src.n), ("index", toString idx)]
     | .putTrigger i ts =>
       [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .activate src idx _ ts =>
@@ -130,7 +131,7 @@ def objJson (s : GameState) (id : ObjId) : String :=
 def poolJson (p : RunePool) : String :=
   jobj [("energy", toString p.energy), ("fury", toString p.fury), ("calm", toString p.calm),
     ("mind", toString p.mind), ("body", toString p.body), ("chaos", toString p.chaos),
-    ("order", toString p.order)]
+    ("order", toString p.order), ("any", toString p.any)]
 
 /-- The state as JSON. `seen` are the identifiers already sent: only new objects are described. -/
 def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=
@@ -219,6 +220,11 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
       match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
     let isUse (a : Action) : Bool :=
       match a.kind with | .activate .. => true | _ => false
+    let isMana (a : Action) : Bool :=
+      match a.kind with | .manaAbility .. => true | _ => false
+    match legal.find? isMana with
+    | some a => some (a, r)
+    | none =>
     match legal.find? isPlay with
     | some a => some (a, r)
     | none =>
