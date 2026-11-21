@@ -456,23 +456,18 @@ theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {
     {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
     f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
   unfold runEffect at h
-  split at h
-  · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-  · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-  · split at h
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
-      rcases h with rfl | rfl <;> exact Or.inl rfl
-    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-  · split at h
-    · simp only [List.mem_append, List.mem_map, List.mem_singleton] at h
-      rcases h with ⟨q, -, rfl⟩ | rfl
-      · exact Or.inr ⟨q, _, rfl⟩
-      · exact Or.inl rfl
-    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-  · split at h
-    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
-  · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
+  split at h <;> (try split at h) <;>
+    simp only [List.mem_cons, List.mem_append, List.mem_map,
+      List.not_mem_nil, or_false] at h <;>
+    first
+    | (subst h; exact Or.inl rfl)
+    | (rcases h with rfl | rfl <;> exact Or.inl rfl)
+    | (rcases h with ⟨q, -, rfl⟩ | rfl
+       · exact Or.inr ⟨q, _, rfl⟩
+       · exact Or.inl rfl)
+    | (rcases h with ⟨q, -, rfl⟩ | rfl
+       · exact Or.inl rfl
+       · exact Or.inl rfl)
 
 /-- `HandInv` for a step of a Spell's frames: the setup is over, so nothing is counted. -/
 theorem HandInv.of_spell_step {s s2 : GameState} (hinv : HandInv s) (hph : s.phase ≠ .setup)

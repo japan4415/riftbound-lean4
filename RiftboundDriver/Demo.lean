@@ -31,7 +31,13 @@ def demoCards : List CardDef :=
       cost := some ⟨1, []⟩,
       spellEffect := some (EffectDef.of
         [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
-        (.prim (.deal (.slot 0) (.const 2)))) } ] ++
+        (.prim (.deal (.slot 0) (.const 2)))) },
+    { id := ⟨"S2"⟩, name := "Sweep", types := [.spell], domains := [.fury],
+      cost := some ⟨1, []⟩,
+      spellEffect := some (EffectDef.of []
+        (.ifThen (.exists (Selector.all .enemy .atBase [.ofType .unit]))
+          (.forEach (Selector.all .enemy .atBase [.ofType .unit]) (.prim (.deal .it (.const 1))))
+          .nop)) } ] ++
   (List.range 13).map (fun n =>
     { id := ⟨s!"V{n}"⟩, name := s!"Vanilla {n}", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 2 : CardDef }) ++
@@ -41,13 +47,14 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 11 vanilla Units, three copies of a Spell
-that draws a card, three copies of a Spell that deals 2 damage to an enemy Unit, 12 Runes and 3
+/-- The demo deck: the champion, three copies of each of 10 vanilla Units, three copies of a Spell
+that draws a card, three copies of a Spell that deals 2 damage to an enemy Unit, three copies of a Spell that deals 1 damage to each enemy
+Unit, 12 Runes and 3
 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 11).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
-      List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩,
+    main := ⟨"C1"⟩ :: (List.range 10).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+      List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩,
     runes := List.replicate 12 ⟨"R1"⟩,
     battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
 

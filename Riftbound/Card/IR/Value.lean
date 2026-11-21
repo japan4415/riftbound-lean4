@@ -34,6 +34,8 @@ structure Env where
   bindings : List (VarId × Value) := []
   /-- The values chosen when the card was played: slot `i` is `slots[i]` (CR 355). -/
   slots : List Value := []
+  /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/
+  it : Option ObjId := none
 deriving DecidableEq, Repr
 
 namespace Env

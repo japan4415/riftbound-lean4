@@ -319,6 +319,16 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M4d の実装の記録（2026-11-21）: 効果の言語を広げる
+
+- **解釈器に足したもの**（`Rules/Effects.lean`）: `ifThen`（条件で枝を選ぶ）、`forEach`（選んだ物ごとに本体を走らせる。`it` は `Env.it`）、`repeatN`、`banish`・`returnToHand`（`sendObj`: 持ち主のゾーンへ送る。`kill` も同じ）。`bind` と `draw` と `deal` の量は、盤面を読める `Amount.evalS`（`count`・`handSize` と四則・min・max）で計算する。
+- **条件**（`Rules/Select.lean`）: `Condition.eval`。`always`・`not`・`and`・`or`・`cmp`・`exists`・`matches`・`yourTurn`。分からない条件は「答えられない」で、その指示は飛ばされる。
+- **「解釈器が分かる」を数える**（`Rules/Understood.lean`）: `Effect.understood` などが、解釈器の各腕を静的に写す。`CardDef.spellRuns`（選択が全部「対象 1 つ」で、効果が全部分かる Spell）。**転記済み（drafted）の Spell 34 枚のうち 16 枚が、最初から最後まで動く**（`RiftboundTest/Cards.lean` の `#guard` が数を固定する）。
+- **動かない 18 枚の理由**: 持続する Might の変更（`grant`: 9 枚。Layers = M6）、モード、複数の対象、選んだ Battlefield（`Filter.at_`、`here`）、遅延・置換（`delayed`・`replaceNext`・`preventNext`）、`takeControl`・`extraTurn`・`move`。
+- **証明**: `runEffect_safe` は新しい腕を含めて成り立つ（状態を変えるのは `applyPrim` だけ）。`runEffect_mem`（解釈器が積むフレームは、Spell のフレームか `draw`）も新しい腕を含めて証明済み。**不変条件**は引き続き証明済み。
+- **ビューア**: デモのデッキに、敵の Unit 全員に 1 ダメージを与える Spell（Sweep: `ifThen` と `forEach`）が入り、2 回で 2 体が Trash に行く。
+- **まだ無いもの**: `may`・`doThen`・`chooseOne`（プレイヤーの決定が要る）、`grant`・`delayed`・`preventNext`・`replaceNext`（持続する効果）、`pick .one`、`discard`・`stun`・`buff`・`recycle`・`channel`・`score` などの残りのプリミティブ、`Filter.at_` と `here` などの場所。
+
 ### M4c の実装の記録（2026-11-21）: 対象を取る Spell と、`deal`・`kill`・`ready`・`exhaust`・`heal`
 
 - **対象は行動に載せる**: `playCard card pay targets`。`pay` と同じく、プレイの一瞬の決定なので、新しい `choose` のフレームは足さなかった（フレームにすると、`StackInv`・`HandInv` などの不変条件がフレームごとに増える。行動に載せれば、`Legal` の 1 本の条件で足りる）。複数の選択（モード、X、追加コスト）や、選択が前の選択に依存するカードが来たら、フレームにする。
