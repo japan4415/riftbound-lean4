@@ -460,6 +460,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7a の実装の記録（2026-11-22）: 転記の対応範囲（`here`・Move の誘発・文の型）
+
+- **何を数えたか**: 転記が済んでいないカード 985 枚の文を調べた。1 枚の効果文のうち書けない行が 1 つだけのカードは 792 枚あるが、その行の文はほとんどが 1 枚ごとに違う（同じ型が 7 枚以上のものは「[Reaction] — [Add]」だけ）。**文の型を足して増える枚数は、1 回あたり十数枚**で、残りは 1 枚ずつ書くことになる。
+- **文の型を足した**（`scripts/transcribe.py`）: 誘発の本文の頭文字を大文字にしていなかったため「When you play me, draw 2」などが合わなかったのを直した（15 枚）。「Deal N to all (friendly / enemy) units (here / at a battlefield)」「Kill all (damaged) … units」「When I move, …」を足した。**転記済みは 117 枚から 135 枚**（Spell で最初から最後まで動くものは 24 枚から 25 枚、能力を持つカードは 46 枚）。
+- **エンジン**: 場所 `here`（Battlefield の自分の場所。Unit はいる Battlefield、Battlefield はそれ自身）を解釈器が分かるようにした（`placeObjs` が `self` を取る）。「here」を使う文は 168 枚のカードにある。Unit の Move は誘発する（`When I move`）。
+- **テスト**（`RiftboundTest/Here.lean`）: 「here」の対象（同じ Battlefield の Unit だけ、Base にいる Unit には答えが無い）、Move の誘発。
+- **まだ無いもの**: トークンを作る文（105 枚のカードにある）、Buff・Stun・XP・Channel・Score の文、複数の対象、条件つきの文、キーワードを与える文。それぞれ、エンジンの機能が先に要る。
+
 ### M6e の実装の記録（2026-11-22）: Passive 能力（場に出たとき Ready、Might の変更）
 
 - **データを見て範囲を決めた**: 全カードの効果文を数えると、最も多いのは「場に出たとき」の誘発（188 行）で、その次が Passive の「I enter ready」（17 行）、「[Empowered] I have +N Might」（19 行）、「I cost less」（11 行）だった。転記済みのカードの Passive は少ないので、仕組み（`Rules/Passive.lean`）を作り、よく出る 2 つを動かした。

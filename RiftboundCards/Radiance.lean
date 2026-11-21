@@ -181,8 +181,13 @@ def RAD_008.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- War Scout: the effect is not written yet. -/
-def RAD_008 : CardDef := RAD_008.meta
+/-- War Scout. -/
+def RAD_008 : CardDef :=
+  { RAD_008.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-009
 /--
@@ -1230,8 +1235,13 @@ def RAD_058.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Riptide Mage: the effect is not written yet. -/
-def RAD_058 : CardDef := RAD_058.meta
+/-- Riptide Mage. -/
+def RAD_058 : CardDef :=
+  { RAD_058.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightMinus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-059
 /--

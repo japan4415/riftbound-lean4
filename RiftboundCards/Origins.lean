@@ -84,8 +84,13 @@ def OGN_003.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Chemtech Enforcer: the effect is not written yet. -/
-def OGN_003 : CardDef := OGN_003.meta
+/-- Chemtech Enforcer. -/
+def OGN_003 : CardDef :=
+  { OGN_003.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.discard .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-004
 /--
@@ -685,8 +690,13 @@ def OGN_030.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jinx, Demolitionist: the effect is not written yet. -/
-def OGN_030 : CardDef := OGN_030.meta
+/-- Jinx, Demolitionist. -/
+def OGN_030 : CardDef :=
+  { OGN_030.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.discard .you (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-031
 /--
@@ -890,8 +900,13 @@ def OGN_039.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kai'Sa, Survivor: the effect is not written yet. -/
-def OGN_039 : CardDef := OGN_039.meta
+/-- Kai'Sa, Survivor. -/
+def OGN_039 : CardDef :=
+  { OGN_039.meta with
+    abilities := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-040
 /--
@@ -1842,8 +1857,13 @@ def OGN_082.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Whiteflame Protector: the effect is not written yet. -/
-def OGN_082 : CardDef := OGN_082.meta
+/-- Whiteflame Protector. -/
+def OGN_082 : CardDef :=
+  { OGN_082.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 8)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-083
 /--
@@ -1965,8 +1985,13 @@ def OGN_087.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Lecturing Yordle: the effect is not written yet. -/
-def OGN_087 : CardDef := OGN_087.meta
+/-- Lecturing Yordle. -/
+def OGN_087 : CardDef :=
+  { OGN_087.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-088
 /--
@@ -2069,8 +2094,13 @@ def OGN_092.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Riptide Rex: the effect is not written yet. -/
-def OGN_092 : CardDef := OGN_092.meta
+/-- Riptide Rex. -/
+def OGN_092 : CardDef :=
+  { OGN_092.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 6)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-093
 /--
@@ -2900,8 +2930,13 @@ def OGN_130.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Crackshot Corsair: the effect is not written yet. -/
-def OGN_130 : CardDef := OGN_130.meta
+/-- Crackshot Corsair. -/
+def OGN_130 : CardDef :=
+  { OGN_130.meta with
+    abilities := [.triggered (.onSelf .attack)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-131
 /--
@@ -3542,8 +3577,14 @@ def OGN_159.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Warwick, Hunter: the effect is not written yet. -/
-def OGN_159 : CardDef := OGN_159.meta
+/-- Warwick, Hunter. -/
+def OGN_159 : CardDef :=
+  { OGN_159.meta with
+    abilities := [.passive .always [.entersReady .self],
+      .triggered (.onSelf .attack)
+        (.of []
+        (.prim (.kill (Selector.all .enemy .here [.ofType .unit, .damaged])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-160
 /--
@@ -3677,8 +3718,13 @@ def OGN_165.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cemetery Attendant: the effect is not written yet. -/
-def OGN_165 : CardDef := OGN_165.meta
+/-- Cemetery Attendant. -/
+def OGN_165 : CardDef :=
+  { OGN_165.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.returnToHand (.one .friendly .inTrash [.ofType .unit])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-166
 /--
@@ -5186,8 +5232,13 @@ def OGN_234.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Harnessed Dragon: the effect is not written yet. -/
-def OGN_234 : CardDef := OGN_234.meta
+/-- Harnessed Dragon. -/
+def OGN_234 : CardDef :=
+  { OGN_234.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.prim (.kill (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-235
 /--

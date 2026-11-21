@@ -119,9 +119,20 @@ def Side.admits (p : PlayerId) (side : Side) (o : Object) : Bool :=
   | .enemy => o.controller != p
   | .any => true
 
-/-- The objects a place can hold, if the place is understood. -/
-def GameState.placeObjs (s : GameState) : Place → Option (List ObjId)
+/-- The Battlefield an object is "here" at: its own, for a Battlefield, and the one a Unit is at
+(CR 106). -/
+def GameState.hereOf (s : GameState) (self : ObjId) : Option ObjId :=
+  match s.obj? self with
+  | some o => if (s.cardDef? self).any (·.hasType .battlefield) then some self else o.loc
+  | none => none
+
+/-- The objects a place can hold, if the place is understood. `self` is the object the effect
+belongs to: "here" is the Battlefield it is at. -/
+def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List ObjId)
   | .anywhere => some s.inPlay
+  | .here =>
+    (s.hereOf self).map (fun bf =>
+      (s.zone .battlefieldZone).filter (fun u => u == bf || (s.obj? u).any (·.loc == some bf)))
   | .atBase => some (s.players.flatMap (fun p => s.zone (.player p .base)))
   | .atBattlefield => some (s.zone .battlefieldZone)
   | _ => none
@@ -145,7 +156,7 @@ def GameState.keepMatching (s : GameState) (p : PlayerId) (self : ObjId) (env : 
 /-- The objects of a side at a place that have the properties, seen from player `p`. -/
 def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) (side : Side)
     (place : Place) (fs : FilterList) : Option (List ObjId) := do
-  let objs ← s.placeObjs place
+  let objs ← s.placeObjs self place
   s.keepMatching p self env side fs objs
 
 /-- A member of the answer is a member of the list that was filtered. -/
@@ -177,24 +188,40 @@ theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId}
           · exact List.mem_cons_of_mem _ (ih htl x hx)
 
 /-- A candidate is in play when the place is a place of the board. -/
-theorem GameState.mem_placeObjs {s : GameState} {pl : Place} {l : List ObjId}
-    (h : s.placeObjs pl = some l) : ∀ x ∈ l, x ∈ s.inPlay := by
+theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l : List ObjId}
+    (h : s.placeObjs self pl = some l) : ∀ x ∈ l, x ∈ s.inPlay := by
   intro x hx
-  cases pl <;> simp only [placeObjs, Option.some.injEq] at h <;> try (exact absurd h (by simp))
-  · subst h; exact hx
-  · subst h
+  cases pl with
+  | anywhere =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h; exact hx
+  | here =>
+    simp only [placeObjs] at h
+    obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
+    unfold inPlay
+    exact List.mem_append_right _ (List.mem_filter.mp hx).1
+  | atBattlefield =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
     unfold inPlay
     exact List.mem_append_right _ hx
-  · subst h
+  | atBase =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
     unfold inPlay
     exact List.mem_append_left _ hx
+  | inHand => simp [placeObjs] at h
+  | inTrash => simp [placeObjs] at h
+  | inMainDeck => simp [placeObjs] at h
+  | inRuneDeck => simp [placeObjs] at h
+  | inCombat => simp [placeObjs] at h
 
 /-- The objects a candidate list can hold are objects in play. -/
 theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
     (h : s.candidates p self env side place fs = some r) : ∀ x ∈ r, x ∈ s.inPlay := by
   unfold candidates at h
-  cases hp : s.placeObjs place with
+  cases hp : s.placeObjs self place with
   | none => simp [hp] at h
   | some objs =>
     simp only [hp] at h

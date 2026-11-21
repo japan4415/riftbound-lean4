@@ -24,6 +24,7 @@ def Place.understood : Place → Bool
   | .anywhere => true
   | .atBase => true
   | .atBattlefield => true
+  | .here => true
   | _ => false
 
 /-- The players an effect names that are understood. -/

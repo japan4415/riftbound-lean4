@@ -648,8 +648,13 @@ def UNL_027.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Inviolus Vox: the effect is not written yet. -/
-def UNL_027 : CardDef := UNL_027.meta
+/-- Inviolus Vox. -/
+def UNL_027 : CardDef :=
+  { UNL_027.meta with
+    abilities := [.triggered (.onSelf .conquer)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 8)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-028
 /--
@@ -4165,8 +4170,12 @@ def UNL_180.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- The Ruination: the effect is not written yet. -/
-def UNL_180 : CardDef := UNL_180.meta
+/-- The Ruination. -/
+def UNL_180 : CardDef :=
+  { UNL_180.meta with
+    spellEffect := some (.of []
+      (.prim (.kill (Selector.all .any .anywhere [.ofType .unit])))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-181
 /--

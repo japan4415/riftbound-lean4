@@ -1123,8 +1123,13 @@ def SFD_048.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Stellacorn Herder: the effect is not written yet. -/
-def SFD_048 : CardDef := SFD_048.meta
+/-- Stellacorn Herder. -/
+def SFD_048 : CardDef :=
+  { SFD_048.meta with
+    abilities := [.triggered (.onSelf .move)
+        (.of []
+        (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-049
 /--
@@ -1435,8 +1440,13 @@ def SFD_061.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Aspiring Engineer: the effect is not written yet. -/
-def SFD_061 : CardDef := SFD_061.meta
+/-- Aspiring Engineer. -/
+def SFD_061 : CardDef :=
+  { SFD_061.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.returnToHand (.one .friendly .inTrash [.ofType .gear])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-062
 /--
