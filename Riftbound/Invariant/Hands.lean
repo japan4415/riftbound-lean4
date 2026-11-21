@@ -204,9 +204,9 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i p _ c pay hp hk
+  · rename_i p _ c pay ts hp hk
     rw [hp, hk] at hl
-    have hmain := playOrCast_main hl.2.2
+    have hmain := playOk_main hl.2.2
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_meta h
     have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
     refine ⟨fun hm => ?_, fun hph => ?_, fun f hf hpf => ?_⟩
@@ -453,7 +453,7 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
 
 /-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).1) :
+    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
     f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
   unfold runEffect at h
   split at h
@@ -468,6 +468,9 @@ theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {
       rcases h with ⟨q, -, rfl⟩ | rfl
       · exact Or.inr ⟨q, _, rfl⟩
       · exact Or.inl rfl
+    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
+  · split at h
+    · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
     · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
   · simp only [List.mem_singleton] at h; subst h; exact Or.inl rfl
 
@@ -680,8 +683,9 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    have hmeta := (runEffect_safe s p src env e es).same
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
-      ⟨rfl, rfl, rfl, rfl⟩ (fun hm => ?_)
+      ⟨hmeta.config, hmeta.turnOrder, hmeta.phase, hmeta.result⟩ (fun hm => ?_)
     rcases List.mem_append.mp hm with h1 | h1
     · rcases runEffect_mem h1 with h2 | ⟨q, k, h2⟩
       · simp [Frame.isPlay] at h2

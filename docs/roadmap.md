@@ -319,6 +319,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M4c の実装の記録（2026-11-21）: 対象を取る Spell と、`deal`・`kill`・`ready`・`exhaust`・`heal`
+
+- **対象は行動に載せる**: `playCard card pay targets`。`pay` と同じく、プレイの一瞬の決定なので、新しい `choose` のフレームは足さなかった（フレームにすると、`StackInv`・`HandInv` などの不変条件がフレームごとに増える。行動に載せれば、`Legal` の 1 本の条件で足りる）。複数の選択（モード、X、追加コスト）や、選択が前の選択に依存するカードが来たら、フレームにする。
+- **対象の宣言**（`Rules/Select.lean`）: `Choice.target .one side place fs` だけを扱う。`targetsOk`（選んだ組が合法か）、`targetTuples`（合法な組の全列挙）、`mem_targetTuples`（列挙は合法な組だけ）。候補は、`side`（Friendly・Enemy・Any）・`place`（Anywhere・Base・Battlefield）・`filters` に合う、盤面の物。分からない filter と place は「答えられない」（`none`）で、推測しない。分かる filter は、カードの種別・supertype・tag・名前・keyword・domain・印刷された Might と、Exhausted・Ready・ダメージあり・自分以外。
+- **Chain 上の Spell が対象を持つ**: `Object.targets`。解決のとき、`Env.slots` に入り、`Selector.slot i` が読む。選ばれた物が盤面から消えていたら、その Selector は何も指さない（CR 340。効果は何もしない）。
+- **プリミティブ**: `deal`・`heal`・`kill`・`ready`・`exhaust`。Selector は `self`・`slot`・`var`・`pick .all`。ダメージが Might に届いた物は、その場で Trash に行く（CR 417 の Cleanup を前倒ししたもの。Cleanup は戦闘（M5）で足す）。
+- **状態を変える部品**（`Safe`）: 効果が盤面を変える操作は、`WF`・I1・`OwnerOk` を保ち、物・ゾーン・カウンタだけを変える。この `Safe s s'` を `modObj`（1 つの物の属性を変える。kind と owner を変えない）と `moveObj` から組み、`runEffect_safe` で解釈器全体が `Safe` だと示した。そのため、既存の不変条件の証明は、`run` の腕に `Safe` を 1 つ使うだけで済んだ。
+- **証明**: `applyCast_targets`（Chain の Spell は、選んだ対象を持つ）、`castable_targets_inPlay`（Spell の対象は盤面の物）、`resolveFrames_slots`（解決は、持った対象を slot にして効果を走らせる）、`mem_legalPlays`（列挙は、カード・支払い・対象の合法な組だけ）、`runEffect_safe`。**不変条件**は引き続き証明済み。
+- **ビューア**: デモのデッキに「敵の Unit に 2 ダメージ」の Spell（Spark）が入り、対象つきでプレイされ、Unit が Trash に行く。ログに「（対象: …）」が出る。
+- **まだ無いもの**: 複数の対象・`upTo`・`exactly`・モード・X・追加コスト（選択のフレーム）、`here`・`inHand` などの place、条件（`ifThen`）、`forEach`、`pick .one`、Reaction と複数項目の Chain（I9）、Spell の速さ、Cleanup（ダメージによる死を Cleanup で行う）、Layers（現在の Might は印刷値のまま）。
+
 ### M4b の実装の記録（2026-11-21）: Spell と Chain の最小版、効果の解釈器 v0
 
 - **Spell をプレイする**: `playCard` は Spell にも使える（対象や選択の無い Spell だけ。`castable`）。コストを払い、Spell は手札から Chain に載る（CR 354）。手番のプレイヤーから順に Priority が回り（`chainPass p n`）、全員がパスすると、Chain の一番上が解決する（`resolveChain`）。解決のあと、Spell は持ち主の Trash に行き（`finishSpell`）、手番のプレイヤーの `priority` に戻る。

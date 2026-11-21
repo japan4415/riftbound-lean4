@@ -182,6 +182,75 @@ theorem physIds_exhaustObj (s : GameState) (id : ObjId) :
 
 end GameState
 
+/-- Change one object by `f`. -/
+def GameState.modObj (s : GameState) (id : ObjId) (f : Object → Object) : GameState :=
+  { s with objects := s.objects.modify id.n f }
+
+namespace GameState
+
+/-- The same objects are in the table. -/
+theorem mem_modObj (s : GameState) (id : ObjId) (f : Object → Object) (k : Nat) :
+    k ∈ (s.modObj id f).objects ↔ k ∈ s.objects := by
+  simp [modObj, Std.ExtTreeMap.mem_modify]
+
+/-- The object changed is the changed object; the others are as they were. -/
+theorem obj?_modObj (s : GameState) (id x : ObjId) (f : Object → Object) :
+    (s.modObj id f).obj? x = if id.n = x.n then (s.obj? id).map f else s.obj? x := by
+  simp only [modObj, obj?, Std.ExtTreeMap.getElem?_modify]
+  by_cases h : id.n = x.n
+  · simp [h]
+  · have : ¬ compare id.n x.n = .eq := fun e => h (Nat.compare_eq_eq.mp e)
+    simp [h, this]
+
+/-- Changing an object changes nothing but the object table. -/
+theorem sameMeta_modObj (s : GameState) (id : ObjId) (f : Object → Object) :
+    SameMeta s (s.modObj id f) := rfl
+
+/-- The zones do not change. -/
+theorem zone_modObj (s : GameState) (id : ObjId) (f : Object → Object) (z : Zone) :
+    (s.modObj id f).zone z = s.zone z := rfl
+
+/-- Changing an object keeps the game well formed. -/
+theorem wf_modObj {s : GameState} (hwf : s.WF) (id : ObjId) (f : Object → Object) :
+    (s.modObj id f).WF :=
+  hwf.congr_mem rfl (mem_modObj s id f) rfl rfl
+
+/-- Changing an object but not its owner keeps `OwnerOk`. -/
+theorem ownerOk_modObj {s : GameState} (hown : s.OwnerOk) (id : ObjId) {f : Object → Object}
+    (hf : ∀ o, (f o).owner = o.owner) : (s.modObj id f).OwnerOk := by
+  refine ⟨fun p k hk id2 hid2 o ho => ?_⟩
+  rw [obj?_modObj] at ho
+  rw [zone_modObj] at hid2
+  split at ho
+  · cases hs : s.obj? id with
+    | none => rw [hs] at ho; simp at ho
+    | some o0 =>
+      rw [hs] at ho
+      simp only [Option.map_some, Option.some.injEq] at ho
+      subst ho
+      have h2 : id2 = id := by
+        rename_i hn
+        cases id2; cases id; simp_all
+      subst h2
+      rw [hf]
+      exact hown.owner p k hk id2 hid2 o0 hs
+  · exact hown.owner p k hk id2 hid2 o ho
+
+/-- Changing an object but not its kind keeps the physical cards. -/
+theorem physIds_modObj (s : GameState) (id : ObjId) {f : Object → Object}
+    (hf : ∀ o, (f o).kind = o.kind) : (s.modObj id f).physIds = s.physIds := by
+  unfold physIds
+  apply filterMap_congr_mem
+  intro x _
+  rw [obj?_modObj]
+  by_cases h : id.n = x.n
+  · have hx : id = x := by cases id; cases x; simp_all
+    subst hx
+    cases s.obj? id <;> simp [hf]
+  · simp [h]
+
+end GameState
+
 end Riftbound
 
 end

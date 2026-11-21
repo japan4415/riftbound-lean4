@@ -57,11 +57,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)
   | .priority p :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
-  -- a Unit or a Gear of the player's hand, paid for from the Rune Pool, in the Main Phase
-  -- (CR 349-359)
-  | .priority p :: _, .playCard c pay =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧
-      (playable s p c pay = true ∨ castable s p c pay = true)
+  -- a Unit or a Gear of the player's hand, or a Spell with its targets, paid for from the Rune
+  -- Pool, in the Main Phase (CR 349-359)
+  | .priority p :: _, .playCard c pay ts =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ PlayOk s p c pay ts
   -- the player with priority passes while the Chain holds a Spell (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
   | _, _ => False
