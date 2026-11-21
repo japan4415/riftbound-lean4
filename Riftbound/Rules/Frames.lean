@@ -141,6 +141,10 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
               pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
   | .priority p :: _, .manaAbility src idx => applyMana s p src idx
   | .chainPass p _ :: _, .manaAbility src idx => applyMana s p src idx
+  | .discard p n :: rest, .discardPick c =>
+    let r := sendObj .trash s c
+    some ({ r.1 with pending := (if n ≤ 1 then rest else .discard p (n - 1) :: rest) }, r.2)
+  | .discard _ _ :: rest, .discardDone => some ({ s with pending := rest }, [])
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

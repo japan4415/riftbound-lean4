@@ -253,6 +253,52 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
 
+/-- Channeling is a safe change. -/
+theorem channel_safe (p : PlayerId) (n : Nat) (s : GameState) : Safe s (channel p n s).1 :=
+  ⟨fun hwf => channel_wf p n hwf, fun hwf => channel_physIds p n hwf,
+    fun hwf hown => channel_ownerOk p n hwf hown, channel_sameMeta p n s⟩
+
+/-- The new identifiers of the objects that moved. -/
+def movedNew : List Event → List ObjId
+  | [] => []
+  | .moved _ id _ :: es => id :: movedNew es
+  | _ :: es => movedNew es
+
+/-- Exhaust the objects. -/
+def exhaustAll : List ObjId → GameState → GameState
+  | [], s => s
+  | id :: ids, s => exhaustAll ids (setExhausted true s id).1
+
+/-- Exhausting objects is a safe change. -/
+theorem exhaustAll_safe : ∀ (ids : List ObjId) (s : GameState), Safe s (exhaustAll ids s)
+  | [], s => Safe.refl s
+  | id :: ids, s => (setExhausted_safe true s id).trans (exhaustAll_safe ids _)
+
+/-- Channel `n` Runes ready, and `extra` more that enter exhausted (CR 431). -/
+def channelEx (p : PlayerId) (n extra : Nat) (s : GameState) : GameState × List Event :=
+  let r1 := channel p n s
+  let r2 := channel p extra r1.1
+  (exhaustAll (movedNew r2.2) r2.1, r1.2 ++ r2.2)
+
+/-- Channeling some Runes exhausted is a safe change. -/
+theorem channelEx_safe (p : PlayerId) (n extra : Nat) (s : GameState) :
+    Safe s (channelEx p n extra s).1 :=
+  ((channel_safe p n s).trans (channel_safe p extra _)).trans (exhaustAll_safe _ _)
+
+/-- The players channel. -/
+def channelAll (n extra : Nat) : GameState → List PlayerId → GameState × List Event
+  | s, [] => (s, [])
+  | s, p :: ps =>
+    let r := channelEx p n extra s
+    let r' := channelAll n extra r.1 ps
+    (r'.1, r.2 ++ r'.2)
+
+/-- Channeling for any players is a safe change. -/
+theorem channelAll_safe (n extra : Nat) :
+    ∀ (ps : List PlayerId) (s : GameState), Safe s (channelAll n extra s ps).1
+  | [], s => Safe.refl s
+  | p :: ps, s => (channelEx_safe p n extra s).trans (channelAll_safe n extra ps _)
+
 /-- Move an object to its controller's Base: a move, not a Recall (CR 144, 456). Its damage and
 status stay. -/
 def sendHome (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -377,6 +423,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .buff sel => onSelected s p src env sel buffObj
   | .gainXP ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
+  | .channel ps n extra =>
+    (ps.resolve s p).bind (fun l =>
+      (n.evalS s p src env).bind (fun k =>
+        (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -421,6 +471,20 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | channel ps n extra =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      cases hn : n.evalS s p src env with
+      | none => simp [hl, hn] at h
+      | some k =>
+        cases hx : extra.evalS s p src env with
+        | none => simp [hl, hn, hx] at h
+        | some x =>
+          simp only [hl, hn, hx, Option.bind_some, Option.map_some, Option.some.injEq] at h
+          rw [← h]
+          exact channelAll_safe k x l s
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/
@@ -504,6 +568,10 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
+    | _, _ => skip
+  | .prim (.discard sel n) =>
+    match sel.resolve s p, n.evalS s p src env with
+    | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim pr =>
     match applyPrim s p src env pr with

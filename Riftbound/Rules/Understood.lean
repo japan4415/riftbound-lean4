@@ -99,6 +99,8 @@ def Condition.understood : Condition → Bool
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
+  | .discard p n => p.understood && n.understood
+  | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understood && n.understood
   | .heal s n => s.understood && n.understood
   | .kill s => s.understood

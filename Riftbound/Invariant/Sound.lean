@@ -113,6 +113,10 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i p n tail src idx hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
+  · rename_i p n rest c hp hk
+    exact ⟨_, rfl⟩
+  · rename_i p n rest hp hk
+    exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · rename_i p rest i hp hk
     rw [hp, hk] at hl
@@ -241,6 +245,14 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyMana_ownerOk hwf hown h
   · rename_i p n tail src idx hp hk
     exact applyMana_ownerOk hwf hown h
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((sendObj_safe .trash s c).own hwf hown).congr rfl rfl
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

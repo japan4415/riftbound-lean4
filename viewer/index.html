@@ -211,6 +211,8 @@ function describe(i) {
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
+    case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
+    case 'discardPick': return [who + ': 捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'mulliganPick': return [who + ': マリガン', cardName(a.card) + ' を脇に置く'];
     case 'burnOutTarget': return [who + ': Burn Out の相手を選ぶ', 'P' + a.opponent + ' が 1 点を得る'];
     case 'assignPick':

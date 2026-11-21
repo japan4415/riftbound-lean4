@@ -190,6 +190,21 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n tail src idx hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (sendObj_safe .trash s c).same.result (fun hb => ?_)
+    rw [hp] at hb
+    dsimp only
+    split
+    · exact hb.pop rfl
+    · exact hb.swap rfl [Frame.discard p (n - 1)]
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -636,6 +651,22 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | discard p n =>
+    left
+    by_cases hz : s.zone (.player p .hand) = [] ∨ n = 0
+    · refine ⟨⟨.player p, .discardDone⟩, ?_, by simp⟩
+      rw [hla]
+      apply List.mem_append_left
+      simp [legalFrameActions, hp, hz]
+    · obtain ⟨c, hc⟩ : ∃ c, c ∈ s.zone (.player p .hand) := by
+        cases hh : s.zone (.player p .hand) with
+        | nil => exact absurd (Or.inl hh) hz
+        | cons c cs => exact ⟨c, by simp⟩
+      refine ⟨⟨.player p, .discardPick c⟩, ?_, by simp⟩
+      rw [hla]
+      apply List.mem_append_left
+      simp only [legalFrameActions, hp, hz, ↓reduceIte]
+      exact List.mem_map.mpr ⟨c, hc, rfl⟩
   | chooseBurnOut p =>
     left
     obtain ⟨o, ho⟩ := exists_other_player hv p
@@ -729,6 +760,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     rw [hp]
     exact ⟨rfl, List.Perm.refl _⟩
   | mulligan p n => exact absurd hc (by simp [Frame.isChance])
+  | discard p n => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
   | draw p n => exact absurd hc (by simp [Frame.isChance])

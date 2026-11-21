@@ -2841,8 +2841,13 @@ def SFD_118.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Boneshiver: the effect is not written yet. -/
-def SFD_118 : CardDef := SFD_118.meta
+/-- Boneshiver. -/
+def SFD_118 : CardDef :=
+  { SFD_118.meta with
+    grants := [.triggered (.onSelf .conquer)
+        (.of []
+        (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-119
 /--
@@ -2985,8 +2990,14 @@ def SFD_124.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Doran's Ring: the effect is not written yet. -/
-def SFD_124 : CardDef := SFD_124.meta
+/-- Doran's Ring. -/
+def SFD_124 : CardDef :=
+  { SFD_124.meta with
+    grants := [.triggered (.onSelf .conquer)
+        (.of []
+        (.seqOf [.prim (.discard .you (.const 1)),
+          .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-125
 /--

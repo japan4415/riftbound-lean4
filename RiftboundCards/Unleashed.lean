@@ -2923,8 +2923,14 @@ def UNL_123.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Evershade Stalker: the effect is not written yet. -/
-def UNL_123 : CardDef := UNL_123.meta
+/-- Evershade Stalker. -/
+def UNL_123 : CardDef :=
+  { UNL_123.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.seqOf [.prim (.discard .you (.const 1)),
+          .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-124
 /--
@@ -2964,8 +2970,13 @@ def UNL_125.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Lunar Boon: the effect is not written yet. -/
-def UNL_125 : CardDef := UNL_125.meta
+/-- Lunar Boon. -/
+def UNL_125 : CardDef :=
+  { UNL_125.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.discard .you (.const 1)),
+        .prim (.draw .you (.const 2))])),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-126
 /--
@@ -3580,8 +3591,13 @@ def UNL_152.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Black Rose Dignitary: the effect is not written yet. -/
-def UNL_152 : CardDef := UNL_152.meta
+/-- Black Rose Dignitary. -/
+def UNL_152 : CardDef :=
+  { UNL_152.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-153
 /--

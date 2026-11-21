@@ -43,6 +43,12 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .mulligan p n :: _, .mulliganPick c =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ n < 2
   | .mulligan p _ :: _, .mulliganDone => a.actor = .player p
+  -- a discard (CR 415): a card of the hand, or, when the hand is empty or nothing is left to
+  -- discard, the end of it
+  | .discard p n :: _, .discardPick c =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ 0 < n
+  | .discard p n :: _, .discardDone =>
+    a.actor = .player p ∧ (s.zone (.player p .hand) = [] ∨ n = 0)
   -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards set aside
   | .chanceRecycle p :: _, .arrange l =>
     a.actor = .chance ∧ l.Perm (s.zone (.player p .setAside))

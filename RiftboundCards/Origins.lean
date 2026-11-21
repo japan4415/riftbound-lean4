@@ -1708,8 +1708,14 @@ def OGN_075.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Tasty Faefolk: the effect is not written yet. -/
-def OGN_075 : CardDef := OGN_075.meta
+/-- Tasty Faefolk. -/
+def OGN_075 : CardDef :=
+  { OGN_075.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.seqOf [.prim (.channel .you (.const 0) (.const 2)),
+          .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-076
 /--
@@ -3115,8 +3121,13 @@ def OGN_137.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Stormclaw Ursine: the effect is not written yet. -/
-def OGN_137 : CardDef := OGN_137.meta
+/-- Stormclaw Ursine. -/
+def OGN_137 : CardDef :=
+  { OGN_137.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-138
 /--
@@ -4042,8 +4053,14 @@ def OGN_178.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Undercover Agent: the effect is not written yet. -/
-def OGN_178 : CardDef := OGN_178.meta
+/-- Undercover Agent. -/
+def OGN_178 : CardDef :=
+  { OGN_178.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.seqOf [.prim (.discard .you (.const 2)),
+          .prim (.draw .you (.const 2))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-179
 /--
@@ -4187,8 +4204,14 @@ def OGN_185.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Traveling Merchant: the effect is not written yet. -/
-def OGN_185 : CardDef := OGN_185.meta
+/-- Traveling Merchant. -/
+def OGN_185 : CardDef :=
+  { OGN_185.meta with
+    abilities := [.triggered (.onSelf .move)
+        (.of []
+        (.seqOf [.prim (.discard .you (.const 1)),
+          .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-186
 /--
@@ -4883,8 +4906,13 @@ def OGN_216.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Soaring Scout: the effect is not written yet. -/
-def OGN_216 : CardDef := OGN_216.meta
+/-- Soaring Scout. -/
+def OGN_216 : CardDef :=
+  { OGN_216.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-217
 /--

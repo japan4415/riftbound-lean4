@@ -25,6 +25,7 @@ public import RiftboundTest.Token
 public import RiftboundTest.Gear
 public import RiftboundTest.Status
 public import RiftboundTest.Mana
+public import RiftboundTest.Discard
 
 /-!
 # RiftboundTest

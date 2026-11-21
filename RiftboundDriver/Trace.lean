@@ -66,6 +66,7 @@ def actionJson (a : Action) : String :=
       [("source", toString src.n), ("index", toString idx),
        ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .mulliganPick c => [("card", toString c.n)]
+    | .discardPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
     | _ => []

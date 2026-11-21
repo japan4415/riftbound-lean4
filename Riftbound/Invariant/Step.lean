@@ -78,6 +78,14 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyMana_wf hwf h
   · rename_i p n tail src idx hp hk
     exact applyMana_wf hwf h
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((sendObj_safe .trash s c).wf hwf).congr rfl rfl rfl rfl
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -308,6 +316,14 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyMana_physIds hwf h
   · rename_i p n tail src idx hp hk
     exact applyMana_physIds hwf h
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (sendObj_safe .trash s c).phys hwf
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
