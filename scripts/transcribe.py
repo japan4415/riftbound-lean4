@@ -67,7 +67,27 @@ def all_units(m, damaged: bool = False) -> str:
     return f"Selector.all {side} {place} [{fs}]"
 
 
+TOKENS = {"Recruit", "Mech", "Sprite", "Bird", "Sand Soldier", "Shadow Clone", "Tentacle"}
+COUNT = {"a": 1, "an": 1, "two": 2, "three": 3, "four": 4}
+TOKEN_PLACE = {"": ".atBase", " to your base": ".atBase", " in your base": ".atBase",
+               " at your base": ".atBase", " into your base": ".atBase", " here": ".here"}
+
+
+def play_token(m, slot):
+    """`Play a (ready) N :rb_might: Name unit token(s) (with [Keyword]) (place).` → create。"""
+    name = m.group("name")
+    place = TOKEN_PLACE.get(m.group("pos") or "")
+    if name not in TOKENS or place is None:
+        return None
+    ready = "true" if m.group("ready") else "false"
+    return [], f'.prim (.create "{name}" (.const {COUNT[m.group("cnt")]}) {place} {ready})'
+
+
 SENTENCES = [
+    (re.compile(r"^Play (?P<cnt>an?|two|three|four) (?P<ready>ready )?(?:\d+ :rb_might: )?"
+                r"(?P<name>[A-Z][A-Za-z]*(?: [A-Z][a-z]+)?) unit tokens?(?: with \[[A-Za-z]+\])?"
+                r"(?P<pos> to your base| in your base| at your base| into your base| here)?\.$"),
+     play_token),
     (re.compile(r"^Deal (?P<n>\d+) to (?P<np>.+)\.$"),
      target_sentence(lambda m, s: f".prim (.deal ({s}) (.const {m.group('n')}))")),
     (re.compile(r"^Deal (?P<n>\d+) to all (?P<side>friendly |enemy )?units(?P<place> at a battlefield| here)?\.$"),
@@ -141,7 +161,7 @@ TRIGGERS = [
     (re.compile(r"^When I move, (?P<rest>.+)$"), [".move"]),
     (re.compile(r"^When I conquer, (?P<rest>.+)$"), [".conquer"]),
     (re.compile(r"^When I hold, (?P<rest>.+)$"), [".hold"]),
-    (re.compile(r"^\[Deathknell\] — (?P<rest>.+)$"), [".die"]),
+    (re.compile(r"^\[Deathknell\](?:\[>\]| —) (?P<rest>.+)$"), [".die"]),
     (re.compile(r"^At the end of your turn, (?P<rest>.+)$"), ["END"]),
 ]
 

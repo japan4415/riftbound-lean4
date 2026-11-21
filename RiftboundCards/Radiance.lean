@@ -206,8 +206,14 @@ def RAD_009.meta : CardDef :=
     sets := [⟨"RAD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Antagonistic Apparatus: the effect is not written yet. -/
-def RAD_009 : CardDef := RAD_009.meta
+/-- Antagonistic Apparatus. -/
+def RAD_009 : CardDef :=
+  { RAD_009.meta with
+    abilities := [.passive .always [.entersReady .self],
+      .triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Mech" (.const 1) .here true))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-010
 /--
@@ -1039,8 +1045,13 @@ def RAD_049.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Industrious Mechsmith: the effect is not written yet. -/
-def RAD_049 : CardDef := RAD_049.meta
+/-- Industrious Mechsmith. -/
+def RAD_049 : CardDef :=
+  { RAD_049.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Mech" (.const 1) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-050
 /--
@@ -2572,8 +2583,13 @@ def RAD_119.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hunting Dog: the effect is not written yet. -/
-def RAD_119 : CardDef := RAD_119.meta
+/-- Hunting Dog. -/
+def RAD_119 : CardDef :=
+  { RAD_119.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-120
 /--

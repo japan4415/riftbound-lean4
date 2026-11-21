@@ -256,7 +256,8 @@ meta def afterSpell : Option (GameState × GameState) :=
     (s1.zone .chain).length == 2 && (s1.poolOf q).energy == 1 &&
     (s.zone (.player q .hand)).length == (s1.zone (.player q .hand)).length + 1 &&
     (s5.zone .chain).isEmpty && (s5.obj? a).any (·.damage == 2) &&
-    (s5.zone (.player q .trash)).length == (s.zone (.player q .trash)).length + 1
+    -- the Spell is a token in the test: off the Board, it ceases to exist (CR 183)
+    (s5.zone (.player q .trash)).length == (s.zone (.player q .trash)).length
   | _, _ => false
 
 -- an ability with a cost in Energy and a limit of once each turn: the payment has to be the cost,

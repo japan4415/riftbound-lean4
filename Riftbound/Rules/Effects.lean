@@ -152,6 +152,102 @@ theorem onSelected_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     subst h
     exact applyEach_safe hg ids s
 
+/-- Adding an object that is not a physical card is a safe change. -/
+theorem safe_addObject {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {id : ObjId}
+    (hk : o.kind.phys? = none) (h : addObject s o z pos = some (s', id)) : Safe s s' :=
+  ⟨fun hwf => addObject_wf hwf h, fun hwf => addObject_physIds hwf h hk,
+    fun hwf hown => addObject_ownerOk hwf hown h, addObject_sameMeta h⟩
+
+/-- The identifier of the card of a token (CR 179). -/
+def tokenId (name : String) : CardId := ⟨"TKN-" ++ name⟩
+
+/-- Add an object that is not a physical card to a zone; nothing if it cannot be added. -/
+def addTok (s : GameState) (o : Object) (z : Zone) : GameState :=
+  match addObject s o z with
+  | some r => r.1
+  | none => s
+
+/-- Adding a token is a safe change. -/
+theorem addTok_safe (s : GameState) (o : Object) (z : Zone) (hk : o.kind.phys? = none) :
+    Safe s (addTok s o z) := by
+  unfold addTok
+  split
+  · rename_i r hr
+    exact safe_addObject hk hr
+  · exact Safe.refl s
+
+/-- Make one token for the player: on their Base, or at the Battlefield `dest` (CR 183). -/
+def createOne (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
+    (s : GameState) : GameState :=
+  let o : Object :=
+    { kind := .token (tokenId name), owner := p, controller := p, exhausted := !ready,
+      timestamp := ⟨0⟩, loc := dest }
+  match dest with
+  | some _ => addTok s o .battlefieldZone
+  | none => addTok s o (.player p .base)
+
+/-- Making a token is a safe change. -/
+theorem createOne_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
+    (s : GameState) : Safe s (createOne name p dest ready s) := by
+  unfold createOne
+  cases dest <;> exact addTok_safe _ _ _ rfl
+
+/-- Make `n` tokens. -/
+def createN (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
+    Nat → GameState → GameState
+  | 0, s => s
+  | n + 1, s => createN name p dest ready n (createOne name p dest ready s)
+
+/-- Making tokens is a safe change. -/
+theorem createN_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
+    ∀ (n : Nat) (s : GameState), Safe s (createN name p dest ready n s)
+  | 0, s => Safe.refl s
+  | n + 1, s => (createOne_safe name p dest ready s).trans (createN_safe name p dest ready n _)
+
+/-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
+(CR 183). `none` if it cannot be done yet. -/
+def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
+    (n : Amount) (place : Place) (ready : Bool) : Option (GameState × List Event) :=
+  (n.evalS s p src env).bind (fun k =>
+    if (s.cards.find? (tokenId name)).isNone then none
+    else
+      match place with
+      | .atBase => some (createN name p none ready k s, [])
+      | .here => (s.hereOf src).map (fun bf => (createN name p (some bf) ready k s, []))
+      | _ => none)
+
+/-- Playing tokens is a safe change. -/
+theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {name : String}
+    {n : Amount} {place : Place} {ready : Bool} {r : GameState × List Event}
+    (h : applyCreate s p src env name n place ready = some r) : Safe s r.1 := by
+  unfold applyCreate at h
+  cases hn : n.evalS s p src env with
+  | none => simp [hn] at h
+  | some k =>
+    simp only [hn, Option.bind_some] at h
+    by_cases ht : (s.cards.find? (tokenId name)).isNone = true
+    · simp [ht] at h
+    · simp only [ht, Bool.false_eq_true, ite_false] at h
+      cases place with
+      | atBase =>
+        simp only [Option.some.injEq] at h
+        rw [← h]
+        exact createN_safe _ _ _ _ _ _
+      | here =>
+        cases hh : s.hereOf src with
+        | none => simp [hh] at h
+        | some bf =>
+          simp only [hh, Option.map_some, Option.some.injEq] at h
+          rw [← h]
+          exact createN_safe _ _ _ _ _ _
+      | anywhere => simp at h
+      | atBattlefield => simp at h
+      | inHand => simp at h
+      | inTrash => simp at h
+      | inMainDeck => simp at h
+      | inRuneDeck => simp at h
+      | inCombat => simp at h
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -163,6 +259,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (sendObj .banishment)
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
+  | .create name n place ready => applyCreate s p src env name n place ready
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -188,6 +285,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
+  | create name n place ready => exact applyCreate_safe h
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/

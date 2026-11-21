@@ -1208,8 +1208,12 @@ def VEN_051.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Iterative Design: the effect is not written yet. -/
-def VEN_051 : CardDef := VEN_051.meta
+/-- Iterative Design. -/
+def VEN_051 : CardDef :=
+  { VEN_051.meta with
+    spellEffect := some (.of []
+      (.prim (.create "Mech" (.const 1) .atBase false))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-052
 /--

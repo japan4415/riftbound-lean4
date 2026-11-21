@@ -67,8 +67,8 @@ inductive Prim where
   | hide (s : Selector)
   /-- Reveal cards. -/
   | reveal (s : Selector)
-  /-- Create tokens, by name, in a place. -/
-  | create (token : String) (n : Amount) (at_ : Place)
+  /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
+  | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
   /-- Detach objects. -/

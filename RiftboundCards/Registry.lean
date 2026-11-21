@@ -7,6 +7,7 @@ public import RiftboundCards.Spiritforged
 public import RiftboundCards.Unleashed
 public import RiftboundCards.Vendetta
 public import RiftboundCards.Radiance
+public import RiftboundCards.Tokens
 
 /-!
 # The card database
@@ -29,8 +30,8 @@ def allCards : List CardDef :=
     RiftboundCards.Vendetta.cards ++
     RiftboundCards.Radiance.cards
 
-/-- The card database. -/
-def db : CardDB := ⟨allCards⟩
+/-- The card database: the cards of the sets, and the tokens. -/
+def db : CardDB := ⟨allCards ++ RiftboundCards.Tokens.cards⟩
 
 end RiftboundCards
 

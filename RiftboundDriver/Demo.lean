@@ -57,6 +57,11 @@ def demoCards : List CardDef :=
       cost := some ⟨1, []⟩, might := some 1,
       abilities := [.triggered (Trigger.onSelf .die)
         (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] },
+    { id := ⟨"TKN-Recruit"⟩, name := "Recruit", types := [.unit], might := some 1 },
+    { id := ⟨"T0"⟩, name := "Summoner", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 1,
+      abilities := [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited] },
     { id := ⟨"N0"⟩, name := "Banner", types := [.unit], domains := [.fury],
       cost := some ⟨2, []⟩, might := some 1,
       abilities := [.passive .always
@@ -83,8 +88,9 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 2 vanilla Units, three copies each of a
-Unit that draws when it is played, a Unit that deals 1 damage to an enemy Unit when it is played,
+/-- The demo deck: the champion, three copies of a vanilla Unit, three copies each of a Unit that
+plays a Recruit token when it is played, a Unit that draws when it is played, a Unit that deals
+1 damage to an enemy Unit when it is played,
 a Unit that draws when it dies, a Unit that pings (an activated ability), a Unit that gives
 the other friendly Units +1 Might and a Unit that enters ready, a Spell that gives a
 friendly Unit +3 Might this turn, a Spell that draws a card, a Spell that deals 2 damage to
@@ -92,7 +98,7 @@ an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction th
 to an enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 2).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+    main := ⟨"C1"⟩ :: List.replicate 3 ⟨"V0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
       List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"E0"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
       List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++

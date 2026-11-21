@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7b の実装の記録（2026-11-22）: トークン
+
+- **トークンの定義**（`RiftboundCards/Tokens.lean`）: Unit のトークン 7 種（Recruit・Mech・Sprite・Bird・Sand Soldier・Shadow Clone・Tentacle）。印刷される Might と、トークンが持つキーワード（Sprite の Temporary、Bird の Deflect 1）を持つ。カードの定義と同じ `CardDB` に入り（`db`）、識別子は `TKN-<名前>`。**Gold と Bomb（Gear のトークン）は、能力が書かれていないので入れていない**。
+- **`create`**（`Prim.create name n place ready`）: トークンを `n` 個、プレイヤーの Base か、`here`（その Battlefield）に出す（`applyCreate`）。トークンは物理カードを持たないので、`WF`・I1・`OwnerOk` を保つ（`createN_safe`、`applyCreate_safe`）。Ready で出すか Exhaust で出すかは文に従う。知らないトークンや、まだ分からない場所（選ぶ場所）には何もしない。
+- **Board を離れたトークンは消える**（CR 183）: Cleanup の最初の手順（`tokenStep`）が、Non-Board のゾーンにあるトークンを `removeObj` で消す。したがって、死んだ Unit のトークンは Trash に残らない。死んだときの誘発能力は、カードの ID を持つので、トークンが消えても解決できる。`cleanupStep_safe` は新しい手順を含めて証明した。
+- **転記**: 「Play a (ready) N Might Name unit token(s) (to your base / here)」と、`[Deathknell][>]` の誘発を足した。**転記済みは 135 枚から 151 枚**（Spell で動くものは 29 枚）。
+- **テスト**（`RiftboundTest/Token.lean`）: 定義、Spell がトークンを出す（Exhaust と Ready、物理カードは増えない）、`here`、知らない名前、Board を離れたトークンが消えること。Chain と Trigger のテストのうち、トークンを Spell や Unit の代わりに使っていたものは、「Trash に残らない」に直した。
+- **まだ無いもの**: Gold・Bomb のトークン、トークンを出す場所の選択（Battlefield を選ぶ）、他のプレイヤーの Base、トークンのコピー、Temporary（Beginning Phase に消える）の動作。
+
 ### M7a の実装の記録（2026-11-22）: 転記の対応範囲（`here`・Move の誘発・文の型）
 
 - **何を数えたか**: 転記が済んでいないカード 985 枚の文を調べた。1 枚の効果文のうち書けない行が 1 つだけのカードは 792 枚あるが、その行の文はほとんどが 1 枚ごとに違う（同じ型が 7 枚以上のものは「[Reaction] — [Add]」だけ）。**文の型を足して増える枚数は、1 回あたり十数枚**で、残りは 1 枚ずつ書くことになる。

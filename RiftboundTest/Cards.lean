@@ -55,8 +55,8 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards written down as IR values (docs/coverage.md): 39 by hand, 96 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 135
+-- the cards written down as IR values (docs/coverage.md): 39 by hand, 112 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 151
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo
@@ -73,7 +73,7 @@ open Riftbound RiftboundCards
   | some c => c.abilities == [.passive .always [.triggersExtra .die .anywhere]]
   | none => false
 
--- Recruit the Vanguard cannot be written yet, and says so
+-- Recruit the Vanguard cannot be written yet: the tokens go to a place chosen then
 #guard match db.find? ⟨"OGS-015"⟩ with
   | some c => c.status == .todo && c.spellEffect.isNone
   | none => false
@@ -82,7 +82,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 35
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 25
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 39
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 29
 
 end RiftboundTest

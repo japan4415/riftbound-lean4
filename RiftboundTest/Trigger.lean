@@ -160,7 +160,8 @@ meta def afterHerald : Option (GameState × List Event) :=
               (fun s5 => stepT s5 ⟨.player q, .pass⟩) with
           | some s6 =>
             -- the Unit is dead; its ability is on the Chain; the turn player has priority
-            (s6.zone (.player q .trash)).length == (s3.zone (.player q .trash)).length + 1 &&
+            -- the Unit is a token in the test: off the Board, it ceases to exist (CR 183)
+            (s6.zone (.player q .trash)).length == (s3.zone (.player q .trash)).length &&
             (s6.zone .chain).length == 1 &&
             (match (s6.zone .chain).head?.bind s6.obj? with
               | some o => o.controller == q &&
