@@ -23,7 +23,10 @@ def demoCards : List CardDef :=
     { id := ⟨"C1"⟩, name := "Hero", subtitle := some "Champion", types := [.unit],
       supertypes := [.champion], tags := [⟨"Hero"⟩], domains := [.fury],
       cost := some ⟨3, [.domain .fury]⟩, might := some 4 },
-    { id := ⟨"R1"⟩, name := "Fury Rune", types := [.rune], domains := [.fury] } ] ++
+    { id := ⟨"R1"⟩, name := "Fury Rune", types := [.rune], domains := [.fury] },
+    { id := ⟨"S0"⟩, name := "Quick Study", types := [.spell], domains := [.fury],
+      cost := some ⟨1, []⟩,
+      spellEffect := some (EffectDef.of [] (.prim (.draw .you (.const 1)))) } ] ++
   (List.range 13).map (fun n =>
     { id := ⟨s!"V{n}"⟩, name := s!"Vanilla {n}", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 2 : CardDef }) ++
@@ -33,11 +36,12 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion and three copies of each of 13 vanilla Units, 12 Runes and 3
-Battlefields. -/
+/-- The demo deck: the champion, three copies of each of 12 vanilla Units, three copies of a Spell
+that draws a card, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 13).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩),
+    main := ⟨"C1"⟩ :: (List.range 12).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+      List.replicate 3 ⟨"S0"⟩,
     runes := List.replicate 12 ⟨"R1"⟩,
     battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
 

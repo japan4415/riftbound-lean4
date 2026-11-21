@@ -60,7 +60,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- a Unit or a Gear of the player's hand, paid for from the Rune Pool, in the Main Phase
   -- (CR 349-359)
   | .priority p :: _, .playCard c pay =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ playable s p c pay = true
+    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧
+      (playable s p c pay = true ∨ castable s p c pay = true)
+  -- the player with priority passes while the Chain holds a Spell (CR 311-313)
+  | .chainPass p _ :: _, .pass => a.actor = .player p
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

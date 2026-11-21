@@ -3,6 +3,8 @@ module
 public import Riftbound.State.Zone
 public import Riftbound.State.Phase
 public import Riftbound.State.Pool
+public import Riftbound.Card.IR.Value
+public import Riftbound.Card.IR.Effect
 
 /-!
 # Decisions
@@ -108,7 +110,26 @@ inductive Frame where
   | phase (ph : Phase)
   /-- Choice: the turn player has priority in the Main Phase (CR 311-312, 316). -/
   | priority (p : PlayerId)
+  /-- Choice: player `p` has priority while the Chain holds a Spell (CR 311-313); `passes` players
+  have passed in a row. When everyone has passed, the top of the Chain resolves (CR 340). -/
+  | chainPass (p : PlayerId) (passes : Nat)
+  /-- Work: resolve the item on top of the Chain (CR 340): its effect is run, then it goes to the
+  Trash. -/
+  | resolveChain
+  /-- Work: run the effects `todo` of the item `src` for `controller`, with the variables `env`
+  (design.md §6.2). -/
+  | run (controller : PlayerId) (src : ObjId) (env : Env) (todo : EffectList)
+  /-- Work: a Spell has resolved; put it in its owner's Trash (CR 359.3.d). -/
+  | finishSpell (item : ObjId)
 deriving DecidableEq, Repr
+
+/-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
+def Frame.isPlay : Frame → Bool
+  | .chainPass .. => true
+  | .resolveChain => true
+  | .run .. => true
+  | .finishSpell _ => true
+  | _ => false
 
 /-- Frames the engine advances by itself. -/
 def Frame.isWork : Frame → Bool
@@ -116,6 +137,9 @@ def Frame.isWork : Frame → Bool
   | .draw _ _ => true
   | .beginTurn => true
   | .phase _ => true
+  | .resolveChain => true
+  | .run .. => true
+  | .finishSpell _ => true
   | _ => false
 
 end Riftbound

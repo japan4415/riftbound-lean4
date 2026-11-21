@@ -68,6 +68,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let (l, r) := shuffle r (s.zone (.player p .trash))
     some (⟨.chance, .arrange l⟩, r)
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
+  | .chainPass p _ :: _ => some (⟨.player p, .pass⟩, r)
   | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)

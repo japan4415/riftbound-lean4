@@ -57,12 +57,19 @@ meta def furyRune : CardDef :=
 meta def battlefield (n : Nat) : CardDef :=
   { id := cid s!"B{n}", name := s!"Battlefield {n}", types := [.battlefield] }
 
+/-- A Spell that draws a card. -/
+meta def drawSpell : CardDef :=
+  { id := cid "SP0", name := "Quick Study", types := [.spell], domains := [.fury],
+    cost := some ⟨1, []⟩,
+    spellEffect := some (EffectDef.of [] (.prim (.draw .you (.const 1)))) }
+
 /-- The set every fixture card is printed in. -/
 meta def testSet : SetCode := ⟨"TST"⟩
 
 /-- The database of all fixtures. -/
 meta def db : CardDB :=
-  { cards := ([legend, champion, unique, offDomain, furyRune] ++ (List.range 20).map vanilla ++
+  { cards := ([legend, champion, unique, offDomain, furyRune, drawSpell] ++
+      (List.range 20).map vanilla ++
       (List.range 4).map signature ++ (List.range 4).map battlefield).map
         (fun c => { c with sets := [testSet] }) }
 
