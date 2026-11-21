@@ -93,7 +93,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
               pending := (combatResolve s bf att).2.1 ++ .cleanup :: rest },
       (combatResolve s bf att).2.2)
   | .triggers pend :: rest =>
-    some ({ putAll s pend with pending := triggerFrames (putAll s pend) rest ++ rest }, [])
+    some ({ (triggersStep s pend rest).1 with pending := (triggersStep s pend rest).2 ++ rest }, [])
   | _ => none
 
 /-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
@@ -135,6 +135,9 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .activate src idx pay ts =>
     activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest)
+  | .triggerOrder _ t more others :: rest, .putTrigger i ts =>
+    some ({ putPick s (t :: more) i ts with
+              pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with
@@ -270,7 +273,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact ((combatResolve_safeP s _ _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putAll_safe _ s).wf hwf).congr rfl rfl rfl rfl
+    exact ((triggersStep_spec s _ _).1.wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
@@ -352,7 +355,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact (combatResolve_safeP s _ _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (putAll_safe _ s).phys hwf
+    exact (triggersStep_spec s _ _).1.phys hwf
   · exact absurd h (by simp)
 
 /-- What a step of work does: the step, and the triggers it set off. -/

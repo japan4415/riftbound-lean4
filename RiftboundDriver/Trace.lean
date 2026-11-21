@@ -59,6 +59,8 @@ def actionJson (a : Action) : String :=
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
     | .assignPick u => [("unit", toString u.n)]
+    | .putTrigger i ts =>
+      [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .activate src idx _ ts =>
       [("source", toString src.n), ("index", toString idx),
        ("targets", jarr (ts.map (fun t => toString t.n)))]

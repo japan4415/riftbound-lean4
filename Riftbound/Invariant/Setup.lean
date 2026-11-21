@@ -472,6 +472,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, -, -, -, -, hpend, -⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
+  · rename_i p t more others rest i ts hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl
+      (by simp [GameState.playerCount, (putPick_safe s (t :: more) i ts).same.config])
+      (new := [Frame.triggers ((t :: more).eraseIdx i ++ others)]) rfl (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -700,10 +706,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp rfl
-      (by simp [GameState.playerCount, (putAll_safe pend s).same.config])
-      (new := triggerFrames (putAll s pend) rest) rfl (fun g hg => by
-        obtain ⟨q, n, rfl⟩ := triggerFrames_mem hg
-        rfl)
+      (by simp [GameState.playerCount, (triggersStep_spec s pend rest).1.same.config])
+      (new := (triggersStep s pend rest).2) rfl (fun g hg => (triggersStep_frames hg).2)
   · exact absurd h (by simp)
 
 /-- A step of work keeps the setup invariant. -/

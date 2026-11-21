@@ -70,6 +70,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_wf hwf h
   · rename_i p rest src idx pay ts hp hk
     exact activateStep_wf hwf h
+  · rename_i p t more others rest i ts hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((putPick_safe s _ i ts).wf hwf).congr rfl rfl rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -292,6 +296,10 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_physIds hwf h
   · rename_i p rest src idx pay ts hp hk
     exact activateStep_physIds hwf h
+  · rename_i p t more others rest i ts hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (putPick_safe s _ i ts).phys hwf
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -421,7 +429,7 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   · simp
   · cases f <;> cases kind <;> cases actor <;>
       simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
-        mem_legalActivates, mem_legalReactions]
+        mem_legalActivates, mem_legalReactions, mem_legalPuts]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

@@ -91,6 +91,10 @@ inductive ActionKind where
   place `idx` of the card of `source`, with the Power of the domains listed, and the objects
   chosen for the choices of the ability (CR 355). The ability goes on the Chain. -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
+  /-- Put the `idx`-th of the triggered abilities that wait on the Chain, with the objects chosen
+  for its choices (CR 383.3.d, 355). An ability with no legal pick is removed with no objects
+  (CR 355). -/
+  | putTrigger (idx : Nat) (targets : List ObjId)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -176,6 +180,11 @@ inductive Frame where
   /-- Work: the triggered abilities that have fired go on the Chain, the turn player's first
   (CR 383.3). They wait here until a player would next receive priority (CR 383.1). -/
   | triggers (pend : List PendTrigger)
+  /-- Choice: player `p` puts one of their triggered abilities `first :: more` on the Chain, and
+  chooses its targets (CR 383.3.d); `others` are the abilities of the other players, still to come.
+  The group is never empty. -/
+  | triggerOrder (p : PlayerId) (first : PendTrigger) (more : List PendTrigger)
+      (others : List PendTrigger)
 deriving DecidableEq, Repr
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
@@ -197,6 +206,7 @@ def Frame.isPlay : Frame → Bool
   | .assign .. => true
   | .combatResolve .. => true
   | .triggers _ => true
+  | .triggerOrder .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
