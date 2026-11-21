@@ -76,9 +76,9 @@ theorem StackInv.of_next {s s2 : GameState} (hinv : StackInv s) (hres : s2.resul
   fun h => hb (hinv (hres ▸ h))
 
 /-- Applying a legal answer to the open question keeps the stack invariant. -/
-theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
-    (hinv : StackInv s) (h : applyFrame s a = some (s', es)) : StackInv s' := by
-  unfold applyFrame at h
+theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
+    (hinv : StackInv s) (h : applyFrame0 s a = some (s', es)) : StackInv s' := by
+  unfold applyFrame0 at h
   split at h
   · rename_i rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -247,6 +247,27 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
     exact hb.pop rfl
   · exact absurd h (by simp)
 
+/-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
+work, above a frame that decides, so the bottom of the stack stays. -/
+theorem StackInv.withTriggers {s : GameState} (hinv : StackInv s) (es : List Event) :
+    StackInv (s.withTriggers es) := by
+  rcases withTriggers_cases s es with h | ⟨pend, h, -⟩
+  · rw [h]; exact hinv
+  · rw [h]
+    intro hres
+    obtain ⟨g, hg, hb⟩ := hinv hres
+    refine ⟨g, insertTriggers_getLast pend _ hg ?_ ?_, hb⟩
+    · cases g <;> simp [Frame.isBottom, Frame.isResolution] at hb ⊢
+    · intro x hx
+      subst hx
+      simp [Frame.isBottom] at hb
+
+/-- Applying a legal answer to the open question keeps the stack invariant. -/
+theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
+    (hinv : StackInv s) (h : applyFrame s a = some (s', es)) : StackInv s' := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  exact (applyFrame_stack0 hinv h0).withTriggers _
+
 /-- Applying an answer keeps the stack invariant. A concession ends the game, and the stack is then
 no longer asked for a bottom frame. -/
 theorem applyAction_stack {s s' : GameState} {a : Action} {es : List Event}
@@ -262,9 +283,9 @@ theorem applyAction_stack {s s' : GameState} {a : Action} {es : List Event}
     exact applyFrame_stack hinv h
 
 /-- A step of work keeps the stack invariant. -/
-theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
-    (h : microStep s = some (s', es)) : StackInv s' := by
-  unfold microStep at h
+theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s)
+    (h : microStep0 s = some (s', es)) : StackInv s' := by
+  unfold microStep0 at h
   split at h
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -401,7 +422,19 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
     rw [hp] at hb
     have := hb.swap rfl ((combatResolve s bf att).2.1 ++ [Frame.cleanup])
     simpa using this
+  · rename_i pend rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (putAll_safe pend s).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl (triggerFrames (putAll s pend) rest)
   · exact absurd h (by simp)
+
+/-- A step of work keeps the stack invariant. -/
+theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
+    (h : microStep s = some (s', es)) : StackInv s' := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  exact (microStep_stack0 hinv h0).withTriggers _
 
 /-- The automatic work keeps the stack invariant. -/
 theorem advance_stack :
@@ -617,6 +650,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | resolveChain => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
+  | triggers pend => exact absurd hw (by simp [Frame.isWork])
   | cleanup => exact absurd hw (by simp [Frame.isWork])
   | combatDamage bf att => exact absurd hw (by simp [Frame.isWork])
   | combatResolve bf att => exact absurd hw (by simp [Frame.isWork])
@@ -685,6 +719,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | resolveChain => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])
   | finishSpell item => exact absurd hc (by simp [Frame.isChance])
+  | triggers pend => exact absurd hc (by simp [Frame.isChance])
   | cleanup => exact absurd hc (by simp [Frame.isChance])
   | combatDamage bf att => exact absurd hc (by simp [Frame.isChance])
   | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])

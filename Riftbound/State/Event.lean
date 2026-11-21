@@ -46,6 +46,13 @@ inductive Event where
   | won (p : PlayerId)
   /-- A player used an ability (CR 361): the ability at place `idx` of the card of `source`. -/
   | activated (p : PlayerId) (source : ObjId) (idx : Nat)
+  /-- A player played a card: the object it has become on the Base or on the Chain (CR 349-359). -/
+  | played (p : PlayerId) (obj : ObjId)
+  /-- An object was killed (CR 323.4, 419): the object it has become in the Trash, and the player
+  who controlled it. -/
+  | died (obj : ObjId) (controller : PlayerId)
+  /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
+  | combatStarted (bf : ObjId) (attacker : PlayerId)
 deriving DecidableEq, Repr
 
 end Riftbound

@@ -177,13 +177,6 @@ theorem GameState.initial_setup {db : CardDB} {config : GameConfig} {decks : Lis
       exact Nat.lt_of_lt_of_le h4 h2
   · exact absurd h (by simp)
 
-/-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
-def Frame.isSetup : Frame → Bool
-  | .chanceShuffle _ => true
-  | .chanceBattlefield _ => true
-  | .chanceTurnOrder => true
-  | _ => false
-
 /-- Every frame of the setup is a setup frame. -/
 theorem startFrames_isSetup (n : Nat) : ∀ f ∈ startFrames n, f.isSetup = true := by
   intro f hf
@@ -387,10 +380,10 @@ theorem SetupInv.of_battlefield {s s2 : GameState} {p : PlayerId} {rest : List F
   · exact absurd (hn _ (by rw [hp]; exact List.mem_cons_self)) (by simp [Frame.isSetup])
 
 /-- Applying a legal answer to the open question keeps the setup invariant. -/
-theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
+theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hinv : SetupInv s) (hl : LegalFrame s a)
-    (h : applyFrame s a = some (s', es)) : SetupInv s' := by
-  unfold applyFrame at h
+    (h : applyFrame0 s a = some (s', es)) : SetupInv s' := by
+  unfold applyFrame0 at h
   unfold LegalFrame at hl
   split at h
   · rename_i rest hp hk
@@ -536,6 +529,25 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · exact absurd h (by simp)
 
+/-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
+a frame of the setup is on it. -/
+theorem SetupInv.withTriggers {s : GameState} (hinv : SetupInv s) (es : List Event) :
+    SetupInv (s.withTriggers es) := by
+  rcases withTriggers_cases s es with h | ⟨pend, h, -, hs⟩
+  · rw [h]; exact hinv
+  · rw [h]
+    refine ⟨hinv.1, Or.inr (fun f hf => ?_)⟩
+    rcases insertTriggers_mem pend _ hf with h1 | ⟨x, h1⟩
+    · exact hs f h1
+    · subst h1; rfl
+
+/-- Applying a legal answer to the open question keeps the setup invariant. -/
+theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hinv : SetupInv s) (hl : LegalFrame s a)
+    (h : applyFrame s a = some (s', es)) : SetupInv s' := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  exact (applyFrame_setup0 hwf hinv hl h0).withTriggers _
+
 /-- Applying an answer keeps the setup invariant. A concession leaves no frame at all. -/
 theorem applyAction_setup {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hinv : SetupInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
@@ -550,9 +562,9 @@ theorem applyAction_setup {s s' : GameState} {a : Action} {es : List Event}
     exact applyFrame_setup hwf hinv (hl.frame hk) h
 
 /-- A step of work keeps the setup invariant. -/
-theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
-    (h : microStep s = some (s', es)) : SetupInv s' := by
-  unfold microStep at h
+theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s)
+    (h : microStep0 s = some (s', es)) : SetupInv s' := by
+  unfold microStep0 at h
   split at h
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -684,7 +696,21 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
         · simp only [List.mem_singleton] at h1
           subst h1
           rfl)
+  · rename_i pend rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl
+      (by simp [GameState.playerCount, (putAll_safe pend s).same.config])
+      (new := triggerFrames (putAll s pend) rest) rfl (fun g hg => by
+        obtain ⟨q, n, rfl⟩ := triggerFrames_mem hg
+        rfl)
   · exact absurd h (by simp)
+
+/-- A step of work keeps the setup invariant. -/
+theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
+    (h : microStep s = some (s', es)) : SetupInv s' := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  exact (microStep_setup0 hinv h0).withTriggers _
 
 /-- The automatic work keeps the setup invariant. -/
 theorem advance_setup :

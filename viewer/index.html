@@ -413,6 +413,8 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'control') txt = e.player === null ? cardName(e.battlefield) + ' は未支配になった' : 'P' + e.player + ' が ' + cardName(e.battlefield) + ' を支配';
     else if (e.t === 'recalled') txt = cardName(e.unit) + ' は Recall されて Base へ戻った';
     else if (e.t === 'won') txt = 'P' + e.player + ' の勝ち';
+    else if (e.t === 'died') txt = cardName(e.obj) + ' が死んだ（死んだときの誘発能力は、次に Priority が渡る前に Chain へ）';
+    else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
     else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
     if (txt) { const m = document.createElement('small'); m.className = 'ev'; m.textContent = txt; $('now').append(document.createElement('br'), m); }
   }

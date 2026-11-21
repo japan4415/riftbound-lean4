@@ -17,9 +17,9 @@ the fuel (soundness, with I4). It needs an invariant on the frames, which come i
 namespace Riftbound
 
 /-- Applying a legal answer keeps the game well formed. -/
-theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) : s'.WF := by
-  unfold applyFrame at h
+theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame0 s a = some (s', es)) : s'.WF := by
+  unfold applyFrame0 at h
   unfold LegalFrame at hl
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -119,6 +119,12 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
   · exact absurd h (by simp)
+
+/-- Applying a legal answer keeps the game well formed. -/
+theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) : s'.WF := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  exact withTriggers_wf _ (applyFrame_wf0 hwf hl h0)
 
 /-- Applying a legal answer keeps the game well formed. -/
 theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
@@ -232,10 +238,10 @@ theorem step_mono {n m : Nat} {s : GameState} {a : Action} {r : GameState × Lis
   · simp [step, hl] at h
 
 /-- Applying a legal answer keeps the physical cards. -/
-theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
+theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame0 s a = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  unfold applyFrame at h
+  unfold applyFrame0 at h
   unfold LegalFrame at hl
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -339,6 +345,14 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · exact absurd h (by simp)
+
+/-- Applying a legal answer keeps the physical cards. -/
+theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
+    s'.physIds.Perm s.physIds := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  rw [withTriggers_physIds]
+  exact applyFrame_physIds0 hwf hl h0
 
 /-- Applying a legal answer keeps the physical cards. -/
 theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}

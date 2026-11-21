@@ -75,11 +75,21 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
   · exact Safe.refl s
 
 /-- Kill an object: it goes to its owner's Trash. -/
-def killObj (s : GameState) (id : ObjId) : GameState × List Event := sendObj .trash s id
+def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .trash s id
+  match s.obj? id with
+  | some o =>
+    (r.1, r.2 ++ r.2.filterMap (fun e => match e with
+      | .moved _ n _ => some (Event.died n o.controller)
+      | _ => none))
+  | none => r
 
 /-- Killing an object is a safe change. -/
-theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 :=
-  sendObj_safe .trash s id
+theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
+  unfold killObj
+  split
+  · exact sendObj_safe .trash s id
+  · exact sendObj_safe .trash s id
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
 the next Cleanup (CR 323.4), not here. -/
@@ -321,7 +331,8 @@ theorem finishItem_cases (s : GameState) (item : ObjId) :
 
 /-- Finishing an item keeps the game well formed. -/
 theorem finishItem_wf {s : GameState} (hwf : s.WF) (item : ObjId) : (finishItem s item).1.WF := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
+  rcases finishItem_cases s item with
+      h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact hwf
   · rw [h]; exact moveObj_wf hwf hm
   · rw [h]; exact removeObj_wf hwf hr
@@ -329,7 +340,8 @@ theorem finishItem_wf {s : GameState} (hwf : s.WF) (item : ObjId) : (finishItem 
 /-- Finishing an item keeps the physical cards. -/
 theorem finishItem_physIds {s : GameState} (hwf : s.WF) (item : ObjId) :
     (finishItem s item).1.physIds.Perm s.physIds := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, ho, -, hk, hr, h⟩
+  rcases finishItem_cases s item with
+      h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, ho, -, hk, hr, h⟩
   · rw [h]
   · rw [h]; exact moveObj_physIds hwf hm
   · rw [h]; exact removeObj_physIds hwf hr ho hk
@@ -337,14 +349,16 @@ theorem finishItem_physIds {s : GameState} (hwf : s.WF) (item : ObjId) :
 /-- Finishing an item keeps `OwnerOk`. -/
 theorem finishItem_ownerOk {s : GameState} (hwf : s.WF) (hown : s.OwnerOk) (item : ObjId) :
     (finishItem s item).1.OwnerOk := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
+  rcases finishItem_cases s item with
+      h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact hown
   · rw [h]; exact moveObj_ownerOk hwf hown hm
   · rw [h]; exact removeObj_ownerOk hwf hown hr
 
 /-- Finishing an item changes only the zones, the objects and the counters. -/
 theorem finishItem_sameMeta (s : GameState) (item : ObjId) : SameMeta s (finishItem s item).1 := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
+  rcases finishItem_cases s item with
+      h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact SameMeta.refl s
   · rw [h]; exact (moveObj_spec hm).choose_spec.choose_spec.other
   · rw [h]; exact removeObj_sameMeta hr

@@ -101,6 +101,20 @@ structure Action where
   kind : ActionKind
 deriving DecidableEq, Repr
 
+/-- A triggered ability that has fired and waits to go on the Chain (CR 382-385): the object it
+belongs to, the card and the place of the ability among the card's abilities, and the player who
+controls it. -/
+structure PendTrigger where
+  /-- The object whose ability fired. -/
+  source : ObjId
+  /-- The card of the object (kept, so the ability resolves even if the object is gone). -/
+  card : CardId
+  /-- The place of the ability among the abilities of the card. -/
+  idx : Nat
+  /-- The player who controls the ability. -/
+  controller : PlayerId
+deriving DecidableEq, Repr
+
 /-- A frame of the stack. A frame holds no part of the board: everything a decision is about is read
 from the state when the decision is made, so a frame cannot go out of date (design.md §6.2). -/
 inductive Frame where
@@ -159,7 +173,17 @@ inductive Frame where
   /-- Work: the Combat at `bf` ends (CR 468): the Combat Cleanup, and then the Battlefield goes to
   the player whose Units are alone there. -/
   | combatResolve (bf : ObjId) (att : PlayerId)
+  /-- Work: the triggered abilities that have fired go on the Chain, the turn player's first
+  (CR 383.3). They wait here until a player would next receive priority (CR 383.1). -/
+  | triggers (pend : List PendTrigger)
 deriving DecidableEq, Repr
+
+/-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
+def Frame.isSetup : Frame → Bool
+  | .chanceShuffle _ => true
+  | .chanceBattlefield _ => true
+  | .chanceTurnOrder => true
+  | _ => false
 
 /-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
 def Frame.isPlay : Frame → Bool
@@ -172,6 +196,7 @@ def Frame.isPlay : Frame → Bool
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
+  | .triggers _ => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
@@ -186,6 +211,7 @@ def Frame.isWork : Frame → Bool
   | .cleanup => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .triggers _ => true
   | _ => false
 
 end Riftbound

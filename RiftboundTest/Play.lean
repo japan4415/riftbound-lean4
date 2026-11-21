@@ -57,7 +57,8 @@ meta def cnt (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.pl
         cnt p .hand s1 + 1 == cnt p .hand s && cnt p .base s1 == cnt p .base s + 1 &&
         (s1.poolOf p).total == 0 &&
         (match es with
-          | [.moved c' id' _] => c' == c && (s1.obj? id').any (fun (o : Object) => o.exhausted)
+          | [.moved c' id' _, .played _ id''] => c' == c && id'' == id' &&
+              (s1.obj? id').any (fun (o : Object) => o.exhausted)
           | _ => false) &&
         -- still the same question: the turn player has priority
         (match s1.pending with | [.priority q] => q == p | _ => false)
@@ -148,7 +149,7 @@ meta def spellReady : Option (GameState × PlayerId × ObjId) :=
     match step 100 s ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
     | .ok (s1, es) =>
       cnt p .hand s1 + 1 == cnt p .hand s && s1.zone .chain == [match es with
-        | [.moved _ id _] => id | _ => c] &&
+        | [.moved _ id _, .played _ _] => id | _ => c] &&
       (s1.poolOf p).total == 0 &&
       (match s1.pending with
         | [.chainPass q 0, .priority q'] => q == p && q' == p
