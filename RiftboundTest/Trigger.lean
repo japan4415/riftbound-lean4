@@ -57,9 +57,10 @@ meta def onceUnit : CardDef :=
   { id := cid "T-ONC", name := "Once", types := [.unit], domains := [.fury], might := some 2,
     abilities := [.triggered (Trigger.onSelf .play) drawOne (.perTurn 1)] }
 
-/-- A Unit whose trigger needs a target: it does not fire yet. -/
+/-- A Unit whose trigger needs a target. -/
 meta def aimed : CardDef :=
   { id := cid "T-AIM", name := "Aimed", types := [.unit], domains := [.fury], might := some 2,
+    cost := some ⟨1, []⟩,
     abilities := [.triggered (Trigger.onSelf .play)
       (EffectDef.of [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 1)))) .unlimited] }
@@ -249,8 +250,8 @@ meta def afterHerald : Option (GameState × List Event) :=
     | _, _ => false
   | none => false
 
--- an ability that fires once each turn does not fire again; an ability that needs a target does not
--- fire yet (CR 371, 386, 355)
+-- an ability that fires once each turn does not fire again; an ability that needs a target fires
+-- (CR 371, 386, 355)
 #guard match mainT 1 with
   | some s0 =>
     let p := s0.active.getD ⟨0⟩
@@ -258,7 +259,87 @@ meta def afterHerald : Option (GameState × List Event) :=
     | some (s1, o), some (s2, a) =>
       (triggersOf s1 o p .play).length == 1 &&
       (triggersOf (s1.modObj o (fun x => { x with used := [0] })) o p .play).isEmpty &&
-      (triggersOf s2 a p .play).isEmpty && (triggersOf s1 o p .die).isEmpty
+      (triggersOf s2 a p .play).length == 1 && (triggersOf s1 o p .die).isEmpty
+    | _, _ => false
+  | none => false
+
+/-- The turn player with an Aimed in hand and the Energy to play it, and an enemy Unit on the other
+player's Base if `target`. -/
+meta def aimedScene (target : Bool) :
+    Option (GameState × PlayerId × PlayerId × ObjId × ObjId) :=
+  match mainT 1 with
+  | none => none
+  | some s0 =>
+    let p := s0.active.getD ⟨0⟩
+    let q := otherT p
+    match putT s0 p "T-AIM" .hand with
+    | none => none
+    | some (s1, c) =>
+      let s2 := s1.setPool p { energy := 1 }
+      if target then
+        match putT s2 q "V0" .base with
+        | some (s3, e) => some (s3, p, q, c, e)
+        | none => none
+      else some (s2, p, q, c, c)
+
+-- an ability with a target asks its player for the target: the only answers are the legal picks;
+-- the ability goes on the Chain with it, and resolves against it (CR 383.3.d, 355)
+#guard match aimedScene true with
+  | some (s, p, q, c, e) =>
+    match stepT s ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
+    | some s1 =>
+      (match s1.pending with | .triggerOrder r _ [] [] :: _ => r == p | _ => false) &&
+      (legalFrameActions s1) == [⟨.player p, .putTrigger 0 [e]⟩] &&
+      (match stepT s1 ⟨.player p, .putTrigger 0 [e]⟩ with
+        | some s2 =>
+          (s2.zone .chain).length == 1 &&
+          (match (s2.zone .chain).head?.bind s2.obj? with
+            | some o => o.targets == [e] | none => false) &&
+          (match (stepT s2 ⟨.player p, .pass⟩).bind
+              (fun s3 => stepT s3 ⟨.player q, .pass⟩) with
+            | some s4 => (s4.obj? e).any (·.damage == 1) && (s4.zone .chain).isEmpty
+            | none => false)
+        | none => false)
+    | none => false
+  | none => false
+
+-- an ability with no legal target is removed: the only answer picks nothing, and the Chain stays
+-- empty (CR 355)
+#guard match aimedScene false with
+  | some (s, p, _, c, _) =>
+    match stepT s ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
+    | some s1 =>
+      (legalFrameActions s1) == [⟨.player p, .putTrigger 0 []⟩] &&
+      (match stepT s1 ⟨.player p, .putTrigger 0 []⟩ with
+        | some s2 => (s2.zone .chain).isEmpty &&
+            (match s2.pending with | .priority r :: _ => r == p | _ => false)
+        | none => false)
+    | none => false
+  | none => false
+
+-- several abilities of one player: the player chooses which goes on the Chain first; the one put
+-- last is on top and resolves first (CR 383.3.d, 340)
+#guard match mainT 1 with
+  | some s0 =>
+    let p := s0.active.getD ⟨0⟩
+    match putT s0 p "T-HER" .base, putT s0 p "T-MAR" .base with
+    | some (_, a), some (s2, b) =>
+      let ta : PendTrigger := { source := a, card := cid "T-HER", idx := 0, controller := p }
+      let tb : PendTrigger := { source := b, card := cid "T-MAR", idx := 0, controller := p }
+      match advance 10 { s2 with pending := .triggers [ta, tb] :: s2.pending } [] with
+      | .ok (s3, _) =>
+        (match s3.pending with | .triggerOrder _ _ [_] [] :: _ => true | _ => false) &&
+        (legalFrameActions s3).filter (fun x => x.kind != .concede) ==
+          [⟨.player p, .putTrigger 0 []⟩, ⟨.player p, .putTrigger 1 []⟩] &&
+        (match stepT s3 ⟨.player p, .putTrigger 1 []⟩ with
+          | some s4 =>
+            (s4.zone .chain).length == 2 &&
+            (match (s4.zone .chain).head?.bind s4.obj? with
+              | some o => (match o.kind with | .chainAbility c _ _ => c == cid "T-HER" | _ => false)
+              | none => false) &&
+            (match s4.pending with | .chainPass r 0 :: _ => r == p | _ => false)
+          | none => false)
+      | .error _ => false
     | _, _ => false
   | none => false
 

@@ -48,6 +48,11 @@ def demoCards : List CardDef :=
       cost := some ⟨2, []⟩, might := some 2,
       abilities := [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] },
+    { id := ⟨"A0"⟩, name := "Archer", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 2,
+      abilities := [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
+          (.prim (.deal (.slot 0) (.const 1)))) .unlimited] },
     { id := ⟨"M0"⟩, name := "Martyr", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 1,
       abilities := [.triggered (Trigger.onSelf .die)
@@ -66,15 +71,17 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 6 vanilla Units, three copies each of a
-Unit that draws when it is played, a Unit that draws when it dies, a
-Unit that pings (an activated ability), a Spell that draws a card, a Spell that deals 2 damage to
+/-- The demo deck: the champion, three copies of each of 5 vanilla Units, three copies each of a
+Unit that draws when it is played, a Unit that deals 1 damage to an enemy Unit when it is played,
+a Unit that draws when it dies, a Unit that pings (an activated ability), a Spell that draws a
+card, a Spell that deals 2 damage to
 an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction that deals 2 damage
 to an enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 6).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
-      List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++ List.replicate 3 ⟨"P0"⟩ ++
+    main := ⟨"C1"⟩ :: (List.range 5).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+      List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
+      List.replicate 3 ⟨"P0"⟩ ++
       List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++
       List.replicate 3 ⟨"S3"⟩,
     runes := List.replicate 12 ⟨"R1"⟩,

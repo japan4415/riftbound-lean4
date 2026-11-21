@@ -178,6 +178,12 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hpend]
     exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
       (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
+  · rename_i p t more others rest i ts hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (putPick_safe s (t :: more) i ts).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -425,9 +431,9 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (putAll_safe pend s).same.result (fun hb => ?_)
+    refine hinv.of_next (triggersStep_spec s pend rest).1.same.result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl (triggerFrames (putAll s pend) rest)
+    exact hb.swap rfl (triggersStep s pend rest).2
   · exact absurd h (by simp)
 
 /-- A step of work keeps the stack invariant. -/
@@ -668,6 +674,14 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | triggerOrder p t more others =>
+    left
+    obtain ⟨ts, hts⟩ := trigLegal_exists s t
+    refine ⟨⟨.player p, .putTrigger 0 ts⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp only [legalFrameActions, hp, mem_legalPuts]
+    exact ⟨0, ts, rfl, by simpa using hts⟩
 
 /-- What a chance frame needs for a chance answer to exist: the zone to shuffle is a zone of the
 game, and a player has a Battlefield to pick. The other chance frames need nothing. -/
@@ -725,6 +739,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])
   | assign bf att side acc done => exact absurd hc (by simp [Frame.isChance])
   | showdown bf q n => exact absurd hc (by simp [Frame.isChance])
+  | triggerOrder p t more others => exact absurd hc (by simp [Frame.isChance])
 
 end Riftbound
 

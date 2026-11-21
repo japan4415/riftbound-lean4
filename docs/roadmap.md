@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M6c の実装の記録（2026-11-22）: 誘発の順序と対象の選択
+
+- **決定のフレーム `triggerOrder`**（行動 `putTrigger idx targets`）: 同じプレイヤーの待っている誘発能力から 1 つを選んで Chain に載せ、その対象も選ぶ（CR 383.3.d, 355）。残りは `triggers` に戻り、また選ぶ。最後に載せたものが上になり、先に解決する。選ぶものが無い 1 つの能力（対象なし）は、決定なしで載る。手番のプレイヤーの能力から先に載せる。
+- **対象を取る誘発能力が動く**: M6b では「対象が要るので誘発しない」としていたものが、対象を選んで載る。合法な対象が無いときは、対象なしの答えだけが合法で、その能力は取り除かれる（CR 355）。
+- **証明**: `trigLegal_exists`（待っている能力には必ず合法な答えがある）から、I5（行き止まりが無い）を `triggerOrder` について証明した。`mem_trigOptions`・`mem_legalPuts`（列挙は合法な答えだけ）。`putPick_safe`・`triggersStep_spec`（`triggers` の 1 歩は安全な変更で、積むのは Chain の Priority と `triggers` と `triggerOrder` だけ）から、`WF`・I1・`OwnerOk`・`StackInv`・`HandInv`・`SetupInv`・`step_sound`・`legalActions_iff` を新しい行動とフレームを含めて保つ。
+- **テスト**: 対象つきの誘発（唯一の合法な答え、載った対象、解決）、合法な対象が無いときに取り除かれること、複数の能力の順序の選択（最後に載せたものが上）。
+- **ビューア・デモ**: `putTrigger` がログに出る。デモのデッキに、場に出たとき敵の Unit に 1 ダメージを与える Archer が入る。
+- **まだ無いもの**: 複数の対象、モード、X、`may`、追加コスト（Spell と能力の選択）、対象が 1 つで決まるときの自動化、自分以外が対象の誘発。
+
 ### M6b の実装の記録（2026-11-22）: 誘発型能力（最小版）
 
 - **誘発の検出**（`Rules/Trigger.lean`）: `microStep` と `applyFrame` を「ステップ本体（`microStep0`・`applyFrame0`）+ `withTriggers`」に分けた。`withTriggers` は、その歩のイベントを読み（`detect`）、誘発した能力を `triggers` のフレームとして、Cleanup や解決の作業の下に積む。Priority が次に渡る前に Chain へ載る（CR 383.1）。セットアップの間は何もしない。

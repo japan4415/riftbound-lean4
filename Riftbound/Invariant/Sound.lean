@@ -107,6 +107,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2
   · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · rename_i p rest i hp hk
     rw [hp, hk] at hl
     have hi : i < (s.zone (.player p .outOfGame)).length := hl.2
@@ -226,6 +227,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_ownerOk hwf hown h
   · rename_i p rest src idx pay ts hp hk
     exact activateStep_ownerOk hwf hown h
+  · rename_i p t more others rest i ts hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((putPick_safe s _ i ts).own hwf hown).congr rfl rfl
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -374,7 +379,7 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putAll_safe pend s).own hwf hown).congr rfl rfl
+    exact (((triggersStep_spec s pend rest).1).own hwf hown).congr rfl rfl
   · exact absurd h (by simp)
 
 /-- A step of work keeps `OwnerOk`. -/

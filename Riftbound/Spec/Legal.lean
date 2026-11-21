@@ -78,6 +78,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- in answer to the Chain: a Basic Rune adds a resource (CR 164.2, 430)
   | .chainPass p _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
+  -- one of the abilities that wait goes on the Chain, with its targets (CR 383.3.d, 355)
+  | .triggerOrder p t more _ :: _, .putTrigger i ts =>
+    a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => trigLegal s g ts)) = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
   -- the next Unit to be given lethal damage, Tank Units first (CR 467.2.c, 815)

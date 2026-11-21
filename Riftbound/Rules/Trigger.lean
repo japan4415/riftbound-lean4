@@ -10,10 +10,11 @@ leaves events; `detect` reads them and names the abilities that fire. They wait 
 `triggers` frame beneath the work that is still to do, until a player would next receive priority
 (CR 383.1); then each goes on the Chain as an object of its own, the turn player's first (CR 383.3).
 
-This is the first model of triggers. The abilities that fire are those with the object itself as
-subject, no condition, every time, and no choices (no targets). The player does not choose the
-order of abilities of one player (CR 383.3.d): they go on the Chain in the order of the events and
-of the objects. Triggers at a point of the turn and triggers of other objects are later.
+The abilities that fire are those with the object itself as subject, no condition, and every time.
+A player with several abilities to put on the Chain chooses the order, and the targets of each, one
+at a time (CR 383.3.d, 355): the decision is the `triggerOrder` frame. With one ability and nothing
+to choose, it goes on the Chain at once. An ability with no legal targets is removed (CR 355).
+Triggers at a point of the turn and triggers of other objects are later.
 -/
 
 @[expose] public section
@@ -33,9 +34,9 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   | _, _ => []
 
 /-- The ability can fire on the event: it is about the object itself, with no condition, every
-time, and no choices. -/
-def trigOk (t : Trigger) (body : EffectDef) : Bool :=
-  t.subject == .self && t.condition == .always && t.occurrence == .every && body.choices.isEmpty
+time. -/
+def trigOk (t : Trigger) (_body : EffectDef) : Bool :=
+  t.subject == .self && t.condition == .always && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
 def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
@@ -186,18 +187,58 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
     | pend => { s with pending := insertTriggers pend s.pending }
   else s
 
+/-- The choices of the triggered ability that waits (CR 355). -/
+def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
+  match s.cards.find? t.card with
+  | some d =>
+    match d.abilities[t.idx]? with
+    | some (Ability.triggered _ body _) => body.choices
+    | _ => []
+  | none => []
+
+/-- The objects are a legal pick for the ability's choices, or the ability has no legal pick and
+nothing is chosen (CR 355). -/
+def trigLegal (s : GameState) (t : PendTrigger) (ts : List ObjId) : Bool :=
+  targetsOk s t.controller t.source (trigChoices s t) ts ||
+    (ts.isEmpty && (targetTuples s t.controller t.source (trigChoices s t)).isEmpty)
+
+/-- Every pick worth trying for the ability: the legal ones, or nothing if there is none. -/
+def trigOptions (s : GameState) (t : PendTrigger) : List (List ObjId) :=
+  match targetTuples s t.controller t.source (trigChoices s t) with
+  | [] => [[]]
+  | l => l
+
+/-- The picks listed are exactly the legal ones. -/
+theorem mem_trigOptions (s : GameState) (t : PendTrigger) (ts : List ObjId) :
+    ts ∈ trigOptions s t ↔ trigLegal s t ts = true := by
+  unfold trigOptions trigLegal
+  rw [Bool.or_eq_true, ← mem_targetTuples]
+  cases hl : targetTuples s t.controller t.source (trigChoices s t) with
+  | nil => simp
+  | cons x xs => simp
+
+/-- An ability that waits has a legal pick. -/
+theorem trigLegal_exists (s : GameState) (t : PendTrigger) : ∃ ts, trigLegal s t ts = true := by
+  by_cases h : targetTuples s t.controller t.source (trigChoices s t) = []
+  · exact ⟨[], by simp [trigLegal, h]⟩
+  · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil _ h
+    have hok := (mem_targetTuples s t.controller t.source (trigChoices s t) x).mp hx
+    exact ⟨x, by simp [trigLegal, hok]⟩
+
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
-controlled by the player. -/
-def putTrigger (s : GameState) (t : PendTrigger) : GameState :=
+controlled by the player, with the objects chosen. -/
+def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) : GameState :=
   let s1 := s.modObj t.source (fun o => { o with used := o.used ++ [t.idx] })
-  match addObject s1 (abilityItem t.card t.idx t.source t.controller []) .chain with
+  match addObject s1 (abilityItem t.card t.idx t.source t.controller ts) .chain with
   | some r => r.1
   | none => s1
 
-/-- Put all the abilities on the Chain, in order. -/
-def putAll (s : GameState) : List PendTrigger → GameState
-  | [] => s
-  | t :: ts => putAll (putTrigger s t) ts
+/-- Put the picked ability of the group on the Chain; an ability with choices and no pick is removed
+(CR 355). -/
+def putPick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId) : GameState :=
+  match grp[i]? with
+  | some t => if ts.isEmpty && !(trigChoices s t).isEmpty then s else putTrigger s t ts
+  | none => s
 
 /-- The frames to put beneath the work after the abilities have gone on the Chain: the turn player
 gets priority with the Chain, unless that is already so (CR 340). -/
@@ -206,8 +247,33 @@ def triggerFrames (s : GameState) (rest : List Frame) : List Frame :=
   | .chainPass .. :: _ => []
   | _ => if (s.zone .chain).isEmpty then [] else [.chainPass (s.active.getD ⟨0⟩) 0]
 
+/-- The frames put under the work after the triggers are Chain priorities. -/
+theorem triggerFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
+    (h : f ∈ triggerFrames s rest) : ∃ p n, f = .chainPass p n := by
+  unfold triggerFrames at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h
+    · simp only [List.mem_singleton] at h
+      exact ⟨_, _, h⟩
+
+/-- One step of a `triggers` frame: with nothing left, the turn player gets priority; with one
+ability and nothing to choose, it goes on the Chain; otherwise its player chooses (CR 383.3.d). The
+state, and the frames to put above the rest of the stack. -/
+def triggersStep (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
+    GameState × List Frame :=
+  match pend with
+  | [] => (s, triggerFrames s rest)
+  | t :: ts =>
+    let grp := ts.filter (fun u => u.controller == t.controller)
+    let others := ts.filter (fun u => u.controller != t.controller)
+    if grp.isEmpty && (trigChoices s t).isEmpty then (putTrigger s t [], [.triggers others])
+    else (s, [.triggerOrder t.controller t grp others])
+
 /-- Putting one ability on the Chain is a safe change. -/
-theorem putTrigger_safe (s : GameState) (t : PendTrigger) : Safe s (putTrigger s t) := by
+theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId) :
+    Safe s (putTrigger s t ts) := by
   have h1 : Safe s (s.modObj t.source (fun o => { o with used := o.used ++ [t.idx] })) :=
     Safe.modObj s t.source (fun _ => rfl) (fun _ => rfl)
   unfold putTrigger
@@ -218,10 +284,35 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) : Safe s (putTrigger s
       fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩
   · exact h1
 
-/-- Putting all the abilities on the Chain is a safe change. -/
-theorem putAll_safe : ∀ (ts : List PendTrigger) (s : GameState), Safe s (putAll s ts)
-  | [], s => Safe.refl s
-  | t :: ts, s => (putTrigger_safe s t).trans (putAll_safe ts _)
+/-- Putting the picked ability on the Chain is a safe change. -/
+theorem putPick_safe (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId) :
+    Safe s (putPick s grp i ts) := by
+  unfold putPick
+  split
+  · split
+    · exact Safe.refl s
+    · exact putTrigger_safe s _ ts
+  · exact Safe.refl s
+
+/-- A step of a `triggers` frame is a safe change, and the frames it puts are priorities, `triggers`
+frames and choices of triggers. -/
+theorem triggersStep_spec (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
+    Safe s (triggersStep s pend rest).1 ∧ ∀ g ∈ (triggersStep s pend rest).2,
+      (∃ p n, g = .chainPass p n) ∨ (∃ x, g = .triggers x) ∨
+        (∃ p t m o, g = .triggerOrder p t m o) := by
+  unfold triggersStep
+  split
+  · refine ⟨Safe.refl s, fun g hg => ?_⟩
+    obtain ⟨p, n, h⟩ := triggerFrames_mem hg
+    exact Or.inl ⟨p, n, h⟩
+  · dsimp only
+    split
+    · refine ⟨putTrigger_safe s _ [], fun g hg => ?_⟩
+      simp only [List.mem_singleton] at hg
+      exact Or.inr (Or.inl ⟨_, hg⟩)
+    · refine ⟨Safe.refl s, fun g hg => ?_⟩
+      simp only [List.mem_singleton] at hg
+      exact Or.inr (Or.inr ⟨_, _, _, _, hg⟩)
 
 /-- What a step of `withTriggers` does: nothing, or insert triggers where no setup frame is left
 and the game is not in its setup. -/
@@ -277,16 +368,13 @@ theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   · simp [GameState.detect]
   · rfl
 
-/-- The frames put under the work after the triggers are Chain priorities. -/
-theorem triggerFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
-    (h : f ∈ triggerFrames s rest) : ∃ p n, f = .chainPass p n := by
-  unfold triggerFrames at h
-  split at h
-  · simp at h
-  · split at h
-    · simp at h
-    · simp only [List.mem_singleton] at h
-      exact ⟨_, _, h⟩
+/-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/
+theorem triggersStep_frames {s : GameState} {pend : List PendTrigger} {rest : List Frame}
+    {g : Frame} (h : g ∈ (triggersStep s pend rest).2) :
+    g ≠ .setupHands ∧ g.isSetup = false := by
+  rcases (triggersStep_spec s pend rest).2 g h with
+      ⟨p, n, rfl⟩ | ⟨x, rfl⟩ | ⟨p, t, m, o, rfl⟩ <;>
+    exact ⟨by simp, rfl⟩
 
 end Riftbound
 

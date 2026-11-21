@@ -223,6 +223,11 @@ function describe(i) {
       return [who + ': ' + cardName(a.source) + ' の能力を起動' + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
+    case 'putTrigger': {
+      const tg = (a.targets || []).map((t) => cardName(t)).join('、');
+      return [who + ': 誘発能力を Chain に載せる' + (tg ? '（対象: ' + tg + '）' : '（対象なし: 対象が無ければ取り除かれる）'),
+        '待っている誘発能力から 1 つを選んで載せる。最後に載せたものが先に解決する'];
+    }
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
