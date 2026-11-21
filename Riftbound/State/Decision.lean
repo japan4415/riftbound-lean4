@@ -81,6 +81,12 @@ inductive ActionKind where
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
   back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
   | standardMove (unit : ObjId) (dest : MoveDest)
+  /-- In Combat Damage: the next Unit, among those of the other side, to be given lethal damage
+  (CR 467.2.c). Tank Units come first (CR 815). -/
+  | assignPick (unit : ObjId)
+  /-- In Combat Damage: every Unit of the other side has been named; the damage is assigned
+  down that order (CR 467.2.c). -/
+  | assignDone
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -139,6 +145,16 @@ inductive Frame where
   /-- Choice: player `focus` has Focus in the Showdown at the Battlefield `bf` (CR 341-348);
   `passes` players have passed in a row. When everyone has passed, the Showdown ends (CR 348). -/
   | showdown (bf : ObjId) (focus : PlayerId) (passes : Nat)
+  /-- Work: the Showdown at `bf` was a Combat whose Attacker is `att`: start Combat Damage
+  (CR 467). -/
+  | combatDamage (bf : ObjId) (att : PlayerId)
+  /-- Choice: player `side` names the Units of the other side in the order they get lethal damage
+  (CR 467.2.c). `acc` is the order so far; `done` is the damage assigned by the sides before,
+  all dealt together when the last side has assigned (CR 467.2.c.1). -/
+  | assign (bf : ObjId) (att side : PlayerId) (acc : List ObjId) (done : List (ObjId × Nat))
+  /-- Work: the Combat at `bf` ends (CR 468): the Combat Cleanup, and then the Battlefield goes to
+  the player whose Units are alone there. -/
+  | combatResolve (bf : ObjId) (att : PlayerId)
 deriving DecidableEq, Repr
 
 /-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
@@ -149,6 +165,9 @@ def Frame.isPlay : Frame → Bool
   | .finishSpell _ => true
   | .cleanup => true
   | .showdown .. => true
+  | .combatDamage .. => true
+  | .assign .. => true
+  | .combatResolve .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
@@ -161,6 +180,8 @@ def Frame.isWork : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
+  | .combatDamage .. => true
+  | .combatResolve .. => true
   | _ => false
 
 end Riftbound

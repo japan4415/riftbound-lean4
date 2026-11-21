@@ -58,6 +58,7 @@ def actionJson (a : Action) : String :=
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
+    | .assignPick u => [("unit", toString u.n)]
     | .mulliganPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
@@ -86,6 +87,7 @@ def eventJson : Event → String
   | .scored p bf conquer =>
     jobj [("t", jstr "scored"), ("player", toString p.n), ("battlefield", toString bf.n),
       ("conquer", if conquer then "true" else "false")]
+  | .recalled u => jobj [("t", jstr "recalled"), ("unit", toString u.n)]
   | .won p => jobj [("t", jstr "won"), ("player", toString p.n)]
 
 /-- All the zones to show, with the player count. -/

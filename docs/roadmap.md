@@ -319,6 +319,19 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M4: カードのプレイ・Chain・効果 IR v0（CR 325-340, 349-359, 399-407, 426, 430.2）
 
+### M5c の実装の記録（2026-11-21）: 戦闘（Combat）
+
+- **戦闘に入る**: 相手の Unit がいる Battlefield へも動ける（M5a の暫定の制限を外した）。Showdown が終わったとき、2 人の Unit がいれば Combat（`isCombat`）。Attacker は、その Battlefield を Contested にした人、もう一方が Defender（CR 466）。Ganking の Unit は、Battlefield から別の Battlefield へ動ける（CR 810）。
+- **Combat Damage**（`combatDamage`・`assign`・`combatResolve` のフレーム）: 各陣営が Might を合計する（Attacker は Assault X、Defender は Shield X を加える）。Attacker から順に、相手の Unit に**致死ダメージを与える順番**を 1 体ずつ選ぶ（`assignPick`、Tank が先、全員を選び終えたら `assignDone`）。ダメージはその順に流れ、各 Unit が死ぬのに要る量を受け、残りは最後の Unit が受ける（`greedy`）。両陣営が終えたら、まとめて同時に与える（CR 467.2.c.1）。
+- **Combat Cleanup と結果**（`combatResolve`）: 致死ダメージの Unit は Cleanup が kill し、全 Unit を Heal し、Defender の Unit が残っていれば Attacker の Unit を Recall（Base へ戻す）。その後は Showdown の終わりと同じで、Unit が 1 人だけに残っていれば、その人が Control を得て Conquer で Score する（防御側の Conquer も、CR 468.5.e のとおり起きる）。
+- **証明**:
+  - **最初の関係仕様（L5）**: `AssignOk`（CR 467.2.c を、エンジンの聞き方と独立に書いた規則: 全部のダメージを割り当てる、致死ダメージの前に次の Unit へ割り当てない、最後以外は致死量を超えない）と、`greedy_spec`（致死ダメージを順に与え、残りを最後の Unit に与える割り当ては、`AssignOk` を満たす）。
+  - `assign_exists`: **割り当ての決定は行き止まりにならない**（どの途中状態でも、合法な答えがある。Tank を飛ばせない規則の下でも）。`mem_legalAssigns`（列挙は合法な答えだけ）。
+  - 新しい行動・フレームについて、`WF`・I1・`OwnerOk`・`StackInv`・`HandInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5 が成り立つ。`combatResolve_safeP`・`dealAll_safe`・`recallObj_safe` を `Safe` から組んだ。
+- **テスト**: `greedy` の例、Combat が Showdown の後に始まること、両方が致死で全滅して Control を失うこと、Tank が先で全員を選び終えて `assignDone` できること、`need`（致死に要る量）、Assault と Shield、Ganking、Combat Cleanup（Heal、Attacker の Recall、Defender が Control を保つ）。デモは seed 1 で、戦闘と Recall を含む 24 ターンの末に P1 が 8 対 1 で勝つ。
+- **ビューア**: 割り当て（Unit を選ぶ・確定）がログに出て、Contested と支配が Battlefield の列に出る。
+- **まだ無いもの**: Stun（CR 424）、Backline（CR 826。M8b で足すので、割り当ては順番の制約を足せる形にしてある）、Gear と他人の Base の Permanent の Recall（CR 323.6）、Combat の Staged（CR 323.8-323.9）と複数の Battlefield で同時に起きる Contested の順番、3 人以上、`Disarm`。I12（Cleanup と Combat の停止）と、I17 の全体の形。割り当ての「最後の Unit が残りを受ける」は、他に受け手がいないときの規則（CR 467.2.c.4）に対応するが、**割り当てた順を `greedy` で決める解釈**であり、公式の裁定と照合していない。
+
 ### M5a の実装の記録（2026-11-21）: Battlefield、Standard Move、Cleanup、Showdown、得点、勝利（戦闘を除く）
 
 - **M5 を 2 つに分けた**: M5a は戦闘を除く部分（この記録）、**M5c が戦闘**（Attacker / Defender、ダメージの割り当て、Recall、戦闘のキーワード）。M5b（マッチと大会の手続き）は名前を変えない。
@@ -400,7 +413,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M5: 移動・Showdown・戦闘・得点・Cleanup（CR 144, 190, 318-324, 341-348, 447-474）
 
-**M5a（戦闘を除く部分）は実装済み**（下の「M5a の実装の記録」）。残りの戦闘は **M5c** として続ける。以下は M5 全体の計画で、M5a で済んだ項目は M5a の記録を参照する。
+**M5a（戦闘を除く部分）と M5c（戦闘）は実装済み**（下の「M5a」「M5c の実装の記録」）。以下は M5 全体の計画で、M5a で済んだ項目は M5a の記録を参照する。
 
 **実装**
 - Standard Move（144）、Contested（190.3）。

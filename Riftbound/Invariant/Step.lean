@@ -38,9 +38,25 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact GameState.WF.congr hwf rfl rfl rfl rfl
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact GameState.WF.congr ((endShowdown_safeP s bf).wf hwf) rfl rfl rfl rfl
+    · have hs' : s' = (showdownEnd s bf rest).1 := by
+        rw [Option.some.inj h]
+      subst hs'
+      rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
+      · exact hwf.congr rfl rfl rfl rfl
+      · exact ((endShowdown_safeP s bf).wf hwf).congr rfl rfl rfl rfl
+  · rename_i bf att side acc done rest u hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i bf att side acc done rest hp hk
+    have hs' : s' = (assignDoneStep s bf att side acc done rest).1 := by
+      rw [Option.some.inj h]
+    subst hs'
+    rcases assignDoneStep_cases s bf att side acc done rest with
+        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+      rw [e]
+    · exact hwf.congr rfl rfl rfl rfl
+    · exact (hr.wf hwf).congr rfl rfl rfl rfl
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -230,9 +246,25 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact List.Perm.refl _
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact (endShowdown_safeP s bf).phys hwf
+    · have hs' : s' = (showdownEnd s bf rest).1 := by
+        rw [Option.some.inj h]
+      subst hs'
+      rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
+      · exact List.Perm.refl _
+      · exact (endShowdown_safeP s bf).phys hwf
+  · rename_i bf att side acc done rest u hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i bf att side acc done rest hp hk
+    have hs' : s' = (assignDoneStep s bf att side acc done rest).1 := by
+      rw [Option.some.inj h]
+    subst hs'
+    rcases assignDoneStep_cases s bf att side acc done rest with
+        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+      rw [e]
+    · exact List.Perm.refl _
+    · exact hr.phys hwf
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -358,7 +390,7 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · simp
   · cases f <;> cases kind <;> cases actor <;>
-      simp [Actor.isPlayer, mem_legalPlays, mem_legalMoves]
+      simp [Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

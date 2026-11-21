@@ -67,6 +67,12 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .chainPass p _ :: _, .pass => a.actor = .player p
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
+  -- the next Unit to be given lethal damage, Tank Units first (CR 467.2.c, 815)
+  | .assign bf _ side acc _ :: _, .assignPick u =>
+    a.actor = .player side ∧ s.pickOk bf side acc u = true
+  -- every Unit of the other side is named (CR 467.2.c)
+  | .assign bf _ side acc _ :: _, .assignDone =>
+    a.actor = .player side ∧ s.doneOk bf side acc = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by
