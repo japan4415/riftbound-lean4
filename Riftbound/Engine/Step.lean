@@ -51,6 +51,12 @@ def step (fuel : Nat) (s : GameState) (a : Action) :
     | none => .error (.internal "applyAction")
   else .error .illegal
 
+/-- The abilities of the player's Basic Runes that can be used (CR 164.2). -/
+def legalRunes (s : GameState) (p : PlayerId) : List Action :=
+  (s.zone (.player p .base)).flatMap (fun c =>
+    ([RuneAbility.exhaust, .recycle].filter (fun ab => runeUsable s p c ab)).map
+      (fun ab => ⟨.player p, .runeAbility c ab⟩))
+
 /-- The answers of the players to the open question. Chance answers are not listed. -/
 def legalFrameActions (s : GameState) : List Action :=
   match s.pending with
@@ -62,10 +68,10 @@ def legalFrameActions (s : GameState) : List Action :=
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
-    ⟨.player p, .pass⟩ :: ((s.zone (.player p .base)).flatMap (fun c =>
-      ([RuneAbility.exhaust, .recycle].filter (fun ab => runeUsable s p c ab)).map
-        (fun ab => ⟨.player p, .runeAbility c ab⟩)) ++ legalPlays s p ++ legalMoves s p)
-  | .chainPass p _ :: _ => [⟨.player p, .pass⟩]
+    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalPlays s p ++ legalMoves s p ++
+      legalActivates s p true)
+  | .chainPass p _ :: _ =>
+    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalReactions s p ++ legalActivates s p false)
   | .showdown _ q _ :: _ => [⟨.player q, .pass⟩]
   | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc
   | _ => []

@@ -181,13 +181,17 @@ meta def spellReady : Option (GameState × PlayerId × ObjId) :=
     | .error _ => false
   | none => false
 
--- the plays of a Spell are listed, and the passes of the Chain are the only answers then
+-- the plays of a Spell are listed; while the Chain holds it, the answers are the pass and the Rune
+-- abilities (Reactions): no plays of other cards, no moves (CR 311-313, 430, 813)
 #guard match spellReady with
   | some (s, p, c) =>
     (legalActions s).any (fun a => a.kind == .playCard c ⟨1, []⟩ []) &&
     (match step 100 s ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
-      | .ok (s1, _) => (legalActions s1).filter (fun a => a.kind != .concede) ==
-          [⟨.player p, .pass⟩]
+      | .ok (s1, _) =>
+        let answers := (legalActions s1).filter (fun a => a.kind != .concede)
+        answers.contains ⟨.player p, .pass⟩ &&
+        answers.all (fun a => a.actor == .player p &&
+          (a.kind == .pass || (match a.kind with | .runeAbility .. => true | _ => false)))
       | .error _ => false)
   | none => false
 

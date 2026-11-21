@@ -63,8 +63,21 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ PlayOk s p c pay ts
   -- a Standard Move of a Unit of the player's, in the Main Phase (CR 144)
   | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
-  -- the player with priority passes while the Chain holds a Spell (CR 311-313)
+  -- an activated ability of an object the player controls, paid for from the Rune Pool, when the
+  -- Chain is empty (CR 361, 363, 356-357)
+  | .priority p :: _, .activate src idx pay ts =>
+    a.actor = .player p ∧ activatable s p src idx pay ts true = true
+  -- the player with priority passes while the Chain holds an item (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
+  -- in answer to the Chain: a Spell with Reaction from the hand (CR 813)
+  | .chainPass p _ :: _, .playCard c pay ts =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ reactable s p c pay ts = true
+  -- in answer to the Chain: an activated ability with Reaction (CR 813)
+  | .chainPass p _ :: _, .activate src idx pay ts =>
+    a.actor = .player p ∧ activatable s p src idx pay ts false = true
+  -- in answer to the Chain: a Basic Rune adds a resource (CR 164.2, 430)
+  | .chainPass p _ :: _, .runeAbility c ab =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
   -- the next Unit to be given lethal damage, Tank Units first (CR 467.2.c, 815)

@@ -32,7 +32,7 @@ def cardDef? (s : GameState) (c : ObjId) : Option CardDef :=
     match o.kind with
     | .card _ id => s.cards.find? id
     | .token id => s.cards.find? id
-    | .chainAbility _ => none
+    | .chainAbility .. => none
   | none => none
 
 /-- The players of the game, in seat order. -/

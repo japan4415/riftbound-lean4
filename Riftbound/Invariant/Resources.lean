@@ -112,12 +112,18 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
 /-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
 theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
+    (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
     (hm : ∃ r, moveObj s item (.player o.owner .trash) = some r) :
     ∃ id', (finishItem s item).2 = [Event.moved item id' (.player o.owner .trash)] ∧
       id' ∈ (finishItem s item).1.zone (.player o.owner .trash) := by
   obtain ⟨⟨s2, id'⟩, hm⟩ := hm
   have hf : finishItem s item = (s2, [Event.moved item id' (.player o.owner .trash)]) := by
-    simp [finishItem, ho, hc, hm]
+    unfold finishItem
+    simp only [ho, hc, ite_true]
+    cases hkd : o.kind with
+    | card ph cd => simp [hm]
+    | token cd => simp [hm]
+    | chainAbility card idx src => exact absurd hkd (hk card idx src)
   refine ⟨id', by rw [hf], ?_⟩
   rw [hf]
   obtain ⟨src, d, hs, o', ho', hdd⟩ := moveObj_spec_dst hm

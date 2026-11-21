@@ -87,6 +87,18 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
   · exact ⟨_, rfl⟩
   · rename_i p n rest hp hk
     split <;> exact ⟨_, rfl⟩
+  · rename_i p n rest c pay ts hp hk
+    rw [hp, hk] at hl
+    exact castStep_isSome hwf hl.2.1 (reactable_spec.mp hl.2.2).1
+  · rename_i p n rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    exact activateStep_isSome hl.2
+  · rename_i p n tail c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2
+  · rename_i p rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    exact activateStep_isSome hl.2
   · exact ⟨_, rfl⟩
   · rename_i p rest i hp hk
     rw [hp, hk] at hl
@@ -193,6 +205,14 @@ theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact hown.congr rfl rfl)
+  · rename_i p n rest c pay ts hp hk
+    exact castStep_ownerOk hwf hown h
+  · rename_i p n rest src idx pay ts hp hk
+    exact activateStep_ownerOk hwf hown h
+  · rename_i p n tail c ab hp hk
+    exact applyRune_ownerOk hwf hown h
+  · rename_i p rest src idx pay ts hp hk
+    exact activateStep_ownerOk hwf hown h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

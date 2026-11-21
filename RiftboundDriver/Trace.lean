@@ -59,6 +59,9 @@ def actionJson (a : Action) : String :=
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
     | .assignPick u => [("unit", toString u.n)]
+    | .activate src idx _ ts =>
+      [("source", toString src.n), ("index", toString idx),
+       ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .mulliganPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
@@ -89,6 +92,9 @@ def eventJson : Event → String
       ("conquer", if conquer then "true" else "false")]
   | .recalled u => jobj [("t", jstr "recalled"), ("unit", toString u.n)]
   | .won p => jobj [("t", jstr "won"), ("player", toString p.n)]
+  | .activated p src idx =>
+    jobj [("t", jstr "activated"), ("player", toString p.n), ("source", toString src.n),
+      ("index", toString idx)]
 
 /-- All the zones to show, with the player count. -/
 def shownZones (n : Nat) : List Zone :=
@@ -106,9 +112,12 @@ def objJson (s : GameState) (id : ObjId) : String :=
     let card := match o.kind with
       | .card _ c => c.code
       | .token c => c.code
-      | .chainAbility _ => ""
-    jobj [("card", jstr card), ("owner", toString o.owner.n),
-      ("rune", match o.runeDomain with | some d => jstr (ctorName d) | none => "null")]
+      | .chainAbility c _ _ => c.code
+    let ability : List (String × String) := match o.kind with
+      | .chainAbility _ idx src => [("source", toString src.n), ("ability", toString idx)]
+      | _ => []
+    jobj ([("card", jstr card), ("owner", toString o.owner.n),
+      ("rune", match o.runeDomain with | some d => jstr (ctorName d) | none => "null")] ++ ability)
   | none => "null"
 
 /-- The Rune Pool of a player as JSON. -/
@@ -187,13 +196,21 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
       match a.kind with | .playCard _ _ _ => true | _ => false
     let isGo (a : Action) : Bool :=
       match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
+    let isUse (a : Action) : Bool :=
+      match a.kind with | .activate .. => true | _ => false
     match legal.find? isPlay with
+    | some a => some (a, r)
+    | none =>
+    match legal.find? isUse with
     | some a => some (a, r)
     | none =>
     match legal.find? isGo with
     | some a => some (a, r)
     | none =>
-    match legal.find? (isAb .exhaust) with
+    -- keep one Rune ready to answer with a Reaction on the other player's turn
+    let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)
+    let exhausts := legal.filter (isAb .exhaust)
+    match (if holdsReaction && exhausts.length ≤ 1 then none else exhausts.head?) with
     | some a => some (a, r)
     | none =>
       if s.turn % 2 == 0 && (s.poolOf p).fury == 0 then
@@ -201,6 +218,25 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
         | some a => some (a, r)
         | none => some (⟨.player p, .pass⟩, r)
       else some (⟨.player p, .pass⟩, r)
+  | .chainPass p _ :: _ =>
+    -- answer an item of the opponent: cast a Reaction if one can be paid for, or exhaust a Rune
+    -- when one is in the hand
+    let legal := legalActions s
+    let isPlay (a : Action) : Bool :=
+      match a.kind with | .playCard _ _ _ => true | _ => false
+    let isExhaust (a : Action) : Bool :=
+      match a.kind with | .runeAbility _ .exhaust => true | _ => false
+    let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)
+    if s.active == some p then some (⟨.player p, .pass⟩, r)
+    else
+      match legal.find? isPlay with
+      | some a => some (a, r)
+      | none =>
+        if holdsReaction && (s.poolOf p).energy == 0 then
+          match legal.find? isExhaust with
+          | some a => some (a, r)
+          | none => some (⟨.player p, .pass⟩, r)
+        else some (⟨.player p, .pass⟩, r)
   | _ => autoAnswer r s
 
 /-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps

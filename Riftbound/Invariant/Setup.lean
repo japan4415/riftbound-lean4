@@ -463,6 +463,22 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
         (by simp [Frame.isSetup])
+  · rename_i p n rest c pay ts hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := castStep_meta h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+  · rename_i p n rest src idx pay ts hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend, -⟩ := activateStep_meta h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+  · rename_i p n tail c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p rest src idx pay ts hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend, -⟩ := activateStep_meta h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -630,7 +646,11 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (finishItem_sameMeta s item).config])
-      (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
+      (new := Frame.cleanup :: afterItem (finishItem s item).1) rfl (fun g hg => by
+        rcases List.mem_cons.mp hg with rfl | hg
+        · rfl
+        · obtain ⟨q, rfl⟩ := afterItem_mem hg
+          rfl)
   · rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h

@@ -44,6 +44,8 @@ inductive Event where
   | recalled (unit : ObjId)
   /-- A player won the game (CR 323.1). -/
   | won (p : PlayerId)
+  /-- A player used an ability (CR 361): the ability at place `idx` of the card of `source`. -/
+  | activated (p : PlayerId) (source : ObjId) (idx : Nat)
 deriving DecidableEq, Repr
 
 end Riftbound

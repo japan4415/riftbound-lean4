@@ -62,6 +62,14 @@ theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
+  · rename_i p rest c pay ts hp hk
+    exact castStep_wf hwf h
+  · rename_i p rest src idx pay ts hp hk
+    exact activateStep_wf hwf h
+  · rename_i p n rest c ab hp hk
+    exact applyRune_wf hwf h
+  · rename_i p rest src idx pay ts hp hk
+    exact activateStep_wf hwf h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -270,6 +278,14 @@ theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact List.Perm.refl _)
+  · rename_i p n rest c pay ts hp hk
+    exact castStep_physIds hwf h
+  · rename_i p n rest src idx pay ts hp hk
+    exact activateStep_physIds hwf h
+  · rename_i p n tail c ab hp hk
+    exact applyRune_physIds hwf h
+  · rename_i p rest src idx pay ts hp hk
+    exact activateStep_physIds hwf h
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -390,7 +406,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · simp
   · cases f <;> cases kind <;> cases actor <;>
-      simp [Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns]
+      simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
+        mem_legalActivates, mem_legalReactions]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

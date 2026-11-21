@@ -16,6 +16,7 @@ public import RiftboundTest.IR
 public import RiftboundTest.Check
 public import RiftboundTest.Play
 public import RiftboundTest.Battlefield
+public import RiftboundTest.Chain
 
 /-!
 # RiftboundTest

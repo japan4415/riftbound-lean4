@@ -329,6 +329,57 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
       · have : Frame.setupHands ∈ rest := by simpa using hmem
         rw [hp]; exact List.mem_cons_of_mem _ this
       · exact ⟨Frame.chainPass p n, by rw [hp]; exact List.mem_cons_self, rfl⟩
+  · rename_i p n rest c pay ts hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := castStep_meta h
+    obtain ⟨-, -, -, -, hmain, -⟩ := castable_spec (reactable_spec.mp hl.2.2).1
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, hmain]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      simp only [List.mem_cons] at hm
+      rw [hp]
+      rcases hm with h1 | h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
+  · rename_i p n rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, hmain]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      simp only [List.mem_cons] at hm
+      rw [hp]
+      rcases hm with h1 | h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
+  · rename_i p n tail c ab hp hk
+    rw [hp, hk] at hl
+    have hmeta := applyRune_meta h
+    have hhand := applyRune_hand hwf hl.2.1 hl.2.2 h
+    exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
+      (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
+      (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
+  · rename_i p rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, hmain]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      simp only [List.mem_cons] at hm
+      rw [hp]
+      rcases hm with h1 | h1 | h1
+      · cases h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -523,6 +574,17 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
       · exact Or.inr rfl
       · exact Or.inr rfl
       · exact Or.inl h
+    · unfold itemFrames at h
+      split at h
+      · simp only [List.mem_cons] at h
+        rcases h with rfl | rfl | h
+        · exact Or.inr rfl
+        · exact Or.inr rfl
+        · exact Or.inl h
+      · simp only [List.mem_cons] at h
+        rcases h with rfl | h
+        · exact Or.inr rfl
+        · exact Or.inl h
     · simp only [List.mem_cons] at h
       rcases h with rfl | h
       · exact Or.inr rfl
@@ -775,7 +837,13 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     have hm := finishItem_sameMeta s item
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hm.config, hm.turnOrder, hm.phase, hm.result⟩ (fun hm' => ?_)
-    have hm2 : Frame.setupHands ∈ rest := by simpa using hm'
+    have hm2 : Frame.setupHands ∈ rest := by
+      simp only [List.mem_cons, List.mem_append] at hm'
+      rcases hm' with h1 | h1 | h1
+      · cases h1
+      · obtain ⟨q, hq⟩ := afterItem_mem h1
+        cases hq
+      · exact h1
     rw [hp]; exact List.mem_cons_of_mem _ hm2
   · -- Cleanup
     rename_i rest hp
