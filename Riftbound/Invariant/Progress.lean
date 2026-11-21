@@ -363,7 +363,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (hold_safeP s (s.active.getD ⟨0⟩)).result (fun hb => ?_)
+    refine hinv.of_next (beginStep_safeP s (s.active.getD ⟨0⟩)).result (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.cleanup]
   · rename_i rest hp

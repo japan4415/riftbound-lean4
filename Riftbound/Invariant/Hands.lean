@@ -801,13 +801,13 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hP := hold_safeP s (s.active.getD ⟨0⟩)
+    have hP := beginStep_safeP s (s.active.getD ⟨0⟩)
     refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-    show (hold s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
-      (allPlayers (hold s (s.active.getD ⟨0⟩)).1.playerCount)
-    rw [hP.turnOrder, show (hold s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
+    show (beginStep s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
+      (allPlayers (beginStep s (s.active.getD ⟨0⟩)).1.playerCount)
+    rw [hP.turnOrder, show (beginStep s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
       simp [GameState.playerCount, hP.config]]
     exact h1
   · -- Main
