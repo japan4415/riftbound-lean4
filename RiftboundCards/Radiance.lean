@@ -2680,8 +2680,11 @@ def RAD_123.meta : CardDef :=
     sets := [⟨"RAD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Protector's Shield: the effect is not written yet. -/
-def RAD_123 : CardDef := RAD_123.meta
+/-- Protector's Shield. -/
+def RAD_123 : CardDef :=
+  { RAD_123.meta with
+    grants := [.passive .always [.keyword .self { keyword := .tank }]],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-124
 /--

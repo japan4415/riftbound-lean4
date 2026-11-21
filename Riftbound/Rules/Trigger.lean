@@ -43,19 +43,32 @@ def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
   | .unlimited => true
   | .perTurn n => (s.obj? src).any (fun o => decide (o.used.count idx < n))
 
-/-- The triggered abilities of the object `src`, controlled by `p`, that fire on the event. -/
+/-- The triggered abilities at the places `lo` up to `hi` of the card `d`, as abilities of the
+object `src` controlled by `p`, that fire on the event. -/
+def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) (d : CardDef)
+    (lo hi : Nat) : List PendTrigger :=
+  (List.range (hi - lo)).filterMap (fun (j : Nat) =>
+    match d.allAbilities[lo + j]? with
+    | some (Ability.triggered t body lim) =>
+      if t.event == ev && trigOk t body && limitOk s src (lo + j) lim then
+        some { source := src, card := d.id, idx := lo + j, controller := p }
+      else none
+    | _ => none)
+
+/-- The triggered abilities of the object `src`, controlled by `p`, that fire on the event: those
+of its card, and those the Equipment attached to it gives it (CR 137). -/
 def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) :
     List PendTrigger :=
-  match s.cardDef? src with
-  | some d =>
-    (List.range d.abilities.length).filterMap (fun (i : Nat) =>
-      match d.abilities[i]? with
-      | some (Ability.triggered t body lim) =>
-        if t.event == ev && trigOk t body && limitOk s src i lim then
-          some { source := src, card := d.id, idx := i, controller := p }
-        else none
-      | _ => none)
-  | none => []
+  (match s.cardDef? src with
+    | some d => triggersAmong s src p ev d 0 d.fullAbilities.length
+    | none => []) ++
+  s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      if o.attached == some src then
+        triggersAmong s src p ev d d.fullAbilities.length d.allAbilities.length
+      else []
+    | _, _ => [])
 
 /-- The Units of the player at the Battlefield. -/
 def GameState.trigUnitsAt (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId :=
@@ -195,7 +208,7 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
 def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
   match s.cards.find? t.card with
   | some d =>
-    match d.abilities[t.idx]? with
+    match d.allAbilities[t.idx]? with
     | some (Ability.triggered _ body _) => body.choices
     | _ => []
   | none => []

@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7c の実装の記録（2026-11-22）: Equipment（Gear を Unit に付ける）
+
+- **Equipment のモデル**: Gear のオブジェクトが `attached`（付いている Unit）を持つ。付いている間、Unit は Equipment の Might の加算（`mightBonus`）と、Equipment が与える能力（`CardDef.grants`: 付けた Unit に与える文）を持つ。Board を離れると `attached` は消える（`moveObj`）。Unit がいなくなった Equipment は、Cleanup の手順（`detachStep`）で外れる。
+- **Equip キーワード**（`CardDef.keywordAbilities`）: `[Equip] コスト` は、「コストを払って、これを自分の Unit に付ける」起動型能力に展開される（`attach` プリミティブ）。キーワードが展開する能力は `fullAbilities`（能力 + キーワードの能力）に入り、起動の列挙・誘発・Passive の添字は、これを数える。付けた Unit に与える能力は `allAbilities` の末尾で、Chain の項目はカードの ID と通し番号を覚えている。
+- **付けた Unit が持つもの**: Might（`mightNow` が `equipBonus` を足す）、キーワード（`hasKw` と `kwAmount` が、与えられたキーワードを数える: Tank・Shield・Ganking・Assault・Deflect）、誘発能力（`triggersOf` が、付いている Equipment の `grants` も見る）。Equipment 自身は、その能力を持たない。
+- **転記**: 付けた Unit に与える文（`effectText`）を、Gear のカードについて書くようにした（キーワード 5 種と、既存の誘発の型）。**転記済みは 151 枚から 160 枚**。
+- **証明**: `applyAttach_safe`（付けるのは安全な変更）、`cleanupStep_safe`（外す手順を含めて）。既存の不変条件は形を変えずに保たれた。
+- **テスト**（`RiftboundTest/Gear.lean`）: Equip が合法（味方の Unit にだけ）、付くと Might・キーワード・誘発能力が Unit に付くこと（Equipment 自身には付かない）、Unit が消えると外れること、付け替え。
+- **ビューア・デモ**: 装備を持つ Unit の札に「装備」が出る。デモのデッキに、+2 Might と Tank を与える Training Sword が入る。
+- **まだ無いもの**: **Gold と Bomb（トークンの Gear）**（能力が書かれていない）、Quick-Draw（出したとき自動で付ける）、Deploy、「付けたターンだけ」の条件、他の Equipment の条件つきの文、Equipment を付ける先の制限。
+
 ### M7b の実装の記録（2026-11-22）: トークン
 
 - **トークンの定義**（`RiftboundCards/Tokens.lean`）: Unit のトークン 7 種（Recruit・Mech・Sprite・Bird・Sand Soldier・Shadow Clone・Tentacle）。印刷される Might と、トークンが持つキーワード（Sprite の Temporary、Bird の Deflect 1）を持つ。カードの定義と同じ `CardDB` に入り（`db`）、識別子は `TKN-<名前>`。**Gold と Bomb（Gear のトークン）は、能力が書かれていないので入れていない**。

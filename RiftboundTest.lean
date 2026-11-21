@@ -22,6 +22,7 @@ public import RiftboundTest.Might
 public import RiftboundTest.Passive
 public import RiftboundTest.Here
 public import RiftboundTest.Token
+public import RiftboundTest.Gear
 
 /-!
 # RiftboundTest

@@ -36,10 +36,11 @@ def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff)
 
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
-  match s.cardDef? u with
-  | some d => (d.keywords.filterMap (fun i =>
-      if i.keyword == k then (match i.arg with | .amount n => some n | _ => none) else none)).sum
-  | none => 0
+  let amount (i : KeywordInst) : Option Nat :=
+    if i.keyword == k then (match i.arg with | .amount n => some n | _ => none) else none
+  (match s.cardDef? u with
+    | some d => (d.keywords.filterMap amount).sum
+    | none => 0) + ((s.grantedKws u).filterMap amount).sum
 
 /-- The Might a Unit adds to the damage of its side: Assault X while attacking (CR 807), Shield X
 while defending (CR 814). -/

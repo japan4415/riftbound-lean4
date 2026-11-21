@@ -205,10 +205,34 @@ def parse_line(line: str, is_spell: bool):
     return None
 
 
+GRANT_KW = {"Tank": "tank", "Shield": "shield", "Ganking": "ganking", "Assault": "assault",
+            "Deflect": "deflect"}
+
+
+def parse_grant_line(line: str):
+    """装備が付けた Unit に与える文を、能力の式の列にする。書けなければ None。"""
+    s = strip_reminder(line)
+    m = re.match(r"^\[(?P<k>[A-Za-z]+)(?: (?P<n>\d+))?\]$", s)
+    if m and m.group("k") in GRANT_KW:
+        arg = f", arg := .amount {m.group('n')}" if m.group("n") else ""
+        return [f".passive .always [.keyword .self {{ keyword := .{GRANT_KW[m.group('k')]}{arg} }}]"]
+    r = parse_line(line, False)
+    if r is None or r[0] != "ability":
+        return None
+    return r[1]
+
+
 def transcribe(card: dict):
     """カードを、手書きの部分の欄（Lean の式の文字列）にする。書けなければ None。"""
+    grants: list[str] = []
     if card.get("effectText"):
-        return None  # 付けた Unit に与える文は、まだ書けない
+        if card["types"] != ["gear"]:
+            return None  # 付けた Unit に与える文を持つのは、Equipment だけ
+        for line in card["effectText"]:
+            g = parse_grant_line(line)
+            if g is None:
+                return None
+            grants += g
     is_spell = card["types"] == ["spell"]
     spell_parts: list[str] = []
     abilities: list[str] = []
@@ -233,6 +257,8 @@ def transcribe(card: dict):
         fields.append("spellEffect := some " + fmt_effect_def(choices, effects, "      "))
     if abilities:
         fields.append("abilities := [" + ",\n      ".join(abilities) + "]")
+    if grants:
+        fields.append("grants := [" + ",\n      ".join(grants) + "]")
     return fields
 
 

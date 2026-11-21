@@ -224,8 +224,11 @@ def SFD_009.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Serrated Dirk: the effect is not written yet. -/
-def SFD_009 : CardDef := SFD_009.meta
+/-- Serrated Dirk. -/
+def SFD_009 : CardDef :=
+  { SFD_009.meta with
+    grants := [.passive .always [.keyword .self { keyword := .assault, arg := .amount 2 }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-010
 /--
@@ -380,8 +383,16 @@ def SFD_016.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Recurve Bow: the effect is not written yet. -/
-def SFD_016 : CardDef := SFD_016.meta
+/-- Recurve Bow. -/
+def SFD_016 : CardDef :=
+  { SFD_016.meta with
+    grants := [.triggered (.onSelf .attack)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 2)))) .unlimited,
+      .triggered (.onSelf .defend)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-017
 /--
@@ -796,8 +807,11 @@ def SFD_033.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Doran's Shield: the effect is not written yet. -/
-def SFD_033 : CardDef := SFD_033.meta
+/-- Doran's Shield. -/
+def SFD_033 : CardDef :=
+  { SFD_033.meta with
+    grants := [.passive .always [.keyword .self { keyword := .tank }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-034
 /--
@@ -1524,8 +1538,11 @@ def SFD_064.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Cloth Armor: the effect is not written yet. -/
-def SFD_064 : CardDef := SFD_064.meta
+/-- Cloth Armor. -/
+def SFD_064 : CardDef :=
+  { SFD_064.meta with
+    grants := [.passive .always [.keyword .self { keyword := .shield, arg := .amount 2 }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-065
 /--
@@ -2415,8 +2432,11 @@ def SFD_102.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Hexdrinker: the effect is not written yet. -/
-def SFD_102 : CardDef := SFD_102.meta
+/-- Hexdrinker. -/
+def SFD_102 : CardDef :=
+  { SFD_102.meta with
+    grants := [.passive .always [.keyword .self { keyword := .deflect }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-103
 /--
@@ -3144,8 +3164,11 @@ def SFD_133.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Boots of Swiftness: the effect is not written yet. -/
-def SFD_133 : CardDef := SFD_133.meta
+/-- Boots of Swiftness. -/
+def SFD_133 : CardDef :=
+  { SFD_133.meta with
+    grants := [.passive .always [.keyword .self { keyword := .ganking }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-134
 /--
@@ -3609,8 +3632,13 @@ def SFD_153.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Eye of the Herald: the effect is not written yet. -/
-def SFD_153 : CardDef := SFD_153.meta
+/-- Eye of the Herald. -/
+def SFD_153 : CardDef :=
+  { SFD_153.meta with
+    grants := [.triggered (.onSelf .move)
+        (.of []
+        (.prim (.create "Recruit" (.const 1) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-154
 /--
@@ -4038,8 +4066,13 @@ def SFD_172.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sacred Shears: the effect is not written yet. -/
-def SFD_172 : CardDef := SFD_172.meta
+/-- Sacred Shears. -/
+def SFD_172 : CardDef :=
+  { SFD_172.meta with
+    grants := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-173
 /--

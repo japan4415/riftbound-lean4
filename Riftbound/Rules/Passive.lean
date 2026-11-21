@@ -37,7 +37,7 @@ holds. -/
 def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
   match s.obj? src, s.cardDef? src with
   | some o, some d =>
-    d.abilities.flatMap (fun ab =>
+    d.fullAbilities.flatMap (fun ab =>
       match ab with
       | Ability.passive cond mods =>
         if cond.eval s o.controller src {} == some true then mods else []
@@ -60,6 +60,13 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
     | _, _ => 0
   | _ => 0
 
+/-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
+def equipBonus (s : GameState) (id : ObjId) : Int :=
+  (s.inPlay.filterMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d => if o.attached == some id then d.mightBonus else none
+    | _, _ => none)).sum
+
 /-- What the passive abilities add to the Might of an object. -/
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
@@ -67,7 +74,7 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
-  (s.mightOf id).map (fun m => m + s.passiveMight id)
+  (s.mightOf id).map (fun m => m + s.equipBonus id + s.passiveMight id)
 
 end GameState
 

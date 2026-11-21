@@ -204,6 +204,46 @@ theorem createN_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready
   | 0, s => Safe.refl s
   | n + 1, s => (createOne_safe name p dest ready s).trans (createN_safe name p dest ready n _)
 
+/-- Attach an Equipment to a Unit (CR 137, 825). -/
+def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
+  (s.modObj g (fun o => { o with attached := some u }), [])
+
+/-- Attaching is a safe change. -/
+theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=
+  Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+
+/-- Attach the objects the first selector stands for to the one the second stands for. `none` if
+the second is not exactly one object, or either cannot be answered. -/
+def applyAttach (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (gears to : Selector) :
+    Option (GameState × List Event) :=
+  (gears.eval s p src env).bind (fun gs =>
+    (to.eval s p src env).bind (fun tos =>
+      match tos with
+      | [u] => some (applyEach (attachTo u) s gs)
+      | _ => none))
+
+/-- Attaching objects is a safe change. -/
+theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {gears to : Selector} {r : GameState × List Event}
+    (h : applyAttach s p src env gears to = some r) : Safe s r.1 := by
+  unfold applyAttach at h
+  cases hg : gears.eval s p src env with
+  | none => simp [hg] at h
+  | some gs =>
+    cases ht : to.eval s p src env with
+    | none => simp [hg, ht] at h
+    | some tos =>
+      simp only [hg, ht, Option.bind_some] at h
+      cases tos with
+      | nil => simp at h
+      | cons u rest =>
+        cases rest with
+        | nil =>
+          simp only [Option.some.injEq] at h
+          rw [← h]
+          exact applyEach_safe (fun s id => attachTo_safe u s id) gs s
+        | cons _ _ => simp at h
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -260,6 +300,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .banish sel => onSelected s p src env sel (sendObj .banishment)
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
+  | .attach gears to => applyAttach s p src env gears to
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -286,6 +327,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
+  | attach gears to => exact applyAttach_safe h
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/
@@ -394,7 +436,7 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
 def abilityBody (s : GameState) (card : CardId) (idx : Nat) : EffectList :=
   match s.cards.find? card with
   | some d =>
-    match d.abilities[idx]? with
+    match d.allAbilities[idx]? with
     | some (.activated _ _ b _) => .cons b.body .nil
     | some (.triggered _ b _) => .cons b.body .nil
     | _ => .nil
