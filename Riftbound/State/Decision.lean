@@ -45,6 +45,14 @@ inductive RuneAbility where
   | recycle
 deriving DecidableEq, Repr
 
+/-- Where a Standard Move goes (CR 144): to a Battlefield, or back to the player's Base. -/
+inductive MoveDest where
+  /-- To the Base of the Unit's controller. -/
+  | base
+  /-- To a Battlefield. -/
+  | battlefield (bf : ObjId)
+deriving DecidableEq, Repr
+
 /-- What an action says. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
@@ -70,6 +78,9 @@ inductive ActionKind where
   Energy and the Power are taken from the player's Rune Pool (CR 357, 445). `targets` are the
   objects chosen for the choices of a Spell, in the order of its declaration (CR 355). -/
   | playCard (card : ObjId) (pay : RunePool.Payment) (targets : List ObjId)
+  /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
+  back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
+  | standardMove (unit : ObjId) (dest : MoveDest)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -122,6 +133,12 @@ inductive Frame where
   | run (controller : PlayerId) (src : ObjId) (env : Env) (todo : EffectList)
   /-- Work: a Spell has resolved; put it in its owner's Trash (CR 359.3.d). -/
   | finishSpell (item : ObjId)
+  /-- Work: the Cleanup (CR 318-324): do the state-based steps one at a time until none applies,
+  then check for a winner and start a Showdown (CR 323). -/
+  | cleanup
+  /-- Choice: player `focus` has Focus in the Showdown at the Battlefield `bf` (CR 341-348);
+  `passes` players have passed in a row. When everyone has passed, the Showdown ends (CR 348). -/
+  | showdown (bf : ObjId) (focus : PlayerId) (passes : Nat)
 deriving DecidableEq, Repr
 
 /-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
@@ -130,6 +147,8 @@ def Frame.isPlay : Frame → Bool
   | .resolveChain => true
   | .run .. => true
   | .finishSpell _ => true
+  | .cleanup => true
+  | .showdown .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
@@ -141,6 +160,7 @@ def Frame.isWork : Frame → Bool
   | .resolveChain => true
   | .run .. => true
   | .finishSpell _ => true
+  | .cleanup => true
   | _ => false
 
 end Riftbound

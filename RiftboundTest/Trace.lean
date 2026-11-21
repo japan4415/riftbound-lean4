@@ -25,6 +25,14 @@ meta def traceOf (seed turns : Nat) : String :=
 #guard ((traceOf 1 2).splitOn "\"steps\":[").length == 2
 #guard (traceOf 1 4).length > (traceOf 1 2).length
 
+-- a demo game is played to the end: a player wins by points (CR 323.1)
+#guard (traceOf 1 40).contains '{' && ((traceOf 1 40).splitOn "\"won\":[").length == 2
+
+-- the trace shows the Battlefields and the Units at them
+#guard ((traceOf 1 12).splitOn "\"battlefields\":[{").length > 2
+#guard ((traceOf 1 12).splitOn "\"t\":\"moved_unit\"").length > 1
+#guard ((traceOf 1 12).splitOn "\"t\":\"scored\"").length > 1
+
 -- quotes and backslashes in a name are escaped
 #guard jstr "a\"b\\c" == "\"a\\\"b\\\\c\""
 #guard jarr ["1", "2"] == "[1,2]"

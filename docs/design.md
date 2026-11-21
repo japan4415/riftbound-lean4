@@ -339,6 +339,7 @@ def view (p : PlayerId) (s : GameState) : PlayerView
 | `beginTurn` / `phase ph` | 作業 | 次のターンを始める（手番のプレイヤーは手番順を回す: 118, 301）。各フェイズの処理（Awaken: Ready、Channel、Draw、Ending: Heal。314-317） |
 | `setupHands` / `draw p n` | 作業 | 開幕の手札とマリガンの並べ方（116-117）、`p` が `n` 枚引く（414）。空の山札に当たると Burn Out のフレームを積む（432） |
 | `chainPass p n` / `resolveChain` / `run` / `finishSpell` | 決定 / 作業 | 実装した最小版（M4b, M4c）: Chain に Spell が載っている間、`p` が Priority を持ち（`n` 人が続けてパスした）、全員がパスすると一番上を解決する。`run` は、残りの効果と、変数の束縛と選んだ対象（`Env.slots`）の環境を持つ（効果の解決途中）。`finishSpell` は、解決した Spell を Trash へ送る。対象の選択は `playCard` の行動に載る（`targets`）ので、選択のフレームは無い |
+| `cleanup` / `showdown bf focus n` | 作業 / 決定 | 実装した最小版（M5a）: `cleanup` は Cleanup の 1 手を進める（勝者の宣言、致死ダメージの Unit の kill、Control の喪失、Contested の整理、Showdown の開始）。状態が変わらなくなったら抜ける。`showdown` は Focus を持つプレイヤーが `pass` する（`n` 人が続けてパスした）。全員がパスすると、Control と Conquer が決まる |
 | `playProc` | 作業 | プレイ手順（354-359）の途中。どの段にいるか、それまでの選択、**巻き戻し用の盤面のスナップショット** |
 | `effectResume` | 作業 | 効果の解決途中。残りの効果と、変数の束縛環境 |
 | `cleanupResume` / `combatResume` | 作業 | Cleanup や戦闘の途中。どの手順にいるか。HOT FEPR のタスクも同じ形で持つ |

@@ -33,6 +33,15 @@ inductive Event where
   | readied (target : ObjId)
   /-- An object became exhausted (CR 415). -/
   | exhausted (target : ObjId)
+  /-- A Unit made a Standard Move (CR 144) to a Battlefield (`some`) or to its Base (`none`). -/
+  | standardMoved (unit : ObjId) (dest : Option ObjId)
+  /-- A player took control of a Battlefield (`some`), or the Battlefield lost its controller
+  (`none`) (CR 190.6). -/
+  | controlChanged (battlefield : ObjId) (controller : Option PlayerId)
+  /-- A player scored a Battlefield (CR 471): by Conquer (`true`) or by Hold (`false`). -/
+  | scored (p : PlayerId) (battlefield : ObjId) (conquer : Bool)
+  /-- A player won the game (CR 323.1). -/
+  | won (p : PlayerId)
 deriving DecidableEq, Repr
 
 end Riftbound

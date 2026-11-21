@@ -61,8 +61,12 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- Pool, in the Main Phase (CR 349-359)
   | .priority p :: _, .playCard c pay ts =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ PlayOk s p c pay ts
+  -- a Standard Move of a Unit of the player's, in the Main Phase (CR 144)
+  | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
   -- the player with priority passes while the Chain holds a Spell (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
+  -- the player with Focus passes in a Showdown (CR 347-348)
+  | .showdown _ q _ :: _, .pass => a.actor = .player q
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

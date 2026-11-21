@@ -34,6 +34,7 @@ theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
   | resolveChain => exact ⟨_, rfl⟩
   | run p src env todo => cases todo <;> exact ⟨_, rfl⟩
   | finishSpell item => exact ⟨_, rfl⟩
+  | cleanup => exact ⟨_, rfl⟩
   | _ => simp [Frame.isWork] at hf
 
 /-- The automatic work fails for no reason but the fuel. -/
@@ -73,6 +74,13 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
   · rename_i p _ c pay ts hp hk
     rw [hp, hk] at hl
     exact applyPlayCard_isSome hwf hl.2.1 hl.2.2
+  · rename_i p rest u d hp hk
+    rw [hp, hk] at hl
+    obtain ⟨r, hr⟩ := applyMove_isSome hwf hl.2
+    rw [hr]
+    exact ⟨_, rfl⟩
+  · rename_i bf q n rest hp hk
+    split <;> exact ⟨_, rfl⟩
   · rename_i p n rest hp hk
     split <;> exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
@@ -146,6 +154,20 @@ theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     exact hown.congr rfl rfl
   · exact applyRune_ownerOk hwf hown h
   · exact applyPlayCard_ownerOk hwf hown h
+  · rename_i p rest u d hp hk
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact ((applyMove_safe (es := es2) hm).own hwf hown).congr rfl rfl
+  · rename_i bf q n rest hp hk
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact ((endShowdown_safeP s bf).own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -224,7 +246,7 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hown.congr rfl rfl
+    exact (GameState.ownerOk_mapObjects hown (f := clearScored) (fun o => rfl)).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_mapObjects hown (fun o => readyOf_owner _ o)).congr rfl rfl
@@ -242,7 +264,7 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hown.congr rfl rfl
+    exact ((hold_safeP s _).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
@@ -270,6 +292,17 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_ownerOk hwf hown _).congr rfl rfl
+  · rename_i rest hp
+    have hs' : s' = (cleanupFrame s rest).1 := by
+      have := Option.some.inj h
+      rw [this]
+    subst hs'
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+      rw [e]
+    · exact hown.congr rfl rfl
+    · exact (hr.own hwf hown).congr rfl rfl
+    · exact hown.congr rfl rfl
+    · exact hown.congr rfl rfl
   · exact absurd h (by simp)
 
 /-- The automatic work keeps `OwnerOk`. -/

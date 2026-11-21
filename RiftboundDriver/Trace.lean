@@ -55,6 +55,9 @@ def actionJson (a : Action) : String :=
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
     | .playCard c _ ts =>
       [("card", toString c.n), ("targets", jarr (ts.map (fun t => toString t.n)))]
+    | .standardMove u d =>
+      [("unit", toString u.n),
+       ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
     | .mulliganPick c => [("card", toString c.n)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
@@ -74,6 +77,16 @@ def eventJson : Event → String
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
   | .readied o => jobj [("t", jstr "readied"), ("target", toString o.n)]
   | .exhausted o => jobj [("t", jstr "exhausted"), ("target", toString o.n)]
+  | .standardMoved u d =>
+    jobj [("t", jstr "moved_unit"), ("unit", toString u.n),
+      ("dest", match d with | some bf => toString bf.n | none => "null")]
+  | .controlChanged bf p =>
+    jobj [("t", jstr "control"), ("battlefield", toString bf.n),
+      ("player", match p with | some q => toString q.n | none => "null")]
+  | .scored p bf conquer =>
+    jobj [("t", jstr "scored"), ("player", toString p.n), ("battlefield", toString bf.n),
+      ("conquer", if conquer then "true" else "false")]
+  | .won p => jobj [("t", jstr "won"), ("player", toString p.n)]
 
 /-- All the zones to show, with the player count. -/
 def shownZones (n : Nat) : List Zone :=
@@ -117,6 +130,15 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     | some o => if 0 < o.damage then some (jarr [toString id.n, toString o.damage]) else none
     | none => none)
   let players := allPlayers s.playerCount
+  let bfs := s.battlefields.map (fun b =>
+    jobj [("id", toString b.n),
+      ("control", match s.controlOf b with | some p => toString p.n | none => "null"),
+      ("contested", match (s.obj? b).bind (·.contested) with
+        | some p => toString p.n | none => "null")])
+  let locs := (s.zone .battlefieldZone).filterMap (fun u =>
+    match (s.obj? u).bind (·.loc) with
+    | some b => some (jarr [toString u.n, toString b.n])
+    | none => none)
   let json := jobj [
     ("turn", toString s.turn), ("phase", jstr (ctorName s.phase)),
     ("active", match s.active with | some p => toString p.n | none => "null"),
@@ -128,6 +150,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("points", jarr (players.map (fun p => toString (s.pointsOf p)))),
     ("pools", jarr (players.map (fun p => poolJson (s.poolOf p)))),
     ("zones", jobj zones),
+    ("battlefields", jarr bfs), ("at", jarr locs),
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged)]
@@ -149,9 +172,9 @@ def cardJson (c : CardDef) : String :=
     ("might", match c.might with | some m => toString m | none => "null")]
 
 /-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise
-exhaust the Runes that are ready, recycle one Rune on even turns when no Power is in the Pool, and
-pass. Everything else is answered as `autoAnswer` does. Only a legal answer is chosen: the list of
-`legalActions` is searched. -/
+send a Unit to a Battlefield, exhaust the Runes that are ready, recycle one Rune on even turns
+when no Power is in the Pool, and pass. Everything else is answered as `autoAnswer` does. Only a
+legal answer is chosen: the list of `legalActions` is searched. -/
 def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   match s.pending with
   | .priority p :: _ =>
@@ -160,7 +183,12 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
     let isPlay (a : Action) : Bool :=
       match a.kind with | .playCard _ _ _ => true | _ => false
+    let isGo (a : Action) : Bool :=
+      match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
     match legal.find? isPlay with
+    | some a => some (a, r)
+    | none =>
+    match legal.find? isGo with
     | some a => some (a, r)
     | none =>
     match legal.find? (isAb .exhaust) with
