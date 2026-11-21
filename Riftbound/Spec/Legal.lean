@@ -81,6 +81,11 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- one of the abilities that wait goes on the Chain, with its targets (CR 383.3.d, 355)
   | .triggerOrder p t more _ :: _, .putTrigger i ts =>
     a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => trigLegal s g ts)) = true
+  -- an Add ability resolves at once, with the Chain empty or not (CR 430)
+  | .priority p :: _, .manaAbility src idx =>
+    a.actor = .player p ∧ manaReady s p src idx = true
+  | .chainPass p _ :: _, .manaAbility src idx =>
+    a.actor = .player p ∧ manaReady s p src idx = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
   -- the next Unit to be given lethal damage, Tank Units first (CR 467.2.c, 815)

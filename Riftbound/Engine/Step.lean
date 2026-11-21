@@ -102,10 +102,11 @@ def legalFrameActions (s : GameState) : List Action :=
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
-    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalPlays s p ++ legalMoves s p ++
-      legalActivates s p true)
+    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
+      legalMoves s p ++ legalActivates s p true)
   | .chainPass p _ :: _ =>
-    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalReactions s p ++ legalActivates s p false)
+    ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
+      legalActivates s p false)
   | .triggerOrder p t more _ :: _ => legalPuts s p (t :: more)
   | .showdown _ q _ :: _ => [⟨.player q, .pass⟩]
   | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc

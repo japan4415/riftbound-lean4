@@ -72,6 +72,10 @@ def demoCards : List CardDef :=
     { id := ⟨"E0"⟩, name := "Scout", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 1,
       abilities := [.passive .always [.entersReady .self]] },
+    { id := ⟨"G1"⟩, name := "Battery", types := [.gear], domains := [.fury],
+      cost := some ⟨1, []⟩,
+      abilities := [.activated [.exhaustSelf] .reaction
+        (EffectDef.of [] (.prim (.addEnergy .you (.const 1) none))) .unlimited] },
     { id := ⟨"S5"⟩, name := "Chill", types := [.spell], domains := [.fury],
       cost := some ⟨1, []⟩,
       spellEffect := some (EffectDef.of
@@ -101,15 +105,15 @@ def demoDB : CardDB := { cards := demoCards }
 
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
 that play a Recruit token, give the other friendly Units +1 Might, deal 1 damage to an enemy Unit,
-buff themselves, draw when they die, and ping with an activated ability; Spells that stun an enemy
-Unit, give a friendly Unit +3 Might this turn, draw a card, deal 2 damage to an enemy Unit, and
-deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy Unit. Then 12 Runes
-and 3 Battlefields. -/
+buff themselves, and ping with an activated ability; a Gear that adds 1 Energy (Add); Spells that
+stun an enemy Unit, give a friendly Unit +3 Might this turn, draw a card, deal 2 damage to an
+enemy Unit, and deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy
+Unit. Then 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
       List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"S5"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
-      List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"U0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
+      List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"U0"⟩ ++ List.replicate 3 ⟨"G1"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++
       List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++
       List.replicate 3 ⟨"S3"⟩,

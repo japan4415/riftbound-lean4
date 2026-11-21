@@ -392,6 +392,18 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases hm' with h1 | h1
     · cases h1
     · rw [hp]; exact List.mem_cons_of_mem _ h1
+  · rename_i p tail src idx hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, hres, hpend, hhand⟩ := applyMana_meta h
+    exact hinv.of_same ⟨hcfg, hto, hphase, hres⟩ (fun r => congrArg List.length (hhand r))
+      (fun q _ => by rw [hpend]) (fun hm => by rw [hpend] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hpend] at hf; exact hf, hpf⟩)
+  · rename_i p n tail src idx hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, hres, hpend, hhand⟩ := applyMana_meta h
+    exact hinv.of_same ⟨hcfg, hto, hphase, hres⟩ (fun r => congrArg List.length (hhand r))
+      (fun q _ => by rw [hpend]) (fun hm => by rw [hpend] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hpend] at hf; exact hf, hpf⟩)
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

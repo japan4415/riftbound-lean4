@@ -56,6 +56,30 @@ def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : L
   { kind := .chainAbility card idx src, owner := p, controller := p, timestamp := ⟨0⟩,
     targets := ts }
 
+/-- What an Add ability adds. -/
+inductive ManaKind where
+  /-- Energy. -/
+  | energy (n : Nat)
+  /-- Power of a domain. -/
+  | power (d : Domain) (n : Nat)
+  /-- Power of any domain. -/
+  | any (n : Nat)
+deriving DecidableEq, Repr
+
+/-- The Pool after adding. -/
+def ManaKind.add : ManaKind → RunePool → RunePool
+  | .energy n, p => p.addEnergy n
+  | .power d n, p => p.addPower d n
+  | .any n, p => p.addAny n
+
+/-- The effect is an Add of a fixed amount, to the player, with no restriction. -/
+def manaKind (body : EffectDef) : Option ManaKind :=
+  match body.choices, body.body with
+  | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
+  | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
+  | [], .prim (.addPower .you (.const n) none none) => some (.any n)
+  | _, _ => none
+
 /-- The player can use the activated ability at place `idx` of the object `src`, with the payment
 and the targets, in the Main Phase (CR 361, 363, 355-357). `open_` is whether the Chain is empty:
 an ability that is not a Reaction can be used only then (CR 312, 813). -/
@@ -69,15 +93,17 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
         | some (.activated costs speed body limit) =>
           match costPlan costs with
           | some (ex, pc) =>
-            (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
-              (match pc with
-                | some c => c.paidBy d.domains pay
-                | none => pay == ⟨0, []⟩) &&
-              ((s.poolOf p).spend pay).isSome &&
-              (match limit with
-                | .unlimited => true
-                | .perTurn n => decide (o.used.count idx < n)) &&
-              targetsOk s p src body.choices ts
+            if (manaKind body).isSome then false
+            else
+              (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
+                (match pc with
+                  | some c => c.paidBy d.domains pay
+                  | none => pay == ⟨0, []⟩) &&
+                ((s.poolOf p).spend pay).isSome &&
+                (match limit with
+                  | .unlimited => true
+                  | .perTurn n => decide (o.used.count idx < n)) &&
+                targetsOk s p src body.choices ts
           | none => false
         | _ => false
     | _, _ => false
@@ -214,7 +240,10 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
-            simp only [hp, Bool.and_eq_true] at h
+            simp only [hp] at h
+            by_cases hm : (manaKind body).isSome = true
+            · simp [hm] at h
+            simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hpool := h.1.1.2
             cases hs : (s.poolOf p).spend pay with
             | none => rw [hs] at hpool; simp at hpool
@@ -266,7 +295,10 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
-            simp only [hp, Bool.and_eq_true] at h
+            simp only [hp] at h
+            by_cases hm : (manaKind body).isSome = true
+            · simp [hm] at h
+            simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hex : costExhausts costs = ex := by simp [costExhausts, hp]
             refine ⟨d, costs, sp, body, lim, pc, hph, huse, rfl, ha, by rw [hex]; exact hp, ?_,
               h.2, o, rfl, hctl⟩

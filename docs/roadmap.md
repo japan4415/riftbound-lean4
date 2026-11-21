@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7e の実装の記録（2026-11-22）: Add 能力と起動型能力の転記
+
+- **何を数えたか**: 「X: 効果」の形（起動型能力）は 75 行ほどで、費用は Exhaust（37）、Energy + Exhaust（13）、Spend N XP（7）が多い。エンジンは Exhaust と Energy / Power の費用を知っているので、転記の型を足すだけで書ける。「[Add]」は 36 行あり、起動型能力のうち最も多い失敗の理由だった。
+- **Add 能力**（`Rules/Mana.lean`）: Energy か Power を Rune Pool に足す能力は、Chain を通らず、すぐ解決する（CR 430）。行動 `manaAbility source idx`（`manaReady` が合法の条件、`legalManas` が列挙、`mem_legalManas`）。起動型能力としては `activatable` が断る（二重に合法にならない）。Priority を持つとき、Chain が空でも空でなくても使える（Reaction）。対象は、Exhaust だけを払って、固定量を自分に足す能力。「Use only to play spells」のような使い道の制限つきは、まだ書かない。
+- **任意の領域の Power**（`RunePool.any`）: `[Add] :rb_rune_rainbow:` は、どの領域の Power の記号も払える Power として持つ。**モデルの決定**: その領域の Power が無いときに使う（`takePower`）。公式の裁定とは照合していない。
+- **転記**: 起動型能力（費用は Exhaust・Energy・Power、速さは通常・Action・Reaction）、`Kill this`、`Move … to your base`（`move` プリミティブ）、`[Add] …`。**転記済みは 166 枚から 182 枚**。
+- **証明**: `applyMana_wf` ほか（Add は `Safe` な変更に Rune Pool の変更を足したもの）。`RunePool` の合計の補題（`total_takePower`）は、`any` を含めて証明した。既存の不変条件は、`runeAbility` の腕と同じ形の腕を足して保たれた。
+- **テスト**（`RiftboundTest/Mana.lean`）: Add は Chain の起動型能力ではないこと、使うと Exhaust して資源が増え Chain は空のままであること、Power（領域、任意の領域）と、任意の Power で別の領域の記号を払えること、Chain に項目があるときも使えること。
+- **ビューア・デモ**: Add の行動がログに出て、Pool に「任意」の欄が出る。デモのデッキに、Energy を 1 足す Gear の Battery が入る。
+- **まだ無いもの**: `Spend N XP`・`Spend a buff`・`Discard`・`Recycle me` などの費用、使い道の制限つきの Add（"Use only to play spells"）、量が決まらない Add（"that much"）、Energy と Power を両方足す Add。
+
 ### M7d の実装の記録（2026-11-22）: Buff・Stun・XP
 
 - **Buff**（CR 701）: Unit が buff を持つ（`buffed`）と +1 Might（`mightNow`）。すでに持っていれば変わらない。Board を離れると消える。

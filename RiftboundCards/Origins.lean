@@ -925,8 +925,13 @@ def OGN_040.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Rage: the effect is not written yet. -/
-def OGN_040 : CardDef := OGN_040.meta
+/-- Seal of Rage. -/
+def OGN_040 : CardDef :=
+  { OGN_040.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .fury) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-041
 /--
@@ -1836,8 +1841,13 @@ def OGN_081.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Focus: the effect is not written yet. -/
-def OGN_081 : CardDef := OGN_081.meta
+/-- Seal of Focus. -/
+def OGN_081 : CardDef :=
+  { OGN_081.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .calm) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-082
 /--
@@ -2239,8 +2249,13 @@ def OGN_098.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Energy Conduit: the effect is not written yet. -/
-def OGN_098 : CardDef := OGN_098.meta
+/-- Energy Conduit. -/
+def OGN_098 : CardDef :=
+  { OGN_098.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addEnergy .you (.const 1) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-099
 /--
@@ -2727,8 +2742,13 @@ def OGN_120.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Insight: the effect is not written yet. -/
-def OGN_120 : CardDef := OGN_120.meta
+/-- Seal of Insight. -/
+def OGN_120 : CardDef :=
+  { OGN_120.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .mind) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-121
 /--
@@ -3682,8 +3702,13 @@ def OGN_163.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Strength: the effect is not written yet. -/
-def OGN_163 : CardDef := OGN_163.meta
+/-- Seal of Strength. -/
+def OGN_163 : CardDef :=
+  { OGN_163.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .body) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-164
 /--
@@ -4136,8 +4161,13 @@ def OGN_184.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Syren: the effect is not written yet. -/
-def OGN_184 : CardDef := OGN_184.meta
+/-- The Syren. -/
+def OGN_184 : CardDef :=
+  { OGN_184.meta with
+    abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
+        (.of [.targetOf .one .friendly .atBattlefield [.ofType .unit]]
+        (.prim (.move (.slot 0) .base))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-185
 /--
@@ -4581,8 +4611,13 @@ def OGN_204.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Discord: the effect is not written yet. -/
-def OGN_204 : CardDef := OGN_204.meta
+/-- Seal of Discord. -/
+def OGN_204 : CardDef :=
+  { OGN_204.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .chaos) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-205
 /--
@@ -5516,8 +5551,13 @@ def OGN_245.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seal of Unity: the effect is not written yet. -/
-def OGN_245 : CardDef := OGN_245.meta
+/-- Seal of Unity. -/
+def OGN_245 : CardDef :=
+  { OGN_245.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+        (.of []
+        (.prim (.addPower .you (.const 1) (some .order) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-246
 /--
@@ -5792,8 +5832,13 @@ def OGN_257.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Blind Monk: the effect is not written yet. -/
-def OGN_257 : CardDef := OGN_257.meta
+/-- Blind Monk. -/
+def OGN_257 : CardDef :=
+  { OGN_257.meta with
+    abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.buff (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-258
 /--
@@ -5962,8 +6007,13 @@ def OGN_265.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Herald of the Arcane: the effect is not written yet. -/
-def OGN_265 : CardDef := OGN_265.meta
+/-- Herald of the Arcane. -/
+def OGN_265 : CardDef :=
+  { OGN_265.meta with
+    abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
+        (.of []
+        (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-266
 /--

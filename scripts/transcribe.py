@@ -83,6 +83,18 @@ def play_token(m, slot):
     return [], f'.prim (.create "{name}" (.const {COUNT[m.group("cnt")]}) {place} {ready})'
 
 
+def add_power(m, slot):
+    """`[Add] :rb_rune_x:` 1 つか 2 つ（同じ領域のもの）→ Power を足す。"""
+    syms = re.findall(r":rb_rune_([a-z]+):", m.group("syms"))
+    if len(set(syms)) != 1:
+        return None
+    d = syms[0]
+    dom = "none" if d == "rainbow" else (f"(some .{d})" if d in DOMAINS else None)
+    if dom is None:
+        return None
+    return [], f".prim (.addPower .you (.const {len(syms)}) {dom} none)"
+
+
 SENTENCES = [
     (re.compile(r"^Play (?P<cnt>an?|two|three|four) (?P<ready>ready )?(?:\d+ :rb_might: )?"
                 r"(?P<name>[A-Z][A-Za-z]*(?: [A-Z][a-z]+)?) unit tokens?(?: with \[[A-Za-z]+\])?"
@@ -97,6 +109,13 @@ SENTENCES = [
     (re.compile(r"^Kill (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.kill ({s}))")),
     (re.compile(r"^Ready (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.ready ({s}))")),
     (re.compile(r"^\[Stun\] (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.stun ({s}))")),
+    (re.compile(r"^\[Add\] :rb_energy_(?P<n>\d+):\.$"),
+     lambda m, slot: ([], f".prim (.addEnergy .you (.const {m.group('n')}) none)")),
+    (re.compile(r"^\[Add\] (?P<syms>(?::rb_rune_[a-z]+:)+)\.$"), add_power),
+    (re.compile(r"^Kill this\.$"), lambda m, slot: ([], ".prim (.kill .self)")),
+    (re.compile(r"^Move me to your base\.$"), lambda m, slot: ([], ".prim (.move .self .base)")),
+    (re.compile(r"^Move (?P<np>.+) to your base\.$"),
+     target_sentence(lambda m, s: f".prim (.move ({s}) .base)")),
     (re.compile(r"^Buff me\.$"), lambda m, slot: ([], ".prim (.buff .self)")),
     (re.compile(r"^Buff (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.buff ({s}))")),
     (re.compile(r"^Gain (?P<n>\d+) XP\.$"),
@@ -170,6 +189,61 @@ TRIGGERS = [
 ]
 
 
+DOMAINS = {"fury", "calm", "mind", "body", "chaos", "order"}
+ACTIVATED = re.compile(r"^(?P<speed>\[Reaction\]\[>\] |\[Action\]\[>\] )?"
+                       r"(?P<cost>:rb_[a-z_0-9]+:(?:(?::rb_[a-z_0-9]+:|, )*:rb_[a-z_0-9]+:)?): "
+                       r"(?P<rest>.+)$")
+
+
+def parse_cost(text: str):
+    """`:rb_energy_1::rb_rune_fury:, :rb_exhaust:` → 費用の式の列。書けなければ None。"""
+    costs: list[str] = []
+    pay: tuple[int, list[str]] | None = None
+    for group in text.split(", "):
+        syms = re.findall(r":rb_([a-z_0-9]+):", group)
+        if "".join(f":rb_{x}:" for x in syms) != group:
+            return None
+        if syms == ["exhaust"]:
+            costs.append(".exhaustSelf")
+            continue
+        if pay is not None:
+            return None
+        energy, power = 0, []
+        for x in syms:
+            if x.startswith("energy_"):
+                energy += int(x[len("energy_"):])
+            elif x == "rune_rainbow":
+                power.append(".any")
+            elif x.startswith("rune_") and x[len("rune_"):] in DOMAINS:
+                power.append(f".domain .{x[len('rune_'):]}")
+            else:
+                return None
+        pay = (energy, power)
+    if pay is not None:
+        costs.append(f".pay ⟨{pay[0]}, [{', '.join(pay[1])}]⟩")
+    return costs
+
+
+def parse_activated(s: str):
+    """起動型能力の 1 行を、能力の式にする。書けなければ None。"""
+    m = ACTIVATED.match(s)
+    if not m:
+        return None
+    costs = parse_cost(m.group("cost"))
+    if not costs:
+        return None
+    rest = m.group("rest")
+    speed = {"[Reaction][>] ": ".reaction", "[Action][>] ": ".action", None: ".normal"}[m.group("speed")]
+    if rest.startswith("[Reaction] — "):
+        rest, speed = rest[len("[Reaction] — "):], ".reaction"
+    r = parse_effect(rest)
+    if r is None:
+        return None
+    choices, effects = r
+    return (f".activated [{', '.join(costs)}] {speed}\n        "
+            f"{fmt_effect_def(choices, effects, '        ')} .unlimited")
+
+
 def parse_line(line: str, is_spell: bool):
     """1 行を (種類, 式) にする。種類は 'spell' か 'ability' か 'keyword'。合わなければ None。"""
     s = strip_reminder(line)
@@ -178,6 +252,9 @@ def parse_line(line: str, is_spell: bool):
     if is_spell:
         r = parse_effect(s)
         return ("spell", r) if r else None
+    act = parse_activated(s)
+    if act:
+        return "ability", [act]
     m = re.match(r"^\[Level (\d+)\]\[>\] I have \+(\d+) :rb_might:\.$", s)
     if m:
         return "ability", [f".passive (.cmp .ge .xp (.const {m.group(1)}))"

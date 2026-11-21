@@ -95,6 +95,9 @@ inductive ActionKind where
   for its choices (CR 383.3.d, 355). An ability with no legal pick is removed with no objects
   (CR 355). -/
   | putTrigger (idx : Nat) (targets : List ObjId)
+  /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
+  (CR 430, 164.2). -/
+  | manaAbility (source : ObjId) (idx : Nat)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
