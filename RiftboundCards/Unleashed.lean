@@ -797,8 +797,13 @@ def UNL_033.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Frisky Hunter: the effect is not written yet. -/
-def UNL_033 : CardDef := UNL_033.meta
+/-- Frisky Hunter. -/
+def UNL_033 : CardDef :=
+  { UNL_033.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Bird" (.const 1) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-034
 /--
@@ -1145,8 +1150,13 @@ def UNL_048.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Trevor Snoozebottom: the effect is not written yet. -/
-def UNL_048 : CardDef := UNL_048.meta
+/-- Trevor Snoozebottom. -/
+def UNL_048 : CardDef :=
+  { UNL_048.meta with
+    abilities := [.triggered (.onSelf .hold)
+        (.of []
+        (.prim (.create "Sprite" (.const 1) .here true))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-049
 /--
@@ -1596,8 +1606,13 @@ def UNL_067.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Ruined Rex: the effect is not written yet. -/
-def UNL_067 : CardDef := UNL_067.meta
+/-- Ruined Rex. -/
+def UNL_067 : CardDef :=
+  { UNL_067.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 4)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-068
 /--
@@ -1637,8 +1652,12 @@ def UNL_069.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Sprite Burst: the effect is not written yet. -/
-def UNL_069 : CardDef := UNL_069.meta
+/-- Sprite Burst. -/
+def UNL_069 : CardDef :=
+  { UNL_069.meta with
+    spellEffect := some (.of []
+      (.prim (.create "Sprite" (.const 2) .atBase true))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-070
 /--
@@ -3553,8 +3572,13 @@ def UNL_153.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Carrion Dredger: the effect is not written yet. -/
-def UNL_153 : CardDef := UNL_153.meta
+/-- Carrion Dredger. -/
+def UNL_153 : CardDef :=
+  { UNL_153.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-154
 /--

@@ -127,7 +127,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .play s => Selector.ok c s
   | .hide s => Selector.ok c s
   | .reveal s => Selector.ok c s
-  | .create _ n _ => Amount.ok c n
+  | .create _ n _ _ => Amount.ok c n
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
   | .gainXP p n => p.ok c && Amount.ok c n

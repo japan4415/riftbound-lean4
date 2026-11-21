@@ -103,6 +103,7 @@ def Prim.understood : Prim → Bool
   | .returnToHand s => s.understood
   | .ready s => s.understood
   | .exhaust s => s.understood
+  | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | _ => false
 
 mutual

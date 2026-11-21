@@ -492,8 +492,13 @@ def SFD_021.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ferrous Forerunner: the effect is not written yet. -/
-def SFD_021 : CardDef := SFD_021.meta
+/-- Ferrous Forerunner. -/
+def SFD_021 : CardDef :=
+  { SFD_021.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.create "Mech" (.const 2) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-022
 /--
@@ -739,8 +744,12 @@ def SFD_031.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Desert's Call: the effect is not written yet. -/
-def SFD_031 : CardDef := SFD_031.meta
+/-- Desert's Call. -/
+def SFD_031 : CardDef :=
+  { SFD_031.meta with
+    spellEffect := some (.of []
+      (.prim (.create "Sand Soldier" (.const 1) .atBase false))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-032
 /--
@@ -3688,8 +3697,13 @@ def SFD_157.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Royal Guard: the effect is not written yet. -/
-def SFD_157 : CardDef := SFD_157.meta
+/-- Royal Guard. -/
+def SFD_157 : CardDef :=
+  { SFD_157.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Sand Soldier" (.const 1) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-158
 /--

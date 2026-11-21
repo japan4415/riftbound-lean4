@@ -2144,8 +2144,12 @@ def OGN_094.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sprite Call: the effect is not written yet. -/
-def OGN_094 : CardDef := OGN_094.meta
+/-- Sprite Call. -/
+def OGN_094 : CardDef :=
+  { OGN_094.meta with
+    spellEffect := some (.of []
+      (.prim (.create "Sprite" (.const 1) .atBase true))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-095
 /--
@@ -2400,8 +2404,13 @@ def OGN_106.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sprite Mother: the effect is not written yet. -/
-def OGN_106 : CardDef := OGN_106.meta
+/-- Sprite Mother. -/
+def OGN_106 : CardDef :=
+  { OGN_106.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Sprite" (.const 1) .here true))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-107
 /--
@@ -4725,8 +4734,13 @@ def OGN_211.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Faithful Manufactor: the effect is not written yet. -/
-def OGN_211 : CardDef := OGN_211.meta
+/-- Faithful Manufactor. -/
+def OGN_211 : CardDef :=
+  { OGN_211.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.create "Recruit" (.const 1) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-212
 /--
@@ -5358,8 +5372,13 @@ def OGN_239.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Machine Evangel: the effect is not written yet. -/
-def OGN_239 : CardDef := OGN_239.meta
+/-- Machine Evangel. -/
+def OGN_239 : CardDef :=
+  { OGN_239.meta with
+    abilities := [.triggered (.onSelf .die)
+        (.of []
+        (.prim (.create "Recruit" (.const 3) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-240
 /--

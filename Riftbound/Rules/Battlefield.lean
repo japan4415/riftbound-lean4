@@ -288,7 +288,7 @@ end GameState
 2. A Battlefield loses its controller who has no Unit there (CR 323.5).
 3. A Battlefield stops being Contested by a player with no Unit there (CR 323.10).
 4. A Unit at an uncontrolled Battlefield makes it Contested (CR 323.10.a). -/
-def cleanupStep (s : GameState) : Option (GameState × List Event) :=
+def cleanupStep0 (s : GameState) : Option (GameState × List Event) :=
   match s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
   | some u => some (killObj s u)
   | none =>
@@ -302,6 +302,26 @@ def cleanupStep (s : GameState) : Option (GameState × List Event) :=
         match s.battlefields.findSome? (fun b => (s.newContest b).map (fun q => (b, q))) with
         | some (b, q) => some (s.modObj b (fun o => { o with contested := some q }), [])
         | none => none
+
+/-- A token in a Non-Board zone: it ceases to exist there (CR 183). -/
+def GameState.offBoardToken (s : GameState) : Option ObjId :=
+  (allZones s.playerCount).findSome? (fun z =>
+    if z.isBoard then none
+    else (s.zone z).find? (fun id =>
+      (s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false)))
+
+/-- The step of the Cleanup for a token that is off the Board: it is removed (CR 183). -/
+def tokenStep (s : GameState) : Option (GameState × List Event) :=
+  match s.offBoardToken with
+  | some id => (removeObj s id).map (fun s' => (s', []))
+  | none => none
+
+/-- One step of the Cleanup (CR 323): a token off the Board ceases to exist (CR 183), or else the
+first step of `cleanupStep0`. `none` if none applies. -/
+def cleanupStep (s : GameState) : Option (GameState × List Event) :=
+  match tokenStep s with
+  | some r => some r
+  | none => cleanupStep0 s
 
 /-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
 player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
@@ -441,10 +461,33 @@ theorem applyMove_safe {s s' : GameState} {p : PlayerId} {u : ObjId} {d : MoveDe
         Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
       exact (h1.trans h2).trans (contestBy_safe p bf _)
 
-/-- A step of the Cleanup is a safe change. -/
-theorem cleanupStep_safe {s s' : GameState} {es : List Event}
-    (h : cleanupStep s = some (s', es)) : Safe s s' := by
+/-- When no step applies, the steps of `cleanupStep0` do not apply either. -/
+theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :
+    cleanupStep0 s = none := by
   unfold cleanupStep at h
+  split at h
+  · simp at h
+  · exact h
+
+/-- The token that is found is a token, which has no physical card. -/
+theorem offBoardToken_spec {s : GameState} {id : ObjId} (h : s.offBoardToken = some id) :
+    ∃ o, s.obj? id = some o ∧ o.kind.phys? = none := by
+  unfold GameState.offBoardToken at h
+  obtain ⟨z, -, hz⟩ := List.exists_of_findSome?_eq_some h
+  split at hz
+  · simp at hz
+  · have hf := List.find?_some hz
+    cases ho : s.obj? id with
+    | none => simp [ho] at hf
+    | some o =>
+      refine ⟨o, rfl, ?_⟩
+      simp only [ho, Option.any_some] at hf
+      cases hk : o.kind <;> simp [hk, ObjKind.phys?] at hf ⊢
+
+/-- A step of the Cleanup is a safe change. -/
+theorem cleanupStep0_safe {s s' : GameState} {es : List Event}
+    (h : cleanupStep0 s = some (s', es)) : Safe s s' := by
+  unfold cleanupStep0 at h
   split at h
   · rename_i u hu
     simp only [Option.some.injEq] at h
@@ -464,6 +507,29 @@ theorem cleanupStep_safe {s s' : GameState} {es : List Event}
           obtain ⟨rfl, -⟩ := h
           exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
         · exact absurd h (by simp)
+
+/-- A step of the Cleanup is a safe change. -/
+theorem cleanupStep_safe {s s' : GameState} {es : List Event}
+    (h : cleanupStep s = some (s', es)) : Safe s s' := by
+  unfold cleanupStep at h
+  split at h
+  · rename_i r hr
+    unfold tokenStep at hr
+    split at hr
+    · rename_i id hid
+      obtain ⟨o, ho, hk⟩ := offBoardToken_spec hid
+      simp only [Option.map_eq_some_iff] at hr
+      obtain ⟨s2, hrm, hr2⟩ := hr
+      simp only [Option.some.injEq] at h
+      have : s' = s2 := by
+        rw [h] at hr2
+        simp only [Prod.mk.injEq] at hr2
+        exact hr2.1.symm
+      subst this
+      exact ⟨fun hwf => removeObj_wf hwf hrm, fun hwf => removeObj_physIds hwf hrm ho hk,
+        fun hwf hown => removeObj_ownerOk hwf hown hrm, removeObj_sameMeta hrm⟩
+    · simp at hr
+  · exact cleanupStep0_safe h
 
 /-- Scoring a Battlefield is a safe change, then points. -/
 theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
@@ -628,7 +694,8 @@ theorem Settled.no_lethal {s : GameState} (h : s.Settled) :
     rw [List.find?_isSome]
     exact ⟨u, hu, by simp [hunit, hl']⟩
   obtain ⟨-, hn⟩ := h
-  unfold cleanupStep at hn
+  have hn := cleanupStep0_of_none hn
+  unfold cleanupStep0 at hn
   cases hf : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
   | none => rw [hf] at hfind; simp at hfind
   | some v => rw [hf] at hn; simp at hn
@@ -640,7 +707,8 @@ theorem Settled.no_lostControl {s : GameState} (h : s.Settled) :
   refine Classical.byContradiction (fun hl => ?_)
   have hl' : s.lostControl b = true := by simpa using hl
   obtain ⟨-, hn⟩ := h
-  unfold cleanupStep at hn
+  have hn := cleanupStep0_of_none hn
+  unfold cleanupStep0 at hn
   cases hf : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
   | some v => rw [hf] at hn; simp at hn
   | none =>

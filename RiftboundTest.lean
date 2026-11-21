@@ -21,6 +21,7 @@ public import RiftboundTest.Trigger
 public import RiftboundTest.Might
 public import RiftboundTest.Passive
 public import RiftboundTest.Here
+public import RiftboundTest.Token
 
 /-!
 # RiftboundTest
