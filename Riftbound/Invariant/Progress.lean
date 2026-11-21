@@ -156,6 +156,28 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.resolveChain]
+  · rename_i p n rest c pay ts hp hk
+    obtain ⟨-, -, -, hres, -, hpend⟩ := castStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass p 0]
+  · rename_i p n rest src idx pay ts hp hk
+    obtain ⟨-, -, -, hres, -, hpend, -⟩ := activateStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass p 0]
+  · rename_i p n tail c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i p rest src idx pay ts hp hk
+    obtain ⟨-, -, -, hres, -, hpend, -⟩ := activateStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
+      (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -347,7 +369,7 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next (finishItem_sameMeta s item).result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.cleanup]
+    exact hb.swap rfl (Frame.cleanup :: afterItem (finishItem s item).1)
   · rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h

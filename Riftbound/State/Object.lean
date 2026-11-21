@@ -21,8 +21,10 @@ inductive ObjKind where
   | card (phys : PhysId) (card : CardId)
   /-- A token (CR 179-187): it has a definition but no physical card. -/
   | token (card : CardId)
-  /-- An ability on the Chain, with the object it comes from. -/
-  | chainAbility (source : ObjId)
+  /-- An ability on the Chain (CR 337, 361): the card it comes from (kept, so that it resolves
+  even when the source has left play), the place of the ability among the card's abilities, and
+  the object it was used from. -/
+  | chainAbility (card : CardId) (idx : Nat) (source : ObjId)
 deriving DecidableEq, Repr
 
 /-- The physical card behind an object, if it is a card. -/
@@ -60,6 +62,9 @@ structure Object where
   contested : Option PlayerId := none
   /-- For a Battlefield: the players who have scored it this turn (CR 472). -/
   scored : List PlayerId := []
+  /-- The abilities of this object that have been used this turn, by their place among the card's
+  abilities: once for each use (CR 371, 386). Cleared when a turn begins. -/
+  used : List Nat := []
 deriving DecidableEq, Repr
 
 end Riftbound

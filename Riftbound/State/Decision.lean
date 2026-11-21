@@ -87,6 +87,10 @@ inductive ActionKind where
   /-- In Combat Damage: every Unit of the other side has been named; the damage is assigned
   down that order (CR 467.2.c). -/
   | assignDone
+  /-- Use an activated ability of an object, paying its costs (CR 361, 363, 356-357): the ability at
+  place `idx` of the card of `source`, with the Power of the domains listed, and the objects
+  chosen for the choices of the ability (CR 355). The ability goes on the Chain. -/
+  | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/

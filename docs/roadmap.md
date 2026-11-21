@@ -30,7 +30,7 @@
 | I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」）。M5a で証明（`win_condition_unique`、`winner_spec`） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
-| I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M4 |
+| I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
 | I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
 | I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)） | L2 | M5〜 |
@@ -459,6 +459,20 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - サイドボードの入れ替えの後も、デッキはフォーマットの要件を満たす（TR 403.4.c）。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
+
+### M6a の実装の記録（2026-11-21）: Chain に複数の項目、Reaction、起動型能力
+
+- **M6 を分けた**: M6a は起動型能力と、複数の項目が載る Chain と Reaction（この記録）。誘発型能力、Replacement、Layers は M6b 以降。
+- **Chain の項目**: Spell（カードのオブジェクト）と、起動した能力（`ObjKind.chainAbility card idx source`）。能力は Chain ゾーンの上に載るオブジェクトで、物理カードを持たない。カードの ID を持つので、元のオブジェクトが場を離れても解決できる（Last Known Information）。解決すると `removeObj` で消える（`Rules/Remove.lean`）。解決の後に項目が残っていれば、手番のプレイヤーが Priority を持ち直す（`afterItem`）。
+- **起動型能力**（`activate source idx pay targets`、`Rules/Chain.lean`）: 支払えるコストは、自分の Exhaust と、Energy と Power（`costPlan`）。それ以外のコストを持つ能力は、まだ使えない。`activatable`（合法）、`applyActivate`、`legalActivates`（列挙）、`mem_legalActivates`。速さ: Chain が空のときは、どの速さでも起動できる。Chain に項目があるときは Reaction だけ（CR 813）。1 ターンの回数制限（`Limit.perTurn`）は `Object.used` に数える（ターンの始まりに消す）。
+- **Reaction**: Chain に項目がある間（`chainPass`）、Reaction を持つ Spell を唱える（`reactable`、`legalReactions`）、速さが Reaction の能力を起動する、Basic Rune の能力で資源を出す、ことができる。唱えたり起動したりすると、項目が上に積まれ、その人から Priority が回り直す。
+- **証明**:
+  - **I9（Chain は後入れ先出し）**: `applyActivate_chain`・`applyCast_chain`（項目は Chain ゾーンの先頭に載る）、`resolveFrames_top`（解決するのは先頭の項目）、`finishItem_top_chain`（解決すると残りは `more`）。
+  - `removeObj_wf`・`removeObj_physIds`・`removeObj_ownerOk`、`addObject_physIds`: 物理カードを持たないオブジェクトの追加と除去は、`WF`・I1・`OwnerOk` を保つ。
+  - 新しい行動（`activate`、Chain にあるときの `playCard`・`runeAbility`）について、`WF`・I1・`OwnerOk`・`StackInv`・`HandInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5 が成り立つ。`activateStep_*` と `castStep_*` に 1 本ずつの補題を束ねたので、各不変条件への追加は数行で済んだ。
+- **テスト**（`RiftboundTest/Chain.lean`）: 起動の合法・違法（制御者、対象、フェイズ、支払い）、能力が Chain に載ること（対象、物理カードは変わらない）、2 人がパスして解決し能力が消えること、Reaction の能力と Spell で応答し、上の項目から先に解決して、残りの項目を手番のプレイヤーが続けて解決すること、元のオブジェクトが消えても解決すること、`perTurn` と支払い、使えないコスト、列挙したものはすべてエンジンが受け付けること。
+- **ビューア**: 起動の行動、Chain 上の能力（点線の札）、Reaction でのプレイがログに出る。デモのデッキに、Exhaust で敵の Unit に 1 ダメージを与える Unit（Pinger）と、Reaction の Spell（Counterstrike）が入る。デモの対戦相手は、Reaction のために Rune を 1 枚残す。
+- **まだ無いもの**: 誘発型能力（M6b）、Action の速さの Spell と Showdown の中での Action と Reaction、Chain に項目があるときの Standard Move、自分の Exhaust と Energy と Power 以外のコスト（捨てる、Recycle、XP、Buff など）、Add 能力が Chain を通らず即座に解決する規則（430.2 のうち Rune の能力以外）、`may` と複数の選択（選択のフレーム）、効果の解決中の Reflexive Trigger、能力のコピー、解決時に項目が失敗する場合（`finishItem_top_chain` は「解決できなければ何も変わらない」の枝を含む）。CR / TR の番号は公式 PDF と照合していない。
 
 **実装**
 - Passive（363-366）。

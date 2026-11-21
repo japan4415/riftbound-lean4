@@ -38,7 +38,17 @@ def demoCards : List CardDef :=
         (.ifThen (.exists (Selector.all .enemy .atBase [.ofType .unit]))
           (.forEach (Selector.all .enemy .atBase [.ofType .unit])
             (.prim (.deal .it (.const 1))))
-          .nop)) } ] ++
+          .nop)) },
+    { id := ⟨"P0"⟩, name := "Pinger", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 2,
+      abilities := [.activated [.exhaustSelf] .normal
+        (EffectDef.of [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
+          (.prim (.deal (.slot 0) (.const 1)))) .unlimited] },
+    { id := ⟨"S3"⟩, name := "Counterstrike", types := [.spell], domains := [.fury],
+      cost := some ⟨1, []⟩, keywords := [{ keyword := .reaction }],
+      spellEffect := some (EffectDef.of
+        [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 2)))) } ] ++
   (List.range 13).map (fun n =>
     { id := ⟨s!"V{n}"⟩, name := s!"Vanilla {n}", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 2 : CardDef }) ++
@@ -48,13 +58,15 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 10 vanilla Units, three copies each of a
-Spell that draws a card, a Spell that deals 2 damage to an enemy Unit, and a Spell that deals 1
-damage to each enemy Unit, 12 Runes and 3 Battlefields. -/
+/-- The demo deck: the champion, three copies of each of 8 vanilla Units, three copies each of a
+Unit that pings (an activated ability), a Spell that draws a card, a Spell that deals 2 damage to
+an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction that deals 2 damage
+to an enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 10).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
-      List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩,
+    main := ⟨"C1"⟩ :: (List.range 8).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+      List.replicate 3 ⟨"P0"⟩ ++ List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++
+      List.replicate 3 ⟨"S2"⟩ ++ List.replicate 3 ⟨"S3"⟩,
     runes := List.replicate 12 ⟨"R1"⟩,
     battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
 

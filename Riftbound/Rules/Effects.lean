@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Play
+public import Riftbound.Rules.Remove
 
 /-!
 # Running an effect
@@ -223,8 +224,29 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
     | exact Safe.refl s
     | (rename_i r hr; exact applyPrim_safe hr)
 
-/-- The frames that resolve the item on top of the Chain (CR 340): run its effect, then put it in
-the Trash. Nothing to resolve when the Chain is empty. -/
+/-- What an ability on the Chain does: the effect of the ability the card has at that place
+(CR 361). Nothing if the card or the ability is not there. -/
+def abilityBody (s : GameState) (card : CardId) (idx : Nat) : EffectList :=
+  match s.cards.find? card with
+  | some d =>
+    match d.abilities[idx]? with
+    | some (.activated _ _ b _) => .cons b.body .nil
+    | some (.triggered _ b _) => .cons b.body .nil
+    | _ => .nil
+  | none => .nil
+
+/-- The frames that resolve an item of the Chain that is not a card: an ability runs its effect for
+its controller, with the objects chosen as the slots, and then it leaves the Chain (CR 340). -/
+def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
+  match o.kind with
+  | .chainAbility card idx src =>
+    .run o.controller src { slots := o.targets.map Value.obj } (abilityBody s card idx) ::
+      .finishSpell item :: rest
+  | _ => .finishSpell item :: rest
+
+/-- The frames that resolve the item on top of the Chain (CR 340): run its effect, then it leaves
+the Chain (a Spell goes to the Trash, an ability ceases to exist). Nothing to resolve when the
+Chain is empty. -/
 def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
   match s.zone .chain with
   | item :: _ =>
@@ -234,71 +256,98 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
         (match d.spellEffect with
           | some e => .cons e.body .nil
           | none => .nil) :: .finishSpell item :: rest
-    | _, _ => .finishSpell item :: rest
+    | some o, none => itemFrames s item o rest
+    | none, _ => .finishSpell item :: rest
   | [] => rest
 
-/-- A Spell has resolved: it goes from the Chain to its owner's Trash (CR 359.3.d). Nothing
-happens if it is no longer on the Chain. -/
+/-- An item has resolved: a Spell goes from the Chain to its owner's Trash (CR 359.3.d), an ability
+ceases to exist. Nothing happens if it is no longer on the Chain. -/
 def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
   match s.obj? item with
   | some o =>
     if item ∈ s.zone .chain then
-      match moveObj s item (.player o.owner .trash) with
-      | some r => (r.1, [Event.moved item r.2 (.player o.owner .trash)])
-      | none => (s, [])
+      match o.kind with
+      | .chainAbility .. =>
+        match removeObj s item with
+        | some s2 => (s2, [])
+        | none => (s, [])
+      | _ =>
+        match moveObj s item (.player o.owner .trash) with
+        | some r => (r.1, [Event.moved item r.2 (.player o.owner .trash)])
+        | none => (s, [])
     else (s, [])
   | none => (s, [])
 
-/-- Finishing an item either changes nothing, or moves it from the Chain to its owner's Trash. -/
+/-- The frames to put under the Cleanup after an item has resolved: while the Chain still holds
+items, the turn player gets priority again (CR 340). -/
+def afterItem (s : GameState) : List Frame :=
+  if (s.zone .chain).isEmpty then [] else [.chainPass (s.active.getD ⟨0⟩) 0]
+
+/-- The frames under the Cleanup after an item has resolved are a `chainPass`. -/
+theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) :
+    ∃ p, f = .chainPass p 0 := by
+  unfold afterItem at h
+  split at h
+  · simp at h
+  · simp only [List.mem_singleton] at h
+    exact ⟨_, h⟩
+
+/-- Finishing an item either changes nothing, or moves a Spell from the Chain to its owner's Trash,
+or removes an ability. -/
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
-      ∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
+      (∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
         moveObj s item (.player o.owner .trash) = some (s2, id') ∧
-          (finishItem s item).1 = s2 := by
-  by_cases hex : ∃ o r, s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-      moveObj s item (.player o.owner .trash) = some r
-  · obtain ⟨o, r, ho, hc, hm⟩ := hex
-    right
-    refine ⟨o, r.1, r.2, ho, hc, hm, ?_⟩
-    simp [finishItem, ho, hc, hm]
-  · left
-    unfold finishItem
+          (finishItem s item).1 = s2) ∨
+      (∃ o s2, s.obj? item = some o ∧ item ∈ s.zone .chain ∧ o.kind.phys? = none ∧
+          removeObj s item = some s2 ∧ (finishItem s item).1 = s2) := by
+  unfold finishItem
+  split
+  · rename_i o ho
     split
-    · rename_i o ho
+    · rename_i hc
       split
-      · rename_i hc
+      · rename_i card idx src hk
         split
+        · rename_i s2 hr
+          exact Or.inr (Or.inr ⟨o, s2, ho, hc, by rw [hk]; rfl, hr, rfl⟩)
+        · exact Or.inl rfl
+      · split
         · rename_i r hm
-          exact absurd ⟨o, r, ho, hc, hm⟩ hex
-        · rfl
-      · rfl
-    · rfl
+          exact Or.inr (Or.inl ⟨o, r.1, r.2, ho, hc, hm, rfl⟩)
+        · exact Or.inl rfl
+    · exact Or.inl rfl
+  · exact Or.inl rfl
 
 /-- Finishing an item keeps the game well formed. -/
 theorem finishItem_wf {s : GameState} (hwf : s.WF) (item : ObjId) : (finishItem s item).1.WF := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩
+  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact hwf
   · rw [h]; exact moveObj_wf hwf hm
+  · rw [h]; exact removeObj_wf hwf hr
 
 /-- Finishing an item keeps the physical cards. -/
 theorem finishItem_physIds {s : GameState} (hwf : s.WF) (item : ObjId) :
     (finishItem s item).1.physIds.Perm s.physIds := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩
+  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, ho, -, hk, hr, h⟩
   · rw [h]
   · rw [h]; exact moveObj_physIds hwf hm
+  · rw [h]; exact removeObj_physIds hwf hr ho hk
 
 /-- Finishing an item keeps `OwnerOk`. -/
 theorem finishItem_ownerOk {s : GameState} (hwf : s.WF) (hown : s.OwnerOk) (item : ObjId) :
     (finishItem s item).1.OwnerOk := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩
+  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact hown
   · rw [h]; exact moveObj_ownerOk hwf hown hm
+  · rw [h]; exact removeObj_ownerOk hwf hown hr
 
 /-- Finishing an item changes only the zones, the objects and the counters. -/
 theorem finishItem_sameMeta (s : GameState) (item : ObjId) : SameMeta s (finishItem s item).1 := by
-  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩
+  rcases finishItem_cases s item with h | ⟨o, s2, id', -, -, hm, h⟩ | ⟨o, s2, -, -, -, hr, h⟩
   · rw [h]; exact SameMeta.refl s
   · rw [h]; exact (moveObj_spec hm).choose_spec.choose_spec.other
+  · rw [h]; exact removeObj_sameMeta hr
 
 /-- Resolving the Chain puts some frames on top of the stack below. -/
 theorem resolveFrames_eq (s : GameState) (rest : List Frame) :
@@ -307,6 +356,10 @@ theorem resolveFrames_eq (s : GameState) (rest : List Frame) :
   split
   · split
     · exact ⟨[.run _ _ _ _, .finishSpell _], rfl, by simp [Frame.isPlay]⟩
+    · unfold itemFrames
+      split
+      · exact ⟨[.run _ _ _ _, .finishSpell _], rfl, by simp [Frame.isPlay]⟩
+      · exact ⟨[.finishSpell _], rfl, by simp [Frame.isPlay]⟩
     · exact ⟨[.finishSpell _], rfl, by simp [Frame.isPlay]⟩
   · exact ⟨[], rfl, by simp⟩
 

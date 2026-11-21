@@ -6,6 +6,7 @@ public import Riftbound.Rules.Objects
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Play
 public import Riftbound.Rules.Effects
+public import Riftbound.Rules.Chain
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
@@ -79,7 +80,9 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
               pending := (runEffect s p src env e es).2.1 ++ rest },
       (runEffect s p src env e es).2.2)
   | .finishSpell item :: rest =>
-    some ({ (finishItem s item).1 with pending := .cleanup :: rest }, (finishItem s item).2)
+    some ({ (finishItem s item).1 with
+              pending := .cleanup :: (afterItem (finishItem s item).1 ++ rest) },
+      (finishItem s item).2)
   | .cleanup :: rest => some (cleanupFrame s rest)
   | .combatDamage bf att :: rest => some ({ s with pending := s.startCombat bf att ++ rest }, [])
   | .combatResolve bf att :: rest =>
@@ -114,6 +117,13 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
     if n + 1 < s.playerCount then
       some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
     else some ({ s with pending := .resolveChain :: rest }, [])
+  | .chainPass p _ :: rest, .playCard c pay ts =>
+    castStep s p c pay ts (.chainPass p 0 :: rest)
+  | .chainPass p _ :: rest, .activate src idx pay ts =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: rest)
+  | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
+  | .priority p :: rest, .activate src idx pay ts =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest)
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

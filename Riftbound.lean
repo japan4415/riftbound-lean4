@@ -34,7 +34,9 @@ public import Riftbound.Rules.Select
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Play
+public import Riftbound.Rules.Remove
 public import Riftbound.Rules.Effects
+public import Riftbound.Rules.Chain
 public import Riftbound.Rules.Understood
 public import Riftbound.Rules.Battlefield
 public import Riftbound.Rules.Combat
