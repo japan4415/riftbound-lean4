@@ -154,6 +154,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
         | _, _ => 0
       if d != 0 then some (jarr [toString id.n, toString d]) else none
     | none => none)
+  let stunned := ids.filter (fun id => (s.obj? id).any (·.stunned))
   let attached := ids.filterMap (fun id =>
     match (s.obj? id).bind (·.attached) with
     | some u => some (jarr [toString id.n, toString u.n])
@@ -183,7 +184,8 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
-    ("attached", jarr attached)]
+    ("attached", jarr attached),
+    ("stunned", jarr (stunned.map (fun id => toString id.n)))]
   (json, seen')
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/

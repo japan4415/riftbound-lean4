@@ -69,6 +69,8 @@ h1 { font-size: 1.15rem; margin: 0; }
 .card.bfcard .card-in { border-style: double; border-width: 3px; }
 .card .bst { position: absolute; left: 3px; top: 3px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
   background: var(--accent); color: #fff; }
+.card .stn { position: absolute; left: 3px; top: 20px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
+  background: var(--chaos, #7a4fa0); color: #fff; }
 .card .eqp { position: absolute; right: 3px; bottom: 3px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
   background: var(--calm, #2c5f8a); color: #fff; }
 .card.ability .card-in { border-style: dashed; border-width: 2px; }
@@ -292,6 +294,8 @@ function decorate(e, st, id) {
   if (dm) { if (!d) { d = document.createElement('span'); d.className = 'dmg'; e.append(d); } d.textContent = dm[1]; } else if (d) d.remove();
   let b = e.querySelector('.bst'); const bo = (st.boosted || []).find((x) => x[0] === +id);
   if (bo) { if (!b) { b = document.createElement('span'); b.className = 'bst'; e.append(b); } b.textContent = (bo[1] > 0 ? '+' : '') + bo[1]; } else if (b) b.remove();
+  let z = e.querySelector('.stn'); const sn = (st.stunned || []).includes(+id);
+  if (sn) { if (!z) { z = document.createElement('span'); z.className = 'stn'; e.append(z); } z.textContent = 'Stun'; } else if (z) z.remove();
   let q = e.querySelector('.eqp'); const eq = (st.attached || []).filter((x) => x[1] === +id).map((x) => cardName(x[0]));
   if (eq.length) { if (!q) { q = document.createElement('span'); q.className = 'eqp'; e.append(q); } q.textContent = '装備'; q.title = eq.join('、'); } else if (q) q.remove();
 }

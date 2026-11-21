@@ -460,6 +460,18 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7d の実装の記録（2026-11-22）: Buff・Stun・XP
+
+- **Buff**（CR 701）: Unit が buff を持つ（`buffed`）と +1 Might（`mightNow`）。すでに持っていれば変わらない。Board を離れると消える。
+- **Stun**（CR 424）: Unit が `stunned` だと、Combat Damage を与えない（`combatMight` が 0）。ターンの終わりに消える（`endTurnObj`）。
+- **XP**（CR 728）: プレイヤーの数。ゲームオブジェクトではないが、モデルは**そのプレイヤーの Legend オブジェクトに持たせる**（`Object.xp`、`xpOf`）。状態の新しい欄を足すと、状態を変えるすべての証明が `Safe` から外れるため。`gainXP` は Legend の欄を足す。Legend が無いプレイヤーは XP を得られない。
+- **キーワード Hunt X**（CR 823）: 「Conquer または Hold したとき XP を X 得る」の 2 つの誘発能力に展開される（`keywordAbilities`）。**Level N**（CR 824）は、条件 `xp ≥ N` を持つ Passive として書く（`Amount.xp` を解釈器が読む）。
+- **読み取り**: `Filter.stunned`・`Filter.buffed`、`Amount.xp`。`applyPrim` は `stun`・`buff`・`gainXP` を知り、安全な変更として証明した。
+- **転記**: 「Buff me / a friendly unit」「Gain N XP」「[Level N][>] I have +M Might」。**転記済みは 160 枚から 166 枚**。
+- **テスト**（`RiftboundTest/Status.lean`）: Buff（+1、1 回だけ、Board を離れると消える）、Stun（Combat Damage 0、ターンの終わりに消える）、XP（Legend に入る、量として読める）、Hunt の展開と Level の条件。
+- **ビューア・デモ**: Stun の札に「Stun」が出る。デモのデッキに、敵を Stun する Chill と、自分を Buff する Trainer が入る。
+- **まだ無いもの**: 「buff を使う」「XP を使う」コスト（`spendBuff`・`spendXP`: 起動の支払いが Energy と Power と Exhaust だけ）、「Buffs give an additional +1」のような buff を数える能力、Level の「enter ready」、Disarm、Empower。
+
 ### M7c の実装の記録（2026-11-22）: Equipment（Gear を Unit に付ける）
 
 - **Equipment のモデル**: Gear のオブジェクトが `attached`（付いている Unit）を持つ。付いている間、Unit は Equipment の Might の加算（`mightBonus`）と、Equipment が与える能力（`CardDef.grants`: 付けた Unit に与える文）を持つ。Board を離れると `attached` は消える（`moveObj`）。Unit がいなくなった Equipment は、Cleanup の手順（`detachStep`）で外れる。

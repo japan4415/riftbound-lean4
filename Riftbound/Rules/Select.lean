@@ -42,6 +42,10 @@ def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (f
 def inPlay (s : GameState) : List ObjId :=
   s.players.flatMap (fun p => s.zone (.player p .base)) ++ s.zone .battlefieldZone
 
+/-- The XP of a player (CR 728): kept with their Legend. -/
+def xpOf (s : GameState) (p : PlayerId) : Nat :=
+  ((s.zone (.player p .legendZone)).map (fun l => ((s.obj? l).map (·.xp)).getD 0)).sum
+
 /-- The Might an object has: the printed Might and the lasting changes effects made to it
 (CR 475-478). The abilities that change Might as long as a condition holds come with the full
 Layers (roadmap.md, M6). -/
@@ -101,6 +105,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
   | .notSelf => some (id != self)
+  | .stunned => (s.obj? id).map (·.stunned)
+  | .buffed => (s.obj? id).map (·.buffed)
   | _ => none
 
 /-- Whether the object has every property of the list. -/
@@ -252,6 +258,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
 for, the size of a hand, and the arithmetic of these. `none` if it cannot be known yet. -/
 def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
   | .count sel => (sel.eval s p self env).map List.length
+  | .xp => some (s.xpOf p)
   | .handSize ps => do
     let l ← ps.resolve s p
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)

@@ -97,6 +97,10 @@ SENTENCES = [
     (re.compile(r"^Kill (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.kill ({s}))")),
     (re.compile(r"^Ready (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.ready ({s}))")),
     (re.compile(r"^\[Stun\] (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.stun ({s}))")),
+    (re.compile(r"^Buff me\.$"), lambda m, slot: ([], ".prim (.buff .self)")),
+    (re.compile(r"^Buff (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.buff ({s}))")),
+    (re.compile(r"^Gain (?P<n>\d+) XP\.$"),
+     lambda m, slot: ([], f".prim (.gainXP .you (.const {m.group('n')}))")),
     (re.compile(r"^Give (?P<np>.+) \+(?P<n>\d+) :rb_might: this turn\.$"),
      target_sentence(lambda m, s:
                      f".grant ({s}) (.mightPlus .it (.const {m.group('n')})) .thisTurn")),
@@ -174,6 +178,10 @@ def parse_line(line: str, is_spell: bool):
     if is_spell:
         r = parse_effect(s)
         return ("spell", r) if r else None
+    m = re.match(r"^\[Level (\d+)\]\[>\] I have \+(\d+) :rb_might:\.$", s)
+    if m:
+        return "ability", [f".passive (.cmp .ge .xp (.const {m.group(1)}))"
+                           f" [.mightPlus .self (.const {m.group(2)})]"]
     if s == "I enter ready.":
         return "ability", [".passive .always [.entersReady .self]"]
     m = re.match(r"^\[Empowered\]\[>\] I have \+(\d+) :rb_might:\.$", s)

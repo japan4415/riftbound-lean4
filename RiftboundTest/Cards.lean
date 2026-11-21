@@ -55,8 +55,8 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards written down as IR values (docs/coverage.md): 39 by hand, 121 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 160
+-- the cards written down as IR values (docs/coverage.md): 39 by hand, 127 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 166
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo

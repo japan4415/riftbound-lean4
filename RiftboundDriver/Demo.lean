@@ -72,6 +72,14 @@ def demoCards : List CardDef :=
     { id := ⟨"E0"⟩, name := "Scout", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 1,
       abilities := [.passive .always [.entersReady .self]] },
+    { id := ⟨"S5"⟩, name := "Chill", types := [.spell], domains := [.fury],
+      cost := some ⟨1, []⟩,
+      spellEffect := some (EffectDef.of
+        [Choice.targetOf .one .enemy .atBase [.ofType .unit]] (.prim (.stun (.slot 0)))) },
+    { id := ⟨"U0"⟩, name := "Trainer", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 1,
+      abilities := [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [] (.prim (.buff .self))) .unlimited] },
     { id := ⟨"S4"⟩, name := "Surge", types := [.spell], domains := [.fury],
       cost := some ⟨1, []⟩,
       spellEffect := some (EffectDef.of
@@ -91,20 +99,17 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of an Equipment (+2 Might and Tank), three copies
-each of a Unit that
-plays a Recruit token when it is played, a Unit that draws when it is played, a Unit that deals
-1 damage to an enemy Unit when it is played,
-a Unit that draws when it dies, a Unit that pings (an activated ability), a Unit that gives
-the other friendly Units +1 Might and a Unit that enters ready, a Spell that gives a
-friendly Unit +3 Might this turn, a Spell that draws a card, a Spell that deals 2 damage to
-an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction that deals 2 damage
-to an enemy Unit, 12 Runes and 3 Battlefields. -/
+/-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
+that play a Recruit token, give the other friendly Units +1 Might, deal 1 damage to an enemy Unit,
+buff themselves, draw when they die, and ping with an activated ability; Spells that stun an enemy
+Unit, give a friendly Unit +3 Might this turn, draw a card, deal 2 damage to an enemy Unit, and
+deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy Unit. Then 12 Runes
+and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
-      List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"E0"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
-      List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
+      List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"S5"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
+      List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"U0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++
       List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++
       List.replicate 3 ⟨"S3"⟩,
