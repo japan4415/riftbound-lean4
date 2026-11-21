@@ -7,6 +7,7 @@ public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Play
 public import Riftbound.Rules.Effects
 public import Riftbound.Rules.Chain
+public import Riftbound.Rules.Trigger
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
@@ -40,8 +41,9 @@ on their first turn in a 1v1 game (CR 487.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
   if s.playerCount = 2 ∧ s.turn = 2 then 3 else 2
 
-/-- Advance one work frame by one step. `none` if the top frame is not work. -/
-def microStep (s : GameState) : Option (GameState × List Event) :=
+/-- Advance one work frame by one step, before the triggered abilities that the step set off are
+found. `none` if the top frame is not work. -/
+def microStep0 (s : GameState) : Option (GameState × List Event) :=
   match s.pending with
   | .setupHands :: rest =>
     some ({ s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++
@@ -84,19 +86,28 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
               pending := .cleanup :: (afterItem (finishItem s item).1 ++ rest) },
       (finishItem s item).2)
   | .cleanup :: rest => some (cleanupFrame s rest)
-  | .combatDamage bf att :: rest => some ({ s with pending := s.startCombat bf att ++ rest }, [])
+  | .combatDamage bf att :: rest =>
+    some ({ s with pending := s.startCombat bf att ++ rest }, [Event.combatStarted bf att])
   | .combatResolve bf att :: rest =>
     some ({ (combatResolve s bf att).1 with
               pending := (combatResolve s bf att).2.1 ++ .cleanup :: rest },
       (combatResolve s bf att).2.2)
+  | .triggers pend :: rest =>
+    some ({ putAll s pend with pending := triggerFrames (putAll s pend) rest ++ rest }, [])
   | _ => none
+
+/-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
+it set off wait on the stack (CR 382-385). `none` if the top frame is not work. -/
+def microStep (s : GameState) : Option (GameState × List Event) :=
+  (microStep0 s).map (fun r => (r.1.withTriggers r.2, r.2))
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
 def otherPlayer (p : PlayerId) : PlayerId := ⟨1 - p.n⟩
 
-/-- Apply an answer to the decision frame on top of the stack. The answer is assumed to be legal;
-`none` if it does not fit the frame or a primitive cannot be done. -/
-def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :=
+/-- Apply an answer to the decision frame on top of the stack, before the triggered abilities it set
+off are found. The answer is assumed to be legal; `none` if it does not fit the frame or a primitive
+cannot be done. -/
+def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) :=
   match s.pending, a.kind with
   | .priority _ :: rest, .pass =>
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
@@ -150,6 +161,12 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
     some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
   | _, _ => none
 
+/-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set
+off wait on the stack (CR 382-385). -/
+def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :=
+  (applyFrame0 s a).map (fun r =>
+    (r.1.withTriggers (r.2 ++ extraEvents a r.2), r.2 ++ extraEvents a r.2))
+
 /-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
 the decision frame on top of the stack. -/
 def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) :=
@@ -179,9 +196,9 @@ theorem applyAction_concede {s : GameState} {a : Action} {p : PlayerId} (hk : a.
   simp [hp]
 
 /-- A step of work keeps the game well formed. -/
-theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
-    (h : microStep s = some (s', es)) : s'.WF := by
-  unfold microStep at h
+theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : microStep0 s = some (s', es)) : s'.WF := by
+  unfold microStep0 at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -251,12 +268,15 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((combatResolve_safeP s _ _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((putAll_safe _ s).wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
-theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
-    (h : microStep s = some (s', es)) : s'.physIds.Perm s.physIds := by
-  unfold microStep at h
+theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : microStep0 s = some (s', es)) : s'.physIds.Perm s.physIds := by
+  unfold microStep0 at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -330,7 +350,45 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (combatResolve_safeP s _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (putAll_safe _ s).phys hwf
   · exact absurd h (by simp)
+
+/-- What a step of work does: the step, and the triggers it set off. -/
+theorem microStep_cases {s s' : GameState} {es : List Event}
+    (h : microStep s = some (s', es)) :
+    ∃ s2, microStep0 s = some (s2, es) ∧ s' = s2.withTriggers es := by
+  unfold microStep at h
+  simp only [Option.map_eq_some_iff] at h
+  obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h
+  simp only [Prod.mk.injEq] at hr
+  obtain ⟨rfl, rfl⟩ := hr
+  exact ⟨s2, h0, rfl⟩
+
+/-- What an answer does: the step, and the triggers it set off. -/
+theorem applyFrame_cases {s s' : GameState} {a : Action} {es : List Event}
+    (h : applyFrame s a = some (s', es)) :
+    ∃ s2 es2, applyFrame0 s a = some (s2, es2) ∧
+      s' = s2.withTriggers (es2 ++ extraEvents a es2) ∧ es = es2 ++ extraEvents a es2 := by
+  unfold applyFrame at h
+  simp only [Option.map_eq_some_iff] at h
+  obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h
+  simp only [Prod.mk.injEq] at hr
+  exact ⟨s2, es2, h0, hr.1.symm, hr.2.symm⟩
+
+/-- A step of work keeps the game well formed. -/
+theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : microStep s = some (s', es)) : s'.WF := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  exact withTriggers_wf _ (microStep_wf0 hwf h0)
+
+/-- **I1** (work). A step of work keeps the physical cards. -/
+theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : microStep s = some (s', es)) : s'.physIds.Perm s.physIds := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  rw [withTriggers_physIds]
+  exact microStep_physIds0 hwf h0
 
 end Riftbound
 

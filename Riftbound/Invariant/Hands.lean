@@ -183,10 +183,10 @@ theorem recycleAll_hands {s s2 : GameState} {p q : PlayerId} {k : ZoneKind} {l :
   exact hh r
 
 /-- Applying a legal answer to the open question keeps the hand invariant. -/
-theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
+theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : LegalFrame s a)
-    (h : applyFrame s a = some (s', es)) : HandInv s' := by
-  unfold applyFrame at h
+    (h : applyFrame0 s a = some (s', es)) : HandInv s' := by
+  unfold applyFrame0 at h
   unfold LegalFrame at hl
   split at h
   · rename_i rest hp hk
@@ -513,6 +513,25 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
   · exact absurd h (by simp)
 
+/-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put
+on the stack, and not during the setup. -/
+theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event) :
+    HandInv (s.withTriggers es) := by
+  rcases withTriggers_cases s es with h | ⟨pend, h, hph, -⟩
+  · rw [h]; exact hinv
+  · rw [h]
+    refine hinv.of_play hph rfl rfl (fun hm => ?_)
+    rcases insertTriggers_mem pend _ hm with h1 | ⟨x, h1⟩
+    · exact h1
+    · cases h1
+
+/-- Applying a legal answer to the open question keeps the hand invariant. -/
+theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : LegalFrame s a)
+    (h : applyFrame s a = some (s', es)) : HandInv s' := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  exact (applyFrame_handInv0 hwf hown hinv hl h0).withTriggers _
+
 /-- Applying a legal answer keeps the hand invariant. A concession ends the game, and the hands are
 then no longer counted. -/
 theorem applyAction_handInv {s s' : GameState} {a : Action} {es : List Event}
@@ -620,9 +639,9 @@ theorem HandInv.of_spell_step {s s2 : GameState} (hinv : HandInv s) (hph : s.pha
   · rw [hk.phase]; exact hph
 
 /-- A step of work keeps the hand invariant. -/
-theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (hinv : HandInv s) (h : microStep s = some (s', es)) : HandInv s' := by
-  unfold microStep at h
+theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (hinv : HandInv s) (h : microStep0 s = some (s', es)) : HandInv s' := by
+  unfold microStep0 at h
   split at h
   · -- the opening hands and the mulligans are laid out
     rename_i rest hp
@@ -887,7 +906,27 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     · have h2 : Frame.setupHands ∈ rest := by simpa using h1
       rw [hp]
       exact List.mem_cons_of_mem _ h2
+  · rename_i pend rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hm := (putAll_safe pend s).same
+    have hph : (putAll s pend).phase ≠ .setup := by
+      rw [hm.phase]
+      exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
+    have hm2 : Frame.setupHands ∈ triggerFrames (putAll s pend) rest ∨
+        Frame.setupHands ∈ rest := List.mem_append.mp hm'
+    rcases hm2 with h1 | h1
+    · obtain ⟨q, n, hq⟩ := triggerFrames_mem h1
+      cases hq
+    · rw [hp]; exact List.mem_cons_of_mem _ h1
   · exact absurd h (by simp)
+
+/-- A step of work keeps the hand invariant. -/
+theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (hinv : HandInv s) (h : microStep s = some (s', es)) : HandInv s' := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  exact (microStep_handInv0 hwf hown hinv h0).withTriggers _
 
 /-- The automatic work keeps the hand invariant. -/
 theorem advance_handInv :

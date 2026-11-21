@@ -16,10 +16,30 @@ it cannot be negative.
 namespace Riftbound
 
 /-- **The Rune Pool is empty when the Main Phase starts** (CR 167): every player's Pool. -/
+theorem microStep_main_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .phase .main :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
+    s'.poolOf p = RunePool.empty := by
+  unfold microStep0 at h
+  rw [hp] at h
+  simp only [Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -⟩ := h
+  simp [GameState.poolOf, RunePool.empty]
+
+/-- **The Rune Pool is empty when the Main Phase starts** (CR 167): every player's Pool. -/
 theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List Frame}
     (hp : s.pending = .phase .main :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
-  unfold microStep at h
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  obtain ⟨q, hq⟩ := withTriggers_pending s2 es
+  have h2 := microStep_main_pools0 hp h0 p
+  rw [hq]
+  exact h2
+
+/-- **The Rune Pool is empty at the end of the turn** (CR 167, 317.2). -/
+theorem microStep_ending_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .phase .ending :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
+    s'.poolOf p = RunePool.empty := by
+  unfold microStep0 at h
   rw [hp] at h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, -⟩ := h
@@ -29,11 +49,11 @@ theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List F
 theorem microStep_ending_pools {s s' : GameState} {es : List Event} {rest : List Frame}
     (hp : s.pending = .phase .ending :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
-  unfold microStep at h
-  rw [hp] at h
-  simp only [Option.some.injEq, Prod.mk.injEq] at h
-  obtain ⟨rfl, -⟩ := h
-  simp [GameState.poolOf, RunePool.empty]
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  obtain ⟨q, hq⟩ := withTriggers_pending s2 es
+  have h2 := microStep_ending_pools0 hp h0 p
+  rw [hq]
+  exact h2
 
 /-- **An Add ability adds exactly one resource** (I8) (CR 164.2, 430): the player's Pool grows by
 one, Energy or Power of the Rune's domain, and every other Pool stays. -/
@@ -98,16 +118,26 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
 
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
 hands the Chain to `resolveChain`. -/
+theorem chainPass_last_resolves0 {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    (h : applyFrame0 s ⟨.player p, .pass⟩ = some (s', es)) :
+    s'.pending = .resolveChain :: rest ∧ es = [] := by
+  unfold applyFrame0 at h
+  rw [hp] at h
+  simp only [show ¬ n + 1 < s.playerCount by omega, ite_false, Option.some.injEq,
+    Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  exact ⟨rfl, rfl⟩
+
+/-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
+hands the Chain to `resolveChain`. -/
 theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
     {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
     (h : applyFrame s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest := by
-  unfold applyFrame at h
-  rw [hp] at h
-  simp only [show ¬ n + 1 < s.playerCount by omega, ite_false, Option.some.injEq,
-    Prod.mk.injEq] at h
-  obtain ⟨rfl, -⟩ := h
-  rfl
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
+  simpa [extraEvents, withTriggers_nil] using hpend
 
 /-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
 theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}

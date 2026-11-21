@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M6b の実装の記録（2026-11-22）: 誘発型能力（最小版）
+
+- **誘発の検出**（`Rules/Trigger.lean`）: `microStep` と `applyFrame` を「ステップ本体（`microStep0`・`applyFrame0`）+ `withTriggers`」に分けた。`withTriggers` は、その歩のイベントを読み（`detect`）、誘発した能力を `triggers` のフレームとして、Cleanup や解決の作業の下に積む。Priority が次に渡る前に Chain へ載る（CR 383.1）。セットアップの間は何もしない。
+- **イベント**: `played`（カードのプレイ）、`died`（`killObj`: Cleanup の kill と `kill` の効果）、`combatStarted`、既存の `scored`。誘発の種類: play・die・conquer・hold・youConquer・youHold・attack・defend。
+- **載せる**（`triggers` フレーム）: 能力は Chain 上のオブジェクトになり（M6a と同じ）、解決は既存の経路。載せた後に Chain に項目があれば、手番のプレイヤーが Priority を持つ。手番のプレイヤーの能力から載せる（CR 383.3）。
+- **証明**: `microStep` と `applyFrame` の包みについて、`WF`・I1・`OwnerOk`・`StackInv`・`HandInv`・`SetupInv`・`step_sound`・`legalActions_iff`・I5 を、`withTriggers` が `pending` だけを変え、積むのは `triggers` のフレームだけであることから導いた（`insertTriggers_mem`・`insertTriggers_getLast`・`withTriggers_cases` ほか）。
+- **テスト**（`RiftboundTest/Trigger.lean`）: 場に出たとき、死んだとき、Conquer、Combat の attack / defend、Legend の youHold、手番のプレイヤーが先、1 ターン 1 回の制限、対象が要る能力は誘発しないこと。
+- **まだ無いもの**: 同じプレイヤーの能力の順序の選択（383.3.d）、対象とモードを取る誘発能力、subject が自分以外の誘発（「ユニットをプレイしたとき」など）、条件つきの誘発、フェイズの区切りの誘発（`at_`）、`enter`・`move`・`leave` などの種類、キーワードの Deathknell・Vision などの展開、Reflexive Trigger。
+
 ### M6a の実装の記録（2026-11-21）: Chain に複数の項目、Reaction、起動型能力
 
 - **M6 を分けた**: M6a は起動型能力と、複数の項目が載る Chain と Reaction（この記録）。誘発型能力、Replacement、Layers は M6b 以降。

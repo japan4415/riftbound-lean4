@@ -17,9 +17,9 @@ they hold in every state reached from a set-up game.
 namespace Riftbound
 
 /-- The work frames always have a step to take. -/
-theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
-    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep s = some r := by
-  unfold microStep
+theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
+    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep0 s = some r := by
+  unfold microStep0
   rw [hp]
   cases f with
   | setupHands => exact ⟨_, rfl⟩
@@ -37,7 +37,14 @@ theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
   | cleanup => exact ⟨_, rfl⟩
   | combatDamage bf att => exact ⟨_, rfl⟩
   | combatResolve bf att => exact ⟨_, rfl⟩
+  | triggers pend => exact ⟨_, rfl⟩
   | _ => simp [Frame.isWork] at hf
+
+/-- A work frame can be advanced: `microStep` does not fail on it. -/
+theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
+    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep s = some r := by
+  obtain ⟨r, hr⟩ := microStep_isSome0 hp hf
+  exact ⟨_, by unfold microStep; rw [hr]; rfl⟩
 
 /-- The automatic work fails for no reason but the fuel. -/
 theorem advance_error :
@@ -64,9 +71,9 @@ theorem advance_error :
     · exact absurd h (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
-theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
-    (hl : LegalFrame s a) : ∃ r, applyFrame s a = some r := by
-  unfold applyFrame
+theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : LegalFrame s a) : ∃ r, applyFrame0 s a = some r := by
+  unfold applyFrame0
   unfold LegalFrame at hl
   split
   · exact ⟨_, rfl⟩
@@ -149,6 +156,12 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
   · exact ⟨_, rfl⟩
   · exact absurd hl (by simp)
 
+/-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
+theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : LegalFrame s a) : ∃ r, applyFrame s a = some r := by
+  obtain ⟨r, hr⟩ := applyFrame_isSome0 hwf hown hl
+  exact ⟨_, by unfold applyFrame; rw [hr]; rfl⟩
+
 /-- A legal answer can be applied: `applyAction` does not fail on it. -/
 theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
     (hl : Legal s a) : ∃ r, applyAction s a = some r := by
@@ -159,10 +172,10 @@ theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     exact applyFrame_isSome hwf hown (hl.frame hk)
 
 /-- Applying a legal answer to the open question keeps `OwnerOk`. -/
-theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hown : s.OwnerOk) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
+theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : LegalFrame s a) (h : applyFrame0 s a = some (s', es)) :
     s'.OwnerOk := by
-  unfold applyFrame at h
+  unfold applyFrame0 at h
   unfold LegalFrame at hl
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -263,6 +276,13 @@ theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
   · exact absurd h (by simp)
 
+/-- Applying a legal answer to the open question keeps `OwnerOk`. -/
+theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
+    s'.OwnerOk := by
+  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  exact withTriggers_ownerOk _ (applyFrame_ownerOk0 hwf hown hl h0)
+
 /-- Applying a legal answer keeps `OwnerOk`. -/
 theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hown : s.OwnerOk) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
@@ -277,9 +297,9 @@ theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     exact applyFrame_ownerOk hwf hown (hl.frame hk) h
 
 /-- A step of work keeps `OwnerOk`. -/
-theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : microStep s = some (s', es)) : s'.OwnerOk := by
-  unfold microStep at h
+theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : microStep0 s = some (s', es)) : s'.OwnerOk := by
+  unfold microStep0 at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -351,7 +371,17 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((combatResolve_safeP s _ _).own hwf hown).congr rfl rfl
+  · rename_i pend rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((putAll_safe pend s).own hwf hown).congr rfl rfl
   · exact absurd h (by simp)
+
+/-- A step of work keeps `OwnerOk`. -/
+theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : microStep s = some (s', es)) : s'.OwnerOk := by
+  obtain ⟨s2, h0, rfl⟩ := microStep_cases h
+  exact withTriggers_ownerOk _ (microStep_ownerOk0 hwf hown h0)
 
 /-- The automatic work keeps `OwnerOk`. -/
 theorem advance_ownerOk :
