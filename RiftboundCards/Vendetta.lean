@@ -616,8 +616,13 @@ def VEN_026.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Field Musicians: the effect is not written yet. -/
-def VEN_026 : CardDef := VEN_026.meta
+/-- Field Musicians. -/
+def VEN_026 : CardDef :=
+  { VEN_026.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-027
 /--
@@ -1126,8 +1131,13 @@ def VEN_048.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Cloud Drake: the effect is not written yet. -/
-def VEN_048 : CardDef := VEN_048.meta
+/-- Cloud Drake. -/
+def VEN_048 : CardDef :=
+  { VEN_048.meta with
+    abilities := [.triggered (.onSelf .play)
+        (.of []
+        (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-049
 /--

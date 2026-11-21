@@ -59,9 +59,21 @@ def target_sentence(verb_fmt):
     return build
 
 
+def all_units(m, damaged: bool = False) -> str:
+    """`all (friendly |enemy )?units( here)?` の選択子。"""
+    side = {"friendly ": ".friendly", "enemy ": ".enemy", None: ".any"}[m.group("side")]
+    place = {" at a battlefield": ".atBattlefield", " here": ".here", None: ".anywhere"}[m.group("place")]
+    fs = ".ofType .unit" + (", .damaged" if damaged else "")
+    return f"Selector.all {side} {place} [{fs}]"
+
+
 SENTENCES = [
     (re.compile(r"^Deal (?P<n>\d+) to (?P<np>.+)\.$"),
      target_sentence(lambda m, s: f".prim (.deal ({s}) (.const {m.group('n')}))")),
+    (re.compile(r"^Deal (?P<n>\d+) to all (?P<side>friendly |enemy )?units(?P<place> at a battlefield| here)?\.$"),
+     lambda m, slot: ([], f".prim (.deal ({all_units(m)}) (.const {m.group('n')}))")),
+    (re.compile(r"^Kill all (?P<dmg>damaged )?(?P<side>friendly |enemy )?units(?P<place> at a battlefield| here)?\.$"),
+     lambda m, slot: ([], f".prim (.kill ({all_units(m, damaged=bool(m.group('dmg')))}))")),
     (re.compile(r"^Kill (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.kill ({s}))")),
     (re.compile(r"^Ready (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.ready ({s}))")),
     (re.compile(r"^\[Stun\] (?P<np>.+)\.$"), target_sentence(lambda m, s: f".prim (.stun ({s}))")),
@@ -126,6 +138,7 @@ TRIGGERS = [
     (re.compile(r"^When I attack, (?P<rest>.+)$"), [".attack"]),
     (re.compile(r"^When I defend, (?P<rest>.+)$"), [".defend"]),
     (re.compile(r"^When I attack or defend, (?P<rest>.+)$"), [".attack", ".defend"]),
+    (re.compile(r"^When I move, (?P<rest>.+)$"), [".move"]),
     (re.compile(r"^When I conquer, (?P<rest>.+)$"), [".conquer"]),
     (re.compile(r"^When I hold, (?P<rest>.+)$"), [".hold"]),
     (re.compile(r"^\[Deathknell\] — (?P<rest>.+)$"), [".die"]),
@@ -153,7 +166,7 @@ def parse_line(line: str, is_spell: bool):
             may = False
             if rest.startswith("you may "):
                 may, rest = True, rest[len("you may "):]
-                rest = rest[0].upper() + rest[1:]
+            rest = rest[0].upper() + rest[1:]
             r = parse_effect(rest if rest.endswith(".") else rest + ".")
             if not r:
                 return None

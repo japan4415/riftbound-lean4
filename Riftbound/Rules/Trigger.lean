@@ -70,6 +70,10 @@ def GameState.trigAllUnitsAt (s : GameState) (bf : ObjId) : List ObjId :=
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play
   | .died obj p => triggersOf s obj p .die
+  | .standardMoved u _ =>
+    match s.obj? u with
+    | some o => triggersOf s u o.controller .move
+    | none => []
   | .scored p bf conquer =>
     (s.trigUnitsAt bf p).flatMap
       (fun u => triggersOf s u p (if conquer then .conquer else .hold)) ++
