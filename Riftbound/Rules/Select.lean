@@ -209,7 +209,47 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     match env.lookup v with
     | some (.obj o) => some (if o ∈ s.inPlay then [o] else [])
     | _ => none
+  | .it =>
+    match env.it with
+    | some o => some (if o ∈ s.inPlay then [o] else [])
+    | none => none
   | .pick .all side place fs => s.candidates p self env side place fs
+  | _ => none
+
+/-- The number an amount stands for, reading the game: the count of the objects a selector stands
+for, the size of a hand, and the arithmetic of these. `none` if it cannot be known yet. -/
+def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
+  | .count sel => (sel.eval s p self env).map List.length
+  | .handSize ps => do
+    let l ← ps.resolve s p
+    pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)
+  | .add a b => do pure ((← Amount.evalS s p self env a) + (← Amount.evalS s p self env b))
+  | .sub a b => do pure ((← Amount.evalS s p self env a) - (← Amount.evalS s p self env b))
+  | .mul a b => do pure ((← Amount.evalS s p self env a) * (← Amount.evalS s p self env b))
+  | .min a b =>
+    do pure (Nat.min (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+  | .max a b =>
+    do pure (Nat.max (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+  | a => a.eval env
+
+/-- Whether a question about the game is true, for the questions that are understood. `none` if it
+cannot be answered yet. -/
+def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
+    Condition → Option Bool
+  | .always => some true
+  | .not c => (Condition.eval s p self env c).map (fun b => !b)
+  | .and a b => do pure ((← Condition.eval s p self env a) && (← Condition.eval s p self env b))
+  | .or a b => do pure ((← Condition.eval s p self env a) || (← Condition.eval s p self env b))
+  | .cmp op a b => do
+    let x ← a.evalS s p self env
+    let y ← b.evalS s p self env
+    pure (op.holds x y)
+  | .exists sel => (sel.eval s p self env).map (fun l => !l.isEmpty)
+  | .matches sel f => do
+    let ids ← sel.eval s p self env
+    let bs ← ids.mapM (fun id => f.holds s self env id)
+    pure (!ids.isEmpty && bs.all id)
+  | .yourTurn => some (decide (s.active = some p))
   | _ => none
 
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching

@@ -21,6 +21,11 @@ def EffectList.append : EffectList → EffectList → EffectList
   | .nil, l => l
   | .cons e rest, l => .cons e (rest.append l)
 
+/-- `n` copies of an effect. -/
+def EffectList.replicate : Nat → Effect → EffectList
+  | 0, _ => .nil
+  | n + 1, e => .cons e (EffectList.replicate n e)
+
 namespace GameState
 
 /-- The player who gets priority after `p`: the next one in the turn order (CR 311). -/
@@ -48,24 +53,32 @@ theorem applyEach_safe {g : GameState → ObjId → GameState × List Event}
   | [], s => Safe.refl s
   | id :: ids, s => (hg s id).trans (applyEach_safe hg ids (g s id).1)
 
-/-- Kill an object: it goes to its owner's Trash. Nothing happens if it is not on a zone. -/
-def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
+/-- Send an object to the zone `k` of its owner. Nothing happens if it is not on a zone. -/
+def sendObj (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    match moveObj s id (.player o.owner .trash) with
-    | some r => (r.1, [Event.moved id r.2 (.player o.owner .trash)])
+    match moveObj s id (.player o.owner k) with
+    | some r => (r.1, [Event.moved id r.2 (.player o.owner k)])
     | none => (s, [])
   | none => (s, [])
 
-/-- Killing an object is a safe change. -/
-theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
-  unfold killObj
+/-- Sending an object to a zone is a safe change. -/
+theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
+    Safe s (sendObj k s id).1 := by
+  unfold sendObj
   split
   · split
     · rename_i r hm
       exact Safe.moveObj hm
     · exact Safe.refl s
   · exact Safe.refl s
+
+/-- Kill an object: it goes to its owner's Trash. -/
+def killObj (s : GameState) (id : ObjId) : GameState × List Event := sendObj .trash s id
+
+/-- Killing an object is a safe change. -/
+theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 :=
+  sendObj_safe .trash s id
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed at
 once. That is the state-based check of the cleanup (CR 417), done early: the cleanup itself comes
@@ -144,11 +157,13 @@ theorem onSelected_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     Prim → Option (GameState × List Event)
-  | .deal sel n => (n.eval env).bind (fun k => onSelected s p src env sel (dealObj k))
-  | .heal sel n => (n.eval env).bind (fun k => onSelected s p src env sel (healOne k))
+  | .deal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (dealObj k))
+  | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel => onSelected s p src env sel killObj
   | .ready sel => onSelected s p src env sel (setExhausted false)
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
+  | .banish sel => onSelected s p src env sel (sendObj .banishment)
+  | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -157,14 +172,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   cases pr with
   | deal sel n =>
     simp only [applyPrim] at h
-    cases hn : n.eval env with
+    cases hn : n.evalS s p src env with
     | none => simp [hn] at h
     | some k =>
       simp only [hn, Option.bind_some] at h
       exact onSelected_safe (dealObj_safe k) h
   | heal sel n =>
     simp only [applyPrim] at h
-    cases hn : n.eval env with
+    cases hn : n.evalS s p src env with
     | none => simp [hn] at h
     | some k =>
       simp only [hn, Option.bind_some] at h
@@ -172,6 +187,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | kill sel => exact onSelected_safe killObj_safe h
   | ready sel => exact onSelected_safe (setExhausted_safe false) h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
+  | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
+  | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | _ => simp [applyPrim] at h
 
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
@@ -183,11 +200,25 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
   | .nop => (s, [.run p src env es], [])
   | .seq l => (s, [.run p src env (l.append es)], [])
   | .bind v a e' =>
-    match a.eval env with
+    match a.evalS s p src env with
     | some k => (s, [.run p src (env.bind v (.int k)) (.cons e' .nil), .run p src env es], [])
     | none => skip
+  | .ifThen c t e' =>
+    match c.eval s p src env with
+    | some b => (s, [.run p src env (.cons (if b then t else e') es)], [])
+    | none => skip
+  | .forEach sel body =>
+    match sel.eval s p src env with
+    | some ids =>
+      (s, ids.map (fun id => Frame.run p src { env with it := some id } (.cons body .nil)) ++
+        [.run p src env es], [])
+    | none => skip
+  | .repeatN n e' =>
+    match n.evalS s p src env with
+    | some k => (s, [.run p src env ((EffectList.replicate k e').append es)], [])
+    | none => skip
   | .prim (.draw sel n) =>
-    match sel.resolve s p, n.eval env with
+    match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim pr =>
@@ -200,16 +231,9 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
 theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : Safe s (runEffect s p src env e es).1 := by
   unfold runEffect
-  split
-  · exact Safe.refl s
-  · exact Safe.refl s
-  · split <;> exact Safe.refl s
-  · split <;> exact Safe.refl s
-  · split
-    · rename_i r hr
-      exact applyPrim_safe hr
-    · exact Safe.refl s
-  · exact Safe.refl s
+  split <;> (try split) <;> first
+    | exact Safe.refl s
+    | (rename_i r hr; exact applyPrim_safe hr)
 
 /-- The frames that resolve the item on top of the Chain (CR 340): run its effect, then put it in
 the Trash. Nothing to resolve when the Chain is empty. -/

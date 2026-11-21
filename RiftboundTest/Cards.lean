@@ -2,6 +2,8 @@ module
 
 import RiftboundCards
 meta import RiftboundCards
+import Riftbound.Rules.Understood
+meta import Riftbound.Rules.Understood
 
 /-!
 # Tests: the generated card database (docs/card-data.md §4)
@@ -75,5 +77,11 @@ open Riftbound RiftboundCards
 #guard match db.find? ⟨"OGS-015"⟩ with
   | some c => c.status == .todo && c.spellEffect.isNone
   | none => false
+
+-- the drafted Spells: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
+-- use something it does not know yet: a lasting change of Might (`grant`), a mode, a choice of
+-- several objects, a place such as a chosen Battlefield, a delayed or replaced event.
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 34
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 16
 
 end RiftboundTest

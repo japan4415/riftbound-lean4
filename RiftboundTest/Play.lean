@@ -337,4 +337,51 @@ meta def goneAfter (r : Option (GameState × List Event)) (v : ObjId) : Option B
     (applyPrim s p c env (.draw .you (.const 1))).isNone
   | none => false
 
+-- the effect language (M4d): run a body from a state, with the Chain out of the way
+meta def runBody (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect) :
+    Option GameState :=
+  match advance 100 { s with pending := [.run p src env (.cons e .nil)] } [] with
+  | .ok (s', _) => some s'
+  | .error _ => none
+
+/-- Every enemy Unit on a Base. -/
+meta def enemyUnits : Selector := Selector.all .enemy .atBase [.ofType .unit]
+
+#guard match sparkReady with
+  | some (s, p, c, v) =>
+    let hit (k : Nat) : Effect := .prim (.deal .it (.const k))
+    let dmg (r : Option GameState) : Option Nat :=
+      r.bind fun s' => (s'.obj? v).map fun o => o.damage
+    -- forEach: each enemy Unit is dealt damage, `it` being the Unit
+    dmg (runBody s p c {} (.forEach enemyUnits (hit 1))) == some 1 &&
+    -- ifThen: the branch is chosen by the condition
+    dmg (runBody s p c {} (.ifThen (.exists enemyUnits) (.forEach enemyUnits (hit 1)) .nop)) ==
+      some 1 &&
+    dmg (runBody s p c {} (.ifThen (.not (.exists enemyUnits)) (.forEach enemyUnits (hit 1)) .nop))
+      == some 0 &&
+    dmg (runBody s p c {} (.ifThen (.cmp .ge (.count enemyUnits) (.const 2))
+      (.forEach enemyUnits (hit 1)) .nop)) == some 0 &&
+    -- repeatN: twice makes lethal damage (Might 2), and the Unit goes to the Trash
+    (runBody s p c {} (.repeatN (.const 2) (.forEach enemyUnits (hit 1)))).map
+      (fun s' => (s'.obj? v).isNone && cnt (other p) .trash s' == cnt (other p) .trash s + 1) ==
+        some true &&
+    -- bind: an amount that counts is bound, then used
+    dmg (runBody s p c {} (.bind ⟨"n"⟩ (.count enemyUnits)
+      (.forEach enemyUnits (.prim (.deal .it (.var ⟨"n"⟩)))))) == some 1 &&
+    -- what is not understood is skipped, and the rest goes on
+    dmg (runBody s p c {} (.seqOf [.may .nop, .forEach enemyUnits (hit 1)])) == some 1
+  | none => false
+
+-- banish and return to hand send the Unit to its owner's Banishment and hand
+#guard match sparkReady with
+  | some (s, p, c, v) =>
+    let q := other p
+    let env : Env := { slots := [.obj v] }
+    (runBody s p c env (.prim (.banish (.slot 0)))).map
+      (fun s' => cnt q .banishment s' == cnt q .banishment s + 1 && (s'.obj? v).isNone) ==
+        some true &&
+    (runBody s p c env (.prim (.returnToHand (.slot 0)))).map
+      (fun s' => cnt q .hand s' == cnt q .hand s + 1 && (s'.obj? v).isNone) == some true
+  | none => false
+
 end RiftboundTest
