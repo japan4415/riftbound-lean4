@@ -141,13 +141,12 @@ meta def afterShowdown : Option (GameState × List Event) :=
     | .error _ => false
   | _, _ => false
 
--- an opponent's Unit cannot go to a Battlefield where the player's Unit is (until Combat), but
--- can go to the other one
+-- an opponent's Unit can go to the Battlefield where the player's Unit is: that is a Combat
 #guard match bfReady, afterShowdown with
   | some (_, p, _, _, b1, b2), some (s3, _) =>
     match readyUnit s3 (otherP p) with
     | some (s4, v) =>
-      !moveOk s4 (otherP p) v (.battlefield b1) && moveOk s4 (otherP p) v (.battlefield b2)
+      moveOk s4 (otherP p) v (.battlefield b1) && moveOk s4 (otherP p) v (.battlefield b2)
     | none => false
   | _, _ => false
 
@@ -246,6 +245,153 @@ meta def withPoints (s : GameState) (a b : Nat) : GameState :=
     full.1.pointsOf ⟨0⟩ == 8 && full.2.1 == [] &&
     -- a Hold has no such limit
     holdOnly.1.pointsOf ⟨0⟩ == 8
+  | none => false
+
+/-! ### Combat (CR 461-468) -/
+
+-- the damage goes down the order, lethal first, and what is left goes to the last Unit
+#guard greedy (fun _ => 2) 5 [⟨1⟩, ⟨2⟩, ⟨3⟩] ==
+  [(⟨1⟩, 2), (⟨2⟩, 2), (⟨3⟩, 1)]
+#guard greedy (fun _ => 2) 3 [⟨1⟩, ⟨2⟩, ⟨3⟩] ==
+  [(⟨1⟩, 2), (⟨2⟩, 1), (⟨3⟩, 0)]
+#guard greedy (fun _ => 2) 9 [⟨1⟩, ⟨2⟩, ⟨3⟩] ==
+  [(⟨1⟩, 2), (⟨2⟩, 2), (⟨3⟩, 5)]
+#guard greedy (fun _ => 2) 4 [⟨1⟩] == [(⟨1⟩, 4)]
+#guard greedy (fun _ => 2) 4 ([] : List ObjId) == []
+
+/-- A Unit with Tank, Might 3. -/
+meta def tankCard : CardDef :=
+  { id := cid "T1", name := "Wall", types := [.unit], domains := [.fury], cost := some ⟨1, []⟩,
+    might := some 3, keywords := [{ keyword := .tank }] }
+
+/-- A Unit with Ganking, Assault 2 and Shield 1, Might 2. -/
+meta def raiderCard : CardDef :=
+  { id := cid "G1", name := "Raider", types := [.unit], domains := [.fury],
+    cost := some ⟨1, []⟩, might := some 2,
+    keywords := [{ keyword := .ganking }, { keyword := .assault, arg := .amount 2 },
+      { keyword := .shield, arg := .amount 1 }] }
+
+/-- Make the object `u` a copy of the card `c` (for the tests). -/
+meta def asCard (s : GameState) (u : ObjId) (c : CardDef) : GameState :=
+  let s1 := { s with cards := { s.cards with cards := s.cards.cards ++ [c] } }
+  s1.modObj u (fun o => match o.kind with | .card ph _ => { o with kind := .card ph c.id } | _ => o)
+
+/-- Answer one after the other; `none` if one is refused. -/
+meta def runActs (s : GameState) : List Action → Option GameState
+  | [] => some s
+  | a :: as =>
+    match step 100 s a with
+    | .ok (s1, _) => runActs s1 as
+    | .error _ => none
+
+/-- The player's Unit is at a Battlefield they control (they have scored it); the opponent has a
+ready Unit on their Base, and it is the opponent's turn: the state, the player, the opponent, the
+player's Unit, the opponent's Unit, the Battlefield. -/
+meta def duelReady : Option (GameState × PlayerId × PlayerId × ObjId × ObjId × ObjId) :=
+  match bfReady, afterShowdown with
+  | some (_, p, u1, _, b1, _), some (s3, _) =>
+    match readyUnit s3 (otherP p) with
+    | some (s4, v) =>
+      some ({ s4 with pending := [.priority (otherP p)], active := some (otherP p) },
+        p, otherP p, u1, v, b1)
+    | none => none
+  | _, _ => none
+
+-- the opponent's Unit goes to the Battlefield: it is Contested, and after the Showdown the
+-- Combat Damage asks the Attacker (the opponent) which Unit gets the damage (CR 466, 467.2.c)
+#guard match duelReady with
+  | some (s, p, q, u1, v, b1) =>
+    match runActs s [⟨.player q, .standardMove v (.battlefield b1)⟩, ⟨.player q, .pass⟩,
+        ⟨.player p, .pass⟩] with
+    | some s1 =>
+      s.isCombat b1 == false &&
+      (match s1.pending with
+        | .assign b a side [] [] :: _ => b == b1 && a == q && side == q
+        | _ => false) &&
+      legalFrameActions s1 == [⟨.player q, .assignPick u1⟩] && s1.isCombat b1
+    | none => false
+  | none => false
+
+-- both sides assign (Might 2 each: both Units are lethal), the damage is dealt, both die, the
+-- player loses the Control, and nobody scores (CR 467, 468)
+#guard match duelReady with
+  | some (s, p, q, u1, v, b1) =>
+    match runActs s [⟨.player q, .standardMove v (.battlefield b1)⟩, ⟨.player q, .pass⟩,
+        ⟨.player p, .pass⟩, ⟨.player q, .assignPick u1⟩, ⟨.player q, .assignDone⟩] with
+    | some s2 =>
+      -- the Defender's turn to assign
+      (match s2.pending with
+        | .assign _ a side [] done :: _ => a == q && side == p && done == [(u1, 2)]
+        | _ => false) &&
+      (match runActs s2 [⟨.player p, .assignPick v⟩, ⟨.player p, .assignDone⟩] with
+        | some s3 =>
+          (s3.obj? u1).isNone && (s3.obj? v).isNone && s3.controlOf b1 == none &&
+          s3.pointsOf p == 1 && s3.pointsOf q == 0 &&
+          (match s3.pending with | [.priority r] => r == q | _ => false) &&
+          (s3.obj? b1).any (·.contested == none)
+        | none => false)
+    | none => false
+  | none => false
+
+-- Tank Units are named first, and a Unit can be named once; the order is complete when all
+-- are named (CR 815, 467.2.c)
+#guard match duelReady with
+  | some (s, p, q, u1, _, b1) =>
+    -- a second Unit of the player's at the Battlefield, one with Tank
+    match readyUnit s p with
+    | some (s5, u2) =>
+      match moveObj s5 u2 .battlefieldZone with
+      | some (s6, u2') =>
+        let s7 := (s6.modObj u2' (fun o => { o with loc := some b1 })).modObj u1 id
+        let s8 := asCard s7 u2' tankCard
+        s8.pickOk b1 q [] u1 == false && s8.pickOk b1 q [] u2' == true &&
+        s8.pickOk b1 q [u2'] u1 == true && s8.pickOk b1 q [u2'] u2' == false &&
+        s8.doneOk b1 q [u2'] == false && s8.doneOk b1 q [u2', u1] == true &&
+        s8.need u2' == 3 && s8.need u1 == 2 &&
+        (s8.modObj u2' (fun o => { o with damage := 2 })).need u2' == 1 &&
+        (s8.modObj u2' (fun o => { o with damage := 3 })).need u2' == 0 &&
+        legalFrameActions { s8 with pending := [.assign b1 q q [] []] } ==
+          [⟨.player q, .assignPick u2'⟩]
+      | none => false
+    | none => false
+  | none => false
+
+-- Assault X counts for the Attacker, Shield X for the Defender (CR 807, 814)
+#guard match duelReady with
+  | some (s, p, q, u1, _, b1) =>
+    let s1 := asCard s u1 raiderCard
+    s1.combatTotal b1 q p == 3 && s1.combatTotal b1 p p == 4 && s1.combatTotal b1 p q == 0 &&
+    s.combatTotal b1 p p == 2
+  | none => false
+
+-- Ganking: a Unit goes from a Battlefield to another one; a Unit without it cannot (CR 810)
+#guard match bfReady, afterShowdown with
+  | some (_, p, u1, _, b1, b2), some (s3, _) =>
+    let s4 := (s3.modObj u1 (fun o => { o with exhausted := false }))
+    let s5 := asCard s4 u1 raiderCard
+    !moveOk s4 p u1 (.battlefield b2) && moveOk s5 p u1 (.battlefield b2) &&
+    !moveOk s5 p u1 (.battlefield b1) &&
+    match step 100 s5 ⟨.player p, .standardMove u1 (.battlefield b2)⟩ with
+    | .ok (s6, _) =>
+      (s6.obj? u1).any (fun o => o.loc == some b2 && o.exhausted) &&
+      s6.controlOf b1 == none && (s6.obj? b2).any (·.contested == some p)
+    | .error _ => false
+  | _, _ => false
+
+-- the end of a Combat: every Unit is healed, the Attacker's Units are Recalled when a Defender's is
+-- left, and the Defender keeps the Control (CR 468)
+#guard match duelReady with
+  | some (s, p, q, u1, v, b1) =>
+    match moveObj s v .battlefieldZone with
+    | some (s5, v') =>
+      let s6 := (s5.modObj v' (fun o => { o with loc := some b1, damage := 1 })).modObj u1
+        (fun o => { o with damage := 1 })
+      let r := combatResolve s6 b1 q
+      (r.1.obj? u1).any (fun o => o.damage == 0 && o.loc == some b1) &&
+      (r.1.obj? v').any (fun o => o.loc == none && o.damage == 0) &&
+      (r.1.zone (.player q .base)).contains v' && r.1.controlOf b1 == some p &&
+      r.1.pointsOf p == 1 && r.2.2.contains (.recalled v')
+    | none => false
   | none => false
 
 end RiftboundTest

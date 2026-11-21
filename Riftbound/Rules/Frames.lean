@@ -11,6 +11,7 @@ public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Battlefield
+public import Riftbound.Rules.Combat
 
 /-!
 # Working through the frames
@@ -80,6 +81,11 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
   | .finishSpell item :: rest =>
     some ({ (finishItem s item).1 with pending := .cleanup :: rest }, (finishItem s item).2)
   | .cleanup :: rest => some (cleanupFrame s rest)
+  | .combatDamage bf att :: rest => some ({ s with pending := s.startCombat bf att ++ rest }, [])
+  | .combatResolve bf att :: rest =>
+    some ({ (combatResolve s bf att).1 with
+              pending := (combatResolve s bf att).2.1 ++ .cleanup :: rest },
+      (combatResolve s bf att).2.2)
   | _ => none
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
@@ -99,8 +105,11 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
   | .showdown bf q n :: rest, .pass =>
     if n + 1 < s.playerCount then
       some ({ s with pending := .showdown bf (s.nextPlayer q) (n + 1) :: rest }, [])
-    else some ({ (endShowdown s bf).1 with pending := (endShowdown s bf).2.1 ++ rest },
-      (endShowdown s bf).2.2)
+    else some (showdownEnd s bf rest)
+  | .assign bf att side acc done :: rest, .assignPick u =>
+    some ({ s with pending := .assign bf att side (acc ++ [u]) done :: rest }, [])
+  | .assign bf att side acc done :: rest, .assignDone =>
+    some (assignDoneStep s bf att side acc done rest)
   | .chainPass p n :: rest, .pass =>
     if n + 1 < s.playerCount then
       some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
@@ -226,6 +235,12 @@ theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
     · exact (hr.wf hwf).congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((combatResolve_safeP s _ _).wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
@@ -299,6 +314,12 @@ theorem microStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
     · exact hr.phys hwf
     · exact List.Perm.refl _
     · exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (combatResolve_safeP s _ _).phys hwf
   · exact absurd h (by simp)
 
 end Riftbound

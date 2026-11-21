@@ -115,11 +115,35 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.showdown bf (s.nextPlayer q) (n + 1)]
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      refine hinv.of_next (endShowdown_safeP s bf).result (fun hb => ?_)
+    · have hs' : s' = (showdownEnd s bf rest).1 := by
+        rw [Option.some.inj h]
+      subst hs'
+      rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
+      · refine hinv.of_next rfl (fun hb => ?_)
+        rw [hp] at hb
+        exact hb.swap rfl [Frame.combatDamage bf a]
+      · refine hinv.of_next (endShowdown_safeP s bf).result (fun hb => ?_)
+        rw [hp] at hb
+        exact hb.swap rfl _
+  · rename_i bf att side acc done rest u hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.assign bf att side (acc ++ [u]) done]
+  · rename_i bf att side acc done rest hp hk
+    have hs' : s' = (assignDoneStep s bf att side acc done rest).1 := by
+      rw [Option.some.inj h]
+    subst hs'
+    rcases assignDoneStep_cases s bf att side acc done rest with
+        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+      rw [e]
+    · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl _
+      exact hb.swap rfl [Frame.assign b a q [] d]
+    · refine hinv.of_next hr.same.result (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.cleanup, Frame.combatResolve bf att]
   · rename_i p n rest hp hk
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -342,6 +366,19 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.pop rfl
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl (s.startCombat bf att)
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (combatResolve_safeP s bf att).result (fun hb => ?_)
+    rw [hp] at hb
+    have := hb.swap rfl ((combatResolve s bf att).2.1 ++ [Frame.cleanup])
+    simpa using this
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the stack invariant. -/
@@ -559,6 +596,16 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
   | cleanup => exact absurd hw (by simp [Frame.isWork])
+  | combatDamage bf att => exact absurd hw (by simp [Frame.isWork])
+  | combatResolve bf att => exact absurd hw (by simp [Frame.isWork])
+  | assign bf att side acc done =>
+    left
+    obtain ⟨a, ha, hk⟩ := assign_exists s bf side acc
+    refine ⟨a, ?_, hk⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp only [legalFrameActions, hp]
+    exact ha
   | showdown bf q n =>
     left
     refine ⟨⟨.player q, .pass⟩, ?_, by simp⟩
@@ -617,6 +664,9 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])
   | finishSpell item => exact absurd hc (by simp [Frame.isChance])
   | cleanup => exact absurd hc (by simp [Frame.isChance])
+  | combatDamage bf att => exact absurd hc (by simp [Frame.isChance])
+  | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])
+  | assign bf att side acc done => exact absurd hc (by simp [Frame.isChance])
   | showdown bf q n => exact absurd hc (by simp [Frame.isChance])
 
 end Riftbound

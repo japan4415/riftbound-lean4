@@ -67,6 +67,7 @@ def legalFrameActions (s : GameState) : List Action :=
         (fun ab => ⟨.player p, .runeAbility c ab⟩)) ++ legalPlays s p ++ legalMoves s p)
   | .chainPass p _ :: _ => [⟨.player p, .pass⟩]
   | .showdown _ q _ :: _ => [⟨.player q, .pass⟩]
+  | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc
   | _ => []
 
 /-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/

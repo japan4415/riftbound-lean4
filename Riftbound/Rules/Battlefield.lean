@@ -35,6 +35,9 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
 /-- Whether an object is a Unit. -/
 def isUnit (s : GameState) (id : ObjId) : Bool := s.hasType id .unit
 
+/-- Whether the card of an object prints the keyword. -/
+def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool := (s.cardDef? id).any (·.hasKeyword k)
+
 /-- Whether an object is a Battlefield. -/
 def isBattlefield (s : GameState) (id : ObjId) : Bool := s.hasType id .battlefield
 
@@ -73,8 +76,8 @@ end GameState
 /-! ### Standard Move -/
 
 /-- Whether player `p` can make the Standard Move of the Unit `u` to `d` (CR 144): the Unit is
-theirs and ready; it goes from the Base to a Battlefield with no Unit of an opponent (until
-Combat), or from a Battlefield to the Base. -/
+theirs and ready; it goes from the Base to a Battlefield, or from a Battlefield to the Base, or
+from a Battlefield to another one if it has Ganking (CR 810). -/
 def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
   match s.obj? u with
   | none => false
@@ -84,8 +87,10 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
       match d with
       | .base => decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome
       | .battlefield bf =>
-        decide (u ∈ s.zone (.player p .base)) && decide (bf ∈ s.battlefields) &&
-          (s.unitsAt bf).all (fun v => s.isControlledBy p v)
+        decide (bf ∈ s.battlefields) &&
+          (decide (u ∈ s.zone (.player p .base)) ||
+            (s.hasKw u .ganking && decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
+              decide (o.loc ≠ some bf)))
 
 /-- The change of a Unit by a Standard Move: it is exhausted and is where it went. -/
 def moveUnitOf (loc : Option ObjId) (o : Object) : Object :=
@@ -103,8 +108,12 @@ def applyMove (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (moveObj s u (.player p .base)).map (fun r =>
       (r.1.modObj r.2 (moveUnitOf none), [Event.standardMoved r.2 none]))
   | .battlefield bf =>
-    (moveObj s u .battlefieldZone).map (fun r =>
-      (contestBy p bf (r.1.modObj r.2 (moveUnitOf (some bf))), [Event.standardMoved r.2 (some bf)]))
+    if u ∈ s.zone .battlefieldZone then
+      some (contestBy p bf (s.modObj u (moveUnitOf (some bf))), [Event.standardMoved u (some bf)])
+    else
+      (moveObj s u .battlefieldZone).map (fun r =>
+        (contestBy p bf (r.1.modObj r.2 (moveUnitOf (some bf))),
+          [Event.standardMoved r.2 (some bf)]))
 
 /-- The Units a player might move: those on their Base and those at Battlefields. -/
 def GameState.movable (s : GameState) (p : PlayerId) : List ObjId :=
@@ -134,12 +143,14 @@ theorem moveOk_mem {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
       simp only [GameState.movable, List.mem_append]
       exact Or.inr h.2.1
     | battlefield bf =>
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
       refine ⟨?_, ?_⟩
       · simp only [GameState.movable, List.mem_append]
-        exact Or.inl h.2.1.1
+        rcases h.2.2 with h1 | h1
+        · exact Or.inl h1
+        · exact Or.inr h1.1.1.2
       · simp only [GameState.destinations, List.mem_cons, List.mem_map]
-        exact Or.inr ⟨bf, h.2.1.2, rfl⟩
+        exact Or.inr ⟨bf, h.2.1, rfl⟩
 
 /-- A Standard Move that can be made can be done. -/
 theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
@@ -158,14 +169,20 @@ theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDes
       simp only [hr]
       exact ⟨_, rfl⟩
     | battlefield bf =>
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-      obtain ⟨-, ⟨hmem, -⟩, -⟩ := h
-      obtain ⟨r, hr⟩ := moveObj_isSome hwf hmem .battlefieldZone .top (fun o _ =>
-        ⟨by simpa [Zone.normalize] using Zone.valid_battlefieldZone s.playerCount,
-          by simp [Zone.normalize]⟩)
+      simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
       unfold applyMove
-      simp only [hr]
-      exact ⟨_, rfl⟩
+      by_cases hb : u ∈ s.zone .battlefieldZone
+      · simp only [hb, ite_true]
+        exact ⟨_, rfl⟩
+      · have hmem : u ∈ s.zone (.player p .base) := by
+          rcases h.2.2 with h1 | h1
+          · exact h1
+          · exact absurd h1.1.1.2 hb
+        obtain ⟨r, hr⟩ := moveObj_isSome hwf hmem .battlefieldZone .top (fun o _ =>
+          ⟨by simpa [Zone.normalize] using Zone.valid_battlefieldZone s.playerCount,
+            by simp [Zone.normalize]⟩)
+        simp only [hb, ite_false, hr]
+        exact ⟨_, rfl⟩
 
 /-- The Standard Moves listed are those a player can make. -/
 theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
@@ -402,19 +419,26 @@ theorem contestBy_safe (p : PlayerId) (bf : ObjId) (s : GameState) :
 /-- A Standard Move that is done is a safe change. -/
 theorem applyMove_safe {s s' : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
     {es : List Event} (h : applyMove s p u d = some (s', es)) : Safe s s' := by
-  unfold applyMove at h
   cases d with
   | base =>
+    unfold applyMove at h
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨⟨s1, id'⟩, hm, rfl, -⟩ := h
     exact (Safe.moveObj hm).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
   | battlefield bf =>
-    simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
-    obtain ⟨⟨s1, id'⟩, hm, rfl, -⟩ := h
-    have h1 := Safe.moveObj hm
-    have h2 : Safe s1 (s1.modObj id' (moveUnitOf (some bf))) :=
-      Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
-    exact (h1.trans h2).trans (contestBy_safe p bf _)
+    simp only [applyMove] at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have h1 : Safe s (s.modObj u (moveUnitOf (some bf))) :=
+        Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
+      exact h1.trans (contestBy_safe p bf _)
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨⟨s1, id'⟩, hm, rfl, -⟩ := h
+      have h1 := Safe.moveObj hm
+      have h2 : Safe s1 (s1.modObj id' (moveUnitOf (some bf))) :=
+        Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
+      exact (h1.trans h2).trans (contestBy_safe p bf _)
 
 /-- A step of the Cleanup is a safe change. -/
 theorem cleanupStep_safe {s s' : GameState} {es : List Event}

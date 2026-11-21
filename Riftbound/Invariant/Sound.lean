@@ -35,6 +35,8 @@ theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
   | run p src env todo => cases todo <;> exact ⟨_, rfl⟩
   | finishSpell item => exact ⟨_, rfl⟩
   | cleanup => exact ⟨_, rfl⟩
+  | combatDamage bf att => exact ⟨_, rfl⟩
+  | combatResolve bf att => exact ⟨_, rfl⟩
   | _ => simp [Frame.isWork] at hf
 
 /-- The automatic work fails for no reason but the fuel. -/
@@ -81,6 +83,8 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
     exact ⟨_, rfl⟩
   · rename_i bf q n rest hp hk
     split <;> exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · rename_i p n rest hp hk
     split <;> exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
@@ -165,9 +169,25 @@ theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hown.congr rfl rfl
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ((endShowdown_safeP s bf).own hwf hown).congr rfl rfl
+    · have hs' : s' = (showdownEnd s bf rest).1 := by
+        rw [Option.some.inj h]
+      subst hs'
+      rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
+      · exact hown.congr rfl rfl
+      · exact ((endShowdown_safeP s bf).own hwf hown).congr rfl rfl
+  · rename_i bf att side acc done rest u hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i bf att side acc done rest hp hk
+    have hs' : s' = (assignDoneStep s bf att side acc done rest).1 := by
+      rw [Option.some.inj h]
+    subst hs'
+    rcases assignDoneStep_cases s bf att side acc done rest with
+        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+      rw [e]
+    · exact hown.congr rfl rfl
+    · exact (hr.own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk
     split at h <;>
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -303,6 +323,14 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
     · exact (hr.own hwf hown).congr rfl rfl
     · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((combatResolve_safeP s _ _).own hwf hown).congr rfl rfl
   · exact absurd h (by simp)
 
 /-- The automatic work keeps `OwnerOk`. -/

@@ -424,14 +424,35 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.showdown bf (s.nextPlayer q) (n + 1)]) rfl (by simp [Frame.isSetup])
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      have hP := endShowdown_safeP s bf
-      exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-        (by simp [GameState.playerCount, hP.config])
-        (new := (endShowdown s bf).2.1) rfl (fun g hg => by
-          obtain ⟨r, rfl⟩ := endShowdown_frames s bf g hg
-          rfl)
+    · have hs' : s' = (showdownEnd s bf rest).1 := by
+        rw [Option.some.inj h]
+      subst hs'
+      rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
+      · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+          (new := [Frame.combatDamage bf a]) rfl (by simp [Frame.isSetup])
+      · have hP := endShowdown_safeP s bf
+        exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+          (by simp [GameState.playerCount, hP.config])
+          (new := (endShowdown s bf).2.1) rfl (fun g hg => by
+            obtain ⟨r, rfl⟩ := endShowdown_frames s bf g hg
+            rfl)
+  · rename_i bf att side acc done rest u hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.assign bf att side (acc ++ [u]) done]) rfl (by simp [Frame.isSetup])
+  · rename_i bf att side acc done rest hp hk
+    have hs' : s' = (assignDoneStep s bf att side acc done rest).1 := by
+      rw [Option.some.inj h]
+    subst hs'
+    rcases assignDoneStep_cases s bf att side acc done rest with
+        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+      rw [e]
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.assign b a q [] d]) rfl (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+        (by simp [GameState.playerCount, hr.same.config])
+        (new := [Frame.cleanup, Frame.combatResolve bf att]) rfl (by simp [Frame.isSetup])
   · rename_i p n rest hp hk
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -624,6 +645,25 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := s.startCombat bf att) rfl
+      (fun g hg => by
+        rcases startCombat_mem s bf att g hg with ⟨b, a, q, e⟩ | e | e <;> subst e <;> rfl)
+  · rename_i bf att rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (combatResolve_safeP s bf att).config])
+      (new := (combatResolve s bf att).2.1 ++ [Frame.cleanup]) (by simp)
+      (fun g hg => by
+        rcases List.mem_append.mp hg with h1 | h1
+        · obtain ⟨r, rfl⟩ := combatResolve_frames s bf att g h1
+          rfl
+        · simp only [List.mem_singleton] at h1
+          subst h1
+          rfl)
   · exact absurd h (by simp)
 
 /-- The automatic work keeps the setup invariant. -/

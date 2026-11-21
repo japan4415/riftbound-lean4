@@ -70,6 +70,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
   | .chainPass p _ :: _ => some (⟨.player p, .pass⟩, r)
   | .showdown _ q _ :: _ => some (⟨.player q, .pass⟩, r)
+  | .assign .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)
