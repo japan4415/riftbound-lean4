@@ -542,27 +542,30 @@ theorem cleanupStep0_safe {s s' : GameState} {es : List Event}
           exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
         · exact absurd h (by simp)
 
+/-- The step for a token that is off the Board is a safe change. -/
+theorem tokenStep_safe {s s' : GameState} {es : List Event}
+    (h : tokenStep s = some (s', es)) : Safe s s' := by
+  unfold tokenStep at h
+  split at h
+  · rename_i id hid
+    obtain ⟨o, ho, hk⟩ := offBoardToken_spec hid
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s2, hrm, hr2⟩ := h
+    simp only [Prod.mk.injEq] at hr2
+    rw [← hr2.1]
+    exact ⟨fun hwf => removeObj_wf hwf hrm, fun hwf => removeObj_physIds hwf hrm ho hk,
+      fun hwf hown => removeObj_ownerOk hwf hown hrm, removeObj_sameMeta hrm⟩
+  · simp at h
+
 /-- A step of the Cleanup is a safe change. -/
 theorem cleanupStep_safe {s s' : GameState} {es : List Event}
     (h : cleanupStep s = some (s', es)) : Safe s s' := by
   unfold cleanupStep at h
   split at h
   · rename_i r hr
-    unfold tokenStep at hr
-    split at hr
-    · rename_i id hid
-      obtain ⟨o, ho, hk⟩ := offBoardToken_spec hid
-      simp only [Option.map_eq_some_iff] at hr
-      obtain ⟨s2, hrm, hr2⟩ := hr
-      simp only [Option.some.injEq] at h
-      have : s' = s2 := by
-        rw [h] at hr2
-        simp only [Prod.mk.injEq] at hr2
-        exact hr2.1.symm
-      subst this
-      exact ⟨fun hwf => removeObj_wf hwf hrm, fun hwf => removeObj_physIds hwf hrm ho hk,
-        fun hwf hown => removeObj_ownerOk hwf hown hrm, removeObj_sameMeta hrm⟩
-    · simp at hr
+    simp only [Option.some.injEq] at h
+    rw [h] at hr
+    exact tokenStep_safe hr
   · split at h
     · rename_i r hr
       unfold detachStep at hr

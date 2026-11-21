@@ -481,11 +481,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p tail src idx hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
-      (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2.1, hp]; rfl) (by simp [Frame.isSetup])
+      (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i p n tail src idx hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
-      (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2.1, hp]; rfl) (by simp [Frame.isSetup])
+      (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

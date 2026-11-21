@@ -65,6 +65,13 @@ def demoCards : List CardDef :=
       cost := some ⟨2, []⟩, might := some 1,
       abilities := [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited] },
+    { id := ⟨"SFD-T03"⟩, name := "Gold", types := [.gear],
+      abilities := [.activated [.killSelf, .exhaustSelf] .reaction
+        (EffectDef.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited] },
+    { id := ⟨"N1"⟩, name := "Prospector", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 2,
+      abilities := [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited] },
     { id := ⟨"N0"⟩, name := "Banner", types := [.unit], domains := [.fury],
       cost := some ⟨2, []⟩, might := some 1,
       abilities := [.passive .always
@@ -104,15 +111,15 @@ def demoCards : List CardDef :=
 def demoDB : CardDB := { cards := demoCards }
 
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
-that play a Recruit token, give the other friendly Units +1 Might, deal 1 damage to an enemy Unit,
-buff themselves, and ping with an activated ability; a Gear that adds 1 Energy (Add); Spells that
-stun an enemy Unit, give a friendly Unit +3 Might this turn, draw a card, deal 2 damage to an
-enemy Unit, and deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy
-Unit. Then 12 Runes and 3 Battlefields. -/
+that play a Recruit token, play a Gold token (a Gear that adds Power once), deal 1 damage to an
+enemy Unit, buff themselves, and ping with an activated ability; a Gear that adds 1 Energy (Add);
+Spells that stun an enemy Unit, give a friendly Unit +3 Might this turn, draw a card, deal 2
+damage to an enemy Unit, and deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage
+to an enemy Unit. Then 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
-      List.replicate 3 ⟨"N0"⟩ ++ List.replicate 3 ⟨"S5"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
+      List.replicate 3 ⟨"N1"⟩ ++ List.replicate 3 ⟨"S5"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
       List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"U0"⟩ ++ List.replicate 3 ⟨"G1"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++
       List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++

@@ -247,6 +247,8 @@ inductive AbilityCost where
   | disempowerSelf
   /-- Recycle the object itself. -/
   | recycleSelf
+  /-- Kill the object the ability belongs to ("Kill this"). -/
+  | killSelf
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

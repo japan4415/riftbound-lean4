@@ -158,8 +158,17 @@ theorem safe_addObject {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {i
   ⟨fun hwf => addObject_wf hwf h, fun hwf => addObject_physIds hwf h hk,
     fun hwf hown => addObject_ownerOk hwf hown h, addObject_sameMeta h⟩
 
-/-- The identifier of the card of a token (CR 179). -/
+/-- The identifier of the card of a token the model defines itself (CR 179). -/
 def tokenId (name : String) : CardId := ⟨"TKN-" ++ name⟩
+
+/-- The card is a token the rules print: its number has a T, as SFD-T03 (Gold) has. -/
+def CardDef.isTokenCard (c : CardDef) : Bool := (c.id.code.splitOn "-T").length > 1
+
+/-- The card of the token with the name: one the model defines, or one of the printed tokens. -/
+def GameState.tokenCard (s : GameState) (name : String) : Option CardDef :=
+  match s.cards.find? (tokenId name) with
+  | some c => some c
+  | none => s.cards.cards.find? (fun c => c.isTokenCard && c.name == name)
 
 /-- Add an object that is not a physical card to a zone; nothing if it cannot be added. -/
 def addTok (s : GameState) (o : Object) (z : Zone) : GameState :=
@@ -177,32 +186,32 @@ theorem addTok_safe (s : GameState) (o : Object) (z : Zone) (hk : o.kind.phys? =
   · exact Safe.refl s
 
 /-- Make one token for the player: on their Base, or at the Battlefield `dest` (CR 183). -/
-def createOne (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
+def createOne (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
     (s : GameState) : GameState :=
   let o : Object :=
-    { kind := .token (tokenId name), owner := p, controller := p, exhausted := !ready,
+    { kind := .token card, owner := p, controller := p, exhausted := !ready,
       timestamp := ⟨0⟩, loc := dest }
   match dest with
   | some _ => addTok s o .battlefieldZone
   | none => addTok s o (.player p .base)
 
 /-- Making a token is a safe change. -/
-theorem createOne_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
-    (s : GameState) : Safe s (createOne name p dest ready s) := by
+theorem createOne_safe (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready : Bool)
+    (s : GameState) : Safe s (createOne card p dest ready s) := by
   unfold createOne
   cases dest <;> exact addTok_safe _ _ _ rfl
 
 /-- Make `n` tokens. -/
-def createN (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
+def createN (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
     Nat → GameState → GameState
   | 0, s => s
-  | n + 1, s => createN name p dest ready n (createOne name p dest ready s)
+  | n + 1, s => createN card p dest ready n (createOne card p dest ready s)
 
 /-- Making tokens is a safe change. -/
-theorem createN_safe (name : String) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
-    ∀ (n : Nat) (s : GameState), Safe s (createN name p dest ready n s)
+theorem createN_safe (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready : Bool) :
+    ∀ (n : Nat) (s : GameState), Safe s (createN card p dest ready n s)
   | 0, s => Safe.refl s
-  | n + 1, s => (createOne_safe name p dest ready s).trans (createN_safe name p dest ready n _)
+  | n + 1, s => (createOne_safe card p dest ready s).trans (createN_safe card p dest ready n _)
 
 /-- Stun an object: it deals no combat damage this turn (CR 424). -/
 def stunObj (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -309,11 +318,12 @@ theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
     (n : Amount) (place : Place) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind (fun k =>
-    if (s.cards.find? (tokenId name)).isNone then none
-    else
+    match s.tokenCard name with
+    | none => none
+    | some c =>
       match place with
-      | .atBase => some (createN name p none ready k s, [])
-      | .here => (s.hereOf src).map (fun bf => (createN name p (some bf) ready k s, []))
+      | .atBase => some (createN c.id p none ready k s, [])
+      | .here => (s.hereOf src).map (fun bf => (createN c.id p (some bf) ready k s, []))
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
@@ -325,9 +335,10 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
   | none => simp [hn] at h
   | some k =>
     simp only [hn, Option.bind_some] at h
-    by_cases ht : (s.cards.find? (tokenId name)).isNone = true
-    · simp [ht] at h
-    · simp only [ht, Bool.false_eq_true, ite_false] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht] at h
       cases place with
       | atBase =>
         simp only [Option.some.injEq] at h

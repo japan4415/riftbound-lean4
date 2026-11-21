@@ -35,7 +35,7 @@ meta def mainTk : Option GameState :=
   | none => none
   | some s => match runUntilTurn 100 1 2000 (Rng.ofSeed 1) s with
       | .ok s =>
-        some { s with cards := { cards := db.cards ++ RiftboundCards.Tokens.cards ++ [muster] } }
+        some { s with cards := { cards := db.cards ++ RiftboundCards.db.cards ++ [muster] } }
       | .error _ => none
 
 /-- Put a token of the card on a zone of the player. -/
@@ -50,10 +50,21 @@ meta def tokensOn (s : GameState) (z : Zone) : List ObjId :=
     | .token _ => true | _ => false))
 
 -- the tokens are in the database, and have a Might and the keywords they print
-#guard (RiftboundCards.Tokens.cards.length == 7) &&
-  (RiftboundCards.db.find? (tokenId "Recruit")).any (·.might == some 1) &&
+#guard (RiftboundCards.Tokens.cards.length == 5) &&
   (RiftboundCards.db.find? (tokenId "Sprite")).any (·.hasKeyword .temporary) &&
   decide RiftboundCards.db.WF
+
+-- the tokens the data prints are found by name (CR 179): Recruit, Bird, Gold; the others by the
+-- name the model gives them
+#guard match mainTk with
+  | some s =>
+    let s' := { s with cards := RiftboundCards.db }
+    (s'.tokenCard "Recruit").any (·.might == some 1) &&
+    (s'.tokenCard "Bird").any (·.hasKeyword .deflect) &&
+    (s'.tokenCard "Gold").any (·.hasType .gear) &&
+    (s'.tokenCard "Mech").any (·.might == some 3) &&
+    (s'.tokenCard "Nonesuch").isNone
+  | none => false
 
 -- a Spell that plays tokens: two exhausted Recruits and a ready Sprite on the Base, with no
 -- physical card (CR 183, 359)

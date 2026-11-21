@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Trigger
+public import Riftbound.Rules.Battlefield
 
 /-!
 # Add abilities
@@ -18,8 +19,39 @@ An Add that can be spent only on some things ("Use only to play spells") is not 
 
 namespace Riftbound
 
+/-- The costs of an Add the model can pay: whether the object is exhausted, and whether it is
+killed ("Kill this, [Exhaust]: ..."). -/
+def manaPlan : List AbilityCost → Option (Bool × Bool)
+  | [] => some (false, false)
+  | .exhaustSelf :: cs =>
+    match manaPlan cs with
+    | some (false, k) => some (true, k)
+    | _ => none
+  | .killSelf :: cs =>
+    match manaPlan cs with
+    | some (e, false) => some (e, true)
+    | _ => none
+  | _ :: _ => none
+
+/-- Kill an object at once; a token that dies ceases to exist (CR 183): the step of the Cleanup that
+removes it is done here, since the use of an Add is not followed by a Cleanup. -/
+def killNow (s : GameState) (id : ObjId) : GameState :=
+  let s1 := (killObj s id).1
+  match tokenStep s1 with
+  | some r => r.1
+  | none => s1
+
+/-- Killing at once is a safe change. -/
+theorem killNow_safe (s : GameState) (id : ObjId) : Safe s (killNow s id) := by
+  unfold killNow
+  dsimp only
+  split
+  · rename_i r hr
+    exact (killObj_safe s id).trans (tokenStep_safe hr)
+  · exact killObj_safe s id
+
 /-- The player can use the Add ability at place `idx` of the object `src` (CR 430, 164.2): it is
-an ability they control, which only needs the object to exhaust. -/
+an ability they control, whose costs are to exhaust the object and to kill it. -/
 def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
   s.phase == .main &&
     match s.obj? src, s.cardDef? src with
@@ -27,31 +59,33 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
       o.controller == p && s.usesAbilitiesOf p src &&
         match d.fullAbilities[idx]? with
         | some (Ability.activated costs _ body lim) =>
-          match costPlan costs with
-          | some (ex, none) =>
+          match manaPlan costs with
+          | some (ex, _) =>
             (!ex || !o.exhausted) && (manaKind body).isSome && limitOk s src idx lim
-          | _ => false
+          | none => false
         | _ => false
     | _, _ => false
 
-/-- Use an Add ability: exhaust the object, and the Pool gets what is added (CR 430.2). -/
+/-- Use an Add ability: pay (exhaust, kill), and the Pool gets what is added (CR 430.2). -/
 def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) :
     Option (GameState × List Event) :=
   match s.cardDef? src with
   | some d =>
     match d.fullAbilities[idx]? with
     | some (Ability.activated costs _ body _) =>
-      (manaKind body).map (fun k =>
-        (((s.modObj src (useOf idx (costExhausts costs))).setPool p
-          (k.add (s.poolOf p))), []))
+      match manaPlan costs, manaKind body with
+      | some (ex, kill), some k =>
+        let s1 := s.modObj src (useOf idx ex)
+        let s2 := if kill then killNow s1 src else s1
+        some (s2.setPool p (k.add (s.poolOf p)), [])
+      | _, _ => none
     | _ => none
   | none => none
 
-/-- The shape of an Add being used. -/
+/-- The shape of an Add being used: a safe change, and the Pool. -/
 theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {es : List Event} (h : applyMana s p src idx = some (s', es)) :
-    ∃ f pool, (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
-      s' = (s.modObj src f).setPool p pool := by
+    ∃ s1 pool, Safe s s1 ∧ s' = s1.setPool p pool := by
   unfold applyMana at h
   cases hd : s.cardDef? src with
   | none => simp [hd] at h
@@ -61,10 +95,21 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
     | some ab =>
       cases ab with
       | activated costs sp body lim =>
-        simp only [hd, ha, Option.map_eq_some_iff] at h
-        obtain ⟨k, -, hr⟩ := h
-        simp only [Prod.mk.injEq] at hr
-        exact ⟨useOf idx (costExhausts costs), _, fun o => ⟨rfl, rfl⟩, hr.1.symm⟩
+        simp only [hd, ha] at h
+        cases hp : manaPlan costs with
+        | none => simp [hp] at h
+        | some pe =>
+          obtain ⟨ex, kill⟩ := pe
+          cases hk : manaKind body with
+          | none => simp [hp, hk] at h
+          | some k =>
+            simp only [hp, hk, Option.some.injEq, Prod.mk.injEq] at h
+            have h1 : Safe s (s.modObj src (useOf idx ex)) :=
+              Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
+            refine ⟨_, _, ?_, h.1.symm⟩
+            cases kill
+            · exact h1
+            · exact h1.trans (killNow_safe _ src)
       | passive _ _ => simp [hd, ha] at h
       | replacement _ _ _ => simp [hd, ha] at h
       | triggered _ _ _ => simp [hd, ha] at h
@@ -72,35 +117,40 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
 /-- Using an Add keeps the game well formed. -/
 theorem applyMana_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {es : List Event} (hwf : s.WF) (h : applyMana s p src idx = some (s', es)) : s'.WF := by
-  obtain ⟨f, pool, hf, rfl⟩ := applyMana_cases h
-  exact (GameState.wf_modObj hwf src f).congr rfl rfl rfl rfl
+  obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
+  exact (hs.wf hwf).congr rfl rfl rfl rfl
 
 /-- Using an Add keeps the physical cards. -/
 theorem applyMana_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {es : List Event} (_hwf : s.WF) (h : applyMana s p src idx = some (s', es)) :
+    {es : List Event} (hwf : s.WF) (h : applyMana s p src idx = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  obtain ⟨f, pool, hf, rfl⟩ := applyMana_cases h
-  have h2 : ((s.modObj src f).setPool p pool).physIds = (s.modObj src f).physIds := rfl
-  rw [h2, GameState.physIds_modObj s src (fun o => (hf o).1)]
+  obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
+  have h2 : (s1.setPool p pool).physIds = s1.physIds := rfl
+  rw [h2]
+  exact hs.phys hwf
 
 /-- Using an Add keeps `OwnerOk`. -/
 theorem applyMana_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {es : List Event} (_hwf : s.WF) (hown : s.OwnerOk)
+    {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : applyMana s p src idx = some (s', es)) : s'.OwnerOk := by
-  obtain ⟨f, pool, hf, rfl⟩ := applyMana_cases h
-  exact (GameState.ownerOk_modObj hown src (fun o => (hf o).2)).congr rfl rfl
+  obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
+  exact (hs.own hwf hown).congr rfl rfl
 
 /-- Using an Add changes nothing of the stack, the turn order, the phase, the result or the
-rules, and leaves the hands. -/
+rules. -/
 theorem applyMana_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {es : List Event} (h : applyMana s p src idx = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.pending = s.pending ∧
-        ∀ q, s'.zone (.player q .hand) = s.zone (.player q .hand) := by
-  obtain ⟨f, pool, hf, rfl⟩ := applyMana_cases h
-  have hs2 := GameState.sameMeta_modObj s src f
-  exact ⟨hs2.config, hs2.turnOrder, hs2.phase, hs2.result, hs2.pending,
-    fun q => GameState.zone_modObj s src f _⟩
+      s'.result = s.result ∧ s'.pending = s.pending := by
+  obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
+  exact ⟨hs.same.config, hs.same.turnOrder, hs.same.phase, hs.same.result, hs.same.pending⟩
+
+/-- An Add can be used in the Main Phase only. -/
+theorem manaReady_main {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
+    (h : manaReady s p src idx = true) : s.phase = .main := by
+  unfold manaReady at h
+  simp only [Bool.and_eq_true, beq_iff_eq] at h
+  exact h.1
 
 /-- A ready Add is an ability of the card of the object. -/
 theorem manaReady_ability {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -140,19 +190,17 @@ theorem applyMana_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : costPlan costs with
+          cases hp : manaPlan costs with
           | none => simp [hp] at h
           | some pe =>
-            obtain ⟨ex, pc⟩ := pe
-            cases pc with
-            | some c => simp [hp] at h
-            | none =>
-              simp only [hp, Bool.and_eq_true] at h
-              cases hk : manaKind body with
-              | none => rw [hk] at h; simp at h
-              | some k =>
-                exact ⟨(((s.modObj src (useOf idx (costExhausts costs))).setPool p
-                  (k.add (s.poolOf p))), []), by simp [applyMana, hd, ha, hk]⟩
+            obtain ⟨ex, kill⟩ := pe
+            simp only [hp, Bool.and_eq_true] at h
+            cases hk : manaKind body with
+            | none => rw [hk] at h; simp at h
+            | some k =>
+              have : (applyMana s p src idx).isSome = true := by
+                simp [applyMana, hd, ha, hp, hk]
+              exact Option.isSome_iff_exists.mp this
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
