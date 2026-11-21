@@ -115,6 +115,10 @@ def Effect.understood : Effect → Bool
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
+  | .grant s (.mightPlus .it a) d =>
+    s.understood && a.understood && d.endPoint?.isSome
+  | .grant s (.mightMinus .it a) d =>
+    s.understood && a.understood && d.endPoint?.isSome
   | _ => false
 
 /-- Every effect of a list is understood. -/

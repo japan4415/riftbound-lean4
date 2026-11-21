@@ -18,6 +18,7 @@ public import RiftboundTest.Play
 public import RiftboundTest.Battlefield
 public import RiftboundTest.Chain
 public import RiftboundTest.Trigger
+public import RiftboundTest.Might
 
 /-!
 # RiftboundTest

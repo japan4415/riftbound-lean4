@@ -190,6 +190,58 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | _ => simp [applyPrim] at h
 
+/-- When a lasting effect ends, if the model has a way to end it. -/
+def Duration.endPoint? : Duration → Option EndPoint
+  | .thisTurn => some .turn
+  | .permanent => some .never
+  | _ => none
+
+/-- Add a lasting change of Might to an object (CR 475-478). -/
+def addMightMod (m : MightMod) (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [m] }), [])
+
+/-- Adding a change of Might is a safe change. -/
+theorem addMightMod_safe (m : MightMod) (s : GameState) (id : ObjId) :
+    Safe s (addMightMod m s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- Change the Might of objects for a while: `sign` is 1 for more, -1 for less. -/
+def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
+    (m : StaticMod) (d : Duration) : Option (GameState × List Event) :=
+  let go (a : Amount) (sign : Int) : Option (GameState × List Event) :=
+    d.endPoint?.bind (fun ends => (a.evalS s p src env).bind (fun k =>
+      onSelected s p src env sel (addMightMod ⟨sign * (k : Int), ends⟩)))
+  match m with
+  | .mightPlus .it a => go a 1
+  | .mightMinus .it a => go a (-1)
+  | _ => none
+
+/-- A lasting change that is made is a safe change. -/
+theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {sel : Selector}
+    {m : StaticMod} {d : Duration} {r : GameState × List Event}
+    (h : applyGrant s p src env sel m d = some r) : Safe s r.1 := by
+  unfold applyGrant at h
+  split at h
+  · simp only at h
+    cases hd : d.endPoint? with
+    | none => simp [hd] at h
+    | some ends =>
+      cases hk : (‹Amount›).evalS s p src env with
+      | none => simp [hd, hk] at h
+      | some k =>
+        simp only [hd, hk, Option.bind_some] at h
+        exact onSelected_safe (addMightMod_safe _) h
+  · simp only at h
+    cases hd : d.endPoint? with
+    | none => simp [hd] at h
+    | some ends =>
+      cases hk : (‹Amount›).evalS s p src env with
+      | none => simp [hd, hk] at h
+      | some k =>
+        simp only [hd, hk, Option.bind_some] at h
+        exact onSelected_safe (addMightMod_safe _) h
+  · simp at h
+
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
 the events. An instruction that cannot be done is skipped (design.md §7.1). -/
 def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -224,6 +276,10 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     match applyPrim s p src env pr with
     | some r => (r.1, [.run p src env es], r.2)
     | none => skip
+  | .grant sel m d =>
+    match applyGrant s p src env sel m d with
+    | some r => (r.1, [.run p src env es], r.2)
+    | none => skip
   | _ => skip
 
 /-- Doing an effect is a safe change of the state. -/
@@ -233,6 +289,7 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
   split <;> (try split) <;> first
     | exact Safe.refl s
     | (rename_i r hr; exact applyPrim_safe hr)
+    | (rename_i r hr; exact applyGrant_safe hr)
 
 /-- What an ability on the Chain does: the effect of the ability the card has at that place
 (CR 361). Nothing if the card or the ability is not there. -/

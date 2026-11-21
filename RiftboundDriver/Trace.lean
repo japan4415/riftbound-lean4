@@ -146,6 +146,12 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     match s.obj? id with
     | some o => if 0 < o.damage then some (jarr [toString id.n, toString o.damage]) else none
     | none => none)
+  let boosted := ids.filterMap (fun id =>
+    match s.obj? id with
+    | some o =>
+      let d := (o.mightMods.map (·.amount)).sum
+      if d != 0 then some (jarr [toString id.n, toString d]) else none
+    | none => none)
   let players := allPlayers s.playerCount
   let bfs := s.battlefields.map (fun b =>
     jobj [("id", toString b.n),
@@ -170,7 +176,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("battlefields", jarr bfs), ("at", jarr locs),
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
-    ("damaged", jarr damaged)]
+    ("damaged", jarr damaged), ("boosted", jarr boosted)]
   (json, seen')
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/

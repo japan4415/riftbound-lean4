@@ -57,6 +57,11 @@ def demoCards : List CardDef :=
       cost := some ⟨1, []⟩, might := some 1,
       abilities := [.triggered (Trigger.onSelf .die)
         (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] },
+    { id := ⟨"S4"⟩, name := "Surge", types := [.spell], domains := [.fury],
+      cost := some ⟨1, []⟩,
+      spellEffect := some (EffectDef.of
+        [Choice.targetOf .one .friendly .atBase [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) },
     { id := ⟨"S3"⟩, name := "Counterstrike", types := [.spell], domains := [.fury],
       cost := some ⟨1, []⟩, keywords := [{ keyword := .reaction }],
       spellEffect := some (EffectDef.of
@@ -71,15 +76,16 @@ def demoCards : List CardDef :=
 /-- The demo database. -/
 def demoDB : CardDB := { cards := demoCards }
 
-/-- The demo deck: the champion, three copies of each of 5 vanilla Units, three copies each of a
+/-- The demo deck: the champion, three copies of each of 4 vanilla Units, three copies each of a
 Unit that draws when it is played, a Unit that deals 1 damage to an enemy Unit when it is played,
-a Unit that draws when it dies, a Unit that pings (an activated ability), a Spell that draws a
-card, a Spell that deals 2 damage to
+a Unit that draws when it dies, a Unit that pings (an activated ability), a Spell that gives a
+friendly Unit +3 Might this turn, a Spell that draws a card, a Spell that deals 2 damage to
 an enemy Unit, a Spell that deals 1 damage to each enemy Unit, and a Reaction that deals 2 damage
 to an enemy Unit, 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
-    main := ⟨"C1"⟩ :: (List.range 5).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+    main := ⟨"C1"⟩ :: (List.range 4).flatMap (fun n => List.replicate 3 ⟨s!"V{n}"⟩) ++
+      List.replicate 3 ⟨"S4"⟩ ++
       List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"H0"⟩ ++ List.replicate 3 ⟨"M0"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++
       List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++

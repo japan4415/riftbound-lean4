@@ -79,9 +79,10 @@ open Riftbound RiftboundCards
   | none => false
 
 -- the drafted Spells: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
--- use something it does not know yet: a lasting change of Might (`grant`), a mode, a choice of
--- several objects, a place such as a chosen Battlefield, a delayed or replaced event.
+-- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
+-- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
+-- Might that ends with the turn (`grant`) runs since M6d.
 #guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 34
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 16
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 24
 
 end RiftboundTest

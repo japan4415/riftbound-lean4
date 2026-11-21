@@ -32,6 +32,22 @@ def ObjKind.phys? : ObjKind → Option PhysId
   | .card p _ => some p
   | _ => none
 
+/-- When a lasting change of Might ends (CR 475-478). -/
+inductive EndPoint where
+  /-- At the end of the turn. -/
+  | turn
+  /-- Never: for the rest of the game. -/
+  | never
+deriving DecidableEq, Repr
+
+/-- A lasting change of an object's Might: how much, and when it ends. -/
+structure MightMod where
+  /-- The change: positive or negative. -/
+  amount : Int
+  /-- When it ends. -/
+  ends : EndPoint
+deriving DecidableEq, Repr
+
 /-- The attributes of a game object. -/
 structure Object where
   /-- What the object is. -/
@@ -65,6 +81,9 @@ structure Object where
   /-- The abilities of this object that have been used this turn, by their place among the card's
   abilities: once for each use (CR 371, 386). Cleared when a turn begins. -/
   used : List Nat := []
+  /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
+  Board clears them. -/
+  mightMods : List MightMod := []
 deriving DecidableEq, Repr
 
 end Riftbound
