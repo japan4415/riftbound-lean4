@@ -3,6 +3,7 @@ module
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Select
+public import Riftbound.Rules.Passive
 
 /-!
 # Playing a card
@@ -42,7 +43,7 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let s1 := r.1.setPool p pool
-      ((if d.hasType .unit then s1.exhaustObj r.2 else s1),
+      ((if d.hasType .unit && !d.entersReady then s1.exhaustObj r.2 else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
@@ -110,7 +111,7 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ d pool s2 id', s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
-      s' = (if d.hasType .unit = true then (s2.setPool p pool).exhaustObj id'
+      s' = (if (d.hasType .unit && !d.entersReady) = true then (s2.setPool p pool).exhaustObj id'
         else s2.setPool p pool) := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
@@ -249,7 +250,7 @@ theorem applyPlay_zones {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
 theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
-      ∀ d, s.cardDef? c = some d → d.hasType .unit = true →
+      ∀ d, s.cardDef? c = some d → d.hasType .unit = true → d.entersReady = false →
         ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
@@ -262,10 +263,11 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
       obtain ⟨hs', hes⟩ := hr
-      refine ⟨id', hes.symm, fun d' hd' hu o ho => ?_⟩
+      refine ⟨id', hes.symm, fun d' hd' hu hr o ho => ?_⟩
       cases hd'
       rw [← hs'] at ho
-      simp only [hu, ite_true, GameState.obj?_exhaustObj] at ho
+      simp only [hu, hr, Bool.not_false, Bool.and_self, ite_true,
+        GameState.obj?_exhaustObj] at ho
       cases hx : (s2.setPool p pool).obj? id' with
       | none => rw [hx] at ho; simp at ho
       | some o0 =>

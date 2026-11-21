@@ -19,6 +19,7 @@ public import RiftboundTest.Battlefield
 public import RiftboundTest.Chain
 public import RiftboundTest.Trigger
 public import RiftboundTest.Might
+public import RiftboundTest.Passive
 
 /-!
 # RiftboundTest

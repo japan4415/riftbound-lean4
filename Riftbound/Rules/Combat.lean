@@ -32,7 +32,7 @@ namespace Riftbound
 namespace GameState
 
 /-- The Might of an object, counted for damage: a negative Might counts as 0 (CR 143.2.c). -/
-def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightOf u).map Might.eff).getD 0
+def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff).getD 0
 
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
