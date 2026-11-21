@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7g の実装の記録（2026-11-22）: Discard（選ぶ決定）と Channel の効果
+
+- **何を数えたか**: 止まっている効果の部品のうち、Discard N（5 枚: 「Discard N, then draw N」）と Channel N runes exhausted（6 枚）が最も多い。Score は 3 枚だけで、点が変わる（`Safe` から外れる）ので、証明の手間に合わず後回しにした。
+- **Discard は選ぶ決定**（`Frame.discard p n`、行動 `discardPick card` と `discardDone`）: プレイヤーが手札から 1 枚ずつ選び、Trash へ送る（CR 415）。手札が空か、残りが 0 のときは、終わる行動だけが合法になる。**この形にしたのは、どの局面でも合法な行動が 1 つはある、という進行の定理を、手札が足りるという新しい不変条件なしで保つため。** `Effect` の実行は、`draw` と同じく、選ぶフレームを積んでから続きを実行する。
+- **Channel の効果**（`channelEx`、`channelAll`、`channel_safe`）: 毎ターンの Channel の関数を使い、指定した数の Rune を ready で、さらに指定した数を exhausted で出す。Rune が足りないときは、ある分だけ（CR 431.3）。
+- **転記**: 「A, then b.」を 2 つの文に分ける（順番は同じ）、`Discard N`、`Channel N rune(s) (exhausted)`、「…exhausted and draw N」。**転記済みは 191 枚から 202 枚**。
+- **証明**: `applyFrame0` の新しい腕を、Step / Sound / Hands / Progress / Setup の不変条件に足した（`sendObj_safe` を使う）。`Progress` は、`discard` フレームが決定フレームとして合法な行動を持つことを足した。`Frame.isPlay` に `discard` を含めたので、Hands の「セットアップ中は無い」の条件がそのまま効く。
+- **テスト**（`RiftboundTest/Discard.lean`）: 捨てる決定が手札のカードだけを挙げること、選ぶと Trash が 1 枚増えてから引くこと、空の手札と n = 0 では終わる行動だけになること、Channel の効果で Rune が出て exhausted になること。
+- **ビューア・デモ**: 「捨てる」の行動が出る。デモのデッキに Looter（出たとき、1 枚捨てて 1 枚引く Unit）が入る。
+- **まだ無いもの**: 費用としての Discard（Chain を通る起動型能力で、どのカードを捨てるかを払う前に選ぶ）、「Each player discards」「捨てたカードの種類で分かれる」文、`Score` の効果、「できなかったなら」の条件つきの文。
+
 ### M7f の実装の記録（2026-11-22）: Gold トークンと「Kill this」の費用
 
 - **おすすめの変更（データで確かめた結果）**: 前の報告では「Spend N XP などの費用を広げる」をおすすめしたが、残りの文を数え直すと、Spend N XP は 7 行、Spend a buff は 2 行で、1 回の PR で増えるカードが少ない。いっぽう **Gold トークン**（Gear。「Kill this, Exhaust: Add 任意の領域の Power 1」）を作る文は 8 枚あり、M7e の Add 能力と合わせるとそのまま書ける。そこで、費用の拡張は「Kill this」だけにして、Gold を先に入れた。

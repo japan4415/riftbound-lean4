@@ -410,6 +410,28 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       cases hh
     · rw [hpend] at hm
       exact hm
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hm := (sendObj_safe .trash s c).same
+    have hph : (sendObj .trash s c).1.phase ≠ .setup := by
+      rw [hm.phase]
+      exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
+    dsimp only at hm'
+    split at hm'
+    · rw [hp]; exact List.mem_cons_of_mem _ hm'
+    · rw [hp]
+      simp only [List.mem_cons] at hm'
+      rcases hm' with h1 | h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    exact hinv.of_play hph rfl rfl (fun hm' => by rw [hp]; exact List.mem_cons_of_mem _ hm')
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

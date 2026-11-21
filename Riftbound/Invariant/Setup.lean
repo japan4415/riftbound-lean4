@@ -486,6 +486,20 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p n rest c hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hc : (sendObj .trash s c).1.playerCount = s.playerCount := by
+      simp [GameState.playerCount, (sendObj_safe .trash s c).same.config]
+    by_cases hn : n ≤ 1
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) hc (new := []) (by simp [hn])
+        (by simp)
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) hc (new := [Frame.discard p (n - 1)])
+        (by simp [hn]) (by simp [Frame.isSetup])
+  · rename_i p n rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

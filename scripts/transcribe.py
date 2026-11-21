@@ -130,6 +130,10 @@ SENTENCES = [
      lambda m, slot: ([], f".grant .self (.mightPlus .it (.const {m.group('n')})) .thisTurn")),
     (re.compile(r"^Draw (?P<n>\d+)\.$"),
      lambda m, slot: ([], f".prim (.draw .you (.const {m.group('n')}))")),
+    (re.compile(r"^Channel (?P<n>\d+) runes? exhausted\.$"),
+     lambda m, slot: ([], f".prim (.channel .you (.const 0) (.const {m.group('n')}))")),
+    (re.compile(r"^Channel (?P<n>\d+) runes?\.$"),
+     lambda m, slot: ([], f".prim (.channel .you (.const {m.group('n')}) (.const 0))")),
     (re.compile(r"^Discard (?P<n>\d+)\.$"),
      lambda m, slot: ([], f".prim (.discard .you (.const {m.group('n')}))")),
     (re.compile(r"^Return a (?P<t>spell|unit|gear) from your trash to your hand\.$"),
@@ -140,6 +144,9 @@ SENTENCES = [
 
 def parse_effect(text: str, slot: int = 0):
     """文の列を (Choice の式の列, Effect の式) にする。合わなければ None。"""
+    # "A, then b." is the two sentences "A." and "B." in this order
+    text = re.sub(r", then ([a-z])", lambda m: ". " + m.group(1).upper(), text)
+    text = re.sub(r"(exhausted) and draw (\d+)\.", r"\1. Draw \2.", text)
     sentences = [s for s in re.split(r"(?<=\.) ", text) if s]
     choices: list[str] = []
     effects: list[str] = []

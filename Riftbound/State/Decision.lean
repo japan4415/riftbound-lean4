@@ -65,6 +65,10 @@ inductive ActionKind where
   | mulliganPick (card : ObjId)
   /-- Finish the mulligan. -/
   | mulliganDone
+  /-- Discard this card from the hand (CR 415). -/
+  | discardPick (card : ObjId)
+  /-- Finish a discard: the hand is empty, so nothing more can be discarded (CR 415.1). -/
+  | discardDone
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
   | burnOutTarget (opponent : PlayerId)
   /-- Pass priority. In the Main Phase with an empty Chain, the turn player passing ends the
@@ -188,6 +192,8 @@ inductive Frame where
   The group is never empty. -/
   | triggerOrder (p : PlayerId) (first : PendTrigger) (more : List PendTrigger)
       (others : List PendTrigger)
+  /-- Choice: player `p` discards `n` more cards of their hand, one at a time (CR 415). -/
+  | discard (p : PlayerId) (n : Nat)
 deriving DecidableEq, Repr
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
@@ -210,6 +216,7 @@ def Frame.isPlay : Frame → Bool
   | .combatResolve .. => true
   | .triggers _ => true
   | .triggerOrder .. => true
+  | .discard .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/

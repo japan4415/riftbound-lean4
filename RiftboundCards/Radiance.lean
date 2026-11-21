@@ -1870,8 +1870,13 @@ def RAD_086.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- K'Sante, Courageous: the effect is not written yet. -/
-def RAD_086 : CardDef := RAD_086.meta
+/-- K'Sante, Courageous. -/
+def RAD_086 : CardDef :=
+  { RAD_086.meta with
+    abilities := [.triggered (.onSelf .hold)
+        (.of []
+        (.prim (.channel .you (.const 1) (.const 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-087
 /--
