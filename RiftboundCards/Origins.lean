@@ -7242,7 +7242,8 @@ def OGN_269 : CardDef :=
       .triggered
         { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
           condition := .diedWith .buffedUnitDied }
-        (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
+        (.of [] (.ifThen (.and (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
+            (.cmp .ge (.count (Selector.all .friendly .inTrash [.sameAs (.slot 0)])) (.const 1)))
           (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩), .prim (.exhaust .self),
             .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))])) .nop))
         .unlimited,

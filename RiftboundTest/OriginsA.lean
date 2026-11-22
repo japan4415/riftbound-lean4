@@ -3894,6 +3894,14 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let spent ← die ((funded.buff u).tire boss) u
   let no ← (let (k, ev) := killObj (funded.buff u) u; fire k ev { yes := false })
   let ready ← fire (s3.tire boss) [.scored s.me s.bf0 true]
+  -- two buffed units die at once: the Boss saves one (he is exhausted for the second)
+  let (s6, v) ← put funded s.me "OGN-136" .base
+  let both := (s6.buff u).buff v
+  let (k1, ev1) := killObj both u
+  let (k2, ev2) := killObj k1 v
+  let two ← fire k2 (ev1 ++ ev2)
+  -- the opponent's conquer does not ready him
+  let theirsReady ← fire (s3.tire boss) [.scored s.you s.bf0 true]
   let unitBack := (back.zone (.player s.me .base)).filter (fun x =>
     (back.cardDef? x).any (·.id == cid "OGN-136"))
   return back.countIn s.me .base "OGN-136" == 1 && back.countIn s.me .trash "OGN-136" == 0 &&
@@ -3901,6 +3909,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (back.poolOf s.me).fury == 0 && plain.countIn s.me .trash "OGN-136" == 1 &&
     theirs.countIn s.you .trash "OGN-136" == 1 && broke.countIn s.me .trash "OGN-136" == 1 &&
     spent.countIn s.me .trash "OGN-136" == 1 && no.countIn s.me .trash "OGN-136" == 1 &&
-    ready.tired boss == some false
+    ready.tired boss == some false && two.countIn s.me .base "OGN-136" == 1 &&
+    two.countIn s.me .trash "OGN-136" == 1 && theirsReady.tired boss == some true
 
 end RiftboundTest
