@@ -115,6 +115,12 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
   Base の Looter に、移動先が 2 つの Battlefield の手が出る。Battlefield 2 をクリックすると、
   ログに「Looter を Standard Move」と出て、Looter は Battlefield 2 に移る。
 
+## 1 手戻す
+
+- ライブ操作では、直前の答えを取り消せる（「1 手戻す」のボタン、または Ctrl+Z / Cmd+Z）。何度でも、今のゲームの最初の答えまで戻れる。
+- 戻すのは、`riftbound-live`（Lean）が、答える前のゲームを覚えていて、それに戻す。画面は、その手までの記録に切り詰めて、合法手を入れ替える。
+- 新しいゲーム、次のゲーム（マッチ）、サイドボードの入れ替えをまたいでは、戻れない。
+
 ## 次の段階
 
 時計・ジャッジ・Limited の設定をライブ操作で選べるようにする。カードや Battlefield を直接クリックして答える。

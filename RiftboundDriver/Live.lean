@@ -184,6 +184,11 @@ def LiveGame.reply (g : LiveGame) (steps : List String) (extra : List (String ×
     ("over", if g.s.result.isSome then "true" else "false"),
     ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson)])
 
+/-- What the reply to an undo says: the answers a person can give again, and how many steps the
+viewer keeps (the steps made until then). -/
+def LiveGame.undoReply (g : LiveGame) : String :=
+  g.reply [] [("truncate", toString g.i)]
+
 /-- The game before any answer, for the kind of game, from the decks of the players. -/
 def LiveKind.initial (decks : List Deck) : LiveKind → Option GameState
   | .core => GameState.initial demoDB demoConfig decks

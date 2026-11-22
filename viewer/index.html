@@ -187,6 +187,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <label>試合 <select id="matchmode"><option value="single" selected>1 ゲームだけ</option>
         <option value="bo1">Best of 1</option><option value="bo3">Best of 3</option></select></label>
       <button id="newgame">新しいゲーム</button>
+      <button id="undobtn" hidden title="直前の答えを取り消す（Ctrl+Z）">1 手戻す</button>
       <span class="note" id="livemsg"></span>
     </div>
     <div class="note" id="matchinfo"></div>
@@ -678,6 +679,8 @@ function appendSteps(list) {
   }
   $('scrub').max = steps.length - 1;
 }
+// 取り消せる答えの数（Lean が覚えている、今のゲームの答えの数）
+let undoCount = 0;
 function setLive(j) {
   liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
   swapOut = swapIn = null;
@@ -803,6 +806,7 @@ document.addEventListener('keydown', (e) => {
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
+  $('undobtn').hidden = !(live && steps && undoCount > 0 && i === steps.length - 1);
   if (!live || !steps || i !== steps.length - 1) return;
   const last = steps[i].state;
   $('matchinfo').textContent = matchText(liveMatch);
@@ -873,7 +877,7 @@ function renderSideboard(group, btn) {
   group('入れ替え', [go]);
 }
 async function liveSwap() {
-  const out = swapOut, inn = swapIn;
+  const out = swapOut, inn = swapIn; undoCount = 0;
   $('livemsg').textContent = '確かめ中…';
   try {
     const j = await api('/api/swap', { out, in: inn });
@@ -884,6 +888,8 @@ async function liveSwap() {
 async function startWith(path, body, fresh) {
   const j = await api(path, body);
   if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
+  if (fresh) undoCount = 0;
+  else if (path === '/api/act' || path === '/api/clock' || path === '/api/judge') undoCount++;
   if (fresh) load({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
   else { const from = steps.length - 1; appendSteps(j.steps); pause(); show(from, false); }
   setLive(j); if (fresh) { speed = +$('speed').value; play(); } else play();
@@ -910,6 +916,24 @@ async function liveNext(choice) {
   try { await startWith('/api/next', choice ? { choice } : {}, true); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
+// 直前の答えを取り消す: Lean が、答える前のゲームに戻す。画面は、その手までの記録に切り詰める。
+async function liveUndo() {
+  if (!live || undoCount <= 0) return;
+  clearActMarks(); $('choices').textContent = ''; $('livemsg').textContent = '戻しています…';
+  try {
+    const j = await api('/api/undo', {});
+    pause(); undoCount--;
+    const n = j.truncate; steps.length = n;
+    const lis = $('log').children; while (lis.length > n) lis[lis.length - 1].remove();
+    $('scrub').max = n - 1; setLive(j);
+    buildBoard(); cur = 0; show(n - 1, false);
+  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; renderLegal(steps.length - 1); }
+}
+$('undobtn').addEventListener('click', liveUndo);
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && live && undoCount > 0
+      && !(e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))) { e.preventDefault(); liveUndo(); }
+});
 $('newgame').addEventListener('click', liveStart);
 async function detectLive() {
   try {
