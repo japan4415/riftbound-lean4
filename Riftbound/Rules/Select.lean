@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Objects
+public import Riftbound.Rules.Pay
 
 /-!
 # Choosing objects
@@ -147,8 +148,8 @@ def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
 
-/-- What the buff of a unit adds to its Might: +1, and +1 more for each effect of the turn that makes
-buffs give more (CR 701). Nothing for a unit that is not buffed. -/
+/-- What the buff of a unit adds to its Might: +1, and +1 more for each effect of the turn that
+makes buffs give more (CR 701). Nothing for a unit that is not buffed. -/
 def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
   match s.obj? id with
   | some o =>
@@ -454,6 +455,12 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .pick .all side place fs => s.candidates p self env side place fs
   | _ => none
 
+/-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
+Power the cost may name), if it can: the first payment that the Pool has. -/
+def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) : Option RunePool :=
+  let own := ((s.cardDef? src).map (·.domains)).getD []
+  (c.payments own).findSome? (fun pay => (s.poolOf p).spend pay)
+
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in
 `GameState.victoryScore`, defined later. -/
@@ -539,6 +546,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
   | .playedAnother => some (s.playedOther p self)
+  | .canPay c => some (s.payNow p self c).isSome
   | _ => none
 
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching

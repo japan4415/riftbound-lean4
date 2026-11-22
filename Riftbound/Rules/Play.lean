@@ -351,7 +351,7 @@ theorem applyPlay_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨d, pool, s2, id', m, -, hspend, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
-  have hpools : (s2.modObj id' (Object.withPlay [] m)).pools = s.pools := hs.other.pools
+  have hpools : (s2.modObj id' (Object.withPlay [] m)).pools = s.pools := hs.pools
   refine ⟨pool, hspend, ?_, fun q hq => ?_⟩
   · split
     · exact GameState.poolOf_setPool_self (s2.modObj id' (Object.withPlay [] m)) p pool
@@ -563,7 +563,7 @@ theorem applyCast_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨pool, s2, id', rep, hspend, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
-  have hpools : s2.pools = s.pools := hs.other.pools
+  have hpools : s2.pools = s.pools := hs.pools
   refine ⟨pool, hspend, GameState.poolOf_setPool_self s2 p pool, fun q hq => ?_⟩
   show (s2.setPool p pool).poolOf q = _
   rw [GameState.poolOf_setPool_ne _ hq]

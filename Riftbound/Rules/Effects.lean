@@ -398,6 +398,8 @@ card to be played fires. A card that is in the Base already is played again wher
 def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.cardDef? id with
   | some d =>
+    -- only a Unit or a Gear enters the Base; a Spell would need the Chain
+    if !(d.hasType .unit || d.hasType .gear) then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
       (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
@@ -413,11 +415,13 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
   unfold playFree
   split
   · split
-    · rename_i d hd r hr
-      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
+    · exact Safe.refl s
     · split
-      · exact enterBase_safe _ _ _ _ _
-      · exact Safe.refl s
+      · rename_i d hd r hr
+        exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
+      · split
+        · exact enterBase_safe _ _ _ _ _
+        · exact Safe.refl s
   · exact Safe.refl s
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
@@ -466,6 +470,11 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
   split
   · exact sendObj_safe .trash s id
   · exact sendObj_safe .trash s id
+
+/-- Replacing a Rune Pool is a safe change. -/
+theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (s.setPool p pool) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
@@ -813,6 +822,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e => some (s.addTurnFx p e, [])
+  | .pay c =>
+    match s.payNow p src c with
+    | some pool => some (s.setPool p pool, [])
+    | none => some (s, [])
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -950,6 +963,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact addTurnFx_safe s p e
+  | pay c =>
+    simp only [applyPrim] at h
+    cases hp : s.payNow p src c with
+    | none => simp only [hp, Option.some.injEq] at h; subst h; exact Safe.refl s
+    | some pool =>
+      simp only [hp, Option.some.injEq] at h
+      subst h
+      exact setPool_safe s p pool
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/
@@ -1063,6 +1084,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .bin s => some s
   | .discardCard s => some s
   | .play s => some s
+  | .playTo s _ => some s
   | .reveal s => some s
   | .move s d =>
     match s, d with
@@ -1088,6 +1110,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
+  | .playTo _ bf => .playTo sel bf
   | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with
