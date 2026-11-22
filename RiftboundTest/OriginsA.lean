@@ -2771,4 +2771,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (a.obj? here).map (·.damage) == some 4 && (b.obj? far).map (·.damage) == some 3 &&
     (c.obj? v).map (·.damage) == some 3
 
+-- Brynhir Thundersong (OGN-026): when I play her, my opponents cannot play cards this turn
+#guard t fun s => do
+  let (s1, b) ← put s s.me "OGN-026" .hand
+  let (s2, mine) ← put s1 s.me "OGN-136" .hand
+  let (s3, theirs) ← put s2 s.you "OGN-136" .hand
+  let on ← play s3 s.me b
+  let rich := on.rich s.me |>.rich s.you
+  let pay (c : ObjId) := payOf rich c
+  let next := { rich with turn := rich.turn + 1 }
+  return !s3.cantPlay s.you && on.cantPlay s.you && !on.cantPlay s.me &&
+    playable rich s.me mine (pay mine) && !playable rich s.you theirs (pay theirs) &&
+    playable (s3.rich s.you) s.you theirs (payOf s3 theirs) && !next.cantPlay s.you
+
 end RiftboundTest

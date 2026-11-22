@@ -143,7 +143,7 @@ def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
 the Main Phase, and the payment pays its cost and the Rune Pool holds it (CR 349, 356, 357). The
 card must also be in the hand, which `Legal` states apart. -/
 def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) : Bool :=
-  s.phase == .main &&
+  s.phase == .main && !s.cantPlay p &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && (d.hasType .unit || d.hasType .gear) &&
@@ -199,7 +199,7 @@ it, in the Main Phase (CR 349, 355, 356, 357). The card must also be in the hand
 states apart. -/
 def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) : Bool :=
-  s.phase == .main &&
+  s.phase == .main && !s.cantPlay p &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
@@ -232,7 +232,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨hph, hrest⟩ := h
+  obtain ⟨⟨hph, -⟩, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>
@@ -439,7 +439,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨hph, hrest⟩ := h
+  obtain ⟨⟨hph, -⟩, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>
