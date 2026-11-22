@@ -107,6 +107,14 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
   Escape かほかの場所のクリックで、やめる。
 - カードの右クリックは、これまでどおり詳細。
 
+**本物の局面での確認**（2026-11-22）: 乱数の種と答えの番号を決めて、ブリッジで同じ局面を作り直せる。
+`start SEED 0` のあと、`act` の番号を順に送る。
+- 対象の選択: seed 1、番号 `0,1,0,4,0,0,1,5`（8 手）。手札の Counterstrike に、対象が Summoner と Guardian の 2 つの手が出る。
+  Guardian をクリックすると、ログに「Counterstrike を Reaction でプレイ（対象: Guardian）」と出る。
+- 移動先の選択: seed 3、番号 `2,0,0,2,4,1,1,0,0,0,0,0,1,3,1,0,0,0,0,0,0,0,0,3,7,3,2,0,0,0,0,0,0,0,0,0`（36 手）。
+  Base の Looter に、移動先が 2 つの Battlefield の手が出る。Battlefield 2 をクリックすると、
+  ログに「Looter を Standard Move」と出て、Looter は Battlefield 2 に移る。
+
 ## 次の段階
 
 時計・ジャッジ・Limited の設定をライブ操作で選べるようにする。カードや Battlefield を直接クリックして答える。
