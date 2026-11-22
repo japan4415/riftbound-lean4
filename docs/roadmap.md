@@ -33,7 +33,7 @@
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
 | I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
-| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)） | L2 | M5〜 |
+| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。**調査の結果と単位の分け方は [termination.md](termination.md)。証明は未** | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
@@ -459,6 +459,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - サイドボードの入れ替えの後も、デッキはフォーマットの要件を満たす（TR 403.4.c）。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
+
+### I12 の調査の記録（2026-11-22）: 自動処理の停止
+
+- **証明はしていない**。何が要るかを調べ、`docs/termination.md` にまとめた。今ある確認は、テストと実測だけ。
+- **実測**: 乱数の種 60 個 × 方針 4 通りの 240 ゲーム、答え 19,567 個で、1 つの答えのあとの作業フレームは最大 19 歩（平均 2.94）。fuel は 100。
+- **テスト**（`RiftboundTest/Fuel.lean`）: デモのゲームを終わりまで遊び、fuel 切れとエンジンの内部エラーが出ないこと（Core Rules 12 種、時計つき 12 種、Limited 6 種）。期待を間違えると失敗することも確かめた。
+- **見つけたこと**: 誘発した能力は、Chain に置かれたあと、決定フレーム（`chainPass`）を通らないと解決しないので、「誘発 → 解決 → また誘発」は 1 つの答えの中で続かない（コードを読んだ範囲）。止まらない恐れがあるのは、**`cleanup` の繰り返し**（撃破の `moveObj` が失敗すると、状態が変わらず永久に繰り返す。`WF` と `OwnerOk` の下では起きない）と、**`repeatN` と `forEach` を含む `run`**。
+- **単位**: I12a（Cleanup の測度）、I12b（`run` の多重集合の測度）、I12c（残りと全体）、I12d（まとめ）。どれも大きい。
 
 ### M5b の実装の記録（2026-11-22）: I14 の全体（時間切れの後のターン数は有限）
 
