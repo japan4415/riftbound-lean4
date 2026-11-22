@@ -59,9 +59,57 @@ theorem CardDef.paysFor_total {d : CardDef} {cost : Cost} {pay : RunePool.Paymen
   obtain ⟨c, hc, hp⟩ := h
   exact ⟨c, hc, Cost.total_of_paidBy hp⟩
 
+/-- The player has played a card in the turn that is going on, Legion (CR 812). -/
+def GameState.playedBefore (s : GameState) (p : PlayerId) : Bool :=
+  s.objects.toList.any (fun (_, o) => o.owner == p && o.playedTurn == some s.turn)
+
+/-- Whether the card `c` is one of the objects the selector of a passive ability of `src`, which
+the player `p` controls, stands for, as a cost change reads it (the card is not in play): the card
+itself, or a card on a side (seen by `p`) with the properties. -/
+def GameState.costSelects (s : GameState) (p : PlayerId) (src c : ObjId) : Selector → Bool
+  | .self => src == c
+  | .pick .all side _ fs =>
+    (s.obj? c).any (fun o => side.admits p o) && (fs.holds s src {} c == some true)
+  | _ => false
+
+/-- The cuts of the Energy cost of the card `c` of the player: each is an amount and the floor the
+cost does not go below (CR 356). They come from the passive abilities of the objects in play and of
+the card itself, whose condition holds: Legion is the player having played a card (CR 812). -/
+def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat × Nat) :=
+  (s.passiveSources ++ [c]).flatMap (fun src =>
+    match s.obj? src, s.cardDef? src with
+    | some o, some d =>
+      d.fullAbilities.flatMap (fun ab =>
+        match ab with
+        | Ability.passive cond mods =>
+          let holds := match cond with
+            | .legion => some (s.playedBefore p)
+            | k => k.eval s o.controller src {}
+          if holds == some true then
+            mods.filterMap (fun m =>
+              match m with
+              | .costMinus sel a =>
+                if s.costSelects o.controller src c sel then
+                  some ((a.evalS0 s o.controller src {}).getD 0, 0) else none
+              | .costMinusMin sel a fl =>
+                if s.costSelects o.controller src c sel then
+                  some ((a.evalS0 s o.controller src {}).getD 0, fl) else none
+              | _ => none)
+          else []
+        | _ => [])
+    | _, _ => [])
+
+/-- The cost the card `c` of the player is played for: its cost, less the cuts (CR 356). -/
+def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
+  d.cost.map (fun k =>
+    let e := (s.costCuts p c).foldl
+      (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1)) k.energy
+    { k with energy := e })
+
 /-- The payment pays more than the cost of the card: an additional cost is paid. -/
-def CardDef.paidExtra (d : CardDef) (pay : RunePool.Payment) : Bool :=
-  match d.cost with
+def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (pay : RunePool.Payment) : Bool :=
+  match s.effCost p c d with
   | some cost => !(cost.paidBy d.domains pay)
   | none => false
 
@@ -73,7 +121,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && (d.hasType .unit || d.hasType .gear) &&
-        (match d.cost with
+        (match s.effCost p c d with
           | some cost => d.paysFor cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).isSome
@@ -94,14 +142,10 @@ the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
   { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn }
 
-/-- The player has played a card in the turn that is going on, Legion (CR 812). -/
-def GameState.playedBefore (s : GameState) (p : PlayerId) : Bool :=
-  s.objects.toList.any (fun (_, o) => o.owner == p && o.playedTurn == some s.turn)
-
 /-- The facts of playing the card now with the payment. -/
 def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
     PlayMark :=
-  ⟨(s.cardDef? c).any (·.paidExtra pay), s.playedBefore p, s.turn⟩
+  ⟨(s.cardDef? c).any (fun d => s.paidExtra p c d pay), s.playedBefore p, s.turn⟩
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/
@@ -111,7 +155,8 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let s1 := (r.1.modObj r.2 (Object.withPlay [] (s.playMark p c pay))).setPool p pool
-      ((if d.hasType .unit && !d.entersReady && !d.paidExtra pay then s1.exhaustObj r.2 else s1),
+      ((if d.hasType .unit && !d.entersReady && !s.paidExtra p c d pay then s1.exhaustObj r.2
+        else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
@@ -128,7 +173,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match d.spellEffect with
           | some e => targetsOk s p c e.choices targets
           | none => false) &&
-        (match d.cost with
+        (match s.effCost p c d with
           | some cost => d.paysFor cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool targets)
@@ -149,7 +194,8 @@ a Gear, with a cost that the payment pays and the Pool covers (CR 349, 356, 357)
 theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     (h : playable s p c pay = true) :
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
-      o.owner = p ∧ (d.hasType .unit = true ∨ d.hasType .gear = true) ∧ d.cost = some cost ∧
+      o.owner = p ∧ (d.hasType .unit = true ∨ d.hasType .gear = true) ∧
+        s.effCost p c d = some cost ∧
       d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
@@ -163,7 +209,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       rw [ho, hd] at hrest
       simp only [Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true] at hrest
       obtain ⟨⟨⟨howner, hty⟩, hcost⟩, hspend⟩ := hrest
-      cases hc : d.cost with
+      cases hc : s.effCost p c d with
       | none => rw [hc] at hcost; simp at hcost
       | some cost =>
         rw [hc] at hcost
@@ -176,7 +222,7 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ d pool s2 id' m, s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
-      s' = (if (d.hasType .unit && !d.entersReady && !d.paidExtra pay) = true
+      s' = (if (d.hasType .unit && !d.entersReady && !s.paidExtra p c d pay) = true
         then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
         else (s2.modObj id' (Object.withPlay [] m)).setPool p pool) := by
   unfold applyPlay at h
@@ -325,7 +371,7 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ d, s.cardDef? c = some d → d.hasType .unit = true → d.entersReady = false →
-        d.paidExtra pay = false → ∀ o, s'.obj? id' = some o → o.exhausted = true := by
+        s.paidExtra p c d pay = false → ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
@@ -356,7 +402,7 @@ with an effect that asks for no choice, and a cost that the payment pays and the
 theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {targets : List ObjId} (h : castable s p c pay targets = true) :
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
-      o.owner = p ∧ d.hasType .spell = true ∧ d.cost = some cost ∧
+      o.owner = p ∧ d.hasType .spell = true ∧ s.effCost p c d = some cost ∧
       d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
@@ -370,7 +416,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       rw [ho, hd] at hrest
       simp only [Bool.and_eq_true, beq_iff_eq] at hrest
       obtain ⟨⟨⟨⟨howner, hty⟩, -⟩, hcost⟩, hspend⟩ := hrest
-      cases hc : d.cost with
+      cases hc : s.effCost p c d with
       | none => rw [hc] at hcost; simp at hcost
       | some cost =>
         rw [hc] at hcost
@@ -566,7 +612,7 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
   (s.zone (.player p .hand)).flatMap (fun c =>
     match s.cardDef? c with
     | some d =>
-      match d.cost with
+      match s.effCost p c d with
       | some cost =>
         (d.playPayments cost).flatMap (fun pay =>
           ((playTargets s p c d).filter (fun ts => decide (PlayOk s p c pay ts))).map
@@ -585,7 +631,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     cases hd : s.cardDef? c with
     | none => simp [hd] at ha
     | some d =>
-      cases hcost : d.cost with
+      cases hcost : s.effCost p c d with
       | none => simp [hd, hcost] at ha
       | some cost =>
         simp only [hd, hcost, List.mem_flatMap, List.mem_map, List.mem_filter,
@@ -593,7 +639,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         obtain ⟨pay, -, ts, ⟨-, hok⟩, rfl⟩ := ha
         exact ⟨c, pay, ts, rfl, hc, hok⟩
   · rintro ⟨c, pay, ts, rfl, hc, hok⟩
-    have hdc : ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
+    have hdc : ∃ d cost, s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
         d.paysFor cost pay = true ∧ ts ∈ playTargets s p c d := by
       rcases hok with ⟨hts, h⟩ | h
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h

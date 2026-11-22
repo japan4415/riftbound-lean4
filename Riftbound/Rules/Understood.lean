@@ -240,6 +240,8 @@ def StaticMod.runs : StaticMod → Bool
   | .mightMinus s a => s.understood && a.understoodC
   | .keyword s _ => s.understood
   | .entersReady .self => true
+  | .costMinus s a => s.understood && a.understoodC
+  | .costMinusMin s a _ => s.understood && a.understoodC
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | _ => false

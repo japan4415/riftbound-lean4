@@ -301,8 +301,11 @@ def OGN_012.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Noxus Hopeful: the effect is not written yet. -/
-def OGN_012 : CardDef := OGN_012.meta
+/-- Noxus Hopeful. -/
+def OGN_012 : CardDef :=
+  { OGN_012.meta with
+    abilities := [.passive .legion [.costMinus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-013
 /--
@@ -2090,8 +2093,13 @@ def OGN_084.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Eager Apprentice: the effect is not written yet. -/
-def OGN_084 : CardDef := OGN_084.meta
+/-- Eager Apprentice. -/
+def OGN_084 : CardDef :=
+  { OGN_084.meta with
+    abilities := [.passive
+      (.exists (Selector.all .friendly .here [.ofType .unit, .sameAs .self]))
+      [.costMinusMin (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-085
 /--
@@ -3495,8 +3503,12 @@ def OGN_140.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Herald of Scales: the effect is not written yet. -/
-def OGN_140 : CardDef := OGN_140.meta
+/-- Herald of Scales. -/
+def OGN_140 : CardDef :=
+  { OGN_140.meta with
+    abilities := [.passive .always
+      [.costMinusMin (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Dragon"⟩]) (.const 2) 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-141
 /--
