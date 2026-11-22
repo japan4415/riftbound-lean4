@@ -4851,8 +4851,11 @@ def OGN_189.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Kayn, Unleashed: the effect is not written yet. -/
-def OGN_189 : CardDef := OGN_189.meta
+/-- Kayn, Unleashed. -/
+def OGN_189 : CardDef :=
+  { OGN_189.meta with
+    abilities := [.passive (.cmp .ge .movesThisTurn (.const 2)) [.noDamage]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-190
 /--
@@ -5256,8 +5259,13 @@ def OGN_205.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Yasuo, Windrider: the effect is not written yet. -/
-def OGN_205 : CardDef := OGN_205.meta
+/-- Yasuo, Windrider. -/
+def OGN_205 : CardDef :=
+  { OGN_205.meta with
+    abilities := [.triggered
+      { event := .move, condition := .cmp .eq .movesThisTurn (.const 3) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-206
 /--

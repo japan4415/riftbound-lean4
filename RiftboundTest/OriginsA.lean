@@ -2499,9 +2499,53 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let no ← fire (t1.fund s.me 1) [.scored s.me s.bf0 true] { yes := false }
   let broke ← fire (t1.fund s.me 0) [.scored s.me s.bf0 true] { yes := true }
   return readyUnits a s.me == readyUnits theirs s.me + 1 &&
-    readyUnits b s.me == readyUnits mine s.me && readyUnits c s.me == readyUnits s1 s.me && yes.countIn s.me .hand "OGN-035" == 1 &&
+    readyUnits b s.me == readyUnits mine s.me && readyUnits c s.me == readyUnits s1 s.me &&
+    yes.countIn s.me .hand "OGN-035" == 1 &&
     (yes.poolOf s.me).energy == 0 && no.countIn s.me .hand "OGN-035" == 0 &&
     (no.poolOf s.me).energy == 1 && (no.obj? u).map (·.loc) == some (some s.bf0) &&
     broke.countIn s.me .hand "OGN-035" == 0 && (broke.obj? u).map (·.loc) == some (some s.bf0)
+
+-- Standard Moves counted in the turn. Yasuo, Windrider (OGN-205): the third time he moves in a
+-- turn, I score 1 point
+/-- Move the unit by a Standard Move; the state and the events. -/
+meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
+    Option (GameState × List Event) :=
+  applyMove s p u d
+
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, y) ← put s s.me "OGN-205" .base
+  let (a, _) ← moveTo s1 s.me y (.battlefield s.bf0)
+  let (b, _) ← moveTo a s.me y (.battlefield bf1)
+  let (c, ev) ← moveTo b s.me y (.battlefield s.bf0)
+  let (d, ev4) ← moveTo c s.me y (.battlefield bf1)
+  let (_, ev2) ← moveTo a s.me y (.battlefield bf1)
+  let third ← fire c ev
+  let second ← fire b ev2
+  let fourth ← fire d ev4
+  return third.pointsOf s.me == c.pointsOf s.me + 1 && second.pointsOf s.me == b.pointsOf s.me &&
+    fourth.pointsOf s.me == d.pointsOf s.me && (c.obj? y).map (·.moves) == some 3
+
+-- Kayn, Unleashed (OGN-189): if I have moved twice this turn, I take no damage
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, k) ← put s s.me "OGN-189" .base
+  let (a, _) ← moveTo s1 s.me k (.battlefield s.bf0)
+  let (b, _) ← moveTo a s.me k (.battlefield bf1)
+  let hit (x : GameState) := ((dealObj 3 x k).1.obj? k).map (·.damage)
+  let next := { b with turn := b.turn + 1 }
+  return hit s1 == some 3 && hit a == some 3 && hit b == some 0 && hit next == some 3
+
+-- ... a move by an effect counts too, and a unit that leaves play starts again
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, y) ← put s s.me "OGN-205" .base
+  let (a, _) ← moveTo s1 s.me y (.battlefield s.bf0)
+  let (b, _) ← moveTo a s.me y (.battlefield bf1)
+  let (c, ev) := sendToBf s.bf0 b y
+  let third ← fire c ev
+  let (back, id') ← moveObj b y (.player s.me .hand)
+  return third.pointsOf s.me == c.pointsOf s.me + 1 && (c.obj? y).map (·.moves) == some 3 &&
+    (back.obj? id').map (·.moves) == some 0
 
 end RiftboundTest

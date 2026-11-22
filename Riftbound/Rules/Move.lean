@@ -86,7 +86,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  mightMods := [], tempKws := [], attached := none, buffed := false,
-                 hiddenAt := none, hiddenTurn := none,
+                 hiddenAt := none, hiddenTurn := none, moves := 0, movesTurn := none,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

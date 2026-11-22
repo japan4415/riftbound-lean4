@@ -98,9 +98,11 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
             (s.hasKw u .ganking && decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
               decide (o.loc ≠ some bf)))
 
-/-- The change of a Unit by a Standard Move: it is exhausted and is where it went. -/
-def moveUnitOf (loc : Option ObjId) (o : Object) : Object :=
-  { o with exhausted := true, loc := loc }
+/-- The change of a Unit by a Standard Move in the turn `turn`: it is exhausted, is where it went,
+and the move is counted. -/
+def moveUnitOf (turn : Nat) (loc : Option ObjId) (o : Object) : Object :=
+  let o1 : Object := { o with exhausted := true, loc := loc }
+  o1.countMove turn
 
 /-- The Battlefield becomes Contested by `p` if `p` does not control it (CR 190.3). -/
 def contestBy (p : PlayerId) (bf : ObjId) (s : GameState) : GameState :=
@@ -112,13 +114,13 @@ def applyMove (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   match d with
   | .base =>
     (moveObj s u (.player p .base)).map (fun r =>
-      (r.1.modObj r.2 (moveUnitOf none), [Event.standardMoved r.2 none]))
+      (r.1.modObj r.2 (moveUnitOf s.turn none), [Event.standardMoved r.2 none]))
   | .battlefield bf =>
     if u ∈ s.zone .battlefieldZone then
-      some (contestBy p bf (s.modObj u (moveUnitOf (some bf))), [Event.standardMoved u (some bf)])
+      some (contestBy p bf (s.modObj u (moveUnitOf s.turn (some bf))), [Event.standardMoved u (some bf)])
     else
       (moveObj s u .battlefieldZone).map (fun r =>
-        (contestBy p bf (r.1.modObj r.2 (moveUnitOf (some bf))),
+        (contestBy p bf (r.1.modObj r.2 (moveUnitOf s.turn (some bf))),
           [Event.standardMoved r.2 (some bf)]))
 
 /-- The Units a player might move: those on their Base and those at Battlefields. -/
@@ -466,13 +468,13 @@ theorem applyMove_safe {s s' : GameState} {p : PlayerId} {u : ObjId} {d : MoveDe
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
-      have h1 : Safe s (s.modObj u (moveUnitOf (some bf))) :=
+      have h1 : Safe s (s.modObj u (moveUnitOf s.turn (some bf))) :=
         Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
       exact h1.trans (contestBy_safe p bf _)
     · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
       obtain ⟨⟨s1, id'⟩, hm, rfl, -⟩ := h
       have h1 := Safe.moveObj hm
-      have h2 : Safe s1 (s1.modObj id' (moveUnitOf (some bf))) :=
+      have h2 : Safe s1 (s1.modObj id' (moveUnitOf s.turn (some bf))) :=
         Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
       exact (h1.trans h2).trans (contestBy_safe p bf _)
 

@@ -97,14 +97,19 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
 the next Cleanup (CR 323.4), not here. -/
 def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
-  | some _ => (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
+  | some _ =>
+    -- an object whose passive ability says it takes no damage takes none
+    if (s.activeMods id).contains .noDamage then (s, [])
+    else (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
   unfold dealObj
   split
-  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · split
+    · exact Safe.refl s
+    · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -590,12 +595,14 @@ def sendToBf (bf : ObjId) (s : GameState) (u : ObjId) : GameState × List Event 
   | some o =>
     if o.loc = some bf then (s, [])
     else if u ∈ s.zone .battlefieldZone then
-      (contestFor o.controller bf (s.modObj u (fun x => { x with loc := some bf })),
+      (contestFor o.controller bf
+        (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn)),
         [Event.standardMoved u (some bf)])
     else
       match moveObj s u .battlefieldZone with
       | some r =>
-        (contestFor o.controller bf (r.1.modObj r.2 (fun x => { x with loc := some bf })),
+        (contestFor o.controller bf
+          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn)),
           [Event.standardMoved r.2 (some bf)])
       | none => (s, [])
   | none => (s, [])
@@ -608,12 +615,14 @@ theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToB
     · exact Safe.refl s
     · split
       · rename_i o ho hl hz
-        have h1 : Safe s (s.modObj u (fun x => { x with loc := some bf })) :=
+        have h1 : Safe s
+            (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn)) :=
           Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
         exact h1.trans (contestFor_safe _ _ _)
       · split
         · rename_i o ho hl hz r hm
-          have h1 : Safe r.1 (r.1.modObj r.2 (fun x => { x with loc := some bf })) :=
+          have h1 : Safe r.1
+              (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn)) :=
             Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
           exact ((Safe.moveObj hm).trans h1).trans (contestFor_safe _ _ _)
         · exact Safe.refl s
@@ -637,8 +646,9 @@ def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameSt
   let r := playFree p s id
   match movedNew r.2 with
   | n :: _ =>
-    -- the card is played there: it does not move, so nothing that waits for a move fires
-    ((sendToBf bf r.1 n).1, r.2)
+    -- the card is played there: it does not move, so nothing that waits for a move fires, and
+    -- no move is counted
+    (((sendToBf bf r.1 n).1.modObj n (fun x => { x with moves := 0, movesTurn := none })), r.2)
   | [] => r
 
 /-- Playing a card to a Battlefield is a safe change. -/
@@ -649,7 +659,8 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
   | nil => simpa [hm] using playFree_safe p s id
   | cons n _ =>
     simp only [hm]
-    exact (playFree_safe p s id).trans (sendToBf_safe bf _ _)
+    exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
+      (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=

@@ -496,6 +496,10 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
+  | .movesThisTurn =>
+    some (match s.obj? self with
+      | some o => if o.movesTurn == some s.turn then o.moves else 0
+      | none => 0)
   | .cardsPlayed =>
     some (s.objects.toList.filter (fun (_, o) =>
       o.owner == p && o.playedTurn == some s.turn)).length

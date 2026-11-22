@@ -60,6 +60,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .victoryScore => true
   | .highestMight s => Selector.ok c s
   | .cardsPlayed => true
+  | .movesThisTurn => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
   | .sub a b => Amount.ok c a && Amount.ok c b
@@ -183,6 +184,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .costPlus s a => Selector.ok c s && Amount.ok c a
   | .costMinus s a => Selector.ok c s && Amount.ok c a
   | .costMinusMin s a _ => Selector.ok c s && Amount.ok c a
+  | .noDamage => true
   | .cant s _ => Selector.ok c s
   | .may s _ => Selector.ok c s
   | .victoryScorePlus a => Amount.ok c a

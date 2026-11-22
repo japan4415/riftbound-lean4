@@ -53,6 +53,7 @@ def Amount.understood : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .movesThisTurn => true
   | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
@@ -76,6 +77,7 @@ def Amount.understoodC : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .movesThisTurn => true
   | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -269,6 +271,7 @@ def StaticMod.runs : StaticMod → Bool
   | .entersReady sel => costSel sel
   | .costMinus s a => costSel s && a.understoodK
   | .costMinusMin s a _ => costSel s && a.understoodK
+  | .noDamage => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | _ => false

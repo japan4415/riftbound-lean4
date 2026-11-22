@@ -50,6 +50,8 @@ inductive Amount where
   | highestMight (s : Selector)
   /-- How many cards the player has played this turn. -/
   | cardsPlayed
+  /-- How many Standard Moves the object made this turn. -/
+  | movesThisTurn
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/
