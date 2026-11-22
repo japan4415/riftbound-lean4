@@ -1444,8 +1444,13 @@ def OGN_061.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Poro Herder: the effect is not written yet. -/
-def OGN_061 : CardDef := OGN_061.meta
+/-- Poro Herder. -/
+def OGN_061 : CardDef :=
+  { OGN_061.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Poro"⟩]))
+        (.seqOf [.prim (.buff .self), .prim (.draw .you (.const 1))]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-062
 /--
@@ -3043,8 +3048,14 @@ def OGN_128.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Challenge: the effect is not written yet. -/
-def OGN_128 : CardDef := OGN_128.meta
+/-- Challenge. -/
+def OGN_128 : CardDef :=
+  { OGN_128.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 1) (.mightOf (.slot 0))),
+        .prim (.deal (.slot 0) (.mightOf (.slot 1)))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-129
 /--
@@ -3531,8 +3542,14 @@ def OGN_149.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Carnivorous Snapvine: the effect is not written yet. -/
-def OGN_149 : CardDef := OGN_149.meta
+/-- Carnivorous Snapvine. -/
+def OGN_149 : CardDef :=
+  { OGN_149.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+        (.seqOf [.prim (.deal (.slot 0) (.mightOf .self)), .prim (.deal .self (.mightOf (.slot 0)))]))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-150
 /--
@@ -5318,8 +5335,14 @@ def OGN_225.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Solari Chief: the effect is not written yet. -/
-def OGN_225 : CardDef := OGN_225.meta
+/-- Solari Chief. -/
+def OGN_225 : CardDef :=
+  { OGN_225.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.ifThen (.matches (.slot 0) .stunned) (.prim (.kill (.slot 0))) (.prim (.stun (.slot 0)))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-226
 /--
@@ -6155,8 +6178,13 @@ def OGN_260.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Last Breath, Yasuo: the effect is not written yet. -/
-def OGN_260 : CardDef := OGN_260.meta
+/-- Last Breath, Yasuo. -/
+def OGN_260 : CardDef :=
+  { OGN_260.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.ready (.slot 0)), .prim (.deal (.slot 1) (.mightOf (.slot 0)))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-261
 /--

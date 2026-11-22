@@ -107,11 +107,11 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
       | none => s
     | _ => s
 
-/-- A payment of exactly the cost of the card. -/
+/-- A payment of exactly the cost of the card (a Power of any domain is paid with Fury). -/
 meta def payOf (s : GameState) (c : ObjId) : RunePool.Payment :=
   match (s.cardDef? c).bind (·.cost) with
   | some k =>
-    ⟨k.energy, k.power.filterMap (fun x => match x with | .domain d => some d | _ => none)⟩
+    ⟨k.energy, k.power.map (fun x => match x with | .domain d => d | _ => .fury)⟩
   | none => ⟨0, []⟩
 
 /-- Play the card with the payment and the chosen targets, and let the Chain resolve. -/
