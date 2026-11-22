@@ -90,6 +90,8 @@ inductive Filter where
   | powerCost (op : Cmp) (a : Amount)
   /-- Is a Battlefield an opponent of the object's controller controls. -/
   | controlledByOpponent
+  /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
+  | movedFromHere
   /-- Is exhausted. -/
   | exhausted
   /-- Is ready. -/
