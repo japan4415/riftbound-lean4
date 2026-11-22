@@ -241,6 +241,10 @@ inductive StaticMod where
   | noDamage
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
   | noMoveToBase
+  /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
+  | oppsPlayToBaseOnly
+  /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
+  | noReadyOfOpps
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/
   | recallAllOnTie
   /-- The Hidden cards of the opponents of the Units at this place cannot be revealed here

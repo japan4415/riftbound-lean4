@@ -218,6 +218,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let d ← s.cardDef? id
     pure (match d.cost with | some k => op.holds (Int.ofNat k.power.length) n | none => false)
   | .exhausted => (s.obj? id).map (·.exhausted)
+  | .onBattlefield =>
+    (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
   | .at_ sel => do

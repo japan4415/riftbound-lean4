@@ -242,6 +242,23 @@ theorem setExhausted_safe (b : Bool) (s : GameState) (id : ObjId) :
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
+/-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
+passive ability that says so. -/
+def readyBlocked (s : GameState) (id : ObjId) : Bool :=
+  (s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
+    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)
+
+/-- A spell or an ability readies an object, unless it cannot. -/
+def readyEffect (s : GameState) (id : ObjId) : GameState × List Event :=
+  if readyBlocked s id then (s, []) else setExhausted false s id
+
+/-- Readying by an effect is a safe change. -/
+theorem readyEffect_safe (s : GameState) (id : ObjId) : Safe s (readyEffect s id).1 := by
+  unfold readyEffect
+  split
+  · exact Safe.refl s
+  · exact setExhausted_safe false s id
+
 /-- Put each object that the selector stands for through `g`. `none` if the selector cannot be
 answered yet. -/
 def onSelected (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
@@ -825,6 +842,20 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
     exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
       (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
+
+/-- Play a card without paying, to a Battlefield: to its Base, if the opponents of the player play
+Units only to their Base (Mageseeker Warden). -/
+def playToOrBase (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if s.oppHas p .oppsPlayToBaseOnly then playFree p s id else playFreeAt p bf s id
+
+/-- Playing a card to a Battlefield or to the Base is a safe change. -/
+theorem playToOrBase_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (playToOrBase p bf s id).1 := by
+  unfold playToOrBase
+  split
+  · exact playFree_safe p s id
+  · exact playFreeAt_safe p bf s id
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with controller := p }), [])
@@ -945,7 +976,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel => onSelected s p src env sel killObj
-  | .ready sel => onSelected s p src env sel (setExhausted false)
+  | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (sendObj .banishment)
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
@@ -977,7 +1008,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .play sel => onSelected s p src env sel (playFree p)
   | .playTo sel bfs =>
     match bfs.eval s p src env with
-    | some (b :: _) => onSelected s p src env sel (playFreeAt p b)
+    | some (b :: _) => onSelected s p src env sel (playToOrBase p b)
     | _ => none
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .discardCard sel => onSelected s p src env sel discardObj
@@ -1039,7 +1070,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hn, Option.bind_some] at h
       exact onSelected_safe (healOne_safe k) h
   | kill sel => exact onSelected_safe killObj_safe h
-  | ready sel => exact onSelected_safe (setExhausted_safe false) h
+  | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
@@ -1089,7 +1120,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | nil => simp [hb] at h
       | cons b _ =>
         simp only [hb] at h
-        exact onSelected_safe (playFreeAt_safe p b) h
+        exact onSelected_safe (playToOrBase_safe p b) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h

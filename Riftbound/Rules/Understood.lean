@@ -126,6 +126,7 @@ def Filter.understood : Filter → Bool
   | .attacker => true
   | .defender => true
   | .alone => true
+  | .onBattlefield => true
   | .lethal => true
   | .at_ .self => true
   | .at_ (.slot _) => true
@@ -288,6 +289,8 @@ def StaticMod.runs : StaticMod → Bool
   | .noDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
+  | .oppsPlayToBaseOnly => true
+  | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .bonusDamageHere _ => true

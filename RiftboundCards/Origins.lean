@@ -1841,8 +1841,13 @@ def OGN_070.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mageseeker Warden: the effect is not written yet. -/
-def OGN_070 : CardDef := OGN_070.meta
+/-- Mageseeker Warden. -/
+def OGN_070 : CardDef :=
+  { OGN_070.meta with
+    abilities := [
+      .passive (.matches .self .onBattlefield)
+        [.oppsPlayToBaseOnly, .noReadyOfOpps]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-071
 /--

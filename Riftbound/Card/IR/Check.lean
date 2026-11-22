@@ -193,6 +193,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .noDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
+  | .oppsPlayToBaseOnly => true
+  | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .bonusDamageHere _ => true
   | .cant s _ => Selector.ok c s

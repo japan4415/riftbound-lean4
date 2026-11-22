@@ -61,11 +61,18 @@ def GameState.hiddenBlocked (s : GameState) (p : PlayerId) (src : ObjId) : Bool 
 /-- The cost an ability pays when it resolves ("Recycle 3 from your trash: ...") is written as the
 first part of the effect, guarded by a condition: the ability cannot be used while the condition is
 false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
-cannot be answered yet, and does not stop the use. -/
+cannot be answered yet, and does not stop the use. An ability that only plays a card to a
+Battlefield cannot be used while the opponents of its player play Units only to their Base (the
+play by a triggered ability goes to the Base instead). A hidden card that cannot be revealed
+stops its ability, too. -/
 def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bool :=
   (match body.body with
     | .ifThen c _ .nop => c.eval s p src {} != some false
-    | _ => true) && !s.hiddenBlocked p src
+    | _ => true) && !s.hiddenBlocked p src &&
+    -- the opponents of a Warden play Units only to their Base
+    (match body.body with
+      | .prim (.playTo _ _) => !s.oppHas p .oppsPlayToBaseOnly
+      | _ => true)
 
 /-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be
 used from the hand (Hide) or from hiding (CR 811) is used there, from the turn after the card was
