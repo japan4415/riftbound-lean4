@@ -114,6 +114,8 @@ inductive TurnEffect where
   | opponentsCantPlay
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
+  /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
+  | modeUsed (n : Nat)
   /-- A card is played from Hidden: the event it makes is what matters. -/
   | hiddenPlayed
   /-- A buffed unit died: the note is about the dead card. -/

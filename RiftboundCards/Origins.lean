@@ -4144,8 +4144,23 @@ def OGN_157.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Udyr, Wildman: the effect is not written yet. -/
-def OGN_157 : CardDef := OGN_157.meta
+/-- A mode of Udyr that he has not chosen this turn: he notes it, then does it. -/
+def udyrMode (k : Nat) (e : Effect) : Effect :=
+  .ifThen (.not (.marked (.modeUsed k))) (.seqOf [.prim (.markOn .self (.modeUsed k)), e]) .nop
+
+/-- Udyr, Wildman. -/
+def OGN_157 : CardDef :=
+  { OGN_157.meta with
+    abilities := [.activated [] .normal
+      (.of [] (.ifThen (.matches .self .buffed)
+        (.seqOf [.prim (.spendBuff .self),
+          .eitherOf (.cons (udyrMode 1 (.prim (.deal (Selector.one .any .atBattlefield [.ofType .unit])
+              (.const 2))))
+            (.cons (udyrMode 2 (.prim (.stun (Selector.one .any .atBattlefield [.ofType .unit]))))
+              (.cons (udyrMode 3 (.prim (.ready .self)))
+                (.cons (udyrMode 4 (.grant .self (.keyword .it ⟨.ganking, .none⟩) .thisTurn)) .nil))))])
+        .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-158
 /--
