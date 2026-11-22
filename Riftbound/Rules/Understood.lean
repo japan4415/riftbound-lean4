@@ -49,6 +49,7 @@ def Amount.understood : Amount → Bool
   | .handSize p => p.understood
   | .xp => true
   | .turnsTaken p => p.understood
+  | .points p => p.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -68,6 +69,7 @@ def Amount.understoodC : Amount → Bool
   | .handSize p => p.understood
   | .xp => true
   | .turnsTaken p => p.understood
+  | .points p => p.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b
@@ -90,6 +92,7 @@ def Filter.understood : Filter → Bool
   | .notSelf => true
   | .stunned => true
   | .buffed => true
+  | .not f => Filter.understood f
   | .mighty => true
   | .attacker => true
   | .defender => true
@@ -149,6 +152,7 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .recycleTop p => p.understood
+  | .recycle s => s.understoodPickAny
   | .takeControl s => s.understood
   | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood

@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: 「そうでない」フィルタ、得点の数、Recycle
+
+- **エンジン**: フィルタ `not`、数 `points`（プレイヤーの得点）、プリミティブ `recycle`（選んだカードを、持ち主の Main Deck の一番下へ。解決中に選べる。Trash から選べる）。「そのターンの最初の 1 回」は、すでにあった `perTurn 1` の制限で表せる（誘発した能力が、使われたことを記録する）。
+- **書いた 6 枚**: Wraith of Echoes（118）、Miss Fortune（162）、Viktor（246）、Draven（028。Might が、自分の得点だけ増える）、Relentless Storm（249。Legend）、Dr. Mundo（109。Trash の枚数で Might が増え、Beginning Phase の始めに 3 枚 Recycle する）。6 つの変異で、テストが落ちることを確かめた。
+- **レビューで直したこと**: 1 回のステップで、同じ誘発が複数回起きても、`perTurn` の制限を超えないように絞る（`trimLimits`。Wraith が、同時に 2 体死んでも、1 枚だけ引く）。2 体の Wraith は、それぞれ引く。選ぶ Recycle の選択、相手の Beginning Phase では働かないことのテスト。
+- **既知の制限**: `mighty` は、パッシブの増減を読まない（Draven が Might 5 以上でも、Relentless Storm は、Mighty とは見ない）。Miss Fortune は、Legend を Ready にできない（`anywhere` は、Base と Battlefield だけ）。
+- **動くカード**: 150 → **156 枚**。
+- **近似として残したこと**: Wraith は、自分が死んだときを見ない（死んだ後は、場にいない）。
+
 ### M7 の実装の記録（2026-11-22）: 場所のフィルタ（`at_`）と、移動先の選択
 
 - **エンジン**: フィルタ **`at_`**（「そこにある」: 選んだ Battlefield や、選んだ Unit のいる場所、Base）と、**移動先を解決中に選ぶこと**（`move s (.at_ (.pick .one ..))`）。

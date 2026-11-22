@@ -1314,4 +1314,105 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (t2, e) ← put t1 s.you "OGN-136" .base
   return a.mightNow u == (s4.mightNow u).map (· + 2) && (play t2 s.me d [e]).isNone
 
+-- Wraith of Echoes (OGN-118): the first time a friendly unit dies each turn, draw 1
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-118" .base
+  let (s2, x) ← put s1 s.me "OGN-136" .trash
+  let (s3, y) ← put s2 s.me "OGN-136" .trash
+  let (s4, z) ← put s3 s.you "OGN-136" .trash
+  let (s5, g) ← put s4 s.me "OGN-017" .trash
+  let a ← fire s5 [.died x s.me]
+  let b ← fire a [.died y s.me]
+  let c ← fire s5 [.died z s.you]
+  let d ← fire s5 [.died g s.me]
+  return a.handN s.me == s5.handN s.me + 1 && b.handN s.me == a.handN s.me &&
+    c.handN s.me == s5.handN s.me && d.handN s.me == s5.handN s.me
+
+-- Miss Fortune (OGN-162): the first time she moves each turn, I may ready something else that is
+-- exhausted
+#guard t fun s => do
+  let (s1, m) ← putAt s s.me "OGN-162" s.bf0
+  let (s2, e) ← put s1 s.me "OGN-136" .base
+  let (s3, f) ← put s2 s.me "OGN-136" .base
+  let tired := ((s3.tire e).tire f).tire m
+  let a ← fire tired [.standardMoved m (some s.bf0)] { obj := fun o => o == e }
+  let b ← fire a [.standardMoved m (some s.bf0)] { obj := fun o => o == f }
+  let c ← fire tired [.standardMoved m (some s.bf0)] { yes := false }
+  return a.tired e == some false && a.tired m == some true && b.tired f == some true &&
+    c.tired e == some true
+
+-- Viktor (OGN-246): a Recruit token comes to my base when another non-Recruit unit I control dies
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-246" .base
+  let (s2, x) ← put s1 s.me "OGN-136" .trash
+  let (s3, y) ← put s2 s.you "OGN-136" .trash
+  let (s4, bf) ← putBf s3 s.me "OGN-275"
+  let tk ← fire s4 [.scored s.me bf false]
+  let token ← (tk.zone (.player s.me .base)).find? (fun u =>
+    (tk.cardDef? u).any (·.name == "Recruit"))
+  let a ← fire s4 [.died x s.me]
+  let b ← fire s4 [.died y s.you]
+  let c ← fire tk [.died token s.me]
+  return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0 &&
+    c.countNamed s.me .base "Recruit" == tk.countNamed s.me .base "Recruit"
+
+-- Draven (OGN-028): his Might is increased by my points
+#guard t fun s => do
+  let (s1, d) ← put s s.me "OGN-028" .base
+  let more := (s1.gainPoints s.me 3).gainPoints s.you 2
+  return more.mightNow d == (s1.mightNow d).map (· + 3) &&
+    (s1.gainPoints s.you 2).mightNow d == s1.mightNow d
+
+-- Relentless Storm (OGN-249), a Legend: when I play a Mighty unit, I may exhaust it to channel 1
+-- rune exhausted
+#guard t fun s => do
+  let (s1, l) ← put s s.me "OGN-249" .legendZone
+  let (s2, big) ← put s1 s.me "OGN-001" .hand
+  let (s3, small) ← put s2 s.me "OGN-136" .hand
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  let a ← play s3 s.me big
+  let b ← play s3 s.me small
+  let c ← play (s3.tire l) s.me big
+  let d ← play s3 s.me big [] { yes := false }
+  return a.tired l == some true && runes a + 1 == runes s3 && b.tired l == some false &&
+    runes b == runes s3 && runes c == runes s3 && d.tired l == some false
+
+-- Dr. Mundo (OGN-109): his Might is increased by the cards in my Trash; at the start of my
+-- Beginning Phase I recycle 3 from it
+#guard t fun s => do
+  let (s1, d) ← put s s.me "OGN-109" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-136" .trash
+  let (s4, _) ← put s3 s.me "OGN-136" .trash
+  let (s5, _) ← put s4 s.me "OGN-136" .trash
+  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
+  let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
+  let a ← fire s5 [.phaseStarted s.me .beginning]
+  let (t1, _) ← put s1 s.me "OGN-136" .trash
+  let b ← fire t1 [.phaseStarted s.me .beginning]
+  return s5.mightNow d == (s1.mightNow d).map (· + 4) && trash a + 3 == trash s5 &&
+    deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1
+
+-- Wraith of Echoes: two friendly units dying at once draw 1, not 2; two Wraiths draw 1 each
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-118" .base
+  let (s2, x) ← put s1 s.me "OGN-136" .trash
+  let (s3, y) ← put s2 s.me "OGN-136" .trash
+  let a ← fire s3 [.died x s.me, .died y s.me]
+  let (t1, _) ← put s3 s.me "OGN-118" .base
+  let b ← fire t1 [.died x s.me]
+  return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == t1.handN s.me + 2
+
+-- Dr. Mundo recycles the cards the player chooses, and not in the opponent's Beginning Phase
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-109" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-001" .trash
+  let (s4, _) ← put s3 s.me "OGN-004" .trash
+  let (s5, d) ← put s4 s.me "OGN-016" .trash
+  let x ← fire s5 [.phaseStarted s.me .beginning] { obj := fun o => o != d }
+  let y ← fire s5 [.phaseStarted s.you .beginning]
+  return x.countIn s.me .trash "OGN-016" == 1 && (x.zone (.player s.me .trash)).length == 1 &&
+    (y.zone (.player s.me .trash)).length == 4
+
 end RiftboundTest
