@@ -2448,4 +2448,35 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let has (x : GameState) := (x.grantedKws u).any (fun k => k.keyword == .shield)
   return has a && !has att && !has s2
 
+-- Paying as an effect resolves. Flame Chompers (OGN-006): when it is discarded, I may pay Fury to
+-- play it (with no Fury in the Pool, or if I decline, it stays in the Trash)
+#guard t fun s => do
+  let (s1, x) ← put s s.me "OGN-006" .trash
+  let funded := s1.fund s.me 0 (fury := 1)
+  let a ← fire funded [.discarded s.me x true] { yes := true }
+  let no ← fire funded [.discarded s.me x true] { yes := false }
+  let broke ← fire (s1.fund s.me 5) [.discarded s.me x true] { yes := true }
+  return a.countIn s.me .base "OGN-006" == 1 && (a.poolOf s.me).fury == 0 &&
+    no.countIn s.me .trash "OGN-006" == 1 && (no.poolOf s.me).fury == 1 &&
+    broke.countIn s.me .trash "OGN-006" == 1 && (broke.poolOf s.me).energy == 5
+
+-- Ava Achiever (OGN-107): when I attack, I may pay Mind to play a card with Hidden from my hand
+-- here
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, _) ← putAt s1 s.me "OGN-107" bf
+  let (s3, _) ← put s2 s.me "OGN-199" .hand
+  let (s4, _) ← put s3 s.me "OGN-136" .hand
+  let funded := s4.fund s.me 0 (mind := 1)
+  let a ← fire funded [.combatStarted bf s.me] { yes := true }
+  let no ← fire funded [.combatStarted bf s.me] { yes := false }
+  let defend ← fire funded [.combatStarted bf s.you] { yes := true }
+  let empty ← fire s4 [.combatStarted bf s.me] { yes := true }
+  let there (x : GameState) :=
+    ((x.zone .battlefieldZone).filter (fun u => (x.cardDef? u).any (·.id == cid "OGN-199") &&
+      (x.obj? u).any (·.loc == some bf))).length
+  return there a == 1 && (a.poolOf s.me).mind == 0 && a.countIn s.me .hand "OGN-136" == 1 &&
+    a.countIn s.me .hand "OGN-199" == 0 && there no == 0 && (no.poolOf s.me).mind == 1 &&
+    there defend == 0 && there empty == 0
+
 end RiftboundTest

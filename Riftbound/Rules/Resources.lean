@@ -207,7 +207,7 @@ theorem applyRune_recycle_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {es
       simp only [Prod.mk.injEq] at hr
       obtain ⟨rfl, -⟩ := hr
       obtain ⟨src, dd, hs⟩ := moveObj_spec hm
-      have hpools : s2.pools = s.pools := hs.other.pools
+      have hpools : s2.pools = s.pools := hs.pools
       refine ⟨d, ?_, fun q hq => ?_⟩
       · rw [GameState.poolOf_setPool_self]
         simp [GameState.poolOf, hpools]

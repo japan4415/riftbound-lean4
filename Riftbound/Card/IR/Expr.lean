@@ -176,6 +176,8 @@ inductive Condition where
   | paid
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
+  /-- The player's Rune Pool can pay the cost. -/
+  | canPay (c : Cost)
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
   /-- A combat is going on. -/

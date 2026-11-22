@@ -240,7 +240,7 @@ rules, the stack, the turn order, the phase, the result, and whatever the state 
 def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
             nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
-            turnFx := s.turnFx } = s
+            turnFx := s.turnFx, pools := s.pools } = s
 
 namespace SameMeta
 
@@ -254,7 +254,7 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
   have := congrArg (fun x : GameState =>
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
               nextTimestamp := s.nextTimestamp, points := s.points,
-              turnFx := s.turnFx } : GameState)) h2
+              turnFx := s.turnFx, pools := s.pools } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this
@@ -293,12 +293,6 @@ theorem turn {s s' : GameState} (h : SameMeta s s') : s'.turn = s.turn := by
 theorem active {s s' : GameState} (h : SameMeta s s') : s'.active = s.active := by
   unfold SameMeta at h
   have h2 := congrArg GameState.active h
-  exact h2
-
-/-- The Rune Pools are as they were. -/
-theorem pools {s s' : GameState} (h : SameMeta s s') : s'.pools = s.pools := by
-  unfold SameMeta at h
-  have h2 := congrArg GameState.pools h
   exact h2
 
 /-- The result is as it was. -/
@@ -353,6 +347,8 @@ structure MoveSpec (s s' : GameState) (id id' : ObjId) (pos : Pos) (src dst : Zo
   /-- Nothing but the zones, the object table and the counters changes: every other part of the
   state, present or future, is as it was. -/
   other : SameMeta s s'
+  /-- The Rune Pools are as they were. -/
+  pools : s'.pools = s.pools
 
 /-- The shape of a successful move, with the link between the asked destination and the one the
 object went to (CR 056). -/
@@ -380,7 +376,7 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inr rfl, ⟨by simp, Or.inr (by simp)⟩,
-          ?_, ?_, ?_, ?_, ?_, hloc, rfl, ?_, rfl, rfl, rfl⟩
+          ?_, ?_, ?_, ?_, ?_, hloc, rfl, ?_, rfl, rfl, rfl, rfl⟩
         · intro k
           simp only [Std.ExtTreeMap.mem_insert, Std.ExtTreeMap.mem_erase, Nat.compare_eq_eq,
             ne_eq]
@@ -408,7 +404,7 @@ theorem moveObj_spec_dst {s s' : GameState} {id id' : ObjId} {dst : Zone} {pos :
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨src, Zone.normalize o.owner dst, ?_, o, hobj, rfl⟩
         refine ⟨hsrc, hid, hvalid, hne, rfl, rfl, Or.inl rfl, ⟨Nat.le_refl _, Or.inl rfl⟩,
-          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl, rfl, rfl, rfl, rfl⟩
+          ?_, ?_, rfl, ?_, Or.inr rfl, hloc, rfl, rfl, rfl, rfl, rfl, rfl⟩
         · intro k
           change k ∈ s.objects ↔ _
           by_cases hk : k = id.n

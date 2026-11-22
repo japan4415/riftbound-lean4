@@ -467,6 +467,11 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
   · exact sendObj_safe .trash s id
   · exact sendObj_safe .trash s id
 
+/-- Replacing a Rune Pool is a safe change. -/
+theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (s.setPool p pool) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
   { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
@@ -813,6 +818,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e => some (s.addTurnFx p e, [])
+  | .pay c =>
+    match s.payNow p src c with
+    | some pool => some (s.setPool p pool, [])
+    | none => some (s, [])
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -950,6 +959,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact addTurnFx_safe s p e
+  | pay c =>
+    simp only [applyPrim] at h
+    cases hp : s.payNow p src c with
+    | none => simp only [hp, Option.some.injEq] at h; subst h; exact Safe.refl s
+    | some pool =>
+      simp only [hp, Option.some.injEq] at h
+      subst h
+      exact setPool_safe s p pool
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/
@@ -1063,6 +1080,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .bin s => some s
   | .discardCard s => some s
   | .play s => some s
+  | .playTo s _ => some s
   | .reveal s => some s
   | .move s d =>
     match s, d with
@@ -1088,6 +1106,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
+  | .playTo _ bf => .playTo sel bf
   | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with

@@ -435,12 +435,6 @@ theorem pending {s s'' : GameState} (h : SafeP s s'') : s''.pending = s.pending 
   · exact hs.same.pending
   · exact hs.same.pending
 
-/-- The Rune Pools are as they were. -/
-theorem pools {s s'' : GameState} (h : SafeP s s'') : s''.pools = s.pools := by
-  obtain ⟨s1, hs, rfl | ⟨p, n, rfl⟩⟩ := h
-  · exact hs.same.pools
-  · exact hs.same.pools
-
 end SafeP
 
 /-- Changing the attributes of the objects of a list, one after the other, is safe. -/

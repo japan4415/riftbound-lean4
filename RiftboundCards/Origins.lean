@@ -161,8 +161,13 @@ def OGN_006.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Flame Chompers: the effect is not written yet. -/
-def OGN_006 : CardDef := OGN_006.meta
+/-- Flame Chompers. -/
+def OGN_006 : CardDef :=
+  { OGN_006.meta with
+    abilities := [.triggered (.onSelf .discard)
+      (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
+        (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩), .prim (.play .self)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-007
 /--
@@ -2743,8 +2748,15 @@ def OGN_107.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ava Achiever: the effect is not written yet. -/
-def OGN_107 : CardDef := OGN_107.meta
+/-- Ava Achiever. -/
+def OGN_107 : CardDef :=
+  { OGN_107.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.ifThen (.canPay ⟨0, [.domain .mind]⟩)
+        (.may (.seqOf [.prim (.pay ⟨0, [.domain .mind]⟩),
+          .prim (.playTo (Selector.one .friendly .inHand [.hasKeyword .hidden])
+            (Selector.all .any .here [.ofType .battlefield]))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-108
 /--
