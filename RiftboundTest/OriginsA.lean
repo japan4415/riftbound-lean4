@@ -3017,4 +3017,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return on.countIn s.me .trash "OGN-186" == 1 && on.handN s.me == s1.handN s.me + 1 &&
     runeN on == runeN s1 + 1 && none_.isNone && broke.isNone
 
+-- Targon's Peak (OGN-289): when I conquer here, ready 2 runes at the end of this turn
+#guard t fun s => do
+  let (s0, bf) ← putBf s s.me "OGN-289"
+  let (s1, _) ← put s0 s.me "OGN-007" .base
+  let runes := (s1.zone (.player s.me .base)).filter
+    (fun u => (s1.cardDef? u).any (·.hasType .rune))
+  let tired := runes.foldl (fun g u => g.tire u) s1
+  let ready (g : GameState) := ((g.zone (.player s.me .base)).filter (fun u =>
+    (g.cardDef? u).any (·.hasType .rune) && g.tired u == some false)).length
+  let won ← fire tired [.scored s.me bf true]
+  let end_ ← fire won [.phaseStarted s.me .ending]
+  let none_ ← fire tired [.phaseStarted s.me .ending]
+  let theirs ← fire tired [.scored s.you bf true]
+  let theirsEnd ← fire theirs [.phaseStarted s.me .ending]
+  -- only one exhausted rune: it is readied; a hold, or a note of an earlier turn, does nothing
+  let one := (runes.take 1).foldl (fun g u => g.tire u) s1
+  let held ← fire tired [.scored s.me bf false]
+  let heldEnd ← fire held [.phaseStarted s.me .ending]
+  let oldNote := { won with turn := won.turn + 1 }
+  let old ← fire oldNote [.phaseStarted s.me .ending]
+  let onlyOne ← fire (← fire one [.scored s.me bf true]) [.phaseStarted s.me .ending]
+  return ready heldEnd == 0 && ready old == 0 && ready onlyOne == ready one + 1 &&
+    runes.length == 3 && ready tired == 0 && ready won == 0 && ready end_ == 2 &&
+    ready none_ == 0 && ready theirsEnd == 0
+
 end RiftboundTest

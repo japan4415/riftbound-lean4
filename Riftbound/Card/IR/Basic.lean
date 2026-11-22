@@ -112,6 +112,8 @@ inductive TurnEffect where
   | buffsExtraMight
   /-- The opponents of the player cannot play cards this turn. -/
   | opponentsCantPlay
+  /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
+  | conqueredHere
   /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
   | killOnDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
