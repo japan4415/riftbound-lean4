@@ -69,6 +69,8 @@ inductive Prim where
   | play (s : Selector)
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)
+  /-- Play cards without paying their cost, to a Battlefield. -/
+  | playTo (s : Selector) (bf : Selector)
   /-- Put cards in their owner's Trash: not killed, so nothing that waits for a death fires. -/
   | bin (s : Selector)
   /-- Hide a card. -/

@@ -163,6 +163,13 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _, _ => false)
   | .notSelf => some (id != self)
   | .not f => (f.holds s self env id).map (fun b => !b)
+  | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
+  | .enemyOccupied =>
+    some (match s.obj? self with
+      | some me =>
+        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
+          o.controller != me.controller))
+      | none => false)
   | .hidden =>
     some (match s.obj? id with
       | some o => (s.zone (.player o.owner .hidden)).contains id
@@ -245,6 +252,7 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inTrash => some .trash
   | .inMainDeck => some .mainDeck
   | .inRuneDeck => some .runeDeck
+  | .inHidden => some .hidden
   | _ => none
 
 /-- Whether a player is on the side, seen from player `p`. -/
@@ -343,6 +351,7 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
   | inRuneDeck => simp [placeObjs] at h
+  | inHidden => simp [placeObjs] at h
   | inCombat =>
     simp only [placeObjs] at h
     obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h

@@ -95,6 +95,8 @@ def Filter.understood : Filter → Bool
   | .not f => Filter.understood f
   | .controlled => true
   | .hidden => true
+  | .openBf => true
+  | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
   | .sameAs (.var _) => true
@@ -159,7 +161,8 @@ def Prim.understood : Prim → Bool
   | .recycleTop p => p.understood
   | .play s => s.understood
   | .hideAt s b => s.understood && b.understood
-  | .bin s => s.understood
+  | .playTo s b => s.understood && b.understood
+  | .bin s => s.understoodPickAny
   | .recycle s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood

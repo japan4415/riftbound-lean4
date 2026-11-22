@@ -47,6 +47,8 @@ inductive Place where
   | inRuneDeck
   /-- In the combat the effect is about. -/
   | inCombat
+  /-- Hidden face down (CR 811). -/
+  | inHidden
 deriving DecidableEq, Repr, Hashable
 
 /-- How many objects an effect takes (CR 355): "a", "up to N", "N", "each" or "all". -/
