@@ -2173,8 +2173,12 @@ def OGN_080.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mystic Reversal: the effect is not written yet. -/
-def OGN_080 : CardDef := OGN_080.meta
+/-- Mystic Reversal. -/
+def OGN_080 : CardDef :=
+  { OGN_080.meta with
+    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
+      (.prim (.takeControl (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-081
 /--
