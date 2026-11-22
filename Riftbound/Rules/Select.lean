@@ -260,19 +260,19 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
 
 /-- The number an amount stands for, reading the game: the count of the objects a selector stands
 for, the size of a hand, and the arithmetic of these. `none` if it cannot be known yet. -/
-def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
+def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
   | .handSize ps => do
     let l ← ps.resolve s p
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)
-  | .add a b => do pure ((← Amount.evalS s p self env a) + (← Amount.evalS s p self env b))
-  | .sub a b => do pure ((← Amount.evalS s p self env a) - (← Amount.evalS s p self env b))
-  | .mul a b => do pure ((← Amount.evalS s p self env a) * (← Amount.evalS s p self env b))
+  | .add a b => do pure ((← Amount.evalS0 s p self env a) + (← Amount.evalS0 s p self env b))
+  | .sub a b => do pure ((← Amount.evalS0 s p self env a) - (← Amount.evalS0 s p self env b))
+  | .mul a b => do pure ((← Amount.evalS0 s p self env a) * (← Amount.evalS0 s p self env b))
   | .min a b =>
-    do pure (Nat.min (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+    do pure (Nat.min (← Amount.evalS0 s p self env a) (← Amount.evalS0 s p self env b))
   | .max a b =>
-    do pure (Nat.max (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+    do pure (Nat.max (← Amount.evalS0 s p self env a) (← Amount.evalS0 s p self env b))
   | a => a.eval env
 
 /-- Whether a question about the game is true, for the questions that are understood. `none` if it
@@ -284,8 +284,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .and a b => do pure ((← Condition.eval s p self env a) && (← Condition.eval s p self env b))
   | .or a b => do pure ((← Condition.eval s p self env a) || (← Condition.eval s p self env b))
   | .cmp op a b => do
-    let x ← a.evalS s p self env
-    let y ← b.evalS s p self env
+    let x ← a.evalS0 s p self env
+    let y ← b.evalS0 s p self env
     pure (op.holds x y)
   | .exists sel => (sel.eval s p self env).map (fun l => !l.isEmpty)
   | .matches sel f => do

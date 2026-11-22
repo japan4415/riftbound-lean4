@@ -49,13 +49,13 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
   | .mightPlus sel a =>
     match s.obj? src, sel.eval s ((s.obj? src).map (·.controller) |>.getD ⟨0⟩) src {} with
     | some o, some ids =>
-      if ids.contains id then ((a.evalS s o.controller src {}).map (fun k => (k : Int))).getD 0
+      if ids.contains id then ((a.evalS0 s o.controller src {}).map (fun k => (k : Int))).getD 0
       else 0
     | _, _ => 0
   | .mightMinus sel a =>
     match s.obj? src, sel.eval s ((s.obj? src).map (·.controller) |>.getD ⟨0⟩) src {} with
     | some o, some ids =>
-      if ids.contains id then -((a.evalS s o.controller src {}).map (fun k => (k : Int))).getD 0
+      if ids.contains id then -((a.evalS0 s o.controller src {}).map (fun k => (k : Int))).getD 0
       else 0
     | _, _ => 0
   -- `mightMinusMin` is a change an effect makes for a while (`applyGrant`); a passive ability with
@@ -118,6 +118,22 @@ def mightNow (s : GameState) (id : ObjId) : Option Int :=
     (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0))
 
 end GameState
+
+/-- The value of an amount in an effect. `Amount.evalS0` reads everything but the Might of objects,
+which the Layers decide (`mightNow`): "equal to my Might" is the Might the rules read (CR 479.4),
+the sum over the objects the selector gives. -/
+def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
+  | .mightOf sel =>
+    (sel.eval s p self env).map (fun ids =>
+      (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).sum)
+  | .add a b => do pure ((← Amount.evalS s p self env a) + (← Amount.evalS s p self env b))
+  | .sub a b => do pure ((← Amount.evalS s p self env a) - (← Amount.evalS s p self env b))
+  | .mul a b => do pure ((← Amount.evalS s p self env a) * (← Amount.evalS s p self env b))
+  | .min a b =>
+    do pure (Nat.min (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+  | .max a b =>
+    do pure (Nat.max (← Amount.evalS s p self env a) (← Amount.evalS s p self env b))
+  | a => a.evalS0 s p self env
 
 end Riftbound
 
