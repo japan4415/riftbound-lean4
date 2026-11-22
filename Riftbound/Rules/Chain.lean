@@ -83,7 +83,13 @@ def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : 
   match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
   | some (.activated costs _ body _) =>
     guardOk s p src body &&
-      (if costs.contains .fromHand then (s.zone (.player p .hand)).contains src
+      (if costs.contains .fromHand then
+        -- an ability that plays the card to a Battlefield is a play: "can't play" stops it
+        (s.zone (.player p .hand)).contains src &&
+          !((match body.body with
+              | .prim (.playTo _ _) => true
+              | .ifThen _ (.prim (.playTo _ _)) .nop => true
+              | _ => false) && s.cantPlay p)
       else if costs.contains .fromHidden then
         (s.zone (.player p .hidden)).contains src &&
           ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
@@ -119,7 +125,8 @@ theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId}
     split at h
     · unfold GameState.abilityZones
       simp only [List.mem_append]
-      exact Or.inl (Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h)))
+      simp only [Bool.and_eq_true] at h
+      exact Or.inl (Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h.1)))
     · split at h
       · simp only [Bool.and_eq_true, List.contains_iff_mem] at h
         unfold GameState.abilityZones

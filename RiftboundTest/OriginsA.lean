@@ -3588,9 +3588,19 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let theirs := activate x1 s.you y 2 [s.bf0] (payOf x1 y)
   let b1 := t2.control s.you s.bf0
   let busy := activate b1 s.me u 2 [s.bf0] (payOf b1 u)
+  -- the opponent's "can't play cards" and a Mageseeker Warden both stop it
+  let (w1, _) ← putAt t2 s.you "OGN-070" s.bf0
+  let warded := activate w1 s.me u 2 [s.bf0] (payOf w1 u)
+  let noPlay := activate (t2.addTurnFx s.you .opponentsCantPlay) s.me u 2 [s.bf0] (payOf t2 u)
+  let noPlayMf := activate (s1.addTurnFx s.you .opponentsCantPlay) s.me c 0 [s.bf0] (payOf s1 c)
+  -- a Miss Fortune in the hand does not let other units go
+  let (h1, _) ← put s s.me "OGN-193" .hand
+  let (h2, hu) ← put h1 s.me "OGN-136" .hand
+  let inHand := activate h2 s.me hu 2 [s.bf0] (payOf h2 hu)
   return (a.zone .battlefieldZone).any (fun x => (a.cardDef? x).any (·.id == cid "OGN-193")) &&
     (viaMf.zone .battlefieldZone).any (fun x => (viaMf.cardDef? x).any (·.id == cid "OGN-136") &&
       (viaMf.obj? x).any (·.loc == some s.bf0)) &&
-    without.isNone && theirs.isNone && busy.isNone
+    without.isNone && theirs.isNone && busy.isNone && warded.isNone && noPlay.isNone &&
+    noPlayMf.isNone && inHand.isNone
 
 end RiftboundTest

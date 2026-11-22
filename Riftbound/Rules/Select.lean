@@ -218,6 +218,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let d ← s.cardDef? id
     pure (match d.cost with | some k => op.holds (Int.ofNat k.power.length) n | none => false)
   | .exhausted => (s.obj? id).map (·.exhausted)
+  -- the passive is read from the card as it is printed: its condition is not asked (only
+  -- `always` conditions are written)
   | .permitsOpenPlay =>
     some (((s.cardDef? id).map (·.fullAbilities)).getD [] |>.any (fun ab =>
       match ab with | .passive _ mods => mods.contains .playToOpenBf | _ => false))
