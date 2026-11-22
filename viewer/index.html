@@ -109,6 +109,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .banner { background: var(--accent); color: var(--bg); padding: 8px 12px; border-radius: 8px; font-weight: 600; }
 #fly { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
 .empty { padding: 28px; text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 8px; }
+[hidden] { display: none !important; }
 .note { color: var(--muted); font-size: .78rem; }
 .live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
 .live .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -515,7 +516,9 @@ let live = false, liveLegal = [];
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
-  const j = await r.json();
+  let j;
+  try { j = JSON.parse(await r.text()); }
+  catch (e) { throw new Error('ライブ操作の橋渡し（scripts/live.py）につながっていない'); }
   if (j.error) throw new Error(j.error);
   return j;
 }
