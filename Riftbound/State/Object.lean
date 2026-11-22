@@ -108,6 +108,10 @@ structure Object where
   /-- The turn in which the card was played, if it was. The record of a play stays with the
   object. -/
   playedTurn : Option Nat := none
+  /-- For a card hidden face down: the Battlefield it is hidden at (CR 811). -/
+  hiddenAt : Option ObjId := none
+  /-- For a card hidden face down: the turn it was hidden. -/
+  hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
 
 end Riftbound

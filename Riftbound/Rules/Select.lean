@@ -163,6 +163,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _, _ => false)
   | .notSelf => some (id != self)
   | .not f => (f.holds s self env id).map (fun b => !b)
+  | .controlled =>
+    -- a Battlefield the controller of the object the effect belongs to controls
+    some (match s.obj? id, s.obj? self with
+      | some b, some o => b.control == some o.controller
+      | _, _ => false)
   | .sameAs sel =>
     match sel with
     | .self => some (id == self)

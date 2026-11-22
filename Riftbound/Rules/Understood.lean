@@ -93,6 +93,7 @@ def Filter.understood : Filter → Bool
   | .stunned => true
   | .buffed => true
   | .not f => Filter.understood f
+  | .controlled => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
   | .sameAs (.var _) => true
@@ -155,6 +156,9 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .recycleTop p => p.understood
+  | .play s => s.understood
+  | .hideAt s b => s.understood && b.understood
+  | .bin s => s.understood
   | .recycle s => s.understoodPickAny
   | .takeControl s => s.understood
   | .recall s _ => s.understood
@@ -268,7 +272,7 @@ def Keyword.runs : Keyword → Bool
   | .reaction => true | .action => true | .assault => true | .shield => true | .ganking => true
   | .tank => true | .temporary => true | .legion => true | .deflect => true
   | .deathknell => true | .hunt => true | .level => true | .equip => true
-  | .accelerate => true | .vision => true
+  | .accelerate => true | .vision => true | .hidden => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are

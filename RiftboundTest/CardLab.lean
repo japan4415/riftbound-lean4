@@ -150,6 +150,10 @@ meta def startCombatNow (s : GameState) (bf : ObjId) (att : PlayerId) (says : Sa
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
+/-- The player controls the Battlefield. -/
+meta def GameState.control (s : GameState) (p : PlayerId) (bf : ObjId) : GameState :=
+  s.modObj bf (fun o => { o with control := some p })
+
 /-- Make the object exhausted. -/
 meta def GameState.tire (s : GameState) (u : ObjId) : GameState :=
   s.modObj u (fun o => { o with exhausted := true })

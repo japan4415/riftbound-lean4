@@ -5388,8 +5388,15 @@ def OGN_220.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Facebreaker: the effect is not written yet. -/
-def OGN_220 : CardDef := OGN_220.meta
+/-- Facebreaker. -/
+def OGN_220 : CardDef :=
+  { OGN_220.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.stun (Selector.one .friendly .atBattlefield [.ofType .unit])),
+        .ifThen (.matches (.var pickVar) (.ofType .unit))
+          (.prim (.stun (Selector.one .enemy .anywhere
+            [.ofType .unit, .at_ (.var pickVar)]))) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-221
 /--

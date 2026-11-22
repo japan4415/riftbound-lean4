@@ -1588,4 +1588,71 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let unbuffed := a.modObj u (fun o => { o with buffed := false })
   return a.deflectOf u == 1 && unbuffed.deflectOf u == 0
 
+-- Hidden (CR 811): hide a card for one Power at a Battlefield I control; from the next turn, play
+-- it as a Reaction without paying
+-- Pakaa Cub (OGN-135): a unit; hidden, then played from hiding on the next turn
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-135" .hand
+  let mine := s1.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let same := activate hide s.me h 1 [] ⟨0, []⟩
+  let next := { hide with turn := hide.turn + 1 }
+  let played ← activate next s.me h 1 [] ⟨0, []⟩
+  return (hide.zone (.player s.me .hand)).length + 1 == (mine.zone (.player s.me .hand)).length &&
+    (hide.obj? h).bind (·.hiddenAt) == some s.bf0 && same.isNone &&
+    played.countIn s.me .base "OGN-135" == 1 && played.countIn s.me .hidden "OGN-135" == 0
+-- ... only at a Battlefield I control, and only with one Power
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-135" .hand
+  let mine := s1.control s.me s.bf0
+  return (activate s1 s.me c 0 [s.bf0] ⟨0, [.fury]⟩).isNone &&
+    (activate mine s.me c 0 [s.bf0] ⟨0, []⟩).isNone &&
+    (activate mine s.me c 0 [s.bf0] ⟨0, [.fury, .calm]⟩).isNone
+
+-- Block (OGN-057), a spell: hidden, then played from hiding: Shield 3 and Tank, and into my Trash
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-057" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let mine := s2.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  let played ← activate next s.me h 1 [u] ⟨0, []⟩
+  return played.kwAmount u .shield == 3 && played.hasKw u .tank &&
+    played.countIn s.me .trash "OGN-057" == 1 && played.countIn s.me .hidden "OGN-057" == 0
+
+-- Blastcone Fae (OGN-097): played from hiding, its "when you play me" fires
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-097" .hand
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let mine := s2.control s.me s.bf0
+  let hide ← activate mine s.me c 1 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  let played ← activate next s.me h 2 [] ⟨0, []⟩ { pick := fun ts => ts.contains e }
+  return played.mightNow e == some 3 && played.countIn s.me .base "OGN-097" == 1
+
+-- Sprite Call (OGN-094) and Facebreaker (OGN-220), Hidden spells
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-094" .hand
+  let a ← play s1 s.me c
+  let sp ← a.firstOf s.me .base "TKN-Sprite" <|> (a.zone (.player s.me .base)).find? (fun u =>
+    (a.cardDef? u).any (·.name == "Sprite"))
+  return a.tired sp == some false && a.hasKw sp .temporary && a.mightNow sp == some 3
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-220" .hand
+  let (s2, f) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-136" s.bf0
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let (s4, g) ← putAt s3 s.you "OGN-136" other
+  let a ← play s4 s.me c
+  let (t1, c2) ← put s s.me "OGN-220" .hand
+  let (t2, f2) ← putAt t1 s.me "OGN-136" s.bf0
+  let (t3, g2) ← putAt t2 s.you "OGN-136" other
+  let b ← play t3 s.me c2
+  let st (x : GameState) (u : ObjId) := (x.obj? u).map (·.stunned)
+  return st a f == some true && st a e == some true && st a g == some false &&
+    st b f2 == some true && st b g2 == some false
+
 end RiftboundTest

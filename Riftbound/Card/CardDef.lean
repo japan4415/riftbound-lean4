@@ -89,6 +89,16 @@ def keywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
+    | .hidden, _ =>
+      -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
+      -- play: from the turn after, as a Reaction, without paying (CR 811)
+      [.activated [.fromHand, .pay ⟨0, [.any]⟩] .normal
+        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .controlled]]
+          (.prim (.hideAt .self (.slot 0)))) .unlimited,
+       .activated [.fromHidden] .reaction
+        (match c.spellEffect with
+          | some e => { e with body := .seq (.cons e.body (.cons (.prim (.bin .self)) .nil)) }
+          | none => EffectDef.of [] (.prim (.play .self))) .unlimited]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.may (.prim (.recycleTop .you)))) .unlimited]

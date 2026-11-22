@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Hidden（伏せる）
+
+- **エンジン**: キーワード **Hidden**（CR 811）を、2 つの起動型能力で表した。(1) **Hide**: 手札から、Power 1 つ（どの領域でもよい）を払い、自分が支配する Battlefield へ、伏せて置く（`fromHand`、効果 `hideAt`）。(2) **伏せたカードをプレイする**: 伏せた次のターンから、Reaction として、費用を払わずに（`fromHidden`）。Unit と Gear は、Base へ出る（`play`。「プレイしたとき」の誘発が働く）。呪文は、効果をして、Trash へ行く（`bin`）。新しいゾーン `hidden`、物体の記録（`hiddenAt`・`hiddenTurn`）、能力を使える場所の判定（`abilityZoneOk`）を足した。Hide とプレイは、既存の起動型能力と Chain の仕組みを使うので、新しい行動の種類は要らず、証明は、`Chain.lean` の数か所だけで通った。
+- **書いた・動くようになったカード**: Block、Consult the Past、Sprite Call、Blastcone Fae、Pakaa Cub、Fight or Flight、Teemo（Scout）、Facebreaker（新しく書いた。2 つ目の選択は、1 つ目と同じ Battlefield の敵）。変異（Hide の費用・Battlefield の支配）で、テストが落ちることを確かめた。
+- **動くカード**: 167 → **175 枚**。
+- **近似として残したこと**: Hide・伏せたカードのプレイが、Chain を使い、応答される（規則では、Chain を使わないかもしれない）。伏せたカードの Battlefield を、支配していない人のものになったら、Trash へ送る規則（323.6.a）は、まだ無い。Hidden のカードを「伏せたカードから、プレイした」ときの誘発（Ember Monk、Teemo の Strategist）と、Hide の費用を変える能力（Swift Scout）は、まだ無い。
+
 ### M7 の実装の記録（2026-11-22）: 勝つために要る点数の変更、相手に選ばせる
 
 - **エンジン**: 勝つために要る点数（`GameState.victoryScore`）が、パッシブ能力の増減（`victoryScorePlus`・`victoryScoreMinus`）を含む。勝者の判定・Hold の最後の 1 点の規則・「勝つ」の効果が、これを読む。`eachPlayer .opponent` と `eitherOf` で、「相手に選ばせる」文を書ける。
