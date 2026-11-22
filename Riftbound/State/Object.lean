@@ -122,6 +122,10 @@ structure Object where
   hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
 
+/-- The object after one more move in the turn `turn` (CR 447). -/
+def Object.countMove (turn : Nat) (o : Object) : Object :=
+  { o with moves := if o.movesTurn == some turn then o.moves + 1 else 1, movesTurn := some turn }
+
 end Riftbound
 
 end

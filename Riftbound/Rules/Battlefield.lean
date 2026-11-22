@@ -102,8 +102,7 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
 and the move is counted. -/
 def moveUnitOf (turn : Nat) (loc : Option ObjId) (o : Object) : Object :=
   let o1 : Object := { o with exhausted := true, loc := loc }
-  { o1 with moves := if o.movesTurn == some turn then o.moves + 1 else 1,
-            movesTurn := some turn }
+  o1.countMove turn
 
 /-- The Battlefield becomes Contested by `p` if `p` does not control it (CR 190.3). -/
 def contestBy (p : PlayerId) (bf : ObjId) (s : GameState) : GameState :=

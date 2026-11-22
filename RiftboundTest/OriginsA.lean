@@ -2536,4 +2536,16 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let next := { b with turn := b.turn + 1 }
   return hit s1 == some 3 && hit a == some 3 && hit b == some 0 && hit next == some 3
 
+-- ... a move by an effect counts too, and a unit that leaves play starts again
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, y) ← put s s.me "OGN-205" .base
+  let (a, _) ← moveTo s1 s.me y (.battlefield s.bf0)
+  let (b, _) ← moveTo a s.me y (.battlefield bf1)
+  let (c, ev) := sendToBf s.bf0 b y
+  let third ← fire c ev
+  let (back, id') ← moveObj b y (.player s.me .hand)
+  return third.pointsOf s.me == c.pointsOf s.me + 1 && (c.obj? y).map (·.moves) == some 3 &&
+    (back.obj? id').map (·.moves) == some 0
+
 end RiftboundTest
