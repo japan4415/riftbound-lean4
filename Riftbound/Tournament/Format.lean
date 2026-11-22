@@ -22,6 +22,12 @@ inductive Format where
   | draft
 deriving DecidableEq, Repr, Hashable
 
+/-- The format is Limited: Sealed or Draft (TR 602). -/
+def Format.isLimited : Format → Bool
+  | .constructed => false
+  | .sealed => true
+  | .draft => true
+
 /-- The smallest Main Deck of a Limited format: 25 for Sealed (TR 602.4.a.2), 20 for Draft
 (TR 602.4.b.3). Constructed has an exact size instead. -/
 def Format.limitedMinMain : Format → Option Nat
