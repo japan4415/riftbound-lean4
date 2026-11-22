@@ -2548,4 +2548,63 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return third.pointsOf s.me == c.pointsOf s.me + 1 && (c.obj? y).map (·.moves) == some 3 &&
     (back.obj? id').map (·.moves) == some 0
 
+-- Additional costs, paid as the card is played: the cost they save is given back to the Pool
+-- Brazen Buccaneer (OGN-002): discard a card, 2 Energy back
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-002" .hand
+  let (s2, x) ← put s1 s.me "OGN-136" .hand
+  let yes ← play s2 s.me c [] { yes := true }
+  let no ← play s2 s.me c [] { yes := false }
+  let alone ← play (s1.setZone (.player s.me .hand) [c]) s.me c [] { yes := true }
+  return yes.countIn s.me .trash "OGN-136" == 1 && (yes.poolOf s.me).energy == 12 - 6 + 2 &&
+    no.countIn s.me .hand "OGN-136" == 1 && (no.poolOf s.me).energy == 12 - 6 &&
+    (alone.poolOf s.me).energy == 12 - 6 && x == x
+
+-- Wallop (OGN-146) and Call to Glory (OGN-207): spend a buff, and the spell costs nothing
+#guard t fun s => do
+  let (s1, w) ← put s s.me "OGN-146" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let buffed := s3.buff v |>.tire u
+  let yes ← play buffed s.me w [u] { yes := true }
+  let no ← play buffed s.me w [u] { yes := false }
+  let none_ ← play (s3.tire u) s.me w [u] { yes := true }
+  let (t1, g) ← put s s.me "OGN-207" .hand
+  let (t2, a) ← put t1 s.me "OGN-136" .base
+  let (t3, b) ← put t2 s.me "OGN-136" .base
+  let glory ← play (t3.buff b) s.me g [a] { yes := true }
+  let paid ← play t3 s.me g [a] { yes := true }
+  return yes.tired u == some false && (yes.obj? v).map (·.buffed) == some false &&
+    (yes.poolOf s.me).energy == 12 && (no.poolOf s.me).energy == 10 &&
+    (no.obj? v).map (·.buffed) == some true && (none_.poolOf s.me).energy == 10 &&
+    (glory.poolOf s.me).energy == 12 && glory.mightNow a == some 5 &&
+    (paid.poolOf s.me).energy == 9
+
+-- Kraken Hunter (OGN-150): spend buffs, 1 Body each back; Cruel Patron (OGN-208): kill a friendly
+-- unit; Commander Ledros (OGN-231): kill units, 1 Order each back
+#guard t fun s => do
+  let (s1, k) ← put s s.me "OGN-150" .hand
+  let (s2, a) ← put s1 s.me "OGN-136" .base
+  let (s3, b) ← put s2 s.me "OGN-136" .base
+  let buffed := (s3.buff a).buff b
+  let yes ← play buffed s.me k [] { yes := true }
+  let no ← play buffed s.me k [] { yes := false }
+  let (t1, p) ← put s s.me "OGN-208" .hand
+  let (t2, u) ← put t1 s.me "OGN-136" .base
+  let sac ← play t2 s.me p
+  let lone ← play t1 s.me p
+  let (v1, l) ← put s s.me "OGN-231" .hand
+  let (v2, c) ← put v1 s.me "OGN-136" .base
+  let (v3, d) ← put v2 s.me "OGN-136" .base
+  let (v4, e) ← put v3 s.you "OGN-136" .base
+  let led ← play v4 s.me l [] { yes := true }
+  let keep ← play v4 s.me l [] { yes := false }
+  return (yes.obj? a).map (·.buffed) == some false && (yes.obj? b).map (·.buffed) == some false &&
+    (yes.poolOf s.me).body == (no.poolOf s.me).body + 2 &&
+    (no.obj? a).map (·.buffed) == some true &&
+    (sac.obj? u).isNone && sac.countIn s.me .base "OGN-208" == 1 &&
+    lone.countIn s.me .base "OGN-208" == 0 && lone.countIn s.me .trash "OGN-208" == 1 &&
+    (led.obj? c).isNone && (led.obj? d).isNone && (led.obj? e).isSome &&
+    (led.poolOf s.me).order == (keep.poolOf s.me).order + 2 && (keep.obj? c).isSome
+
 end RiftboundTest

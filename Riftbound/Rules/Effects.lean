@@ -481,6 +481,17 @@ theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Change the Rune Pools of the players, one after the other. -/
+def poolsMap (f : RunePool → RunePool) : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, q :: qs => poolsMap f (s.setPool q (f (s.poolOf q))) qs
+
+/-- Changing Rune Pools is a safe change. -/
+theorem poolsMap_safe (f : RunePool → RunePool) :
+    ∀ (qs : List PlayerId) (s : GameState), Safe s (poolsMap f s qs)
+  | [], s => Safe.refl s
+  | q :: qs, s => (setPool_safe s q _).trans (poolsMap_safe f qs _)
+
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
   { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
@@ -837,6 +848,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     match s.payNow p src c with
     | some pool => some (s.setPool p pool, [])
     | none => some (s, [])
+  | .addEnergy ps n none =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (poolsMap (fun pool => pool.addEnergy k) s l, [])))
+  | .addPower ps n (some d) none =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (poolsMap (fun pool => pool.addPower d k) s l, [])))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -974,6 +991,37 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact addTurnFx_safe s p e
+  | addEnergy ps n only =>
+    cases only with
+    | some a => simp [applyPrim] at h
+    | none =>
+      simp only [applyPrim] at h
+      cases hl : ps.resolve s p with
+      | none => simp [hl] at h
+      | some l =>
+        cases hn : n.evalS s p src env with
+        | none => simp [hl, hn] at h
+        | some k =>
+          simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+          rw [← h]
+          exact poolsMap_safe _ l s
+  | addPower ps n d only =>
+    cases d with
+    | none => simp [applyPrim] at h
+    | some dom =>
+      cases only with
+      | some a => simp [applyPrim] at h
+      | none =>
+        simp only [applyPrim] at h
+        cases hl : ps.resolve s p with
+        | none => simp [hl] at h
+        | some l =>
+          cases hn : n.evalS s p src env with
+          | none => simp [hl, hn] at h
+          | some k =>
+            simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+            rw [← h]
+            exact poolsMap_safe _ l s
   | pay c =>
     simp only [applyPrim] at h
     cases hp : s.payNow p src c with
