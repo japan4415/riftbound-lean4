@@ -218,7 +218,7 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
       let all := s1.battlefields.all
         (fun b => ((s1.obj? b).map (·.scored.contains r)) == some true)
-      if conquer && s.config.mode.victoryScore ≤ s.pointsOf r + 1 && !all then
+      if conquer && s.victoryScore ≤ s.pointsOf r + 1 && !all then
         (s1, [Frame.draw r 1], [Event.scored r bf true])
       else (s1.gainPoints r 1, [], [Event.scored r bf conquer, Event.pointsGained r 1])
 
@@ -260,7 +260,7 @@ def endShowdown (s : GameState) (bf : ObjId) : GameState × List Frame × List E
 opponent. -/
 def GameState.winner (s : GameState) : Option PlayerId :=
   s.players.find? (fun p =>
-    decide (s.config.mode.victoryScore ≤ s.pointsOf p) &&
+    decide (s.victoryScore ≤ s.pointsOf p) &&
       s.players.all (fun q => decide (q = p) || decide (s.pointsOf q < s.pointsOf p)))
 
 /-! ### Cleanup -/
@@ -657,7 +657,7 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
 
 /-- What the winner has: the Victory Score and more points than every other player. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
-    s.config.mode.victoryScore ≤ s.pointsOf w ∧
+    s.victoryScore ≤ s.pointsOf w ∧
       ∀ q ∈ s.players, q ≠ w → s.pointsOf q < s.pointsOf w := by
   unfold GameState.winner at h
   have := List.find?_some h

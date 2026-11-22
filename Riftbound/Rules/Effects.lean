@@ -600,7 +600,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .win ps =>
     -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
     (ps.resolve s p).map (fun l =>
-      (gainPointsAll s.config.mode.victoryScore s l, []))
+      (gainPointsAll s.victoryScore s l, []))
   | .score ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))

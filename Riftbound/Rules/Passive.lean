@@ -62,6 +62,21 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
   -- a floor is not read here yet
   | _ => 0
 
+/-- The controller of an object (the first player if it is gone). -/
+def owner (s : GameState) (src : ObjId) : PlayerId :=
+  ((s.obj? src).map (·.controller)).getD ⟨0⟩
+
+/-- The points needed to win the game: those of the mode, and the changes the passive abilities
+make (CR 194). -/
+def victoryScore (s : GameState) : Nat :=
+  let delta : Int := (s.passiveSources.flatMap (fun src =>
+    (s.activeMods src).map (fun m =>
+      match m with
+      | .victoryScorePlus a => ((a.evalS0 s (s.owner src) src {}).getD 0 : Int)
+      | .victoryScoreMinus a => -((a.evalS0 s (s.owner src) src {}).getD 0 : Int)
+      | _ => 0))).sum
+  (s.config.mode.victoryScore + delta).toNat
+
 /-- What the passive abilities add to the Might of an object. -/
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
