@@ -420,6 +420,35 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
       · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
+Nothing happens to what is not a spell on the Chain. -/
+def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    if id ∈ s.zone .chain then
+      match o.kind with
+      | .chainAbility .. => (s, [])
+      | _ =>
+        match moveObj s id (.player o.owner .trash) with
+        | some r => (r.1, [Event.moved id r.2 (.player o.owner .trash)])
+        | none => (s, [])
+    else (s, [])
+  | none => (s, [])
+
+/-- Countering a spell is a safe change. -/
+theorem counterObj_safe (s : GameState) (id : ObjId) : Safe s (counterObj s id).1 := by
+  unfold counterObj
+  split
+  · split
+    · split
+      · exact Safe.refl s
+      · split
+        · rename_i r hr
+          exact Safe.moveObj hr
+        · exact Safe.refl s
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
 def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj .trash s id
@@ -721,6 +750,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inRuneDeck => simp at h
       | inHidden => simp at h
       | inCombat => simp at h
+      | onChain => simp at h
 
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
@@ -767,6 +797,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | _ => none
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .discardCard sel => onSelected s p src env sel discardObj
+  | .counter sel => onSelected s p src env sel counterObj
   | .hideAt sel bfs =>
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (hideObj b)
@@ -861,6 +892,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         exact onSelected_safe (playFreeAt_safe p b) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | discardCard sel => exact onSelected_safe discardObj_safe h
+  | counter sel => exact onSelected_safe counterObj_safe h
   | hideAt sel bfs =>
     simp only [applyPrim] at h
     cases hb : bfs.eval s p src env with

@@ -49,6 +49,8 @@ inductive Place where
   | inCombat
   /-- Hidden face down (CR 811). -/
   | inHidden
+  /-- On the Chain: the spells waiting to resolve (CR 330). -/
+  | onChain
 deriving DecidableEq, Repr, Hashable
 
 /-- How many objects an effect takes (CR 355): "a", "up to N", "N", "each" or "all". -/

@@ -2210,4 +2210,80 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   return on.turnFx.length == 1 && s3.turnFx.isEmpty && on.damageOff && !s3.damageOff &&
     (hit.obj? mine).map (·.damage) == some 0 && (free.obj? mine).map (·.damage) == some 3
 
+-- Counters
+/-- The player passes priority. -/
+meta def passBy (s : GameState) (p : PlayerId) : Option GameState :=
+  match step 100 s ⟨.player p, .pass⟩ with
+  | .ok (s1, _) => some s1
+  | .error _ => none
+
+/-- The player plays the card for its cost with the targets, and the Chain stays. -/
+meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
+    Option GameState :=
+  match step 100 (s.rich p) ⟨.player p, .playCard c (payOf s c) ts⟩ with
+  | .ok (x, _) => some x
+  | .error _ => none
+
+-- Wind Wall (OGN-064): counter a spell on the Chain (Confront would draw 1)
+#guard t fun s => do
+  let (s1, conf) ← put s s.me "OGN-129" .hand
+  let (s2, wind) ← put s1 s.you "OGN-064" .hand
+  let on ← passBy (← castStop s2 s.me conf) s.me
+  let tgt ← (on.zone .chain).head?
+  let after ← play on s.you wind [tgt]
+  let plain ← play s2 s.me conf
+  return after.countIn s.me .trash "OGN-129" == 1 && after.turnFx.isEmpty &&
+    after.handN s.me == s2.handN s.me - 1 && after.countIn s.you .trash "OGN-064" == 1 &&
+    plain.turnFx.length == 1 && (on.zone .chain).length == 1
+-- Defy (OGN-045): only a spell that costs at most 4 Energy and 1 Power (The Harrowing costs 2
+-- Power, Falling Comet 5 Energy)
+#guard t fun s => do
+  let (s1, conf) ← put s s.me "OGN-129" .hand
+  let (s2, big) ← put s1 s.me "OGN-198" .hand
+  let (s3, defy) ← put s2 s.you "OGN-045" .hand
+  let (s4, comet) ← put s3 s.me "OGN-085" .hand
+  let (s4b, star) ← put s4 s.me "OGN-029" .hand
+  let (s5, u) ← putAt s4b s.you "OGN-136" s.bf0
+  let small ← passBy (← castStop s5 s.me conf) s.me
+  let large ← passBy (← castStop s5 s.me big) s.me
+  let pricey ← passBy (← castOpen s5 s.me comet [u]) s.me
+  let twoPower ← passBy (← castOpen s5 s.me star [u, u]) s.me
+  let a ← play small s.you defy [← (small.zone .chain).head?]
+  let refused3 := play twoPower s.you defy [← (twoPower.zone .chain).head?]
+  let refused := play large s.you defy [← (large.zone .chain).head?]
+  let refused2 := play pricey s.you defy [← (pricey.zone .chain).head?]
+  return a.countIn s.me .trash "OGN-129" == 1 && a.turnFx.isEmpty && refused.isNone &&
+    refused2.isNone && refused3.isNone
+
+-- Stormbringer, Volibear (OGN-250): damage equal to my unit's Might to the enemy units at a
+-- battlefield, then my unit moves there
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-250" .hand
+  let (s2, mine) ← put s1 s.me "OGN-001" .base
+  let (s3, e1) ← putAt s2 s.you "OGN-136" s.bf0
+  let (s4, e2) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s5, f) ← putAt s4 s.me "OGN-136" s.bf0
+  let a ← play s5 s.me c [mine, s.bf0]
+  return (a.obj? e1).isNone && (a.obj? e2).map (·.damage) == some 5 &&
+    (a.obj? f).map (·.damage) == some 0 && (a.obj? mine).map (·.loc) == some (some s.bf0)
+
+-- Counters need a spell on the Chain, and a spell does not counter itself; Stormbringer needs a
+-- unit of mine in the Base and takes a Battlefield
+#guard t fun s => do
+  let (s1, wind) ← put s s.me "OGN-064" .hand
+  let (s2, defy) ← put s1 s.me "OGN-045" .hand
+  let (s3, conf) ← put s2 s.me "OGN-129" .hand
+  let alone := play s3 s.me wind [conf]
+  let selfTarget := play s3 s.me wind [wind]
+  let nothing := play s3 s.me defy []
+  let (t1, c) ← put s s.me "OGN-250" .hand
+  let (t2, mine) ← put t1 s.me "OGN-001" .base
+  let (t3, away) ← putAt t2 s.me "OGN-001" s.bf0
+  let (t4, foe) ← put t3 s.you "OGN-001" .base
+  let onBf := play t4 s.me c [away, s.bf0]
+  let enemy := play t4 s.me c [foe, s.bf0]
+  let fine ← play t4 s.me c [mine, s.bf0]
+  return alone.isNone && selfTarget.isNone && nothing.isNone && onBf.isNone && enemy.isNone &&
+    (fine.obj? foe).map (·.damage) == some 0
+
 end RiftboundTest

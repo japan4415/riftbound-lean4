@@ -1117,8 +1117,13 @@ def OGN_045.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Defy: the effect is not written yet. -/
-def OGN_045 : CardDef := OGN_045.meta
+/-- Defy. -/
+def OGN_045 : CardDef :=
+  { OGN_045.meta with
+    spellEffect := some (.of [.targetOf .one .any .onChain
+        [.ofType .spell, .cost .le (.const 4), .powerCost .le (.const 1)]]
+      (.prim (.counter (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-046
 /--
@@ -1603,8 +1608,12 @@ def OGN_064.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wind Wall: the effect is not written yet. -/
-def OGN_064 : CardDef := OGN_064.meta
+/-- Wind Wall. -/
+def OGN_064 : CardDef :=
+  { OGN_064.meta with
+    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
+      (.prim (.counter (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-065
 /--
@@ -6344,8 +6353,15 @@ def OGN_250.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Stormbringer, Volibear: the effect is not written yet. -/
-def OGN_250 : CardDef := OGN_250.meta
+/-- Stormbringer, Volibear. -/
+def OGN_250 : CardDef :=
+  { OGN_250.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .atBase [.ofType .unit],
+        .targetOf .one .any .anywhere [.ofType .battlefield]]
+      (.seqOf [.prim (.deal (Selector.all .enemy .anywhere [.ofType .unit, .at_ (.slot 1)])
+          (.mightOf (.slot 0))),
+        .prim (.move (.slot 0) (.at_ (.slot 1)))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-251
 /--
