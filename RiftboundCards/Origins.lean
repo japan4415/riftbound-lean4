@@ -6658,8 +6658,16 @@ def OGN_252.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Super Mega Death Rocket!, Jinx: the effect is not written yet. -/
-def OGN_252 : CardDef := OGN_252.meta
+/-- Super Mega Death Rocket!, Jinx. -/
+def OGN_252 : CardDef :=
+  { OGN_252.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.const 5)))),
+    abilities := [.triggered { event := .conquerFromTrash, subject := .self }
+      (.of [] (.ifThen (.cmp .ge (.handSize .you) (.const 1))
+        (.may (.seqOf [.prim (.discard .you (.const 1)), .prim (.returnToHand .self)])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-253
 /--
