@@ -57,7 +57,7 @@ open Riftbound RiftboundCards
 
 -- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
 -- goal "every card of the first set works" (298)
-#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 133
+#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 143
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 
 -- the cards written down as IR values (docs/coverage.md): 120 by hand, 169 by `transcribe.py`
@@ -88,6 +88,6 @@ open Riftbound RiftboundCards
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
 #guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 66
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 57
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 59
 
 end RiftboundTest

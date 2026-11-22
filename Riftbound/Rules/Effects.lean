@@ -400,6 +400,28 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact sendHome_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- A player takes control of an object (CR 740). -/
+def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with controller := p }), [])
+
+/-- Taking control is a safe change. -/
+theorem setController_safe (p : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (setController p s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- Recall a Unit: it goes to its controller's Base, and is exhausted if the effect says so. It is
+not a move, so no ability of a move fires (CR 456). -/
+def recallFx (ex : Bool) (s : GameState) (u : ObjId) : GameState × List Event :=
+  let r := sendHome s u
+  if ex then ((setExhausted true r.1 u).1, r.2 ++ (setExhausted true r.1 u).2) else r
+
+/-- Recalling is a safe change. -/
+theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx ex s u).1 := by
+  unfold recallFx
+  cases ex
+  · exact sendHome_safe s u
+  · exact (sendHome_safe s u).trans (setExhausted_safe true _ u)
+
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := some u }), [])
@@ -518,6 +540,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
+  | .takeControl sel => onSelected s p src env sel (setController p)
+  | .recall sel ex => onSelected s p src env sel (recallFx ex)
+  | .win ps =>
+    -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
+    (ps.resolve s p).map (fun l =>
+      (gainPointsAll s.config.mode.victoryScore s l, []))
   | .score ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
@@ -576,6 +604,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | takeControl sel => exact onSelected_safe (setController_safe p) h
+  | «recall» sel ex => exact onSelected_safe (recallFx_safe ex) h
+  | win ps =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      simp only [hl, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact gainPointsAll_safe _ l s
   | score ps n =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with
@@ -808,7 +846,7 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     (es : EffectList) : GameState × List Frame × List Event :=
   match e.pickSel? with
   | some (.pick _ side place fs) =>
-    match s.candidates p src env side place fs with
+    match s.pickCandidates p src env side place fs with
     | some [o] => (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], [])
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])

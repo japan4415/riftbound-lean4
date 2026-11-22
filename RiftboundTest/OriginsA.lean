@@ -1124,4 +1124,60 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).bind (·.loc) == some s.bf0 &&
     (a.obj? s.bf0).bind (·.contested) == some s.you && (c.obj? b).isSome && (d.obj? b).isSome
 
+-- Blazing Scorcher (OGN-001), [Accelerate]: paying 1 Energy and a Fury Power more, it enters ready
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-001" .hand
+  let base := payOf s1 c
+  let a ← cast (s1.rich s.me) s.me c base
+  let b ← cast (s1.rich s.me) s.me c ⟨base.energy + 1, base.power ++ [.fury]⟩
+  let ua ← a.firstOf s.me .base "OGN-001"
+  let ub ← b.firstOf s.me .base "OGN-001"
+  return a.tired ua == some true && b.tired ub == some false
+
+-- Cemetery Attendant (OGN-165) and Morbid Return (OGN-170): return a unit from my Trash to my hand;
+-- not a card that is not a unit, not the opponent's
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-165" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .trash
+  let (s3, v) ← put s2 s.me "OGN-001" .trash
+  let (s4, _) ← put s3 s.me "OGN-004" .trash
+  let (s5, _) ← put s4 s.you "OGN-016" .trash
+  let a ← play s5 s.me c [] { obj := fun o => o == v }
+  let b ← play (s5.setZone (.player s.me .trash) []) s.me c
+  return a.countIn s.me .hand "OGN-001" == s5.countIn s.me .hand "OGN-001" + 1 &&
+    a.countIn s.me .trash "OGN-001" == 0 && a.countIn s.me .trash "OGN-136" == 1 &&
+    a.countIn s.you .hand "OGN-016" == s5.countIn s.you .hand "OGN-016" &&
+    b.handN s.me == s5.handN s.me - 1 && (a.obj? u).isSome
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-170" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-004" .trash
+  let (s4, _) ← put s3 s.you "OGN-001" .trash
+  let a ← play s4 s.me c
+  return a.countIn s.me .hand "OGN-136" == 1 && a.countIn s.me .hand "OGN-004" == 0 &&
+    a.countIn s.you .hand "OGN-001" == s4.countIn s.you .hand "OGN-001"
+
+-- Possession (OGN-203): take control of an enemy unit at a battlefield, and recall it to my Base
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-203" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← put s2 s.you "OGN-001" .base
+  let a ← play s3 s.me c [e]
+  return (a.obj? e).map (·.controller) == some s.me && (a.zone (.player s.me .base)).contains e &&
+    (a.obj? e).bind (·.loc) == none && (a.obj? f).map (·.controller) == some s.you &&
+    (play s3 s.me c [f]).isNone
+
+-- The Grand Plaza (OGN-293): with 7 units here when I hold, I win; with 6, I do not
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-293"
+  let units (n : Nat) (x : GameState) : Option GameState :=
+    (List.range n).foldl (fun acc _ => acc.bind fun y => (putAt y s.me "OGN-136" bf).map (·.1))
+      (some x)
+  let seven ← units 7 s1
+  let six ← units 6 s1
+  let a ← fire seven [.scored s.me bf false]
+  let b ← fire six [.scored s.me bf false]
+  let v := s.config.mode.victoryScore
+  return v ≤ a.pointsOf s.me && b.pointsOf s.me < v
+
 end RiftboundTest

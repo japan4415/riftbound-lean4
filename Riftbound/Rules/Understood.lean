@@ -130,13 +130,17 @@ def Condition.understood : Condition → Bool
 /-- A selector of a primitive: it may also name one object to choose while the effect resolves
 (`runEffect` asks the player), which is not understood anywhere else. -/
 def Selector.understoodPick : Selector → Bool
-  | .pick .one _ place fs => place.understood && FilterList.understood fs
+  | .pick .one _ place fs =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | s => s.understood
 
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .score p n => p.understood && n.understood
+  | .win p => p.understood
+  | .takeControl s => s.understoodPick
+  | .recall s _ => s.understoodPick
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood
@@ -242,6 +246,7 @@ def Keyword.runs : Keyword → Bool
   | .reaction => true | .action => true | .assault => true | .shield => true | .ganking => true
   | .tank => true | .temporary => true | .legion => true | .deflect => true
   | .deathknell => true | .hunt => true | .level => true | .equip => true
+  | .accelerate => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are

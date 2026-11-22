@@ -243,6 +243,18 @@ def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : En
   let objs ← s.placeObjs self place
   s.keepMatching p self env side fs objs
 
+/-- The objects of a side at a place that have the properties, for a choice made while an effect
+resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
+target cannot be. -/
+def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
+    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
+  match place.zoneKind? with
+  | some z =>
+    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+      acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
+        FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
+  | none => s.candidates p self env side place fs
+
 /-- A member of the answer is a member of the list that was filtered. -/
 theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {fs : FilterList} {l r : List ObjId}
@@ -327,7 +339,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     | _ => none
   | .var v =>
     match env.lookup v with
-    | some (.obj o) => some (if o ∈ s.inPlay then [o] else [])
+    | some (.obj o) => some (if (s.obj? o).isSome then [o] else [])
     | _ => none
   | .it =>
     match env.it with
