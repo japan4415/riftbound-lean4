@@ -2782,7 +2782,7 @@ def OGN_117 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .friendly .anywhere [],
         condition := .not .yourTurn }
-      (.of [] (.prim (.create "Recruit" (.const 1) .atBase true))) .unlimited],
+      (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-118
@@ -5242,7 +5242,7 @@ def OGN_222 : CardDef :=
     abilities := [.triggered
       { Trigger.onSelf .move with
         condition := .cmp .ge (.count (Selector.all .friendly .here [.ofType .unit])) (.const 1) }
-      (.of [] (.prim (.create "Recruit" (.const 1) .here true))) .unlimited],
+      (.of [] (.prim (.create "Recruit" (.const 1) .here false))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-223
@@ -6487,7 +6487,7 @@ def OGN_275.meta : CardDef :=
 def OGN_275 : CardDef :=
   { OGN_275.meta with
     abilities := [.triggered (.onSelf .youHold)
-      (.of [] (.prim (.create "Recruit" (.const 1) .atBase true))) .unlimited],
+      (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-276

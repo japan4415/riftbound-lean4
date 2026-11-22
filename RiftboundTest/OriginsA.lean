@@ -501,7 +501,10 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, bf) ← putBf s s.me "OGN-275"
   let a ← fire s1 [.scored s.me bf false]
   let b ← fire s1 [.scored s.me bf true]
-  return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0
+  let tk ← a.firstOf s.me .base "TKN-Recruit" <|> (a.zone (.player s.me .base)).find? (fun u =>
+    (a.cardDef? u).any (·.name == "Recruit"))
+  return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0 &&
+    a.tired tk == some true
 
 -- Navori Fighting Pit (OGN-283): buff a unit here when I hold
 #guard t fun s => do
@@ -545,8 +548,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← put s2 s.me "OGN-136" .base
   let a ← play s3 s.me c
   let b ← play (← play s3 s.me k [v]) s.me c
-  return (a.zone (.player s.me .base)).any (fun d => a.tired d == some true) &&
-    a.countIn s.me .base "OGN-243" == 1 && b.countIn s.me .base "OGN-243" == 1
+  let da ← a.firstOf s.me .base "OGN-243"
+  let db ← b.firstOf s.me .base "OGN-243"
+  return a.tired da == some true && b.tired db == some false
 
 -- Block (OGN-057): a unit has Shield 3 and Tank this turn
 #guard t fun s => do
@@ -640,5 +644,18 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← activate s2 s.me g 0 [v]
   return !s2.hasKw v .ganking && a.hasKw v .ganking && a.tired g == some true &&
     (activate a s.me g 0 [v]).isNone
+
+-- a Battlefield trigger with a condition asks it for the player who holds, not for the owner:
+-- The Grand Plaza (OGN-293) wins for the holder with seven units here
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-293"
+  let seven (p : PlayerId) (x : GameState) : Option GameState :=
+    (List.range 7).foldl (fun acc _ => acc.bind fun y => (putAt y p "OGN-136" bf).map (·.1))
+      (some x)
+  let a ← seven s.you s1
+  let b ← seven s.me s1
+  return (a.detect [.scored s.you bf false]).length == 1 &&
+    (a.detect [.scored s.me bf false]).isEmpty &&
+    (b.detect [.scored s.me bf false]).length == 1 && (b.detect [.scored s.you bf false]).isEmpty
 
 end RiftboundTest
