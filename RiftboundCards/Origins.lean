@@ -5200,8 +5200,22 @@ def OGN_200.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Twisted Fate, Gambler: the effect is not written yet. -/
-def OGN_200 : CardDef := OGN_200.meta
+/-- Twisted Fate, Gambler. -/
+def OGN_200 : CardDef :=
+  { OGN_200.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.seqOf [
+        .prim (.reveal (Selector.one .friendly .inRuneDeck [.top 1])),
+        .prim (.recycle (.var pickVar)),
+        .ifThen (.matches (.var pickVar) (.domain .fury))
+          (.seqOf [.prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 2)),
+            .prim (.deal (Selector.all .enemy .here [.ofType .unit, .not (.sameAs (.var pickVar))])
+              (.const 1))])
+          (.ifThen (.matches (.var pickVar) (.domain .mind))
+            (.prim (.draw .you (.const 1)))
+            (.ifThen (.matches (.var pickVar) (.domain .order))
+              (.prim (.stun (Selector.one .enemy .here [.ofType .unit]))) .nop))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-201
 /--

@@ -247,8 +247,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .not f => (f.holds s self env id).map (fun b => !b)
   | .top n =>
     some (match s.obj? id with
-      | some o => decide ((s.zone (.player o.owner .mainDeck)).idxOf id < n) &&
-          (s.zone (.player o.owner .mainDeck)).contains id
+      | some o =>
+        -- one of the first `n` cards of the Main Deck or of the Rune Deck of its owner
+        (decide ((s.zone (.player o.owner .mainDeck)).idxOf id < n) &&
+          (s.zone (.player o.owner .mainDeck)).contains id) ||
+        (decide ((s.zone (.player o.owner .runeDeck)).idxOf id < n) &&
+          (s.zone (.player o.owner .runeDeck)).contains id)
       | none => false)
   | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
   | .enemyOccupied =>

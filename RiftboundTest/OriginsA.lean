@@ -2919,4 +2919,33 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (deck go).head? == some last && (deck go).drop 1 == [b, a] && (deck theirs) == deck d4 &&
     (deck none_).length == 2 && none_.countIn s.me .base "OGN-136" == 0
 
+-- Twisted Fate, Gambler (OGN-200): when I attack, reveal the top rune and recycle it; by its
+-- domain: Fury 2 to an enemy unit here and 1 to the other enemy units here, Mind draw 1, Order stun
+-- an enemy unit
+#guard t fun s => do
+  let (s1, _) ← putAt s s.me "OGN-200" s.bf0
+  let (s2, big) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, small) ← putAt s2 s.you "OGN-136" s.bf0
+  let (s4, far) ← put s3 s.you "OGN-001" .base
+  let withTop (card : String) : Option GameState := do
+    let (d1, _) ← put (s4.setZone (.player s.me .runeDeck) []) s.me "OGN-166" .runeDeck
+    let (d2, _) ← put d1 s.me card .runeDeck
+    pure d2
+  let fury ← withTop "OGN-007"
+  let mind ← withTop "OGN-089"
+  let order ← withTop "OGN-214"
+  let calm ← withTop "OGN-042"
+  let go (g : GameState) := fire g [.combatStarted s.bf0 s.me] { obj := fun o => o == big }
+  let f ← go fury
+  let m ← go mind
+  let o ← go order
+  let c ← go calm
+  let runes (g : GameState) := (g.zone (.player s.me .runeDeck)).length
+  return (f.obj? big).map (·.damage) == some 2 && (f.obj? small).map (·.damage) == some 1 &&
+    (f.obj? far).map (·.damage) == some 0 && runes f == runes fury &&
+    m.handN s.me == mind.handN s.me + 1 && (m.obj? big).map (·.damage) == some 0 &&
+    (o.obj? big).map (·.stunned) == some true && (o.obj? small).map (·.stunned) == some false &&
+    c.handN s.me == calm.handN s.me && (c.obj? big).map (·.damage) == some 0 &&
+    (c.obj? big).map (·.stunned) == some false
+
 end RiftboundTest
