@@ -2420,7 +2420,9 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     ((x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
   return (yes.obj? a).map (·.buffed) == some false && (yes.obj? b).map (·.buffed) == some false &&
     (yes.obj? e).map (·.buffed) == some true && runeN yes == runeN buffed + 2 &&
-    (no.obj? a).map (·.buffed) == some true && runeN no == runeN buffed
+    (no.obj? a).map (·.buffed) == some true && runeN no == runeN buffed &&
+    ((yes.zone (.player s.me .base)).filter (fun u => (yes.cardDef? u).any (·.hasType .rune) &&
+      !(buffed.zone (.player s.me .base)).contains u)).all (fun u => yes.tired u == some true)
 
 -- The Candlelit Sanctum (OGN-291): when I conquer here, I may recycle either of the top two cards
 #guard t fun s => do
@@ -2428,12 +2430,14 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let deck := s1.zone (.player s.me .mainDeck)
   let yes ← fire s1 [.scored s.me bf true] { yes := true }
   let no ← fire s1 [.scored s.me bf true] { yes := false }
-  let other ← fire s1 [.scored s.you bf true]
-  let top2 := deck.take 2
+  let other ← fire s1 [.scored s.you bf true] { yes := true }
+  let held ← fire s1 [.scored s.me bf false] { yes := true }
   return deck.length > 3 && (no.zone (.player s.me .mainDeck)) == deck &&
     (yes.zone (.player s.me .mainDeck)).take (deck.length - 2) == deck.drop 2 &&
     ((yes.zone (.player s.me .mainDeck)).drop (deck.length - 2)).length == 2 &&
-    top2.length == 2 && (other.zone (.player s.me .mainDeck)) == deck
+    (other.zone (.player s.me .mainDeck)) == deck &&
+    (other.zone (.player s.you .mainDeck)) != s1.zone (.player s.you .mainDeck) &&
+    (held.zone (.player s.me .mainDeck)) == deck
 
 -- Fortified Position (OGN-279): when I defend here, a unit gains Shield 2
 #guard t fun s => do

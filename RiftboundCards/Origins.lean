@@ -5863,7 +5863,9 @@ def OGN_230 : CardDef :=
   { OGN_230.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .buffed])
-        (.may (.seqOf [.prim (.spendBuff .it), .prim (.channel .you (.const 0) (.const 1))]))))
+        (.ifThen (.matches .it .buffed)
+      (.may (.seqOf [.prim (.spendBuff .it), .prim (.channel .you (.const 0) (.const 1))]))
+      .nop)))
       .unlimited],
     status := .drafted }
 
