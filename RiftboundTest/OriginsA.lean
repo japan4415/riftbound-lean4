@@ -3352,4 +3352,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (free.obj? v).map (·.exhausted) == some false &&
     (atBase.obj? v).map (·.exhausted) == some false
 
+-- Mageseeker Warden (OGN-070), more: its owner is not stopped; an effect that plays a card to a
+-- battlefield (Ava Achiever, OGN-107) plays it to the base instead
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, c) ← put s1 s.me "OGN-176" .hand
+  let (s3, _) ← putAt s2 s.me "OGN-070" bf
+  let (t1, _) ← putAt s1 s.me "OGN-107" bf
+  let (t2, _) ← put t1 s.me "OGN-199" .hand
+  let (t3, _) ← putAt t2 s.you "OGN-070" bf
+  let free := t2.fund s.me 0 (mind := 1)
+  let held := t3.fund s.me 0 (mind := 1)
+  let a ← fire free [.combatStarted bf s.me] { yes := true }
+  let b ← fire held [.combatStarted bf s.me] { yes := true }
+  let there (x : GameState) :=
+    ((x.zone .battlefieldZone).filter (fun u => (x.cardDef? u).any (·.id == cid "OGN-199") &&
+      (x.obj? u).any (·.loc == some bf))).length
+  return (activate s3 s.me c 0 [bf] (payOf s3 c)).isSome &&
+    there a == 1 && there b == 0 && b.countIn s.me .base "OGN-199" == 1
+
 end RiftboundTest
