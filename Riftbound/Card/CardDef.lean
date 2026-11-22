@@ -89,6 +89,9 @@ def keywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
+    | .vision, _ =>
+      [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [] (.may (.prim (.recycleTop .you)))) .unlimited]
     | .hunt, .amount n =>
       [.triggered (Trigger.onSelf .conquer) (EffectDef.of [] (.prim (.gainXP .you (.const n))))
         .unlimited,

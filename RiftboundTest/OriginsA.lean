@@ -1208,4 +1208,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let v := s.config.mode.victoryScore
   return a.pointsOf s.me < v && b.pointsOf s.me < v
 
+-- Mystic Poro (OGN-171), [Vision]: when I play it, I may recycle the top card of my Main Deck
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-171" .hand
+  let deck (x : GameState) := x.zone (.player s.me .mainDeck)
+  let top ← (deck s1).head?
+  let a ← play s1 s.me c
+  let b ← play s1 s.me c [] { yes := false }
+  let n := (deck s1).length
+  return (deck a).length == n && (deck a).getLast? == some top && (deck a).head? != some top &&
+    (deck b).head? == some top && (deck b).length == n
+
 end RiftboundTest
