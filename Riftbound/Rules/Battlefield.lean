@@ -36,21 +36,6 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
 /-- Whether an object is a Unit. -/
 def isUnit (s : GameState) (id : ObjId) : Bool := s.hasType id .unit
 
-/-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
-no condition that give the object the keyword. -/
-def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
-  s.inPlay.flatMap (fun g =>
-    match s.obj? g, s.cardDef? g with
-    | some o, some d =>
-      if o.attached == some id then
-        d.grants.flatMap (fun ab =>
-          match ab with
-          | Ability.passive .always mods =>
-            mods.filterMap (fun m => match m with | .keyword .self k => some k | _ => none)
-          | _ => [])
-      else []
-    | _, _ => [])
-
 /-- Whether the object has the keyword: its card prints it, or an Equipment gives it. -/
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
   (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)

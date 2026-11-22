@@ -307,8 +307,8 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
 theorem applyFrame_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hown : s.OwnerOk) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
     s'.OwnerOk := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  exact withTriggers_ownerOk _ (applyFrame_ownerOk0 hwf hown hl h0)
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  exact withTriggers_ownerOk _ (h3.ownerOk (applyFrame_ownerOk0 hwf hown hl h0))
 
 /-- Applying a legal answer keeps `OwnerOk`. -/
 theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}

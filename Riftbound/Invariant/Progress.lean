@@ -292,8 +292,11 @@ theorem StackInv.withTriggers {s : GameState} (hinv : StackInv s) (es : List Eve
 /-- Applying a legal answer to the open question keeps the stack invariant. -/
 theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
     (hinv : StackInv s) (h : applyFrame s a = some (s', es)) : StackInv s' := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  exact (applyFrame_stack0 hinv h0).withTriggers _
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  have h5 : StackInv s2 := applyFrame_stack0 hinv h0
+  have h4 : StackInv s3 := by
+    rcases h3 with rfl | ⟨q, pool, rfl⟩ <;> exact h5
+  exact h4.withTriggers _
 
 /-- Applying an answer keeps the stack invariant. A concession ends the game, and the stack is then
 no longer asked for a bottom frame. -/

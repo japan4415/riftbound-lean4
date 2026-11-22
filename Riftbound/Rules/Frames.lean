@@ -176,7 +176,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
 off wait on the stack (CR 382-385). -/
 def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :=
   (applyFrame0 s a).map (fun r =>
-    (r.1.withTriggers (r.2 ++ extraEvents a r.2), r.2 ++ extraEvents a r.2))
+    ((s.paySurcharge a r.1).withTriggers (r.2 ++ extraEvents a r.2), r.2 ++ extraEvents a r.2))
 
 /-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
 the decision frame on top of the stack. -/
@@ -380,13 +380,15 @@ theorem microStep_cases {s s' : GameState} {es : List Event}
 /-- What an answer does: the step, and the triggers it set off. -/
 theorem applyFrame_cases {s s' : GameState} {a : Action} {es : List Event}
     (h : applyFrame s a = some (s', es)) :
-    ∃ s2 es2, applyFrame0 s a = some (s2, es2) ∧
-      s' = s2.withTriggers (es2 ++ extraEvents a es2) ∧ es = es2 ++ extraEvents a es2 := by
+    ∃ s2 es2 s3, applyFrame0 s a = some (s2, es2) ∧
+      GameState.PoolStep s2 s3 ∧
+      s' = s3.withTriggers (es2 ++ extraEvents a es2) ∧ es = es2 ++ extraEvents a es2 := by
   unfold applyFrame at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h
   simp only [Prod.mk.injEq] at hr
-  exact ⟨s2, es2, h0, hr.1.symm, hr.2.symm⟩
+  exact ⟨s2, es2, s.paySurcharge a s2, h0, GameState.paySurcharge_poolStep s a s2, hr.1.symm,
+    hr.2.symm⟩
 
 /-- A step of work keeps the game well formed. -/
 theorem microStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)

@@ -213,15 +213,30 @@ def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
     | _ => []
   | none => []
 
-/-- The objects are a legal pick for the ability's choices, or the ability has no legal pick and
-nothing is chosen (CR 355). -/
+/-- Every legal pick for the ability's choices that the Pool of its controller can pay the Deflect
+of (CR 355, 809). -/
+def trigTuples (s : GameState) (t : PendTrigger) : List (List ObjId) :=
+  (targetTuples s t.controller t.source (trigChoices s t)).filter
+    (fun ts => s.deflectOk t.controller (s.poolOf t.controller) ts)
+
+/-- The picks listed are exactly the legal ones that the Pool can pay for. -/
+theorem mem_trigTuples (s : GameState) (t : PendTrigger) (ts : List ObjId) :
+    ts ∈ trigTuples s t ↔ (targetsOk s t.controller t.source (trigChoices s t) ts &&
+      s.deflectOk t.controller (s.poolOf t.controller) ts) = true := by
+  unfold trigTuples
+  rw [List.mem_filter, mem_targetTuples]
+  simp [Bool.and_eq_true]
+
+/-- The objects are a legal pick for the ability's choices, and the Pool pays the Deflect of them,
+or the ability has no such pick and nothing is chosen (CR 355, 809). -/
 def trigLegal (s : GameState) (t : PendTrigger) (ts : List ObjId) : Bool :=
-  targetsOk s t.controller t.source (trigChoices s t) ts ||
-    (ts.isEmpty && (targetTuples s t.controller t.source (trigChoices s t)).isEmpty)
+  (targetsOk s t.controller t.source (trigChoices s t) ts &&
+      s.deflectOk t.controller (s.poolOf t.controller) ts) ||
+    (ts.isEmpty && (trigTuples s t).isEmpty)
 
 /-- Every pick worth trying for the ability: the legal ones, or nothing if there is none. -/
 def trigOptions (s : GameState) (t : PendTrigger) : List (List ObjId) :=
-  match targetTuples s t.controller t.source (trigChoices s t) with
+  match trigTuples s t with
   | [] => [[]]
   | l => l
 
@@ -229,17 +244,17 @@ def trigOptions (s : GameState) (t : PendTrigger) : List (List ObjId) :=
 theorem mem_trigOptions (s : GameState) (t : PendTrigger) (ts : List ObjId) :
     ts ∈ trigOptions s t ↔ trigLegal s t ts = true := by
   unfold trigOptions trigLegal
-  rw [Bool.or_eq_true, ← mem_targetTuples]
-  cases hl : targetTuples s t.controller t.source (trigChoices s t) with
+  rw [Bool.or_eq_true, ← mem_trigTuples]
+  cases hl : trigTuples s t with
   | nil => simp
   | cons x xs => simp
 
 /-- An ability that waits has a legal pick. -/
 theorem trigLegal_exists (s : GameState) (t : PendTrigger) : ∃ ts, trigLegal s t ts = true := by
-  by_cases h : targetTuples s t.controller t.source (trigChoices s t) = []
+  by_cases h : trigTuples s t = []
   · exact ⟨[], by simp [trigLegal, h]⟩
   · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil _ h
-    have hok := (mem_targetTuples s t.controller t.source (trigChoices s t) x).mp hx
+    have hok := (mem_trigTuples s t x).mp hx
     exact ⟨x, by simp [trigLegal, hok]⟩
 
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,

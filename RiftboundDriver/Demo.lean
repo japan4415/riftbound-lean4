@@ -69,6 +69,9 @@ def demoCards : List CardDef :=
     { id := ⟨"SFD-T03"⟩, name := "Gold", types := [.gear],
       abilities := [.activated [.killSelf, .exhaustSelf] .reaction
         (EffectDef.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited] },
+    { id := ⟨"D0"⟩, name := "Guardian", types := [.unit], domains := [.fury],
+      cost := some ⟨2, []⟩, might := some 3,
+      keywords := [{ keyword := .deflect, arg := .amount 1 }] },
     { id := ⟨"N2"⟩, name := "Looter", types := [.unit], domains := [.fury],
       cost := some ⟨1, []⟩, might := some 2,
       abilities := [.triggered (Trigger.onSelf .play)
@@ -119,16 +122,16 @@ def demoDB : CardDB := { cards := demoCards }
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
 that play a Sprite token (Temporary), play a Gold token (a Gear that adds Power once), discard a
 card and draw one, deal 1 damage to an enemy Unit, and ping with an activated ability; a Gear that
-adds 1 Energy (Add); Spells that stun an enemy Unit, give a friendly Unit +3 Might this turn, draw
-a card, deal 2 damage to an enemy Unit, and deal 1 damage to each enemy Unit; and a Reaction that
-deals 2 damage to an enemy Unit. Then 12 Runes and 3 Battlefields. -/
+adds 1 Energy (Add); a Unit with Deflect 1; Spells that stun an enemy Unit, give a friendly Unit +3
+Might this turn, deal 2 damage to an enemy Unit, and deal 1 damage to each enemy Unit; and a
+Reaction that deals 2 damage to an enemy Unit. Then 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
       List.replicate 3 ⟨"N1"⟩ ++ List.replicate 3 ⟨"S5"⟩ ++ List.replicate 3 ⟨"S4"⟩ ++
       List.replicate 3 ⟨"A0"⟩ ++ List.replicate 3 ⟨"N2"⟩ ++ List.replicate 3 ⟨"G1"⟩ ++
       List.replicate 3 ⟨"P0"⟩ ++
-      List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++
+      List.replicate 3 ⟨"D0"⟩ ++ List.replicate 3 ⟨"S1"⟩ ++ List.replicate 3 ⟨"S2"⟩ ++
       List.replicate 3 ⟨"S3"⟩,
     runes := List.replicate 12 ⟨"R1"⟩,
     battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
