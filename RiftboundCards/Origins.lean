@@ -7335,8 +7335,12 @@ def OGN_281.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Hallowed Tomb: the effect is not written yet. -/
-def OGN_281 : CardDef := OGN_281.meta
+/-- Hallowed Tomb. -/
+def OGN_281 : CardDef :=
+  { OGN_281.meta with
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.may (.prim .returnChampion))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-282
 /--

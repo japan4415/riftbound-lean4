@@ -3247,4 +3247,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return a.handN s.me == s5.handN s.me + 2 && a.handN s.you == s5.handN s.you + 1 &&
     b.handN s.me == s5.handN s.me + 2 && c.handN s.me == t2.handN s.me
 
+-- Hallowed Tomb (OGN-281): when I hold here, I may return my Chosen Champion (a Unit of my Legend's
+-- Champion) from my Trash to my Champion Zone, if it is empty
+#guard t fun s => do
+  let empty := s.setZone (.player s.me .championZone) []
+  let (s1, bf) ← putBf empty s.me "OGN-281"
+  let (s2, _) ← put s1 s.me "OGN-247" .legendZone
+  let (s3, k) ← put s2 s.me "OGN-039" .trash
+  let (s4, _) ← put s3 s.me "OGN-136" .trash
+  let zone (g : GameState) (p : PlayerId) := g.zone (.player p .championZone)
+  let a ← fire s4 [.scored s.me bf false] { yes := true }
+  let no ← fire s4 [.scored s.me bf false] { yes := false }
+  let c ← fire s4 [.scored s.me bf true] { yes := true }
+  let (t1, _) ← put s4 s.me "OGN-039" .championZone
+  let full ← fire t1 [.scored s.me bf false] { yes := true }
+  let (u1, _) ← put s1 s.me "OGN-247" .legendZone
+  let (u2, _) ← put u1 s.me "OGN-136" .trash
+  let wrong ← fire u2 [.scored s.me bf false] { yes := true }
+  let (v1, _) ← put s1 s.me "OGN-039" .trash
+  let nolegend ← fire v1 [.scored s.me bf false] { yes := true }
+  let back := (zone a s.me).head?.getD k
+  return (zone a s.me).length == 1 && (a.obj? back).map (·.owner) == some s.me &&
+    (a.zone (.player s.me .trash)).length == 1 && (zone no s.me).isEmpty && (zone c s.me).isEmpty &&
+    (zone full s.me).length == 1 && (full.zone (.player s.me .trash)).length == 2 &&
+    (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty
+
 end RiftboundTest

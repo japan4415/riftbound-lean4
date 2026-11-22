@@ -76,6 +76,33 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The Chosen Champion of the player: a Unit of the Champion the Legend of the player is about
+(they share a tag). The card data does not tell Champions from other Units, nor the Chosen
+Champion from its copies. -/
+def GameState.chosenOf (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
+  let tags := (s.zone (.player p .legendZone)).flatMap (fun l =>
+    ((s.cardDef? l).map (·.tags)).getD [])
+  (s.cardDef? id).any (fun d =>
+    d.hasType .unit && d.tags.any (fun t => tags.contains t))
+
+/-- The player returns their Chosen Champion from their Trash to their Champion Zone, if the
+Champion Zone is empty. -/
+def returnChampion (p : PlayerId) (s : GameState) : GameState × List Event :=
+  if (s.zone (.player p .championZone)).isEmpty then
+    match (s.zone (.player p .trash)).find? (fun u => s.chosenOf p u) with
+    | some id => sendObj .championZone s id
+    | none => (s, [])
+  else (s, [])
+
+/-- Returning the Chosen Champion is a safe change. -/
+theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChampion p s).1 := by
+  unfold returnChampion
+  split
+  · split
+    · exact sendObj_safe _ _ _
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
   { s with turnFx := s.turnFx ++
@@ -973,6 +1000,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     some (s.addTurnFx p e, if e == .hiddenPlayed then [Event.hiddenPlayed p] else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
+  | .returnChampion => some (returnChampion p s)
   | .activateConquer sel =>
     onSelected s p src env sel (fun t id => (t, [Event.conquerActivated id]))
   | .pay c =>
@@ -1122,6 +1150,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact playFirstOf_safe fs p src env s
+  | returnChampion =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact returnChampion_safe p s
   | activateConquer sel =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => Safe.refl t) h

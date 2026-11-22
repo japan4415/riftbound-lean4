@@ -162,6 +162,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .activateConquer s => Selector.ok c s
+  | .returnChampion => true
   | .pay _ => true
 
 /-- A duration refers only to what is there. -/
