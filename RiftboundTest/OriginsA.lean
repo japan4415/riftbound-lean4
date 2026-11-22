@@ -1680,4 +1680,88 @@ meta def t (f : GameState → Option Bool) : Bool :=
     return done.kwAmount u .shield == 3 && done.countIn s.me .trash "OGN-057" == 1
   | .error _ => none
 
+-- Vi (OGN-036): recycle 1 from my Trash: +1 Might this turn; with an empty Trash nothing happens
+#guard t fun s => do
+  let (s1, v) ← put s s.me "OGN-036" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
+  let a ← activate s2 s.me v 0
+  let b ← activate (s1.setZone (.player s.me .trash) []) s.me v 0
+  return trash a + 1 == trash s2 && a.mightNow v == (s2.mightNow v).map (· + 1) &&
+    b.mightNow v == s1.mightNow v
+
+-- Garbage Grabber (OGN-099): for 1 Energy and exhausting it, recycle 3 from my Trash and draw 1
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-099" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-001" .trash
+  let (s4, _) ← put s3 s.me "OGN-004" .trash
+  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
+  let a ← activate s4 s.me g 0 [] ⟨1, []⟩
+  let two := s3
+  let b ← activate two s.me g 0 [] ⟨1, []⟩
+  return trash a == trash s4 - 3 && a.handN s.me == s4.handN s.me + 1 && a.tired g == some true &&
+    b.handN s.me == two.handN s.me && trash b == trash two &&
+    (activate a s.me g 0 [] ⟨1, []⟩).isNone
+
+-- Sett (OGN-164): buffed when played; spend the buff for +4 Might this turn (nothing without one)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-164" .hand
+  let a ← play s1 s.me c
+  let sett ← a.firstOf s.me .base "OGN-164"
+  let spent ← activate a s.me sett 2
+  let (t1, plain) ← put s s.me "OGN-164" .base
+  let none ← activate t1 s.me plain 2
+  return (a.obj? sett).map (·.buffed) == some true &&
+    (spent.obj? sett).map (·.buffed) == some false &&
+    spent.mightNow sett == (a.mightNow sett).map (· + 4 - 1) &&
+    none.mightNow plain == t1.mightNow plain
+
+-- Forge of the Future (OGN-212): a Recruit token when played; kill it to recycle up to 4 cards
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-212" .hand
+  let a ← play s1 s.me c
+  let (t1, f) ← put s s.me "OGN-212" .base
+  let (t2, _) ← put t1 s.me "OGN-136" .trash
+  let (t3, _) ← put t2 s.you "OGN-001" .trash
+  let k ← activate t3 s.me f 1
+  let trashes (x : GameState) := (x.zone (.player s.me .trash)).length +
+    (x.zone (.player s.you .trash)).length
+  let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).length
+  -- the Forge itself, my card and the opponent's card are recycled: three cards, up to four
+  return a.countNamed s.me .base "Recruit" == 1 && trashes k == 0 &&
+    deck k s.me == deck t3 s.me + 2 && deck k s.you == deck t3 s.you + 1
+
+-- Monastery of Hirana (OGN-282) and Wildclaw Shaman (OGN-147): spend a buff
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-282"
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let buffed := s2.buff u
+  let a ← fire buffed [.scored s.me bf true]
+  let b ← fire s2 [.scored s.me bf true]
+  let n ← fire buffed [.scored s.me bf true] { yes := false }
+  return a.handN s.me == buffed.handN s.me + 1 && (a.obj? u).map (·.buffed) == some false &&
+    b.handN s.me == s2.handN s.me && n.handN s.me == buffed.handN s.me
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-147" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let a ← play (s2.buff u) s.me c
+  let w ← a.firstOf s.me .base "OGN-147"
+  let b ← play s2 s.me c
+  let wb ← b.firstOf s.me .base "OGN-147"
+  return (a.obj? u).map (·.buffed) == some false && (a.obj? w).map (·.buffed) == some true &&
+    a.tired w == some false && (b.obj? wb).map (·.buffed) == some false && b.tired wb == some true
+
+-- Overt Operation (OGN-153): spend the buffs to ready the units, then buff all
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-153" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let start := (s3.buff u).tire u |>.tire v
+  let a ← play start s.me c
+  let b ← play start s.me c [] { yes := false }
+  return a.tired u == some false && a.tired v == some true &&
+    (a.obj? u).map (·.buffed) == some true && (a.obj? v).map (·.buffed) == some true &&
+    b.tired u == some true && (b.obj? u).map (·.buffed) == some true
+
 end RiftboundTest

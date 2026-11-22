@@ -872,8 +872,14 @@ def OGN_036.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Vi, Destructive: the effect is not written yet. -/
-def OGN_036 : CardDef := OGN_036.meta
+/-- Vi, Destructive. -/
+def OGN_036 : CardDef :=
+  { OGN_036.meta with
+    abilities := [.activated [] .normal
+      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 1))
+        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [])), .grant .self (.mightPlus .it (.const 1)) .thisTurn]) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-037
 /--
@@ -2446,8 +2452,14 @@ def OGN_099.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Garbage Grabber: the effect is not written yet. -/
-def OGN_099 : CardDef := OGN_099.meta
+/-- Garbage Grabber. -/
+def OGN_099 : CardDef :=
+  { OGN_099.meta with
+    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 3))
+        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [])), .prim (.recycle (Selector.one .friendly .inTrash [])), .prim (.recycle (Selector.one .friendly .inTrash [])),
+          .prim (.draw .you (.const 1))]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-100
 /--
@@ -3617,8 +3629,14 @@ def OGN_147.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wildclaw Shaman: the effect is not written yet. -/
-def OGN_147 : CardDef := OGN_147.meta
+/-- Wildclaw Shaman. -/
+def OGN_147 : CardDef :=
+  { OGN_147.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+        (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
+          .prim (.buff .self), .prim (.ready .self)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-148
 /--
@@ -3768,8 +3786,15 @@ def OGN_153.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Overt Operation: the effect is not written yet. -/
-def OGN_153 : CardDef := OGN_153.meta
+/-- Overt Operation. -/
+def OGN_153 : CardDef :=
+  { OGN_153.meta with
+    spellEffect := some (.of []
+      (.seqOf [.forEach (Selector.all .friendly .anywhere [.ofType .unit])
+          (.may (.ifThen (.matches .it .buffed)
+            (.seqOf [.prim (.spendBuff .it), .prim (.ready .it)]) .nop)),
+        .forEach (Selector.all .friendly .anywhere [.ofType .unit]) (.prim (.buff .it))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-154
 /--
@@ -4044,8 +4069,17 @@ def OGN_164.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sett, Brawler: the effect is not written yet. -/
-def OGN_164 : CardDef := OGN_164.meta
+/-- Sett, Brawler. -/
+def OGN_164 : CardDef :=
+  { OGN_164.meta with
+    abilities :=
+      [.triggered (.onSelf .play) (.of [] (.prim (.buff .self))) .unlimited,
+       .triggered (.onSelf .conquer) (.of [] (.prim (.buff .self))) .unlimited,
+       .activated [] .normal
+        (.of [] (.ifThen (.matches .self .buffed)
+          (.seqOf [.prim (.spendBuff .self), .grant .self (.mightPlus .it (.const 4)) .thisTurn]) .nop))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-165
 /--
@@ -5191,8 +5225,15 @@ def OGN_212.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Forge of the Future: the effect is not written yet. -/
-def OGN_212 : CardDef := OGN_212.meta
+/-- Forge of the Future. -/
+def OGN_212 : CardDef :=
+  { OGN_212.meta with
+    abilities :=
+      let r : Effect := .may (.prim (.recycle (Selector.one .any .inTrash [])))
+      [.triggered (.onSelf .play) (.of [] (.prim (.create "Recruit" (.const 1) .atBase false)))
+        .unlimited,
+       .activated [] .normal (.of [] (.seqOf [.prim (.kill .self), r, r, r, r])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-213
 /--
@@ -6891,8 +6932,14 @@ def OGN_282.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Monastery of Hirana: the effect is not written yet. -/
-def OGN_282 : CardDef := OGN_282.meta
+/-- Monastery of Hirana. -/
+def OGN_282 : CardDef :=
+  { OGN_282.meta with
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+        (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
+          .prim (.draw .you (.const 1))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-283
 /--

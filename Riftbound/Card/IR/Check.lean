@@ -123,6 +123,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .stun s => Selector.ok c s
   | .buff s => Selector.ok c s
   | .recycle s => Selector.ok c s
+  | .spendBuff s => Selector.ok c s
   | .recycleTop p => PlayerSel.ok c p
   | .channel p n e => p.ok c && Amount.ok c n && Amount.ok c e
   | .addEnergy p n _ => p.ok c && Amount.ok c n
