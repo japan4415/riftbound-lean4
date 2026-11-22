@@ -316,6 +316,8 @@ noted with the Battlefield and the turn. -/
 def hideObj (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
+    -- only a card that is in the hand of its owner can be hidden
+    if !(s.zone (.player o.owner .hand)).contains id then (s, []) else
     match moveObj s id (.player o.owner .hidden) with
     | some r =>
       (r.1.modObj r.2 (hiddenOf bf s.turn), [Event.moved id r.2 (.player o.owner .hidden)])
@@ -327,11 +329,13 @@ theorem hideObj_safe (bf : ObjId) (s : GameState) (id : ObjId) : Safe s (hideObj
   unfold hideObj
   split
   · split
-    · rename_i o ho r hr
-      have h1 : Safe r.1 (r.1.modObj r.2 (hiddenOf bf s.turn)) :=
-        Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
-      exact (Safe.moveObj hr).trans h1
     · exact Safe.refl s
+    · split
+      · rename_i r hr
+        have h1 : Safe r.1 (r.1.modObj r.2 (hiddenOf bf s.turn)) :=
+          Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
+        exact (Safe.moveObj hr).trans h1
+      · exact Safe.refl s
   · exact Safe.refl s
 
 /-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,

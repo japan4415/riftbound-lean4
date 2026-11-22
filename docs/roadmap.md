@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: キーワード **Hidden**（CR 811）を、2 つの起動型能力で表した。(1) **Hide**: 手札から、Power 1 つ（どの領域でもよい）を払い、自分が支配する Battlefield へ、伏せて置く（`fromHand`、効果 `hideAt`）。(2) **伏せたカードをプレイする**: 伏せた次のターンから、Reaction として、費用を払わずに（`fromHidden`）。Unit と Gear は、Base へ出る（`play`。「プレイしたとき」の誘発が働く）。呪文は、効果をして、Trash へ行く（`bin`）。新しいゾーン `hidden`、物体の記録（`hiddenAt`・`hiddenTurn`）、能力を使える場所の判定（`abilityZoneOk`）を足した。Hide とプレイは、既存の起動型能力と Chain の仕組みを使うので、新しい行動の種類は要らず、証明は、`Chain.lean` の数か所だけで通った。
 - **書いた・動くようになったカード**: Block、Consult the Past、Sprite Call、Blastcone Fae、Pakaa Cub、Fight or Flight、Teemo（Scout）、Facebreaker（新しく書いた。2 つ目の選択は、1 つ目と同じ Battlefield の敵）。変異（Hide の費用・Battlefield の支配）で、テストが落ちることを確かめた。
 - **動くカード**: 167 → **175 枚**。
-- **近似として残したこと**: Hide・伏せたカードのプレイが、Chain を使い、応答される（規則では、Chain を使わないかもしれない）。伏せたカードの Battlefield を、支配していない人のものになったら、Trash へ送る規則（323.6.a）は、まだ無い。Hidden のカードを「伏せたカードから、プレイした」ときの誘発（Ember Monk、Teemo の Strategist）と、Hide の費用を変える能力（Swift Scout）は、まだ無い。
+- **レビューで直したこと**: 伏せたカードのプレイ能力は、Chain に載っている間に、もう一度使えるので、解決のときに「まだ伏せてある」ことを確かめる（呪文の効果が 2 回走らない）。Hide は、解決のときに、手札にあって、自分が支配する Battlefield であることを確かめる。手札・伏せたカードの、ふつうの起動型能力が、使えないことのテストを足した。
+- **近似として残したこと**: Hide・伏せたカードのプレイが、Chain を使い、応答される（規則では、Chain を使わないかもしれない）。伏せた呪文は、能力として働くので、「呪文をプレイしたとき」の誘発が働かず、打ち消せない。Unit と Gear は、Base へ出る（Hide した Battlefield へ出るかは、未確認）。1 つの Battlefield に伏せられる枚数の上限は、未確認で、無い。伏せたカードの Battlefield を、支配していない人のものになったら、Trash へ送る規則（323.6.a）は、まだ無い。Hidden のカードを「伏せたカードから、プレイした」ときの誘発（Ember Monk、Teemo の Strategist）と、Hide の費用を変える能力（Swift Scout）は、まだ無い。
 
 ### M7 の実装の記録（2026-11-22）: 勝つために要る点数の変更、相手に選ばせる
 

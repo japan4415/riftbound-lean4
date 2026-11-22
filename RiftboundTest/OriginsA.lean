@@ -1655,4 +1655,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return st a f == some true && st a e == some true && st a g == some false &&
     st b f2 == some true && st b g2 == some false
 
+-- An ordinary ability of a card in my hand cannot be used (Iron Ballista, OGN-017); the ability to
+-- play a hidden card cannot be used from the hand either
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-017" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, c) ← put s2 s.me "OGN-135" .hand
+  return (activate s3 s.me g 1 [e]).isNone && (activate s3 s.me c 1 [] ⟨0, []⟩).isNone
+
+-- A hidden spell used twice while its first use is still on the Chain has its effect once
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-057" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let mine := s2.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  match step 100 (next.rich s.me) ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+  | .ok (a1, _) =>
+    let twice := match step 100 a1 ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+      | .ok (a2, _) => a2
+      | .error _ => a1
+    let done := settleChain {} 12 twice
+    return done.kwAmount u .shield == 3 && done.countIn s.me .trash "OGN-057" == 1
+  | .error _ => none
+
 end RiftboundTest

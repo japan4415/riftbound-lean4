@@ -94,6 +94,7 @@ def Filter.understood : Filter → Bool
   | .buffed => true
   | .not f => Filter.understood f
   | .controlled => true
+  | .hidden => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
   | .sameAs (.var _) => true

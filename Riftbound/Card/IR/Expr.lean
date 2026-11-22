@@ -100,6 +100,8 @@ inductive Filter where
   | notSelf
   /-- Does not have the property. -/
   | not (f : Filter)
+  /-- Is a card hidden face down (CR 811). -/
+  | hidden
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/
   | controlled
   /-- Is the object a selector names (`self`, a chosen object or a variable). -/
