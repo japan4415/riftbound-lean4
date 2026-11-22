@@ -6503,8 +6503,30 @@ def OGN_242.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Baited Hook: the effect is not written yet. -/
-def OGN_242 : CardDef := OGN_242.meta
+/-- One recycle of what Baited Hook looked at: while there are cards left of the ones looked at (the
+five, less the card played: the deck had `n` cards before, and has fewer now). -/
+def baitedHookRecycle (i : Nat) : Effect :=
+  .ifThen (.and (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5])) (.const i))
+      (.cmp .ge (.sub (.add (.const 5) (.count (Selector.all .friendly .inMainDeck [])))
+        (.var ⟨"deckBefore"⟩)) (.const i)))
+    (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))) .nop
+
+/-- Baited Hook. Kill a friendly unit; look at the top 5 cards of the Main Deck: a unit among them with
+Might up to 1 more than the killed unit may be played for free; the rest are recycled. -/
+def OGN_242 : CardDef :=
+  { OGN_242.meta with
+    abilities := [.activated [.exhaustSelf, .pay ⟨1, [.domain .order]⟩] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.exists (.slot 0))
+          (.bind ⟨"hook"⟩ (.add (.mightOf (.slot 0)) (.const 1))
+            (.bind ⟨"deckBefore"⟩ (.count (Selector.all .friendly .inMainDeck []))
+              (.seqOf [.prim (.kill (.slot 0)),
+                .may (.prim (.play (Selector.one .friendly .inMainDeck
+                  [.top 5, .ofType .unit, .might .le (.var ⟨"hook"⟩)]))),
+                baitedHookRecycle 1, baitedHookRecycle 2, baitedHookRecycle 3,
+                baitedHookRecycle 4, baitedHookRecycle 5])))
+          .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-243
 /--
