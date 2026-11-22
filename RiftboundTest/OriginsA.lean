@@ -1544,4 +1544,48 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return up == 2 && a.mightNow e == s5.mightNow e &&
     [u, v, w].all (fun o => (a.mapObjects endTurnObj).mightNow o == s5.mightNow o)
 
+-- Aspirant's Climb (OGN-276): one more point is needed to win
+#guard t fun s => do
+  let (s1, _) ← putBf s s.me "OGN-276"
+  let v := s.config.mode.victoryScore
+  let at8 := s.gainPoints s.me v
+  let with8 := s1.gainPoints s.me v
+  let with9 := s1.gainPoints s.me (v + 1)
+  return s1.victoryScore == v + 1 && s.victoryScore == v && at8.winner == some s.me &&
+    with8.winner == none && with9.winner == some s.me
+
+-- Shakedown (OGN-033): the enemy unit's controller has me draw 2, or the unit is dealt 6
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-033" .hand
+  let (s2, e) ← put s1 s.you "OGN-116" .base
+  let draw ← play s2 s.me c [e]
+  let hit ← play s2 s.me c [e] { yes := false }
+  return draw.handN s.me == s2.handN s.me - 1 + 2 && (draw.obj? e).map (·.damage) == some 0 &&
+    hit.handN s.me == s2.handN s.me - 1 && (hit.obj? e).map (·.damage) == some 6
+
+-- Spirit's Refuge (OGN-063): buffed friendly units have Deflect unless they print it already
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-063" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, p) ← put s3 s.me "OGN-013" .base
+  let (s5, e) ← put s4 s.you "OGN-136" .base
+  let a ← play s5 s.me c [] { pick := fun ts => ts.contains u }
+  let both := (a.buff p).buff e
+  return a.deflectOf u == 1 && a.deflectOf v == 0 && both.deflectOf p == s5.deflectOf p &&
+    both.deflectOf e == 0 && (a.obj? u).map (·.buffed) == some true
+
+-- Shakedown kills a unit of Might 6 or less; Spirit's Refuge's Deflect ends with the buff
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-033" .hand
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let hit ← play s2 s.me c [e] { yes := false }
+  return (hit.obj? e).isNone && hit.countIn s.you .trash "OGN-001" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-063" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let a ← play s2 s.me c [] { pick := fun ts => ts.contains u }
+  let unbuffed := a.modObj u (fun o => { o with buffed := false })
+  return a.deflectOf u == 1 && unbuffed.deflectOf u == 0
+
 end RiftboundTest

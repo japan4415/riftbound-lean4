@@ -795,8 +795,13 @@ def OGN_033.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Shakedown: the effect is not written yet. -/
-def OGN_033 : CardDef := OGN_033.meta
+/-- Shakedown. -/
+def OGN_033 : CardDef :=
+  { OGN_033.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.eachPlayer .opponent (.eitherOf (.cons (.prim (.draw .opponent (.const 2)))
+        (.cons (.prim (.deal (.slot 0) (.const 6))) .nil))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-034
 /--
@@ -1540,8 +1545,15 @@ def OGN_063.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Spirit's Refuge: the effect is not written yet. -/
-def OGN_063 : CardDef := OGN_063.meta
+/-- Spirit's Refuge. -/
+def OGN_063 : CardDef :=
+  { OGN_063.meta with
+    abilities :=
+      [.triggered (.onSelf .play)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]] (.prim (.buff (.slot 0)))) .unlimited,
+       .passive .always [.keyword (Selector.all .friendly .anywhere
+        [.ofType .unit, .buffed, .not (.hasKeyword .deflect)]) ⟨.deflect, .amount 1⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-064
 /--

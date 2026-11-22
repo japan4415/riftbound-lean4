@@ -226,6 +226,8 @@ def StaticMod.runs : StaticMod → Bool
   | .mightMinus s a => s.understood && a.understoodC
   | .keyword s _ => s.understood
   | .entersReady .self => true
+  | .victoryScorePlus a => a.understoodC
+  | .victoryScoreMinus a => a.understoodC
   | _ => false
 
 /-- The points of the turn that fire a triggered ability. -/
