@@ -109,6 +109,7 @@ def Filter.understood : Filter → Bool
   | .buffed => true
   | .not f => Filter.understood f
   | .controlled => true
+  | .controlledByOpponent => true
   | .hidden => true
   | .top _ => true
   | .openBf => true

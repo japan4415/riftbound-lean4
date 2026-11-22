@@ -460,6 +460,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-23）: Vayne, Hunter（1 枚）
+
+- **エンジン**: `Filter.controlledByOpponent`（相手が支配している Battlefield）。
+- **動くようになったカード**: Vayne, Hunter（035。相手が Battlefield を支配していると、準備完了で入る。征服したとき、Energy 1 を払って、手札へ戻ってもよい）。
+- **動くカード**: 227 → **228 枚**。
+
 ### M7 の実装の記録（2026-11-23）: 効果の途中で、Rune Pool から払う（2 枚）
 
 - **エンジン**: `Prim.pay`（Rune Pool から、Energy と Power を払う。払えるときだけ）と `Condition.canPay`。効果の途中で Pool が変わるので、`SameMeta` は、Pool の変化を許す（物体を動かしても Pool が変わらないことは、`MoveSpec.pools` が受け持つ）。`Prim.playTo` は、選んだカードをプレイできる。
