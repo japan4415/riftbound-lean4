@@ -2865,4 +2865,58 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     c.handN s.me == own.handN s.me && d.handN s.me == home.handN s.me &&
     e.handN s.me == inBase.handN s.me + 1
 
+-- Reinforce (OGN-062): look at the top 5 cards, you may play a unit (Energy cost 5 or less) from
+-- among them, and recycle the rest
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-062" .hand
+  let empty := s1.setZone (.player s.me .mainDeck) []
+  -- the deck, from the bottom: a sixth card, then five cards of which the top one is the unit
+  let (d1, six) ← put empty s.me "OGN-004" .mainDeck
+  let (d2, _) ← put d1 s.me "OGN-011" .mainDeck
+  let (d3, _) ← put d2 s.me "OGN-004" .mainDeck
+  let (d4, _) ← put d3 s.me "OGN-004" .mainDeck
+  let (d5, _) ← put d4 s.me "OGN-004" .mainDeck
+  let (d6, u) ← put d5 s.me "OGN-136" .mainDeck
+  let deck (g : GameState) := g.zone (.player s.me .mainDeck)
+  let go ← play d6 s.me c [] { yes := true, obj := fun o => o == u }
+  let no ← play d6 s.me c [] { yes := false }
+  let (e1, _) ← put empty s.me "OGN-011" .mainDeck
+  let blocked ← play e1 s.me c [] { yes := true }
+  -- a unit below the top 5 is not played; of two units in the top 5 only the cheap one can be
+  let (f1, _) ← put empty s.me "OGN-136" .mainDeck
+  let (f2, _) ← put f1 s.me "OGN-004" .mainDeck
+  let (f3, _) ← put f2 s.me "OGN-004" .mainDeck
+  let (f4, _) ← put f3 s.me "OGN-004" .mainDeck
+  let (f5, _) ← put f4 s.me "OGN-004" .mainDeck
+  let (f6, _) ← put f5 s.me "OGN-004" .mainDeck
+  let deep ← play f6 s.me c [] { yes := true }
+  let (g1, _) ← put empty s.me "OGN-136" .mainDeck
+  let (g2, _) ← put g1 s.me "OGN-011" .mainDeck
+  let two ← play g2 s.me c [] { yes := true }
+  return go.countIn s.me .base "OGN-136" == 1 && (deck go).length == (deck d6).length - 1 &&
+    (deck go).head? == some six && go.countIn s.me .hand "OGN-136" == 0 &&
+    (deck no).length == (deck d6).length && (deck no).head? == some six &&
+    no.countIn s.me .base "OGN-136" == 0 && (deck blocked).length == 1 &&
+    deep.countIn s.me .base "OGN-136" == 0 && two.countIn s.me .base "OGN-136" == 1 &&
+    two.countIn s.me .base "OGN-011" == 0
+
+-- Dazzling Aurora (OGN-160): at the end of my turn, reveal cards until a unit; play it for free and
+-- recycle the rest
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-160" .base
+  let empty := s1.setZone (.player s.me .mainDeck) []
+  let (d1, last) ← put empty s.me "OGN-004" .mainDeck
+  let (d2, _) ← put d1 s.me "OGN-136" .mainDeck
+  let (d3, a) ← put d2 s.me "OGN-004" .mainDeck
+  let (d4, b) ← put d3 s.me "OGN-004" .mainDeck
+  let deck (g : GameState) := g.zone (.player s.me .mainDeck)
+  let go ← fire d4 [.phaseStarted s.me .ending]
+  let theirs ← fire d4 [.phaseStarted s.you .ending]
+  let (e1, _) ← put empty s.me "OGN-004" .mainDeck
+  let (e2, _) ← put e1 s.me "OGN-004" .mainDeck
+  let none_ ← fire e2 [.phaseStarted s.me .ending]
+  return go.countIn s.me .base "OGN-136" == 1 && (deck go).length == 3 &&
+    (deck go).head? == some last && (deck go).drop 1 == [b, a] && (deck theirs) == deck d4 &&
+    (deck none_).length == 2 && none_.countIn s.me .base "OGN-136" == 0
+
 end RiftboundTest

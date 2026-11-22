@@ -1617,8 +1617,18 @@ def OGN_062.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Reinforce: the effect is not written yet. -/
-def OGN_062 : CardDef := OGN_062.meta
+/-- Reinforce. Approximation: the unit is played at once (no banish), only a unit of Energy 5 or
+less can be chosen, and its Power is not paid. -/
+def OGN_062 : CardDef :=
+  { OGN_062.meta with
+    spellEffect := some (.of []
+      (.ifThen (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5, .ofType .unit, .cost .le (.const 5)])) (.const 1))
+        (.eitherOf (.cons
+          (.seqOf [.prim (.play (Selector.one .friendly .inMainDeck [.top 5, .ofType .unit, .cost .le (.const 5)])),
+            .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])
+          (.cons (.seqOf [.prim (.recycle (Selector.one .friendly .inMainDeck [.top 5])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))]) .nil)))
+        (.seqOf [.prim (.recycle (Selector.one .friendly .inMainDeck [.top 5])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-063
 /--
@@ -4164,8 +4174,12 @@ def OGN_160.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Dazzling Aurora: the effect is not written yet. -/
-def OGN_160 : CardDef := OGN_160.meta
+/-- Dazzling Aurora. -/
+def OGN_160 : CardDef :=
+  { OGN_160.meta with
+    abilities := [.triggered { event := .at_ .endOfTurn }
+      (.of [] (.prim (.playFirst (.cons (.ofType .unit) .nil)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-161
 /--

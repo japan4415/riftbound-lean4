@@ -158,6 +158,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .extraTurn p => p.ok c
   | .win p => p.ok c
   | .turnEffect _ => true
+  | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .pay _ => true
 
