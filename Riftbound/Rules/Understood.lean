@@ -52,6 +52,7 @@ def Amount.understood : Amount → Bool
   | .turnsTaken p => p.understood
   | .points p => p.understood
   | .victoryScore => true
+  | .cardsPlayed => true
   | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
@@ -74,6 +75,7 @@ def Amount.understoodC : Amount → Bool
   | .turnsTaken p => p.understood
   | .points p => p.understood
   | .victoryScore => true
+  | .cardsPlayed => true
   | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -81,6 +83,12 @@ def Amount.understoodC : Amount → Bool
   | .min a b => Amount.understoodC a && Amount.understoodC b
   | .max a b => Amount.understoodC a && Amount.understoodC b
   | _ => false
+
+/-- An amount that is understood in the cost of a card: the highest Might is read as the cost is
+worked out. -/
+def Amount.understoodK : Amount → Bool
+  | .highestMight s => s.understood
+  | a => a.understoodC
 
 /-- A filter that is understood. -/
 def Filter.understood : Filter → Bool
@@ -256,8 +264,8 @@ def StaticMod.runs : StaticMod → Bool
   | .mightMinusMin s a _ => s.understood && a.understoodC
   | .keyword s _ => s.understood
   | .entersReady sel => costSel sel
-  | .costMinus s a => costSel s && a.understoodC
-  | .costMinusMin s a _ => costSel s && a.understoodC
+  | .costMinus s a => costSel s && a.understoodK
+  | .costMinusMin s a _ => costSel s && a.understoodK
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | _ => false

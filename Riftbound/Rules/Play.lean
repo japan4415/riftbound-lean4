@@ -115,10 +115,10 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
               match m with
               | .costMinus sel a =>
                 if s.costSelects o.controller src c sel then
-                  some ((a.evalS0 s o.controller src {}).getD 0, 0) else none
+                  some ((a.evalS s o.controller src {}).getD 0, 0) else none
               | .costMinusMin sel a fl =>
                 if s.costSelects o.controller src c sel then
-                  some ((a.evalS0 s o.controller src {}).getD 0, fl) else none
+                  some ((a.evalS s o.controller src {}).getD 0, fl) else none
               | _ => none)
           else []
         | _ => [])

@@ -105,6 +105,8 @@ inductive TurnEffect where
   | unitsReady
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
+  /-- Buffs give the player's units an additional +1 Might this turn. -/
+  | buffsExtraMight
 deriving DecidableEq, Repr, Hashable
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/

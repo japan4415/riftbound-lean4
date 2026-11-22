@@ -46,6 +46,10 @@ inductive Amount where
   | points (p : PlayerSel)
   /-- The Victory Score of the game (CR 194). -/
   | victoryScore
+  /-- The highest Might among the objects (0 if there are none). -/
+  | highestMight (s : Selector)
+  /-- How many cards the player has played this turn. -/
+  | cardsPlayed
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/

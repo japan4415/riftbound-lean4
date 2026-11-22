@@ -133,7 +133,7 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
   (s.mightOf id).map (fun m =>
     let total := m + s.equipBonus id + s.passiveMight id +
-      (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)
+      s.buffBonus id
     -- the changes with a floor come last: they take away down to the floor, never below it
     (s.passiveSources.flatMap (fun src =>
       (s.activeMods src).filterMap (s.modFloor src id))).foldl
@@ -149,6 +149,9 @@ def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amo
   | .mightOf sel =>
     (sel.eval s p self env).map (fun ids =>
       (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).sum)
+  | .highestMight sel =>
+    (sel.eval s p self env).map (fun ids =>
+      (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).foldl Nat.max 0)
   | .add a b => do pure ((← Amount.evalS s p self env a) + (← Amount.evalS s p self env b))
   | .sub a b => do pure ((← Amount.evalS s p self env a) - (← Amount.evalS s p self env b))
   | .mul a b => do pure ((← Amount.evalS s p self env a) * (← Amount.evalS s p self env b))
