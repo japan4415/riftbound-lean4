@@ -33,6 +33,7 @@ public import RiftboundTest.Match
 public import RiftboundTest.Clock
 public import RiftboundTest.Judge
 public import RiftboundTest.Sideboard
+public import RiftboundTest.FirstPlayer
 
 /-!
 # RiftboundTest

@@ -22,6 +22,8 @@ open Riftbound
 structure GameLog where
   /-- The seed of the game. -/
   seed : Nat
+  /-- Who decided who goes first (TR 407). -/
+  how : MatchState.Order
   /-- Who went first. -/
   first : PlayerId
   /-- The turns that had begun when the game ended. -/
@@ -36,37 +38,44 @@ deriving Repr
 
 /-- Play the game until it ends. When `cap` turns have begun, the clock calls time (TR 408.2): the
 turn that is going on is played to its end, and 3 turns more, and the engine ends the game. -/
-def playUntilEnd (cap : Nat) : Nat → Rng → GameState → Except RuleError GameState
+def playUntilEnd (cap : Nat) (order : List PlayerId) :
+    Nat → Rng → GameState → Except RuleError GameState
   | 0, _, s => .ok s
   | n + 1, r, s =>
     if s.result.isSome then .ok s
+    else if (match s.pending with | .chanceTurnOrder :: _ => true | _ => false) then
+      match step 100 s ⟨.chance, .arrangePlayers order⟩ with
+      | .ok (s', _) => playUntilEnd cap order n r s'
+      | .error e => .error e
     else if s.clock.isNone && cap ≤ s.turn && s.active.isSome then
       match step 100 s ⟨.clock, .timeCalled⟩ with
-      | .ok (s', _) => playUntilEnd cap n r s'
+      | .ok (s', _) => playUntilEnd cap order n r s'
       | .error e => .error e
     else
       match demoAnswer r s with
       | none => .ok s
       | some (a, r') =>
         match step 100 s a with
-        | .ok (s', _) => playUntilEnd cap n r' s'
+        | .ok (s', _) => playUntilEnd cap order n r' s'
         | .error e => .error e
 
 /-- The rules of the matches: a Duel under the Tournament Rules, Constructed. -/
 def matchConfig : GameConfig := { ruleSet := .tournament .constructed, mode := Mode.duel }
 
-/-- One demo game from the seed. The clock calls time when `cap` turns have begun. -/
-def playGameLog (seed cap : Nat) : Except String GameLog :=
+/-- One demo game from the seed, with the turn order the match decided (TR 407). The clock calls
+time when `cap` turns have begun. -/
+def playGameLog (seed cap : Nat) (how : MatchState.Order) (order : List PlayerId) :
+    Except String GameLog :=
   match GameState.initial demoDB matchConfig [demoDeck, demoDeck] with
   | none => .error "the demo game cannot be set up"
   | some s0 =>
-    match playUntilEnd cap 100000 (Rng.ofSeed seed) s0 with
+    match playUntilEnd cap order 100000 (Rng.ofSeed seed) s0 with
     | .error e => .error s!"the engine refused an answer: {repr e}"
     | .ok s =>
       let pts := (s.pointsOf ⟨0⟩, s.pointsOf ⟨1⟩)
       let first := s.turnOrder.headD ⟨0⟩
       match s.result with
-      | some r => .ok ⟨seed, first, s.turn, pts, s.clock.isSome, r⟩
+      | some r => .ok ⟨seed, how, first, s.turn, pts, s.clock.isSome, r⟩
       | none => .error "the game did not end"
 
 /-- A match of at most `limit` games (a Best of 3 by default), with the seeds `seed`, `seed + 1`,
@@ -79,7 +88,11 @@ def playMatch (seed cap : Nat) (target : Nat := 2) (limit : Nat := 8) :
     | n + 1, m, acc =>
       if m.finished then .ok (acc.reverse, m)
       else
-        match playGameLog (seed + acc.length) cap with
+        -- the draw picks a player, and the player who chooses goes first (TR 407)
+        let how := m.nextOrder
+        let random : PlayerId := ⟨(seed + acc.length) % 2⟩
+        let first := how.first random true
+        match playGameLog (seed + acc.length) cap how (MatchState.turnOrderOf first) with
         | .error e => .error e
         | .ok g => go n (m.record g.result g.first) (g :: acc)
   go limit (MatchState.start target) []
