@@ -129,6 +129,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move
     | none => []
+  | .stunned u =>
+    match s.obj? u with
+    | some o => triggersOf s u o.controller .stun ++ watchersOf s u o.controller .stun
+    | none => []
+  | .discarded p obj => triggersOf s obj p .discard ++ watchersOf s obj p .discard
   | .scored p bf conquer =>
     (s.trigUnitsAt bf p).flatMap
       (fun u => triggersOf s u p (if conquer then .conquer else .hold)) ++

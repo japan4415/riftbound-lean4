@@ -215,7 +215,7 @@ theorem createN_safe (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready
 
 /-- Stun an object: it deals no combat damage this turn (CR 424). -/
 def stunObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with stunned := true }), [])
+  (s.modObj id (fun o => { o with stunned := true }), [Event.stunned id])
 
 /-- Stunning is a safe change. -/
 theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=

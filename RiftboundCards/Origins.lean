@@ -1403,8 +1403,14 @@ def OGN_059.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Eclipse Herald: the effect is not written yet. -/
-def OGN_059 : CardDef := OGN_059.meta
+/-- Eclipse Herald. -/
+def OGN_059 : CardDef :=
+  { OGN_059.meta with
+    abilities := [.triggered
+      { event := .stun, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+      (.of [] (.seqOf [.prim (.ready .self), .grant .self (.mightPlus .it (.const 1)) .thisTurn]))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-060
 /--
@@ -4320,8 +4326,14 @@ def OGN_182.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Scrapheap: the effect is not written yet. -/
-def OGN_182 : CardDef := OGN_182.meta
+/-- Scrapheap. -/
+def OGN_182 : CardDef :=
+  { OGN_182.meta with
+    abilities :=
+      [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+       .triggered (.onSelf .discard) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+       .triggered (.onSelf .die) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-183
 /--
@@ -4784,8 +4796,14 @@ def OGN_202.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Jinx, Rebel: the effect is not written yet. -/
-def OGN_202 : CardDef := OGN_202.meta
+/-- Jinx, Rebel. -/
+def OGN_202 : CardDef :=
+  { OGN_202.meta with
+    abilities := [.triggered
+      { event := .discard, subject := Selector.all .friendly .anywhere [] }
+      (.of [] (.seqOf [.prim (.ready .self), .grant .self (.mightPlus .it (.const 1)) .thisTurn]))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-203
 /--
@@ -6203,8 +6221,13 @@ def OGN_261.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Radiant Dawn: the effect is not written yet. -/
-def OGN_261 : CardDef := OGN_261.meta
+/-- Radiant Dawn. -/
+def OGN_261 : CardDef :=
+  { OGN_261.meta with
+    abilities := [.triggered
+      { event := .stun, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]] (.prim (.buff (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-262
 /--

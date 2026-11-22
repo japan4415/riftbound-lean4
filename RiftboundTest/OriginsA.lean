@@ -732,4 +732,54 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? ha).map (·.buffed) == some false && a.handN s.me == s2.handN s.me - 1 &&
     (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s3.handN s.me - 1
 
+-- Eclipse Herald (OGN-059) and Radiant Dawn (OGN-261): when an enemy unit is stunned
+#guard t fun s => do
+  let (s1, h) ← put s s.me "OGN-059" .base
+  let (s2, c) ← put s1 s.me "OGN-225" .hand
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let (s4, f) ← put s3 s.me "OGN-001" .base
+  let a ← play (s4.tire h) s.me c [] { pick := fun ts => ts.contains e }
+  let b ← fire (s4.tire h) [.stunned f]
+  return a.tired h == some false && a.mightNow h == (s4.mightNow h).map (· + 1) &&
+    b.tired h == some true && b.mightNow h == s4.mightNow h
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-261" .legendZone
+  let (s2, c) ← put s1 s.me "OGN-225" .hand
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let (s4, f) ← put s3 s.me "OGN-136" .base
+  let a ← play s4 s.me c [] { pick := fun ts => ts.contains f }
+  let b ← fire s4 [.stunned f]
+  return (a.obj? f).map (·.buffed) == some true && (b.obj? f).map (·.buffed) == some false &&
+    (a.obj? e).map (·.stunned) == some true
+
+-- Scrapheap (OGN-182): draw 1 when it is played, discarded, or killed
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-182" .hand
+  let a ← play s1 s.me c
+  let (t1, x) ← put s s.me "OGN-182" .trash
+  let b ← fire t1 [.discarded s.me x]
+  let c' ← fire t1 [.died x s.me]
+  let d ← fire t1 [.discarded s.you x]
+  return a.handN s.me == s1.handN s.me && b.handN s.me == t1.handN s.me + 1 &&
+    c'.handN s.me == t1.handN s.me + 1 && d.handN s.me == t1.handN s.me
+-- ... and the discard that an effect makes sets it off (Zaun Warrens makes me discard 1, draw 1)
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let s2 := s1.setZone (.player s.me .hand) []
+  let (s3, _) ← put s2 s.me "OGN-182" .hand
+  let a ← fire s3 [.scored s.me bf true]
+  return a.handN s.me == 2 && a.countIn s.me .trash "OGN-182" == 1
+
+-- Jinx (OGN-202): when I discard, Jinx is readied and has +1 Might this turn; not for the opponent
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let s2 := s1.setZone (.player s.me .hand) []
+  let (s3, j) ← put s2 s.me "OGN-202" .base
+  let (s4, _) ← put s3 s.me "OGN-136" .hand
+  let (s5, y) ← put s4 s.you "OGN-136" .trash
+  let a ← fire (s4.tire j) [.scored s.me bf true]
+  let b ← fire (s5.tire j) [.discarded s.you y]
+  return a.tired j == some false && a.mightNow j == (s4.mightNow j).map (· + 1) &&
+    b.tired j == some true && b.mightNow j == s4.mightNow j
+
 end RiftboundTest

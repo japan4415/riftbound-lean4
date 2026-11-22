@@ -91,6 +91,9 @@ def eventJson : Event → String
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
   | .readied o => jobj [("t", jstr "readied"), ("target", toString o.n)]
+  | .stunned o => jobj [("t", jstr "stunned"), ("target", toString o.n)]
+  | .discarded p o =>
+    jobj [("t", jstr "discarded"), ("player", toString p.n), ("obj", toString o.n)]
   | .exhausted o => jobj [("t", jstr "exhausted"), ("target", toString o.n)]
   | .standardMoved u d =>
     jobj [("t", jstr "moved_unit"), ("unit", toString u.n),
