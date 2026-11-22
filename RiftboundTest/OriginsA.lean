@@ -4027,4 +4027,22 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     after.turnFx.any (fun f => f.who == s.you) && !after.turnFx.any (fun f => f.who == s.me) &&
     plain.turnFx.any (fun f => f.who == s.me) && empty.isNone && handDiff
 
+-- The Dreaming Tree (OGN-292): when a player chooses a friendly unit here with a spell, for the
+-- first time each turn, they draw 1 (not an enemy unit, not a unit elsewhere, not a second time)
+#guard t fun s => do
+  let (s1, tree) ← putBf s s.me "OGN-292"
+  let (s2, c) ← put s1 s.me "OGN-004" .hand
+  let (s3, mine) ← putAt s2 s.me "OGN-136" tree
+  let (s4, foe) ← putAt s3 s.you "OGN-136" tree
+  let other := (s.battlefields.filter (· != tree)).head?.getD ⟨0⟩
+  let (s5, away) ← putAt s4 s.me "OGN-136" other
+  let hit ← play s5 s.me c [mine]
+  let enemy ← play s5 s.me c [foe]
+  let elsewhere ← play s5 s.me c [away]
+  let twice ← fire s5 [.chosenBySpell s.me mine, .chosenBySpell s.me mine]
+  let theirs ← fire s5 [.chosenBySpell s.you foe]
+  return hit.handN s.me == s5.handN s.me && enemy.handN s.me + 1 == s5.handN s.me &&
+    elsewhere.handN s.me + 1 == s5.handN s.me && twice.handN s.me == s5.handN s.me + 1 &&
+    theirs.handN s.you == s5.handN s.you + 1
+
 end RiftboundTest

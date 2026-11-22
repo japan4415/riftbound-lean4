@@ -194,6 +194,8 @@ inductive TriggerEvent where
   | buff
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
+  /-- A player chooses a unit that is at this Battlefield with a spell. -/
+  | chosenHere
   /-- The player kills a unit with a spell, and the card is in their Trash. -/
   | killBySpell
   /-- The player conquers a Battlefield, and the card is in their Trash. -/

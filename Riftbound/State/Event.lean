@@ -58,6 +58,8 @@ inductive Event where
   | stunned (target : ObjId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
+  /-- The player chose the object with a spell they played. -/
+  | chosenBySpell (p : PlayerId) (target : ObjId)
   /-- The player killed a unit with a spell. -/
   | killedBySpell (p : PlayerId)
   /-- The player recycled one or more cards. -/
