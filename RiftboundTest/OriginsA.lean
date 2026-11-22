@@ -3149,4 +3149,24 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     own.handN s.me == c.handN s.me && tired.handN s.me == d.handN s.me &&
     buffedOnly.handN s.me == e.handN s.me
 
+-- Gemcraft Seer (OGN-100): [Vision]; my other units have Vision: when I play one, I may recycle the
+-- top card of my Main Deck (a unit that has Vision itself is not doubled)
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-100" .base
+  let (s2, plain) ← put s1 s.me "OGN-136" .hand
+  let (s3, vis) ← put s2 s.me "OGN-171" .hand
+  let deck (x : GameState) (p : PlayerId) := x.zone (.player p .mainDeck)
+  let top ← (deck s3 s.me).head?
+  let a ← play s3 s.me plain
+  let no ← play s3 s.me plain [] { yes := false }
+  let v ← play s3 s.me vis
+  let (t1, seer) ← put s s.me "OGN-100" .hand
+  let own ← play t1 s.me seer
+  let (u1, plain2) ← put s s.me "OGN-136" .hand
+  let without ← play u1 s.me plain2
+  return (deck a s.me).getLast? == some top && (deck no s.me).head? == some top &&
+    (deck v s.me).getLast? == some top && (deck v s.me).length == (deck s3 s.me).length &&
+    (deck without s.me).head? == (deck u1 s.me).head? &&
+    (deck own s.me).getLast? == (deck t1 s.me).head?
+
 end RiftboundTest

@@ -2619,8 +2619,15 @@ def OGN_100.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Gemcraft Seer: the effect is not written yet. -/
-def OGN_100 : CardDef := OGN_100.meta
+/-- Gemcraft Seer. -/
+def OGN_100 : CardDef :=
+  { OGN_100.meta with
+    abilities := [.triggered
+      { event := .play,
+        subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .notSelf, .not (.hasKeyword .vision)] }
+      (.of [] (.may (.prim (.recycleTop .you)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-101
 /--
