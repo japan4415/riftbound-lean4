@@ -12,6 +12,7 @@ Lean の実行ファイル（riftbound-live）に 1 行のコマンドを送り�
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -20,6 +21,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
+CARD_ID = re.compile(r"[A-Za-z0-9_-]{1,24}")
 
 
 class Lean:
@@ -51,7 +53,7 @@ class Lean:
 
 
 def make_handler(lean: Lean, port: int):
-    page = (ROOT / "viewer" / "index.html").read_bytes()
+    page_path = ROOT / "viewer" / "index.html"
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     class Handler(BaseHTTPRequestHandler):
@@ -81,9 +83,13 @@ def make_handler(lean: Lean, port: int):
                 return self._json(403, {"error": "forbidden"})
             path = urlparse(self.path).path
             if path in ("/", "/index.html"):
-                return self._send(200, page, "text/html; charset=utf-8")
+                return self._send(200, page_path.read_bytes(), "text/html; charset=utf-8")
             if path == "/api/ping":
                 return self._json(200, {"live": True})
+            if path == "/art.json":
+                art = ROOT / "viewer" / "art.json"
+                body = art.read_bytes() if art.is_file() else b"{}"
+                return self._send(200, body, "application/json; charset=utf-8")
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:
@@ -109,6 +115,11 @@ def make_handler(lean: Lean, port: int):
                     line = "clock"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/swap":
+                    out, inn = str(req.get("out", "")), str(req.get("in", ""))
+                    if not (CARD_ID.fullmatch(out) and CARD_ID.fullmatch(inn)):
+                        return self._json(400, {"error": "bad card"})
+                    line = f"swap {out} {inn}"
                 elif path == "/api/next":
                     choice = req.get("choice")
                     if choice not in (None, "first", "second"):

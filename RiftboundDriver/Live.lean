@@ -66,6 +66,10 @@ structure LiveGame where
   match_ : Option MatchState := none
   /-- The result of this game has been given to the match. -/
   recorded : Bool := false
+  /-- The decks of the players: those of the Core Rules and Constructed games. -/
+  decks : List Deck := [demoDeck, demoDeck]
+  /-- The sideboards of the players (Constructed, TR 601.1.c). -/
+  sides : List (List CardId) := [demoSideboard, demoSideboard]
 
 /-- The player whose answer the game waits for, if it is a player's. -/
 def LiveGame.waiting (g : LiveGame) : Option PlayerId :=
@@ -144,20 +148,47 @@ def LiveGame.externalJson (g : LiveGame) : String :=
   let ok (a : Action) : String := if decide (Legal g.s a) then "true" else "false"
   jobj [("clock", ok ⟨.clock, .timeCalled⟩), ("judge", ok ⟨.judge, .declareDraw⟩)]
 
+/-- The cards of a list with how many of each, in the order they first appear. -/
+def countIds (l : List CardId) : List (CardId × Nat) :=
+  l.foldl (fun acc c =>
+    if acc.any (fun x => x.1 == c) then acc.map (fun x => if x.1 == c then (x.1, x.2 + 1) else x)
+    else acc ++ [(c, 1)]) []
+
+/-- The player whose deck a person changes between games: the first player they control. -/
+def LiveGame.sideSeat (g : LiveGame) : Option PlayerId := g.humans.head?
+
+/-- The sideboard of the match as JSON, for a Constructed match: the Main Deck and the sideboard of
+the player, and whether the players may use the sideboard now (TR 403.5, 403.10). `null`
+otherwise. -/
+def LiveGame.sideJson (g : LiveGame) : String :=
+  match g.match_, g.sideSeat, g.kind with
+  | some m, some p, .constructed =>
+    match g.decks[p.n]?, g.sides[p.n]? with
+    | some d, some side =>
+      let group (l : List CardId) : String :=
+        jarr ((countIds l).map (fun (c, n) =>
+          jobj [("id", jstr c.code), ("name", jstr ((demoDB.find? c).map (·.name) |>.getD c.code)),
+            ("n", toString n)]))
+      jobj [("player", toString p.n),
+        ("allowed", if m.sideboardAllowed && g.s.result.isSome then "true" else "false"),
+        ("main", group d.main), ("side", group side),
+        ("mainCount", toString d.main.length), ("sideCount", toString side.length)]
+    | _, _ => "null"
+  | _, _, _ => "null"
+
 /-- What a request returns: the steps made, the answers a person can give, whether the game is
 over, the match, and what the clock and the judge can do. -/
 def LiveGame.reply (g : LiveGame) (steps : List String) (extra : List (String × String) := []) :
     String :=
   jobj (extra ++ [("steps", jarr steps), ("legal", g.legalJson),
     ("over", if g.s.result.isSome then "true" else "false"),
-    ("match", g.matchJson), ("external", g.externalJson)])
+    ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson)])
 
-/-- The game before any answer, for the kind of game. -/
-def LiveKind.initial : LiveKind → Option GameState
-  | .core => GameState.initial demoDB demoConfig [demoDeck, demoDeck]
+/-- The game before any answer, for the kind of game, from the decks of the players. -/
+def LiveKind.initial (decks : List Deck) : LiveKind → Option GameState
+  | .core => GameState.initial demoDB demoConfig decks
   | .constructed =>
-    GameState.initial demoDB { ruleSet := .tournament .constructed, mode := Mode.duel }
-      [demoDeck, demoDeck]
+    GameState.initial demoDB { ruleSet := .tournament .constructed, mode := Mode.duel } decks
   | .sealed =>
     GameState.initialLimited demoDB { legalSets := [], banned := [] }
       { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
@@ -167,13 +198,16 @@ def LiveKind.initial : LiveKind → Option GameState
 
 /-- A new game: the first step, and the game after the answers of the seats nobody controls. -/
 def liveNew (kind : LiveKind) (seed : Nat) (humans : List PlayerId) (order : Option (List PlayerId))
-    (m : Option MatchState) : Except String (LiveGame × List String) :=
-  match kind.initial with
+    (m : Option MatchState) (decks : List Deck := [demoDeck, demoDeck])
+    (sides : List (List CardId) := [demoSideboard, demoSideboard]) :
+    Except String (LiveGame × List String) :=
+  match kind.initial decks with
   | none => .error "the demo game cannot be set up"
   | some s0 =>
     let (j0, seen) := stepJson 0 none [] s0 {}
     let g0 : LiveGame := { s := s0, seen := seen, i := 1, rng := Rng.ofSeed seed, humans := humans }
-    let g : LiveGame := { g0 with kind := kind, seed := seed, order := order, match_ := m }
+    let g1 : LiveGame := { g0 with kind := kind, seed := seed, order := order, match_ := m }
+    let g : LiveGame := { g1 with decks := decks, sides := sides }
     match LiveGame.autoRun 100000 g [] with
     | .error e => .error e
     | .ok (g', js) => .ok (g', j0 :: js)
@@ -242,9 +276,38 @@ def liveNext (g : LiveGame) (choice : Option Bool) : Except String (LiveGame × 
         let random : PlayerId := ⟨(g.seed + m.games) % 2⟩
         let first := how.first random (choice.getD true)
         match liveNew g.kind (g.seed + m.games) g.humans (some (MatchState.turnOrderOf first))
-            (some m) with
+            (some m) g.decks g.sides with
         | .error e => .error e
         | .ok (g', js) => .ok (g', g'.reply js g'.startInfo)
+
+/-- A person exchanges a card of their Main Deck for a card of their sideboard, between the games of
+a Constructed match (TR 403.4): one for one, only when the match allows it (not before the first
+game, not after a draw: TR 403.5, 403.10), and only if the deck stays a legal Constructed deck
+(TR 403.4.c). The check is the engine's: `ConstructedDeckValid`. -/
+def liveSwap (g : LiveGame) (out inn : String) : Except String (LiveGame × String) :=
+  match g.match_, g.sideSeat, g.kind with
+  | some m, some p, .constructed =>
+    if m.finished then .error "the match is over"
+    else if g.s.result.isNone then .error "the game is not over"
+    else if !m.sideboardAllowed then
+      .error "the sideboard cannot be used now (not before the first game, nor after a draw)"
+    else
+      match g.decks[p.n]?, g.sides[p.n]? with
+      | some d, some side =>
+        let o : CardId := ⟨out⟩
+        let i : CardId := ⟨inn⟩
+        if !d.main.contains o then .error s!"{out} is not in the Main Deck"
+        else if !side.contains i then .error s!"{inn} is not in the sideboard"
+        else
+          let d' := { d with main := d.main.erase o ++ [i] }
+          let side' := side.erase i ++ [o]
+          if decide (ConstructedDeckValid demoDB demoEnv { deck := d', sideboard := side' }) then
+            let g' := { g with decks := g.decks.set p.n d', sides := g.sides.set p.n side' }
+            .ok (g', g'.reply [])
+          else .error "the deck would not be a legal Constructed deck"
+      | _, _ => .error "there is no deck"
+  | none, _, _ => .error "this is not a match"
+  | _, _, _ => .error "the sideboard is for a Constructed match"
 
 end RiftboundDriver
 

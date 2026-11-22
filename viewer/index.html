@@ -11,7 +11,7 @@
   --fury: #c4452f; --calm: #2f87ab; --mind: #7d5bb8; --body: #4b9348; --chaos: #c9822a; --order: #b49c2c;
   --font: "Inter", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --cw: 56px; --ch: 78px;
+  --ch: clamp(50px, 9.2vh, 88px); --cw: calc(var(--ch) * .74);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #14171a; --fg: #e5e8ea; --muted: #97a1ab; --panel: #1c2024; --line: #333940;
@@ -20,24 +20,29 @@
   --bg: #14171a; --fg: #e5e8ea; --muted: #97a1ab; --panel: #1c2024; --line: #333940;
   --felt: #1a2420; --accent: #7db4e0; --card: #272c31; --card-line: #4a525a; color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font);
-  padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.app { max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
-header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
-h1 { font-size: 1.15rem; margin: 0; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 var(--font);
+  padding-block: 8px; padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+/* 1 画面に収める: 縦に並べ、盤面（.layout）が余りを使い、足りなければ盤面の中だけが動く */
+.app { margin: 0 auto; display: flex; flex-direction: column; gap: 6px;
+  height: calc(100dvh - 16px); min-height: 520px; }
+.app > * { flex: none; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+h1 { font-size: 1rem; margin: 0; }
 .status { color: var(--muted); font-variant-numeric: tabular-nums; }
 .phases { display: flex; flex-wrap: wrap; gap: 4px; }
-.phase { padding: 2px 10px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted);
-  font-size: .8rem; transition: background .2s, color .2s; }
+.phase { padding: 0 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted);
+  font-size: .74rem; transition: background .2s, color .2s; }
 .phase.on { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
-@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-.board { display: grid; gap: 10px; }
-.seat { background: var(--felt); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
-  display: grid; gap: 8px; transition: box-shadow .25s, border-color .25s; }
+.layout { flex: 1 1 0 !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 8px; align-items: stretch; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } .app { height: auto; } }
+.board { display: grid; gap: 6px; min-height: 0; overflow: auto; align-content: start; }
+.midrow { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 6px; }
+.seat { background: var(--felt); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px;
+  display: grid; grid-template-columns: 78px minmax(0, 1fr) minmax(0, 1.3fr); gap: 4px 6px; transition: box-shadow .25s, border-color .25s; }
 .seat.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
-.seat-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.seat-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
 .seat-head h2 { font-size: .95rem; margin: 0; }
 .pts { font-variant-numeric: tabular-nums; color: var(--muted); }
 .pool { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -46,17 +51,21 @@ h1 { font-size: 1.15rem; margin: 0; }
 .chip.energy { border-color: var(--accent); }
 .chip.pop { animation: pop .45s ease; }
 @keyframes pop { 40% { transform: scale(1.25); background: var(--accent); color: var(--bg); } }
-.piles { display: flex; flex-wrap: wrap; gap: 8px; }
-.pile { width: 74px; min-height: 48px; border: 1px dashed var(--card-line); border-radius: 6px;
-  padding: 4px 6px; font-size: .72rem; color: var(--muted); text-align: center; }
-.pile b { display: block; font-size: 1.1rem; color: var(--fg); font-variant-numeric: tabular-nums; }
+.piles { display: flex; flex-wrap: wrap; gap: 3px 5px; margin-left: auto; }
+.pile { display: flex; align-items: baseline; gap: 4px; border: 1px dashed var(--card-line); border-radius: 6px;
+  padding: 0 6px; font-size: .68rem; color: var(--muted); }
+.pile b { font-size: .85rem; color: var(--fg); font-variant-numeric: tabular-nums; }
 .pile.zero { opacity: .45; }
-.lane { min-height: calc(var(--ch) + 22px); border-radius: 6px; padding: 18px 6px 6px; position: relative;
-  display: flex; flex-wrap: wrap; gap: 6px; background: color-mix(in srgb, var(--panel) 55%, transparent); }
+.lane { min-height: calc(var(--ch) + 18px); border-radius: 6px; padding: 14px 4px 4px; position: relative;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; background: color-mix(in srgb, var(--panel) 55%, transparent); }
 .lane::before { content: attr(data-label); position: absolute; top: 2px; left: 8px; font-size: .7rem;
   color: var(--muted); letter-spacing: .04em; }
-.lane.bfs { background: transparent; padding: 18px 0 0; gap: 8px; }
-.bf { flex: 1 1 220px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px 8px;
+.lane > .grp { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; position: relative; }
+.lane > .grp:empty { display: none; }
+.lane > .grp.runes { padding: 12px 4px 3px; border: 1px dashed var(--card-line); border-radius: 6px; }
+.lane > .grp.runes::before { content: attr(data-label); position: absolute; top: 0; left: 6px; font-size: .62rem; color: var(--muted); }
+.lane.bfs { background: transparent; padding: 14px 0 0; gap: 6px; }
+.bf { flex: 1 1 160px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px 5px;
   background: color-mix(in srgb, var(--panel) 55%, transparent); transition: border-color .25s, box-shadow .25s; }
 .bf.mine0 { border-color: var(--accent); } .bf.mine1 { border-color: var(--chaos); }
 .bf.contested { box-shadow: 0 0 0 2px var(--fury) inset; }
@@ -77,8 +86,8 @@ h1 { font-size: 1.15rem; margin: 0; }
 .card .ab { position: absolute; left: 4px; bottom: 3px; font-size: .62rem; padding: 0 5px; border-radius: 99px;
   background: var(--fury); color: #fff; }
 .card { width: var(--cw); height: var(--ch); position: relative; }
-.card-in { width: 100%; height: 100%; border: 1px solid var(--card-line); border-radius: 6px; background: var(--card);
-  padding: 4px; font-size: .68rem; line-height: 1.2; overflow: hidden; display: flex; flex-direction: column;
+.card-in { width: 100%; height: 100%; border: 1px solid var(--card-line); border-radius: 5px; background: var(--card);
+  padding: 2px 3px; font-size: .64rem; line-height: 1.2; overflow: hidden; display: flex; flex-direction: column;
   justify-content: space-between; transition: transform .3s ease, opacity .3s; }
 .card-in.exh { transform: rotate(90deg) scale(.82); opacity: .6; }
 .card .nm { font-weight: 600; overflow-wrap: anywhere; }
@@ -90,44 +99,68 @@ h1 { font-size: 1.15rem; margin: 0; }
 .d-fury { border-color: var(--fury) !important; } .d-calm { border-color: var(--calm) !important; }
 .d-mind { border-color: var(--mind) !important; } .d-body { border-color: var(--body) !important; }
 .d-chaos { border-color: var(--chaos) !important; } .d-order { border-color: var(--order) !important; }
-.side { display: grid; gap: 10px; }
-.now { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 76px; }
+.side { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-height: 0; }
+.now { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-height: 24dvh; overflow: auto; }
 .now b { display: block; margin-bottom: 2px; }
 .now small { color: var(--muted); }
-.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; max-height: 420px; overflow-y: auto;
+.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-height: 0; overflow-y: auto;
   margin: 0; padding: 4px; list-style: none; }
-.log li { padding: 3px 8px; border-radius: 5px; cursor: pointer; font-size: .8rem; color: var(--muted); }
+.log li { padding: 1px 8px; border-radius: 5px; cursor: pointer; font-size: .74rem; color: var(--muted); }
 .log li:hover { background: var(--bg); }
 .log li.cur { background: var(--accent); color: var(--bg); }
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--panel);
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
-button, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; }
+button, select { font: inherit; font-size: .8rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 1px 9px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #scrub { flex: 1 1 200px; min-width: 120px; }
-.banner { background: var(--accent); color: var(--bg); padding: 8px 12px; border-radius: 8px; font-weight: 600; }
+.banner { background: var(--accent); color: var(--bg); padding: 2px 12px; border-radius: 8px; font-weight: 600; }
 #fly { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
 .empty { padding: 28px; text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 8px; }
 [hidden] { display: none !important; }
-.note { color: var(--muted); font-size: .78rem; }
-.live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
-.live .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.live input[type=number] { width: 6em; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
-.choices { display: grid; gap: 6px; }
-.choices h3 { margin: 0; font-size: .85rem; }
-.choices .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.note { color: var(--muted); font-size: .74rem; }
+#cardinfo { position: fixed; z-index: 60; width: 330px; max-height: min(82dvh, 580px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .4); font-size: .8rem; }
+#cardinfo h2 { margin: 0; font-size: 1rem; }
+#cardinfo .sub { color: var(--muted); margin-bottom: 4px; }
+#cardinfo dl { display: grid; grid-template-columns: 5.2em 1fr; gap: 2px 8px; margin: 6px 0; }
+#cardinfo dt { color: var(--muted); } #cardinfo dd { margin: 0; }
+#cardinfo pre { margin: 6px 0 0; padding: 6px; background: var(--bg); border-radius: 6px; font: .68rem/1.35 var(--mono);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+#cardinfo .x { float: right; padding: 0 7px; }
+.card { cursor: context-menu; }
+.card-in { position: relative; }
+.card-in > .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; border-radius: 4px; }
+.card-in > :not(.art) { position: relative; z-index: 1; }
+.card.hasart .nm, .card.hasart .st { background: color-mix(in srgb, var(--card) 78%, transparent); border-radius: 3px; }
+.card.hasart .st { align-self: stretch; }
+#cardinfo .artbox { display: grid; gap: 4px; margin: 6px 0; }
+#cardinfo .artbox img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; background: var(--bg); }
+
+.note.foot { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; display: grid; gap: 3px;
+  max-height: 40dvh; overflow: auto; }
+.live .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.live input[type=number] { width: 4.5em; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.choices { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px; }
+.choices h3 { margin: 0; font-size: .72rem; color: var(--muted); font-weight: 600; }
+.choices .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .choices button { text-align: left; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
+.choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 </style>
 </head>
 <body>
 <div class="app" id="app">
-  <header class="top">
-    <h1>Riftbound トレースビューア</h1>
-    <span class="status" id="status"></span>
-  </header>
-  <div class="phases" id="phases"></div>
+  <div class="topbar">
+    <header class="top">
+      <h1>Riftbound トレースビューア</h1>
+      <span class="status" id="status"></span>
+    </header>
+    <div class="phases" id="phases"></div>
+  </div>
   <div class="empty" id="empty" hidden>
     <p><code>riftbound-trace</code> が書き出した JSON を選んでください。</p>
     <input type="file" id="file" accept=".json,application/json" aria-label="トレースの JSON">
@@ -167,10 +200,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     <label>速度 <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option>
       <option value="2">2×</option><option value="4">4×</option></select></label>
   </div>
-  <p class="note">このビューアにルールはありません。見えているものはすべて Lean のエンジン（<code>step</code>）が
+  <p class="note foot">このビューアにルールはありません。見えているものはすべて Lean のエンジン（<code>step</code>）が
     計算した結果の再生です。ただし、この描画のコードは Lean の証明の対象外です。</p>
 </div>
 <div id="fly"></div>
+<div id="cardinfo" hidden role="dialog" aria-label="カードの詳細"></div>
 <script>
 const EMBEDDED = /*__TRACE__*/null;
 const $ = (id) => document.getElementById(id);
@@ -201,7 +235,9 @@ function load(t) {
   show(0, false);
 }
 
+const baseGroups = new Map();
 function buildBoard() {
+  baseGroups.clear();
   const board = $('board'); board.textContent = ''; els.clear(); zoneBox.clear();
   poolBox.length = pointsBox.length = seatBox.length = 0;
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -214,16 +250,23 @@ function buildBoard() {
       const e = mk('div', 'pile'); e.append(mk('span', '', label), mk('b', '', '0'));
       zoneBox.set('p' + p + '.' + k, e); piles.append(e);
     }
-    s.append(head, piles);
+    head.append(piles); s.append(head);
     for (const [k, label] of LANES) {
       const l = mk('div', 'lane'); l.dataset.label = label; zoneBox.set('p' + p + '.' + k, l); s.append(l);
+      if (k === 'base') {
+        // Runes and the other cards at Base sit in separate groups, so they are not mixed up.
+        const rg = mk('div', 'grp runes'); rg.dataset.label = 'Rune'; const og = mk('div', 'grp others');
+        l.append(rg, og); baseGroups.set('p' + p + '.base', { runes: rg, others: og });
+      }
     }
     return s;
   };
   board.append(seat(0));
-  const bf = mk('div', 'lane bfs'); bf.dataset.label = 'Battlefield'; zoneBox.set('battlefield', bf); board.append(bf);
+  const mid = mk('div', 'midrow');
+  const bf = mk('div', 'lane bfs'); bf.dataset.label = 'Battlefield'; zoneBox.set('battlefield', bf); mid.append(bf);
   bfGroup.clear();
-  const ch = mk('div', 'lane'); ch.dataset.label = 'Chain'; zoneBox.set('chain', ch); board.append(ch);
+  const ch = mk('div', 'lane'); ch.dataset.label = 'Chain'; zoneBox.set('chain', ch); mid.append(ch);
+  board.append(mid);
   for (let p = 1; p < trace.players; p++) board.append(seat(p));
   const ph = $('phases'); ph.textContent = '';
   for (const k of PHASES) { const e = mk('span', 'phase', PHASE_JA[k]); e.dataset.phase = k; ph.append(e); }
@@ -329,7 +372,7 @@ function makeCard(id) {
     st.append(c, m); inn.append(st);
     if (def.domains[0]) inn.classList.add('d-' + def.domains[0]);
   }
-  el.append(inn); return el;
+  el.append(inn); applyArt(el); return el;
 }
 
 function decorate(e, st, id) {
@@ -409,9 +452,10 @@ function show(i, animate) {
   for (const z of visibleZones()) {
     const box = zoneBox.get(z); if (!box) continue;
     if (z === 'battlefield') { layoutBattlefields(box, st); continue; }
+    const grp = baseGroups.get(z);
     for (const id of (st.zones[z] || [])) {
       let e = els.get(id); if (!e) { e = makeCard(id); els.set(id, e); }
-      box.append(e); decorate(e, st, id);
+      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e); decorate(e, st, id);
     }
   }
   // animate what moved
@@ -516,9 +560,93 @@ document.addEventListener('keydown', (e) => {
 $('file').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (f) load(JSON.parse(await f.text()));
 });
+// ---- カードの右クリックで詳細 ----
+const ZONE_JA = { hand: '手札', base: 'Base', trash: 'Trash', mainDeck: 'Main Deck', runeDeck: 'Rune Deck', legendZone: 'Legend',
+  championZone: 'Champion', banishment: 'Banish', setAside: '脇に置いた札', outOfGame: 'ゲーム外' };
+const DOMAIN_JA = { fury: 'Fury', calm: 'Calm', mind: 'Mind', body: 'Body', chaos: 'Chaos', order: 'Order', any: '任意', own: '自分のドメイン' };
+function costText(c) {
+  if (!c) return '—';
+  const parts = []; if (c.energy || !c.power.length) parts.push('Energy ' + c.energy);
+  for (const s of c.power) parts.push('Power(' + (DOMAIN_JA[s] || s) + ')');
+  return parts.join(' + ');
+}
+// Card art: viewer/art.json (served by the bridge at /art.json) maps a card id to an image URL.
+// Only http(s) URLs are used. A card that has no entry, or whose image fails to load, stays a text card.
+let artFile = {};
+function artUrl(cid) { const u = artFile[cid]; return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
+function applyArt(el) {
+  const o = objs[el.dataset.id], u = o && artUrl(o.card), inn = el.firstChild;
+  let img = inn.querySelector(':scope > .art');
+  if (!u) { if (img) img.remove(); el.classList.remove('hasart'); return; }
+  if (!img) {
+    img = document.createElement('img'); img.className = 'art'; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
+    img.addEventListener('error', () => { img.remove(); el.classList.remove('hasart'); });
+    inn.prepend(img);
+  }
+  if (img.getAttribute('src') !== u) img.src = u;
+  el.classList.add('hasart');
+}
+function applyArtAll() { document.querySelectorAll('.card').forEach(applyArt); }
+async function loadArtFile() {
+  try {
+    const r = await fetch('/art.json'); if (!r.ok) return;
+    const j = await r.json(); if (j && typeof j === 'object' && !Array.isArray(j)) { artFile = j; applyArtAll(); }
+  } catch (_) { /* 橋渡しが無い、または art.json が無い */ }
+}
+function artBox(el, cid) {
+  const u = artUrl(cid); if (!u) return el('span');
+  const wrap = el('div', 'artbox'), im = el('img'); im.alt = (cards[cid] && cards[cid].name) || cid; im.referrerPolicy = 'no-referrer'; im.src = u;
+  im.addEventListener('error', () => wrap.remove()); wrap.append(im); return wrap;
+}
+
+function hideCardInfo() { $('cardinfo').hidden = true; }
+function showCardInfo(id, x, y) {
+  const o = objs[id], def = o && cards[o.card]; if (!def) return;
+  const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
+  box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
+  const sub = [def.subtitle, [...(def.supertypes || []), ...def.types].join(' · '), def.domains.map((d) => DOMAIN_JA[d] || d).join(' / ')].filter(Boolean).join(' ・ ');
+  box.append(el('div', 'sub', sub));
+  box.append(artBox(el, o.card));
+  const dl = el('dl'); const row = (k, v) => { if (v === null || v === undefined || v === '') return; dl.append(el('dt', '', k), el('dd', '', v)); };
+  if (def.costFull) row('コスト', costText(def.costFull));
+  if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
+  if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
+  if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
+  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map((k) => k.k + (k.arg === null ? '' : typeof k.arg === 'object' ? ' [' + costText(k.arg) + ']' : ' ' + k.arg)).join('、'));
+  const zone = Object.keys(st.zones).find((z) => st.zones[z].includes(nid));
+  if (zone) { const [who, k] = zone.includes('.') ? zone.split('.') : [null, zone]; row('場所', (who ? 'P' + who.slice(1) + ' の ' : '') + (ZONE_JA[k] || (k === 'battlefield' ? 'Battlefield の Unit' : k === 'chain' ? 'Chain' : k))); }
+  row('持ち主', 'P' + o.owner);
+  const flags = [];
+  if (st.exhausted.includes(nid)) flags.push('Exhausted');
+  const dm = st.damaged.find((d) => d[0] === nid); if (dm) flags.push('ダメージ ' + dm[1]);
+  if (st.stunned.includes(nid)) flags.push('Stun');
+  if (flags.length) row('状態', flags.join('、'));
+  const at = st.attached.find((a) => a[0] === nid); if (at) row('Attach 先', cardName(at[1]));
+  const eq = st.attached.filter((a) => a[1] === nid).map((a) => cardName(a[0])); if (eq.length) row('Attach 中', eq.join('、'));
+  const loc = st.at.find((a) => a[0] === nid); if (loc) row('いる所', cardName(loc[1]));
+  box.append(dl);
+  if (def.ir) { const d = el('details'); d.append(el('summary', '', 'Lean の定義（能力・効果）'), el('pre', '', def.ir)); d.open = true; box.append(d); }
+  else box.append(el('div', 'note', '能力・効果の定義はありません（キーワードと数値だけのカード）。'));
+  box.hidden = false;
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(x + 10, innerWidth - w - 8)) + 'px';
+  box.style.top = Math.max(8, Math.min(y + 10, innerHeight - h - 8)) + 'px';
+}
+document.addEventListener('contextmenu', (e) => {
+  const c = e.target.closest && e.target.closest('.card');
+  if (!c || !steps || !c.dataset.id || e.target.closest('#cardinfo')) return;
+  e.preventDefault(); showCardInfo(c.dataset.id, e.clientX, e.clientY);
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('#cardinfo')) hideCardInfo(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCardInfo(); });
+$('board').addEventListener('scroll', hideCardInfo);
+
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
+let liveSide = null, swapOut = null, swapIn = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
@@ -538,7 +666,10 @@ function appendSteps(list) {
   }
   $('scrub').max = steps.length - 1;
 }
-function setLive(j) { liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; askChoice = null; }
+function setLive(j) {
+  liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  swapOut = swapIn = null;
+}
 function matchText(m) {
   if (!m) return '';
   const order = m.order === 'chance' ? '最初のゲーム: 抽選で選ばれた人が先手か後手かを選ぶ（TR 407）'
@@ -570,6 +701,7 @@ function renderLegal(i) {
           btn('後手にする', '次のゲームで、後に動く', () => liveNext('second'))]);
       } else {
         $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
+        if (liveSide && liveSide.allowed) renderSideboard(group, btn);
         group('マッチ', [btn('次のゲーム', '結果をマッチに数えて、次のゲームを始める', () => liveNext(null))]);
       }
     } else {
@@ -591,6 +723,32 @@ function renderLegal(i) {
   if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
   if (ext.length) group('大会のルール', ext);
+}
+// サイドボード（TR 403.4）: Main Deck のカードを 1 枚出し、サイドボードのカードを 1 枚入れる。合法かどうかは Lean が決める。
+function renderSideboard(group, btn) {
+  const s = liveSide;
+  const cardBtns = (list, sel, set) => list.map((c) =>
+    btn(c.name + ' ×' + c.n, c.id, () => { set(sel === c.id ? null : c.id); renderLegal(steps.length - 1); },
+      sel === c.id ? 'sel' : null));
+  group('サイドボード（P' + s.player + '）: Main Deck ' + s.mainCount + ' 枚 ／ サイドボード ' + s.sideCount + ' 枚',
+    []);
+  group('出すカード（Main Deck）', cardBtns(s.main, swapOut, (v) => { swapOut = v; }));
+  group('入れるカード（サイドボード）', cardBtns(s.side, swapIn, (v) => { swapIn = v; }));
+  const nm = (list, id) => { const c = list.find((x) => x.id === id); return c ? c.name : id; };
+  const go = btn(swapOut && swapIn ? '入れ替える: ' + nm(s.main, swapOut) + ' ⇄ ' + nm(s.side, swapIn) : '出すカードと入れるカードを選ぶ',
+    '1 対 1 で入れ替える。入れ替えの後のデッキが Constructed で合法かどうかは、Lean が確かめる（TR 403.4.c）',
+    () => liveSwap());
+  go.disabled = !(swapOut && swapIn);
+  group('入れ替え', [go]);
+}
+async function liveSwap() {
+  const out = swapOut, inn = swapIn;
+  $('livemsg').textContent = '確かめ中…';
+  try {
+    const j = await api('/api/swap', { out, in: inn });
+    setLive(j); renderLegal(steps.length - 1);
+    $('livemsg').textContent = '入れ替えた。続けて入れ替えるか、「次のゲーム」へ。';
+  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function startWith(path, body, fresh) {
   const j = await api(path, body);
@@ -630,6 +788,7 @@ async function detectLive() {
     $('newgame').focus();
   } catch (e) { /* 橋渡しが無い: 再生だけ */ }
 }
+loadArtFile();
 if (EMBEDDED) load(EMBEDDED); else { $('empty').hidden = false; detectLive(); }
 </script>
 </body>

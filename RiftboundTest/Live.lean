@@ -124,4 +124,57 @@ meta def conceded (target : Nat) : Option LiveGame :=
   | .ok (g, _) => (liveNext g none).toOption.isNone
   | .error _ => false
 
+/-- How many cards with this identifier a player has, in any zone. -/
+meta def countCard (s : GameState) (p : PlayerId) (code : String) : Nat :=
+  (s.objects.toList.filter (fun (_, o) => o.owner == p &&
+    (match o.kind with | .card _ c => c.code == code | _ => false))).length
+
+/-- The number of cards with this identifier in a list. -/
+meta def countIn (l : List CardId) (code : String) : Nat :=
+  (l.filter (fun c => c.code == code)).length
+
+-- sideboarding (TR 403.4): after a game that a player won, a card of the Main Deck is exchanged for
+-- a card of the sideboard, one for one, and the next game is played with the new deck
+#guard match conceded 2 with
+  | some g =>
+    match liveSwap g "S1" "S0" with
+    | .ok (g1, _) =>
+      match g1.decks[0]?, g1.sides[0]? with
+      | some d, some side =>
+        d.main.length == 40 && side.length == 10 && countIn d.main "S1" == 2 &&
+        countIn d.main "S0" == 1 && countIn side "S0" == 2 && countIn side "S1" == 1 &&
+        decide (ConstructedDeckValid demoDB demoEnv { deck := d, sideboard := side }) &&
+        (match liveNext g1 (some true) with
+          | .ok (g2, _) => countCard g2.s ⟨0⟩ "S0" == 1 && countCard g2.s ⟨0⟩ "S1" == 2 &&
+              countCard g2.s ⟨1⟩ "S0" == 0
+          | .error _ => false)
+      | _, _ => false
+    | .error _ => false
+  | none => false
+
+-- an exchange that is not allowed or not legal is refused: a card that is not there, the Chosen
+-- Champion for a card that cannot take its place (TR 403.4.c), a game that is not over
+#guard match conceded 2 with
+  | some g =>
+    (liveSwap g "Nope" "S0").toOption.isNone && (liveSwap g "S1" "Nope").toOption.isNone &&
+    (liveSwap g "S0" "S1").toOption.isNone && (liveSwap g "C1" "S0").toOption.isNone
+  | none => false
+#guard match liveStart 1 h0 .constructed (some 2) with
+  | .ok (g, _) => (liveSwap g "S1" "S0").toOption.isNone
+  | .error _ => false
+
+-- no exchange after a draw (TR 403.10), and not outside a Constructed match
+#guard match afterMulligan .constructed (some 2) with
+  | some g =>
+    match liveExternal g judgeA with
+    | .ok (g1, _) => g1.recorded && (liveSwap g1 "S1" "S0").toOption.isNone
+    | .error _ => false
+  | none => false
+#guard match conceded 1 with
+  | some g => (liveSwap g "S1" "S0").toOption.isNone
+  | none => false
+#guard match liveStart 1 h0 .sealed (some 2) with
+  | .ok (g, _) => (liveSwap g "S1" "S0").toOption.isNone
+  | .error _ => false
+
 end RiftboundTest
