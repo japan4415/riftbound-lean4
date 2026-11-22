@@ -2840,4 +2840,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     a.mightNow mine == some 2 &&
     lost.mightNow big == some 5 && mineAttacks.mightNow big == some 5
 
+-- Volibear, Imposing (OGN-158): when an opponent moves to a battlefield other than mine, I draw 1
+-- (the watched unit is in the condition as slot 0)
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, _) ← putAt s s.me "OGN-158" s.bf0
+  let (s2, foe) ← put s1 s.you "OGN-136" .base
+  let (s3, foe2) ← put s2 s.you "OGN-136" .base
+  let (s4, mine) ← put s3 s.me "OGN-136" .base
+  let (other, ev) ← moveTo s4 s.you foe (.battlefield bf1)
+  let (same, ev2) ← moveTo s4 s.you foe2 (.battlefield s.bf0)
+  let (own, ev3) ← moveTo s4 s.me mine (.battlefield bf1)
+  let (home, ev4) ← moveTo other s.you foe .base
+  let a ← fire other ev
+  let b ← fire same ev2
+  let c ← fire own ev3
+  let d ← fire home ev4
+  -- Volibear in his Base: every battlefield is another one
+  let (t1, _) ← put s s.me "OGN-158" .base
+  let (t2, foe3) ← put t1 s.you "OGN-136" .base
+  let (inBase, ev5) ← moveTo t2 s.you foe3 (.battlefield s.bf0)
+  let e ← fire inBase ev5
+  return a.handN s.me == other.handN s.me + 1 && b.handN s.me == same.handN s.me &&
+    c.handN s.me == own.handN s.me && d.handN s.me == home.handN s.me &&
+    e.handN s.me == inBase.handN s.me + 1
+
 end RiftboundTest

@@ -38,11 +38,15 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
 /-- The condition holds for the object when the event happens: none, a fact of how the object was
 played (CR 812), or a question about the game, asked for the player `who` the ability works for,
 that `Condition.eval` can answer (it is false when it cannot). -/
-def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool
+def condOkEnv (s : GameState) (src : ObjId) (who : PlayerId) (env : Env) : Condition → Bool
   | .always => true
   | .paid => (s.obj? src).any (·.paid)
   | .legion => (s.obj? src).any (·.legion)
-  | c => c.eval s who src {} == some true
+  | c => c.eval s who src env == some true
+
+/-- The same, where nothing was chosen. -/
+def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :=
+  condOkEnv s src who {}
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
@@ -105,7 +109,8 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
         | some (Ability.triggered t _ lim) =>
           if t.event == ev && t.subject != .self &&
               subjectHolds s src o.controller subj who t.subject &&
-              condOk s src o.controller t.condition && t.occurrence == .every &&
+              condOkEnv s src o.controller { slots := [.obj subj] } t.condition &&
+                t.occurrence == .every &&
                 limitOk s src j lim then
             some { source := src, card := d.id, idx := j, controller := o.controller,
                    subject := some subj }
