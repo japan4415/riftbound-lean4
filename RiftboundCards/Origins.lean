@@ -6504,7 +6504,8 @@ def OGN_242.meta : CardDef :=
 -- END GENERATED
 
 /-- One recycle of what Baited Hook looked at: while there are cards left of the ones looked at (the
-five, less the card played: the deck had `n` cards before, and has fewer now). -/
+five, less the card played: the deck had `n` cards before the play and has fewer now, so the number
+of cards left of those looked at is `5 + deckNow - n`). -/
 def baitedHookRecycle (i : Nat) : Effect :=
   .ifThen (.and (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5])) (.const i))
       (.cmp .ge (.sub (.add (.const 5) (.count (Selector.all .friendly .inMainDeck [])))
