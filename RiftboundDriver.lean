@@ -2,6 +2,7 @@ module
 
 public import RiftboundDriver.Run
 public import RiftboundDriver.Match
+public import RiftboundDriver.Live
 
 /-!
 # RiftboundDriver
