@@ -460,6 +460,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M5b の実装の記録（2026-11-22）: Limited の追加ドロー（TR 602.4.a.5.b）
+
+- **フォーマットが、ゲームの進行を変える最初の例**: エンジンが `GameConfig.ruleSet`（フォーマット）と、プレイヤーの Legend・Chosen Champion のゾーンを読んで動く。Limited（Sealed と Draft）で、Legend か Chosen Champion を使わないデッキのプレイヤーは、**自分の最初の Beginning Phase の始まりに、1 枚引く**。両方なくても 1 枚。
+- **実装**: `GameState.extraDraws s p`（0 か 1）。Limited で、最初の 1 周（`turn ≤ プレイヤー数`）で、Legend のゾーンか Chosen Champion のゾーンが空なら 1。`phase .beginning` の腕が、`.draw p (extraDraws)` のフレームを `cleanup` の前に積む（`.draw p 0` は何もせず消える）。`Format.isLimited`、`RuleSet.isLimited`。
+- **証明**（`Invariant/LimitedDraw.lean`）: `extraDraws_zero_of_not_limited`（Core Rules と Constructed では引かない）、`extraDraws_le_one`（多くて 1 枚: 両方なくても 1 枚）、`extraDraws_eq_one_iff`（Limited で、最初の 1 周で、どちらかのゾーンが空、のとき、かつそのときだけ 1）、`extraDraws_zero_late`（最初の 1 周より後は 0）。不変条件は、`phase .beginning` の腕の、Setup の 1 か所だけ直した（積むフレームの一覧に `draw` を足した）。
+- **読み方の決定（要確認）**: 規則の文は「各ゲームの最初の Beginning Phase」。**「自分の最初の Beginning Phase」と読み、両方のプレイヤーが 1 回ずつ引く**ようにした。「ゲームの最初の Beginning Phase だけ（先手だけ）」とも読めるが、TR の原文がリポジトリに無く、確かめられない（[tournament-model.md §7](tournament-model.md#7-曖昧な点と要確認事項)）。
+- **テスト**（`RiftboundTest/LimitedDraw.lean`）: Sealed で Legend が無いと 1 枚多いこと、Chosen Champion が無くても同じこと、両方なくても 1 枚だけのこと、後手は 2 ターン目に引き、先手は 3 ターン目に重ねて引かないこと、Constructed と Core Rules では引かないこと。期待を間違えると失敗することも確かめた。
+- **ビューア**: `riftbound-trace seed turns limited` が、Sealed で Legend の無いデッキのゲームを出す。seed 2 では、ターン 1 の P1 の手札が 5 枚から 6 枚（Main Phase の始まり）、ターン 2 の P0 の手札が 5 枚から 6 枚になり、通常のゲームより 1 枚多い。
+- **まだ無いもの（M5b の残り）**: **Limited のデッキ（`LimitedDeck`）からゲームを始めること**（`GameState.initial` は、Legend と Chosen Champion のあるデッキだけを受け付ける。今回のテストは、ゾーンを空にして代用した）、Limited の Battlefield（blank、1 マッチに 1 回: TR 602.3）、I14 の全体、ゲームの合間の時間切れ（TR 408.2.d）、シングルエリミネーション、2v2、`GameConfig.Valid`、Bo1 の準備、TR 403.8。
+- **次の候補**: `LimitedDeck` からゲームを始める（今回の追加ドローが、実際のデッキで動く）、I14 の全体、ビューアのライブ操作（Issue #14）。
+
 ### M5b の実装の記録（2026-11-22）: 先手の決め方をゲームにつなぐ（TR 407）
 
 - **着手前に確かめたこと**: エンジンは、ターン順を、質問 `chanceTurnOrder` への答え（外から来る: CR 115）で受け取る。**どの並びも合法**なので、エンジンを変える必要は無かった。足りなかったのは、マッチの層の「誰が先手を選ぶか」から、その答えを作る部分と、両者をつなぐ事実だった。

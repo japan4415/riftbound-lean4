@@ -44,6 +44,14 @@ on their first turn in a 1v1 game (CR 487.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
   if s.playerCount = 2 ∧ s.turn = 2 then 3 else 2
 
+/-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
+format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither
+(TR 602.4.a.5.b). The turns of the first round are the first turns of the players. -/
+def GameState.extraDraws (s : GameState) (p : PlayerId) : Nat :=
+  if s.config.ruleSet.isLimited && decide (s.turn ≤ s.playerCount) &&
+      ((s.zone (.player p .legendZone)).isEmpty || (s.zone (.player p .championZone)).isEmpty)
+  then 1 else 0
+
 /-- The clock has run out: time was called, and the last of the turns that may be played has
 begun (TR 408.2). -/
 def GameState.clockDue (s : GameState) : Bool :=
@@ -95,7 +103,9 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     some ({ (beginStep s (s.active.getD ⟨0⟩)).1 with
-              phase := .beginning, pending := .cleanup :: rest },
+              phase := .beginning,
+              pending := .draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)) ::
+                .cleanup :: rest },
       (beginStep s (s.active.getD ⟨0⟩)).2)
   | .phase .main :: rest =>
     some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} }, [])

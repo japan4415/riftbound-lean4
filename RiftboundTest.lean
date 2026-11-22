@@ -34,6 +34,7 @@ public import RiftboundTest.Clock
 public import RiftboundTest.Judge
 public import RiftboundTest.Sideboard
 public import RiftboundTest.FirstPlayer
+public import RiftboundTest.LimitedDraw
 
 /-!
 # RiftboundTest
