@@ -2067,8 +2067,18 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass: the effect is not written yet. -/
-def OGN_077 : CardDef := OGN_077.meta
+/-- Zhonya's Hourglass. -/
+def OGN_077 : CardDef :=
+  { OGN_077.meta with
+    abilities := [.triggered
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.ifThen
+        (.and (.cmp .ge (.count (Selector.all .friendly .inTrash [.sameAs (.slot 0)])) (.const 1))
+          (.exists (Selector.all .friendly .anywhere [.sameAs .self])))
+        (.seqOf [.prim (.kill .self),
+          .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))]) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-078
 /--

@@ -3912,4 +3912,27 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     ready.tired boss == some false && two.countIn s.me .base "OGN-136" == 1 &&
     two.countIn s.me .trash "OGN-136" == 1 && theirsReady.tired boss == some true
 
+-- Zhonya's Hourglass (OGN-077): the next time a friendly unit dies, the gear is killed and the
+-- unit comes back exhausted (approximation: it dies, then returns); once, and not for an enemy unit
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-077" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, foe) ← put s3 s.you "OGN-136" .base
+  let die (x : GameState) (id : ObjId) : Option GameState :=
+    let (k, ev) := killObj x id
+    fire k ev
+  let a ← die s4 u
+  let theirs ← die s4 foe
+  let (k1, ev1) := killObj s4 u
+  let (k2, ev2) := killObj k1 v
+  let twice ← fire k2 (ev1 ++ ev2)
+  let back := (a.zone (.player s.me .base)).filter (fun x =>
+    (a.cardDef? x).any (·.id == cid "OGN-136"))
+  return a.countIn s.me .base "OGN-136" == 2 && a.countIn s.me .trash "OGN-136" == 0 &&
+    a.countIn s.me .trash "OGN-077" == 1 && a.countIn s.me .base "OGN-077" == 0 &&
+    back.all (fun x => (a.obj? x).any (fun o => o.exhausted || x == v)) &&
+    theirs.countIn s.you .trash "OGN-136" == 1 && theirs.countIn s.me .base "OGN-077" == 1 &&
+    twice.countIn s.me .trash "OGN-136" == 1 && twice.countIn s.me .base "OGN-136" == 1
+
 end RiftboundTest
