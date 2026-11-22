@@ -207,7 +207,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
       (fun u => triggersOf s u p (if conquer then .conquer else .hold)) ++
     (s.zone (.player p .legendZone)).flatMap
       (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
-    triggersOf s bf p (if conquer then .youConquer else .youHold)
+    triggersOf s bf p (if conquer then .youConquer else .youHold) ++
+    -- the cards in the Trash that wait for a conquer of their player
+    (if conquer then
+      (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
+    else [])
   | .combatStarted bf att =>
     (s.trigAllUnitsAt bf).flatMap (fun u =>
       match s.obj? u with

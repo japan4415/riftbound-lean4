@@ -3433,4 +3433,35 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     a.countIn s.me .trash "OGN-017" == 0 &&
     b.countIn s.me .base "OGN-017" == 1
 
+-- Super Mega Death Rocket! (OGN-252): deal 5 to a unit; when I conquer, from my Trash, I may
+-- discard 1 to return it to my hand (not when I hold, not for the opponent's conquer, not
+-- without a card to discard, and only from the Trash)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-252" .hand
+  let (s2, u) ← put s1 s.you "OGN-088" .base
+  let hit ← play s2 s.me c [u]
+  let (t1, bf) ← putBf s s.me "OGN-294"
+  let (t2, _) ← put t1 s.me "OGN-252" .trash
+  let (t3, _) ← put t2 s.me "OGN-136" .hand
+  let handOf (x : GameState) := (x.zone (.player s.me .hand)).length
+  let yes ← fire t3 [.scored s.me bf true] { yes := true }
+  let no ← fire t3 [.scored s.me bf true] { yes := false }
+  let hold ← fire t3 [.scored s.me bf false] { yes := true }
+  let foe ← fire t3 [.scored s.you bf true] { yes := true }
+  let (u1, _) ← put t1 s.me "OGN-252" .trash
+  let empty ← fire (u1.setZone (.player s.me .hand) []) [.scored s.me bf true] { yes := true }
+  let (v1, _) ← put (t3.setZone (.player s.me .trash) []) s.me "OGN-252" .hand
+  let inHand ← fire v1 [.scored s.me bf true] { yes := true }
+  let (v2, _) ← put (t3.setZone (.player s.me .trash) []) s.me "OGN-252" .base
+  let inBase ← fire v2 [.scored s.me bf true] { yes := true }
+  let (w1, _) ← put t3 s.you "OGN-252" .trash
+  let theirs ← fire w1 [.scored s.me bf true] { yes := true }
+  return (hit.obj? u).map (·.damage) == some 5 &&
+    yes.countIn s.me .hand "OGN-252" == 1 && yes.countIn s.me .trash "OGN-252" == 0 &&
+    handOf yes == handOf t3 && yes.countIn s.me .trash "OGN-136" == 1 &&
+    no.countIn s.me .trash "OGN-252" == 1 && hold.countIn s.me .trash "OGN-252" == 1 &&
+    foe.countIn s.me .trash "OGN-252" == 1 && empty.countIn s.me .trash "OGN-252" == 1 &&
+    inHand.countIn s.me .trash "OGN-136" == 0 && inBase.countIn s.me .trash "OGN-136" == 0 &&
+    theirs.countIn s.you .trash "OGN-252" == 1
+
 end RiftboundTest
