@@ -117,7 +117,8 @@ def applyMove (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
       (r.1.modObj r.2 (moveUnitOf s.turn none), [Event.standardMoved r.2 none]))
   | .battlefield bf =>
     if u ∈ s.zone .battlefieldZone then
-      some (contestBy p bf (s.modObj u (moveUnitOf s.turn (some bf))), [Event.standardMoved u (some bf)])
+      some (contestBy p bf (s.modObj u (moveUnitOf s.turn (some bf))),
+        [Event.standardMoved u (some bf)])
     else
       (moveObj s u .battlefieldZone).map (fun r =>
         (contestBy p bf (r.1.modObj r.2 (moveUnitOf s.turn (some bf))),

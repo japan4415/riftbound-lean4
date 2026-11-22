@@ -2643,7 +2643,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     | .error _ => none
   let on ← use played
   let again := use on
+  let old := s2.modObj other (fun o => { o with playedTurn := some (s2.turn + 1) })
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let theirs := s3.modObj f (fun o => { o with playedTurn := some s3.turn })
+  let (s4, c) ← put s2 s.me "OGN-136" .hand
+  let real ← play s4 s.me c
   return (on.poolOf s.me).energy == pool0 + 1 && on.tired g == some true && (use s2).isNone &&
+    (use old).isNone && (use theirs).isNone && (use real).isSome && (use (s2.tire g)).isNone &&
     again.isNone && !((legalActions s2).contains ⟨.player s.me, .manaAbility g 0⟩) &&
     (legalActions played).contains ⟨.player s.me, .manaAbility g 0⟩
 

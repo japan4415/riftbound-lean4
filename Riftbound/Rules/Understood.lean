@@ -303,12 +303,20 @@ def Trigger.runs (t : Trigger) : Bool :=
         | .pick .all _ .anywhere fs => FilterList.understood fs
         | _ => false))
 
+/-- The guard of an Add is a condition that is understood (`guardOk` lets what it cannot answer
+pass). -/
+def manaGuardUnderstood (body : EffectDef) : Bool :=
+  match body.body with
+  | .ifThen c _ .nop => c.understood
+  | _ => true
+
 /-- An ability the engine carries out. -/
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
     (costPlan costs).isSome &&
-      ((manaKind body).isSome || (body.choices.all Choice.simple && body.body.understood))
+      (((manaKind body).isSome && manaGuardUnderstood body) ||
+        (body.choices.all Choice.simple && body.body.understood))
   | .triggered t body _ =>
     t.runs && body.choices.all Choice.simple && body.body.understood
   | .replacement .. => false
