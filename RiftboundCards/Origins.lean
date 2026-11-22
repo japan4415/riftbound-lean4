@@ -3190,28 +3190,24 @@ def OGN_121.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
+/-- What Teemo does: deal 1 to an enemy unit here for each card with Hidden among the top 5 cards
+of the Main Deck, then recycle the cards that were looked at (as many as the deck has, up to 5). -/
+def teemoStrategistBody : EffectDef :=
+  let recycleNth (i : Nat) : Effect :=
+    .ifThen (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5])) (.const i))
+      (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))) .nop
+  .of [.targetOf .one .enemy .here [.ofType .unit]]
+    (.seqOf [.prim (.deal (.slot 0)
+        (.count (Selector.all .friendly .inMainDeck [.top 5, .hasKeyword .hidden]))),
+      recycleNth 1, recycleNth 2, recycleNth 3, recycleNth 4, recycleNth 5])
+
 /-- Teemo, Strategist. -/
 def OGN_121 : CardDef :=
   { OGN_121.meta with
     abilities := [
-      .triggered (.onSelf .defend)
-      (.of [.targetOf .one .enemy .here [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0)
-          (.count (Selector.all .friendly .inMainDeck [.top 5, .hasKeyword .hidden]))),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])) .unlimited,
+      .triggered (.onSelf .defend) teemoStrategistBody .unlimited,
       .triggered { event := .play, subject := .self, condition := .fromHidden }
-      (.of [.targetOf .one .enemy .here [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0)
-          (.count (Selector.all .friendly .inMainDeck [.top 5, .hasKeyword .hidden]))),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])) .unlimited],
+        teemoStrategistBody .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-122
