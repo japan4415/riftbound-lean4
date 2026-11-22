@@ -6199,8 +6199,12 @@ def OGN_235.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Karma, Channeler: the effect is not written yet. -/
-def OGN_235 : CardDef := OGN_235.meta
+/-- Karma, Channeler. -/
+def OGN_235 : CardDef :=
+  { OGN_235.meta with
+    abilities := [.triggered { event := .recycle, subject := .self }
+      (.of [] (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-236
 /--

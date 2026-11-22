@@ -192,6 +192,8 @@ inductive TriggerEvent where
   | buff
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
+  /-- The player recycles one or more cards (CR 417). -/
+  | recycle
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The unit becomes Mighty. -/

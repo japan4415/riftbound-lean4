@@ -1001,7 +1001,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
-  | .recycle sel => onSelected s p src env sel recycleOne
+  | .recycle sel =>
+    -- recycling a card that is a card (not a Rune), even in its deck, is noted
+    (sel.eval s p src env).map (fun ids =>
+      let r := applyEach recycleOne s ids
+      (r.1, r.2 ++ (if ids.any (fun id => (s.obj? id).isSome && recycleKind s id == .mainDeck)
+        then [Event.recycled p] else [])))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal _ => some (s, [])
   | .spendBuff sel => onSelected s p src env sel unbuffObj
@@ -1017,7 +1022,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (hideObj b)
     | _ => none
-  | .recycleTop ps => (ps.resolve s p).map (fun l => (recycleTopAll s l, []))
+  | .recycleTop ps =>
+    (ps.resolve s p).map (fun l => (recycleTopAll s l,
+      l.filterMap (fun q =>
+        if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
@@ -1104,7 +1112,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
-  | recycle sel => exact onSelected_safe recycleOne_safe h
+  | recycle sel =>
+    simp only [applyPrim] at h
+    cases hs : sel.eval s p src env with
+    | none => simp [hs] at h
+    | some ids =>
+      simp only [hs, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact applyEach_safe (fun t u => recycleOne_safe t u) _ _
   | reveal sel =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
