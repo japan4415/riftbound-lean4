@@ -57,7 +57,7 @@ open Riftbound RiftboundCards
 
 -- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
 -- goal "every card of the first set works" (298)
-#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 250
+#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 251
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 
 -- the cards written down as IR values (docs/coverage.md): 216 by hand, 169 by `transcribe.py`

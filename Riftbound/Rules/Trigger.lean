@@ -155,10 +155,21 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
       else []
     | _, _ => [])
 
+/-- A passive ability of an object the player controls makes the abilities of the event `.die` fire
+one more time. -/
+def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
+  s.inPlay.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
+    (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
-  | .died obj p => triggersOf s obj p .die ++ watchersOf s obj p .die
+  | .died obj p =>
+    let own := triggersOf s obj p .die
+    -- the Deathknell abilities of a unit fire one more time while a passive ability says so
+    let again :=
+      if (s.cardDef? obj).any (·.hasKeyword .deathknell) && s.dieExtra p then own else []
+    own ++ again ++ watchersOf s obj p .die
   | .standardMoved u _ =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move
