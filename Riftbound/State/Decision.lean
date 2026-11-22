@@ -76,6 +76,8 @@ inductive ActionKind where
   | pass
   /-- Concede the game (CR 649-651). -/
   | concede
+  /-- Time is called (TR 408.2). The clock says it; it is not a player's answer. -/
+  | timeCalled
   /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
   | runeAbility (card : ObjId) (ability : RuneAbility)
   /-- Play a card from the hand, paying with the Power of the domains listed (CR 349-359). The

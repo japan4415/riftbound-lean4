@@ -100,6 +100,11 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- every Unit of the other side is named (CR 467.2.c)
   | .assign bf _ side acc _ :: _, .assignDone =>
     a.actor = .player side ∧ s.doneOk bf side acc = true
+  -- the clock calls time, whatever question is open, once, in a 1v1 game under the Tournament
+  -- Rules, after the first turn has begun (TR 408.2)
+  | _, .timeCalled =>
+    a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.playerCount = 2 ∧
+      s.clock = none ∧ s.active.isSome = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

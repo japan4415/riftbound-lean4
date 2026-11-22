@@ -272,6 +272,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_next rfl (fun hb => hb)
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -328,6 +331,11 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    rcases beginTurnStep_cases s rest with e | ⟨r, e⟩
+    rotate_left
+    · rw [e]
+      exact fun hres => by simp at hres
+    rw [e]
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.replace (new := turnFrames s.nextTurnPlayer)

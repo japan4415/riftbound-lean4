@@ -134,6 +134,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -376,6 +379,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/
@@ -450,7 +456,7 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   obtain ⟨actor, kind⟩ := a
   unfold legalFrameActions LegalFrame
   rcases hp : s.pending with _ | ⟨f, rest⟩
-  · simp
+  · cases kind <;> cases actor <;> simp [Actor.isPlayer]
   · cases f <;> cases kind <;> cases actor <;>
       simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
         mem_legalActivates, mem_legalReactions, mem_legalPuts, mem_legalManas]

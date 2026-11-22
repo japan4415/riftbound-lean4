@@ -22,6 +22,11 @@ inductive RuleSet where
   | tournament (format : Format)
 deriving DecidableEq, Repr
 
+/-- The Tournament Rules are in use. -/
+def RuleSet.isTournament : RuleSet → Bool
+  | .coreOnly => false
+  | .tournament _ => true
+
 /-- The rules of a game. -/
 structure GameConfig where
   /-- Core Rules only, or a tournament format. -/

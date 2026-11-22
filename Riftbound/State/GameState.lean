@@ -53,6 +53,9 @@ structure GameState where
   /-- The Rune Pool of each player, keyed by `PlayerId.n`. A missing player has an empty Pool
   (CR 166). -/
   pools : Std.ExtTreeMap Nat RunePool
+  /-- The turn after which the clock ends the game: when time is called, the turn that is going
+  on is played to its end, and 3 turns more (TR 408.2). `none` until time is called. -/
+  clock : Option Nat := none
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/

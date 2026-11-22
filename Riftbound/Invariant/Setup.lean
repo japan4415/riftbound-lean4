@@ -555,6 +555,9 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
@@ -609,6 +612,11 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    rcases beginTurnStep_cases s rest with e | ⟨r, e⟩
+    rotate_left
+    · rw [e]
+      exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
+    rw [e]
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := turnFrames s.nextTurnPlayer)
       rfl (fun g hg => by
         simp only [turnFrames, List.mem_cons, List.not_mem_nil, or_false] at hg
