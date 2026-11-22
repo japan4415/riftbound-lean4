@@ -1037,8 +1037,14 @@ def OGN_043.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Charm: the effect is not written yet. -/
-def OGN_043 : CardDef := OGN_043.meta
+/-- Charm. -/
+def OGN_043 : CardDef :=
+  { OGN_043.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.eitherOf (.cons (.prim (.move (.slot 0) .base))
+            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
+              .nil)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-044
 /--
@@ -3787,8 +3793,13 @@ def OGN_155.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Qiyana, Victorious: the effect is not written yet. -/
-def OGN_155 : CardDef := OGN_155.meta
+/-- Qiyana, Victorious. -/
+def OGN_155 : CardDef :=
+  { OGN_155.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [] (.eitherOf (.cons (.prim (.draw .you (.const 1)))
+        (.cons (.prim (.channel .you (.const 0) (.const 1))) .nil)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-156
 /--
@@ -4224,8 +4235,15 @@ def OGN_173.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ride the Wind: the effect is not written yet. -/
-def OGN_173 : CardDef := OGN_173.meta
+/-- Ride the Wind. -/
+def OGN_173 : CardDef :=
+  { OGN_173.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
+            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
+              .nil)),
+        .prim (.ready (.slot 0))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-174
 /--
@@ -6288,8 +6306,19 @@ def OGN_258.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Dragon's Rage, Lee Sin: the effect is not written yet. -/
-def OGN_258 : CardDef := OGN_258.meta
+/-- Dragon's Rage, Lee Sin. -/
+def OGN_258 : CardDef :=
+  { OGN_258.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
+          (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
+            .nil)),
+        .prim (.deal (Selector.one .enemy .anywhere
+          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0))]) (.mightOf (.slot 0))),
+        -- only when another enemy unit was chosen: the variable names a unit
+        .ifThen (.matches (.var pickVar) (.ofType .unit))
+          (.prim (.deal (.slot 0) (.mightOf (.var pickVar)))) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-259
 /--
@@ -6307,8 +6336,15 @@ def OGN_259.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Unforgiven: the effect is not written yet. -/
-def OGN_259 : CardDef := OGN_259.meta
+/-- Unforgiven. -/
+def OGN_259 : CardDef :=
+  { OGN_259.meta with
+    abilities := [.activated [.pay ⟨2, []⟩, .exhaustSelf] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.exists (Selector.all .friendly .atBattlefield [.ofType .unit, .sameAs (.slot 0)]))
+          (.prim (.move (.slot 0) .base))
+          (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-260
 /--

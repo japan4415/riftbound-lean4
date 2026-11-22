@@ -205,6 +205,9 @@ inductive Frame where
   | discard (p : PlayerId) (n : Nat)
   /-- Choice: player `p` may do the effect `e`; the effects `rest` of the item follow (CR 355). -/
   | mayDo (p : PlayerId) (src : ObjId) (env : Env) (e : Effect) (rest : EffectList)
+  /-- Choice: player `p` chooses between the effects `a` ("yes") and `b` ("no"); the effects `rest`
+  of the item follow (CR 355). -/
+  | eitherDo (p : PlayerId) (src : ObjId) (env : Env) (a b : Effect) (rest : EffectList)
   /-- Choice: player `p` chooses one of the objects `cands` for the effect `e`, which names it
   by the variable `pickVar`; the objects are `c :: more`; the effects `rest` of the item follow
   (CR 355). -/
@@ -234,6 +237,7 @@ def Frame.isPlay : Frame → Bool
   | .triggerOrder .. => true
   | .discard .. => true
   | .mayDo .. => true
+  | .eitherDo .. => true
   | .pickDo .. => true
   | _ => false
 

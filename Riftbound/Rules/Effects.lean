@@ -885,6 +885,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         [.run p src env es], [])
     | none => skip
   | .may e' => (s, [.mayDo p src env e' es], [])
+  | .eitherOf .nil => skip
+  | .eitherOf (.cons a rest) =>
+    -- the player chooses between the first effect ("yes") and the others ("no"), and so on
+    match rest with
+    | .nil => (s, [.run p src env (.cons a es)], [])
+    | .cons b .nil => (s, [.eitherDo p src env a b es], [])
+    | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])

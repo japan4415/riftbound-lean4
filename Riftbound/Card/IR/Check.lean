@@ -48,7 +48,7 @@ mutual
 def Amount.ok (c : Ctx) : Amount → Bool
   | .const _ => true
   | .x => c.hasX
-  | .var v => c.vars.contains v
+  | .var v => c.vars.contains v || v == pickVar
   | .points p => PlayerSel.ok c p
   | .eventAmount => c.eventOk
   | .turnsTaken p => p.ok c
@@ -70,6 +70,7 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .cost _ a => Amount.ok c a
   | .at_ s => Selector.ok c s
   | .not f => Filter.ok c f
+  | .sameAs s => Selector.ok c s
   | _ => true
 
 /-- Every filter of a list refers only to what is there. -/
@@ -82,7 +83,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .self => true
   | .slot i => decide (i < c.slots)
   | .it => c.itOk
-  | .var v => c.vars.contains v
+  | .var v => c.vars.contains v || v == pickVar
   | .pick _ _ _ fs => FilterList.ok c fs
   | .attachedTo s => Selector.ok c s
   | .attachments s => Selector.ok c s
@@ -202,6 +203,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .nop => true
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
+  | .eitherOf modes => EffectList.ok c modes
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
@@ -265,8 +267,10 @@ def Ability.ok : Ability → Bool
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by
   simp [Selector.ok]
 
-/-- A variable is found exactly when it was bound. -/
-theorem Amount.ok_var (c : Ctx) (v : VarId) : Amount.ok c (.var v) = true ↔ v ∈ c.vars := by
+/-- A variable is found exactly when it was bound, or it is the one that names the object chosen
+while the effect resolves. -/
+theorem Amount.ok_var (c : Ctx) (v : VarId) :
+    Amount.ok c (.var v) = true ↔ v ∈ c.vars ∨ v = pickVar := by
   simp [Amount.ok]
 
 /-- A bound variable can be used in the effect it is bound for, and in nothing else. -/
