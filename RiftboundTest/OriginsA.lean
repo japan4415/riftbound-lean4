@@ -2945,11 +2945,37 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (f.obj? far).map (·.damage) == some 0 && runes f == runes fury &&
     m.handN s.me == mind.handN s.me + 1 && (m.obj? big).map (·.damage) == some 0 &&
     (o.obj? big).map (·.stunned) == some true && (o.obj? small).map (·.stunned) == some false &&
-    (m.obj? small).map (·.stunned) == some false && (f.obj? small).map (·.stunned) == some false &&
+    (m.obj? small).map (·.stunned) == some false &&
+    (f.obj? small).map (·.stunned) == some false &&
     (f.zone (.player s.me .runeDeck)).getLast?.isSome &&
     (f.zone (.player s.me .runeDeck)).getLast? !=
       (fury.zone (.player s.me .runeDeck)).getLast? &&
     c.handN s.me == calm.handN s.me && (c.obj? big).map (·.damage) == some 0 &&
     (c.obj? big).map (·.stunned) == some false
+
+-- Karthus, Eternal (OGN-236): my Deathknell abilities trigger an additional time
+#guard t fun s => do
+  let (s1, k) ← putAt s s.me "OGN-190" s.bf0
+  let (s2, _) ← put s1 s.me "OGN-236" .base
+  let (s3, plain) ← putAt s s.me "OGN-190" s.bf0
+  let (s4, other) ← putAt s2 s.me "OGN-136" s.bf0
+  let (theirs, foe) ← putAt s s.you "OGN-190" s.bf0
+  let (withK, evK) := killObj s2 k
+  let (without, ev) := killObj s3 plain
+  let (noKw, evO) := killObj s4 other
+  let (foeK, evF) := killObj theirs foe
+  let (t2, _) ← put theirs s.me "OGN-236" .base
+  let (foeK2, evF2) := killObj t2 foe
+  -- a card that has a trigger for its death but not the keyword (Scrapheap) is not doubled, and
+  -- two Karthus still make it twice
+  let (u1, scrap) ← putAt s2 s.me "OGN-182" s.bf0
+  let (scrapK, evS) := killObj u1 scrap
+  let (u2, _) ← put s2 s.me "OGN-236" .base
+  let (twoK, ev2) := killObj u2 k
+  let a2 := (twoK.detect ev2).length
+  return (scrapK.detect evS).length == 1 && a2 == 2 &&
+    (withK.detect evK).length == 2 && (without.detect ev).length == 1 &&
+    (noKw.detect evO).length == 0 && (foeK.detect evF).length == 1 &&
+    (foeK2.detect evF2).length == 1
 
 end RiftboundTest
