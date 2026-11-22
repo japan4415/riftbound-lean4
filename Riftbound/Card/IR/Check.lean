@@ -58,6 +58,8 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .xp => true
   | .pointsLeft => true
   | .victoryScore => true
+  | .highestMight s => Selector.ok c s
+  | .cardsPlayed => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
   | .sub a b => Amount.ok c a && Amount.ok c b

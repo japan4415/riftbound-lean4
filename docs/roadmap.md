@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-23）: 最高の Might による値引き、2 枚目のプレイ、バフの上乗せ（3 枚）
+
+- **エンジン**: `Amount.highestMight`（選んだ物体の、最高の Might。費用の計算で読む）、`Amount.cardsPlayed`（このターンにプレイしたカードの枚数。プレイし直したカードは、1 枚と数える）、`TurnEffect.buffsExtraMight`（このターン、バフが、さらに +1 Might を与える）。費用の引き算（`costCuts`）は、パッシブの Might を読む（`Amount.evalS`）。
+- **動くようになったカード**: Sky Splitter（014）、Darius, Trifarian（027）、Stand United（053）。
+- **動くカード**: 219 → **222 枚**。
+- **近似として残したこと**: Stand United の「バフが、さらに +1」は、`mightNow` だけが読む（`Filter.might` などは、読まない）。Darius の「2 枚目」は、自分自身のプレイも数える。
+
 ### M7 の実装の記録（2026-11-23）: 条件つきの「準備完了で入る」と、Might の下限（3 枚）
 
 - **エンジン**: `Amount.victoryScore`（モードの勝利点。パッシブによる増減は、含まない）。`GameState.readyNow`（カード自身の、条件つきのパッシブ。場にある、自分のオブジェクトのパッシブ。ターンの効果）が、「準備完了で入る」を決める（`StaticMod.entersReady` は、選択子つきで動く）。パッシブの `mightMinusMin`（下限つき）は、ほかの変化のあとに読む（`modFloor`・`mightNow`）。

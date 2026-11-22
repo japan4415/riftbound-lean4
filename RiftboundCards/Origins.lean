@@ -354,8 +354,14 @@ def OGN_014.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sky Splitter: the effect is not written yet. -/
-def OGN_014 : CardDef := OGN_014.meta
+/-- Sky Splitter. -/
+def OGN_014 : CardDef :=
+  { OGN_014.meta with
+    abilities := [.passive .always
+      [.costMinus .self (.highestMight (Selector.all .friendly .anywhere [.ofType .unit]))]],
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.const 5)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-015
 /--
@@ -666,8 +672,15 @@ def OGN_027.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Darius, Trifarian: the effect is not written yet. -/
-def OGN_027 : CardDef := OGN_027.meta
+/-- Darius, Trifarian. -/
+def OGN_027 : CardDef :=
+  { OGN_027.meta with
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere [],
+        condition := .cmp .eq .cardsPlayed (.const 2) }
+      (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn, .prim (.ready .self)]))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-028
 /--
@@ -1334,8 +1347,12 @@ def OGN_053.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Stand United: the effect is not written yet. -/
-def OGN_053 : CardDef := OGN_053.meta
+/-- Stand United. -/
+def OGN_053 : CardDef :=
+  { OGN_053.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.buff (.slot 0)), .prim (.turnEffect .buffsExtraMight)])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-054
 /--

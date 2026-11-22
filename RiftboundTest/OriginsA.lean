@@ -2352,4 +2352,44 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let enemyWurm := (t2.cardDef? u).map (fun d => t2.readyNow s.me u d)
   return readyUnits a s.me == readyUnits s2 s.me + 1 && enemyWurm == some false && e == e
 
+-- Sky Splitter (OGN-014): costs less by the highest Might among my units (not below 0); 5 damage
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-014" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .base
+  let (s3, _) ← put s2 s.me "OGN-001" .base
+  let (s4, _) ← put s3 s.me "OGN-116" .base
+  let (s5, _) ← put s4 s.you "OGN-116" .base
+  let (s6, e) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s7, _) ← put s2 s.you "OGN-001" .base
+  let a ← play s6 s.me c [e]
+  return energyNow s1 s.me c == energyPrinted s1 c &&
+    energyNow s2 s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow s3 s.me c == (energyPrinted s1 c).map (· - 5) &&
+    energyNow s4 s.me c == some 1 && energyNow s5 s.me c == some 1 &&
+    energyNow s7 s.me c == (energyPrinted s1 c).map (· - 2) &&
+    (a.obj? e).map (·.damage) == some 5
+
+-- Darius, Trifarian (OGN-027): when I play my second card in a turn, +2 Might this turn and ready
+#guard t fun s => do
+  let (s1, d) ← put s s.me "OGN-027" .base
+  let (s2, a) ← put (s1.tire d) s.me "OGN-136" .hand
+  let (s3, b) ← put s2 s.me "OGN-136" .hand
+  let (s4, c) ← put s3 s.me "OGN-136" .hand
+  let one ← play s4 s.me a
+  let two ← play one s.me b
+  let three ← play two s.me c
+  return one.tired d == some true && one.mightNow d == some 6 &&
+    two.tired d == some false && two.mightNow d == some 8 && three.mightNow d == some 8
+
+-- Stand United (OGN-053): buff a friendly unit; buffs give friendly units +1 Might more this turn
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-053" .hand
+  let (s2, mine) ← put s1 s.me "OGN-136" .base
+  let (s3, old) ← put s2 s.me "OGN-136" .base
+  let (s4, foe) ← put s3 s.you "OGN-136" .base
+  let plain := (s4.buff old).buff foe
+  let a ← play (s4.buff old |>.buff foe) s.me c [mine]
+  return plain.mightNow old == some 3 && a.mightNow mine == some 4 && a.mightNow old == some 4 &&
+    a.mightNow foe == some 3
+
 end RiftboundTest
