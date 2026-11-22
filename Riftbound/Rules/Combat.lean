@@ -193,11 +193,17 @@ namespace GameState
 /-- Whether a Unit has Tank (CR 815). -/
 def isTank (s : GameState) (u : ObjId) : Bool := s.hasKw u .tank
 
+/-- Whether a Unit must be assigned damage last: a passive ability says so, and it has no Tank. -/
+def isLast (s : GameState) (u : ObjId) : Bool :=
+  !s.isTank u && (s.activeMods u).contains .assignedLast
+
 /-- A Unit that can be named next in the order of the assignment: a Unit of the other side not
-named yet, and a Tank Unit before any Unit without Tank (CR 815, 467.2.c). -/
+named yet, a Tank Unit before any Unit without Tank (CR 815, 467.2.c), and a Unit that must be
+assigned damage last after the others. -/
 def pickOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) (u : ObjId) : Bool :=
   decide (u ∈ s.foes bf side) && decide (u ∉ acc) &&
-    (s.isTank u || (s.foes bf side).all (fun v => !s.isTank v || decide (v ∈ acc)))
+    ((s.isTank u || (s.foes bf side).all (fun v => !s.isTank v || decide (v ∈ acc))) &&
+      (!s.isLast u || (s.foes bf side).all (fun v => s.isLast v || decide (v ∈ acc))))
 
 /-- Every Unit of the other side has been named. -/
 def doneOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) : Bool :=
@@ -254,20 +260,39 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
     · obtain ⟨t, htm, hta, htt⟩ := ht
       refine ⟨⟨.player side, .assignPick t⟩,
         mem_legalAssigns.mpr (Or.inl ⟨t, rfl, ?_⟩), by simp⟩
+      have hl : s.isLast t = false := by simp [GameState.isLast, htt]
       unfold GameState.pickOk
-      simp [htm, hta, htt]
-    · obtain ⟨v, hvm, hva⟩ := hex
-      refine ⟨⟨.player side, .assignPick v⟩,
-        mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
-      unfold GameState.pickOk
-      simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, List.all_eq_true,
-        Bool.not_eq_true']
-      refine ⟨⟨hvm, hva⟩, Or.inr (fun w hw => ?_)⟩
-      by_cases hwt : s.isTank w = true
-      · right
-        exact Classical.byContradiction (fun hwa => ht ⟨w, hw, by simpa using hwa, hwt⟩)
-      · left
-        simpa using hwt
+      simp [htm, hta, htt, hl]
+    · -- no Tank is left: a Unit that is not last if there is one, any Unit otherwise
+      have htank (w : ObjId) (hw : w ∈ s.foes bf side) :
+          (!s.isTank w || decide (w ∈ acc)) = true := by
+        by_cases hwt : s.isTank w = true
+        · have hwa : w ∈ acc := Classical.byContradiction (fun hwa => ht ⟨w, hw, hwa, hwt⟩)
+          simp [hwa]
+        · have : s.isTank w = false := by simpa using hwt
+          simp [this]
+      by_cases hn : ∃ v ∈ s.foes bf side, v ∉ acc ∧ s.isLast v = false
+      · obtain ⟨v, hvm, hva, hvl⟩ := hn
+        refine ⟨⟨.player side, .assignPick v⟩,
+          mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
+        unfold GameState.pickOk
+        simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, List.all_eq_true,
+          Bool.not_eq_true', hvl]
+        exact ⟨⟨hvm, hva⟩, Or.inr (fun w hw => by simpa using htank w hw), Or.inl trivial⟩
+      · obtain ⟨v, hvm, hva⟩ := hex
+        refine ⟨⟨.player side, .assignPick v⟩,
+          mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
+        unfold GameState.pickOk
+        simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, List.all_eq_true,
+          Bool.not_eq_true']
+        refine ⟨⟨hvm, hva⟩, Or.inr (fun w hw => by simpa using htank w hw),
+          Or.inr (fun w hw => ?_)⟩
+        by_cases hwa : w ∈ acc
+        · right; exact hwa
+        · left
+          by_cases hwl : s.isLast w = false
+          · exact absurd ⟨w, hw, hwa, hwl⟩ hn
+          · simpa using hwl
 
 /-! ### Dealing the damage and ending the Combat -/
 

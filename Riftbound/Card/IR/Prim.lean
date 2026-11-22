@@ -253,6 +253,8 @@ inductive StaticMod where
   | oppsPlayToBaseOnly
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
   | noReadyOfOpps
+  /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
+  | assignedLast
   /-- The Unit can have any number of buffs. -/
   | anyBuffs
   /-- The friendly Units can be played to an open Battlefield. -/
