@@ -118,6 +118,9 @@ inductive TurnEffect where
   | recallOnDeath
   /-- The dead card was marked to be recalled when it died: the note is about the dead card. -/
   | recallDied
+  /-- The player had a unit at the Battlefield chosen with a spell this turn (a Battlefield of
+  theirs waits for the first time). -/
+  | chosenHere
   /-- Hiding costs nothing this turn. -/
   | hideFree
   /-- The object has been paid one unit for ("pay any amount"): one note for each unit paid. -/

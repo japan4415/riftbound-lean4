@@ -329,6 +329,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self
       | .killBySpell => t.subject == .self
+      | .chosenHere => t.subject == .self
       | .recycle => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self

@@ -32,7 +32,7 @@ def playedOf (p : PlayerId) (es : List Event) : List Event :=
 /-- The events a step has besides those of the rules it ran: playing a card (CR 349). -/
 def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
-  | .playCard .., .player p => playedOf p es
+  | .playCard _ _ ts, .player p => playedOf p es ++ ts.map (Event.chosenBySpell p)
   | _, _ => []
 
 /-- The condition holds for the object when the event happens: none, a fact of how the object was
@@ -182,6 +182,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o => triggersOf s u o.controller .conquer
     | none => []
+  | .chosenBySpell p t =>
+    -- a Battlefield waits for its player's chosen unit at it
+    (s.zone .battlefieldZone).flatMap (fun bf =>
+      if (s.cardDef? t).any (·.hasType .unit) &&
+          (s.obj? t).any (fun o => o.controller == p && o.loc == some bf) then
+        triggersOf s bf p .chosenHere
+      else [])
   | .killedBySpell p =>
     (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .killBySpell)
   | .recycled p =>

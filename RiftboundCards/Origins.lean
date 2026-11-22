@@ -7803,8 +7803,14 @@ def OGN_292.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Dreaming Tree: the effect is not written yet. -/
-def OGN_292 : CardDef := OGN_292.meta
+/-- The Dreaming Tree. -/
+def OGN_292 : CardDef :=
+  { OGN_292.meta with
+    abilities := [.triggered { event := .chosenHere, subject := .self }
+      (.of [] (.ifThen (.not (.noted .chosenHere))
+        (.seqOf [.prim (.turnEffect .chosenHere), .prim (.draw .you (.const 1))]) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-293
 /--
