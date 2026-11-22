@@ -144,6 +144,12 @@ def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
 def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
   (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
 
+/-- A unit that takes damage is killed, by an effect of this turn that is about every unit or about
+this one. -/
+def GameState.killOnHit (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .killOnDamage &&
+    (f.target.isNone || f.target == some id))
+
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)

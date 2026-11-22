@@ -184,6 +184,7 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
+  | .markOn s _ => s.understood
   | .pay _ => true
   | .addEnergy ps n none => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC

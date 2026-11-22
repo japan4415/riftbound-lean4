@@ -32,6 +32,8 @@ structure TurnFx where
   stamp : Nat
   /-- What it is. -/
   kind : TurnEffect
+  /-- The object it is about, if it is about one. -/
+  target : Option ObjId := none
 deriving DecidableEq, Repr
 
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/

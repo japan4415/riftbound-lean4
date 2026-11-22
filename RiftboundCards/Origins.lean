@@ -5715,8 +5715,11 @@ def OGN_221.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Imperial Decree: the effect is not written yet. -/
-def OGN_221 : CardDef := OGN_221.meta
+/-- Imperial Decree. -/
+def OGN_221 : CardDef :=
+  { OGN_221.meta with
+    spellEffect := some (.of [] (.prim (.turnEffect .killOnDamage))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-222
 /--
@@ -6586,8 +6589,12 @@ def OGN_254.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Noxian Guillotine, Darius: the effect is not written yet. -/
-def OGN_254 : CardDef := OGN_254.meta
+/-- Noxian Guillotine, Darius. -/
+def OGN_254 : CardDef :=
+  { OGN_254.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.ifThen .legion (.prim (.kill (.slot 0))) (.prim (.markOn (.slot 0) .killOnDamage)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-255
 /--

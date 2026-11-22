@@ -111,6 +111,8 @@ inductive Prim where
   | win (p : PlayerSel)
   /-- Make something true for the rest of the turn. -/
   | turnEffect (e : TurnEffect)
+  /-- Make something true for the rest of the turn about the objects. -/
+  | markOn (s : Selector) (e : TurnEffect)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
 deriving DecidableEq, Repr, Hashable

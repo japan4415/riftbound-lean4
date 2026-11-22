@@ -107,6 +107,8 @@ inductive TurnEffect where
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/
   | buffsExtraMight
+  /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
+  | killOnDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/

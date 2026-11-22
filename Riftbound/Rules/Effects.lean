@@ -78,7 +78,20 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
 
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
-  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
+  { s with turnFx := s.turnFx ++
+      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e }] }
+
+/-- The same, about an object. -/
+def GameState.addTurnFxOn (s : GameState) (p : PlayerId) (id : ObjId) (e : TurnEffect) :
+    GameState :=
+  { s with turnFx := s.turnFx ++
+      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e, target := some id }] }
+
+/-- A lasting effect about an object is a safe change. -/
+theorem addTurnFxOn_safe (s : GameState) (p : PlayerId) (id : ObjId) (e : TurnEffect) :
+    Safe s (s.addTurnFxOn p id e) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
 theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
@@ -115,7 +128,13 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   | some _ =>
     -- an object whose passive ability says it takes no damage takes none
     if (s.activeMods id).contains .noDamage then (s, [])
-    else (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
+    else
+      let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
+      -- a unit that takes damage while an effect of the turn says so is killed
+      if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
+        let k := killObj s1 id
+        (k.1, Event.damaged id n :: k.2)
+      else (s1, [Event.damaged id n])
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
@@ -124,7 +143,12 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n 
   split
   · split
     · exact Safe.refl s
-    · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+    · dsimp only
+      have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
+        Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+      split
+      · exact h1.trans (killObj_safe _ id)
+      · exact h1
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -853,6 +877,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e => some (s.addTurnFx p e, [])
+  | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
   | .pay c =>
     match s.payNow p src c with
     | some pool => some (s.setPool p pool, [])
@@ -996,6 +1021,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           simp only [hl, hn, hx, Option.bind_some, Option.map_some, Option.some.injEq] at h
           rw [← h]
           exact channelAll_safe k x l s
+  | markOn sel e =>
+    simp only [applyPrim] at h
+    exact onSelected_safe (fun t id => addTurnFxOn_safe t p id e) h
   | turnEffect e =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
@@ -1152,6 +1180,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .bin s => some s
   | .discardCard s => some s
   | .play s => some s
+  | .markOn s _ => some s
   | .playTo s _ => some s
   | .reveal s => some s
   | .move s d =>
@@ -1178,6 +1207,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
+  | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
   | .reveal _ => .reveal sel
   | .move s d =>
