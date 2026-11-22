@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: フィルタ `top n`（持ち主の Main Deck の上から n 枚の中）、数 `costOf`（選んだカードの Energy 費用）、プリミティブ `reveal`（見せる。何も変えないが、選ぶ）。**Main Deck のカードを Recycle する**と、同じゾーンのまま一番下へ回る（`recycleOne`）。**Battlefield の誘発**: 戦闘が始まるとき、そこで攻撃・防御するプレイヤーのために、Battlefield 自身の `attack`・`defend` の能力が働く。
 - **書いた 6 枚**: Get Excited!（008）、Stacked Deck（183）、Fading Memories（180。`eitherOf` で、Unit か Gear を選ぶ）、Pack of Wonders（181）、Hidden Blade（213。殺される Unit の controller が 2 枚引く）、Reaver's Row（285）。変異で、テストが落ちることを確かめた。
 - **動くカード**: 190 → **196 枚**。
-- **近似として残したこと**: Get Excited! の「捨てる」は、Trash へ送るだけ（「捨てた」出来事は出ない）。Pack of Wonders の 3 つの選択は、「はい」「いいえ」の順に聞く。
+- **レビューで直したこと**: 選んだ手札のカードを捨てる動作 `discardCard`（「捨てた」出来事が出る。Scrapheap の誘発が働く）。Get Excited! と Mindsplitter は、これを使う。Get Excited! のテストは、費用と Might が違うカード、空の手札、Scrapheap の誘発を確かめる。Hidden Blade は、Unit が死ぬことを確かめる。
+- **近似として残したこと**: Fading Memories の選択肢は、成り立つかを見ずに選べる（Unit がなければ、「はい」で何も起きない）。Hidden Blade の引くことは、死ぬことの前に起きる。Pack of Wonders の 3 つの選択は、「はい」「いいえ」の順に聞く。Pack of Wonders の 3 つの選択は、「はい」「いいえ」の順に聞く。
 
 ### M7 の実装の記録（2026-11-22）: 「バトルフィールドへプレイする」と、相手の手札・伏せたカードを選ぶ
 

@@ -1872,15 +1872,21 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire tired [.died x s.me]
   return a.tired m == some false && a.tired o == some true
 
--- Get Excited! (OGN-008): discard a card, and its Energy cost is dealt to a unit at a battlefield
+-- Get Excited! (OGN-008): discard a card, and its Energy cost is dealt to a unit at a battlefield;
+-- the discard sets off Scrapheap (OGN-182); with an empty hand nothing is dealt
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-008" .hand
-  let (s2, x) ← put s1 s.me "OGN-001" .hand
+  let (s2, x) ← put s1 s.me "OGN-051" .hand
   let (s3, e) ← putAt s2 s.you "OGN-116" s.bf0
   let a ← play s3 s.me c [e] { obj := fun o => o == x }
   let cost := ((s3.cardDef? x).bind (·.cost)).map (·.energy)
-  return (a.obj? e).map (·.damage) == cost.map id && cost.isSome &&
-    a.countIn s.me .trash "OGN-001" == 1 && a.countIn s.me .hand "OGN-001" == 0
+  let might := (s3.cardDef? x).bind (·.might)
+  let (t1, sc) ← put s3 s.me "OGN-182" .hand
+  let b ← play (t1.setZone (.player s.me .hand) [c, sc]) s.me c [e] { obj := fun o => o == sc }
+  let empty ← play (s3.setZone (.player s.me .hand) [c]) s.me c [e]
+  return (a.obj? e).map (·.damage) == cost && cost.isSome && cost.map Int.ofNat != might &&
+    a.countIn s.me .trash "OGN-051" == 1 && b.handN s.me == 1 &&
+    (empty.obj? e).map (·.damage) == some 0
 
 -- Stacked Deck (OGN-183): one of the top 3 cards into my hand, the other two recycled
 #guard t fun s => do
@@ -1927,7 +1933,8 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, m) ← putAt s2 s.me "OGN-136" s.bf0
   let a ← play s3 s.me c [e]
   let b ← play s3 s.me c [m]
-  return a.handN s.you == s3.handN s.you + 2 && a.handN s.me == s3.handN s.me - 1 &&
+  return (a.obj? e).isNone && (b.obj? m).isNone &&
+    a.handN s.you == s3.handN s.you + 2 && a.handN s.me == s3.handN s.me - 1 &&
     b.handN s.me == s3.handN s.me - 1 + 2 && b.handN s.you == s3.handN s.you
 
 -- Reaver's Row (OGN-285): when I defend here, I may move a friendly unit here to my base

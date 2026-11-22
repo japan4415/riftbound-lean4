@@ -390,6 +390,24 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
+def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .trash s id
+  match s.obj? id with
+  | some o =>
+    (r.1, r.2 ++ r.2.filterMap (fun e =>
+      match e with
+      | .moved _ n _ => some (Event.discarded o.owner n true)
+      | _ => none))
+  | none => r
+
+/-- Discarding a card is a safe change. -/
+theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
+  unfold discardObj
+  split
+  · exact sendObj_safe .trash s id
+  · exact sendObj_safe .trash s id
+
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
   ⟨fun hwf => GameState.wf_gainPoints hwf p n, fun _ => List.Perm.refl _,
@@ -706,6 +724,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some (b :: _) => onSelected s p src env sel (playFreeAt p b)
     | _ => none
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
+  | .discardCard sel => onSelected s p src env sel discardObj
   | .hideAt sel bfs =>
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (hideObj b)
@@ -793,6 +812,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hb] at h
         exact onSelected_safe (playFreeAt_safe p b) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
+  | discardCard sel => exact onSelected_safe discardObj_safe h
   | hideAt sel bfs =>
     simp only [applyPrim] at h
     cases hb : bfs.eval s p src env with
@@ -957,6 +977,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .recycle s => some s
   | .spendBuff s => some s
   | .bin s => some s
+  | .discardCard s => some s
   | .reveal s => some s
   | .move s d =>
     match s, d with
@@ -980,6 +1001,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel
+  | .discardCard _ => .discardCard sel
   | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with

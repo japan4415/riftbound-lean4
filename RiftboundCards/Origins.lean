@@ -207,7 +207,7 @@ def OGN_008 : CardDef :=
   { OGN_008.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.seqOf [.prim (.reveal (Selector.one .friendly .inHand [])),
-        .prim (.deal (.slot 0) (.costOf (.var pickVar))), .prim (.bin (.var pickVar))])),
+        .prim (.deal (.slot 0) (.costOf (.var pickVar))), .prim (.discardCard (.var pickVar))])),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-009
@@ -4811,7 +4811,7 @@ def OGN_192.meta : CardDef :=
 def OGN_192 : CardDef :=
   { OGN_192.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.prim (.bin (Selector.one .enemy .inHand [])))) .unlimited],
+      (.of [] (.prim (.discardCard (Selector.one .enemy .inHand [])))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-193
