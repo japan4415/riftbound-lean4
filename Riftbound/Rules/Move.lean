@@ -87,6 +87,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  mightMods := [], tempKws := [], attached := none, buffed := false,
                  hiddenAt := none, hiddenTurn := none, moves := 0, movesTurn := none,
+                 prevLoc := none,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

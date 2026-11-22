@@ -7208,7 +7208,8 @@ def OGN_277.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Back-Alley Bar. -/
+/-- Back-Alley Bar. Approximation: a unit that an effect sends to the Base does not count as having
+moved from here. -/
 def OGN_277 : CardDef :=
   { OGN_277.meta with
     abilities := [.triggered

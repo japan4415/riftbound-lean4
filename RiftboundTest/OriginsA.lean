@@ -3053,13 +3053,22 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (b, ev2) ← moveTo s4 s.me there (.battlefield bf1)
   let (c, ev3) ← moveTo s4 s.me here .base
   let (d, ev4) ← moveTo s4 s.you foe (.battlefield bf1)
-  let (e, ev5) ← moveTo (s4.modObj bar (fun o => o)) s.me there (.battlefield bar)
+  -- (a move to the bar, not from it)
+  let (e, ev5) ← moveTo s4 s.me there (.battlefield bar)
   let a' ← fire a ev
   let b' ← fire b ev2
   let c' ← fire c ev3
   let d' ← fire d ev4
   let e' ← fire e ev5
-  return a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
+  -- an effect moves a unit from the bar; a second move of the same unit is not from here
+  let (f, ev6) := sendToBf s.bf0 s4 here
+  let f' ← fire f ev6
+  let (g, ev7) ← moveTo a s.me here (.battlefield s.bf0)
+  let g' ← fire g ev7
+  let stale := { a' with turn := a'.turn + 1 }
+  return f'.mightNow here == some 3 && g'.mightNow here == some 2 &&
+    (Filter.movedFromHere.holds stale bar {} here) == some false &&
+    a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
     d'.mightNow foe == some 3 && e'.mightNow there == some 2
 
 end RiftboundTest
