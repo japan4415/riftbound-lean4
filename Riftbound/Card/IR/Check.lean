@@ -206,7 +206,9 @@ def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
 
 /-- A trigger refers only to what is there. -/
 def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
-  Selector.ok c t.subject && Condition.ok c t.condition
+  -- the condition may use the object the ability watches (slot 0); the subject may not
+  Selector.ok c t.subject &&
+    Condition.ok { c with slots := if t.subject == .self then 0 else 1 } t.condition
 
 /-- How many effects a list holds. -/
 def EffectList.length : EffectList → Nat
@@ -280,7 +282,7 @@ def Ability.ok : Ability → Bool
   | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
-    Trigger.ok { itOk := true, slots := if t.subject == .self then 0 else 1 } t &&
+    Trigger.ok { itOk := true } t &&
       body.ok { itOk := true, slots := if t.subject == .self then 0 else 1 }
 
 /-- A chosen object is found exactly when its slot was declared. -/

@@ -2856,7 +2856,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let b ← fire same ev2
   let c ← fire own ev3
   let d ← fire home ev4
+  -- Volibear in his Base: every battlefield is another one
+  let (t1, _) ← put s s.me "OGN-158" .base
+  let (t2, foe3) ← put t1 s.you "OGN-136" .base
+  let (inBase, ev5) ← moveTo t2 s.you foe3 (.battlefield s.bf0)
+  let e ← fire inBase ev5
   return a.handN s.me == other.handN s.me + 1 && b.handN s.me == same.handN s.me &&
-    c.handN s.me == own.handN s.me && d.handN s.me == home.handN s.me
+    c.handN s.me == own.handN s.me && d.handN s.me == home.handN s.me &&
+    e.handN s.me == inBase.handN s.me + 1
 
 end RiftboundTest
