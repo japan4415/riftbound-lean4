@@ -157,6 +157,8 @@ inductive TriggerEvent where
   | draw
   /-- A card is discarded. -/
   | discard
+  /-- The object is stunned. -/
+  | stun
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The unit becomes Mighty. -/
