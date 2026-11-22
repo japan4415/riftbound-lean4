@@ -464,6 +464,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **エンジンの変更なし**（第 5 弾の `mightOf` の評価と、2 つの対象の選択だけで書ける）。テストの道具 `payOf` は、「どの領域の Power でもよい」記号（Last Breath の費用）を、Fury で払う。
 - **書いた 5 枚**: Poro Herder（061。Poro を持てば、自分を Buff して 1 枚引く）、Solari Chief（225。Stun 済みなら Kill、そうでなければ Stun）、Last Breath（260）、Challenge（128）、Carnivorous Snapvine（149。互いの Might に等しいダメージを与え合う。Snapvine 自身が死ぬことも、テストで確かめた）。
+- **レビューで足したこと**: Challenge の与えるダメージ量（生き残る側で確かめる）と、Might 5 同士の相打ち、Poro Herder の否定（Poro でない味方・敵の Poro だけ）のテスト。パッシブの Might の増減の量が `mightOf` のとき、まだ 0 になる（`modMight` は `evalS0`）。
 - **近似として残したこと**: 「Challenge」と「Last Breath」の 2 つの対象は、どちらも必須（「いない」ときは唱えられない）。
 
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 5 弾: 攻撃・防御・保持・制圧の誘発と、場所を持つパッシブ）

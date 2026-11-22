@@ -707,4 +707,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.damage) == (s3.mightNow c).map Int.toNat && (s3.mightNow c) == some 6 &&
     a.countIn s.me .trash "OGN-149" == 1 && (a.obj? g).map (·.damage) == some 0
 
+-- Challenge: the damage is each unit's Might (the survivor shows it), and two units of Might 5
+-- kill each other
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-128" .hand
+  let (s2, f) ← put s1 s.me "OGN-116" .base
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let a ← play s3 s.me c [f, e]
+  let (t1, d) ← put s1 s.me "OGN-001" .base
+  let (t2, g) ← put t1 s.you "OGN-001" .base
+  let b ← play t2 s.me c [d, g]
+  return (a.obj? f).map (·.damage) == some 5 && (a.obj? e).isNone &&
+    (b.obj? d).isNone && (b.obj? g).isNone
+
+-- Poro Herder: a unit that is not a Poro, or a Poro of the opponent, is not enough
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-061" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s1 s.you "OGN-013" .base
+  let a ← play s2 s.me c
+  let b ← play s3 s.me c
+  let ha ← a.firstOf s.me .base "OGN-061"
+  let hb ← b.firstOf s.me .base "OGN-061"
+  return (a.obj? ha).map (·.buffed) == some false && a.handN s.me == s2.handN s.me - 1 &&
+    (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s3.handN s.me - 1
+
 end RiftboundTest
