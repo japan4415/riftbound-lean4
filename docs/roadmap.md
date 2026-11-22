@@ -460,6 +460,16 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M5b の実装の記録（2026-11-22）: Limited のデッキからゲームを始める（TR 602.4）
+
+- **入れたもの**: `GameState.initialLimited db env config decks`（`Rules/Setup.lean`）。Sealed か Draft の設定で、`LimitedDeck`（Legend と Chosen Champion は無くてよい）から、ゲームの最初の状態を作る。Legend や Chosen Champion が無いデッキは、そのゾーンが空になる。追加ドロー（前の単位）は、そのゾーンを読むので、**実際のデッキで動く**。
+- **始められる条件**（`LimitedStartOk`）: デッキの数がプレイヤーの数と同じ、設定が遊べる（`GameConfig.Valid`）、Limited のフォーマット（`RuleSet.limitedMinMain` が値を持つ）、どのデッキも `LimitedDeckValid`（Sealed は 25 枚以上、Draft は 20 枚以上: TR 602.4）、**どのデッキも Battlefield を 1 枚以上持つ**（無作為な選択のため: CR 487.5。Limited の Battlefield の枚数は TR 602.3 の原文が要るので、1 枚以上だけを求めた）。Core Rules と Constructed では `none`。
+- **証明**: 既存の `addDeck` の補題（`addDeck_wf`、`_ownerOk`、`_grows`、`_hand`）と、その `addDecks` 版を、`addLimitedDeck` 用に複製して通した。`initialLimited_wf`・`_ownerOk`・`_setup`・`_pending`・`_setupInv`・`_stack`・`_handInv`、`LimitedStartOk.battlefields`。**`Reachable` の出発点を `Start`（Core のゲームか Limited のゲーム）にした**ので、`Reachable.inv`・`setup`・`stack`・`handInv` が Limited のゲームにも成り立つ（`Reachable.progress` などは、これらから従う）。
+- **テスト**（`RiftboundTest/LimitedStart.lean`）: Sealed の 25 枚で始まる（Legend も Chosen Champion も無くてよい）、24 枚では始まらない、Draft は 20 枚、Constructed と Core Rules では始まらない、Battlefield が無い・Rune が 11 枚・Domain Identity の外のカードがあると始まらない、デッキが 1 つでは始まらない、Legend と Chosen Champion のゾーンが空（あるデッキは 1 枚）、追加ドローの手札（Legend だけ無い、Chosen Champion だけ無い、両方無い、ある）。期待を間違えると失敗することも確かめた。
+- **ビューア**: `riftbound-trace seed turns limited` が、`initialLimited` で、Legend も Chosen Champion も無い Sealed のデッキ（`demoLimitedDeck`）のゲームを出す。seed 2 では、Legend と Champion のゾーンが空で、ターン 1 の P1 の手札が 6 枚（通常は 5 枚）。
+- **まだ無いもの（M5b の残り）**: Limited の Battlefield（blank、1 マッチに 1 回: TR 602.3）、Limited の Domain Identity の「1 ドメイン + Legend のドメイン」（TR 602.4.a.3）、Limited のデッキの Rune Deck の枚数と領域（TR の原文が要る）、I14 の全体、ゲームの合間の時間切れ、シングルエリミネーション、2v2、`GameConfig.Valid`、Bo1 の準備、TR 403.8。
+- **次の候補**: Limited のデッキでマッチを行う（`riftbound-match` が Limited の設定を受ける）、I14 の全体、ビューアのライブ操作（Issue #14）。
+
 ### M5b の実装の記録（2026-11-22）: Limited の追加ドロー（TR 602.4.a.5.b）
 
 - **フォーマットが、ゲームの進行を変える最初の例**: エンジンが `GameConfig.ruleSet`（フォーマット）と、プレイヤーの Legend・Chosen Champion のゾーンを読んで動く。Limited（Sealed と Draft）で、Legend か Chosen Champion を使わないデッキのプレイヤーは、**自分の最初の Beginning Phase の始まりに、1 枚引く**。両方なくても 1 枚。

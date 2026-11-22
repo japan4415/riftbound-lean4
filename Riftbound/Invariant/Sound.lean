@@ -342,7 +342,8 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     rcases beginTurnStep_cases s _ with e | ⟨r, e⟩
-    · rw [e]; exact (GameState.ownerOk_mapObjects hown (f := clearScored) (fun o => rfl)).congr rfl rfl
+    · rw [e]
+      exact (GameState.ownerOk_mapObjects hown (f := clearScored) (fun o => rfl)).congr rfl rfl
     · rw [e]; exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -482,12 +483,22 @@ theorem step_not_internal {fuel : Nat} {s : GameState} {a : Action} (hwf : s.WF)
   · rw [step_illegal hl] at h
     simp at h
 
+/-- The states a game starts from: set up from decks under the Core Rules or a tournament format,
+or from Limited decks (TR 602.4). -/
+inductive Start : GameState → Prop where
+  /-- Set up from decks (CR 101-103). -/
+  | core {db : CardDB} {config : GameConfig} {decks : List Deck} {s : GameState}
+      (h : GameState.initial db config decks = some s) : Start s
+  /-- Set up from Limited decks (TR 602.4). -/
+  | limited {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+      {decks : List LimitedDeck} {s : GameState}
+      (h : GameState.initialLimited db env config decks = some s) : Start s
+
 /-- The states a game can reach: the set-up game, and whatever `step` makes of a reachable state
 (design.md §8). -/
 inductive Reachable : GameState → Prop where
   /-- The state a game starts from. -/
-  | init {db : CardDB} {config : GameConfig} {decks : List Deck} {s : GameState}
-      (h : GameState.initial db config decks = some s) : Reachable s
+  | init {s : GameState} (h : Start s) : Reachable s
   /-- A step from a reachable state. -/
   | next {s s' : GameState} {fuel : Nat} {a : Action} {es : List Event} (hs : Reachable s)
       (h : Riftbound.step fuel s a = .ok (s', es)) : Reachable s'
@@ -495,7 +506,10 @@ inductive Reachable : GameState → Prop where
 /-- Every reachable state is well formed and keeps cards in their owners' zones. -/
 theorem Reachable.inv {s : GameState} (h : Reachable s) : s.WF ∧ s.OwnerOk := by
   induction h with
-  | init h => exact ⟨GameState.initial_wf h, GameState.initial_ownerOk h⟩
+  | init h =>
+    cases h with
+    | core h => exact ⟨GameState.initial_wf h, GameState.initial_ownerOk h⟩
+    | limited h => exact ⟨GameState.initialLimited_wf h, GameState.initialLimited_ownerOk h⟩
   | next hs h ih => exact ⟨step_wf ih.1 h, step_ownerOk ih.1 ih.2 h⟩
 
 /-- **I4**, for the reachable states: `step` never returns an internal error. -/

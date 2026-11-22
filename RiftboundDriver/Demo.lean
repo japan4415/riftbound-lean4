@@ -137,6 +137,12 @@ def demoDeck : Deck :=
     runes := List.replicate 12 ⟨"R1"⟩,
     battlefields := [⟨"B0"⟩, ⟨"B1"⟩, ⟨"B2"⟩] }
 
+/-- A Sealed deck for the demo: the cards of the demo deck, with no Legend and no Chosen Champion
+(TR 602.4.a.5), so that its player draws one more card in their first turn (TR 602.4.a.5.b). -/
+def demoLimitedDeck : LimitedDeck :=
+  { identity := [.fury, .calm, .mind], legend := none, chosenChampion := none,
+    main := demoDeck.main, runes := demoDeck.runes, battlefields := demoDeck.battlefields }
+
 /-- The configuration of the demo: a Duel under the Core Rules. -/
 def demoConfig : GameConfig := { ruleSet := .coreOnly, mode := Mode.duel }
 

@@ -35,6 +35,7 @@ public import RiftboundTest.Judge
 public import RiftboundTest.Sideboard
 public import RiftboundTest.FirstPlayer
 public import RiftboundTest.LimitedDraw
+public import RiftboundTest.LimitedStart
 
 /-!
 # RiftboundTest

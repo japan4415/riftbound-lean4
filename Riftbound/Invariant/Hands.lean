@@ -745,7 +745,8 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     rcases beginTurnStep_cases s rest with e | ⟨r, e⟩
     rotate_left
     · rw [e]
-      exact ⟨fun hm => by simp at hm, fun _ hres => by simp at hres, fun f hf _ => by simp at hf⟩
+      exact ⟨fun hm => by simp at hm, fun _ hres => by simp at hres,
+        fun f hf _ => by simp at hf⟩
     rw [e]
     refine hinv.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun q _ => ?_) (fun hmem => ?_)
       (fun f hf hpf => ?_)
@@ -1096,6 +1097,36 @@ theorem GameState.addDecks_hand {db : CardDB} :
       rw [GameState.addDecks_hand ds h' r]
       exact GameState.addDeck_hand hr r
 
+/-- Adding a Limited deck leaves the hands alone. -/
+theorem GameState.addLimitedDeck_hand {db : CardDB} {s s' : GameState} {p : PlayerId}
+    {d : LimitedDeck}
+    (h : s.addLimitedDeck db p d = some s') (r : PlayerId) :
+    s'.zone (.player r .hand) = s.zone (.player r .hand) := by
+  unfold GameState.addLimitedDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  rw [addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
+    addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
+    addCards_hand _ _ (fun _ => by simp) _ h1]
+
+/-- Adding the Limited decks leaves the hands alone. -/
+theorem GameState.addLimitedDecks_hand {db : CardDB} :
+    ∀ (ds : List LimitedDeck) {s s' : GameState} {i : Nat},
+      s.addLimitedDecks db i ds = some s' →
+        ∀ r, s'.zone (.player r .hand) = s.zone (.player r .hand)
+  | [], s, s', i, h, r => by
+    rw [show s.addLimitedDecks db i [] = some s from rfl] at h
+    cases h
+    rfl
+  | d :: ds, s, s', i, h, r => by
+    cases hr : s.addLimitedDeck db ⟨i⟩ d with
+    | none => simp [GameState.addLimitedDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addLimitedDecks db (i + 1) ds = some s' := by
+        simpa [GameState.addLimitedDecks, hr] using h
+      rw [GameState.addLimitedDecks_hand ds h' r]
+      exact GameState.addLimitedDeck_hand hr r
+
 /-- **The hand invariant holds at the start.** No hand has a card yet, and the stack accounts for
 the four opening cards through the turn order. -/
 theorem GameState.initial_handInv {db : CardDB} {config : GameConfig} {decks : List Deck}
@@ -1128,10 +1159,46 @@ theorem GameState.initial_handInv {db : CardDB} {config : GameConfig} {decks : L
       rcases hf' with (⟨i, -, rfl | rfl⟩ | ⟨i, -, rfl⟩) | rfl <;> simp [Frame.isPlay] at hpf
   · exact absurd h (by simp)
 
+/-- **The hand invariant holds at the start of a Limited game.** No hand has a card yet, and the
+stack accounts for the four opening cards through the turn order. -/
+theorem GameState.initialLimited_handInv {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) : HandInv s := by
+  unfold GameState.initialLimited at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    have hhand : ∀ r, s1.zone (.player r .hand) = [] := fun r => by
+      rw [GameState.addLimitedDecks_hand decks h1 r]
+      simp [GameState.zone, GameState.empty]
+    refine ⟨fun hm => ?_, fun _ _ p _ => ?_, fun f hf hpf => ?_⟩
+    · simp [startFrames] at hm
+    · show (s1.zone (.player p .hand)).length +
+        stackContrib p (startFrames config.mode.players) = 4
+      rw [hhand p]
+      simp only [startFrames, stackContrib_append, List.length_nil]
+      rw [stackContrib_zero (l := (List.range config.mode.players).flatMap _) (fun f hf => by
+          simp only [List.mem_flatMap, List.mem_range, List.mem_cons, List.not_mem_nil,
+            or_false] at hf
+          obtain ⟨i, -, rfl | rfl⟩ := hf <;> simp [Frame.contrib]),
+        stackContrib_zero (l := (List.range config.mode.players).map _) (fun f hf => by
+          simp only [List.mem_map] at hf
+          obtain ⟨i, -, rfl⟩ := hf
+          simp [Frame.contrib])]
+      simp [stackContrib, Frame.contrib]
+    · have hf' : f ∈ startFrames config.mode.players := hf
+      simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
+        List.not_mem_nil, or_false, List.mem_map] at hf'
+      rcases hf' with (⟨i, -, rfl | rfl⟩ | ⟨i, -, rfl⟩) | rfl <;> simp [Frame.isPlay] at hpf
+  · exact absurd h (by simp)
+
 /-- Every reachable state satisfies the hand invariant. -/
 theorem Reachable.handInv {s : GameState} (h : Reachable s) : HandInv s := by
   induction h with
-  | init h => exact GameState.initial_handInv h
+  | init h =>
+    cases h with
+    | core h => exact GameState.initial_handInv h
+    | limited h => exact GameState.initialLimited_handInv h
   | next hs h ih => exact step_handInv (Reachable.inv hs).1 (Reachable.inv hs).2 ih h
 
 /-- **The opening hands.** When the setup is over, that is, when only the first turn is still to

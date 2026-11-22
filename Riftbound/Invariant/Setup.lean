@@ -119,6 +119,48 @@ theorem GameState.addDecks_grows {db : CardDB} :
         rw [e] at this
         simpa using this
 
+/-- Adding a Limited deck grows the state, and the player's Battlefields go out of the game. -/
+theorem GameState.addLimitedDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId}
+    {d : LimitedDeck}
+    (h : s.addLimitedDeck db p d = some s') :
+    Grows s s' ∧ d.battlefields.length ≤ (s'.zone (.player p .outOfGame)).length := by
+  unfold GameState.addLimitedDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
+  obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
+  obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
+  obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
+  obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
+  exact ⟨(((g1.trans g2).trans g3).trans g4).trans g5, by omega⟩
+
+/-- Adding the Limited decks grows the state, and the player in seat `i + k` has the Battlefields
+of the `k`-th deck out of the game. -/
+theorem GameState.addLimitedDecks_grows {db : CardDB} :
+    ∀ (ds : List LimitedDeck) {s s' : GameState} {i : Nat},
+      s.addLimitedDecks db i ds = some s' → Grows s s' ∧ ∀ k (hk : k < ds.length),
+        (ds[k]).battlefields.length ≤ (s'.zone (.player ⟨i + k⟩ .outOfGame)).length
+  | [], s, s', i, h => by
+    rw [show s.addLimitedDecks db i [] = some s from rfl] at h
+    cases h
+    exact ⟨Grows.refl _, fun k hk => absurd hk (by simp)⟩
+  | d :: ds, s, s', i, h => by
+    cases hr : s.addLimitedDeck db ⟨i⟩ d with
+    | none => simp [GameState.addLimitedDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addLimitedDecks db (i + 1) ds = some s' := by
+        simpa [GameState.addLimitedDecks, hr] using h
+      obtain ⟨g1, b1⟩ := GameState.addLimitedDeck_grows hr
+      obtain ⟨g2, b2⟩ := GameState.addLimitedDecks_grows ds h'
+      refine ⟨g1.trans g2, fun k hk => ?_⟩
+      cases k with
+      | zero => exact Nat.le_trans b1 (g2.zone _)
+      | succ k =>
+        have := b2 k (by simpa using hk)
+        have e : i + 1 + k = i + (k + 1) := by omega
+        rw [e] at this
+        simpa using this
+
 /-- Looking up every card of a list gives a list of the same length. -/
 theorem mapM_find_length (db : CardDB) :
     ∀ (l : List CardId) {bs : List CardDef}, l.mapM db.find? = some bs → bs.length = l.length
@@ -652,7 +694,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (beginStep_safeP s (s.active.getD ⟨0⟩)).config])
-      (new := [Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)), Frame.cleanup]) rfl (by simp [Frame.isSetup])
+      (new := [Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
+        Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -824,10 +867,82 @@ theorem GameState.initial_setupInv {db : CardDB} {config : GameConfig} {decks : 
     exact hi
   · cases h
 
+/-- Every deck of a game set up from Limited decks has a Battlefield. -/
+theorem LimitedStartOk.battlefields {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} (h : LimitedStartOk db env config decks) :
+    ∀ d ∈ decks, 1 ≤ d.battlefields.length := by
+  obtain ⟨-, -, h⟩ := h
+  cases hm : config.ruleSet.limitedMinMain with
+  | none => rw [hm] at h; exact h.elim
+  | some m => rw [hm] at h; exact fun d hd => (h d hd).2
+
+/-- **A game set up from Limited decks.** It has at least two players, and every player has a
+Battlefield out of the game, waiting for the random pick (CR 487.5). -/
+theorem GameState.initialLimited_setup {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) :
+    2 ≤ s.playerCount ∧ ∀ p : PlayerId, p.n < s.playerCount →
+      0 < (s.zone (.player p .outOfGame)).length := by
+  unfold GameState.initialLimited at h
+  split at h
+  · rename_i hc
+    have hbf := hc.battlefields
+    obtain ⟨hlen, hcfg, -⟩ := hc
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    obtain ⟨g, hb⟩ := GameState.addLimitedDecks_grows decks h1
+    have hcount : s1.playerCount = config.mode.players := by
+      simp [GameState.playerCount, g.config, GameState.empty]
+    refine ⟨?_, fun p hp => ?_⟩
+    · show 2 ≤ s1.playerCount
+      rw [hcount]
+      exact hcfg.1
+    · change p.n < s1.playerCount at hp
+      rw [hcount, ← hlen] at hp
+      have h2 := hb p.n hp
+      rw [Nat.zero_add] at h2
+      exact Nat.lt_of_lt_of_le (hbf _ (List.getElem_mem hp)) h2
+  · exact absurd h (by simp)
+
+/-- The stack at the start of a Limited game is the frames of the setup. -/
+theorem GameState.initialLimited_pending {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) :
+    s.pending = startFrames s.playerCount := by
+  unfold GameState.initialLimited at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    obtain ⟨g, -⟩ := GameState.addLimitedDecks_grows decks h1
+    show startFrames config.mode.players = startFrames s1.playerCount
+    simp [GameState.playerCount, g.config, GameState.empty]
+  · exact absurd h (by simp)
+
+/-- The setup invariant holds at the start of a Limited game. -/
+theorem GameState.initialLimited_setupInv {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) : SetupInv s := by
+  obtain ⟨h2, hb⟩ := GameState.initialLimited_setup h
+  have hpend := GameState.initialLimited_pending h
+  refine ⟨h2, Or.inl ⟨0, by rw [List.drop_zero]; exact hpend, fun p hp => ?_⟩⟩
+  apply hb p
+  rw [hpend] at hp
+  simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
+    List.not_mem_nil, or_false, List.mem_map] at hp
+  rcases hp with (⟨i, -, h | h⟩ | ⟨i, hi, h⟩) | h
+  · cases h
+  · cases h
+  · cases h
+    exact hi
+  · cases h
+
 /-- Every reachable state satisfies the setup invariant. -/
 theorem Reachable.setup {s : GameState} (h : Reachable s) : SetupInv s := by
   induction h with
-  | init h => exact GameState.initial_setupInv h
+  | init h =>
+    cases h with
+    | core h => exact GameState.initial_setupInv h
+    | limited h => exact GameState.initialLimited_setupInv h
   | next hs h ih => exact step_setup (Reachable.inv hs).1 ih h
 
 /-- **I5, progress.** In a reachable game that is not over, either there is an answer other than a

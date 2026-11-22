@@ -604,10 +604,29 @@ theorem GameState.initial_stack {db : CardDB} {config : GameConfig} {decks : Lis
       rw [hp]; exact List.mem_cons_self)
   · exact absurd h (by simp)
 
+/-- **The stack invariant and the idle top hold at the start of a Limited game.** -/
+theorem GameState.initialLimited_stack {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) :
+    StackInv s ∧ TopIdle s := by
+  unfold GameState.initialLimited at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    obtain ⟨hw, hl⟩ := startFrames_spec config.mode.players
+    refine ⟨fun _ => ⟨Frame.chanceTurnOrder, hl, rfl⟩, fun f rest hp => ?_⟩
+    exact hw f (by
+      change startFrames config.mode.players = f :: rest at hp
+      rw [hp]; exact List.mem_cons_self)
+  · exact absurd h (by simp)
+
 /-- Every reachable state satisfies the stack invariant and has an idle top. -/
 theorem Reachable.stack {s : GameState} (h : Reachable s) : StackInv s ∧ TopIdle s := by
   induction h with
-  | init h => exact GameState.initial_stack h
+  | init h =>
+    cases h with
+    | core h => exact GameState.initial_stack h
+    | limited h => exact GameState.initialLimited_stack h
   | next hs h ih => exact ⟨step_stack ih.1 h, step_idle h⟩
 
 /-- Frames whose answer is a chance decision: they are not listed in `legalActions` (design.md

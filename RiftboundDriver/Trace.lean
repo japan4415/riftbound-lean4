@@ -301,20 +301,20 @@ def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
 /-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. With `timed`, the game is
 played under the Tournament Rules, and the clock calls time when `turns` turns have begun: the
 game goes on to its end (TR 408.2). With `judge`, the judge declares a draw then instead
-(TR 505.6). With `limited`, the game is Sealed and the decks have no Legend, so that each player
-draws 1 more in their first turn (TR 602.4.a.5.b). -/
+(TR 505.6). With `limited`, the game is set up from Sealed decks with no Legend and no Chosen
+Champion, so that each player draws 1 more in their first turn (TR 602.4.a.5.b). -/
 def demoTrace (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
     (limited : Bool := false) : Except String String :=
-  match GameState.initial demoDB
-      (if limited then { ruleSet := .tournament .sealed, mode := Mode.duel }
-        else if timed || judge then { ruleSet := .tournament .constructed, mode := Mode.duel }
-        else demoConfig)
-      [demoDeck, demoDeck] with
+  match (if limited then
+      GameState.initialLimited demoDB { legalSets := [], banned := [] }
+        { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
+    else
+      GameState.initial demoDB
+        (if timed || judge then { ruleSet := .tournament .constructed, mode := Mode.duel }
+          else demoConfig)
+        [demoDeck, demoDeck]) with
   | none => .error "the demo game cannot be set up"
-  | some s00 =>
-    -- a Sealed deck without a Legend: the zone of the Legend is empty (TR 602.4.a.5)
-    let s0 := if limited then (s00.setZone (.player ⟨0⟩ .legendZone) []).setZone
-      (.player ⟨1⟩ .legendZone) [] else s00
+  | some s0 =>
     let (j0, seen) := stepJson 0 none [] s0 {}
     match playTrace (if timed || judge then 100000 else turns)
         (if timed || judge then some turns else none) judge 100000 1 (Rng.ofSeed seed) s0 seen
