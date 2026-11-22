@@ -3783,8 +3783,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t3, th) ← putAt t2 s.you "OGN-037" bf
   let (t4, fo) ← putAt t3 s.you "OGN-167" bf
   let b ← play t4 s.me c2 [bf]
+  -- 3 and 1: the Might-1 unit goes first, the Might-3 unit after it (4 in all); a unit in the base
+  -- is not at the battlefield
+  let (u1, c3) ← put s s.me "OGN-256" .hand
+  let (u2, one) ← putAt u1 s.you "OGN-271" bf
+  let (u3, tre) ← putAt u2 s.you "OGN-037" bf
+  let (u4, home) ← put u3 s.you "OGN-271" .base
+  let both ← play u4 s.me c3 [bf]
   let alive (x : GameState) (u : ObjId) := (x.obj? u).isSome && (x.obj? u).any (·.loc == some bf)
   return !alive a r1 && !alive a r2 && !alive a two && alive a three && alive a four &&
-    (a.obj? away).isSome && alive no r1 && alive no two && !alive b th && alive b fo
+    (a.obj? away).bind (·.loc) == some other && alive no r1 && alive no two &&
+    !alive b th && alive b fo &&
+    !alive both one && !alive both tre && (both.obj? home).isSome
 
 end RiftboundTest
