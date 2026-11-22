@@ -494,8 +494,12 @@ def OGN_019.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Raging Soul: the effect is not written yet. -/
-def OGN_019 : CardDef := OGN_019.meta
+/-- Raging Soul. -/
+def OGN_019 : CardDef :=
+  { OGN_019.meta with
+    abilities := [.passive .discardedThisTurn
+      [.keyword .self ⟨.assault, .amount 1⟩, .keyword .self ⟨.ganking, .none⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-020
 /--
@@ -3707,8 +3711,12 @@ def OGN_144.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Spoils of War: the effect is not written yet. -/
-def OGN_144 : CardDef := OGN_144.meta
+/-- Spoils of War. -/
+def OGN_144 : CardDef :=
+  { OGN_144.meta with
+    abilities := [.passive .enemyUnitDied [.costMinus .self (.const 2)]],
+    spellEffect := some (.of [] (.prim (.draw .you (.const 2)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-145
 /--

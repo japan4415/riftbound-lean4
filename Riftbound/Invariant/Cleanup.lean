@@ -593,10 +593,11 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf huz) huz
   have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
   subst hsrc
-  have hkill : (killObj s u).1 = s' := by
+  have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
     rw [ho]
     simp only [hr]
+    split <;> rfl
   rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

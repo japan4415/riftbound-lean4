@@ -184,6 +184,10 @@ inductive Condition where
   | playedAnother
   /-- The player's Rune Pool can pay the cost. -/
   | canPay (c : Cost)
+  /-- A unit of an opponent has died this turn. -/
+  | enemyUnitDied
+  /-- The player has discarded a card this turn. -/
+  | discardedThisTurn
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
   /-- A combat is going on. -/

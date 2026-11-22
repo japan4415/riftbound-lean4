@@ -161,6 +161,8 @@ def Condition.understood : Condition → Bool
   | .paid => true
   | .playedAnother => true
   | .canPay _ => true
+  | .enemyUnitDied => true
+  | .discardedThisTurn => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
