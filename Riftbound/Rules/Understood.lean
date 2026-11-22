@@ -169,6 +169,7 @@ def Condition.understood : Condition → Bool
   | .enemyUnitDied => true
   | .marked _ => true
   | .fromHidden => true
+  | .excessAtLeast _ => true
   | .diedWith _ => true
   | .discardedThisTurn => true
   | _ => false

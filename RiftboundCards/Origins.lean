@@ -882,8 +882,13 @@ def OGN_034.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Tryndamere, Barbarian: the effect is not written yet. -/
-def OGN_034 : CardDef := OGN_034.meta
+/-- Tryndamere, Barbarian. -/
+def OGN_034 : CardDef :=
+  { OGN_034.meta with
+    abilities := [.triggered
+      { event := .conquer, subject := .self, condition := .excessAtLeast 5 }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-035
 /--

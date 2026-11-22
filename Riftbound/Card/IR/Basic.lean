@@ -114,6 +114,9 @@ inductive TurnEffect where
   | opponentsCantPlay
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
+  /-- The player assigned `n` excess damage (damage beyond what is lethal) to enemy Units in the
+  Combat Damage of this turn's last Combat. -/
+  | excessDamage (n : Nat)
   /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
   | modeUsed (n : Nat)
   /-- A card is played from Hidden: the event it makes is what matters. -/
