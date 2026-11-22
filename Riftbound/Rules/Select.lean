@@ -556,6 +556,10 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .paid => some ((s.obj? self).any (·.paid))
   | .playedAnother => some (s.playedOther p self)
   | .canPay c => some (s.payNow p self c).isSome
+  | .enemyUnitDied =>
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
+  | .discardedThisTurn =>
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | _ => none
 
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching

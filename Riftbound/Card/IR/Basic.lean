@@ -107,6 +107,10 @@ inductive TurnEffect where
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/
   | buffsExtraMight
+  /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
+  | unitDied
+  /-- A card of the player was discarded (a note of the turn, not an effect). -/
+  | cardDiscarded
 deriving DecidableEq, Repr, Hashable
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/

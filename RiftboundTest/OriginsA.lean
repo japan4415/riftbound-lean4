@@ -2653,4 +2653,50 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     again.isNone && !((legalActions s2).contains ⟨.player s.me, .manaAbility g 0⟩) &&
     (legalActions played).contains ⟨.player s.me, .manaAbility g 0⟩
 
+-- What happened this turn is noted by the game. Spoils of War (OGN-144): costs 2 less if an enemy
+-- unit has died this turn (not a friendly one, not one that was only discarded, also when it is
+-- no longer in the Trash, and by who controlled it as it died); draw 2
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-144" .hand
+  let (s2, foe) ← put s1 s.you "OGN-136" .base
+  let (s3, mine) ← put s2 s.me "OGN-136" .base
+  let (s4, disc) ← put s3 s.you "OGN-136" .hand
+  let killedFoe := (killObj s3 foe).1
+  let killedMine := (killObj s3 mine).1
+  let discarded := (discardObj s4 disc).1
+  let later := { killedFoe with turn := killedFoe.turn + 1 }
+  -- my unit, which the opponent controls, dies: it is an enemy unit as it dies
+  let stolen := (setController s.you s3 mine).1
+  let killedStolen := (killObj stolen mine).1
+  -- the dead unit is recycled: it is still noted
+  let gone := match (killedFoe.zone (.player s.you .trash)).head? with
+    | some t => (removeObj killedFoe t).getD killedFoe
+    | none => killedFoe
+  let a ← play killedFoe s.me c
+  return energyNow killedFoe s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow s1 s.me c == energyPrinted s1 c &&
+    energyNow killedMine s.me c == energyPrinted s1 c &&
+    energyNow discarded s.me c == energyPrinted s1 c &&
+    energyNow later s.me c == energyPrinted s1 c &&
+    energyNow killedStolen s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow gone s.me c == (energyPrinted s1 c).map (· - 2) &&
+    a.handN s.me == killedFoe.handN s.me + 1
+
+-- Raging Soul (OGN-019): with a discarded card this turn, it has Assault and Ganking
+#guard t fun s => do
+  let (s1, soul) ← put s s.me "OGN-019" .base
+  let (s2, x) ← put s1 s.me "OGN-136" .hand
+  let (s3, y) ← put s2 s.you "OGN-136" .hand
+  let has (g : GameState) (k : Keyword) := (g.grantedKws soul).any (fun i => i.keyword == k)
+  let mine := (discardObj s3 x).1
+  let theirs := (discardObj s3 y).1
+  let later := { mine with turn := mine.turn + 1 }
+  -- the discard of the hand limit counts too
+  let waiting := { s3 with pending := [.discard s.me 1] }
+  let limit ← match step 100 waiting ⟨.player s.me, .discardPick x⟩ with
+    | .ok (g, _) => some g
+    | .error _ => none
+  return !has s3 .assault && !has s3 .ganking && has mine .assault && has mine .ganking &&
+    !has theirs .assault && !has later .ganking && has limit .ganking
+
 end RiftboundTest

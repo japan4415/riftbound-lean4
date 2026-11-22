@@ -76,12 +76,24 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Make an effect true for the rest of the turn, for the player. -/
+def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
+  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
+
+/-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
+theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
+    Safe s (s.addTurnFx p e) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Kill an object: it goes to its owner's Trash. -/
 def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj .trash s id
   match s.obj? id with
   | some o =>
-    (r.1, r.2 ++ r.2.filterMap (fun e => match e with
+    -- the death of a unit is noted for the turn (its controller, as it died)
+    ((if !r.2.isEmpty && (s.cardDef? id).any (·.hasType .unit) then
+        r.1.addTurnFx o.controller .unitDied else r.1), r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))
   | none => r
@@ -90,7 +102,10 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
   unfold killObj
   split
-  · exact sendObj_safe .trash s id
+  · dsimp only
+    split
+    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
+    · exact sendObj_safe .trash s id
   · exact sendObj_safe .trash s id
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
@@ -463,7 +478,8 @@ def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj .trash s id
   match s.obj? id with
   | some o =>
-    (r.1, r.2 ++ r.2.filterMap (fun e =>
+    ((if r.2.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded),
+      r.2 ++ r.2.filterMap (fun e =>
       match e with
       | .moved _ n _ => some (Event.discarded o.owner n true)
       | _ => none))
@@ -473,7 +489,10 @@ def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
   unfold discardObj
   split
-  · exact sendObj_safe .trash s id
+  · dsimp only
+    split
+    · exact sendObj_safe .trash s id
+    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
   · exact sendObj_safe .trash s id
 
 /-- Replacing a Rune Pool is a safe change. -/
@@ -491,16 +510,6 @@ theorem poolsMap_safe (f : RunePool → RunePool) :
     ∀ (qs : List PlayerId) (s : GameState), Safe s (poolsMap f s qs)
   | [], s => Safe.refl s
   | q :: qs, s => (setPool_safe s q _).trans (poolsMap_safe f qs _)
-
-/-- Make an effect true for the rest of the turn, for the player. -/
-def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
-  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
-
-/-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
-theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
-    Safe s (s.addTurnFx p e) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
