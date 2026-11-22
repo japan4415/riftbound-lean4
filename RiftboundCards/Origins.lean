@@ -1621,8 +1621,17 @@ def OGN_067.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Blitzcrank, Impassive: the effect is not written yet. -/
-def OGN_067 : CardDef := OGN_067.meta
+/-- Blitzcrank, Impassive. -/
+def OGN_067 : CardDef :=
+  { OGN_067.meta with
+    abilities :=
+      [.triggered
+        { Trigger.onSelf .play with
+          condition := .cmp .ge (.count (Selector.all .friendly .here [.ofType .unit])) (.const 1) }
+        (.of [] (.may (.prim (.move (Selector.one .enemy .anywhere [.ofType .unit])
+          (.at_ (Selector.all .any .here [.ofType .battlefield])))))) .unlimited,
+       .triggered (.onSelf .hold) (.of [] (.prim (.returnToHand .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-068
 /--
@@ -6326,8 +6335,13 @@ def OGN_262.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Zenith Blade, Leona: the effect is not written yet. -/
-def OGN_262 : CardDef := OGN_262.meta
+/-- Zenith Blade, Leona. -/
+def OGN_262 : CardDef :=
+  { OGN_262.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.stun (.slot 0)),
+        .may (.prim (.move (Selector.one .friendly .anywhere [.ofType .unit]) (.at_ (.slot 0))))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-263
 /--

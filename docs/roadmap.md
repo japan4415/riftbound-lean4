@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 12 弾: 効果による移動）
+
+- **エンジン**: 効果の移動（`Prim.move s (.at_ d)`）を足した。行き先は、Battlefield か、物体のいる場所（Unit なら、その Unit のいる Battlefield か Base）。Exhaust せず、行き先を Contested にし、移動の出来事（`standardMoved`）を出す。すでにそこにいれば、何もしない。移動する物体を、解決中に選ぶこと（`Selector.one`）もできる。
+- **書いた 2 枚**: Zenith Blade（262。Stun して、味方を、その Battlefield へ移してもよい）、Blitzcrank（067。Battlefield にプレイしたとき、敵の Unit をここへ移してもよい。Hold したら手札へ戻る）。
+- **書かなかった（行き先を、プレイヤーが選ぶ）**: Charm、Ride the Wind、Unforgiven、Showstopper、Dragon's Rage。行き先（Base か、どの Battlefield か）を選ぶ決定が要る。
+- **近似として残したこと**: 「Battlefield にプレイしたとき」は、「ここにいる味方の Unit がいる」で近似した（Blitzcrank）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 11 弾: ターンの区切りの誘発）
 
 - **エンジン**: 出来事 `Event.phaseStarted`（Awaken・Beginning・Main・Ending の始まり）を足し、**「〜の始めに」「ターンの終わりに」の誘発**（`TriggerEvent.at_`）が、その区切りで働く。働くのは、その区切りのターンのプレイヤーが操る物体（と Legend）の能力と、**Battlefield の能力（ターンのプレイヤーのために働く）**。`Amount.turnsTaken`（そのプレイヤーが取ったターン数。今のターンを含む）も動く。

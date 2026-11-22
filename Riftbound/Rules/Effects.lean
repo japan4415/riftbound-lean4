@@ -336,6 +336,68 @@ theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := b
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The Battlefield is Contested by the player if the player does not control it (CR 190.3). -/
+def contestFor (p : PlayerId) (bf : ObjId) (s : GameState) : GameState :=
+  if (s.obj? bf).bind (·.control) = some p then s
+  else s.modObj bf (fun b => { b with contested := some p })
+
+/-- Contesting is a safe change. -/
+theorem contestFor_safe (p : PlayerId) (bf : ObjId) (s : GameState) :
+    Safe s (contestFor p bf s) := by
+  unfold contestFor
+  split
+  · exact Safe.refl s
+  · exact Safe.modObj s bf (fun _ => rfl) (fun _ => rfl)
+
+/-- Move a Unit to a Battlefield by an effect (CR 447): it is not exhausted, and it stays where it
+is if it is there already. Its controller contests the Battlefield. -/
+def sendToBf (bf : ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
+  match s.obj? u with
+  | some o =>
+    if o.loc = some bf then (s, [])
+    else if u ∈ s.zone .battlefieldZone then
+      (contestFor o.controller bf (s.modObj u (fun x => { x with loc := some bf })),
+        [Event.standardMoved u (some bf)])
+    else
+      match moveObj s u .battlefieldZone with
+      | some r =>
+        (contestFor o.controller bf (r.1.modObj r.2 (fun x => { x with loc := some bf })),
+          [Event.standardMoved r.2 (some bf)])
+      | none => (s, [])
+  | none => (s, [])
+
+/-- Moving to a Battlefield is a safe change. -/
+theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToBf bf s u).1 := by
+  unfold sendToBf
+  split
+  · split
+    · exact Safe.refl s
+    · split
+      · rename_i o ho hl hz
+        have h1 : Safe s (s.modObj u (fun x => { x with loc := some bf })) :=
+          Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
+        exact h1.trans (contestFor_safe _ _ _)
+      · split
+        · rename_i o ho hl hz r hm
+          have h1 : Safe r.1 (r.1.modObj r.2 (fun x => { x with loc := some bf })) :=
+            Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
+          exact ((Safe.moveObj hm).trans h1).trans (contestFor_safe _ _ _)
+        · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Move a Unit to a place by an effect: a Battlefield (`some`) or its controller's Base. -/
+def sendToLoc (loc : Option ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
+  match loc with
+  | some bf => sendToBf bf s u
+  | none => sendHome s u
+
+/-- Moving to a place is a safe change. -/
+theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    Safe s (sendToLoc loc s u).1 := by
+  cases loc with
+  | none => exact sendHome_safe s u
+  | some bf => exact sendToBf_safe bf s u
+
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := some u }), [])
@@ -436,6 +498,14 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
   | .move sel .base => onSelected s p src env sel sendHome
+  | .move sel (.at_ dsel) =>
+    -- the place of the first object the destination names: a Battlefield, or where a Unit is
+    match dsel.eval s p src env with
+    | some (d :: _) =>
+      let loc := if (s.cardDef? d).any (·.hasType .battlefield) then some d
+        else (s.obj? d).bind (·.loc)
+      onSelected s p src env sel (sendToLoc loc)
+    | _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
   | .gainXP ps n =>
@@ -477,7 +547,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | move sel dest =>
     cases dest with
     | base => exact onSelected_safe sendHome_safe h
-    | at_ t => simp [applyPrim] at h
+    | at_ t =>
+      simp only [applyPrim] at h
+      cases hd : t.eval s p src env with
+      | none => simp [hd] at h
+      | some l =>
+        cases l with
+        | nil => simp [hd] at h
+        | cons d _ =>
+          simp only [hd] at h
+          exact onSelected_safe (sendToLoc_safe _) h
   | stun sel => exact onSelected_safe stunObj_safe h
   | buff sel => exact onSelected_safe buffObj_safe h
   | gainXP ps n =>
@@ -624,7 +703,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .returnToHand s => some s
   | .stun s => some s
   | .buff s => some s
-  | .move s .base => some s
+  | .move s _ => some s
   | _ => none
 
 /-- The primitive with its selector replaced. -/
