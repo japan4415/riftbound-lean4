@@ -3253,7 +3253,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let empty := s.setZone (.player s.me .championZone) []
   let (s1, bf) ← putBf empty s.me "OGN-281"
   let (s2, _) ← put s1 s.me "OGN-247" .legendZone
-  let (s3, k) ← put s2 s.me "OGN-039" .trash
+  let (s3, _) ← put s2 s.me "OGN-039" .trash
   let (s4, _) ← put s3 s.me "OGN-136" .trash
   let zone (g : GameState) (p : PlayerId) := g.zone (.player p .championZone)
   let a ← fire s4 [.scored s.me bf false] { yes := true }
@@ -3266,10 +3266,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let wrong ← fire u2 [.scored s.me bf false] { yes := true }
   let (v1, _) ← put s1 s.me "OGN-039" .trash
   let nolegend ← fire v1 [.scored s.me bf false] { yes := true }
-  let back := (zone a s.me).head?.getD k
+  let (w1, _) ← put s4 s.you "OGN-039" .trash
+  let theirs ← fire w1 [.scored s.you bf false] { yes := true }
+  let back ← (zone a s.me).head?
   return (zone a s.me).length == 1 && (a.obj? back).map (·.owner) == some s.me &&
-    (a.zone (.player s.me .trash)).length == 1 && (zone no s.me).isEmpty && (zone c s.me).isEmpty &&
+    (a.cardDef? back).map (·.id) == some ⟨"OGN-039"⟩ &&
+    (a.zone (.player s.me .trash)).length == 1 && (zone no s.me).isEmpty &&
+    (no.zone (.player s.me .trash)).length == 2 && (zone c s.me).isEmpty &&
     (zone full s.me).length == 1 && (full.zone (.player s.me .trash)).length == 2 &&
-    (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty
+    (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty &&
+    (zone theirs s.you).length == (zone w1 s.you).length
 
 end RiftboundTest
