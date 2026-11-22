@@ -147,14 +147,14 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
     let d ← d?
-    pure (match some d, s.obj? id with
-      | some d, some o =>
+    pure (match s.obj? id with
+      | some o =>
         if (s.cardDef? d).any (·.hasType .battlefield) then o.loc == some d
         else
           match s.obj? d with
           | some od => o.loc == od.loc && (od.loc.isSome || o.controller == od.controller)
           | none => false
-      | _, _ => false)
+      | none => false)
   | .lethal =>
     pure (match s.mightOf id, s.obj? id with
       | some m, some o =>

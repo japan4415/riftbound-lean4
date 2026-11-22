@@ -464,6 +464,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **エンジン**: フィルタ **`at_`**（「そこにある」: 選んだ Battlefield や、選んだ Unit のいる場所、Base）と、**移動先を解決中に選ぶこと**（`move s (.at_ (.pick .one ..))`）。
 - **書いた 5 枚**: En Garde（046。そこにほかの味方がいなければ、もう +1）、Siphon Power（266。選んだ Battlefield の味方 +1、敵 −1）、Last Stand（069。Might を 2 倍にして、Temporary を与える）、Convergent Mutation（108）、Showstopper（270。Buff して、選んだ Battlefield へ移す）。変異で、テストが落ちることを確かめた。
+- **レビューで直したこと**: 移動する物体と行き先の両方を解決中に選ぶ形は、動くものに数えない（2 回目の選択が 1 回目を隠すため）。別の Battlefield の Unit が変わらないこと、Might 1 の敵が 1 のままであること、同じ Unit を 2 回選ぶ Convergent Mutation、敵の Unit を Showstopper で動かせないことのテストを足した。
+- **近似として残したこと**: Convergent Mutation の「ほかの味方」は、対象として選ぶ（同じ Unit を 2 回選ぶと、何も変わらない）。`at_` は、Unit か Battlefield に使う。
 - **動くカード**: 145 → **150 枚**。
 
 ### M7 の実装の記録（2026-11-22）: Vision（デッキの一番上を、一番下へ）
