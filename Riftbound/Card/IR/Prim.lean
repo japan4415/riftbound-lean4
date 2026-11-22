@@ -51,6 +51,8 @@ inductive Prim where
   | stun (s : Selector)
   /-- Buff objects. -/
   | buff (s : Selector)
+  /-- Spend the buff of units: they lose it (CR 704). -/
+  | spendBuff (s : Selector)
   /-- Recycle objects to the bottom of their decks. -/
   | recycle (s : Selector)
   /-- The players recycle the top card of their Main Deck: it goes to the bottom (CR 417). -/

@@ -231,6 +231,14 @@ def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- Spend the buff of an object: it loses it (CR 704). -/
+def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with buffed := false }), [])
+
+/-- Spending a buff is a safe change. -/
+theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
 /-- The player gains XP (CR 728): it goes to their Legend. -/
 def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
   match s.zone (.player p .legendZone) with
@@ -653,6 +661,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | .recycle sel => onSelected s p src env sel recycleOne
+  | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .hideAt sel bfs =>
@@ -725,6 +734,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         rw [← h]
         exact gainXPAll_safe k l s
   | recycle sel => exact onSelected_safe recycleOne_safe h
+  | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | hideAt sel bfs =>
@@ -889,6 +899,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .stun s => some s
   | .buff s => some s
   | .recycle s => some s
+  | .spendBuff s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -909,6 +920,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .stun _ => .stun sel
   | .buff _ => .buff sel
   | .recycle _ => .recycle sel
+  | .spendBuff _ => .spendBuff sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d

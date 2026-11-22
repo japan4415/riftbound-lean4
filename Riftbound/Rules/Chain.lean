@@ -47,17 +47,28 @@ def GameState.usesAbilitiesOf (s : GameState) (p : PlayerId) (src : ObjId) : Boo
   (s.zone (.player p .base)).contains src || (s.zone (.player p .legendZone)).contains src ||
     (s.zone .battlefieldZone).contains src
 
+/-- The cost an ability pays when it resolves ("Recycle 3 from your trash: ...") is written as the
+first part of the effect, guarded by a condition: the ability cannot be used while the condition is
+false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
+cannot be answered yet, and does not stop the use. -/
+def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bool :=
+  match body.body with
+  | .ifThen c _ .nop => c.eval s p src {} != some false
+  | _ => true
+
 /-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be
 used from the hand (Hide) or from hiding (CR 811) is used there, from the turn after the card was
-hidden; the others, where the player uses abilities of objects. -/
+hidden; the others, where the player uses abilities of objects. An ability with a guard is used
+only while the guard holds. -/
 def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
   match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
-  | some (.activated costs _ _ _) =>
-    if costs.contains .fromHand then (s.zone (.player p .hand)).contains src
-    else if costs.contains .fromHidden then
-      (s.zone (.player p .hidden)).contains src &&
-        ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
-    else s.usesAbilitiesOf p src
+  | some (.activated costs _ body _) =>
+    guardOk s p src body &&
+      (if costs.contains .fromHand then (s.zone (.player p .hand)).contains src
+      else if costs.contains .fromHidden then
+        (s.zone (.player p .hidden)).contains src &&
+          ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
+      else s.usesAbilitiesOf p src)
   | _ => s.usesAbilitiesOf p src
 
 /-- Where abilities are used from: the places of the board, the hand and the hidden cards. -/
@@ -81,7 +92,9 @@ theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId}
     (h : s.abilityZoneOk p src idx = true) : src ∈ s.abilityZones p := by
   unfold GameState.abilityZoneOk at h
   split at h
-  · split at h
+  · simp only [Bool.and_eq_true] at h
+    obtain ⟨-, h⟩ := h
+    split at h
     · unfold GameState.abilityZones
       simp only [List.mem_append]
       exact Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h))

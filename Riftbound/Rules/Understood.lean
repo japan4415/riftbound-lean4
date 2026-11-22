@@ -161,6 +161,7 @@ def Prim.understood : Prim → Bool
   | .hideAt s b => s.understood && b.understood
   | .bin s => s.understood
   | .recycle s => s.understoodPickAny
+  | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood
   | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood
