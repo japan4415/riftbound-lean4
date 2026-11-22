@@ -112,6 +112,10 @@ structure Object where
   /-- The timestamp counter when the card was last played: a card played later has a greater one
   ("the next card you play"). It stays when the card moves. -/
   playedStamp : Option Nat := none
+  /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/
+  moves : Nat := 0
+  /-- The turn the Standard Moves in `moves` were made in. -/
+  movesTurn : Option Nat := none
   /-- For a card hidden face down: the Battlefield it is hidden at (CR 811). -/
   hiddenAt : Option ObjId := none
   /-- For a card hidden face down: the turn it was hidden. -/

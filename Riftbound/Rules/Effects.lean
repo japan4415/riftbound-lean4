@@ -97,14 +97,19 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
 the next Cleanup (CR 323.4), not here. -/
 def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
-  | some _ => (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
+  | some _ =>
+    -- an object whose passive ability says it takes no damage takes none
+    if (s.activeMods id).contains .noDamage then (s, [])
+    else (s.modObj id (fun o => { o with damage := o.damage + n }), [Event.damaged id n])
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
   unfold dealObj
   split
-  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · split
+    · exact Safe.refl s
+    · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/
