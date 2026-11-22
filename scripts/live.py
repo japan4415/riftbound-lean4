@@ -86,6 +86,10 @@ def make_handler(lean: Lean, port: int):
                 return self._send(200, page_path.read_bytes(), "text/html; charset=utf-8")
             if path == "/api/ping":
                 return self._json(200, {"live": True})
+            if path == "/art.json":
+                art = ROOT / "viewer" / "art.json"
+                body = art.read_bytes() if art.is_file() else b"{}"
+                return self._send(200, body, "application/json; charset=utf-8")
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:

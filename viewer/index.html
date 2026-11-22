@@ -127,6 +127,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
 #cardinfo .x { float: right; padding: 0 7px; }
 .card { cursor: context-menu; }
+.card-in { position: relative; }
+.card-in > .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; border-radius: 4px; }
+.card-in > :not(.art) { position: relative; z-index: 1; }
+.card.hasart .nm, .card.hasart .st { background: color-mix(in srgb, var(--card) 78%, transparent); border-radius: 3px; }
+.card.hasart .st { align-self: stretch; }
+#cardinfo .artbox { display: grid; gap: 4px; margin: 6px 0; }
+#cardinfo .artbox img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; background: var(--bg); }
+#cardinfo .artbox input { width: 100%; box-sizing: border-box; font: .72rem var(--mono); padding: 3px 5px; }
+#cardinfo .artbox .btns { display: flex; gap: 6px; }
 .note.foot { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; display: grid; gap: 3px;
   max-height: 40dvh; overflow: auto; }
@@ -353,7 +362,7 @@ function makeCard(id) {
     st.append(c, m); inn.append(st);
     if (def.domains[0]) inn.classList.add('d-' + def.domains[0]);
   }
-  el.append(inn); return el;
+  el.append(inn); applyArt(el); return el;
 }
 
 function decorate(e, st, id) {
@@ -550,6 +559,64 @@ function costText(c) {
   for (const s of c.power) parts.push('Power(' + (DOMAIN_JA[s] || s) + ')');
   return parts.join(' + ');
 }
+// Card art: a URL per card (saved in this browser, or listed in viewer/art.json that the bridge
+// serves) or a URL template with {id} and {name}. Only http(s) URLs are used; nothing else is sent.
+const ART_KEY = 'rb-art';
+let art = { map: {}, tpl: '' }, artFile = {};
+try {
+  const j = JSON.parse(localStorage.getItem(ART_KEY) || '{}');
+  if (j && typeof j === 'object') art = { map: j.map && typeof j.map === 'object' ? j.map : {}, tpl: typeof j.tpl === 'string' ? j.tpl : '' };
+} catch (_) { /* 保存できない環境: その場かぎり */ }
+function saveArt() { try { localStorage.setItem(ART_KEY, JSON.stringify(art)); } catch (_) { /* 無視 */ } }
+function okUrl(u) { return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
+function artTemplate() { return art.tpl || (typeof artFile['*'] === 'string' ? artFile['*'] : ''); }
+function artUrl(cid) {
+  const own = okUrl(art.map[cid]) || okUrl(artFile[cid]); if (own) return own;
+  const t = artTemplate(); if (!t) return null;
+  const name = (cards[cid] && cards[cid].name) || cid;
+  return okUrl(t.replaceAll('{id}', encodeURIComponent(cid)).replaceAll('{name}', encodeURIComponent(name)));
+}
+function applyArt(el) {
+  const o = objs[el.dataset.id], u = o && artUrl(o.card), inn = el.firstChild;
+  let img = inn.querySelector(':scope > .art');
+  if (!u) { if (img) img.remove(); el.classList.remove('hasart'); return; }
+  if (!img) {
+    img = document.createElement('img'); img.className = 'art'; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
+    img.addEventListener('error', () => { img.remove(); el.classList.remove('hasart'); });
+    inn.prepend(img);
+  }
+  if (img.getAttribute('src') !== u) img.src = u;
+  el.classList.add('hasart');
+}
+function applyArtAll() { document.querySelectorAll('.card').forEach(applyArt); }
+async function loadArtFile() {
+  try {
+    const r = await fetch('/art.json'); if (!r.ok) return;
+    const j = await r.json(); if (j && typeof j === 'object' && !Array.isArray(j)) { artFile = j; applyArtAll(); }
+  } catch (_) { /* 橋渡しが無い、または art.json が無い */ }
+}
+
+function artBox(el, cid) {
+  const wrap = el('div', 'artbox'), u = artUrl(cid);
+  if (u) {
+    const im = el('img'); im.alt = def_name(cid); im.referrerPolicy = 'no-referrer'; im.src = u;
+    im.addEventListener('error', () => { im.replaceWith(el('div', 'note', '画像を読み込めません: ' + u)); });
+    wrap.append(im);
+  }
+  const d = el('details'); d.open = !u; d.append(el('summary', '', '画像の URL（このカード）'));
+  const inp = el('input'); inp.type = 'url'; inp.placeholder = 'https://…（この ID のカードすべてに使う）'; inp.value = art.map[cid] || '';
+  const tpl = el('input'); tpl.type = 'text'; tpl.placeholder = '全カード共通: https://…/{id}.png（{id} と {name}）'; tpl.value = art.tpl;
+  const go = el('button', '', '保存'), no = el('button', '', '消す');
+  go.addEventListener('click', () => {
+    const v = inp.value.trim(); if (v && !okUrl(v)) { inp.setCustomValidity('http(s) の URL だけ'); inp.reportValidity(); return; }
+    if (v) art.map[cid] = v; else delete art.map[cid];
+    art.tpl = tpl.value.trim(); saveArt(); applyArtAll(); hideCardInfo();
+  });
+  no.addEventListener('click', () => { delete art.map[cid]; art.tpl = ''; saveArt(); applyArtAll(); hideCardInfo(); });
+  const b = el('div', 'btns'); b.append(go, no);
+  d.append(inp, tpl, b); wrap.append(d); return wrap;
+}
+function def_name(cid) { return (cards[cid] && cards[cid].name) || cid; }
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
   const o = objs[id], def = o && cards[o.card]; if (!def) return;
@@ -559,6 +626,7 @@ function showCardInfo(id, x, y) {
   box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
   const sub = [def.subtitle, [...(def.supertypes || []), ...def.types].join(' · '), def.domains.map((d) => DOMAIN_JA[d] || d).join(' / ')].filter(Boolean).join(' ・ ');
   box.append(el('div', 'sub', sub));
+  box.append(artBox(el, o.card));
   const dl = el('dl'); const row = (k, v) => { if (v === null || v === undefined || v === '') return; dl.append(el('dt', '', k), el('dd', '', v)); };
   if (def.costFull) row('コスト', costText(def.costFull));
   if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
@@ -738,6 +806,7 @@ async function detectLive() {
     $('newgame').focus();
   } catch (e) { /* 橋渡しが無い: 再生だけ */ }
 }
+loadArtFile();
 if (EMBEDDED) load(EMBEDDED); else { $('empty').hidden = false; detectLive(); }
 </script>
 </body>

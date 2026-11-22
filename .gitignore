@@ -1,3 +1,6 @@
 # cache and other artifacts produced by Lean's Lake build tool
 .lake/
 .beam/
+
+# local card art URLs for the viewer (see viewer/art.example.json)
+viewer/art.json
