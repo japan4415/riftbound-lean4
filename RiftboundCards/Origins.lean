@@ -3005,8 +3005,17 @@ def OGN_113.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Malzahar, Fanatic: the effect is not written yet. -/
-def OGN_113 : CardDef := OGN_113.meta
+/-- Malzahar, Fanatic. -/
+def OGN_113 : CardDef :=
+  { OGN_113.meta with
+    abilities := [.activated [.exhaustSelf] .action
+      (.of [] (.ifThen
+        (.cmp .ge (.count (Selector.all .friendly .anywhere
+          [.not (.ofType .rune), .not (.ofType .battlefield)])) (.const 1))
+        (.seqOf [.prim (.kill (Selector.one .friendly .anywhere
+            [.not (.ofType .rune), .not (.ofType .battlefield)])),
+          .prim (.addPower .you (.const 2) none none)]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-114
 /--

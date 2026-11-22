@@ -3850,4 +3850,20 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (use s3).isNone && (use (s2.tire g)).isNone && (use on).isNone && more.tired g == some true &&
     !(useOf o2 og) && useOf s2 g && !useOf s3 g && !theirsOnly
 
+-- Malzahar, Fanatic (OGN-113): kill a friendly unit or gear, exhaust: add two Power of any domain
+-- (an Action; the kill is part of the effect here)
+#guard t fun s => do
+  let (s1, m) ← put s s.me "OGN-113" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, g) ← put s2 s.me "OGN-124" .base
+  let (s4, _) ← put s3 s.you "OGN-136" .base
+  let unit ← activate s4 s.me m 0 [] ⟨0, []⟩ { obj := fun o => o == u }
+  let gear ← activate s4 s.me m 0 [] ⟨0, []⟩ { obj := fun o => o == g }
+  let anyOf ← activate s4 s.me m 0 [] ⟨0, []⟩
+  let tired := activate (s4.tire m) s.me m 0 [] ⟨0, []⟩
+  return unit.countIn s.me .trash "OGN-136" == 1 && (unit.poolOf s.me).any == 2 &&
+    unit.tired m == some true && gear.countIn s.me .trash "OGN-124" == 1 &&
+    (gear.poolOf s.me).any == 2 && (anyOf.poolOf s.me).any == 2 &&
+    unit.countIn s.you .base "OGN-136" == 1 && tired.isNone
+
 end RiftboundTest
