@@ -3837,7 +3837,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let on ← use s2
   let (s4, _) ← put s2 s.me "OGN-136" .hand
   let more ← use s4
+  -- the opponent's Legend is not mine; a spell in the opponent's hand is not a spell of mine
+  let (o1, og) ← put s s.you "OGN-247" .legendZone
+  let (o2, _) ← put o1 s.you "OGN-229" .hand
+  let (o3, _) ← put (s.setZone (.player s.me .hand) []) s.me "OGN-247" .legendZone
+  let (o4, _) ← put o3 s.you "OGN-229" .hand
+  let (_, pg) ← put (s.setZone (.player s.me .hand) []) s.me "OGN-247" .legendZone
+  let theirsOnly := (legalActions o4).contains ⟨.player s.me, .manaAbility pg 0⟩
+  let useOf (x : GameState) (g : ObjId) : Bool :=
+    (legalActions x).contains ⟨.player s.me, .manaAbility g 0⟩
   return (on.poolOf s.me).any == (s2.poolOf s.me).any + 1 && on.tired g == some true &&
-    (use s3).isNone && (use (s2.tire g)).isNone && (use on).isNone && more.tired g == some true
+    (use s3).isNone && (use (s2.tire g)).isNone && (use on).isNone && more.tired g == some true &&
+    !(useOf o2 og) && useOf s2 g && !useOf s3 g && !theirsOnly
 
 end RiftboundTest

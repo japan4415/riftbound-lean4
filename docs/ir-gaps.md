@@ -59,6 +59,7 @@
 |---|---|
 | Firestorm | 「a battlefield」を、プレイ時に Battlefield を 1 つ選ぶ、と読んだ（原文は選ぶと書いていない） |
 | Karthus, Eternal | Deathknell を「死んだときの誘発すべて」で表した。キーワードの Deathknell だけに絞る手段が無い |
+| Daughter of the Void | 「呪文をプレイするときだけ使える」を、「手札に呪文があるときだけ使える」で表した（足した Power は、呪文以外のプレイにも使える） |
 | Smite | "If it would die this turn" を「次に死ぬとき」で表した。ユニットは 1 回しか死なないので同じ |
 | Blue Sentinel | "at the start of your next Main Phase" を、自分の次の Main Phase 開始の遅延効果で表した。`delayed` の期間は `permanent`（発火するまで） |
 | Forgotten Monument | 「その場所で、プレイヤーが自分の 3 ターン目まで得点できない」を `untilTurn := 3` で表した |
