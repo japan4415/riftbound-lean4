@@ -100,8 +100,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .might op a => do
     let n ← a.eval env
     -- an object without Might (a Battlefield, a Spell) does not have the Might asked for
+    -- the buff counts (CR 701); a bonus of an Equipment and a passive ability are not read here, as
+    -- the Layers are (`mightNow`) defined after the filters
     match s.mightOf id with
-    | some m => pure (op.holds m n)
+    | some m => pure (op.holds (m + (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)) n)
     | none => pure false
   | .exhausted => (s.obj? id).map (·.exhausted)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)

@@ -107,6 +107,25 @@ meta def play (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId := [])
 meta def GameState.tire (s : GameState) (u : ObjId) : GameState :=
   s.modObj u (fun o => { o with exhausted := true })
 
+/-- Play the card and stop at the first question: for example the choice of the targets of an
+ability that the card set off. -/
+meta def castStop (s : GameState) (p : PlayerId) (c : ObjId) : Option GameState :=
+  match step 100 (s.rich p) ⟨.player p, .playCard c (payOf s c) []⟩ with
+  | .ok (s1, _) => some s1
+  | .error _ => none
+
+/-- The objects a player can pick as the targets of a triggered ability, now. -/
+meta def GameState.trigPicks (s : GameState) : List ObjId :=
+  (legalFrameActions s).flatMap (fun a => match a.kind with | .putTrigger _ ts => ts | _ => [])
+
+/-- The first object of the card in the zone of the player. -/
+meta def GameState.firstOf (s : GameState) (p : PlayerId) (z : ZoneKind) (card : String) :
+    Option ObjId :=
+  (s.zone (.player p z)).find? (fun u => (s.cardDef? u).any (·.id == cid card))
+
+/-- Whether the object is exhausted. -/
+meta def GameState.tired (s : GameState) (u : ObjId) : Option Bool := (s.obj? u).map (·.exhausted)
+
 /-- The zone an object is on. -/
 meta def GameState.where? (s : GameState) (u : ObjId) : Option Zone := s.locate u
 

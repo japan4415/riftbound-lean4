@@ -28,6 +28,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s3 ← play s2 s.me c [u]
   return s3.countIn s.you .hand "OGN-001" == 1 && s3.where? u != some .battlefieldZone
 
+-- Rebuke cannot take a unit on a base
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-172" .hand
+  let (s2, u) ← put s1 s.you "OGN-001" .base
+  return (play s2 s.me c [u]).isNone
+
 -- Gust (OGN-169): only a unit with 3 Might or less; Blazing Scorcher has 5, Shieldbearer has 2
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-169" .hand
@@ -38,6 +44,17 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-169" .hand
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   return (play s2 s.me c [u]).isNone
+-- 3 Might is "3 or less"; a buff makes it 4 (CR 701)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-169" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-132" s.bf0
+  let s3 ← play s2 s.me c [u]
+  return s3.countIn s.you .hand "OGN-132" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-169" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-132" s.bf0
+  let s3 := s2.modObj u (fun o => { o with buffed := true })
+  return (play s3 s.me c [u]).isNone
 
 -- Retreat (OGN-104): a friendly unit returns to its owner's hand, who channels 1 rune exhausted
 #guard t fun s => do
@@ -46,7 +63,18 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s3 ← play s2 s.me c [u]
   return s3.countIn s.me .hand "OGN-051" == 1 &&
     (s3.zone (.player s.me .runeDeck)).length + 1 == (s2.zone (.player s.me .runeDeck)).length &&
-    (s3.zone (.player s.me .base)).length == (s2.zone (.player s.me .base)).length
+    (s3.zone (.player s.me .base)).length == (s2.zone (.player s.me .base)).length &&
+    -- the rune that came is exhausted
+    ((s3.zone (.player s.me .base)).filter (fun r => (s2.zone (.player s.me .base)).all (· != r) &&
+      (s3.cardDef? r).any (·.hasType .rune)) |>.all (fun r => s3.tired r == some true)) &&
+    ((s3.zone (.player s.me .base)).filter (fun r => (s2.zone (.player s.me .base)).all (· != r) &&
+      (s3.cardDef? r).any (·.hasType .rune))).length == 1
+
+-- Retreat takes a friendly unit only
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-104" .hand
+  let (s2, u) ← put s1 s.you "OGN-001" .base
+  return (play s2 s.me c [u]).isNone
 
 -- Rune Prison (OGN-050): the unit is stunned
 #guard t fun s => do
@@ -70,12 +98,30 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s3 ← play s2 s.me c [] (pick := fun ts => ts.contains v)
   return (s2.obj? v).map (·.exhausted) == some true && (s3.obj? v).map (·.exhausted) == some false
 
+-- "another unit": the ability may pick any other unit, friendly or not, but not First Mate itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-132" .hand
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let s4 ← castStop s3 s.me c
+  let me ← s4.firstOf s.me .base "OGN-132"
+  return s4.trigPicks.contains v && s4.trigPicks.contains e && !s4.trigPicks.contains me
+
 -- Pit Rookie (OGN-136): when played, buff another friendly unit
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-136" .hand
   let (s2, v) ← put s1 s.me "OGN-001" .base
   let s3 ← play s2 s.me c [] (pick := fun ts => ts.contains v)
   return (s3.obj? v).map (·.buffed) == some true
+
+-- "another friendly unit": only a friendly unit, not Pit Rookie itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-136" .hand
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let s4 ← castStop s3 s.me c
+  let me ← s4.firstOf s.me .base "OGN-136"
+  return s4.trigPicks.contains v && !s4.trigPicks.contains e && !s4.trigPicks.contains me
 
 -- Grand Strategem (OGN-233): friendly units get +5 Might this turn, enemy units do not
 #guard t fun s => do
@@ -116,6 +162,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s5 ← play s4 s.me c
   return s5.countIn s.me .base "OGN-017" == 0 && s5.countIn s.you .base "OGN-017" == 0 &&
     s5.countIn s.me .trash "OGN-017" == 1 && s5.countIn s.me .base "OGN-001" == 1 &&
-    s5.obj? g == none && s5.obj? h == none && s4.obj? u != none
+    s5.countIn s.you .trash "OGN-017" == 1 && s5.obj? g == none && s5.obj? h == none &&
+    s5.obj? u != none
 
 end RiftboundTest

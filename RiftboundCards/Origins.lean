@@ -515,7 +515,7 @@ def OGN_022.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Thermo Beam: the effect is not written yet. -/
+/-- Thermo Beam. -/
 def OGN_022 : CardDef :=
   { OGN_022.meta with
     spellEffect := some (.of []
@@ -1161,7 +1161,7 @@ def OGN_050.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Rune Prison: the effect is not written yet. -/
+/-- Rune Prison. -/
 def OGN_050 : CardDef :=
   { OGN_050.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
@@ -1186,7 +1186,7 @@ def OGN_051.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Solari Shieldbearer: the effect is not written yet. -/
+/-- Solari Shieldbearer. -/
 def OGN_051 : CardDef :=
   { OGN_051.meta with
     abilities := [.triggered (.onSelf .play)
@@ -2407,7 +2407,7 @@ def OGN_104.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Retreat: the effect is not written yet. -/
+/-- Retreat. -/
 def OGN_104 : CardDef :=
   { OGN_104.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
@@ -2846,7 +2846,7 @@ def OGN_123.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Unchecked Power: the effect is not written yet. -/
+/-- Unchecked Power. -/
 def OGN_123 : CardDef :=
   { OGN_123.meta with
     spellEffect := some (.of []
@@ -3044,7 +3044,7 @@ def OGN_132.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- First Mate: the effect is not written yet. -/
+/-- First Mate. -/
 def OGN_132 : CardDef :=
   { OGN_132.meta with
     abilities := [.triggered (.onSelf .play)
@@ -3070,7 +3070,7 @@ def OGN_133.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Flurry of Blades: the effect is not written yet. -/
+/-- Flurry of Blades. -/
 def OGN_133 : CardDef :=
   { OGN_133.meta with
     spellEffect := some (.of []
@@ -3139,7 +3139,7 @@ def OGN_136.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Pit Rookie: the effect is not written yet. -/
+/-- Pit Rookie. -/
 def OGN_136 : CardDef :=
   { OGN_136.meta with
     abilities := [.triggered (.onSelf .play)
@@ -3899,7 +3899,7 @@ def OGN_169.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Gust: the effect is not written yet. -/
+/-- Gust. -/
 def OGN_169 : CardDef :=
   { OGN_169.meta with
     spellEffect := some (.of
@@ -3974,7 +3974,7 @@ def OGN_172.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Rebuke: the effect is not written yet. -/
+/-- Rebuke. -/
 def OGN_172 : CardDef :=
   { OGN_172.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
@@ -5353,7 +5353,7 @@ def OGN_233.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Grand Strategem: the effect is not written yet. -/
+/-- Grand Strategem. -/
 def OGN_233 : CardDef :=
   { OGN_233.meta with
     spellEffect := some (.of []
