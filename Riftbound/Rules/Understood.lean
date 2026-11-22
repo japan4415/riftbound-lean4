@@ -128,6 +128,7 @@ def Filter.understood : Filter → Bool
   | .alone => true
   | .onBattlefield => true
   | .hideRoom => true
+  | .permitsOpenPlay => true
   | .lethal => true
   | .at_ .self => true
   | .at_ (.slot _) => true
@@ -293,6 +294,7 @@ def StaticMod.runs : StaticMod → Bool
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true
+  | .playToOpenBf => true
   | .oppsPlayToBaseOnly => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true

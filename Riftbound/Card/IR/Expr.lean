@@ -98,6 +98,9 @@ inductive Filter where
   | onBattlefield
   /-- A Battlefield with room for one more hidden card (CR 811). -/
   | hideRoom
+  /-- The card has a passive ability that lets the Units of its player be played to an open
+  Battlefield. -/
+  | permitsOpenPlay
   /-- Is ready. -/
   | ready
   /-- Has damage. -/
