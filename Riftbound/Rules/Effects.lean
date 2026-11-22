@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Rules.Play
 public import Riftbound.Rules.Remove
+public import Riftbound.Rules.Actions.BurnOut
 
 /-!
 # Running an effect
@@ -253,6 +254,22 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
 
+/-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
+theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
+  ⟨fun hwf => GameState.wf_gainPoints hwf p n, fun _ => List.Perm.refl _,
+    fun _ hown => GameState.ownerOk_gainPoints hown p n, rfl⟩
+
+/-- The players gain points, one after the other. -/
+def gainPointsAll (n : Nat) : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, p :: ps => gainPointsAll n (s.gainPoints p n) ps
+
+/-- Giving points to any players is a safe change. -/
+theorem gainPointsAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
+    Safe s (gainPointsAll n s ps)
+  | [], s => Safe.refl s
+  | p :: ps, s => (gainPoints_safe s p n).trans (gainPointsAll_safe n ps _)
+
 /-- Channeling is a safe change. -/
 theorem channel_safe (p : PlayerId) (n : Nat) (s : GameState) : Safe s (channel p n s).1 :=
   ⟨fun hwf => channel_wf p n hwf, fun hwf => channel_physIds p n hwf,
@@ -427,6 +444,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
+  | .score ps n =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -471,6 +491,17 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | score ps n =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      cases hn : n.evalS s p src env with
+      | none => simp [hl, hn] at h
+      | some k =>
+        simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+        rw [← h]
+        exact gainPointsAll_safe k l s
   | channel ps n extra =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with

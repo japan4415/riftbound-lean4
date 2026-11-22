@@ -232,11 +232,11 @@ theorem mem_zoneIds {s : GameState} {z : Zone} {id : ObjId}
 
 end GameState
 
-/-- Everything but the zones, the object table and the counters is as it was: the rules, the
-stack, the turn order, the phase, the result, and whatever the state will hold later. -/
+/-- Everything but the zones, the object table, the counters and the points is as it was: the
+rules, the stack, the turn order, the phase, the result, and whatever the state will hold later. -/
 def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
-            nextId := s.nextId, nextTimestamp := s.nextTimestamp } = s
+            nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points } = s
 
 namespace SameMeta
 
@@ -249,7 +249,7 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
   unfold SameMeta at *
   have := congrArg (fun x : GameState =>
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
-              nextTimestamp := s.nextTimestamp } : GameState)) h2
+              nextTimestamp := s.nextTimestamp, points := s.points } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this
@@ -258,12 +258,6 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
 theorem config {s s' : GameState} (h : SameMeta s s') : s'.config = s.config := by
   unfold SameMeta at h
   have h2 := congrArg GameState.config h
-  exact h2
-
-/-- The points are as they were. -/
-theorem points {s s' : GameState} (h : SameMeta s s') : s'.points = s.points := by
-  unfold SameMeta at h
-  have h2 := congrArg GameState.points h
   exact h2
 
 /-- The stack is as it was. -/

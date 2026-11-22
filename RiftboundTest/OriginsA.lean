@@ -870,4 +870,91 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b := s2.inShowdownAt s.bf0 s.me
   return b.mightNow w == (s2.mightNow w).map (· + 2)
 
+-- Disintegrate (OGN-005): 3 damage to a unit at a battlefield; draw 1 if that is lethal
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-005" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, g) ← putAt s2 s.you "OGN-116" s.bf0
+  let (s4, b) ← put s3 s.you "OGN-136" .base
+  let a ← play s4 s.me c [e]
+  let d ← play s4 s.me c [g]
+  return a.handN s.me == s4.handN s.me && d.handN s.me == s4.handN s.me - 1 &&
+    (d.obj? g).map (·.damage) == some 3 && (play s4 s.me c [b]).isNone
+
+-- Adaptatron (OGN-056): when it conquers I may kill a gear; if I do, it is buffed
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, u) ← putAt s1 s.me "OGN-056" bf
+  let (s3, _) ← put s2 s.you "OGN-017" .base
+  let a ← fire s3 [.scored s.me bf true]
+  let b ← fire s3 [.scored s.me bf true] { yes := false }
+  let c ← fire s2 [.scored s.me bf true]
+  return (a.obj? u).map (·.buffed) == some true && a.countIn s.you .trash "OGN-017" == 1 &&
+    (b.obj? u).map (·.buffed) == some false && b.countIn s.you .base "OGN-017" == 1 &&
+    (c.obj? u).map (·.buffed) == some false
+
+-- Ahri (OGN-066): I score 1 point when she holds, not when she conquers
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, _) ← putAt s1 s.me "OGN-066" bf
+  let a ← fire s2 [.scored s.me bf false]
+  let b ← fire s2 [.scored s.me bf true]
+  return a.pointsOf s.me == s2.pointsOf s.me + 1 && b.pointsOf s.me == s2.pointsOf s.me &&
+    a.pointsOf s.you == s2.pointsOf s.you
+
+-- Mobilize (OGN-134) and Catalyst of Aeons (OGN-138): channel exhausted, or draw if I cannot
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-134" .hand
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  let empty := s1.setZone (.player s.me .runeDeck) []
+  let a ← play s1 s.me c
+  let b ← play empty s.me c
+  return runes a + 1 == runes s1 && a.handN s.me == s1.handN s.me - 1 &&
+    b.handN s.me == empty.handN s.me && runes s1 > 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-138" .hand
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  let one := s1.setZone (.player s.me .runeDeck) ((s1.zone (.player s.me .runeDeck)).take 1)
+  let a ← play s1 s.me c
+  let b ← play one s.me c
+  return runes a + 2 == runes s1 && a.handN s.me == s1.handN s.me - 1 &&
+    runes b == 0 && b.handN s.me == one.handN s.me
+
+-- the channeled runes are exhausted (Mobilize, Catalyst); Catalyst with an empty Rune Deck draws 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-134" .hand
+  let (s2, d) ← put s s.me "OGN-138" .hand
+  let tired (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun u => x.tired u == some true)).length
+  let a ← play s1 s.me c
+  let b ← play s2 s.me d
+  let e ← play (s2.setZone (.player s.me .runeDeck) []) s.me d
+  return tired a == tired s1 + 1 && tired b == tired s2 + 2 && e.handN s.me == s2.handN s.me
+
+-- Disintegrate: damage that is already there counts; a buff keeps a unit from being lethal
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-005" .hand
+  let (s2, hurt) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, strong) ← putAt s2 s.you "OGN-136" s.bf0
+  let h := s3.modObj hurt (fun o => { o with damage := 2 })
+  let b := s3.buff strong |>.modObj strong (fun o => { o with mightMods := [⟨1, .turn⟩] })
+  let a ← play h s.me c [hurt]
+  let d ← play b s.me c [strong]
+  return a.handN s.me == h.handN s.me && d.handN s.me == b.handN s.me - 1
+
+-- Adaptatron kills a gear of mine too; Ahri's hold can reach the Victory Score
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, u) ← putAt s1 s.me "OGN-056" bf
+  let (s3, g) ← put s2 s.me "OGN-017" .base
+  let a ← fire s3 [.scored s.me bf true]
+  return (a.obj? u).map (·.buffed) == some true && a.countIn s.me .trash "OGN-017" == 1 &&
+    (a.obj? g).isNone
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, _) ← putAt s1 s.me "OGN-066" bf
+  let near := s2.gainPoints s.me (s2.config.mode.victoryScore - 1)
+  let a ← fire near [.scored s.me bf false]
+  return a.pointsOf s.me == s2.config.mode.victoryScore
+
 end RiftboundTest

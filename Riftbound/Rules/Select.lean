@@ -138,6 +138,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .exhausted => (s.obj? id).map (·.exhausted)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
+  | .lethal =>
+    pure (match s.mightOf id, s.obj? id with
+      | some m, some o =>
+        let buff : Int := if o.buffed then 1 else 0
+        decide (0 < o.damage ∧ m + s.equipBonus id + buff ≤ (o.damage : Int))
+      | _, _ => false)
   | .notSelf => some (id != self)
   | .stunned => (s.obj? id).map (·.stunned)
   | .buffed => (s.obj? id).map (·.buffed)
@@ -199,6 +205,21 @@ def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List 
     s.combatNow.map (fun (bf, _) =>
       (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (·.loc == some bf)))
   | _ => none
+
+/-- The zone of a player's cards that a place off the board stands for. -/
+def Place.zoneKind? : Place → Option ZoneKind
+  | .inHand => some .hand
+  | .inTrash => some .trash
+  | .inMainDeck => some .mainDeck
+  | .inRuneDeck => some .runeDeck
+  | _ => none
+
+/-- Whether a player is on the side, seen from player `p`. -/
+def Side.admitsPlayer (p : PlayerId) (side : Side) (q : PlayerId) : Bool :=
+  match side with
+  | .friendly => q == p
+  | .enemy => q != p
+  | .any => true
 
 /-- Whether an object is on the side and has the properties. -/
 def GameState.matchesOne (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) (side : Side)
@@ -318,6 +339,14 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
 /-- The number an amount stands for, reading the game: the count of the objects a selector stands
 for, the size of a hand, and the arithmetic of these. `none` if it cannot be known yet. -/
 def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
+  | .count (.pick .all side place fs) =>
+    -- the cards of a player's zone off the board are counted from the zone
+    match place.zoneKind? with
+    | some z =>
+      (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+        acc.bind (fun n => ((s.zone (.player q z)).filterM (fun u =>
+          (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
+    | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
   | .handSize ps => do
