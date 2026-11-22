@@ -57,11 +57,11 @@ open Riftbound RiftboundCards
 
 -- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
 -- goal "every card of the first set works" (298)
-#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 280
+#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 281
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 
--- the cards written down as IR values (docs/coverage.md): 245 by hand, 169 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 414
+-- the cards written down as IR values (docs/coverage.md): 246 by hand, 169 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 415
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo
@@ -87,7 +87,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 105
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 99
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 106
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 100
 
 end RiftboundTest

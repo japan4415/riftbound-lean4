@@ -6847,8 +6847,25 @@ def OGN_256.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Fox-Fire, Ahri: the effect is not written yet. -/
-def OGN_256 : CardDef := OGN_256.meta
+/-- One step of Fox-Fire: the player may kill a unit of Might `m` at the Battlefield, if the units
+killed before leave room for it (the Might killed is noted, one note for each point). -/
+def foxFireStep (m : Nat) : Effect :=
+  let candidates := Selector.one .any .atBattlefield
+    [.ofType .unit, .at_ (.slot 0), .might .eq (.const m)]
+  .ifThen (.and (.cmp .ge (.sub (.const 4) (.notes .unitPaid)) (.const m))
+      (.exists (Selector.all .any .atBattlefield
+        [.ofType .unit, .at_ (.slot 0), .might .eq (.const m)])))
+    (.may (.seqOf (List.replicate m (.prim (.markOn .self .unitPaid)) ++
+      [.prim (.kill candidates)]))) .nop
+
+/-- Fox-Fire, Ahri. Kill any number of units at a Battlefield with total Might 4 or less: the units
+are taken by their Might (1 up to 4 times, 2 twice, 3 and 4 once), each by the player's choice. -/
+def OGN_256 : CardDef :=
+  { OGN_256.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .battlefield]]
+      (.seqOf [foxFireStep 1, foxFireStep 1, foxFireStep 1, foxFireStep 1,
+        foxFireStep 2, foxFireStep 2, foxFireStep 3, foxFireStep 4])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-257
 /--

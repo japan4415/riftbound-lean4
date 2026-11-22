@@ -3764,4 +3764,36 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     dmg three mine == some 0 && dmg zero a == some 0 && left == 0 && (zero.poolOf s.me).fury == 3 &&
     (rich.poolOf s.me).energy == 3 && (emptyBf.poolOf s.me).fury == 0
 
+-- Fox-Fire (OGN-256): kill any number of units at a battlefield with total Might 4 or less (the
+-- player says yes to each step): two Might-1 units and a Might-2 unit are 4; the Might-3 and
+-- Might-4 units stay; with 3 and 4 only, the unit of 3 goes; declining kills nothing
+#guard t fun s => do
+  let bf := s.bf0
+  let (s1, c) ← put s s.me "OGN-256" .hand
+  let (s2, r1) ← putAt s1 s.you "OGN-271" bf
+  let (s3, r2) ← putAt s2 s.me "OGN-271" bf
+  let (s4, two) ← putAt s3 s.you "OGN-136" bf
+  let (s5, three) ← putAt s4 s.you "OGN-037" bf
+  let (s6, four) ← putAt s5 s.you "OGN-167" bf
+  let other := (s.battlefields.filter (· != bf)).head?.getD ⟨0⟩
+  let (s7, away) ← putAt s6 s.you "OGN-271" other
+  let a ← play s7 s.me c [bf]
+  let no ← play s7 s.me c [bf] { yes := false }
+  let (t2, c2) ← put s s.me "OGN-256" .hand
+  let (t3, th) ← putAt t2 s.you "OGN-037" bf
+  let (t4, fo) ← putAt t3 s.you "OGN-167" bf
+  let b ← play t4 s.me c2 [bf]
+  -- 3 and 1: the Might-1 unit goes first, the Might-3 unit after it (4 in all); a unit in the base
+  -- is not at the battlefield
+  let (u1, c3) ← put s s.me "OGN-256" .hand
+  let (u2, one) ← putAt u1 s.you "OGN-271" bf
+  let (u3, tre) ← putAt u2 s.you "OGN-037" bf
+  let (u4, home) ← put u3 s.you "OGN-271" .base
+  let both ← play u4 s.me c3 [bf]
+  let alive (x : GameState) (u : ObjId) := (x.obj? u).isSome && (x.obj? u).any (·.loc == some bf)
+  return !alive a r1 && !alive a r2 && !alive a two && alive a three && alive a four &&
+    (a.obj? away).bind (·.loc) == some other && alive no r1 && alive no two &&
+    !alive b th && alive b fo &&
+    !alive both one && !alive both tre && (both.obj? home).isSome
+
 end RiftboundTest
