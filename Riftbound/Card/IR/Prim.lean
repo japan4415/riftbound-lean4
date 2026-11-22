@@ -192,6 +192,8 @@ inductive TriggerEvent where
   | buff
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
+  /-- The player kills a unit with a spell, and the card is in their Trash. -/
+  | killBySpell
   /-- The player conquers a Battlefield, and the card is in their Trash. -/
   | conquerFromTrash
   /-- The player recycles one or more cards (CR 417). -/

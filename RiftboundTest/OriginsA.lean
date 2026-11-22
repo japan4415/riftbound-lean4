@@ -3464,4 +3464,20 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     inHand.countIn s.me .trash "OGN-136" == 0 && inBase.countIn s.me .trash "OGN-136" == 0 &&
     theirs.countIn s.you .trash "OGN-252" == 1
 
+-- Immortal Phoenix (OGN-037): when I kill a unit with a spell, I may pay 1 Energy and Fury to play
+-- it from my Trash (not when I decline, not for the opponent's Trash, not from the hand)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-229" .hand
+  let (s2, u) ← put s1 s.you "OGN-088" .base
+  let (s3, _) ← put s2 s.me "OGN-037" .trash
+  let (s4, _) ← put s2 s.you "OGN-037" .trash
+  let (s5, _) ← put s2 s.me "OGN-037" .hand
+  let a ← play s3 s.me c [u]
+  let no ← play s3 s.me c [u] { yes := false }
+  let foe ← play s4 s.me c [u]
+  let hand ← play s5 s.me c [u]
+  return a.countIn s.me .base "OGN-037" == 1 && a.countIn s.me .trash "OGN-037" == 0 &&
+    a.countIn s.you .trash "OGN-088" == 1 && no.countIn s.me .trash "OGN-037" == 1 &&
+    foe.countIn s.you .trash "OGN-037" == 1 && hand.countIn s.me .hand "OGN-037" == 1
+
 end RiftboundTest
