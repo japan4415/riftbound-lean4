@@ -562,14 +562,14 @@ theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
   exact h.1.1
 
 /-- Noting a death leaves the objects in play as they are. -/
-theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit : Bool) (moved : Option ObjId) :
-    (noteDeath s o isUnit moved).inPlay = s.inPlay := by
+theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked : Bool)
+    (moved : Option ObjId) : (noteDeath s o isUnit marked moved).inPlay = s.inPlay := by
   unfold noteDeath noteIf
   cases moved with
   | none => dsimp only; split <;> rfl
   | some n =>
     dsimp only
-    split <;> split <;> split <;> rfl
+    split <;> split <;> split <;> split <;> rfl
 
 /-- **Killing an object in play takes it out of play** (I12a). In a well-formed game, when the
 owner is a player, the Trash of the owner is a zone of the game and the object is on the Board, so
@@ -607,7 +607,7 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     unfold killObj sendObj
     rw [ho]
     simp only [hr]
-    exact noteDeath_inPlay _ _ _ _
+    exact noteDeath_inPlay _ _ _ _ _
   rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

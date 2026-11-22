@@ -3935,4 +3935,41 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     theirs.countIn s.you .trash "OGN-136" == 1 && theirs.countIn s.me .base "OGN-077" == 1 &&
     twice.countIn s.me .trash "OGN-136" == 1 && twice.countIn s.me .base "OGN-136" == 1
 
+-- Unlicensed Armory (OGN-023): discard 1, exhaust: choose a friendly unit; the next time it dies
+-- this turn, I may pay Fury to bring it back exhausted (approximation: it dies, then returns)
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-023" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, _) ← put s3 s.me "OGN-136" .hand
+  let funded := s4.fund s.me 0 (fury := 1)
+  let marked ← activate funded s.me g 0 [u] ⟨0, []⟩
+  let die (x : GameState) (id : ObjId) : Option GameState :=
+    let (k, ev) := killObj x id
+    fire k ev
+  let back ← die marked u
+  let other ← die marked v
+  let unmarked ← die funded u
+  let no ← (let (k, ev) := killObj marked u; fire k ev { yes := false })
+  let (p1, _) ← put marked s.me "OGN-136" .base
+  let broke ← die (p1.setPool s.me {}) u
+  let noHand := activate (s4.setZone (.player s.me .hand) []) s.me g 0 [u] ⟨0, []⟩
+  let backed := (back.zone (.player s.me .base)).filter (fun x => x != v &&
+    (back.cardDef? x).any (·.id == cid "OGN-136"))
+  -- the unit that came back is a new one: it can die again for good
+  let again ← (match backed.head? with
+    | some b => (let (k, ev) := killObj back b; fire k ev)
+    | none => none)
+  -- an enemy unit cannot be chosen
+  let (e1, foe) ← put s4 s.you "OGN-136" .base
+  let enemy := activate e1 s.me g 0 [foe] ⟨0, []⟩
+  return marked.tired g == some true && marked.handN s.me + 1 == funded.handN s.me &&
+    back.countIn s.me .base "OGN-136" == 2 && back.countIn s.me .trash "OGN-136" == 1 &&
+    (back.poolOf s.me).fury + 1 == (marked.poolOf s.me).fury &&
+    other.countIn s.me .trash "OGN-136" == 2 &&
+    unmarked.countIn s.me .trash "OGN-136" == 1 && no.countIn s.me .trash "OGN-136" == 2 &&
+    broke.countIn s.me .trash "OGN-136" == 2 && noHand.isNone &&
+    backed.all (fun x => back.tired x == some true) && backed.length == 1 &&
+    again.countIn s.me .trash "OGN-136" == 2 && enemy.isNone
+
 end RiftboundTest

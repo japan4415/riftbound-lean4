@@ -599,8 +599,25 @@ def OGN_023.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Unlicensed Armory: the effect is not written yet. -/
-def OGN_023 : CardDef := OGN_023.meta
+/-- Unlicensed Armory. -/
+def OGN_023 : CardDef :=
+  { OGN_023.meta with
+    abilities := [
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.ifThen (.cmp .ge (.handSize .you) (.const 1))
+            (.seqOf [.prim (.discard .you (.const 1)), .prim (.markOn (.slot 0) .recallOnDeath)])
+            .nop)) .unlimited,
+      .triggered
+        { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+          condition := .diedWith .recallDied }
+        (.of [] (.ifThen
+          (.and (.canPay ⟨0, [.domain .fury]⟩)
+            (.cmp .ge (.count (Selector.all .friendly .inTrash [.sameAs (.slot 0)])) (.const 1)))
+          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
+            .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))])) .nop))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-024
 /--

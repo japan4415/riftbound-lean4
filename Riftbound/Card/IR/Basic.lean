@@ -114,6 +114,10 @@ inductive TurnEffect where
   | opponentsCantPlay
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
+  /-- The unit is to be recalled the next time it dies this turn (Unlicensed Armory). -/
+  | recallOnDeath
+  /-- The dead card was marked to be recalled when it died: the note is about the dead card. -/
+  | recallDied
   /-- Hiding costs nothing this turn. -/
   | hideFree
   /-- The object has been paid one unit for ("pay any amount"): one note for each unit paid. -/
