@@ -5234,8 +5234,14 @@ def OGN_199.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Tideturner: the effect is not written yet. -/
-def OGN_199 : CardDef := OGN_199.meta
+/-- Tideturner. -/
+def OGN_199 : CardDef :=
+  { OGN_199.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
+        (.ifThen (.exists (.slot 0))
+          (.may (.prim (.swapPlaces .self (.slot 0)))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-200
 /--

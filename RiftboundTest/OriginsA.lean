@@ -3359,17 +3359,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, c) ← put s1 s.me "OGN-176" .hand
   let (s3, _) ← putAt s2 s.me "OGN-070" bf
   let (t1, _) ← putAt s1 s.me "OGN-107" bf
-  let (t2, _) ← put t1 s.me "OGN-199" .hand
+  let (t2, _) ← put t1 s.me "OGN-135" .hand
   let (t3, _) ← putAt t2 s.you "OGN-070" bf
   let free := t2.fund s.me 0 (mind := 1)
   let held := t3.fund s.me 0 (mind := 1)
   let a ← fire free [.combatStarted bf s.me] { yes := true }
   let b ← fire held [.combatStarted bf s.me] { yes := true }
   let there (x : GameState) :=
-    ((x.zone .battlefieldZone).filter (fun u => (x.cardDef? u).any (·.id == cid "OGN-199") &&
+    ((x.zone .battlefieldZone).filter (fun u => (x.cardDef? u).any (·.id == cid "OGN-135") &&
       (x.obj? u).any (·.loc == some bf))).length
   return (activate s3 s.me c 0 [bf] (payOf s3 c)).isSome &&
-    there a == 1 && there b == 0 && b.countIn s.me .base "OGN-199" == 1
+    there a == 1 && there b == 0 && b.countIn s.me .base "OGN-135" == 1
 
 -- Karma (OGN-235): when I recycle one or more cards, I buff a friendly unit (Mystic Poro's Vision
 -- recycles; declining, an empty deck, and the opponent's recycling do not)
@@ -3479,5 +3479,41 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return a.countIn s.me .base "OGN-037" == 1 && a.countIn s.me .trash "OGN-037" == 0 &&
     a.countIn s.you .trash "OGN-088" == 1 && no.countIn s.me .trash "OGN-037" == 1 &&
     foe.countIn s.you .trash "OGN-037" == 1 && hand.countIn s.me .hand "OGN-037" == 1
+
+-- Tideturner (OGN-199): when I play it, I may choose a friendly unit: it goes to that unit's
+-- location, and that unit comes to my base (not for an enemy unit, not when I decline)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-199" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, foe) ← putAt s2 s.you "OGN-136" s.bf0
+  let pick : Says := { yes := true, pick := fun ts => ts.contains u }
+  let a ← play s3 s.me c [] pick
+  let no ← play s3 s.me c [] { pick with yes := false }
+  let t ← a.firstOf s.me .base "OGN-199" <|> (a.zone .battlefieldZone).find? (fun x =>
+    (a.cardDef? x).any (·.id == cid "OGN-199"))
+  let tn ← no.firstOf s.me .base "OGN-199"
+  let (b1, v) ← put s1 s.me "OGN-136" .base
+  let same ← play b1 s.me c [] { yes := true, pick := fun ts => ts.contains v }
+  let ts ← same.firstOf s.me .base "OGN-199"
+  -- no friendly unit to choose: nothing happens; a Vilemaw's Lair (OGN-295) stops the swap
+  let (z1, z) ← putAt (s.setZone (.player s.me .base) []) s.me "OGN-199" s.bf0
+  let alone ← fire z1 [.played s.me z] { yes := true }
+  let (v1, lair) ← putBf s s.me "OGN-295"
+  let (v2, held) ← putAt v1 s.me "OGN-136" lair
+  let (v3, home) ← put v2 s.me "OGN-199" .base
+  let stuck ← fire v3 [.played s.me home] { yes := true, pick := fun ts => ts.contains held }
+  -- played to a battlefield (by an effect): its place is that battlefield, so the unit at the base
+  -- comes there, and it goes to the base
+  let (w1, w) ← putAt s s.me "OGN-199" s.bf0
+  let (w2, base) ← put w1 s.me "OGN-136" .base
+  let there ← fire w2 [.played s.me w] { yes := true, pick := fun ts => ts.contains base }
+  return (a.obj? t).bind (·.loc) == some s.bf0 && (a.obj? u).bind (·.loc) == none &&
+    (a.zone (.player s.me .base)).contains u && (a.obj? foe).bind (·.loc) == some s.bf0 &&
+    (no.obj? tn).bind (·.loc) == none && (no.obj? u).bind (·.loc) == some s.bf0 &&
+    (same.obj? ts).bind (·.loc) == none && (same.obj? v).bind (·.loc) == none &&
+    (there.obj? base).bind (·.loc) == some s.bf0 && (alone.obj? z).bind (·.loc) == some s.bf0 &&
+    (stuck.obj? held).bind (·.loc) == some lair && (stuck.obj? home).bind (·.loc) == none &&
+    ((there.zone (.player s.me .base)).filter (fun z =>
+      (there.cardDef? z).any (·.id == cid "OGN-199"))).length == 1
 
 end RiftboundTest
