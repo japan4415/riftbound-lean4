@@ -190,6 +190,7 @@ def Prim.understood : Prim → Bool
   | .turnEffect _ => true
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
+  | .activateConquer s => s.understood
   | .pay _ => true
   | .addEnergy ps n none => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC

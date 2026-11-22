@@ -7440,8 +7440,12 @@ def OGN_286.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Reckoner's Arena: the effect is not written yet. -/
-def OGN_286 : CardDef := OGN_286.meta
+/-- Reckoner's Arena. -/
+def OGN_286 : CardDef :=
+  { OGN_286.meta with
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.prim (.activateConquer (Selector.all .friendly .here [.ofType .unit])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-287
 /--

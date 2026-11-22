@@ -973,6 +973,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     some (s.addTurnFx p e, if e == .hiddenPlayed then [Event.hiddenPlayed p] else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
+  | .activateConquer sel =>
+    onSelected s p src env sel (fun t id => (t, [Event.conquerActivated id]))
   | .pay c =>
     match s.payNow p src c with
     | some pool => some (s.setPool p pool, [])
@@ -1120,6 +1122,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact playFirstOf_safe fs p src env s
+  | activateConquer sel =>
+    simp only [applyPrim] at h
+    exact onSelected_safe (fun t id => Safe.refl t) h
   | markOn sel e =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => addTurnFxOn_safe t p id e) h

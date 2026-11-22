@@ -115,6 +115,8 @@ inductive Prim where
   | win (p : PlayerSel)
   /-- Make something true for the rest of the turn. -/
   | turnEffect (e : TurnEffect)
+  /-- Activate the conquer effects of the units. -/
+  | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/
   | markOn (s : Selector) (e : TurnEffect)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
