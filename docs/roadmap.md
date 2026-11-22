@@ -464,7 +464,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **エンジン**: (1) 効果の**得点**（`Prim.score`）。安全な変更の定義（`SameMeta`）が、得点の変化を許すようにした（得点は、`WF` にも、物理カードにも関わらない。証明は、そのまま通った）。(2) フィルタ**`lethal`**（致死ダメージ。0 でなく、Might 以上）。(3) 盤の外の場所（手札・Trash・Main Deck・Rune Deck）にあるカードの**数**（`Amount.count`）。対象にはまだ選べない。
 - **書いた 5 枚**: Disintegrate（005。致死なら 1 枚引く。「これで Kill すれば」を、致死ダメージで近似する）、Adaptatron（056。「してもよい」を選び、Kill できたら Buff）、Ahri（066。Hold で 1 点）、Mobilize（134）と Catalyst of Aeons（138。Channel できなければ、引く。Rune Deck の数で判断する）。変異（lethal・gear の有無・数える場所・得点の相手）で、テストが落ちることを確かめた。
-- **近似として残したこと**: 「これで Kill すれば」は、ダメージが致死になったかで判断する（Cleanup で、実際に死ぬ前）。Adaptatron の「If you do」は、「Kill できる gear がある」で近似する。
+- **レビューで直したこと**: Adaptatron は、Gear が無いときは聞かない。Catalyst は、文の順（Channel してから引く）にし、Channel 前の Rune Deck の数を束縛して判断する。得点が 0 のときは、出来事を出さない。Channel した Rune が Exhausted であること、Rune Deck が空の Catalyst、すでにあるダメージ・Buff との合算、自分の Gear、Victory Score への Hold のテストを足した。
+- **近似として残したこと**: `lethal` は、パッシブの Might の増減を読まない（Cleanup の判定は読むので、食い違うことがある）。「これで Kill すれば」は、ダメージが致死になったかで判断する（Cleanup で、実際に死ぬ前）。Adaptatron の「If you do」は、「Kill できる gear がある」で近似する。
 
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 8 弾: 戦闘の文脈と、Mighty）
 

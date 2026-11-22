@@ -920,4 +920,41 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return runes a + 2 == runes s1 && a.handN s.me == s1.handN s.me - 1 &&
     runes b == 0 && b.handN s.me == one.handN s.me
 
+-- the channeled runes are exhausted (Mobilize, Catalyst); Catalyst with an empty Rune Deck draws 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-134" .hand
+  let (s2, d) ← put s s.me "OGN-138" .hand
+  let tired (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun u => x.tired u == some true)).length
+  let a ← play s1 s.me c
+  let b ← play s2 s.me d
+  let e ← play (s2.setZone (.player s.me .runeDeck) []) s.me d
+  return tired a == tired s1 + 1 && tired b == tired s2 + 2 && e.handN s.me == s2.handN s.me
+
+-- Disintegrate: damage that is already there counts; a buff keeps a unit from being lethal
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-005" .hand
+  let (s2, hurt) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, strong) ← putAt s2 s.you "OGN-136" s.bf0
+  let h := s3.modObj hurt (fun o => { o with damage := 2 })
+  let b := s3.buff strong |>.modObj strong (fun o => { o with mightMods := [⟨1, .turn⟩] })
+  let a ← play h s.me c [hurt]
+  let d ← play b s.me c [strong]
+  return a.handN s.me == h.handN s.me && d.handN s.me == b.handN s.me - 1
+
+-- Adaptatron kills a gear of mine too; Ahri's hold can reach the Victory Score
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, u) ← putAt s1 s.me "OGN-056" bf
+  let (s3, g) ← put s2 s.me "OGN-017" .base
+  let a ← fire s3 [.scored s.me bf true]
+  return (a.obj? u).map (·.buffed) == some true && a.countIn s.me .trash "OGN-017" == 1 &&
+    (a.obj? g).isNone
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, _) ← putAt s1 s.me "OGN-066" bf
+  let near := s2.gainPoints s.me (s2.config.mode.victoryScore - 1)
+  let a ← fire near [.scored s.me bf false]
+  return a.pointsOf s.me == s2.config.mode.victoryScore
+
 end RiftboundTest

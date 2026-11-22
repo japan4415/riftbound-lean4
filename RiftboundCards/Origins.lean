@@ -1344,9 +1344,9 @@ def OGN_056.meta : CardDef :=
 def OGN_056 : CardDef :=
   { OGN_056.meta with
     abilities := [.triggered (.onSelf .conquer)
-      (.of [] (.may (.ifThen (.exists (Selector.all .any .anywhere [.ofType .gear]))
-        (.seqOf [.prim (.kill (Selector.one .any .anywhere [.ofType .gear])), .prim (.buff .self)])
-        .nop))) .unlimited],
+      (.of [] (.ifThen (.exists (Selector.all .any .anywhere [.ofType .gear]))
+        (.may (.seqOf [.prim (.kill (Selector.one .any .anywhere [.ofType .gear])),
+          .prim (.buff .self)])) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-057
@@ -3346,8 +3346,9 @@ def OGN_138.meta : CardDef :=
 def OGN_138 : CardDef :=
   { OGN_138.meta with
     spellEffect := some (.of []
-      (.seqOf [.ifThen (.cmp .lt (.count (Selector.all .friendly .inRuneDeck [])) (.const 2))
-        (.prim (.draw .you (.const 1))) .nop, .prim (.channel .you (.const 0) (.const 2))])),
+      (.bind ⟨"runes"⟩ (.count (Selector.all .friendly .inRuneDeck []))
+        (.seqOf [.prim (.channel .you (.const 0) (.const 2)),
+          .ifThen (.cmp .lt (.var ⟨"runes"⟩) (.const 2)) (.prim (.draw .you (.const 1))) .nop]))),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-139
