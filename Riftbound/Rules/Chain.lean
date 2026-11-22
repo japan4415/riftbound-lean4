@@ -79,11 +79,13 @@ def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : 
       else if costs.contains .fromHidden then
         (s.zone (.player p .hidden)).contains src &&
           ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
-      else if costs.contains .fromChampionZone then (s.zone (.player p .championZone)).contains src
+      else if costs.contains .fromChampionZone then
+        (s.zone (.player p .championZone)).contains src && !s.cantPlay p
       else s.usesAbilitiesOf p src)
   | _ => s.usesAbilitiesOf p src
 
-/-- Where abilities are used from: the places of the board, the hand and the hidden cards. -/
+/-- Where abilities are used from: the places of the board, the hand, the hidden cards and the
+Champion Zone. -/
 def GameState.abilityZones (s : GameState) (p : PlayerId) : List ObjId :=
   s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone ++
     s.zone (.player p .hand) ++ s.zone (.player p .hidden) ++ s.zone (.player p .championZone)
@@ -116,9 +118,10 @@ theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId}
         simp only [List.mem_append]
         exact Or.inl (Or.inr h.1)
       · split at h
-        · unfold GameState.abilityZones
+        · simp only [Bool.and_eq_true] at h
+          unfold GameState.abilityZones
           simp only [List.mem_append]
-          exact Or.inr (by simpa [List.contains_iff_mem] using h)
+          exact Or.inr (by simpa [List.contains_iff_mem] using h.1)
         · exact GameState.usesAbilitiesOf_mem h
   · exact GameState.usesAbilitiesOf_mem h
 

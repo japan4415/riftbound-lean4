@@ -3289,8 +3289,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (u1, b) ← put empty s.me "OGN-088" .base
   let inBase := activate u1 s.me b 0 [] ⟨7, []⟩
   let theirs := activate s1 s.you c 0 [] ⟨7, []⟩
+  let twice := activate a s.me c 0 [] ⟨7, []⟩
+  -- the opponent's "can't play cards" holds for this play too
+  let blocked := activate (s1.addTurnFx s.you .opponentsCantPlay) s.me c 0 [] ⟨7, []⟩
+  let freed := activate (s1.addTurnFx s.me .opponentsCantPlay) s.me c 0 [] ⟨7, []⟩
   return a.countIn s.me .base "OGN-088" == 1 && (a.zone (.player s.me .championZone)).isEmpty &&
-    short.isNone && fromHand.isNone && inBase.isNone && theirs.isNone &&
+    short.isNone && fromHand.isNone && inBase.isNone && theirs.isNone && twice.isNone &&
+    blocked.isNone && freed.isSome &&
     (s1.zone (.player s.me .championZone)).length == 1
 
 end RiftboundTest

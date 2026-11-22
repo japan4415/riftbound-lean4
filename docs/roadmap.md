@@ -464,6 +464,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **理由**: `legalPlays` は手札だけを見るので、Champion Zone の Chosen Champion は、プレイできなかった（Hallowed Tomb のレビューで分かった）。
 - **エンジン**: コスト `AbilityCost.fromChampionZone`。ユニットのカードに、「Champion Zone にあるとき、印刷されたコストを払って、これをプレイする」起動型の能力を、最後に足す（`CardDef.championPlay`）。能力が使える場所に、Champion Zone を足した（`abilityZones`・`abilityZoneOk`）。
+- **レビューで直したこと**: 「相手はカードをプレイできない」が、この経路にも効く。
+- **近似として残したこと（レビュー）**: 支払ったエネルギーと追加コストは、記録しない（`energyPaid`・`paid` は 0 と偽）。Accelerate は、選べない。能力としてチェーンに載るので、相手が反応できる。
 - **近似として残したこと**: コストは、印刷されたもの（手札からのプレイが受ける、コストの軽減は、適用しない）。効果としてのプレイなので、プレイしたことの記録（Legion など）は、`playFree` の分だけ。
 
 ### M7 の実装の記録（2026-11-23）: Chosen Champion を、墓地から戻す（1 枚）
