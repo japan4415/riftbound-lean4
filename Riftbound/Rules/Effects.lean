@@ -822,7 +822,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     Prim → Option (GameState × List Event)
   | .deal sel n =>
     if s.damageOff then some (s, []) else
-    (n.evalS s p src env).bind (fun k => onSelected s p src env sel (dealObj k))
+    (n.evalS s p src env).bind (fun k => onSelected s p src env sel
+      (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel => onSelected s p src env sel killObj
   | .ready sel => onSelected s p src env sel (setExhausted false)
@@ -905,7 +906,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | none => simp [hn] at h
       | some k =>
         simp only [hn, Option.bind_some] at h
-        exact onSelected_safe (dealObj_safe k) h
+        exact onSelected_safe (fun t id => dealObj_safe _ t id) h
   | heal sel n =>
     simp only [applyPrim] at h
     cases hn : n.evalS s p src env with

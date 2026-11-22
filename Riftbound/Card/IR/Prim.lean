@@ -224,6 +224,9 @@ inductive StaticMod where
   | keyword (s : Selector) (k : KeywordInst)
   /-- The object takes no damage from anything (CR 142). -/
   | noDamage
+  /-- Spells and abilities that affect the units at this Battlefield each deal `n` Bonus Damage
+  more (CR 142). -/
+  | bonusDamageHere (n : Nat)
   /-- Objects cost less Energy, to a minimum: never below `floor` (CR 356). -/
   | costMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects cost more Energy (CR 356). -/

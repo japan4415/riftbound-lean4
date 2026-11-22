@@ -86,6 +86,17 @@ def victoryScore (s : GameState) : Nat :=
       | _ => 0))).sum
   (s.config.mode.victoryScore + delta).toNat
 
+/-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
+deals to the object `id`: that of the effect of the turn for the next spell, and that of the
+Battlefield the object is at (CR 142). -/
+def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
+  s.spellBonus p src +
+    (match (s.obj? id).bind (·.loc) with
+      | some bf =>
+        (s.activeMods bf).foldl
+          (fun acc m => match m with | .bonusDamageHere n => acc + n | _ => acc) 0
+      | none => 0)
+
 /-- What the passive abilities add to the Might of an object. -/
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum

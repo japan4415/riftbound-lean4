@@ -150,6 +150,28 @@ def GameState.killOnHit (s : GameState) (id : ObjId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .killOnDamage &&
     (f.target.isNone || f.target == some id))
 
+/-- The Bonus Damage a turn effect gives to the next spell. -/
+def TurnEffect.spellBonusOf : TurnEffect → Nat
+  | .nextSpellBonus n => n
+  | _ => 0
+
+/-- The Bonus Damage the spell `src` of the player deals with each instance of damage: that of an
+effect of the turn for the next spell the player plays (the first spell they played since it was
+made). -/
+def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
+  match s.obj? src, (s.cardDef? src).any (·.hasType .spell) with
+  | some o, true =>
+    (match o.playedStamp with
+      | some st =>
+        (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.stamp ≤ st &&
+          -- no spell of the player was played between the effect and this one
+          !(s.objects.toList.any (fun (k, x) =>
+            x.owner == p && (s.cardDef? ⟨k⟩).any (·.hasType .spell) &&
+              x.playedStamp.any (fun y => f.stamp ≤ y && y < st))))).foldl
+          (fun acc f => acc + f.kind.spellBonusOf) 0
+      | none => 0)
+  | _, _ => 0
+
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)

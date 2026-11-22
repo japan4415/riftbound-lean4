@@ -99,6 +99,9 @@ deriving DecidableEq, Repr, Hashable
 inductive TurnEffect where
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
+  /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of
+  damage it deals (CR 142). -/
+  | nextSpellBonus (n : Nat)
   /-- The next unit the player plays this turn enters ready. -/
   | nextUnitReady
   /-- The units the player plays this turn enter ready. -/

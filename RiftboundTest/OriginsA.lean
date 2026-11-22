@@ -2740,4 +2740,35 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (done.obj? a).isNone && (done.obj? b).isNone && died.length == 2 &&
     (plain.obj? a).isSome && (plain.obj? b).map (·.damage) == some 2
 
+-- Bonus Damage. Ravenborn Tome (OGN-032): the next spell I play this turn deals 1 more with each
+-- instance of damage (Hextech Ray deals 3)
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-032" .base
+  let (s2, h) ← put s1 s.me "OGN-009" .hand
+  let (s3, u) ← putAt s2 s.you "OGN-001" s.bf0
+  let on ← activate s3 s.me g 0
+  let ready := s3.addTurnFx s.me (.nextSpellBonus 1)
+  let boosted ← play ready s.me h [u]
+  let plain ← play s3 s.me h [u]
+  let (t1, h2) ← put s s.me "OGN-009" .hand
+  let (t2, v) ← putAt t1 s.you "OGN-001" s.bf0
+  let mine ← play (t2.addTurnFx s.you (.nextSpellBonus 1)) s.me h2 [v]
+  return (boosted.obj? u).map (·.damage) == some 4 && (plain.obj? u).map (·.damage) == some 3 &&
+    on.tired g == some true && on.turnFx.length == 1 &&
+    (mine.obj? v).map (·.damage) == some 3
+
+-- Void Gate (OGN-296): spells and abilities that affect the units at it deal 1 more
+#guard t fun s => do
+  let (s1, gate) ← putBf s s.me "OGN-296"
+  let (s2, h) ← put s1 s.me "OGN-009" .hand
+  let (s3, here) ← putAt s2 s.you "OGN-001" gate
+  let (s4, far) ← putAt s3 s.you "OGN-001" s.bf0
+  let a ← play s4 s.me h [here]
+  let b ← play s4 s.me h [far]
+  let (t1, h2) ← put s s.me "OGN-009" .hand
+  let (t2, v) ← putAt t1 s.you "OGN-001" s.bf0
+  let c ← play t2 s.me h2 [v]
+  return (a.obj? here).map (·.damage) == some 4 && (b.obj? far).map (·.damage) == some 3 &&
+    (c.obj? v).map (·.damage) == some 3
+
 end RiftboundTest
