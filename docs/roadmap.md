@@ -466,6 +466,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **解決中に選ぶことが、盤の外のカードも選べる**ようになった（`pickCandidates`。手札・Trash・Deck）。対象にはならない（`Choice.candidates` は、盤の上だけ）。Cemetery Attendant と Morbid Return（Trash の Unit を手札へ戻す）が動く。
 - **効果の「支配を奪う」「Recall」「勝つ」**（`Prim.takeControl`・`recall`・`win`）。勝つことは、Victory Score まで得点することで表し、次の Cleanup が勝者を決める。Possession と The Grand Plaza が動く。
 - **動くカード**: 298 枚のうち **143 枚**（133 → 143）。残りの 155 枚のうち、キーワードで止まるのは Hidden（14）と Vision（5）。
+- **レビューで直したこと**: 盤の外のカードを選ぶことは、「手札へ戻す」だけを、動くものに数える（ほかの動作は、盤の外を選べない）。支配を奪う・Recall は、解決中に選ぶ形を数えない。Possession が、ダメージ・Ready／Exhausted を保つことと、The Grand Plaza が、敵の Unit・ほかの Battlefield の Unit を数えないことのテストを足した。
 - **近似として残したこと**: 「勝つ」は、Final Point の規則を通らない、得点による勝利で表す。「Recall」は、Move の誘発を出さない（規則どおり）。
 
 ### M7 の実装の記録（2026-11-22）: 「カードが動く」の測り直し

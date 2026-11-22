@@ -1180,4 +1180,32 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let v := s.config.mode.victoryScore
   return v ≤ a.pointsOf s.me && b.pointsOf s.me < v
 
+-- Possession keeps the damage and the status of the unit it takes (Ready stays Ready, Exhausted
+-- stays Exhausted)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-203" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-116" s.bf0
+  let (s3, h) ← putAt s2 s.you "OGN-116" s.bf0
+  let hurt := (s3.modObj e (fun o => { o with damage := 2 })).tire h
+  let a ← play hurt s.me c [e]
+  let b ← play hurt s.me c [h]
+  return (a.obj? e).map (·.damage) == some 2 && (a.obj? e).map (·.exhausted) == some false &&
+    (b.obj? h).map (·.exhausted) == some true && !(a.zone (.player s.you .base)).contains e &&
+    (a.obj? s.bf0).bind (·.control) == (hurt.obj? s.bf0).bind (·.control)
+
+-- The Grand Plaza: the game is won, and an enemy unit, or my units at another battlefield, are
+-- not counted
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-293"
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let add (n : Nat) (p : PlayerId) (at_ : ObjId) (x : GameState) : Option GameState :=
+    (List.range n).foldl (fun acc _ => acc.bind fun y => (putAt y p "OGN-136" at_).map (·.1))
+      (some x)
+  let mixed ← add 4 s.me bf s1 >>= add 3 s.you bf
+  let elsewhere ← add 4 s.me bf s1 >>= add 3 s.me other
+  let a ← fire mixed [.scored s.me bf false]
+  let b ← fire elsewhere [.scored s.me bf false]
+  let v := s.config.mode.victoryScore
+  return a.pointsOf s.me < v && b.pointsOf s.me < v
+
 end RiftboundTest
