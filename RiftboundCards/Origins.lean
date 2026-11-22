@@ -7073,8 +7073,16 @@ def OGN_264.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Guerilla Warfare, Teemo: the effect is not written yet. -/
-def OGN_264 : CardDef := OGN_264.meta
+/-- Guerilla Warfare, Teemo. Up to two cards with Hidden from the Trash go to the hand (two optional
+steps), and hiding costs nothing this turn (the Power paid comes back). -/
+def OGN_264 : CardDef :=
+  { OGN_264.meta with
+    spellEffect := some (.of []
+      (.seqOf [
+        .may (.prim (.returnToHand (Selector.one .friendly .inTrash [.hasKeyword .hidden]))),
+        .may (.prim (.returnToHand (Selector.one .friendly .inTrash [.hasKeyword .hidden]))),
+        .prim (.turnEffect .hideFree)])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-265
 /--

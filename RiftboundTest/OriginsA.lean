@@ -3796,4 +3796,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     !alive b th && alive b fo &&
     !alive both one && !alive both tre && (both.obj? home).isSome
 
+-- Guerilla Warfare (OGN-264): return up to two cards with Hidden from my Trash to my hand, and
+-- hiding costs nothing this turn (the Power paid for Hide comes back)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-264" .hand
+  let (s2, _) ← put s1 s.me "OGN-135" .trash
+  let (s3, _) ← put s2 s.me "OGN-135" .trash
+  let (s4, _) ← put s3 s.me "OGN-135" .trash
+  let (s5, _) ← put s4 s.me "OGN-136" .trash
+  let a ← play s5 s.me c
+  let no ← play s5 s.me c [] { yes := false }
+  let inHand (x : GameState) := x.countIn s.me .hand "OGN-135"
+  let noted := a.turnFx.any (fun f => f.kind == .hideFree)
+  -- hiding: with the note the Power comes back
+  let (h1, hc) ← put s s.me "OGN-135" .hand
+  let mine := h1.control s.me s.bf0
+  let normal ← activate mine s.me hc 0 [s.bf0] ⟨0, [.fury]⟩
+  let free ← activate (mine.addTurnFx s.me .hideFree) s.me hc 0 [s.bf0] ⟨0, [.fury]⟩
+  return inHand a == inHand s5 + 2 && a.countIn s.me .trash "OGN-135" == 1 &&
+    a.countIn s.me .trash "OGN-136" == 1 && inHand no == inHand s5 && noted &&
+    (free.poolOf s.me).any == (normal.poolOf s.me).any + 1
+
 end RiftboundTest

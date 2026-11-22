@@ -107,7 +107,11 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
       [.activated [.fromHand, .pay ⟨0, [.any]⟩] .normal
         (EffectDef.of [Choice.targetOf .one .any .anywhere
           [.ofType .battlefield, .controlled, .hideRoom]]
-          (.ifThen (.matches (.slot 0) .controlled) (.prim (.hideAt .self (.slot 0))) .nop))
+          (.ifThen (.matches (.slot 0) .controlled)
+            -- hiding is free this turn (Guerilla Warfare): the Power paid comes back
+            (.seqOf [.prim (.hideAt .self (.slot 0)),
+              .ifThen (.noted .hideFree) (.prim (.addPower .you (.const 1) none none)) .nop])
+            .nop))
         .unlimited,
        -- the card must still be hidden when the ability resolves: it can be used again while it
        -- is on the Chain

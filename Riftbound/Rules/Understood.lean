@@ -172,6 +172,7 @@ def Condition.understood : Condition → Bool
   | .marked _ => true
   | .fromHidden => true
   | .excessAtLeast _ => true
+  | .noted _ => true
   | .diedWith _ => true
   | .discardedThisTurn => true
   | _ => false
@@ -203,6 +204,7 @@ def Prim.understood : Prim → Bool
   | .pay _ => true
   | .addEnergy ps n none => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC
+  | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
   | .counter s => s.understood
