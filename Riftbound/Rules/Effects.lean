@@ -826,7 +826,8 @@ at the same place, or if a Battlefield that a Unit would leave for the Base forb
 def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  let forbids (l : Option ObjId) : Bool := l.any (fun bf => (s.activeMods bf).contains .noMoveToBase)
+  let forbids (l : Option ObjId) : Bool :=
+    l.any (fun bf => (s.activeMods bf).contains .noMoveToBase)
   if lx == ly || (lx.isNone && forbids ly) || (ly.isNone && forbids lx) then (s, [])
   else
     let r1 := sendToLoc ly s x

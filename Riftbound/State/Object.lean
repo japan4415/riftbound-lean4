@@ -122,6 +122,8 @@ structure Object where
   movesTurn : Option Nat := none
   /-- For a card hidden face down: the Battlefield it is hidden at (CR 811). -/
   hiddenAt : Option ObjId := none
+  /-- Whether the card came into play from Hidden (it was hidden when it was played). -/
+  fromHidden : Bool := false
   /-- For a card hidden face down: the turn it was hidden. -/
   hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
