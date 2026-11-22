@@ -5858,8 +5858,16 @@ def OGN_230.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Albus Ferros: the effect is not written yet. -/
-def OGN_230 : CardDef := OGN_230.meta
+/-- Albus Ferros. -/
+def OGN_230 : CardDef :=
+  { OGN_230.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .buffed])
+        (.ifThen (.matches .it .buffed)
+      (.may (.seqOf [.prim (.spendBuff .it), .prim (.channel .you (.const 0) (.const 1))]))
+      .nop)))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-231
 /--
@@ -7068,8 +7076,13 @@ def OGN_279.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Fortified Position: the effect is not written yet. -/
-def OGN_279 : CardDef := OGN_279.meta
+/-- Fortified Position. -/
+def OGN_279 : CardDef :=
+  { OGN_279.meta with
+    abilities := [.triggered (.onSelf .defend)
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.keyword .it ⟨.shield, .amount 2⟩) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-280
 /--
@@ -7311,8 +7324,14 @@ def OGN_291.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Candlelit Sanctum: the effect is not written yet. -/
-def OGN_291 : CardDef := OGN_291.meta
+/-- The Candlelit Sanctum. -/
+def OGN_291 : CardDef :=
+  { OGN_291.meta with
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.seqOf [
+        .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 2, .not (.top 1)]))),
+        .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-292
 /--
