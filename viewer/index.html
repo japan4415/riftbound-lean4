@@ -131,6 +131,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
 #cardinfo .x { float: right; padding: 0 7px; }
 .card { cursor: context-menu; }
+.tgt { cursor: pointer; outline: 2px dashed var(--accent); outline-offset: 2px; background-clip: padding-box; }
+.tgt:hover, .tgt:focus-visible { outline-style: solid; outline-width: 3px; }
+.bf.tgt, .lane.tgt { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
 .card.act { cursor: pointer; outline: 2px solid var(--accent); outline-offset: 1px; }
 .card.act:hover, .card.act:focus-visible { outline-width: 3px; transform: translateY(-3px); }
 #actmenu { position: fixed; z-index: 65; display: grid; gap: 3px; padding: 6px; max-width: min(360px, 92vw);
@@ -260,7 +263,7 @@ function buildBoard() {
     }
     head.append(piles); s.append(head);
     for (const [k, label] of LANES) {
-      const l = mk('div', 'lane'); l.dataset.label = label; zoneBox.set('p' + p + '.' + k, l); s.append(l);
+      const l = mk('div', 'lane'); l.dataset.label = label; l.dataset.zone = 'p' + p + '.' + k; zoneBox.set('p' + p + '.' + k, l); s.append(l);
       if (k === 'base') {
         // Runes and the other cards at Base sit in separate groups, so they are not mixed up.
         const rg = mk('div', 'grp runes'); rg.dataset.label = 'Rune'; const og = mk('div', 'grp others');
@@ -405,7 +408,7 @@ function layoutBattlefields(box, st) {
   for (const b of bfs) {
     let g = bfGroup.get(b.id);
     if (!g) {
-      g = document.createElement('div'); g.className = 'bf';
+      g = document.createElement('div'); g.className = 'bf'; g.dataset.bf = String(b.id);
       const h = document.createElement('div'); h.className = 'bf-head';
       const c = document.createElement('div'); c.className = 'bf-cards'; g.append(h, c); bfGroup.set(b.id, g);
     }
@@ -420,7 +423,8 @@ function layoutBattlefields(box, st) {
     const nm = document.createElement('b'); nm.textContent = cardName(b.id); head.append(nm);
     head.append(b.control === null ? tag('未支配', '') : tag('P' + b.control + ' が支配', 'ctl' + b.control));
     if (b.contested !== null) head.append(tag('Contested: P' + b.contested, 'hot'));
-    g.className = 'bf' + (b.control !== null ? ' mine' + b.control : '') + (b.contested !== null ? ' contested' : '');
+    g.className = 'bf' + (b.control !== null ? ' mine' + b.control : '') + (b.contested !== null ? ' contested' : '') +
+      (g.classList.contains('tgt') ? ' tgt' : '');
     groups.push(g);
   }
   const rest = ids.filter((id) => !placed.has(id));
@@ -699,7 +703,7 @@ function actCard(a) {
 }
 let cardActs = new Map(), showAllMoves = false;
 function clearActMarks() {
-  cardActs = new Map(); hideActMenu();
+  cardActs = new Map(); hideActMenu(); pick = null; clearPickMarks();
   document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
 }
 function markActCards(list) {
@@ -713,14 +717,28 @@ function markActCards(list) {
   }
 }
 function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
-function chooseCard(c, x, y) {
-  const list = cardActs.get(c.dataset.id); if (!list || !live) return;
-  if (list.length === 1) { hideActMenu(); liveAct(list[0].k); return; }
+// 手が「対象」や「移動先」だけ違うときは、カードを選んだあと、盤面の光っている所をクリックして選ぶ。
+// 選ぶ順は、手の targets（プレイ・起動）か、移動先（Base か Battlefield）。ほかに違いが残れば、メニューで選ぶ。
+function selSeq(a) {
+  if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
+  if ((a.kind === 'playCard' || a.kind === 'activate') && a.targets && a.targets.length) return a.targets.map(String);
+  return [];
+}
+let pick = null;
+function selElems(key, actor) {
+  if (key === 'base') { const l = document.querySelector('.lane[data-zone="' + actor + '.base"]'); return l ? [l] : []; }
+  const out = [], c = document.querySelector('.card[data-id="' + key + '"]'), g = document.querySelector('.bf[data-bf="' + key + '"]');
+  if (c) out.push(c); if (g) out.push(g); return out;
+}
+function clearPickMarks() {
+  document.querySelectorAll('.tgt').forEach((e) => { e.classList.remove('tgt'); if (!e.classList.contains('card')) return; e.removeAttribute('tabindex'); });
+}
+function showMenu(list, title, x, y) {
   const m = $('actmenu'); m.textContent = '';
-  const h = document.createElement('h3'); h.textContent = cardName(c.dataset.id) + ' で選べる手（' + list.length + ' 個）'; m.append(h);
+  const h = document.createElement('h3'); h.textContent = title + '（' + list.length + ' 個）'; m.append(h);
   for (const l of list) {
-    const [title, detail] = describeA(l.a, steps[steps.length - 1].state.pending);
-    const b = document.createElement('button'); b.textContent = title.replace(/^P\d: /, ''); b.title = detail || '';
+    const [t, detail] = describeA(l.a, steps[steps.length - 1].state.pending);
+    const b = document.createElement('button'); b.textContent = t.replace(/^P\d: /, ''); b.title = detail || '';
     b.addEventListener('click', (e) => { e.stopPropagation(); hideActMenu(); liveAct(l.k); });
     m.append(b);
   }
@@ -730,14 +748,54 @@ function chooseCard(c, x, y) {
   m.style.top = Math.max(8, Math.min(y + 6, innerHeight - hh - 8)) + 'px';
   const f = m.querySelector('button'); if (f) f.focus();
 }
+function stepPick(x, y) {
+  const { card, list, chosen } = pick, d = chosen.length;
+  const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
+  const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
+  const done = rem.filter((l) => selSeq(l.a).length === d);
+  if (!cands.length || done.length) {
+    pick = null; clearPickMarks();
+    if (rem.length === 1) { liveAct(rem[0].k); return; }
+    showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
+  }
+  const actor = rem[0].a.actor;
+  const elems = cands.map((k) => selElems(k, actor));
+  if (elems.some((e) => !e.length)) { pick = null; clearPickMarks(); showMenu(rem, cardName(card) + ' で選べる手', x, y); return; }
+  if (cands.length === 1) { pick.chosen = [...chosen, cands[0]]; stepPick(x, y); return; }
+  clearPickMarks(); pick.cands = cands; pick.actor = actor;
+  document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
+  cands.forEach((k, i) => elems[i].forEach((e) => { e.classList.add('tgt'); if (e.classList.contains('card')) e.tabIndex = 0; }));
+  $('livemsg').textContent = cardName(card) + ': ' + (cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'))
+    ? '移動先' : '対象') + 'を選ぶ（光っている所をクリック。Escape でやめる）';
+}
+function pickClick(el, x, y) {
+  const key = el.classList.contains('lane') ? 'base' : el.dataset.bf !== undefined ? el.dataset.bf : el.dataset.id;
+  if (!pick.cands.includes(key)) return false;
+  pick.chosen = [...pick.chosen, key]; stepPick(x, y); return true;
+}
+function cancelPick() { if (!pick) return; pick = null; renderLegal(steps.length - 1); }
+function chooseCard(c, x, y) {
+  const list = cardActs.get(c.dataset.id); if (!list || !live) return;
+  if (list.length === 1) { hideActMenu(); liveAct(list[0].k); return; }
+  hideActMenu();
+  if (list.every((l) => selSeq(l.a).length)) { pick = { card: c.dataset.id, list, chosen: [], cands: [] }; stepPick(x, y); return; }
+  showMenu(list, cardName(c.dataset.id) + ' で選べる手', x, y);
+}
 document.addEventListener('click', (e) => {
+  if (pick && !e.target.closest('#actmenu')) {
+    const t = e.target.closest && e.target.closest('.card.tgt, .bf.tgt, .lane.tgt');
+    if (t) { e.stopPropagation(); pickClick(t, e.clientX, e.clientY); } else cancelPick();
+    return;
+  }
   const c = e.target.closest && e.target.closest('.card.act');
   if (c && !e.target.closest('#actmenu')) { e.stopPropagation(); chooseCard(c, e.clientX, e.clientY); return; }
   if (!e.target.closest('#actmenu')) hideActMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideActMenu();
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('act')) {
+  if (e.key === 'Escape') { hideActMenu(); cancelPick(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('tgt') && pick) {
+    e.preventDefault(); const r = e.target.getBoundingClientRect(); pickClick(e.target, r.left + r.width / 2, r.top + r.height / 2);
+  } else if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('act')) {
     e.preventDefault(); const r = e.target.getBoundingClientRect(); chooseCard(e.target, r.left + r.width / 2, r.top + r.height / 2);
   }
 });
