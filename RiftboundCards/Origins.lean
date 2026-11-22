@@ -7235,8 +7235,19 @@ def OGN_269.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Boss: the effect is not written yet. -/
-def OGN_269 : CardDef := OGN_269.meta
+/-- The Boss. -/
+def OGN_269 : CardDef :=
+  { OGN_269.meta with
+    abilities := [
+      .triggered
+        { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+          condition := .diedWith .buffedUnitDied }
+        (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
+          (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩), .prim (.exhaust .self),
+            .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))])) .nop))
+        .unlimited,
+      .triggered (.onSelf .youConquer) (.of [] (.prim (.ready .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-270
 /--
