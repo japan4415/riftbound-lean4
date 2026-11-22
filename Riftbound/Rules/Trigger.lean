@@ -158,7 +158,7 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
 /-- A passive ability of an object the player controls makes the abilities of the event `.die` fire
 one more time. -/
 def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
-  s.inPlay.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
+  s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
     (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
 
 /-- The abilities that fire because of one event (CR 389). -/

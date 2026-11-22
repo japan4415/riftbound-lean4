@@ -2966,7 +2966,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (foeK, evF) := killObj theirs foe
   let (t2, _) ← put theirs s.me "OGN-236" .base
   let (foeK2, evF2) := killObj t2 foe
-  return (withK.detect evK).length == 2 && (without.detect ev).length == 1 &&
+  -- a card that has a trigger for its death but not the keyword (Scrapheap) is not doubled, and
+  -- two Karthus still make it twice
+  let (u1, scrap) ← putAt s2 s.me "OGN-182" s.bf0
+  let (scrapK, evS) := killObj u1 scrap
+  let (u2, _) ← put s2 s.me "OGN-236" .base
+  let (twoK, ev2) := killObj u2 k
+  let a2 := (twoK.detect ev2).length
+  return (scrapK.detect evS).length == 1 && a2 == 2 &&
+    (withK.detect evK).length == 2 && (without.detect ev).length == 1 &&
     (noKw.detect evO).length == 0 && (foeK.detect evF).length == 1 &&
     (foeK2.detect evF2).length == 1
 
