@@ -469,6 +469,40 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
         · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Recycle the cards one after the other, the first one first. -/
+def recycleList : List ObjId → GameState → GameState × List Event
+  | [], s => (s, [])
+  | id :: ids, s =>
+    let r := recycleOne s id
+    let r2 := recycleList ids r.1
+    (r2.1, r.2 ++ r2.2)
+
+/-- Recycling cards is a safe change. -/
+theorem recycleList_safe : ∀ (ids : List ObjId) (s : GameState), Safe s (recycleList ids s).1
+  | [], s => Safe.refl s
+  | id :: ids, s => (recycleOne_safe s id).trans (recycleList_safe ids _)
+
+/-- Reveal from the top of the Main Deck until a card with the properties is revealed: it is played
+for free, and the others revealed are recycled (all of the deck if no card matches). -/
+def playFirstOf (fs : FilterList) (p : PlayerId) (src : ObjId) (env : Env) (s : GameState) :
+    GameState × List Event :=
+  let deck := s.zone (.player p .mainDeck)
+  match deck.find? (fun id => fs.holds s src env id == some true) with
+  | some u =>
+    let r := playFree p s u
+    let r2 := recycleList (deck.takeWhile (fun id => id != u)) r.1
+    (r2.1, r.2 ++ r2.2)
+  | none => recycleList deck s
+
+/-- Playing the first card is a safe change. -/
+theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : Env)
+    (s : GameState) : Safe s (playFirstOf fs p src env s).1 := by
+  unfold playFirstOf
+  dsimp only
+  split
+  · exact (playFree_safe p s _).trans (recycleList_safe _ _)
+  · exact recycleList_safe _ _
+
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
 def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -879,6 +913,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e => some (s.addTurnFx p e, [])
+  | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
   | .pay c =>
     match s.payNow p src c with
@@ -1023,6 +1058,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           simp only [hl, hn, hx, Option.bind_some, Option.map_some, Option.some.injEq] at h
           rw [← h]
           exact channelAll_safe k x l s
+  | playFirst fs =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact playFirstOf_safe fs p src env s
   | markOn sel e =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => addTurnFxOn_safe t p id e) h
