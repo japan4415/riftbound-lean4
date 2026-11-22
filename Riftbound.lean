@@ -62,6 +62,7 @@ public import Riftbound.Invariant.Setup
 public import Riftbound.Invariant.Resources
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality
+public import Riftbound.Tournament.Match
 
 /-!
 # Riftbound
