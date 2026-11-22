@@ -33,7 +33,7 @@
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
 | I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
-| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。**調査の結果と単位の分け方は [termination.md](termination.md)。I12a（Cleanup）は証明済み（`OwnersValid` が前提）、残りは未** | L2 | M5〜 |
+| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。**調査の結果と単位の分け方は [termination.md](termination.md)。I12a（Cleanup）は証明済み、残りは未** | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
@@ -462,10 +462,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### I12a の実装の記録（2026-11-22）: Cleanup の停止
 
-- **計画からの変更なし、ただし前提が 1 つ増えた**: Cleanup が止まることを、`Invariant/Cleanup.lean` で証明した。**ただし、どの物体の持ち主もゲームのプレイヤーであること（`OwnersValid`）を前提にした**。これが成り立たないと、撃破が何もせずに成功し、Cleanup が永久に繰り返す。**遊べるどのゲームでも成り立つことは、まだ証明していない**（`OwnerOk` は Non-Board のゾーンだけ）。
+- **計画からの変更**: Cleanup が止まることを、`Invariant/Cleanup.lean` で証明した。撃破が必ず場の数を減らすには、撃破される Unit の持ち主がプレイヤーである必要がある。**これを不変条件として全部の腕で証明する代わりに（フレームのプレイヤーの妥当性まで通す必要があり、大きい）、`GameState.lethal` に「持ち主がプレイヤーである」を足した**。遊べるゲームでは動きは変わらない（既存のテストが通る）。そうでない物体は、遊べるゲームには存在しない。**定理には、`WF` のほかの前提が無い**。
 - **証明したこと**: `cleanup_terminates`、`cleanup_no_infinite_run`。測度は 6 つの数の字引き順（場の物体の数、Board の外のトークンの数、離れた Equipment の数、Control を失った Battlefield の数、古い Contested の数、新しい Contested の数）。6 つの歩みのどれもが、測度を真に減らす。公理は標準の 3 つ。
 - **作り方**: 数えるのは `List.countP` と `flatMap` の長さ。ゾーンから 1 枚抜くと全体の長さがちょうど 1 減る一般の補題（`length_flatMap_erase_one`）と、1 つの物体を変えても種類・位置・持ち主・Control を変えない `modObj` の補題で、歩みを 1 つずつ通した。
-- **次の候補**: I12a'（`OwnersValid` を `Reachable` の不変条件にする）、I12b（`run` の停止）、I12c、I12d。
+- **次の候補**: I12b（`run` の停止）、I12c、I12d。持ち主の妥当性を不変条件として証明すること（`lethal` の条件を外せる）。
 
 ### I12 の調査の記録（2026-11-22）: 自動処理の停止
 

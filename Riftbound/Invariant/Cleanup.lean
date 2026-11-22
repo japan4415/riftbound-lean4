@@ -13,10 +13,11 @@ the objects in play, the tokens off the Board, the loose Equipment, the Battlefi
 their Control, the stale Contests and the new Contests. So the steps cannot go on for ever
 (`cleanup_terminates`).
 
-The proof needs one fact that is not yet proved for the games that can be played: **every owner is
-a player of the game** (`OwnersValid`). Without it, killing a Unit could fail (its Trash would not
-be a zone of the game), leave the state as it is, and make the Cleanup repeat for ever. Under
-`WF` and `OwnersValid` it cannot.
+The proof needs the owner of a Unit with lethal damage to be a player of the game. Killing a Unit
+sends it to its owner's Trash; if that were not a zone of the game, the move would fail, leave the
+state as it is, and make the Cleanup repeat for ever. A game that can be played has no such object;
+`GameState.lethal` says so (its owner is a player), which lets the Cleanup stop in every well-formed
+state (`cleanup_terminates`), without a further assumption.
 -/
 
 @[expose] public section
@@ -551,14 +552,20 @@ theorem GameState.inPlayZones_nodup (s : GameState) : s.inPlayZones.Nodup := by
     intro h
     cases h
 
-/-- Every object has an owner who is a player of the game. -/
-def GameState.OwnersValid (s : GameState) : Prop :=
-  ∀ id o, s.obj? id = some o → o.owner.n < s.playerCount
+/-- A Unit with lethal damage has an owner who is a player. -/
+theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
+    ∀ o, s.obj? u = some o → o.owner.n < s.playerCount := by
+  intro o ho
+  unfold GameState.lethal at h
+  rw [ho] at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+  exact h.1.1
 
-/-- **Killing an object in play takes it out of play** (I12a). In a well-formed game where every
+/-- **Killing an object in play takes it out of play** (I12a). In a well-formed game, when the
 owner is a player, the Trash of the owner is a zone of the game and the object is on the Board, so
 the move happens, and one object fewer is in play. -/
-theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) (hov : s.OwnersValid) {u : ObjId}
+theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+    (hov : ∀ o, s.obj? u = some o → o.owner.n < s.playerCount)
     (hu : u ∈ s.inPlay) : (killObj s u).1.inPlay.length < s.inPlay.length := by
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
@@ -568,7 +575,7 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) (hov : s.OwnersValid) {u 
       (Zone.normalize o'.owner (.player o'.owner .trash)).Valid s.playerCount ∧
         z0 ≠ Zone.normalize o'.owner (.player o'.owner .trash) := by
     intro o' ho'
-    have hlt := hov u o' ho'
+    have hlt := hov o' ho'
     simp only [Zone.normalize, Zone.isBoard]
     refine ⟨Zone.valid_player hlt _, ?_⟩
     have hz0' := hz0
@@ -757,13 +764,15 @@ theorem findSome_newContest {s : GameState} {b : ObjId} {q : PlayerId}
     exact ⟨ha, hn⟩
 
 /-- Every step of the Cleanup makes the measure go down (I12a). -/
-theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF) (hov : s.OwnersValid)
+theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     (h : cleanupStep0 s = some (s', es)) : MeasLt s'.cleanupMeasure s.cleanupMeasure := by
   unfold cleanupStep0 at h
   split at h
   · rename_i u hu
     obtain rfl : s' = (killObj s u).1 := (congrArg Prod.fst (Option.some.inj h)).symm
-    exact MeasLt.at1 (killObj_inPlay_lt hwf hov (List.mem_of_find?_eq_some hu))
+    have hl := List.find?_some hu
+    simp only [Bool.and_eq_true] at hl
+    exact MeasLt.at1 (killObj_inPlay_lt hwf (lethal_owner hl.2) (List.mem_of_find?_eq_some hu))
   · split at h
     · rename_i b hb
       obtain rfl : s' = s.modObj b (fun o => { o with control := none }) :=
@@ -783,7 +792,7 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF) (hov :
         · exact absurd h (by simp)
 
 /-- Every step of the Cleanup makes the measure go down (I12a). -/
-theorem cleanupStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF) (hov : s.OwnersValid)
+theorem cleanupStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     (h : cleanupStep s = some (s', es)) : MeasLt s'.cleanupMeasure s.cleanupMeasure := by
   unfold cleanupStep at h
   split at h
@@ -794,165 +803,34 @@ theorem cleanupStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF) (hov : 
     · rename_i r hr
       obtain rfl : s' = r.1 := (congrArg Prod.fst (Option.some.inj h)).symm
       exact detachStep_lt hr
-    · exact cleanupStep0_lt hwf hov h
-
-/-- Changing an object but not its owner keeps every owner a player. -/
-theorem ownersValid_modObj {s : GameState} (hov : s.OwnersValid) (b : ObjId) {f : Object → Object}
-    (hf : ∀ o, (f o).owner = o.owner) : (s.modObj b f).OwnersValid := by
-  intro y o ho
-  rcases obj?_modObj_cases s b f y with h | ⟨o0, h1, h2⟩
-  · rw [h] at ho
-    exact hov y o ho
-  · rw [h2] at ho
-    cases ho
-    rw [hf]
-    exact hov y o0 h1
-
-/-- Removing an object keeps every owner a player. -/
-theorem ownersValid_removed {s : GameState} (hov : s.OwnersValid) (id : ObjId) (z : Zone)
-    (l : List ObjId) :
-    ({ s.setZone z l with objects := s.objects.erase id.n } : GameState).OwnersValid := by
-  intro y o ho
-  by_cases hn : y.n = id.n
-  · exfalso
-    unfold GameState.obj? at ho
-    simp [Std.ExtTreeMap.getElem?_erase, hn] at ho
-  · have h := obj?_removed (s := s) hn z l
-    rw [h] at ho
-    exact hov y o ho
-
-/-- Sending an object to a zone keeps every owner a player. -/
-theorem ownersValid_sendObj {s : GameState} (hov : s.OwnersValid) (k : ZoneKind) (u : ObjId) :
-    (sendObj k s u).1.OwnersValid := by
-  unfold sendObj
-  cases ho : s.obj? u with
-  | none => simp only [ho]; exact hov
-  | some o =>
-    simp only [ho]
-    cases hm : moveObj s u (.player o.owner k) with
-    | none => simp only [hm]; exact hov
-    | some r =>
-      obtain ⟨s', id'⟩ := r
-      simp only [hm]
-      obtain ⟨src, d, hs, -⟩ := moveObj_spec_dst hm
-      have hpc : s'.playerCount = s.playerCount := by
-        unfold GameState.playerCount
-        rw [hs.config]
-      intro y o' hy
-      rw [hpc]
-      by_cases hyi : y.n = id'.n
-      · have h1 := hs.owner
-        have hy' : s'.objects[id'.n]? = some o' := by
-          unfold GameState.obj? at hy
-          rw [hyi] at hy
-          exact hy
-        rw [hy'] at h1
-        simp only [Option.map_some] at h1
-        have h2 : o'.owner = o.owner := by
-          cases hu : s.objects[u.n]? with
-          | none => unfold GameState.obj? at ho; rw [hu] at ho; cases ho
-          | some o2 =>
-            rw [hu] at h1
-            simp only [Option.map_some, Option.some.injEq] at h1
-            unfold GameState.obj? at ho
-            rw [hu] at ho
-            cases ho
-            exact h1
-        rw [h2]
-        exact hov u o ho
-      · have hyu : y.n ≠ u.n := by
-          intro e
-          have hmem : y.n ∈ s'.objects := by
-            unfold GameState.obj? at hy
-            exact Std.ExtTreeMap.isSome_getElem?_iff_mem.mp (by rw [hy]; rfl)
-          rcases (hs.objects y.n).mp hmem with ⟨-, hne⟩ | h
-          · exact hne e
-          · exact hyi h
-        have h3 := hs.objects_other y.n hyu hyi
-        have : s.objects[y.n]? = some o' := by
-          unfold GameState.obj? at hy
-          rw [← h3]
-          exact hy
-        exact hov y o' this
-
-theorem killObj_fst (s : GameState) (u : ObjId) : (killObj s u).1 = (sendObj .trash s u).1 := by
-  unfold killObj
-  cases s.obj? u <;> rfl
-
-/-- A step of the Cleanup keeps every owner a player. -/
-theorem cleanupStep_ownersValid {s s' : GameState} {es : List Event} (hov : s.OwnersValid)
-    (h : cleanupStep s = some (s', es)) : s'.OwnersValid := by
-  unfold cleanupStep at h
-  split at h
-  · rename_i r hr
-    obtain rfl : s' = r.1 := (congrArg Prod.fst (Option.some.inj h)).symm
-    unfold tokenStep at hr
-    cases hoff : s.offBoardToken with
-    | none => simp [hoff] at hr
-    | some id =>
-      simp only [hoff, Option.map_eq_some_iff] at hr
-      obtain ⟨s1, hrm, hr1⟩ := hr
-      obtain ⟨z, -, -, rfl⟩ := removeObj_spec hrm
-      rw [← hr1]
-      exact ownersValid_removed hov id z _
-  · split at h
-    · rename_i r hr
-      obtain rfl : s' = r.1 := (congrArg Prod.fst (Option.some.inj h)).symm
-      unfold detachStep at hr
-      simp only [Option.map_eq_some_iff] at hr
-      obtain ⟨g, -, hr1⟩ := hr
-      rw [← hr1]
-      exact ownersValid_modObj hov g (fun _ => rfl)
-    · unfold cleanupStep0 at h
-      split at h
-      · rename_i u hu
-        obtain rfl : s' = (killObj s u).1 := (congrArg Prod.fst (Option.some.inj h)).symm
-        rw [killObj_fst]
-        exact ownersValid_sendObj hov .trash u
-      · split at h
-        · rename_i b hb
-          obtain rfl : s' = s.modObj b (fun o => { o with control := none }) :=
-            (congrArg Prod.fst (Option.some.inj h)).symm
-          exact ownersValid_modObj hov b (fun _ => rfl)
-        · split at h
-          · rename_i b hb
-            obtain rfl : s' = s.modObj b (fun o => { o with contested := none }) :=
-              (congrArg Prod.fst (Option.some.inj h)).symm
-            exact ownersValid_modObj hov b (fun _ => rfl)
-          · split at h
-            · rename_i b q hbq
-              obtain rfl : s' = s.modObj b (fun o => { o with contested := some q }) :=
-                (congrArg Prod.fst (Option.some.inj h)).symm
-              exact ownersValid_modObj hov b (fun _ => rfl)
-            · exact absurd h (by simp)
+    · exact cleanupStep0_lt hwf h
 
 /-- The Cleanup moves from a state to the next one. -/
 def CleanupRel (s' s : GameState) : Prop := ∃ es, cleanupStep s = some (s', es)
 
 theorem cleanup_acc_aux : ∀ (m : Nat × Nat × Nat × Nat × Nat × Nat) (s : GameState),
-    s.cleanupMeasure = m → s.WF → s.OwnersValid → Acc CleanupRel s := by
+    s.cleanupMeasure = m → s.WF → Acc CleanupRel s := by
   intro m
   refine MeasLt.wf.induction (C := fun m => ∀ s : GameState, s.cleanupMeasure = m → s.WF →
-    s.OwnersValid → Acc CleanupRel s) m ?_
-  intro m ih s hm hwf hov
+    Acc CleanupRel s) m ?_
+  intro m ih s hm hwf
   refine Acc.intro s (fun s' hs' => ?_)
   obtain ⟨es, h⟩ := hs'
-  exact ih s'.cleanupMeasure (hm ▸ cleanupStep_lt hwf hov h) s' rfl
-    ((cleanupStep_safe h).wf hwf) (cleanupStep_ownersValid hov h)
+  exact ih s'.cleanupMeasure (hm ▸ cleanupStep_lt hwf h) s' rfl ((cleanupStep_safe h).wf hwf)
 
 /-- **I12a: the Cleanup stops.** In a well-formed game where every owner is a player, the steps of
 the Cleanup (CR 323) cannot go on for ever: after a finite number of them none applies. -/
-theorem cleanup_terminates {s : GameState} (hwf : s.WF) (hov : s.OwnersValid) :
-    Acc CleanupRel s := cleanup_acc_aux _ s rfl hwf hov
+theorem cleanup_terminates {s : GameState} (hwf : s.WF) : Acc CleanupRel s :=
+  cleanup_acc_aux _ s rfl hwf
 
 /-- No infinite run of Cleanup steps starts in such a game. -/
-theorem cleanup_no_infinite_run {f : Nat → GameState} (hwf : (f 0).WF) (hov : (f 0).OwnersValid)
+theorem cleanup_no_infinite_run {f : Nat → GameState} (hwf : (f 0).WF)
     (hstep : ∀ n, CleanupRel (f (n + 1)) (f n)) : False := by
   have key : ∀ s : GameState, Acc CleanupRel s → ∀ n, f n = s → False := by
     intro s hs
     induction hs with
     | intro s _ ih => exact fun n hn => ih (f (n + 1)) (hn ▸ hstep n) (n + 1) rfl
-  exact key (f 0) (cleanup_terminates hwf hov) 0 rfl
+  exact key (f 0) (cleanup_terminates hwf) 0 rfl
 
 end Riftbound
 
