@@ -127,8 +127,15 @@ def Condition.understood : Condition → Bool
   | .paid => true
   | _ => false
 
-/-- A selector of a primitive: it may also name one object to choose while the effect resolves
-(`runEffect` asks the player), which is not understood anywhere else. -/
+/-- A selector of a primitive that returns objects to a hand: it may name one object to choose
+while the effect resolves (`runEffect` asks the player), also a card off the board. -/
+def Selector.understoodPickAny : Selector → Bool
+  | .pick .one _ place fs =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
+  | s => s.understood
+
+/-- A selector of a primitive that names one object to choose while the effect resolves, on the
+board. -/
 def Selector.understoodPick : Selector → Bool
   | .pick .one _ place fs => place.understood && FilterList.understood fs
   | s => s.understood
@@ -137,13 +144,16 @@ def Selector.understoodPick : Selector → Bool
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .score p n => p.understood && n.understood
+  | .win p => p.understood
+  | .takeControl s => s.understood
+  | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
   | .kill s => s.understoodPick
   | .banish s => s.understoodPick
-  | .returnToHand s => s.understoodPick
+  | .returnToHand s => s.understoodPickAny
   | .ready s => s.understoodPick
   | .exhaust s => s.understoodPick
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
@@ -242,6 +252,7 @@ def Keyword.runs : Keyword → Bool
   | .reaction => true | .action => true | .assault => true | .shield => true | .ganking => true
   | .tank => true | .temporary => true | .legion => true | .deflect => true
   | .deathknell => true | .hunt => true | .level => true | .equip => true
+  | .accelerate => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
