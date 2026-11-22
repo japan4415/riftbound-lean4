@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: デッキの上の n 枚、Battlefield の攻撃・防御の誘発
+
+- **エンジン**: フィルタ `top n`（持ち主の Main Deck の上から n 枚の中）、数 `costOf`（選んだカードの Energy 費用）、プリミティブ `reveal`（見せる。何も変えないが、選ぶ）。**Main Deck のカードを Recycle する**と、同じゾーンのまま一番下へ回る（`recycleOne`）。**Battlefield の誘発**: 戦闘が始まるとき、そこで攻撃・防御するプレイヤーのために、Battlefield 自身の `attack`・`defend` の能力が働く。
+- **書いた 6 枚**: Get Excited!（008）、Stacked Deck（183）、Fading Memories（180。`eitherOf` で、Unit か Gear を選ぶ）、Pack of Wonders（181）、Hidden Blade（213。殺される Unit の controller が 2 枚引く）、Reaver's Row（285）。変異で、テストが落ちることを確かめた。
+- **動くカード**: 190 → **196 枚**。
+- **近似として残したこと**: Get Excited! の「捨てる」は、Trash へ送るだけ（「捨てた」出来事は出ない）。Pack of Wonders の 3 つの選択は、「はい」「いいえ」の順に聞く。
+
 ### M7 の実装の記録（2026-11-22）: 「バトルフィールドへプレイする」と、相手の手札・伏せたカードを選ぶ
 
 - **エンジン**: プリミティブ `playTo`（費用を払わずにプレイして、Battlefield へ移す）。「〜へプレイしてもよい」は、手札から使う起動型能力（`fromHand`、費用はカードの費用）で表す。フィルタ `openBf`（誰も支配していない Battlefield）、`enemyOccupied`（相手の Unit がいる Battlefield）。場所 `inHidden`。`bin`（Trash へ）も、解決中に選べる。相手の手札を選ぶ（`enemy inHand`）。

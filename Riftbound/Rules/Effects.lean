@@ -300,6 +300,11 @@ theorem recycleTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (r
 def recycleOne (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
+    let z := Zone.player o.owner .mainDeck
+    -- a card of the Main Deck goes to its bottom, in the same zone
+    if (s.zone z).contains id ∧ z.Valid s.playerCount then
+      (s.reorder z (((s.zone z).erase id) ++ [id]), [])
+    else
     match recycleToMain s o.owner id with
     | some r => (r.1, [Event.moved id r.2 (.player o.owner .mainDeck)])
     | none => (s, [])
@@ -308,12 +313,23 @@ def recycleOne (s : GameState) (id : ObjId) : GameState × List Event :=
 /-- Recycling a card is a safe change. -/
 theorem recycleOne_safe (s : GameState) (id : ObjId) : Safe s (recycleOne s id).1 := by
   unfold recycleOne
-  split
-  · split
-    · rename_i r hr
-      exact Safe.moveObj hr
-    · exact Safe.refl s
-  · exact Safe.refl s
+  cases ho : s.obj? id with
+  | none => simpa [ho] using Safe.refl s
+  | some o =>
+    by_cases hc : ((s.zone (Zone.player o.owner .mainDeck)).contains id = true ∧
+        (Zone.player o.owner .mainDeck).Valid s.playerCount)
+    · simp only [hc, and_self, ite_true]
+      have hmem : id ∈ s.zone (Zone.player o.owner .mainDeck) := List.contains_iff_mem.mp hc.1
+      have hp : (((s.zone (Zone.player o.owner .mainDeck)).erase id) ++ [id]).Perm
+          (s.zone (Zone.player o.owner .mainDeck)) :=
+        (List.perm_append_singleton id _).trans (List.perm_cons_erase hmem).symm
+      exact ⟨fun hwf => GameState.wf_reorder hwf hc.2 hp,
+        fun _ => GameState.physIds_reorder hc.2 hp,
+        fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
+    · simp only [hc, ite_false]
+      cases hm : recycleToMain s o.owner id with
+      | none => simpa [hm] using Safe.refl s
+      | some r => simpa [hm] using Safe.moveObj hm
 
 /-- The note on a card hidden at the Battlefield on the turn (CR 811). -/
 def hiddenOf (bf : ObjId) (t : Nat) (x : Object) : Object :=
@@ -681,6 +697,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | .recycle sel => onSelected s p src env sel recycleOne
+  -- revealing shows information: nothing changes, but the object is chosen
+  | .reveal _ => some (s, [])
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
   | .playTo sel bfs =>
@@ -758,6 +776,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         rw [← h]
         exact gainXPAll_safe k l s
   | recycle sel => exact onSelected_safe recycleOne_safe h
+  | reveal sel =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact Safe.refl s
   | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
   | playTo sel bfs =>
@@ -935,6 +957,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .recycle s => some s
   | .spendBuff s => some s
   | .bin s => some s
+  | .reveal s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -957,6 +980,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel
+  | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d
