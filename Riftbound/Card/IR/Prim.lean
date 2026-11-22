@@ -115,6 +115,9 @@ inductive Prim where
   | win (p : PlayerSel)
   /-- Make something true for the rest of the turn. -/
   | turnEffect (e : TurnEffect)
+  /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if it is
+  empty. -/
+  | returnChampion
   /-- Activate the conquer effects of the units. -/
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/

@@ -460,6 +460,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-23）: Chosen Champion を、墓地から戻す（1 枚）
+
+- **エンジン**: `Prim.returnChampion`（Champion Zone が空なら、自分の Chosen Champion を、墓地から Champion Zone へ戻す）。
+- **動くようになったカード**: Hallowed Tomb（281。ここを保持したとき、Chosen Champion を墓地から Champion Zone へ戻してもよい）。
+- **動くカード**: 263 → **264 枚**。
+- **近似として残したこと**: カードのデータに、Champion と Signature の区別が無いので、Chosen Champion は「自分の伝説と同じタグを持つ、墓地の最初のユニット」とする（本物の Chosen Champion と、デッキの同名のコピーは、区別しない）。
+- **レビューで分かったこと**: Origins の 12 枚の伝説は、どれも、同じタグを持つユニットが 2 枚ある（例: Kai'Sa は 039 と 112）。墓地の先頭の方が、戻る。また、Champion Zone のカードを、プレイする経路が、エンジンに無い（`legalPlays` は手札だけ）。
+
 ### M7 の実装の記録（2026-11-23）: 征服の効果を、効果で起動する（1 枚）
 
 - **エンジン**: `Prim.activateConquer`（選んだユニットの、征服したときの誘発を、起動する。`Event.conquerActivated`）。
