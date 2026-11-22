@@ -975,7 +975,14 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel
       (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
-  | .kill sel => onSelected s p src env sel killObj
+  | .kill sel =>
+    -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
+    (onSelected s p src env sel killObj).map (fun r =>
+      (r.1, r.2 ++ (if (s.cardDef? src).any (·.hasType .spell) &&
+          r.2.any (fun e => match e with
+            | .died n _ => (r.1.cardDef? n).any (·.hasType .unit)
+            | _ => false)
+        then [Event.killedBySpell p] else [])))
   | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (sendObj .banishment)
@@ -1077,7 +1084,15 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some k =>
       simp only [hn, Option.bind_some] at h
       exact onSelected_safe (healOne_safe k) h
-  | kill sel => exact onSelected_safe killObj_safe h
+  | kill sel =>
+    simp only [applyPrim] at h
+    cases hs : onSelected s p src env sel killObj with
+    | none => simp [hs] at h
+    | some r0 =>
+      simp only [hs, Option.map_some, Option.some.injEq] at h
+      have h0 := onSelected_safe killObj_safe hs
+      rw [← h]
+      exact h0
   | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (sendObj_safe .banishment) h

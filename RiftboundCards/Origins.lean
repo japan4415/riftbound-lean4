@@ -969,8 +969,14 @@ def OGN_037.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Immortal Phoenix: the effect is not written yet. -/
-def OGN_037 : CardDef := OGN_037.meta
+/-- Immortal Phoenix. -/
+def OGN_037 : CardDef :=
+  { OGN_037.meta with
+    abilities := [.triggered { event := .killBySpell, subject := .self }
+      (.of [] (.ifThen (.canPay ⟨1, [.domain .fury]⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩), .prim (.play .self)])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-038
 /--
