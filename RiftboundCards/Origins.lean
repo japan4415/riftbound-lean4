@@ -665,8 +665,12 @@ def OGN_026.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Brynhir Thundersong: the effect is not written yet. -/
-def OGN_026 : CardDef := OGN_026.meta
+/-- Brynhir Thundersong. -/
+def OGN_026 : CardDef :=
+  { OGN_026.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.turnEffect .opponentsCantPlay))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-027
 /--

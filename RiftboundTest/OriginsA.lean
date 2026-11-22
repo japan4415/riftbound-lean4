@@ -2771,4 +2771,30 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (a.obj? here).map (·.damage) == some 4 && (b.obj? far).map (·.damage) == some 3 &&
     (c.obj? v).map (·.damage) == some 3
 
+-- Brynhir Thundersong (OGN-026): when I play her, my opponents cannot play cards this turn
+#guard t fun s => do
+  let (s1, b) ← put s s.me "OGN-026" .hand
+  let (s2, mine) ← put s1 s.me "OGN-136" .hand
+  let (s3, theirs) ← put s2 s.you "OGN-136" .hand
+  let on ← play s3 s.me b
+  let rich := on.rich s.me |>.rich s.you
+  let pay (c : ObjId) := payOf rich c
+  let next := { rich with turn := rich.turn + 1 }
+  return !s3.cantPlay s.you && on.cantPlay s.you && !on.cantPlay s.me &&
+    playable rich s.me mine (pay mine) && !playable rich s.you theirs (pay theirs) &&
+    playable (s3.rich s.you) s.you theirs (payOf s3 theirs) && !next.cantPlay s.you
+
+-- ... a spell is stopped too (Hextech Ray), and a player who cannot play is offered no play
+#guard t fun s => do
+  let (s1, b) ← put s s.me "OGN-026" .hand
+  let (s2, ray) ← put s1 s.you "OGN-009" .hand
+  let (s3, u) ← putAt s2 s.me "OGN-001" s.bf0
+  let on ← play s3 s.me b
+  let rich := on.rich s.you
+  let free := s3.rich s.you
+  return !castable rich s.you ray (payOf rich ray) [u] &&
+    castable free s.you ray (payOf free ray) [u] &&
+    !(legalPlays rich s.you).any
+      (fun a => match a.kind with | .playCard c _ _ => c == ray | _ => false)
+
 end RiftboundTest

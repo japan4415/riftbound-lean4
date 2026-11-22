@@ -172,6 +172,10 @@ def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
       | none => 0)
   | _, _ => 0
 
+/-- The player cannot play cards now, by an effect of this turn that is an opponent's. -/
+def GameState.cantPlay (s : GameState) (p : PlayerId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsCantPlay && f.who != p)
+
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
