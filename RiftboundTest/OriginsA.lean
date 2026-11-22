@@ -1825,4 +1825,51 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.tired r1 == some false && a.countIn s.me .trash "OGN-110" == 0 &&
     (a.zone (.player s.me .mainDeck)).length == (s2.zone (.player s.me .mainDeck)).length + 1
 
+-- more edges of the cards of this batch: Sai Scout (Vision when played to a battlefield), Deadbloom
+-- Predator (where it goes, and not to a battlefield with only my units), Sona (exactly 4 runes,
+-- only in my turn), Mushroom Pouch (only my hidden cards, only my Beginning Phase), Ekko (only my
+-- runes)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-174" .hand
+  let deck (x : GameState) := x.zone (.player s.me .mainDeck)
+  let top ← (deck s1).head?
+  let a ← activate s1 s.me c 0 [s.bf0] (payOf s1 c)
+  return (deck a).getLast? == some top && (deck a).length == (deck s1).length
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-161" .hand
+  let (s2, _) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, _) ← putAt s1 s.me "OGN-136" s.bf0
+  let a ← activate s2 s.me c 0 [s.bf0] (payOf s2 c)
+  let d ← (a.zone .battlefieldZone).find? (fun u => (a.cardDef? u).any (·.id == cid "OGN-161"))
+  return (a.obj? d).bind (·.loc) == some s.bf0 && (a.obj? d).map (·.exhausted) == some true &&
+    (activate s3 s.me c 0 [s.bf0] (payOf s3 c)).isNone
+#guard t fun s => do
+  let (s1, _) ← putAt s s.me "OGN-073" s.bf0
+  let rune (x : GameState × ObjId) := x.2
+  let (s2, r1) ← put s1 s.me "R1" .base
+  let (s3, r2) ← put s2 s.me "R1" .base
+  let (s4, r3) ← put s3 s.me "R1" .base
+  let (s5, r4) ← put s4 s.me "R1" .base
+  let (s6, r5) ← put s5 s.me "R1" .base
+  let all := [r1, r2, r3, r4, r5]
+  let tired := all.foldl (fun x r => x.tire r) s6
+  let a ← fire tired [.phaseStarted s.me .ending]
+  let b ← fire tired [.phaseStarted s.you .ending]
+  return (all.filter (fun r => a.tired r == some false)).length == 4 &&
+    (all.filter (fun r => b.tired r == some false)).length == 0 && rune (s1, r1) == r1
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-101" .base
+  let (s2, _) ← put s1 s.you "OGN-135" .hidden
+  let a ← fire s2 [.phaseStarted s.me .beginning]
+  let (t1, _) ← put s1 s.me "OGN-135" .hidden
+  let b ← fire t1 [.phaseStarted s.you .beginning]
+  return a.handN s.me == s2.handN s.me && b.handN s.me == t1.handN s.me
+#guard t fun s => do
+  let (s1, x) ← put s s.me "OGN-110" .trash
+  let (s2, m) ← put s1 s.me "R1" .base
+  let (s3, o) ← put s2 s.you "R1" .base
+  let tired := (s3.tire m).tire o
+  let a ← fire tired [.died x s.me]
+  return a.tired m == some false && a.tired o == some true
+
 end RiftboundTest

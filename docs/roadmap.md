@@ -465,6 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: プリミティブ `playTo`（費用を払わずにプレイして、Battlefield へ移す）。「〜へプレイしてもよい」は、手札から使う起動型能力（`fromHand`、費用はカードの費用）で表す。フィルタ `openBf`（誰も支配していない Battlefield）、`enemyOccupied`（相手の Unit がいる Battlefield）。場所 `inHidden`。`bin`（Trash へ）も、解決中に選べる。相手の手札を選ぶ（`enemy inHand`）。
 - **書いた 8 枚**: Sai Scout（174）、Sneaky Deckhand（176）、Deadbloom Predator（161）、Sabotage（156）、Mindsplitter（192）、Mushroom Pouch（101）、Sona（073。4 つの Rune を Ready にする）、Ekko（110。死んだら、自分を Recycle して、Rune を Ready にする）。4 つの変異で、テストが落ちることを確かめた。
 - **動くカード**: 182 → **190 枚**。
+- **レビューで直したこと**: バトルフィールドへプレイしても、移動の出来事は出ない（「移動したとき」の誘発が働かない）。Sai Scout の Vision、Predator が置かれる場所と、自分の Unit だけの Battlefield は選べないこと、Sona がちょうど 4 つ・自分のターンだけ、Mushroom Pouch が自分の伏せたカードだけ、Ekko が自分の Rune だけ、のテストを足した。
+- **確かめられていないこと**: `openBf`（誰も支配していない Battlefield）が、規則の「空いている Battlefield」と同じか。効果の解決時に、対象が不正になっても、起動型能力は、そのまま働く（エンジン全体の制約）。Ekko の「自分を Recycle」は、Trash にいるかを確かめない。
 - **近似として残したこと**: 「プレイする」ことが、起動型能力（Chain を使う）で行われる。相手の手札を「公開する」ことは、情報の公開なので、何も起きない。Mindsplitter の「捨てる」は、Trash へ送るだけで、「捨てた」出来事は出ない。「相手を選ぶ」は、2 人戦で相手が 1 人。
 
 ### M7 の実装の記録（2026-11-22）: 「費用」を、解決のときの効果で表す

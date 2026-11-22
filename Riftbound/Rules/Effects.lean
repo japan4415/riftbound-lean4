@@ -525,8 +525,8 @@ def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameSt
   let r := playFree p s id
   match movedNew r.2 with
   | n :: _ =>
-    let r2 := sendToBf bf r.1 n
-    (r2.1, r.2 ++ r2.2)
+    -- the card is played there: it does not move, so nothing that waits for a move fires
+    ((sendToBf bf r.1 n).1, r.2)
   | [] => r
 
 /-- Playing a card to a Battlefield is a safe change. -/
