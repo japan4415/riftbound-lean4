@@ -177,6 +177,8 @@ inductive TriggerEvent where
   | discard
   /-- The object is stunned. -/
   | stun
+  /-- The object is readied (it was exhausted). -/
+  | ready
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The unit becomes Mighty. -/

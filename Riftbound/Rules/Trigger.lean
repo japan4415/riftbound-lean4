@@ -107,7 +107,8 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
               subjectHolds s src o.controller subj who t.subject &&
               condOk s src o.controller t.condition && t.occurrence == .every &&
                 limitOk s src j lim then
-            some { source := src, card := d.id, idx := j, controller := o.controller }
+            some { source := src, card := d.id, idx := j, controller := o.controller,
+                   subject := some subj }
           else none
         | _ => none)
     | _, _ => [])
@@ -160,6 +161,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .phaseStarted p ph =>
     match ph.timing? with
     | some tm => s.timedTriggers p tm
+    | none => []
+  | .readied u =>
+    match s.obj? u with
+    | some o => triggersOf s u o.controller .ready ++ watchersOf s u o.controller .ready
     | none => []
   | .stunned u =>
     match s.obj? u with
@@ -358,7 +363,8 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) : ∃ ts, trigLegal s
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) : GameState :=
   let s1 := s.modObj t.source (fun o => { o with used := o.used ++ [t.idx] })
-  match addObject s1 (abilityItem t.card t.idx t.source t.controller ts) .chain with
+  match addObject s1 (abilityItem t.card t.idx t.source t.controller (ts ++ t.subject.toList))
+      .chain with
   | some r => r.1
   | none => s1
 

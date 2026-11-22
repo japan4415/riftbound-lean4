@@ -2797,4 +2797,47 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     !(legalPlays rich s.you).any
       (fun a => match a.kind with | .playCard c _ _ => c == ray | _ => false)
 
+-- The ability that watches an object gets it as its last slot. Pirate's Haven (OGN-143): when I
+-- ready a friendly unit, it gets +1 Might this turn
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-143" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.you "OGN-136" .base
+  let tired := (s3.tire u).tire v
+  let (mine, ev) := setExhausted false tired u
+  let a ← fire mine ev
+  let (theirs, ev2) := setExhausted false tired v
+  let b ← fire theirs ev2
+  return a.mightNow u == some 3 && a.tired u == some false && b.mightNow v == some 2 &&
+    tired.mightNow u == some 2
+
+-- ... a unit that is ready already is not readied again, and the units the Awaken readies count
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-143" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (readyAlready, ev) := setExhausted false s2 u
+  let a ← fire readyAlready ev
+  let tired := s2.tire u
+  let waking := { tired with pending := [.phase .awaken] }
+  let (s3, evs) ← microStep0 waking
+  let b ← fire s3 evs
+  return ev.isEmpty && a.mightNow u == some 2 && b.tired u == some false && b.mightNow u == some 3
+
+-- Nine-Tailed Fox (OGN-255): when an enemy unit attacks a battlefield I control, it gets -1 Might
+-- this turn, to a minimum of 1
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-255" .legendZone
+  let held := s1.modObj s.bf0 (fun o => { o with control := some s.me })
+  let (s2, big) ← putAt held s.you "OGN-001" s.bf0
+  let (s3, small) ← putAt s2 s.you "OGN-136" s.bf0
+  let (s3b, one) ← putAt s3 s.you "OGN-190" s.bf0
+  let (s4, mine) ← putAt s3b s.me "OGN-136" s.bf0
+  let a ← fire s4 [.combatStarted s.bf0 s.you]
+  let free := s4.modObj s.bf0 (fun o => { o with control := none })
+  let lost ← fire free [.combatStarted s.bf0 s.you]
+  let mineAttacks ← fire s4 [.combatStarted s.bf0 s.me]
+  return a.mightNow big == some 4 && a.mightNow small == some 1 && a.mightNow one == some 1 &&
+    a.mightNow mine == some 2 &&
+    lost.mightNow big == some 5 && mineAttacks.mightNow big == some 5
+
 end RiftboundTest
