@@ -218,6 +218,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let d ← s.cardDef? id
     pure (match d.cost with | some k => op.holds (Int.ofNat k.power.length) n | none => false)
   | .exhausted => (s.obj? id).map (·.exhausted)
+  | .hideRoom =>
+    some (decide ((s.players.flatMap (fun q => s.zone (.player q .hidden))).countP
+      (fun h => (s.obj? h).any (·.hiddenAt == some id)) <
+        if ((s.cardDef? id).map (·.fullAbilities)).getD [] |>.any (fun ab =>
+            match ab with | .passive _ mods => mods.contains .extraHide | _ => false)
+        then 2 else 1))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)

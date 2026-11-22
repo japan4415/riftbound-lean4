@@ -7285,8 +7285,11 @@ def OGN_278.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Bandle Tree: the effect is not written yet. -/
-def OGN_278 : CardDef := OGN_278.meta
+/-- Bandle Tree. -/
+def OGN_278 : CardDef :=
+  { OGN_278.meta with
+    abilities := [.passive .always [.extraHide]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-279
 /--
