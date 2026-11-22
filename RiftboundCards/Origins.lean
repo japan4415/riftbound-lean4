@@ -6066,8 +6066,13 @@ def OGN_251.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Loose Cannon: the effect is not written yet. -/
-def OGN_251 : CardDef := OGN_251.meta
+/-- Loose Cannon. -/
+def OGN_251 : CardDef :=
+  { OGN_251.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .cmp .le (.handSize .you) (.const 1) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-252
 /--
@@ -6776,8 +6781,13 @@ def OGN_284.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Obelisk of Power: the effect is not written yet. -/
-def OGN_284 : CardDef := OGN_284.meta
+/-- Obelisk of Power. -/
+def OGN_284 : CardDef :=
+  { OGN_284.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .cmp .eq (.turnsTaken .you) (.const 1) }
+      (.of [] (.prim (.channel .you (.const 1) (.const 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-285
 /--
@@ -6882,8 +6892,13 @@ def OGN_290.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Arena's Greatest: the effect is not written yet. -/
-def OGN_290 : CardDef := OGN_290.meta
+/-- The Arena's Greatest. -/
+def OGN_290 : CardDef :=
+  { OGN_290.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .cmp .eq (.turnsTaken .you) (.const 1) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-291
 /--

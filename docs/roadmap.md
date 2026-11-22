@@ -460,6 +460,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 11 弾: ターンの区切りの誘発）
+
+- **エンジン**: 出来事 `Event.phaseStarted`（Awaken・Beginning・Main・Ending の始まり）を足し、**「〜の始めに」「ターンの終わりに」の誘発**（`TriggerEvent.at_`）が、その区切りで働く。働くのは、その区切りのターンのプレイヤーが操る物体（と Legend）の能力と、**Battlefield の能力（ターンのプレイヤーのために働く）**。`Amount.turnsTaken`（そのプレイヤーが取ったターン数。今のターンを含む）も動く。
+- **書いた 3 枚**: Loose Cannon（251。Legend。Beginning Phase の始めに、手札が 1 枚以下なら 1 枚引く）、Obelisk of Power（284）と The Arena's Greatest（290。それぞれのプレイヤーの最初の Beginning Phase に、Rune を 1 つ Channel／1 点）。
+- **近似として残したこと**: 区切りの誘発は、区切りの始まりに、Chain に載る。Awaken の誘発は、Ready の後になる。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 10 弾: 「それぞれのプレイヤーが」）
 
 - **エンジン**: 効果 `Effect.eachPlayer`（それぞれのプレイヤーが、その効果をする）を足した。効果は、そのプレイヤーとして解決するので、選ぶこと（「自分の Unit を 1 体 Kill する」）は、そのプレイヤーのものになる。証明は、そのまま通った。
