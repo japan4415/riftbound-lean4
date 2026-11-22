@@ -496,6 +496,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
+  | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
   | .movesThisTurn =>
     some (match s.obj? self with
       | some o => if o.movesTurn == some s.turn then o.moves else 0

@@ -2552,13 +2552,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
 -- Brazen Buccaneer (OGN-002): discard a card, 2 Energy back
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-002" .hand
-  let (s2, x) ← put s1 s.me "OGN-136" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .hand
   let yes ← play s2 s.me c [] { yes := true }
   let no ← play s2 s.me c [] { yes := false }
   let alone ← play (s1.setZone (.player s.me .hand) [c]) s.me c [] { yes := true }
   return yes.countIn s.me .trash "OGN-136" == 1 && (yes.poolOf s.me).energy == 12 - 6 + 2 &&
     no.countIn s.me .hand "OGN-136" == 1 && (no.poolOf s.me).energy == 12 - 6 &&
-    (alone.poolOf s.me).energy == 12 - 6 && x == x
+    (alone.poolOf s.me).energy == 12 - 6
 
 -- Wallop (OGN-146) and Call to Glory (OGN-207): spend a buff, and the spell costs nothing
 #guard t fun s => do
@@ -2606,5 +2606,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     lone.countIn s.me .base "OGN-208" == 0 && lone.countIn s.me .trash "OGN-208" == 1 &&
     (led.obj? c).isNone && (led.obj? d).isNone && (led.obj? e).isSome &&
     (led.poolOf s.me).order == (keep.poolOf s.me).order + 2 && (keep.obj? c).isSome
+
+-- ... what is given back never exceeds what was paid: Wallop played for nothing gives nothing
+-- back, Kraken Hunter gives back at most its 2 Body, and Ledros at most its 4 Order
+#guard t fun s => do
+  let (s1, w) ← put s s.me "OGN-146" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let free := (s3.buff v).addTurnFx s.me (.nextSpellCostMinus 5)
+  let a ← play free s.me w [u] { yes := true }
+  let (t1, k) ← put s s.me "OGN-150" .hand
+  let (t2, x) ← put t1 s.me "OGN-136" .base
+  let (t3, y) ← put t2 s.me "OGN-136" .base
+  let (t4, z) ← put t3 s.me "OGN-136" .base
+  let three := ((t4.buff x).buff y).buff z
+  let yes ← play three s.me k [] { yes := true }
+  let no ← play three s.me k [] { yes := false }
+  let (v1, l) ← put s s.me "OGN-231" .hand
+  let units ← (List.range 5).foldlM
+    (fun acc _ => (put acc.1 s.me "OGN-136" .base).map (fun r => (r.1, ()))) (v1, ())
+  let led ← play units.1 s.me l [] { yes := true }
+  let keep ← play units.1 s.me l [] { yes := false }
+  return (a.poolOf s.me).energy == 12 && (yes.obj? x).map (·.buffed) == some false &&
+    (yes.poolOf s.me).body == (no.poolOf s.me).body + 2 &&
+    (led.poolOf s.me).order == (keep.poolOf s.me).order + 4
 
 end RiftboundTest

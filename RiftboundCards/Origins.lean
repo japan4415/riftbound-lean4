@@ -67,7 +67,7 @@ def OGN_002 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [])) (.const 1))
         (.may (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [])),
-          .prim (.addEnergy .you (.const 2) none)])) .nop)) .unlimited],
+          .prim (.addEnergy .you (.min (.const 2) .energyPaid) none)])) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-003
@@ -3761,7 +3761,7 @@ def OGN_146 : CardDef :=
       (.seqOf [
         .ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
           (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
-            .prim (.addEnergy .you (.costOf .self) none)])) .nop,
+            .prim (.addEnergy .you .energyPaid none)])) .nop,
         .prim (.ready (.slot 0))])),
     status := .drafted }
 
@@ -3875,10 +3875,14 @@ def OGN_150.meta : CardDef :=
 def OGN_150 : CardDef :=
   { OGN_150.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .buffed])
-        (.ifThen (.matches .it .buffed)
-          (.may (.seqOf [.prim (.spendBuff .it), .prim (.addPower .you (.const 1) (some .body) none)]))
-          .nop))) .unlimited],
+      (.of [] (.bind ⟨"spent"⟩ (.count (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+        (.seqOf [
+          .forEach (Selector.all .friendly .anywhere [.ofType .unit, .buffed])
+            (.ifThen (.matches .it .buffed) (.may (.prim (.spendBuff .it))) .nop),
+          .prim (.addPower .you
+            (.min (.sub (.var ⟨"spent"⟩)
+              (.count (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))) (.const 2))
+            (some .body) none)]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-151
@@ -5343,7 +5347,7 @@ def OGN_207 : CardDef :=
       (.seqOf [
         .ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
           (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
-            .prim (.addEnergy .you (.costOf .self) none)])) .nop,
+            .prim (.addEnergy .you .energyPaid none)])) .nop,
         .grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn])),
     status := .drafted }
 
@@ -5962,9 +5966,14 @@ def OGN_231.meta : CardDef :=
 def OGN_231 : CardDef :=
   { OGN_231.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])
-        (.may (.seqOf [.prim (.kill .it), .prim (.addPower .you (.const 1) (some .order) none)]))))
-      .unlimited],
+      (.of [] (.bind ⟨"units"⟩ (.count (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))
+        (.seqOf [
+          .forEach (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])
+            (.may (.prim (.kill .it))),
+          .prim (.addPower .you
+            (.min (.sub (.var ⟨"units"⟩)
+              (.count (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))) (.const 4))
+            (some .order) none)]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-232
