@@ -313,8 +313,8 @@ theorem safe_healAll (s : GameState) : Safe s (s.mapObjects healObj) :=
 
 /-- The end of a Combat (CR 468): every Unit is healed, the Attacker's Units are Recalled if a
 Unit of a Defender is left (a tie, if Units of the Attacker are left too: then all the Units are
-Recalled, if a passive ability of the Attacker says so, as Symbol of the Solari does), and the Battlefield goes to the player whose Units are alone there, who
-Scores it by Conquer. The Units with lethal damage have been killed by the Cleanup before. -/
+Recalled, if a passive ability of the Attacker says so, as Symbol of the Solari does), and the
+Battlefield goes to the player whose Units are alone there, who Scores it by Conquer. The Units with lethal damage have been killed by the Cleanup before. -/
 def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
     GameState × List Frame × List Event :=
   let s1 := s.mapObjects healObj

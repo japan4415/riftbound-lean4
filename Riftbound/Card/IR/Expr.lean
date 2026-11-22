@@ -94,6 +94,8 @@ inductive Filter where
   | movedFromHere
   /-- Is exhausted. -/
   | exhausted
+  /-- The object is at a Battlefield (not at a Base). -/
+  | onBattlefield
   /-- Is ready. -/
   | ready
   /-- Has damage. -/

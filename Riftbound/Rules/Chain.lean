@@ -65,7 +65,11 @@ cannot be answered yet, and does not stop the use. -/
 def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bool :=
   (match body.body with
     | .ifThen c _ .nop => c.eval s p src {} != some false
-    | _ => true) && !s.hiddenBlocked p src
+    | _ => true) && !s.hiddenBlocked p src &&
+    -- the opponents of a Warden play Units only to their Base
+    (match body.body with
+      | .prim (.playTo _ _) => !s.oppHas p .oppsPlayToBaseOnly
+      | _ => true)
 
 /-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be
 used from the hand (Hide) or from hiding (CR 811) is used there, from the turn after the card was

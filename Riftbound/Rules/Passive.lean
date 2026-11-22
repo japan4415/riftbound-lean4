@@ -44,6 +44,11 @@ def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
       | _ => [])
   | _, _ => []
 
+/-- A passive ability of an object that the opponents of the player control, with the change. -/
+def oppHas (s : GameState) (p : PlayerId) (m : StaticMod) : Bool :=
+  s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller != p) &&
+    (s.activeMods g).contains m)
+
 /-- How much the passive change `m` of `src` changes the Might of `id`: more, less, or nothing. -/
 def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
   | .mightPlus sel a =>
