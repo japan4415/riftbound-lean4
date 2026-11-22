@@ -534,6 +534,7 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'recalled') txt = cardName(e.unit) + ' は Recall されて Base へ戻った';
     else if (e.t === 'won') txt = 'P' + e.player + ' の勝ち';
     else if (e.t === 'died') txt = cardName(e.obj) + ' が死んだ（死んだときの誘発能力は、次に Priority が渡る前に Chain へ）';
+    else if (e.t === 'phase') txt = 'P' + e.player + ' の ' + ({awaken: 'Awaken', beginning: 'Beginning', main: 'Main', ending: 'Ending'}[e.phase] || e.phase) + ' Phase の始まり';
     else if (e.t === 'stunned') txt = cardName(e.target) + ' は Stun された';
     else if (e.t === 'discarded') txt = 'P' + e.player + ' が ' + cardName(e.obj) + ' を捨てた';
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';

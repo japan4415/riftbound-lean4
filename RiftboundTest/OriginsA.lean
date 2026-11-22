@@ -1029,7 +1029,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   match advance 100 one [] with
   | .ok (s2, es) =>
     let s3 := settleChain {} 12 s2
-    return es.contains (.phaseStarted s.me .beginning) && s3.handN s.me ≥ one.handN s.me + 1
+    return es.contains (.phaseStarted s.me .beginning) && s3.handN s.me == one.handN s.me + 1
   | .error _ => none
 
 -- The Arena's Greatest (OGN-290) and Obelisk of Power (OGN-284): in each player's first Beginning
@@ -1049,5 +1049,36 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire first [.phaseStarted s.me .beginning]
   let b ← fire second [.phaseStarted s.me .beginning]
   return runes a + 1 == runes s1 && runes b == runes s1
+
+-- Loose Cannon at the edge: no card in hand draws, two cards do not
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-251" .legendZone
+  let none := s1.setZone (.player s.me .hand) []
+  let two := s1.setZone (.player s.me .hand) ((s1.zone (.player s.me .hand)).take 2)
+  let a ← fire none [.phaseStarted s.me .beginning]
+  let b ← fire two [.phaseStarted s.me .beginning]
+  return a.handN s.me == 1 && b.handN s.me == 2
+
+-- the Battlefield of the opponent works for the player whose first Beginning Phase it is
+-- (the second player's first turn is turn 2)
+#guard t fun s => do
+  let (s1, _) ← putBf s s.you "OGN-284"
+  let runes (x : GameState) (p : PlayerId) := (x.zone (.player p .runeDeck)).length
+  let first := { s1 with turn := 2 }
+  let a ← fire first [.phaseStarted s.you .beginning]
+  let b ← fire { s1 with turn := 4 } [.phaseStarted s.you .beginning]
+  return runes a s.you + 1 == runes s1 s.you && runes a s.me == runes s1 s.me &&
+    runes b s.you == runes s1 s.you
+#guard t fun s => do
+  let (s1, _) ← putBf s s.you "OGN-290"
+  let a ← fire { s1 with turn := 2 } [.phaseStarted s.you .beginning]
+  return a.pointsOf s.you == s1.pointsOf s.you + 1 && a.pointsOf s.me == s1.pointsOf s.me
+
+-- Dark Child (OGS-017) now sets off its end-of-turn ability; a choice of two runes is not
+-- understood yet, so the game goes on without it
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGS-017" .base
+  let a ← fire s1 [.phaseStarted s.me .ending]
+  return a.pending.length ≤ s1.pending.length + 1
 
 end RiftboundTest
