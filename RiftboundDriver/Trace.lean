@@ -55,6 +55,7 @@ def actionJson (a : Action) : String :=
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
     | .playCard c pay ts =>
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
+        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .standardMove u d =>
       [("unit", toString u.n),
@@ -63,8 +64,10 @@ def actionJson (a : Action) : String :=
     | .manaAbility src idx => [("source", toString src.n), ("index", toString idx)]
     | .putTrigger i ts =>
       [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))]
-    | .activate src idx _ ts =>
+    | .activate src idx pay ts =>
       [("source", toString src.n), ("index", toString idx),
+       ("pay", toString (pay.energy + pay.power.length)),
+       ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]

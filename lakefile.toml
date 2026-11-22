@@ -33,3 +33,7 @@ root = "RiftboundTrace"
 [[lean_exe]]
 name = "riftbound-match"    # デモのゲームで Best of 3 のマッチを行い、結果を出力する
 root = "RiftboundMatch"
+
+[[lean_exe]]
+name = "riftbound-live"    # ビューアから答えを選んで進めるゲーム（標準入出力で JSON を返す）
+root = "RiftboundLive"
