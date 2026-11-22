@@ -162,6 +162,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         decide (0 < o.damage ∧ m + s.equipBonus id + buff ≤ (o.damage : Int))
       | _, _ => false)
   | .notSelf => some (id != self)
+  | .not f => (f.holds s self env id).map (fun b => !b)
   | .stunned => (s.obj? id).map (·.stunned)
   | .buffed => (s.obj? id).map (·.buffed)
   | .mighty =>
@@ -378,6 +379,9 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
+  | .points ps => do
+    let l ← ps.resolve s p
+    pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
   | .turnsTaken ps => do
     -- the turns the players have taken, this one included (CR 301)
     let l ← ps.resolve s p

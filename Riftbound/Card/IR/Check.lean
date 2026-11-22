@@ -49,6 +49,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .const _ => true
   | .x => c.hasX
   | .var v => c.vars.contains v
+  | .points p => PlayerSel.ok c p
   | .eventAmount => c.eventOk
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
@@ -68,6 +69,7 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .might _ a => Amount.ok c a
   | .cost _ a => Amount.ok c a
   | .at_ s => Selector.ok c s
+  | .not f => Filter.ok c f
   | _ => true
 
 /-- Every filter of a list refers only to what is there. -/

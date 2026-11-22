@@ -42,6 +42,8 @@ inductive Amount where
   | xp
   /-- How many points the player still needs to win. -/
   | pointsLeft
+  /-- The points of the players. -/
+  | points (p : PlayerSel)
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/
@@ -96,6 +98,8 @@ inductive Filter where
   | defender
   /-- Is not the object the effect belongs to ("another"). -/
   | notSelf
+  /-- Does not have the property. -/
+  | not (f : Filter)
   /-- Is at the place the selector gives (a Battlefield, for example the one that was chosen). -/
   | at_ (s : Selector)
   /-- Is the only unit of its side in the combat ("alone"). -/

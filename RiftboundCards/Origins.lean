@@ -672,8 +672,11 @@ def OGN_028.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Draven, Showboat: the effect is not written yet. -/
-def OGN_028 : CardDef := OGN_028.meta
+/-- Draven, Showboat. -/
+def OGN_028 : CardDef :=
+  { OGN_028.meta with
+    abilities := [.passive .always [.mightPlus .self (.points .you)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-029
 /--
@@ -2657,8 +2660,14 @@ def OGN_109.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Dr. Mundo, Expert: the effect is not written yet. -/
-def OGN_109 : CardDef := OGN_109.meta
+/-- Dr. Mundo, Expert. -/
+def OGN_109 : CardDef :=
+  { OGN_109.meta with
+    abilities :=
+      let r : Effect := .prim (.recycle (Selector.one .friendly .inTrash []))
+      [.passive .always [.mightPlus .self (.count (Selector.all .friendly .inTrash []))],
+       .triggered { event := .at_ .beginning } (.of [] (.seqOf [r, r, r])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-110
 /--
@@ -2872,8 +2881,13 @@ def OGN_118.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wraith of Echoes: the effect is not written yet. -/
-def OGN_118 : CardDef := OGN_118.meta
+/-- Wraith of Echoes. -/
+def OGN_118 : CardDef :=
+  { OGN_118.meta with
+    abilities := [.triggered
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.prim (.draw .you (.const 1)))) (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-119
 /--
@@ -3941,8 +3955,13 @@ def OGN_162.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Miss Fortune, Captain: the effect is not written yet. -/
-def OGN_162 : CardDef := OGN_162.meta
+/-- Miss Fortune, Captain. -/
+def OGN_162 : CardDef :=
+  { OGN_162.meta with
+    abilities := [.triggered (.onSelf .move)
+      (.of [] (.may (.prim (.ready (Selector.one .any .anywhere [.exhausted, .notSelf])))))
+      (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-163
 /--
@@ -5971,8 +5990,14 @@ def OGN_246.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Viktor, Leader: the effect is not written yet. -/
-def OGN_246 : CardDef := OGN_246.meta
+/-- Viktor, Leader. -/
+def OGN_246 : CardDef :=
+  { OGN_246.meta with
+    abilities := [.triggered
+      { event := .die,
+        subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .not (.named "Recruit")] }
+      (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-247
 /--
@@ -6051,8 +6076,15 @@ def OGN_249.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Relentless Storm: the effect is not written yet. -/
-def OGN_249 : CardDef := OGN_249.meta
+/-- Relentless Storm. -/
+def OGN_249 : CardDef :=
+  { OGN_249.meta with
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .mighty] }
+      (.of [] (.ifThen (.matches .self .ready)
+        (.may (.seqOf [.prim (.exhaust .self), .prim (.channel .you (.const 0) (.const 1))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-250
 /--

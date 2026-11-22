@@ -288,6 +288,25 @@ theorem recycleTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (r
   | [], s => Safe.refl s
   | q :: qs, s => (recycleTopOf_safe q s).trans (recycleTopAll_safe qs _)
 
+/-- Recycle a card: it goes to the bottom of its owner's Main Deck (CR 417). -/
+def recycleOne (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    match recycleToMain s o.owner id with
+    | some r => (r.1, [Event.moved id r.2 (.player o.owner .mainDeck)])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Recycling a card is a safe change. -/
+theorem recycleOne_safe (s : GameState) (id : ObjId) : Safe s (recycleOne s id).1 := by
+  unfold recycleOne
+  split
+  · split
+    · rename_i r hr
+      exact Safe.moveObj hr
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
   ⟨fun hwf => GameState.wf_gainPoints hwf p n, fun _ => List.Perm.refl _,
@@ -574,6 +593,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
+  | .recycle sel => onSelected s p src env sel recycleOne
   | .recycleTop ps => (ps.resolve s p).map (fun l => (recycleTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
@@ -639,6 +659,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | recycle sel => exact onSelected_safe recycleOne_safe h
   | recycleTop ps =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with
@@ -790,6 +811,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .returnToHand s => some s
   | .stun s => some s
   | .buff s => some s
+  | .recycle s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -809,6 +831,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .returnToHand _ => .returnToHand sel
   | .stun _ => .stun sel
   | .buff _ => .buff sel
+  | .recycle _ => .recycle sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d
