@@ -6252,8 +6252,12 @@ def OGN_237.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- King's Edict: the effect is not written yet. -/
-def OGN_237 : CardDef := OGN_237.meta
+/-- King's Edict. -/
+def OGN_237 : CardDef :=
+  { OGN_237.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachOpponent (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit]))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-238
 /--
