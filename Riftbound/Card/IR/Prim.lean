@@ -230,6 +230,11 @@ inductive StaticMod where
   | keyword (s : Selector) (k : KeywordInst)
   /-- The object takes no damage from anything (CR 142). -/
   | noDamage
+  /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
+  | noMoveToBase
+  /-- The Hidden cards of the opponents of the Units at this place cannot be revealed here
+  (CR 811). -/
+  | noHiddenReveal
   /-- Spells and abilities that affect the units at this Battlefield each deal `n` Bonus Damage
   more (CR 142). -/
   | bonusDamageHere (n : Nat)

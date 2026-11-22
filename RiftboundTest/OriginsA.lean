@@ -2978,4 +2978,34 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (noKw.detect evO).length == 0 && (foeK.detect evF).length == 1 &&
     (foeK2.detect evF2).length == 1
 
+-- Vilemaw's Lair (OGN-295): units cannot move from here to the Base
+#guard t fun s => do
+  let (s1, lair) ← putBf s s.me "OGN-295"
+  let (s2, u) ← putAt s1 s.me "OGN-136" lair
+  let (s3, v) ← putAt s2 s.me "OGN-136" s.bf0
+  return !moveOk s3 s.me u .base && moveOk s3 s.me v .base
+
+-- Noxus Saboteur (OGN-018): the Hidden cards of my opponents cannot be revealed at its battlefield
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, h) ← put s1 s.you "OGN-213" .hidden
+  let hidden := s2.modObj h (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 })
+  let (s3, _) ← putAt hidden s.me "OGN-018" bf
+  let (s4, _) ← putAt hidden s.you "OGN-018" bf
+  let (s5, _) ← putAt hidden s.me "OGN-018" s.bf0
+  return s3.hiddenBlocked s.you h && !hidden.hiddenBlocked s.you h && !s4.hiddenBlocked s.you h &&
+    !s5.hiddenBlocked s.you h && !s3.hiddenBlocked s.me h
+
+-- Treasure Trove (OGN-186): when it dies, draw 1 and channel 1 rune exhausted; Chaos, exhaust:
+-- kill it
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-186" .base
+  let on ← activate s1 s.me g 1 [] ⟨0, [.chaos]⟩
+  let none_ := activate (s1.tire g) s.me g 1 [] ⟨0, [.chaos]⟩
+  let broke := activate s1 s.me g 1
+  let runeN (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  return on.countIn s.me .trash "OGN-186" == 1 && on.handN s.me == s1.handN s.me + 1 &&
+    runeN on == runeN s1 + 1 && none_.isNone && broke.isNone
+
 end RiftboundTest

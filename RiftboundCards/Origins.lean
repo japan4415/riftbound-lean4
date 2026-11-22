@@ -472,8 +472,11 @@ def OGN_018.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Noxus Saboteur: the effect is not written yet. -/
-def OGN_018 : CardDef := OGN_018.meta
+/-- Noxus Saboteur. -/
+def OGN_018 : CardDef :=
+  { OGN_018.meta with
+    abilities := [.passive .always [.noHiddenReveal]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-019
 /--
@@ -4844,8 +4847,16 @@ def OGN_186.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Treasure Trove: the effect is not written yet. -/
-def OGN_186 : CardDef := OGN_186.meta
+/-- Treasure Trove. -/
+def OGN_186 : CardDef :=
+  { OGN_186.meta with
+    abilities := [
+      .triggered (.onSelf .die)
+        (.of [] (.seqOf [.prim (.draw .you (.const 1)), .prim (.channel .you (.const 0) (.const 1))]))
+        .unlimited,
+      .activated [.pay ⟨0, [.domain .chaos]⟩, .exhaustSelf] .normal
+        (.of [] (.prim (.kill .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-187
 /--
@@ -7565,8 +7576,11 @@ def OGN_295.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Vilemaw's Lair: the effect is not written yet. -/
-def OGN_295 : CardDef := OGN_295.meta
+/-- Vilemaw's Lair. -/
+def OGN_295 : CardDef :=
+  { OGN_295.meta with
+    abilities := [.passive .always [.noMoveToBase]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-296
 /--

@@ -47,14 +47,24 @@ def GameState.usesAbilitiesOf (s : GameState) (p : PlayerId) (src : ObjId) : Boo
   (s.zone (.player p .base)).contains src || (s.zone (.player p .legendZone)).contains src ||
     (s.zone .battlefieldZone).contains src
 
+/-- A card hidden at a Battlefield cannot be revealed by its owner `p` while a Unit of an opponent
+there has the passive ability that forbids it (CR 811). -/
+def GameState.hiddenBlocked (s : GameState) (p : PlayerId) (src : ObjId) : Bool :=
+  match (s.obj? src).bind (·.hiddenAt) with
+  | some bf =>
+    (s.zone .battlefieldZone).any (fun u =>
+      (s.obj? u).any (fun o => o.loc == some bf && o.controller != p) &&
+        (s.activeMods u).contains .noHiddenReveal)
+  | none => false
+
 /-- The cost an ability pays when it resolves ("Recycle 3 from your trash: ...") is written as the
 first part of the effect, guarded by a condition: the ability cannot be used while the condition is
 false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
 cannot be answered yet, and does not stop the use. -/
 def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bool :=
-  match body.body with
-  | .ifThen c _ .nop => c.eval s p src {} != some false
-  | _ => true
+  (match body.body with
+    | .ifThen c _ .nop => c.eval s p src {} != some false
+    | _ => true) && !s.hiddenBlocked p src
 
 /-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be
 used from the hand (Hide) or from hiding (CR 811) is used there, from the turn after the card was

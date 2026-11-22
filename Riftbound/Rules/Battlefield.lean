@@ -91,7 +91,9 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
     decide (p.n < s.playerCount) && decide (s.phase = .main) && s.isUnit u &&
       decide (o.controller = p) && !o.exhausted &&
       match d with
-      | .base => decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome
+      | .base =>
+        decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
+          !(o.loc.any (fun bf => (s.activeMods bf).contains .noMoveToBase))
       | .battlefield bf =>
         decide (bf ∈ s.battlefields) &&
           (decide (u ∈ s.zone (.player p .base)) ||
@@ -150,7 +152,7 @@ theorem moveOk_mem {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
       simp only [Bool.and_eq_true, decide_eq_true_eq] at h
       refine ⟨?_, by simp [GameState.destinations]⟩
       simp only [GameState.movable, List.mem_append]
-      exact Or.inr h.2.1
+      exact Or.inr h.2.1.1
     | battlefield bf =>
       simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
       refine ⟨?_, ?_⟩
@@ -170,7 +172,7 @@ theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDes
   · cases d with
     | base =>
       simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-      obtain ⟨⟨⟨⟨⟨hpn, -⟩, -⟩, -⟩, -⟩, hmem, -⟩ := h
+      obtain ⟨⟨⟨⟨⟨hpn, -⟩, -⟩, -⟩, -⟩, ⟨hmem, -⟩, -⟩ := h
       obtain ⟨r, hr⟩ := moveObj_isSome hwf hmem (.player p .base) .top (fun o _ =>
         ⟨by simpa [Zone.normalize, Zone.isBoard] using Zone.valid_player hpn ZoneKind.base,
           by simp [Zone.normalize, Zone.isBoard]⟩)
