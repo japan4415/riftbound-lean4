@@ -1219,4 +1219,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (deck a).length == n && (deck a).getLast? == some top && (deck a).head? != some top &&
     (deck b).head? == some top && (deck b).length == n
 
+-- Vision rotates the deck: the rest keeps its order, the opponent's deck is untouched, and an
+-- empty deck is fine; Jeweled Colossus (OGN-086) has it too
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-086" .hand
+  let deck (x : GameState) (p : PlayerId) := x.zone (.player p .mainDeck)
+  let a ← play s1 s.me c
+  let e ← play (s1.setZone (.player s.me .mainDeck) []) s.me c
+  let top ← (deck s1 s.me).head?
+  return deck a s.me == (deck s1 s.me).tail ++ [top] && deck a s.you == deck s1 s.you &&
+    (deck e s.me).isEmpty && a.countIn s.me .base "OGN-086" == 1
+
 end RiftboundTest
