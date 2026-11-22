@@ -466,7 +466,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Might の「最小 1 まで」**: `StaticMod.mightMinusMin s a floor` を足した。解決のときに、**Might（印刷値＋効果の増減＋Buff）が下限を下回らない分だけ**を引く（`addMightFloor`）。ターン終了に、増減ごと戻る。
 - **書いた 7 枚**: Cleave（OGN-004）、Smoke Screen（OGN-093）、Stupefy（OGN-095）、Orb of Regret（OGN-090）、Bilgewater Bully（OGN-125）、Taric（OGN-074）、Captain Farron（OGN-015）。テストは、下限（Might 5・2・1 の 3 通り）、ターン終了での失効、対象外（別の場所・敵）を確かめ、条件・場所・下限を変える 3 つの変異で、テストが落ちることを確認した。
 - **書かなかった**: Thousand-Tailed Watcher（OGN-116、Accelerate の意味がまだ無い）、Spirit's Refuge（OGN-063、「もともと Deflect を持たなければ」の否定の条件が要る）、Fiora（OGN-232、「Mighty」は Equipment と パッシブの Might を含む判定が要る。`Filter.mighty` はまだ無い）、Gemcraft Seer（OGN-100、Vision の意味がまだ無い）。
-- **近似として残したこと**: Might の下限は、解決の時点の Might で計算する（あとでほかの減少・増加が起きても、下限は追いかけない）。
+- **レビューで直したこと**: 下限の基準を、印刷値と Buff だけでなく、**ルールが読む Might（`mightNow`。Equipment とパッシブも含む）**にした（Lee Sin の +2 を含む場合のテストを足した）。戦闘でのキーワードの効果（`combatMight`）、手札の Taric は何も与えないこと、同じ Might 減少を 2 回重ねても 1 のままであることのテストを足した。
+- **近似として残したこと**: Might の下限は、解決の時点の Might で計算する（あとでほかの減少・増加が起きても、下限は追いかけない）。キーワードを持つ物体を選ぶフィルタは、印刷されたキーワードだけを見る（与えられたキーワードを見ると、循環するため）。Base にいる Taric と Farron は、何も与えない（「ここ」は Battlefield のこと）。
 - **次の単位**: 起動型能力のほかの費用（Garbage Grabber など）。
 
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 3 弾: 「〜してもよい」と、解決中に選ぶこと）

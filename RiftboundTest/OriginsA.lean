@@ -398,4 +398,39 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, w) ← put s2 s.me "OGN-136" .base
   return s3.kwAmount v .assault == 1 && s3.kwAmount w .assault == 0 && s3.kwAmount t .assault == 0
 
+-- the floor reads the Might the rules read: a passive bonus counts (Lee Sin gives +2 to a buffed
+-- unit here), and a unit already below the floor is not changed
+#guard t fun s => do
+  let (s1, _) ← putAt s s.me "OGN-151" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, c) ← put s2 s.me "OGN-093" .hand
+  let s4 := s3.buff v
+  let a ← play s4 s.me c [v]
+  return s4.mightNow v == some 5 && a.mightNow v == some 1
+#guard t fun s => do
+  let (s1, v) ← put s s.me "OGN-001" .base
+  let (s2, c) ← put s1 s.me "OGN-093" .hand
+  let (s3, c2) ← put s2 s.me "OGN-093" .hand
+  let a ← play s3 s.me c [v]
+  let b ← play a s.me c2 [v]
+  return a.mightNow v == some 1 && b.mightNow v == some 1
+
+-- the keywords count in combat, and a unit that leaves play loses them
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
+  let a ← play s2 s.me c [v]
+  return a.combatMight v true == s2.combatMight v true + 3 &&
+    a.combatMight v false == s2.combatMight v false
+#guard t fun s => do
+  let (s1, v) ← putAt s s.me "OGN-136" s.bf0
+  let (s2, _) ← putAt s1 s.me "OGN-074" s.bf0
+  return s2.combatMight v false == s1.combatMight v false + 1 &&
+    s2.combatMight v true == s1.combatMight v true
+-- a Taric in the hand gives nothing
+#guard t fun s => do
+  let (s1, v) ← putAt s s.me "OGN-136" s.bf0
+  let (s2, _) ← put s1 s.me "OGN-074" .hand
+  return s2.kwAmount v .shield == 0
+
 end RiftboundTest

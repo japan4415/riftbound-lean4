@@ -512,10 +512,10 @@ theorem addTempKw_safe (k : KeywordInst) (ends : EndPoint) (s : GameState) (id :
     Safe s (addTempKw k ends s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
-/-- The Might an object has for the choice of "to a minimum": the printed Might, the lasting
-changes and the buff. -/
+/-- The Might an object has for the choice of "to a minimum": the Might the rules read now, with
+the lasting changes, the buff, the Equipment and the passive abilities (CR 479.4). -/
 def GameState.mightBase (s : GameState) (id : ObjId) : Int :=
-  ((s.mightOf id).getD 0) + (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)
+  (s.mightNow id).getD 0
 
 /-- Take `k` Might from an object for a while, but not below `floor`: the change is as much as
 the Might has above the floor, at most `k` (CR 475). -/

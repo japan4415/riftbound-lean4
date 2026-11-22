@@ -58,6 +58,8 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
       if ids.contains id then -((a.evalS s o.controller src {}).map (fun k => (k : Int))).getD 0
       else 0
     | _, _ => 0
+  -- `mightMinusMin` is a change an effect makes for a while (`applyGrant`); a passive ability with
+  -- a floor is not read here yet
   | _ => 0
 
 /-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
@@ -87,7 +89,9 @@ def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
     | _, _ => [])
 
 /-- The keywords the passive abilities give an object now: those of the abilities whose condition
-holds and whose selector stands for the object (CR 479.3). -/
+holds and whose selector stands for the object (CR 479.3). The selectors and the conditions read
+only what the card prints (`Filter.hasKeyword`), never `grantedKws`, which would not end; so a
+filter for the units that have a keyword does not see the keywords that are given. -/
 def passiveKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.passiveSources.flatMap (fun src =>
     match s.obj? src with
