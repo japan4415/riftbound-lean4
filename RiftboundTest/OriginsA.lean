@@ -3668,10 +3668,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (h1, home) ← put s s.me "OGN-068" .base
   let (h2, _) ← putAt h1 s.you "OGN-088" bf
   let away := activate h2 s.me home 1 [] ⟨0, []⟩
+  -- a Tank (Blitzcrank, OGN-067) is first, then the others, Caitlyn last; she can be the only one
+  let (k1, tank) ← putAt s2 s.me "OGN-067" bf
+  let order (acc : List ObjId) := (legalAssigns k1 bf s.you acc).filterMap (fun a =>
+    match a.kind with | .assignPick u => some u | _ => none)
+  let (o1, only) ← putAt (s.setZone .battlefieldZone []) s.me "OGN-068" bf
+  let (o2, _) ← putAt o1 s.you "OGN-088" bf
+  let lone := (legalAssigns o2 bf s.you []).map (·.kind)
+  let buffedHit ← activate (s3.buff cait) s.me cait 1 [foe] ⟨0, []⟩
+  let dmgBuffed := (buffedHit.obj? foe).map (·.damage)
+  let mightBuffed := ((s3.buff cait).mightNow cait).map Int.toNat
   let dmg := (hit.obj? foe).map (·.damage)
   let might := (s3.mightNow cait).map Int.toNat
   return picks [] == [other] && picks [other] == [cait] && two [] == [other] &&
     (two [other]).length == 2 && (two [other]).contains c2 &&
-    dmg == might && away.isNone
+    dmg == might && away.isNone && dmgBuffed == mightBuffed && mightBuffed != might &&
+    order [] == [tank] && (order [tank]).contains other && !(order [tank]).contains cait &&
+    lone == [.assignPick only] && hit.tired cait == some true &&
+    (away.map (·.tired home)) != some (some true)
 
 end RiftboundTest
