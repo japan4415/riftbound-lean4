@@ -2631,4 +2631,26 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (yes.poolOf s.me).body == (no.poolOf s.me).body + 2 &&
     (led.poolOf s.me).order == (keep.poolOf s.me).order + 4
 
+-- Hand of Noxus (OGN-253): exhaust, Legion: add 1 Energy (only after another card was played)
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-253" .base
+  let (s2, other) ← put s1 s.me "OGN-136" .base
+  let played := s2.modObj other (fun o => { o with playedTurn := some s2.turn })
+  let pool0 := (s2.poolOf s.me).energy
+  let use (x : GameState) : Option GameState :=
+    match step 100 x ⟨.player s.me, .manaAbility g 0⟩ with
+    | .ok (y, _) => some y
+    | .error _ => none
+  let on ← use played
+  let again := use on
+  let old := s2.modObj other (fun o => { o with playedTurn := some (s2.turn + 1) })
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let theirs := s3.modObj f (fun o => { o with playedTurn := some s3.turn })
+  let (s4, c) ← put s2 s.me "OGN-136" .hand
+  let real ← play s4 s.me c
+  return (on.poolOf s.me).energy == pool0 + 1 && on.tired g == some true && (use s2).isNone &&
+    (use old).isNone && (use theirs).isNone && (use real).isSome && (use (s2.tire g)).isNone &&
+    again.isNone && !((legalActions s2).contains ⟨.player s.me, .manaAbility g 0⟩) &&
+    (legalActions played).contains ⟨.player s.me, .manaAbility g 0⟩
+
 end RiftboundTest

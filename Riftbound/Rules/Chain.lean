@@ -139,6 +139,10 @@ def manaKind (body : EffectDef) : Option ManaKind :=
   | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
   | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
   | [], .prim (.addPower .you (.const n) none none) => some (.any n)
+  -- an Add that works only while a condition holds: it is used only then (`guardOk`)
+  | [], .ifThen _ (.prim (.addEnergy .you (.const n) none)) .nop => some (.energy n)
+  | [], .ifThen _ (.prim (.addPower .you (.const n) (some d) none)) .nop => some (.power d n)
+  | [], .ifThen _ (.prim (.addPower .you (.const n) none none)) .nop => some (.any n)
   | _, _ => none
 
 /-- The player can use the activated ability at place `idx` of the object `src`, with the payment
