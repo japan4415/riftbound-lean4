@@ -1503,8 +1503,11 @@ def OGN_065.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wizened Elder: the effect is not written yet. -/
-def OGN_065 : CardDef := OGN_065.meta
+/-- Wizened Elder. -/
+def OGN_065 : CardDef :=
+  { OGN_065.meta with
+    abilities := [.passive (.matches .self .buffed) [.mightPlus .self (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-066
 /--
@@ -2871,8 +2874,13 @@ def OGN_124.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Arena Bar: the effect is not written yet. -/
-def OGN_124 : CardDef := OGN_124.meta
+/-- Arena Bar. -/
+def OGN_124 : CardDef :=
+  { OGN_124.meta with
+    abilities := [.activated [.exhaustSelf] .action
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .exhausted]]
+        (.prim (.buff (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-125
 /--
@@ -3212,8 +3220,13 @@ def OGN_139.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cithria of Cloudfield: the effect is not written yet. -/
-def OGN_139 : CardDef := OGN_139.meta
+/-- Cithria of Cloudfield. -/
+def OGN_139 : CardDef :=
+  { OGN_139.meta with
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf] }
+      (.of [] (.prim (.buff .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-140
 /--
@@ -3481,8 +3494,12 @@ def OGN_151.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Lee Sin, Centered: the effect is not written yet. -/
-def OGN_151 : CardDef := OGN_151.meta
+/-- Lee Sin, Centered. -/
+def OGN_151 : CardDef :=
+  { OGN_151.meta with
+    abilities := [.passive .always
+      [.mightPlus (Selector.all .friendly .here [.ofType .unit, .buffed, .notSelf]) (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-152
 /--
@@ -5134,8 +5151,14 @@ def OGN_223.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Peak Guardian: the effect is not written yet. -/
-def OGN_223 : CardDef := OGN_223.meta
+/-- Peak Guardian. -/
+def OGN_223 : CardDef :=
+  { OGN_223.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.seqOf [.prim (.buff .self),
+        .prim (.buff (Selector.all .friendly .here [.ofType .unit, .notSelf]))]))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-224
 /--
@@ -5534,8 +5557,12 @@ def OGN_240.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Sett, Kingpin: the effect is not written yet. -/
-def OGN_240 : CardDef := OGN_240.meta
+/-- Sett, Kingpin. -/
+def OGN_240 : CardDef :=
+  { OGN_240.meta with
+    abilities := [.passive .always
+      [.mightPlus .self (.count (Selector.all .friendly .here [.ofType .unit, .buffed]))]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-241
 /--

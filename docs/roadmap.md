@@ -460,6 +460,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 2 弾: Buff の 6 枚と、ほかの物体の誘発）
+
+- **書いた 6 枚**: Wizened Elder（Buff の間、Might +1）、Sett（OGN-240。自分の Battlefield の Buff 済みの味方 Unit の数だけ Might +1）、Lee Sin（OGN-151。自分の Battlefield の、ほかの Buff 済みの味方に +2）、Arena Bar（exhaust して、exhausted の味方に Buff）、Cithria of Cloudfield（ほかの Unit を play したら、自分に Buff）、Peak Guardian（play したとき、自分に Buff、いる Battlefield のほかの味方にも Buff）。持続する能力は、既存の Passive の仕組みで書けた。
+- **エンジン: ほかの物体の誘発**（`watchersOf`）: 誘発する能力は、これまで、物体自身（「When you play me」）だけだった。「When you play another unit」のように、**主語が自分でない能力**を、場の物体と Legend から探して、play・撃破・移動のときに誘発する（主語の側と条件を、そのイベントの物体で確かめる。Spell のように場に無い物体も、主語にできる）。
+- **未対応のまま残したもの**: 「バフ済みの間のキーワード」（Bilgewater Bully、Spirit's Refuge）。キーワードの Passive の条件を、`hasKw` が読まない。Peak Guardian の「Battlefield にいるとき」は、Battlefield に出す手段がまだ無いので、テストしていない（`.here` が解決しなければ、その文は何もしない）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 1 弾: 11 枚とカードラボ）
 
 - **目標**: Origins（298 枚）の全カードを、IR で書き、シナリオテストで動きを確かめる（`drafted` 以上）。1 つの単位は、実装、テスト、レビュー、merge の順。未転記は、この時点で 221 枚（`docs/coverage.md`）。

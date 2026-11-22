@@ -165,4 +165,62 @@ meta def t (f : GameState → Option Bool) : Bool :=
     s5.countIn s.you .trash "OGN-017" == 1 && s5.obj? g == none && s5.obj? h == none &&
     s5.obj? u != none
 
+-- Wizened Elder (OGN-065): while buffed, an additional +1 Might (the buff itself is +1)
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-065" .base
+  let s2 := s1.buff u
+  return s2.mightNow u == (s1.mightNow u).map (· + 2)
+
+-- Sett (OGN-240): +1 Might for each buffed friendly unit at my battlefield (itself included)
+#guard t fun s => do
+  let (s1, u) ← putAt s s.me "OGN-240" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let one := s3.buff v
+  let two := one.buff u
+  let enemy := two.buff e
+  return one.mightNow u == (s3.mightNow u).map (· + 1) &&
+    two.mightNow u == (s3.mightNow u).map (· + 3) &&
+    -- a buffed enemy unit is not counted
+    enemy.mightNow u == two.mightNow u
+
+-- Lee Sin (OGN-151): other buffed friendly units at my battlefield have +2 Might
+#guard t fun s => do
+  let (s1, u) ← putAt s s.me "OGN-151" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, w) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
+  let b := (s4.buff v).buff e
+  return b.mightNow v == (s4.mightNow v).map (· + 3) && b.mightNow w == s4.mightNow w &&
+    b.mightNow e == (s4.mightNow e).map (· + 1) && b.mightNow u == s4.mightNow u
+
+-- Arena Bar (OGN-124): exhaust it to buff an exhausted friendly unit
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-124" .base
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, w) ← put s2 s.me "OGN-051" .base
+  let s4 := s3.tire v
+  let s5 ← activate s4 s.me g 0 [v]
+  return (s5.obj? v).map (·.buffed) == some true && s5.tired g == some true &&
+    (s5.obj? w).map (·.buffed) == some false && (activate s4 s.me g 0 [w]).isNone
+
+-- Cithria of Cloudfield (OGN-139): when you play another unit, buff Cithria; not for itself
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-139" .base
+  let (s2, c) ← put s1 s.me "V0" .hand
+  let s3 ← play s2 s.me c
+  return (s3.obj? u).map (·.buffed) == some true
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-139" .hand
+  let s2 ← play s1 s.me c
+  let u ← s2.firstOf s.me .base "OGN-139"
+  return (s2.obj? u).map (·.buffed) == some false
+
+-- Peak Guardian (OGN-223): when played, buff itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-223" .hand
+  let s2 ← play s1 s.me c
+  let u ← s2.firstOf s.me .base "OGN-223"
+  return (s2.obj? u).map (·.buffed) == some true
+
 end RiftboundTest
