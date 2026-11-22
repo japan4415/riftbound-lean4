@@ -520,6 +520,25 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact sendHome_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- Play a card without paying, to a Battlefield: it is played, and moved there (CR 447). -/
+def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := playFree p s id
+  match movedNew r.2 with
+  | n :: _ =>
+    let r2 := sendToBf bf r.1 n
+    (r2.1, r.2 ++ r2.2)
+  | [] => r
+
+/-- Playing a card to a Battlefield is a safe change. -/
+theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (playFreeAt p bf s id).1 := by
+  unfold playFreeAt
+  cases hm : movedNew (playFree p s id).2 with
+  | nil => simpa [hm] using playFree_safe p s id
+  | cons n _ =>
+    simp only [hm]
+    exact (playFree_safe p s id).trans (sendToBf_safe bf _ _)
+
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with controller := p }), [])
@@ -626,6 +645,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inTrash => simp at h
       | inMainDeck => simp at h
       | inRuneDeck => simp at h
+      | inHidden => simp at h
       | inCombat => simp at h
 
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
@@ -663,6 +683,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .recycle sel => onSelected s p src env sel recycleOne
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
+  | .playTo sel bfs =>
+    match bfs.eval s p src env with
+    | some (b :: _) => onSelected s p src env sel (playFreeAt p b)
+    | _ => none
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .hideAt sel bfs =>
     match bfs.eval s p src env with
@@ -736,6 +760,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | recycle sel => exact onSelected_safe recycleOne_safe h
   | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
+  | playTo sel bfs =>
+    simp only [applyPrim] at h
+    cases hb : bfs.eval s p src env with
+    | none => simp [hb] at h
+    | some l =>
+      cases l with
+      | nil => simp [hb] at h
+      | cons b _ =>
+        simp only [hb] at h
+        exact onSelected_safe (playFreeAt_safe p b) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | hideAt sel bfs =>
     simp only [applyPrim] at h
@@ -900,6 +934,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .buff s => some s
   | .recycle s => some s
   | .spendBuff s => some s
+  | .bin s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -921,6 +956,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .buff _ => .buff sel
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
+  | .bin _ => .bin sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d

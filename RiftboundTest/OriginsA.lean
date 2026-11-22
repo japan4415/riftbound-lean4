@@ -1762,4 +1762,67 @@ meta def t (f : GameState → Option Bool) : Bool :=
     (a.obj? u).map (·.buffed) == some true && (a.obj? v).map (·.buffed) == some true &&
     b.tired u == some true && (b.obj? u).map (·.buffed) == some true
 
+-- Sneaky Deckhand (OGN-176), Sai Scout (OGN-174): play to an open battlefield; Deadbloom Predator
+-- (OGN-161): play to an occupied enemy battlefield
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-176" .hand
+  let a ← activate s1 s.me c 0 [s.bf0] (payOf s1 c)
+  let d ← a.firstOf s.me .base "OGN-176" <|> (a.zone .battlefieldZone).find? (fun u =>
+    (a.cardDef? u).any (·.id == cid "OGN-176"))
+  let owned := s1.control s.you s.bf0
+  return (a.obj? d).bind (·.loc) == some s.bf0 &&
+    (a.obj? s.bf0).bind (·.contested) == some s.me &&
+    (activate owned s.me c 0 [s.bf0] (payOf owned c)).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-161" .hand
+  let (s2, _) ← putAt s1 s.you "OGN-136" s.bf0
+  let a ← activate s2 s.me c 0 [s.bf0] (payOf s2 c)
+  return (a.zone .battlefieldZone).any (fun u => (a.cardDef? u).any (·.id == cid "OGN-161")) &&
+    (activate s1 s.me c 0 [s.bf0] (payOf s1 c)).isNone
+
+-- Sabotage (OGN-156): recycle a non-unit card of the opponent's hand; Mindsplitter (OGN-192):
+-- the opponent discards a card I choose
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-156" .hand
+  let (s2, sp) ← put s1 s.you "OGN-004" .hand
+  let (s3, un) ← put s2 s.you "OGN-136" .hand
+  let a ← play s3 s.me c
+  return a.countIn s.you .hand "OGN-004" == 0 && a.countIn s.you .hand "OGN-136" ==
+    s3.countIn s.you .hand "OGN-136" && (a.zone (.player s.you .mainDeck)).length ==
+    (s3.zone (.player s.you .mainDeck)).length + 1 && (a.obj? sp).isNone && (a.obj? un).isSome
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-192" .hand
+  let (s2, x) ← put s1 s.you "OGN-001" .hand
+  let a ← play s2 s.me c [] { obj := fun o => o == x }
+  return a.countIn s.you .hand "OGN-001" == s2.countIn s.you .hand "OGN-001" - 1 &&
+    a.countIn s.you .trash "OGN-001" == 1 && a.handN s.me == s2.handN s.me - 1
+
+-- Mushroom Pouch (OGN-101): draw 1 at the start of my Beginning Phase if I have a hidden card
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-101" .base
+  let (s2, _) ← put s1 s.me "OGN-135" .hidden
+  let a ← fire s2 [.phaseStarted s.me .beginning]
+  let b ← fire s1 [.phaseStarted s.me .beginning]
+  return a.handN s.me == s2.handN s.me + 1 && b.handN s.me == s1.handN s.me
+
+-- Sona (OGN-073): ready 4 of my runes at the end of my turn while she is at a battlefield
+#guard t fun s => do
+  let (s1, _) ← putAt s s.me "OGN-073" s.bf0
+  let (s2, r1) ← put s1 s.me "R1" .base
+  let (s3, r2) ← put s2 s.me "R1" .base
+  let tired := (s3.tire r1).tire r2
+  let a ← fire tired [.phaseStarted s.me .ending]
+  let (t1, _) ← put s s.me "OGN-073" .base
+  let (t2, q1) ← put t1 s.me "R1" .base
+  let b ← fire (t2.tire q1) [.phaseStarted s.me .ending]
+  return a.tired r1 == some false && a.tired r2 == some false && b.tired q1 == some true
+
+-- Ekko (OGN-110): when he dies, recycle him and ready my runes
+#guard t fun s => do
+  let (s1, x) ← put s s.me "OGN-110" .trash
+  let (s2, r1) ← put s1 s.me "R1" .base
+  let a ← fire (s2.tire r1) [.died x s.me]
+  return a.tired r1 == some false && a.countIn s.me .trash "OGN-110" == 0 &&
+    (a.zone (.player s.me .mainDeck)).length == (s2.zone (.player s.me .mainDeck)).length + 1
+
 end RiftboundTest

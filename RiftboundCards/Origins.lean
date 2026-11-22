@@ -1798,8 +1798,16 @@ def OGN_073.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sona, Harmonious: the effect is not written yet. -/
-def OGN_073 : CardDef := OGN_073.meta
+/-- Sona, Harmonious. -/
+def OGN_073 : CardDef :=
+  { OGN_073.meta with
+    abilities :=
+      let r : Effect := .prim (.ready (Selector.one .friendly .atBase [.ofType .rune, .exhausted]))
+      [.triggered
+        { event := .at_ .endOfTurn,
+          condition := .exists (Selector.all .friendly .here [.ofType .unit, .sameAs .self]) }
+        (.of [] (.seqOf [r, r, r, r])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-074
 /--
@@ -2500,8 +2508,14 @@ def OGN_101.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mushroom Pouch: the effect is not written yet. -/
-def OGN_101 : CardDef := OGN_101.meta
+/-- Mushroom Pouch. -/
+def OGN_101 : CardDef :=
+  { OGN_101.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning,
+        condition := .cmp .ge (.count (Selector.all .friendly .inHidden [])) (.const 1) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-102
 /--
@@ -2728,8 +2742,13 @@ def OGN_110.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ekko, Recurrent: the effect is not written yet. -/
-def OGN_110 : CardDef := OGN_110.meta
+/-- Ekko, Recurrent. -/
+def OGN_110 : CardDef :=
+  { OGN_110.meta with
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.seqOf [.prim (.recycle .self),
+        .forEach (Selector.all .friendly .atBase [.ofType .rune]) (.prim (.ready .it))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-111
 /--
@@ -3867,8 +3886,12 @@ def OGN_156.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sabotage: the effect is not written yet. -/
-def OGN_156 : CardDef := OGN_156.meta
+/-- Sabotage. -/
+def OGN_156 : CardDef :=
+  { OGN_156.meta with
+    spellEffect := some (.of []
+      (.prim (.recycle (Selector.one .enemy .inHand [.not (.ofType .unit)])))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-157
 /--
@@ -3988,8 +4011,13 @@ def OGN_161.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Deadbloom Predator: the effect is not written yet. -/
-def OGN_161 : CardDef := OGN_161.meta
+/-- Deadbloom Predator. -/
+def OGN_161 : CardDef :=
+  { OGN_161.meta with
+    abilities := [.activated [.fromHand, .pay (OGN_161.meta.cost.getD ⟨0, []⟩)] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .enemyOccupied]]
+        (.prim (.playTo .self (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-162
 /--
@@ -4323,8 +4351,13 @@ def OGN_174.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sai Scout: the effect is not written yet. -/
-def OGN_174 : CardDef := OGN_174.meta
+/-- Sai Scout. -/
+def OGN_174 : CardDef :=
+  { OGN_174.meta with
+    abilities := [.activated [.fromHand, .pay (OGN_174.meta.cost.getD ⟨0, []⟩)] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+        (.prim (.playTo .self (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-175
 /--
@@ -4367,8 +4400,13 @@ def OGN_176.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sneaky Deckhand: the effect is not written yet. -/
-def OGN_176 : CardDef := OGN_176.meta
+/-- Sneaky Deckhand. -/
+def OGN_176 : CardDef :=
+  { OGN_176.meta with
+    abilities := [.activated [.fromHand, .pay (OGN_176.meta.cost.getD ⟨0, []⟩)] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+        (.prim (.playTo .self (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-177
 /--
@@ -4744,8 +4782,12 @@ def OGN_192.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mindsplitter: the effect is not written yet. -/
-def OGN_192 : CardDef := OGN_192.meta
+/-- Mindsplitter. -/
+def OGN_192 : CardDef :=
+  { OGN_192.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.bin (Selector.one .enemy .inHand [])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-193
 /--

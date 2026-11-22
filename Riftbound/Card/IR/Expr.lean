@@ -102,6 +102,10 @@ inductive Filter where
   | not (f : Filter)
   /-- Is a card hidden face down (CR 811). -/
   | hidden
+  /-- Is a Battlefield nobody controls: an open Battlefield. -/
+  | openBf
+  /-- Is a Battlefield where a unit of another player than the one the effect belongs to is. -/
+  | enemyOccupied
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/
   | controlled
   /-- Is the object a selector names (`self`, a chosen object or a variable). -/
