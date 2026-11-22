@@ -78,6 +78,9 @@ inductive ActionKind where
   | concede
   /-- Time is called (TR 408.2). The clock says it; it is not a player's answer. -/
   | timeCalled
+  /-- The game is a draw (TR 505.6, 410.1): the judge declares it, because the players agree to it
+  or because a loop has no end. It is not a player's answer. -/
+  | declareDraw
   /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
   | runeAbility (card : ObjId) (ability : RuneAbility)
   /-- Play a card from the hand, paying with the Power of the domains listed (CR 349-359). The

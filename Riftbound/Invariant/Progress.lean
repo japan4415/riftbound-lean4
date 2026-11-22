@@ -275,6 +275,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_next rfl (fun hb => hb)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact fun hres => by simp at hres
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the

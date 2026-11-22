@@ -137,6 +137,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -377,6 +380,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact hp'
   · rename_i p rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h

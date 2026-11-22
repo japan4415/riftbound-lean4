@@ -105,6 +105,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | _, .timeCalled =>
     a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.playerCount = 2 ∧
       s.clock = none ∧ s.active.isSome = true
+  -- the judge declares a draw, whatever question is open, under the Tournament Rules: the players
+  -- agree to it (TR 410.1), or a loop has no end (TR 505.6)
+  | _, .declareDraw => a.actor = .judge ∧ s.config.ruleSet.isTournament = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

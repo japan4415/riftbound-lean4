@@ -558,6 +558,9 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
