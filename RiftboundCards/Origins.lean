@@ -6592,8 +6592,14 @@ def OGN_247.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Daughter of the Void: the effect is not written yet. -/
-def OGN_247 : CardDef := OGN_247.meta
+/-- Daughter of the Void. -/
+def OGN_247 : CardDef :=
+  { OGN_247.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+      (.of [] (.ifThen
+        (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .spell])) (.const 1))
+        (.prim (.addPower .you (.const 1) none none)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-248
 /--
