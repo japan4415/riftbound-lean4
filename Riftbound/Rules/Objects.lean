@@ -28,7 +28,8 @@ def healObj (o : Object) : Object := { o with damage := 0 }
 /-- What the end of the turn does to an object: it is healed, and the changes of Might that last
 until the end of the turn end (CR 317.2, 478). -/
 def endTurnObj (o : Object) : Object :=
-  { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != .turn), stunned := false }
+  let h := { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.turn) }
+  { h with stunned := false, tempKws := o.tempKws.filter (fun k => k.2 != EndPoint.turn) }
 
 namespace GameState
 

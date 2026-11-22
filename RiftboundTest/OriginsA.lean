@@ -332,4 +332,70 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let base := payOf s2 c
   return (cast s2 s.me c ⟨base.energy, base.power ++ [.fury]⟩).isNone
 
+-- Cleave (OGN-004): a unit has Assault 3 this turn, and only that unit
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  let s4 ← play s3 s.me c [v]
+  return s4.kwAmount v .assault == 3 && s4.kwAmount w .assault == 0 &&
+    s3.kwAmount v .assault == 0 &&
+    (s4.mapObjects endTurnObj).kwAmount v .assault == 0
+
+-- Smoke Screen (OGN-093) and Stupefy (OGN-095): less Might, never below 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-093" .hand
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  let (s4, x) ← put s3 s.me "OGN-216" .base
+  let a ← play s4 s.me c [v]
+  let (s5, c2) ← put s4 s.me "OGN-093" .hand
+  let b ← play s5 s.me c2 [w]
+  let (s6, c3) ← put s4 s.me "OGN-093" .hand
+  let d ← play s6 s.me c3 [x]
+  return a.mightNow v == some 1 && b.mightNow w == some 1 && d.mightNow x == some 1 &&
+    a.mightNow w == some 2 && (a.mapObjects endTurnObj).mightNow v == some 5 &&
+    (b.mapObjects endTurnObj).mightNow w == some 2
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-095" .hand
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, w) ← put s2 s.me "OGN-216" .base
+  let a ← play s3 s.me c [v]
+  let (s4, c2) ← put s3 s.me "OGN-095" .hand
+  let b ← play s4 s.me c2 [w]
+  -- the spell leaves the hand and one card is drawn
+  return a.mightNow v == some 4 && a.handN s.me == s3.handN s.me &&
+    b.mightNow w == some 1 && b.handN s.me == s4.handN s.me
+
+-- Orb of Regret (OGN-090): exhaust it, a unit has 1 less Might this turn, to a minimum of 1
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-090" .base
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, w) ← put s2 s.me "OGN-216" .base
+  let a ← activate s3 s.me g 0 [v]
+  let b ← activate s3 s.me g 0 [w]
+  return a.mightNow v == some 4 && a.tired g == some true && b.mightNow w == some 1 &&
+    (activate a s.me g 0 [v]).isNone
+
+-- Bilgewater Bully (OGN-125): Ganking only while it is buffed
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-125" .base
+  return !s1.hasKw u .ganking && (s1.buff u).hasKw u .ganking
+
+-- Taric (OGN-074): other friendly units here have Shield 1, not those elsewhere, not the enemy's
+#guard t fun s => do
+  let (s1, t) ← putAt s s.me "OGN-074" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  let (s4, e) ← putAt s3 s.you "OGN-136" s.bf0
+  return s4.kwAmount v .shield == 1 && s4.kwAmount w .shield == 0 && s4.kwAmount e .shield == 0 &&
+    s4.kwAmount t .shield == 1
+
+-- Captain Farron (OGN-015): other friendly units here have Assault 1
+#guard t fun s => do
+  let (s1, t) ← putAt s s.me "OGN-015" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  return s3.kwAmount v .assault == 1 && s3.kwAmount w .assault == 0 && s3.kwAmount t .assault == 0
+
 end RiftboundTest

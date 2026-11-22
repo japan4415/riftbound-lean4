@@ -502,6 +502,32 @@ theorem addMightMod_safe (m : MightMod) (s : GameState) (id : ObjId) :
     Safe s (addMightMod m s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- Give an object a keyword for a while (CR 479.3). -/
+def addTempKw (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  (s.modObj id (fun o => { o with tempKws := o.tempKws ++ [(k, ends)] }), [])
+
+/-- Giving a keyword for a while is a safe change. -/
+theorem addTempKw_safe (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (addTempKw k ends s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- The Might an object has for the choice of "to a minimum": the printed Might, the lasting
+changes and the buff. -/
+def GameState.mightBase (s : GameState) (id : ObjId) : Int :=
+  ((s.mightOf id).getD 0) + (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)
+
+/-- Take `k` Might from an object for a while, but not below `floor`: the change is as much as
+the Might has above the floor, at most `k` (CR 475). -/
+def addMightFloor (k floor : Nat) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  addMightMod ⟨-((Nat.min k (s.mightBase id - floor).toNat : Nat) : Int), ends⟩ s id
+
+/-- Taking Might to a minimum is a safe change. -/
+theorem addMightFloor_safe (k floor : Nat) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (addMightFloor k floor ends s id).1 :=
+  addMightMod_safe _ s id
+
 /-- Change the Might of objects for a while: `sign` is 1 for more, -1 for less. -/
 def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
     (m : StaticMod) (d : Duration) : Option (GameState × List Event) :=
@@ -511,6 +537,10 @@ def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : S
   match m with
   | .mightPlus .it a => go a 1
   | .mightMinus .it a => go a (-1)
+  | .mightMinusMin .it a fl =>
+    d.endPoint?.bind (fun ends => (a.evalS s p src env).bind (fun k =>
+      onSelected s p src env sel (addMightFloor k fl ends)))
+  | .keyword .it k => d.endPoint?.bind (fun ends => onSelected s p src env sel (addTempKw k ends))
   | _ => none
 
 /-- A lasting change that is made is a safe change. -/
@@ -537,6 +567,19 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
       | some k =>
         simp only [hd, hk, Option.bind_some] at h
         exact onSelected_safe (addMightMod_safe _) h
+  · cases hd : d.endPoint? with
+    | none => simp [hd] at h
+    | some ends =>
+      cases hk : (‹Amount›).evalS s p src env with
+      | none => simp [hd, hk] at h
+      | some k =>
+        simp only [hd, hk, Option.bind_some] at h
+        exact onSelected_safe (addMightFloor_safe _ _ _) h
+  · cases hd : d.endPoint? with
+    | none => simp [hd] at h
+    | some ends =>
+      simp only [hd, Option.bind_some] at h
+      exact onSelected_safe (addTempKw_safe _ _) h
   · simp at h
 
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/

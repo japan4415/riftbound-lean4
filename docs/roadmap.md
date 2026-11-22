@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 4 弾: 「このターン、キーワードを持つ」と、「最小 1 まで」の Might 減少）
+
+- **エンジン**: 物体に、**効果が与えたキーワード（`tempKws`、終わる時点つき）**を持たせた。ターン終了で消え、場を離れても消える。`grantedKws`（戦闘・Deflect・Ganking などが読む）は、**付いている Equipment が与えるもの、パッシブ能力が今与えているもの（`passiveKws`。条件が成り立つときだけ、対象の選択子が物体を指すときだけ）、効果が与えたもの**の 3 つの和になった。これで、「条件つきでキーワードを持つ」（Bilgewater Bully）と、「ここにいるほかの味方が持つ」（Taric、Captain Farron）が動く。
+- **Might の「最小 1 まで」**: `StaticMod.mightMinusMin s a floor` を足した。解決のときに、**Might（印刷値＋効果の増減＋Buff）が下限を下回らない分だけ**を引く（`addMightFloor`）。ターン終了に、増減ごと戻る。
+- **書いた 7 枚**: Cleave（OGN-004）、Smoke Screen（OGN-093）、Stupefy（OGN-095）、Orb of Regret（OGN-090）、Bilgewater Bully（OGN-125）、Taric（OGN-074）、Captain Farron（OGN-015）。テストは、下限（Might 5・2・1 の 3 通り）、ターン終了での失効、対象外（別の場所・敵）を確かめ、条件・場所・下限を変える 3 つの変異で、テストが落ちることを確認した。
+- **書かなかった**: Thousand-Tailed Watcher（OGN-116、Accelerate の意味がまだ無い）、Spirit's Refuge（OGN-063、「もともと Deflect を持たなければ」の否定の条件が要る）、Fiora（OGN-232、「Mighty」は Equipment と パッシブの Might を含む判定が要る。`Filter.mighty` はまだ無い）、Gemcraft Seer（OGN-100、Vision の意味がまだ無い）。
+- **近似として残したこと**: Might の下限は、解決の時点の Might で計算する（あとでほかの減少・増加が起きても、下限は追いかけない）。
+- **次の単位**: 起動型能力のほかの費用（Garbage Grabber など）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 3 弾: 「〜してもよい」と、解決中に選ぶこと）
 
 - **エンジン**: 効果の途中で、プレイヤーに聞く決定を 2 つ足した。**「〜してもよい」（`Effect.may`）**は、`mayDo` フレームで、「する」「しない」（`decide`）を答える。**解決中に 1 つ選ぶ**（「Kill a gear」のように、プレイ時でなく、解決するときに選ぶ。`Selector.pick .one`）は、`pickDo` フレームで、候補から 1 つ選ぶ（`choose`）。候補が 1 つだけなら、聞かずに、それを選ぶ。候補が無ければ、その文は何もしない。選ばれた物体は、変数 `pickVar` に束縛し、効果の選択部分を `.var pickVar` に置き換えて、実行する。フレームの候補は、`c :: more`（空にならない）で持つので、進行性（I5）の証明は、どの局面でも合法手がある、のまま通る。
