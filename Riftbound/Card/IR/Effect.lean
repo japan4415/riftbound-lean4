@@ -30,6 +30,9 @@ inductive Effect where
   | ifThen (c : Condition) (t e : Effect)
   /-- Do the effect for each of the objects, with `it` the object. -/
   | forEach (s : Selector) (body : Effect)
+  /-- Each of the players does the effect: the effect is done for them, so that what they choose
+  is theirs ("each player kills one of their units"). -/
+  | eachPlayer (who : PlayerSel) (body : Effect)
   /-- The player may do the effect. -/
   | may (e : Effect)
   /-- Do the first effect, and if it was done, the second ("if you do") (CR 387). -/

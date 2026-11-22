@@ -163,6 +163,7 @@ def Effect.understood : Effect → Bool
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
   | .may e => Effect.understood e
+  | .eachPlayer w e => w.understood && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understood && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>

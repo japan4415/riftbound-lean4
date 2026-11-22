@@ -201,6 +201,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
+  | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b
   | .repeatN n e => Amount.ok c n && Effect.ok c e

@@ -9,7 +9,7 @@
 | 結果 | 枚数 | カード |
 |---|---|---|
 | IR で書けた（`drafted`） | 39 | OGS の 23 枚、Time Warp、Rhasa、Possession、Karthus, Eternal、Aspirant's Climb、The Grand Plaza、Forgotten Monument、Smite、Blue Sentinel、Dune Surfer、Renekton（Rage Fueled と Brute）、Otterpus、Ki Barrier、Fanfare、Seraphic Wyvern |
-| 書けなかった | 7 | Recruit the Vanguard（OGS-015）、Mystic Reversal、Heimerdinger, Inventor、Svellsongur、Mirror Image、Whirlwind、Heimerdinger, Academy Instructor |
+| 書けなかった | 6 | Recruit the Vanguard（OGS-015）、Mystic Reversal、Heimerdinger, Inventor、Svellsongur、Mirror Image、Heimerdinger, Academy Instructor |
 
 キーワードだけのカード（Zephyr Sage、Garen, Rugged）は、キーワードが生成ブロックにあるので、`drafted` にした。
 
@@ -50,7 +50,7 @@
 | Mystic Reversal | "Gain control of a spell. You may make new choices for it." | 解決前の Spell への参照、選び直し（CR 750-755） |
 | Heimerdinger, Inventor | "I have all Exhaust abilities of all friendly legends, units, and gear." | 他のオブジェクトの能力を得ること |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間 |
-| Whirlwind | "Starting with the next player, each player may return a unit ..." | 手番順に従ってプレイヤーを走査する（多人数。M9） |
+| Whirlwind（2 人戦では書けた） | "Starting with the next player, each player may return a unit ..." | 手番順に従ってプレイヤーを走査する（多人数。M9）。2 人戦は `eachPlayer .eachOpponent` の次に `eachPlayer .you` |
 | Heimerdinger, Academy Instructor | "If you would play a unit token to a location ... play a 3 Might Mech unit token to that same location instead." | トークンのプレイを置換すること、置換前の場所を参照すること |
 
 ## 4. 書けたが、近似したもの

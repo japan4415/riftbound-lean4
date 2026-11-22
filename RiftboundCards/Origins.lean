@@ -4315,8 +4315,12 @@ def OGN_179.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Acceptable Losses: the effect is not written yet. -/
-def OGN_179 : CardDef := OGN_179.meta
+/-- Acceptable Losses. -/
+def OGN_179 : CardDef :=
+  { OGN_179.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachPlayer (.prim (.kill (Selector.one .friendly .anywhere [.ofType .gear]))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-180
 /--
@@ -4490,8 +4494,14 @@ def OGN_187.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Whirlwind: the effect is not written yet. -/
-def OGN_187 : CardDef := OGN_187.meta
+/-- Whirlwind. -/
+def OGN_187 : CardDef :=
+  { OGN_187.meta with
+    spellEffect := some (.of []
+      (let pickOne : Effect :=
+        .may (.prim (.returnToHand (Selector.one .any .anywhere [.ofType .unit])))
+      .seqOf [.eachPlayer .eachOpponent pickOne, .eachPlayer .you pickOne])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-188
 /--
@@ -4821,8 +4831,13 @@ def OGN_201.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Invert Timelines: the effect is not written yet. -/
-def OGN_201 : CardDef := OGN_201.meta
+/-- Invert Timelines. -/
+def OGN_201 : CardDef :=
+  { OGN_201.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachPlayer (.seqOf [.prim (.discard .you (.handSize .you)),
+        .prim (.draw .you (.const 4))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-202
 /--
@@ -5008,8 +5023,12 @@ def OGN_209.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cull the Weak: the effect is not written yet. -/
-def OGN_209 : CardDef := OGN_209.meta
+/-- Cull the Weak. -/
+def OGN_209 : CardDef :=
+  { OGN_209.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachPlayer (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit]))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-210
 /--
