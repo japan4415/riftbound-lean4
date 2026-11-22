@@ -1467,4 +1467,22 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).bind (·.loc) == some s.bf0 && (a.obj? e).map (·.damage) == some 5 &&
     (a.obj? f).isNone && (a.obj? g).map (·.damage) == some 0
 
+-- Dragon's Rage with no other enemy unit at the destination: the moved unit is not damaged;
+-- Unforgiven moves a unit at a battlefield only to the base; Charm cannot take a friendly unit
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-258" .hand
+  let (s2, e) ← put s1 s.you "OGN-116" .base
+  let a ← play s2 s.me c [e] { yes := false, obj := fun o => o == s.bf0 }
+  return (a.obj? e).bind (·.loc) == some s.bf0 && (a.obj? e).map (·.damage) == some 0
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-259" .legendZone
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let a ← activate s2 s.me g 0 [u] ⟨2, []⟩ { yes := false, obj := fun o => o == other }
+  return (a.obj? u).bind (·.loc) == none && (a.zone (.player s.me .base)).contains u
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-043" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  return (play s2 s.me c [u]).isNone
+
 end RiftboundTest

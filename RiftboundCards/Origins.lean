@@ -6311,11 +6311,13 @@ def OGN_258 : CardDef :=
   { OGN_258.meta with
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
       (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
-            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
-              .nil)),
+          (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
+            .nil)),
         .prim (.deal (Selector.one .enemy .anywhere
           [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0))]) (.mightOf (.slot 0))),
-        .prim (.deal (.slot 0) (.mightOf (.var pickVar)))])),
+        -- only when another enemy unit was chosen: the variable names a unit
+        .ifThen (.matches (.var pickVar) (.ofType .unit))
+          (.prim (.deal (.slot 0) (.mightOf (.var pickVar)))) .nop])),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-259
@@ -6338,9 +6340,10 @@ def OGN_259.meta : CardDef :=
 def OGN_259 : CardDef :=
   { OGN_259.meta with
     abilities := [.activated [.pay ⟨2, []⟩, .exhaustSelf] .normal
-      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]] (.eitherOf (.cons (.prim (.move (.slot 0) .base))
-            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
-              .nil)))) .unlimited],
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.exists (Selector.all .friendly .atBattlefield [.ofType .unit, .sameAs (.slot 0)]))
+          (.prim (.move (.slot 0) .base))
+          (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-260
