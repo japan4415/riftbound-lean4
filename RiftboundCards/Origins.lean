@@ -110,8 +110,12 @@ def OGN_004.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cleave: the effect is not written yet. -/
-def OGN_004 : CardDef := OGN_004.meta
+/-- Cleave. -/
+def OGN_004 : CardDef :=
+  { OGN_004.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.keyword .it ⟨.assault, .amount 3⟩) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-005
 /--
@@ -354,8 +358,12 @@ def OGN_015.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Captain Farron: the effect is not written yet. -/
-def OGN_015 : CardDef := OGN_015.meta
+/-- Captain Farron. -/
+def OGN_015 : CardDef :=
+  { OGN_015.meta with
+    abilities := [.passive .always
+      [.keyword (Selector.all .friendly .here [.ofType .unit, .notSelf]) ⟨.assault, .amount 1⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-016
 /--
@@ -1714,8 +1722,12 @@ def OGN_074.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Taric, Protector: the effect is not written yet. -/
-def OGN_074 : CardDef := OGN_074.meta
+/-- Taric, Protector. -/
+def OGN_074 : CardDef :=
+  { OGN_074.meta with
+    abilities := [.passive .always
+      [.keyword (Selector.all .friendly .here [.ofType .unit, .notSelf]) ⟨.shield, .amount 1⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-075
 /--
@@ -2099,8 +2111,12 @@ def OGN_090.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Orb of Regret: the effect is not written yet. -/
-def OGN_090 : CardDef := OGN_090.meta
+/-- Orb of Regret. -/
+def OGN_090 : CardDef :=
+  { OGN_090.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]] (.grant (.slot 0) (.mightMinusMin .it (.const 1) 1) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-091
 /--
@@ -2167,8 +2183,12 @@ def OGN_093.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Smoke Screen: the effect is not written yet. -/
-def OGN_093 : CardDef := OGN_093.meta
+/-- Smoke Screen. -/
+def OGN_093 : CardDef :=
+  { OGN_093.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0) (.mightMinusMin .it (.const 4) 1) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-094
 /--
@@ -2216,8 +2236,13 @@ def OGN_095.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Stupefy: the effect is not written yet. -/
-def OGN_095 : CardDef := OGN_095.meta
+/-- Stupefy. -/
+def OGN_095 : CardDef :=
+  { OGN_095.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.mightMinusMin .it (.const 1) 1) .thisTurn,
+        .prim (.draw .you (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-096
 /--
@@ -2905,8 +2930,11 @@ def OGN_125.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Bilgewater Bully: the effect is not written yet. -/
-def OGN_125 : CardDef := OGN_125.meta
+/-- Bilgewater Bully. -/
+def OGN_125 : CardDef :=
+  { OGN_125.meta with
+    abilities := [.passive (.matches .self .buffed) [.keyword .self ⟨.ganking, .none⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-126
 /--

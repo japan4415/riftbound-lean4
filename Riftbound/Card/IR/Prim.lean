@@ -197,6 +197,9 @@ inductive StaticMod where
   | mightPlus (s : Selector) (a : Amount)
   /-- Objects get less Might. -/
   | mightMinus (s : Selector) (a : Amount)
+  /-- Objects get less Might, to a minimum: the change never takes their Might below `floor`
+  ("to a minimum of 1"). -/
+  | mightMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects get a keyword (CR 479.3). -/
   | keyword (s : Selector) (k : KeywordInst)
   /-- Objects cost more Energy (CR 356). -/

@@ -58,6 +58,8 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
       if ids.contains id then -((a.evalS s o.controller src {}).map (fun k => (k : Int))).getD 0
       else 0
     | _, _ => 0
+  -- `mightMinusMin` is a change an effect makes for a while (`applyGrant`); a passive ability with
+  -- a floor is not read here yet
   | _ => 0
 
 /-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
@@ -73,7 +75,7 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/
-def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
+def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
@@ -85,6 +87,29 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
           | _ => [])
       else []
     | _, _ => [])
+
+/-- The keywords the passive abilities give an object now: those of the abilities whose condition
+holds and whose selector stands for the object (CR 479.3). The selectors and the conditions read
+only what the card prints (`Filter.hasKeyword`), never `grantedKws`, which would not end; so a
+filter for the units that have a keyword does not see the keywords that are given. -/
+def passiveKws (s : GameState) (id : ObjId) : List KeywordInst :=
+  s.passiveSources.flatMap (fun src =>
+    match s.obj? src with
+    | some o =>
+      (s.activeMods src).filterMap (fun m =>
+        match m with
+        | .keyword sel k =>
+          match sel.eval s o.controller src {} with
+          | some ids => if ids.contains id then some k else none
+          | none => none
+        | _ => none)
+    | none => [])
+
+/-- The keywords an object has besides those printed on its card: those the Equipment attached to
+it gives it, those the passive abilities of other objects give it now, and those an effect gave it
+for a while (CR 479.3). -/
+def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
+  s.equipKws id ++ s.passiveKws id ++ (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
 
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/

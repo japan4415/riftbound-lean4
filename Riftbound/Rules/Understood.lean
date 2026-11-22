@@ -140,6 +140,9 @@ def Effect.understood : Effect → Bool
     s.understood && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
     s.understood && a.understood && d.endPoint?.isSome
+  | .grant s (.mightMinusMin .it a _) d =>
+    s.understood && a.understood && d.endPoint?.isSome
+  | .grant s (.keyword .it _) d => s.understood && d.endPoint?.isSome
   | _ => false
 
 /-- Every effect of a list is understood. -/

@@ -83,7 +83,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
       let id' : ObjId := ⟨s.nextId⟩
       let o' : Object :=
         { o with controller := o.owner, exhausted := false, damage := 0, loc := none,
-                 mightMods := [], attached := none, buffed := false,
+                 mightMods := [], tempKws := [], attached := none, buffed := false,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

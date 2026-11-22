@@ -163,6 +163,7 @@ def ArgList.ok (c : Ctx) : ArgList → Bool
 def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .mightPlus s a => Selector.ok c s && Amount.ok c a
   | .mightMinus s a => Selector.ok c s && Amount.ok c a
+  | .mightMinusMin s a _ => Selector.ok c s && Amount.ok c a
   | .keyword s _ => Selector.ok c s
   | .costPlus s a => Selector.ok c s && Amount.ok c a
   | .costMinus s a => Selector.ok c s && Amount.ok c a
