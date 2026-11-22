@@ -3813,7 +3813,14 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let mine := h1.control s.me s.bf0
   let normal ← activate mine s.me hc 0 [s.bf0] ⟨0, [.fury]⟩
   let free ← activate (mine.addTurnFx s.me .hideFree) s.me hc 0 [s.bf0] ⟨0, [.fury]⟩
-  return inHand a == inHand s5 + 2 && a.countIn s.me .trash "OGN-135" == 1 &&
+  let hidden (x : GameState) := (x.zone (.player s.me .hidden)).length
+  -- the next turn, and the opponent's note, give nothing back
+  let later ← activate ({ mine.addTurnFx s.me .hideFree with turn := mine.turn + 1 }) s.me hc 0
+    [s.bf0] ⟨0, [.fury]⟩
+  let theirs ← activate (mine.addTurnFx s.you .hideFree) s.me hc 0 [s.bf0] ⟨0, [.fury]⟩
+  return hidden free == 1 && hidden normal == 1 && (later.poolOf s.me).any == 0 &&
+    (theirs.poolOf s.me).any == 0 &&
+    inHand a == inHand s5 + 2 && a.countIn s.me .trash "OGN-135" == 1 &&
     a.countIn s.me .trash "OGN-136" == 1 && inHand no == inHand s5 && noted &&
     (free.poolOf s.me).any == (normal.poolOf s.me).any + 1
 
