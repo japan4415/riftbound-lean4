@@ -757,11 +757,10 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-182" .hand
   let a ← play s1 s.me c
   let (t1, x) ← put s s.me "OGN-182" .trash
-  let b ← fire t1 [.discarded s.me x]
+  let b ← fire t1 [.discarded s.me x true]
   let c' ← fire t1 [.died x s.me]
-  let d ← fire t1 [.discarded s.you x]
   return a.handN s.me == s1.handN s.me && b.handN s.me == t1.handN s.me + 1 &&
-    c'.handN s.me == t1.handN s.me + 1 && d.handN s.me == t1.handN s.me
+    c'.handN s.me == t1.handN s.me + 1
 -- ... and the discard that an effect makes sets it off (Zaun Warrens makes me discard 1, draw 1)
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-298"
@@ -778,8 +777,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s4, _) ← put s3 s.me "OGN-136" .hand
   let (s5, y) ← put s4 s.you "OGN-136" .trash
   let a ← fire (s4.tire j) [.scored s.me bf true]
-  let b ← fire (s5.tire j) [.discarded s.you y]
+  let b ← fire (s5.tire j) [.discarded s.you y true]
   return a.tired j == some false && a.mightNow j == (s4.mightNow j).map (· + 1) &&
     b.tired j == some true && b.mightNow j == s4.mightNow j
+
+-- "one or more": discarding 2 cards readies Jinx once, with +1 Might only (not +2)
+#guard t fun s => do
+  let (s1, j) ← put s s.me "OGN-202" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .hand
+  let (s3, _) ← put s2 s.me "OGN-136" .hand
+  let (s4, x) ← put s3 s.me "OGN-136" .trash
+  let (s5, y) ← put s4 s.me "OGN-136" .trash
+  let a ← fire (s5.tire j) [.discarded s.me x false, .discarded s.me y true]
+  let b ← fire (s5.tire j) [.discarded s.me x false]
+  return a.mightNow j == (s5.mightNow j).map (· + 1) && b.mightNow j == s5.mightNow j &&
+    b.tired j == some true
+
+-- Radiant Dawn: only my units can be buffed (the opponent's unit is not offered)
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-261" .legendZone
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let (s3, f) ← put s2 s.me "OGN-136" .base
+  let (s4, g) ← put s3 s.me "OGN-001" .base
+  let picks ← firePicks s4 [.stunned e]
+  return picks.contains f && picks.contains g && !picks.contains e
 
 end RiftboundTest

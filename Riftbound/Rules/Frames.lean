@@ -184,7 +184,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ r.1 with pending := (if n ≤ 1 then rest else .discard p (n - 1) :: rest) },
       r.2 ++ r.2.filterMap (fun e =>
         match e with
-        | .moved _ n _ => some (Event.discarded p n)
+        | .moved _ nid _ =>
+          some (Event.discarded p nid (decide (n ≤ 1) || (r.1.zone (.player p .hand)).isEmpty))
         | _ => none))
   | .discard _ _ :: rest, .discardDone => some ({ s with pending := rest }, [])
   | .mayDo p src env e es :: rest, .decide yes =>

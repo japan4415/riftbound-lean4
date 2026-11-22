@@ -464,7 +464,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **エンジン**: 出来事に、**Stun された**（`Event.stunned`）と**捨てられた**（`Event.discarded`。Trash での新しい物体）を足した。誘発の種類に `stun` を足し、`detectOne` が、Stun された物体自身と、見張っているほかの物体（`watchersOf`）の誘発を拾う。捨てる決定（`discardPick`）は、捨てられたカードの出来事を出すので、「捨てたとき」の能力が、効果の捨てる動作からも動く。証明は、変更なしで通った。
 - **書いた 4 枚**: Eclipse Herald（059。敵の Unit が Stun されたら、自分を Ready し +1 Might）、Radiant Dawn（261。Legend。敵の Unit が Stun されたら、味方を Buff）、Scrapheap（182。プレイ・捨てられた・Kill されたとき 1 枚引く）、Jinx（202。自分が捨てたら、自分を Ready し +1 Might）。変異（Stun の側・Discard の誘発・Discard の側）で、テストが落ちることを確かめた。
-- **近似として残したこと**: 「1 つ以上」の文（Radiant Dawn、Jinx）は、Stun・Discard の 1 つごとに誘発する（複数を同時に Stun・Discard すると、複数回働く）。「あなたが Stun する」は、「敵の Unit が Stun される」で近似する（相手の効果が、相手の Unit を Stun しても、働く）。
+- **レビューで直したこと**: 「捨てたとき」の見張り（Jinx）は、1 回の捨てる効果につき 1 回だけ働く（`Event.discarded` が、効果の最後の 1 枚かどうかの `last` を持ち、カード自身の「捨てられたとき」は毎回働く）。ビューアが、Stun された・捨てたの出来事を表示する。
+- **近似として残したこと**: 「1 つ以上」の Stun（Radiant Dawn）は、Stun の 1 体ごとに誘発する（複数体を同時に Stun する効果は、まだ無い）。すでに Stun 済みの Unit を、もう一度 Stun しても、出来事が出る。「あなたが Stun する」は、「敵の Unit が Stun される」で近似する（相手の効果が、相手の Unit を Stun しても、働く）。
 - **書けなかった**: Pirate's Haven（143。Awaken の Ready の出来事が出ない）、Solari Shrine（072。死んだ Unit が Stun されていたかを、出来事が持たない）、Flame Chompers（006。Trash からプレイする効果がいる）。
 
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 6 弾: Might に応じたダメージと、対象を 2 つ取る呪文）

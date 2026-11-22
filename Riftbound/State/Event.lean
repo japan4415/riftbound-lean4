@@ -53,8 +53,10 @@ inductive Event where
   | died (obj : ObjId) (controller : PlayerId)
   /-- An object was stunned (CR 424). -/
   | stunned (target : ObjId)
-  /-- A player discarded a card: the object it has become in the Trash (CR 423). -/
-  | discarded (p : PlayerId) (obj : ObjId)
+  /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is
+  whether it ends the discarding of the effect: the abilities that wait for "one or more" cards
+  to be discarded fire only then. -/
+  | discarded (p : PlayerId) (obj : ObjId) (last : Bool)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
 deriving DecidableEq, Repr

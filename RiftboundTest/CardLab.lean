@@ -148,6 +148,12 @@ meta def castStop (s : GameState) (p : PlayerId) (c : ObjId) : Option GameState 
 meta def GameState.trigPicks (s : GameState) : List ObjId :=
   (legalFrameActions s).flatMap (fun a => match a.kind with | .putTrigger _ ts => ts | _ => [])
 
+/-- The targets a player could pick for the abilities the events set off, now. -/
+meta def firePicks (s : GameState) (es : List Event) : Option (List ObjId) :=
+  match advance 100 { s with pending := insertTriggers (s.detect es) s.pending } [] with
+  | .ok (s1, _) => some s1.trigPicks
+  | .error _ => none
+
 /-- The first object of the card in the zone of the player. -/
 meta def GameState.firstOf (s : GameState) (p : PlayerId) (z : ZoneKind) (card : String) :
     Option ObjId :=
