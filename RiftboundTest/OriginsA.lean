@@ -2501,6 +2501,7 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return readyUnits a s.me == readyUnits theirs s.me + 1 &&
     readyUnits b s.me == readyUnits mine s.me && readyUnits c s.me == readyUnits s1 s.me && yes.countIn s.me .hand "OGN-035" == 1 &&
     (yes.poolOf s.me).energy == 0 && no.countIn s.me .hand "OGN-035" == 0 &&
-    broke.countIn s.me .hand "OGN-035" == 0 && u == u
+    (no.poolOf s.me).energy == 1 && (no.obj? u).map (·.loc) == some (some s.bf0) &&
+    broke.countIn s.me .hand "OGN-035" == 0 && (broke.obj? u).map (·.loc) == some (some s.bf0)
 
 end RiftboundTest
