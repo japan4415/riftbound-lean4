@@ -114,6 +114,10 @@ inductive TurnEffect where
   | opponentsCantPlay
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
+  /-- A buffed unit died: the note is about the dead card. -/
+  | buffedUnitDied
+  /-- A stunned unit died: the note is about the dead card. -/
+  | stunnedUnitDied
   /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
   | killOnDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/

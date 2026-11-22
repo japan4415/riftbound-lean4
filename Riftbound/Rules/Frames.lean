@@ -67,14 +67,14 @@ def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
   else
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
-        active := some s.nextTurnPlayer }
+        active := some s.nextTurnPlayer, turnFx := [] }
 
 /-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
 theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
     beginTurnStep s rest =
         { s.mapObjects clearScored with
             pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
-            active := some s.nextTurnPlayer } ∨
+            active := some s.nextTurnPlayer, turnFx := [] } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
   by_cases hc : s.clockDue = true

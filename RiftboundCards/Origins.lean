@@ -1888,8 +1888,15 @@ def OGN_072.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Solari Shrine: the effect is not written yet. -/
-def OGN_072 : CardDef := OGN_072.meta
+/-- Solari Shrine. -/
+def OGN_072 : CardDef :=
+  { OGN_072.meta with
+    abilities := [.triggered
+      { event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit],
+        condition := .diedWith .stunnedUnitDied }
+      (.of [] (.ifThen (.matches .self .ready)
+        (.may (.seqOf [.prim (.exhaust .self), .prim (.draw .you (.const 1))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-073
 /--
@@ -5965,8 +5972,14 @@ def OGN_228.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Vanguard Helm: the effect is not written yet. -/
-def OGN_228 : CardDef := OGN_228.meta
+/-- Vanguard Helm. -/
+def OGN_228 : CardDef :=
+  { OGN_228.meta with
+    abilities := [.triggered
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+        condition := .diedWith .buffedUnitDied }
+      (.of [] (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-229
 /--
