@@ -138,9 +138,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <label>seed <input type="number" id="seed" value="1" min="0"></label>
       <label>操作する席 <select id="seat"><option value="0" selected>P0（P1 は自動）</option>
         <option value="1">P1（P0 は自動）</option><option value="01">両方</option></select></label>
+      <label>ルール <select id="kind"><option value="core" selected>Core Rules（デモ）</option>
+        <option value="constructed">大会: Constructed</option><option value="sealed">大会: Sealed（Legend なし）</option>
+        <option value="draft">大会: Draft（Legend なし）</option></select></label>
+      <label>試合 <select id="matchmode"><option value="single" selected>1 ゲームだけ</option>
+        <option value="bo1">Best of 1</option><option value="bo3">Best of 3</option></select></label>
       <button id="newgame">新しいゲーム</button>
       <span class="note" id="livemsg"></span>
     </div>
+    <div class="note" id="matchinfo"></div>
     <div class="choices" id="choices" aria-live="polite"></div>
   </section>
   <div id="result" class="banner" hidden></div>
@@ -512,7 +518,7 @@ $('file').addEventListener('change', async (e) => {
 });
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
-let live = false, liveLegal = [];
+let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
@@ -532,45 +538,88 @@ function appendSteps(list) {
   }
   $('scrub').max = steps.length - 1;
 }
+function setLive(j) { liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; askChoice = null; }
+function matchText(m) {
+  if (!m) return '';
+  const order = m.order === 'chance' ? '最初のゲーム: 抽選で選ばれた人が先手か後手かを選ぶ（TR 407）'
+    : m.order.startsWith('loser') ? '次のゲーム: 負けた P' + m.order.slice(5) + ' が先手か後手かを選ぶ（TR 407）'
+    : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
+  return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち P0 ' + m.wins[0] + ' - P1 ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
+    + (m.finished ? ' ・ マッチ終了: 勝者 P' + m.winner : ' ・ ' + order
+      + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
+}
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   if (!live || !steps || i !== steps.length - 1) return;
   const last = steps[i].state;
-  if (last.result) { $('livemsg').textContent = 'ゲーム終了。「新しいゲーム」で、もう一度始められる。'; return; }
+  $('matchinfo').textContent = matchText(liveMatch);
+  const btn = (text, title, fn, cls) => {
+    const b = document.createElement('button'); b.textContent = text; b.title = title || '';
+    if (cls) b.classList.add(cls); b.addEventListener('click', fn); return b;
+  };
+  const group = (title, buttons) => {
+    const h = document.createElement('h3'); h.textContent = title;
+    const row = document.createElement('div'); row.className = 'btns'; row.append(...buttons); box.append(h, row);
+  };
+  if (last.result) {
+    if (liveMatch && !liveMatch.finished) {
+      if (askChoice !== null) {
+        $('livemsg').textContent = 'P' + askChoice + ' が、次のゲームの先手か後手かを選ぶ（TR 407）';
+        group('P' + askChoice + ' の選択', [
+          btn('先手にする', '次のゲームで、先に動く', () => liveNext('first')),
+          btn('後手にする', '次のゲームで、後に動く', () => liveNext('second'))]);
+      } else {
+        $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
+        group('マッチ', [btn('次のゲーム', '結果をマッチに数えて、次のゲームを始める', () => liveNext(null))]);
+      }
+    } else {
+      $('livemsg').textContent = liveMatch ? 'マッチ終了。「新しいゲーム」で、もう一度始められる。'
+        : 'ゲーム終了。「新しいゲーム」で、もう一度始められる。';
+    }
+    return;
+  }
   const by = new Map();
   for (const l of liveLegal) { if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l); }
-  if (!by.size) { $('livemsg').textContent = ''; return; }
-  $('livemsg').textContent = '答えを選ぶ（' + liveLegal.length + ' 個）';
+  $('livemsg').textContent = by.size ? '答えを選ぶ（' + liveLegal.length + ' 個）' : '';
   for (const [actor, list] of by) {
-    const h = document.createElement('h3'); h.textContent = 'P' + actor.slice(1) + ' の合法手';
-    const row = document.createElement('div'); row.className = 'btns';
-    for (const l of list) {
+    group('P' + actor.slice(1) + ' の合法手', list.map((l) => {
       const [title, detail] = describeA(l.a, last.pending);
-      const b = document.createElement('button');
-      b.textContent = title.replace(/^P\d: /, ''); b.title = detail;
-      if (l.a.kind === 'concede') b.classList.add('danger');
-      b.addEventListener('click', () => liveAct(l.k));
-      row.append(b);
-    }
-    box.append(h, row);
+      return btn(title.replace(/^P\d: /, ''), detail, () => liveAct(l.k), l.a.kind === 'concede' ? 'danger' : null);
+    }));
   }
+  const ext = [];
+  if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
+  if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
+  if (ext.length) group('大会のルール', ext);
+}
+async function startWith(path, body, fresh) {
+  const j = await api(path, body);
+  if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
+  if (fresh) load({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
+  else { const from = steps.length - 1; appendSteps(j.steps); pause(); show(from, false); }
+  setLive(j); if (fresh) { speed = +$('speed').value; play(); } else play();
 }
 async function liveStart() {
-  $('livemsg').textContent = '準備中…';
+  $('livemsg').textContent = '準備中…'; $('matchinfo').textContent = '';
   try {
-    const j = await api('/api/start', { seed: +$('seed').value, humans: $('seat').value });
-    load({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
-    liveLegal = j.legal; speed = +$('speed').value; play();
+    await startWith('/api/start', { seed: +$('seed').value, humans: $('seat').value,
+      kind: $('kind').value, match: $('matchmode').value }, true);
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveAct(k) {
   $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
-  try {
-    const j = await api('/api/act', { k });
-    const from = steps.length - 1;
-    appendSteps(j.steps); liveLegal = j.legal;
-    pause(); show(from, false); play();
-  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+  try { await startWith('/api/act', { k }, false); }
+  catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+}
+async function liveExternal(which) {
+  $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
+  try { await startWith('/api/' + which, {}, false); }
+  catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+}
+async function liveNext(choice) {
+  $('choices').textContent = ''; $('livemsg').textContent = '準備中…';
+  try { await startWith('/api/next', choice ? { choice } : {}, true); }
+  catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 $('newgame').addEventListener('click', liveStart);
 async function detectLive() {
