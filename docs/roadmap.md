@@ -35,7 +35,7 @@
 | I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
 | I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)） | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
-| I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。M5b で局所の事実を証明（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）。全体は未 | L2 | M5b |
+| I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
 | I16 | **Priority の受け渡し**: Closed でプレイヤーがパスしたら、次の `priority` フレームは手番順で次のプレイヤーのものになる。全員が続けてパスしたら、最も新しい Finalized の項目が解決される（312.2, 339, 340） | L2 | M4 |
 | I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。M5a では局所版だけ証明（`cleanupFrame_pop_settled`、`Settled.no_lethal`）。全体の形は未 | L2 | M5 |
@@ -459,6 +459,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - サイドボードの入れ替えの後も、デッキはフォーマットの要件を満たす（TR 403.4.c）。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
+
+### M5b の実装の記録（2026-11-22）: I14 の全体（時間切れの後のターン数は有限）
+
+- **計画からの変更なし**: 局所の事実（`Invariant/Clock.lean`）に足りなかった「ほかのどの腕も、ターンと時計を変えない」を、`Invariant/ClockRun.lean` で証明した。
+- **証明したこと**: `Reachable.clockOk`（遊べるどのゲームでも、時計が決まっているなら、ターンの数は時計が名指したターンを超えない）、`step_keep`（1 手の後も同じで、**決まった時計は動かない**。時間切れを知らせられるのは一度だけだから: `legal_timeCalled`）、`Steps` と `time_called_bound`（**時間切れをターン `t` に知らせたら、その後のどの状態でも、ターンは `t + 3` を超えない**）。`beginTurn_ends` と合わせて、ゲームは有限のターン数で終わる。公理は標準の 3 つだけ。
+- **作り方**: ターンと時計を書くのは、時間切れの知らせと、次のターンの始まり（`beginTurnStep`）の 2 か所だけ（`Frames.lean`）。`applyFrame0` の腕（`applyFrame0_tc`: 変えないか、時間切れを知らせる）と `microStep0` の腕（`microStep0_tick`: 変えないか、時計が尽きていないときに次のターンへ）を、ほかの不変条件と同じように、既存の `SameMeta`・`Safe`・`SafeP` の補題で 1 腕ずつ通した。出発点は、`addCards` から `addLimitedDecks` までを `wf` の補題と同じ形で通した（時計は `none`）。
+- **まだ無いもの**: ゲームの合間に時間切れになったときの扱い（TR 408.2.d）、シングルエリミネーション（TR 408.4）、2v2 の時間切れ。「有限」は、ターン数の上限（`t + 3`）で述べた。1 ターンの中の手数の上限は、I12（自動処理の停止）の話で、この証明の外。
+- **次の候補**: `GameConfig.Valid`（TR の原文が要る）、Limited のデッキでマッチ、カードを直接クリックして答える操作。
 
 ### ビューアのライブ操作に、サイドボードの入れ替えを足した（2026-11-22）
 
