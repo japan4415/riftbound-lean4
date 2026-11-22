@@ -63,7 +63,7 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
   | _ => 0
 
 /-- The controller of an object (the first player if it is gone). -/
-def owner (s : GameState) (src : ObjId) : PlayerId :=
+def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
   ((s.obj? src).map (·.controller)).getD ⟨0⟩
 
 /-- The points needed to win the game: those of the mode, and the changes the passive abilities
@@ -72,8 +72,8 @@ def victoryScore (s : GameState) : Nat :=
   let delta : Int := (s.passiveSources.flatMap (fun src =>
     (s.activeMods src).map (fun m =>
       match m with
-      | .victoryScorePlus a => ((a.evalS0 s (s.owner src) src {}).getD 0 : Int)
-      | .victoryScoreMinus a => -((a.evalS0 s (s.owner src) src {}).getD 0 : Int)
+      | .victoryScorePlus a => ((a.evalS0 s (s.controllerOf src) src {}).getD 0 : Int)
+      | .victoryScoreMinus a => -((a.evalS0 s (s.controllerOf src) src {}).getD 0 : Int)
       | _ => 0))).sum
   (s.config.mode.victoryScore + delta).toNat
 

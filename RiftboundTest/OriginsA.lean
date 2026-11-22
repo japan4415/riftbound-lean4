@@ -1575,4 +1575,17 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.deflectOf u == 1 && a.deflectOf v == 0 && both.deflectOf p == s5.deflectOf p &&
     both.deflectOf e == 0 && (a.obj? u).map (·.buffed) == some true
 
+-- Shakedown kills a unit of Might 6 or less; Spirit's Refuge's Deflect ends with the buff
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-033" .hand
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let hit ← play s2 s.me c [e] { yes := false }
+  return (hit.obj? e).isNone && hit.countIn s.you .trash "OGN-001" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-063" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let a ← play s2 s.me c [] { pick := fun ts => ts.contains u }
+  let unbuffed := a.modObj u (fun o => { o with buffed := false })
+  return a.deflectOf u == 1 && unbuffed.deflectOf u == 0
+
 end RiftboundTest
