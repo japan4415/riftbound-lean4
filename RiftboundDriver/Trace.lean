@@ -53,8 +53,9 @@ def actionJson (a : Action) : String :=
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c _ ts =>
-      [("card", toString c.n), ("targets", jarr (ts.map (fun t => toString t.n)))]
+    | .playCard c pay ts =>
+      [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
+        ("targets", jarr (ts.map (fun t => toString t.n)))]
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
@@ -226,19 +227,29 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     match legal.find? isMana with
     | some a => some (a, r)
     | none =>
-    match legal.find? isPlay with
+    -- exhaust the Runes that are ready first, so that the Pool can pay an additional cost; keep one
+    -- ready to answer with a Reaction on the other player's turn
+    let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)
+    let exhausts := legal.filter (isAb .exhaust)
+    match (if holdsReaction && exhausts.length ≤ 1 then none else exhausts.head?) with
     | some a => some (a, r)
+    | none =>
+    match legal.find? isPlay with
+    | some a0 =>
+      -- the same card and targets: pay the additional cost when there is one
+      let payOf (a : Action) : Nat :=
+        match a.kind with | .playCard _ pay _ => pay.energy + pay.power.length | _ => 0
+      let same (a : Action) : Bool :=
+        match a.kind, a0.kind with
+        | .playCard c _ _, .playCard c0 _ _ => c == c0 && a.targetsOf == a0.targetsOf
+        | _, _ => false
+      let best := (legal.filter same).foldl (fun acc a => if payOf a > payOf acc then a else acc) a0
+      some (best, r)
     | none =>
     match legal.find? isUse with
     | some a => some (a, r)
     | none =>
     match legal.find? isGo with
-    | some a => some (a, r)
-    | none =>
-    -- keep one Rune ready to answer with a Reaction on the other player's turn
-    let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)
-    let exhausts := legal.filter (isAb .exhaust)
-    match (if holdsReaction && exhausts.length ≤ 1 then none else exhausts.head?) with
     | some a => some (a, r)
     | none =>
       if s.turn % 2 == 0 && (s.poolOf p).fury == 0 then

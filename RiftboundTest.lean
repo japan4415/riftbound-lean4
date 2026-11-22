@@ -28,6 +28,7 @@ public import RiftboundTest.Mana
 public import RiftboundTest.Discard
 public import RiftboundTest.Temporary
 public import RiftboundTest.Deflect
+public import RiftboundTest.Optional
 
 /-!
 # RiftboundTest

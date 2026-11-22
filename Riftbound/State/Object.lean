@@ -94,6 +94,9 @@ structure Object where
   /-- For a Legend: the XP of its player (CR 728). XP is not an object; the model keeps it with the
   player's Legend. -/
   xp : Nat := 0
+  /-- For a Spell on the Chain: whether the additional cost of Repeat was paid, so that its effect
+  is done twice (CR 820). It means nothing off the Chain. -/
+  repeated : Bool := false
 deriving DecidableEq, Repr
 
 end Riftbound
