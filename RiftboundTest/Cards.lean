@@ -55,8 +55,8 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards written down as IR values (docs/coverage.md): 41 by hand, 169 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 210
+-- the cards written down as IR values (docs/coverage.md): 52 by hand, 169 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 221
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo
@@ -82,7 +82,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 41
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 31
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 49
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 39
 
 end RiftboundTest
