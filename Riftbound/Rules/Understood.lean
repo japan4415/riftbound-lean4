@@ -54,6 +54,7 @@ def Amount.understood : Amount → Bool
   | .victoryScore => true
   | .cardsPlayed => true
   | .movesThisTurn => true
+  | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
@@ -79,6 +80,7 @@ def Amount.understoodC : Amount → Bool
   | .victoryScore => true
   | .cardsPlayed => true
   | .movesThisTurn => true
+  | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
