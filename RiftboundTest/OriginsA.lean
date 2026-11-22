@@ -3386,4 +3386,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let theirs ← fire s3 [.recycled s.you]
   return buffs a == 1 && buffs no == 0 && buffs bare == 0 && buffs mine == 1 && buffs theirs == 0
 
+-- Karma (OGN-235), more: recycling cards of the deck (Stacked Deck, OGN-183) counts; recycling a
+-- rune (Sigil of the Storm, OGN-287) does not, as runes are not cards
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-235" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .base
+  let (s3, c) ← put s2 s.me "OGN-183" .hand
+  let (t1, bf) ← putBf s2 s.me "OGN-287"
+  let buffs (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun v => (x.obj? v).any (·.buffed))).length
+  let a ← play s3 s.me c
+  let rune ← fire t1 [.scored s.me bf true]
+  return 0 < buffs a && buffs rune == 0
+
 end RiftboundTest

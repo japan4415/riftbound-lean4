@@ -1002,8 +1002,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | .recycle sel =>
-    (onSelected s p src env sel recycleOne).map (fun r =>
-      (r.1, if r.2.isEmpty then r.2 else r.2 ++ [Event.recycled p]))
+    -- recycling a card that is a card (not a Rune), even in its deck, is noted
+    (sel.eval s p src env).map (fun ids =>
+      let r := applyEach recycleOne s ids
+      (r.1, r.2 ++ (if ids.any (fun id => (s.obj? id).isSome && recycleKind s id == .mainDeck)
+        then [Event.recycled p] else [])))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal _ => some (s, [])
   | .spendBuff sel => onSelected s p src env sel unbuffObj
@@ -1111,13 +1114,12 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         exact gainXPAll_safe k l s
   | recycle sel =>
     simp only [applyPrim] at h
-    cases hs : onSelected s p src env sel recycleOne with
+    cases hs : sel.eval s p src env with
     | none => simp [hs] at h
-    | some r0 =>
+    | some ids =>
       simp only [hs, Option.map_some, Option.some.injEq] at h
-      have h0 := onSelected_safe recycleOne_safe hs
       rw [← h]
-      exact h0
+      exact applyEach_safe (fun t u => recycleOne_safe t u) _ _
   | reveal sel =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
