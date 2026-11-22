@@ -296,6 +296,7 @@ def StaticMod.runs : StaticMod → Bool
   | .extraHide => true
   | .playToOpenBf => true
   | .anyBuffs => true
+  | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true

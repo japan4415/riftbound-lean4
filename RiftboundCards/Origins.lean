@@ -1798,8 +1798,15 @@ def OGN_068.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Caitlyn, Patrolling: the effect is not written yet. -/
-def OGN_068 : CardDef := OGN_068.meta
+/-- Caitlyn, Patrolling. -/
+def OGN_068 : CardDef :=
+  { OGN_068.meta with
+    abilities := [.passive .always [.assignedLast],
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+          (.ifThen (.matches .self .onBattlefield)
+            (.prim (.deal (.slot 0) (.mightOf .self))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-069
 /--

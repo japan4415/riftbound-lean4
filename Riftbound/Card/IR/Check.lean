@@ -197,6 +197,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .extraHide => true
   | .playToOpenBf => true
   | .anyBuffs => true
+  | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true

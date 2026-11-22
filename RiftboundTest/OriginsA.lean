@@ -3651,4 +3651,27 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (buffObj one lee).2 == [Event.buffed lee] && (buffObj s2 other).2 == [Event.buffed other] &&
     (three.obj? lee).map (fun o => (Object.cleared o).extraBuffs) == some 0
 
+-- Caitlyn, Patrolling (OGN-068): she must be assigned combat damage last; exhaust: deal damage
+-- equal to her Might to a unit at a battlefield, only while she is at a battlefield
+#guard t fun s => do
+  let bf := s.bf0
+  let (s1, cait) ← putAt s s.me "OGN-068" bf
+  let (s2, other) ← putAt s1 s.me "OGN-136" bf
+  let (s3, foe) ← putAt s2 s.you "OGN-088" bf
+  let picks (acc : List ObjId) : List ObjId :=
+    (legalAssigns s3 bf s.you acc).filterMap (fun a => match a.kind with
+      | .assignPick u => some u | _ => none)
+  let (t1, c2) ← putAt s2 s.me "OGN-068" bf
+  let two (acc : List ObjId) := (legalAssigns t1 bf s.you acc).filterMap (fun a =>
+    match a.kind with | .assignPick u => some u | _ => none)
+  let hit ← activate s3 s.me cait 1 [foe] ⟨0, []⟩
+  let (h1, home) ← put s s.me "OGN-068" .base
+  let (h2, _) ← putAt h1 s.you "OGN-088" bf
+  let away := activate h2 s.me home 1 [] ⟨0, []⟩
+  let dmg := (hit.obj? foe).map (·.damage)
+  let might := (s3.mightNow cait).map Int.toNat
+  return picks [] == [other] && picks [other] == [cait] && two [] == [other] &&
+    (two [other]).length == 2 && (two [other]).contains c2 &&
+    dmg == might && away.isNone
+
 end RiftboundTest
