@@ -121,6 +121,34 @@ def GameState.trigUnitsAt (s : GameState) (bf : ObjId) (p : PlayerId) : List Obj
 def GameState.trigAllUnitsAt (s : GameState) (bf : ObjId) : List ObjId :=
   (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf))
 
+/-- The point of the turn that the start of a phase is (CR 314-317). -/
+def Phase.timing? : Phase → Option Timing
+  | .awaken => some .startOfTurn
+  | .beginning => some .beginning
+  | .main => some .startOfMain
+  | .ending => some .endOfTurn
+  | _ => none
+
+/-- The abilities of the objects in play and of the Legends that wait for the point of the turn
+`tm`, in the turn of the player `p`: those of the objects `p` controls, and those of a Battlefield,
+which work for `p` (CR 314-317). -/
+def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List PendTrigger :=
+  (s.inPlay ++ s.players.flatMap (fun q => s.zone (.player q .legendZone))).flatMap (fun src =>
+    match s.obj? src, s.cardDef? src with
+    | some o, some d =>
+      let who := if d.hasType .battlefield then p else o.controller
+      if who == p then
+        (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
+          match d.allAbilities[j]? with
+          | some (Ability.triggered t _ lim) =>
+            if t.event == .at_ tm && t.subject == .self && condOk s src who t.condition &&
+                t.occurrence == .every && limitOk s src j lim then
+              some { source := src, card := d.id, idx := j, controller := who }
+            else none
+          | _ => none)
+      else []
+    | _, _ => [])
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
@@ -128,6 +156,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .standardMoved u _ =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move
+    | none => []
+  | .phaseStarted p ph =>
+    match ph.timing? with
+    | some tm => s.timedTriggers p tm
     | none => []
   | .stunned u =>
     match s.obj? u with

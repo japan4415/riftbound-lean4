@@ -92,23 +92,27 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .beginTurn :: rest => some (beginTurnStep s rest, [])
   | .phase .awaken :: rest =>
     let s1 := s.mapObjects (readyOf (s.active.getD ⟨0⟩))
-    some ({ s1 with phase := .awaken, pending := rest }, [])
+    some ({ s1 with phase := .awaken, pending := rest },
+      [Event.phaseStarted (s.active.getD ⟨0⟩) .awaken])
   | .phase .channel :: rest =>
     let r := channel (s.active.getD ⟨0⟩) s.channelCount s
     some ({ r.1 with phase := .channel, pending := rest }, r.2)
   | .phase .draw :: rest =>
     some ({ s with phase := .draw, pending := .draw (s.active.getD ⟨0⟩) 1 :: rest }, [])
   | .phase .ending :: rest =>
-    some ({ s.mapObjects endTurnObj with phase := .ending, pending := rest, pools := {} }, [])
+    some ({ s.mapObjects endTurnObj with phase := .ending, pending := rest, pools := {} },
+      [Event.phaseStarted (s.active.getD ⟨0⟩) .ending])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     some ({ (beginStep s (s.active.getD ⟨0⟩)).1 with
               phase := .beginning,
               pending := .draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)) ::
                 .cleanup :: rest },
-      (beginStep s (s.active.getD ⟨0⟩)).2)
+      (Event.phaseStarted (s.active.getD ⟨0⟩) .beginning ::
+        (beginStep s (s.active.getD ⟨0⟩)).2))
   | .phase .main :: rest =>
-    some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} }, [])
+    some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
+      [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
   | .draw p (n + 1) :: rest =>
     match drawOne s p with

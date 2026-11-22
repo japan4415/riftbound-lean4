@@ -47,6 +47,7 @@ def Amount.understood : Amount → Bool
   | .count s => Selector.understood s
   | .handSize p => p.understood
   | .xp => true
+  | .turnsTaken p => p.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -65,6 +66,7 @@ def Amount.understoodC : Amount → Bool
   | .count s => Selector.understood s
   | .handSize p => p.understood
   | .xp => true
+  | .turnsTaken p => p.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b

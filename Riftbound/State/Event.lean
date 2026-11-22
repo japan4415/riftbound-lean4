@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.State.Zone
+public import Riftbound.State.Phase
 
 /-!
 # Events
@@ -51,6 +52,8 @@ inductive Event where
   /-- An object was killed (CR 323.4, 419): the object it has become in the Trash, and the player
   who controlled it. -/
   | died (obj : ObjId) (controller : PlayerId)
+  /-- A phase of the turn of a player began (CR 315-317). -/
+  | phaseStarted (p : PlayerId) (ph : Phase)
   /-- An object was stunned (CR 424). -/
   | stunned (target : ObjId)
   /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is

@@ -349,6 +349,12 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
+  | .turnsTaken ps => do
+    -- the turns the players have taken, this one included (CR 301)
+    let l ← ps.resolve s p
+    pure (l.foldl (fun acc q =>
+      acc + ((List.range s.turn).filter
+        (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == q)).length) 0)
   | .handSize ps => do
     let l ← ps.resolve s p
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)
