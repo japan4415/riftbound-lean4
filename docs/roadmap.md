@@ -460,6 +460,19 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7i の実装の記録（2026-11-22）: Deflect
+
+- **計画からの変更**: 前の報告では「行動に追加コストの項を足す」と書いたが、**追加コストの Power を、行動の払い方に足さず、Pool から自動で払う形にした**。行動に項を足すと、`playCard`、`activate`、`putTrigger` の 3 つの行動の型と、合法手の列挙・I8（費用をちょうど払う）・各不変条件の腕が連鎖して変わる。自動で払えば、合法かどうかの判定（`castable`、`activatable`、`trigLegal`）と、答えを適用した後の 1 か所（`applyFrame`）だけで済む。代わりに、**どの Power で払うかをプレイヤーが選べない**（モデルの決定）。
+- **効果を持つカード**: Deflect を印刷したカード（転記済みの 31 枚）と、Equipment が与える Deflect。todo のカードは、転記されるまで動かない。数は増えない（すでに「IR で書けた」に数えている）。
+- **Deflect**（`Rules/Deflect.lean`: `deflectOf`、`deflectCost`、`deflectOk`、`paySurcharge`）: 相手が、Spell・起動型能力・誘発能力で、Deflect X を持つ Unit を対象に選ぶとき、追加コストとして任意ドメインの Power を X 払う（CR 809）。X は、印刷された値と、Equipment が与えた値の合計。数のない Deflect は 1。同じ Unit を 2 回選べば 2 回払う。自分の Unit には払わない。
+- **合法の判定**: `castable`、`activatable` は、印刷された費用を払った後の Pool が、`deflectCost` を払えることを求める。誘発能力は、`trigTuples`（払える対象の組だけ）を使い、払える組が無ければ、対象を選ばずに取り除かれる（CR 355）。
+- **払い方**（`RunePool.takeN`）: ドメインの Power を先に（`fury`、`calm`、`mind`、`body`、`chaos`、`order` の順）、任意ドメインの Power を最後に取る。柔軟な Power を残すため。`paySurcharge` は `applyFrame` の中で、答えの後の状態の Pool を変える。
+- **証明**: `total_takeN`（n 個取ると、ちょうど n 減る）、`paySurcharge_cases`（何も変えないか、1 人の Pool だけを変える）。`PoolStep` で、Pool の変更が `WF`、物理カード、`OwnerOk`、スタックを保つことを示し、不変条件の `applyFrame` の 7 か所（Step、Sound、Progress、Resources、Setup、Hands）に、数行ずつ足しただけで保たれた。**進行の定理は、払えない対象を選ぶ手が無くなっても、`trigLegal_exists`（取り除く手がいつも合法）で保たれる**。
+- **テスト**（`RiftboundTest/Deflect.lean`）: `deflectCost`（相手のみ、2 回選べば 2 倍、自分は 0）、Spell（Power が足りないと合法でなく、足りると合法で、通すと Pool が空になる）、自分の Unit は Energy だけで足りること、`takeN` の順序、起動型能力、誘発能力（払えなければ対象なしの 1 手だけ）。
+- **ビューア・デモ**: デモのデッキに Guardian（Deflect 1 の Unit、Quick Study の代わり）が入る。seed 1 の 164 番で、P1 が Counterstrike（費用 1）で P0 の Guardian を対象にし、Pool が 7 から 5 になる。
+- **まだ無いもの**: 払う Power の選択（行動に払う Power の項を足す）、Equipment 以外が与える Deflect（「Friendly buffed units have Deflect」など）。
+- **次の候補**: Accelerate（32 枚）、Repeat（24 枚）、Hidden（50 枚）、Empower（47 枚）。
+
 ### M7h の実装の記録（2026-11-22）: Temporary と、キーワードの意味の洗い出し
 
 - **おすすめの変更（データで確かめた結果）**: 前の報告では「起動型能力の費用を広げる」をおすすめしたが、費用が語になっている起動型能力の行を数えると、効果まで書ける行は十数行（Spend N XP が 2、Kill this が 3、Disempower が 5、Discard が 1 など）で、1 回の PR で増えるカードが少なかった。そこで、**キーワードの意味がエンジンに入っているかを洗い出し**、枚数の多い Temporary を先に入れた。

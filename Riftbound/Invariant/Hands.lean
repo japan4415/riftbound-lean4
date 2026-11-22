@@ -581,8 +581,14 @@ theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event
 theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : LegalFrame s a)
     (h : applyFrame s a = some (s', es)) : HandInv s' := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  exact (applyFrame_handInv0 hwf hown hinv hl h0).withTriggers _
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  have h5 : HandInv s2 := applyFrame_handInv0 hwf hown hinv hl h0
+  have h4 : HandInv s3 := by
+    rcases h3 with rfl | ⟨q, pool, rfl⟩
+    · exact h5
+    · exact h5.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun _ _ => rfl) id
+        (fun f hf hp => ⟨f, hf, hp⟩)
+  exact h4.withTriggers _
 
 /-- Applying a legal answer keeps the hand invariant. A concession ends the game, and the hands are
 then no longer counted. -/

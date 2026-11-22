@@ -135,9 +135,9 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
     {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
     (h : applyFrame s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
   obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
-  simpa [extraEvents, withTriggers_nil] using hpend
+  simpa [extraEvents, withTriggers_nil, h3.pending_eq] using hpend
 
 /-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
 theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}

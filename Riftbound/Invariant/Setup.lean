@@ -573,8 +573,11 @@ theorem SetupInv.withTriggers {s : GameState} (hinv : SetupInv s) (es : List Eve
 theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hinv : SetupInv s) (hl : LegalFrame s a)
     (h : applyFrame s a = some (s', es)) : SetupInv s' := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  exact (applyFrame_setup0 hwf hinv hl h0).withTriggers _
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  have h5 : SetupInv s2 := applyFrame_setup0 hwf hinv hl h0
+  have h4 : SetupInv s3 := by
+    rcases h3 with rfl | ⟨q, pool, rfl⟩ <;> exact h5
+  exact h4.withTriggers _
 
 /-- Applying an answer keeps the setup invariant. A concession leaves no frame at all. -/
 theorem applyAction_setup {s s' : GameState} {a : Action} {es : List Event}

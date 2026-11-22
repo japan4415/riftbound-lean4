@@ -71,6 +71,21 @@ def equipBonus (s : GameState) (id : ObjId) : Int :=
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
 
+/-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
+no condition that give the object the keyword. -/
+def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
+  s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      if o.attached == some id then
+        d.grants.flatMap (fun ab =>
+          match ab with
+          | Ability.passive .always mods =>
+            mods.filterMap (fun m => match m with | .keyword .self k => some k | _ => none)
+          | _ => [])
+      else []
+    | _, _ => [])
+
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/
 def mightNow (s : GameState) (id : ObjId) : Option Int :=

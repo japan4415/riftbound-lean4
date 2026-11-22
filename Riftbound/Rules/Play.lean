@@ -4,6 +4,7 @@ public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Select
 public import Riftbound.Rules.Passive
+public import Riftbound.Rules.Deflect
 
 /-!
 # Playing a card
@@ -66,7 +67,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match d.cost with
           | some cost => cost.paidBy d.domains pay
           | none => false) &&
-        ((s.poolOf p).spend pay).isSome
+        ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool targets)
     | _, _ => false
 
 /-- Cast a Spell (CR 354, 357): pay, and put it on the Chain with the objects chosen. -/
@@ -299,7 +300,10 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       | none => rw [hc] at hcost; simp at hcost
       | some cost =>
         rw [hc] at hcost
-        obtain ⟨pool, hpool⟩ := Option.isSome_iff_exists.mp hspend
+        obtain ⟨pool, hpool⟩ : ∃ pool, (s.poolOf p).spend pay = some pool := by
+          cases hs : (s.poolOf p).spend pay with
+          | none => rw [hs] at hspend; simp at hspend
+          | some pool => exact ⟨pool, rfl⟩
         exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost, hpool⟩
 
 /-- A castable card is a Spell whose effect the targets are a legal pick for. -/

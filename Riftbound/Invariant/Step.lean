@@ -139,8 +139,8 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
 /-- Applying a legal answer keeps the game well formed. -/
 theorem applyFrame_wf {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) : s'.WF := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  exact withTriggers_wf _ (applyFrame_wf0 hwf hl h0)
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  exact withTriggers_wf _ (h3.wf (applyFrame_wf0 hwf hl h0))
 
 /-- Applying a legal answer keeps the game well formed. -/
 theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
@@ -382,8 +382,8 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
 theorem applyFrame_physIds {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hl : LegalFrame s a) (h : applyFrame s a = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  obtain ⟨s2, es2, h0, rfl, -⟩ := applyFrame_cases h
-  rw [withTriggers_physIds]
+  obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
+  rw [withTriggers_physIds, h3.physIds_eq]
   exact applyFrame_physIds0 hwf hl h0
 
 /-- Applying a legal answer keeps the physical cards. -/

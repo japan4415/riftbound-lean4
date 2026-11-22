@@ -99,7 +99,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                 (match pc with
                   | some c => c.paidBy d.domains pay
                   | none => pay == ⟨0, []⟩) &&
-                ((s.poolOf p).spend pay).isSome &&
+                ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true
                   | .perTurn n => decide (o.used.count idx < n)) &&
