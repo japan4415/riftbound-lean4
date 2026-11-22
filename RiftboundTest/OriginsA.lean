@@ -802,4 +802,72 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let picks ← firePicks s4 [.stunned e]
   return picks.contains f && picks.contains g && !picks.contains e
 
+-- Wielder of Water (OGN-055): +2 Might only while it attacks or defends alone
+#guard t fun s => do
+  let (s1, w) ← putAt s s.me "OGN-055" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, v) ← putAt s2 s.me "OGN-136" s.bf0
+  let b := s3.inCombatAt s.bf0 s.me
+  let c := s2.inCombatAt s.bf0 s.you
+  return c.mightNow w == (s2.mightNow w).map (· + 2) && b.mightNow w == s3.mightNow w &&
+    s2.mightNow w == (s1.mightNow w) && s3.mightNow v == some 2
+
+-- Mask of Foresight (OGN-060): +1 Might for a friendly unit that attacks (a) or defends (b)
+-- alone; not when it has company (c), not an enemy unit
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-060" .base
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-136" s.bf0
+  let (s4, v) ← putAt s3 s.me "OGN-136" s.bf0
+  let a ← startCombatNow s3 s.bf0 s.me
+  let b ← startCombatNow s3 s.bf0 s.you
+  let c ← startCombatNow s4 s.bf0 s.me
+  let up := (s3.mightNow u).map (· + 1)
+  return a.mightNow u == up && b.mightNow u == up &&
+    a.mightNow e == s3.mightNow e && c.mightNow u == s4.mightNow u && c.mightNow v == s4.mightNow v
+
+-- Cannon Barrage (OGN-127): 2 damage to every enemy unit in the combat, not elsewhere
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-127" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, f) ← put s3 s.you "OGN-001" .base
+  let r ← play (s4.inShowdownAt s.bf0 s.me) s.me c
+  let q ← play s4 s.me c
+  return (r.obj? e).map (·.damage) == some 2 && (r.obj? f).map (·.damage) == some 0 &&
+    (r.obj? a).map (·.damage) == some 0 && (q.obj? e).map (·.damage) == some 0
+
+-- Kadregrin the Infernal (OGN-038): draw 1 for each of my Mighty units
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-038" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s2 s.me "OGN-136" .base
+  let (s4, _) ← put s3 s.you "OGN-001" .base
+  let a ← play s1 s.me c
+  let b ← play s4 s.me c
+  -- Kadregrin itself (Might 9) is Mighty and counts
+  return a.handN s.me == s1.handN s.me - 1 + 1 && b.handN s.me == s4.handN s.me - 1 + 2
+
+-- Fiora (OGN-232): Deflect, Ganking and Shield only while she is Mighty (Might 4, buffed 5)
+#guard t fun s => do
+  let (s1, f) ← put s s.me "OGN-232" .base
+  let s2 := s1.buff f
+  let s3 := s1.modObj f (fun o => { o with mightMods := [⟨1, .turn⟩] })
+  return s3.hasKw f .ganking && s3.kwAmount f .shield == 1 && !s1.hasKw f .ganking &&
+    s1.kwAmount f .shield == 0 && s1.deflectOf f == 0 &&
+    s2.hasKw f .ganking && s2.kwAmount f .shield == 1 && s2.deflectOf f == 1
+
+-- Mighty counts an Equipment too (Fiora 4 + Long Sword 2), and the Showdown of a Combat is a
+-- combat for Wielder of Water
+#guard t fun s => do
+  let (s1, f) ← put s s.me "OGN-232" .base
+  let (s2, sw) ← put s1 s.me "SFD-022" .base
+  let s3 := s2.modObj sw (fun o => { o with attached := some f })
+  return !s2.hasKw f .ganking && s3.hasKw f .ganking && s3.mightNow f == some 6
+#guard t fun s => do
+  let (s1, w) ← putAt s s.me "OGN-055" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-136" s.bf0
+  let b := s2.inShowdownAt s.bf0 s.me
+  return b.mightNow w == (s2.mightNow w).map (· + 2)
+
 end RiftboundTest

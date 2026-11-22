@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 8 弾: 戦闘の文脈と、Mighty）
+
+- **エンジン**: 戦闘の文脈（`GameState.combatNow`）を足した。いま進行中の Combat の Battlefield と Attacker を、スタックの戦闘のフレーム（`combatDamage`・`assign`・`combatResolve`）から読む。これで、**場所 `inCombat`**（戦闘中の Unit）と、**フィルタ `attacker`・`defender`・`alone`**（戦闘中に、自分の側でただ 1 体）が動く。**フィルタ `mighty`**（Might 5 以上）も動く。`攻撃したとき`・`防御したとき`の誘発は、自分だけでなく、ほかの物体の見張り（`watchersOf`）も働く。
+- **書いた 5 枚**: Wielder of Water（055。1 体で戦うとき +2 Might）、Mask of Foresight（060。味方が 1 体で攻撃・防御するとき +1 Might）、Cannon Barrage（127。戦闘中の敵の Unit に 2 ダメージ）、Kadregrin the Infernal（038。Mighty の味方 1 体につき 1 枚引く）、Fiora（232。Mighty の間、Deflect・Ganking・Shield）。変異（alone・inCombat・mighty の違い）で、テストが落ちることを確かめた。
+- **レビューで直したこと**: 戦闘の文脈は、Combat の **Showdown の最中**にも読める（Battlefield に 2 人以上の Unit がいる `showdown` のフレーム）。`mighty` と `Filter.might` は、Equipment の Might も数える（`equipBonus` を Select へ移した）。
+- **近似として残したこと**: `mighty` は、パッシブ能力の増減を読まない（パッシブは、フィルタを自分で読むので、循環する）。Combat Cleanup は、致死の Unit を 1 体ずつ殺すので、Wielder of Water のような「1 体のとき」の増減が、先に 1 体が死ぬと変わり、同時に死ぬはずのものが生き残ることがある（未確認）。モデルでは、Showdown の最中に呪文を唱える手が、まだ無い（Showdown のフレームは Pass だけ）。Cannon Barrage は、Priority のフレームがあるときに、唱えられる（テストは、その状態を作って確かめた）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 7 弾: Stun と Discard の出来事）
 
 - **エンジン**: 出来事に、**Stun された**（`Event.stunned`）と**捨てられた**（`Event.discarded`。Trash での新しい物体）を足した。誘発の種類に `stun` を足し、`detectOne` が、Stun された物体自身と、見張っているほかの物体（`watchersOf`）の誘発を拾う。捨てる決定（`discardPick`）は、捨てられたカードの出来事を出すので、「捨てたとき」の能力が、効果の捨てる動作からも動く。証明は、変更なしで通った。

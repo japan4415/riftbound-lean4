@@ -25,6 +25,7 @@ def Place.understood : Place → Bool
   | .atBase => true
   | .atBattlefield => true
   | .here => true
+  | .inCombat => true
   | _ => false
 
 /-- The players an effect names that are understood. -/
@@ -82,6 +83,10 @@ def Filter.understood : Filter → Bool
   | .notSelf => true
   | .stunned => true
   | .buffed => true
+  | .mighty => true
+  | .attacker => true
+  | .defender => true
+  | .alone => true
   | _ => false
 
 /-- Every filter of a list is understood. -/

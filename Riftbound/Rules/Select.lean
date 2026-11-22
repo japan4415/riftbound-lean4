@@ -88,6 +88,34 @@ def Amount.eval (env : Env) : Amount → Option Nat
   | .max a b => do pure (Nat.max (← Amount.eval env a) (← Amount.eval env b))
   | _ => none
 
+/-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
+def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
+  (s.inPlay.filterMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d => if o.attached == some id then d.mightBonus else none
+    | _, _ => none)).sum
+
+/-- The Units of the player that are at the Battlefield. -/
+def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId :=
+  (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf &&
+    o.controller == p) && (s.cardDef? u).any (·.hasType .unit))
+
+/-- The Combat that is going on: its Battlefield and its Attacker. It goes on from the moment it
+starts (CR 466) to its end (CR 468): the frames of the Combat are on the stack. -/
+def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
+  s.pending.findSome? (fun f =>
+    match f with
+    | .showdown bf _ _ =>
+      -- the Showdown of a Combat: Units of at least two players are at the Battlefield (CR 464);
+      -- the Attacker is the player who made it Contested (CR 466)
+      if 2 ≤ (s.players.filter (fun p => !(s.unitsAtOf bf p).isEmpty)).length then
+        some (bf, ((s.obj? bf).bind (·.contested)).getD (s.active.getD ⟨0⟩))
+      else none
+    | .combatDamage bf att => some (bf, att)
+    | .assign bf att _ _ _ => some (bf, att)
+    | .combatResolve bf att => some (bf, att)
+    | _ => none)
+
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
@@ -100,10 +128,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .might op a => do
     let n ← a.eval env
     -- an object without Might (a Battlefield, a Spell) does not have the Might asked for
-    -- the buff counts (CR 701); a bonus of an Equipment and a passive ability are not read here, as
+    -- the buff and the Equipment count (CR 701, 137); a passive ability is not read here, as
     -- the Layers are (`mightNow`) defined after the filters
     match s.mightOf id with
-    | some m => pure (op.holds (m + (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)) n)
+    | some m =>
+      let buff : Int := if ((s.obj? id).map (·.buffed)).getD false then 1 else 0
+      pure (op.holds (m + s.equipBonus id + buff) n)
     | none => pure false
   | .exhausted => (s.obj? id).map (·.exhausted)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
@@ -111,6 +141,26 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .notSelf => some (id != self)
   | .stunned => (s.obj? id).map (·.stunned)
   | .buffed => (s.obj? id).map (·.buffed)
+  | .mighty =>
+    -- Might 5 or more, counting the printed Might, the lasting changes, the buff and the Equipment;
+    -- the passive abilities are not read here (they read filters themselves), as for `Filter.might`
+    pure (match s.mightOf id with
+      | some m =>
+        let buff : Int := if ((s.obj? id).map (·.buffed)).getD false then 1 else 0
+        decide (5 ≤ m + s.equipBonus id + buff)
+      | none => false)
+  | .attacker =>
+    pure (match s.combatNow, s.obj? id with
+      | some (bf, att), some o => o.loc == some bf && o.controller == att
+      | _, _ => false)
+  | .defender =>
+    pure (match s.combatNow, s.obj? id with
+      | some (bf, att), some o => o.loc == some bf && o.controller != att
+      | _, _ => false)
+  | .alone =>
+    pure (match s.combatNow, s.obj? id with
+      | some (bf, _), some o => o.loc == some bf && (s.unitsAtOf bf o.controller).length == 1
+      | _, _ => false)
   | _ => none
 
 /-- Whether the object has every property of the list. -/
@@ -145,6 +195,9 @@ def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List 
       (s.zone .battlefieldZone).filter (fun u => u == bf || (s.obj? u).any (·.loc == some bf)))
   | .atBase => some (s.players.flatMap (fun p => s.zone (.player p .base)))
   | .atBattlefield => some (s.zone .battlefieldZone)
+  | .inCombat =>
+    s.combatNow.map (fun (bf, _) =>
+      (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (·.loc == some bf)))
   | _ => none
 
 /-- Whether an object is on the side and has the properties. -/
@@ -224,7 +277,11 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
   | inRuneDeck => simp [placeObjs] at h
-  | inCombat => simp [placeObjs] at h
+  | inCombat =>
+    simp only [placeObjs] at h
+    obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
+    unfold inPlay
+    exact List.mem_append_right _ (List.mem_filter.mp hx).1
 
 /-- The objects a candidate list can hold are objects in play. -/
 theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}

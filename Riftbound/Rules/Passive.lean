@@ -62,13 +62,6 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
   -- a floor is not read here yet
   | _ => 0
 
-/-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
-def equipBonus (s : GameState) (id : ObjId) : Int :=
-  (s.inPlay.filterMap (fun g =>
-    match s.obj? g, s.cardDef? g with
-    | some o, some d => if o.attached == some id then d.mightBonus else none
-    | _, _ => none)).sum
-
 /-- What the passive abilities add to the Might of an object. -/
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
