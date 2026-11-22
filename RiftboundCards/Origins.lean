@@ -1617,7 +1617,8 @@ def OGN_062.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Reinforce. -/
+/-- Reinforce. Approximation: the unit is played at once (no banish), only a unit of Energy 5 or
+less can be chosen, and its Power is not paid. -/
 def OGN_062 : CardDef :=
   { OGN_062.meta with
     spellEffect := some (.of []

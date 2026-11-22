@@ -2882,10 +2882,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let no ← play d6 s.me c [] { yes := false }
   let (e1, _) ← put empty s.me "OGN-011" .mainDeck
   let blocked ← play e1 s.me c [] { yes := true }
+  -- a unit below the top 5 is not played; of two units in the top 5 only the cheap one can be
+  let (f1, _) ← put empty s.me "OGN-136" .mainDeck
+  let (f2, _) ← put f1 s.me "OGN-004" .mainDeck
+  let (f3, _) ← put f2 s.me "OGN-004" .mainDeck
+  let (f4, _) ← put f3 s.me "OGN-004" .mainDeck
+  let (f5, _) ← put f4 s.me "OGN-004" .mainDeck
+  let (f6, _) ← put f5 s.me "OGN-004" .mainDeck
+  let deep ← play f6 s.me c [] { yes := true }
+  let (g1, _) ← put empty s.me "OGN-136" .mainDeck
+  let (g2, _) ← put g1 s.me "OGN-011" .mainDeck
+  let two ← play g2 s.me c [] { yes := true }
   return go.countIn s.me .base "OGN-136" == 1 && (deck go).length == (deck d6).length - 1 &&
     (deck go).head? == some six && go.countIn s.me .hand "OGN-136" == 0 &&
     (deck no).length == (deck d6).length && (deck no).head? == some six &&
-    no.countIn s.me .base "OGN-136" == 0 && (deck blocked).length == 1
+    no.countIn s.me .base "OGN-136" == 0 && (deck blocked).length == 1 &&
+    deep.countIn s.me .base "OGN-136" == 0 && two.countIn s.me .base "OGN-136" == 1 &&
+    two.countIn s.me .base "OGN-011" == 0
 
 -- Dazzling Aurora (OGN-160): at the end of my turn, reveal cards until a unit; play it for free and
 -- recycle the rest

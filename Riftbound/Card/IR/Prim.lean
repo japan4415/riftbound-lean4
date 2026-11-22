@@ -70,7 +70,8 @@ inductive Prim where
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)
   /-- Reveal cards from the top of the Main Deck until one with the properties is revealed, play it
-  without paying its cost, and recycle the others (all of them if none matches). -/
+  without paying its cost, and recycle the others (all of them if none matches). Only a Unit or a
+  Gear can be played this way. -/
   | playFirst (fs : FilterList)
   /-- Play cards without paying their cost, to a Battlefield. -/
   | playTo (s : Selector) (bf : Selector)
