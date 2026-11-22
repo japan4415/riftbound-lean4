@@ -2406,4 +2406,42 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     le3 (s2.buff u) u == some true && le3 (on.buff u) u == some false &&
     le3 (two.buff u) u == some false
 
+-- Albus Ferros (OGN-230): when I play him, I may spend any number of buffs, a rune channeled
+-- exhausted for each
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-230" .hand
+  let (s2, a) ← put s1 s.me "OGN-136" .base
+  let (s3, b) ← put s2 s.me "OGN-136" .base
+  let (s4, e) ← put s3 s.you "OGN-136" .base
+  let buffed := ((s4.buff a).buff b).buff e
+  let yes ← play buffed s.me c [] { yes := true }
+  let no ← play buffed s.me c [] { yes := false }
+  let runeN (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  return (yes.obj? a).map (·.buffed) == some false && (yes.obj? b).map (·.buffed) == some false &&
+    (yes.obj? e).map (·.buffed) == some true && runeN yes == runeN buffed + 2 &&
+    (no.obj? a).map (·.buffed) == some true && runeN no == runeN buffed
+
+-- The Candlelit Sanctum (OGN-291): when I conquer here, I may recycle either of the top two cards
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-291"
+  let deck := s1.zone (.player s.me .mainDeck)
+  let yes ← fire s1 [.scored s.me bf true] { yes := true }
+  let no ← fire s1 [.scored s.me bf true] { yes := false }
+  let other ← fire s1 [.scored s.you bf true]
+  let top2 := deck.take 2
+  return deck.length > 3 && (no.zone (.player s.me .mainDeck)) == deck &&
+    (yes.zone (.player s.me .mainDeck)).take (deck.length - 2) == deck.drop 2 &&
+    ((yes.zone (.player s.me .mainDeck)).drop (deck.length - 2)).length == 2 &&
+    top2.length == 2 && (other.zone (.player s.me .mainDeck)) == deck
+
+-- Fortified Position (OGN-279): when I defend here, a unit gains Shield 2
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-279"
+  let (s2, u) ← putAt s1 s.me "OGN-136" bf
+  let a ← fire s2 [.combatStarted bf s.you]
+  let att ← fire s2 [.combatStarted bf s.me]
+  let has (x : GameState) := (x.grantedKws u).any (fun k => k.keyword == .shield)
+  return has a && !has att && !has s2
+
 end RiftboundTest
