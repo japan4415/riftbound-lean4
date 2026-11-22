@@ -1360,7 +1360,8 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, d) ← put s s.me "OGN-028" .base
   let more := (s1.gainPoints s.me 3).gainPoints s.you 2
-  return more.mightNow d == (s1.mightNow d).map (· + 3) && s1.mightNow d == s1.mightNow d
+  return more.mightNow d == (s1.mightNow d).map (· + 3) &&
+    (s1.gainPoints s.you 2).mightNow d == s1.mightNow d
 
 -- Relentless Storm (OGN-249), a Legend: when I play a Mighty unit, I may exhaust it to channel 1
 -- rune exhausted
@@ -1391,5 +1392,27 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← fire t1 [.phaseStarted s.me .beginning]
   return s5.mightNow d == (s1.mightNow d).map (· + 4) && trash a + 3 == trash s5 &&
     deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1
+
+-- Wraith of Echoes: two friendly units dying at once draw 1, not 2; two Wraiths draw 1 each
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-118" .base
+  let (s2, x) ← put s1 s.me "OGN-136" .trash
+  let (s3, y) ← put s2 s.me "OGN-136" .trash
+  let a ← fire s3 [.died x s.me, .died y s.me]
+  let (t1, _) ← put s3 s.me "OGN-118" .base
+  let b ← fire t1 [.died x s.me]
+  return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == t1.handN s.me + 2
+
+-- Dr. Mundo recycles the cards the player chooses, and not in the opponent's Beginning Phase
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-109" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-001" .trash
+  let (s4, _) ← put s3 s.me "OGN-004" .trash
+  let (s5, d) ← put s4 s.me "OGN-016" .trash
+  let x ← fire s5 [.phaseStarted s.me .beginning] { obj := fun o => o != d }
+  let y ← fire s5 [.phaseStarted s.you .beginning]
+  return x.countIn s.me .trash "OGN-016" == 1 && (x.zone (.player s.me .trash)).length == 1 &&
+    (y.zone (.player s.me .trash)).length == 4
 
 end RiftboundTest

@@ -5995,7 +5995,7 @@ def OGN_246 : CardDef :=
   { OGN_246.meta with
     abilities := [.triggered
       { event := .die,
-        subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .not (.named "Recruit")] }
+        subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .not (.tag ⟨"Recruit"⟩)] }
       (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
 

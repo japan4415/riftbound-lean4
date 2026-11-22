@@ -182,9 +182,21 @@ def detectOne (s : GameState) : Event → List PendTrigger
       | none => [])
   | _ => []
 
+/-- Keep the abilities that a limit of times per turn lets fire: the events of one step may set
+off the same ability more than once, and the limit counts the times it fired before and those it
+fires now (CR 371). -/
+def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigger :=
+  l.foldl (fun kept t =>
+    let taken := (kept.filter (fun k => k.source == t.source && k.idx == t.idx)).length
+    match (s.cardDef? t.source).bind (fun d => d.allAbilities[t.idx]?),
+        (s.obj? t.source).map (·.used) with
+    | some (Ability.triggered _ _ (.perTurn n)), some used =>
+      if used.count t.idx + taken < n then kept ++ [t] else kept
+    | _, _ => kept ++ [t]) []
+
 /-- The abilities that fire because of the events of a step, the turn player's first (CR 383.3). -/
 def GameState.detect (s : GameState) (es : List Event) : List PendTrigger :=
-  let all := es.flatMap (detectOne s)
+  let all := s.trimLimits (es.flatMap (detectOne s))
   let a := s.active.getD ⟨0⟩
   all.filter (fun t => t.controller == a) ++ all.filter (fun t => t.controller != a)
 
@@ -479,7 +491,7 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   unfold GameState.withTriggers
   split
-  · simp [GameState.detect]
+  · simp [GameState.detect, GameState.trimLimits]
   · rfl
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/
