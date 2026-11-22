@@ -682,6 +682,11 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match n.evalS s p src env with
     | some k => (s, [.run p src env ((EffectList.replicate k e').append es)], [])
     | none => skip
+  | .eachPlayer who body =>
+    match who.resolve s p with
+    | some ps => (s, ps.map (fun q => Frame.run q src env (.cons body .nil)) ++
+        [.run p src env es], [])
+    | none => skip
   | .may e' => (s, [.mayDo p src env e' es], [])
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with

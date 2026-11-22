@@ -957,4 +957,42 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire near [.scored s.me bf false]
   return a.pointsOf s.me == s2.config.mode.victoryScore
 
+-- Acceptable Losses (OGN-179) and Cull the Weak (OGN-209): each player kills one of their own
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-179" .hand
+  let (s2, _) ← put s1 s.me "OGN-017" .base
+  let (s3, _) ← put s2 s.me "OGN-017" .base
+  let (s4, _) ← put s3 s.you "OGN-017" .base
+  let (s5, _) ← put s4 s.you "OGN-001" .base
+  let a ← play s5 s.me c
+  return a.countIn s.me .trash "OGN-017" == 1 && a.countIn s.me .base "OGN-017" == 1 &&
+    a.countIn s.you .trash "OGN-017" == 1 && a.countIn s.you .base "OGN-001" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-209" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s2 s.me "OGN-136" .base
+  let (s4, _) ← put s3 s.you "OGN-001" .base
+  let a ← play s4 s.me c
+  let b ← play s3 s.me c
+  return a.countIn s.me .trash "OGN-001" + a.countIn s.me .trash "OGN-136" == 1 &&
+    a.countIn s.you .trash "OGN-001" == 1 && b.countIn s.you .trash "OGN-001" == 0
+
+-- Invert Timelines (OGN-201): each player discards their hand, then draws 4
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-201" .hand
+  let a ← play s1 s.me c
+  return a.handN s.me == 4 && a.handN s.you == 4 && a.countIn s.me .trash "OGN-201" == 1 &&
+    (a.zone (.player s.me .trash)).length == (s1.zone (.player s.me .trash)).length + s1.handN s.me
+
+-- Whirlwind (OGN-187): each player may return a unit to its owner's hand
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-187" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .base
+  let (s3, _) ← put s2 s.you "OGN-136" .base
+  let a ← play s3 s.me c
+  let b ← play s3 s.me c [] { yes := false }
+  let inPlayUnits (x : GameState) :=
+    (x.zone (.player s.me .base)).length + (x.zone (.player s.you .base)).length
+  return inPlayUnits a + 2 == inPlayUnits s3 && inPlayUnits b == inPlayUnits s3
+
 end RiftboundTest
