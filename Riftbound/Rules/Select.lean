@@ -138,6 +138,23 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .exhausted => (s.obj? id).map (·.exhausted)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
+  | .at_ sel => do
+    -- the place the object named by the selector is at: a Battlefield, the Battlefield a Unit is
+    -- at, or a Base (the selector is `self`, a chosen object or a variable)
+    let d? : Option ObjId := match sel with
+      | .self => some self
+      | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
+      | _ => none
+    let d ← d?
+    pure (match s.obj? id with
+      | some o =>
+        if (s.cardDef? d).any (·.hasType .battlefield) then o.loc == some d
+        else
+          match s.obj? d with
+          | some od => o.loc == od.loc && (od.loc.isSome || o.controller == od.controller)
+          | none => false
+      | none => false)
   | .lethal =>
     pure (match s.mightOf id, s.obj? id with
       | some m, some o =>

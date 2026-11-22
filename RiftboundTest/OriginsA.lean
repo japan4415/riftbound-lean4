@@ -1230,4 +1230,88 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return deck a s.me == (deck s1 s.me).tail ++ [top] && deck a s.you == deck s1 s.you &&
     (deck e s.me).isEmpty && a.countIn s.me .base "OGN-086" == 1
 
+-- En Garde (OGN-046): +1 Might, and one more if it is the only unit I control there
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-046" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, w) ← putAt s3 s.me "OGN-136" s.bf0
+  let alone ← play s3 s.me c [u]
+  let crowd ← play s4 s.me c [u]
+  let atBase ← play s3 s.me c [v]
+  let (t1, x) ← put s3 s.me "OGN-136" .base
+  let baseCrowd ← play t1 s.me c [v]
+  return alone.mightNow u == (s3.mightNow u).map (· + 2) &&
+    crowd.mightNow u == (s4.mightNow u).map (· + 1) && crowd.mightNow w == s4.mightNow w &&
+    atBase.mightNow v == (s3.mightNow v).map (· + 2) &&
+    baseCrowd.mightNow v == (t1.mightNow v).map (· + 1) && baseCrowd.mightNow x == t1.mightNow x
+
+-- Siphon Power (OGN-266): friendly units at the chosen battlefield +1, enemy units there -1 (min 1)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-266" .hand
+  let (s2, f) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, g) ← put s3 s.me "OGN-136" .base
+  let (s5, h) ← put s4 s.you "OGN-001" .base
+  let a ← play s5 s.me c [s.bf0]
+  return a.mightNow f == (s5.mightNow f).map (· + 1) &&
+    a.mightNow e == (s5.mightNow e).map (· - 1) &&
+    a.mightNow g == s5.mightNow g && a.mightNow h == s5.mightNow h
+
+-- Last Stand (OGN-069): double a friendly unit's Might this turn, and it becomes Temporary
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-069" .hand
+  let (s2, u) ← put s1 s.me "OGN-001" .base
+  let a ← play s2 s.me c [u]
+  let e := a.mapObjects endTurnObj
+  return a.mightNow u == (s2.mightNow u).map (· * 2) && a.hasKw u .temporary &&
+    e.mightNow u == s2.mightNow u && e.hasKw u .temporary
+
+-- Convergent Mutation (OGN-108): increase a friendly unit's Might to that of another
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-108" .hand
+  let (s2, a) ← put s1 s.me "OGN-136" .base
+  let (s3, b) ← put s2 s.me "OGN-001" .base
+  let up ← play s3 s.me c [a, b]
+  -- the second unit is not stronger: nothing changes (the Might is only raised); the same unit
+  -- twice changes nothing either
+  let lower ← play s3 s.me c [b, a]
+  let twice ← play s3 s.me c [a, a]
+  return up.mightNow a == s3.mightNow b && up.mightNow b == s3.mightNow b &&
+    lower.mightNow b == s3.mightNow b && lower.mightNow a == s3.mightNow a &&
+    twice.mightNow a == s3.mightNow a
+
+-- Showstopper (OGN-270): buff a friendly unit in my base, then move it to a battlefield I choose
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-270" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, w) ← putAt s2 s.me "OGN-136" s.bf0
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let a ← play s3 s.me c [u] { obj := fun o => o == other }
+  let b ← play s3 s.me c [u] { obj := fun o => o == s.bf0 }
+  return (a.obj? u).map (·.buffed) == some true && (a.obj? u).bind (·.loc) == some other &&
+    (b.obj? u).bind (·.loc) == some s.bf0 && (play s3 s.me c [w]).isNone
+
+-- Siphon Power: a unit at another battlefield is not touched, and an enemy of Might 1 stays at 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-266" .hand
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let (s2, f) ← putAt s1 s.me "OGN-136" other
+  let (s3, e) ← putAt s2 s.you "OGN-216" s.bf0
+  let (s4, g) ← putAt s3 s.you "OGN-001" other
+  let a ← play s4 s.me c [s.bf0]
+  return a.mightNow f == s4.mightNow f && a.mightNow g == s4.mightNow g && a.mightNow e == some 1
+
+-- En Garde counts only my units there; Showstopper cannot move an enemy unit
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-046" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, _) ← putAt s2 s.you "OGN-136" s.bf0
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let (s4, _) ← putAt s3 s.me "OGN-136" other
+  let a ← play s4 s.me c [u]
+  let (t1, d) ← put s s.me "OGN-270" .hand
+  let (t2, e) ← put t1 s.you "OGN-136" .base
+  return a.mightNow u == (s4.mightNow u).map (· + 2) && (play t2 s.me d [e]).isNone
+
 end RiftboundTest
