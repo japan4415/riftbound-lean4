@@ -115,6 +115,8 @@ def make_handler(lean: Lean, port: int):
                     line = "clock"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/undo":
+                    line = "undo"
                 elif path == "/api/swap":
                     out, inn = str(req.get("out", "")), str(req.get("in", ""))
                     if not (CARD_ID.fullmatch(out) and CARD_ID.fullmatch(inn)):

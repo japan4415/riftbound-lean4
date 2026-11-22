@@ -177,4 +177,31 @@ meta def countIn (l : List CardId) (code : String) : Nat :=
   | .ok (g, _) => (liveSwap g "S1" "S0").toOption.isNone
   | .error _ => false
 
+-- taking an answer back: the game before the answer is kept, so its reply says the same answers
+-- again, tells the viewer how many steps to keep (the steps made until then), and has none new
+#guard match liveStart 1 h0 with
+  | .ok (g, _) =>
+    match liveAct g 0 with
+    | .ok (g', _) =>
+      g.undoReply.contains "\"steps\":[]" &&
+      g.undoReply.contains s!"\"truncate\":{g.i}" &&
+      g.undoReply.contains g.legalJson &&
+      -- the answer made steps, and the game before it is not changed by it
+      g'.i > g.i
+    | .error _ => false
+  | .error _ => false
+
+-- the steps the viewer keeps are the steps of the start: as many as the game has made
+#guard match liveNew .core 1 h0 none none with
+  | .ok (g, js) => js.length == g.i
+  | .error _ => false
+
+-- the same answer, given again to the game before it, makes the same reply: nothing is left over
+#guard match liveStart 1 h0 with
+  | .ok (g, _) =>
+    match liveAct g 0, liveAct g 0 with
+    | .ok (_, j1), .ok (_, j2) => j1 == j2
+    | _, _ => false
+  | .error _ => false
+
 end RiftboundTest
