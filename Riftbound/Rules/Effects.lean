@@ -350,24 +350,30 @@ theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=
 def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    (s.modObj id (fun o => { o with buffed := true }),
-      if o.buffed then [] else [Event.buffed id])
+    -- a Unit that can have any number of buffs gets one more
+    if o.buffed && (s.activeMods id).contains .anyBuffs then
+      (s.modObj id (fun o => { o with extraBuffs := o.extraBuffs + 1 }), [Event.buffed id])
+    else
+      (s.modObj id (fun o => { o with buffed := true }),
+        if o.buffed then [] else [Event.buffed id])
   | none => (s, [])
 
 /-- Buffing is a safe change. -/
 theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 := by
   unfold buffObj
   split
-  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · split <;> exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
 /-- Spend the buff of an object: it loses it (CR 704). -/
 def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with buffed := false }), [])
+  (s.modObj id (fun o =>
+    if 0 < o.extraBuffs then { o with extraBuffs := o.extraBuffs - 1 }
+    else { o with buffed := false }), [])
 
 /-- Spending a buff is a safe change. -/
 theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  Safe.modObj s id (fun _ => by split <;> rfl) (fun _ => by split <;> rfl)
 
 /-- The player gains XP (CR 728): it goes to their Legend. -/
 def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
@@ -504,7 +510,8 @@ def Object.freshPlay (mk : PlayMark) (o : Object) : Object :=
 
 /-- What a card played anew has not: damage, a buff, a stun, lasting changes. -/
 def Object.cleared (o : Object) : Object :=
-  { o with damage := 0, buffed := false, stunned := false, mightMods := [], tempKws := [] }
+  { o with damage := 0, buffed := false, extraBuffs := 0, stunned := false, mightMods := [],
+           tempKws := [] }
 
 /-- A card enters the Base as a new object, played. -/
 def enterBase (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :

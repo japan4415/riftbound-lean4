@@ -3632,4 +3632,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (stun.obj? foe).map (·.damage) == some 0 && ready.tired udyr == some false &&
     (first.obj? foe).map (·.damage) == some 2 && used
 
+-- Lee Sin, Ascetic (OGN-078): exhaust: buff him; he can have any number of buffs, each +1 Might
+#guard t fun s => do
+  let (s1, lee) ← put s s.me "OGN-078" .base
+  let (s2, other) ← put s1 s.me "OGN-136" .base
+  let base := s2.mightNow lee
+  let one ← activate s2 s.me lee 1
+  let two ← activate (one.modObj lee (fun o => { o with exhausted := false })) s.me lee 1
+  let three ← activate (two.modObj lee (fun o => { o with exhausted := false })) s.me lee 1
+  let plain := (buffObj (buffObj s2 other).1 other).1
+  let spent := (unbuffObj three lee).1
+  return one.mightNow lee == base.map (· + 1) && two.mightNow lee == base.map (· + 2) &&
+    three.mightNow lee == base.map (· + 3) && spent.mightNow lee == base.map (· + 2) &&
+    plain.mightNow other == (s2.mightNow other).map (· + 1) &&
+    (one.obj? lee).map (·.buffed) == some true && (activate one s.me lee 1).isNone &&
+    -- the turn bonus for each buff (3 buffs: 3 * 2), the event for each extra buff, a cleared card
+    (three.addTurnFx s.me .buffsExtraMight).mightNow lee == base.map (· + 6) &&
+    (buffObj one lee).2 == [Event.buffed lee] && (buffObj s2 other).2 == [Event.buffed other] &&
+    (three.obj? lee).map (fun o => (Object.cleared o).extraBuffs) == some 0
+
 end RiftboundTest
