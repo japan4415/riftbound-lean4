@@ -29,6 +29,7 @@ public import RiftboundTest.Discard
 public import RiftboundTest.Temporary
 public import RiftboundTest.Deflect
 public import RiftboundTest.Optional
+public import RiftboundTest.Match
 
 /-!
 # RiftboundTest

@@ -29,3 +29,7 @@ name = "RiftboundTest"
 [[lean_exe]]
 name = "riftbound-trace"    # 1 ゲームを JSON のトレースにして書き出す（viewer/ が再生する）
 root = "RiftboundTrace"
+
+[[lean_exe]]
+name = "riftbound-match"    # デモのゲームで Best of 3 のマッチを行い、結果を出力する
+root = "RiftboundMatch"
