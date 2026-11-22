@@ -383,6 +383,17 @@ meta def enemyUnits : Selector := Selector.all .enemy .atBase [.ofType .unit]
       some 1
   | none => false
 
+-- an effect that names one object to choose while it resolves, with one candidate, takes it
+#guard match sparkReady with
+  | some (s, p, c, v) =>
+    let one := Selector.one .enemy .atBase [.ofType .unit]
+    let st (e : Effect) : Option Object := (runBody s p c {} e).bind fun s' => s'.obj? v
+    (st (.prim (.deal one (.const 1)))).map (·.damage) == some 1 &&
+    (st (.prim (.stun one))).map (·.stunned) == some true &&
+    (st (.prim (.buff one))).map (·.buffed) == some true &&
+    (st (.prim (.exhaust one))).map (·.exhausted) == some true
+  | none => false
+
 -- banish and return to hand send the Unit to its owner's Banishment and hand
 #guard match sparkReady with
   | some (s, p, c, v) =>

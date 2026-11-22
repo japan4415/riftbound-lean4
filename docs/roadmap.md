@@ -466,6 +466,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **証明の更新**: 新しい 2 つのフレームと 2 つの答えについて、`applyFrame0` の腕を、7 つの不変条件（WF、物理カード、OwnerOk、手札、スタック、Setup、進行性）と、時計の補題に足した。`runEffect` は、選択を扱う層と、そうでない層（`runEffect1`）に分けた。
 - **書いた 4 枚**: Salvage（OGN-224。「Kill a gear」を解決中に選ぶ）、Maddened Marauder（OGN-191。Battlefield の Unit を Base へ）、Zaunite Bouncer（OGN-188。ほかの Unit を持ち主の手札へ）、Clockwork Keeper（OGN-044。追加コストを払えば引く）。
 - **ビューア**: 「する」「しない」と、「X を選ぶ」の手が出る。選ぶ手は、盤面のカードをクリックして選べる。
+- **レビューで直したこと**: 「理解済み」の判定が、`pick .one` を、どこでも許していた（プリミティブの選択の欄以外では、何も言わずに skip される）→ プリミティブの選択の欄だけに絞った（`Selector.understoodPick`）。Salvage で 2 番目の候補を選ぶテスト、候補が 0 のとき、Bouncer が味方も選べること、Keeper に別の Power は払えないこと、`deal`・`stun`・`buff`・`exhaust` の選択（Play.lean）を足した。
+- **近似として残したこと**: Marauder と Bouncer は、プレイ時に対象を選ぶ（`targetOf`。既存の First Mate などと同じ）、Salvage だけが、解決中に選ぶ（`pick`）。Clockwork Keeper の「As you play me」は、「When you play me」の誘発で表した（引くのが解決の後になる。Counter されたとき、引かない）。`Selector.candidates` が分からない場所のとき、候補が無いのと同じに扱う。自動の答え（デモ）は、常に先頭の合法手（`may` は「する」）。
 - **書けなかった（今回の対象から外した）**: **Garbage Grabber**（起動の費用に「トラッシュから 3 枚 Recycle」があるが、起動型能力の費用のうち、Exhaust と Energy と Power と自分を Kill だけが支えられている。ほかの費用（Recycle・Discard・Buff を使う・XP を使う・味方を Kill）は、次の単位）。「If you do」（`doThen`）、「choose one」（`chooseOne`）、プレイヤーごとの選択（Cull the Weak など）も、まだ。
 - **次の単位**: 起動型能力のほかの費用（Garbage Grabber、Udyr、Sett の Spend a buff など）。
 

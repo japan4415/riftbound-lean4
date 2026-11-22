@@ -307,4 +307,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let extra ← cast s2 s.me c ⟨base.energy, base.power ++ [.calm]⟩
   return plain.handN s.me + 1 == s2.handN s.me && extra.handN s.me == s2.handN s.me
 
+-- Salvage: the player chooses the enemy's gear instead; with no gear at all the player still draws
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-224" .hand
+  let (s2, g) ← put s1 s.me "OGN-017" .base
+  let (s3, h) ← put s2 s.you "OGN-017" .base
+  let s4 ← play s3 s.me c [] ({ obj := fun o => o == h } : Says)
+  return s4.countIn s.me .base "OGN-017" == 1 && s4.countIn s.you .base "OGN-017" == 0 &&
+    s4.countIn s.you .trash "OGN-017" == 1 && s4.obj? g != none
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-224" .hand
+  let s2 ← play s1 s.me c
+  return s2.handN s.me == s1.handN s.me
+
+-- Zaunite Bouncer may return a friendly unit too; Keeper cannot be paid with another Power
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-188" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
+  let s3 ← castStop s2 s.me c
+  return s3.trigPicks.contains u
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-044" .hand
+  let s2 := s1.rich s.me
+  let base := payOf s2 c
+  return (cast s2 s.me c ⟨base.energy, base.power ++ [.fury]⟩).isNone
+
 end RiftboundTest
