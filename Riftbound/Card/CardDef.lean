@@ -80,7 +80,9 @@ namespace CardDef
 a Unit or a Gear is played. It does so only if the card is still hidden: the ability can be used
 again while it is on the Chain. -/
 def hiddenPlay (c : CardDef) : EffectDef :=
-  let gate (e : Effect) : Effect := .ifThen (.matches .self .hidden) e .nop
+  let gate (e : Effect) : Effect :=
+    .ifThen (.matches .self .hidden)
+      (.seq (.cons (.prim (.turnEffect .hiddenPlayed)) (.cons e .nil))) .nop
   if c.types.contains .spell then
     let e := c.spellEffect.getD (EffectDef.of [] .nop)
     EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))

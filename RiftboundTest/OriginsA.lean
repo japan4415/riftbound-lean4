@@ -3190,4 +3190,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
     broke.tired u == some true && spent.tired u == some true
 
+-- Ember Monk (OGN-167): when I play a card from Hidden (a unit or a spell), it gets +2 Might this
+-- turn; playing from the hand does not
+#guard t fun s => do
+  let (s1, monk) ← put s s.me "OGN-167" .base
+  let (s2, c) ← put s1 s.me "OGN-135" .hand
+  let mine := s2.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  let unitIn ← activate next s.me h 1 [] ⟨0, []⟩
+  let (t1, m2) ← put s s.me "OGN-167" .base
+  let (t2, sp) ← put t1 s.me "OGN-057" .hand
+  let (t3, u) ← put t2 s.me "OGN-136" .base
+  let mine2 := t3.control s.me s.bf0
+  let hide2 ← activate mine2 s.me sp 0 [s.bf0] ⟨0, [.fury]⟩
+  let h2 ← (hide2.zone (.player s.me .hidden)).head?
+  let next2 := { hide2 with turn := hide2.turn + 1 }
+  let spellIn ← activate next2 s.me h2 1 [u] ⟨0, []⟩
+  let (v1, m3) ← put s s.me "OGN-167" .base
+  let (v2, d) ← put v1 s.me "OGN-088" .hand
+  let handIn ← play v2 s.me d
+  return unitIn.mightNow monk == (next.mightNow monk).map (· + 2) &&
+    spellIn.mightNow m2 == (next2.mightNow m2).map (· + 2) &&
+    handIn.mightNow m3 == v2.mightNow m3 && next.mightNow monk == mine.mightNow monk
+
 end RiftboundTest

@@ -4388,8 +4388,12 @@ def OGN_167.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ember Monk: the effect is not written yet. -/
-def OGN_167 : CardDef := OGN_167.meta
+/-- Ember Monk. -/
+def OGN_167 : CardDef :=
+  { OGN_167.meta with
+    abilities := [.triggered { event := .playHidden, subject := .self }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-168
 /--
