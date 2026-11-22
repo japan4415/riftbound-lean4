@@ -905,8 +905,13 @@ def OGN_038.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Kadregrin the Infernal: the effect is not written yet. -/
-def OGN_038 : CardDef := OGN_038.meta
+/-- Kadregrin the Infernal. -/
+def OGN_038 : CardDef :=
+  { OGN_038.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.draw .you
+        (.count (Selector.all .friendly .anywhere [.ofType .unit, .mighty]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-039
 /--
@@ -1305,8 +1310,11 @@ def OGN_055.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wielder of Water: the effect is not written yet. -/
-def OGN_055 : CardDef := OGN_055.meta
+/-- Wielder of Water. -/
+def OGN_055 : CardDef :=
+  { OGN_055.meta with
+    abilities := [.passive (.matches .self .alone) [.mightPlus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-056
 /--
@@ -1428,8 +1436,17 @@ def OGN_060.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mask of Foresight: the effect is not written yet. -/
-def OGN_060 : CardDef := OGN_060.meta
+/-- Mask of Foresight. -/
+def OGN_060 : CardDef :=
+  { OGN_060.meta with
+    abilities :=
+      let lone : Selector := Selector.all .friendly .anywhere [.ofType .unit, .alone]
+      let boost (side : Filter) : EffectDef :=
+        .of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .alone, side])
+          (.grant .it (.mightPlus .it (.const 1)) .thisTurn))
+      [.triggered { event := .attack, subject := lone } (boost .attacker) .unlimited,
+       .triggered { event := .defend, subject := lone } (boost .defender) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-061
 /--
@@ -3032,8 +3049,12 @@ def OGN_127.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cannon Barrage: the effect is not written yet. -/
-def OGN_127 : CardDef := OGN_127.meta
+/-- Cannon Barrage. -/
+def OGN_127 : CardDef :=
+  { OGN_127.meta with
+    spellEffect := some (.of []
+      (.forEach (Selector.all .enemy .inCombat [.ofType .unit]) (.prim (.deal .it (.const 2))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-128
 /--
@@ -5514,8 +5535,13 @@ def OGN_232.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Fiora, Victorious: the effect is not written yet. -/
-def OGN_232 : CardDef := OGN_232.meta
+/-- Fiora, Victorious. -/
+def OGN_232 : CardDef :=
+  { OGN_232.meta with
+    abilities := [.passive (.matches .self .mighty)
+      [.keyword .self ⟨.deflect, .amount 1⟩, .keyword .self ⟨.ganking, .none⟩,
+       .keyword .self ⟨.shield, .amount 1⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-233
 /--

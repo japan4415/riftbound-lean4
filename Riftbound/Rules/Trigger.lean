@@ -144,7 +144,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .combatStarted bf att =>
     (s.trigAllUnitsAt bf).flatMap (fun u =>
       match s.obj? u with
-      | some o => triggersOf s u o.controller (if o.controller == att then .attack else .defend)
+      | some o =>
+        let ev := if o.controller == att then TriggerEvent.attack else .defend
+        triggersOf s u o.controller ev ++ watchersOf s u o.controller ev
       | none => [])
   | _ => []
 

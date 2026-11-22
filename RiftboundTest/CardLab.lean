@@ -133,6 +133,23 @@ meta def fire (s : GameState) (es : List Event) (says : Says := {}) : Option Gam
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
+/-- The game with a Combat going on at the Battlefield, the player attacking, before it starts
+(its first frame is the Combat Damage, as at the end of a Showdown). -/
+meta def GameState.inCombatAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=
+  { s with pending := .combatDamage bf att :: s.pending }
+
+/-- The game with the Showdown of a Combat going on and a player with priority in it: the frames
+of the Combat wait beneath. -/
+meta def GameState.inShowdownAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=
+  { s with pending := .priority att :: .showdown bf att 0 :: .combatDamage bf att :: s.pending }
+
+/-- Let the Combat start: the abilities it sets off resolve, until the first question. -/
+meta def startCombatNow (s : GameState) (bf : ObjId) (att : PlayerId) (says : Says := {}) :
+    Option GameState :=
+  match advance 100 (s.inCombatAt bf att) [] with
+  | .ok (s1, _) => some (settleChain says 12 s1)
+  | .error _ => none
+
 /-- Make the object exhausted. -/
 meta def GameState.tire (s : GameState) (u : ObjId) : GameState :=
   s.modObj u (fun o => { o with exhausted := true })
