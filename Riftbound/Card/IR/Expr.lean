@@ -102,6 +102,8 @@ inductive Filter where
   | not (f : Filter)
   /-- Is a card hidden face down (CR 811). -/
   | hidden
+  /-- Is among the first `n` cards of the Main Deck of its owner. -/
+  | top (n : Nat)
   /-- Is a Battlefield nobody controls: an open Battlefield. -/
   | openBf
   /-- Is a Battlefield where a unit of another player than the one the effect belongs to is. -/

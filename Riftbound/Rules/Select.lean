@@ -163,6 +163,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _, _ => false)
   | .notSelf => some (id != self)
   | .not f => (f.holds s self env id).map (fun b => !b)
+  | .top n =>
+    some (match s.obj? id with
+      | some o => decide ((s.zone (.player o.owner .mainDeck)).idxOf id < n) &&
+          (s.zone (.player o.owner .mainDeck)).contains id
+      | none => false)
   | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
@@ -403,6 +408,14 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
+  | .costOf sel =>
+    -- the Energy cost of the cards a selector names: a chosen object or a variable
+    let ids : Option (List ObjId) := match sel with
+      | .self => some [self]
+      | .slot i => match env.slots[i]? with | some (.obj o) => some [o] | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some [o] | _ => none
+      | _ => none
+    ids.map (fun l => (l.map (fun id => ((s.cardDef? id).bind (·.cost)).map (·.energy) |>.getD 0)).sum)
   | .points ps => do
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)

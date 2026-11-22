@@ -50,6 +50,7 @@ def Amount.understood : Amount → Bool
   | .xp => true
   | .turnsTaken p => p.understood
   | .points p => p.understood
+  | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -70,6 +71,7 @@ def Amount.understoodC : Amount → Bool
   | .xp => true
   | .turnsTaken p => p.understood
   | .points p => p.understood
+  | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b
@@ -95,6 +97,7 @@ def Filter.understood : Filter → Bool
   | .not f => Filter.understood f
   | .controlled => true
   | .hidden => true
+  | .top _ => true
   | .openBf => true
   | .enemyOccupied => true
   | .sameAs .self => true
@@ -163,7 +166,9 @@ def Prim.understood : Prim → Bool
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understood && b.understood
   | .bin s => s.understoodPickAny
+  | .discardCard s => s.understoodPickAny
   | .recycle s => s.understoodPickAny
+  | .reveal s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood
   | .recall s _ => s.understood

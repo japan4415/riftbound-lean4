@@ -1872,4 +1872,80 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire tired [.died x s.me]
   return a.tired m == some false && a.tired o == some true
 
+-- Get Excited! (OGN-008): discard a card, and its Energy cost is dealt to a unit at a battlefield;
+-- the discard sets off Scrapheap (OGN-182); with an empty hand nothing is dealt
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-008" .hand
+  let (s2, x) ← put s1 s.me "OGN-051" .hand
+  let (s3, e) ← putAt s2 s.you "OGN-116" s.bf0
+  let a ← play s3 s.me c [e] { obj := fun o => o == x }
+  let cost := ((s3.cardDef? x).bind (·.cost)).map (·.energy)
+  let might := (s3.cardDef? x).bind (·.might)
+  let (t1, sc) ← put s3 s.me "OGN-182" .hand
+  let b ← play (t1.setZone (.player s.me .hand) [c, sc]) s.me c [e] { obj := fun o => o == sc }
+  let empty ← play (s3.setZone (.player s.me .hand) [c]) s.me c [e]
+  return (a.obj? e).map (·.damage) == cost && cost.isSome && cost.map Int.ofNat != might &&
+    a.countIn s.me .trash "OGN-051" == 1 && b.handN s.me == 1 &&
+    (empty.obj? e).map (·.damage) == some 0
+
+-- Stacked Deck (OGN-183): one of the top 3 cards into my hand, the other two recycled
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-183" .hand
+  let deck (x : GameState) := x.zone (.player s.me .mainDeck)
+  let d := deck s1
+  let a0 ← d[0]?
+  let b0 ← d[1]?
+  let c0 ← d[2]?
+  let d4 ← d[3]?
+  let r ← play s1 s.me c [] { obj := fun o => o == b0 }
+  let tail2 := (deck r).reverse.take 2
+  -- the played card leaves the hand and one card of the deck comes into it
+  return r.handN s.me == s1.handN s.me && (deck r).length == d.length - 1 &&
+    !(deck r).contains b0 &&
+    (deck r).head? == some d4 && tail2.contains a0 && tail2.contains c0
+
+-- Fading Memories (OGN-180): a unit at a battlefield or a gear gets Temporary
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-180" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, g) ← put s2 s.me "OGN-017" .base
+  let a ← play s3 s.me c
+  let b ← play s3 s.me c [] { yes := false }
+  return a.hasKw u .temporary && !a.hasKw g .temporary && b.hasKw g .temporary &&
+    !b.hasKw u .temporary
+
+-- Pack of Wonders (OGN-181): exhaust it to return another friendly gear, unit or hidden card
+#guard t fun s => do
+  let (s1, p) ← put s s.me "OGN-181" .base
+  let (s2, g) ← put s1 s.me "OGN-017" .base
+  let (s3, _) ← put s2 s.me "OGN-135" .hidden
+  let a ← activate s3 s.me p 0
+  let b ← activate s3 s.me p 0 [] ⟨0, []⟩ { yes := false }
+  return a.countIn s.me .hand "OGN-017" == s3.countIn s.me .hand "OGN-017" + 1 &&
+    a.tired p == some true && a.countIn s.me .base "OGN-181" == 1 &&
+    b.countIn s.me .hand "OGN-135" == s3.countIn s.me .hand "OGN-135" + 1 &&
+    (b.obj? g).isSome
+
+-- Hidden Blade (OGN-213): kill a unit at a battlefield; its controller draws 2
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-213" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, m) ← putAt s2 s.me "OGN-136" s.bf0
+  let a ← play s3 s.me c [e]
+  let b ← play s3 s.me c [m]
+  return (a.obj? e).isNone && (b.obj? m).isNone &&
+    a.handN s.you == s3.handN s.you + 2 && a.handN s.me == s3.handN s.me - 1 &&
+    b.handN s.me == s3.handN s.me - 1 + 2 && b.handN s.you == s3.handN s.you
+
+-- Reaver's Row (OGN-285): when I defend here, I may move a friendly unit here to my base
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-285"
+  let (s2, u) ← putAt s1 s.me "OGN-136" bf
+  let (s3, _) ← putAt s2 s.you "OGN-136" bf
+  let a ← fire s3 [.combatStarted bf s.you]
+  let n ← fire s3 [.combatStarted bf s.you] { yes := false }
+  let att ← fire s3 [.combatStarted bf s.me]
+  return (a.obj? u).bind (·.loc) == none && (n.obj? u).bind (·.loc) == some bf &&
+    (att.obj? u).bind (·.loc) == some bf
+
 end RiftboundTest

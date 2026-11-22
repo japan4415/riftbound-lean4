@@ -179,7 +179,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
       | some o =>
         let ev := if o.controller == att then TriggerEvent.attack else .defend
         triggersOf s u o.controller ev ++ watchersOf s u o.controller ev
-      | none => [])
+      | none => []) ++
+    -- the abilities of the Battlefield: for the players who attack and defend there
+    (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
+      triggersOf s bf q (if q == att then TriggerEvent.attack else .defend))
   | _ => []
 
 /-- Keep the abilities that a limit of times per turn lets fire: the events of one step may set

@@ -202,8 +202,13 @@ def OGN_008.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Get Excited!: the effect is not written yet. -/
-def OGN_008 : CardDef := OGN_008.meta
+/-- Get Excited!. -/
+def OGN_008 : CardDef :=
+  { OGN_008.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.reveal (Selector.one .friendly .inHand [])),
+        .prim (.deal (.slot 0) (.costOf (.var pickVar))), .prim (.discardCard (.var pickVar))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-009
 /--
@@ -4498,8 +4503,15 @@ def OGN_180.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Fading Memories: the effect is not written yet. -/
-def OGN_180 : CardDef := OGN_180.meta
+/-- Fading Memories. -/
+def OGN_180 : CardDef :=
+  { OGN_180.meta with
+    spellEffect := some (.of []
+      (.eitherOf (.cons (.grant (Selector.one .any .atBattlefield [.ofType .unit])
+          (.keyword .it ⟨.temporary, .none⟩) .permanent)
+        (.cons (.grant (Selector.one .any .anywhere [.ofType .gear])
+          (.keyword .it ⟨.temporary, .none⟩) .permanent) .nil)))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-181
 /--
@@ -4517,8 +4529,15 @@ def OGN_181.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Pack of Wonders: the effect is not written yet. -/
-def OGN_181 : CardDef := OGN_181.meta
+/-- Pack of Wonders. -/
+def OGN_181 : CardDef :=
+  { OGN_181.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [] (.eitherOf (.cons (.prim (.returnToHand
+          (Selector.one .friendly .anywhere [.ofType .gear, .notSelf])))
+        (.cons (.prim (.returnToHand (Selector.one .friendly .anywhere [.ofType .unit])))
+        (.cons (.prim (.returnToHand (Selector.one .friendly .inHidden []))) .nil))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-182
 /--
@@ -4563,8 +4582,14 @@ def OGN_183.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Stacked Deck: the effect is not written yet. -/
-def OGN_183 : CardDef := OGN_183.meta
+/-- Stacked Deck. -/
+def OGN_183 : CardDef :=
+  { OGN_183.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 3])),
+        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])),
+        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-184
 /--
@@ -4786,7 +4811,7 @@ def OGN_192.meta : CardDef :=
 def OGN_192 : CardDef :=
   { OGN_192.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.prim (.bin (Selector.one .enemy .inHand [])))) .unlimited],
+      (.of [] (.prim (.discardCard (Selector.one .enemy .inHand [])))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-193
@@ -5297,8 +5322,15 @@ def OGN_213.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Hidden Blade: the effect is not written yet. -/
-def OGN_213 : CardDef := OGN_213.meta
+/-- Hidden Blade. -/
+def OGN_213 : CardDef :=
+  { OGN_213.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.seqOf [.eachPlayer .eachPlayer
+          (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
+            (.prim (.draw .you (.const 2))) .nop),
+        .prim (.kill (.slot 0))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-214
 /--
@@ -7041,8 +7073,12 @@ def OGN_285.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Reaver's Row: the effect is not written yet. -/
-def OGN_285 : CardDef := OGN_285.meta
+/-- Reaver's Row. -/
+def OGN_285 : CardDef :=
+  { OGN_285.meta with
+    abilities := [.triggered (.onSelf .defend)
+      (.of [] (.may (.prim (.move (Selector.one .friendly .here [.ofType .unit]) .base)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-286
 /--

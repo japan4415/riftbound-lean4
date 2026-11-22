@@ -133,6 +133,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .hideAt s b => Selector.ok c s && Selector.ok c b
   | .playTo s b => Selector.ok c s && Selector.ok c b
   | .bin s => Selector.ok c s
+  | .discardCard s => Selector.ok c s
   | .hide s => Selector.ok c s
   | .reveal s => Selector.ok c s
   | .create _ n _ _ => Amount.ok c n

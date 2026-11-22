@@ -73,6 +73,8 @@ inductive Prim where
   | playTo (s : Selector) (bf : Selector)
   /-- Put cards in their owner's Trash: not killed, so nothing that waits for a death fires. -/
   | bin (s : Selector)
+  /-- Discard cards of a hand: the player of the cards discards them (CR 423). -/
+  | discardCard (s : Selector)
   /-- Hide a card. -/
   | hide (s : Selector)
   /-- Reveal cards. -/
