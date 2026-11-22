@@ -39,14 +39,16 @@ inductive ZoneKind where
   | setAside
   /-- Physical cards outside the game. Non-Board. -/
   | outOfGame
+  /-- Cards hidden face down at a Battlefield (CR 811). Non-Board. -/
+  | hidden
 deriving DecidableEq, Repr, Hashable
 
 /-- Every zone kind. -/
 def ZoneKind.all : List ZoneKind :=
   [.base, .trash, .championZone, .mainDeck, .runeDeck, .banishment, .hand, .legendZone,
-    .setAside, .outOfGame]
+    .setAside, .outOfGame, .hidden]
 
-/-- A distinct number for each kind, below 10. -/
+/-- A distinct number for each kind, below 11. -/
 def ZoneKind.idx : ZoneKind → Nat
   | .base => 0
   | .trash => 1
@@ -58,9 +60,10 @@ def ZoneKind.idx : ZoneKind → Nat
   | .legendZone => 7
   | .setAside => 8
   | .outOfGame => 9
+  | .hidden => 10
 
-/-- The numbers of the kinds are below 10. -/
-theorem ZoneKind.idx_lt (k : ZoneKind) : k.idx < 10 := by
+/-- The numbers of the kinds are below 11. -/
+theorem ZoneKind.idx_lt (k : ZoneKind) : k.idx < 11 := by
   cases k <;> decide
 
 /-- Different kinds have different numbers. -/
@@ -103,11 +106,11 @@ def isBoard : Zone → Bool
 theorem isBoard_player (p : PlayerId) (k : ZoneKind) : (Zone.player p k).isBoard = k.isBoard := by
   cases k <;> rfl
 
-/-- A number for each zone: 0 and 1 for the shared zones, then ten per seat. -/
+/-- A number for each zone: 0 and 1 for the shared zones, then eleven per seat. -/
 def key : Zone → Nat
   | .battlefieldZone => 0
   | .chain => 1
-  | .player p k => 2 + p.n * 10 + k.idx
+  | .player p k => 2 + p.n * 11 + k.idx
 
 /-- Different zones have different keys. -/
 theorem key_inj {a b : Zone} (h : a.key = b.key) : a = b := by

@@ -65,6 +65,10 @@ inductive Prim where
   | counter (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
+  /-- Hide cards face down at a Battlefield (CR 811). -/
+  | hideAt (s : Selector) (bf : Selector)
+  /-- Put cards in their owner's Trash: not killed, so nothing that waits for a death fires. -/
+  | bin (s : Selector)
   /-- Hide a card. -/
   | hide (s : Selector)
   /-- Reveal cards. -/
@@ -250,6 +254,10 @@ inductive AbilityCost where
   | spendXP (n : Nat)
   /-- Spend a buff. -/
   | spendBuff
+  /-- The ability can be used only while its card is in the hand: Hide (CR 811). -/
+  | fromHand
+  /-- The ability can be used only while its card is hidden, from the turn after (CR 811). -/
+  | fromHidden
   /-- Disempower the unit. -/
   | disempowerSelf
   /-- Recycle the object itself. -/

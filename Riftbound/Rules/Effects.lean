@@ -307,6 +307,65 @@ theorem recycleOne_safe (s : GameState) (id : ObjId) : Safe s (recycleOne s id).
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The note on a card hidden at the Battlefield on the turn (CR 811). -/
+def hiddenOf (bf : ObjId) (t : Nat) (x : Object) : Object :=
+  { x with hiddenAt := some bf, hiddenTurn := some t }
+
+/-- Hide a card face down at the Battlefield (CR 811): it goes to its owner's hidden cards, and is
+noted with the Battlefield and the turn. -/
+def hideObj (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    -- only a card that is in the hand of its owner can be hidden
+    if !(s.zone (.player o.owner .hand)).contains id then (s, []) else
+    match moveObj s id (.player o.owner .hidden) with
+    | some r =>
+      (r.1.modObj r.2 (hiddenOf bf s.turn), [Event.moved id r.2 (.player o.owner .hidden)])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Hiding a card is a safe change. -/
+theorem hideObj_safe (bf : ObjId) (s : GameState) (id : ObjId) : Safe s (hideObj bf s id).1 := by
+  unfold hideObj
+  split
+  · split
+    · exact Safe.refl s
+    · split
+      · rename_i r hr
+        have h1 : Safe r.1 (r.1.modObj r.2 (hiddenOf bf s.turn)) :=
+          Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
+        exact (Safe.moveObj hr).trans h1
+      · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,
+exhausted if it is a Unit that does not enter ready, and the play is noted, so that what waits for a
+card to be played fires. -/
+def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.cardDef? id with
+  | some d =>
+    match moveObj s id (.player p .base) with
+    | some r =>
+      let s1 := r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))
+      ((if d.hasType .unit && !d.entersReady then (setExhausted true s1 r.2).1 else s1),
+        [Event.moved id r.2 (.player p .base), Event.played p r.2])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Playing a card without paying is a safe change. -/
+theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (playFree p s id).1 := by
+  unfold playFree
+  split
+  · split
+    · rename_i d hd r hr
+      have h1 : Safe r.1 (r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))) :=
+        Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
+      split
+      · exact ((Safe.moveObj hr).trans h1).trans (setExhausted_safe true _ _)
+      · exact (Safe.moveObj hr).trans h1
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
   ⟨fun hwf => GameState.wf_gainPoints hwf p n, fun _ => List.Perm.refl _,
@@ -594,6 +653,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | .recycle sel => onSelected s p src env sel recycleOne
+  | .play sel => onSelected s p src env sel (playFree p)
+  | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
+  | .hideAt sel bfs =>
+    match bfs.eval s p src env with
+    | some (b :: _) => onSelected s p src env sel (hideObj b)
+    | _ => none
   | .recycleTop ps => (ps.resolve s p).map (fun l => (recycleTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
@@ -660,6 +725,18 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         rw [← h]
         exact gainXPAll_safe k l s
   | recycle sel => exact onSelected_safe recycleOne_safe h
+  | play sel => exact onSelected_safe (playFree_safe p) h
+  | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
+  | hideAt sel bfs =>
+    simp only [applyPrim] at h
+    cases hb : bfs.eval s p src env with
+    | none => simp [hb] at h
+    | some l =>
+      cases l with
+      | nil => simp [hb] at h
+      | cons b _ =>
+        simp only [hb] at h
+        exact onSelected_safe (hideObj_safe b) h
   | recycleTop ps =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with

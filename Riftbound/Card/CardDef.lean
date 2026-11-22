@@ -76,6 +76,16 @@ deriving DecidableEq, Repr
 
 namespace CardDef
 
+/-- What playing the card from hiding does (CR 811): a Spell does its effect and goes to the Trash,
+a Unit or a Gear is played. It does so only if the card is still hidden: the ability can be used
+again while it is on the Chain. -/
+def hiddenPlay (c : CardDef) : EffectDef :=
+  let gate (e : Effect) : Effect := .ifThen (.matches .self .hidden) e .nop
+  if c.types.contains .spell then
+    let e := c.spellEffect.getD (EffectDef.of [] .nop)
+    EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
+  else EffectDef.of [] (gate (.prim (.play .self)))
+
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
@@ -89,6 +99,16 @@ def keywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
+    | .hidden, _ =>
+      -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
+      -- play: from the turn after, as a Reaction, without paying (CR 811)
+      [.activated [.fromHand, .pay ⟨0, [.any]⟩] .normal
+        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .controlled]]
+          (.ifThen (.matches (.slot 0) .controlled) (.prim (.hideAt .self (.slot 0))) .nop))
+        .unlimited,
+       -- the card must still be hidden when the ability resolves: it can be used again while it
+       -- is on the Chain
+       .activated [.fromHidden] .reaction c.hiddenPlay .unlimited]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.may (.prim (.recycleTop .you)))) .unlimited]

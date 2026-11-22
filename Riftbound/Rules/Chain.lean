@@ -31,6 +31,8 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
     match costPlan cs with
     | some (e, none) => some (e, some c)
     | _ => none
+  | .fromHand :: cs => costPlan cs
+  | .fromHidden :: cs => costPlan cs
   | _ :: _ => none
 
 /-- Whether the costs exhaust the object. -/
@@ -44,6 +46,52 @@ their Legend Zone, or on the Battlefield Zone. -/
 def GameState.usesAbilitiesOf (s : GameState) (p : PlayerId) (src : ObjId) : Bool :=
   (s.zone (.player p .base)).contains src || (s.zone (.player p .legendZone)).contains src ||
     (s.zone .battlefieldZone).contains src
+
+/-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be
+used from the hand (Hide) or from hiding (CR 811) is used there, from the turn after the card was
+hidden; the others, where the player uses abilities of objects. -/
+def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
+  match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
+  | some (.activated costs _ _ _) =>
+    if costs.contains .fromHand then (s.zone (.player p .hand)).contains src
+    else if costs.contains .fromHidden then
+      (s.zone (.player p .hidden)).contains src &&
+        ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
+    else s.usesAbilitiesOf p src
+  | _ => s.usesAbilitiesOf p src
+
+/-- Where abilities are used from: the places of the board, the hand and the hidden cards. -/
+def GameState.abilityZones (s : GameState) (p : PlayerId) : List ObjId :=
+  s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone ++
+    s.zone (.player p .hand) ++ s.zone (.player p .hidden)
+
+/-- An object the player uses abilities of is in one of these places. -/
+theorem GameState.usesAbilitiesOf_mem {s : GameState} {p : PlayerId} {src : ObjId}
+    (h : s.usesAbilitiesOf p src = true) : src ∈ s.abilityZones p := by
+  simp only [GameState.usesAbilitiesOf, Bool.or_eq_true, List.contains_iff_mem] at h
+  unfold GameState.abilityZones
+  simp only [List.mem_append]
+  rcases h with (h | h) | h
+  · exact Or.inl (Or.inl (Or.inl (Or.inl h)))
+  · exact Or.inl (Or.inl (Or.inl (Or.inr h)))
+  · exact Or.inl (Or.inl (Or.inr h))
+
+/-- A usable ability is of an object in one of these places. -/
+theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
+    (h : s.abilityZoneOk p src idx = true) : src ∈ s.abilityZones p := by
+  unfold GameState.abilityZoneOk at h
+  split at h
+  · split at h
+    · unfold GameState.abilityZones
+      simp only [List.mem_append]
+      exact Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h))
+    · split at h
+      · simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+        unfold GameState.abilityZones
+        simp only [List.mem_append]
+        exact Or.inr h.1
+      · exact GameState.usesAbilitiesOf_mem h
+  · exact GameState.usesAbilitiesOf_mem h
 
 /-- The change an object goes through when an ability is used: it is exhausted if the cost says
 so, and the use is noted (CR 371, 386). -/
@@ -88,7 +136,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
   s.phase == .main &&
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
-      o.controller == p && s.usesAbilitiesOf p src &&
+      o.controller == p && s.abilityZoneOk p src idx &&
         match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
           match costPlan costs with
@@ -265,7 +313,7 @@ Phase, with a payment that pays the cost and the Pool covers, and a legal pick o
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ = true) :
-    ∃ d costs sp body lim pc, s.phase = .main ∧ s.usesAbilitiesOf p src = true ∧
+    ∃ d costs sp body lim pc, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
         costPlan costs = some (costExhausts costs, pc) ∧
@@ -324,7 +372,7 @@ def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
 /-- Every way the player can use an activated ability: each object they use abilities of, each
 ability, each payment that pays its cost, and each pick of targets, that the Pool covers. -/
 def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :=
-  (s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone).flatMap
+  (s.abilityZones p).flatMap
     (fun src =>
       match s.cardDef? src with
       | some d =>
@@ -380,9 +428,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
     unfold legalActivates
     simp only [List.mem_flatMap]
     refine ⟨src, ?_, ?_⟩
-    · simp only [GameState.usesAbilitiesOf, Bool.or_eq_true, List.contains_iff_mem] at huse
-      simp only [List.mem_append]
-      exact huse
+    · exact GameState.abilityZoneOk_mem huse
     · simp only [hd, List.mem_flatMap, List.mem_range]
       refine ⟨idx, (List.getElem?_eq_some_iff.mp hab).1, ?_⟩
       simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter]
