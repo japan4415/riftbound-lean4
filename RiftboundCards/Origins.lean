@@ -278,8 +278,12 @@ def OGN_011.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Magma Wurm: the effect is not written yet. -/
-def OGN_011 : CardDef := OGN_011.meta
+/-- Magma Wurm. -/
+def OGN_011 : CardDef :=
+  { OGN_011.meta with
+    abilities := [.passive .always
+      [.entersReady (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-012
 /--
@@ -1172,8 +1176,15 @@ def OGN_047.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Find Your Center: the effect is not written yet. -/
-def OGN_047 : CardDef := OGN_047.meta
+/-- Find Your Center. -/
+def OGN_047 : CardDef :=
+  { OGN_047.meta with
+    abilities := [.passive
+      (.cmp .ge (.points .opponent) (.sub .victoryScore (.const 3)))
+      [.costMinus .self (.const 2)]],
+    spellEffect := some (.of []
+      (.seqOf [.prim (.draw .you (.const 1)), .prim (.channel .you (.const 0) (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-048
 /--
@@ -2004,8 +2015,14 @@ def OGN_079.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Leona, Zealot: the effect is not written yet. -/
-def OGN_079 : CardDef := OGN_079.meta
+/-- Leona, Zealot. -/
+def OGN_079 : CardDef :=
+  { OGN_079.meta with
+    abilities := [.passive
+      (.cmp .ge (.points .opponent) (.sub .victoryScore (.const 3))) [.entersReady .self],
+      .passive .always
+      [.mightMinusMin (Selector.all .enemy .here [.ofType .unit, .stunned]) (.const 8) 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-080
 /--

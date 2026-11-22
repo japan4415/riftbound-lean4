@@ -44,6 +44,8 @@ inductive Amount where
   | pointsLeft
   /-- The points of the players. -/
   | points (p : PlayerSel)
+  /-- The Victory Score of the game (CR 194). -/
+  | victoryScore
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/

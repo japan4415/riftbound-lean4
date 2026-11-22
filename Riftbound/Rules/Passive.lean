@@ -58,9 +58,18 @@ def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
       if ids.contains id then -((a.evalS0 s o.controller src {}).map (fun k => (k : Int))).getD 0
       else 0
     | _, _ => 0
-  -- `mightMinusMin` is a change an effect makes for a while (`applyGrant`); a passive ability with
-  -- a floor is not read here yet
+  -- `mightMinusMin` has a floor: it is read after the others (`modFloor`)
   | _ => 0
+
+/-- The passive change `m` of `src` that takes Might away down to a floor, for the Might of `id`:
+how much it takes away at most, and the floor ("to a minimum of 1"). -/
+def modFloor (s : GameState) (src id : ObjId) : StaticMod → Option (Nat × Nat)
+  | .mightMinusMin sel a fl =>
+    match s.obj? src, sel.eval s ((s.obj? src).map (·.controller) |>.getD ⟨0⟩) src {} with
+    | some o, some ids =>
+      if ids.contains id then (a.evalS0 s o.controller src {}).map (fun k => (k, fl)) else none
+    | _, _ => none
+  | _ => none
 
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
@@ -122,8 +131,14 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
-  (s.mightOf id).map (fun m => m + s.equipBonus id + s.passiveMight id +
-    (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0))
+  (s.mightOf id).map (fun m =>
+    let total := m + s.equipBonus id + s.passiveMight id +
+      (if ((s.obj? id).map (·.buffed)).getD false then 1 else 0)
+    -- the changes with a floor come last: they take away down to the floor, never below it
+    (s.passiveSources.flatMap (fun src =>
+      (s.activeMods src).filterMap (s.modFloor src id))).foldl
+      (fun (t : Int) (c : Nat × Nat) =>
+        if t ≤ (c.2 : Int) then t else max (c.2 : Int) (t - (c.1 : Int))) total)
 
 end GameState
 

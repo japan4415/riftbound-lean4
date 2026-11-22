@@ -400,11 +400,11 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
   | some d =>
     match moveObj s id (.player p .base) with
     | some r =>
-      (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p d) r.1 r.2,
+      (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
     | none =>
       if s.locate id = some (.player p .base) then
-        (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p d) s id, [Event.played p id])
+        (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) s id, [Event.played p id])
       else (s, [])
   | none => (s, [])
 
