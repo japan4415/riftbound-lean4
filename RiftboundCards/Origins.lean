@@ -2877,7 +2877,7 @@ def OGN_124.meta : CardDef :=
 /-- Arena Bar. -/
 def OGN_124 : CardDef :=
   { OGN_124.meta with
-    abilities := [.activated [.exhaustSelf] .action
+    abilities := [.activated [.exhaustSelf] .normal
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .exhausted]]
         (.prim (.buff (.slot 0)))) .unlimited],
     status := .drafted }

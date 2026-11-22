@@ -82,10 +82,11 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
 
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
 a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
-may have left the game, as a Spell on its way to the Chain has. -/
+may have left the game, as a Spell on its way to the Chain has. A subject at a place (here, at a
+base) is not understood yet: it never holds. -/
 def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (who : PlayerId) :
     Selector → Bool
-  | .pick .all side _ fs =>
+  | .pick .all side .anywhere fs =>
     (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
       (fs.holds s src {} subj == some true)
   | _ => false
