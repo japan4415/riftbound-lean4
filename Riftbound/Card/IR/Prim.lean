@@ -183,6 +183,8 @@ inductive TriggerEvent where
   | stun
   /-- The object is readied (it was exhausted). -/
   | ready
+  /-- The object gets a buff. -/
+  | buff
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The unit becomes Mighty. -/

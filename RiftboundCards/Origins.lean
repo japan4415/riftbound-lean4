@@ -2619,8 +2619,15 @@ def OGN_100.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Gemcraft Seer: the effect is not written yet. -/
-def OGN_100 : CardDef := OGN_100.meta
+/-- Gemcraft Seer. -/
+def OGN_100 : CardDef :=
+  { OGN_100.meta with
+    abilities := [.triggered
+      { event := .play,
+        subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .notSelf, .not (.hasKeyword .vision)] }
+      (.of [] (.may (.prim (.recycleTop .you)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-101
 /--
@@ -3971,8 +3978,16 @@ def OGN_152.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mistfall: the effect is not written yet. -/
-def OGN_152 : CardDef := OGN_152.meta
+/-- Mistfall. -/
+def OGN_152 : CardDef :=
+  { OGN_152.meta with
+    abilities := [.triggered
+      { event := .buff, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.ifThen (.matches .self .ready)
+        (.ifThen (.canPay ⟨0, [.domain .body]⟩)
+          (.may (.seqOf [.prim (.pay ⟨0, [.domain .body]⟩), .prim (.exhaust .self),
+            .prim (.ready (.slot 0))])) .nop) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-153
 /--

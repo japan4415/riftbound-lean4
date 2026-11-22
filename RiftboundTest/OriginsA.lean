@@ -3149,4 +3149,45 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     own.handN s.me == c.handN s.me && tired.handN s.me == d.handN s.me &&
     buffedOnly.handN s.me == e.handN s.me
 
+-- Gemcraft Seer (OGN-100): [Vision]; my other units have Vision: when I play one, I may recycle the
+-- top card of my Main Deck (a unit that has Vision itself is not doubled)
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-100" .base
+  let (s2, plain) ← put s1 s.me "OGN-136" .hand
+  let (s3, vis) ← put s2 s.me "OGN-171" .hand
+  let deck (x : GameState) (p : PlayerId) := x.zone (.player p .mainDeck)
+  let top ← (deck s3 s.me).head?
+  let a ← play s3 s.me plain
+  let no ← play s3 s.me plain [] { yes := false }
+  let v ← play s3 s.me vis
+  let (t1, seer) ← put s s.me "OGN-100" .hand
+  let own ← play t1 s.me seer
+  let (u1, plain2) ← put s s.me "OGN-136" .hand
+  let without ← play u1 s.me plain2
+  return (deck a s.me).getLast? == some top && (deck no s.me).head? == some top &&
+    (deck v s.me).getLast? == some top && (deck v s.me).length == (deck s3 s.me).length &&
+    (deck without s.me).head? == (deck u1 s.me).head? &&
+    (deck own s.me).getLast? == (deck t1 s.me).head?
+
+-- Mistfall (OGN-152): when I buff a friendly unit, I may pay Body and exhaust it to ready that unit
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-152" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, foe) ← put s2 s.you "OGN-136" .base
+  let funded := (s3.tire u).fund s.me 0 (body := 1)
+  let (a, ev) := buffObj funded u
+  let yes ← fire a ev { yes := true }
+  let no ← fire a ev { yes := false }
+  let (b, ev2) := buffObj (funded.buff u) u
+  let again ← fire b ev2 { yes := true }
+  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe
+  let theirs ← fire c ev3 { yes := true }
+  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u
+  let broke ← fire d ev4 { yes := true }
+  let (e, ev5) := buffObj ((funded.tire g)) u
+  let spent ← fire e ev5 { yes := true }
+  return yes.tired u == some false && yes.tired g == some true && (yes.poolOf s.me).body == 0 &&
+    no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
+    broke.tired u == some true && spent.tired u == some true
+
 end RiftboundTest

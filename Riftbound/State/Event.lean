@@ -56,6 +56,8 @@ inductive Event where
   | phaseStarted (p : PlayerId) (ph : Phase)
   /-- An object was stunned (CR 424). -/
   | stunned (target : ObjId)
+  /-- An object got a buff (CR 701). -/
+  | buffed (target : ObjId)
   /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is
   whether it ends the discarding of the effect: the abilities that wait for "one or more" cards
   to be discarded fire only then. -/

@@ -304,11 +304,18 @@ theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=
 
 /-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
 def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with buffed := true }), [])
+  match s.obj? id with
+  | some o =>
+    (s.modObj id (fun o => { o with buffed := true }),
+      if o.buffed then [] else [Event.buffed id])
+  | none => (s, [])
 
 /-- Buffing is a safe change. -/
-theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 := by
+  unfold buffObj
+  split
+  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
 
 /-- Spend the buff of an object: it loses it (CR 704). -/
 def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
