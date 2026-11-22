@@ -131,6 +131,13 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
 #cardinfo .x { float: right; padding: 0 7px; }
 .card { cursor: context-menu; }
+.card.act { cursor: pointer; outline: 2px solid var(--accent); outline-offset: 1px; }
+.card.act:hover, .card.act:focus-visible { outline-width: 3px; transform: translateY(-3px); }
+#actmenu { position: fixed; z-index: 65; display: grid; gap: 3px; padding: 6px; max-width: min(360px, 92vw);
+  max-height: min(70dvh, 480px); overflow: auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 8px 28px rgba(0, 0, 0, .4); font-size: .8rem; }
+#actmenu h3 { margin: 0 2px 2px; font-size: .72rem; color: var(--muted); font-weight: 600; }
+#actmenu button { text-align: left; }
 .card-in { position: relative; }
 .card-in > .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; border-radius: 4px; }
 .card-in > :not(.art) { position: relative; z-index: 1; }
@@ -205,6 +212,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 </div>
 <div id="fly"></div>
 <div id="cardinfo" hidden role="dialog" aria-label="カードの詳細"></div>
+<div id="actmenu" hidden role="menu" aria-label="このカードで選べる手"></div>
 <script>
 const EMBEDDED = /*__TRACE__*/null;
 const $ = (id) => document.getElementById(id);
@@ -679,8 +687,64 @@ function matchText(m) {
     + (m.finished ? ' ・ マッチ終了: 勝者 P' + m.winner : ' ・ ' + order
       + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
 }
+// 手とカードの結びつき: カードをクリックして答える。手が 1 つならすぐ、複数ならメニューで選ぶ。
+// 結びつけるのは、盤面にそのカードがあるときだけ（無ければボタンのまま）。
+function actCard(a) {
+  switch (a.kind) {
+    case 'runeAbility': case 'playCard': case 'mulliganPick': case 'discardPick': return a.card;
+    case 'standardMove': case 'assignPick': return a.unit;
+    case 'manaAbility': case 'activate': return a.source;
+    default: return null;
+  }
+}
+let cardActs = new Map(), showAllMoves = false;
+function clearActMarks() {
+  cardActs = new Map(); hideActMenu();
+  document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
+}
+function markActCards(list) {
+  clearActMarks();
+  for (const l of list) {
+    const id = actCard(l.a); if (id === null || id === undefined) continue;
+    const c = document.querySelector('.card[data-id="' + id + '"]'); if (!c) continue;
+    if (!cardActs.has(String(id))) cardActs.set(String(id), []);
+    cardActs.get(String(id)).push(l);
+    c.classList.add('act'); c.tabIndex = 0;
+  }
+}
+function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
+function chooseCard(c, x, y) {
+  const list = cardActs.get(c.dataset.id); if (!list || !live) return;
+  if (list.length === 1) { hideActMenu(); liveAct(list[0].k); return; }
+  const m = $('actmenu'); m.textContent = '';
+  const h = document.createElement('h3'); h.textContent = cardName(c.dataset.id) + ' で選べる手（' + list.length + ' 個）'; m.append(h);
+  for (const l of list) {
+    const [title, detail] = describeA(l.a, steps[steps.length - 1].state.pending);
+    const b = document.createElement('button'); b.textContent = title.replace(/^P\d: /, ''); b.title = detail || '';
+    b.addEventListener('click', (e) => { e.stopPropagation(); hideActMenu(); liveAct(l.k); });
+    m.append(b);
+  }
+  m.hidden = false;
+  const w = m.offsetWidth, hh = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(x + 6, innerWidth - w - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(y + 6, innerHeight - hh - 8)) + 'px';
+  const f = m.querySelector('button'); if (f) f.focus();
+}
+document.addEventListener('click', (e) => {
+  const c = e.target.closest && e.target.closest('.card.act');
+  if (c && !e.target.closest('#actmenu')) { e.stopPropagation(); chooseCard(c, e.clientX, e.clientY); return; }
+  if (!e.target.closest('#actmenu')) hideActMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideActMenu();
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('act')) {
+    e.preventDefault(); const r = e.target.getBoundingClientRect(); chooseCard(e.target, r.left + r.width / 2, r.top + r.height / 2);
+  }
+});
+
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
+  clearActMarks();
   if (!live || !steps || i !== steps.length - 1) return;
   const last = steps[i].state;
   $('matchinfo').textContent = matchText(liveMatch);
@@ -710,15 +774,24 @@ function renderLegal(i) {
     }
     return;
   }
+  markActCards(liveLegal);
+  const bound = (l) => { const id = actCard(l.a); return id !== null && id !== undefined && cardActs.has(String(id)); };
+  const nBound = liveLegal.filter(bound).length;
   const by = new Map();
-  for (const l of liveLegal) { if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l); }
-  $('livemsg').textContent = by.size ? '答えを選ぶ（' + liveLegal.length + ' 個）' : '';
+  for (const l of liveLegal) {
+    if (bound(l) && !showAllMoves) continue;
+    if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l);
+  }
+  $('livemsg').textContent = liveLegal.length ? '答えを選ぶ（' + liveLegal.length + ' 個）' +
+    (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
   for (const [actor, list] of by) {
     group('P' + actor.slice(1) + ' の合法手', list.map((l) => {
       const [title, detail] = describeA(l.a, last.pending);
       return btn(title.replace(/^P\d: /, ''), detail, () => liveAct(l.k), l.a.kind === 'concede' ? 'danger' : null);
     }));
   }
+  if (nBound) group('表示', [btn(showAllMoves ? 'カードの手を、ボタンから隠す' : 'カードの手も、ボタンで全部出す',
+    'カードをクリックしても同じ手を選べる', () => { showAllMoves = !showAllMoves; renderLegal(steps.length - 1); })]);
   const ext = [];
   if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
@@ -765,7 +838,7 @@ async function liveStart() {
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveAct(k) {
-  $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
+  clearActMarks(); $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
   try { await startWith('/api/act', { k }, false); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
