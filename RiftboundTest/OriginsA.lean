@@ -2139,4 +2139,58 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let y ← b.firstOf s.me .base "OGN-136"
   return a.tired w == some true && b.tired y == some true
 
+-- Turn effects
+/-- The ready units of the player at the Base. -/
+meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
+  ((x.zone (.player p .base)).filter (fun u =>
+    x.tired u == some false && (x.cardDef? u).any (·.hasType .unit))).length
+
+-- Sun Disc (OGN-021): with another card played this turn, the next unit enters ready
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-021" .base
+  let (s2, other) ← put s1 s.me "OGN-136" .base
+  let (s3, a) ← put s2 s.me "OGN-136" .hand
+  let (s4, b) ← put s3 s.me "OGN-136" .hand
+  let played := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let on ← activate played s.me g 0
+  let first ← play on s.me a
+  let second ← play first s.me b
+  return readyUnits first s.me == readyUnits on s.me + 1 &&
+    readyUnits second s.me == readyUnits first s.me && (activate s4 s.me g 0).isNone
+
+-- Confront (OGN-129): the units played this turn enter ready, and draw 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-129" .hand
+  let (s2, a) ← put s1 s.me "OGN-136" .hand
+  let (s3, b) ← put s2 s.me "OGN-136" .hand
+  let on ← play s3 s.me c
+  let first ← play on s.me a
+  let second ← play first s.me b
+  let (t1, d) ← put s2 s.me "OGN-136" .hand
+  let plain ← play t1 s.me d
+  return readyUnits second s.me == readyUnits on s.me + 2 && on.handN s.me == s3.handN s.me &&
+    readyUnits plain s.me == readyUnits t1 s.me
+
+-- Raging Firebrand (OGN-031): the next spell this turn costs 5 less (not below 0), only that one
+#guard t fun s => do
+  let (s1, f) ← put s s.me "OGN-031" .hand
+  let (s2, sp) ← put s1 s.me "OGN-022" .hand
+  let (s3, sq) ← put s2 s.me "OGN-022" .hand
+  let on ← play s3 s.me f
+  let cut (x : GameState) (c : ObjId) : Option Nat :=
+    (x.cardDef? c).bind (fun d => (x.effCost s.me c d).map (·.energy))
+  let afterSpell ← play on s.me sp
+  return cut on sp == some 0 && cut s3 sp == some 5 && cut afterSpell sq == some 5
+
+-- Unyielding Spirit (OGN-145): spells and abilities deal no damage this turn (Hextech Ray deals 3)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-145" .hand
+  let (s2, h) ← put s1 s.me "OGN-009" .hand
+  let (s3, mine) ← putAt s2 s.me "OGN-001" s.bf0
+  let on ← play s3 s.me c
+  let hit ← play (s3.addTurnFx s.me .preventEffectDamage) s.me h [mine]
+  let free ← play s3 s.me h [mine]
+  return on.turnFx.length == 1 && s3.turnFx.isEmpty && on.damageOff && !s3.damageOff &&
+    (hit.obj? mine).map (·.damage) == some 0 && (free.obj? mine).map (·.damage) == some 3
+
 end RiftboundTest

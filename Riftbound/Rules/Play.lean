@@ -59,6 +59,10 @@ theorem CardDef.paysFor_total {d : CardDef} {cost : Cost} {pay : RunePool.Paymen
   obtain ⟨c, hc, hp⟩ := h
   exact ⟨c, hc, Cost.total_of_paidBy hp⟩
 
+/-- The card enters ready: by itself, or by an effect of the turn for the player. -/
+def GameState.readyNow (s : GameState) (p : PlayerId) (d : CardDef) : Bool :=
+  d.entersReady || s.readyByFx p
+
 /-- The player has played a card in the turn that is going on, Legion (CR 812). -/
 def GameState.playedBefore (s : GameState) (p : PlayerId) : Bool :=
   s.objects.toList.any (fun (_, o) => o.owner == p && o.playedTurn == some s.turn)
@@ -100,7 +104,8 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
               | _ => none)
           else []
         | _ => [])
-    | _, _ => [])
+    | _, _ => []) ++
+  (if (s.cardDef? c).any (·.hasType .spell) then (s.spellCutFx p).map (fun n => (n, 0)) else [])
 
 /-- The cost the card `c` of the player is played for: its cost, less the cuts (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
@@ -158,7 +163,7 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let s1 := (r.1.modObj r.2 (Object.withPlay [] (s.playMark p c pay))).setPool p pool
-      ((if d.hasType .unit && !d.entersReady && !s.paidExtra p c d pay then s1.exhaustObj r.2
+      ((if d.hasType .unit && !s.readyNow p d && !s.paidExtra p c d pay then s1.exhaustObj r.2
         else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
@@ -225,7 +230,7 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ d pool s2 id' m, s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
-      s' = (if (d.hasType .unit && !d.entersReady && !s.paidExtra p c d pay) = true
+      s' = (if (d.hasType .unit && !s.readyNow p d && !s.paidExtra p c d pay) = true
         then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
         else (s2.modObj id' (Object.withPlay [] m)).setPool p pool) := by
   unfold applyPlay at h
@@ -373,7 +378,7 @@ theorem applyPlay_zones {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
 theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
-      ∀ d, s.cardDef? c = some d → d.hasType .unit = true → d.entersReady = false →
+      ∀ d, s.cardDef? c = some d → d.hasType .unit = true → s.readyNow p d = false →
         s.paidExtra p c d pay = false → ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with

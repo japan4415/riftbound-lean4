@@ -446,6 +446,36 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     do pure (Nat.max (← Amount.evalS0 s p self env a) (← Amount.evalS0 s p self env b))
   | a => a.eval env
 
+/-- The cards of the kind that the player has played this turn. -/
+def GameState.playsOf (s : GameState) (p : PlayerId) (t : CardType) : Nat :=
+  (s.objects.toList.filter (fun (k, o) =>
+    o.owner == p && o.playedTurn == some s.turn && (s.cardDef? ⟨k⟩).any (·.hasType t))).length
+
+/-- The player has played a card this turn other than the object `self`. -/
+def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
+  s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
+
+/-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
+a kind, no card of the kind has been played since. -/
+def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
+  (s.turnFx.filter (fun f =>
+    f.turn == s.turn && f.who == p &&
+      (match f.kind with
+        | .nextSpellCostMinus _ | .nextUnitReady => s.playsOf p f.kind.playType == f.played
+        | _ => true))).map (·.kind)
+
+/-- Units the player plays now enter ready, by an effect of the turn. -/
+def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
+  (s.fxOf p).any (fun k => k == .nextUnitReady || k == .unitsReady)
+
+/-- The Energy less the next spell of the player costs, by the effects of the turn. -/
+def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
+  (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
+
+/-- Spells and abilities deal no damage, by an effect of this turn. -/
+def GameState.damageOff (s : GameState) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
+
 /-- Whether a question about the game is true, for the questions that are understood. `none` if it
 cannot be answered yet. -/
 def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
@@ -466,6 +496,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .yourTurn => some (decide (s.active = some p))
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
+  | .playedAnother => some (s.playedOther p self)
   | _ => none
 
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching

@@ -377,13 +377,14 @@ def Object.cleared (o : Object) : Object :=
   { o with damage := 0, buffed := false, stunned := false, mightMods := [], tempKws := [] }
 
 /-- A card enters the Base as a new object, played. -/
-def enterBase (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) : GameState :=
+def enterBase (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :
+    GameState :=
   let s2 := s.modObj id (fun o => (Object.freshPlay mk o).cleared)
-  if d.hasType .unit && !d.entersReady then (setExhausted true s2 id).1 else s2
+  if d.hasType .unit && !rdy then (setExhausted true s2 id).1 else s2
 
 /-- Entering the Base is a safe change. -/
-theorem enterBase_safe (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) :
-    Safe s (enterBase d mk s id) := by
+theorem enterBase_safe (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :
+    Safe s (enterBase d mk rdy s id) := by
   have h1 : Safe s (s.modObj id (fun o => (Object.freshPlay mk o).cleared)) :=
     Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   unfold enterBase
@@ -399,11 +400,11 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
   | some d =>
     match moveObj s id (.player p .base) with
     | some r =>
-      (enterBase d (s.playMark p id ⟨0, []⟩) r.1 r.2,
+      (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p d) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
     | none =>
       if s.locate id = some (.player p .base) then
-        (enterBase d (s.playMark p id ⟨0, []⟩) s id, [Event.played p id])
+        (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p d) s id, [Event.played p id])
       else (s, [])
   | none => (s, [])
 
@@ -413,9 +414,9 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
   split
   · split
     · rename_i d hd r hr
-      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _)
+      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
     · split
-      · exact enterBase_safe _ _ _ _
+      · exact enterBase_safe _ _ _ _ _
       · exact Safe.refl s
   · exact Safe.refl s
 
@@ -436,6 +437,16 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
   split
   · exact sendObj_safe .trash s id
   · exact sendObj_safe .trash s id
+
+/-- Make an effect true for the rest of the turn, for the player. -/
+def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
+  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.playsOf p e.playType, e⟩] }
+
+/-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
+theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
+    Safe s (s.addTurnFx p e) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
@@ -715,7 +726,9 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     Prim → Option (GameState × List Event)
-  | .deal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (dealObj k))
+  | .deal sel n =>
+    if s.damageOff then some (s, []) else
+    (n.evalS s p src env).bind (fun k => onSelected s p src env sel (dealObj k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel => onSelected s p src env sel killObj
   | .ready sel => onSelected s p src env sel (setExhausted false)
@@ -768,6 +781,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .score ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
+  | .turnEffect e => some (s.addTurnFx p e, [])
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -776,11 +790,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   cases pr with
   | deal sel n =>
     simp only [applyPrim] at h
-    cases hn : n.evalS s p src env with
-    | none => simp [hn] at h
-    | some k =>
-      simp only [hn, Option.bind_some] at h
-      exact onSelected_safe (dealObj_safe k) h
+    by_cases hd : s.damageOff = true
+    · simp only [hd, ite_true, Option.some.injEq] at h
+      subst h
+      exact Safe.refl s
+    · simp only [hd] at h
+      cases hn : n.evalS s p src env with
+      | none => simp [hn] at h
+      | some k =>
+        simp only [hn, Option.bind_some] at h
+        exact onSelected_safe (dealObj_safe k) h
   | heal sel n =>
     simp only [applyPrim] at h
     cases hn : n.evalS s p src env with
@@ -895,6 +914,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           simp only [hl, hn, hx, Option.bind_some, Option.map_some, Option.some.injEq] at h
           rw [← h]
           exact channelAll_safe k x l s
+  | turnEffect e =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact addTurnFx_safe s p e
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/

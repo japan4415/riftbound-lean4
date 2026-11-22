@@ -143,6 +143,7 @@ def Condition.understood : Condition → Bool
   | .yourTurn => true
   | .legion => true
   | .paid => true
+  | .playedAnother => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
@@ -163,6 +164,7 @@ def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .score p n => p.understood && n.understood
   | .win p => p.understood
+  | .turnEffect _ => true
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
   | .hideAt s b => s.understood && b.understood

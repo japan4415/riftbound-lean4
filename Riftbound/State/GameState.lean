@@ -21,6 +21,19 @@ engine (milestone M2b).
 
 namespace Riftbound
 
+/-- A lasting effect for the rest of a turn: whose it is, the turn, how many cards of the kind it
+watches the player had played when it was made, and what it is. -/
+structure TurnFx where
+  /-- The player the effect is for. -/
+  who : PlayerId
+  /-- The turn it lasts through. -/
+  turn : Nat
+  /-- The cards of the kind (`TurnEffect.playType`) the player had played this turn then. -/
+  played : Nat
+  /-- What it is. -/
+  kind : TurnEffect
+deriving DecidableEq, Repr
+
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
 structure GameState where
   /-- The rules of this game. -/
@@ -56,6 +69,8 @@ structure GameState where
   /-- The turn after which the clock ends the game: when time is called, the turn that is going
   on is played to its end, and 3 turns more (TR 408.2). `none` until time is called. -/
   clock : Option Nat := none
+  /-- What spells and abilities made true for the rest of a turn (CR 389-393). -/
+  turnFx : List TurnFx := []
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/

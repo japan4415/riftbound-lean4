@@ -168,6 +168,8 @@ inductive Condition where
   | legion
   /-- An additional cost was paid when the object was played (CR 357.2). -/
   | paid
+  /-- The controller has played another card this turn, as the ability is used (CR 812). -/
+  | playedAnother
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
   /-- A combat is going on. -/
