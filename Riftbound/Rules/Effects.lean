@@ -296,17 +296,22 @@ theorem recycleTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (r
   | [], s => Safe.refl s
   | q :: qs, s => (recycleTopOf_safe q s).trans (recycleTopAll_safe qs _)
 
-/-- Recycle a card: it goes to the bottom of its owner's Main Deck (CR 417). -/
+/-- The deck a card is recycled to: a Rune goes to the Rune Deck, any other card to the Main Deck
+(CR 417). -/
+def recycleKind (s : GameState) (id : ObjId) : ZoneKind :=
+  if (s.cardDef? id).any (·.hasType .rune) then .runeDeck else .mainDeck
+
+/-- Recycle a card: it goes to the bottom of its owner's deck (CR 417). -/
 def recycleOne (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    let z := Zone.player o.owner .mainDeck
-    -- a card of the Main Deck goes to its bottom, in the same zone
+    let z := Zone.player o.owner (recycleKind s id)
+    -- a card of the deck goes to its bottom, in the same zone
     if (s.zone z).contains id ∧ z.Valid s.playerCount then
       (s.reorder z (((s.zone z).erase id) ++ [id]), [])
     else
-    match recycleToMain s o.owner id with
-    | some r => (r.1, [Event.moved id r.2 (.player o.owner .mainDeck)])
+    match moveObj s id z .bottom with
+    | some r => (r.1, [Event.moved id r.2 z])
     | none => (s, [])
   | none => (s, [])
 
@@ -316,18 +321,19 @@ theorem recycleOne_safe (s : GameState) (id : ObjId) : Safe s (recycleOne s id).
   cases ho : s.obj? id with
   | none => simpa [ho] using Safe.refl s
   | some o =>
-    by_cases hc : ((s.zone (Zone.player o.owner .mainDeck)).contains id = true ∧
-        (Zone.player o.owner .mainDeck).Valid s.playerCount)
+    by_cases hc : ((s.zone (Zone.player o.owner (recycleKind s id))).contains id = true ∧
+        (Zone.player o.owner (recycleKind s id)).Valid s.playerCount)
     · simp only [hc, and_self, ite_true]
-      have hmem : id ∈ s.zone (Zone.player o.owner .mainDeck) := List.contains_iff_mem.mp hc.1
-      have hp : (((s.zone (Zone.player o.owner .mainDeck)).erase id) ++ [id]).Perm
-          (s.zone (Zone.player o.owner .mainDeck)) :=
+      have hmem : id ∈ s.zone (Zone.player o.owner (recycleKind s id)) :=
+        List.contains_iff_mem.mp hc.1
+      have hp : (((s.zone (Zone.player o.owner (recycleKind s id))).erase id) ++ [id]).Perm
+          (s.zone (Zone.player o.owner (recycleKind s id))) :=
         (List.perm_append_singleton id _).trans (List.perm_cons_erase hmem).symm
       exact ⟨fun hwf => GameState.wf_reorder hwf hc.2 hp,
         fun _ => GameState.physIds_reorder hc.2 hp,
         fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
     · simp only [hc, ite_false]
-      cases hm : recycleToMain s o.owner id with
+      cases hm : moveObj s id (Zone.player o.owner (recycleKind s id)) .bottom with
       | none => simpa [hm] using Safe.refl s
       | some r => simpa [hm] using Safe.moveObj hm
 
@@ -978,6 +984,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .spendBuff s => some s
   | .bin s => some s
   | .discardCard s => some s
+  | .play s => some s
   | .reveal s => some s
   | .move s d =>
     match s, d with
@@ -1002,6 +1009,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
+  | .play _ => .play sel
   | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with

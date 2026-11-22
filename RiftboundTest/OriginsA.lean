@@ -2027,4 +2027,96 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
     (cast (ten.rich s.me) s.me c (payOf s1 c)).isNone && (play ten s.me c).isSome &&
     (ten.effCost s.me c d).isSome
 
+-- Meditation (OGN-048): exhaust a ready friendly unit to draw 2, or else draw 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-048" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let yes ← play s2 s.me c [] { yes := true }
+  let no ← play s2 s.me c [] { yes := false }
+  let tired ← play (s2.tire u) s.me c [] { yes := true }
+  let alone ← play s1 s.me c [] { yes := true }
+  return yes.tired u == some true && yes.handN s.me == s2.handN s.me + 1 &&
+    no.tired u == some false && no.handN s.me == s2.handN s.me &&
+    tired.handN s.me == s2.handN s.me && alone.handN s.me == s2.handN s.me
+
+-- Thousand-Tailed Watcher (OGN-116): enemy units get -3 Might this turn, to a minimum of 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-116" .hand
+  let (s2, big) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, small) ← putAt s2 s.you "OGN-136" s.bf0
+  let (s4, mine) ← put s3 s.me "OGN-001" .base
+  let a ← play s4 s.me c
+  return a.mightNow big == some 2 && a.mightNow small == some 1 && a.mightNow mine == some 5
+
+-- Kog'Maw, Caustic (OGN-190): when it dies, 4 damage to every unit at its battlefield
+-- (Challenge: Kog'Maw deals 1 to the unit of Might 7 and takes 7)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-128" .hand
+  let (s2, k) ← putAt s1 s.me "OGN-190" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-116" s.bf0
+  let (s4, f) ← putAt s3 s.me "OGN-001" s.bf0
+  let (s5, far) ← put s4 s.you "OGN-001" .base
+  let a ← play s5 s.me c [k, e]
+  return (a.obj? e).map (·.damage) == some 5 && (a.obj? f).map (·.damage) == some 4 &&
+    (a.obj? far).map (·.damage) == some 0 && a.countIn s.me .trash "OGN-190" == 1
+
+-- Sigil of the Storm (OGN-287): when I conquer here, recycle one of my runes (to the Rune Deck)
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-287"
+  let isRune (x : GameState) (r : ObjId) := (x.cardDef? r).any (·.hasType .rune)
+  let runes := (s1.zone (.player s.me .base)).filter (isRune s1)
+  let deck := (s1.zone (.player s.me .runeDeck)).length
+  let a ← fire s1 [.scored s.me bf true]
+  let b ← fire s1 [.scored s.you bf true]
+  let here := (a.zone (.player s.me .base)).filter (isRune a)
+  return !runes.isEmpty && here.length + 1 == runes.length &&
+    (a.zone (.player s.me .runeDeck)).length == deck + 1 &&
+    (b.zone (.player s.me .runeDeck)).length == deck
+
+-- Party Favors (OGN-071): the opponent chooses Cards (both draw 1) or Runes (both channel 1
+-- exhausted)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-071" .hand
+  let cards ← play s1 s.me c [] { yes := true }
+  let runes ← play s1 s.me c [] { yes := false }
+  let runeN (x : GameState) (p : PlayerId) :=
+    ((x.zone (.player p .base)).filter (fun r => (x.cardDef? r).any (·.hasType .rune))).length
+  return cards.handN s.me == s1.handN s.me && cards.handN s.you == s1.handN s.you + 1 &&
+    runeN cards s.me == runeN s1 s.me &&
+    runes.handN s.me == s1.handN s.me - 1 && runes.handN s.you == s1.handN s.you &&
+    runeN runes s.me == runeN s1 s.me + 1 && runeN runes s.you == runeN s1 s.you + 1
+
+-- Soulgorger (OGN-196), The Harrowing (OGN-198), Spectral Matron (OGN-226), Portal Rescue
+-- (OGN-102): play a unit from the Trash, or a unit on the board, for free
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-196" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let a ← play s2 s.me c [] { yes := true }
+  let b ← play s2 s.me c [] { yes := false }
+  let (t1, h) ← put s s.me "OGN-198" .hand
+  let (t2, _) ← put t1 s.me "OGN-136" .trash
+  let (t3, _) ← put t2 s.you "OGN-136" .trash
+  let d ← play t3 s.me h
+  return a.countIn s.me .base "OGN-136" == 1 && a.countIn s.me .trash "OGN-136" == 0 &&
+    b.countIn s.me .base "OGN-136" == 0 && b.countIn s.me .trash "OGN-136" == 1 &&
+    d.countIn s.me .base "OGN-136" == 1 && d.countIn s.you .trash "OGN-136" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-226" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .trash
+  let (s3, _) ← put s2 s.me "OGN-150" .trash
+  let nothing ← play s3 s.me c
+  let (s4, _) ← put s3 s.me "OGN-136" .trash
+  let a ← play s4 s.me c
+  return nothing.countIn s.me .trash "OGN-001" == 1 &&
+    nothing.countIn s.me .trash "OGN-150" == 1 &&
+    a.countIn s.me .base "OGN-136" == 1 && a.countIn s.me .trash "OGN-001" == 1 &&
+    a.countIn s.me .trash "OGN-150" == 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-102" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
+  let a ← play s2 s.me c
+  let w ← a.firstOf s.me .base "OGN-001"
+  return a.where? w == some (.player s.me .base) && a.tired w == some true &&
+    s2.where? u == some .battlefieldZone && a.countIn s.me .base "OGN-001" == 1
+
 end RiftboundTest
