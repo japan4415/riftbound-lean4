@@ -2811,6 +2811,18 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return a.mightNow u == some 3 && a.tired u == some false && b.mightNow v == some 2 &&
     tired.mightNow u == some 2
 
+-- ... a unit that is ready already is not readied again, and the units the Awaken readies count
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-143" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (readyAlready, ev) := setExhausted false s2 u
+  let a ← fire readyAlready ev
+  let tired := s2.tire u
+  let waking := { tired with pending := [.phase .awaken] }
+  let (s3, evs) ← microStep0 waking
+  let b ← fire s3 evs
+  return ev.isEmpty && a.mightNow u == some 2 && b.tired u == some false && b.mightNow u == some 3
+
 -- Nine-Tailed Fox (OGN-255): when an enemy unit attacks a battlefield I control, it gets -1 Might
 -- this turn, to a minimum of 1
 #guard t fun s => do

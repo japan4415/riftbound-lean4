@@ -167,9 +167,10 @@ theorem healOne_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (healOne n 
 /-- Make an object ready or exhausted (CR 415, 416). -/
 def setExhausted (b : Bool) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
-  | some _ =>
+  | some o =>
+    -- only an object that was exhausted is readied, and only a ready one is exhausted (CR 416)
     (s.modObj id (fun o => { o with exhausted := b }),
-      [if b then Event.exhausted id else Event.readied id])
+      if b then [Event.exhausted id] else if o.exhausted then [Event.readied id] else [])
   | none => (s, [])
 
 /-- Readying or exhausting is a safe change. -/
