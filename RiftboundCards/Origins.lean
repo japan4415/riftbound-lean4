@@ -6549,8 +6549,12 @@ def OGN_253.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Hand of Noxus: the effect is not written yet. -/
-def OGN_253 : CardDef := OGN_253.meta
+/-- Hand of Noxus. -/
+def OGN_253 : CardDef :=
+  { OGN_253.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+      (.of [] (.ifThen .playedAnother (.prim (.addEnergy .you (.const 1) none)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-254
 /--

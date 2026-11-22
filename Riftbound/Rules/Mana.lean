@@ -61,7 +61,8 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
         | some (Ability.activated costs _ body lim) =>
           match manaPlan costs with
           | some (ex, _) =>
-            (!ex || !o.exhausted) && (manaKind body).isSome && limitOk s src idx lim
+            (!ex || !o.exhausted) && (manaKind body).isSome && limitOk s src idx lim &&
+              guardOk s p src body
           | none => false
         | _ => false
     | _, _ => false
