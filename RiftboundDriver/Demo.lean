@@ -116,8 +116,21 @@ def demoCards : List CardDef :=
   (List.range 3).map (fun n =>
     { id := ⟨s!"B{n}"⟩, name := s!"Battlefield {n}", types := [.battlefield] : CardDef })
 
-/-- The demo database. -/
-def demoDB : CardDB := { cards := demoCards }
+/-- The set every demo card is printed in. -/
+def demoSet : SetCode := ⟨"DEMO"⟩
+
+/-- The demo database. Every card is printed in the demo set, which is legal in the demo
+environment, so that a deck can be checked for Constructed (TR 601.2). -/
+def demoDB : CardDB := { cards := demoCards.map (fun c => { c with sets := [demoSet] }) }
+
+/-- Which cards the demo format allows: the demo set, nothing banned. -/
+def demoEnv : LegalityEnv := { legalSets := [demoSet], banned := [] }
+
+/-- The sideboard of the demo deck (TR 601.1.c): 10 cards that could go in the Main Deck, none of
+which is in it: three Quick Study, three Scout, three Banner and one Vanilla 0. -/
+def demoSideboard : List CardId :=
+  List.replicate 3 ⟨"S0"⟩ ++ List.replicate 3 ⟨"E0"⟩ ++ List.replicate 3 ⟨"N0"⟩ ++
+    [⟨"V0"⟩]
 
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
 that play a Sprite token (Temporary), play a Gold token (a Gear that adds Power once), discard a

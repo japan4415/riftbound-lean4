@@ -119,6 +119,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices .btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .choices button { text-align: left; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
+.choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 </style>
 </head>
 <body>
@@ -519,6 +520,7 @@ $('file').addEventListener('change', async (e) => {
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
+let liveSide = null, swapOut = null, swapIn = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
@@ -538,7 +540,10 @@ function appendSteps(list) {
   }
   $('scrub').max = steps.length - 1;
 }
-function setLive(j) { liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; askChoice = null; }
+function setLive(j) {
+  liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  swapOut = swapIn = null;
+}
 function matchText(m) {
   if (!m) return '';
   const order = m.order === 'chance' ? '最初のゲーム: 抽選で選ばれた人が先手か後手かを選ぶ（TR 407）'
@@ -570,6 +575,7 @@ function renderLegal(i) {
           btn('後手にする', '次のゲームで、後に動く', () => liveNext('second'))]);
       } else {
         $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
+        if (liveSide && liveSide.allowed) renderSideboard(group, btn);
         group('マッチ', [btn('次のゲーム', '結果をマッチに数えて、次のゲームを始める', () => liveNext(null))]);
       }
     } else {
@@ -591,6 +597,32 @@ function renderLegal(i) {
   if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
   if (ext.length) group('大会のルール', ext);
+}
+// サイドボード（TR 403.4）: Main Deck のカードを 1 枚出し、サイドボードのカードを 1 枚入れる。合法かどうかは Lean が決める。
+function renderSideboard(group, btn) {
+  const s = liveSide;
+  const cardBtns = (list, sel, set) => list.map((c) =>
+    btn(c.name + ' ×' + c.n, c.id, () => { set(sel === c.id ? null : c.id); renderLegal(steps.length - 1); },
+      sel === c.id ? 'sel' : null));
+  group('サイドボード（P' + s.player + '）: Main Deck ' + s.mainCount + ' 枚 ／ サイドボード ' + s.sideCount + ' 枚',
+    []);
+  group('出すカード（Main Deck）', cardBtns(s.main, swapOut, (v) => { swapOut = v; }));
+  group('入れるカード（サイドボード）', cardBtns(s.side, swapIn, (v) => { swapIn = v; }));
+  const nm = (list, id) => { const c = list.find((x) => x.id === id); return c ? c.name : id; };
+  const go = btn(swapOut && swapIn ? '入れ替える: ' + nm(s.main, swapOut) + ' ⇄ ' + nm(s.side, swapIn) : '出すカードと入れるカードを選ぶ',
+    '1 対 1 で入れ替える。入れ替えの後のデッキが Constructed で合法かどうかは、Lean が確かめる（TR 403.4.c）',
+    () => liveSwap());
+  go.disabled = !(swapOut && swapIn);
+  group('入れ替え', [go]);
+}
+async function liveSwap() {
+  const out = swapOut, inn = swapIn;
+  $('livemsg').textContent = '確かめ中…';
+  try {
+    const j = await api('/api/swap', { out, in: inn });
+    setLive(j); renderLegal(steps.length - 1);
+    $('livemsg').textContent = '入れ替えた。続けて入れ替えるか、「次のゲーム」へ。';
+  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function startWith(path, body, fresh) {
   const j = await api(path, body);

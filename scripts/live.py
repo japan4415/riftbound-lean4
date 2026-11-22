@@ -12,6 +12,7 @@ Lean の実行ファイル（riftbound-live）に 1 行のコマンドを送り�
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -20,6 +21,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
+CARD_ID = re.compile(r"[A-Za-z0-9_-]{1,24}")
 
 
 class Lean:
@@ -109,6 +111,11 @@ def make_handler(lean: Lean, port: int):
                     line = "clock"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/swap":
+                    out, inn = str(req.get("out", "")), str(req.get("in", ""))
+                    if not (CARD_ID.fullmatch(out) and CARD_ID.fullmatch(inn)):
+                        return self._json(400, {"error": "bad card"})
+                    line = f"swap {out} {inn}"
                 elif path == "/api/next":
                     choice = req.get("choice")
                     if choice not in (None, "first", "second"):

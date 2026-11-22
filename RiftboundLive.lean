@@ -19,7 +19,8 @@ input and writes one line of JSON for each:
 `start SEED HUMANS [KIND [MATCH]]` (the players a person controls: `0`, `1` or `01`; the kind:
 `core`, `constructed`, `sealed` or `draft`; the match: `single`, `bo1` or `bo3`),
 `act K` (the answer number `K` of the last list), `clock` (the clock calls time), `judge` (the
-judge declares a draw), `next [first|second]` (the next game of a match; a person who chooses
+judge declares a draw), `swap OUT IN` (exchange a card of the Main Deck for a card of the
+sideboard), `next [first|second]` (the next game of a match; a person who chooses
 who goes first says it), `quit`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
@@ -55,6 +56,10 @@ def main : IO UInt32 := do
     | ["judge"] =>
       match (← game.get) with
       | some g => go (liveExternal g ⟨.judge, .declareDraw⟩)
+      | none => fail "no game has been started"
+    | ["swap", out, inn] =>
+      match (← game.get) with
+      | some g => go (liveSwap g out inn)
       | none => fail "no game has been started"
     | "next" :: rest =>
       let choice : Option (Option Bool) := match rest with
