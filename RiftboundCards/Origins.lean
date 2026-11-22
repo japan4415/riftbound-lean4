@@ -1087,8 +1087,17 @@ def OGN_041.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Volibear, Furious: the effect is not written yet. -/
-def OGN_041 : CardDef := OGN_041.meta
+/-- Volibear, Furious. -/
+def OGN_041 : CardDef :=
+  { OGN_041.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.seqOf [
+        .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 1)),
+        .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 1)),
+        .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 1)),
+        .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 1)),
+        .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-042
 /--
