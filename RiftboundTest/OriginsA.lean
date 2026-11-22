@@ -3371,4 +3371,19 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (activate s3 s.me c 0 [bf] (payOf s3 c)).isSome &&
     there a == 1 && there b == 0 && b.countIn s.me .base "OGN-199" == 1
 
+-- Karma (OGN-235): when I recycle one or more cards, I buff a friendly unit (Mystic Poro's Vision
+-- recycles; declining, an empty deck, and the opponent's recycling do not)
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-235" .base
+  let (s2, _) ← put s1 s.me "OGN-136" .base
+  let (s3, c) ← put s2 s.me "OGN-171" .hand
+  let buffs (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun v => (x.obj? v).any (·.buffed))).length
+  let a ← play s3 s.me c
+  let no ← play s3 s.me c [] { yes := false }
+  let bare ← play (s3.setZone (.player s.me .mainDeck) []) s.me c
+  let mine ← fire s3 [.recycled s.me]
+  let theirs ← fire s3 [.recycled s.you]
+  return buffs a == 1 && buffs no == 0 && buffs bare == 0 && buffs mine == 1 && buffs theirs == 0
+
 end RiftboundTest

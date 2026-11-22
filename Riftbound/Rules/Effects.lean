@@ -1001,7 +1001,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
-  | .recycle sel => onSelected s p src env sel recycleOne
+  | .recycle sel =>
+    (onSelected s p src env sel recycleOne).map (fun r =>
+      (r.1, if r.2.isEmpty then r.2 else r.2 ++ [Event.recycled p]))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal _ => some (s, [])
   | .spendBuff sel => onSelected s p src env sel unbuffObj
@@ -1017,7 +1019,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (hideObj b)
     | _ => none
-  | .recycleTop ps => (ps.resolve s p).map (fun l => (recycleTopAll s l, []))
+  | .recycleTop ps =>
+    (ps.resolve s p).map (fun l => (recycleTopAll s l,
+      l.filterMap (fun q =>
+        if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
@@ -1104,7 +1109,15 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
-  | recycle sel => exact onSelected_safe recycleOne_safe h
+  | recycle sel =>
+    simp only [applyPrim] at h
+    cases hs : onSelected s p src env sel recycleOne with
+    | none => simp [hs] at h
+    | some r0 =>
+      simp only [hs, Option.map_some, Option.some.injEq] at h
+      have h0 := onSelected_safe recycleOne_safe hs
+      rw [← h]
+      exact h0
   | reveal sel =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]

@@ -314,6 +314,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .playHidden => t.subject == .self
+      | .recycle => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

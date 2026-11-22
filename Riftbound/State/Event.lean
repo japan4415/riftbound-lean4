@@ -58,6 +58,8 @@ inductive Event where
   | stunned (target : ObjId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
+  /-- The player recycled one or more cards. -/
+  | recycled (p : PlayerId)
   /-- The conquer effects of a unit are activated by an effect. -/
   | conquerActivated (u : ObjId)
   /-- The player played a card from Hidden (CR 811). -/
