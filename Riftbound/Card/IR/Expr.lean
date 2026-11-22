@@ -205,6 +205,8 @@ inductive Condition where
   | fromHidden
   /-- The player assigned at least `n` excess damage to enemy Units in the last Combat this turn. -/
   | excessAtLeast (n : Nat)
+  /-- The player has the effect noted this turn. -/
+  | noted (e : TurnEffect)
   /-- The object an ability watches (its first slot) was noted with the effect for its player when
   it died, this turn. -/
   | diedWith (e : TurnEffect)

@@ -1091,6 +1091,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .addPower ps n (some d) none =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addPower d k) s l, [])))
+  | .addPower ps n none none =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (poolsMap (fun pool => pool.addAny k) s l, [])))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -1290,7 +1293,20 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           exact poolsMap_safe _ l s
   | addPower ps n d only =>
     cases d with
-    | none => simp [applyPrim] at h
+    | none =>
+      cases only with
+      | some a => simp [applyPrim] at h
+      | none =>
+        simp only [applyPrim] at h
+        cases hl : ps.resolve s p with
+        | none => simp [hl] at h
+        | some l =>
+          cases hn : n.evalS s p src env with
+          | none => simp [hl, hn] at h
+          | some k =>
+            simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+            rw [← h]
+            exact poolsMap_safe _ l s
     | some dom =>
       cases only with
       | some a => simp [applyPrim] at h
