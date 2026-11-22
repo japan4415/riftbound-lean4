@@ -2267,4 +2267,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return (a.obj? e1).isNone && (a.obj? e2).map (·.damage) == some 5 &&
     (a.obj? f).map (·.damage) == some 0 && (a.obj? mine).map (·.loc) == some (some s.bf0)
 
+-- Counters need a spell on the Chain, and a spell does not counter itself; Stormbringer needs a
+-- unit of mine in the Base and takes a Battlefield
+#guard t fun s => do
+  let (s1, wind) ← put s s.me "OGN-064" .hand
+  let (s2, defy) ← put s1 s.me "OGN-045" .hand
+  let (s3, conf) ← put s2 s.me "OGN-129" .hand
+  let alone := play s3 s.me wind [conf]
+  let selfTarget := play s3 s.me wind [wind]
+  let nothing := play s3 s.me defy []
+  let (t1, c) ← put s s.me "OGN-250" .hand
+  let (t2, mine) ← put t1 s.me "OGN-001" .base
+  let (t3, away) ← putAt t2 s.me "OGN-001" s.bf0
+  let (t4, foe) ← put t3 s.you "OGN-001" .base
+  let onBf := play t4 s.me c [away, s.bf0]
+  let enemy := play t4 s.me c [foe, s.bf0]
+  let fine ← play t4 s.me c [mine, s.bf0]
+  return alone.isNone && selfTarget.isNone && nothing.isNone && onBf.isNone && enemy.isNone &&
+    (fine.obj? foe).map (·.damage) == some 0
+
 end RiftboundTest

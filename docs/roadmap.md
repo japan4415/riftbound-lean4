@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `Place.onChain`（Chain の上のスペル。自分自身と、能力は含まない）。選ぶ対象が、盤面か Chain の上のスペルになった（`mem_candidates`・`targetsOk_mem_inPlay`・`castable_targets_inPlay` の主張を、「盤面、または Chain の上のスペル」に広げた。`.slot` も同じ）。`Prim.counter`（スペルを、解決せずに、持ち主の Trash へ送る）。
 - **動くようになったカード**: Defy（045。費用の上限は、Energy 4 と Power 1）、Wind Wall（064）、Stormbringer, Volibear（250）。
 - **動くカード**: 213 → **216 枚**。
-- **近似として残したこと**: Mystic Reversal（080。スペルの支配を奪う）は、まだ。
+- **レビューで足したこと**: 負のテスト（Chain が空、自分自身は対象にできない、Stormbringer の第 1 対象は、基地の味方ユニット）。
+- **近似として残したこと**: Defy の費用の上限は、カードに印刷された費用で見る（払った費用ではない）。Mystic Reversal（080。スペルの支配を奪う）は、まだ。
 
 ### M7 の実装の記録（2026-11-23）: ターンの終わりまで続く効果（4 枚）
 
