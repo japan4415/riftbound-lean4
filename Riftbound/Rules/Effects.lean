@@ -368,18 +368,43 @@ theorem hideObj_safe (bf : ObjId) (s : GameState) (id : ObjId) : Safe s (hideObj
       · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The object played anew: not at a Battlefield, with the note of the play. -/
+def Object.freshPlay (mk : PlayMark) (o : Object) : Object :=
+  { Object.withPlay [] mk o with loc := none }
+
+/-- What a card played anew has not: damage, a buff, a stun, lasting changes. -/
+def Object.cleared (o : Object) : Object :=
+  { o with damage := 0, buffed := false, stunned := false, mightMods := [], tempKws := [] }
+
+/-- A card enters the Base as a new object, played. -/
+def enterBase (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) : GameState :=
+  let s2 := s.modObj id (fun o => (Object.freshPlay mk o).cleared)
+  if d.hasType .unit && !d.entersReady then (setExhausted true s2 id).1 else s2
+
+/-- Entering the Base is a safe change. -/
+theorem enterBase_safe (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) :
+    Safe s (enterBase d mk s id) := by
+  have h1 : Safe s (s.modObj id (fun o => (Object.freshPlay mk o).cleared)) :=
+    Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  unfold enterBase
+  split
+  · exact h1.trans (setExhausted_safe true _ _)
+  · exact h1
+
 /-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,
 exhausted if it is a Unit that does not enter ready, and the play is noted, so that what waits for a
-card to be played fires. -/
+card to be played fires. A card that is in the Base already is played again where it is. -/
 def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.cardDef? id with
   | some d =>
     match moveObj s id (.player p .base) with
     | some r =>
-      let s1 := r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))
-      ((if d.hasType .unit && !d.entersReady then (setExhausted true s1 r.2).1 else s1),
+      (enterBase d (s.playMark p id ⟨0, []⟩) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
-    | none => (s, [])
+    | none =>
+      if s.locate id = some (.player p .base) then
+        (enterBase d (s.playMark p id ⟨0, []⟩) s id, [Event.played p id])
+      else (s, [])
   | none => (s, [])
 
 /-- Playing a card without paying is a safe change. -/
@@ -388,12 +413,10 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
   split
   · split
     · rename_i d hd r hr
-      have h1 : Safe r.1 (r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))) :=
-        Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
-      split
-      · exact ((Safe.moveObj hr).trans h1).trans (setExhausted_safe true _ _)
-      · exact (Safe.moveObj hr).trans h1
-    · exact Safe.refl s
+      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _)
+    · split
+      · exact enterBase_safe _ _ _ _
+      · exact Safe.refl s
   · exact Safe.refl s
 
 /-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/

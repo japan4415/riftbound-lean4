@@ -137,12 +137,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     | none => pure false
   | .cost op a => do
     let n ← a.eval env
-    let k ← (s.cardDef? id).bind (·.cost)
-    pure (op.holds (Int.ofNat k.energy) n)
+    let d ← s.cardDef? id
+    pure (match d.cost with | some k => op.holds (Int.ofNat k.energy) n | none => false)
   | .powerCost op a => do
     let n ← a.eval env
-    let k ← (s.cardDef? id).bind (·.cost)
-    pure (op.holds (Int.ofNat k.power.length) n)
+    let d ← s.cardDef? id
+    pure (match d.cost with | some k => op.holds (Int.ofNat k.power.length) n | none => false)
   | .exhausted => (s.obj? id).map (·.exhausted)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
