@@ -103,6 +103,73 @@ def nextOrder (m : MatchState) : Order :=
   | some .draw, some f => .same f
   | _, _ => .chance
 
+/-- The player who chooses who goes first (TR 407): a player chosen at random for the first game,
+the loser of the last game after a win; after a draw nobody chooses, and the one who went first goes
+first again. `random` is the player the draw picked. -/
+def Order.chooser (o : Order) (random : PlayerId) : PlayerId :=
+  match o with
+  | .chance => random
+  | .loserChooses p => p
+  | .same f => f
+
+/-- Who goes first (TR 407): the chooser goes first or second as they choose; after a draw the
+order stays. -/
+def Order.first (o : Order) (random : PlayerId) (goFirst : Bool) : PlayerId :=
+  match o with
+  | .same f => f
+  | _ => if goFirst then o.chooser random else other (o.chooser random)
+
+/-- The turn order of a 1v1 game in which `first` goes first (CR 115). -/
+def turnOrderOf (first : PlayerId) : List PlayerId := [first, other first]
+
+/-- **After a draw the same player goes first** (TR 407.4), whatever the draw picks. -/
+theorem Order.first_same (f random : PlayerId) (b : Bool) : (Order.same f).first random b = f := rfl
+
+/-- **The loser of the last game chooses** (TR 407.4): they go first if they choose to, and the
+other player goes first if they choose to go second. -/
+theorem Order.first_loser (p random : PlayerId) (b : Bool) :
+    (Order.loserChooses p).first random b = if b then p else other p := rfl
+
+/-- In the first game the player the draw picked chooses (TR 407.1, 407.2). -/
+theorem Order.first_chance (random : PlayerId) (b : Bool) :
+    Order.chance.first random b = if b then random else other random := rfl
+
+/-- The other player of a 1v1 game is a player of the game. -/
+theorem other_lt {p : PlayerId} (h : p.n < 2) : (other p).n < 2 := by
+  unfold other
+  simp only
+  omega
+
+/-- The player who goes first is a player of the match when the draw picks one and the order is
+about players of the match. -/
+theorem Order.first_lt {o : Order} {random : PlayerId} {b : Bool} (hr : random.n < 2)
+    (ho : ∀ p, o = .loserChooses p → p.n < 2) (hs : ∀ f, o = .same f → f.n < 2) :
+    (o.first random b).n < 2 := by
+  cases o with
+  | chance =>
+    unfold Order.first Order.chooser
+    cases b
+    · exact other_lt hr
+    · exact hr
+  | loserChooses p =>
+    have hp := ho p rfl
+    unfold Order.first Order.chooser
+    cases b
+    · exact other_lt hp
+    · exact hp
+  | same f => exact hs f rfl
+
+/-- **The turn order names both players** (CR 115): for a player of a 1v1 game, `turnOrderOf` is an
+arrangement of the two. -/
+theorem turnOrderOf_perm {first : PlayerId} (h : first.n < 2) :
+    (turnOrderOf first).Perm [⟨0⟩, ⟨1⟩] := by
+  obtain ⟨n⟩ := first
+  simp only at h
+  have : n = 0 ∨ n = 1 := by omega
+  rcases this with rfl | rfl
+  · exact List.Perm.refl _
+  · exact List.Perm.swap _ _ _
+
 /-- The result of the match when the time is up (TR 404.4, 404.5, 408.3): the player with more wins
 wins; the same number is a draw. -/
 def onTime (m : MatchState) : MatchResult :=

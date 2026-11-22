@@ -15,7 +15,11 @@ def main (args : List String) : IO UInt32 := do
         | .draw => "draw"
         | .won ws => s!"won by {ws.map (fun (w : PlayerId) => w.n)}"
       let up := if g.timeUp then " (time up)" else ""
-      IO.println s!"game seed {g.seed}: first p{g.first.n}, {g.turns} turns, \
+      let how := match g.how with
+        | .chance => "drawn player chooses"
+        | .loserChooses p => s!"loser p{p.n} chooses"
+        | .same f => s!"same order after a draw (p{f.n})"
+      IO.println s!"game seed {g.seed}: {how}, first p{g.first.n}, {g.turns} turns, \
         points {g.points.1}-{g.points.2}{up}: {res}"
     let win := m.winner.map (fun (w : PlayerId) => w.n)
     IO.println s!"match: wins {m.wins0}-{m.wins1}, games {m.games}, winner {win}, \
