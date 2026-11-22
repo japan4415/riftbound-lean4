@@ -4619,8 +4619,16 @@ def OGN_177.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Stealthy Pursuer: the effect is not written yet. -/
-def OGN_177 : CardDef := OGN_177.meta
+/-- Stealthy Pursuer. -/
+def OGN_177 : CardDef :=
+  { OGN_177.meta with
+    abilities := [.triggered
+      { event := .move,
+        subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .movedFromHere] }
+      (.of [] (.may (.ifThen (.exists (.locationOf (.slot 0)))
+        (.prim (.move .self (.at_ (.locationOf (.slot 0)))))
+        (.prim (.move .self .base))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-178
 /--

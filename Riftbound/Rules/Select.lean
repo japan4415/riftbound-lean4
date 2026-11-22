@@ -267,7 +267,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | none => false)
   | .movedFromHere =>
     some (match s.obj? id with
-      | some o => o.movesTurn == some s.turn && o.prevLoc == some self
+      | some o =>
+        -- from the Battlefield, or from where the Unit is (its Battlefield, or its Base)
+        o.movesTurn == some s.turn &&
+          (match s.obj? self with
+            | some me => o.prevLoc == (if (s.cardDef? self).any (·.hasType .battlefield) then some self else me.loc)
+            | none => false)
       | none => false)
   | .controlledByOpponent =>
     some (match s.obj? id, s.obj? self with
@@ -497,6 +502,9 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     | some o => some (if o ∈ s.inPlay then [o] else [])
     | none => none
   | .pick .all side place fs => s.candidates p self env side place fs
+  | .locationOf sel =>
+    (sel.eval s p self env).map (fun ids =>
+      ids.filterMap (fun u => (s.obj? u).bind (·.loc)))
   | _ => none
 
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the

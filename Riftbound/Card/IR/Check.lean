@@ -93,6 +93,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .pick _ _ _ fs => FilterList.ok c fs
   | .attachedTo s => Selector.ok c s
   | .attachments s => Selector.ok c s
+  | .locationOf s => Selector.ok c s
 
 /-- A condition refers only to what is there. -/
 def Condition.ok (c : Ctx) : Condition → Bool

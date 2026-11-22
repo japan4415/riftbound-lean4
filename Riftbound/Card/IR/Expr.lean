@@ -158,6 +158,8 @@ inductive Selector where
   | attachedTo (s : Selector)
   /-- The objects attached to another one. -/
   | attachments (s : Selector)
+  /-- The Battlefields the objects are at (a Unit in a Base is at none). -/
+  | locationOf (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
 /-- A question about the game. -/
