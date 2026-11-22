@@ -19,9 +19,10 @@ namespace RiftboundDriver
 
 open Riftbound
 
-/-- A JSON string. Names in the databases are plain text; quotes and backslashes are escaped. -/
+/-- A JSON string. Quotes, backslashes and line breaks are escaped. -/
 def jstr (s : String) : String :=
-  "\"" ++ (s.replace "\\" "\\\\").replace "\"" "\\\"" ++ "\""
+  let s1 := ((s.replace "\\" "\\\\").replace "\"" "\\\"").replace "\n" "\\n"
+  "\"" ++ (s1.replace "\r" "\\r").replace "\t" "\\t" ++ "\""
 
 /-- A JSON array of already written items. -/
 def jarr (l : List String) : String := "[" ++ ",".intercalate l ++ "]"
@@ -202,12 +203,45 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     ("action", match a with | some a => actionJson a | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)], seen')
 
-/-- A card of the database as JSON. -/
+/-- A cost as JSON: the Energy, and the Power symbols (a domain, `any`, or `own` for the domain of
+the card). -/
+def costJson (k : Cost) : String :=
+  jobj [("energy", toString k.energy),
+    ("power", jarr (k.power.map (fun s => match s with
+      | .domain d => jstr (ctorName d) | .any => jstr "any" | .own => jstr "own")))]
+
+/-- The parameter of a keyword as JSON. -/
+def kwArgJson : KeywordArg → String
+  | .none => "null"
+  | .amount n => toString n
+  | .cost k => costJson k
+  | .object s => jstr s
+
+/-- The Lean definition of what a card does, as text: abilities, effect of a Spell, grants. -/
+def irText (c : CardDef) : String :=
+  let part (name : String) (f : Std.Format) : String := name ++ ":\n" ++ f.pretty 90
+  let l : List String :=
+    (if c.abilities.isEmpty then [] else [part "abilities" (repr c.abilities)]) ++
+    (match c.spellEffect with | some e => [part "spellEffect" (repr e)] | none => []) ++
+    (if c.grants.isEmpty then [] else [part "grants" (repr c.grants)]) ++
+    (match c.additionalCost with | some k => [part "additionalCost" (repr k)] | none => [])
+  ("\n".intercalate l).replace "Riftbound." ""
+
+/-- A card of the database as JSON: what the printed card shows, and the Lean definition of what it
+does (for the details the viewer shows on a right click). -/
 def cardJson (c : CardDef) : String :=
   jobj [("name", jstr c.name), ("types", jarr (c.types.map (fun t => jstr (ctorName t)))),
     ("domains", jarr (c.domains.map (fun d => jstr (ctorName d)))),
     ("cost", match c.cost with | some k => toString k.energy | none => "null"),
-    ("might", match c.might with | some m => toString m | none => "null")]
+    ("might", match c.might with | some m => toString m | none => "null"),
+    ("subtitle", match c.subtitle with | some s => jstr s | none => "null"),
+    ("supertypes", jarr (c.supertypes.map (fun t => jstr (ctorName t)))),
+    ("tags", jarr (c.tags.map (fun t => jstr t.name))),
+    ("costFull", match c.cost with | some k => costJson k | none => "null"),
+    ("keywords", jarr (c.keywords.map (fun k =>
+      jobj [("k", jstr (ctorName k.keyword)), ("arg", kwArgJson k.arg)]))),
+    ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
+    ("ir", jstr (irText c))]
 
 /-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise
 send a Unit to a Battlefield, exhaust the Runes that are ready, recycle one Rune on even turns

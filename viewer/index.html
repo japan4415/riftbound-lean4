@@ -116,6 +116,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .empty { padding: 28px; text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 8px; }
 [hidden] { display: none !important; }
 .note { color: var(--muted); font-size: .74rem; }
+#cardinfo { position: fixed; z-index: 60; width: 330px; max-height: min(82dvh, 580px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .4); font-size: .8rem; }
+#cardinfo h2 { margin: 0; font-size: 1rem; }
+#cardinfo .sub { color: var(--muted); margin-bottom: 4px; }
+#cardinfo dl { display: grid; grid-template-columns: 5.2em 1fr; gap: 2px 8px; margin: 6px 0; }
+#cardinfo dt { color: var(--muted); } #cardinfo dd { margin: 0; }
+#cardinfo pre { margin: 6px 0 0; padding: 6px; background: var(--bg); border-radius: 6px; font: .68rem/1.35 var(--mono);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+#cardinfo .x { float: right; padding: 0 7px; }
+.card { cursor: context-menu; }
 .note.foot { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; display: grid; gap: 3px;
   max-height: 40dvh; overflow: auto; }
@@ -181,6 +192,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     計算した結果の再生です。ただし、この描画のコードは Lean の証明の対象外です。</p>
 </div>
 <div id="fly"></div>
+<div id="cardinfo" hidden role="dialog" aria-label="カードの詳細"></div>
 <script>
 const EMBEDDED = /*__TRACE__*/null;
 const $ = (id) => document.getElementById(id);
@@ -528,6 +540,59 @@ document.addEventListener('keydown', (e) => {
 $('file').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (f) load(JSON.parse(await f.text()));
 });
+// ---- カードの右クリックで詳細 ----
+const ZONE_JA = { hand: '手札', base: 'Base', trash: 'Trash', mainDeck: 'Main Deck', runeDeck: 'Rune Deck', legendZone: 'Legend',
+  championZone: 'Champion', banishment: 'Banish', setAside: '脇に置いた札', outOfGame: 'ゲーム外' };
+const DOMAIN_JA = { fury: 'Fury', calm: 'Calm', mind: 'Mind', body: 'Body', chaos: 'Chaos', order: 'Order', any: '任意', own: '自分のドメイン' };
+function costText(c) {
+  if (!c) return '—';
+  const parts = []; if (c.energy || !c.power.length) parts.push('Energy ' + c.energy);
+  for (const s of c.power) parts.push('Power(' + (DOMAIN_JA[s] || s) + ')');
+  return parts.join(' + ');
+}
+function hideCardInfo() { $('cardinfo').hidden = true; }
+function showCardInfo(id, x, y) {
+  const o = objs[id], def = o && cards[o.card]; if (!def) return;
+  const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
+  box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
+  const sub = [def.subtitle, [...(def.supertypes || []), ...def.types].join(' · '), def.domains.map((d) => DOMAIN_JA[d] || d).join(' / ')].filter(Boolean).join(' ・ ');
+  box.append(el('div', 'sub', sub));
+  const dl = el('dl'); const row = (k, v) => { if (v === null || v === undefined || v === '') return; dl.append(el('dt', '', k), el('dd', '', v)); };
+  if (def.costFull) row('コスト', costText(def.costFull));
+  if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
+  if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
+  if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
+  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map((k) => k.k + (k.arg === null ? '' : typeof k.arg === 'object' ? ' [' + costText(k.arg) + ']' : ' ' + k.arg)).join('、'));
+  const zone = Object.keys(st.zones).find((z) => st.zones[z].includes(nid));
+  if (zone) { const [who, k] = zone.includes('.') ? zone.split('.') : [null, zone]; row('場所', (who ? 'P' + who.slice(1) + ' の ' : '') + (ZONE_JA[k] || (k === 'battlefield' ? 'Battlefield の Unit' : k === 'chain' ? 'Chain' : k))); }
+  row('持ち主', 'P' + o.owner);
+  const flags = [];
+  if (st.exhausted.includes(nid)) flags.push('Exhausted');
+  const dm = st.damaged.find((d) => d[0] === nid); if (dm) flags.push('ダメージ ' + dm[1]);
+  if (st.stunned.includes(nid)) flags.push('Stun');
+  if (flags.length) row('状態', flags.join('、'));
+  const at = st.attached.find((a) => a[0] === nid); if (at) row('Attach 先', cardName(at[1]));
+  const eq = st.attached.filter((a) => a[1] === nid).map((a) => cardName(a[0])); if (eq.length) row('Attach 中', eq.join('、'));
+  const loc = st.at.find((a) => a[0] === nid); if (loc) row('いる所', cardName(loc[1]));
+  box.append(dl);
+  if (def.ir) { const d = el('details'); d.append(el('summary', '', 'Lean の定義（能力・効果）'), el('pre', '', def.ir)); d.open = true; box.append(d); }
+  else box.append(el('div', 'note', '能力・効果の定義はありません（キーワードと数値だけのカード）。'));
+  box.hidden = false;
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(x + 10, innerWidth - w - 8)) + 'px';
+  box.style.top = Math.max(8, Math.min(y + 10, innerHeight - h - 8)) + 'px';
+}
+document.addEventListener('contextmenu', (e) => {
+  const c = e.target.closest && e.target.closest('.card');
+  if (!c || !steps || !c.dataset.id || e.target.closest('#cardinfo')) return;
+  e.preventDefault(); showCardInfo(c.dataset.id, e.clientX, e.clientY);
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('#cardinfo')) hideCardInfo(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCardInfo(); });
+$('board').addEventListener('scroll', hideCardInfo);
+
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
