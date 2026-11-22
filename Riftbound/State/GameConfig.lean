@@ -32,6 +32,12 @@ def RuleSet.isLimited : RuleSet → Bool
   | .coreOnly => false
   | .tournament f => f.isLimited
 
+/-- The smallest Main Deck of the Limited format in use (TR 602.4): `none` when no Limited format
+is in use. -/
+def RuleSet.limitedMinMain : RuleSet → Option Nat
+  | .coreOnly => none
+  | .tournament f => f.limitedMinMain
+
 /-- The rules of a game. -/
 structure GameConfig where
   /-- Core Rules only, or a tournament format. -/

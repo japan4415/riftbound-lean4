@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Deck
+public import Riftbound.Tournament.DeckLegality
 
 /-!
 # Setting up a game
@@ -52,6 +53,25 @@ def GameState.addDecks (db : CardDB) : GameState → Nat → List Deck → Optio
   | s, i, d :: ds => do
     let s ← s.addDeck db ⟨i⟩ d
     s.addDecks db (i + 1) ds
+
+/-- Add the cards of one player's Limited deck: the Legend and the Chosen Champion only if the deck
+has them (TR 602.4.a.5). -/
+def GameState.addLimitedDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : LimitedDeck) :
+    Option GameState := do
+  let s ← addCards db p (.player p .legendZone) s d.legend.toList
+  let s ← addCards db p (.player p .championZone) s d.chosenChampion.toList
+  let s ← addCards db p (.player p .mainDeck) s
+    (match d.chosenChampion with | some c => d.main.erase c | none => d.main)
+  let s ← addCards db p (.player p .runeDeck) s d.runes
+  addCards db p (.player p .outOfGame) s d.battlefields
+
+/-- Add the Limited decks of the players, seat 0 first. -/
+def GameState.addLimitedDecks (db : CardDB) :
+    GameState → Nat → List LimitedDeck → Option GameState
+  | s, _, [] => some s
+  | s, i, d :: ds => do
+    let s ← s.addLimitedDeck db ⟨i⟩ d
+    s.addLimitedDecks db (i + 1) ds
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order (CR 113-115).
 The first frame is the first to be answered. Answering the turn order puts the opening hands and
@@ -113,6 +133,58 @@ theorem GameState.addDecks_wf {db : CardDB} :
       have h' : s1.addDecks db (i + 1) ds = some s' := by simpa [GameState.addDecks, hr] using h
       exact GameState.addDecks_wf ds (GameState.addDeck_wf hwf hr) h'
 
+/-- Adding a Limited deck keeps the game well formed. -/
+theorem GameState.addLimitedDeck_wf {db : CardDB} {s s' : GameState} {p : PlayerId}
+    {d : LimitedDeck} (hwf : s.WF)
+    (h : s.addLimitedDeck db p d = some s') : s'.WF := by
+  unfold GameState.addLimitedDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _
+    (addCards_wf _ _ _ hwf h1) h2) h3) h4) h5
+
+/-- Adding the Limited decks keeps the game well formed. -/
+theorem GameState.addLimitedDecks_wf {db : CardDB} :
+    ∀ (ds : List LimitedDeck) {s s' : GameState} {i : Nat}, s.WF →
+      s.addLimitedDecks db i ds = some s' → s'.WF
+  | [], s, s', i, hwf, h => by
+    rw [show s.addLimitedDecks db i [] = some s from rfl] at h
+    cases h
+    exact hwf
+  | d :: ds, s, s', i, hwf, h => by
+    cases hr : s.addLimitedDeck db ⟨i⟩ d with
+    | none => simp [GameState.addLimitedDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addLimitedDecks db (i + 1) ds = some s' := by
+        simpa [GameState.addLimitedDecks, hr] using h
+      exact GameState.addLimitedDecks_wf ds (GameState.addLimitedDeck_wf hwf hr) h'
+
+/-- A game can be set up from these Limited decks: one deck for each player, a configuration that
+can be played, a Limited format, every deck legal in it (TR 602.4), and at least one Battlefield in
+each deck, for the random pick (CR 487.5). -/
+def LimitedStartOk (db : CardDB) (env : LegalityEnv) (config : GameConfig)
+    (decks : List LimitedDeck) : Prop :=
+  decks.length = config.mode.players ∧ config.Valid ∧
+    match config.ruleSet.limitedMinMain with
+    | some m => ∀ d ∈ decks, LimitedDeckValid db env m d ∧ 1 ≤ d.battlefields.length
+    | none => False
+
+instance (db : CardDB) (env : LegalityEnv) (config : GameConfig) (decks : List LimitedDeck) :
+    Decidable (LimitedStartOk db env config decks) := by
+  unfold LimitedStartOk
+  split <;> infer_instance
+
+/-- The state a game of a Limited format starts from. `none` if a game cannot be set up from these
+decks (`LimitedStartOk`), or if a card cannot be placed. A deck without a Legend or without a Chosen
+Champion has an empty zone for it (TR 602.4.a.5); the extra draw of the first Beginning Phase reads
+that. -/
+def GameState.initialLimited (db : CardDB) (env : LegalityEnv) (config : GameConfig)
+    (decks : List LimitedDeck) : Option GameState :=
+  if LimitedStartOk db env config decks then
+    ((GameState.empty config db).addLimitedDecks db 0 decks).map
+      (fun s => { s with pending := startFrames config.mode.players })
+  else none
+
 /-- A game that has been set up is well formed. -/
 theorem GameState.initial_wf {db : CardDB} {config : GameConfig} {decks : List Deck}
     {s : GameState} (h : GameState.initial db config decks = some s) : s.WF := by
@@ -170,6 +242,39 @@ theorem GameState.addDecks_ownerOk {db : CardDB} :
       exact GameState.addDecks_ownerOk ds (GameState.addDeck_wf hwf hr)
         (GameState.addDeck_ownerOk hwf hown hr) h'
 
+/-- Adding a Limited deck keeps `OwnerOk`. -/
+theorem GameState.addLimitedDeck_ownerOk {db : CardDB} {s s' : GameState} {p : PlayerId}
+    {d : LimitedDeck}
+    (hwf : s.WF)
+    (hown : s.OwnerOk) (h : s.addLimitedDeck db p d = some s') : s'.OwnerOk := by
+  unfold GameState.addLimitedDeck at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have w1 := addCards_wf _ _ _ hwf h1
+  have w2 := addCards_wf _ _ _ w1 h2
+  have w3 := addCards_wf _ _ _ w2 h3
+  have w4 := addCards_wf _ _ _ w3 h4
+  exact addCards_ownerOk _ _ _ w4
+    (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
+      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ hwf hown h1) h2) h3) h4) h5
+
+/-- Adding the Limited decks keeps `OwnerOk`. -/
+theorem GameState.addLimitedDecks_ownerOk {db : CardDB} :
+    ∀ (ds : List LimitedDeck) {s s' : GameState} {i : Nat}, s.WF → s.OwnerOk →
+      s.addLimitedDecks db i ds = some s' → s'.OwnerOk
+  | [], s, s', i, _, hown, h => by
+    rw [show s.addLimitedDecks db i [] = some s from rfl] at h
+    cases h
+    exact hown
+  | d :: ds, s, s', i, hwf, hown, h => by
+    cases hr : s.addLimitedDeck db ⟨i⟩ d with
+    | none => simp [GameState.addLimitedDecks, hr] at h
+    | some s1 =>
+      have h' : s1.addLimitedDecks db (i + 1) ds = some s' := by
+        simpa [GameState.addLimitedDecks, hr] using h
+      exact GameState.addLimitedDecks_ownerOk ds (GameState.addLimitedDeck_wf hwf hr)
+        (GameState.addLimitedDeck_ownerOk hwf hown hr) h'
+
 /-- A game with no objects satisfies `OwnerOk`. -/
 theorem GameState.ownerOk_empty (config : GameConfig) (cards : CardDB) :
     (GameState.empty config cards).OwnerOk := by
@@ -187,6 +292,30 @@ theorem GameState.initial_ownerOk {db : CardDB} {config : GameConfig} {decks : L
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨s1, h1, rfl⟩ := h
     exact (GameState.addDecks_ownerOk decks (GameState.wf_empty config db)
+      (GameState.ownerOk_empty config db) h1).congr rfl rfl
+  · exact absurd h (by simp)
+
+/-- A Limited game that has been set up is well formed. -/
+theorem GameState.initialLimited_wf {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) : s.WF := by
+  unfold GameState.initialLimited at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    exact GameState.WF.congr
+      (GameState.addLimitedDecks_wf decks (GameState.wf_empty config db) h1) rfl rfl rfl rfl
+  · exact absurd h (by simp)
+
+/-- A Limited game that has been set up satisfies `OwnerOk`. -/
+theorem GameState.initialLimited_ownerOk {db : CardDB} {env : LegalityEnv} {config : GameConfig}
+    {decks : List LimitedDeck} {s : GameState}
+    (h : GameState.initialLimited db env config decks = some s) : s.OwnerOk := by
+  unfold GameState.initialLimited at h
+  split at h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨s1, h1, rfl⟩ := h
+    exact (GameState.addLimitedDecks_ownerOk decks (GameState.wf_empty config db)
       (GameState.ownerOk_empty config db) h1).congr rfl rfl
   · exact absurd h (by simp)
 
