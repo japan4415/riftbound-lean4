@@ -53,7 +53,7 @@ class Lean:
 
 
 def make_handler(lean: Lean, port: int):
-    page = (ROOT / "viewer" / "index.html").read_bytes()
+    page_path = ROOT / "viewer" / "index.html"
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     class Handler(BaseHTTPRequestHandler):
@@ -83,7 +83,7 @@ def make_handler(lean: Lean, port: int):
                 return self._json(403, {"error": "forbidden"})
             path = urlparse(self.path).path
             if path in ("/", "/index.html"):
-                return self._send(200, page, "text/html; charset=utf-8")
+                return self._send(200, page_path.read_bytes(), "text/html; charset=utf-8")
             if path == "/api/ping":
                 return self._json(200, {"live": True})
             self._json(404, {"error": "not found"})
