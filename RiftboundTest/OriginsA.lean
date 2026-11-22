@@ -3687,4 +3687,31 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     lone == [.assignPick only] && hit.tired cait == some true &&
     (away.map (·.tired home)) != some (some true)
 
+-- Tryndamere, Barbarian (OGN-034): when he conquers, if I assigned 5 or more excess damage to
+-- enemy units, I score 1 point (the damage beyond what is lethal, counted for the enemy units of
+-- the Combat only; the note of the last Combat of the turn stands)
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-294"
+  let (s2, _) ← putAt s1 s.me "OGN-034" bf
+  let (s3, foe) ← putAt s2 s.you "OGN-088" s.bf0
+  let (s4, mine) ← put s3 s.me "OGN-136" .base
+  let need := s4.need foe
+  let ex := excessOf s4 s.me [(foe, need + 5), (mine, 99)]
+  let few := excessOf s4 s.me [(foe, need + 4)]
+  let under := excessOf s4 s.me [(foe, need - 1)]
+  let hit ← fire (noteExcess s4 s.me 5) [.scored s.me bf true]
+  let miss ← fire (noteExcess s4 s.me 4) [.scored s.me bf true]
+  let old ← fire (noteExcess (noteExcess s4 s.me 5) s.me 1) [.scored s.me bf true]
+  let theirs ← fire (noteExcess s4 s.you 5) [.scored s.me bf true]
+  let hold ← fire (noteExcess s4 s.me 5) [.scored s.me bf false]
+  -- a damaged enemy needs less (more is excess); with two enemies only the last has an excess
+  let (s5, foe2) ← putAt s4 s.you "OGN-136" s.bf0
+  let hurt := s5.modObj foe (fun o => { o with damage := 3 })
+  let damaged := excessOf hurt s.me [(foe, need - 3 + 2)]
+  let two := excessOf s5 s.me [(foe2, s5.need foe2), (foe, need + 1)]
+  let pts (x : GameState) := x.pointsOf s.me
+  return ex == 5 && few == 4 && under == 0 && damaged == 2 && two == 1 &&
+    pts hit == pts s4 + 1 && pts miss == pts s4 &&
+    pts old == pts s4 && pts theirs == pts s4 && pts hold == pts s4
+
 end RiftboundTest

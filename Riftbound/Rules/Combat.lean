@@ -438,6 +438,23 @@ theorem startCombat_mem (s : GameState) (bf : ObjId) (att : PlayerId) :
       · exact Or.inr (Or.inl rfl)
       · exact Or.inr (Or.inr rfl)
 
+/-- The damage assigned to Units of other players than `att` beyond what is lethal to them (the
+last Unit of an order gets what is left). -/
+def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
+  (done.filter (fun e => (s.obj? e.1).any (fun o => o.controller != att))).foldl
+    (fun acc e => acc + (e.2 - s.need e.1)) 0
+
+/-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
+def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun f =>
+      !(f.who == att && (match f.kind with | .excessDamage _ => true | _ => false))) ++
+    [{ who := att, turn := s.turn, stamp := s.nextTimestamp, kind := .excessDamage k }] }
+
+/-- Noting the excess damage is a safe change. -/
+theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (noteExcess s att k) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- The answer `assignDone`: the damage of this side is assigned down the order, and the next side
 asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -/
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
@@ -447,7 +464,9 @@ def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : Lis
   | some f => ({ s with pending := f :: rest }, [])
   | none =>
     let r := dealAll s done'
-    ({ r.1 with pending := .cleanup :: .combatResolve bf att :: rest }, r.2)
+    -- the excess damage the attacker assigned is noted (the last Combat of the turn counts)
+    let r2 := noteExcess r.1 att (excessOf s att done')
+    ({ r2 with pending := .cleanup :: .combatResolve bf att :: rest }, r.2)
 
 /-- What `assignDoneStep` does, in the cases the invariants look at. -/
 theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
@@ -470,7 +489,7 @@ theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) 
       · simp at hf
     · simp at hf
   · right
-    exact ⟨_, dealAll_safe _ s, rfl⟩
+    exact ⟨_, (dealAll_safe _ s).trans (noteExcess_safe _ _ _), rfl⟩
 
 /-- The end of the Showdown at `bf`: a Combat if the Units of two players are there, otherwise the
 Control of the Battlefield goes to the player whose Units are alone there (CR 348). -/

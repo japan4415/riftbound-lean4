@@ -201,6 +201,8 @@ inductive Condition where
   | marked (e : TurnEffect)
   /-- The object came into play from Hidden. -/
   | fromHidden
+  /-- The player assigned at least `n` excess damage to enemy Units in the last Combat this turn. -/
+  | excessAtLeast (n : Nat)
   /-- The object an ability watches (its first slot) was noted with the effect for its player when
   it died, this turn. -/
   | diedWith (e : TurnEffect)
