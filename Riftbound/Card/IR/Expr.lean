@@ -52,6 +52,8 @@ inductive Amount where
   | cardsPlayed
   /-- How many Standard Moves the object made this turn. -/
   | movesThisTurn
+  /-- How many notes of the effect the object has this turn (for the player who made them). -/
+  | notes (e : TurnEffect)
   /-- The Energy that was paid to play the object (0 if it was played for nothing). -/
   | energyPaid
   /-- The number of cards in a player's hand. -/

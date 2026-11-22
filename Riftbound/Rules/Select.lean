@@ -561,6 +561,9 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
+  | .notes e =>
+    some (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == e &&
+      f.target == some self)).length
   | .movesThisTurn =>
     some (match s.obj? self with
       | some o => if o.movesTurn == some s.turn then o.moves else 0

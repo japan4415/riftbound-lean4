@@ -114,6 +114,8 @@ inductive TurnEffect where
   | opponentsCantPlay
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
+  /-- The object has been paid one unit for ("pay any amount"): one note for each unit paid. -/
+  | unitPaid
   /-- The player assigned `n` excess damage (damage beyond what is lethal) to enemy Units in the
   Combat Damage of this turn's last Combat. -/
   | excessDamage (n : Nat)

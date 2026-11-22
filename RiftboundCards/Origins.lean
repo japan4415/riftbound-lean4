@@ -7159,8 +7159,23 @@ def OGN_268.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Bullet Time, Miss Fortune: the effect is not written yet. -/
-def OGN_268 : CardDef := OGN_268.meta
+/-- One unit of "pay any amount of Power": it may be paid for (one Power of any domain), and then
+it is noted on the spell. -/
+def bulletTimePay : Effect :=
+  .ifThen (.canPay ⟨0, [.any]⟩)
+    (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩), .prim (.markOn .self .unitPaid)])) .nop
+
+/-- Bullet Time, Miss Fortune. Any amount is paid one unit at a time (up to 12); then that much
+damage is dealt to all enemy units at the Battlefield. -/
+def OGN_268 : CardDef :=
+  { OGN_268.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .battlefield]]
+      (.seqOf [bulletTimePay, bulletTimePay, bulletTimePay, bulletTimePay, bulletTimePay,
+        bulletTimePay, bulletTimePay, bulletTimePay, bulletTimePay, bulletTimePay, bulletTimePay,
+        bulletTimePay,
+        .prim (.deal (Selector.all .enemy .atBattlefield [.ofType .unit, .at_ (.slot 0)])
+          (.notes .unitPaid))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-269
 /--

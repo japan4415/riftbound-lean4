@@ -3741,4 +3741,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     dmg toAway away == some 0 && dmg toSelf vol == some 0 &&
     nobody.countIn s.me .base "OGN-041" == 0
 
+-- Bullet Time (OGN-268): pay any amount of Power to deal that much damage to all enemy units at a
+-- battlefield (the Power in the pool is paid, one unit at a time; the units elsewhere and mine are
+-- not hit; paying nothing deals nothing)
+#guard t fun s => do
+  let bf := s.bf0
+  let other := (s.battlefields.filter (· != bf)).head?.getD ⟨0⟩
+  let (s1, c) ← put s s.me "OGN-268" .hand
+  let (s2, a) ← putAt s1 s.you "OGN-088" bf
+  let (s3, b) ← putAt s2 s.you "OGN-088" bf
+  let (s4, away) ← putAt s3 s.you "OGN-088" other
+  let (s5, mine) ← putAt s4 s.me "OGN-088" bf
+  let funded := s5.fund s.me 1 (fury := 3)
+  let three ← cast funded s.me c ⟨1, []⟩ [bf]
+  let zero ← cast funded s.me c ⟨1, []⟩ [bf] { yes := false }
+  let dmg (x : GameState) (u : ObjId) := (x.obj? u).map (·.damage)
+  let left := (three.poolOf s.me).fury
+  return dmg three a == some 3 && dmg three b == some 3 && dmg three away == some 0 &&
+    dmg three mine == some 0 && dmg zero a == some 0 && left == 0 && (zero.poolOf s.me).fury == 3
+
 end RiftboundTest
