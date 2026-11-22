@@ -3420,4 +3420,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return tryHide s plain && !tryHide p1 plain && tryHide t3 tree && !tryHide t2 tree &&
     tryHide t1 tree && tryHide other tree && !tryHide theirs plain
 
+-- King's Edict (OGN-237): each opponent chooses one of their own units, and it is killed; mine stay
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-237" .hand
+  let (s2, _) ← put s1 s.me "OGN-017" .base
+  let (s3, g) ← put s2 s.you "OGN-017" .base
+  let (s4, h) ← put s3 s.you "OGN-001" .base
+  let a ← play s4 s.me c [] { obj := fun o => o == h }
+  let b ← play (s4.setZone (.player s.you .base) []) s.me c
+  return a.countIn s.you .trash "OGN-001" == 1 && a.countIn s.you .base "OGN-017" == 1 &&
+    (a.obj? g).isSome && a.countIn s.me .base "OGN-017" == 1 &&
+    a.countIn s.me .trash "OGN-017" == 0 &&
+    b.countIn s.me .base "OGN-017" == 1
+
 end RiftboundTest
