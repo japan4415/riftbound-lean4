@@ -3856,14 +3856,24 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s1, m) ← put s s.me "OGN-113" .base
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let (s3, g) ← put s2 s.me "OGN-124" .base
-  let (s4, _) ← put s3 s.you "OGN-136" .base
+  let (s4, foe) ← put s3 s.you "OGN-136" .base
   let unit ← activate s4 s.me m 0 [] ⟨0, []⟩ { obj := fun o => o == u }
   let gear ← activate s4 s.me m 0 [] ⟨0, []⟩ { obj := fun o => o == g }
   let anyOf ← activate s4 s.me m 0 [] ⟨0, []⟩
   let tired := activate (s4.tire m) s.me m 0 [] ⟨0, []⟩
+  -- the opponent's unit is not offered; Malzahar alone kills himself; a unit at a battlefield is
+  -- offered
+  let wanted ← activate s4 s.me m 0 [] ⟨0, []⟩ { obj := fun o => o == foe }
+  let (l1, lone) ← put s s.me "OGN-113" .base
+  let alone ← activate l1 s.me lone 0 [] ⟨0, []⟩
+  let (f1, field) ← putAt s s.me "OGN-136" s.bf0
+  let (f2, m2) ← put f1 s.me "OGN-113" .base
+  let onField ← activate f2 s.me m2 0 [] ⟨0, []⟩ { obj := fun o => o == field }
   return unit.countIn s.me .trash "OGN-136" == 1 && (unit.poolOf s.me).any == 2 &&
     unit.tired m == some true && gear.countIn s.me .trash "OGN-124" == 1 &&
     (gear.poolOf s.me).any == 2 && (anyOf.poolOf s.me).any == 2 &&
-    unit.countIn s.you .base "OGN-136" == 1 && tired.isNone
+    unit.countIn s.you .base "OGN-136" == 1 && tired.isNone &&
+    wanted.countIn s.you .base "OGN-136" == 1 && alone.countIn s.me .trash "OGN-113" == 1 &&
+    (alone.poolOf s.me).any == 2 && onField.countIn s.me .trash "OGN-136" == 1
 
 end RiftboundTest
