@@ -821,6 +821,26 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact sendHome_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
+at the same place, or if a Battlefield that a Unit would leave for the Base forbids it. -/
+def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
+  let lx := (s.obj? x).bind (·.loc)
+  let ly := (s.obj? y).bind (·.loc)
+  let forbids (l : Option ObjId) : Bool := l.any (fun bf => (s.activeMods bf).contains .noMoveToBase)
+  if lx == ly || (lx.isNone && forbids ly) || (ly.isNone && forbids lx) then (s, [])
+  else
+    let r1 := sendToLoc ly s x
+    let r2 := sendToLoc lx r1.1 y
+    (r2.1, r1.2 ++ r2.2)
+
+/-- Swapping places is a safe change. -/
+theorem swapPlaces_safe (s : GameState) (x y : ObjId) : Safe s (swapPlaces s x y).1 := by
+  unfold swapPlaces
+  dsimp only
+  split
+  · exact Safe.refl s
+  · exact (sendToLoc_safe _ s x).trans (sendToLoc_safe _ _ y)
+
 /-- Play a card without paying, to a Battlefield: it is played, and moved there (CR 447). -/
 def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := playFree p s id
@@ -1000,6 +1020,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       | some bf => onSelected s p src env sel (sendToLoc (some bf))
       | none => none
     | _ => none
+  | .swapPlaces a b =>
+    match a.eval s p src env, b.eval s p src env with
+    | some (x :: _), some (y :: _) => some (swapPlaces s x y)
+    | _, _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
   | .gainXP ps n =>
@@ -1215,6 +1239,23 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact returnChampion_safe p s
+  | swapPlaces a b =>
+    simp only [applyPrim] at h
+    cases ha : a.eval s p src env with
+    | none => simp [ha] at h
+    | some la =>
+      cases lb : b.eval s p src env with
+      | none => simp [ha, lb] at h
+      | some lb' =>
+        cases la with
+        | nil => simp [ha, lb] at h
+        | cons x _ =>
+          cases lb' with
+          | nil => simp [ha, lb] at h
+          | cons y _ =>
+            simp only [ha, lb, Option.some.injEq] at h
+            rw [← h]
+            exact swapPlaces_safe s x y
   | activateConquer sel =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => Safe.refl t) h

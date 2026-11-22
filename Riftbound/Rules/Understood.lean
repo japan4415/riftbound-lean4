@@ -193,6 +193,7 @@ def Prim.understood : Prim → Bool
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
   | .activateConquer s => s.understood
+  | .swapPlaces a b => a.understood && b.understood
   | .returnChampion => true
   | .pay _ => true
   | .addEnergy ps n none => ps.understood && n.understoodC

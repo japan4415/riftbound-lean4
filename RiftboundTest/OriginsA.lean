@@ -3495,9 +3495,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (b1, v) ← put s1 s.me "OGN-136" .base
   let same ← play b1 s.me c [] { yes := true, pick := fun ts => ts.contains v }
   let ts ← same.firstOf s.me .base "OGN-199"
+  -- no friendly unit to choose: nothing happens; a Vilemaw's Lair (OGN-295) stops the swap
+  let (z1, z) ← putAt (s.setZone (.player s.me .base) []) s.me "OGN-199" s.bf0
+  let alone ← fire z1 [.played s.me z] { yes := true }
+  let (v1, lair) ← putBf s s.me "OGN-295"
+  let (v2, held) ← putAt v1 s.me "OGN-136" lair
+  let (v3, home) ← put v2 s.me "OGN-199" .base
+  let stuck ← fire v3 [.played s.me home] { yes := true, pick := fun ts => ts.contains held }
+  -- played to a battlefield (by an effect): its place is that battlefield, so the unit at the base
+  -- comes there, and it goes to the base
+  let (w1, w) ← putAt s s.me "OGN-199" s.bf0
+  let (w2, base) ← put w1 s.me "OGN-136" .base
+  let there ← fire w2 [.played s.me w] { yes := true, pick := fun ts => ts.contains base }
   return (a.obj? t).bind (·.loc) == some s.bf0 && (a.obj? u).bind (·.loc) == none &&
     (a.zone (.player s.me .base)).contains u && (a.obj? foe).bind (·.loc) == some s.bf0 &&
     (no.obj? tn).bind (·.loc) == none && (no.obj? u).bind (·.loc) == some s.bf0 &&
-    (same.obj? ts).bind (·.loc) == none && (same.obj? v).bind (·.loc) == none
+    (same.obj? ts).bind (·.loc) == none && (same.obj? v).bind (·.loc) == none &&
+    (there.obj? base).bind (·.loc) == some s.bf0 && (alone.obj? z).bind (·.loc) == some s.bf0 &&
+    (stuck.obj? held).bind (·.loc) == some lair && (stuck.obj? home).bind (·.loc) == none &&
+    ((there.zone (.player s.me .base)).filter (fun z =>
+      (there.cardDef? z).any (·.id == cid "OGN-199"))).length == 1
 
 end RiftboundTest

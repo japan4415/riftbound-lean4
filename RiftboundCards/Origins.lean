@@ -5240,10 +5240,7 @@ def OGN_199 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
         (.ifThen (.exists (.slot 0))
-          (.may (.seqOf [
-            .ifThen (.exists (.locationOf (.slot 0)))
-              (.prim (.move .self (.at_ (.locationOf (.slot 0))))) .nop,
-            .prim (.move (.slot 0) .base)])) .nop)) .unlimited],
+          (.may (.prim (.swapPlaces .self (.slot 0)))) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-200

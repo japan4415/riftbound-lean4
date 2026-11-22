@@ -118,6 +118,8 @@ inductive Prim where
   /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if it is
   empty. -/
   | returnChampion
+  /-- Two Units swap places: each goes to where the other is (a Battlefield or a Base). -/
+  | swapPlaces (a b : Selector)
   /-- Activate the conquer effects of the units. -/
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/
