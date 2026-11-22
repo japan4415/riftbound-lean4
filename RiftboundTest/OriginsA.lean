@@ -1686,9 +1686,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, _) ← put s1 s.me "OGN-136" .trash
   let trash (x : GameState) := (x.zone (.player s.me .trash)).length
   let a ← activate s2 s.me v 0
-  let b ← activate (s1.setZone (.player s.me .trash) []) s.me v 0
+  -- with an empty Trash the ability cannot be used
   return trash a + 1 == trash s2 && a.mightNow v == (s2.mightNow v).map (· + 1) &&
-    b.mightNow v == s1.mightNow v
+    (activate (s1.setZone (.player s.me .trash) []) s.me v 0).isNone
 
 -- Garbage Grabber (OGN-099): for 1 Energy and exhausting it, recycle 3 from my Trash and draw 1
 #guard t fun s => do
@@ -1699,10 +1699,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let trash (x : GameState) := (x.zone (.player s.me .trash)).length
   let a ← activate s4 s.me g 0 [] ⟨1, []⟩
   let two := s3
-  let b ← activate two s.me g 0 [] ⟨1, []⟩
+  -- with fewer than 3 cards in the Trash the ability cannot be used
   return trash a == trash s4 - 3 && a.handN s.me == s4.handN s.me + 1 && a.tired g == some true &&
-    b.handN s.me == two.handN s.me && trash b == trash two &&
-    (activate a s.me g 0 [] ⟨1, []⟩).isNone
+    (activate two s.me g 0 [] ⟨1, []⟩).isNone && (activate a s.me g 0 [] ⟨1, []⟩).isNone
 
 -- Sett (OGN-164): buffed when played; spend the buff for +4 Might this turn (nothing without one)
 #guard t fun s => do
@@ -1711,11 +1710,10 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let sett ← a.firstOf s.me .base "OGN-164"
   let spent ← activate a s.me sett 2
   let (t1, plain) ← put s s.me "OGN-164" .base
-  let none ← activate t1 s.me plain 2
   return (a.obj? sett).map (·.buffed) == some true &&
     (spent.obj? sett).map (·.buffed) == some false &&
     spent.mightNow sett == (a.mightNow sett).map (· + 4 - 1) &&
-    none.mightNow plain == t1.mightNow plain
+    (activate t1 s.me plain 2).isNone
 
 -- Forge of the Future (OGN-212): a Recruit token when played; kill it to recycle up to 4 cards
 #guard t fun s => do

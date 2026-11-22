@@ -3791,8 +3791,8 @@ def OGN_153 : CardDef :=
   { OGN_153.meta with
     spellEffect := some (.of []
       (.seqOf [.forEach (Selector.all .friendly .anywhere [.ofType .unit])
-          (.may (.ifThen (.matches .it .buffed)
-            (.seqOf [.prim (.spendBuff .it), .prim (.ready .it)]) .nop)),
+          (.ifThen (.matches .it .buffed)
+            (.may (.seqOf [.prim (.spendBuff .it), .prim (.ready .it)])) .nop),
         .forEach (Selector.all .friendly .anywhere [.ofType .unit]) (.prim (.buff .it))])),
     status := .drafted }
 
