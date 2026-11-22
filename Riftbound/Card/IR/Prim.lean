@@ -241,6 +241,8 @@ inductive StaticMod where
   | noDamage
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
   | noMoveToBase
+  /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/
+  | recallAllOnTie
   /-- The Hidden cards of the opponents of the Units at this place cannot be revealed here
   (CR 811). -/
   | noHiddenReveal
