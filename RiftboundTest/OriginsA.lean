@@ -3169,4 +3169,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (deck without s.me).head? == (deck u1 s.me).head? &&
     (deck own s.me).getLast? == (deck t1 s.me).head?
 
+-- Mistfall (OGN-152): when I buff a friendly unit, I may pay Body and exhaust it to ready that unit
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-152" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, foe) ← put s2 s.you "OGN-136" .base
+  let funded := (s3.tire u).fund s.me 0 (body := 1)
+  let (a, ev) := buffObj funded u
+  let yes ← fire a ev { yes := true }
+  let no ← fire a ev { yes := false }
+  let (b, ev2) := buffObj (funded.buff u) u
+  let again ← fire b ev2 { yes := true }
+  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe
+  let theirs ← fire c ev3 { yes := true }
+  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u
+  let broke ← fire d ev4 { yes := true }
+  let (e, ev5) := buffObj ((funded.tire g)) u
+  let spent ← fire e ev5 { yes := true }
+  return yes.tired u == some false && yes.tired g == some true && (yes.poolOf s.me).body == 0 &&
+    no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
+    broke.tired u == some true && spent.tired u == some true
+
 end RiftboundTest

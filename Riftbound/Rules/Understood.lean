@@ -306,6 +306,7 @@ def Trigger.runs (t : Trigger) : Bool :=
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .stun => true | .discard => true | .ready => true
+      | .buff => true
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

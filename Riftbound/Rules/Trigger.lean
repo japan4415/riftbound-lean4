@@ -178,6 +178,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match ph.timing? with
     | some tm => s.timedTriggers p tm
     | none => []
+  | .buffed u =>
+    match s.obj? u with
+    | some o => triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff
+    | none => []
   | .readied u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .ready ++ watchersOf s u o.controller .ready
