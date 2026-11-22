@@ -3103,4 +3103,44 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     loc other == some (some s.bf0) && loc foeMoves == some (some s.bf0) &&
     (fromBase.obj? q).map (·.loc) == some (some s.bf0)
 
+-- How a unit was when it died. Vanguard Helm (OGN-228): when a buffed friendly unit dies, buff
+-- another friendly unit
+#guard t fun s => do
+  let (s1, _) ← put s s.me "OGN-228" .base
+  let (s2, a) ← put s1 s.me "OGN-136" .base
+  let (s3, b) ← put s2 s.me "OGN-136" .base
+  let (s4, foe) ← put s3 s.you "OGN-136" .base
+  let bufA := s4.buff a
+  let (k, ev) := killObj bufA a
+  let (k2, ev2) := killObj s4 a
+  let (k3, ev3) := killObj (s4.buff foe) foe
+  let yes ← fire k ev
+  let plain ← fire k2 ev2
+  let theirs ← fire k3 ev3
+  let (j, evj) := killObj (s2.buff a) a
+  let lone ← fire j evj
+  return (yes.obj? b).map (·.buffed) == some true &&
+    (plain.obj? b).map (·.buffed) == some false &&
+    (theirs.obj? b).map (·.buffed) == some false &&
+    (lone.zone (.player s.me .base)).all (fun u => (lone.obj? u).all (fun o => !o.buffed))
+
+-- Solari Shrine (OGN-072): when I kill a stunned enemy unit, I may exhaust it to draw 1
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-072" .base
+  let (s2, foe) ← put s1 s.you "OGN-136" .base
+  let (s3, mine) ← put s2 s.me "OGN-136" .base
+  let stun (g : GameState) (u : ObjId) := g.modObj u (fun o => { o with stunned := true })
+  let (a, ev) := killObj (stun s3 foe) foe
+  let (b, ev2) := killObj s3 foe
+  let (c, ev3) := killObj (stun s3 mine) mine
+  let (d, ev4) := killObj (stun (s3.tire g) foe) foe
+  let yes ← fire a ev { yes := true }
+  let no ← fire a ev { yes := false }
+  let plain ← fire b ev2
+  let own ← fire c ev3
+  let tired ← fire d ev4
+  return yes.handN s.me == a.handN s.me + 1 && yes.tired g == some true &&
+    no.handN s.me == a.handN s.me && plain.handN s.me == b.handN s.me &&
+    own.handN s.me == c.handN s.me && tired.handN s.me == d.handN s.me
+
 end RiftboundTest

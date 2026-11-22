@@ -99,14 +99,51 @@ theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Do the change if the condition holds. -/
+def noteIf (b : Bool) (f : GameState → GameState) (s : GameState) : GameState :=
+  if b then f s else s
+
+/-- A change that is safe, done if a condition holds, is a safe change. -/
+theorem noteIf_safe (b : Bool) (f : GameState → GameState) (hf : ∀ t, Safe t (f t))
+    (s : GameState) : Safe s (noteIf b f s) := by
+  unfold noteIf
+  split
+  · exact hf s
+  · exact Safe.refl s
+
+/-- The notes of the death of a unit: that it died, and whether it was buffed or stunned as it died
+(the notes are about the dead card, which is the object it has become). -/
+def noteDeath (s : GameState) (o : Object) (isUnit : Bool) (moved : Option ObjId) : GameState :=
+  let s1 := noteIf (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied) s
+  match moved with
+  | some n =>
+    let s2 := noteIf (isUnit && o.buffed)
+      (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) s1
+    noteIf (isUnit && o.stunned) (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) s2
+  | none => s1
+
+/-- Noting a death is a safe change. -/
+theorem noteDeath_safe (s : GameState) (o : Object) (isUnit : Bool) (moved : Option ObjId) :
+    Safe s (noteDeath s o isUnit moved) := by
+  unfold noteDeath
+  have h1 := noteIf_safe (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied)
+    (fun t => addTurnFx_safe t _ _) s
+  cases moved with
+  | none => exact h1
+  | some n =>
+    refine h1.trans ?_
+    exact (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _).trans
+      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)
+
 /-- Kill an object: it goes to its owner's Trash. -/
 def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj .trash s id
   match s.obj? id with
   | some o =>
     -- the death of a unit is noted for the turn (its controller, as it died)
-    ((if !r.2.isEmpty && (s.cardDef? id).any (·.hasType .unit) then
-        r.1.addTurnFx o.controller .unitDied else r.1), r.2 ++ r.2.filterMap (fun e => match e with
+    (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
+        (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none)),
+      r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))
   | none => r
@@ -115,10 +152,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
   unfold killObj
   split
-  · dsimp only
-    split
-    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
-    · exact sendObj_safe .trash s id
+  · exact (sendObj_safe .trash s id).trans (noteDeath_safe _ _ _ _)
   · exact sendObj_safe .trash s id
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
