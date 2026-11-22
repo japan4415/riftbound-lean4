@@ -296,17 +296,22 @@ theorem recycleTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (r
   | [], s => Safe.refl s
   | q :: qs, s => (recycleTopOf_safe q s).trans (recycleTopAll_safe qs _)
 
-/-- Recycle a card: it goes to the bottom of its owner's Main Deck (CR 417). -/
+/-- The deck a card is recycled to: a Rune goes to the Rune Deck, any other card to the Main Deck
+(CR 417). -/
+def recycleKind (s : GameState) (id : ObjId) : ZoneKind :=
+  if (s.cardDef? id).any (·.hasType .rune) then .runeDeck else .mainDeck
+
+/-- Recycle a card: it goes to the bottom of its owner's deck (CR 417). -/
 def recycleOne (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    let z := Zone.player o.owner .mainDeck
-    -- a card of the Main Deck goes to its bottom, in the same zone
+    let z := Zone.player o.owner (recycleKind s id)
+    -- a card of the deck goes to its bottom, in the same zone
     if (s.zone z).contains id ∧ z.Valid s.playerCount then
       (s.reorder z (((s.zone z).erase id) ++ [id]), [])
     else
-    match recycleToMain s o.owner id with
-    | some r => (r.1, [Event.moved id r.2 (.player o.owner .mainDeck)])
+    match moveObj s id z .bottom with
+    | some r => (r.1, [Event.moved id r.2 z])
     | none => (s, [])
   | none => (s, [])
 
@@ -316,18 +321,19 @@ theorem recycleOne_safe (s : GameState) (id : ObjId) : Safe s (recycleOne s id).
   cases ho : s.obj? id with
   | none => simpa [ho] using Safe.refl s
   | some o =>
-    by_cases hc : ((s.zone (Zone.player o.owner .mainDeck)).contains id = true ∧
-        (Zone.player o.owner .mainDeck).Valid s.playerCount)
+    by_cases hc : ((s.zone (Zone.player o.owner (recycleKind s id))).contains id = true ∧
+        (Zone.player o.owner (recycleKind s id)).Valid s.playerCount)
     · simp only [hc, and_self, ite_true]
-      have hmem : id ∈ s.zone (Zone.player o.owner .mainDeck) := List.contains_iff_mem.mp hc.1
-      have hp : (((s.zone (Zone.player o.owner .mainDeck)).erase id) ++ [id]).Perm
-          (s.zone (Zone.player o.owner .mainDeck)) :=
+      have hmem : id ∈ s.zone (Zone.player o.owner (recycleKind s id)) :=
+        List.contains_iff_mem.mp hc.1
+      have hp : (((s.zone (Zone.player o.owner (recycleKind s id))).erase id) ++ [id]).Perm
+          (s.zone (Zone.player o.owner (recycleKind s id))) :=
         (List.perm_append_singleton id _).trans (List.perm_cons_erase hmem).symm
       exact ⟨fun hwf => GameState.wf_reorder hwf hc.2 hp,
         fun _ => GameState.physIds_reorder hc.2 hp,
         fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
     · simp only [hc, ite_false]
-      cases hm : recycleToMain s o.owner id with
+      cases hm : moveObj s id (Zone.player o.owner (recycleKind s id)) .bottom with
       | none => simpa [hm] using Safe.refl s
       | some r => simpa [hm] using Safe.moveObj hm
 
@@ -362,18 +368,43 @@ theorem hideObj_safe (bf : ObjId) (s : GameState) (id : ObjId) : Safe s (hideObj
       · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The object played anew: not at a Battlefield, with the note of the play. -/
+def Object.freshPlay (mk : PlayMark) (o : Object) : Object :=
+  { Object.withPlay [] mk o with loc := none }
+
+/-- What a card played anew has not: damage, a buff, a stun, lasting changes. -/
+def Object.cleared (o : Object) : Object :=
+  { o with damage := 0, buffed := false, stunned := false, mightMods := [], tempKws := [] }
+
+/-- A card enters the Base as a new object, played. -/
+def enterBase (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) : GameState :=
+  let s2 := s.modObj id (fun o => (Object.freshPlay mk o).cleared)
+  if d.hasType .unit && !d.entersReady then (setExhausted true s2 id).1 else s2
+
+/-- Entering the Base is a safe change. -/
+theorem enterBase_safe (d : CardDef) (mk : PlayMark) (s : GameState) (id : ObjId) :
+    Safe s (enterBase d mk s id) := by
+  have h1 : Safe s (s.modObj id (fun o => (Object.freshPlay mk o).cleared)) :=
+    Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  unfold enterBase
+  split
+  · exact h1.trans (setExhausted_safe true _ _)
+  · exact h1
+
 /-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,
 exhausted if it is a Unit that does not enter ready, and the play is noted, so that what waits for a
-card to be played fires. -/
+card to be played fires. A card that is in the Base already is played again where it is. -/
 def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.cardDef? id with
   | some d =>
     match moveObj s id (.player p .base) with
     | some r =>
-      let s1 := r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))
-      ((if d.hasType .unit && !d.entersReady then (setExhausted true s1 r.2).1 else s1),
+      (enterBase d (s.playMark p id ⟨0, []⟩) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
-    | none => (s, [])
+    | none =>
+      if s.locate id = some (.player p .base) then
+        (enterBase d (s.playMark p id ⟨0, []⟩) s id, [Event.played p id])
+      else (s, [])
   | none => (s, [])
 
 /-- Playing a card without paying is a safe change. -/
@@ -382,12 +413,10 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
   split
   · split
     · rename_i d hd r hr
-      have h1 : Safe r.1 (r.1.modObj r.2 (Object.withPlay [] (s.playMark p id ⟨0, []⟩))) :=
-        Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
-      split
-      · exact ((Safe.moveObj hr).trans h1).trans (setExhausted_safe true _ _)
-      · exact (Safe.moveObj hr).trans h1
-    · exact Safe.refl s
+      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _)
+    · split
+      · exact enterBase_safe _ _ _ _
+      · exact Safe.refl s
   · exact Safe.refl s
 
 /-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
@@ -978,6 +1007,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .spendBuff s => some s
   | .bin s => some s
   | .discardCard s => some s
+  | .play s => some s
   | .reveal s => some s
   | .move s d =>
     match s, d with
@@ -1002,6 +1032,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
+  | .play _ => .play sel
   | .reveal _ => .reveal sel
   | .move s d =>
     match s, d with

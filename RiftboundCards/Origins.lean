@@ -1181,8 +1181,16 @@ def OGN_048.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Meditation: the effect is not written yet. -/
-def OGN_048 : CardDef := OGN_048.meta
+/-- Meditation. -/
+def OGN_048 : CardDef :=
+  { OGN_048.meta with
+    spellEffect := some (.of []
+      (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .ready]))
+        (.eitherOf (.cons (.seqOf [.prim (.exhaust (Selector.one .friendly .anywhere [.ofType .unit, .ready])),
+            .prim (.draw .you (.const 2))])
+          (.cons (.prim (.draw .you (.const 1))) .nil)))
+        (.prim (.draw .you (.const 1))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-049
 /--
@@ -1765,8 +1773,15 @@ def OGN_071.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Party Favors: the effect is not written yet. -/
-def OGN_071 : CardDef := OGN_071.meta
+/-- Party Favors. -/
+def OGN_071 : CardDef :=
+  { OGN_071.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .opponent (.eitherOf (.cons
+        (.seqOf [.prim (.draw .you (.const 1)), .prim (.draw .opponent (.const 1))])
+        (.cons (.seqOf [.prim (.channel .you (.const 0) (.const 1)),
+            .prim (.channel .opponent (.const 0) (.const 1))]) .nil))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-072
 /--
@@ -2548,8 +2563,12 @@ def OGN_102.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Portal Rescue: the effect is not written yet. -/
-def OGN_102 : CardDef := OGN_102.meta
+/-- Portal Rescue. -/
+def OGN_102 : CardDef :=
+  { OGN_102.meta with
+    spellEffect := some (.of []
+      (.prim (.play (Selector.one .friendly .anywhere [.ofType .unit])))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-103
 /--
@@ -2899,8 +2918,13 @@ def OGN_116.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Thousand-Tailed Watcher: the effect is not written yet. -/
-def OGN_116 : CardDef := OGN_116.meta
+/-- Thousand-Tailed Watcher. -/
+def OGN_116 : CardDef :=
+  { OGN_116.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.grant (Selector.all .enemy .anywhere [.ofType .unit])
+        (.mightMinusMin .it (.const 3) 1) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-117
 /--
@@ -4769,8 +4793,12 @@ def OGN_190.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Kog'Maw, Caustic: the effect is not written yet. -/
-def OGN_190 : CardDef := OGN_190.meta
+/-- Kog'Maw, Caustic. -/
+def OGN_190 : CardDef :=
+  { OGN_190.meta with
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.prim (.deal (Selector.all .any .here [.ofType .unit]) (.const 4)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-191
 /--
@@ -4917,8 +4945,12 @@ def OGN_196.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Soulgorger: the effect is not written yet. -/
-def OGN_196 : CardDef := OGN_196.meta
+/-- Soulgorger. -/
+def OGN_196 : CardDef :=
+  { OGN_196.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash [.ofType .unit]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-197
 /--
@@ -4964,8 +4996,12 @@ def OGN_198.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- The Harrowing: the effect is not written yet. -/
-def OGN_198 : CardDef := OGN_198.meta
+/-- The Harrowing. -/
+def OGN_198 : CardDef :=
+  { OGN_198.meta with
+    spellEffect := some (.of []
+      (.prim (.play (Selector.one .friendly .inTrash [.ofType .unit])))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-199
 /--
@@ -5675,8 +5711,13 @@ def OGN_226.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Spectral Matron: the effect is not written yet. -/
-def OGN_226 : CardDef := OGN_226.meta
+/-- Spectral Matron. -/
+def OGN_226 : CardDef :=
+  { OGN_226.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash
+        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-227
 /--
@@ -7123,8 +7164,12 @@ def OGN_287.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sigil of the Storm: the effect is not written yet. -/
-def OGN_287 : CardDef := OGN_287.meta
+/-- Sigil of the Storm. -/
+def OGN_287 : CardDef :=
+  { OGN_287.meta with
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.prim (.recycle (Selector.one .friendly .anywhere [.ofType .rune])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-288
 /--

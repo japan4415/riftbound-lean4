@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: 墓地から無料でプレイする、ほか 9 枚
+
+- **エンジン**: `play`（選んだカードを、費用を払わずにプレイする）は、墓地・盤面など、どこからでも選べる（`pickSel?` に加えて、選択を聞く）。`Filter.cost`（Energy の費用）と `Filter.powerCost`（Power の個数）が動く。Rune は、Rune Deck の下へリサイクルされる（`recycleKind`）。**墓地へ送られたカードは、送られる前の場所（`loc`）を覚えている**（死んだときの効果の「ここ」が、死んだ場所を指す）。
+- **動くようになったカード**: Meditation（048）、Party Favors（071）、Portal Rescue（102）、Thousand-Tailed Watcher（116）、Kog'Maw（190）、Soulgorger（196）、The Harrowing（198）、Spectral Matron（226）、Sigil of the Storm（287）。
+- **動くカード**: 200 → **209 枚**。
+- **レビューで直したこと**: `playFree` は、盤面にいるユニットを選ぶと、ダメージ・バフ・場所などを消した新しい物体として、基地に入る（すでに基地にいても、その場でプレイし直す）。`Filter.cost` は、費用のないカードを、「当てはまらない」とする。
+- **近似として残したこと（人数）**: Party Favors の「each other player」は、`PlayerSel.opponent`（1 対 1 の相手）で書いてあり、3 人以上は考えない。Soulgorger・The Harrowing・Spectral Matron は、Power を払わない（`runs` には数えている）。
+- **近似として残したこと**: 「Energy の費用を無視して（Power は払う）プレイする」は、Power も払わない。Portal Rescue は、追放せずに、そのまま基地へプレイし直す（追放の出来事は出ない）。Meditation の「追加の費用として、ユニットを疲労させる」は、解決のときに払う（払えないときは、選べない）。
+
 ### M7 の実装の記録（2026-11-22）: 費用の変更（カードの費用を、プレイするときの値にする）
 
 - **エンジン**: カードをプレイする費用（`GameState.effCost`）は、印刷された費用から、**パッシブ能力の `costMinus`・`costMinusMin`（最低値つき）**を引いたものになる。プレイできるか・払う額・追加の費用を払ったかが、これを読む（`playable`・`castable`・`applyPlay`・`applyCast`・`legalPlays` と、`paidExtra`）。引く能力は、場にあるものと、カード自身（手札にいても働く）の、条件が成り立つもの。Legion の条件は、「このターンに、ほかのカードをプレイした」で判断する。選択子の「味方」は、能力を持つ物体の controller から見る。

@@ -68,6 +68,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
 def Filter.ok (c : Ctx) : Filter → Bool
   | .might _ a => Amount.ok c a
   | .cost _ a => Amount.ok c a
+  | .powerCost _ a => Amount.ok c a
   | .at_ s => Selector.ok c s
   | .not f => Filter.ok c f
   | .sameAs s => Selector.ok c s

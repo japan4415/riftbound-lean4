@@ -76,6 +76,8 @@ inductive Filter where
   | might (op : Cmp) (a : Amount)
   /-- Its Energy cost compares to the amount. -/
   | cost (op : Cmp) (a : Amount)
+  /-- Its Power cost (the number of Power it asks for) compares to the amount. -/
+  | powerCost (op : Cmp) (a : Amount)
   /-- Is exhausted. -/
   | exhausted
   /-- Is ready. -/

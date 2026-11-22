@@ -88,6 +88,8 @@ def Filter.understood : Filter → Bool
   | .hasKeyword _ => true
   | .domain _ => true
   | .might _ a => Amount.understood a
+  | .cost _ a => Amount.understood a
+  | .powerCost _ a => Amount.understood a
   | .exhausted => true
   | .ready => true
   | .damaged => true
@@ -162,7 +164,7 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .recycleTop p => p.understood
-  | .play s => s.understood
+  | .play s => s.understoodPickAny
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understood && b.understood
   | .bin s => s.understoodPickAny
