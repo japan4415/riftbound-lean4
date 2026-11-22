@@ -279,6 +279,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinus s a => costSel s && a.understoodK
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .noDamage => true
+  | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | _ => false

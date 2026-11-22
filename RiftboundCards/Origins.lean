@@ -822,8 +822,12 @@ def OGN_032.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ravenborn Tome: the effect is not written yet. -/
-def OGN_032 : CardDef := OGN_032.meta
+/-- Ravenborn Tome. -/
+def OGN_032 : CardDef :=
+  { OGN_032.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [] (.prim (.turnEffect (.nextSpellBonus 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-033
 /--
@@ -7527,8 +7531,11 @@ def OGN_296.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Void Gate: the effect is not written yet. -/
-def OGN_296 : CardDef := OGN_296.meta
+/-- Void Gate. -/
+def OGN_296 : CardDef :=
+  { OGN_296.meta with
+    abilities := [.passive .always [.bonusDamageHere 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-297
 /--
