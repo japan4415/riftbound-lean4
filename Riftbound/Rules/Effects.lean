@@ -969,7 +969,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .score ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
-  | .turnEffect e => some (s.addTurnFx p e, [])
+  | .turnEffect e =>
+    some (s.addTurnFx p e, if e == .hiddenPlayed then [Event.hiddenPlayed p] else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
   | .pay c =>

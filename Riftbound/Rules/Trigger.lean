@@ -178,6 +178,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match ph.timing? with
     | some tm => s.timedTriggers p tm
     | none => []
+  | .hiddenPlayed p =>
+    s.inPlay.flatMap (fun u =>
+      if (s.obj? u).any (·.controller == p) then triggersOf s u p .playHidden else [])
   | .buffed u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff

@@ -185,6 +185,8 @@ inductive TriggerEvent where
   | ready
   /-- The object gets a buff. -/
   | buff
+  /-- The player plays a card from Hidden (CR 811). -/
+  | playHidden
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The unit becomes Mighty. -/

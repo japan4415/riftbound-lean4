@@ -3190,4 +3190,44 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
     broke.tired u == some true && spent.tired u == some true
 
+-- Ember Monk (OGN-167): when I play a card from Hidden (a unit or a spell), it gets +2 Might this
+-- turn; playing from the hand does not
+#guard t fun s => do
+  let (s1, monk) ← put s s.me "OGN-167" .base
+  let (s2, c) ← put s1 s.me "OGN-135" .hand
+  let mine := s2.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  let unitIn ← activate next s.me h 1 [] ⟨0, []⟩
+  let (t1, m2) ← put s s.me "OGN-167" .base
+  let (t2, sp) ← put t1 s.me "OGN-057" .hand
+  let (t3, u) ← put t2 s.me "OGN-136" .base
+  let mine2 := t3.control s.me s.bf0
+  let hide2 ← activate mine2 s.me sp 0 [s.bf0] ⟨0, [.fury]⟩
+  let h2 ← (hide2.zone (.player s.me .hidden)).head?
+  let next2 := { hide2 with turn := hide2.turn + 1 }
+  let spellIn ← activate next2 s.me h2 1 [u] ⟨0, []⟩
+  let (v1, m3) ← put s s.me "OGN-167" .base
+  let (v2, d) ← put v1 s.me "OGN-088" .hand
+  let handIn ← play v2 s.me d
+  -- two Monks each get it; a Hidden card played from the hand does not count
+  let (w1, wa) ← put s s.me "OGN-167" .base
+  let (w2, wb) ← put w1 s.me "OGN-167" .base
+  let (w3, wc) ← put w2 s.me "OGN-135" .hand
+  let wmine := w3.control s.me s.bf0
+  let whide ← activate wmine s.me wc 0 [s.bf0] ⟨0, [.fury]⟩
+  let wh ← (whide.zone (.player s.me .hidden)).head?
+  let wnext := { whide with turn := whide.turn + 1 }
+  let twice ← activate wnext s.me wh 1 [] ⟨0, []⟩
+  let (x1, xm) ← put s s.me "OGN-167" .base
+  let (x2, xc) ← put x1 s.me "OGN-135" .hand
+  let fromHand ← play x2 s.me xc
+  return unitIn.mightNow monk == (next.mightNow monk).map (· + 2) &&
+    spellIn.mightNow m2 == (next2.mightNow m2).map (· + 2) &&
+    handIn.mightNow m3 == v2.mightNow m3 && next.mightNow monk == mine.mightNow monk &&
+    twice.mightNow wa == (wnext.mightNow wa).map (· + 2) &&
+    twice.mightNow wb == (wnext.mightNow wb).map (· + 2) &&
+    fromHand.mightNow xm == x2.mightNow xm
+
 end RiftboundTest
