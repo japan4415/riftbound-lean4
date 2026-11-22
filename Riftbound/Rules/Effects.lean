@@ -510,7 +510,8 @@ def Object.freshPlay (mk : PlayMark) (o : Object) : Object :=
 
 /-- What a card played anew has not: damage, a buff, a stun, lasting changes. -/
 def Object.cleared (o : Object) : Object :=
-  { o with damage := 0, buffed := false, stunned := false, mightMods := [], tempKws := [] }
+  { o with damage := 0, buffed := false, extraBuffs := 0, stunned := false, mightMods := [],
+           tempKws := [] }
 
 /-- A card enters the Base as a new object, played. -/
 def enterBase (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :

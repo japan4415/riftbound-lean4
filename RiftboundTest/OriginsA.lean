@@ -3645,6 +3645,10 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return one.mightNow lee == base.map (· + 1) && two.mightNow lee == base.map (· + 2) &&
     three.mightNow lee == base.map (· + 3) && spent.mightNow lee == base.map (· + 2) &&
     plain.mightNow other == (s2.mightNow other).map (· + 1) &&
-    (one.obj? lee).map (·.buffed) == some true && (activate one s.me lee 1).isNone
+    (one.obj? lee).map (·.buffed) == some true && (activate one s.me lee 1).isNone &&
+    -- the turn bonus for each buff (3 buffs: 3 * 2), the event for each extra buff, a cleared card
+    (three.addTurnFx s.me .buffsExtraMight).mightNow lee == base.map (· + 6) &&
+    (buffObj one lee).2 == [Event.buffed lee] && (buffObj s2 other).2 == [Event.buffed other] &&
+    (three.obj? lee).map (fun o => (Object.cleared o).extraBuffs) == some 0
 
 end RiftboundTest
