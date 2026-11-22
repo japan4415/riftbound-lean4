@@ -16,6 +16,7 @@ public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Battlefield
 public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Temporary
+public import Riftbound.Tournament.Match
 
 /-!
 # Working through the frames
@@ -43,6 +44,35 @@ on their first turn in a 1v1 game (CR 487.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
   if s.playerCount = 2 ∧ s.turn = 2 then 3 else 2
 
+/-- The clock has run out: time was called, and the last of the turns that may be played has
+begun (TR 408.2). -/
+def GameState.clockDue (s : GameState) : Bool :=
+  match s.clock with
+  | some lim => decide (lim ≤ s.turn)
+  | none => false
+
+/-- The turn that follows (CR 301); or, when the clock has run out, the end of the game: the player
+2 points ahead wins, any other score is a draw (TR 408.2). -/
+def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
+  if s.clockDue then
+    { s with result := some (gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)), pending := [] }
+  else
+    { s.mapObjects clearScored with
+        pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
+        active := some s.nextTurnPlayer }
+
+/-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
+theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
+    beginTurnStep s rest =
+        { s.mapObjects clearScored with
+            pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
+            active := some s.nextTurnPlayer } ∨
+      ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
+  unfold beginTurnStep
+  by_cases hc : s.clockDue = true
+  · exact Or.inr ⟨gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩), by simp [hc]⟩
+  · exact Or.inl (by simp [hc])
+
 /-- Advance one work frame by one step, before the triggered abilities that the step set off are
 found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
@@ -51,10 +81,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++
                                 s.turnOrder.map (fun p => Frame.mulligan p 0) ++
                                 [Frame.beginTurn] ++ rest }, [])
-  | .beginTurn :: rest =>
-    let tp := s.nextTurnPlayer
-    some ({ s.mapObjects clearScored with
-              pending := turnFrames tp ++ rest, turn := s.turn + 1, active := some tp }, [])
+  | .beginTurn :: rest => some (beginTurnStep s rest, [])
   | .phase .awaken :: rest =>
     let s1 := s.mapObjects (readyOf (s.active.getD ⟨0⟩))
     some ({ s1 with phase := .awaken, pending := rest }, [])
@@ -170,6 +197,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       (fun s' => ({ s' with pending := .chooseBurnOut p :: rest }, [Event.burnedOut p]))
   | .chooseBurnOut _ :: rest, .burnOutTarget opp =>
     some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
+  | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set
@@ -216,7 +244,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
+    rcases beginTurnStep_cases s _ with e | ⟨r, e⟩
+    · rw [e]; exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
+    · rw [e]; exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
@@ -294,8 +324,11 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (GameState.physIds_mapObjects s (f := clearScored) (fun o => rfl)).symm ▸
-      List.Perm.refl _
+    rcases beginTurnStep_cases s _ with e | ⟨r, e⟩
+    · rw [e]
+      exact (GameState.physIds_mapObjects s (f := clearScored) (fun o => rfl)).symm ▸
+        List.Perm.refl _
+    · rw [e]; exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.physIds_mapObjects s (fun o => readyOf_kind _ o)).symm ▸ List.Perm.refl _

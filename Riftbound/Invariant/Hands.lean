@@ -563,6 +563,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun _ _ => rfl) id
+      (fun f hf hp => ⟨f, hf, hp⟩)
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put
@@ -731,10 +735,15 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
       · simp [Frame.isPlay] at hpf
       · simp [Frame.isPlay] at hpf
       · exact ⟨f, by rw [hp]; exact List.mem_cons_of_mem _ h, hpf⟩
-  · -- a turn begins
+  · -- a turn begins, or the clock ends the game
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    rcases beginTurnStep_cases s rest with e | ⟨r, e⟩
+    rotate_left
+    · rw [e]
+      exact ⟨fun hm => by simp at hm, fun _ hres => by simp at hres, fun f hf _ => by simp at hf⟩
+    rw [e]
     refine hinv.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun q _ => ?_) (fun hmem => ?_)
       (fun f hf hpf => ?_)
     · show stackContrib q (turnFrames s.nextTurnPlayer ++ rest) = stackContrib q s.pending

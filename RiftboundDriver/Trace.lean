@@ -280,12 +280,14 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
 
 /-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
 of the trace come back in reverse order. -/
-def playTrace (turns : Nat) :
+def playTrace (turns : Nat) (cap : Option Nat := none) :
     Nat → Nat → Rng → GameState → Std.HashSet Nat → List String →
       Except RuleError (List String)
   | 0, _, _, _, _, acc => .ok acc
   | n + 1, i, r, s, seen, acc =>
-    match demoAnswer r s with
+    match (if (cap.any (· ≤ s.turn)) && s.clock.isNone && s.active.isSome && s.result.isNone then
+        some (⟨.clock, .timeCalled⟩, r)
+      else demoAnswer r s) with
     | none => .ok acc
     | some (a, r') =>
       match step 100 s a with
@@ -294,15 +296,20 @@ def playTrace (turns : Nat) :
         let (j, seen') := stepJson i (some a) es s' seen
         let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
         if a.kind == .pass && atPriority && turns ≤ s.turn then .ok (j :: acc)
-        else playTrace turns n (i + 1) r' s' seen' (j :: acc)
+        else playTrace turns cap n (i + 1) r' s' seen' (j :: acc)
 
-/-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. -/
-def demoTrace (seed turns : Nat) : Except String String :=
-  match GameState.initial demoDB demoConfig [demoDeck, demoDeck] with
+/-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. With `timed`, the game is
+played under the Tournament Rules, and the clock calls time when `turns` turns have begun: the
+game goes on to its end (TR 408.2). -/
+def demoTrace (seed turns : Nat) (timed : Bool := false) : Except String String :=
+  match GameState.initial demoDB
+      (if timed then { ruleSet := .tournament .constructed, mode := Mode.duel } else demoConfig)
+      [demoDeck, demoDeck] with
   | none => .error "the demo game cannot be set up"
   | some s0 =>
     let (j0, seen) := stepJson 0 none [] s0 {}
-    match playTrace turns 100000 1 (Rng.ofSeed seed) s0 seen [j0] with
+    match playTrace (if timed then 100000 else turns) (if timed then some turns else none)
+        100000 1 (Rng.ofSeed seed) s0 seen [j0] with
     | .error e => .error s!"the engine refused an answer: {repr e}"
     | .ok acc =>
       .ok (jobj [("seed", toString seed), ("players", toString s0.playerCount),
