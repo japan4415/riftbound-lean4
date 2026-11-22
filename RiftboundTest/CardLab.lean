@@ -74,6 +74,18 @@ structure Says where
   yes : Bool := true
   /-- The object chosen while an effect resolves. -/
   obj : ObjId → Bool := fun _ => true
+  /-- For a choice among several effects ("choose one"): the number of the one to choose, counted
+  from the end of the list (0 = the last); without it, `yes` answers every question. -/
+  fromEnd : Option Nat := none
+
+/-- How many effects an "either" has left. -/
+meta def effectsLeft : Effect → Nat
+  | .eitherOf l => listLen l
+  | _ => 1
+where
+  listLen : EffectList → Nat
+    | .nil => 0
+    | .cons _ r => listLen r + 1
 
 /-- Let the Chain resolve: the players pass while the Chain is being answered, and answer the
 questions as `says` tells. -/
@@ -87,7 +99,10 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
     match s.pending with
     | .chainPass q _ :: _ => go ⟨.player q, .pass⟩
     | .mayDo q .. :: _ => go ⟨.player q, .decide says.yes⟩
-    | .eitherDo q .. :: _ => go ⟨.player q, .decide says.yes⟩
+    | .eitherDo q _ _ _ b _ :: _ =>
+      go ⟨.player q, .decide (match says.fromEnd with
+        | some k => decide (effectsLeft b = k)
+        | none => says.yes)⟩
     | .pickDo .. :: _ =>
       let opts := (legalFrameActions s).filter (fun a => match a.kind with
         | .choose o => says.obj o | _ => false)

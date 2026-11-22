@@ -3603,4 +3603,33 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     without.isNone && theirs.isNone && busy.isNone && warded.isNone && noPlay.isNone &&
     noPlayMf.isNone && inHand.isNone
 
+-- Udyr, Wildman (OGN-157): spend my buff, then choose a mode he has not chosen this turn: 2 damage
+-- to a unit at a battlefield, stun one, ready him, or Ganking this turn
+#guard t fun s => do
+  let (s1, udyr) ← put s s.me "OGN-157" .base
+  let (s2, foe) ← putAt s1 s.you "OGN-088" s.bf0
+  let b := s2.buff udyr
+  let deal ← activate b s.me udyr 0 [] ⟨0, []⟩ ({ yes := true } : Says)
+  let gank ← activate b s.me udyr 0 [] ⟨0, []⟩ ({ yes := false } : Says)
+  let noted := b.addTurnFxOn s.me udyr (.modeUsed 1)
+  let again := activate noted s.me udyr 0 [] ⟨0, []⟩ ({ yes := true } : Says)
+  let unbuffed := activate s2 s.me udyr 0 [] ⟨0, []⟩
+  -- the other modes: stun (second from the start: 2 from the end), ready (1), Ganking (0)
+  let stun ← activate b s.me udyr 0 [] ⟨0, []⟩ ({ fromEnd := some 2 } : Says)
+  let tired := b.tire udyr
+  let ready ← activate tired s.me udyr 0 [] ⟨0, []⟩ ({ fromEnd := some 1 } : Says)
+  let first ← activate b s.me udyr 0 [] ⟨0, []⟩ ({ fromEnd := some 3 } : Says)
+  -- a mode chosen in an earlier use of the ability this turn is noted by the use
+  let used := deal.turnFx.any (fun f => f.kind == .modeUsed 1)
+  let again2 ← again
+  return (deal.obj? foe).map (·.damage) == some 2 &&
+    (deal.obj? udyr).map (·.buffed) == some false &&
+    (gank.obj? foe).map (·.damage) == some 0 && gank.hasKw udyr .ganking &&
+    (gank.obj? udyr).map (·.buffed) == some false && !deal.hasKw udyr .ganking &&
+    (again2.obj? foe).map (·.damage) == some 0 &&
+    (again2.obj? udyr).map (·.buffed) == some false &&
+    unbuffed.isNone && (stun.obj? foe).map (·.stunned) == some true &&
+    (stun.obj? foe).map (·.damage) == some 0 && ready.tired udyr == some false &&
+    (first.obj? foe).map (·.damage) == some 2 && used
+
 end RiftboundTest
