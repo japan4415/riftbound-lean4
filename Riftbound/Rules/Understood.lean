@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Effects
+public import Riftbound.Rules.Chain
 
 /-!
 # What the interpreter understands
@@ -188,6 +189,68 @@ def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
   | some e => e.choices.all Choice.simple && e.body.understood
   | none => false
+
+/-! ### What a card does when it is played
+
+The checks below say which cards do everything their text says in this model: every ability is one
+the engine carries out, and every keyword is one it knows. They are the measure of "the card works"
+(docs/coverage.md); a card whose text is written down but not run is not counted. -/
+
+/-- A passive change the engine applies. -/
+def StaticMod.runs : StaticMod → Bool
+  | .mightPlus s a => s.understood && a.understoodC
+  | .mightMinus s a => s.understood && a.understoodC
+  | .keyword s _ => s.understood
+  | .entersReady .self => true
+  | _ => false
+
+/-- The points of the turn that fire a triggered ability. -/
+def Timing.runs : Timing → Bool
+  | .startOfTurn => true
+  | .beginning => true
+  | .startOfMain => true
+  | .endOfTurn => true
+  | _ => false
+
+/-- A trigger the engine detects: the event, whose subject it is about, and the condition. -/
+def Trigger.runs (t : Trigger) : Bool :=
+  t.occurrence == .every && t.condition.understood &&
+    (match t.event with
+      | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .stun => true | .discard => true
+      | .conquer => t.subject == .self | .hold => t.subject == .self
+      | .youConquer => t.subject == .self | .youHold => t.subject == .self
+      | .at_ tm => tm.runs && t.subject == .self
+      | _ => false) &&
+    (t.subject == .self ||
+      (match t.subject with
+        | .pick .all _ .anywhere fs => FilterList.understood fs
+        | _ => false))
+
+/-- An ability the engine carries out. -/
+def Ability.runs : Ability → Bool
+  | .passive c mods => c.understood && mods.all StaticMod.runs
+  | .activated costs _ body _ =>
+    (costPlan costs).isSome &&
+      ((manaKind body).isSome || (body.choices.all Choice.simple && body.body.understood))
+  | .triggered t body _ =>
+    t.runs && body.choices.all Choice.simple && body.body.understood
+  | .replacement .. => false
+
+/-- A keyword the engine knows. -/
+def Keyword.runs : Keyword → Bool
+  | .reaction => true | .action => true | .assault => true | .shield => true | .ganking => true
+  | .tank => true | .temporary => true | .legion => true | .deflect => true
+  | .deathknell => true | .hunt => true | .level => true | .equip => true
+  | _ => false
+
+/-- The card does everything its text says: it is written down, its abilities and its Spell are
+carried out, and its keywords are known. -/
+def CardDef.runs (c : CardDef) : Bool :=
+  c.status == .drafted && c.abilities.all Ability.runs && c.keywords.all (·.keyword.runs) &&
+    (match c.spellEffect with
+      | some e => e.choices.all Choice.simple && e.body.understood
+      | none => !c.types.contains .spell)
 
 end Riftbound
 

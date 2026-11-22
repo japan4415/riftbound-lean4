@@ -55,6 +55,11 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
+-- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
+-- goal "every card of the first set works" (298)
+#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 133
+#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
+
 -- the cards written down as IR values (docs/coverage.md): 120 by hand, 169 by `transcribe.py`
 #guard (allCards.filter (·.status == .drafted)).length == 289
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
