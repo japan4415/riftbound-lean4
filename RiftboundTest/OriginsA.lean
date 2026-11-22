@@ -3727,8 +3727,18 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let allA ← fire s4 [.combatStarted bf s.me] { obj := fun o => o == a }
   let allB ← fire s4 [.combatStarted bf s.me] { obj := fun o => o == b }
   let defend ← fire s4 [.combatStarted bf s.you]
+  -- the choices that would go wrong with another place or side: another battlefield's unit, and
+  -- Volibear himself, are offered first and are not hit
+  let toAway ← fire s4 [.combatStarted bf s.me] { obj := fun o => o == away }
+  let (m1, vol) ← putAt s s.me "OGN-041" bf
+  let (m2, _) ← putAt m1 s.you "OGN-088" bf
+  let toSelf ← fire m2 [.combatStarted bf s.me] { obj := fun o => o == vol }
+  let (n1, _) ← putAt s s.me "OGN-041" bf
+  let nobody ← fire n1 [.combatStarted bf s.me]
   let dmg (x : GameState) (u : ObjId) := (x.obj? u).map (·.damage)
   return dmg one a == some 5 && dmg allA a == some 5 && dmg allA b == some 0 &&
-    dmg allB b == some 5 && dmg allA away == some 0 && dmg defend a == some 0
+    dmg allB b == some 5 && dmg allA away == some 0 && dmg defend a == some 0 &&
+    dmg toAway away == some 0 && dmg toSelf vol == some 0 &&
+    nobody.countIn s.me .base "OGN-041" == 0
 
 end RiftboundTest
