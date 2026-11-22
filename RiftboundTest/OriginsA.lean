@@ -3876,4 +3876,40 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     wanted.countIn s.you .base "OGN-136" == 1 && alone.countIn s.me .trash "OGN-113" == 1 &&
     (alone.poolOf s.me).any == 2 && onField.countIn s.me .trash "OGN-136" == 1
 
+-- The Boss (OGN-269): when a buffed unit I control dies, I may pay one Power and exhaust him to
+-- bring it back to my base exhausted (approximation: it dies, then returns); when I conquer,
+-- ready him
+#guard t fun s => do
+  let (s1, boss) ← put s s.me "OGN-269" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, foe) ← put s2 s.you "OGN-136" .base
+  let funded := (s3.fund s.me 0 (fury := 1))
+  let die (x : GameState) (id : ObjId) : Option GameState :=
+    let (k, ev) := killObj x id
+    fire k ev
+  let back ← die (funded.buff u) u
+  let plain ← die funded u
+  let theirs ← die (funded.buff foe) foe
+  let broke ← die (s3.buff u) u
+  let spent ← die ((funded.buff u).tire boss) u
+  let no ← (let (k, ev) := killObj (funded.buff u) u; fire k ev { yes := false })
+  let ready ← fire (s3.tire boss) [.scored s.me s.bf0 true]
+  -- two buffed units die at once: the Boss saves one (he is exhausted for the second)
+  let (s6, v) ← put funded s.me "OGN-136" .base
+  let both := (s6.buff u).buff v
+  let (k1, ev1) := killObj both u
+  let (k2, ev2) := killObj k1 v
+  let two ← fire k2 (ev1 ++ ev2)
+  -- the opponent's conquer does not ready him
+  let theirsReady ← fire (s3.tire boss) [.scored s.you s.bf0 true]
+  let unitBack := (back.zone (.player s.me .base)).filter (fun x =>
+    (back.cardDef? x).any (·.id == cid "OGN-136"))
+  return back.countIn s.me .base "OGN-136" == 1 && back.countIn s.me .trash "OGN-136" == 0 &&
+    unitBack.all (fun x => back.tired x == some true) && back.tired boss == some true &&
+    (back.poolOf s.me).fury == 0 && plain.countIn s.me .trash "OGN-136" == 1 &&
+    theirs.countIn s.you .trash "OGN-136" == 1 && broke.countIn s.me .trash "OGN-136" == 1 &&
+    spent.countIn s.me .trash "OGN-136" == 1 && no.countIn s.me .trash "OGN-136" == 1 &&
+    ready.tired boss == some false && two.countIn s.me .base "OGN-136" == 1 &&
+    two.countIn s.me .trash "OGN-136" == 1 && theirsReady.tired boss == some true
+
 end RiftboundTest
