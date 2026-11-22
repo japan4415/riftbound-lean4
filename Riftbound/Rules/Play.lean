@@ -83,7 +83,10 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
         match ab with
         | Ability.passive cond mods =>
           let holds := match cond with
-            | .legion => some (s.playedBefore p)
+            | .legion =>
+              -- another card of the player was played this turn, not the card itself
+              some (s.objects.toList.any (fun (k, x) =>
+                x.owner == p && x.playedTurn == some s.turn && k != c.n))
             | k => k.eval s o.controller src {}
           if holds == some true then
             mods.filterMap (fun m =>

@@ -2002,4 +2002,29 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   return energyNow s3 s.me dragon == (energyPrinted s2 dragon).map (· - 2) &&
     energyNow s3 s.me other == energyPrinted s2 other
 
+-- more on cost changes: only another card counts for Legion (not the opponent's, not itself played
+-- earlier and returned to the hand), and a card cannot be played for its printed cost when it costs
+-- less
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-012" .hand
+  let (s2, x) ← put s1 s.you "OGN-136" .hand
+  let theirs := s2.modObj x (fun o => { o with playedTurn := some s2.turn })
+  let (t1, y) ← put s1 s.me "OGN-136" .hand
+  let mine := t1.modObj y (fun o => { o with playedTurn := some t1.turn })
+  let own := s1.modObj c (fun o => { o with playedTurn := some s1.turn })
+  return energyNow theirs s.me c == energyPrinted s1 c &&
+    energyNow mine s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow own s.me c == energyPrinted s1 c &&
+    (cast (s1.rich s.me) s.me c ⟨(energyPrinted s1 c).getD 0 - 2, []⟩).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-195" .hand
+  let trash (x : GameState) (n : Nat) : Option GameState :=
+    (List.range n).foldl (fun acc _ => acc.bind fun y => (put y s.me "OGN-136" .trash).map (·.1))
+      (some x)
+  let ten ← trash s1 10
+  let d ← s1.cardDef? c
+  return energyNow ten s.me c == some 0 &&
+    (cast (ten.rich s.me) s.me c (payOf s1 c)).isNone && (play ten s.me c).isSome &&
+    (ten.effCost s.me c d).isSome
+
 end RiftboundTest
