@@ -5214,7 +5214,7 @@ def OGN_200 : CardDef :=
           (.ifThen (.matches (.var pickVar) (.domain .mind))
             (.prim (.draw .you (.const 1)))
             (.ifThen (.matches (.var pickVar) (.domain .order))
-              (.prim (.stun (Selector.one .enemy .here [.ofType .unit]))) .nop))])) .unlimited],
+              (.prim (.stun (Selector.one .enemy .anywhere [.ofType .unit]))) .nop))])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-201

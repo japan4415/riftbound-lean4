@@ -2945,6 +2945,10 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (f.obj? far).map (·.damage) == some 0 && runes f == runes fury &&
     m.handN s.me == mind.handN s.me + 1 && (m.obj? big).map (·.damage) == some 0 &&
     (o.obj? big).map (·.stunned) == some true && (o.obj? small).map (·.stunned) == some false &&
+    (m.obj? small).map (·.stunned) == some false && (f.obj? small).map (·.stunned) == some false &&
+    (f.zone (.player s.me .runeDeck)).getLast?.isSome &&
+    (f.zone (.player s.me .runeDeck)).getLast? !=
+      (fury.zone (.player s.me .runeDeck)).getLast? &&
     c.handN s.me == calm.handN s.me && (c.obj? big).map (·.damage) == some 0 &&
     (c.obj? big).map (·.stunned) == some false
 
