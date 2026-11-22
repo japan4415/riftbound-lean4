@@ -619,6 +619,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       | some (Value.obj o) =>
         s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.target == some o)
       | _ => false)
+  | .fromHidden => some ((s.obj? self).any (·.fromHidden))
   | .marked e =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.who == p &&
       f.target == some self))

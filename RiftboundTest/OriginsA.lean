@@ -3516,4 +3516,61 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     ((there.zone (.player s.me .base)).filter (fun z =>
       (there.cardDef? z).any (·.id == cid "OGN-199"))).length == 1
 
+-- Teemo, Strategist (OGN-121): when I defend, or when I am played from Hidden, deal 1 to an enemy
+-- unit here for each card with Hidden among the top 5 cards of my Main Deck, then recycle them
+#guard t fun s => do
+  let bf := s.bf0
+  let empty := s.setZone (.player s.me .mainDeck) []
+  let (d1, _) ← put empty s.me "OGN-135" .mainDeck
+  let (d2, _) ← put d1 s.me "OGN-135" .mainDeck
+  let (d3, _) ← put d2 s.me "OGN-136" .mainDeck
+  let (d4, _) ← put d3 s.me "OGN-136" .mainDeck
+  let (d5, _) ← put d4 s.me "OGN-135" .mainDeck
+  let (d6, _) ← put d5 s.me "OGN-135" .mainDeck
+  let (d7, _) ← put d6 s.me "OGN-135" .mainDeck
+  let (e1, _) ← putAt d7 s.me "OGN-121" bf
+  let (e2, foe) ← putAt e1 s.you "OGN-088" bf
+  let a ← fire e2 [.combatStarted bf s.you]
+  let mine ← fire e2 [.combatStarted bf s.me]
+  let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
+  -- played from Hidden: the card was hidden (fromHidden); a card played from the hand does not
+  let (g1, t) ← putAt e2 s.me "OGN-121" bf
+  let hid := g1.modObj t (fun o => { o with fromHidden := true })
+  let h ← fire hid [.played s.me t]
+  let hand ← fire g1 [.played s.me t]
+  return (a.obj? foe).map (·.damage) == some 3 && deck a == deck e2 &&
+    (a.zone (.player s.me .mainDeck)).head? != (e2.zone (.player s.me .mainDeck)).head? &&
+    (mine.obj? foe).map (·.damage) == some 0 && (h.obj? foe).map (·.damage) == some 3 &&
+    (hand.obj? foe).map (·.damage) == some 0
+
+-- Teemo, Strategist (OGN-121), more: really played from Hidden (hide, then play from the next turn)
+-- the card remembers it; played from the hand it does not; with fewer than 5 cards in the deck only
+-- those are recycled; the opponent's Teemo defending hits my unit
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-121" .hand
+  let mine := s1.control s.me s.bf0
+  let hide ← activate mine s.me c 2 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let next := { hide with turn := hide.turn + 1 }
+  let played ← activate next s.me h 3 [] ⟨0, []⟩
+  let teemo ← played.firstOf s.me .base "OGN-121"
+  let (t1, d) ← put s s.me "OGN-121" .hand
+  let handed ← play t1 s.me d
+  let hteemo ← handed.firstOf s.me .base "OGN-121"
+  let few := s.setZone (.player s.me .mainDeck) []
+  let (f1, _) ← put few s.me "OGN-135" .mainDeck
+  let (f2, _) ← put f1 s.me "OGN-136" .mainDeck
+  let (f3, _) ← putAt f2 s.me "OGN-121" s.bf0
+  let (f4, foe) ← putAt f3 s.you "OGN-088" s.bf0
+  let fewer ← fire f4 [.combatStarted s.bf0 s.you]
+  let (g1, _) ← putAt (s.setZone (.player s.you .mainDeck) []) s.you "OGN-121" s.bf0
+  let (g2, v) ← putAt g1 s.me "OGN-088" s.bf0
+  let (g3, _) ← put g2 s.you "OGN-135" .mainDeck
+  let theirs ← fire g3 [.combatStarted s.bf0 s.me]
+  return (played.obj? teemo).map (·.fromHidden) == some true &&
+    (handed.obj? hteemo).map (·.fromHidden) == some false &&
+    (fewer.obj? foe).map (·.damage) == some 1 &&
+    (fewer.zone (.player s.me .mainDeck)).length == 2 &&
+    (theirs.obj? v).map (·.damage) == some 1
+
 end RiftboundTest
