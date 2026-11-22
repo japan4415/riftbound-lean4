@@ -80,6 +80,8 @@ inductive Filter where
   | ready
   /-- Has damage. -/
   | damaged
+  /-- Has lethal damage: damage that is not 0 and at least its Might (CR 142.4.b). -/
+  | lethal
   /-- Is stunned. -/
   | stunned
   /-- Has a buff. -/

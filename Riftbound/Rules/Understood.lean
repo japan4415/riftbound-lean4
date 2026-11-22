@@ -42,6 +42,8 @@ mutual
 def Amount.understood : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .count (.pick .all _ place fs) =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
   | .handSize p => p.understood
   | .xp => true
@@ -58,6 +60,8 @@ Might without the Layers, which they do not need yet). -/
 def Amount.understoodC : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .count (.pick .all _ place fs) =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
   | .handSize p => p.understood
   | .xp => true
@@ -87,6 +91,7 @@ def Filter.understood : Filter → Bool
   | .attacker => true
   | .defender => true
   | .alone => true
+  | .lethal => true
   | _ => false
 
 /-- Every filter of a list is understood. -/
@@ -128,6 +133,7 @@ def Selector.understoodPick : Selector → Bool
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
+  | .score p n => p.understood && n.understood
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood

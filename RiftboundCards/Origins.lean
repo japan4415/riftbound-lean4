@@ -135,8 +135,13 @@ def OGN_005.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Disintegrate: the effect is not written yet. -/
-def OGN_005 : CardDef := OGN_005.meta
+/-- Disintegrate. -/
+def OGN_005 : CardDef :=
+  { OGN_005.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 3)),
+        .ifThen (.matches (.slot 0) .lethal) (.prim (.draw .you (.const 1))) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-006
 /--
@@ -1335,8 +1340,14 @@ def OGN_056.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Adaptatron: the effect is not written yet. -/
-def OGN_056 : CardDef := OGN_056.meta
+/-- Adaptatron. -/
+def OGN_056 : CardDef :=
+  { OGN_056.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [] (.may (.ifThen (.exists (Selector.all .any .anywhere [.ofType .gear]))
+        (.seqOf [.prim (.kill (Selector.one .any .anywhere [.ofType .gear])), .prim (.buff .self)])
+        .nop))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-057
 /--
@@ -1581,8 +1592,12 @@ def OGN_066.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Ahri, Alluring: the effect is not written yet. -/
-def OGN_066 : CardDef := OGN_066.meta
+/-- Ahri, Alluring. -/
+def OGN_066 : CardDef :=
+  { OGN_066.meta with
+    abilities := [.triggered (.onSelf .hold)
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-067
 /--
@@ -3224,8 +3239,13 @@ def OGN_134.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Mobilize: the effect is not written yet. -/
-def OGN_134 : CardDef := OGN_134.meta
+/-- Mobilize. -/
+def OGN_134 : CardDef :=
+  { OGN_134.meta with
+    spellEffect := some (.of []
+      (.ifThen (.cmp .lt (.count (Selector.all .friendly .inRuneDeck [])) (.const 1))
+        (.prim (.draw .you (.const 1))) (.prim (.channel .you (.const 0) (.const 1))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-135
 /--
@@ -3322,8 +3342,13 @@ def OGN_138.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Catalyst of Aeons: the effect is not written yet. -/
-def OGN_138 : CardDef := OGN_138.meta
+/-- Catalyst of Aeons. -/
+def OGN_138 : CardDef :=
+  { OGN_138.meta with
+    spellEffect := some (.of []
+      (.seqOf [.ifThen (.cmp .lt (.count (Selector.all .friendly .inRuneDeck [])) (.const 2))
+        (.prim (.draw .you (.const 1))) .nop, .prim (.channel .you (.const 0) (.const 2))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-139
 /--
