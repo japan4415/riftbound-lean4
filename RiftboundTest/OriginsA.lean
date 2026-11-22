@@ -2699,4 +2699,45 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return !has s3 .assault && !has s3 .ganking && has mine .assault && has mine .ganking &&
     !has theirs .assault && !has later .ganking && has limit .ganking
 
+-- Imperial Decree (OGN-221): a unit that takes damage this turn is killed
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-221" .hand
+  let (s2, u) ← put s1 s.me "OGN-001" .base
+  let (s3, v) ← put s2 s.you "OGN-001" .base
+  let on ← play s3 s.me c
+  let hit := (dealObj 1 on u).1
+  let hitFoe := (dealObj 1 on v).1
+  let none_ := (dealObj 1 s3 u).1
+  let zero := (dealObj 0 on u).1
+  let later := (dealObj 1 { on with turn := on.turn + 1 } u).1
+  return (hit.obj? u).isNone && hit.countIn s.me .trash "OGN-001" == 1 && (hitFoe.obj? v).isNone &&
+    (none_.obj? u).map (·.damage) == some 1 && (zero.obj? u).map (·.damage) == some 0 &&
+    (later.obj? u).map (·.damage) == some 1
+
+-- Noxian Guillotine (OGN-254): the chosen unit is killed the next time it takes damage this turn;
+-- with Legion, it is killed now
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-254" .hand
+  let (s2, u) ← put s1 s.you "OGN-001" .base
+  let (s3, w) ← put s2 s.you "OGN-001" .base
+  let (s4, other) ← put s3 s.me "OGN-136" .base
+  let marked ← play s4 s.me c [u]
+  let legion ← play (s4.modObj other (fun o => { o with playedTurn := some s4.turn })) s.me c [u]
+  return (marked.obj? u).isSome && ((dealObj 1 marked u).1.obj? u).isNone &&
+    ((dealObj 1 marked w).1.obj? w).map (·.damage) == some 1 && (legion.obj? u).isNone &&
+    ((dealObj 0 marked u).1.obj? u).isSome
+
+-- ... also for the damage of a combat (`dealAll`), which sets off the deaths; a unit that takes no
+-- damage is not killed
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-221" .hand
+  let (s2, a) ← put s1 s.me "OGN-190" .base
+  let (s3, b) ← put s2 s.you "OGN-116" .base
+  let on ← play s3 s.me c
+  let (done, evs) := dealAll on [(a, 1), (b, 2)]
+  let (plain, _) := dealAll s3 [(a, 1), (b, 2)]
+  let died := evs.filterMap (fun e => match e with | .died n _ => some n | _ => none)
+  return (done.obj? a).isNone && (done.obj? b).isNone && died.length == 2 &&
+    (plain.obj? a).isSome && (plain.obj? b).map (·.damage) == some 2
+
 end RiftboundTest
