@@ -4498,7 +4498,9 @@ def OGN_187.meta : CardDef :=
 def OGN_187 : CardDef :=
   { OGN_187.meta with
     spellEffect := some (.of []
-      (.eachPlayer .eachPlayer (.may (.prim (.returnToHand (Selector.one .any .anywhere [.ofType .unit])))))),
+      (let pickOne : Effect :=
+        .may (.prim (.returnToHand (Selector.one .any .anywhere [.ofType .unit])))
+      .seqOf [.eachPlayer .eachOpponent pickOne, .eachPlayer .you pickOne])),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-188

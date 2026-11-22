@@ -982,17 +982,33 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-201" .hand
   let a ← play s1 s.me c
   return a.handN s.me == 4 && a.handN s.you == 4 && a.countIn s.me .trash "OGN-201" == 1 &&
+    (a.zone (.player s.you .trash)).length ==
+      (s1.zone (.player s.you .trash)).length + s1.handN s.you &&
     (a.zone (.player s.me .trash)).length == (s1.zone (.player s.me .trash)).length + s1.handN s.me
 
--- Whirlwind (OGN-187): each player may return a unit to its owner's hand
+-- Whirlwind (OGN-187): starting with the next player, each player may return a unit
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-187" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
   let (s3, _) ← put s2 s.you "OGN-136" .base
-  let a ← play s3 s.me c
-  let b ← play s3 s.me c [] { yes := false }
-  let inPlayUnits (x : GameState) :=
-    (x.zone (.player s.me .base)).length + (x.zone (.player s.you .base)).length
-  return inPlayUnits a + 2 == inPlayUnits s3 && inPlayUnits b == inPlayUnits s3
+  let (s4, e2) ← put s3 s.you "OGN-001" .base
+  -- the opponent chooses first, among all three units; then I choose among what is left
+  let a ← play s4 s.me c [] { obj := fun o => o == e2 }
+  let b ← play s4 s.me c [] { yes := false }
+  return a.countIn s.you .hand "OGN-001" == s4.countIn s.you .hand "OGN-001" + 1 &&
+    a.countIn s.you .base "OGN-136" == 1 && a.handN s.me == s4.handN s.me - 1 + 1 &&
+    b.handN s.you == s4.handN s.you && b.countIn s.you .base "OGN-001" == 1 && (b.obj? u).isSome
+
+-- each player kills a gear of their own: the opponent, with two gear, is asked and chooses
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-179" .hand
+  let (s2, _) ← put s1 s.me "OGN-017" .base
+  let (s3, g) ← put s2 s.you "OGN-017" .base
+  let (s4, h) ← put s3 s.you "OGN-124" .base
+  let a ← play s4 s.me c [] { obj := fun o => o == h }
+  let b ← play (s4.setZone (.player s.you .base) []) s.me c
+  return a.countIn s.you .trash "OGN-124" == 1 && a.countIn s.you .base "OGN-017" == 1 &&
+    (a.obj? g).isSome && a.countIn s.me .trash "OGN-017" == 1 &&
+    b.countIn s.me .trash "OGN-017" == 1
 
 end RiftboundTest
