@@ -3753,11 +3753,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s4, away) ← putAt s3 s.you "OGN-088" other
   let (s5, mine) ← putAt s4 s.me "OGN-088" bf
   let funded := s5.fund s.me 1 (fury := 3)
+  let rich ← cast (s5.fund s.me 4 (fury := 3)) s.me c ⟨1, []⟩ [bf]
+  -- an empty battlefield: the payment is made all the same
+  let emptyBf ← cast (s1.fund s.me 1 (fury := 2)) s.me c ⟨1, []⟩ [bf]
   let three ← cast funded s.me c ⟨1, []⟩ [bf]
   let zero ← cast funded s.me c ⟨1, []⟩ [bf] { yes := false }
   let dmg (x : GameState) (u : ObjId) := (x.obj? u).map (·.damage)
   let left := (three.poolOf s.me).fury
   return dmg three a == some 3 && dmg three b == some 3 && dmg three away == some 0 &&
-    dmg three mine == some 0 && dmg zero a == some 0 && left == 0 && (zero.poolOf s.me).fury == 3
+    dmg three mine == some 0 && dmg zero a == some 0 && left == 0 && (zero.poolOf s.me).fury == 3 &&
+    (rich.poolOf s.me).energy == 3 && (emptyBf.poolOf s.me).fury == 0
 
 end RiftboundTest
