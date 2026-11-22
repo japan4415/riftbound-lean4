@@ -96,7 +96,8 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ s1 with phase := .awaken, pending := rest },
       Event.phaseStarted (s.active.getD ⟨0⟩) .awaken ::
         (s.objects.toList.filter (fun (_, o) =>
-          o.controller == s.active.getD ⟨0⟩ && o.exhausted)).map (fun (k, _) => Event.readied ⟨k⟩))
+          o.controller == s.active.getD ⟨0⟩ && o.exhausted)).map
+          (fun (k, _) => Event.readied ⟨k⟩))
   | .phase .channel :: rest =>
     let r := channel (s.active.getD ⟨0⟩) s.channelCount s
     some ({ r.1 with phase := .channel, pending := rest }, r.2)
