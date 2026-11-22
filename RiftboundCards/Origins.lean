@@ -7444,7 +7444,7 @@ def OGN_286.meta : CardDef :=
 def OGN_286 : CardDef :=
   { OGN_286.meta with
     abilities := [.triggered (.onSelf .youHold)
-      (.of [] (.prim (.activateConquer (Selector.all .friendly .here [.ofType .unit])))) .unlimited],
+      (.of [] (.prim (.activateConquer (Selector.all .any .here [.ofType .unit])))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-287
