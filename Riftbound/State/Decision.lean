@@ -133,6 +133,9 @@ structure PendTrigger where
   idx : Nat
   /-- The player who controls the ability. -/
   controller : PlayerId
+  /-- The object the ability watches, for an ability that is not about its own object: it is
+  the last slot of the ability when it resolves. -/
+  subject : Option ObjId := none
 deriving DecidableEq, Repr
 
 /-- A frame of the stack. A frame holds no part of the board: everything a decision is about is read

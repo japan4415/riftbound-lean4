@@ -264,7 +264,7 @@ def Choice.modeCount : Choice → Option Nat
 /-- What the body of an effect may refer to, given the choices declared for it. -/
 def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
   { base with
-    slots := (d.choices.filter Choice.isTarget).length,
+    slots := (d.choices.filter Choice.isTarget).length + base.slots,
     hasX := d.choices.any (· == .xValue),
     modes := (d.choices.filterMap Choice.modeCount).head? }
 
@@ -278,7 +278,10 @@ def Ability.ok : Ability → Bool
   | .replacement _ cond instead =>
     Condition.ok { eventOk := true } cond && instead.ok { eventOk := true }
   | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
-  | .triggered t body _ => Trigger.ok { itOk := true } t && body.ok { itOk := true }
+  | .triggered t body _ =>
+    -- an ability that watches another object gets it as the slot after its own choices
+    Trigger.ok { itOk := true } t &&
+      body.ok { itOk := true, slots := if t.subject == .self then 0 else 1 }
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by
@@ -296,10 +299,10 @@ theorem Effect.ok_bind (c : Ctx) (v : VarId) (a : Amount) (e : Effect) :
   simp [Effect.ok]
 
 /-- Inside an effect with choices, a slot is valid exactly when it is below the number of targets
-declared (CR 355). -/
+declared (CR 355), and the slots the base has already (the object an ability watches). -/
 theorem EffectDef.slot_ok_iff (base : Ctx) (d : EffectDef) (i : Nat) :
     Selector.ok (d.ctx base) (.slot i) = true ↔
-      i < (d.choices.filter Choice.isTarget).length := by
+      i < (d.choices.filter Choice.isTarget).length + base.slots := by
   simp [EffectDef.ctx, Selector.ok]
 
 /-- The empty effect refers to nothing. -/

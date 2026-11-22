@@ -3697,8 +3697,13 @@ def OGN_143.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Pirate's Haven: the effect is not written yet. -/
-def OGN_143 : CardDef := OGN_143.meta
+/-- Pirate's Haven. -/
+def OGN_143 : CardDef :=
+  { OGN_143.meta with
+    abilities := [.triggered
+      { event := .ready, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-144
 /--
@@ -6621,8 +6626,15 @@ def OGN_255.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Nine-Tailed Fox: the effect is not written yet. -/
-def OGN_255 : CardDef := OGN_255.meta
+/-- Nine-Tailed Fox. -/
+def OGN_255 : CardDef :=
+  { OGN_255.meta with
+    abilities := [.triggered
+      { event := .attack, subject := Selector.all .enemy .anywhere [.ofType .unit],
+        condition := .exists (Selector.all .any .anywhere
+          [.ofType .battlefield, .controlled, .enemyOccupied]) }
+      (.of [] (.grant (.slot 0) (.mightMinusMin .it (.const 1) 1) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-256
 /--
