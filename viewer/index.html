@@ -134,8 +134,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .card.hasart .st { align-self: stretch; }
 #cardinfo .artbox { display: grid; gap: 4px; margin: 6px 0; }
 #cardinfo .artbox img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; background: var(--bg); }
-#cardinfo .artbox input { width: 100%; box-sizing: border-box; font: .72rem var(--mono); padding: 3px 5px; }
-#cardinfo .artbox .btns { display: flex; gap: 6px; }
+
 .note.foot { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; display: grid; gap: 3px;
   max-height: 40dvh; overflow: auto; }
@@ -559,23 +558,10 @@ function costText(c) {
   for (const s of c.power) parts.push('Power(' + (DOMAIN_JA[s] || s) + ')');
   return parts.join(' + ');
 }
-// Card art: a URL per card (saved in this browser, or listed in viewer/art.json that the bridge
-// serves) or a URL template with {id} and {name}. Only http(s) URLs are used; nothing else is sent.
-const ART_KEY = 'rb-art';
-let art = { map: {}, tpl: '' }, artFile = {};
-try {
-  const j = JSON.parse(localStorage.getItem(ART_KEY) || '{}');
-  if (j && typeof j === 'object') art = { map: j.map && typeof j.map === 'object' ? j.map : {}, tpl: typeof j.tpl === 'string' ? j.tpl : '' };
-} catch (_) { /* 保存できない環境: その場かぎり */ }
-function saveArt() { try { localStorage.setItem(ART_KEY, JSON.stringify(art)); } catch (_) { /* 無視 */ } }
-function okUrl(u) { return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
-function artTemplate() { return art.tpl || (typeof artFile['*'] === 'string' ? artFile['*'] : ''); }
-function artUrl(cid) {
-  const own = okUrl(art.map[cid]) || okUrl(artFile[cid]); if (own) return own;
-  const t = artTemplate(); if (!t) return null;
-  const name = (cards[cid] && cards[cid].name) || cid;
-  return okUrl(t.replaceAll('{id}', encodeURIComponent(cid)).replaceAll('{name}', encodeURIComponent(name)));
-}
+// Card art: viewer/art.json (served by the bridge at /art.json) maps a card id to an image URL.
+// Only http(s) URLs are used. A card that has no entry, or whose image fails to load, stays a text card.
+let artFile = {};
+function artUrl(cid) { const u = artFile[cid]; return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
 function applyArt(el) {
   const o = objs[el.dataset.id], u = o && artUrl(o.card), inn = el.firstChild;
   let img = inn.querySelector(':scope > .art');
@@ -595,28 +581,12 @@ async function loadArtFile() {
     const j = await r.json(); if (j && typeof j === 'object' && !Array.isArray(j)) { artFile = j; applyArtAll(); }
   } catch (_) { /* 橋渡しが無い、または art.json が無い */ }
 }
-
 function artBox(el, cid) {
-  const wrap = el('div', 'artbox'), u = artUrl(cid);
-  if (u) {
-    const im = el('img'); im.alt = def_name(cid); im.referrerPolicy = 'no-referrer'; im.src = u;
-    im.addEventListener('error', () => { im.replaceWith(el('div', 'note', '画像を読み込めません: ' + u)); });
-    wrap.append(im);
-  }
-  const d = el('details'); d.open = !u; d.append(el('summary', '', '画像の URL（このカード）'));
-  const inp = el('input'); inp.type = 'url'; inp.placeholder = 'https://…（この ID のカードすべてに使う）'; inp.value = art.map[cid] || '';
-  const tpl = el('input'); tpl.type = 'text'; tpl.placeholder = '全カード共通: https://…/{id}.png（{id} と {name}）'; tpl.value = art.tpl;
-  const go = el('button', '', '保存'), no = el('button', '', '消す');
-  go.addEventListener('click', () => {
-    const v = inp.value.trim(); if (v && !okUrl(v)) { inp.setCustomValidity('http(s) の URL だけ'); inp.reportValidity(); return; }
-    if (v) art.map[cid] = v; else delete art.map[cid];
-    art.tpl = tpl.value.trim(); saveArt(); applyArtAll(); hideCardInfo();
-  });
-  no.addEventListener('click', () => { delete art.map[cid]; art.tpl = ''; saveArt(); applyArtAll(); hideCardInfo(); });
-  const b = el('div', 'btns'); b.append(go, no);
-  d.append(inp, tpl, b); wrap.append(d); return wrap;
+  const u = artUrl(cid); if (!u) return el('span');
+  const wrap = el('div', 'artbox'), im = el('img'); im.alt = (cards[cid] && cards[cid].name) || cid; im.referrerPolicy = 'no-referrer'; im.src = u;
+  im.addEventListener('error', () => wrap.remove()); wrap.append(im); return wrap;
 }
-function def_name(cid) { return (cards[cid] && cards[cid].name) || cid; }
+
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
   const o = objs[id], def = o && cards[o.card]; if (!def) return;

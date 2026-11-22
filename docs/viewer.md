@@ -80,12 +80,14 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
 ## カードの詳細と画像
 
 - カードを右クリックすると、詳細（コスト・Might・キーワード・場所・状態・Lean の定義）が出る。
-- **画像**: カードの詳細の「画像の URL」で、カード ID ごとの URL（http(s) だけ）か、全カード共通の
-  テンプレート（`{id}` と `{name}`）を入れられる。保存先はそのブラウザの localStorage。
-  `viewer/art.json`（`viewer/art.example.json` が見本、git には入れない）に書くと、橋渡しが
-  `/art.json` で配り、ページが読む。優先順位は、ブラウザの保存、`art.json` の ID、テンプレート。
-  画像は `referrerpolicy="no-referrer"` で読み、読めなければ文字のカードに戻る。
-  画像の URL は利用者が入れるもので、リポジトリには公式の画像も URL も入れない。
+- **画像**: `viewer/art.json`（カード ID → 画像の URL）があれば、橋渡しが `/art.json` で配り、ページが読んで
+  カードに表示する。URL は http(s) だけ。画像は `referrerpolicy="no-referrer"` で読み、読めなければ文字の
+  カードに戻る。無いカードは文字のまま。
+- 今の `art.json` に入っているのは、デモに出てくる**実在のカード**だけ（Fury Rune = `R1`、
+  Sprite = `TKN-Sprite`、Gold = `SFD-T03`）。ほかのデモのカードは、実在しない名前なので、画像は無い。
+  URL は公式カードギャラリー（2026-11-22 に一度読んだ）の `cardImage` のもの。
+- 公式サイトの URL を集めて保存する仕組みは、別のリポジトリで管理する。
+  画像そのものは、このリポジトリに入れない。
 
 ## 次の段階
 
