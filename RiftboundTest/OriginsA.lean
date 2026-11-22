@@ -3277,4 +3277,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty &&
     (zone theirs s.you).length == (zone w1 s.you).length
 
+-- The Chosen Champion is played from the Champion Zone: a Unit there is played by paying its cost
+-- (the printed one), and goes to my Base; not for less, not from the hand's ability, not twice
+#guard t fun s => do
+  let empty := s.setZone (.player s.me .championZone) []
+  let (s1, c) ← put empty s.me "OGN-088" .championZone
+  let a ← activate s1 s.me c 0 [] ⟨7, []⟩
+  let short := activate s1 s.me c 0 [] ⟨6, []⟩
+  let (t1, h) ← put empty s.me "OGN-088" .hand
+  let fromHand := activate t1 s.me h 0 [] ⟨7, []⟩
+  let (u1, b) ← put empty s.me "OGN-088" .base
+  let inBase := activate u1 s.me b 0 [] ⟨7, []⟩
+  let theirs := activate s1 s.you c 0 [] ⟨7, []⟩
+  let twice := activate a s.me c 0 [] ⟨7, []⟩
+  -- the opponent's "can't play cards" holds for this play too
+  let blocked := activate (s1.addTurnFx s.you .opponentsCantPlay) s.me c 0 [] ⟨7, []⟩
+  let freed := activate (s1.addTurnFx s.me .opponentsCantPlay) s.me c 0 [] ⟨7, []⟩
+  return a.countIn s.me .base "OGN-088" == 1 && (a.zone (.player s.me .championZone)).isEmpty &&
+    short.isNone && fromHand.isNone && inBase.isNone && theirs.isNone && twice.isNone &&
+    blocked.isNone && freed.isSome &&
+    (s1.zone (.player s.me .championZone)).length == 1
+
 end RiftboundTest
