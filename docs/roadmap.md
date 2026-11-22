@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M5b の実装の記録（2026-11-22）: サイドボードの入れ替え（TR 403）
+
+- **入れたもの**（`Tournament/Sideboard.lean`）: サイドボードの入れ替え `IsSwap main side main' side'`（Main Deck から何枚かが出て、同じ枚数がサイドボードから入り、出たカードがサイドボードへ行く: TR 403.4）。カードは多重集合として扱う（`List.Perm`）。`SideboardStep`（マッチが許し、かつ入れ替えであること）。
+- **証明**: `IsSwap.pool`（Main Deck とサイドボードを合わせたカードは変わらない）、`IsSwap.main_length`・`side_length`（Main Deck もサイドボードも、枚数が変わらない: 1 対 1）、`copyLimitOk_perm`（同名の枚数制限は、順番に依らない）、**`Resolved.constructedValid_swap`**: 合法な Constructed のデッキと入れ替えから、新しいデッキが合法であるために確かめることは、**Chosen Champion（変えてよい: TR 403.4.a）、種類、Signature、Domain Identity の 4 つだけ**。Main Deck の 40 枚、サイドボードの 10 枚以下、同名の枚数制限（Main Deck とサイドボードの合計: TR 601.1.c）、各カードの合法性は、確かめなくてよい。Legend・Rune・Battlefield は、入れ替えの対象外で変わらない（TR 403.4.b）。`not_sideboardStep_start`・`not_sideboardStep_draw`（最初のゲームの前と、引き分けの後は入れ替えられない: TR 403.5、403.10）。
+- **テスト**（`RiftboundTest/Sideboard.lean`）: 1 対 1 の入れ替えの後も合法であること、合計の枚数が同じこと、1 対 1 でない入れ替えは Main Deck の 40 枚が崩れること、同名の枚数制限が Main Deck とサイドボードの合計であること、マッチが許す場合。期待を間違えると失敗することも確かめた。
+- **`GameConfig.Valid` は入れていない**: モードとフォーマットの組のうち、TR が手続きを定めているものを決めるには、TR の 600 番台の原文が要るが、リポジトリに無い（[tournament-model.md §7](tournament-model.md#7-曖昧な点と要確認事項) の 6 番）。推測で入れない。
+- **まだ無いもの（M5b の残り）**: I14 の全体、ゲームの合間の時間切れ（TR 408.2.d）、シングルエリミネーション（TR 408.4）、2v2、選手が自分で合意を申し出る手順、`GameConfig.Valid`、Bo1 の準備（TR 406.1.h）、Limited の追加ドロー（TR 602.4.a.5.b）、エンジンが先手の選択を受け取ること、TR 403.8（次のマッチの前に登録した状態へ戻す）。
+- **次の候補**: Limited の追加ドロー（TR 602.4.a.5.b）、エンジンが先手の選択を受け取ること、I14 の全体。
+
 ### M5b の実装の記録（2026-11-22）: ジャッジの引き分け（合意と終わらないループ）
 
 - **計画どおり**: 時計と同じ形で入れた。`ActionKind.declareDraw`（行為者は「ジャッジ」）。合法なのは、Tournament Rules の設定で、どの質問が開いていても（ゲームの準備の途中でも）。選手や時計が送っても、Core Rules だけの設定でも、不合法。`legalActions` には出ない。

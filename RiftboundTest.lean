@@ -32,6 +32,7 @@ public import RiftboundTest.Optional
 public import RiftboundTest.Match
 public import RiftboundTest.Clock
 public import RiftboundTest.Judge
+public import RiftboundTest.Sideboard
 
 /-!
 # RiftboundTest

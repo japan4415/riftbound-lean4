@@ -65,6 +65,7 @@ public import Riftbound.Invariant.Draw
 public import Riftbound.Tournament.Format
 public import Riftbound.Tournament.DeckLegality
 public import Riftbound.Tournament.Match
+public import Riftbound.Tournament.Sideboard
 
 /-!
 # Riftbound
