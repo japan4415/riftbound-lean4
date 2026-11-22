@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `Amount.highestMight`（選んだ物体の、最高の Might。費用の計算で読む）、`Amount.cardsPlayed`（このターンにプレイしたカードの枚数。プレイし直したカードは、1 枚と数える）、`TurnEffect.buffsExtraMight`（このターン、バフが、さらに +1 Might を与える）。費用の引き算（`costCuts`）は、パッシブの Might を読む（`Amount.evalS`）。
 - **動くようになったカード**: Sky Splitter（014）、Darius, Trifarian（027）、Stand United（053）。
 - **動くカード**: 219 → **222 枚**。
-- **近似として残したこと**: Stand United の「バフが、さらに +1」は、`mightNow` だけが読む（`Filter.might` などは、読まない）。Darius の「2 枚目」は、自分自身のプレイも数える。
+- **レビューで直したこと**: バフの Might（`GameState.buffBonus`）は、`mightNow` も `Filter.might`・`lethal`・`mighty` も、同じものを読む。「バフが、さらに +1」の効果は、重なると足される。
+- **近似として残したこと**: Darius の「2 枚目」は、自分自身のプレイも数える。同じカードを戻してプレイし直しても、1 枚と数える。1 回の処理で複数のカードがプレイされると、その途中の枚数は、見ない（最後の枚数で判断する）。
 
 ### M7 の実装の記録（2026-11-23）: 条件つきの「準備完了で入る」と、Might の下限（3 枚）
 

@@ -133,10 +133,7 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
   (s.mightOf id).map (fun m =>
     let total := m + s.equipBonus id + s.passiveMight id +
-      (if ((s.obj? id).map (·.buffed)).getD false then
-        (if ((s.obj? id).map (fun o => (s.fxOf o.controller).contains .buffsExtraMight)).getD false
-          then 2 else 1)
-       else 0)
+      s.buffBonus id
     -- the changes with a floor come last: they take away down to the floor, never below it
     (s.passiveSources.flatMap (fun src =>
       (s.activeMods src).filterMap (s.modFloor src id))).foldl

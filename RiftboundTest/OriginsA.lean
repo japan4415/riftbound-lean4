@@ -2392,4 +2392,18 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return plain.mightNow old == some 3 && a.mightNow mine == some 4 && a.mightNow old == some 4 &&
     a.mightNow foe == some 3
 
+-- ... the extra Might is the same for every read of Might (the filters too), it counts for a unit
+-- that is buffed later, and two such effects add up
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-136" .base
+  let (s2, foe) ← put s1 s.you "OGN-136" .base
+  let on := s2.addTurnFx s.me .buffsExtraMight
+  let two := on.addTurnFx s.me .buffsExtraMight
+  let le3 (x : GameState) (id : ObjId) :=
+    Filter.holds x id {} id (.might .le (.const 3))
+  return (on.buff u).mightNow u == some 4 && (two.buff u).mightNow u == some 5 &&
+    ((on.buff foe).buff u).mightNow foe == some 3 && on.mightNow u == some 2 &&
+    le3 (s2.buff u) u == some true && le3 (on.buff u) u == some false &&
+    le3 (two.buff u) u == some false
+
 end RiftboundTest

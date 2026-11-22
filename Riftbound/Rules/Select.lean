@@ -116,6 +116,47 @@ def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
     | .combatResolve bf att => some (bf, att)
     | _ => none)
 
+/-- The player has played a card of the kind since the timestamp counter was `stamp`. -/
+def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp : Nat) : Bool :=
+  s.objects.toList.any (fun (k, o) =>
+    o.owner == p && (o.playedStamp.any (fun x => decide (stamp ≤ x))) &&
+      (s.cardDef? ⟨k⟩).any (·.hasType t))
+
+/-- The player has played a card this turn other than the object `self`. -/
+def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
+  s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
+
+/-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
+a kind, no card of the kind has been played since. -/
+def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
+  (s.turnFx.filter (fun f =>
+    f.turn == s.turn && f.who == p &&
+      (match f.kind with
+        | .nextSpellCostMinus _ | .nextUnitReady => !s.playedSince p f.kind.playType f.stamp
+        | _ => true))).map (·.kind)
+
+/-- Units the player plays now enter ready, by an effect of the turn. -/
+def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
+  (s.fxOf p).any (fun k => k == .nextUnitReady || k == .unitsReady)
+
+/-- The Energy less the next spell of the player costs, by the effects of the turn. -/
+def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
+  (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
+
+/-- Spells and abilities deal no damage, by an effect of this turn. -/
+def GameState.damageOff (s : GameState) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
+
+/-- What the buff of a unit adds to its Might: +1, and +1 more for each effect of the turn that makes
+buffs give more (CR 701). Nothing for a unit that is not buffed. -/
+def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
+  match s.obj? id with
+  | some o =>
+    if o.buffed then
+      1 + (((s.fxOf o.controller).filter (fun k => k == .buffsExtraMight)).length : Int)
+    else 0
+  | none => 0
+
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
@@ -132,7 +173,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     -- the Layers are (`mightNow`) defined after the filters
     match s.mightOf id with
     | some m =>
-      let buff : Int := if ((s.obj? id).map (·.buffed)).getD false then 1 else 0
+      let buff : Int := s.buffBonus id
       pure (op.holds (m + s.equipBonus id + buff) n)
     | none => pure false
   | .cost op a => do
@@ -166,7 +207,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .lethal =>
     pure (match s.mightOf id, s.obj? id with
       | some m, some o =>
-        let buff : Int := if o.buffed then 1 else 0
+        let buff : Int := s.buffBonus id
         decide (0 < o.damage ∧ m + s.equipBonus id + buff ≤ (o.damage : Int))
       | _, _ => false)
   | .notSelf => some (id != self)
@@ -205,7 +246,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     -- the passive abilities are not read here (they read filters themselves), as for `Filter.might`
     pure (match s.mightOf id with
       | some m =>
-        let buff : Int := if ((s.obj? id).map (·.buffed)).getD false then 1 else 0
+        let buff : Int := s.buffBonus id
         decide (5 ≤ m + s.equipBonus id + buff)
       | none => false)
   | .attacker =>
@@ -476,37 +517,6 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .max a b =>
     do pure (Nat.max (← Amount.evalS0 s p self env a) (← Amount.evalS0 s p self env b))
   | a => a.eval env
-
-/-- The player has played a card of the kind since the timestamp counter was `stamp`. -/
-def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp : Nat) : Bool :=
-  s.objects.toList.any (fun (k, o) =>
-    o.owner == p && (o.playedStamp.any (fun x => decide (stamp ≤ x))) &&
-      (s.cardDef? ⟨k⟩).any (·.hasType t))
-
-/-- The player has played a card this turn other than the object `self`. -/
-def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
-  s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
-
-/-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
-a kind, no card of the kind has been played since. -/
-def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
-  (s.turnFx.filter (fun f =>
-    f.turn == s.turn && f.who == p &&
-      (match f.kind with
-        | .nextSpellCostMinus _ | .nextUnitReady => !s.playedSince p f.kind.playType f.stamp
-        | _ => true))).map (·.kind)
-
-/-- Units the player plays now enter ready, by an effect of the turn. -/
-def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
-  (s.fxOf p).any (fun k => k == .nextUnitReady || k == .unitsReady)
-
-/-- The Energy less the next spell of the player costs, by the effects of the turn. -/
-def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
-  (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
-
-/-- Spells and abilities deal no damage, by an effect of this turn. -/
-def GameState.damageOff (s : GameState) : Bool :=
-  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
 
 /-- Whether a question about the game is true, for the questions that are understood. `none` if it
 cannot be answered yet. -/
