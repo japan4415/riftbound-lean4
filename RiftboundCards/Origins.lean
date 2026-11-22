@@ -2567,8 +2567,14 @@ def OGN_105.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Singularity: the effect is not written yet. -/
-def OGN_105 : CardDef := OGN_105.meta
+/-- Singularity. -/
+def OGN_105 : CardDef :=
+  { OGN_105.meta with
+    spellEffect := some (.of []
+      (.seqOf [.may (.prim (.deal (Selector.one .any .anywhere [.ofType .unit]) (.const 6))),
+        .may (.prim (.deal (Selector.one .any .anywhere
+          [.ofType .unit, .not (.sameAs (.var pickVar))]) (.const 6)))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-106
 /--
@@ -3463,8 +3469,14 @@ def OGN_141.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Kinkou Monk: the effect is not written yet. -/
-def OGN_141 : CardDef := OGN_141.meta
+/-- Kinkou Monk. -/
+def OGN_141 : CardDef :=
+  { OGN_141.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.seqOf [.may (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit, .notSelf]))),
+        .may (.prim (.buff (Selector.one .friendly .anywhere
+          [.ofType .unit, .notSelf, .not (.sameAs (.var pickVar))])))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-142
 /--
@@ -5023,8 +5035,15 @@ def OGN_206.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Back to Back: the effect is not written yet. -/
-def OGN_206 : CardDef := OGN_206.meta
+/-- Back to Back. -/
+def OGN_206 : CardDef :=
+  { OGN_206.meta with
+    spellEffect := some (.of []
+      (.seqOf [.grant (Selector.one .friendly .anywhere [.ofType .unit])
+          (.mightPlus .it (.const 2)) .thisTurn,
+        .grant (Selector.one .friendly .anywhere
+          [.ofType .unit, .not (.sameAs (.var pickVar))]) (.mightPlus .it (.const 2)) .thisTurn])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-207
 /--
