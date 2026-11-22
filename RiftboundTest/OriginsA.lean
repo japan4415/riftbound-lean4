@@ -3071,4 +3071,36 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
     d'.mightNow foe == some 3 && e'.mightNow there == some 2
 
+-- Stealthy Pursuer (OGN-177): when a friendly unit moves from my location, I may be moved with it
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, p) ← putAt s s.me "OGN-177" s.bf0
+  let (s2, x) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, y) ← putAt s2 s.me "OGN-136" bf1
+  let (s4, foe) ← putAt s3 s.you "OGN-136" s.bf0
+  let (a, ev) ← moveTo s4 s.me x (.battlefield bf1)
+  let (b, ev2) ← moveTo s4 s.me x .base
+  let (c, ev3) ← moveTo s4 s.me y .base
+  let (d, ev4) ← moveTo s4 s.you foe (.battlefield bf1)
+  let yes ← fire a ev { yes := true }
+  let no ← fire a ev { yes := false }
+  let home ← fire b ev2 { yes := true }
+  let other ← fire c ev3 { yes := true }
+  let foeMoves ← fire d ev4 { yes := true }
+  let loc (g : GameState) := (g.obj? p).map (·.loc)
+  -- from the Base: a unit that leaves my Base takes me with it
+  let (t1, q) ← put s s.me "OGN-177" .base
+  let (t2, z) ← put t1 s.me "OGN-136" .base
+  let (e, ev5) ← moveTo t2 s.me z (.battlefield s.bf0)
+  let fromBase ← fire e ev5 { yes := true }
+  -- the unit dies before the ability resolves: nothing happens
+  let queued := { a with pending := insertTriggers (a.detect ev) a.pending }
+  let gone ← match advance 100 (killObj queued x).1 [] with
+    | .ok (g, _) => some (settleChain { yes := true } 12 g)
+    | .error _ => none
+  return loc gone == some (some s.bf0) && loc yes == some (some bf1) &&
+    loc no == some (some s.bf0) && loc home == some none &&
+    loc other == some (some s.bf0) && loc foeMoves == some (some s.bf0) &&
+    (fromBase.obj? q).map (·.loc) == some (some s.bf0)
+
 end RiftboundTest
