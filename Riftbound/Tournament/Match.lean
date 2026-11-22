@@ -108,6 +108,24 @@ wins; the same number is a draw. -/
 def onTime (m : MatchState) : MatchResult :=
   if m.wins1 < m.wins0 then .won ⟨0⟩ else if m.wins0 < m.wins1 then .won ⟨1⟩ else .draw
 
+/-- A player concedes the match: the other player wins it (TR 410.2). -/
+def concedeMatch (p : PlayerId) : MatchResult := .won (other p)
+
+/-- The players agree to a draw of the match (TR 410.2). -/
+def agreedDrawMatch : MatchResult := .draw
+
+/-- **The winner of a conceded match is the other player** (TR 410.2): for a player of the match,
+the winner is not the one who conceded. -/
+theorem concedeMatch_ne {p q : PlayerId} (hp : p.n < 2) (h : concedeMatch p = .won q) :
+    q ≠ p := by
+  unfold concedeMatch other at h
+  simp only [MatchResult.won.injEq] at h
+  subst h
+  intro hq
+  have := congrArg PlayerId.n hq
+  simp at this
+  omega
+
 /-- The matches that are run to the end: the games played one after the other. -/
 def ofGames (target : Nat) (gs : List (GameResult × PlayerId)) : MatchState :=
   gs.foldl (fun m g => m.record g.1 g.2) (start target)

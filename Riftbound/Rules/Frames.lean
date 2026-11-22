@@ -198,6 +198,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chooseBurnOut _ :: rest, .burnOutTarget opp =>
     some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
+  | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

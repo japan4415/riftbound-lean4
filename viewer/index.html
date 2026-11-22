@@ -256,6 +256,7 @@ function describe(i) {
           : 'コストを払って Base に出す（Unit は Exhaust で入る）'];
     }
     case 'timeCalled': return [who + ': 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
+    case 'declareDraw': return [who + ': 引き分けを宣言する', '選手が合意した（TR 410.1）、または終わらないループ（TR 505.6）。ゲームは、その場で引き分けで終わる'];
     default: return [who + ': ' + a.kind, ''];
   }
 }
