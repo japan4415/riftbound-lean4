@@ -3211,8 +3211,23 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (v1, m3) ← put s s.me "OGN-167" .base
   let (v2, d) ← put v1 s.me "OGN-088" .hand
   let handIn ← play v2 s.me d
+  -- two Monks each get it; a Hidden card played from the hand does not count
+  let (w1, wa) ← put s s.me "OGN-167" .base
+  let (w2, wb) ← put w1 s.me "OGN-167" .base
+  let (w3, wc) ← put w2 s.me "OGN-135" .hand
+  let wmine := w3.control s.me s.bf0
+  let whide ← activate wmine s.me wc 0 [s.bf0] ⟨0, [.fury]⟩
+  let wh ← (whide.zone (.player s.me .hidden)).head?
+  let wnext := { whide with turn := whide.turn + 1 }
+  let twice ← activate wnext s.me wh 1 [] ⟨0, []⟩
+  let (x1, xm) ← put s s.me "OGN-167" .base
+  let (x2, xc) ← put x1 s.me "OGN-135" .hand
+  let fromHand ← play x2 s.me xc
   return unitIn.mightNow monk == (next.mightNow monk).map (· + 2) &&
     spellIn.mightNow m2 == (next2.mightNow m2).map (· + 2) &&
-    handIn.mightNow m3 == v2.mightNow m3 && next.mightNow monk == mine.mightNow monk
+    handIn.mightNow m3 == v2.mightNow m3 && next.mightNow monk == mine.mightNow monk &&
+    twice.mightNow wa == (wnext.mightNow wa).map (· + 2) &&
+    twice.mightNow wb == (wnext.mightNow wb).map (· + 2) &&
+    fromHand.mightNow xm == x2.mightNow xm
 
 end RiftboundTest
