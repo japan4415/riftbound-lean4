@@ -1081,4 +1081,47 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire s1 [.phaseStarted s.me .ending]
   return a.pending.length ≤ s1.pending.length + 1
 
+-- Zenith Blade (OGN-262): stun an enemy unit at a battlefield; I may move a friendly unit there
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-262" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-116" s.bf0
+  let (s3, f) ← put s2 s.me "OGN-136" .base
+  let a ← play s3 s.me c [e]
+  let b ← play s3 s.me c [e] { yes := false }
+  return (a.obj? e).map (·.stunned) == some true && (a.obj? f).bind (·.loc) == some s.bf0 &&
+    (a.obj? f).map (·.exhausted) == some false && (b.obj? f).bind (·.loc) == none &&
+    (b.obj? e).map (·.stunned) == some true &&
+    -- the Battlefield is Contested by me, and the Showdown starts at it
+    (a.obj? s.bf0).bind (·.contested) == some s.me &&
+    a.pending.any (fun f => match f with | .showdown bf _ _ => bf == s.bf0 | _ => false)
+
+-- Blitzcrank (OGN-067): played to a battlefield, I may move an enemy unit to here; it returns to
+-- my hand when it holds
+#guard t fun s => do
+  let (s1, b) ← putAt s s.me "OGN-067" s.bf0
+  let (s2, e) ← put s1 s.you "OGN-136" .base
+  let a ← fire s2 [.played s.me b]
+  let n ← fire s2 [.played s.me b] { yes := false }
+  let h ← fire s2 [.scored s.me s.bf0 false]
+  return (a.obj? e).bind (·.loc) == some s.bf0 && (n.obj? e).bind (·.loc) == none &&
+    h.countIn s.me .hand "OGN-067" == s2.countIn s.me .hand "OGN-067" + 1 &&
+    (h.obj? b).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-067" .hand
+  let (s2, e) ← put s1 s.you "OGN-136" .base
+  let a ← play s2 s.me c
+  return (a.obj? e).bind (·.loc) == none
+
+-- Blitzcrank: the enemy unit moved there makes the Battlefield Contested by its controller; a
+-- Conquer, or a Hold elsewhere, does not send Blitzcrank home
+#guard t fun s => do
+  let (s1, b) ← putAt s s.me "OGN-067" s.bf0
+  let (s2, e) ← put s1 s.you "OGN-136" .base
+  let a ← fire s2 [.played s.me b]
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let c ← fire s2 [.scored s.me s.bf0 true]
+  let d ← fire s2 [.scored s.me other false]
+  return (a.obj? e).bind (·.loc) == some s.bf0 &&
+    (a.obj? s.bf0).bind (·.contested) == some s.you && (c.obj? b).isSome && (d.obj? b).isSome
+
 end RiftboundTest

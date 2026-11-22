@@ -148,6 +148,7 @@ def Prim.understood : Prim → Bool
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
   | .move s .base => s.understoodPick
+  | .move s (.at_ d) => s.understoodPick && d.understood
   | .stun s => s.understoodPick
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
