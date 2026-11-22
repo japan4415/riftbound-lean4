@@ -186,6 +186,8 @@ inductive Condition where
   | canPay (c : Cost)
   /-- A unit of an opponent has died this turn. -/
   | enemyUnitDied
+  /-- The object has been noted this turn for the player with the effect. -/
+  | marked (e : TurnEffect)
   /-- The player has discarded a card this turn. -/
   | discardedThisTurn
   /-- It is the turn of the player the effect belongs to. -/

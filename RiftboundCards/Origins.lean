@@ -7451,8 +7451,16 @@ def OGN_289.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Targon's Peak: the effect is not written yet. -/
-def OGN_289 : CardDef := OGN_289.meta
+/-- Targon's Peak. -/
+def OGN_289 : CardDef :=
+  { OGN_289.meta with
+    abilities := [
+      .triggered (.onSelf .youConquer) (.of [] (.prim (.markOn .self .conqueredHere))) .unlimited,
+      .triggered { event := .at_ .endOfTurn, condition := .marked .conqueredHere }
+        (.of [] (.seqOf [
+          .prim (.ready (Selector.one .friendly .anywhere [.ofType .rune, .exhausted])),
+          .prim (.ready (Selector.one .friendly .anywhere [.ofType .rune, .exhausted]))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-290
 /--

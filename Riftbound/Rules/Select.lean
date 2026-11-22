@@ -592,6 +592,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .paid => some ((s.obj? self).any (·.paid))
   | .playedAnother => some (s.playedOther p self)
   | .canPay c => some (s.payNow p self c).isSome
+  | .marked e =>
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.who == p &&
+      f.target == some self))
   | .enemyUnitDied =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
   | .discardedThisTurn =>
