@@ -186,7 +186,8 @@ def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
   match s.obj? id with
   | some o =>
     if o.buffed then
-      1 + (((s.fxOf o.controller).filter (fun k => k == .buffsExtraMight)).length : Int)
+      (1 + (o.extraBuffs : Int)) *
+        (1 + (((s.fxOf o.controller).filter (fun k => k == .buffsExtraMight)).length : Int))
     else 0
   | none => 0
 

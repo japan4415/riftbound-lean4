@@ -2071,8 +2071,12 @@ def OGN_078.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Lee Sin, Ascetic: the effect is not written yet. -/
-def OGN_078 : CardDef := OGN_078.meta
+/-- Lee Sin, Ascetic. -/
+def OGN_078 : CardDef :=
+  { OGN_078.meta with
+    abilities := [.passive .always [.anyBuffs],
+      .activated [.exhaustSelf] .normal (.of [] (.prim (.buff .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-079
 /--
