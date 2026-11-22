@@ -93,6 +93,23 @@ inductive PlayerSel where
   | eventPlayer
 deriving DecidableEq, Repr, Hashable
 
+/-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
+inductive TurnEffect where
+  /-- The next spell the player plays this turn costs `n` Energy less. -/
+  | nextSpellCostMinus (n : Nat)
+  /-- The next unit the player plays this turn enters ready. -/
+  | nextUnitReady
+  /-- The units the player plays this turn enter ready. -/
+  | unitsReady
+  /-- Spells and abilities deal no damage this turn. -/
+  | preventEffectDamage
+deriving DecidableEq, Repr, Hashable
+
+/-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
+def TurnEffect.playType : TurnEffect → CardType
+  | .nextSpellCostMinus _ => .spell
+  | _ => .unit
+
 /-- A point of the turn a delayed effect or a trigger waits for (CR 314-317). -/
 inductive Timing where
   /-- The start of the turn. -/

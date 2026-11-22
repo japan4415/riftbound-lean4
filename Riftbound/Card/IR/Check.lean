@@ -152,6 +152,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .takeControl s => Selector.ok c s
   | .extraTurn p => p.ok c
   | .win p => p.ok c
+  | .turnEffect _ => true
 
 /-- A duration refers only to what is there. -/
 def Duration.ok (c : Ctx) : Duration → Bool

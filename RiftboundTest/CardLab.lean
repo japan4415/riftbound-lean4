@@ -108,7 +108,8 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
       | none => s
     | _ => s
 
-/-- A payment of exactly the cost the card is played for (a Power of any domain is paid with Fury). -/
+/-- A payment of exactly the cost the card is played for (a Power of any domain is paid with
+Fury). -/
 meta def payOf (s : GameState) (c : ObjId) : RunePool.Payment :=
   match (s.obj? c), (s.cardDef? c) with
   | some o, some d =>

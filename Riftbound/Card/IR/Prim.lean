@@ -109,6 +109,8 @@ inductive Prim where
   | extraTurn (p : PlayerSel)
   /-- The players win the game. -/
   | win (p : PlayerSel)
+  /-- Make something true for the rest of the turn. -/
+  | turnEffect (e : TurnEffect)
 deriving DecidableEq, Repr, Hashable
 
 /-- How long an effect lasts. -/

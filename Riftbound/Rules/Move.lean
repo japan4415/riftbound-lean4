@@ -239,7 +239,8 @@ end GameState
 rules, the stack, the turn order, the phase, the result, and whatever the state will hold later. -/
 def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
-            nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points } = s
+            nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
+            turnFx := s.turnFx } = s
 
 namespace SameMeta
 
@@ -252,7 +253,8 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
   unfold SameMeta at *
   have := congrArg (fun x : GameState =>
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
-              nextTimestamp := s.nextTimestamp, points := s.points } : GameState)) h2
+              nextTimestamp := s.nextTimestamp, points := s.points,
+              turnFx := s.turnFx } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this

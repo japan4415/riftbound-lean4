@@ -522,8 +522,12 @@ def OGN_021.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Sun Disc: the effect is not written yet. -/
-def OGN_021 : CardDef := OGN_021.meta
+/-- Sun Disc. -/
+def OGN_021 : CardDef :=
+  { OGN_021.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [] (.ifThen .playedAnother (.prim (.turnEffect .nextUnitReady)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-022
 /--
@@ -762,8 +766,12 @@ def OGN_031.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Raging Firebrand: the effect is not written yet. -/
-def OGN_031 : CardDef := OGN_031.meta
+/-- Raging Firebrand. -/
+def OGN_031 : CardDef :=
+  { OGN_031.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.turnEffect (.nextSpellCostMinus 5)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-032
 /--
@@ -3249,8 +3257,12 @@ def OGN_129.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Confront: the effect is not written yet. -/
-def OGN_129 : CardDef := OGN_129.meta
+/-- Confront. -/
+def OGN_129 : CardDef :=
+  { OGN_129.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.turnEffect .unitsReady), .prim (.draw .you (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-130
 /--
@@ -3644,8 +3656,11 @@ def OGN_145.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Unyielding Spirit: the effect is not written yet. -/
-def OGN_145 : CardDef := OGN_145.meta
+/-- Unyielding Spirit. -/
+def OGN_145 : CardDef :=
+  { OGN_145.meta with
+    spellEffect := some (.of [] (.prim (.turnEffect .preventEffectDamage))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-146
 /--
