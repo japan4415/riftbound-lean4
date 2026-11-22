@@ -3450,14 +3450,18 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let foe ← fire t3 [.scored s.you bf true] { yes := true }
   let (u1, _) ← put t1 s.me "OGN-252" .trash
   let empty ← fire (u1.setZone (.player s.me .hand) []) [.scored s.me bf true] { yes := true }
-  let (v1, _) ← put t3 s.me "OGN-252" .hand
-  let (v2, _) ← put (v1.setZone (.player s.me .trash) []) s.me "OGN-252" .base
-  let elsewhere ← fire v2 [.scored s.me bf true] { yes := true }
+  let (v1, _) ← put (t3.setZone (.player s.me .trash) []) s.me "OGN-252" .hand
+  let inHand ← fire v1 [.scored s.me bf true] { yes := true }
+  let (v2, _) ← put (t3.setZone (.player s.me .trash) []) s.me "OGN-252" .base
+  let inBase ← fire v2 [.scored s.me bf true] { yes := true }
+  let (w1, _) ← put t3 s.you "OGN-252" .trash
+  let theirs ← fire w1 [.scored s.me bf true] { yes := true }
   return (hit.obj? u).map (·.damage) == some 5 &&
     yes.countIn s.me .hand "OGN-252" == 1 && yes.countIn s.me .trash "OGN-252" == 0 &&
     handOf yes == handOf t3 && yes.countIn s.me .trash "OGN-136" == 1 &&
     no.countIn s.me .trash "OGN-252" == 1 && hold.countIn s.me .trash "OGN-252" == 1 &&
     foe.countIn s.me .trash "OGN-252" == 1 && empty.countIn s.me .trash "OGN-252" == 1 &&
-    elsewhere.countIn s.me .hand "OGN-252" == v2.countIn s.me .hand "OGN-252"
+    inHand.countIn s.me .trash "OGN-136" == 0 && inBase.countIn s.me .trash "OGN-136" == 0 &&
+    theirs.countIn s.you .trash "OGN-252" == 1
 
 end RiftboundTest
