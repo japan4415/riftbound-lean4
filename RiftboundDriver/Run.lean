@@ -74,6 +74,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .triggerOrder .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .discard .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .mayDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
+  | .eitherDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .pickDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with

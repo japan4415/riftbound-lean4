@@ -87,6 +87,7 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
     match s.pending with
     | .chainPass q _ :: _ => go ⟨.player q, .pass⟩
     | .mayDo q .. :: _ => go ⟨.player q, .decide says.yes⟩
+    | .eitherDo q .. :: _ => go ⟨.player q, .decide says.yes⟩
     | .pickDo .. :: _ =>
       let opts := (legalFrameActions s).filter (fun a => match a.kind with
         | .choose o => says.obj o | _ => false)
@@ -184,9 +185,9 @@ meta def GameState.tired (s : GameState) (u : ObjId) : Option Bool := (s.obj? u)
 
 /-- Use an ability of the object (the player has plenty to pay), and let the Chain resolve. -/
 meta def activate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (ts : List ObjId := [])
-    (pay : RunePool.Payment := ⟨0, []⟩) : Option GameState :=
+    (pay : RunePool.Payment := ⟨0, []⟩) (says : Says := {}) : Option GameState :=
   match step 100 (s.rich p) ⟨.player p, .activate src idx pay ts⟩ with
-  | .ok (s1, _) => some (settleChain {} 12 s1)
+  | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
 /-- Make the object buffed. -/

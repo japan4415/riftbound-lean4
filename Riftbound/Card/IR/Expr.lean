@@ -100,6 +100,8 @@ inductive Filter where
   | notSelf
   /-- Does not have the property. -/
   | not (f : Filter)
+  /-- Is the object a selector names (`self`, a chosen object or a variable). -/
+  | sameAs (s : Selector)
   /-- Is at the place the selector gives (a Battlefield, for example the one that was chosen). -/
   | at_ (s : Selector)
   /-- Is the only unit of its side in the combat ("alone"). -/

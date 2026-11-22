@@ -1415,4 +1415,56 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return x.countIn s.me .trash "OGN-016" == 1 && (x.zone (.player s.me .trash)).length == 1 &&
     (y.zone (.player s.me .trash)).length == 4
 
+-- Qiyana (OGN-155): when she conquers, draw 1 or channel 1 rune exhausted
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let (s2, _) ← putAt s1 s.me "OGN-155" bf
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  let a ← fire s2 [.scored s.me bf true]
+  let b ← fire s2 [.scored s.me bf true] { yes := false }
+  let c ← fire s2 [.scored s.me bf false]
+  return a.handN s.me == s2.handN s.me + 1 && runes a == runes s2 &&
+    b.handN s.me == s2.handN s.me && runes b + 1 == runes s2 && c.handN s.me == s2.handN s.me
+
+-- Charm (OGN-043): move an enemy unit, to its base or to a battlefield I choose
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-043" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
+  let toBase ← play s3 s.me c [e]
+  let toBf ← play s3 s.me c [f] { yes := false, obj := fun o => o == other }
+  return (toBase.obj? e).bind (·.loc) == none && (toBase.zone (.player s.you .base)).contains e &&
+    (toBf.obj? f).bind (·.loc) == some other
+
+-- Ride the Wind (OGN-173): move a friendly unit and ready it
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-173" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let tiredU := s2.tire u
+  let a ← play tiredU s.me c [u] { yes := false, obj := fun o => o == s.bf0 }
+  return (a.obj? u).bind (·.loc) == some s.bf0 && a.tired u == some false
+
+-- Unforgiven (OGN-259), a Legend: for 2 Energy and exhausting it, move a friendly unit to or from
+-- my base
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-259" .legendZone
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let down ← activate s3 s.me g 0 [u] ⟨2, []⟩
+  let up ← activate s3 s.me g 0 [v] ⟨2, []⟩ { yes := false, obj := fun o => o == s.bf0 }
+  return (down.obj? u).bind (·.loc) == none && down.tired g == some true &&
+    (up.obj? v).bind (·.loc) == some s.bf0 && (activate down s.me g 0 [u] ⟨2, []⟩).isNone
+
+-- Dragon's Rage (OGN-258): move an enemy unit, then it and another enemy unit there deal damage
+-- equal to their Mights to each other
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-258" .hand
+  let (s2, f) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, e) ← put s2 s.you "OGN-116" .base
+  let (s4, g) ← put s3 s.you "OGN-001" .base
+  let a ← play s4 s.me c [e] { yes := false, obj := fun o => o == s.bf0 || o == f }
+  return (a.obj? e).bind (·.loc) == some s.bf0 && (a.obj? e).map (·.damage) == some 5 &&
+    (a.obj? f).isNone && (a.obj? g).map (·.damage) == some 0
+
 end RiftboundTest

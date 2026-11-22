@@ -26,6 +26,8 @@ inductive Effect where
   | seq (es : EffectList)
   /-- Do the mode that was chosen when the card was played (CR 355). -/
   | chooseOne (modes : EffectList)
+  /-- The player chooses one of the effects while the effect resolves, and does it. -/
+  | eitherOf (modes : EffectList)
   /-- Do the first effect if the condition holds, the second otherwise. -/
   | ifThen (c : Condition) (t e : Effect)
   /-- Do the effect for each of the objects, with `it` the object. -/

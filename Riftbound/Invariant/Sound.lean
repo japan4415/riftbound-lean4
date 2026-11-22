@@ -119,6 +119,8 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     exact ⟨_, rfl⟩
   · rename_i p src env e es rest yes hp hk
     exact ⟨_, rfl⟩
+  · rename_i p src env a b es rest yes hp hk
+    exact ⟨_, rfl⟩
   · rename_i p src env c more e es rest o hp hk
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
@@ -260,6 +262,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
   · rename_i p src env e es rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p src env a b es rest yes hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl

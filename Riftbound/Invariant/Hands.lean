@@ -442,6 +442,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases List.mem_cons.mp hm' with h1 | h1
     · cases h1
     · exact List.mem_cons_of_mem _ h1
+  · rename_i p src env a b es rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
   · rename_i p src env c more e es rest o hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
