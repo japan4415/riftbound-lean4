@@ -857,4 +857,17 @@ meta def t (f : GameState → Option Bool) : Bool :=
     s1.kwAmount f .shield == 0 && s1.deflectOf f == 0 &&
     s2.hasKw f .ganking && s2.kwAmount f .shield == 1 && s2.deflectOf f == 1
 
+-- Mighty counts an Equipment too (Fiora 4 + Long Sword 2), and the Showdown of a Combat is a
+-- combat for Wielder of Water
+#guard t fun s => do
+  let (s1, f) ← put s s.me "OGN-232" .base
+  let (s2, sw) ← put s1 s.me "SFD-022" .base
+  let s3 := s2.modObj sw (fun o => { o with attached := some f })
+  return !s2.hasKw f .ganking && s3.hasKw f .ganking && s3.mightNow f == some 6
+#guard t fun s => do
+  let (s1, w) ← putAt s s.me "OGN-055" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-136" s.bf0
+  let b := s2.inShowdownAt s.bf0 s.me
+  return b.mightNow w == (s2.mightNow w).map (· + 2)
+
 end RiftboundTest

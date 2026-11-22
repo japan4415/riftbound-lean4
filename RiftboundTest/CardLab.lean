@@ -138,10 +138,9 @@ meta def fire (s : GameState) (es : List Event) (says : Says := {}) : Option Gam
 meta def GameState.inCombatAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=
   { s with pending := .combatDamage bf att :: s.pending }
 
-/-- The game with the Showdown of a Combat going on and a player with priority in it: the frames
-of the Combat wait beneath. -/
+/-- The game with the Showdown of a Combat going on and a player with priority in it. -/
 meta def GameState.inShowdownAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=
-  { s with pending := .priority att :: .showdown bf att 0 :: .combatDamage bf att :: s.pending }
+  { s with pending := .priority att :: .showdown bf att 0 :: s.pending }
 
 /-- Let the Combat start: the abilities it sets off resolve, until the first question. -/
 meta def startCombatNow (s : GameState) (bf : ObjId) (att : PlayerId) (says : Says := {}) :
