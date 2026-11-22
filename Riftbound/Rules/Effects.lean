@@ -846,11 +846,13 @@ def Effect.pickSel? : Effect → Option Selector
     match p.pickSel? with
     | some (.pick .one side place fs) => some (.pick .one side place fs)
     | _ => none
+  | .grant (.pick .one side place fs) _ _ => some (.pick .one side place fs)
   | _ => none
 
 /-- The effect with the chosen object, named by `pickVar`, in place of the selector. -/
 def Effect.withPick : Effect → Effect
   | .prim p => .prim (p.withSel (.var pickVar))
+  | .grant (.pick .one _ _ _) m d => .grant (.var pickVar) m d
   | e => e
 
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the

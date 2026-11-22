@@ -1485,4 +1485,63 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, u) ← put s1 s.me "OGN-136" .base
   return (play s2 s.me c [u]).isNone
 
+-- Singularity (OGN-105): 6 damage to each of up to two units (two different units)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-105" .hand
+  let (s2, a) ← put s1 s.you "OGN-116" .base
+  let (s3, b) ← put s2 s.you "OGN-116" .base
+  let (s4, d) ← put s3 s.you "OGN-116" .base
+  let x ← play s4 s.me c [] { obj := fun o => o == a }
+  let n ← play s4 s.me c [] { yes := false }
+  let dmg (y : GameState) (u : ObjId) := (y.obj? u).map (·.damage)
+  return dmg x a == some 6 && (dmg x b == some 6 || dmg x d == some 6) &&
+    !(dmg x b == some 6 && dmg x d == some 6) && dmg n a == some 0 && dmg n b == some 0
+
+-- Kinkou Monk (OGN-141): buff up to two other friendly units, different ones, not itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-141" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, w) ← put s3 s.me "OGN-136" .base
+  let (s5, e) ← put s4 s.you "OGN-136" .base
+  let a ← play s5 s.me c [] { obj := fun o => o == u }
+  let m ← a.firstOf s.me .base "OGN-141"
+  let bf (y : GameState) (o : ObjId) := (y.obj? o).map (·.buffed)
+  let count := [u, v, w].filter (fun o => bf a o == some true) |>.length
+  return count == 2 && bf a u == some true && bf a m == some false && bf a e == some false
+
+-- Back to Back (OGN-206): two friendly units get +2 Might each; with one unit, only +2
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-206" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let a ← play s3 s.me c [] { obj := fun o => o == u }
+  let b ← play s2 s.me c
+  return a.mightNow u == (s3.mightNow u).map (· + 2) &&
+    a.mightNow v == (s3.mightNow v).map (· + 2) && b.mightNow u == (s2.mightNow u).map (· + 2)
+
+-- the edges of the two-pick cards: one unit only, my own units, only friendly units, and the
+-- bonus ends with the turn
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-105" .hand
+  let (s2, a) ← put s1 s.me "OGN-116" .base
+  let x ← play s2 s.me c
+  return (x.obj? a).map (·.damage) == some 6
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-141" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let a ← play s2 s.me c
+  let m ← a.firstOf s.me .base "OGN-141"
+  return (a.obj? u).map (·.buffed) == some true && (a.obj? m).map (·.buffed) == some false
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-206" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, w) ← put s3 s.me "OGN-136" .base
+  let (s5, e) ← put s4 s.you "OGN-136" .base
+  let a ← play s5 s.me c
+  let up := [u, v, w].filter (fun o => a.mightNow o == (s5.mightNow o).map (· + 2)) |>.length
+  return up == 2 && a.mightNow e == s5.mightNow e &&
+    [u, v, w].all (fun o => (a.mapObjects endTurnObj).mightNow o == s5.mightNow o)
+
 end RiftboundTest

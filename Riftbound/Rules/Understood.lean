@@ -193,12 +193,12 @@ def Effect.understood : Effect → Bool
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
-    s.understood && a.understood && d.endPoint?.isSome
+    s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
-    s.understood && a.understood && d.endPoint?.isSome
+    s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinusMin .it a _) d =>
-    s.understood && a.understood && d.endPoint?.isSome
-  | .grant s (.keyword .it _) d => s.understood && d.endPoint?.isSome
+    s.understoodPick && a.understood && d.endPoint?.isSome
+  | .grant s (.keyword .it _) d => s.understoodPick && d.endPoint?.isSome
   | _ => false
 
 /-- Every effect of a list is understood. -/
