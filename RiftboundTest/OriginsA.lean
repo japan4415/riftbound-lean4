@@ -2983,18 +2983,27 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s1, lair) ← putBf s s.me "OGN-295"
   let (s2, u) ← putAt s1 s.me "OGN-136" lair
   let (s3, v) ← putAt s2 s.me "OGN-136" s.bf0
-  return !moveOk s3 s.me u .base && moveOk s3 s.me v .base
+  let (s4, w) ← putAt s3 s.you "OGN-136" lair
+  let home (g : GameState) (x : ObjId) := (moveHome g x).1.where? x
+  -- ... also a move by an effect, and of the units of either player
+  return !moveOk s3 s.me u .base && moveOk s3 s.me v .base && home s4 u == some .battlefieldZone &&
+    home s4 w == some .battlefieldZone && home s4 v == some (.player s.me .base)
 
 -- Noxus Saboteur (OGN-018): the Hidden cards of my opponents cannot be revealed at its battlefield
 #guard t fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-298"
-  let (s2, h) ← put s1 s.you "OGN-213" .hidden
-  let hidden := s2.modObj h (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 })
-  let (s3, _) ← putAt hidden s.me "OGN-018" bf
-  let (s4, _) ← putAt hidden s.you "OGN-018" bf
-  let (s5, _) ← putAt hidden s.me "OGN-018" s.bf0
-  return s3.hiddenBlocked s.you h && !hidden.hiddenBlocked s.you h && !s4.hiddenBlocked s.you h &&
-    !s5.hiddenBlocked s.you h && !s3.hiddenBlocked s.me h
+  let (s1, c) ← put s s.me "OGN-135" .hand
+  let mine := s1.control s.me s.bf0
+  let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  let h ← (hide.zone (.player s.me .hidden)).head?
+  let (foe, _) ← putAt hide s.you "OGN-018" s.bf0
+  let (own, _) ← putAt hide s.me "OGN-018" s.bf0
+  let bf1 ← s.battlefields[1]?
+  let (away, _) ← putAt hide s.you "OGN-018" bf1
+  let later (g : GameState) := { g with turn := g.turn + 1 }
+  let go (g : GameState) := activate (later g) s.me h 1 [] ⟨0, []⟩
+  return foe.hiddenBlocked s.me h && !hide.hiddenBlocked s.me h && !own.hiddenBlocked s.me h &&
+    !away.hiddenBlocked s.me h && (go foe).isNone && (go hide).isSome && (go own).isSome &&
+    (go away).isSome
 
 -- Treasure Trove (OGN-186): when it dies, draw 1 and channel 1 rune exhausted; Chaos, exhaust:
 -- kill it

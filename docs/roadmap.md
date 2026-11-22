@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `StaticMod.noMoveToBase`（ここにいるユニットは、標準の移動で、基地へ戻れない。`moveOk` が見る）、`StaticMod.noHiddenReveal`（ここの、相手の Hidden のカードは、使えない。`guardOk` が見る）。
 - **動くようになったカード**: Vilemaw's Lair（295）、Noxus Saboteur（018）、Treasure Trove（186。死んだとき、1 枚引いて、疲労した Rune を 1 つ引く。Chaos と疲労で、自分を殺す）。
 - **動くカード**: 251 → **254 枚**。
-- **近似として残したこと**: Treasure Trove の「場を離れたとき」は、「死んだとき」だけを見る（手札へ戻る、追放されるは、見ない）。
+- **レビューで直したこと**: Vilemaw's Lair は、効果による、基地への移動（`moveHome`）も、止める（Recall は、止めない）。Saboteur は、実際に Hidden にして、使えるかで、確かめる。
+- **近似として残したこと**: Treasure Trove の「場を離れたとき」は、「死んだとき」だけを見る（手札へ戻る、追放される、は、見ない。たとえば、Pack of Wonders で、手札へ戻したときは、誘発しない）。
 
 ### M7 の実装の記録（2026-11-23）: Deathknell を、もう 1 回（1 枚）
 

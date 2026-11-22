@@ -707,6 +707,20 @@ theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToB
         · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Move a Unit to the Base of its controller by an effect, unless the Battlefield it is at
+forbids it (CR 447). -/
+def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=
+  if ((s.obj? u).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .noMoveToBase) then
+    (s, [])
+  else sendHome s u
+
+/-- Moving home is a safe change. -/
+theorem moveHome_safe (s : GameState) (u : ObjId) : Safe s (moveHome s u).1 := by
+  unfold moveHome
+  split
+  · exact Safe.refl s
+  · exact sendHome_safe s u
+
 /-- Move a Unit to a place by an effect: a Battlefield (`some`) or its controller's Base. -/
 def sendToLoc (loc : Option ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
   match loc with
@@ -867,7 +881,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
-  | .move sel .base => onSelected s p src env sel sendHome
+  | .move sel .base => onSelected s p src env sel moveHome
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -959,7 +973,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | attach gears to => exact applyAttach_safe h
   | move sel dest =>
     cases dest with
-    | base => exact onSelected_safe sendHome_safe h
+    | base => exact onSelected_safe moveHome_safe h
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
