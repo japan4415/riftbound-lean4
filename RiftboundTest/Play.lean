@@ -379,7 +379,8 @@ meta def enemyUnits : Selector := Selector.all .enemy .atBase [.ofType .unit]
     dmg (runBody s p c {} (.bind ⟨"n"⟩ (.count enemyUnits)
       (.forEach enemyUnits (.prim (.deal .it (.var ⟨"n"⟩)))))) == some 1 &&
     -- what is not understood is skipped, and the rest goes on
-    dmg (runBody s p c {} (.seqOf [.may .nop, .forEach enemyUnits (hit 1)])) == some 1
+    dmg (runBody s p c {} (.seqOf [.prim (.extraTurn .you), .forEach enemyUnits (hit 1)])) ==
+      some 1
   | none => false
 
 -- banish and return to hand send the Unit to its owner's Banishment and hand

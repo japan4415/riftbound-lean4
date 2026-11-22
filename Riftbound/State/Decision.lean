@@ -69,6 +69,10 @@ inductive ActionKind where
   | discardPick (card : ObjId)
   /-- Finish a discard: the hand is empty, so nothing more can be discarded (CR 415.1). -/
   | discardDone
+  /-- Answer a "you may": do it, or do not. -/
+  | decide (yes : Bool)
+  /-- Choose this object, when an effect says to choose one while it resolves (CR 355). -/
+  | choose (obj : ObjId)
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
   | burnOutTarget (opponent : PlayerId)
   /-- Pass priority. In the Main Phase with an empty Chain, the turn player passing ends the
@@ -199,6 +203,13 @@ inductive Frame where
       (others : List PendTrigger)
   /-- Choice: player `p` discards `n` more cards of their hand, one at a time (CR 415). -/
   | discard (p : PlayerId) (n : Nat)
+  /-- Choice: player `p` may do the effect `e`; the effects `rest` of the item follow (CR 355). -/
+  | mayDo (p : PlayerId) (src : ObjId) (env : Env) (e : Effect) (rest : EffectList)
+  /-- Choice: player `p` chooses one of the objects `cands` for the effect `e`, which names it
+  by the variable `pickVar`; the objects are `c :: more`; the effects `rest` of the item follow
+  (CR 355). -/
+  | pickDo (p : PlayerId) (src : ObjId) (env : Env) (c : ObjId) (more : List ObjId) (e : Effect)
+      (rest : EffectList)
 deriving DecidableEq, Repr
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
@@ -222,6 +233,8 @@ def Frame.isPlay : Frame → Bool
   | .triggers _ => true
   | .triggerOrder .. => true
   | .discard .. => true
+  | .mayDo .. => true
+  | .pickDo .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/

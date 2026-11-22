@@ -60,27 +60,42 @@ meta def GameState.fund (s : GameState) (p : PlayerId) (e : Nat)
 meta def GameState.rich (s : GameState) (p : PlayerId) : GameState :=
   s.fund p 12 12 12 12 12 12 12
 
-/-- Let the Chain resolve: the players pass while the Chain is being answered, and a player who
-puts a triggered ability on it takes the first choice of targets that `pick` accepts (or the first
-one). -/
-meta def settleChain (pick : List ObjId → Bool := fun _ => true) : Nat → GameState → GameState
+/-- What the players answer to the questions of the effects while the Chain resolves: the targets
+of a triggered ability (the first choice `pick` accepts), "you may" (`yes`), and the object chosen
+(the first `obj` accepts). -/
+structure Says where
+  /-- The targets of a triggered ability. -/
+  pick : List ObjId → Bool := fun _ => true
+  /-- The answer to "you may". -/
+  yes : Bool := true
+  /-- The object chosen while an effect resolves. -/
+  obj : ObjId → Bool := fun _ => true
+
+/-- Let the Chain resolve: the players pass while the Chain is being answered, and answer the
+questions as `says` tells. -/
+meta def settleChain (says : Says := {}) : Nat → GameState → GameState
   | 0, s => s
   | n + 1, s =>
-    match s.pending with
-    | .chainPass q _ :: _ =>
-      match step 100 s ⟨.player q, .pass⟩ with
-      | .ok (s', _) => settleChain pick n s'
+    let go (a : Action) : GameState :=
+      match step 100 s a with
+      | .ok (s', _) => settleChain says n s'
       | .error _ => s
+    match s.pending with
+    | .chainPass q _ :: _ => go ⟨.player q, .pass⟩
+    | .mayDo q .. :: _ => go ⟨.player q, .decide says.yes⟩
+    | .pickDo .. :: _ =>
+      let opts := (legalFrameActions s).filter (fun a => match a.kind with
+        | .choose o => says.obj o | _ => false)
+      match (opts.head? <|> (legalFrameActions s).head?) with
+      | some a => go a
+      | none => s
     | .triggerOrder .. :: _ =>
       let puts := (legalFrameActions s).filter (fun a => match a.kind with
         | .putTrigger _ _ => true | _ => false)
       let good := puts.filter (fun a =>
-        match a.kind with | .putTrigger _ ts => pick ts | _ => false)
+        match a.kind with | .putTrigger _ ts => says.pick ts | _ => false)
       match (good.head? <|> puts.head?) with
-      | some a =>
-        match step 100 s a with
-        | .ok (s', _) => settleChain pick n s'
-        | .error _ => s
+      | some a => go a
       | none => s
     | _ => s
 
@@ -93,15 +108,15 @@ meta def payOf (s : GameState) (c : ObjId) : RunePool.Payment :=
 
 /-- Play the card with the payment and the chosen targets, and let the Chain resolve. -/
 meta def cast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
-    (ts : List ObjId := []) (pick : List ObjId → Bool := fun _ => true) : Option GameState :=
+    (ts : List ObjId := []) (says : Says := {}) : Option GameState :=
   match step 100 s ⟨.player p, .playCard c pay ts⟩ with
-  | .ok (s1, _) => some (settleChain pick 12 s1)
+  | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
 /-- Play the card for exactly its cost (the player has plenty), and let the Chain resolve. -/
 meta def play (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId := [])
-    (pick : List ObjId → Bool := fun _ => true) : Option GameState :=
-  cast (s.rich p) p c (payOf s c) ts pick
+    (says : Says := {}) : Option GameState :=
+  cast (s.rich p) p c (payOf s c) ts says
 
 /-- Make the object exhausted. -/
 meta def GameState.tire (s : GameState) (u : ObjId) : GameState :=
@@ -127,10 +142,10 @@ meta def GameState.firstOf (s : GameState) (p : PlayerId) (z : ZoneKind) (card :
 meta def GameState.tired (s : GameState) (u : ObjId) : Option Bool := (s.obj? u).map (·.exhausted)
 
 /-- Use an ability of the object (the player has plenty to pay), and let the Chain resolve. -/
-meta def activate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (ts : List ObjId := []) :
-    Option GameState :=
-  match step 100 (s.rich p) ⟨.player p, .activate src idx ⟨0, []⟩ ts⟩ with
-  | .ok (s1, _) => some (settleChain (fun _ => true) 12 s1)
+meta def activate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (ts : List ObjId := [])
+    (pay : RunePool.Payment := ⟨0, []⟩) : Option GameState :=
+  match step 100 (s.rich p) ⟨.player p, .activate src idx pay ts⟩ with
+  | .ok (s1, _) => some (settleChain {} 12 s1)
   | .error _ => none
 
 /-- Make the object buffed. -/

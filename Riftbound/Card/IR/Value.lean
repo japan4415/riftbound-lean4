@@ -38,6 +38,9 @@ structure Env where
   it : Option ObjId := none
 deriving DecidableEq, Repr
 
+/-- The variable that names the object chosen while an effect resolves (CR 355). -/
+def pickVar : VarId := ⟨"pick"⟩
+
 namespace Env
 
 /-- The empty environment. -/

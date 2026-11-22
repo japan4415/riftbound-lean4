@@ -87,7 +87,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-051" .hand
   let (s2, v) ← put s1 s.you "OGN-001" .base
-  let s3 ← play s2 s.me c [] (pick := fun ts => ts.contains v)
+  let s3 ← play s2 s.me c [] ({ pick := fun ts => ts.contains v } : Says)
   return (s3.obj? v).map (·.stunned) == some true
 
 -- First Mate (OGN-132): when played, ready another unit
@@ -95,7 +95,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-132" .hand
   let (s2, v) ← put s1 s.me "OGN-001" .base
   let s2 := s2.tire v
-  let s3 ← play s2 s.me c [] (pick := fun ts => ts.contains v)
+  let s3 ← play s2 s.me c [] ({ pick := fun ts => ts.contains v } : Says)
   return (s2.obj? v).map (·.exhausted) == some true && (s3.obj? v).map (·.exhausted) == some false
 
 -- "another unit": the ability may pick any other unit, friendly or not, but not First Mate itself
@@ -111,7 +111,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-136" .hand
   let (s2, v) ← put s1 s.me "OGN-001" .base
-  let s3 ← play s2 s.me c [] (pick := fun ts => ts.contains v)
+  let s3 ← play s2 s.me c [] ({ pick := fun ts => ts.contains v } : Says)
   return (s3.obj? v).map (·.buffed) == some true
 
 -- "another friendly unit": only a friendly unit, not Pit Rookie itself
@@ -255,9 +255,56 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
   let pend := detectOne s4 (.played s.me g)
   let s5 := { s4 with pending := .triggers pend :: s4.pending }
-  let s6 := settleChain (fun _ => true) 12 (← (advance 100 s5 []).toOption).1
+  let s6 := settleChain {} 12 (← (advance 100 s5 []).toOption).1
   return pend.length == 1 && (s6.obj? g).map (·.buffed) == some true &&
     (s6.obj? v).map (·.buffed) == some true && (s6.obj? w).map (·.buffed) == some false &&
     (s6.obj? e).map (·.buffed) == some false
+
+-- Salvage (OGN-224): you may kill a gear (you choose which when there are two), then draw 1
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-224" .hand
+  let (s2, g) ← put s1 s.me "OGN-017" .base
+  let (s3, h) ← put s2 s.you "OGN-017" .base
+  let s4 ← play s3 s.me c [] ({ obj := fun o => o == g } : Says)
+  return s4.countIn s.me .base "OGN-017" == 0 && s4.countIn s.you .base "OGN-017" == 1 &&
+    s4.countIn s.me .trash "OGN-017" == 1 && s4.handN s.me == s3.handN s.me && s4.obj? h != none
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-224" .hand
+  let (s2, g) ← put s1 s.me "OGN-017" .base
+  let s3 ← play s2 s.me c [] ({ yes := false } : Says)
+  return s3.countIn s.me .base "OGN-017" == 1 && s3.handN s.me == s2.handN s.me &&
+    s3.obj? g != none
+-- one gear only: there is nothing to choose, and the player still may decline
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-224" .hand
+  let (s2, _) ← put s1 s.me "OGN-017" .base
+  let s3 ← play s2 s.me c
+  return s3.countIn s.me .base "OGN-017" == 0 && s3.countIn s.me .trash "OGN-017" == 1
+
+-- Maddened Marauder (OGN-191): when played, move a unit from a battlefield to its base
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-191" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
+  let s3 ← play s2 s.me c
+  return (s3.unitsAt s.bf0).isEmpty && s3.countIn s.you .base "OGN-001" == 1 && s2.obj? u != none
+
+-- Zaunite Bouncer (OGN-188): when played, return another unit at a battlefield to its owner's hand
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-188" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, v) ← put s2 s.you "OGN-051" .base
+  let s4 ← castStop s3 s.me c
+  let s5 ← play s3 s.me c
+  return s4.trigPicks.contains u && !s4.trigPicks.contains v &&
+    s5.countIn s.you .hand "OGN-001" == 1 && (s5.unitsAt s.bf0).isEmpty
+
+-- Clockwork Keeper (OGN-044): draw 1 only if the additional calm Power was paid
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-044" .hand
+  let s2 := s1.rich s.me
+  let base := payOf s2 c
+  let plain ← cast s2 s.me c base
+  let extra ← cast s2 s.me c ⟨base.energy, base.power ++ [.calm]⟩
+  return plain.handN s.me + 1 == s2.handN s.me && extra.handN s.me == s2.handN s.me
 
 end RiftboundTest

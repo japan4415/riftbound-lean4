@@ -460,6 +460,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 3 弾: 「〜してもよい」と、解決中に選ぶこと）
+
+- **エンジン**: 効果の途中で、プレイヤーに聞く決定を 2 つ足した。**「〜してもよい」（`Effect.may`）**は、`mayDo` フレームで、「する」「しない」（`decide`）を答える。**解決中に 1 つ選ぶ**（「Kill a gear」のように、プレイ時でなく、解決するときに選ぶ。`Selector.pick .one`）は、`pickDo` フレームで、候補から 1 つ選ぶ（`choose`）。候補が 1 つだけなら、聞かずに、それを選ぶ。候補が無ければ、その文は何もしない。選ばれた物体は、変数 `pickVar` に束縛し、効果の選択部分を `.var pickVar` に置き換えて、実行する。フレームの候補は、`c :: more`（空にならない）で持つので、進行性（I5）の証明は、どの局面でも合法手がある、のまま通る。
+- **証明の更新**: 新しい 2 つのフレームと 2 つの答えについて、`applyFrame0` の腕を、7 つの不変条件（WF、物理カード、OwnerOk、手札、スタック、Setup、進行性）と、時計の補題に足した。`runEffect` は、選択を扱う層と、そうでない層（`runEffect1`）に分けた。
+- **書いた 4 枚**: Salvage（OGN-224。「Kill a gear」を解決中に選ぶ）、Maddened Marauder（OGN-191。Battlefield の Unit を Base へ）、Zaunite Bouncer（OGN-188。ほかの Unit を持ち主の手札へ）、Clockwork Keeper（OGN-044。追加コストを払えば引く）。
+- **ビューア**: 「する」「しない」と、「X を選ぶ」の手が出る。選ぶ手は、盤面のカードをクリックして選べる。
+- **書けなかった（今回の対象から外した）**: **Garbage Grabber**（起動の費用に「トラッシュから 3 枚 Recycle」があるが、起動型能力の費用のうち、Exhaust と Energy と Power と自分を Kill だけが支えられている。ほかの費用（Recycle・Discard・Buff を使う・XP を使う・味方を Kill）は、次の単位）。「If you do」（`doThen`）、「choose one」（`chooseOne`）、プレイヤーごとの選択（Cull the Weak など）も、まだ。
+- **次の単位**: 起動型能力のほかの費用（Garbage Grabber、Udyr、Sett の Spend a buff など）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 2 弾: Buff の 6 枚と、ほかの物体の誘発）
 
 - **書いた 6 枚**: Wizened Elder（Buff の間、Might +1）、Sett（OGN-240。自分の Battlefield の Buff 済みの味方 Unit の数だけ Might +1）、Lee Sin（OGN-151。自分の Battlefield の、ほかの Buff 済みの味方に +2）、Arena Bar（exhaust して、exhausted の味方に Buff）、Cithria of Cloudfield（ほかの Unit を play したら、自分に Buff）、Peak Guardian（play したとき、自分に Buff、いる Battlefield のほかの味方にも Buff）。持続する能力は、既存の Passive の仕組みで書けた。

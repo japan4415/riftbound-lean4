@@ -49,6 +49,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ 0 < n
   | .discard p n :: _, .discardDone =>
     a.actor = .player p ∧ (s.zone (.player p .hand) = [] ∨ n = 0)
+  -- a "you may" (CR 355): the player says yes or no
+  | .mayDo p .. :: _, .decide _ => a.actor = .player p
+  -- an object chosen while an effect resolves (CR 355): one of the candidates
+  | .pickDo p _ _ c more _ _ :: _, .choose o => a.actor = .player p ∧ o ∈ c :: more
   -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards set aside
   | .chanceRecycle p :: _, .arrange l =>
     a.actor = .chance ∧ l.Perm (s.zone (.player p .setAside))

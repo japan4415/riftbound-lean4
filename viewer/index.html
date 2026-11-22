@@ -300,6 +300,8 @@ function describeA(a, prev) {
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
+    case 'decide': return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
+    case 'choose': return [who + ': ' + cardName(a.obj) + ' を選ぶ', '効果の対象に ' + cardName(a.obj) + ' を選ぶ'];
     case 'mulliganPick': return [who + ': ' + cardName(a.card) + ' をマリガン', cardName(a.card) + ' を脇に置く'];
     case 'burnOutTarget': return [who + ': Burn Out の相手を選ぶ', 'P' + a.opponent + ' が 1 点を得る'];
     case 'assignPick':
@@ -699,6 +701,7 @@ function matchText(m) {
 function actCard(a) {
   switch (a.kind) {
     case 'runeAbility': case 'playCard': case 'mulliganPick': case 'discardPick': return a.card;
+    case 'choose': return a.obj;
     case 'standardMove': case 'assignPick': return a.unit;
     case 'manaAbility': case 'activate': return a.source;
     default: return null;

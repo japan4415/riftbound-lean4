@@ -432,6 +432,26 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     have hph : s.phase ≠ .setup :=
       hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     exact hinv.of_play hph rfl rfl (fun hm' => by rw [hp]; exact List.mem_cons_of_mem _ hm')
+  · rename_i p src env e es rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i p src env c more e es rest o hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -676,10 +696,10 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
   · exact Or.inl h
 
 /-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
-theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
+theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
+    {es : EffectList} {f : Frame} (h : f ∈ (runEffect1 s p src env e es).2.1) :
     f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
-  unfold runEffect at h
+  unfold runEffect1 at h
   split at h <;> (try split at h) <;>
     simp only [List.mem_cons, List.mem_append, List.mem_map,
       List.not_mem_nil, or_false] at h <;>
@@ -692,6 +712,21 @@ theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {
     | (rcases h with ⟨q, -, rfl⟩ | rfl
        · exact Or.inl rfl
        · exact Or.inl rfl)
+
+/-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
+theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
+    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
+    f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
+  unfold runEffect at h
+  split at h
+  · split at h
+    · simp only [List.mem_singleton] at h
+      subst h; exact Or.inl rfl
+    · simp only [List.mem_singleton] at h
+      subst h; exact Or.inl rfl
+    · simp only [List.mem_singleton] at h
+      subst h; exact Or.inl rfl
+  · exact runEffect1_mem h
 
 /-- `HandInv` for a step of a Spell's frames: the setup is over, so nothing is counted. -/
 theorem HandInv.of_spell_step {s s2 : GameState} (hinv : HandInv s) (hph : s.phase ≠ .setup)

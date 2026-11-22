@@ -80,6 +80,7 @@ def Selector.understood : Selector → Bool
   | .it => true
   | .var _ => true
   | .pick .all _ place fs => place.understood && FilterList.understood fs
+  | .pick .one _ place fs => place.understood && FilterList.understood fs
   | _ => false
 
 end
@@ -129,6 +130,7 @@ def Effect.understood : Effect → Bool
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
+  | .may e => Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understood && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
