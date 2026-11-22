@@ -4011,4 +4011,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (deck three).length == 2 && three.countIn s.me .base "OGN-037" == 1 &&
     (deck threeNo).length == 3 && buffedHit.countIn s.me .base "OGN-167" == 1
 
+-- Mystic Reversal (OGN-080): gain control of a spell on the Chain (Confront's note is then the
+-- opponent's, not mine; the spell still goes to its owner's Trash); the original choices stay
+#guard t fun s => do
+  let (s1, conf) ← put s s.me "OGN-129" .hand
+  let (s2, rev) ← put s1 s.you "OGN-080" .hand
+  let on ← passBy (← castStop s2 s.me conf) s.me
+  let tgt ← (on.zone .chain).head?
+  let after ← play on s.you rev [tgt]
+  let plain ← play s2 s.me conf
+  return after.countIn s.me .trash "OGN-129" == 1 && after.countIn s.you .trash "OGN-080" == 1 &&
+    after.turnFx.any (fun f => f.who == s.you) && !after.turnFx.any (fun f => f.who == s.me) &&
+    plain.turnFx.any (fun f => f.who == s.me)
+
 end RiftboundTest
