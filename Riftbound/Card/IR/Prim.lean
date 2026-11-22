@@ -247,6 +247,8 @@ inductive StaticMod where
   | oppsPlayToBaseOnly
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
   | noReadyOfOpps
+  /-- One more card can be hidden at this Battlefield. -/
+  | extraHide
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/
   | recallAllOnTie
   /-- The Hidden cards of the opponents of the Units at this place cannot be revealed here

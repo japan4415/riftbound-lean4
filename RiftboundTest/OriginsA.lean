@@ -3399,4 +3399,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let rune ← fire t1 [.scored s.me bf true]
   return 0 < buffs a && buffs rune == 0
 
+-- Hide (CR 811): one hidden card per battlefield; Bandle Tree (OGN-278): one additional card there
+#guard t fun s => do
+  let hideAt (g : GameState) (bf : ObjId) : Option GameState := do
+    let (g1, h) ← put g s.me "OGN-135" .hidden
+    some (g1.modObj h (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 }))
+  let tryHide (g : GameState) (bf : ObjId) : Bool :=
+    match put g s.me "OGN-135" .hand with
+    | some (g1, c) => (activate (g1.control s.me bf) s.me c 0 [bf] ⟨0, [.fury]⟩).isSome
+    | none => false
+  let (t1, tree) ← putBf s s.me "OGN-278"
+  let plain := s.bf0
+  let p1 ← hideAt s plain
+  let t3 ← hideAt t1 tree
+  let t2 ← hideAt t3 tree
+  return tryHide s plain && !tryHide p1 plain && tryHide t3 tree && !tryHide t2 tree &&
+    tryHide t1 tree
+
 end RiftboundTest

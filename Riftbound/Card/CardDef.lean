@@ -105,7 +105,8 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)
       [.activated [.fromHand, .pay ⟨0, [.any]⟩] .normal
-        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .controlled]]
+        (EffectDef.of [Choice.targetOf .one .any .anywhere
+          [.ofType .battlefield, .controlled, .hideRoom]]
           (.ifThen (.matches (.slot 0) .controlled) (.prim (.hideAt .self (.slot 0))) .nop))
         .unlimited,
        -- the card must still be hidden when the ability resolves: it can be used again while it

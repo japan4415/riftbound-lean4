@@ -96,6 +96,8 @@ inductive Filter where
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/
   | onBattlefield
+  /-- A Battlefield with room for one more hidden card (CR 811). -/
+  | hideRoom
   /-- Is ready. -/
   | ready
   /-- Has damage. -/
