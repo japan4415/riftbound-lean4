@@ -4107,8 +4107,16 @@ def OGN_158.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Volibear, Imposing: the effect is not written yet. -/
-def OGN_158 : CardDef := OGN_158.meta
+/-- Volibear, Imposing. -/
+def OGN_158 : CardDef :=
+  { OGN_158.meta with
+    abilities := [.triggered
+      { event := .move, subject := Selector.all .enemy .anywhere [.ofType .unit],
+        condition := .and
+          (.exists (Selector.all .enemy .atBattlefield [.sameAs (.slot 0)]))
+          (.matches (.slot 0) (.not (.at_ .self))) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-159
 /--

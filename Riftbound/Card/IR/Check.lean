@@ -280,7 +280,7 @@ def Ability.ok : Ability → Bool
   | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
-    Trigger.ok { itOk := true } t &&
+    Trigger.ok { itOk := true, slots := if t.subject == .self then 0 else 1 } t &&
       body.ok { itOk := true, slots := if t.subject == .self then 0 else 1 }
 
 /-- A chosen object is found exactly when its slot was declared. -/
