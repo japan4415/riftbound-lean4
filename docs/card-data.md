@@ -175,7 +175,7 @@ def fallingStar : CardDef :=
 | 分類 | 例（カード名と、効果の要約） | 必要な仕組み |
 |---|---|---|
 | コピー | Mirror Image（Reflection トークンを出し、Unit のコピーにする）、Svellsongur（Attach 先の文をコピーする）、Heimerdinger, Inventor（味方の Exhaust 能力をすべて持つ） | Copy 層（479.1）、能力の付与 |
-| Spell の Control 奪取 | Mystic Reversal（Spell の Control を得て、選択をやり直せる） | Making New Choices（750） |
+| Spell の Control 奪取 | Mystic Reversal（Spell の Control を得て、選択をやり直せる） | Making New Choices（750）。Control の奪取は `takeControl` で書けた。選び直しは、まだ無い |
 | 置換 | Seraphic Wyvern（Channel を 1 枚増やす）、Smite（死ぬ代わりに Banish）、Ki Barrier（ダメージを防ぐ）、Otterpus（早いターンの得点を draw に置換） | 置換効果（367-375）、Prevent（438） |
 | 誘発回数の倍化 | Karthus, Eternal（Deathknell がもう一度誘発する）、Blue Sentinel（Hold 効果がもう一度誘発する） | 誘発回数の hook |
 | ルールを変える Passive | Aspirant's Climb（勝利に必要な点 +1）、The Grand Plaza（条件を満たすと勝利）、Forgotten Monument（3 ターン目まで Score できない）、Dune Surfer（Tank を無視） | design.md §7.3 の hook |

@@ -47,7 +47,6 @@
 |---|---|---|
 | Recruit the Vanguard | "Play four 1 Might Recruit unit tokens." | トークンの定義（名前、型、Might）と、プレイする場所の選択。`Prim.create` は名前と場所だけ |
 | Mirror Image | "Play a ready Reflection unit token ... It becomes a copy of that unit. Give it [Temporary]." | 作ったオブジェクトを後続の指示で参照すること、コピー（CR 479.1）、トークンの定義 |
-| Mystic Reversal | "Gain control of a spell. You may make new choices for it." | 解決前の Spell への参照、選び直し（CR 750-755） |
 | Heimerdinger, Inventor | "I have all Exhaust abilities of all friendly legends, units, and gear." | 他のオブジェクトの能力を得ること |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間 |
 | Whirlwind（2 人戦では書けた） | "Starting with the next player, each player may return a unit ..." | 手番順に従ってプレイヤーを走査する（多人数。M9）。2 人戦は `eachPlayer .eachOpponent` の次に `eachPlayer .you` |
@@ -60,7 +59,7 @@
 | Firestorm | 「a battlefield」を、プレイ時に Battlefield を 1 つ選ぶ、と読んだ（原文は選ぶと書いていない） |
 | Karthus, Eternal | Deathknell を「死んだときの誘発すべて」で表した。キーワードの Deathknell だけに絞る手段が無い |
 | Daughter of the Void | 「呪文をプレイするときだけ使える」を、「手札に呪文があるときだけ使える」で表した（足した Power は、呪文以外のプレイにも使える） |
-| Mystic Reversal | 「新しく選び直してもよい」を、書かなかった（呪文の対象は、そのまま） |
+| Mystic Reversal | 「新しく選び直してもよい」を、書かなかった（呪文の対象は、そのまま。奪った呪文の対象は、解決のときに、再検証されないので、新しいコントローラーから見て、不正な対象（元の「味方のユニット」など）にも、効く） |
 | Unlicensed Armory | The Boss と同じ（死んだ後に、墓地から戻す）。印は、ユニットの ID に付く（戻ったユニットは、新しいオブジェクトなので、もう一度は働かない）。戻す処理は、ギアの誘発なので、ギアが先に場を離れると、働かない（規則では、遅延効果なので、ギアと無関係）。捨てるのは、コストではなく、解決のとき |
 | Zhonya's Hourglass | The Boss と同じ（死んだ後に、墓地から戻す）。ギアが場にあるとき、1 回だけ |
 | The Boss | 「死ぬかわりに戻す」を、「死んだ後に、墓地から `playFree` で戻す」で表した（置換効果が無いため）。死んだときの誘発（Deathknell、「死んだとき」）と、「ユニットが死んだ」記録が働き、戻ることは「プレイ」として数える（Legion・「プレイしたとき」の誘発）。持ち主と操作者が違うユニットと、トークンは、救えない。準備完了で入るユニットは、準備完了で戻る |

@@ -4020,8 +4020,11 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let tgt ← (on.zone .chain).head?
   let after ← play on s.you rev [tgt]
   let plain ← play s2 s.me conf
+  -- the Chain is empty: it cannot be played; a Reversal does not take an ability
+  let empty := play s2 s.you rev []
+  let handDiff := after.handN s.you == on.handN s.you - 1 + 1 && after.handN s.me == on.handN s.me
   return after.countIn s.me .trash "OGN-129" == 1 && after.countIn s.you .trash "OGN-080" == 1 &&
     after.turnFx.any (fun f => f.who == s.you) && !after.turnFx.any (fun f => f.who == s.me) &&
-    plain.turnFx.any (fun f => f.who == s.me)
+    plain.turnFx.any (fun f => f.who == s.me) && empty.isNone && handDiff
 
 end RiftboundTest
