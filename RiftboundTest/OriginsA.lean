@@ -3230,4 +3230,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     twice.mightNow wb == (wnext.mightNow wb).map (· + 2) &&
     fromHand.mightNow xm == x2.mightNow xm
 
+-- Reckoner's Arena (OGN-286): when I hold here, the conquer effects of my units here are activated
+-- (Kai'Sa, Survivor, OGN-039: draw 1 when she conquers); the text says units here, so an enemy
+-- unit's effect is activated for its controller too; not units elsewhere, and not when I conquer
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-286"
+  let (s2, _) ← putAt s1 s.me "OGN-039" bf
+  let (s3, _) ← putAt s2 s.me "OGN-039" bf
+  let (s4, _) ← put s3 s.me "OGN-039" .base
+  let (s5, _) ← putAt s4 s.you "OGN-039" bf
+  let a ← fire s5 [.scored s.me bf false]
+  let b ← fire s5 [.scored s.me bf true]
+  let (t1, tb) ← putBf s s.me "OGN-286"
+  let (t2, _) ← put t1 s.me "OGN-039" .base
+  let c ← fire t2 [.scored s.me tb false]
+  return a.handN s.me == s5.handN s.me + 2 && a.handN s.you == s5.handN s.you + 1 &&
+    b.handN s.me == s5.handN s.me + 2 && c.handN s.me == t2.handN s.me
+
 end RiftboundTest
