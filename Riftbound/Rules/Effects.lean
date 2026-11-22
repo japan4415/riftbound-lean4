@@ -539,9 +539,52 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
         exact onSelected_safe (addMightMod_safe _) h
   · simp at h
 
-/-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
-the events. An instruction that cannot be done is skipped (design.md §7.1). -/
-def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
+/-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/
+def Prim.pickSel? : Prim → Option Selector
+  | .deal s _ => some s
+  | .heal s _ => some s
+  | .kill s => some s
+  | .ready s => some s
+  | .exhaust s => some s
+  | .banish s => some s
+  | .returnToHand s => some s
+  | .stun s => some s
+  | .buff s => some s
+  | .move s .base => some s
+  | _ => none
+
+/-- The primitive with its selector replaced. -/
+def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
+  match p with
+  | .deal _ n => .deal sel n
+  | .heal _ n => .heal sel n
+  | .kill _ => .kill sel
+  | .ready _ => .ready sel
+  | .exhaust _ => .exhaust sel
+  | .banish _ => .banish sel
+  | .returnToHand _ => .returnToHand sel
+  | .stun _ => .stun sel
+  | .buff _ => .buff sel
+  | .move _ d => .move sel d
+  | q => q
+
+/-- The effect names one object to choose while it resolves ("kill a gear", "stun a unit"): the
+selector that does it. -/
+def Effect.pickSel? : Effect → Option Selector
+  | .prim p =>
+    match p.pickSel? with
+    | some (.pick .one side place fs) => some (.pick .one side place fs)
+    | _ => none
+  | _ => none
+
+/-- The effect with the chosen object, named by `pickVar`, in place of the selector. -/
+def Effect.withPick : Effect → Effect
+  | .prim p => .prim (p.withSel (.var pickVar))
+  | e => e
+
+/-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
+`run` frame, and the events. -/
+def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match e with
@@ -565,6 +608,7 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     match n.evalS s p src env with
     | some k => (s, [.run p src env ((EffectList.replicate k e').append es)], [])
     | none => skip
+  | .may e' => (s, [.mayDo p src env e' es], [])
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
@@ -583,14 +627,39 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     | none => skip
   | _ => skip
 
-/-- Doing an effect is a safe change of the state. -/
-theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
-    (es : EffectList) : Safe s (runEffect s p src env e es).1 := by
-  unfold runEffect
+/-- Doing an effect, but not a choice, is a safe change of the state. -/
+theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
+    (es : EffectList) : Safe s (runEffect1 s p src env e es).1 := by
+  unfold runEffect1
   split <;> (try split) <;> first
     | exact Safe.refl s
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
+
+/-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
+the events. An instruction that cannot be done is skipped (design.md §7.1). An effect that names an
+object to choose while it resolves ("kill a gear") asks the player when there is more than one to
+choose from, and goes on with the only one when there is one (CR 355). -/
+def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
+    (es : EffectList) : GameState × List Frame × List Event :=
+  match e.pickSel? with
+  | some (.pick _ side place fs) =>
+    match s.candidates p src env side place fs with
+    | some [o] => (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], [])
+    | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
+    | _ => (s, [.run p src env es], [Event.skipped src])
+  | _ => runEffect1 s p src env e es
+
+/-- Doing an effect is a safe change of the state. -/
+theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
+    (es : EffectList) : Safe s (runEffect s p src env e es).1 := by
+  unfold runEffect
+  split
+  · split
+    · exact Safe.refl s
+    · exact Safe.refl s
+    · exact Safe.refl s
+  · exact runEffect1_safe s p src env e es
 
 /-- What an ability on the Chain does: the effect of the ability the card has at that place
 (CR 361). Nothing if the card or the ability is not there. -/

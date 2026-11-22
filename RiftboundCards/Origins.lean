@@ -1030,8 +1030,13 @@ def OGN_044.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Clockwork Keeper: the effect is not written yet. -/
-def OGN_044 : CardDef := OGN_044.meta
+/-- Clockwork Keeper. -/
+def OGN_044 : CardDef :=
+  { OGN_044.meta with
+    additionalCost := some ⟨0, [.domain .calm]⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-045
 /--
@@ -4342,8 +4347,13 @@ def OGN_188.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zaunite Bouncer: the effect is not written yet. -/
-def OGN_188 : CardDef := OGN_188.meta
+/-- Zaunite Bouncer. -/
+def OGN_188 : CardDef :=
+  { OGN_188.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .atBattlefield [.ofType .unit, .notSelf]]
+        (.prim (.returnToHand (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-189
 /--
@@ -4412,8 +4422,13 @@ def OGN_191.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Maddened Marauder: the effect is not written yet. -/
-def OGN_191 : CardDef := OGN_191.meta
+/-- Maddened Marauder. -/
+def OGN_191 : CardDef :=
+  { OGN_191.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .atBattlefield [.ofType .unit]] (.prim (.move (.slot 0) .base)))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-192
 /--
@@ -5178,8 +5193,13 @@ def OGN_224.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Salvage: the effect is not written yet. -/
-def OGN_224 : CardDef := OGN_224.meta
+/-- Salvage. -/
+def OGN_224 : CardDef :=
+  { OGN_224.meta with
+    spellEffect := some (.of []
+      (.seqOf [.may (.prim (.kill (Selector.one .any .anywhere [.ofType .gear]))),
+        .prim (.draw .you (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-225
 /--

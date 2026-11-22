@@ -205,6 +205,18 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
+  · rename_i p src env e es rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.run p src env (if yes = true then EffectList.cons e es else es)]
+  · rename_i p src env c more e es rest o hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.run p src (env.bind pickVar (Value.obj o)) (EffectList.cons e es)]
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -700,6 +712,18 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
       apply List.mem_append_left
       simp only [legalFrameActions, hp, hz, ↓reduceIte]
       exact List.mem_map.mpr ⟨c, hc, rfl⟩
+  | mayDo p src env e es =>
+    left
+    refine ⟨⟨.player p, .decide true⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
+  | pickDo p src env c more e es =>
+    left
+    refine ⟨⟨.player p, .choose c⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | chooseBurnOut p =>
     left
     obtain ⟨o, ho⟩ := exists_other_player hv p
@@ -794,6 +818,8 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     exact ⟨rfl, List.Perm.refl _⟩
   | mulligan p n => exact absurd hc (by simp [Frame.isChance])
   | discard p n => exact absurd hc (by simp [Frame.isChance])
+  | mayDo p src env e es => exact absurd hc (by simp [Frame.isChance])
+  | pickDo p src env c more e es => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
   | draw p n => exact absurd hc (by simp [Frame.isChance])

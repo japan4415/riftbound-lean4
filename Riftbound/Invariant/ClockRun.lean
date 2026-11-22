@@ -219,6 +219,12 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
   · split at h
     · simp only [Option.map_eq_some_iff] at h
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h

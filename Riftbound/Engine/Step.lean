@@ -101,6 +101,8 @@ def legalFrameActions (s : GameState) : List Action :=
   | .discard p n :: _ =>
     if s.zone (.player p .hand) = [] ∨ n = 0 then [⟨.player p, .discardDone⟩]
     else (s.zone (.player p .hand)).map (fun c => ⟨.player p, .discardPick c⟩)
+  | .mayDo p .. :: _ => [⟨.player p, .decide true⟩, ⟨.player p, .decide false⟩]
+  | .pickDo p _ _ c more _ _ :: _ => (c :: more).map (fun o => ⟨.player p, .choose o⟩)
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)

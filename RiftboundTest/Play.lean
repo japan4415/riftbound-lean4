@@ -379,7 +379,19 @@ meta def enemyUnits : Selector := Selector.all .enemy .atBase [.ofType .unit]
     dmg (runBody s p c {} (.bind ⟨"n"⟩ (.count enemyUnits)
       (.forEach enemyUnits (.prim (.deal .it (.var ⟨"n"⟩)))))) == some 1 &&
     -- what is not understood is skipped, and the rest goes on
-    dmg (runBody s p c {} (.seqOf [.may .nop, .forEach enemyUnits (hit 1)])) == some 1
+    dmg (runBody s p c {} (.seqOf [.prim (.extraTurn .you), .forEach enemyUnits (hit 1)])) ==
+      some 1
+  | none => false
+
+-- an effect that names one object to choose while it resolves, with one candidate, takes it
+#guard match sparkReady with
+  | some (s, p, c, v) =>
+    let one := Selector.one .enemy .atBase [.ofType .unit]
+    let st (e : Effect) : Option Object := (runBody s p c {} e).bind fun s' => s'.obj? v
+    (st (.prim (.deal one (.const 1)))).map (·.damage) == some 1 &&
+    (st (.prim (.stun one))).map (·.stunned) == some true &&
+    (st (.prim (.buff one))).map (·.buffed) == some true &&
+    (st (.prim (.exhaust one))).map (·.exhausted) == some true
   | none => false
 
 -- banish and return to hand send the Unit to its owner's Banishment and hand

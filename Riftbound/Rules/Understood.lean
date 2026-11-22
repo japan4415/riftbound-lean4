@@ -98,23 +98,29 @@ def Condition.understood : Condition → Bool
   | .paid => true
   | _ => false
 
+/-- A selector of a primitive: it may also name one object to choose while the effect resolves
+(`runEffect` asks the player), which is not understood anywhere else. -/
+def Selector.understoodPick : Selector → Bool
+  | .pick .one _ place fs => place.understood && FilterList.understood fs
+  | s => s.understood
+
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
-  | .deal s n => s.understood && n.understood
-  | .heal s n => s.understood && n.understood
-  | .kill s => s.understood
-  | .banish s => s.understood
-  | .returnToHand s => s.understood
-  | .ready s => s.understood
-  | .exhaust s => s.understood
+  | .deal s n => s.understoodPick && n.understood
+  | .heal s n => s.understoodPick && n.understood
+  | .kill s => s.understoodPick
+  | .banish s => s.understoodPick
+  | .returnToHand s => s.understoodPick
+  | .ready s => s.understoodPick
+  | .exhaust s => s.understoodPick
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
-  | .move s .base => s.understood
-  | .stun s => s.understood
-  | .buff s => s.understood
+  | .move s .base => s.understoodPick
+  | .stun s => s.understoodPick
+  | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
   | _ => false
 
@@ -129,6 +135,7 @@ def Effect.understood : Effect → Bool
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
+  | .may e => Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understood && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>

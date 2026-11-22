@@ -542,6 +542,18 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · rename_i p src env e es rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.run p src env (if yes = true then EffectList.cons e es else es)]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p src env c more e es rest o hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.run p src (env.bind pickVar (Value.obj o)) (EffectList.cons e es)]) rfl
+      (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h

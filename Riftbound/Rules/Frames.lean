@@ -183,6 +183,10 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     let r := sendObj .trash s c
     some ({ r.1 with pending := (if n ≤ 1 then rest else .discard p (n - 1) :: rest) }, r.2)
   | .discard _ _ :: rest, .discardDone => some ({ s with pending := rest }, [])
+  | .mayDo p src env e es :: rest, .decide yes =>
+    some ({ s with pending := .run p src env (if yes then .cons e es else es) :: rest }, [])
+  | .pickDo p src env _ _ e es :: rest, .choose o =>
+    some ({ s with pending := .run p src (env.bind pickVar (.obj o)) (.cons e es) :: rest }, [])
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with
