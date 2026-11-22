@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Rules.Play
 public import Riftbound.Rules.Remove
+public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Actions.BurnOut
 
 /-!
@@ -253,6 +254,39 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
     Safe s (gainXPAll n s ps)
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
+
+/-- The player recycles the top card of their Main Deck: it goes to the bottom (CR 417). -/
+def recycleTopOf (q : PlayerId) (s : GameState) : GameState :=
+  match s.zone (.player q .mainDeck) with
+  | [] => s
+  | x :: rest =>
+    if (Zone.player q .mainDeck).Valid s.playerCount then
+      s.reorder (.player q .mainDeck) (rest ++ [x])
+    else s
+
+/-- Recycling the top card is a safe change. -/
+theorem recycleTopOf_safe (q : PlayerId) (s : GameState) : Safe s (recycleTopOf q s) := by
+  unfold recycleTopOf
+  split
+  · exact Safe.refl s
+  · rename_i x rest hz
+    split
+    · rename_i hv
+      have hp : (rest ++ [x]).Perm (s.zone (.player q .mainDeck)) := by
+        rw [hz]; exact List.perm_append_singleton x rest
+      exact ⟨fun hwf => GameState.wf_reorder hwf hv hp, fun _ => GameState.physIds_reorder hv hp,
+        fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
+    · exact Safe.refl s
+
+/-- The players recycle the top card of their Main Deck, one after the other. -/
+def recycleTopAll : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, q :: qs => recycleTopAll (recycleTopOf q s) qs
+
+/-- Recycling the top cards is a safe change. -/
+theorem recycleTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (recycleTopAll s qs)
+  | [], s => Safe.refl s
+  | q :: qs, s => (recycleTopOf_safe q s).trans (recycleTopAll_safe qs _)
 
 /-- Giving points is a safe change: the points are not part of what a safe change keeps. -/
 theorem gainPoints_safe (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.gainPoints p n) :=
@@ -540,6 +574,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
+  | .recycleTop ps => (ps.resolve s p).map (fun l => (recycleTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
@@ -604,6 +639,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | recycleTop ps =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      simp only [hl, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact recycleTopAll_safe l s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
   | «recall» sel ex => exact onSelected_safe (recallFx_safe ex) h
   | win ps =>

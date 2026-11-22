@@ -1208,4 +1208,26 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let v := s.config.mode.victoryScore
   return a.pointsOf s.me < v && b.pointsOf s.me < v
 
+-- Mystic Poro (OGN-171), [Vision]: when I play it, I may recycle the top card of my Main Deck
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-171" .hand
+  let deck (x : GameState) := x.zone (.player s.me .mainDeck)
+  let top ← (deck s1).head?
+  let a ← play s1 s.me c
+  let b ← play s1 s.me c [] { yes := false }
+  let n := (deck s1).length
+  return (deck a).length == n && (deck a).getLast? == some top && (deck a).head? != some top &&
+    (deck b).head? == some top && (deck b).length == n
+
+-- Vision rotates the deck: the rest keeps its order, the opponent's deck is untouched, and an
+-- empty deck is fine; Jeweled Colossus (OGN-086) has it too
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-086" .hand
+  let deck (x : GameState) (p : PlayerId) := x.zone (.player p .mainDeck)
+  let a ← play s1 s.me c
+  let e ← play (s1.setZone (.player s.me .mainDeck) []) s.me c
+  let top ← (deck s1 s.me).head?
+  return deck a s.me == (deck s1 s.me).tail ++ [top] && deck a s.you == deck s1 s.you &&
+    (deck e s.me).isEmpty && a.countIn s.me .base "OGN-086" == 1
+
 end RiftboundTest

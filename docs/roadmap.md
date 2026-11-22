@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Vision（デッキの一番上を、一番下へ）
+
+- **エンジン**: プリミティブ `recycleTop`（それぞれのプレイヤーが、Main Deck の一番上のカードを、一番下へ Recycle する）と、キーワード **Vision**（プレイしたとき、Main Deck の一番上を見て、Recycle してもよい）。証明は、Reorder の補題（`wf_reorder`・`physIds_reorder`・`ownerOk_reorder`）で通した。
+- **動くカード**: 143 → **145 枚**（Jeweled Colossus、Mystic Poro）。Vision を持つが動かないのは、Gemcraft Seer（与えられた Vision）、Sai Scout（空いた Battlefield へプレイ）、Karma（Recycle の誘発）。
+- **レビューで足したこと**: 残りの並びが保たれること、相手の Deck が変わらないこと、空の Deck のテスト。`recycleTop` は、物体の識別子を変えず、移動の出来事も出さない（Karma の「Recycle したとき」の誘発を足すときは、注意）。Vision は、`Prim.predict` ではなく、`recycleTop` で表した（規則の文は、「上を見て、Recycle してもよい」）。
+- **近似として残したこと**: 「見る」は、情報の公開なので、モデルでは何も起きない。
+
 ### M7 の実装の記録（2026-11-22）: 動くカードを増やす（Accelerate、Trash から選ぶ、支配、勝利）
 
 - **Accelerate** は、すでにエンジンが実行していた（追加費用を払うと、Ready で場に出る）ので、動くキーワードに数えた。Origins の Accelerate のカード 10 枚のうち、ほかの能力も動くものが、動くカードになった。Blazing Scorcher のテストを足した。

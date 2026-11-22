@@ -53,6 +53,8 @@ inductive Prim where
   | buff (s : Selector)
   /-- Recycle objects to the bottom of their decks. -/
   | recycle (s : Selector)
+  /-- The players recycle the top card of their Main Deck: it goes to the bottom (CR 417). -/
+  | recycleTop (p : PlayerSel)
   /-- The players channel `n` Runes, and `extraExhausted` more that enter exhausted. -/
   | channel (p : PlayerSel) (n : Amount) (extraExhausted : Amount)
   /-- Add Energy to a Rune Pool; it can be spent on `only` if that is given. -/

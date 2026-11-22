@@ -145,6 +145,7 @@ def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .score p n => p.understood && n.understood
   | .win p => p.understood
+  | .recycleTop p => p.understood
   | .takeControl s => s.understood
   | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood
@@ -252,7 +253,7 @@ def Keyword.runs : Keyword → Bool
   | .reaction => true | .action => true | .assault => true | .shield => true | .ganking => true
   | .tank => true | .temporary => true | .legion => true | .deflect => true
   | .deathknell => true | .hunt => true | .level => true | .equip => true
-  | .accelerate => true
+  | .accelerate => true | .vision => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
