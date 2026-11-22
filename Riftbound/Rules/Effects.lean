@@ -675,13 +675,13 @@ def sendToBf (bf : ObjId) (s : GameState) (u : ObjId) : GameState × List Event 
     if o.loc = some bf then (s, [])
     else if u ∈ s.zone .battlefieldZone then
       (contestFor o.controller bf
-        (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn)),
+        (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
         [Event.standardMoved u (some bf)])
     else
       match moveObj s u .battlefieldZone with
       | some r =>
         (contestFor o.controller bf
-          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn)),
+          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
           [Event.standardMoved r.2 (some bf)])
       | none => (s, [])
   | none => (s, [])
@@ -695,13 +695,15 @@ theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToB
     · split
       · rename_i o ho hl hz
         have h1 : Safe s
-            (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn)) :=
+            (s.modObj u
+              (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
           Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
         exact h1.trans (contestFor_safe _ _ _)
       · split
         · rename_i o ho hl hz r hm
           have h1 : Safe r.1
-              (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn)) :=
+              (r.1.modObj r.2
+                (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
             Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
           exact ((Safe.moveObj hm).trans h1).trans (contestFor_safe _ _ _)
         · exact Safe.refl s

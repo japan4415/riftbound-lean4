@@ -265,6 +265,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (match s.obj? id with
       | some o => (s.zone (.player o.owner .hidden)).contains id
       | none => false)
+  | .movedFromHere =>
+    some (match s.obj? id with
+      | some o => o.movesTurn == some s.turn && o.prevLoc == some self
+      | none => false)
   | .controlledByOpponent =>
     some (match s.obj? id, s.obj? self with
       | some b, some o => b.control.any (fun q => q != o.controller)

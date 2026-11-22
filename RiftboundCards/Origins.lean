@@ -7208,8 +7208,14 @@ def OGN_277.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Back-Alley Bar: the effect is not written yet. -/
-def OGN_277 : CardDef := OGN_277.meta
+/-- Back-Alley Bar. Approximation: a unit that an effect sends to the Base does not count as having
+moved from here. -/
+def OGN_277 : CardDef :=
+  { OGN_277.meta with
+    abilities := [.triggered
+      { event := .move, subject := Selector.all .any .anywhere [.ofType .unit, .movedFromHere] }
+      (.of [] (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-278
 /--

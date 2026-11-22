@@ -3042,4 +3042,33 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     runes.length == 3 && ready tired == 0 && ready won == 0 && ready end_ == 2 &&
     ready none_ == 0 && ready theirsEnd == 0
 
+-- Back-Alley Bar (OGN-277): when a unit moves from here, it gets +1 Might this turn
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s1, bar) ← putBf s s.me "OGN-277"
+  let (s2, here) ← putAt s1 s.me "OGN-136" bar
+  let (s3, there) ← putAt s2 s.me "OGN-136" s.bf0
+  let (s4, foe) ← putAt s3 s.you "OGN-136" bar
+  let (a, ev) ← moveTo s4 s.me here (.battlefield bf1)
+  let (b, ev2) ← moveTo s4 s.me there (.battlefield bf1)
+  let (c, ev3) ← moveTo s4 s.me here .base
+  let (d, ev4) ← moveTo s4 s.you foe (.battlefield bf1)
+  -- (a move to the bar, not from it)
+  let (e, ev5) ← moveTo s4 s.me there (.battlefield bar)
+  let a' ← fire a ev
+  let b' ← fire b ev2
+  let c' ← fire c ev3
+  let d' ← fire d ev4
+  let e' ← fire e ev5
+  -- an effect moves a unit from the bar; a second move of the same unit is not from here
+  let (f, ev6) := sendToBf s.bf0 s4 here
+  let f' ← fire f ev6
+  let (g, ev7) ← moveTo a s.me here (.battlefield s.bf0)
+  let g' ← fire g ev7
+  let stale := { a' with turn := a'.turn + 1 }
+  return f'.mightNow here == some 3 && g'.mightNow here == some 2 &&
+    (Filter.movedFromHere.holds stale bar {} here) == some false &&
+    a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
+    d'.mightNow foe == some 3 && e'.mightNow there == some 2
+
 end RiftboundTest

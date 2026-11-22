@@ -112,6 +112,8 @@ structure Object where
   /-- The timestamp counter when the card was last played: a card played later has a greater one
   ("the next card you play"). It stays when the card moves. -/
   playedStamp : Option Nat := none
+  /-- Where the Unit was before its last move: its Battlefield, or none for the Base. -/
+  prevLoc : Option ObjId := none
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/
   energyPaid : Nat := 0
   /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/
@@ -125,8 +127,9 @@ structure Object where
 deriving DecidableEq, Repr
 
 /-- The object after one more move in the turn `turn` (CR 447). -/
-def Object.countMove (turn : Nat) (o : Object) : Object :=
-  { o with moves := if o.movesTurn == some turn then o.moves + 1 else 1, movesTurn := some turn }
+def Object.countMove (turn : Nat) (old : Option ObjId) (o : Object) : Object :=
+  { o with moves := if o.movesTurn == some turn then o.moves + 1 else 1, movesTurn := some turn,
+           prevLoc := old }
 
 end Riftbound
 
