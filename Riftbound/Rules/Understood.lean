@@ -287,6 +287,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .noDamage => true
   | .noMoveToBase => true
+  | .recallAllOnTie => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .bonusDamageHere _ => true

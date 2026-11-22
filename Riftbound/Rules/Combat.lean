@@ -312,14 +312,21 @@ theorem safe_healAll (s : GameState) : Safe s (s.mapObjects healObj) :=
     GameState.sameMeta_mapObjects s _⟩
 
 /-- The end of a Combat (CR 468): every Unit is healed, the Attacker's Units are Recalled if a
-Unit of a Defender is left, and the Battlefield goes to the player whose Units are alone there, who
+Unit of a Defender is left (a tie, if Units of the Attacker are left too: then all the Units are
+Recalled, if a passive ability of the Attacker says so, as Symbol of the Solari does), and the Battlefield goes to the player whose Units are alone there, who
 Scores it by Conquer. The Units with lethal damage have been killed by the Cleanup before. -/
 def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
     GameState × List Frame × List Event :=
   let s1 := s.mapObjects healObj
   let defenders :=
     (s1.players.filter (fun p => p ≠ att)).any (fun p => !(s1.unitsOf p bf).isEmpty)
-  let r := if defenders then applyEach recallObj s1 (s1.unitsOf att bf) else (s1, [])
+  -- a tie: Units of both sides are left; a passive ability of the attacker recalls them all
+  let tieAll := defenders && !(s1.unitsOf att bf).isEmpty &&
+    s1.passiveSources.any (fun g => (s1.obj? g).any (fun o => o.controller == att) &&
+      (s1.activeMods g).contains .recallAllOnTie)
+  let victims :=
+    if tieAll then s1.players.flatMap (fun p => s1.unitsOf p bf) else s1.unitsOf att bf
+  let r := if defenders then applyEach recallObj s1 victims else (s1, [])
   let t := endShowdown r.1 bf
   (t.1, t.2.1, r.2 ++ t.2.2)
 
@@ -332,7 +339,16 @@ theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :
   have h2 : Safe (s.mapObjects healObj)
       (if ((s.mapObjects healObj).players.filter (fun p => p ≠ att)).any
           (fun p => !((s.mapObjects healObj).unitsOf p bf).isEmpty) = true then
-        applyEach recallObj (s.mapObjects healObj) ((s.mapObjects healObj).unitsOf att bf)
+        applyEach recallObj (s.mapObjects healObj)
+          (if ((s.mapObjects healObj).players.filter (fun p => p ≠ att)).any
+              (fun p => !((s.mapObjects healObj).unitsOf p bf).isEmpty) &&
+              !((s.mapObjects healObj).unitsOf att bf).isEmpty &&
+              (s.mapObjects healObj).passiveSources.any (fun g =>
+                ((s.mapObjects healObj).obj? g).any (fun o => o.controller == att) &&
+                  ((s.mapObjects healObj).activeMods g).contains .recallAllOnTie) then
+            (s.mapObjects healObj).players.flatMap (fun p =>
+              (s.mapObjects healObj).unitsOf p bf)
+          else (s.mapObjects healObj).unitsOf att bf)
       else ((s.mapObjects healObj), [])).1 := by
     split
     · exact applyEach_safe (fun s u => recallObj_safe s u) _ _

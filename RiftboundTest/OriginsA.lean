@@ -3298,4 +3298,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     blocked.isNone && freed.isSome &&
     (s1.zone (.player s.me .championZone)).length == 1
 
+-- Symbol of the Solari (OGN-227): a combat I attack in that ends in a tie (Units of both sides are
+-- left) recalls all the Units, not only mine; it is for the attacker's Symbol only
+#guard t fun s => do
+  let bf := s.bf0
+  let (s1, mine) ← putAt s s.me "OGN-136" bf
+  let (s2, foe) ← putAt s1 s.you "OGN-136" bf
+  let (s3, _) ← put s2 s.me "OGN-227" .base
+  let (s4, _) ← put s2 s.you "OGN-227" .base
+  let here (g : GameState) (u : ObjId) : Bool := (g.obj? u).any (fun o => o.loc == some bf)
+  let withSym := (combatResolve s3 bf s.me).1
+  let without := (combatResolve s2 bf s.me).1
+  let theirs := (combatResolve s4 bf s.me).1
+  let (u1, f2) ← putAt s s.you "OGN-136" bf
+  let (u2, _) ← put u1 s.me "OGN-227" .base
+  let wiped := (combatResolve u2 bf s.me).1
+  let (h1, _) ← put s2 s.me "OGN-227" .hand
+  let inHand := (combatResolve h1 bf s.me).1
+  let (k1, k) ← putAt s s.me "OGN-136" bf
+  let (k2, _) ← put k1 s.me "OGN-227" .base
+  let alone := (combatResolve k2 bf s.me).1
+  return !here withSym mine && !here withSym foe &&
+    (withSym.zone (.player s.you .base)).length == (s3.zone (.player s.you .base)).length + 1 &&
+    !here without mine && here without foe && !here theirs mine && here theirs foe &&
+    here wiped f2 && !here inHand mine && here inHand foe && here alone k
+
 end RiftboundTest

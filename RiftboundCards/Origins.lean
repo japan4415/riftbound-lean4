@@ -5971,8 +5971,11 @@ def OGN_227.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Symbol of the Solari: the effect is not written yet. -/
-def OGN_227 : CardDef := OGN_227.meta
+/-- Symbol of the Solari. -/
+def OGN_227 : CardDef :=
+  { OGN_227.meta with
+    abilities := [.passive .always [.recallAllOnTie]],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-228
 /--
