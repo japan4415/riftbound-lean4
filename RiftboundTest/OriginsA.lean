@@ -2472,11 +2472,17 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let no ← fire funded [.combatStarted bf s.me] { yes := false }
   let defend ← fire funded [.combatStarted bf s.you] { yes := true }
   let empty ← fire s4 [.combatStarted bf s.me] { yes := true }
+  let (u1, _) ← putAt s1 s.me "OGN-107" bf
+  let (u2, _) ← put u1 s.me "OGN-057" .hand
+  let spellOnly ← fire (u2.fund s.me 0 (mind := 1)) [.combatStarted bf s.me] { yes := true }
+  let (v1, _) ← put u1 s.me "OGN-136" .hand
+  let noHidden ← fire (v1.fund s.me 0 (mind := 1)) [.combatStarted bf s.me] { yes := true }
   let there (x : GameState) :=
     ((x.zone .battlefieldZone).filter (fun u => (x.cardDef? u).any (·.id == cid "OGN-199") &&
       (x.obj? u).any (·.loc == some bf))).length
   return there a == 1 && (a.poolOf s.me).mind == 0 && a.countIn s.me .hand "OGN-136" == 1 &&
     a.countIn s.me .hand "OGN-199" == 0 && there no == 0 && (no.poolOf s.me).mind == 1 &&
-    there defend == 0 && there empty == 0
+    there defend == 0 && there empty == 0 && (spellOnly.poolOf s.me).mind == 1 &&
+    spellOnly.countIn s.me .hand "OGN-057" == 1 && (noHidden.poolOf s.me).mind == 1
 
 end RiftboundTest

@@ -398,6 +398,8 @@ card to be played fires. A card that is in the Base already is played again wher
 def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.cardDef? id with
   | some d =>
+    -- only a Unit or a Gear enters the Base; a Spell would need the Chain
+    if !(d.hasType .unit || d.hasType .gear) then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
       (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
@@ -413,11 +415,13 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
   unfold playFree
   split
   · split
-    · rename_i d hd r hr
-      exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
+    · exact Safe.refl s
     · split
-      · exact enterBase_safe _ _ _ _ _
-      · exact Safe.refl s
+      · rename_i d hd r hr
+        exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
+      · split
+        · exact enterBase_safe _ _ _ _ _
+        · exact Safe.refl s
   · exact Safe.refl s
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).

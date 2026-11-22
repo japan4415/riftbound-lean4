@@ -2752,9 +2752,12 @@ def OGN_107.meta : CardDef :=
 def OGN_107 : CardDef :=
   { OGN_107.meta with
     abilities := [.triggered (.onSelf .attack)
-      (.of [] (.ifThen (.canPay ⟨0, [.domain .mind]⟩)
+      (.of [] (.ifThen (.and (.canPay ⟨0, [.domain .mind]⟩)
+          (.cmp .ge (.count (Selector.all .friendly .inHand
+            [.hasKeyword .hidden, .not (.ofType .spell)])) (.const 1)))
         (.may (.seqOf [.prim (.pay ⟨0, [.domain .mind]⟩),
-          .prim (.playTo (Selector.one .friendly .inHand [.hasKeyword .hidden])
+          .prim (.playTo (Selector.one .friendly .inHand
+            [.hasKeyword .hidden, .not (.ofType .spell)])
             (Selector.all .any .here [.ofType .battlefield]))])) .nop)) .unlimited],
     status := .drafted }
 
