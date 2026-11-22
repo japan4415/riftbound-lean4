@@ -98,9 +98,22 @@ def make_handler(lean: Lean, port: int):
                 if path == "/api/start":
                     seed = int(req.get("seed", 1))
                     humans = str(req.get("humans", "0"))
-                    if seed < 0 or humans not in ("0", "1", "01"):
+                    kind = str(req.get("kind", "core"))
+                    match = str(req.get("match", "single"))
+                    if (seed < 0 or humans not in ("0", "1", "01")
+                            or kind not in ("core", "constructed", "sealed", "draft")
+                            or match not in ("single", "bo1", "bo3")):
                         return self._json(400, {"error": "bad start"})
-                    line = f"start {seed} {humans}"
+                    line = f"start {seed} {humans} {kind} {match}"
+                elif path == "/api/clock":
+                    line = "clock"
+                elif path == "/api/judge":
+                    line = "judge"
+                elif path == "/api/next":
+                    choice = req.get("choice")
+                    if choice not in (None, "first", "second"):
+                        return self._json(400, {"error": "bad choice"})
+                    line = "next" + (f" {choice}" if choice else "")
                 elif path == "/api/act":
                     k = int(req["k"])
                     if k < 0:

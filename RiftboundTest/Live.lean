@@ -60,4 +60,68 @@ meta def h0 : List PlayerId := [⟨0⟩]
     | none => false
   | .error _ => false
 
+meta def clockA : Action := ⟨.clock, .timeCalled⟩
+meta def judgeA : Action := ⟨.judge, .declareDraw⟩
+
+/-- The game of a person for seat 0, after the mulligan (a turn has begun). -/
+meta def afterMulligan (kind : LiveKind) (target : Option Nat) : Option LiveGame :=
+  match liveStart 1 h0 kind target with
+  | .ok (g, _) =>
+    match g.legal.findIdx? (fun a => a.kind == .mulliganDone) with
+    | some k => match liveAct g k with | .ok (g', _) => some g' | .error _ => none
+    | none => none
+  | .error _ => none
+
+-- the clock and the judge work under the Tournament Rules, not under the Core Rules
+#guard match afterMulligan .constructed none, afterMulligan .core none with
+  | some t, some c =>
+    (liveExternal t clockA).toOption.any (fun r => r.1.s.clock.isSome) &&
+    (liveExternal t judgeA).toOption.any (fun r => r.1.s.result == some .draw) &&
+    (liveExternal c clockA).toOption.isNone && (liveExternal c judgeA).toOption.isNone
+  | _, _ => false
+
+-- a game of Sealed decks starts with no Legend, and the extra draw gives the first player 1 more
+#guard match liveStart 1 h0 .sealed none with
+  | .ok (g, _) => (g.s.zone (.player ⟨0⟩ .legendZone)).isEmpty && g.s.config.ruleSet.isLimited
+  | .error _ => false
+
+/-- A person's game, ended by a concession of seat 0. -/
+meta def conceded (target : Nat) : Option LiveGame :=
+  match liveStart 1 h0 .constructed (some target) with
+  | .ok (g, _) =>
+    match g.legal.findIdx? (fun a => a.kind == .concede) with
+    | some k => match liveAct g k with | .ok (g', _) => some g' | .error _ => none
+    | none => none
+  | .error _ => none
+
+-- a Best of 1 is over after one game, and the match gives no next game
+#guard match conceded 1 with
+  | some g =>
+    g.recorded && g.match_.any (·.finished) && (g.match_.bind (·.winner)) == some ⟨1⟩ &&
+      (liveNext g none).toOption.isNone
+  | none => false
+
+-- a Best of 3 goes on: the loser (a person) is asked who goes first (TR 407), and the answer
+-- decides the turn order of the next game
+#guard match conceded 2 with
+  | some g =>
+    g.recorded && !(g.match_.any (·.finished)) && (g.match_.map (·.games)) == some 1 &&
+    (match liveNext g none with
+      | .ok (g0, j) => g0.s.result.isSome && (j.splitOn "\"choice\"").length == 2
+      | .error _ => false) &&
+    (match liveNext g (some false), liveNext g (some true) with
+      | .ok (g1, _), .ok (g2, _) =>
+        g1.s.turnOrder == [⟨1⟩, ⟨0⟩] && g2.s.turnOrder == [⟨0⟩, ⟨1⟩] &&
+        (g1.match_.map (·.games)) == some 1 && !g1.recorded
+      | _, _ => false)
+  | none => false
+
+-- a game that is not a match has no next game, and a game not over cannot be followed
+#guard match liveStart 1 h0 .constructed none with
+  | .ok (g, _) => (liveNext g none).toOption.isNone
+  | .error _ => false
+#guard match liveStart 1 h0 .constructed (some 2) with
+  | .ok (g, _) => (liveNext g none).toOption.isNone
+  | .error _ => false
+
 end RiftboundTest
