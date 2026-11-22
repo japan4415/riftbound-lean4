@@ -314,8 +314,14 @@ def SFD_013.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Blast Corps Cadet: the effect is not written yet. -/
-def SFD_013 : CardDef := SFD_013.meta
+/-- Blast Corps Cadet. -/
+def SFD_013 : CardDef :=
+  { SFD_013.meta with
+    additionalCost := some ⟨1, [.domain .fury]⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+        (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-014
 /--
@@ -1617,8 +1623,14 @@ def SFD_067.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Frostcoat Cub: the effect is not written yet. -/
-def SFD_067 : CardDef := SFD_067.meta
+/-- Frostcoat Cub. -/
+def SFD_067 : CardDef :=
+  { SFD_067.meta with
+    additionalCost := some ⟨0, [.domain .mind]⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-068
 /--
@@ -2356,8 +2368,14 @@ def SFD_098.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sea Monkey: the effect is not written yet. -/
-def SFD_098 : CardDef := SFD_098.meta
+/-- Sea Monkey. -/
+def SFD_098 : CardDef :=
+  { SFD_098.meta with
+    additionalCost := some ⟨1, []⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+        (.of []
+        (.prim (.buff .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-099
 /--

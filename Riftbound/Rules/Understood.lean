@@ -94,6 +94,8 @@ def Condition.understood : Condition → Bool
   | .exists s => s.understood
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
+  | .legion => true
+  | .paid => true
   | _ => false
 
 /-- A game action that is understood. -/

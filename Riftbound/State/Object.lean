@@ -94,9 +94,16 @@ structure Object where
   /-- For a Legend: the XP of its player (CR 728). XP is not an object; the model keeps it with the
   player's Legend. -/
   xp : Nat := 0
-  /-- For a Spell on the Chain: whether the additional cost of Repeat was paid, so that its effect
-  is done twice (CR 820). It means nothing off the Chain. -/
-  repeated : Bool := false
+  /-- Whether an additional cost was paid when the card was played: Repeat does the effect of a
+  Spell twice (CR 820), Accelerate lets a Unit enter ready (CR 805), and a card can ask "if you
+  paid the additional cost". -/
+  paid : Bool := false
+  /-- Whether another card of its owner had been played in that turn when the card was played:
+  Legion (CR 812). -/
+  legion : Bool := false
+  /-- The turn in which the card was played, if it was. The record of a play stays with the
+  object. -/
+  playedTurn : Option Nat := none
 deriving DecidableEq, Repr
 
 end Riftbound

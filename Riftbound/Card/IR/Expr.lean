@@ -146,6 +146,8 @@ inductive Condition where
   | empowered (s : Selector)
   /-- Legion: another card was played this turn (CR 812). -/
   | legion
+  /-- An additional cost was paid when the object was played (CR 357.2). -/
+  | paid
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
   /-- A combat is going on. -/

@@ -196,6 +196,13 @@ TRIGGERS = [
 ]
 
 
+# 発動に条件がある誘発（Legion、追加コストを払ったなら）。他の誘発より先に試す。
+COND_TRIGGERS = [
+    (re.compile(r"^\[Legion\](?:\[>\]| —) When you play me, (?P<rest>.+)$"), [".play"], ".legion"),
+    (re.compile(r"^When you play me, if you paid the additional cost, (?P<rest>.+)$"),
+     [".play"], ".paid"),
+]
+
 DOMAINS = {"fury", "calm", "mind", "body", "chaos", "order"}
 ACTIVATED = re.compile(r"^(?P<speed>\[Reaction\]\[>\] |\[Action\]\[>\] )?"
                        r"(?P<cost>:rb_[a-z_0-9]+:(?:(?::rb_[a-z_0-9]+:|, )*:rb_[a-z_0-9]+:)?): "
@@ -259,6 +266,19 @@ def parse_line(line: str, is_spell: bool):
     if is_spell:
         r = parse_effect(s)
         return ("spell", r) if r else None
+    m = re.match(r"^You may pay (?P<c>(?::rb_[a-z_0-9]+:)+) as an additional cost to play me\.$", s)
+    if m:
+        energy, power = 0, []
+        for x in re.findall(r":rb_([a-z_0-9]+):", m.group("c")):
+            if x.startswith("energy_"):
+                energy += int(x[len("energy_"):])
+            elif x == "rune_rainbow":
+                power.append(".any")
+            elif x.startswith("rune_") and x[len("rune_"):] in DOMAINS:
+                power.append(f".domain .{x[len('rune_'):]}")
+            else:
+                return None
+        return "extra", f"some ⟨{energy}, [{', '.join(power)}]⟩"
     act = parse_activated(s)
     if act:
         return "ability", [act]
@@ -271,7 +291,7 @@ def parse_line(line: str, is_spell: bool):
     m = re.match(r"^\[Empowered\]\[>\] I have \+(\d+) :rb_might:\.$", s)
     if m:
         return "ability", [f".passive (.empowered .self) [.mightPlus .self (.const {m.group(1)})]"]
-    for rx, events in TRIGGERS:
+    for rx, events, cond in COND_TRIGGERS + [(r, e, None) for r, e in TRIGGERS]:
         m = rx.match(s)
         if m:
             rest = m.group("rest")
@@ -290,6 +310,7 @@ def parse_line(line: str, is_spell: bool):
             abil = []
             for ev in events:
                 trig = ("{ event := .at_ .endOfTurn, condition := .yourTurn }" if ev == "END"
+                        else f"{{ Trigger.onSelf {ev} with condition := {cond} }}" if cond
                         else f"(.onSelf {ev})")
                 abil.append(f".triggered {trig}\n        "
                             f"{fmt_effect_def(choices, effects, '        ')} .unlimited")
@@ -328,6 +349,7 @@ def transcribe(card: dict):
     is_spell = card["types"] == ["spell"]
     spell_parts: list[str] = []
     abilities: list[str] = []
+    extra = None
     for line in card["text"]:
         r = parse_line(line, is_spell)
         if r is None:
@@ -337,6 +359,8 @@ def transcribe(card: dict):
             spell_parts.append(val)
         elif kind == "ability":
             abilities += val
+        elif kind == "extra":
+            extra = val
     fields = []
     if spell_parts:
         # 文を 1 つの効果に束ねる: 対象枠は、行の順に番号を振り直す
@@ -347,6 +371,8 @@ def transcribe(card: dict):
             return None
         choices, effects = r
         fields.append("spellEffect := some " + fmt_effect_def(choices, effects, "      "))
+    if extra:
+        fields.append(f"additionalCost := {extra}")
     if abilities:
         fields.append("abilities := [" + ",\n      ".join(abilities) + "]")
     if grants:

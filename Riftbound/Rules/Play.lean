@@ -27,7 +27,7 @@ namespace Riftbound
 Accelerate may pay 1 Energy and a Power of its domain, to enter ready (CR 805); a Spell with Repeat
 may pay the cost the keyword names, to repeat its effect (CR 820). -/
 def CardDef.extraCosts (d : CardDef) : List Cost :=
-  d.keywords.filterMap (fun i =>
+  d.additionalCost.toList ++ d.keywords.filterMap (fun i =>
     match i.keyword, i.arg with
     | .accelerate, _ => if d.hasType .unit then some ⟨1, [.own]⟩ else none
     | .repeat_, .cost c => if d.hasType .spell then some c else none
@@ -79,6 +79,30 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         ((s.poolOf p).spend pay).isSome
     | _, _ => false
 
+/-- What is true when a card is played: whether an additional cost was paid, whether another card
+had been played in the turn (Legion), and the turn. -/
+structure PlayMark where
+  /-- An additional cost was paid. -/
+  paid : Bool
+  /-- Another card of the player had been played in the turn. -/
+  legion : Bool
+  /-- The turn. -/
+  turn : Nat
+
+/-- The object after it is played: the objects chosen (for a Spell on the Chain), and the facts of
+the play. -/
+def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
+  { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn }
+
+/-- The player has played a card in the turn that is going on, Legion (CR 812). -/
+def GameState.playedBefore (s : GameState) (p : PlayerId) : Bool :=
+  s.objects.toList.any (fun (_, o) => o.owner == p && o.playedTurn == some s.turn)
+
+/-- The facts of playing the card now with the payment. -/
+def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
+    PlayMark :=
+  ⟨(s.cardDef? c).any (·.paidExtra pay), s.playedBefore p, s.turn⟩
+
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/
 def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
@@ -86,14 +110,10 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   match s.cardDef? c, (s.poolOf p).spend pay with
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
-      let s1 := r.1.setPool p pool
+      let s1 := (r.1.modObj r.2 (Object.withPlay [] (s.playMark p c pay))).setPool p pool
       ((if d.hasType .unit && !d.entersReady && !d.paidExtra pay then s1.exhaustObj r.2 else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
-
-/-- The object an `Object` becomes when a Spell is put on the Chain with these targets. -/
-def Object.withTargets (ts : List ObjId) (rep : Bool) (o : Object) : Object :=
-  { o with targets := ts, repeated := rep }
 
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers
@@ -120,8 +140,7 @@ def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   match (s.poolOf p).spend pay with
   | some pool =>
     (moveObj s c .chain).map (fun r =>
-      (((r.1.setPool p pool).modObj r.2
-          (Object.withTargets targets ((s.cardDef? c).any (·.paidExtra pay)))),
+      (((r.1.setPool p pool).modObj r.2 (Object.withPlay targets (s.playMark p c pay))),
         [Event.moved c r.2 .chain]))
   | none => none
 
@@ -155,11 +174,11 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
 Base. -/
 theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
-    ∃ d pool s2 id', s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
+    ∃ d pool s2 id' m, s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
       s' = (if (d.hasType .unit && !d.entersReady && !d.paidExtra pay) = true
-        then (s2.setPool p pool).exhaustObj id'
-        else s2.setPool p pool) := by
+        then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
+        else (s2.modObj id' (Object.withPlay [] m)).setPool p pool) := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
@@ -170,13 +189,14 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
       simp only [hd, hs, Option.map_eq_some_iff] at h
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
-      exact ⟨d, pool, s2, id', rfl, rfl, hm, hr.1.symm⟩
+      exact ⟨d, pool, s2, id', _, rfl, rfl, hm, hr.1.symm⟩
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlay_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay = some (s', es)) : s'.WF := by
-  obtain ⟨d, pool, s2, id', -, -, hm, rfl⟩ := applyPlay_cases h
-  have h2 : (s2.setPool p pool).WF := (moveObj_wf hwf hm).congr rfl rfl rfl rfl
+  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
+  have h2 : ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).WF :=
+    (GameState.wf_modObj (moveObj_wf hwf hm) id' _).congr rfl rfl rfl rfl
   split
   · exact GameState.wf_exhaustObj h2 id'
   · exact h2
@@ -185,8 +205,12 @@ theorem applyPlay_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
 theorem applyPlay_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  obtain ⟨d, pool, s2, id', -, -, hm, rfl⟩ := applyPlay_cases h
-  have hp := moveObj_physIds hwf hm
+  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
+  have hp0 := moveObj_physIds hwf hm
+  have hp : ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).physIds.Perm s.physIds := by
+    have e : (s2.modObj id' (Object.withPlay [] m)).physIds = s2.physIds :=
+      GameState.physIds_modObj s2 id' (f := Object.withPlay [] m) (fun _ => rfl)
+    exact e ▸ hp0
   split
   · rw [GameState.physIds_exhaustObj]
     exact hp
@@ -196,8 +220,10 @@ theorem applyPlay_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 theorem applyPlay_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {es : List Event} (hwf : s.WF) (hown : s.OwnerOk) (h : applyPlay s p c pay = some (s', es)) :
     s'.OwnerOk := by
-  obtain ⟨d, pool, s2, id', -, -, hm, rfl⟩ := applyPlay_cases h
-  have h2 : (s2.setPool p pool).OwnerOk := (moveObj_ownerOk hwf hown hm).congr rfl rfl
+  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
+  have h2 : ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).OwnerOk :=
+    (GameState.ownerOk_modObj (moveObj_ownerOk hwf hown hm) id'
+      (f := Object.withPlay [] m) (fun _ => rfl)).congr rfl rfl
   split
   · exact GameState.ownerOk_exhaustObj h2 id'
   · exact h2
@@ -208,7 +234,7 @@ theorem applyPlay_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
-  obtain ⟨d, pool, s2, id', -, -, hm, rfl⟩ := applyPlay_cases h
+  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have hc := hs.other.config
   have ht := hs.other.turnOrder
@@ -246,16 +272,17 @@ theorem applyPlay_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ pool, (s.poolOf p).spend pay = some pool ∧ s'.poolOf p = pool ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
-  obtain ⟨d, pool, s2, id', -, hspend, hm, rfl⟩ := applyPlay_cases h
+  obtain ⟨d, pool, s2, id', m, -, hspend, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
-  have hpools : s2.pools = s.pools := hs.other.pools
+  have hpools : (s2.modObj id' (Object.withPlay [] m)).pools = s.pools := hs.other.pools
   refine ⟨pool, hspend, ?_, fun q hq => ?_⟩
   · split
-    · exact GameState.poolOf_setPool_self s2 p pool
-    · exact GameState.poolOf_setPool_self s2 p pool
+    · exact GameState.poolOf_setPool_self (s2.modObj id' (Object.withPlay [] m)) p pool
+    · exact GameState.poolOf_setPool_self (s2.modObj id' (Object.withPlay [] m)) p pool
   · split
-    · rw [show ((s2.setPool p pool).exhaustObj id').poolOf q = (s2.setPool p pool).poolOf q
-        from rfl, GameState.poolOf_setPool_ne _ hq]
+    · rw [show (((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id').poolOf q =
+          ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).poolOf q from rfl,
+        GameState.poolOf_setPool_ne _ hq]
       simp [GameState.poolOf, hpools]
     · rw [GameState.poolOf_setPool_ne _ hq]
       simp [GameState.poolOf, hpools]
@@ -268,7 +295,7 @@ theorem applyPlay_zones {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (s'.zone (.player p .hand)).length + 1 = (s.zone (.player p .hand)).length ∧
       (s'.zone (.player p .base)).length = (s.zone (.player p .base)).length + 1 := by
   obtain ⟨o, d0, cost, pool0, -, ho, -, howner, -, -, -, -⟩ := playable_spec hp
-  obtain ⟨d, pool, s2, id', -, -, hm, rfl⟩ := applyPlay_cases h
+  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hsrc : src = .player p .hand :=
     Option.some.inj (hs.locate.symm.trans
@@ -315,7 +342,8 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       rw [← hs'] at ho
       simp only [hu, hr, hx0, Bool.not_false, Bool.and_self, ite_true,
         GameState.obj?_exhaustObj] at ho
-      cases hx : (s2.setPool p pool).obj? id' with
+      cases hx : ((s2.modObj id' (Object.withPlay [] (s.playMark p c pay))).setPool p pool).obj?
+          id' with
       | none => rw [hx] at ho; simp at ho
       | some o0 =>
         rw [hx] at ho
@@ -380,7 +408,7 @@ theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
     ∃ pool s2 id' rep, (s.poolOf p).spend pay = some pool ∧
       moveObj s c .chain = some (s2, id') ∧
-      s' = (s2.setPool p pool).modObj id' (Object.withTargets targets rep) ∧
+      s' = (s2.setPool p pool).modObj id' (Object.withPlay targets rep) ∧
         es = [Event.moved c id' .chain] := by
   unfold applyCast at h
   cases hs : (s.poolOf p).spend pay with
@@ -407,7 +435,7 @@ theorem applyCast_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
   obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   have hp := moveObj_physIds hwf hm
   have h2 : (s2.setPool p pool).physIds = s2.physIds := rfl
-  rw [GameState.physIds_modObj _ id' (f := Object.withTargets targets rep) (fun _ => rfl), h2]
+  rw [GameState.physIds_modObj _ id' (f := Object.withPlay targets rep) (fun _ => rfl), h2]
   exact hp
 
 /-- Casting a Spell keeps `OwnerOk`. -/

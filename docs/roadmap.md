@@ -460,6 +460,20 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7k の実装の記録（2026-11-22）: Legion と「追加コストを払ったなら」、書ける文の数え直し
+
+- **数え直した結果（計画の見直し）**: 前の報告のおすすめは、Hidden・Empower・Flow から選ぶことだった。転記済み（`.meta` があり、効果が未転記）のカード 900 枚を数えると、**これらのキーワードは、書ける枚数が少ない**。効果まで書けているカードは、Hidden が 44 枚中 3 枚、Empower が 40 枚中 1 枚、Flow が 15 枚中 3 枚。さらに、Hidden を持つ未転記の 40 枚は、ほかの文も書けないので、Hidden を入れても 1 枚も増えない。
+- **未転記 900 枚の詰まり方**: 書けない文の種類は、1 枚に 1 種類（747 枚）か 2 種類（142 枚）。ただし**種類の多くは、そのカードにしか出ない文**で、1 つの種類を直して増えるカードは、多くて 2 枚。貪欲に 15 種類を直しても、増えるのは 23 枚。**書ける枚数を増やす 1 回の PR の収穫は、これから先、10 枚前後になる**。
+- **選んだもの**: 数えて、まとまって書ける 2 種類を入れた。Legion の誘発（4 枚: OGN-016、020、217、218）と、追加コストを払ったときの誘発（4 枚: SFD-013、SFD-067、SFD-098、VEN-120）。**転記済みは 202 枚から 210 枚になった**。
+- **play したときの事実**（`Object.paid`、`legion`、`playedTurn`、`PlayMark`、`GameState.playedBefore`）: カードを play するとき、追加コストを払ったか、同じ番に自分が別のカードを play していたか、その番を、object に残す。`applyCast` と `applyPlay` が `Object.withPlay` で書く。番の記録は、object の移動で残るので、1 つの番の中で、play されたカードが墓地へ行っても数えられる。
+- **誘発の条件**（`condOk`）: 誘発の条件に、`Condition.paid` と `Condition.legion` を入れた。規則どおり、「When X, if Y」の条件は、誘発するとき（Chain に載せる前）に確かめる。条件が偽なら、対象も選ばない。`Condition.eval` も、効果の中の条件として、同じ値を返す。
+- **追加コストの文**（`CardDef.additionalCost`）: 「You may pay ... as an additional cost to play me」を、カードの欄にした。`extraCosts` が、キーワードの追加コストと並べて数える（同時に 2 つは払えない）。
+- **転記**（`scripts/transcribe.py`）: `[Legion] — When you play me, ...`、`When you play me, if you paid the additional cost, ...`、追加コストの行。**追加コストが Energy と Power のものだけ**。kill・discard・exhaust の追加コストは、費用の種類が足りないので、書かなかった。
+- **テスト**: `RiftboundTest/Optional.lean` に、Legion（単独では引かず、別のカードの後なら引く）と、追加コスト（払わなければ引かず、払えば引く）。期待を間違えると失敗することも確かめた。
+- **ビューア・デモ**: デモの Archer は Legion（別のカードを play した後だけ、1 ダメージ）、Looter は追加コスト 1 Energy を払ったときだけ、捨てて引く。seed 5 の 18 番で Archer の誘発が起き（対象を選ぶ）、119 番では起きない。72 番で Looter が払って引く。
+- **まだ無いもの**: 追加コストが kill・discard・exhaust・XP のカード（13 枚中の 6 枚）、「ready me and give me +N this turn」などの文（Pyke）、Legion の費用軽減（「I cost less」）、Hidden・Empower・Flow。
+- **次の候補**: 書ける枚数の増加は頭打ちに近い。**マッチと大会の手続き（M5b）、ビューアのライブ操作（Issue #14）、不変条件の拡張**。
+
 ### M7j の実装の記録（2026-11-22）: Accelerate と Repeat（払うかどうかを選ぶ追加コスト）
 
 - **数え直した結果**: 転記済みで Accelerate を持つ Unit は 31 枚、Repeat を持つ Spell は 20 枚。ただし Repeat のうち、**効果まで書けているのは 5 枚**（SFD-031、SFD-034、SFD-066、UNL-009、UNL-061）で、残り 15 枚は効果が未転記なので、Repeat が動いても見えない。前の報告の 32 枚と 24 枚は、データの文の数で、動くカードの数ではなかった。

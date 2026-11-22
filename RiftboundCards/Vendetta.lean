@@ -2798,8 +2798,14 @@ def VEN_120.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Masa, Crashing Thunder: the effect is not written yet. -/
-def VEN_120 : CardDef := VEN_120.meta
+/-- Masa, Crashing Thunder. -/
+def VEN_120 : CardDef :=
+  { VEN_120.meta with
+    additionalCost := some ⟨0, [.domain .order]⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+        (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+        (.prim (.stun (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-121
 /--

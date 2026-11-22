@@ -50,7 +50,7 @@ def demoCards : List CardDef :=
         (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] },
     { id := ⟨"A0"⟩, name := "Archer", types := [.unit], domains := [.fury],
       cost := some ⟨2, []⟩, might := some 2,
-      abilities := [.triggered (Trigger.onSelf .play)
+      abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
         (EffectDef.of [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
           (.prim (.deal (.slot 0) (.const 1)))) .unlimited] },
     { id := ⟨"M0"⟩, name := "Martyr", types := [.unit], domains := [.fury],
@@ -73,8 +73,8 @@ def demoCards : List CardDef :=
       cost := some ⟨2, []⟩, might := some 3,
       keywords := [{ keyword := .deflect, arg := .amount 1 }] },
     { id := ⟨"N2"⟩, name := "Looter", types := [.unit], domains := [.fury],
-      cost := some ⟨1, []⟩, might := some 2,
-      abilities := [.triggered (Trigger.onSelf .play)
+      cost := some ⟨1, []⟩, might := some 2, additionalCost := some ⟨1, []⟩,
+      abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
         (EffectDef.of [] (.seqOf [.prim (.discard .you (.const 1)),
           .prim (.draw .you (.const 1))])) .unlimited] },
     { id := ⟨"N1"⟩, name := "Prospector", types := [.unit], domains := [.fury],
@@ -121,11 +121,11 @@ def demoDB : CardDB := { cards := demoCards }
 
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
 that play a Sprite token (Temporary), play a Gold token (a Gear that adds Power once), discard a
-card and draw one, deal 1 damage to an enemy Unit, and ping with an activated ability (with
-Accelerate); a Gear that adds 1 Energy (Add); a Unit with Deflect 1; Spells that stun an enemy Unit,
-give a friendly Unit +3 Might this turn, deal 2 damage to an enemy Unit (with Repeat 1 Energy), and
-deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy Unit. Then 12 Runes
-and 3 Battlefields. -/
+card and draw one if 1 Energy more was paid, deal 1 damage to an enemy Unit if another card was
+played this turn (Legion), and ping with an activated ability (with Accelerate); a Gear that adds 1
+Energy (Add); a Unit with Deflect 1; Spells that stun an enemy Unit, give a friendly Unit +3 Might
+this turn, deal 2 damage to an enemy Unit (with Repeat 1 Energy), and deal 1 damage to each enemy
+Unit; and a Reaction that deals 2 damage to an enemy Unit. Then 12 Runes and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++
