@@ -35,18 +35,20 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   | .playCard .., .player p => playedOf p es
   | _, _ => []
 
-/-- The condition holds for the object when the event happens: none, or a fact of how the object
-was played: an additional cost was paid, or another card had been played (CR 812). -/
-def condOk (s : GameState) (src : ObjId) : Condition → Bool
+/-- The condition holds for the object when the event happens: none, a fact of how the object was
+played (CR 812), or a question about the game, asked for the player `who` the ability works for,
+that `Condition.eval` can answer (it is false when it cannot). -/
+def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool
   | .always => true
   | .paid => (s.obj? src).any (·.paid)
   | .legion => (s.obj? src).any (·.legion)
-  | _ => false
+  | c => c.eval s who src {} == some true
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
-def trigOk (s : GameState) (src : ObjId) (t : Trigger) (_body : EffectDef) : Bool :=
-  t.subject == .self && condOk s src t.condition && t.occurrence == .every
+def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef) :
+    Bool :=
+  t.subject == .self && condOk s src who t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
 def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
@@ -60,7 +62,7 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if t.event == ev && trigOk s src t body && limitOk s src (lo + j) lim then
+      if t.event == ev && trigOk s src p t body && limitOk s src (lo + j) lim then
         some { source := src, card := d.id, idx := lo + j, controller := p }
       else none
     | _ => none)
@@ -103,7 +105,8 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
         | some (Ability.triggered t _ lim) =>
           if t.event == ev && t.subject != .self &&
               subjectHolds s src o.controller subj who t.subject &&
-              condOk s src t.condition && t.occurrence == .every && limitOk s src j lim then
+              condOk s src o.controller t.condition && t.occurrence == .every &&
+                limitOk s src j lim then
             some { source := src, card := d.id, idx := j, controller := o.controller }
           else none
         | _ => none)

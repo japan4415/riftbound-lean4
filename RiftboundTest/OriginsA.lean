@@ -433,4 +433,229 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, _) ← put s1 s.me "OGN-074" .hand
   return s2.kwAmount v .shield == 0
 
+-- Leona (OGN-238) stuns an enemy unit here when she attacks, not one elsewhere
+#guard t fun s => do
+  let (s1, l) ← putAt s s.me "OGN-238" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let a ← fire s3 [.combatStarted s.bf0 s.me]
+  let b ← fire s3 [.combatStarted s.bf0 s.you]
+  return (a.obj? e).map (·.stunned) == some true && (a.obj? f).map (·.stunned) == some false &&
+    (a.obj? l).map (·.stunned) == some false && (b.obj? e).map (·.stunned) == some false
+
+-- Ahri (OGN-119): -2 Might to an enemy unit here, to a minimum of 1, when she attacks or defends
+#guard t fun s => do
+  let (s1, _) ← putAt s s.me "OGN-119" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← putAt s2 s.you "OGN-136" s.bf0
+  let a ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts.contains e }
+  let b ← fire s3 [.combatStarted s.bf0 s.you] { pick := fun ts => ts.contains f }
+  return a.mightNow e == (s3.mightNow e).map (· - 2) && a.mightNow f == s3.mightNow f &&
+    b.mightNow f == some 1 && b.mightNow e == s3.mightNow e
+
+-- Anivia (OGN-148): 3 damage to every enemy unit here when she attacks
+#guard t fun s => do
+  let (s1, v) ← putAt s s.me "OGN-148" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← put s2 s.you "OGN-001" .base
+  let (s4, w) ← putAt s3 s.me "OGN-001" s.bf0
+  let a ← fire s4 [.combatStarted s.bf0 s.me]
+  let b ← fire s4 [.combatStarted s.bf0 s.you]
+  return (a.obj? e).map (·.damage) == some 3 && (a.obj? f).map (·.damage) == some 0 &&
+    (a.obj? w).map (·.damage) == some 0 && (a.obj? v).map (·.damage) == some 0 &&
+    (b.obj? e).map (·.damage) == some 0
+
+-- Yasuo (OGN-076): damage equal to his Might to an enemy unit here when he attacks
+#guard t fun s => do
+  let (s1, y) ← putAt s s.me "OGN-076" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-116" s.bf0
+  let a ← fire s2 [.combatStarted s.bf0 s.me]
+  let s3 := s2.modObj y (fun o => { o with mightMods := [⟨-2, .turn⟩] })
+  let b ← fire s3 [.combatStarted s.bf0 s.me]
+  return (a.obj? e).map (·.damage) == (s2.mightNow y).map Int.toNat && (s2.mightNow y).isSome &&
+    (b.obj? e).map (·.damage) == some 4
+
+-- Dune Drake (OGN-131): +2 Might when it attacks, only if a ready enemy unit is here
+#guard t fun s => do
+  let (s1, d) ← putAt s s.me "OGN-131" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let a ← fire s2 [.combatStarted s.bf0 s.me]
+  let b ← fire (s2.tire e) [.combatStarted s.bf0 s.me]
+  return a.mightNow d == (s2.mightNow d).map (· + 2) && b.mightNow d == s2.mightNow d
+
+-- Grove of the God-Willow (OGN-280), Zaun Warrens (OGN-298): the holder draws, the conqueror
+-- discards and draws
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-280"
+  let a ← fire s1 [.scored s.me bf false]
+  return a.handN s.me == s1.handN s.me + 1 && a.handN s.you == s1.handN s.you
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-298"
+  let a ← fire s1 [.scored s.me bf true]
+  let b ← fire s1 [.scored s.me bf false]
+  return a.handN s.me == s1.handN s.me && (a.zone (.player s.me .trash)).length ==
+    (s1.zone (.player s.me .trash)).length + 1 && b.handN s.me == s1.handN s.me
+
+-- Altar to Unity (OGN-275): a Recruit token comes to my base when I hold here
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let a ← fire s1 [.scored s.me bf false]
+  let b ← fire s1 [.scored s.me bf true]
+  let tk ← a.firstOf s.me .base "TKN-Recruit" <|> (a.zone (.player s.me .base)).find? (fun u =>
+    (a.cardDef? u).any (·.name == "Recruit"))
+  return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0 &&
+    a.tired tk == some true
+
+-- Navori Fighting Pit (OGN-283): buff a unit here when I hold
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-283"
+  let (s2, u) ← putAt s1 s.me "OGN-136" bf
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let a ← fire s3 [.scored s.me bf false]
+  return (a.obj? u).map (·.buffed) == some true && (a.obj? v).map (·.buffed) == some false
+
+-- Startipped Peak (OGN-288): I may channel a rune exhausted when I hold
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-288"
+  let a ← fire s1 [.scored s.me bf false]
+  let b ← fire s1 [.scored s.me bf false] { yes := false }
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  return runes a + 1 == runes s1 && runes b == runes s1
+
+-- Trifarian War Camp (OGN-294), Windswept Hillock (OGN-297): every unit here
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-294"
+  let (s2, u) ← putAt s1 s.me "OGN-136" bf
+  let (s3, v) ← putAt s2 s.you "OGN-136" bf
+  let (s4, w) ← put s3 s.me "OGN-136" .base
+  return s4.mightNow u == some 3 && s4.mightNow v == some 3 && s4.mightNow w == some 2
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-297"
+  let (s2, u) ← putAt s1 s.me "OGN-136" bf
+  let (s3, v) ← putAt s2 s.you "OGN-136" bf
+  let (s4, w) ← put s3 s.me "OGN-136" .base
+  return s4.hasKw u .ganking && s4.hasKw v .ganking && !s4.hasKw w .ganking
+
+-- Darius (OGN-243): other friendly units here have +1 Might; Legion readies him
+#guard t fun s => do
+  let (s1, d) ← putAt s s.me "OGN-243" s.bf0
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-136" s.bf0
+  return s3.mightNow u == some 3 && s3.mightNow e == some 2 && s3.mightNow d == (s2.mightNow d)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-243" .hand
+  let (s2, k) ← put s1 s.me "OGN-058" .hand
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let a ← play s3 s.me c
+  let b ← play (← play s3 s.me k [v]) s.me c
+  let da ← a.firstOf s.me .base "OGN-243"
+  let db ← b.firstOf s.me .base "OGN-243"
+  return a.tired da == some true && b.tired db == some false
+
+-- Block (OGN-057): a unit has Shield 3 and Tank this turn
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-057" .hand
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  let a ← play s3 s.me c [v]
+  return a.kwAmount v .shield == 3 && a.hasKw v .tank && !a.hasKw w .tank &&
+    a.kwAmount w .shield == 0 && !(a.mapObjects endTurnObj).hasKw v .tank
+
+-- Blastcone Fae (OGN-097) and Teemo (OGN-197): when played
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-097" .hand
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let a ← play s3 s.me c [] { pick := fun ts => ts.contains e }
+  let b ← play s3 s.me c [] { pick := fun ts => ts.contains f }
+  return a.mightNow e == some 3 && a.mightNow f == some 2 && b.mightNow f == some 1 &&
+    b.mightNow e == some 5
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-197" .hand
+  let a ← play s1 s.me c
+  let t ← a.firstOf s.me .base "OGN-197"
+  return a.mightNow t == some 4 && (a.mapObjects endTurnObj).mightNow t == some 1
+
+-- Fight or Flight (OGN-168): a unit at a battlefield goes to its base; one at a base cannot
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-168" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
+  let (s3, w) ← put s2 s.me "OGN-136" .base
+  let a ← play s3 s.me c [u]
+  return (s3.obj? u).bind (·.loc) == some s.bf0 && (a.obj? u).map (·.loc) == some none &&
+    (play s3 s.me c [w]).isNone
+
+-- Iron Ballista (OGN-017): enters exhausted; exhaust it to deal 2 to a unit at a battlefield
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-017" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← put s2 s.you "OGN-136" .base
+  let a ← play s1 s.me c
+  let g ← a.firstOf s.me .base "OGN-017"
+  let b := s3.rich s.me
+  let (b1, g2) ← put b s.me "OGN-017" .base
+  let x ← activate b1 s.me g2 1 [e]
+  return a.tired g == some true && (activate a s.me g 1 [e]).isNone &&
+    (x.obj? e).map (·.damage) == some 2 && x.tired g2 == some true &&
+    (activate b1 s.me g2 1 [f]).isNone
+
+-- Ravenbloom Student (OGN-103) and Pit Crew (OGN-091): when I play a spell, a gear
+#guard t fun s => do
+  let (s1, r) ← put s s.me "OGN-103" .base
+  let (s2, c) ← put s1 s.me "OGN-004" .hand
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, d) ← put s3 s.me "OGN-136" .hand
+  let a ← play s4 s.me c [v]
+  let b ← play s4 s.me d
+  return a.mightNow r == (s4.mightNow r).map (· + 1) && b.mightNow r == s4.mightNow r
+#guard t fun s => do
+  let (s1, p) ← put s s.me "OGN-091" .base
+  let (s2, g) ← put s1 s.me "OGN-124" .hand
+  let (s3, d) ← put s2 s.me "OGN-136" .hand
+  let a ← play (s3.tire p) s.me g
+  let b ← play (s3.tire p) s.me d
+  return a.tired p == some false && b.tired p == some true
+
+-- Viktor (OGN-117): a Recruit token comes to my base when I play a card on an opponent's turn
+#guard t fun s => do
+  let (s1, _) ← put s s.you "OGN-117" .base
+  let (s2, x) ← put s1 s.you "OGN-136" .base
+  let (s3, _) ← put s2 s.me "OGN-117" .base
+  let (s4, y) ← put s3 s.me "OGN-136" .base
+  let a ← fire s4 [.played s.you x]
+  let b ← fire s4 [.played s.me y]
+  return a.countNamed s.you .base "Recruit" == 1 && a.countNamed s.me .base "Recruit" == 0 &&
+    b.countNamed s.me .base "Recruit" == 0 && b.countNamed s.you .base "Recruit" == 0
+
+-- Noxian Drummer (OGN-222): a Recruit token comes here when it moves to a battlefield
+#guard t fun s => do
+  let (s1, d) ← putAt s s.me "OGN-222" s.bf0
+  let (s2, e) ← put s1 s.me "OGN-222" .base
+  let recruits (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
+    (x.cardDef? o).any (·.name == "Recruit")) |>.length
+  let a ← fire s2 [.standardMoved d (some s.bf0)]
+  let b ← fire s2 [.standardMoved e none]
+  return recruits a == 1 && recruits b == 0 && recruits s2 == 0
+
+-- Bounty Hunter (OGN-267), a Legend: exhaust it, a unit has Ganking this turn
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-267" .legendZone
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let a ← activate s2 s.me g 0 [v]
+  return !s2.hasKw v .ganking && a.hasKw v .ganking && a.tired g == some true &&
+    (activate a s.me g 0 [v]).isNone
+
+-- a Battlefield trigger with a condition asks it for the player who holds, not for the owner:
+-- The Grand Plaza (OGN-293) wins for the holder with seven units here
+#guard t fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-293"
+  let seven (p : PlayerId) (x : GameState) : Option GameState :=
+    (List.range 7).foldl (fun acc _ => acc.bind fun y => (putAt y p "OGN-136" bf).map (·.1))
+      (some x)
+  let a ← seven s.you s1
+  let b ← seven s.me s1
+  return (a.detect [.scored s.you bf false]).length == 1 &&
+    (a.detect [.scored s.me bf false]).isEmpty &&
+    (b.detect [.scored s.me bf false]).length == 1 && (b.detect [.scored s.you bf false]).isEmpty
+
 end RiftboundTest

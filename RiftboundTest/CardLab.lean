@@ -50,6 +50,10 @@ meta def putAt (s : GameState) (p : PlayerId) (card : String) (bf : ObjId) :
   | some (s1, u) => some (s1.modObj u (fun o => { o with loc := some bf }), u)
   | none => none
 
+/-- Put a new Battlefield card of the player on the Battlefield Zone. -/
+meta def putBf (s : GameState) (p : PlayerId) (card : String) : Option (GameState × ObjId) :=
+  addObject s (newCard s.cards s p (cid card)) .battlefieldZone
+
 /-- Give the player Energy and Power of the domains in the Pool. -/
 meta def GameState.fund (s : GameState) (p : PlayerId) (e : Nat)
     (fury calm body mind chaos order : Nat := 0) : GameState :=
@@ -89,6 +93,10 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
       match (opts.head? <|> (legalFrameActions s).head?) with
       | some a => go a
       | none => s
+    | .discard .. :: _ =>
+      match (legalFrameActions s).head? with
+      | some a => go a
+      | none => s
     | .triggerOrder .. :: _ =>
       let puts := (legalFrameActions s).filter (fun a => match a.kind with
         | .putTrigger _ _ => true | _ => false)
@@ -118,6 +126,13 @@ meta def play (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId := [])
     (says : Says := {}) : Option GameState :=
   cast (s.rich p) p c (payOf s c) ts says
 
+/-- Let the events happen: the abilities they set off go on the Chain, and the Chain resolves. -/
+meta def fire (s : GameState) (es : List Event) (says : Says := {}) : Option GameState :=
+  let s0 := { s with pending := insertTriggers (s.detect es) s.pending }
+  match advance 100 s0 [] with
+  | .ok (s1, _) => some (settleChain says 12 s1)
+  | .error _ => none
+
 /-- Make the object exhausted. -/
 meta def GameState.tire (s : GameState) (u : ObjId) : GameState :=
   s.modObj u (fun o => { o with exhausted := true })
@@ -137,6 +152,10 @@ meta def GameState.trigPicks (s : GameState) : List ObjId :=
 meta def GameState.firstOf (s : GameState) (p : PlayerId) (z : ZoneKind) (card : String) :
     Option ObjId :=
   (s.zone (.player p z)).find? (fun u => (s.cardDef? u).any (·.id == cid card))
+
+/-- How many objects in the zone of the player have a card with the name (for the tokens). -/
+meta def GameState.countNamed (s : GameState) (p : PlayerId) (z : ZoneKind) (name : String) : Nat :=
+  ((s.zone (.player p z)).filter (fun u => (s.cardDef? u).any (·.name == name))).length
 
 /-- Whether the object is exhausted. -/
 meta def GameState.tired (s : GameState) (u : ObjId) : Option Bool := (s.obj? u).map (·.exhausted)

@@ -49,6 +49,22 @@ def Amount.understood : Amount → Bool
   | .mul a b => Amount.understood a && Amount.understood b
   | .min a b => Amount.understood a && Amount.understood b
   | .max a b => Amount.understood a && Amount.understood b
+  | .mightOf s => Selector.understood s
+  | _ => false
+
+/-- An amount that is understood in a condition: the Might of objects is not (conditions read the
+Might without the Layers, which they do not need yet). -/
+def Amount.understoodC : Amount → Bool
+  | .const _ => true
+  | .var _ => true
+  | .count s => Selector.understood s
+  | .handSize p => p.understood
+  | .xp => true
+  | .add a b => Amount.understoodC a && Amount.understoodC b
+  | .sub a b => Amount.understoodC a && Amount.understoodC b
+  | .mul a b => Amount.understoodC a && Amount.understoodC b
+  | .min a b => Amount.understoodC a && Amount.understoodC b
+  | .max a b => Amount.understoodC a && Amount.understoodC b
   | _ => false
 
 /-- A filter that is understood. -/
@@ -90,7 +106,7 @@ def Condition.understood : Condition → Bool
   | .not c => Condition.understood c
   | .and a b => Condition.understood a && Condition.understood b
   | .or a b => Condition.understood a && Condition.understood b
-  | .cmp _ a b => a.understood && b.understood
+  | .cmp _ a b => a.understoodC && b.understoodC
   | .exists s => s.understood
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
