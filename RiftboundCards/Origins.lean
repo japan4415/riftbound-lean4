@@ -377,8 +377,13 @@ def OGN_016.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Dangerous Duo: the effect is not written yet. -/
-def OGN_016 : CardDef := OGN_016.meta
+/-- Dangerous Duo. -/
+def OGN_016 : CardDef :=
+  { OGN_016.meta with
+    abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-017
 /--
@@ -463,8 +468,14 @@ def OGN_020.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Scrapyard Champion: the effect is not written yet. -/
-def OGN_020 : CardDef := OGN_020.meta
+/-- Scrapyard Champion. -/
+def OGN_020 : CardDef :=
+  { OGN_020.meta with
+    abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
+        (.of []
+        (.seqOf [.prim (.discard .you (.const 2)),
+          .prim (.draw .you (.const 2))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-021
 /--
@@ -4934,8 +4945,13 @@ def OGN_217.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Trifarian Gloryseeker: the effect is not written yet. -/
-def OGN_217 : CardDef := OGN_217.meta
+/-- Trifarian Gloryseeker. -/
+def OGN_217 : CardDef :=
+  { OGN_217.meta with
+    abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
+        (.of []
+        (.prim (.buff .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-218
 /--
@@ -4957,8 +4973,13 @@ def OGN_218.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Vanguard Captain: the effect is not written yet. -/
-def OGN_218 : CardDef := OGN_218.meta
+/-- Vanguard Captain. -/
+def OGN_218 : CardDef :=
+  { OGN_218.meta with
+    abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
+        (.of []
+        (.prim (.create "Recruit" (.const 2) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-219
 /--

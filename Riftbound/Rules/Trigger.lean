@@ -33,10 +33,18 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   | .playCard .., .player p => playedOf p es
   | _, _ => []
 
-/-- The ability can fire on the event: it is about the object itself, with no condition, every
-time. -/
-def trigOk (t : Trigger) (_body : EffectDef) : Bool :=
-  t.subject == .self && t.condition == .always && t.occurrence == .every
+/-- The condition holds for the object when the event happens: none, or a fact of how the object
+was played: an additional cost was paid, or another card had been played (CR 812). -/
+def condOk (s : GameState) (src : ObjId) : Condition → Bool
+  | .always => true
+  | .paid => (s.obj? src).any (·.paid)
+  | .legion => (s.obj? src).any (·.legion)
+  | _ => false
+
+/-- The ability can fire on the event: it is about the object itself, every time, and its condition
+holds. -/
+def trigOk (s : GameState) (src : ObjId) (t : Trigger) (_body : EffectDef) : Bool :=
+  t.subject == .self && condOk s src t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
 def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
@@ -50,7 +58,7 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if t.event == ev && trigOk t body && limitOk s src (lo + j) lim then
+      if t.event == ev && trigOk s src t body && limitOk s src (lo + j) lim then
         some { source := src, card := d.id, idx := lo + j, controller := p }
       else none
     | _ => none)

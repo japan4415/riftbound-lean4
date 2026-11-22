@@ -289,6 +289,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     let bs ← ids.mapM (fun id => f.holds s self env id)
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
+  | .legion => some ((s.obj? self).any (·.legion))
+  | .paid => some ((s.obj? self).any (·.paid))
   | _ => none
 
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching

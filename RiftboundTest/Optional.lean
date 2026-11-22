@@ -35,6 +35,20 @@ meta def echo : CardDef :=
     cost := some ⟨1, []⟩, keywords := [{ keyword := .repeat_, arg := .cost ⟨1, []⟩ }],
     spellEffect := some (EffectDef.of [] (.prim (.draw .you (.const 1)))) }
 
+/-- A Unit that draws a card when it is played, if another card was played in the turn (Legion). -/
+meta def legionary : CardDef :=
+  { id := cid "T-LEG", name := "Legionary", types := [.unit], domains := [.fury],
+    cost := some ⟨1, []⟩, might := some 1,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
+      (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] }
+
+/-- A Unit that may be played for 1 Energy more, and then draws a card. -/
+meta def thrifty : CardDef :=
+  { id := cid "T-THR", name := "Thrifty", types := [.unit], domains := [.fury],
+    cost := some ⟨1, []⟩, might := some 1, additionalCost := some ⟨1, []⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+      (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] }
+
 /-- The game in the Main Phase of the first turn, with the test cards known. -/
 meta def mainOp : Option GameState :=
   match GameState.initial db { ruleSet := .coreOnly, mode := Mode.duel } [goodDeck, goodDeck] with
@@ -42,7 +56,7 @@ meta def mainOp : Option GameState :=
   | some s => match runUntilTurn 100 1 2000 (Rng.ofSeed 1) s with
       | .ok s =>
         some { s with cards := { cards := db.cards ++ RiftboundCards.db.cards ++
-          [swift, plain, echo] } }
+          [swift, plain, echo, legionary, thrifty] } }
       | .error _ => none
 
 /-- Put a token of the card on a zone of the player. -/
@@ -122,6 +136,61 @@ meta def castOp (s : GameState) (p : PlayerId) (pay : RunePool.Payment) :
       (b5.zone (.player p .hand)).length == (b0.zone (.player p .hand)).length + 1 &&
       (a5.poolOf p).total == 1 && (b5.poolOf p).total == 0
     | _, _ => false
+  | none => false
+
+/-- Let the Chain resolve: the players pass while the Chain is being answered. -/
+meta def settle : Nat → GameState → GameState
+  | 0, s => s
+  | n + 1, s =>
+    match s.pending with
+    | .chainPass q _ :: _ =>
+      match step 100 s ⟨.player q, .pass⟩ with
+      | .ok (s', _) => settle n s'
+      | .error _ => s
+    | _ => s
+
+/-- Play the card with the payment and let what it sets off resolve. -/
+meta def playSettle (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
+    Option GameState :=
+  match step 100 s ⟨.player p, .playCard c pay []⟩ with
+  | .ok (s1, _) => some (settle 6 s1)
+  | .error _ => none
+
+-- Legion: the effect comes only if another card was played in the turn (CR 812)
+#guard match mainOp with
+  | some s0 =>
+    let p := s0.active.getD ⟨0⟩
+    match putOp s0 p "T-LEG" .hand with
+    | some (s1, l) =>
+      match putOp s1 p "T-PLN" .hand with
+      | some (s2, v) =>
+        let s3 := s2.setPool p { energy := 3 }
+        let hand (s : GameState) := (s.zone (.player p .hand)).length
+        match playSettle s3 p l ⟨1, []⟩, playSettle s3 p v ⟨2, []⟩ with
+        | some alone, some withOther =>
+          match playSettle withOther p l ⟨1, []⟩ with
+          | some both =>
+            hand alone == hand s3 - 1 && hand both == hand withOther
+          | none => false
+        | _, _ => false
+      | none => false
+    | none => false
+  | none => false
+
+-- "if you paid the additional cost": the effect comes only when the cost with the additional cost
+-- was paid
+#guard match mainOp with
+  | some s0 =>
+    let p := s0.active.getD ⟨0⟩
+    match putOp s0 p "T-THR" .hand with
+    | some (s1, u) =>
+      let s2 := s1.setPool p { energy := 2 }
+      let hand (s : GameState) := (s.zone (.player p .hand)).length
+      (paysOf s2 u).contains ⟨1, []⟩ && (paysOf s2 u).contains ⟨2, []⟩ &&
+      (match playSettle s2 p u ⟨1, []⟩, playSettle s2 p u ⟨2, []⟩ with
+        | some a, some b => hand a == hand s2 - 1 && hand b == hand s2
+        | _, _ => false)
+    | none => false
   | none => false
 
 end RiftboundTest

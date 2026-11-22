@@ -65,6 +65,9 @@ structure CardDef where
   grants : List Ability := []
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
+  /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
+  cost to play me" (CR 357.2). -/
+  additionalCost : Option Cost := none
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
