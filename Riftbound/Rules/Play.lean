@@ -157,7 +157,8 @@ def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
 /-- The facts of playing the card now with the payment. -/
 def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
     PlayMark :=
-  ⟨(s.cardDef? c).any (fun d => s.paidExtra p c d pay), s.playedBefore p, s.turn, s.nextTimestamp⟩
+  ⟨(s.cardDef? c).any (fun d => s.paidExtra p c d pay), s.playedBefore p, s.turn,
+    s.nextTimestamp⟩
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/

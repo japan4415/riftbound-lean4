@@ -27,6 +27,7 @@ def Place.understood : Place → Bool
   | .atBattlefield => true
   | .here => true
   | .inCombat => true
+  | .onChain => true
   | _ => false
 
 /-- The players an effect names that are understood. -/
@@ -167,6 +168,7 @@ def Prim.understood : Prim → Bool
   | .turnEffect _ => true
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
+  | .counter s => s.understood
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understood && b.understood
   | .bin s => s.understoodPickAny

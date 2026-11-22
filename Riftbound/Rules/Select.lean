@@ -254,6 +254,11 @@ def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List 
       (s.zone .battlefieldZone).filter (fun u => u == bf || (s.obj? u).any (·.loc == some bf)))
   | .atBase => some (s.players.flatMap (fun p => s.zone (.player p .base)))
   | .atBattlefield => some (s.zone .battlefieldZone)
+  | .onChain =>
+    -- the spells on the Chain, not the effect's own spell (an ability on the Chain is no spell)
+    some ((s.zone .chain).filter (fun u =>
+      u != self &&
+        (s.obj? u).any (fun o => match o.kind with | .chainAbility .. => false | _ => true)))
   | .inCombat =>
     s.combatNow.map (fun (bf, _) =>
       (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (·.loc == some bf)))
@@ -337,29 +342,33 @@ theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId}
           · exact List.mem_cons_self
           · exact List.mem_cons_of_mem _ (ih htl x hx)
 
-/-- A candidate is in play when the place is a place of the board. -/
+/-- A candidate is in play when the place is a place of the board, or a spell on the Chain. -/
 theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l : List ObjId}
-    (h : s.placeObjs self pl = some l) : ∀ x ∈ l, x ∈ s.inPlay := by
+    (h : s.placeObjs self pl = some l) : ∀ x ∈ l, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
   intro x hx
   cases pl with
   | anywhere =>
     simp only [placeObjs, Option.some.injEq] at h
-    subst h; exact hx
+    subst h; exact Or.inl hx
   | here =>
     simp only [placeObjs] at h
     obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
     unfold inPlay
-    exact List.mem_append_right _ (List.mem_filter.mp hx).1
+    exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
   | atBattlefield =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
     unfold inPlay
-    exact List.mem_append_right _ hx
+    exact Or.inl (List.mem_append_right _ hx)
   | atBase =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
     unfold inPlay
-    exact List.mem_append_left _ hx
+    exact Or.inl (List.mem_append_left _ hx)
+  | onChain =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
+    exact Or.inr (List.mem_filter.mp hx).1
   | inHand => simp [placeObjs] at h
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
@@ -369,12 +378,13 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
     simp only [placeObjs] at h
     obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
     unfold inPlay
-    exact List.mem_append_right _ (List.mem_filter.mp hx).1
+    exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
 
-/-- The objects a candidate list can hold are objects in play. -/
+/-- The objects a candidate list can hold are objects in play, or spells on the Chain. -/
 theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
-    (h : s.candidates p self env side place fs = some r) : ∀ x ∈ r, x ∈ s.inPlay := by
+    (h : s.candidates p self env side place fs = some r) :
+    ∀ x ∈ r, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
   unfold candidates at h
   cases hp : s.placeObjs self place with
   | none => simp [hp] at h
@@ -390,7 +400,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .self => some [self]
   | .slot i =>
     match env.slots[i]? with
-    | some (.obj o) => some (if o ∈ s.inPlay then [o] else [])
+    | some (.obj o) => some (if o ∈ s.inPlay ∨ o ∈ s.zone .chain then [o] else [])
     | _ => none
   | .var v =>
     match env.lookup v with
@@ -545,10 +555,10 @@ theorem mem_targetTuples (s : GameState) (p : PlayerId) (self : ObjId) :
         exact ⟨t, ht, ts, (mem_targetTuples s p self cs ts).mpr hts, rfl, rfl⟩
     · simp [hs]
 
-/-- Every object chosen is in play. -/
+/-- Every object chosen is in play, or a spell on the Chain. -/
 theorem targetsOk_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId} :
     ∀ {cs : List Choice} {ts : List ObjId}, targetsOk s p self cs ts = true →
-      ∀ t ∈ ts, t ∈ s.inPlay
+      ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain
   | [], [], _ => by simp
   | [], _ :: _, h => by simp [targetsOk] at h
   | _ :: _, [], h => by simp [targetsOk] at h
