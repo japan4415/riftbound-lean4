@@ -440,7 +440,7 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
 
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
-  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.playsOf p e.playType, e⟩] }
+  { s with turnFx := s.turnFx ++ [⟨p, s.turn, s.nextTimestamp, e⟩] }
 
 /-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
 theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :

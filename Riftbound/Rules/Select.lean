@@ -446,10 +446,11 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     do pure (Nat.max (← Amount.evalS0 s p self env a) (← Amount.evalS0 s p self env b))
   | a => a.eval env
 
-/-- The cards of the kind that the player has played this turn. -/
-def GameState.playsOf (s : GameState) (p : PlayerId) (t : CardType) : Nat :=
-  (s.objects.toList.filter (fun (k, o) =>
-    o.owner == p && o.playedTurn == some s.turn && (s.cardDef? ⟨k⟩).any (·.hasType t))).length
+/-- The player has played a card of the kind since the timestamp counter was `stamp`. -/
+def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp : Nat) : Bool :=
+  s.objects.toList.any (fun (k, o) =>
+    o.owner == p && (o.playedStamp.any (fun x => decide (stamp ≤ x))) &&
+      (s.cardDef? ⟨k⟩).any (·.hasType t))
 
 /-- The player has played a card this turn other than the object `self`. -/
 def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
@@ -461,7 +462,7 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
-        | .nextSpellCostMinus _ | .nextUnitReady => s.playsOf p f.kind.playType == f.played
+        | .nextSpellCostMinus _ | .nextUnitReady => !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
 /-- Units the player plays now enter ready, by an effect of the turn. -/

@@ -2171,16 +2171,33 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   return readyUnits second s.me == readyUnits on s.me + 2 && on.handN s.me == s3.handN s.me &&
     readyUnits plain s.me == readyUnits t1 s.me
 
--- Raging Firebrand (OGN-031): the next spell this turn costs 5 less (not below 0), only that one
+-- Raging Firebrand (OGN-031): the next spell this turn costs 5 less, only that one, this turn
+-- (The Harrowing costs 6)
 #guard t fun s => do
   let (s1, f) ← put s s.me "OGN-031" .hand
-  let (s2, sp) ← put s1 s.me "OGN-022" .hand
-  let (s3, sq) ← put s2 s.me "OGN-022" .hand
+  let (s2, sp) ← put s1 s.me "OGN-198" .hand
+  let (s3, sq) ← put s2 s.me "OGN-198" .hand
   let on ← play s3 s.me f
-  let cut (x : GameState) (c : ObjId) : Option Nat :=
-    (x.cardDef? c).bind (fun d => (x.effCost s.me c d).map (·.energy))
-  let afterSpell ← play on s.me sp
-  return cut on sp == some 0 && cut s3 sp == some 5 && cut afterSpell sq == some 5
+  let cut (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
+    (x.cardDef? c).bind (fun d => (x.effCost p c d).map (·.energy))
+  let cheap ← cast (on.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩
+  let next := { on with turn := on.turn + 1 }
+  return cut on s.me sp == some 1 && cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
+    cut on s.you sp == some 6 && cut next s.me sp == some 6
+
+-- ... a card played earlier that is played again counts as the next card: Sun Disc
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-021" .base
+  let (s2, other) ← put s1 s.me "OGN-136" .base
+  let (s3, again) ← put s2 s.me "OGN-136" .hand
+  let (s4, b) ← put s3 s.me "OGN-136" .hand
+  let marked := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let old := marked.modObj again
+    (fun o => { o with playedTurn := some s4.turn, playedStamp := some 0 })
+  let on ← activate old s.me g 0
+  let x ← play on s.me again
+  let y ← play x s.me b
+  return readyUnits x s.me == readyUnits on s.me + 1 && readyUnits y s.me == readyUnits x s.me
 
 -- Unyielding Spirit (OGN-145): spells and abilities deal no damage this turn (Hextech Ray deals 3)
 #guard t fun s => do

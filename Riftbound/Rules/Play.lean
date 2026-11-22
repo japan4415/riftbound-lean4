@@ -144,16 +144,20 @@ structure PlayMark where
   legion : Bool
   /-- The turn. -/
   turn : Nat
+  /-- The timestamp counter. -/
+  stamp : Nat
 
 /-- The object after it is played: the objects chosen (for a Spell on the Chain), and the facts of
 the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
-  { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn }
+  let o1 : Object :=
+    { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn }
+  { o1 with playedStamp := some m.stamp }
 
 /-- The facts of playing the card now with the payment. -/
 def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
     PlayMark :=
-  ⟨(s.cardDef? c).any (fun d => s.paidExtra p c d pay), s.playedBefore p, s.turn⟩
+  ⟨(s.cardDef? c).any (fun d => s.paidExtra p c d pay), s.playedBefore p, s.turn, s.nextTimestamp⟩
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/

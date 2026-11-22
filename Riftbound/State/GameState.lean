@@ -21,15 +21,15 @@ engine (milestone M2b).
 
 namespace Riftbound
 
-/-- A lasting effect for the rest of a turn: whose it is, the turn, how many cards of the kind it
-watches the player had played when it was made, and what it is. -/
+/-- A lasting effect for the rest of a turn: whose it is, the turn, the timestamp counter when it
+was made, and what it is. -/
 structure TurnFx where
   /-- The player the effect is for. -/
   who : PlayerId
   /-- The turn it lasts through. -/
   turn : Nat
-  /-- The cards of the kind (`TurnEffect.playType`) the player had played this turn then. -/
-  played : Nat
+  /-- The timestamp counter then: what the player plays later has a greater `playedStamp`. -/
+  stamp : Nat
   /-- What it is. -/
   kind : TurnEffect
 deriving DecidableEq, Repr

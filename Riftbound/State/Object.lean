@@ -109,6 +109,9 @@ structure Object where
   /-- The turn in which the card was played, if it was. The record of a play stays with the
   object. -/
   playedTurn : Option Nat := none
+  /-- The timestamp counter when the card was last played: a card played later has a greater one
+  ("the next card you play"). It stays when the card moves. -/
+  playedStamp : Option Nat := none
   /-- For a card hidden face down: the Battlefield it is hidden at (CR 811). -/
   hiddenAt : Option ObjId := none
   /-- For a card hidden face down: the turn it was hidden. -/
