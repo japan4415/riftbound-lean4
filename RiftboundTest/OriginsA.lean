@@ -3117,12 +3117,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let yes ← fire k ev
   let plain ← fire k2 ev2
   let theirs ← fire k3 ev3
+  let (st, evst) := killObj (s4.modObj a (fun o => { o with stunned := true })) a
+  let stunnedOnly ← fire st evst
   let (j, evj) := killObj (s2.buff a) a
   let lone ← fire j evj
   return (yes.obj? b).map (·.buffed) == some true &&
     (plain.obj? b).map (·.buffed) == some false &&
     (theirs.obj? b).map (·.buffed) == some false &&
-    (lone.zone (.player s.me .base)).all (fun u => (lone.obj? u).all (fun o => !o.buffed))
+    (lone.zone (.player s.me .base)).all (fun u => (lone.obj? u).all (fun o => !o.buffed)) &&
+    (stunnedOnly.obj? b).map (·.buffed) == some false
 
 -- Solari Shrine (OGN-072): when I kill a stunned enemy unit, I may exhaust it to draw 1
 #guard t fun s => do
@@ -3134,6 +3137,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (b, ev2) := killObj s3 foe
   let (c, ev3) := killObj (stun s3 mine) mine
   let (d, ev4) := killObj (stun (s3.tire g) foe) foe
+  let (e, ev5) := killObj (s3.buff foe) foe
+  let buffedOnly ← fire e ev5
   let yes ← fire a ev { yes := true }
   let no ← fire a ev { yes := false }
   let plain ← fire b ev2
@@ -3141,6 +3146,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let tired ← fire d ev4
   return yes.handN s.me == a.handN s.me + 1 && yes.tired g == some true &&
     no.handN s.me == a.handN s.me && plain.handN s.me == b.handN s.me &&
-    own.handN s.me == c.handN s.me && tired.handN s.me == d.handN s.me
+    own.handN s.me == c.handN s.me && tired.handN s.me == d.handN s.me &&
+    buffedOnly.handN s.me == e.handN s.me
 
 end RiftboundTest

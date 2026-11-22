@@ -192,7 +192,7 @@ inductive Condition where
   | enemyUnitDied
   /-- The object has been noted this turn for the player with the effect. -/
   | marked (e : TurnEffect)
-  /-- The object an ability watches (its last slot) was noted with the effect for its player when
+  /-- The object an ability watches (its first slot) was noted with the effect for its player when
   it died, this turn. -/
   | diedWith (e : TurnEffect)
   /-- The player has discarded a card this turn. -/
