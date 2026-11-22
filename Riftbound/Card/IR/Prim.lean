@@ -216,6 +216,8 @@ inductive StaticMod where
   | mightMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects get a keyword (CR 479.3). -/
   | keyword (s : Selector) (k : KeywordInst)
+  /-- Objects cost less Energy, to a minimum: never below `floor` (CR 356). -/
+  | costMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects cost more Energy (CR 356). -/
   | costPlus (s : Selector) (a : Amount)
   /-- Objects cost less Energy (CR 356). -/

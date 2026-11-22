@@ -75,7 +75,7 @@ other player's Pool changes. -/
 theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} (hp : playable s p c pay = true)
     (h : applyPlay s p c pay = some (s', es)) :
-    ∃ d cost c', s.cardDef? c = some d ∧ d.cost = some cost ∧ c' ∈ d.playCosts cost ∧
+    ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧ c' ∈ d.playCosts cost ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
@@ -92,7 +92,7 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
 theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} {d : CardDef}
     (h : applyPlay s p c pay = some (s', es)) (hd : s.cardDef? c = some d)
-    (hu : d.hasType .unit = true) (hr : d.entersReady = false) (hx : d.paidExtra pay = false) :
+    (hu : d.hasType .unit = true) (hr : d.entersReady = false) (hx : s.paidExtra p c d pay = false) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   obtain ⟨id', hes, hex⟩ := applyPlay_events h
@@ -105,7 +105,7 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost c', s.cardDef? c = some d ∧ d.cost = some cost ∧ c' ∈ d.playCosts cost ∧
+    ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧ c' ∈ d.playCosts cost ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp

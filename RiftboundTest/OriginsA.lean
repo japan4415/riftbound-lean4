@@ -1948,4 +1948,83 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? u).bind (·.loc) == none && (n.obj? u).bind (·.loc) == some bf &&
     (att.obj? u).bind (·.loc) == some bf
 
+-- Cost changes
+/-- The Energy cost the card is played for now. -/
+meta def energyNow (s : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
+  (s.cardDef? c).bind fun d => (s.effCost p c d).map (·.energy)
+
+/-- The printed Energy cost of the card. -/
+meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
+  ((s.cardDef? c).bind (·.cost)).map (·.energy)
+
+-- Noxus Hopeful (OGN-012): 2 less after another card was played this turn (Legion)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-012" .hand
+  let (s2, k) ← put s1 s.me "OGN-004" .hand
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let after ← play s3 s.me k [v]
+  let played ← play after s.me c
+  return energyNow s3 s.me c == energyPrinted s3 c &&
+    energyNow after s.me c == (energyPrinted after c).map (· - 2) &&
+    played.countIn s.me .base "OGN-012" == 1 &&
+    (cast (after.rich s.me) s.me c ⟨energyPrinted after c |>.getD 0, []⟩).isNone
+
+-- Rhasa the Sunderer (OGN-195): 1 less for each card in my Trash, not the opponent's
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-195" .hand
+  let (s2, _) ← put s1 s.me "OGN-136" .trash
+  let (s3, _) ← put s2 s.me "OGN-136" .trash
+  let (s4, _) ← put s3 s.you "OGN-136" .trash
+  let played ← play s3 s.me c
+  return energyNow s1 s.me c == energyPrinted s1 c &&
+    energyNow s3 s.me c == (energyPrinted s3 c).map (· - 2) &&
+    energyNow s4 s.me c == energyNow s3 s.me c &&
+    played.countIn s.me .base "OGN-195" == 1
+
+-- Eager Apprentice (OGN-084): my spells cost 1 less (at least 1) while it is at a battlefield
+#guard t fun s => do
+  let (s1, k) ← put s s.me "OGN-093" .hand
+  let (s2, k2) ← put s1 s.me "OGN-095" .hand
+  let (base, _) ← put s2 s.me "OGN-084" .base
+  let (hand, _) ← put s2 s.me "OGN-084" .hand
+  let (at_, _) ← putAt s2 s.me "OGN-084" s.bf0
+  let (theirs, _) ← putAt s2 s.you "OGN-084" s.bf0
+  return energyNow base s.me k == energyPrinted s2 k &&
+    energyNow hand s.me k == energyPrinted s2 k &&
+    energyNow at_ s.me k == (energyPrinted s2 k).map (· - 1) &&
+    energyNow at_ s.me k2 == energyPrinted s2 k2 && energyNow theirs s.me k == energyPrinted s2 k
+
+-- Herald of Scales (OGN-140): my Dragons cost 2 less (at least 1), other units do not
+#guard t fun s => do
+  let (s1, dragon) ← put s s.me "OGN-001" .hand
+  let (s2, other) ← put s1 s.me "OGN-136" .hand
+  let (s3, _) ← put s2 s.me "OGN-140" .base
+  return energyNow s3 s.me dragon == (energyPrinted s2 dragon).map (· - 2) &&
+    energyNow s3 s.me other == energyPrinted s2 other
+
+-- more on cost changes: only another card counts for Legion (not the opponent's, not itself played
+-- earlier and returned to the hand), and a card cannot be played for its printed cost when it costs
+-- less
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-012" .hand
+  let (s2, x) ← put s1 s.you "OGN-136" .hand
+  let theirs := s2.modObj x (fun o => { o with playedTurn := some s2.turn })
+  let (t1, y) ← put s1 s.me "OGN-136" .hand
+  let mine := t1.modObj y (fun o => { o with playedTurn := some t1.turn })
+  let own := s1.modObj c (fun o => { o with playedTurn := some s1.turn })
+  return energyNow theirs s.me c == energyPrinted s1 c &&
+    energyNow mine s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow own s.me c == energyPrinted s1 c &&
+    (cast (s1.rich s.me) s.me c ⟨(energyPrinted s1 c).getD 0 - 2, []⟩).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-195" .hand
+  let trash (x : GameState) (n : Nat) : Option GameState :=
+    (List.range n).foldl (fun acc _ => acc.bind fun y => (put y s.me "OGN-136" .trash).map (·.1))
+      (some x)
+  let ten ← trash s1 10
+  let d ← s1.cardDef? c
+  return energyNow ten s.me c == some 0 &&
+    (cast (ten.rich s.me) s.me c (payOf s1 c)).isNone && (play ten s.me c).isSome &&
+    (ten.effCost s.me c d).isSome
+
 end RiftboundTest

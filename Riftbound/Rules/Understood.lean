@@ -234,12 +234,21 @@ The checks below say which cards do everything their text says in this model: ev
 the engine carries out, and every keyword is one it knows. They are the measure of "the card works"
 (docs/coverage.md); a card whose text is written down but not run is not counted. -/
 
+/-- A selector of the cards a cost change names that the engine reads: the card itself, or the cards
+of a side with properties, wherever they are (the card is in the hand when it is played). -/
+def costSel : Selector → Bool
+  | .self => true
+  | .pick .all _ .anywhere fs => FilterList.understood fs
+  | _ => false
+
 /-- A passive change the engine applies. -/
 def StaticMod.runs : StaticMod → Bool
   | .mightPlus s a => s.understood && a.understoodC
   | .mightMinus s a => s.understood && a.understoodC
   | .keyword s _ => s.understood
   | .entersReady .self => true
+  | .costMinus s a => costSel s && a.understoodC
+  | .costMinusMin s a _ => costSel s && a.understoodC
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | _ => false

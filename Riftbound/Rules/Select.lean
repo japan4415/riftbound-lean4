@@ -415,7 +415,8 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | .slot i => match env.slots[i]? with | some (.obj o) => some [o] | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some [o] | _ => none
       | _ => none
-    ids.map (fun l => (l.map (fun id => ((s.cardDef? id).bind (·.cost)).map (·.energy) |>.getD 0)).sum)
+    let energy (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.energy)).getD 0
+    ids.map (fun l => (l.map energy).sum)
   | .points ps => do
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
