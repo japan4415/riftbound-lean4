@@ -2295,11 +2295,14 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let far := s1.gainPoints s.you (vs - 4)
   let mine := s1.gainPoints s.me (vs - 3)
   let a ← play near s.me c
-  let runeN (x : GameState) :=
-    ((x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  let runes (x : GameState) :=
+    (x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))
+  let runeN (x : GameState) := (runes x).length
+  let newRune := (runes a).filter (fun u => !(runes near).contains u)
   return energyNow near s.me c == (energyPrinted s1 c).map (· - 2) &&
     energyNow far s.me c == energyPrinted s1 c && energyNow mine s.me c == energyPrinted s1 c &&
     a.handN s.me == near.handN s.me && runeN a == runeN near + 1 &&
+    newRune.all (fun u => a.tired u == some true) && newRune.length == 1 &&
     (cast (near.rich s.me) s.me c ⟨energyPrinted s1 c |>.getD 0, []⟩).isNone
 
 -- Magma Wurm (OGN-011): my other units enter ready; the opponent's units and the Wurm itself do not
@@ -2331,5 +2334,22 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return readyUnits a s.me == readyUnits s1 s.me + 1 && readyUnits b s.me == readyUnits s1 s.me &&
     st.mightNow big == some 1 && st.mightNow small == some 1 && st.mightNow far == some 7 &&
     t4.mightNow big == some 7
+
+-- ... the Victory Score the passive abilities leave is the one it reads (Aspirant's Climb adds 1),
+-- and a Magma Wurm helps a second Wurm that is played, not itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-047" .hand
+  let (s2, _) ← put s1 s.me "OGN-276" .base
+  let vs := s.config.mode.victoryScore
+  return energyNow (s2.gainPoints s.you (vs - 3)) s.me c == energyPrinted s2 c &&
+    energyNow (s2.gainPoints s.you (vs - 2)) s.me c == (energyPrinted s2 c).map (· - 2)
+#guard t fun s => do
+  let (s1, w) ← put s s.me "OGN-011" .hand
+  let (s2, _) ← put s1 s.me "OGN-011" .base
+  let a ← play s2 s.me w
+  let (t1, u) ← put s s.me "OGN-136" .hand
+  let (t2, e) ← put t1 s.you "OGN-011" .base
+  let enemyWurm := (t2.cardDef? u).map (fun d => t2.readyNow s.me u d)
+  return readyUnits a s.me == readyUnits s2 s.me + 1 && enemyWurm == some false && e == e
 
 end RiftboundTest

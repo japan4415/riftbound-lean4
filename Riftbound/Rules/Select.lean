@@ -413,6 +413,23 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .pick .all side place fs => s.candidates p self env side place fs
   | _ => none
 
+/-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
+the changes by an amount that is a number. The abilities with a condition are read in
+`GameState.victoryScore`, defined later. -/
+def GameState.victoryBase (s : GameState) : Nat :=
+  let objs := s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
+  let delta : Int := (objs.flatMap (fun src => match s.cardDef? src with
+    | some d => d.fullAbilities.flatMap (fun ab =>
+      match ab with
+      | Ability.passive .always mods => mods.map (fun m =>
+        match m with
+        | .victoryScorePlus (.const k) => (k : Int)
+        | .victoryScoreMinus (.const k) => -(k : Int)
+        | _ => 0)
+      | _ => [])
+    | none => [])).sum
+  (s.config.mode.victoryScore + delta).toNat
+
 /-- The number an amount stands for, reading the game: the count of the objects a selector stands
 for, the size of a hand, and the arithmetic of these. `none` if it cannot be known yet. -/
 def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amount → Option Nat
@@ -426,7 +443,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
-  | .victoryScore => some s.config.mode.victoryScore
+  | .victoryScore => some s.victoryBase
   | .costOf sel =>
     -- the Energy cost of the cards a selector names: a chosen object or a variable
     let ids : Option (List ObjId) := match sel with

@@ -84,12 +84,12 @@ def GameState.readyNow (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) 
     (s.passiveSources.any (fun src =>
       match s.obj? src, s.cardDef? src with
       | some o, some d2 =>
-        o.controller == p && d2.fullAbilities.any (fun ab =>
+        d2.fullAbilities.any (fun ab =>
           match ab with
           | Ability.passive cond mods =>
-            cond.eval s p src {} == some true &&
+            cond.eval s o.controller src {} == some true &&
               mods.any (fun m => match m with
-                | .entersReady sel => src != c && s.costSelects p src c sel
+                | .entersReady sel => src != c && s.costSelects o.controller src c sel
                 | _ => false)
           | _ => false)
       | _, _ => false))
