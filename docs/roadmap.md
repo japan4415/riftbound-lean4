@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 6 弾: Might に応じたダメージと、対象を 2 つ取る呪文）
+
+- **エンジンの変更なし**（第 5 弾の `mightOf` の評価と、2 つの対象の選択だけで書ける）。テストの道具 `payOf` は、「どの領域の Power でもよい」記号（Last Breath の費用）を、Fury で払う。
+- **書いた 5 枚**: Poro Herder（061。Poro を持てば、自分を Buff して 1 枚引く）、Solari Chief（225。Stun 済みなら Kill、そうでなければ Stun）、Last Breath（260）、Challenge（128）、Carnivorous Snapvine（149。互いの Might に等しいダメージを与え合う。Snapvine 自身が死ぬことも、テストで確かめた）。
+- **レビューで足したこと**: Challenge の与えるダメージ量（生き残る側で確かめる）と、Might 5 同士の相打ち、Poro Herder の否定（Poro でない味方・敵の Poro だけ）のテスト。パッシブの Might の増減の量が `mightOf` のとき、まだ 0 になる（`modMight` は `evalS0`）。
+- **近似として残したこと**: 「Challenge」と「Last Breath」の 2 つの対象は、どちらも必須（「いない」ときは唱えられない）。
+
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 5 弾: 攻撃・防御・保持・制圧の誘発と、場所を持つパッシブ）
 
 - **直した 2 つの穴**: (1) 誘発能力の**条件**は、これまで「なし・追加コストを払った・Legion」しか成り立たず、ほかの条件（`yourTurn`、`cmp`、`exists` など）は、**何も言わずに、いつも偽**だった（The Grand Plaza の勝利条件も、実は発動していなかった）。→ `Condition.eval` で評価する（答えられない条件は偽）。(2) 「自分の Might に等しい」（`Amount.mightOf`）は、**評価されていなかった**。→ `Amount.evalS` を、Passive の後ろで、**ルールが読む Might（`mightNow`）**で評価するものに置き換えた（元の評価は `evalS0`。条件の中の `mightOf` は、まだ理解済みに数えない）。

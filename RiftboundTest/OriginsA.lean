@@ -658,4 +658,78 @@ meta def t (f : GameState → Option Bool) : Bool :=
     (a.detect [.scored s.me bf false]).isEmpty &&
     (b.detect [.scored s.me bf false]).length == 1 && (b.detect [.scored s.you bf false]).isEmpty
 
+-- Poro Herder (OGN-061): with a Poro, it buffs itself and I draw 1; without one, nothing
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-061" .hand
+  let (s2, _) ← put s1 s.me "OGN-013" .base
+  let a ← play s2 s.me c
+  let b ← play s1 s.me c
+  let ha ← a.firstOf s.me .base "OGN-061"
+  let hb ← b.firstOf s.me .base "OGN-061"
+  return (a.obj? ha).map (·.buffed) == some true && a.handN s.me == s2.handN s.me &&
+    (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s1.handN s.me - 1
+
+-- Solari Chief (OGN-225): an enemy unit is stunned, or killed if it already is
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-225" .hand
+  let (s2, e) ← put s1 s.you "OGN-001" .base
+  let a ← play s2 s.me c [] { pick := fun ts => ts.contains e }
+  let (t1, e2) ← put s1 s.you "OGN-001" .base
+  let t2 := t1.modObj e2 (fun o => { o with stunned := true })
+  let b ← play t2 s.me c [] { pick := fun ts => ts.contains e2 }
+  return (a.obj? e).map (·.stunned) == some true && a.countIn s.you .trash "OGN-001" == 0 &&
+    (b.obj? e2).isNone && b.countIn s.you .trash "OGN-001" == 1
+
+-- Last Breath (OGN-260), Challenge (OGN-128), Carnivorous Snapvine (OGN-149): damage by Might
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-260" .hand
+  let (s2, f) ← put s1 s.me "OGN-001" .base
+  let (s3, e) ← putAt s2 s.you "OGN-116" s.bf0
+  let (s4, g) ← put s3 s.you "OGN-116" .base
+  let a ← play (s4.tire f) s.me c [f, e]
+  return a.tired f == some false && (a.obj? e).map (·.damage) == some 5 &&
+    (a.obj? g).map (·.damage) == some 0 && (a.obj? f).map (·.damage) == some 0 &&
+    (play s4 s.me c [f, g]).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-128" .hand
+  let (s2, f) ← put s1 s.me "OGN-001" .base
+  let (s3, e) ← put s2 s.you "OGN-116" .base
+  let a ← play s3 s.me c [f, e]
+  -- each deals its Might to the other; the friendly unit (Might 5) takes 7 and dies
+  return (a.obj? e).map (·.damage) == some 5 && (a.obj? f).isNone &&
+    (play s3 s.me c [e, f]).isNone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-149" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-116" s.bf0
+  let (s3, g) ← put s2 s.you "OGN-116" .base
+  let a ← play s3 s.me c [] { pick := fun ts => ts.contains e }
+  -- each deals its Might to the other; Snapvine (Might 6) takes 7 and dies
+  return (a.obj? e).map (·.damage) == (s3.mightNow c).map Int.toNat && (s3.mightNow c) == some 6 &&
+    a.countIn s.me .trash "OGN-149" == 1 && (a.obj? g).map (·.damage) == some 0
+
+-- Challenge: the damage is each unit's Might (the survivor shows it), and two units of Might 5
+-- kill each other
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-128" .hand
+  let (s2, f) ← put s1 s.me "OGN-116" .base
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let a ← play s3 s.me c [f, e]
+  let (t1, d) ← put s1 s.me "OGN-001" .base
+  let (t2, g) ← put t1 s.you "OGN-001" .base
+  let b ← play t2 s.me c [d, g]
+  return (a.obj? f).map (·.damage) == some 5 && (a.obj? e).isNone &&
+    (b.obj? d).isNone && (b.obj? g).isNone
+
+-- Poro Herder: a unit that is not a Poro, or a Poro of the opponent, is not enough
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-061" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s1 s.you "OGN-013" .base
+  let a ← play s2 s.me c
+  let b ← play s3 s.me c
+  let ha ← a.firstOf s.me .base "OGN-061"
+  let hb ← b.firstOf s.me .base "OGN-061"
+  return (a.obj? ha).map (·.buffed) == some false && a.handN s.me == s2.handN s.me - 1 &&
+    (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s3.handN s.me - 1
+
 end RiftboundTest
