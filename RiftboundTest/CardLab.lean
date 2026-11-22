@@ -126,6 +126,17 @@ meta def GameState.firstOf (s : GameState) (p : PlayerId) (z : ZoneKind) (card :
 /-- Whether the object is exhausted. -/
 meta def GameState.tired (s : GameState) (u : ObjId) : Option Bool := (s.obj? u).map (·.exhausted)
 
+/-- Use an ability of the object (the player has plenty to pay), and let the Chain resolve. -/
+meta def activate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (ts : List ObjId := []) :
+    Option GameState :=
+  match step 100 (s.rich p) ⟨.player p, .activate src idx ⟨0, []⟩ ts⟩ with
+  | .ok (s1, _) => some (settleChain (fun _ => true) 12 s1)
+  | .error _ => none
+
+/-- Make the object buffed. -/
+meta def GameState.buff (s : GameState) (u : ObjId) : GameState :=
+  s.modObj u (fun o => { o with buffed := true })
+
 /-- The zone an object is on. -/
 meta def GameState.where? (s : GameState) (u : ObjId) : Option Zone := s.locate u
 

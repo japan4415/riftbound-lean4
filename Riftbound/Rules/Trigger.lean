@@ -14,7 +14,9 @@ The abilities that fire are those with the object itself as subject, no conditio
 A player with several abilities to put on the Chain chooses the order, and the targets of each, one
 at a time (CR 383.3.d, 355): the decision is the `triggerOrder` frame. With one ability and nothing
 to choose, it goes on the Chain at once. An ability with no legal targets is removed (CR 355).
-Triggers at a point of the turn and triggers of other objects are later.
+The abilities of other objects, such as a Unit that watches the plays of the others (CR 382), fire
+too, when the subject of the ability is the object that was played, killed or moved (`watchersOf`).
+Triggers at a point of the turn are later.
 -/
 
 @[expose] public section
@@ -78,6 +80,35 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
       else []
     | _, _ => [])
 
+/-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
+a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
+may have left the game, as a Spell on its way to the Chain has. A subject at a place (here, at a
+base) is not understood yet: it never holds. -/
+def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (who : PlayerId) :
+    Selector → Bool
+  | .pick .all side .anywhere fs =>
+    (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
+      (fs.holds s src {} subj == some true)
+  | _ => false
+
+/-- The abilities of the objects in play and of the Legends that watch for the object `subj` of the
+player `who`, on the event: those whose subject is not the object itself. -/
+def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEvent) :
+    List PendTrigger :=
+  (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))).flatMap (fun src =>
+    match s.obj? src, s.cardDef? src with
+    | some o, some d =>
+      (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
+        match d.allAbilities[j]? with
+        | some (Ability.triggered t _ lim) =>
+          if t.event == ev && t.subject != .self &&
+              subjectHolds s src o.controller subj who t.subject &&
+              condOk s src t.condition && t.occurrence == .every && limitOk s src j lim then
+            some { source := src, card := d.id, idx := j, controller := o.controller }
+          else none
+        | _ => none)
+    | _, _ => [])
+
 /-- The Units of the player at the Battlefield. -/
 def GameState.trigUnitsAt (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId :=
   (s.zone .battlefieldZone).filter (fun u =>
@@ -89,11 +120,11 @@ def GameState.trigAllUnitsAt (s : GameState) (bf : ObjId) : List ObjId :=
 
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
-  | .played p obj => triggersOf s obj p .play
-  | .died obj p => triggersOf s obj p .die
+  | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
+  | .died obj p => triggersOf s obj p .die ++ watchersOf s obj p .die
   | .standardMoved u _ =>
     match s.obj? u with
-    | some o => triggersOf s u o.controller .move
+    | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move
     | none => []
   | .scored p bf conquer =>
     (s.trigUnitsAt bf p).flatMap

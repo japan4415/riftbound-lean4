@@ -165,4 +165,99 @@ meta def t (f : GameState → Option Bool) : Bool :=
     s5.countIn s.you .trash "OGN-017" == 1 && s5.obj? g == none && s5.obj? h == none &&
     s5.obj? u != none
 
+-- Wizened Elder (OGN-065): while buffed, an additional +1 Might (the buff itself is +1)
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-065" .base
+  let s2 := s1.buff u
+  return s2.mightNow u == (s1.mightNow u).map (· + 2)
+
+-- Sett (OGN-240): +1 Might for each buffed friendly unit at my battlefield (itself included)
+#guard t fun s => do
+  let (s1, u) ← putAt s s.me "OGN-240" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let one := s3.buff v
+  let two := one.buff u
+  let enemy := two.buff e
+  return one.mightNow u == (s3.mightNow u).map (· + 1) &&
+    two.mightNow u == (s3.mightNow u).map (· + 3) &&
+    -- a buffed enemy unit is not counted
+    enemy.mightNow u == two.mightNow u
+
+-- Lee Sin (OGN-151): other buffed friendly units at my battlefield have +2 Might
+#guard t fun s => do
+  let (s1, u) ← putAt s s.me "OGN-151" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, w) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
+  let b := (s4.buff v).buff e
+  return b.mightNow v == (s4.mightNow v).map (· + 3) && b.mightNow w == s4.mightNow w &&
+    b.mightNow e == (s4.mightNow e).map (· + 1) && b.mightNow u == s4.mightNow u
+
+-- Arena Bar (OGN-124): exhaust it to buff an exhausted friendly unit
+#guard t fun s => do
+  let (s1, g) ← put s s.me "OGN-124" .base
+  let (s2, v) ← put s1 s.me "OGN-001" .base
+  let (s3, w) ← put s2 s.me "OGN-051" .base
+  let s4 := s3.tire v
+  let s5 ← activate s4 s.me g 0 [v]
+  return (s5.obj? v).map (·.buffed) == some true && s5.tired g == some true &&
+    (s5.obj? w).map (·.buffed) == some false && (activate s4 s.me g 0 [w]).isNone
+
+-- Cithria of Cloudfield (OGN-139): when you play another unit, buff Cithria; not for itself
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-139" .base
+  let (s2, c) ← put s1 s.me "V0" .hand
+  let s3 ← play s2 s.me c
+  return (s3.obj? u).map (·.buffed) == some true
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-139" .hand
+  let s2 ← play s1 s.me c
+  let u ← s2.firstOf s.me .base "OGN-139"
+  return (s2.obj? u).map (·.buffed) == some false
+
+-- Peak Guardian (OGN-223): when played, buff itself
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-223" .hand
+  let s2 ← play s1 s.me c
+  let u ← s2.firstOf s.me .base "OGN-223"
+  return (s2.obj? u).map (·.buffed) == some true
+
+-- Cithria reacts to units only, and only to the plays of its player's side
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-139" .base
+  let (s2, c) ← put s1 s.me "SP0" .hand
+  let s3 ← play s2 s.me c
+  return (s3.obj? u).map (·.buffed) == some false
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-139" .base
+  let (s2, e) ← put s1 s.you "V0" .base
+  return (watchersOf s2 e s.you .play).isEmpty && (watchersOf s2 e s.me .play).length == 1 &&
+    (s2.obj? u).isSome
+
+-- Lee Sin gives himself nothing (he has the buff only); Sett on a base counts nobody
+#guard t fun s => do
+  let (s1, u) ← putAt s s.me "OGN-151" s.bf0
+  let s2 := s1.buff u
+  return s2.mightNow u == (s1.mightNow u).map (· + 1)
+#guard t fun s => do
+  let (s1, u) ← put s s.me "OGN-240" .base
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let s3 := s2.buff v
+  return s3.mightNow u == s1.mightNow u
+
+-- Peak Guardian at a battlefield: it buffs itself and the other friendly units there (the
+-- ability is put on the stack by hand: a unit cannot be played to a battlefield yet)
+#guard t fun s => do
+  let (s1, g) ← putAt s s.me "OGN-223" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, w) ← put s2 s.me "OGN-001" .base
+  let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
+  let pend := detectOne s4 (.played s.me g)
+  let s5 := { s4 with pending := .triggers pend :: s4.pending }
+  let s6 := settleChain (fun _ => true) 12 (← (advance 100 s5 []).toOption).1
+  return pend.length == 1 && (s6.obj? g).map (·.buffed) == some true &&
+    (s6.obj? v).map (·.buffed) == some true && (s6.obj? w).map (·.buffed) == some false &&
+    (s6.obj? e).map (·.buffed) == some false
+
 end RiftboundTest
