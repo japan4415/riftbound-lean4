@@ -886,8 +886,16 @@ def OGN_035.meta : CardDef :=
     sets := [⟨"OGN"⟩, ⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Vayne, Hunter: the effect is not written yet. -/
-def OGN_035 : CardDef := OGN_035.meta
+/-- Vayne, Hunter. -/
+def OGN_035 : CardDef :=
+  { OGN_035.meta with
+    abilities := [
+      .passive (.exists (Selector.all .any .anywhere [.ofType .battlefield, .controlledByOpponent]))
+        [.entersReady .self],
+      .triggered (.onSelf .conquer)
+        (.of [] (.ifThen (.canPay ⟨1, []⟩)
+          (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.returnToHand .self)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-036
 /--

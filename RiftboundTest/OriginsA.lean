@@ -2485,4 +2485,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     there defend == 0 && there empty == 0 && (spellOnly.poolOf s.me).mind == 1 &&
     spellOnly.countIn s.me .hand "OGN-057" == 1 && (noHidden.poolOf s.me).mind == 1
 
+-- Vayne, Hunter (OGN-035): enters ready if an opponent controls a battlefield; when I conquer, I
+-- may pay 1 Energy to return her to my hand
+#guard t fun s => do
+  let (s1, v) ← put s s.me "OGN-035" .hand
+  let theirs := s1.modObj s.bf0 (fun o => { o with control := some s.you })
+  let mine := s1.modObj s.bf0 (fun o => { o with control := some s.me })
+  let a ← play theirs s.me v
+  let b ← play mine s.me v
+  let c ← play s1 s.me v
+  let (t1, u) ← putAt s s.me "OGN-035" s.bf0
+  let yes ← fire (t1.fund s.me 1) [.scored s.me s.bf0 true] { yes := true }
+  let no ← fire (t1.fund s.me 1) [.scored s.me s.bf0 true] { yes := false }
+  let broke ← fire (t1.fund s.me 0) [.scored s.me s.bf0 true] { yes := true }
+  return readyUnits a s.me == readyUnits theirs s.me + 1 &&
+    readyUnits b s.me == readyUnits mine s.me && readyUnits c s.me == readyUnits s1 s.me && yes.countIn s.me .hand "OGN-035" == 1 &&
+    (yes.poolOf s.me).energy == 0 && no.countIn s.me .hand "OGN-035" == 0 &&
+    (no.poolOf s.me).energy == 1 && (no.obj? u).map (·.loc) == some (some s.bf0) &&
+    broke.countIn s.me .hand "OGN-035" == 0 && (broke.obj? u).map (·.loc) == some (some s.bf0)
+
 end RiftboundTest

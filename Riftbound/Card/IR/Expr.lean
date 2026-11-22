@@ -84,6 +84,8 @@ inductive Filter where
   | cost (op : Cmp) (a : Amount)
   /-- Its Power cost (the number of Power it asks for) compares to the amount. -/
   | powerCost (op : Cmp) (a : Amount)
+  /-- Is a Battlefield an opponent of the object's controller controls. -/
+  | controlledByOpponent
   /-- Is exhausted. -/
   | exhausted
   /-- Is ready. -/
