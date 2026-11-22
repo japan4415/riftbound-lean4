@@ -426,6 +426,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
   | .xp => some (s.xpOf p)
+  | .victoryScore => some s.config.mode.victoryScore
   | .costOf sel =>
     -- the Energy cost of the cards a selector names: a chosen object or a variable
     let ids : Option (List ObjId) := match sel with

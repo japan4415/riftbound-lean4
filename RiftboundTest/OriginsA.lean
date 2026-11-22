@@ -2286,4 +2286,50 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return alone.isNone && selfTarget.isNone && nothing.isNone && onBf.isNone && enemy.isNone &&
     (fine.obj? foe).map (·.damage) == some 0
 
+-- Find Your Center (OGN-047): costs 2 less when an opponent is within 3 points of the Victory
+-- Score; draw 1 and channel 1 exhausted
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-047" .hand
+  let vs := s.config.mode.victoryScore
+  let near := s1.gainPoints s.you (vs - 3)
+  let far := s1.gainPoints s.you (vs - 4)
+  let mine := s1.gainPoints s.me (vs - 3)
+  let a ← play near s.me c
+  let runeN (x : GameState) :=
+    ((x.zone (.player s.me .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  return energyNow near s.me c == (energyPrinted s1 c).map (· - 2) &&
+    energyNow far s.me c == energyPrinted s1 c && energyNow mine s.me c == energyPrinted s1 c &&
+    a.handN s.me == near.handN s.me && runeN a == runeN near + 1 &&
+    (cast (near.rich s.me) s.me c ⟨energyPrinted s1 c |>.getD 0, []⟩).isNone
+
+-- Magma Wurm (OGN-011): my other units enter ready; the opponent's units and the Wurm itself do not
+#guard t fun s => do
+  let (s1, w) ← put s s.me "OGN-011" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .hand
+  let (s3, v) ← put s2 s.you "OGN-136" .hand
+  let (s4, _) ← put s3 s.me "OGN-011" .base
+  let first ← play s4 s.me u
+  let foe := (s4.cardDef? v).map (fun d => s4.readyNow s.you v d)
+  let self ← play s2 s.me w
+  return readyUnits first s.me == readyUnits s4 s.me + 1 &&
+    foe == some false &&
+    readyUnits self s.me == readyUnits s2 s.me
+
+-- Leona, Zealot (OGN-079): enters ready when an opponent is within 3 points of the Victory Score;
+-- stunned enemy units at her battlefield have -8 Might, to a minimum of 1
+#guard t fun s => do
+  let (s1, l) ← put s s.me "OGN-079" .hand
+  let vs := s.config.mode.victoryScore
+  let a ← play (s1.gainPoints s.you (vs - 3)) s.me l
+  let b ← play s1 s.me l
+  let (t1, _) ← putAt s s.me "OGN-079" s.bf0
+  let (t2, big) ← putAt t1 s.you "OGN-116" s.bf0
+  let (t3, small) ← putAt t2 s.you "OGN-136" s.bf0
+  let (t4, far) ← put t3 s.you "OGN-116" .base
+  let stun (x : GameState) (u : ObjId) := x.modObj u (fun o => { o with stunned := true })
+  let st := stun (stun (stun t4 big) small) far
+  return readyUnits a s.me == readyUnits s1 s.me + 1 && readyUnits b s.me == readyUnits s1 s.me &&
+    st.mightNow big == some 1 && st.mightNow small == some 1 && st.mightNow far == some 7 &&
+    t4.mightNow big == some 7
+
 end RiftboundTest

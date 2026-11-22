@@ -57,6 +57,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .costOf s => Selector.ok c s
   | .xp => true
   | .pointsLeft => true
+  | .victoryScore => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
   | .sub a b => Amount.ok c a && Amount.ok c b

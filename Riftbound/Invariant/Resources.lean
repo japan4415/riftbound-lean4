@@ -93,7 +93,7 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
 theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} {d : CardDef}
     (h : applyPlay s p c pay = some (s', es)) (hd : s.cardDef? c = some d)
-    (hu : d.hasType .unit = true) (hr : s.readyNow p d = false)
+    (hu : d.hasType .unit = true) (hr : s.readyNow p c d = false)
     (hx : s.paidExtra p c d pay = false) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ o, s'.obj? id' = some o → o.exhausted = true := by

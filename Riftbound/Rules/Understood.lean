@@ -51,6 +51,7 @@ def Amount.understood : Amount → Bool
   | .xp => true
   | .turnsTaken p => p.understood
   | .points p => p.understood
+  | .victoryScore => true
   | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
@@ -72,6 +73,7 @@ def Amount.understoodC : Amount → Bool
   | .xp => true
   | .turnsTaken p => p.understood
   | .points p => p.understood
+  | .victoryScore => true
   | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -251,8 +253,9 @@ def costSel : Selector → Bool
 def StaticMod.runs : StaticMod → Bool
   | .mightPlus s a => s.understood && a.understoodC
   | .mightMinus s a => s.understood && a.understoodC
+  | .mightMinusMin s a _ => s.understood && a.understoodC
   | .keyword s _ => s.understood
-  | .entersReady .self => true
+  | .entersReady sel => costSel sel
   | .costMinus s a => costSel s && a.understoodC
   | .costMinusMin s a _ => costSel s && a.understoodC
   | .victoryScorePlus a => a.understoodC
