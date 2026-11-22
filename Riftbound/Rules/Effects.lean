@@ -790,7 +790,11 @@ def Prim.pickSel? : Prim → Option Selector
   | .returnToHand s => some s
   | .stun s => some s
   | .buff s => some s
-  | .move s _ => some s
+  | .move s d =>
+    match s, d with
+    | .pick .one _ _ _, _ => some s
+    | _, .at_ (.pick .one side place fs) => some (.pick .one side place fs)
+    | _, _ => none
   | _ => none
 
 /-- The primitive with its selector replaced. -/
@@ -805,7 +809,11 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .returnToHand _ => .returnToHand sel
   | .stun _ => .stun sel
   | .buff _ => .buff sel
-  | .move _ d => .move sel d
+  | .move s d =>
+    match s, d with
+    | .pick .one _ _ _, _ => .move sel d
+    | _, .at_ (.pick .one _ _ _) => .move s (.at_ sel)
+    | _, _ => .move s d
   | q => q
 
 /-- The effect names one object to choose while it resolves ("kill a gear", "stun a unit"): the

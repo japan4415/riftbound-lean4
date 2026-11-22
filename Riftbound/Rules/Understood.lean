@@ -95,6 +95,9 @@ def Filter.understood : Filter → Bool
   | .defender => true
   | .alone => true
   | .lethal => true
+  | .at_ .self => true
+  | .at_ (.slot _) => true
+  | .at_ (.var _) => true
   | _ => false
 
 /-- Every filter of a list is understood. -/
@@ -160,7 +163,7 @@ def Prim.understood : Prim → Bool
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
   | .move s .base => s.understoodPick
-  | .move s (.at_ d) => s.understoodPick && d.understood
+  | .move s (.at_ d) => s.understoodPick && d.understoodPick
   | .stun s => s.understoodPick
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood

@@ -1103,8 +1103,14 @@ def OGN_046.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- En Garde: the effect is not written yet. -/
-def OGN_046 : CardDef := OGN_046.meta
+/-- En Garde. -/
+def OGN_046 : CardDef :=
+  { OGN_046.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
+        .ifThen (.cmp .eq (.count (Selector.all .friendly .anywhere [.ofType .unit, .at_ (.slot 0)]))
+          (.const 1)) (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-047
 /--
@@ -1676,8 +1682,13 @@ def OGN_069.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Last Stand: the effect is not written yet. -/
-def OGN_069 : CardDef := OGN_069.meta
+/-- Last Stand. -/
+def OGN_069 : CardDef :=
+  { OGN_069.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
+        .grant (.slot 0) (.keyword .it ⟨.temporary, .none⟩) .permanent])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-070
 /--
@@ -2617,8 +2628,14 @@ def OGN_108.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Convergent Mutation: the effect is not written yet. -/
-def OGN_108 : CardDef := OGN_108.meta
+/-- Convergent Mutation. -/
+def OGN_108 : CardDef :=
+  { OGN_108.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.grant (.slot 0)
+        (.mightPlus .it (.sub (.mightOf (.slot 1)) (.mightOf (.slot 0)))) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-109
 /--
@@ -6431,8 +6448,15 @@ def OGN_266.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Siphon Power, Viktor: the effect is not written yet. -/
-def OGN_266 : CardDef := OGN_266.meta
+/-- Siphon Power, Viktor. -/
+def OGN_266 : CardDef :=
+  { OGN_266.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield]]
+      (.seqOf [.forEach (Selector.all .friendly .anywhere [.ofType .unit, .at_ (.slot 0)])
+          (.grant .it (.mightPlus .it (.const 1)) .thisTurn),
+        .forEach (Selector.all .enemy .anywhere [.ofType .unit, .at_ (.slot 0)])
+          (.grant .it (.mightMinusMin .it (.const 1) 1) .thisTurn)])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-267
 /--
@@ -6522,8 +6546,13 @@ def OGN_270.meta : CardDef :=
     sets := [⟨"OGN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Showstopper, Sett: the effect is not written yet. -/
-def OGN_270 : CardDef := OGN_270.meta
+/-- Showstopper, Sett. -/
+def OGN_270 : CardDef :=
+  { OGN_270.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .atBase [.ofType .unit]]
+      (.seqOf [.prim (.buff (.slot 0)),
+        .prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-271
 /--
