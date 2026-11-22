@@ -70,50 +70,52 @@ theorem applyRune_adds_one {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : R
     exact ⟨by rw [h1, RunePool.total_addPower], h2⟩
 
 /-- **Playing a card pays exactly its cost** (I8) (CR 356, 357, 445): the Pool of the player is
-smaller by the total of the card's cost, and no other player's Pool changes. -/
+smaller by the total of the card's cost, or of its cost with an additional cost (Accelerate), and no
+other player's Pool changes. -/
 theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} (hp : playable s p c pay = true)
     (h : applyPlay s p c pay = some (s', es)) :
-    ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
-      (s'.poolOf p).total + cost.total = (s.poolOf p).total ∧
+    ∃ d cost c', s.cardDef? c = some d ∧ d.cost = some cost ∧ c' ∈ d.playCosts cost ∧
+      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
   rw [hpool] at hpool'
   cases hpool'
-  refine ⟨d, cost, hd, hc, ?_, hq⟩
+  obtain ⟨c', hc', h2⟩ := CardDef.paysFor_total hpaid
+  refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool
-  have h2 := Cost.total_of_paidBy hpaid
   omega
 
 /-- **A Unit that is played enters exhausted** (CR 359). -/
 theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} {d : CardDef}
     (h : applyPlay s p c pay = some (s', es)) (hd : s.cardDef? c = some d)
-    (hu : d.hasType .unit = true) (hr : d.entersReady = false) :
+    (hu : d.hasType .unit = true) (hr : d.entersReady = false) (hx : d.paidExtra pay = false) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   obtain ⟨id', hes, hex⟩ := applyPlay_events h
-  exact ⟨id', hes, hex d hd hu hr⟩
+  exact ⟨id', hes, hex d hd hu hr hx⟩
 
 /-- **Casting a Spell pays exactly its cost** (I8) (CR 356, 357, 445): the Pool of the player is
-smaller by the total of the card's cost, and no other player's Pool changes. -/
+smaller by the total of the card's cost, or of its cost with an additional cost (Repeat), and no
+other player's Pool changes. -/
 theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
-      (s'.poolOf p).total + cost.total = (s.poolOf p).total ∧
+    ∃ d cost c', s.cardDef? c = some d ∧ d.cost = some cost ∧ c' ∈ d.playCosts cost ∧
+      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h
   rw [hpool] at hpool'
   cases hpool'
-  refine ⟨d, cost, hd, hc, ?_, hq⟩
+  obtain ⟨c', hc', h2⟩ := CardDef.paysFor_total hpaid
+  refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool
-  have h2 := Cost.total_of_paidBy hpaid
   omega
 
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
@@ -170,7 +172,7 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
     ∃ id', es = [Event.moved c id' .chain] ∧
       ∀ o, s'.obj? id' = some o → o.targets = targets := by
-  obtain ⟨pool, s2, id', -, -, rfl, hes⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, -, rfl, hes⟩ := applyCast_cases h
   refine ⟨id', hes, fun o ho => ?_⟩
   rw [GameState.obj?_modObj] at ho
   simp only [ite_true] at ho
@@ -198,7 +200,7 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
     resolveFrames s rest =
       .run o.controller item { slots := o.targets.map Value.obj }
         (match d.spellEffect with
-          | some e => .cons e.body .nil
+          | some e => if o.repeated then .cons e.body (.cons e.body .nil) else .cons e.body .nil
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]

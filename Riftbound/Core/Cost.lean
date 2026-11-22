@@ -38,6 +38,14 @@ def zero : Cost := ⟨0, []⟩
 /-- The sum of Energy and Power to pay (CR 357.1). -/
 def total (c : Cost) : Nat := c.energy + c.power.length
 
+/-- Both costs together: Energy and Power add up (CR 357.2). -/
+def plus (c e : Cost) : Cost := ⟨c.energy + e.energy, c.power ++ e.power⟩
+
+/-- The total of two costs together is the sum of the totals. -/
+theorem total_plus (c e : Cost) : (c.plus e).total = c.total + e.total := by
+  simp only [plus, total, List.length_append]
+  omega
+
 /-- Change Energy by `d`. A negative `d` is a reduction, and Energy never goes below 0
 (CR 356.6). -/
 def addEnergy (c : Cost) (d : Int) : Cost := { c with energy := ((c.energy : Int) + d).toNat }

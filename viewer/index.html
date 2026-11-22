@@ -243,13 +243,17 @@ function describe(i) {
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
     case 'playCard': {
       const o = objs[a.card], def = o && cards[o.card];
+      const more = def && typeof def.cost === 'number' && a.pay > def.cost
+        ? '（追加コスト +' + (a.pay - def.cost) + '）' : '';
       if (def && def.types.includes('spell')) {
         const tg = (a.targets || []).map((t) => cardName(t)).join('、');
         const react = i > 0 && steps[i - 1].state.pending === 'chainPass';
-        return [who + ': ' + cardName(a.card) + (react ? ' を Reaction でプレイ' : ' をプレイ') + (tg ? '（対象: ' + tg + '）' : ''),
+        return [who + ': ' + cardName(a.card) + (react ? ' を Reaction でプレイ' : ' をプレイ') + more + (tg ? '（対象: ' + tg + '）' : ''),
           react ? 'Chain の項目に応答する: 上に積まれ、先に解決する' : 'コストを払って Chain に載せる'];
       }
-      return [who + ': ' + cardName(a.card) + ' をプレイ', 'コストを払って Base に出す（Unit は Exhaust で入る）'];
+      return [who + ': ' + cardName(a.card) + ' をプレイ' + more,
+        more ? 'コストと追加コストを払って Base に出す（Accelerate なら ready で入る）'
+          : 'コストを払って Base に出す（Unit は Exhaust で入る）'];
     }
     default: return [who + ': ' + a.kind, ''];
   }

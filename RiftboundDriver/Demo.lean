@@ -28,7 +28,7 @@ def demoCards : List CardDef :=
       cost := some ⟨1, []⟩,
       spellEffect := some (EffectDef.of [] (.prim (.draw .you (.const 1)))) },
     { id := ⟨"S1"⟩, name := "Spark", types := [.spell], domains := [.fury],
-      cost := some ⟨1, []⟩,
+      cost := some ⟨1, []⟩, keywords := [{ keyword := .repeat_, arg := .cost ⟨1, []⟩ }],
       spellEffect := some (EffectDef.of
         [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 2)))) },
@@ -40,7 +40,7 @@ def demoCards : List CardDef :=
             (.prim (.deal .it (.const 1))))
           .nop)) },
     { id := ⟨"P0"⟩, name := "Pinger", types := [.unit], domains := [.fury],
-      cost := some ⟨2, []⟩, might := some 2,
+      cost := some ⟨2, []⟩, might := some 2, keywords := [{ keyword := .accelerate }],
       abilities := [.activated [.exhaustSelf] .normal
         (EffectDef.of [Choice.targetOf .one .enemy .atBase [.ofType .unit]]
           (.prim (.deal (.slot 0) (.const 1)))) .unlimited] },
@@ -121,10 +121,11 @@ def demoDB : CardDB := { cards := demoCards }
 
 /-- The demo deck: the champion, and three copies each of: an Equipment (+2 Might and Tank); Units
 that play a Sprite token (Temporary), play a Gold token (a Gear that adds Power once), discard a
-card and draw one, deal 1 damage to an enemy Unit, and ping with an activated ability; a Gear that
-adds 1 Energy (Add); a Unit with Deflect 1; Spells that stun an enemy Unit, give a friendly Unit +3
-Might this turn, deal 2 damage to an enemy Unit, and deal 1 damage to each enemy Unit; and a
-Reaction that deals 2 damage to an enemy Unit. Then 12 Runes and 3 Battlefields. -/
+card and draw one, deal 1 damage to an enemy Unit, and ping with an activated ability (with
+Accelerate); a Gear that adds 1 Energy (Add); a Unit with Deflect 1; Spells that stun an enemy Unit,
+give a friendly Unit +3 Might this turn, deal 2 damage to an enemy Unit (with Repeat 1 Energy), and
+deal 1 damage to each enemy Unit; and a Reaction that deals 2 damage to an enemy Unit. Then 12 Runes
+and 3 Battlefields. -/
 def demoDeck : Deck :=
   { legend := ⟨"L1"⟩, chosenChampion := ⟨"C1"⟩,
     main := ⟨"C1"⟩ :: List.replicate 3 ⟨"G0"⟩ ++ List.replicate 3 ⟨"T0"⟩ ++

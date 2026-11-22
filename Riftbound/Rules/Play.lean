@@ -23,6 +23,48 @@ engine does not know any card by name (design.md §3, P3).
 
 namespace Riftbound
 
+/-- The additional costs a card may pay when it is played, one at a time (CR 357.2): a Unit with
+Accelerate may pay 1 Energy and a Power of its domain, to enter ready (CR 805); a Spell with Repeat
+may pay the cost the keyword names, to repeat its effect (CR 820). -/
+def CardDef.extraCosts (d : CardDef) : List Cost :=
+  d.keywords.filterMap (fun i =>
+    match i.keyword, i.arg with
+    | .accelerate, _ => if d.hasType .unit then some ⟨1, [.own]⟩ else none
+    | .repeat_, .cost c => if d.hasType .spell then some c else none
+    | _, _ => none)
+
+/-- The costs a card may be played for: its cost, or its cost with one additional cost. -/
+def CardDef.playCosts (d : CardDef) (cost : Cost) : List Cost :=
+  cost :: d.extraCosts.map cost.plus
+
+/-- The payment pays the cost of the card, or the cost with an additional cost. -/
+def CardDef.paysFor (d : CardDef) (cost : Cost) (pay : RunePool.Payment) : Bool :=
+  (d.playCosts cost).any (fun c => c.paidBy d.domains pay)
+
+/-- Every payment that pays the cost of the card, with or without an additional cost. -/
+def CardDef.playPayments (d : CardDef) (cost : Cost) : List RunePool.Payment :=
+  (d.playCosts cost).flatMap (fun c => c.payments d.domains)
+
+/-- The payments listed are exactly the payments that pay. -/
+theorem CardDef.mem_playPayments (d : CardDef) (cost : Cost) (pay : RunePool.Payment) :
+    pay ∈ d.playPayments cost ↔ d.paysFor cost pay = true := by
+  simp only [playPayments, paysFor, List.mem_flatMap, List.any_eq_true, Cost.mem_payments]
+
+/-- A payment that pays takes out as much as one of the costs it can pay. -/
+theorem CardDef.paysFor_total {d : CardDef} {cost : Cost} {pay : RunePool.Payment}
+    (h : d.paysFor cost pay = true) :
+    ∃ c ∈ d.playCosts cost, pay.energy + pay.power.length = c.total := by
+  unfold paysFor at h
+  rw [List.any_eq_true] at h
+  obtain ⟨c, hc, hp⟩ := h
+  exact ⟨c, hc, Cost.total_of_paidBy hp⟩
+
+/-- The payment pays more than the cost of the card: an additional cost is paid. -/
+def CardDef.paidExtra (d : CardDef) (pay : RunePool.Payment) : Bool :=
+  match d.cost with
+  | some cost => !(cost.paidBy d.domains pay)
+  | none => false
+
 /-- The player can play the object with the payment: it is the player's card, a Unit or a Gear, in
 the Main Phase, and the payment pays its cost and the Rune Pool holds it (CR 349, 356, 357). The
 card must also be in the hand, which `Legal` states apart. -/
@@ -32,24 +74,26 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     | some o, some d =>
       o.owner == p && (d.hasType .unit || d.hasType .gear) &&
         (match d.cost with
-          | some cost => cost.paidBy d.domains pay
+          | some cost => d.paysFor cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).isSome
     | _, _ => false
 
-/-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359). -/
+/-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
+unless it enters ready or the cost of Accelerate was paid (CR 805). -/
 def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment) :
     Option (GameState × List Event) :=
   match s.cardDef? c, (s.poolOf p).spend pay with
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let s1 := r.1.setPool p pool
-      ((if d.hasType .unit && !d.entersReady then s1.exhaustObj r.2 else s1),
+      ((if d.hasType .unit && !d.entersReady && !d.paidExtra pay then s1.exhaustObj r.2 else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
 /-- The object an `Object` becomes when a Spell is put on the Chain with these targets. -/
-def Object.withTargets (ts : List ObjId) (o : Object) : Object := { o with targets := ts }
+def Object.withTargets (ts : List ObjId) (rep : Bool) (o : Object) : Object :=
+  { o with targets := ts, repeated := rep }
 
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers
@@ -65,7 +109,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | some e => targetsOk s p c e.choices targets
           | none => false) &&
         (match d.cost with
-          | some cost => cost.paidBy d.domains pay
+          | some cost => d.paysFor cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool targets)
     | _, _ => false
@@ -76,7 +120,8 @@ def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   match (s.poolOf p).spend pay with
   | some pool =>
     (moveObj s c .chain).map (fun r =>
-      (((r.1.setPool p pool).modObj r.2 (Object.withTargets targets)),
+      (((r.1.setPool p pool).modObj r.2
+          (Object.withTargets targets ((s.cardDef? c).any (·.paidExtra pay)))),
         [Event.moved c r.2 .chain]))
   | none => none
 
@@ -86,7 +131,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     (h : playable s p c pay = true) :
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ (d.hasType .unit = true ∨ d.hasType .gear = true) ∧ d.cost = some cost ∧
-      cost.paidBy d.domains pay = true ∧ (s.poolOf p).spend pay = some pool := by
+      d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨hph, hrest⟩ := h
@@ -112,7 +157,8 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ d pool s2 id', s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
-      s' = (if (d.hasType .unit && !d.entersReady) = true then (s2.setPool p pool).exhaustObj id'
+      s' = (if (d.hasType .unit && !d.entersReady && !d.paidExtra pay) = true
+        then (s2.setPool p pool).exhaustObj id'
         else s2.setPool p pool) := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
@@ -252,7 +298,7 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ d, s.cardDef? c = some d → d.hasType .unit = true → d.entersReady = false →
-        ∀ o, s'.obj? id' = some o → o.exhausted = true := by
+        d.paidExtra pay = false → ∀ o, s'.obj? id' = some o → o.exhausted = true := by
   unfold applyPlay at h
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
@@ -264,10 +310,10 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
       obtain ⟨hs', hes⟩ := hr
-      refine ⟨id', hes.symm, fun d' hd' hu hr o ho => ?_⟩
+      refine ⟨id', hes.symm, fun d' hd' hu hr hx0 o ho => ?_⟩
       cases hd'
       rw [← hs'] at ho
-      simp only [hu, hr, Bool.not_false, Bool.and_self, ite_true,
+      simp only [hu, hr, hx0, Bool.not_false, Bool.and_self, ite_true,
         GameState.obj?_exhaustObj] at ho
       cases hx : (s2.setPool p pool).obj? id' with
       | none => rw [hx] at ho; simp at ho
@@ -283,7 +329,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     {targets : List ObjId} (h : castable s p c pay targets = true) :
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ d.hasType .spell = true ∧ d.cost = some cost ∧
-      cost.paidBy d.domains pay = true ∧ (s.poolOf p).spend pay = some pool := by
+      d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨hph, hrest⟩ := h
@@ -332,8 +378,9 @@ theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 /-- The shape of a Spell being cast: the Pool after paying, and the move to the Chain. -/
 theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ pool s2 id', (s.poolOf p).spend pay = some pool ∧ moveObj s c .chain = some (s2, id') ∧
-      s' = (s2.setPool p pool).modObj id' (Object.withTargets targets) ∧
+    ∃ pool s2 id' rep, (s.poolOf p).spend pay = some pool ∧
+      moveObj s c .chain = some (s2, id') ∧
+      s' = (s2.setPool p pool).modObj id' (Object.withTargets targets rep) ∧
         es = [Event.moved c id' .chain] := by
   unfold applyCast at h
   cases hs : (s.poolOf p).spend pay with
@@ -342,13 +389,13 @@ theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     simp only [hs, Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
-    exact ⟨pool, s2, id', rfl, hm, hr.1.symm, hr.2.symm⟩
+    exact ⟨pool, s2, id', _, rfl, hm, hr.1.symm, hr.2.symm⟩
 
 /-- Casting a Spell keeps the game well formed. -/
 theorem applyCast_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {targets : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyCast s p c pay targets = some (s', es)) : s'.WF := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   have h2 : (s2.setPool p pool).WF := (moveObj_wf hwf hm).congr rfl rfl rfl rfl
   exact GameState.wf_modObj h2 _ _
 
@@ -357,10 +404,10 @@ theorem applyCast_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     {targets : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyCast s p c pay targets = some (s', es)) :
     s'.physIds.Perm s.physIds := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   have hp := moveObj_physIds hwf hm
   have h2 : (s2.setPool p pool).physIds = s2.physIds := rfl
-  rw [GameState.physIds_modObj _ id' (f := Object.withTargets targets) (fun _ => rfl), h2]
+  rw [GameState.physIds_modObj _ id' (f := Object.withTargets targets rep) (fun _ => rfl), h2]
   exact hp
 
 /-- Casting a Spell keeps `OwnerOk`. -/
@@ -368,7 +415,7 @@ theorem applyCast_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     {targets : List ObjId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : applyCast s p c pay targets = some (s', es)) :
     s'.OwnerOk := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   have h2 : (s2.setPool p pool).OwnerOk := (moveObj_ownerOk hwf hown hm).congr rfl rfl
   exact GameState.ownerOk_modObj h2 _ (fun _ => rfl)
 
@@ -378,7 +425,7 @@ theorem applyCast_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have hcd : s2.cards = s.cards := by
     have := congrArg GameState.cards hs.other
@@ -409,7 +456,7 @@ theorem applyCast_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
     ∃ pool, (s.poolOf p).spend pay = some pool ∧ s'.poolOf p = pool ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
-  obtain ⟨pool, s2, id', hspend, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, hspend, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have hpools : s2.pools = s.pools := hs.other.pools
   refine ⟨pool, hspend, GameState.poolOf_setPool_self s2 p pool, fun q hq => ?_⟩
@@ -423,7 +470,7 @@ theorem applyCast_zones {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (h : applyCast s p c pay targets = some (s', es)) :
     (s'.zone (.player p .hand)).length + 1 = (s.zone (.player p .hand)).length ∧
       (s'.zone .chain).length = (s.zone .chain).length + 1 := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hsrc : src = .player p .hand :=
     Option.some.inj (hs.locate.symm.trans
@@ -493,7 +540,7 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
     | some d =>
       match d.cost with
       | some cost =>
-        (cost.payments d.domains).flatMap (fun pay =>
+        (d.playPayments cost).flatMap (fun pay =>
           ((playTargets s p c d).filter (fun ts => decide (PlayOk s p c pay ts))).map
             (fun ts => ⟨.player p, .playCard c pay ts⟩))
       | none => []
@@ -519,7 +566,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         exact ⟨c, pay, ts, rfl, hc, hok⟩
   · rintro ⟨c, pay, ts, rfl, hc, hok⟩
     have hdc : ∃ d cost, s.cardDef? c = some d ∧ d.cost = some cost ∧
-        cost.paidBy d.domains pay = true ∧ ts ∈ playTargets s p c d := by
+        d.paysFor cost pay = true ∧ ts ∈ playTargets s p c d := by
       rcases hok with ⟨hts, h⟩ | h
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h
         exact ⟨d, cost, hd, hcost, hpaid, (mem_playTargets s p c d ts).mpr (Or.inl hts)⟩
@@ -532,7 +579,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     obtain ⟨d, cost, hd, hcost, hpaid, hts⟩ := hdc
     refine ⟨c, hc, ?_⟩
     simp only [hd, hcost, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq]
-    exact ⟨pay, (Cost.mem_payments _ _ _).mpr hpaid, ts, ⟨hts, hok⟩, rfl⟩
+    exact ⟨pay, (CardDef.mem_playPayments _ _ _).mpr hpaid, ts, ⟨hts, hok⟩, rfl⟩
 
 /-- Play a card of the hand with the payment and the targets: a Spell is cast, and goes to the
 Chain with the players to pass (CR 354, 311-313); a Unit or a Gear is played at once. `rest` is the

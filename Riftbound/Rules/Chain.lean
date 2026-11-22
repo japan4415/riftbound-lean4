@@ -562,7 +562,7 @@ items that were there are below it, in the same order. -/
 theorem applyCast_chain {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {es : List Event} (h : applyCast s p c pay ts = some (s', es)) :
     ∃ id', s'.zone .chain = id' :: s.zone .chain := by
-  obtain ⟨pool, s2, id', -, hm, rfl, -⟩ := applyCast_cases h
+  obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hd2 : dd = .chain := by rw [hdd]; simp [Zone.normalize]
   have h2 := hs.zone_dst

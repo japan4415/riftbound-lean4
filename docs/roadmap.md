@@ -460,6 +460,18 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7j の実装の記録（2026-11-22）: Accelerate と Repeat（払うかどうかを選ぶ追加コスト）
+
+- **数え直した結果**: 転記済みで Accelerate を持つ Unit は 31 枚、Repeat を持つ Spell は 20 枚。ただし Repeat のうち、**効果まで書けているのは 5 枚**（SFD-031、SFD-034、SFD-066、UNL-009、UNL-061）で、残り 15 枚は効果が未転記なので、Repeat が動いても見えない。前の報告の 32 枚と 24 枚は、データの文の数で、動くカードの数ではなかった。
+- **計画からの変更**: 前の報告では「行動に選択の項を足す」としたが、**払う額で選ぶ形にした**。行動の型（`playCard`）は変えない。払う `Payment` が、カードの費用を払うか、費用に追加コストを足したものを払うかで、どちらを選んだかが決まる（総額が必ず違うので、曖昧にならない）。
+- **追加コスト**（`CardDef.extraCosts`、`playCosts`、`paysFor`、`playPayments`、`paidExtra`）: Accelerate を持つ Unit は、1 Energy と自分のドメインの Power（`.own`）を足せる（CR 805）。Repeat を持つ Spell は、キーワードの費用を足せる（CR 820）。`Cost.plus`（`total_plus`）。合法の判定（`playable`、`castable`）と、列挙（`legalPlays`）は、この費用の一覧を使う。同時に 2 つの追加コストを払うことはできない。
+- **効果**: Accelerate で払うと、Unit は ready で入る（`applyPlay`）。Repeat で払うと、Spell を Chain に載せるときに `Object.repeated` を立て、解決のとき、効果を 2 回続けて実行する（`resolveFrames`）。選んだ対象は 2 回とも同じ。
+- **I8 の言い直し**: 「費用をちょうど払う」は、「費用、または費用に追加コストを足したもの（`playCosts` の 1 つ）をちょうど払う」になった。`applyPlay_unit_exhausted` は、追加コストを払っていないことを仮定する。
+- **テスト**（`RiftboundTest/Optional.lean`）: Pool が足りるときだけ追加コストの払い方が合法の手に出ること、Accelerate は払えば ready で入り払わなければ exhausted で入ること、Repeat は払えば手札が 1 枚多く増えること（効果が 2 回）。期待を間違えると失敗することも確かめた。
+- **ビューア・デモ**: トレースに `pay`（払った総額）が入り、ビューアは費用より多く払ったとき「追加コスト +N」と出す。デモの Spark に Repeat 1 Energy、Pinger に Accelerate が付く。デモの Player は、Rune を先に exhaust して、同じカード・同じ対象の手のうち、払う額が最大のものを選ぶ。seed 2 の 32 番で Spark の効果が 2 回（`damaged` が 2 つ）、425 番で Pinger が ready で入る。
+- **まだ無いもの**: 「次の Spell は Repeat を持つ」などの付与、Repeat の費用が Discard のもの、Repeat で選び直す対象（「may make different choices」）、Accelerate の付与（「Friendly units played from anywhere other than hand have Accelerate」）、Repeat の費用の軽減。
+- **次の候補**: Hidden（50 枚）、Empower（47 枚）、Flow（17 枚）。
+
 ### M7i の実装の記録（2026-11-22）: Deflect
 
 - **計画からの変更**: 前の報告では「行動に追加コストの項を足す」と書いたが、**追加コストの Power を、行動の払い方に足さず、Pool から自動で払う形にした**。行動に項を足すと、`playCard`、`activate`、`putTrigger` の 3 つの行動の型と、合法手の列挙・I8（費用をちょうど払う）・各不変条件の腕が連鎖して変わる。自動で払えば、合法かどうかの判定（`castable`、`activatable`、`trigLegal`）と、答えを適用した後の 1 か所（`applyFrame`）だけで済む。代わりに、**どの Power で払うかをプレイヤーが選べない**（モデルの決定）。

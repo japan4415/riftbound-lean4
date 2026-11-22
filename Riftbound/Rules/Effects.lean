@@ -622,7 +622,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
     | some o, some d =>
       .run o.controller item { slots := o.targets.map Value.obj }
         (match d.spellEffect with
-          | some e => .cons e.body .nil
+          | some e => if o.repeated then .cons e.body (.cons e.body .nil) else .cons e.body .nil
           | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest
