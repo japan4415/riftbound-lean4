@@ -97,6 +97,7 @@ def eventJson : Event → String
         | .setup => "setup" | .awaken => "awaken" | .beginning => "beginning"
         | .channel => "channel" | .draw => "draw" | .main => "main" | .ending => "ending"))]
   | .stunned o => jobj [("t", jstr "stunned"), ("target", toString o.n)]
+  | .buffed o => jobj [("t", jstr "buffed"), ("target", toString o.n)]
   | .discarded p o _ =>
     jobj [("t", jstr "discarded"), ("player", toString p.n), ("obj", toString o.n)]
   | .exhausted o => jobj [("t", jstr "exhausted"), ("target", toString o.n)]
