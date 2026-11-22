@@ -60,6 +60,10 @@ h1 { font-size: 1rem; margin: 0; }
   display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; background: color-mix(in srgb, var(--panel) 55%, transparent); }
 .lane::before { content: attr(data-label); position: absolute; top: 2px; left: 8px; font-size: .7rem;
   color: var(--muted); letter-spacing: .04em; }
+.lane > .grp { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; position: relative; }
+.lane > .grp:empty { display: none; }
+.lane > .grp.runes { padding: 12px 4px 3px; border: 1px dashed var(--card-line); border-radius: 6px; }
+.lane > .grp.runes::before { content: attr(data-label); position: absolute; top: 0; left: 6px; font-size: .62rem; color: var(--muted); }
 .lane.bfs { background: transparent; padding: 14px 0 0; gap: 6px; }
 .bf { flex: 1 1 160px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px 5px;
   background: color-mix(in srgb, var(--panel) 55%, transparent); transition: border-color .25s, box-shadow .25s; }
@@ -231,7 +235,9 @@ function load(t) {
   show(0, false);
 }
 
+const baseGroups = new Map();
 function buildBoard() {
+  baseGroups.clear();
   const board = $('board'); board.textContent = ''; els.clear(); zoneBox.clear();
   poolBox.length = pointsBox.length = seatBox.length = 0;
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -247,6 +253,11 @@ function buildBoard() {
     head.append(piles); s.append(head);
     for (const [k, label] of LANES) {
       const l = mk('div', 'lane'); l.dataset.label = label; zoneBox.set('p' + p + '.' + k, l); s.append(l);
+      if (k === 'base') {
+        // Runes and the other cards at Base sit in separate groups, so they are not mixed up.
+        const rg = mk('div', 'grp runes'); rg.dataset.label = 'Rune'; const og = mk('div', 'grp others');
+        l.append(rg, og); baseGroups.set('p' + p + '.base', { runes: rg, others: og });
+      }
     }
     return s;
   };
@@ -441,9 +452,10 @@ function show(i, animate) {
   for (const z of visibleZones()) {
     const box = zoneBox.get(z); if (!box) continue;
     if (z === 'battlefield') { layoutBattlefields(box, st); continue; }
+    const grp = baseGroups.get(z);
     for (const id of (st.zones[z] || [])) {
       let e = els.get(id); if (!e) { e = makeCard(id); els.set(id, e); }
-      box.append(e); decorate(e, st, id);
+      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e); decorate(e, st, id);
     }
   }
   // animate what moved
