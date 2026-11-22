@@ -2727,4 +2727,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     ((dealObj 1 marked w).1.obj? w).map (·.damage) == some 1 && (legion.obj? u).isNone &&
     ((dealObj 0 marked u).1.obj? u).isSome
 
+-- ... also for the damage of a combat (`dealAll`), which sets off the deaths; a unit that takes no
+-- damage is not killed
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-221" .hand
+  let (s2, a) ← put s1 s.me "OGN-190" .base
+  let (s3, b) ← put s2 s.you "OGN-116" .base
+  let on ← play s3 s.me c
+  let (done, evs) := dealAll on [(a, 1), (b, 2)]
+  let (plain, _) := dealAll s3 [(a, 1), (b, 2)]
+  let died := evs.filterMap (fun e => match e with | .died n _ => some n | _ => none)
+  return (done.obj? a).isNone && (done.obj? b).isNone && died.length == 2 &&
+    (plain.obj? a).isSome && (plain.obj? b).map (·.damage) == some 2
+
 end RiftboundTest
