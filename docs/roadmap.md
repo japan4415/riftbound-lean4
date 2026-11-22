@@ -460,6 +460,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-23）: Champion Zone から、ユニットをプレイする
+
+- **理由**: `legalPlays` は手札だけを見るので、Champion Zone の Chosen Champion は、プレイできなかった（Hallowed Tomb のレビューで分かった）。
+- **エンジン**: コスト `AbilityCost.fromChampionZone`。ユニットのカードに、「Champion Zone にあるとき、印刷されたコストを払って、これをプレイする」起動型の能力を、最後に足す（`CardDef.championPlay`）。能力が使える場所に、Champion Zone を足した（`abilityZones`・`abilityZoneOk`）。
+- **近似として残したこと**: コストは、印刷されたもの（手札からのプレイが受ける、コストの軽減は、適用しない）。効果としてのプレイなので、プレイしたことの記録（Legion など）は、`playFree` の分だけ。
+
 ### M7 の実装の記録（2026-11-23）: Chosen Champion を、墓地から戻す（1 枚）
 
 - **エンジン**: `Prim.returnChampion`（Champion Zone が空なら、自分の Chosen Champion を、墓地から Champion Zone へ戻す）。

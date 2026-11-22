@@ -33,6 +33,7 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
     | _ => none
   | .fromHand :: cs => costPlan cs
   | .fromHidden :: cs => costPlan cs
+  | .fromChampionZone :: cs => costPlan cs
   | _ :: _ => none
 
 /-- Whether the costs exhaust the object. -/
@@ -78,13 +79,14 @@ def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : 
       else if costs.contains .fromHidden then
         (s.zone (.player p .hidden)).contains src &&
           ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
+      else if costs.contains .fromChampionZone then (s.zone (.player p .championZone)).contains src
       else s.usesAbilitiesOf p src)
   | _ => s.usesAbilitiesOf p src
 
 /-- Where abilities are used from: the places of the board, the hand and the hidden cards. -/
 def GameState.abilityZones (s : GameState) (p : PlayerId) : List ObjId :=
   s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone ++
-    s.zone (.player p .hand) ++ s.zone (.player p .hidden)
+    s.zone (.player p .hand) ++ s.zone (.player p .hidden) ++ s.zone (.player p .championZone)
 
 /-- An object the player uses abilities of is in one of these places. -/
 theorem GameState.usesAbilitiesOf_mem {s : GameState} {p : PlayerId} {src : ObjId}
@@ -93,9 +95,9 @@ theorem GameState.usesAbilitiesOf_mem {s : GameState} {p : PlayerId} {src : ObjI
   unfold GameState.abilityZones
   simp only [List.mem_append]
   rcases h with (h | h) | h
-  · exact Or.inl (Or.inl (Or.inl (Or.inl h)))
+  · exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl h))))
+  · exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr h))))
   · exact Or.inl (Or.inl (Or.inl (Or.inr h)))
-  · exact Or.inl (Or.inl (Or.inr h))
 
 /-- A usable ability is of an object in one of these places. -/
 theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -107,13 +109,17 @@ theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId}
     split at h
     · unfold GameState.abilityZones
       simp only [List.mem_append]
-      exact Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h))
+      exact Or.inl (Or.inl (Or.inr (by simpa [List.contains_iff_mem] using h)))
     · split at h
       · simp only [Bool.and_eq_true, List.contains_iff_mem] at h
         unfold GameState.abilityZones
         simp only [List.mem_append]
-        exact Or.inr h.1
-      · exact GameState.usesAbilitiesOf_mem h
+        exact Or.inl (Or.inr h.1)
+      · split at h
+        · unfold GameState.abilityZones
+          simp only [List.mem_append]
+          exact Or.inr (by simpa [List.contains_iff_mem] using h)
+        · exact GameState.usesAbilitiesOf_mem h
   · exact GameState.usesAbilitiesOf_mem h
 
 /-- The change an object goes through when an ability is used: it is exhausted if the cost says

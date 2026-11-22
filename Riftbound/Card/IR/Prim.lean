@@ -297,6 +297,9 @@ inductive AbilityCost where
   | fromHand
   /-- The ability can be used only while its card is hidden, from the turn after (CR 811). -/
   | fromHidden
+  /-- The ability can be used only while its card is in the Champion Zone: the Chosen Champion is
+  played from there. -/
+  | fromChampionZone
   /-- Disempower the unit. -/
   | disempowerSelf
   /-- Recycle the object itself. -/

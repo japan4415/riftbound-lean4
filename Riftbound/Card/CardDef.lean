@@ -91,7 +91,7 @@ def hiddenPlay (c : CardDef) : EffectDef :=
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
-def keywordAbilities (c : CardDef) : List Ability :=
+def printedKeywordAbilities (c : CardDef) : List Ability :=
   c.keywords.filterMap (fun k =>
     match k.keyword, k.arg with
     | .equip, .cost cost =>
@@ -120,6 +120,22 @@ def keywordAbilities (c : CardDef) : List Ability :=
        .triggered (Trigger.onSelf .hold) (EffectDef.of [] (.prim (.gainXP .you (.const n))))
         .unlimited]
     | _, _ => [])
+
+/-- A Unit can be played from the Champion Zone: the ability pays its cost and plays it. The cost
+is the printed one: the reductions that a play from the hand gets are not applied. -/
+def championPlay (c : CardDef) : List Ability :=
+  match c.cost with
+  | some cost =>
+    if c.types.contains .unit then
+      [.activated [.fromChampionZone, .pay cost] .normal
+        (EffectDef.of [] (.prim (.play .self))) .unlimited]
+    else []
+  | none => []
+
+/-- The abilities that the keywords of the card stand for, and the one that plays a Unit from the
+Champion Zone. -/
+def keywordAbilities (c : CardDef) : List Ability :=
+  c.printedKeywordAbilities ++ c.championPlay
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities
