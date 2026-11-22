@@ -72,6 +72,7 @@ def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bo
     -- the opponents of a Warden play Units only to their Base
     (match body.body with
       | .prim (.playTo _ _) => !s.oppHas p .oppsPlayToBaseOnly
+      | .ifThen _ (.prim (.playTo _ _)) .nop => !s.oppHas p .oppsPlayToBaseOnly
       | _ => true)
 
 /-- Where the object that has the ability is, for the ability at place `idx`: an ability that can be

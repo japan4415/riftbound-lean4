@@ -3573,4 +3573,24 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (fewer.zone (.player s.me .mainDeck)).length == 2 &&
     (theirs.obj? v).map (·.damage) == some 1
 
+-- Miss Fortune, Buccaneer (OGN-193): I may play her to an open battlefield; while she is in play,
+-- friendly units may be played to open battlefields (not the opponent's, not without her, not to
+-- an occupied battlefield)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-193" .hand
+  let a ← activate s1 s.me c 0 [s.bf0] (payOf s1 c)
+  let (t1, _) ← put s s.me "OGN-193" .base
+  let (t2, u) ← put t1 s.me "OGN-136" .hand
+  let viaMf ← activate t2 s.me u 2 [s.bf0] (payOf t2 u)
+  let (v1, w) ← put s s.me "OGN-136" .hand
+  let without := activate v1 s.me w 2 [s.bf0] (payOf v1 w)
+  let (x1, y) ← put t1 s.you "OGN-136" .hand
+  let theirs := activate x1 s.you y 2 [s.bf0] (payOf x1 y)
+  let b1 := t2.control s.you s.bf0
+  let busy := activate b1 s.me u 2 [s.bf0] (payOf b1 u)
+  return (a.zone .battlefieldZone).any (fun x => (a.cardDef? x).any (·.id == cid "OGN-193")) &&
+    (viaMf.zone .battlefieldZone).any (fun x => (viaMf.cardDef? x).any (·.id == cid "OGN-136") &&
+      (viaMf.obj? x).any (·.loc == some s.bf0)) &&
+    without.isNone && theirs.isNone && busy.isNone
+
 end RiftboundTest

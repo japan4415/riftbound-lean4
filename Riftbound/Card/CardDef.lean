@@ -133,10 +133,23 @@ def championPlay (c : CardDef) : List Ability :=
     else []
   | none => []
 
-/-- The abilities that the keywords of the card stand for, and the one that plays a Unit from the
-Champion Zone. -/
+/-- While a card of its player lets Units be played to an open Battlefield (Miss Fortune), a Unit in
+the hand can be played there: the ability pays its printed cost and plays it to the Battlefield. -/
+def openPlay (c : CardDef) : List Ability :=
+  match c.cost with
+  | some cost =>
+    if c.types.contains .unit then
+      [.activated [.fromHand, .pay cost] .normal
+        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+          (.ifThen (.exists (Selector.all .friendly .anywhere [.permitsOpenPlay]))
+            (.prim (.playTo .self (.slot 0))) .nop)) .unlimited]
+    else []
+  | none => []
+
+/-- The abilities that the keywords of the card stand for, the one that plays a Unit from the
+Champion Zone, and the one that plays a Unit to an open Battlefield. -/
 def keywordAbilities (c : CardDef) : List Ability :=
-  c.printedKeywordAbilities ++ c.championPlay
+  c.printedKeywordAbilities ++ c.championPlay ++ c.openPlay
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities
