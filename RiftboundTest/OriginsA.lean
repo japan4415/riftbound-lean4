@@ -2754,7 +2754,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t2, v) ← putAt t1 s.you "OGN-001" s.bf0
   let mine ← play (t2.addTurnFx s.you (.nextSpellBonus 1)) s.me h2 [v]
   return (boosted.obj? u).map (·.damage) == some 4 && (plain.obj? u).map (·.damage) == some 3 &&
-    on.tired g == some true && on.turnFx.length == 1 &&
+    on.tired g == some true && on.turnFx.map (·.kind) == [TurnEffect.nextSpellBonus 1] &&
     (mine.obj? v).map (·.damage) == some 3
 
 -- Void Gate (OGN-296): spells and abilities that affect the units at it deal 1 more
