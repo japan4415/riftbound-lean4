@@ -336,9 +336,11 @@ theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := b
     · exact Safe.refl s
   · exact Safe.refl s
 
-/-- The Battlefield is Contested by the player if the player does not control it (CR 190.3). -/
+/-- The Battlefield is Contested by the player if the player does not control it (CR 190.3). A
+Battlefield that is Contested already keeps the player who made it so: the rule that a Unit cannot
+be moved to a Battlefield with a Combat in progress (CR 449.2.a) is not written yet. -/
 def contestFor (p : PlayerId) (bf : ObjId) (s : GameState) : GameState :=
-  if (s.obj? bf).bind (·.control) = some p then s
+  if (s.obj? bf).bind (·.control) = some p ∨ ((s.obj? bf).bind (·.contested)).isSome then s
   else s.modObj bf (fun b => { b with contested := some p })
 
 /-- Contesting is a safe change. -/
@@ -502,9 +504,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
     | some (d :: _) =>
-      let loc := if (s.cardDef? d).any (·.hasType .battlefield) then some d
-        else (s.obj? d).bind (·.loc)
-      onSelected s p src env sel (sendToLoc loc)
+      -- a Battlefield, or the Battlefield a Unit is at; a Unit at a Base names no place yet
+      match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
+          else (s.obj? d).bind (·.loc)) with
+      | some bf => onSelected s p src env sel (sendToLoc (some bf))
+      | none => none
     | _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
@@ -556,7 +560,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         | nil => simp [hd] at h
         | cons d _ =>
           simp only [hd] at h
-          exact onSelected_safe (sendToLoc_safe _) h
+          split at h
+          · exact onSelected_safe (sendToLoc_safe _) h
+          · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | buff sel => exact onSelected_safe buffObj_safe h
   | gainXP ps n =>

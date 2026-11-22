@@ -465,7 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: 効果の移動（`Prim.move s (.at_ d)`）を足した。行き先は、Battlefield か、物体のいる場所（Unit なら、その Unit のいる Battlefield か Base）。Exhaust せず、行き先を Contested にし、移動の出来事（`standardMoved`）を出す。すでにそこにいれば、何もしない。移動する物体を、解決中に選ぶこと（`Selector.one`）もできる。
 - **書いた 2 枚**: Zenith Blade（262。Stun して、味方を、その Battlefield へ移してもよい）、Blitzcrank（067。Battlefield にプレイしたとき、敵の Unit をここへ移してもよい。Hold したら手札へ戻る）。
 - **書かなかった（行き先を、プレイヤーが選ぶ）**: Charm、Ride the Wind、Unforgiven、Showstopper、Dragon's Rage。行き先（Base か、どの Battlefield か）を選ぶ決定が要る。
-- **近似として残したこと**: 「Battlefield にプレイしたとき」は、「ここにいる味方の Unit がいる」で近似した（Blitzcrank）。
+- **レビューで直したこと**: すでに Contested の Battlefield は、Contested にした人を保つ（上書きしない）。行き先が Base にいる Unit のときは、解釈しない（飛ばす）。移動後に、Battlefield が Contested になり、Showdown が始まること、Hold 以外では Blitzcrank が戻らないことのテストを足した。
+- **近似として残したこと**: 「Battlefield にプレイしたとき」は、「ここにいる味方の Unit がいる」で近似した（Blitzcrank）。進行中の Combat がある Battlefield へは移動できない規則（CR 449.2.a）は、まだ無い。効果で Base へ移すとき（`.move s .base`）は、移動の出来事が出ない。
 
 ### M7 の実装の記録（2026-11-22）: Origins の全カードへ（第 11 弾: ターンの区切りの誘発）
 
