@@ -1520,4 +1520,28 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.mightNow u == (s3.mightNow u).map (· + 2) &&
     a.mightNow v == (s3.mightNow v).map (· + 2) && b.mightNow u == (s2.mightNow u).map (· + 2)
 
+-- the edges of the two-pick cards: one unit only, my own units, only friendly units, and the
+-- bonus ends with the turn
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-105" .hand
+  let (s2, a) ← put s1 s.me "OGN-116" .base
+  let x ← play s2 s.me c
+  return (x.obj? a).map (·.damage) == some 6
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-141" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let a ← play s2 s.me c
+  let m ← a.firstOf s.me .base "OGN-141"
+  return (a.obj? u).map (·.buffed) == some true && (a.obj? m).map (·.buffed) == some false
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-206" .hand
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let (s4, w) ← put s3 s.me "OGN-136" .base
+  let (s5, e) ← put s4 s.you "OGN-136" .base
+  let a ← play s5 s.me c
+  let up := [u, v, w].filter (fun o => a.mightNow o == (s5.mightNow o).map (· + 2)) |>.length
+  return up == 2 && a.mightNow e == s5.mightNow e &&
+    [u, v, w].all (fun o => (a.mapObjects endTurnObj).mightNow o == s5.mightNow o)
+
 end RiftboundTest
