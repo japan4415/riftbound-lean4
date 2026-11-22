@@ -3972,4 +3972,43 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     backed.all (fun x => back.tired x == some true) && backed.length == 1 &&
     again.countIn s.me .trash "OGN-136" == 2 && enemy.isNone
 
+-- Baited Hook (OGN-242): 1 Energy and Order, exhaust: kill a friendly unit; among the top 5 cards
+-- of my Main Deck, a unit with Might up to 1 more than the killed one may be played for free; the
+-- rest are recycled
+#guard t fun s => do
+  let (s1, hook) ← put s s.me "OGN-242" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let empty := s2.setZone (.player s.me .mainDeck) []
+  let (d1, _) ← put empty s.me "OGN-088" .mainDeck
+  let (d2, _) ← put d1 s.me "OGN-124" .mainDeck
+  let (d3, _) ← put d2 s.me "OGN-167" .mainDeck
+  let (d4, fit) ← put d3 s.me "OGN-037" .mainDeck
+  let (d5, _) ← put d4 s.me "OGN-136" .mainDeck
+  let (d6, _) ← put d5 s.me "OGN-136" .mainDeck
+  let deck (x : GameState) := x.zone (.player s.me .mainDeck)
+  let ids (x : GameState) := (deck x).map (fun c => ((x.cardDef? c).map (·.id.code)).getD "?")
+  let yes ← activate d6 s.me hook 0 [u] ⟨1, [.order]⟩ { obj := fun o => o == fit }
+  let no ← activate d6 s.me hook 0 [u] ⟨1, [.order]⟩ { yes := false }
+  -- only the Might-4 unit in the top 5: nothing can be played, all five are recycled
+  let (m1, _) ← put empty s.me "OGN-088" .mainDeck
+  let (m2, _) ← put m1 s.me "OGN-167" .mainDeck
+  let (m3, _) ← put m2 s.me "OGN-124" .mainDeck
+  let none5 ← activate m3 s.me hook 0 [u] ⟨1, [.order]⟩
+  -- fewer than five cards: three, one of them playable: two are recycled; none playable: all three
+  let (f1, _) ← put empty s.me "OGN-124" .mainDeck
+  let (f2, _) ← put f1 s.me "OGN-167" .mainDeck
+  let (f3, _) ← put f2 s.me "OGN-037" .mainDeck
+  let three ← activate f3 s.me hook 0 [u] ⟨1, [.order]⟩
+  let threeNo ← activate f3 s.me hook 0 [u] ⟨1, [.order]⟩ { yes := false }
+  -- a buffed unit counts with its buff: Might 3 (2 + 1) lets a Might-4 unit be played
+  let (b1, _) ← put empty s.me "OGN-167" .mainDeck
+  let buffedHit ← activate (b1.buff u) s.me hook 0 [u] ⟨1, [.order]⟩
+  return yes.countIn s.me .trash "OGN-136" == 1 && yes.countIn s.me .base "OGN-037" == 1 &&
+    (deck yes).length == 5 && (ids yes).head? == some "OGN-088" &&
+    yes.tired hook == some true && no.countIn s.me .base "OGN-037" == 0 &&
+    (deck no).length == 6 && (ids no).head? == some "OGN-088" &&
+    none5.countIn s.me .base "OGN-167" == 0 && (deck none5).length == 3 &&
+    (deck three).length == 2 && three.countIn s.me .base "OGN-037" == 1 &&
+    (deck threeNo).length == 3 && buffedHit.countIn s.me .base "OGN-167" == 1
+
 end RiftboundTest
