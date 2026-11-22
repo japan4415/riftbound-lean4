@@ -271,7 +271,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         -- from the Battlefield, or from where the Unit is (its Battlefield, or its Base)
         o.movesTurn == some s.turn &&
           (match s.obj? self with
-            | some me => o.prevLoc == (if (s.cardDef? self).any (·.hasType .battlefield) then some self else me.loc)
+            | some me =>
+              o.prevLoc ==
+                (if (s.cardDef? self).any (·.hasType .battlefield) then some self else me.loc)
             | none => false)
       | none => false)
   | .controlledByOpponent =>

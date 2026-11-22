@@ -3093,7 +3093,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t2, z) ← put t1 s.me "OGN-136" .base
   let (e, ev5) ← moveTo t2 s.me z (.battlefield s.bf0)
   let fromBase ← fire e ev5 { yes := true }
-  return loc yes == some (some bf1) && loc no == some (some s.bf0) && loc home == some none &&
+  -- the unit dies before the ability resolves: nothing happens
+  let queued := { a with pending := insertTriggers (a.detect ev) a.pending }
+  let gone ← match advance 100 (killObj queued x).1 [] with
+    | .ok (g, _) => some (settleChain { yes := true } 12 g)
+    | .error _ => none
+  return loc gone == some (some s.bf0) && loc yes == some (some bf1) &&
+    loc no == some (some s.bf0) && loc home == some none &&
     loc other == some (some s.bf0) && loc foeMoves == some (some s.bf0) &&
     (fromBase.obj? q).map (·.loc) == some (some s.bf0)
 
