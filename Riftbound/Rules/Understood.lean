@@ -54,6 +54,7 @@ def Amount.understood : Amount → Bool
   | .victoryScore => true
   | .cardsPlayed => true
   | .movesThisTurn => true
+  | .energyPaid => true
   | .costOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
@@ -78,6 +79,7 @@ def Amount.understoodC : Amount → Bool
   | .victoryScore => true
   | .cardsPlayed => true
   | .movesThisTurn => true
+  | .energyPaid => true
   | .costOf s => s.understood
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -181,6 +183,8 @@ def Prim.understood : Prim → Bool
   | .win p => p.understood
   | .turnEffect _ => true
   | .pay _ => true
+  | .addEnergy ps n none => ps.understood && n.understoodC
+  | .addPower ps n (some _) none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
   | .counter s => s.understood

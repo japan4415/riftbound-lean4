@@ -61,8 +61,14 @@ def OGN_002.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Brazen Buccaneer: the effect is not written yet. -/
-def OGN_002 : CardDef := OGN_002.meta
+/-- Brazen Buccaneer. -/
+def OGN_002 : CardDef :=
+  { OGN_002.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [])) (.const 1))
+        (.may (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [])),
+          .prim (.addEnergy .you (.min (.const 2) .energyPaid) none)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-003
 /--
@@ -3748,8 +3754,16 @@ def OGN_146.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Wallop: the effect is not written yet. -/
-def OGN_146 : CardDef := OGN_146.meta
+/-- Wallop. -/
+def OGN_146 : CardDef :=
+  { OGN_146.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [
+        .ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+          (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
+            .prim (.addEnergy .you .energyPaid none)])) .nop,
+        .prim (.ready (.slot 0))])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-147
 /--
@@ -3857,8 +3871,19 @@ def OGN_150.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Kraken Hunter: the effect is not written yet. -/
-def OGN_150 : CardDef := OGN_150.meta
+/-- Kraken Hunter. -/
+def OGN_150 : CardDef :=
+  { OGN_150.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.bind ⟨"spent"⟩ (.count (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+        (.seqOf [
+          .forEach (Selector.all .friendly .anywhere [.ofType .unit, .buffed])
+            (.ifThen (.matches .it .buffed) (.may (.prim (.spendBuff .it))) .nop),
+          .prim (.addPower .you
+            (.min (.sub (.var ⟨"spent"⟩)
+              (.count (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))) (.const 2))
+            (some .body) none)]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-151
 /--
@@ -5315,8 +5340,16 @@ def OGN_207.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Call to Glory: the effect is not written yet. -/
-def OGN_207 : CardDef := OGN_207.meta
+/-- Call to Glory. -/
+def OGN_207 : CardDef :=
+  { OGN_207.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [
+        .ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
+          (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
+            .prim (.addEnergy .you .energyPaid none)])) .nop,
+        .grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn])),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-208
 /--
@@ -5336,8 +5369,14 @@ def OGN_208.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cruel Patron: the effect is not written yet. -/
-def OGN_208 : CardDef := OGN_208.meta
+/-- Cruel Patron. -/
+def OGN_208 : CardDef :=
+  { OGN_208.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))
+        (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])))
+        (.prim (.kill .self)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-209
 /--
@@ -5923,8 +5962,19 @@ def OGN_231.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Commander Ledros: the effect is not written yet. -/
-def OGN_231 : CardDef := OGN_231.meta
+/-- Commander Ledros. -/
+def OGN_231 : CardDef :=
+  { OGN_231.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.bind ⟨"units"⟩ (.count (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))
+        (.seqOf [
+          .forEach (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])
+            (.may (.prim (.kill .it))),
+          .prim (.addPower .you
+            (.min (.sub (.var ⟨"units"⟩)
+              (.count (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))) (.const 4))
+            (some .order) none)]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-232
 /--

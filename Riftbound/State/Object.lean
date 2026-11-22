@@ -112,6 +112,8 @@ structure Object where
   /-- The timestamp counter when the card was last played: a card played later has a greater one
   ("the next card you play"). It stays when the card moves. -/
   playedStamp : Option Nat := none
+  /-- The Energy paid when the card was played (0 if it was played for nothing). -/
+  energyPaid : Nat := 0
   /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/
   moves : Nat := 0
   /-- The turn the Standard Moves in `moves` were made in. -/
