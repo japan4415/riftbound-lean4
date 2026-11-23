@@ -587,6 +587,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: Edge of Night の対象の選択は、手札から普通にプレイしても聞かれる（Hidden から出たときだけ、付く）。Tianna は、Battlefield の得点だけを止める（効果による得点は、止めない）。Blade of the Ruined King で殺すユニットは、装備するユニット以外から、プレイヤーが選ぶ。
 - **カードの数**: 動く Spiritforged は 171 枚から 176 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 14 — 選べない、守るとき、モードの選択
+
+- **選べない**: `StaticMod.cant .self .beChosen`（パッシブ、いつでも）を読む（`GameState.blocksChoice`、`Select.lean`）。他のプレイヤーの呪文と能力は、そのユニットを対象に選べない（`Choice.candidates`）し、解決のときの選択（`pickCandidates`）にも出ない。自分のプレイヤーは、選べる。Deflect とは別（Deflect は、払えば選べる）。
+- **守るとき**: `TriggerEvent.youDefend` は、そのプレイヤーが Battlefield で守る戦闘が始まったとき、そのプレイヤーの、そこにいないユニットで誘発する（能力の最初のスロットは、その Battlefield）。
+- **書いたカード**: SFD-105（Ruin Runner）、126（Loyal Pup）、049（Aphelios, Exalted。装備品を付けたとき、「このターンまだ選ばれていない」モードを選ぶ。モードの記録は、ユニットに付く `modeUsed`）。
+- **近似**: Aphelios は、すでに選んだモードをもう一度選ぶと、何も起きない（選べない、ではない）。Loyal Pup は、すでに Battlefield にいるときも、誘発する（動かない）。
+- **カードの数**: 動く Spiritforged は 176 枚から 179 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

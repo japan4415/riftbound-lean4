@@ -464,6 +464,15 @@ def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : En
   let objs ← s.placeObjs self place
   s.keepMatching p self env side fs objs
 
+/-- The player `p` cannot choose the object: it is of another player, and it has the passive ability
+that says it can't be chosen by enemy spells and abilities (Ruin Runner). -/
+def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
+  (s.obj? id).any (·.controller != p) &&
+    (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+      match ab with
+      | Ability.passive .always mods => mods.contains (.cant .self .beChosen)
+      | _ => false))
+
 /-- The objects of a side at a place that have the properties, for a choice made while an effect
 resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
 target cannot be. -/
@@ -474,7 +483,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
     (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
       acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
         FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
-  | none => s.candidates p self env side place fs
+  | none => (s.candidates p self env side place fs).map (·.filter (fun id => !s.blocksChoice p id))
 
 /-- A member of the answer is a member of the list that was filtered. -/
 theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
@@ -724,7 +733,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
 /-- The objects a choice of a Spell can pick: for a target of exactly one object, the matching
 objects in play. Nothing for a choice that is not understood yet. -/
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) : Choice → List ObjId
-  | .target .one side place fs => (s.candidates p self {} side place fs).getD []
+  | .target .one side place fs =>
+    ((s.candidates p self {} side place fs).getD []).filter (fun id => !s.blocksChoice p id)
   | _ => []
 
 /-- Whether a choice is one that a Spell can make for now: one target. -/
@@ -786,7 +796,7 @@ theorem targetsOk_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId} :
         | none => simp [hc] at ht
         | some r =>
           simp only [hc, Option.getD_some] at ht
-          exact GameState.mem_candidates hc x ht
+          exact GameState.mem_candidates hc x (List.mem_filter.mp ht).1
       | mode _ => simp [Choice.simple] at hs
       | xValue => simp [Choice.simple] at hs
       | extraCost _ _ => simp [Choice.simple] at hs

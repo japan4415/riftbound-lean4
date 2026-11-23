@@ -334,6 +334,7 @@ def StaticMod.runs : StaticMod → Bool
   | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
+  | .cant .self .beChosen => true
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
   | .bonusDamageHere _ => true
@@ -367,6 +368,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .chosen => true
       | .useGearAbility => t.subject == .self
       | .attachedTo => t.subject == .self
+      | .youDefend => t.subject == .self
       | .spendBuff => t.subject == .self
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self

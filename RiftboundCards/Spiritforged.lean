@@ -1369,8 +1369,24 @@ def SFD_049.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Aphelios, Exalted: the effect is not written yet. -/
-def SFD_049 : CardDef := SFD_049.meta
+/-- Aphelios, Exalted. -/
+def SFD_049 : CardDef :=
+  { SFD_049.meta with
+
+    abilities := [.triggered (.onSelf .attachedTo)
+      (.of [] (.eitherOf (EffectList.ofList
+        [.ifThen (.not (.marked (.modeUsed 0)))
+          (.seqOf [.prim (.markOn .self (.modeUsed 0)),
+            .repeatN (.const 2) (.prim (.ready
+              (Selector.one .friendly .atBase [.ofType .rune, .exhausted])))]) .nop,
+         .ifThen (.not (.marked (.modeUsed 1)))
+          (.seqOf [.prim (.markOn .self (.modeUsed 1)),
+            .prim (.channel .you (.const 0) (.const 1))]) .nop,
+         .ifThen (.not (.marked (.modeUsed 2)))
+          (.seqOf [.prim (.markOn .self (.modeUsed 2)),
+            .prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))]) .nop])))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-050
 /--
@@ -2942,8 +2958,12 @@ def SFD_105.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ruin Runner: the effect is not written yet. -/
-def SFD_105 : CardDef := SFD_105.meta
+/-- Ruin Runner. -/
+def SFD_105 : CardDef :=
+  { SFD_105.meta with
+
+    abilities := [.passive .always [.cant .self .beChosen]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-106
 /--
@@ -3532,8 +3552,13 @@ def SFD_126.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Loyal Pup: the effect is not written yet. -/
-def SFD_126 : CardDef := SFD_126.meta
+/-- Loyal Pup. -/
+def SFD_126 : CardDef :=
+  { SFD_126.meta with
+
+    abilities := [.triggered (.onSelf .youDefend)
+      (.of [] (.may (.prim (.move .self (.at_ (.slot 0)))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-127
 /--
