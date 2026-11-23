@@ -123,6 +123,9 @@ def Filter.understood : Filter → Bool
   | .hidden => true
   | .top _ => true
   | .openBf => true
+  | .scoredByMine => true
+  | .inHandZone => true
+  | .attackedByMine => true
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
@@ -322,6 +325,7 @@ def StaticMod.runs : StaticMod → Bool
   | .entersReady sel => costSel sel
   | .costMinus s a => costSel s && a.understoodK
   | .costMinusMin s a _ => costSel s && a.understoodK
+  | .costPlus s a => costSel s && a.understoodK
   | .noDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
@@ -331,12 +335,16 @@ def StaticMod.runs : StaticMod → Bool
   | .hideWithEnergy => true
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
+  | .noMoveToBaseAny => true
+  | .playToBf fs => FilterList.understood (FilterList.ofList fs)
+  | .noPlayToBase => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .cant .self .beChosen => true
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
+  | .cantPlayer _ .play .here _ => true
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC

@@ -595,6 +595,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: 選べない（`blocksChoice`）は、カードに印刷されたパッシブだけを読む（装備品や他のカードが付けた能力は、読まない）。`youDefend` は、戦闘が始まるとき（`combatStarted`）に出る。守る側にユニットがいない Showdown では、誘発しない。Loyal Pup は、Showdown には間に合わず、戦闘ダメージだけに加わる。`youDefend` の誘発の条件（`condition`）は、Battlefield（スロット 0）を読めない（今のカードは、条件を使わない）。Aphelios は、すでに選んだモードをもう一度選ぶと、何も起きない（選べない、ではない）。Loyal Pup は、すでに Battlefield にいるときも、誘発する（動かない）。
 - **カードの数**: 動く Spiritforged は 176 枚から 179 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 15 — 遊ぶ場所と費用の変更
+
+- **遊ぶ場所**: `StaticMod.playToBf fs`（そのユニットは、手札から、条件に合う Battlefield に遊べる。能力として、`CardDef.ownBfPlay` が足す。速さは、Reaction のキーワードがあれば Reaction）と、`StaticMod.noPlayToBase`（手札から Base には遊べない。`playable` が断る）。条件は、`Filter.scoredByMine`（自分がこのターン Score した Battlefield）と `Filter.attackedByMine`（自分が攻撃している Battlefield）。`cantPlayer .. .play .here`（Rockfall Path）は、`cantActHere`（`cantScoreHere` の一般化）で読み、そこへ遊ぶ効果は Base へ遊ぶ（`playToOrBase`）。`noMoveToBaseAny`（Minotaur Reckoner）は、どこでも、ユニットが Base へ動けない。
+- **費用の変更**: `StaticMod.costPlus`（敵の呪文は 1 高い。`GameState.costRaise`）を読む。`Filter.inHandZone`（手札にあるカード）で、「手札以外から遊ぶなら 2 安い」（Void Drone）を書く。
+- **書いたカード**: SFD-014（Minotaur Reckoner）、015（Perched Grimwyrm）、025（Rengar, Pouncing）、146（Vex, Cheerless）、216（Rockfall Path）、010（Void Drone）。
+- **近似**: Perched Grimwyrm の「Conquer した」は、「Score した」（hold も含む）。Rockfall Path で遊べない Battlefield を選んでも、Base へ遊ぶだけで、選ぶのを止めない。Vex の費用の変更は、Energy だけを動かす（Power の「虹」は動かさない。最小は Energy 1）。Rengar は、Reaction だが、Chain に呼応して遊ぶことはできない（既存の近似と同じ）。Void Drone を遊ぶ Champion Zone などの能力は、印刷の費用を払う。
+- **カードの数**: 動く Spiritforged は 179 枚から 185 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

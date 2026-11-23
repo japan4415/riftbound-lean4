@@ -847,7 +847,7 @@ theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToB
 /-- Move a Unit to the Base of its controller by an effect, unless the Battlefield it is at
 forbids it (CR 447). -/
 def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=
-  if ((s.obj? u).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .noMoveToBase) then
+  if ((s.obj? u).bind (·.loc)).any (fun bf => s.homeForbidden bf) then
     (s, [])
   else sendHome s u
 
@@ -877,7 +877,7 @@ def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
   let forbids (l : Option ObjId) : Bool :=
-    l.any (fun bf => (s.activeMods bf).contains .noMoveToBase)
+    l.any (fun bf => s.homeForbidden bf)
   if lx == ly || (lx.isNone && forbids ly) || (ly.isNone && forbids lx) then (s, [])
   else
     let r1 := sendToLoc ly s x
@@ -918,7 +918,8 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
 Units only to their Base (Mageseeker Warden). -/
 def playToOrBase (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  if s.oppHas p .oppsPlayToBaseOnly then playFree p s id else playFreeAt p bf s id
+  if s.oppHas p .oppsPlayToBaseOnly || s.cantActHere p .play bf then playFree p s id
+  else playFreeAt p bf s id
 
 /-- Playing a card to a Battlefield or to the Base is a safe change. -/
 theorem playToOrBase_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :

@@ -137,6 +137,12 @@ inductive Filter where
   | top (n : Nat)
   /-- Is a Battlefield nobody controls: an open Battlefield. -/
   | openBf
+  /-- The Battlefield the player of `self` scored this turn. -/
+  | scoredByMine
+  /-- The card is in its owner's hand. -/
+  | inHandZone
+  /-- The Battlefield where the player of `self` is attacking. -/
+  | attackedByMine
   /-- Is a Battlefield where a unit of another player than the one the effect belongs to is. -/
   | enemyOccupied
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/

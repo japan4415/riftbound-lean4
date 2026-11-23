@@ -2514,4 +2514,79 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
     ((s2.pickCandidates s.me v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).any
       (· == u)
 
+/-- A unit of the card is at the Battlefield. -/
+meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
+  (s.zone .battlefieldZone).any (fun x => (s.cardDef? x).any (·.id == cid code) &&
+    (s.obj? x).any (·.loc == some bf))
+
+-- Minotaur Reckoner (SFD-014): units can't move to base (any unit, any battlefield)
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, u) ← putAt s1 s.me "OGN-051" bf
+  let (s3, _) ← put s2 s.you "SFD-014" .base
+  return moveOk s2 s.me u .base && !moveOk s3 s.me u .base &&
+    (moveHome s2 u).1.hereOf u == none && (moveHome s3 u).1.hereOf u == some bf
+
+-- Rockfall Path (SFD-216): units can't be played here (a unit played there goes to the base)
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, u) ← put s1 s.me "OGN-051" .hand
+  let (s3, other) ← putBf s2 s.you "OGN-275"
+  let a := (playToOrBase s.me bf s3 u).1
+  let b := (playToOrBase s.me other s3 u).1
+  return !unitAt a "OGN-051" bf && unitAt b "OGN-051" other &&
+    (a.zone (.player s.me .base)).any (fun x => (a.cardDef? x).any (·.id == cid "OGN-051"))
+
+-- Perched Grimwyrm (SFD-015): only to a battlefield its player scored this turn, never to the base
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, g) ← put s1 s.me "SFD-015" .hand
+  let scored := s2.modObj bf (fun o => { o with scored := [s.me] })
+  let a ← activate scored s.me g 3 [bf] (payOf scored g)
+  let none_ := activate s2 s.me g 3 [bf] (payOf s2 g)
+  let (s3, plain) ← put s2 s.me "OGN-051" .hand
+  return !playable (s3.rich s.me) s.me g (payOf s3 g) &&
+    playable (s3.rich s.me) s.me plain (payOf s3 plain) &&
+    unitAt a "SFD-015" bf && none_.isNone
+
+-- Rengar, Pouncing (SFD-025): may be played to a battlefield its player is attacking
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, g) ← put s1 s.me "SFD-025" .hand
+  let atk := s2.modObj bf (fun o => { o with contested := some s.me })
+  let def_ := s2.modObj bf (fun o => { o with contested := some s.you })
+  let a ← activate atk s.me g 3 [bf] (payOf atk g)
+  return unitAt a "SFD-025" bf && (activate def_ s.me g 3 [bf] (payOf def_ g)).isNone &&
+    (activate s2 s.me g 3 [bf] (payOf s2 g)).isNone
+
+-- Vex, Cheerless (SFD-146): in combat, my spells cost 1 less (not below 1), enemy spells 1 more
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-146" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, mine) ← put s3 s.me "OGN-024" .hand
+  let (s5, theirs) ← put s4 s.you "OGN-024" .hand
+  let cost (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
+    ((x.cardDef? c).bind (x.effCost p c)).map (·.energy)
+  let base := cost s5 s.me mine
+  let ftl := s5.inShowdownAt bf s.me
+  return base == some 3 && cost ftl s.me mine == some 2 && cost s5 s.me mine == some 3 &&
+    cost ftl s.you theirs == some 4 && cost s5 s.you theirs == some 3
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-146" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, cheap) ← put s3 s.me "OGN-004" .hand
+  let cost (x : GameState) (c : ObjId) : Option Nat :=
+    ((x.cardDef? c).bind (x.effCost s.me c)).map (·.energy)
+  return cost s4 cheap == some 1 && cost (s4.inShowdownAt bf s.me) cheap == some 1
+
+-- Void Drone (SFD-010): costs 2 less to play from anywhere other than the hand
+#guard tsf fun s => do
+  let (s1, inHand) ← put s s.me "SFD-010" .hand
+  let (s2, inTrash) ← put s1 s.me "SFD-010" .trash
+  let cost (x : GameState) (c : ObjId) : Option Nat :=
+    ((x.cardDef? c).bind (x.effCost s.me c)).map (·.energy)
+  return cost s2 inHand == some 3 && cost s2 inTrash == some 1
+
 end RiftboundTest

@@ -78,13 +78,13 @@ def modFloor (s : GameState) (src id : ObjId) : StaticMod → Option (Nat × Nat
 
 /-- The player `p` cannot score the Battlefield `bf` now, by a passive ability that says so ("players
 can't score here until their third turn", "while I'm at a battlefield, opponents can't score"). -/
-def cantScoreHere (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+def cantActHere (s : GameState) (p : PlayerId) (a : Act) (bf : ObjId) : Bool :=
   s.passiveSources.any (fun g =>
     let c := ((s.obj? g).map (·.controller)).getD ⟨0⟩
     (s.activeMods g).any (fun m =>
       match m with
-      | .cantPlayer who .score place untilTurn =>
-        ((who.resolve s c).map (·.contains p)).getD false &&
+      | .cantPlayer who act place untilTurn =>
+        act == a && ((who.resolve s c).map (·.contains p)).getD false &&
           (match place with
             | .here => s.hereOf g == some bf
             | .anywhere => true
@@ -93,6 +93,18 @@ def cantScoreHere (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
             decide (((List.range (s.turn - s.turnShift)).filter
               (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)).length < untilTurn))
       | _ => false))
+
+/-- The player `p` cannot score the Battlefield `bf` now. -/
+def cantScoreHere (s : GameState) (p : PlayerId) (bf : ObjId) : Bool := s.cantActHere p .score bf
+
+/-- Some passive ability in play has the change `m`, whoever controls it. -/
+def anyActive (s : GameState) (m : StaticMod) : Bool :=
+  s.passiveSources.any (fun g => (s.activeMods g).contains m)
+
+/-- A Unit at the Battlefield `bf` cannot move to the Base: by the Battlefield, or by a Unit
+(Minotaur Reckoner). -/
+def homeForbidden (s : GameState) (bf : ObjId) : Bool :=
+  (s.activeMods bf).contains .noMoveToBase || s.anyActive .noMoveToBaseAny
 
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
