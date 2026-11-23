@@ -2347,4 +2347,34 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   return r.dmg e == some 3 && r.countIn s.me .trash "SFD-200" == 0 &&
     r.handN s.me + 2 == s3.handN s.me
 
+-- (review) spending a buff the unit does not have is no event; Fiora with a buff and with company
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let none_ := (unbuffObj s1 u).2
+  let some_ := (unbuffObj (s1.buff u) u).2
+  return none_.isEmpty && some_ == [.buffSpent s.me]
+#guard tsf fun s => do
+  let (s1, f) ← putAt s s.me "SFD-110" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, _) ← putAt s2 s.me "OGN-051" s.bf0
+  let fight (x : GameState) :=
+    (x.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
+  let alone ← fire (fight (s2.buff f)) [.combatStarted s.bf0 s.me]
+  let withAlly ← fire (fight s3) [.combatStarted s.bf0 s.me]
+  let twice ← fire alone [.combatStarted s.bf0 s.me]
+  return alone.mightNow f == ((s2.buff f).mightNow f).map (· * 2) &&
+    withAlly.mightNow f == s3.mightNow f && twice.mightNow f != none
+-- (review) Jax gets the event through the real Equip ability, and Ezreal deals his current Might
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-119" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let r ← activate s2 s.me g 0 [j] ⟨0, [.calm]⟩
+  return (r.obj? g).any (·.attached == some j) && r.handN s.me == s2.handN s.me + 1
+#guard tsf fun s => do
+  let (s1, e) ← putAt s s.me "SFD-082" s.bf0
+  let (s2, foe) ← putAt s1 s.you "OGN-001" s.bf0
+  let boosted := s2.buff e
+  let a ← fire boosted [.combatStarted s.bf0 s.me]
+  return a.dmg foe == (boosted.mightNow e).map Int.toNat && boosted.mightNow e == some 4
+
 end RiftboundTest

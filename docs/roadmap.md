@@ -574,7 +574,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **新しい仕組み**: `Event.attached`・`TriggerEvent.attachedTo`（装備品がユニットに付いた。付いたユニットの誘発。Jax, Unrelenting）、`Event.buffSpent`・`TriggerEvent.spendBuff`（プレイヤーが、自分のユニットのバフを使った。Fae Dragon）、`Prim.double`（ターンの終わりまで、Might が 2 倍。Fiora, Peerless）、`Prim.topdeck`（山札の上に置く。Altar of Memories）、`StaticMod.noCombatDamage`（戦闘ダメージを与えない。Ezreal, Dashing）。
 - **書いたカード**: SFD-082、101、110、119、169、200（6 枚）。Arcane Shift は、「banish して、持ち主がプレイする」を、そのユニットを、もう一度プレイする（Base に出し直し、「プレイしたとき」が働く）で表した。
-- **近似**: Fiora, Peerless の「this combat」は、このターンの終わりまで。「one on one」は、自分の側 1 体と、相手の側 1 体。Fae Dragon の「up to four」は、1 体ずつ「しますか」と聞く（4 回）。Altar of Memories の、カードを置く先（上か底）は、プレイヤーが選ぶ。Arcane Shift で、ユニットを banish しないので、バフとダメージは残る（もう一度プレイするだけ）。
+- **近似**: Fiora, Peerless の「this combat」は、このターンの終わりまで。「one on one」は、自分の側 1 体と、相手の側 1 体。Fae Dragon の「up to four」は、1 体ずつ「しますか」と聞く（4 回）。Altar of Memories の、カードを置く先（上か底）は、プレイヤーが選ぶ。Arcane Shift は、盤上のユニットを、もう一度プレイする（Base の、exhausted で出る。バフ・ダメージ・その場の変更は、消える）。付いていた装備品は、付いたまま残る。トークンも、出し直せる。持ち主以外が唱えると、そのユニットは、唱えた人の側になる。
+- **レビューで直したこと**: バフが無いユニットのバフを「使った」ことにして、`buffSpent` が出ていた（バフがあるときだけ出す）。Arcane Shift の近似の記述が、実装と逆だった。足りなかったテスト（Fiora のバフと味方、Jax が実際の Equip で引くこと、バフ込みの Ezreal のダメージ）を足した。
+- **近似（レビュー）**: Altar of Memories の「底に置く」は、リサイクル（「リサイクルしたとき」の誘発が、働く）。Fae Dragon の「バフを使ったとき」は、バフを使われたユニットの、プレイヤーについて働く。Fiora の Might は、戦闘のあとも残る（同じターンの 2 回目に、上乗せされる）。
 - **カードの数**: 動く Spiritforged は 165 枚から 171 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

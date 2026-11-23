@@ -381,7 +381,7 @@ def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
     if 0 < o.extraBuffs then { o with extraBuffs := o.extraBuffs - 1 }
     else { o with buffed := false }),
     match s.obj? id with
-    | some o => [Event.buffSpent o.controller]
+    | some o => if o.buffed || 0 < o.extraBuffs then [Event.buffSpent o.controller] else []
     | none => [])
 
 /-- Spending a buff is a safe change. -/
