@@ -6597,8 +6597,21 @@ def OGN_244.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Divine Judgment: the effect is not written yet. -/
-def OGN_244 : CardDef := OGN_244.meta
+/-- Keep at most two: the player recycles, one by one, the cards of the kind that they choose, until
+two are left (the count is taken once, when the step begins). -/
+def keepTwo (place : Place) (fs : List Filter) : Effect :=
+  .repeatN (.sub (.count (Selector.all .friendly place fs)) (.const 2))
+    (.prim (.recycle (Selector.one .friendly place fs)))
+
+/-- Divine Judgment. Each player chooses 2 units, 2 gear, 2 runes and 2 cards in their hand, and
+recycles the rest: written as choosing what to recycle until two of each kind are left. -/
+def OGN_244 : CardDef :=
+  { OGN_244.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachPlayer (.seqOf [
+        keepTwo .anywhere [.ofType .unit], keepTwo .anywhere [.ofType .gear],
+        keepTwo .anywhere [.ofType .rune], keepTwo .inHand []]))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-245
 /--
