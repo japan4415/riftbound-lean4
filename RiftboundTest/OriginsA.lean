@@ -4045,4 +4045,36 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     elsewhere.handN s.me + 1 == s5.handN s.me && twice.handN s.me == s5.handN s.me + 1 &&
     theirs.handN s.you == s5.handN s.you + 1
 
+-- Swift Scout (OGN-263): I may hide a card with Hidden for one Energy instead of one Power; one
+-- Energy, exhaust: put a Teemo unit I own into my hand from the Champion Zone or the board
+#guard t fun s => do
+  let (s1, sc) ← put s s.me "OGN-263" .legendZone
+  let (s2, c) ← put s1 s.me "OGN-135" .hand
+  let (n1, nc) ← put s s.me "OGN-135" .hand
+  let hid (x : GameState) := (x.zone (.player s.me .hidden)).length
+  let hides ← activate (s2.control s.me s.bf0) s.me c 2 [s.bf0] ⟨1, []⟩
+  let without := activate (n1.control s.me s.bf0) s.me nc 2 [s.bf0] ⟨1, []⟩
+  let normal ← activate (s2.control s.me s.bf0) s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  -- with hiding free (Guerilla Warfare) the Energy comes back, not a Power
+  let free := (s2.control s.me s.bf0).addTurnFx s.me .hideFree
+  let paid ← activate free s.me c 2 [s.bf0] ⟨1, []⟩
+  let baseline ← activate (s2.control s.me s.bf0) s.me c 2 [s.bf0] ⟨1, []⟩
+  -- the opponent's Legend gives me nothing
+  let (e1, _) ← put n1 s.you "OGN-263" .legendZone
+  let theirs := activate (e1.control s.me s.bf0) s.me nc 2 [s.bf0] ⟨1, []⟩
+  -- the Teemo unit on the board goes to the hand; or the one in the Champion Zone
+  let (b1, _) ← put s2 s.me "OGN-121" .base
+  let (b2, _) ← put b1 s.me "OGN-136" .base
+  let board ← activate b2 s.me sc 1 [] ⟨1, []⟩
+  let emptyZone := b2.setZone (.player s.me .championZone) []
+  let (z1, _) ← put emptyZone s.me "OGN-121" .championZone
+  let fromZone ← activate z1 s.me sc 1 [] ⟨1, []⟩ { yes := false }
+  return (paid.poolOf s.me).energy == (baseline.poolOf s.me).energy + 1 &&
+    (paid.poolOf s.me).any == (baseline.poolOf s.me).any && theirs.isNone &&
+    hid hides == 1 && hid normal == 1 && without.isNone &&
+    board.countIn s.me .hand "OGN-121" == 1 && board.countIn s.me .base "OGN-121" == 0 &&
+    board.countIn s.me .base "OGN-136" == 1 && board.tired sc == some true &&
+    fromZone.countIn s.me .hand "OGN-121" == 1 &&
+    (fromZone.zone (.player s.me .championZone)).isEmpty
+
 end RiftboundTest

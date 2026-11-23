@@ -377,6 +377,7 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inTrash => some .trash
   | .inMainDeck => some .mainDeck
   | .inRuneDeck => some .runeDeck
+  | .inChampionZone => some .championZone
   | .inHidden => some .hidden
   | _ => none
 
@@ -480,6 +481,7 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
   | inRuneDeck => simp [placeObjs] at h
+  | inChampionZone => simp [placeObjs] at h
   | inHidden => simp [placeObjs] at h
   | inCombat =>
     simp only [placeObjs] at h
@@ -629,6 +631,12 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
         s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.target == some o)
       | _ => false)
   | .fromHidden => some ((s.obj? self).any (·.fromHidden))
+  -- the passives are read from the cards as printed (their conditions are not asked)
+  | .hidesWithEnergy =>
+    some ((s.players.flatMap (fun q => s.zone (.player q .legendZone)) ++ s.inPlay).any (fun g =>
+      (s.obj? g).any (·.controller == p) &&
+        (((s.cardDef? g).map (·.fullAbilities)).getD []).any (fun ab =>
+          match ab with | .passive _ mods => mods.contains .hideWithEnergy | _ => false)))
   | .noted e => some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p && f.kind == e))
   | .excessAtLeast n =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p &&

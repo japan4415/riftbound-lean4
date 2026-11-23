@@ -173,6 +173,7 @@ def Condition.understood : Condition → Bool
   | .fromHidden => true
   | .excessAtLeast _ => true
   | .noted _ => true
+  | .hidesWithEnergy => true
   | .diedWith _ => true
   | .discardedThisTurn => true
   | _ => false
@@ -301,6 +302,7 @@ def StaticMod.runs : StaticMod → Bool
   | .extraHide => true
   | .playToOpenBf => true
   | .anyBuffs => true
+  | .hideWithEnergy => true
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .noReadyOfOpps => true

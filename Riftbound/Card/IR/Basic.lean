@@ -45,6 +45,8 @@ inductive Place where
   | inMainDeck
   /-- In the player's Rune Deck. -/
   | inRuneDeck
+  /-- In the player's Champion Zone. -/
+  | inChampionZone
   /-- In the combat the effect is about. -/
   | inCombat
   /-- Hidden face down (CR 811). -/
