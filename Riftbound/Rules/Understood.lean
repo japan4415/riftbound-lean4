@@ -225,7 +225,7 @@ def Prim.understood : Prim → Bool
   | .deal s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
   | .kill s => s.understoodPick
-  | .banish s => s.understoodPick
+  | .banish s => s.understoodPickAny
   | .returnToHand s => s.understoodPickAny
   | .ready s => s.understoodPick
   | .exhaust s => s.understoodPick

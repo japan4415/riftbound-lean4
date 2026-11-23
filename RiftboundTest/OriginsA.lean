@@ -4137,4 +4137,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     o1.turnFx.isEmpty && e1.channelCount == 2 && e2.channelCount == 3 && e1.turnShift == 1 &&
     plain.turnShift == 0
 
+-- Blind Fury (OGN-025): the top card of the opponent's Main Deck: a unit or gear is played, free,
+-- by me (it stays the opponent's card: it goes to their Trash when it dies); a spell is banished
+-- (approximation: a spell is not played)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-025" .hand
+  let (u1, _) ← put s1 s.you "OGN-136" .mainDeck
+  let (g1, _) ← put s1 s.you "OGN-124" .mainDeck
+  let (p1, _) ← put s1 s.you "OGN-229" .mainDeck
+  let unit ← play u1 s.me c
+  let gear ← play g1 s.me c
+  let spell ← play p1 s.me c
+  let deck (x : GameState) := (x.zone (.player s.you .mainDeck)).length
+  let mine := (unit.zone (.player s.me .base)).filter (fun x =>
+    (unit.cardDef? x).any (·.id == cid "OGN-136"))
+  let dies ← (mine.head?).map (fun x => (killObj unit x).1)
+  return mine.length == 1 && mine.all (fun x => (unit.obj? x).any (fun o =>
+      o.controller == s.me && o.owner == s.you)) && deck unit + 1 == deck u1 &&
+    gear.countIn s.me .base "OGN-124" == 1 && deck gear + 1 == deck g1 &&
+    spell.countIn s.you .banishment "OGN-229" == 1 && spell.countIn s.me .base "OGN-229" == 0 &&
+    dies.countIn s.you .trash "OGN-136" == 1 && dies.countIn s.me .trash "OGN-136" == 0
+
 end RiftboundTest

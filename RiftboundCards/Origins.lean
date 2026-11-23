@@ -664,8 +664,15 @@ def OGN_025.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Blind Fury: the effect is not written yet. -/
-def OGN_025 : CardDef := OGN_025.meta
+/-- Blind Fury. -/
+def OGN_025 : CardDef :=
+  { OGN_025.meta with
+    spellEffect := some (.of []
+      (.ifThen (.cmp .ge (.count (Selector.all .enemy .inMainDeck
+          [.top 1, .not (.ofType .spell)])) (.const 1))
+        (.prim (.play (Selector.one .enemy .inMainDeck [.top 1, .not (.ofType .spell)])))
+        (.prim (.banish (Selector.one .enemy .inMainDeck [.top 1]))))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-026
 /--
