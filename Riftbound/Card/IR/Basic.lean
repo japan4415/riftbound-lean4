@@ -47,6 +47,8 @@ inductive Place where
   | inRuneDeck
   /-- In the player's Champion Zone. -/
   | inChampionZone
+  /-- In the player's Legend Zone. -/
+  | inLegendZone
   /-- In the combat the effect is about. -/
   | inCombat
   /-- Hidden face down (CR 811). -/

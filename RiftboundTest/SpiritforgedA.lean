@@ -1972,5 +1972,112 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let (s4, mine) ← putAt s3 s.me "OGN-001" s.bf0
   let r ← fire s4 [.combatStarted s.bf0 s.me]
   return r.dmg near == some 1 && r.dmg base == some 0 && r.dmg mine == some 0
+-- Lucian, Merciless (SFD-113): the first time it conquers each turn, ready it
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, l) ← putAt s1 s.me "SFD-113" bf
+  let t := s2.tire l
+  let a ← fire t [.scored s.me bf true]
+  let b ← fire (a.tire l) [.scored s.me bf true]
+  let c ← fire t [.scored s.me bf false]
+  return a.tired l == some false && b.tired l == some true && c.tired l == some true
+
+-- Draven, Audacious (SFD-148): the first time it wins a combat each turn, score 1 point; when it
+-- dies in a combat, the opponent scores 1 point
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-148" s.bf0
+  let a ← fire s1 [.combatWon s.bf0 s.me]
+  let b ← fire a [.combatWon s.bf0 s.me]
+  let (s2, x) ← put s s.me "SFD-148" .trash
+  let (s3, _) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, _) ← putAt s3 s.you "OGN-051" s.bf0
+  let fight := s4.inShowdownAt s.bf0 s.me
+  let c ← fire fight [.died x s.me]
+  let e ← fire s4 [.died x s.me]
+  return a.pointsOf s.me == s1.pointsOf s.me + 1 && b.pointsOf s.me == a.pointsOf s.me &&
+    c.pointsOf s.you == fight.pointsOf s.you + 1 && e.pointsOf s.you == s4.pointsOf s.you &&
+    s1.pointsOf s.you == a.pointsOf s.you
+
+-- Black Market Broker (SFD-121): when its player plays a card from face down, a Gold token
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-121" .base
+  let a ← fire s1 [.hiddenPlayed s.me]
+  let b ← fire s1 [.hiddenPlayed s.you]
+  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0
+
+-- Harpoon Squad (SFD-137): when it moves from a battlefield, +2 Might this turn
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-137" .base
+  let left := s1.modObj u (fun o => { o with prevLoc := some s.bf0 })
+  let a ← fire left [.standardMoved u none]
+  let b ← fire s1 [.standardMoved u none]
+  return a.mightNow u == (left.mightNow u).map (· + 2) && b.mightNow u == s1.mightNow u
+
+-- Prize of Progress (SFD-075): when its player uses an activated ability of a gear, +1 Might
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-075" .base
+  let (s2, g) ← put s1 s.me "SFD-046" .base
+  let (s3, h) ← put s2 s.you "SFD-046" .base
+  let a ← fire s3 [.activated s.me g 1]
+  let b ← fire s3 [.activated s.me u 0]
+  let c ← fire s3 [.activated s.you h 1]
+  return a.mightNow u == (s3.mightNow u).map (· + 1) && b.mightNow u == s3.mightNow u &&
+    c.mightNow u == s3.mightNow u
+
+-- Legion Quartermaster (SFD-044): a friendly gear returns to its owner's hand when it is played
+#guard tsf fun s => do
+  let (s1, q) ← put s s.me "SFD-044" .hand
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, h) ← put s2 s.you "SFD-042" .base
+  let a ← play s3 s.me q
+  let n ← play s1 s.me q
+  return a.countIn s.me .hand "SFD-042" == 1 && (a.obj? h).isSome && (a.obj? g).isNone &&
+    n.countIn s.me .base "SFD-044" == 1
+
+/-- The first Legend of the player (the lab has one for each player). -/
+meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Option ObjId :=
+  (s.zone (.player p .legendZone)).head?
+
+-- Royal Entourage (SFD-039): ready or exhaust a legend
+#guard tsf fun s => do
+  let (s1, e) ← put s s.me "SFD-039" .hand
+  let l ← s1.legendOf s.me
+  let tired := s1.tire l
+  let a ← play tired s.me e [] { fromEnd := some 1 }
+  let b ← play s1 s.me e [] { fromEnd := some 2 }
+  return a.tired l == some false && b.tired l == some true
+-- (a legend of the opponent too)
+#guard tsf fun s => do
+  let (s1, e) ← put s s.me "SFD-039" .hand
+  let l ← s1.legendOf s.you
+  let mine ← s1.legendOf s.me
+  let b ← play (s1.tire mine) s.me e [] { fromEnd := some 2 }
+  let c ← play (s1.tire mine) s.me e [] { fromEnd := some 2, obj := fun o => o == l }
+  return b.tired l == some false && c.tired l == some true
+
+-- Hall of Legends (SFD-210): when its player conquers here, pay 1 Energy to ready their legend
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-210"
+  let l ← s1.legendOf s.me
+  let other ← s1.legendOf s.you
+  let t := (s1.tire l).tire other
+  let a ← fire (t.rich s.me) [.scored s.me bf true]
+  let b ← fire (t.rich s.me) [.scored s.me bf true] { yes := false }
+  let c ← fire (t.fund s.me 0) [.scored s.me bf true]
+  let d ← fire (t.rich s.me) [.scored s.me bf false]
+  return a.tired l == some false && a.tired other == some true && (a.poolOf s.me).energy == 11 &&
+    b.tired l == some true && c.tired l == some true && d.tired l == some true
+
+-- Bard, Mercurial (SFD-079): when played, the player may exhaust their legend to move any number
+-- of their units to an open battlefield
+#guard tsf fun s => do
+  let (s1, b) ← put s s.me "SFD-079" .hand
+  let l ← s1.legendOf s.me
+  let (s3, u) ← put s1 s.me "OGN-051" .base
+  let a ← play s3 s.me b
+  let n ← play s3 s.me b [] { yes := false }
+  let t ← play (s3.tire l) s.me b
+  return a.tired l == some true && (a.obj? u).any (·.loc == some s.bf0) &&
+    (n.obj? u).any (·.loc.isNone) && n.tired l == some false && (t.obj? u).any (·.loc.isNone)
 
 end RiftboundTest

@@ -1087,8 +1087,15 @@ def SFD_039.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Royal Entourage: the effect is not written yet. -/
-def SFD_039 : CardDef := SFD_039.meta
+/-- Royal Entourage. -/
+def SFD_039 : CardDef :=
+  { SFD_039.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.eitherOf (EffectList.ofList
+        [.prim (.ready (Selector.one .any .inLegendZone [])),
+         .prim (.exhaust (Selector.one .any .inLegendZone []))]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-040
 /--
@@ -1222,8 +1229,14 @@ def SFD_044.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Legion Quartermaster: the effect is not written yet. -/
-def SFD_044 : CardDef := SFD_044.meta
+/-- Legion Quartermaster. -/
+def SFD_044 : CardDef :=
+  { SFD_044.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .gear]]
+        (.prim (.returnToHand (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-045
 /--
@@ -2062,8 +2075,13 @@ def SFD_075.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Prize of Progress: the effect is not written yet. -/
-def SFD_075 : CardDef := SFD_075.meta
+/-- Prize of Progress. -/
+def SFD_075 : CardDef :=
+  { SFD_075.meta with
+
+    abilities := [.triggered (.onSelf .useGearAbility)
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-076
 /--
@@ -2162,8 +2180,17 @@ def SFD_079.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Bard, Mercurial: the effect is not written yet. -/
-def SFD_079 : CardDef := SFD_079.meta
+/-- Bard, Mercurial. -/
+def SFD_079 : CardDef :=
+  { SFD_079.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+        (.ifThen (.cmp .ge (.count (Selector.all .friendly .inLegendZone [.ready])) (.const 1))
+          (.may (.seqOf [.prim (.exhaust (Selector.one .friendly .inLegendZone [.ready])),
+            .forEach (Selector.all .friendly .anywhere [.ofType .unit])
+              (.may (.prim (.move .it (.at_ (.slot 0)))))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-080
 /--
@@ -3087,8 +3114,12 @@ def SFD_113.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Lucian, Merciless: the effect is not written yet. -/
-def SFD_113 : CardDef := SFD_113.meta
+/-- Lucian, Merciless. -/
+def SFD_113 : CardDef :=
+  { SFD_113.meta with
+
+    abilities := [.triggered (.onSelf .conquer) (.of [] (.prim (.ready .self))) (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-114
 /--
@@ -3299,8 +3330,13 @@ def SFD_121.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Black Market Broker: the effect is not written yet. -/
-def SFD_121 : CardDef := SFD_121.meta
+/-- Black Market Broker. -/
+def SFD_121 : CardDef :=
+  { SFD_121.meta with
+
+    abilities := [.triggered (.onSelf .playHidden)
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-122
 /--
@@ -3744,8 +3780,13 @@ def SFD_137.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Harpoon Squad: the effect is not written yet. -/
-def SFD_137 : CardDef := SFD_137.meta
+/-- Harpoon Squad. -/
+def SFD_137 : CardDef :=
+  { SFD_137.meta with
+
+    abilities := [.triggered { event := .move, condition := .matches .self .fromBattlefield }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-138
 /--
@@ -4042,8 +4083,15 @@ def SFD_148.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Draven, Audacious: the effect is not written yet. -/
-def SFD_148 : CardDef := SFD_148.meta
+/-- Draven, Audacious. -/
+def SFD_148 : CardDef :=
+  { SFD_148.meta with
+
+    abilities := [.triggered (.onSelf .winCombat) (.of [] (.prim (.score .you (.const 1))))
+        (.perTurn 1),
+      .triggered (.onSelf .die)
+        (.of [] (.ifThen .inCombat (.prim (.score .opponent (.const 1))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-149
 /--
@@ -5680,8 +5728,15 @@ def SFD_210.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Hall of Legends: the effect is not written yet. -/
-def SFD_210 : CardDef := SFD_210.meta
+/-- Hall of Legends. -/
+def SFD_210 : CardDef :=
+  { SFD_210.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.canPay ⟨1, []⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
+          .prim (.ready (Selector.one .friendly .inLegendZone []))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-211
 /--

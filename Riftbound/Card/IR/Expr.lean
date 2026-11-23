@@ -155,6 +155,8 @@ inductive Filter where
   | token
   /-- Is a spell that chooses a unit or a gear of the player the effect belongs to. -/
   | choosesMine
+  /-- Made its last move from a Battlefield. -/
+  | fromBattlefield
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/

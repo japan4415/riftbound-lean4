@@ -212,6 +212,8 @@ inductive TriggerEvent where
   /-- A player chooses a unit of theirs that is at this Battlefield with a spell: the choice made
   when the spell is played (not the choices made as it resolves, nor those of abilities). -/
   | chosenHere
+  /-- The player uses an activated ability of a gear of theirs (a unit of theirs watches). -/
+  | useGearAbility
   /-- The unit is chosen by a spell of its player ("when you choose me with a spell"); a Legend,
   a Gear or a Unit that watches the units chosen has a subject that is a selector. -/
   | chosen
