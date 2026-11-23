@@ -165,6 +165,70 @@ def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
       (k.energy + s.costRaise c)
     { k with energy := e })
 
+/-- The cost less `k`: the Energy first, then the Power symbols. -/
+def Cost.less (c : Cost) (k : Nat) : Cost :=
+  { energy := c.energy - k, power := c.power.drop (k - c.energy) }
+
+/-- How much less the optional additional costs of the player cost (the passive abilities of their
+objects: Ezreal, Prodigy), and how much less their Repeat costs (Marai Spire). -/
+def GameState.extraCuts (s : GameState) (p : PlayerId) : Nat × Nat :=
+  s.passiveSources.foldl (fun acc g =>
+    match s.sourceOwner g with
+    | some o =>
+      if o.controller == p then
+        (s.activeMods g).foldl (fun acc m =>
+          match m with
+          | .extraCostLess n => (acc.1 + n, acc.2)
+          | .repeatCostLess n => (acc.1, acc.2 + n)
+          | _ => acc) acc
+      else acc
+    | none => acc) (0, 0)
+
+/-- The optional additional costs the card may pay when the player plays it now: those it prints
+(Accelerate, Repeat, an extra cost), less what the passive abilities cut, and the Repeat that an
+effect of the turn gives the next Spell, for its cost (Temporal Portal). -/
+def GameState.extrasFor (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List Cost :=
+  let cuts := s.extraCuts p
+  d.additionalCost.toList.map (·.less cuts.1) ++ d.keywords.filterMap (fun i =>
+    match i.keyword, i.arg with
+    | .accelerate, _ =>
+      if d.hasType .unit then some ((⟨1, [.own]⟩ : Cost).less cuts.1) else none
+    | .repeat_, .cost k => if d.hasType .spell then some (k.less (cuts.1 + cuts.2)) else none
+    | _, _ => none) ++
+  (if d.hasType .spell && (s.fxOf p).any (· == .nextSpellRepeat) then
+    [((s.effCost p c d).getD ⟨0, []⟩).less (cuts.1 + cuts.2)]
+  else [])
+
+/-- The costs the card may be played for now: its cost, or its cost with one additional cost. -/
+def GameState.playCostsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost) :
+    List Cost :=
+  cost :: (s.extrasFor p c d).map cost.plus
+
+/-- The payment pays the cost of the card, or the cost with an additional cost. -/
+def GameState.paysForX (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
+    (pay : RunePool.Payment) : Bool :=
+  (s.playCostsOf p c d cost).any (fun k => k.paidBy d.domains pay)
+
+/-- Every payment that pays the cost of the card, with or without an additional cost. -/
+def GameState.playPaymentsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) : List RunePool.Payment :=
+  (s.playCostsOf p c d cost).flatMap (fun k => k.payments d.domains)
+
+/-- The payments listed are exactly the payments that pay. -/
+theorem GameState.mem_playPaymentsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) (pay : RunePool.Payment) :
+    pay ∈ s.playPaymentsOf p c d cost ↔ s.paysForX p c d cost pay = true := by
+  simp only [playPaymentsOf, paysForX, List.mem_flatMap, List.any_eq_true, Cost.mem_payments]
+
+/-- A payment that pays takes out as much as one of the costs it can pay. -/
+theorem GameState.paysForX_total {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
+    {cost : Cost} {pay : RunePool.Payment} (h : s.paysForX p c d cost pay = true) :
+    ∃ k ∈ s.playCostsOf p c d cost, pay.energy + pay.power.length = k.total := by
+  unfold paysForX at h
+  rw [List.any_eq_true] at h
+  obtain ⟨k, hk, hp⟩ := h
+  exact ⟨k, hk, Cost.total_of_paidBy hp⟩
+
 /-- The payment pays more than the cost of the card: an additional cost is paid. -/
 def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (pay : RunePool.Payment) : Bool :=
@@ -181,7 +245,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     | some o, some d =>
       o.owner == p && (d.hasType .unit || d.hasType .gear) &&
         (match s.effCost p c d with
-          | some cost => d.paysFor cost pay
+          | some cost => s.paysForX p c d cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).isSome &&
         -- a card that is played only to a Battlefield is not played to the Base
@@ -247,7 +311,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | some e => targetsOk s p c e.choices targets
           | none => false) &&
         (match s.effCost p c d with
-          | some cost => d.paysFor cost pay
+          | some cost => s.paysForX p c d cost pay
           | none => false) &&
         ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool targets)
     | _, _ => false
@@ -269,7 +333,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ (d.hasType .unit = true ∨ d.hasType .gear = true) ∧
         s.effCost p c d = some cost ∧
-      d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
+      s.paysForX p c d cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨⟨hph, -⟩, hrest⟩ := h
@@ -476,7 +540,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     {targets : List ObjId} (h : castable s p c pay targets = true) :
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ d.hasType .spell = true ∧ s.effCost p c d = some cost ∧
-      d.paysFor cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
+      s.paysForX p c d cost pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨⟨hph, -⟩, hrest⟩ := h
@@ -687,7 +751,7 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
     | some d =>
       match s.effCost p c d with
       | some cost =>
-        (d.playPayments cost).flatMap (fun pay =>
+        (s.playPaymentsOf p c d cost).flatMap (fun pay =>
           ((playTargets s p c d).filter (fun ts => decide (PlayOk s p c pay ts))).map
             (fun ts => ⟨.player p, .playCard c pay ts⟩))
       | none => []
@@ -713,7 +777,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         exact ⟨c, pay, ts, rfl, hc, hok⟩
   · rintro ⟨c, pay, ts, rfl, hc, hok⟩
     have hdc : ∃ d cost, s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-        d.paysFor cost pay = true ∧ ts ∈ playTargets s p c d := by
+        s.paysForX p c d cost pay = true ∧ ts ∈ playTargets s p c d := by
       rcases hok with ⟨hts, h⟩ | h
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h
         exact ⟨d, cost, hd, hcost, hpaid, (mem_playTargets s p c d ts).mpr (Or.inl hts)⟩
@@ -726,7 +790,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     obtain ⟨d, cost, hd, hcost, hpaid, hts⟩ := hdc
     refine ⟨c, hc, ?_⟩
     simp only [hd, hcost, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq]
-    exact ⟨pay, (CardDef.mem_playPayments _ _ _).mpr hpaid, ts, ⟨hts, hok⟩, rfl⟩
+    exact ⟨pay, (GameState.mem_playPaymentsOf _ _ _ _ _ _).mpr hpaid, ts, ⟨hts, hok⟩, rfl⟩
 
 /-- Play a card of the hand with the payment and the targets: a Spell is cast, and goes to the
 Chain with the players to pass (CR 354, 311-313); a Unit or a Gear is played at once. `rest` is the

@@ -187,7 +187,9 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
   s.phase == .main &&
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
-      o.controller == p && s.abilityZoneOk p src idx &&
+      -- a Battlefield is used by the player who controls it
+      (if d.hasType .battlefield then o.control == some p else o.controller == p) &&
+        s.abilityZoneOk p src idx &&
         match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
           match costPlan costs with
@@ -372,7 +374,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
             | some c => c.paidBy d.domains pay = true
             | none => pay = ⟨0, []⟩) ∧
             targetsOk s p src body.choices ts = true ∧ ∃ o, s.obj? src = some o ∧
-              o.controller = p := by
+              (o.controller = p ∨ o.control = some p) := by
   unfold activatable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨hph, h⟩ := h
@@ -382,8 +384,15 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     cases hd : s.cardDef? src with
     | none => simp [ho, hd] at h
     | some d =>
-      simp only [ho, hd, Bool.and_eq_true, beq_iff_eq] at h
-      obtain ⟨⟨hctl, huse⟩, h⟩ := h
+      simp only [ho, hd, Bool.and_eq_true] at h
+      obtain ⟨⟨hctl0, huse⟩, h⟩ := h
+      have hctl : o.controller = p ∨ o.control = some p := by
+        by_cases hb : d.hasType .battlefield = true
+        · simp only [hb, ite_true, beq_iff_eq] at hctl0
+          exact Or.inr hctl0
+        · simp only [Bool.not_eq_true] at hb
+          simp only [hb, Bool.false_eq_true, ite_false, beq_iff_eq] at hctl0
+          exact Or.inl hctl0
       cases ha : d.fullAbilities[idx]? with
       | none => simp [ha] at h
       | some ab =>

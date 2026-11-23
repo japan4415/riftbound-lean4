@@ -162,7 +162,8 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
-        | .nextSpellCostMinus _ | .nextUnitReady => !s.playedSince p f.kind.playType f.stamp
+        | .nextSpellCostMinus _ | .nextUnitReady | .nextSpellRepeat =>
+          !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
 /-- Units the player plays now enter ready, by an effect of the turn. -/
@@ -654,6 +655,11 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | _ => none)).foldl Nat.max 0)
   | .heldPoints =>
     some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
+  | .spellsChoseEnemy =>
+    some (s.objects.toList.filter (fun (k, o) =>
+      o.owner == p && o.playedTurn == some s.turn &&
+        ((s.cardDef? ⟨k⟩).any (·.hasType .spell)) &&
+        o.targets.any (fun t => (s.obj? t).all (fun x => x.controller != p)))).length
   | .powerSpent => some (s.poolOf p).spent
   | .gearsPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>
@@ -722,6 +728,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
+  | .legendReady =>
+    some ((s.zone (.player p .legendZone)).any (fun l => (s.obj? l).any (fun o => !o.exhausted)))
   | .openConquered =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .openConquest && f.who == p &&
       f.target == s.hereOf self))

@@ -61,6 +61,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .highestMight s => Selector.ok c s
   | .kwAmount s _ => Selector.ok c s
   | .cardsPlayed => true
+  | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
@@ -217,6 +218,9 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
+  | .extraCostLess _ => true
+  | .repeatCostLess _ => true
+  | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear => true
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true

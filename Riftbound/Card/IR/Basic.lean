@@ -114,9 +114,14 @@ inductive TurnEffect where
   | unitsBuffed
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
+  /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
+  Pursuit: "When I conquer, you may move me to my base"). -/
+  | grantsAbility (card : String) (idx : Nat)
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)
+  /-- The next Spell the player plays this turn has Repeat, for its own cost (Temporal Portal). -/
+  | nextSpellRepeat
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
   | damagePrevented
   /-- Spells and abilities deal no damage this turn. -/
@@ -162,6 +167,7 @@ deriving DecidableEq, Repr, Hashable
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
 def TurnEffect.playType : TurnEffect → CardType
   | .nextSpellCostMinus _ => .spell
+  | .nextSpellRepeat => .spell
   | _ => .unit
 
 /-- A point of the turn a delayed effect or a trigger waits for (CR 314-317). -/

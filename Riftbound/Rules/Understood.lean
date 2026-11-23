@@ -54,6 +54,7 @@ def Amount.understood : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
@@ -85,6 +86,7 @@ def Amount.understoodC : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
@@ -191,6 +193,7 @@ def Condition.understood : Condition → Bool
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
   | .inCombat => true
+  | .legendReady => true
   | .openConquered => true
   | .legion => true
   | .paid => true
@@ -348,6 +351,9 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .extraCostLess _ => true
+  | .repeatCostLess _ => true
+  | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true

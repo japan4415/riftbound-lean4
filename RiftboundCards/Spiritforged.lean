@@ -2251,8 +2251,13 @@ def SFD_078.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Temporal Portal: the effect is not written yet. -/
-def SFD_078 : CardDef := SFD_078.meta
+/-- Temporal Portal. -/
+def SFD_078 : CardDef :=
+  { SFD_078.meta with
+
+    abilities := [.activated [.exhaustSelf, .pay ⟨0, [.any]⟩] .normal
+      (EffectDef.of [] (.prim (.turnEffect .nextSpellRepeat))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-079
 /--
@@ -2308,8 +2313,17 @@ def SFD_080.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Bellows Breath: the effect is not written yet. -/
-def SFD_080 : CardDef := SFD_080.meta
+/-- Bellows Breath. -/
+def SFD_080 : CardDef :=
+  { SFD_080.meta with
+
+    spellEffect := some (.of [Choice.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 1)),
+        .may (.prim (.deal (Selector.one .any .anywhere
+          [.ofType .unit, .at_ (.slot 0), .not .damaged]) (.const 1))),
+        .may (.prim (.deal (Selector.one .any .anywhere
+          [.ofType .unit, .at_ (.slot 0), .not .damaged]) (.const 1)))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-081
 /--
@@ -4306,8 +4320,15 @@ def SFD_149.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ezreal, Prodigy: the effect is not written yet. -/
-def SFD_149 : CardDef := SFD_149.meta
+/-- Ezreal, Prodigy. -/
+def SFD_149 : CardDef :=
+  { SFD_149.meta with
+
+    abilities := [.triggered (.onSelf .play)
+        (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 2))]))
+        .unlimited,
+      .passive .always [.extraCostLess 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-150
 /--
@@ -5309,8 +5330,18 @@ def SFD_184.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Relentless Pursuit: the effect is not written yet. -/
-def SFD_184 : CardDef := SFD_184.meta
+/-- Relentless Pursuit. -/
+def SFD_184 : CardDef :=
+  { SFD_184.meta with
+
+    abilities := [.triggered (.onSelf .conquer) (.of [] (.may (.prim (.move .self .base))))
+      .unlimited],
+    spellEffect := some (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
+          (.cons (.prim (.move (.slot 0)
+            (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))) .nil)),
+        .prim (.markOn (.slot 0) (.grantsAbility "SFD-184" 0))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-185
 /--
@@ -5697,8 +5728,14 @@ def SFD_197.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Emperor of the Sands: the effect is not written yet. -/
-def SFD_197 : CardDef := SFD_197.meta
+/-- Emperor of the Sands. -/
+def SFD_197 : CardDef :=
+  { SFD_197.meta with
+
+    abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
+      (EffectDef.of [] (.ifThen (.cmp .ge .gearsPlayed (.const 1))
+        (.prim (.create "Sand Soldier" (.const 1) .atBase false)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-198
 /--
@@ -5747,8 +5784,14 @@ def SFD_199.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Prodigal Explorer: the effect is not written yet. -/
-def SFD_199 : CardDef := SFD_199.meta
+/-- Prodigal Explorer. -/
+def SFD_199 : CardDef :=
+  { SFD_199.meta with
+
+    abilities := [.activated [.exhaustSelf] .reaction
+      (EffectDef.of [] (.ifThen (.cmp .ge .spellsChoseEnemy (.const 2))
+        (.prim (.draw .you (.const 1))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-200
 /--
@@ -5798,8 +5841,17 @@ def SFD_201.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Chem-Baroness: the effect is not written yet. -/
-def SFD_201 : CardDef := SFD_201.meta
+/-- Chem-Baroness. -/
+def SFD_201 : CardDef :=
+  { SFD_201.meta with
+
+    abilities := [.triggered (.onSelf .youHold)
+        (.of [] (.ifThen (.matches .self .ready)
+          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
+          .nop)) .unlimited,
+      .passive (.cmp .ge (.points .you) (.sub .victoryScore (.const 3)))
+        [.manaExtraEnergy (Selector.all .friendly .anywhere [.named "Gold"]) (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-202
 /--
@@ -5987,8 +6039,17 @@ def SFD_208.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Forge of the Fluft: the effect is not written yet. -/
-def SFD_208 : CardDef := SFD_208.meta
+/-- Forge of the Fluft. -/
+def SFD_208 : CardDef :=
+  { SFD_208.meta with
+
+    abilities := [.activated [] .normal
+      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩],
+          Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen .legendReady
+          (.seqOf [.prim (.exhaust (Selector.one .friendly .inLegendZone [.ready])),
+            .prim (.attach (.slot 0) (.slot 1))]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-209
 /--
@@ -6048,8 +6109,12 @@ def SFD_211.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Marai Spire: the effect is not written yet. -/
-def SFD_211 : CardDef := SFD_211.meta
+/-- Marai Spire. -/
+def SFD_211 : CardDef :=
+  { SFD_211.meta with
+
+    abilities := [.passive .always [.repeatCostLess 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-212
 /--
