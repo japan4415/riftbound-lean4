@@ -655,10 +655,11 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .playedAnother => some (s.playedOther p self)
   | .canPay c => some (s.payNow p self c).isSome
   | .diedWith e =>
+    -- the object a watching ability is about, or (an ability of the dead card itself) the card
     some (match env.slots.head? with
       | some (Value.obj o) =>
         s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.target == some o)
-      | _ => false)
+      | _ => s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.target == some self))
   | .fromHidden => some ((s.obj? self).any (·.fromHidden))
   -- the passives are read from the cards as printed (their conditions are not asked)
   | .hasFriendlyCard cid =>

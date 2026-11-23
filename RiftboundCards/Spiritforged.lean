@@ -518,8 +518,16 @@ def SFD_019.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Assembly Rig: the effect is not written yet. -/
-def SFD_019 : CardDef := SFD_019.meta
+/-- Assembly Rig. -/
+def SFD_019 : CardDef :=
+  { SFD_019.meta with
+
+    abilities := [.activated [.pay ⟨1, [.domain .fury]⟩, .exhaustSelf] .normal
+      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [.ofType .unit]))
+          (.const 1))
+        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [.ofType .unit])),
+          .prim (.create "Mech" (.const 1) .atBase false)]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-020
 /--
@@ -994,8 +1002,15 @@ def SFD_036.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Lonely Poro: the effect is not written yet. -/
-def SFD_036 : CardDef := SFD_036.meta
+/-- Lonely Poro. -/
+def SFD_036 : CardDef :=
+  { SFD_036.meta with
+
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.ifThen (.cmp .eq (.count (Selector.all .friendly .anywhere
+          [.ofType .unit, .at_ .self])) (.const 0))
+        (.prim (.draw .you (.const 1))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-037
 /--
@@ -1242,8 +1257,14 @@ def SFD_046.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Poro Snax: the effect is not written yet. -/
-def SFD_046 : CardDef := SFD_046.meta
+/-- Poro Snax. -/
+def SFD_046 : CardDef :=
+  { SFD_046.meta with
+
+    abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+      .activated [.pay ⟨1, [.domain .calm]⟩, .exhaustSelf] .normal
+        (.of [] (.seqOf [.prim (.kill .self), .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-047
 /--
@@ -1340,8 +1361,19 @@ def SFD_050.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Azir, Ascendant: the effect is not written yet. -/
-def SFD_050 : CardDef := SFD_050.meta
+/-- Azir, Ascendant. -/
+def SFD_050 : CardDef :=
+  { SFD_050.meta with
+
+    abilities := [.activated [.pay ⟨0, [.domain .calm]⟩] .action
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
+        (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs .self]))
+          (.seqOf [.prim (.swapPlaces .self (.slot 0)),
+            .forEach (Selector.all .friendly .anywhere
+                [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)])
+              (.may (.prim (.attach .it .self)))]) .nop))
+      (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-051
 /--
@@ -2165,8 +2197,20 @@ def SFD_081.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Card Sharp: the effect is not written yet. -/
-def SFD_081 : CardDef := SFD_081.meta
+/-- Card Sharp. -/
+def SFD_081 : CardDef :=
+  { SFD_081.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.seqOf [
+        .may (.prim (.create "Gold" (.const 1) .atBase false)),
+        .bind ⟨"g"⟩ (.count (Selector.all .enemy .atBase [.named "Gold"]))
+          (.seqOf [
+            .eachPlayer .eachOpponent (.may (.prim (.create "Gold" (.const 1) .atBase false))),
+            .ifThen (.cmp .gt (.count (Selector.all .enemy .atBase [.named "Gold"]))
+                (.var ⟨"g"⟩))
+              (.prim (.create "Gold" (.const 1) .atBase false)) .nop])])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-082
 /--
@@ -2356,8 +2400,18 @@ def SFD_088.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Renata Glasc, Mastermind: the effect is not written yet. -/
-def SFD_088 : CardDef := SFD_088.meta
+/-- Renata Glasc, Mastermind. -/
+def SFD_088 : CardDef :=
+  { SFD_088.meta with
+
+    abilities := [.activated [.pay ⟨1, [.domain .mind]⟩] .normal
+        (.of [] (.ifThen (.matches .self .onBattlefield) (.prim (.draw .you (.const 1))) .nop))
+        .unlimited,
+      .activated [.pay ⟨4, [.domain .mind, .domain .mind, .domain .mind, .domain .mind]⟩,
+        .exhaustSelf] .normal
+        (.of [] (.ifThen (.matches .self .onBattlefield) (.prim (.score .you (.const 1))) .nop))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-089
 /--
@@ -4280,8 +4334,16 @@ def SFD_160.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Zaun Punk: the effect is not written yet. -/
-def SFD_160 : CardDef := SFD_160.meta
+/-- Zaun Punk. -/
+def SFD_160 : CardDef :=
+  { SFD_160.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear]))
+          (.const 1))
+        (.may (.seqOf [.prim (.kill (Selector.one .friendly .anywhere [.ofType .gear])),
+          .prim (.kill (Selector.one .any .anywhere [.ofType .gear]))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-161
 /--
@@ -4464,8 +4526,13 @@ def SFD_167.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Unsung Hero: the effect is not written yet. -/
-def SFD_167 : CardDef := SFD_167.meta
+/-- Unsung Hero. -/
+def SFD_167 : CardDef :=
+  { SFD_167.meta with
+
+    abilities := [.triggered { event := .die, condition := .diedWith .mightyUnitDied }
+      (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-168
 /--
@@ -4884,8 +4951,14 @@ def SFD_183.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Purifier: the effect is not written yet. -/
-def SFD_183 : CardDef := SFD_183.meta
+/-- Purifier. -/
+def SFD_183 : CardDef :=
+  { SFD_183.meta with
+
+    abilities := [.passive .always
+      [.keyword (Selector.all .friendly .anywhere [.ofType .unit, .attached])
+        { keyword := .assault, arg := .amount 1 }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-184
 /--
@@ -5160,8 +5233,19 @@ def SFD_193.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Grandmaster at Arms: the effect is not written yet. -/
-def SFD_193 : CardDef := SFD_193.meta
+/-- Grandmaster at Arms. -/
+def SFD_193 : CardDef :=
+  { SFD_193.meta with
+
+    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩, .not .isAttached],
+            .targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.prim (.attach (.slot 0) (.slot 1)))) .unlimited,
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩, .isAttached],
+            .targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.prim (.attach (.slot 0) (.slot 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-194
 /--

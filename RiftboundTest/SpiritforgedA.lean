@@ -1663,5 +1663,169 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let r3 := (killObj r2 u).1
   let r4 := settleChain {} 12 r3
   return r4.countIn s.me .base "SFD-062" == 0 && r4.countIn s.me .trash "SFD-062" == 1
+-- Assembly Rig (SFD-019): pay 1 Fury, exhaust, recycle a unit from the Trash: a 3 Might Mech token
+#guard tsf fun s => do
+  let (s1, rig) ← put s s.me "SFD-019" .base
+  let (s2, _) ← put s1 s.me "OGN-051" .trash
+  let (s3, _) ← put s2 s.me "OGN-004" .trash
+  let a ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
+  let n ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
+  let tr (x : GameState) := (x.zone (.player s.me .trash)).length
+  return a.countNamed s.me .base "Mech" == 1 && a.countIn s.me .trash "OGN-051" == 0 &&
+    a.countIn s.me .trash "OGN-004" == 1 && a.tired rig == some true && tr a + 1 == tr s3 &&
+    a.deckN s.me == s3.deckN s.me + 1 && n.countNamed s.me .base "Mech" == 1 &&
+    (activate (s3.tire rig) s.me rig 0 [] ⟨1, [.fury]⟩).isNone &&
+    (activate (s1.fund s.me 5 5) s.me rig 0 [] ⟨1, [.fury]⟩).isNone && s2.deckN s.me > 0
+
+-- Poro Snax (SFD-046): draw 1 when played; pay 1 Calm, exhaust, kill it: draw 1
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-046" .base
+  let a ← fire s1 [.played s.me g]
+  let b ← activate s1 s.me g 1 [] ⟨1, [.calm]⟩
+  return a.handN s.me == s1.handN s.me + 1 && b.handN s.me == s1.handN s.me + 1 &&
+    (b.obj? g).isNone && b.countIn s.me .trash "SFD-046" == 1 &&
+    (activate s1 s.me g 1 [] ⟨1, []⟩).isNone
+
+-- Renata Glasc, Mastermind (SFD-088): at a battlefield only: pay 1 Mind to draw 1; pay 4 Mind and
+-- exhaust to score 1 point (an ability with a guard cannot be used while the guard is false)
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-088" s.bf0
+  let (s2, q) ← put s s.me "SFD-088" .base
+  let a ← activate s1 s.me r 0 [] ⟨1, [.mind]⟩
+  let b ← activate s1 s.me r 1 [] ⟨4, [.mind, .mind, .mind, .mind]⟩
+  return a.handN s.me == s1.handN s.me + 1 && b.pointsOf s.me == s1.pointsOf s.me + 1 &&
+    b.tired r == some true && (activate s2 s.me q 0 [] ⟨1, [.mind]⟩).isNone &&
+    (activate s2 s.me q 1 [] ⟨4, [.mind, .mind, .mind, .mind]⟩).isNone
+
+-- Azir, Ascendant (SFD-050): pay 1 Calm: swap places with a friendly unit; may take its Equipment;
+-- once per turn
+#guard tsf fun s => do
+  let (s1, az) ← put s s.me "SFD-050" .base
+  let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let hooked := s3.modObj g (fun o => { o with attached := some u })
+  let r ← activate hooked s.me az 0 [u] ⟨0, [.calm]⟩
+  let n ← activate hooked s.me az 0 [u] ⟨0, [.calm]⟩ { yes := false }
+  return (r.obj? az).any (·.loc == some s.bf0) && (r.obj? u).any (·.loc.isNone) &&
+    (r.obj? g).any (·.attached == some az) && (n.obj? g).any (·.attached == some u) &&
+    (n.obj? az).any (·.loc == some s.bf0) && (activate r s.me az 0 [u] ⟨0, [.calm]⟩).isNone &&
+    (r.obj? az).any (·.used.length == 1)
+
+-- Grandmaster at Arms (SFD-193), a Legend: attach a detached Equipment to a unit (pay 1, exhaust);
+-- move an attached Equipment to another unit (exhaust)
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-193" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, v) ← put s2 s.me "OGN-051" .base
+  let (s4, g) ← put s3 s.me "SFD-042" .base
+  let a ← activate s4 s.me l 0 [g, u] ⟨1, []⟩
+  let hooked := s4.modObj g (fun o => { o with attached := some u })
+  let b ← activate hooked s.me l 1 [g, v]
+  return (a.obj? g).any (·.attached == some u) && a.tired l == some true &&
+    (b.obj? g).any (·.attached == some v) && b.tired l == some true &&
+    (activate hooked s.me l 0 [g, v] ⟨1, []⟩).isNone && (activate s4 s.me l 1 [g, v]).isNone
+
+-- Purifier (SFD-183), a Legend: the units with an Equipment have Assault
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-183" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, w) ← put s2 s.me "OGN-051" .base
+  let (s4, g) ← put s3 s.me "SFD-042" .base
+  let (s5, e) ← put s4 s.you "OGN-051" .base
+  let (s6, h) ← put s5 s.you "SFD-042" .base
+  let s7 := (s6.modObj g (fun o => { o with attached := some u })).modObj h
+    (fun o => { o with attached := some e })
+  return s7.kwAmount u .assault == 1 && s7.kwAmount w .assault == 0 && s7.kwAmount e .assault == 0
+
+-- Lonely Poro (SFD-036): when it dies alone, draw 1 (a real death by `killObj`)
+#guard tsf fun s => do
+  let (s1, x) ← putAt s s.me "SFD-036" s.bf0
+  let (b1, y) ← put s s.me "SFD-036" .base
+  let (s2, _) ← put b1 s.me "OGN-051" .base
+  let (s3, _) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s4, _) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s5, _) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s6, _) ← put s1 s.me "OGN-051" .base
+  let die (st : GameState) (u : ObjId) : Option GameState :=
+    let (st1, evs) := killObj st u
+    fire st1 evs
+  let _ := s4
+  let alone ← die s1 x
+  let company ← die s3 x
+  let elsewhere ← die s6 x
+  let enemy ← die s5 x
+  let atBase ← die b1 y
+  let baseCompany ← die s2 y
+  return alone.handN s.me == s1.handN s.me + 1 && company.handN s.me == s3.handN s.me &&
+    elsewhere.handN s.me == s6.handN s.me + 1 && enemy.handN s.me == s5.handN s.me + 1 &&
+    atBase.handN s.me == b1.handN s.me + 1 && baseCompany.handN s.me == s2.handN s.me
+
+-- Unsung Hero (SFD-167): when it dies and was Mighty (a real death), draw 2
+#guard tsf fun s => do
+  let (s1, x) ← put s s.me "SFD-167" .base
+  let big := s1.modObj x (fun o => { o with mightMods := [{ amount := 3, ends := .never }] })
+  let die (st : GameState) : Option GameState :=
+    let (st1, evs) := killObj st x
+    fire st1 evs
+  let a ← die big
+  let b ← die s1
+  return a.handN s.me == big.handN s.me + 2 && b.handN s.me == s1.handN s.me
+
+-- Zaun Punk (SFD-160): when played, may kill a friendly gear; if so, kill a gear
+#guard tsf fun s => do
+  let (s1, z) ← put s s.me "SFD-160" .hand
+  let (s2, mine) ← put s1 s.me "SFD-042" .base
+  let (s3, theirs) ← put s2 s.you "SFD-042" .base
+  let a ← play s3 s.me z [] { obj := fun o => o == mine || o == theirs }
+  let n ← play s3 s.me z [] { yes := false }
+  let none_ ← play s1 s.me z
+  return (a.obj? mine).isNone && (a.obj? theirs).isNone && (n.obj? mine).isSome &&
+    (n.obj? theirs).isSome && none_.countIn s.me .base "SFD-160" == 1
+
+-- Card Sharp (SFD-081): the player and each opponent may play a Gold; for each opponent who did,
+-- the player plays another
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-081" .hand
+  let a ← play s1 s.me c
+  let n ← play s1 s.me c [] { yes := false }
+  return a.countIn s.me .base "SFD-T03" == 2 && a.countIn s.you .base "SFD-T03" == 1 &&
+    n.countIn s.me .base "SFD-T03" == 0 && n.countIn s.you .base "SFD-T03" == 0
+
+-- (review) Assembly Rig: with no unit in the Trash the ability cannot be used at all (a guard)
+#guard tsf fun s => do
+  let (s1, rig) ← put s s.me "SFD-019" .base
+  let (s2, _) ← put s1 s.me "OGN-004" .trash
+  return (activate s1 s.me rig 0 [] ⟨1, [.fury]⟩).isNone &&
+    (activate s2 s.me rig 0 [] ⟨1, [.fury]⟩).isNone
+
+-- (review) Zaun Punk: with only an enemy gear, nothing is killed (the cost is a friendly gear)
+#guard tsf fun s => do
+  let (s1, z) ← put s s.me "SFD-160" .hand
+  let (s2, theirs) ← put s1 s.you "SFD-042" .base
+  let r ← play s2 s.me z
+  return (r.obj? theirs).isSome && r.countIn s.me .base "SFD-160" == 1
+
+-- (review) Azir, Ascendant cannot choose itself; Grandmaster at Arms moves only its player's
+-- Equipment; Lonely Poro's enemies at the same place do not count (above)
+#guard tsf fun s => do
+  let (s1, az) ← put s s.me "SFD-050" .base
+  return (activate s1 s.me az 0 [az] ⟨0, [.calm]⟩).isNone
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-193" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.you "SFD-042" .base
+  return (activate s3 s.me l 0 [g, u] ⟨1, []⟩).isNone
+
+-- (review) Azir, Ascendant: if it left play before the ability resolves, nothing is swapped
+#guard tsf fun s => do
+  let (s1, az) ← put s s.me "SFD-050" .base
+  let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
+  let act : Action := ⟨.player s.me, .activate az 0 ⟨0, [.calm]⟩ [u]⟩
+  let s3 ← match step 100 (s2.rich s.me) act with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let s4 := (killObj s3 az).1
+  let r := settleChain {} 12 s4
+  return (r.obj? u).any (·.loc == some s.bf0)
 
 end RiftboundTest
