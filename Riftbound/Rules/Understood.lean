@@ -134,7 +134,9 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
-  | .sameController s => s.understood
+  | .sameController .self => true
+  | .sameController (.slot _) => true
+  | .sameController (.var _) => true
   | .givesLegendsAttach => true
   | .copiesText => true
   | .takenByMyCard => true

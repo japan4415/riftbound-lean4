@@ -810,7 +810,7 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId) (acc : 
 
 /-- The objects a choice can pick when nothing was picked before. -/
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
-  c.candidatesAfter s p self [] 
+  c.candidatesAfter s p self []
 
 /-- Whether a choice is one that a Spell can make for now: one target. -/
 def Choice.simple : Choice → Bool

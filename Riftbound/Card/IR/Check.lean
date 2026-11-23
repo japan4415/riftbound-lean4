@@ -85,6 +85,7 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .attachedTo s => Selector.ok c s
   | .not f => Filter.ok c f
   | .sameAs s => Selector.ok c s
+  | .sameController s => Selector.ok c s
   | _ => true
 
 /-- Every filter of a list refers only to what is there. -/
