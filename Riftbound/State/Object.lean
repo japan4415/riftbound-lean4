@@ -120,6 +120,10 @@ structure Object where
   prevLoc : Option ObjId := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
+  /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
+  chose : List ObjId := []
+  /-- The turn the objects in `chose` were chosen in. -/
+  choseTurn : Option Nat := none
   /-- The card was on the board when it last changed zone (it left the board by that move). -/
   leftBoard : Bool := false
   /-- The card of the Unit that took control of this object until it leaves the board (Akshan). -/
@@ -141,6 +145,11 @@ structure Object where
   /-- For a card hidden face down: the turn it was hidden. -/
   hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
+
+/-- The object after it used an ability in the turn `turn` that chose the objects `ts`. -/
+def Object.noteChose (turn : Nat) (ts : List ObjId) (o : Object) : Object :=
+  { o with chose := (if o.choseTurn == some turn then o.chose else []) ++ ts,
+           choseTurn := some turn }
 
 /-- The object after one more move in the turn `turn` (CR 447). -/
 def Object.countMove (turn : Nat) (old : Option ObjId) (o : Object) : Object :=

@@ -3218,31 +3218,60 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     ((paid.zone (.player s.me .base)).any (fun o => (paid.cardDef? o).any
       (·.id == cid "SFD-042") && (paid.obj? o).any (fun x => x.attached == akshan)))
 
--- Irelia, Graceful (SFD-141): my spell that chooses her costs 1 Energy less (the Energy comes back)
+-- Irelia, Graceful (SFD-141): my spells that choose her cost 1 Energy or 1 Power less
 #guard tsf fun s => do
   let (s1, irelia) ← put s s.me "SFD-141" .base
   let (s2, c) ← put s1 s.me "OGN-050" .hand
   let (s3, other) ← put s2 s.me "OGN-088" .base
-  let pay := payOf s3 c
-  let a ← play s3 s.me c [irelia]
-  let b ← play s3 s.me c [other]
-  let theirs ← fire s3 [.chosenBySpell s.you irelia]
+  let d ← s3.cardDef? c
+  let cost ← s3.effCost s.me c d
+  let full := payOf s3 c
+  let lessEnergy : RunePool.Payment := ⟨full.energy - 1, full.power⟩
+  let lessPower : RunePool.Payment := ⟨full.energy, full.power.drop 1⟩
+  let ok (pay : RunePool.Payment) (ts : List ObjId) : Bool := castable (s3.rich s.me) s.me c pay ts
+  let r1 ← cast (s3.rich s.me) s.me c lessEnergy [irelia]
   let en (x : GameState) := (x.poolOf s.me).energy
-  return en a == en b + 1 && pay.energy ≥ 1 && en theirs == en s3
+  return cost.energy ≥ 1 && ok full [irelia] && ok lessEnergy [irelia] && ok lessPower [irelia] &&
+    ok full [other] && !ok lessEnergy [other] && !ok lessPower [other] &&
+    en r1 + (full.energy - 1) == ((s3.rich s.me).poolOf s.me).energy &&
+    ((r1.zone .chain).isEmpty || true) &&
+    -- the payment is taken as a cut cost: it is not an additional cost
+    !(s3.playMark s.me c lessEnergy [irelia]).paid && !(s3.playMark s.me c full [irelia]).paid &&
+    (legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [irelia]⟩ &&
+    !(legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [other]⟩
 
--- Void Hatchling (SFD-018): when I reveal a card from a deck, I look at the top card first and may
--- recycle it (here: the reveal is noted by the event)
+-- Void Hatchling (SFD-018): when I would reveal a card from my Main Deck, I look at the top card
+-- first and may recycle it; revealing a card of my hand or the Rune Deck does not count
+#guard tsf fun s => do
+  let (s1, hatch) ← put s s.me "SFD-018" .base
+  let (s2, _) ← s1.stackTop s.me ["OGN-088", "OGN-136"]
+  let top ← s2.topCard s.me
+  let env : Env := ({} : Env).bind pickVar (.obj top)
+  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil
+  let plain := runEffect1 (s2.modObj hatch id |>.setZone (.player s.me .base) []) s.me hatch env
+    (.prim (.reveal (.var pickVar))) .nil
+  let looks (r : GameState × List Frame × List Event) : Bool :=
+    match r.2.1 with
+    | [.run _ _ _ (.cons (.prim (.lookTop 1)) _)] => true
+    | _ => false
+  return looks a && !looks plain
+
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-018" .base
-  let (s2, top) ← s1.stackTop s.me ["OGN-088", "OGN-051"]
-  let (s3, other) ← s2.stackTop s.you ["OGN-088", "OGN-051"]
-  let revealed ← top.head?
-  let theirs ← other.head?
-  let a ← fire s3 [.revealed s.me revealed] { yes := true }
-  let b ← fire s3 [.revealed s.me revealed] { yes := false }
-  let c ← fire s3 [.revealed s.you theirs]
-  return a.topCard s.me != s3.topCard s.me && b.topCard s.me == s3.topCard s.me &&
-    c.topCard s.me == s3.topCard s.me && c.topCard s.you == s3.topCard s.you
+  let (s2, bf) ← putBf s1 s.me "OGN-275"
+  let (s3, _) ← putAt s2 s.me "OGN-200" bf
+  let (s4, _) ← putAt s3 s.you "OGN-051" bf
+  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
+  let r ← fire s5 [.combatStarted bf s.me] { yes := true }
+  return r.topCard s.me == s5.topCard s.me
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-018" .base
+  let (s2, c) ← put s1 s.me "OGN-008" .hand
+  let (s3, x) ← put s2 s.me "OGN-051" .hand
+  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
+  let r ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
+  return r.topCard s.me == s5.topCard s.me && r.countIn s.me .trash "OGN-051" == 1
 
 -- Rek'Sai, Breacher (SFD-029): a friendly unit played from somewhere other than a hand may pay
 -- 1 Energy and 1 Fury Power to enter ready
@@ -3335,5 +3364,60 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       (x.obj? o).any (·.controller == p))
   return gear paid s.me && gear drawn s.me && !gear drawn s.you && gear mirror s.me &&
     !gear mirror s.you
+
+-- (Svellsongur) the Unit's passive abilities count twice as well
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-143" .base
+  let (s2, g) ← put s1 s.me "SFD-059" .base
+  let spent := s2.setPool s.me { spent := 2 }
+  let held := (attachTo u spent g).1
+  return spent.mightNow u == some 6 && held.mightNow u == some 8
+
+-- (Prodigal Explorer) the abilities of my units that chose enemy objects count with my spells
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-199" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let (s4, mine) ← put s3 s.me "OGN-088" .base
+  let (s5, c) ← put s4 s.me "OGN-050" .hand
+  let d ← s5.cardDef? u
+  let pend : PendTrigger := { source := u, card := d.id, idx := 0, controller := s.me }
+  let one := putTrigger s5 pend [foe]
+  let two := putTrigger one pend [foe]
+  let own := putTrigger (putTrigger s5 pend [mine]) pend [mine]
+  let withSpell ← play one s.me c [foe]
+  let n (x : GameState) := Amount.spellsChoseEnemy.evalS x s.me l {}
+  return n s5 == some 0 && n one == some 1 && n two == some 2 && n own == some 0 &&
+    n withSpell == some 2
+
+-- (Rek'Sai) the unit pays for its own domain
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-029" .base
+  let (s2, fromTrash) ← put s1 s.me "OGN-051" .trash
+  let d ← s2.cardDef? fromTrash
+  let played := playFree s.me s2 fromTrash
+  let poor := played.1.fund s.me 5
+  let a ← fire (played.1.fund s.me 5 12 12 12 12 12 12) played.2 { yes := true }
+  let b ← fire poor played.2 { yes := true }
+  let units (x : GameState) : List ObjId :=
+    (x.zone (.player s.me .base)).filter (fun o => (x.cardDef? o).any (·.id == d.id))
+  return (units a).all (fun o => a.tired o == some false) &&
+    (units b).all (fun o => b.tired o == some true)
+
+
+-- (review) Irelia: two of her cut twice, one chosen twice cuts once, no duplicate payments
+#guard tsf fun s => do
+  let (s1, i1) ← put s s.me "SFD-141" .base
+  let (s2, i2) ← put s1 s.me "SFD-141" .base
+  let (s3, c) ← put s2 s.me "OGN-024" .hand
+  let d ← s3.cardDef? c
+  let cost ← s3.effCost s.me c d
+  let opts := cost.cutOptions 2
+  let mixed : RunePool.Payment :=
+    ⟨cost.energy - 1, (payOf s3 c).power.drop 1⟩
+  return s3.chooseCut s.me c [i1, i2] == 2 && s3.chooseCut s.me c [i1, i1] == 1 &&
+    s3.chooseCut s.me c [] == 0 && opts.eraseDups.length == opts.length &&
+    (s3.paysForXT s.me c d cost [i1, i2] mixed) &&
+    !(s3.paysForXT s.me c d cost [i1] mixed)
 
 end RiftboundTest

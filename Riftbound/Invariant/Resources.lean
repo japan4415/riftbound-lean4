@@ -107,16 +107,16 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      c' ∈ s.playCostsOf p c d cost ∧
+    ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
+      b ∈ cost.cutOptions (s.chooseCut p c targets) ∧ c' ∈ s.playCostsOf p c d b ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h
   rw [hpool] at hpool'
   cases hpool'
-  obtain ⟨c', hc', h2⟩ := GameState.paysForX_total hpaid
-  refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
+  obtain ⟨b, hb, c', hc', h2⟩ := GameState.paysForXT_total hpaid
+  refine ⟨d, cost, b, c', hd, hc, hb, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool
   omega

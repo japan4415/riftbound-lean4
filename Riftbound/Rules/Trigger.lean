@@ -526,7 +526,7 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) : ∃ ts, trigLegal s
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) : GameState :=
-  let s1 := s.modObj t.source (fun o => { o with used := o.used ++ [t.idx] })
+  let s1 := s.modObj t.source (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)
   match addObject s1 (abilityItem t.card t.idx t.source t.controller (ts ++ t.subject.toList))
       .chain with
   | some r => r.1
@@ -573,7 +573,8 @@ def triggersStep (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
 /-- Putting one ability on the Chain is a safe change. -/
 theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId) :
     Safe s (putTrigger s t ts) := by
-  have h1 : Safe s (s.modObj t.source (fun o => { o with used := o.used ++ [t.idx] })) :=
+  have h1 : Safe s (s.modObj t.source
+      (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)) :=
     Safe.modObj s t.source (fun _ => rfl) (fun _ => rfl)
   unfold putTrigger
   dsimp only

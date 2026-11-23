@@ -91,6 +91,8 @@ inductive Prim where
   | hide (s : Selector)
   /-- Reveal cards. -/
   | reveal (s : Selector)
+  /-- Reveal, with nothing done first (what `reveal` does once a passive ability has had its say). -/
+  | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
   /-- Attach objects to an object. -/
@@ -318,6 +320,12 @@ inductive StaticMod where
   /-- (Of an Equipment's grants) the Unit it is attached to is banished when it dies, not put in the
   Trash (The Zero Drive: Deathknell, banish me). -/
   | banishOnDeath
+  /-- If the player would reveal cards from a deck, they look at the top card first and may recycle
+  it (Void Hatchling). -/
+  | lookBeforeReveal
+  /-- Spells of the player that choose this object cost this much less (1 Energy or 1 Power of
+  any domain: the player's choice) (Irelia). -/
+  | chosenSpellsCostLess (n : Nat)
   /-- The object has Assault equal to the number of objects the selector gives (Ancient Warmonger). -/
   | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/

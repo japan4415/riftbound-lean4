@@ -156,6 +156,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .discardCard s => Selector.ok c s
   | .hide s => Selector.ok c s
   | .reveal s => Selector.ok c s
+  | .revealNow s => Selector.ok c s
   | .create _ n _ _ => Amount.ok c n
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
@@ -220,6 +221,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
+  | .chosenSpellsCostLess _ => true
+  | .lookBeforeReveal => true
   | .banishOnDeath => true
   | .copiesUnitText => true
   | .extraCostLess _ => true
