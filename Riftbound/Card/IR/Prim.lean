@@ -234,6 +234,8 @@ inductive TriggerEvent where
   | conquerFromTrash
   /-- The player recycles one or more cards (CR 417). -/
   | recycle
+  /-- The player recycled a Rune (to the Rune Deck). -/
+  | recycleRune
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I

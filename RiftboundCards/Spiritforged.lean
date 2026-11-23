@@ -4127,8 +4127,13 @@ def SFD_143.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sivir, Mercenary: the effect is not written yet. -/
-def SFD_143 : CardDef := SFD_143.meta
+/-- Sivir, Mercenary. -/
+def SFD_143 : CardDef :=
+  { SFD_143.meta with
+
+    abilities := [.passive (.cmp .ge .powerSpent (.const 2))
+      [.mightPlus .self (.const 2), .keyword .self { keyword := .ganking }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-144
 /--
@@ -5845,8 +5850,17 @@ def SFD_203.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Battle Mistress: the effect is not written yet. -/
-def SFD_203 : CardDef := SFD_203.meta
+/-- Battle Mistress. -/
+def SFD_203 : CardDef :=
+  { SFD_203.meta with
+
+    abilities := [.triggered (.onSelf .recycleRune)
+        (.of [] (.ifThen (.matches .self .ready)
+          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
+          .nop)) .unlimited,
+      .triggered { event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+        (.of [] (.prim (.ready .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-204
 /--

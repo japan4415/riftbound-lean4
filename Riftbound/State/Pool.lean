@@ -33,6 +33,8 @@ structure RunePool where
   /-- Power of any domain (an `[Add]` of the rainbow Power): it can pay a Power symbol of any
   domain, when the Power of that domain is not there. -/
   any : Nat := 0
+  /-- How much Power was paid out of the Pool since it was last emptied (a count, not a resource). -/
+  spent : Nat := 0
 deriving DecidableEq, Repr
 
 namespace RunePool
@@ -105,7 +107,9 @@ def takePowers : RunePool → List Domain → Option RunePool
 
 /-- Pay (CR 445): `none` when the Pool cannot cover the payment. -/
 def spend (p : RunePool) (pay : Payment) : Option RunePool :=
-  if pay.energy ≤ p.energy then takePowers { p with energy := p.energy - pay.energy } pay.power
+  if pay.energy ≤ p.energy then
+    (takePowers { p with energy := p.energy - pay.energy } pay.power).map
+      (fun q => { q with spent := q.spent + pay.power.length })
   else none
 
 /-- Adding Energy adds exactly that much (CR 430). -/
@@ -175,9 +179,14 @@ theorem total_spend {p p' : RunePool} {pay : Payment} (h : p.spend pay = some p'
   unfold spend at h
   split at h
   · rename_i hle
-    have := total_takePowers pay.power h
-    simp only [total, totalPower] at this ⊢
-    omega
+    cases hq : takePowers { p with energy := p.energy - pay.energy } pay.power with
+    | none => simp [hq] at h
+    | some q =>
+      simp only [hq, Option.map_some, Option.some.injEq] at h
+      have := total_takePowers pay.power hq
+      subst h
+      simp only [total, totalPower] at this ⊢
+      omega
   · exact absurd h (by simp)
 
 /-- A payment is refused when the Energy is short. -/

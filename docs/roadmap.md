@@ -637,6 +637,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: ユニットの支配を得る（`takeControl`）と、そのユニットのいる Battlefield は、新しい支配者に Contested にされる（ほかの敵ユニットがいれば戦闘になる）。`openConquest` は、Cleanup で支配者が消えた Battlefield にも付く（守備側を全滅させた conquer でも、Yone は誘発する）。ターンの終わりの誘発は、Ending フェーズの始まりに一度だけ集める（そのあとに遊んだ Hostile Takeover は、戻らない）。Yone のダメージは、対象を選ばず、解決時に選ぶ。Hostile Takeover で、相手が先にそのユニットを動かした・殺したときは、何も起きない。ターンの終わりの誘発は、そのターンの最後のフェーズの開始（`phaseStarted .. .ending`）に出る。
 - **カードの数**: 動く Spiritforged は 199 枚から 201 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 20 — 死ぬ代わりに、Rune のリサイクル、使った Power
+
+- **死ぬ代わりに**: `GameState.deathSaver`（Guardian Angel: 付けたユニットが死ぬなら、代わりにその Equipment が死ぬ。Soraka: 同じ Battlefield の、Might の小さい味方が死ぬなら、代わりに）。助けられたユニットは、ダメージが消え、exhausted になり、base に戻る（`saveUnit`）。**読む場所は、致命的なダメージを与える瞬間（`dealObj`）と、`kill`（`killOrSave`）**。Cleanup の致命的なダメージの判定（Might が下がって死ぬ場合など）と、Temporary の死は、読まない（近似）。
+- **Rune のリサイクル**: Rune が Rune Deck へ動くと（`Event.moved`）、`TriggerEvent.recycleRune` が、そのプレイヤーの物と Legend に誘発する。
+- **使った Power**: `RunePool.spent`（Rune Pool が空になるまでに払った Power の数。Main の始まりと Ending で、Pool と一緒に消える）、`Amount.powerSpent`。
+- **書いたカード**: SFD-051（Guardian Angel）、173（Soraka, Wanderer）、024（Rell, Magnetic。無料で遊んだ Equipment を付ける。このターンに遊んで、まだ付いていない Equipment は、みな付く）、143（Sivir, Mercenary）、203（Battle Mistress）。
+- **近似**: Rell は、その手前に遊んだ付いていない Equipment（このターンに遊んだもの）も、付ける。Sivir の『2 つ以上の虹』は、Power を 2 つ以上払ったこと（`spent`）。
+- **カードの数**: 動く Spiritforged は 201 枚から 206 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

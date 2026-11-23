@@ -54,6 +54,7 @@ def Amount.understood : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
   | .heldPoints => true
@@ -84,6 +85,7 @@ def Amount.understoodC : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
   | .heldPoints => true
@@ -398,6 +400,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .chosenHere => t.subject == .self
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
+      | .recycleRune => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

@@ -251,6 +251,12 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .hiddenPlayed p =>
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .playHidden else [])
+  | .moved _ n (.player p .runeDeck) =>
+    -- a Rune recycled: the abilities of the player's objects and Legends that wait for it
+    if (s.obj? n).any (·.runeDomain.isSome) then
+      s.passiveSources.flatMap (fun u =>
+        if (s.obj? u).any (·.controller == p) then triggersOf s u p .recycleRune else [])
+    else []
   | .buffed u =>
     match s.obj? u with
     | some o =>

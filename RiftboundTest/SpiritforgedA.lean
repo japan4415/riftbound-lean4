@@ -2943,4 +2943,44 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     !withRell b "SFD-042" && b.handN s.me == s5.handN s.me && !withRell c "SFD-042" &&
     (a.poolOf s.me).energy == (s5.poolOf s.me).energy
 
+-- Sivir, Mercenary (SFD-143): once I have spent 2 or more Power this turn, +2 Might and Ganking
+#guard tsf fun s => do
+  let (s1, sivir) ← put s s.me "SFD-143" .base
+  let pool (n : Nat) : GameState := s1.setPool s.me { spent := n }
+  let paid := ((s1.rich s.me).poolOf s.me).spend ⟨0, [.fury, .calm]⟩
+  let (s2, other) ← put (pool 0) s.you "SFD-143" .base
+  return s1.mightNow sivir == some 4 && !s1.hasKw sivir .ganking &&
+    (pool 1).mightNow sivir == some 4 && !(pool 1).hasKw sivir .ganking &&
+    (pool 2).mightNow sivir == some 6 && (pool 2).hasKw sivir .ganking &&
+    (pool 5).mightNow sivir == some 6 && paid.any (·.spent == 2) &&
+    ((s2.setPool s.me { spent := 3 }).mightNow other == some 4)
+
+-- (the Power paid by playing a card is counted)
+#guard tsf fun s => do
+  let (s1, v) ← put s s.me "SFD-146" .hand
+  let a ← play s1 s.me v
+  let (t1, c) ← put s s.me "OGN-051" .hand
+  let b ← play t1 s.me c
+  return (a.poolOf s.me).spent == 1 && (b.poolOf s.me).spent == 0
+
+-- Battle Mistress (SFD-203): when I recycle a rune, I may exhaust my legend to play an exhausted
+-- Gold; when enemy units die, ready my legend
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-203" .legendZone
+  let rune ← (s1.zone (.player s.me .base)).find? (fun o =>
+    (s1.obj? o).any (·.runeDomain.isSome))
+  let rec_ ← applyRune s1 s.me rune .recycle
+  let a ← fire rec_.1 rec_.2
+  let b ← fire rec_.1 rec_.2 { yes := false }
+  let c ← fire (rec_.1.tire l) rec_.2
+  let exh ← applyRune s1 s.me rune .exhaust
+  let d ← fire exh.1 exh.2
+  let (t1, dead) ← put s1 s.you "OGN-051" .trash
+  let e ← fire (t1.tire l) [.died dead s.you]
+  let (t2, mine) ← put s1 s.me "OGN-051" .trash
+  let f ← fire (t2.tire l) [.died mine s.me]
+  return a.countIn s.me .base "SFD-T03" == 1 && a.tired l == some true &&
+    b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
+    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true
+
 end RiftboundTest

@@ -973,10 +973,10 @@ theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx
   · exact sendHome_safe s u
   · exact (sendHome_safe s u).trans (setExhausted_safe true _ u)
 
-/-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment attached
-to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the same
-Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies instead,
-`some none` if nothing does. -/
+/-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment
+attached to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the
+same Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies
+instead, `some none` if nothing does. -/
 def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
   match s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
       (s.cardDef? g).any (fun d => d.grants.any (fun ab =>

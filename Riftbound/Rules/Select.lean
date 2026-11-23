@@ -654,6 +654,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | _ => none)).foldl Nat.max 0)
   | .heldPoints =>
     some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
+  | .powerSpent => some (s.poolOf p).spent
   | .gearsPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn &&

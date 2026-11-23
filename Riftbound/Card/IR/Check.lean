@@ -61,6 +61,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .highestMight s => Selector.ok c s
   | .kwAmount s _ => Selector.ok c s
   | .cardsPlayed => true
+  | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
   | .heldPoints => true
