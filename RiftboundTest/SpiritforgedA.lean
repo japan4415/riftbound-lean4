@@ -2501,4 +2501,17 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let b ← fire a [.attached g aph] { fromEnd := some 1 }
   return (runesOf a).length == (runesOf s2).length + 1 && (runesOf b).length == (runesOf a).length
 
+-- (review) Ruin Runner: an enemy's pick of a target is refused, a choice at resolution skips it
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-105" .base
+  let (s2, v) ← put s1 s.me "OGN-051" .base
+  let ch : Choice := .targetOf .one .any .anywhere [.ofType .unit]
+  let cs := [ch]
+  return !targetsOk s2 s.you v cs [u] && targetsOk s2 s.you v cs [v] &&
+    targetsOk s2 s.me v cs [u] &&
+    ((s2.pickCandidates s.you v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).all
+      (· != u) &&
+    ((s2.pickCandidates s.me v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).any
+      (· == u)
+
 end RiftboundTest

@@ -592,7 +592,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **選べない**: `StaticMod.cant .self .beChosen`（パッシブ、いつでも）を読む（`GameState.blocksChoice`、`Select.lean`）。他のプレイヤーの呪文と能力は、そのユニットを対象に選べない（`Choice.candidates`）し、解決のときの選択（`pickCandidates`）にも出ない。自分のプレイヤーは、選べる。Deflect とは別（Deflect は、払えば選べる）。
 - **守るとき**: `TriggerEvent.youDefend` は、そのプレイヤーが Battlefield で守る戦闘が始まったとき、そのプレイヤーの、そこにいないユニットで誘発する（能力の最初のスロットは、その Battlefield）。
 - **書いたカード**: SFD-105（Ruin Runner）、126（Loyal Pup）、049（Aphelios, Exalted。装備品を付けたとき、「このターンまだ選ばれていない」モードを選ぶ。モードの記録は、ユニットに付く `modeUsed`）。
-- **近似**: Aphelios は、すでに選んだモードをもう一度選ぶと、何も起きない（選べない、ではない）。Loyal Pup は、すでに Battlefield にいるときも、誘発する（動かない）。
+- **近似**: 選べない（`blocksChoice`）は、カードに印刷されたパッシブだけを読む（装備品や他のカードが付けた能力は、読まない）。`youDefend` は、戦闘が始まるとき（`combatStarted`）に出る。守る側にユニットがいない Showdown では、誘発しない。Loyal Pup は、Showdown には間に合わず、戦闘ダメージだけに加わる。`youDefend` の誘発の条件（`condition`）は、Battlefield（スロット 0）を読めない（今のカードは、条件を使わない）。Aphelios は、すでに選んだモードをもう一度選ぶと、何も起きない（選べない、ではない）。Loyal Pup は、すでに Battlefield にいるときも、誘発する（動かない）。
 - **カードの数**: 動く Spiritforged は 176 枚から 179 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
