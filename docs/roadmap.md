@@ -1809,3 +1809,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **あとの選びは、前の選びを見る**: `Choice.candidatesAfter` / `targetsOkAfter` / `targetTuplesAfter`。2 つ目の対象の候補は、1 つ目の対象を `slot 0` として読める（`Filter.sameAs (.slot 0)` など）。以前は、違反する組を選ぶと、何も起きなかった。いまは、遊べない（`targetsOk` が偽）。
 - **直したカード**: Bonds of Strength（SFD-151）と Deathgrip（163）と Defiant Dance（196）は、同じユニットを 2 回選べない。Switcheroo（145）は、同じ Battlefield の別のユニットだけ。Temptation（129）は、別のユニットだけ。Angle Shot（011）は、ユニットと同じ持ち主の Equipment だけ（`Filter.sameController`）。
 - **変わらないもの**: Mighty の判定（Show of Strength、Rumble、Jaull-Fish）がパッシブの Might 増加を読まないのは、`Select` が `Passive` より下の層にあるため（`mightNow` を呼ぶと、層が循環する）。直すには、層の組み替えが要る。Bellows Breath の 2 つ目と 3 つ目、Piercing Light の 2 つ目、Emperor's Divide は、解決のときに選ぶ（選びが解決のときなので、Deflect の追加支払いと「選んだとき」は働かない）。
+
+### M8a の実装の記録（2026-11-24）: Spiritforged 28 — 「最大 1 体」の対象と、Power の割引
+
+- **最大 1 体の対象**: `Quantity.upTo 1` の対象は、遊ぶときに選べる（`Choice.optional`）。選ばなくてもよいのは、そのあとの選びがすべて「最大 1 体」のときだけ。選ばなかった枠は、`Selector.eval` の `slot i` が、空の集まりを返す（何も起きない）。Piercing Light（SFD-023）の 2 つ目と、Bellows Breath（080）の 2 つ目と 3 つ目は、遊ぶときの選びになった。Deflect の追加支払いと「選んだとき」が働く。Bellows Breath の「同じ場所」は、1 つ目と同じ場所（`.at_ (.slot 0)`）で、ダメージを受けたユニットも選べる。
+- **Irelia の Power の割引**: コストの、どの Power の記号を落としてもよい（`dropPowers`）。先頭の記号だけ、ではない。
+- **残っている近似**: Mighty の判定（`Filter.mighty`、`Filter.might`）は、パッシブの Might 増加を読まない（`Select` が `Passive` の下の層）。Emperor's Divide は、Battlefield を選び、そこの味方を 1 体ずつ「しますか」と聞く。Rocket Barrage の choose one は、解決のときに選ぶ。Janna は、Reaction で Battlefield へ遊べない。Irelia の Energy の割引は、`effCost` の下限を見ない。
+

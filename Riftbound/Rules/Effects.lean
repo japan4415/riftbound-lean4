@@ -2170,6 +2170,12 @@ def abilityBody (s : GameState) (card : CardId) (idx : Nat) : EffectList :=
     | _ => .nil
   | none => .nil
 
+/-- The slots of a Spell: the objects chosen, and a filler for each target of up to one that was
+left out (it selects nothing). -/
+def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
+  let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
+  ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
+
 /-- The frames that resolve an item of the Chain that is not a card: an ability runs its effect for
 its controller, with the objects chosen as the slots, and then it leaves the Chain (CR 340). -/
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
@@ -2187,7 +2193,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
   | item :: _ =>
     match s.obj? item, s.cardDef? item with
     | some o, some d =>
-      .run o.controller item { slots := o.targets.map Value.obj }
+      .run o.controller item { slots := slotValues o.targets d.spellEffect }
         (match d.spellEffect with
           | some e => if o.paid then .cons e.body (.cons e.body .nil) else .cons e.body .nil
           | none => .nil) :: .finishSpell item :: rest

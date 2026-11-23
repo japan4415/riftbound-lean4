@@ -665,10 +665,9 @@ def SFD_023.meta : CardDef :=
 def SFD_023 : CardDef :=
   { SFD_023.meta with
 
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 2)),
-        .may (.prim (.deal (Selector.one .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))])
-          (.const 2)))])),
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit],
+        .targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 2)), .prim (.deal (.slot 1) (.const 2))])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-024
@@ -2352,12 +2351,13 @@ def SFD_080.meta : CardDef :=
 def SFD_080 : CardDef :=
   { SFD_080.meta with
 
-    spellEffect := some (.of [Choice.targetOf .one .any .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 1)),
-        .may (.prim (.deal (Selector.one .any .anywhere
-          [.ofType .unit, .at_ (.slot 0), .not .damaged]) (.const 1))),
-        .may (.prim (.deal (Selector.one .any .anywhere
-          [.ofType .unit, .at_ (.slot 0), .not .damaged]) (.const 1)))])),
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
+        .targetOf (.upTo 1) .any .anywhere
+          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0))],
+        .targetOf (.upTo 1) .any .anywhere
+          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0)), .not (.sameAs (.slot 1))]]
+      (.seqOf [.prim (.deal (.slot 0) (.const 1)), .prim (.deal (.slot 1) (.const 1)),
+        .prim (.deal (.slot 2) (.const 1))])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-081
