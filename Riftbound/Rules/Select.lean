@@ -230,6 +230,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         if ((s.cardDef? id).map (·.fullAbilities)).getD [] |>.any (fun ab =>
             match ab with | .passive _ mods => mods.contains .extraHide | _ => false)
         then 2 else 1))
+  | .costBelowPoints => do
+    let o ← s.obj? self
+    let d ← s.cardDef? id
+    pure (match d.cost with | some k => decide (k.energy < s.pointsOf o.controller) | none => false)
+  | .noChoices =>
+    some (((s.cardDef? id).bind (·.spellEffect)).any (fun e => e.choices.isEmpty))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
   | .ready => (s.obj? id).map (fun o => !o.exhausted)

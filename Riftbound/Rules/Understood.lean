@@ -129,6 +129,8 @@ def Filter.understood : Filter → Bool
   | .defender => true
   | .alone => true
   | .onBattlefield => true
+  | .noChoices => true
+  | .costBelowPoints => true
   | .hideRoom => true
   | .permitsOpenPlay => true
   | .lethal => true
@@ -211,6 +213,7 @@ def Prim.understood : Prim → Bool
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
   | .playPaying s => s.understoodPickAny
+  | .castInline s => s.understoodPickAny
   | .counter s => s.understood
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understoodPickAny && b.understood

@@ -69,6 +69,9 @@ inductive Prim where
   | play (s : Selector)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
   | playPaying (s : Selector)
+  /-- Cast the spell now, in place: its effect is done at once (a spell with no choice of objects to
+  make), its Power cost is paid, and the card is recycled after (Kai'Sa, Evolutionary). -/
+  | castInline (s : Selector)
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)
   /-- Reveal cards from the top of the Main Deck until one with the properties is revealed, play it

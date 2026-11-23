@@ -3020,8 +3020,13 @@ def OGN_112.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Kai'Sa, Evolutionary: the effect is not written yet. -/
-def OGN_112 : CardDef := OGN_112.meta
+/-- Kai'Sa, Evolutionary. -/
+def OGN_112 : CardDef :=
+  { OGN_112.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
+        [.ofType .spell, .noChoices, .costBelowPoints]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-113
 /--
