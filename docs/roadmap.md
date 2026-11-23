@@ -655,7 +655,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **遊ぶときの追加の費用**: 追加の費用（Accelerate、Repeat、カード自身の追加の費用）は、その時の状態で決まる（`GameState.extrasFor`）。`StaticMod.extraCostLess`（Ezreal: 追加の費用が 1 安い）、`repeatCostLess`（Marai Spire: Repeat が 1 安い）、`TurnEffect.nextSpellRepeat`（Temporal Portal: 次の呪文は、自分の費用で Repeat）。費用は、Energy から先に減り、次に Power が減る（`Cost.less`）。`playable`、`castable`、`legalPlays` と、I8 の不変条件は、この状態つきの費用を使う。
 - **書いたカード**: SFD-208（Forge of the Fluft。Battlefield の能力で、自分の Legend を exhaust して、Equipment を付ける）、197（Emperor of the Sands）、080（Bellows Breath）、184（Relentless Pursuit）、199（Prodigal Explorer）、201（Chem-Baroness）、211（Marai Spire）、078（Temporal Portal）、149（Ezreal, Prodigy）。
 - **近似（レビュー）**: Marai Spire の「1 安い」は、Energy だけを減らす（Power だけの Repeat は、安くならない）。Ezreal が追加の費用を 0 にすると、それは、必ず払ったことになる（`paidExtra`）。付与された誘発能力（Relentless Pursuit）は、解決のとき、ユニット自身の `used` の同じ番号の使用を数える（ユニットの、同じ番号の `perTurn` の能力と、数が衝突する）。`spellsChoseEnemy` は、なくなった対象（死んだユニットなど）を、敵とみなす（敵を殺す呪文を数えるため）。自分のユニットを選んで、そのユニットが消えると、誤って数える。Temporal Portal は、2 回使っても、Repeat は、1 つだけ。Battlefield の Add（`manaReady`）は、まだ所有者で読む。
-- **近似**: Forge of the Fluft は、Legend の能力ではなく、Battlefield の能力（Legend を exhaust する）。Emperor of the Sands の『Sand Soldier は Weaponmaster を持つ』は、書いていない（トークンは、遊んだイベントを出さない）。「Equipment を遊んだ」は、「Gear を遊んだ」で読む。Bellows Breath の 2 つ目と 3 つ目は、ダメージを受けていないユニットから選ぶ（同じユニットに 2 回は撃たない代わりに、ダメージの残っているユニットを選べない）。Relentless Pursuit は、Equipment を付ける部分と、Move の行き先に Base を選ぶ以外の細かい点（移動先は、Battlefield か Base）を、書いていない（Equipment を付けない）。Prodigal Explorer は、呪文だけを数える（ユニットの能力は、数えない）。Ezreal の「1 安い」は、Energy から減らす。追加の費用を 0 まで安くすると、払ったことにならない。
+- **近似**: Forge of the Fluft は、Legend の能力ではなく、Battlefield の能力（Legend を exhaust する）。Emperor of the Sands の『Sand Soldier は Weaponmaster を持つ』は、後で書いた（Spiritforged 23）。「Equipment を遊んだ」は、「Gear を遊んだ」で読む。Bellows Breath の 2 つ目と 3 つ目は、ダメージを受けていないユニットから選ぶ（同じユニットに 2 回は撃たない代わりに、ダメージの残っているユニットを選べない）。Relentless Pursuit は、Equipment を付ける部分と、Move の行き先に Base を選ぶ以外の細かい点（移動先は、Battlefield か Base）を、書いていない（Equipment を付けない）。Prodigal Explorer は、呪文だけを数える（ユニットの能力は、数えない）。Ezreal の「1 安い」は、Energy から減らす。追加の費用を 0 まで安くすると、払ったことにならない。
 - **カードの数**: 動く Spiritforged は 206 枚から 215 枚。
 
 ### M8a の実装の記録（2026-11-23）: Spiritforged 22 — 山札から公開、テキストの複製、死ぬときの追放（222 枚）
@@ -671,10 +671,18 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   - SFD-018 Void Hatchling: 「公開するときは、先に一番上を見て、リサイクルしてもよい」。公開の置き換えは、まだ無い。
   - SFD-029 Rek'Sai: 「手札以外から遊ぶユニットは、Accelerate を持つ」。Accelerate は、手札から遊ぶときだけで、手札以外から遊ぶ効果（`playReduced`）は、費用の外の Accelerate を読まない。
   - SFD-141 Irelia: 「自分の呪文で自分を選ぶものは 1 安い」。費用が、選んだ対象に依る形は、まだ無い。
-  - SFD-090 The Zero Drive: 「これで追放したユニットを、全部、無料で遊ぶ」の能力。追放したユニットを覚える仕組みが無い。付いたユニットが死ぬときの追放だけを書いた。
+  - SFD-090 The Zero Drive: （後で書いた。下の『Spiritforged 23』）
   - SFD-059 Svellsongur: ユニットの、誘発する能力だけを、複製する（起動する能力、パッシブは、複製しない）。
-  - SFD-109 Akshan: 取った Gear の支配は、Akshan が盤面を離れても、戻らない。
+  - SFD-109 Akshan: （後で書いた。下の『Spiritforged 23』）
 - **カードの数**: 動く Spiritforged は 215 枚から 222 枚（全部）。
+
+### M8a の実装の記録（2026-11-23）: Spiritforged 23 — 近似を、本物にした分
+
+- **トークンのプレイ**: 作ったユニットのトークンは、`Event.tokenPlayed` を出す（`tokenPlays`）。`TriggerEvent.playToken` を待つ能力だけが見る。トークンはカードではないので、「カードを遊んだとき」を待つ能力（Viktor など）は、見ない。「ユニットを遊んだとき」を待つ能力も、トークンは、まだ見ない（近似）。
+- **Emperor of the Sands**: 『Sand Soldier は Weaponmaster を持つ』を、Sand Soldier が遊ばれたときの誘発（Equipment を 1 安く付けてもよい）として書いた。
+- **Akshan**: 取った Gear は、`Object.takenBy`（取った Unit のカード）を覚え、その Unit が盤面を離れる（盤面でないゾーンへ動く。`TriggerEvent.leave`、`Event.moved` から検出）と、持ち主の支配に戻り、持ち主の Base へ戻る。`Prim.takeControlUntilLeaves`。同じカードの Unit が離れるときは、その Unit が取った Gear もまとめて戻る（近似）。
+- **The Zero Drive**: 付いたユニットが死んで追放されると、そのカードは `Object.banishedWith`（Equipment）を覚える。『3 Energy と Mind、これを追放: 追放したユニットを、全部、無料で遊ぶ（付いていないときだけ）』を、`Prim.playBanishedWith` で書いた。
+- **まだ近似のもの**: SFD-018 Void Hatchling（公開のあとで見る）、SFD-029 Rek'Sai（払って ready）、SFD-141 Irelia（Energy の払い戻し）、SFD-059 Svellsongur（誘発する能力だけ）、SFD-199 Prodigal Explorer（呪文だけ数える）、SFD-208 Forge of the Fluft（Battlefield の能力）、SFD-143 Sivir（Power を数える）。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 

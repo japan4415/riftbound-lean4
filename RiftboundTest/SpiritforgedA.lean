@@ -3263,4 +3263,57 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (units a).all (fun o => a.tired o == some false) && (units a).length == 1 &&
     ((a.poolOf s.me).energy + 1 == ((played.1.rich s.me).poolOf s.me).energy)
 
+-- (Emperor of the Sands) a Sand Soldier token is played: I may Equip an Equipment to it for 1 less
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-197" .legendZone
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, played) ← put s2 s.me "SFD-042" .hand
+  let (s4, _) ← put s3 s.me "OGN-051" .base
+  let funded := s4.rich s.me
+  let started := funded.modObj played (fun o => { o with playedTurn := some funded.turn })
+  let a ← activate started s.me l 0 []
+    ⟨1, []⟩ { pick := fun ts => ts == [g] }
+  let sand := (a.zone (.player s.me .base)).find? (fun o =>
+    (a.cardDef? o).any (·.name == "Sand Soldier"))
+  return sand.isSome && (a.obj? g).any (fun o => o.attached == sand)
+
+-- (Akshan) the gear goes back to its owner when he leaves the board
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let base := payOf s2 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let paid ← cast (s2.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let akshan ← (paid.zone (.player s.me .base)).find? (fun o =>
+    (paid.cardDef? o).any (·.id == cid "SFD-109"))
+  let killed := killObj paid akshan
+  let after ← fire killed.1 killed.2
+  let gear (x : GameState) (p : PlayerId) : Bool :=
+    (x.zone (.player p .base)).any (fun o => (x.cardDef? o).any (·.id == cid "SFD-042") &&
+      (x.obj? o).any (·.controller == p))
+  return gear paid s.me && !gear paid s.you && gear after s.you && !gear after s.me
+
+-- (The Zero Drive) pay 3 Mind-ish and banish it: play every unit it banished, free; only unattached
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s3, g) ← put s2 s.me "SFD-090" .base
+  let held := (attachTo u s3 g).1
+  let k1 := killObj held u
+  let dead1 := k1.1
+  let (s4, _) := ((attachTo v dead1 g).1, 0)
+  let k2 := killObj s4 v
+  let both := k2.1
+  let (t1, _) ← put both s.me "OGN-051" .trash
+  let inZone (x : GameState) (z : ZoneKind) (code : String) : Nat :=
+    ((x.zone (.player s.me z)).filter (fun o => (x.cardDef? o).any (·.id == cid code))).length
+  let loose := both.modObj g (fun o => { o with attached := none })
+  let used ← activate loose s.me g 0 [] ⟨3, [.mind]⟩
+  let blocked := activate (attachTo (v) loose g).1 s.me g 0 [] ⟨3, [.mind]⟩
+  return inZone both .banishment "OGN-051" == 1 && inZone both .banishment "OGN-136" == 1 &&
+    inZone used .base "OGN-051" == 1 && inZone used .base "OGN-136" == 1 &&
+    inZone used .banishment "OGN-051" == 0 && inZone used .banishment "SFD-090" == 1 &&
+    inZone t1 .trash "OGN-051" == 1 && inZone used .banishment "OGN-136" == 0 &&
+    (blocked.map (fun x => inZone x .banishment "OGN-051")).getD 1 == 1
+
 end RiftboundTest

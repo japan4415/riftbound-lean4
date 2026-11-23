@@ -271,13 +271,23 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .hiddenPlayed p =>
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .playHidden else [])
+  | .tokenPlayed p t => triggersOf s t p .playToken ++ watchersOf s t p .playToken
   | .revealed p c => triggersOf s c p .revealedFromDeck ++ watchersOf s c p .revealedFromDeck
-  | .moved _ n (.player p .runeDeck) =>
+  | .moved _ n dst =>
     -- a Rune recycled: the abilities of the player's objects and Legends that wait for it
-    if (s.obj? n).any (·.runeDomain.isSome) then
-      s.passiveSources.flatMap (fun u =>
-        if (s.obj? u).any (·.controller == p) then triggersOf s u p .recycleRune else [])
-    else []
+    (match dst with
+      | .player p .runeDeck =>
+        if (s.obj? n).any (·.runeDomain.isSome) then
+          s.passiveSources.flatMap (fun u =>
+            if (s.obj? u).any (·.controller == p) then triggersOf s u p .recycleRune else [])
+        else []
+      | _ => []) ++
+    -- a card that is put where it is not on the board: what waits for it to leave fires
+    (if !dst.isBoard then
+      match s.obj? n with
+      | some o => triggersOf s n o.owner .leave
+      | none => []
+    else [])
   | .buffed u =>
     match s.obj? u with
     | some o =>

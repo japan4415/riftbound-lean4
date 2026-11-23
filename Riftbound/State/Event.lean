@@ -78,6 +78,9 @@ inductive Event where
   | attached (gear unit : ObjId)
   /-- A card was revealed from a deck (the owner, the card). -/
   | revealed (p : PlayerId) (card : ObjId)
+  /-- A Unit token was played (the player, the token). A token is not a card: what waits for a
+  card to be played does not see it. -/
+  | tokenPlayed (p : PlayerId) (token : ObjId)
   /-- A player spent a buff of a unit of theirs (CR 704). -/
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/

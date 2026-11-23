@@ -170,7 +170,9 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .empower s => Selector.ok c s
   | .disempower s => Selector.ok c s
   | .takeControl s => Selector.ok c s
+  | .playBanishedWith => true
   | .returnControl s => Selector.ok c s
+  | .takeControlUntilLeaves s => Selector.ok c s
   | .extraTurn p => p.ok c
   | .win p => p.ok c
   | .turnEffect _ => true

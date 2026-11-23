@@ -563,7 +563,8 @@ theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
 
 /-- Noting a death leaves the objects in play as they are. -/
 theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bool)
-    (moved : Option ObjId) : (noteDeath s o isUnit marked mighty moved).inPlay = s.inPlay := by
+    (moved : Option ObjId) (banisher : Option ObjId) :
+    (noteDeath s o isUnit marked mighty moved banisher).inPlay = s.inPlay := by
   have key : ∀ (b : Bool) (f : GameState → GameState), (∀ t, (f t).inPlay = t.inPlay) →
       ∀ t, (noteIf b f t).inPlay = t.inPlay := by
     intro b f hf t
@@ -578,7 +579,9 @@ theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bo
     exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
   | some n =>
     dsimp only
-    rw [key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
+    rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
+        (fun t => inPlay_modObj t n _),
+      key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
@@ -626,7 +629,7 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     unfold killObj sendObj
     rw [← hdk, ho]
     simp only [hr]
-    exact noteDeath_inPlay _ _ _ _ _ _
+    exact noteDeath_inPlay _ _ _ _ _ _ _
   rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)
