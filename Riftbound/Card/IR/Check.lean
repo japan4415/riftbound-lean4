@@ -157,6 +157,8 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .hide s => Selector.ok c s
   | .reveal s => Selector.ok c s
   | .revealNow s => Selector.ok c s
+  | .revealTop _ => true
+  | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t

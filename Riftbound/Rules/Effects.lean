@@ -1394,6 +1394,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
           some (Event.revealed o.owner id) else none
       | none => none))
+  | .revealTop n =>
+    -- the top cards of the Main Deck are revealed: what waits for them fires
+    some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
+  | .revealTopNow n =>
+    some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
   | .revealNow sel =>
     -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
     some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
@@ -1554,6 +1559,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     rw [← h]
     exact Safe.refl s
   | revealNow sel =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact Safe.refl s
+  | revealTop n =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact Safe.refl s
+  | revealTopNow n =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact Safe.refl s
@@ -2076,6 +2089,16 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         (.cons (.prim (.revealNow sel)) es)))], [])
     else
       match applyPrim s p src env (.reveal sel) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
+  | .prim (.revealTop n) =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+        (s.activeMods g).contains .lookBeforeReveal) then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealTopNow n)) es)))], [])
+    else
+      match applyPrim s p src env (.revealTop n) with
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es

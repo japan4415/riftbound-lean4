@@ -91,6 +91,11 @@ inductive Prim where
   | hide (s : Selector)
   /-- Reveal cards. -/
   | reveal (s : Selector)
+  /-- Reveal the top `n` cards of the player's Main Deck. -/
+  | revealTop (n : Nat)
+  /-- The same, with nothing done first (what `revealTop` does once a passive ability has had its
+  say). -/
+  | revealTopNow (n : Nat)
   /-- Reveal, with nothing done first (what `reveal` does once a passive ability has had its say). -/
   | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
