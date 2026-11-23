@@ -331,6 +331,9 @@ inductive StaticMod where
   /-- Spells of the player that choose this object cost this much less (1 Energy or 1 Power of
   any domain: the player's choice) (Irelia). -/
   | chosenSpellsCostLess (n : Nat)
+  /-- Legends of the controller of this Battlefield can: Exhaust, attach an Equipment they control to
+  a unit they control (Forge of the Fluft). -/
+  | legendsAttach
   /-- The object has Assault equal to the number of objects the selector gives (Ancient Warmonger). -/
   | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/

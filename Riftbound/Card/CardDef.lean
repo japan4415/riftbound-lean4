@@ -202,17 +202,46 @@ def ownBfPlay (c : CardDef) : List Ability :=
             | .playToBf fs =>
               some (.activated [.fromHand, .pay cost]
                 (if c.keywords.any (·.keyword == .reaction) then .reaction else .normal)
-                (EffectDef.of [Choice.targetOf .one .any .anywhere (.ofType .battlefield :: .unitsPlayable :: fs)]
+                (EffectDef.of [Choice.targetOf .one .any .anywhere
+                    (.ofType .battlefield :: .unitsPlayable :: fs)]
                   (.prim (.playTo .self (.slot 0)))) .unlimited)
             | _ => none)
         | _ => [])
     else []
   | none => []
 
+/-- A Legend can use the ability a Battlefield its player controls gives it: Exhaust, attach an
+Equipment its player controls to a Unit they control (Forge of the Fluft). -/
+def legendAbilities (c : CardDef) : List Ability :=
+  if c.types.contains .legend then
+    [.activated [.exhaustSelf] .normal
+      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩],
+          Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.exists (Selector.all .friendly .atBattlefield
+            [.ofType .battlefield, .controlled, .givesLegendsAttach]))
+          (.prim (.attach (.slot 0) (.slot 1))) .nop)) .unlimited]
+  else []
+
+/-- A Unit with an Equipment attached that copies its text has its activated abilities once more
+(Svellsongur): the same abilities, usable only while such an Equipment is attached. -/
+def copiedAbilities (c : CardDef) : List Ability :=
+  if c.types.contains .unit then
+    c.abilities.filterMap (fun ab =>
+      match ab with
+      | .activated costs sp body lim =>
+        some (.activated costs sp
+          (EffectDef.mk body.choices
+            (.ifThen (.exists (Selector.all .friendly .anywhere [.attachedTo .self, .copiesText]))
+              body.body .nop)) lim)
+      | _ => none)
+  else []
+
 /-- The abilities that the keywords of the card stand for, the one that plays a Unit from the
-Champion Zone, and the ones that play a Unit to a Battlefield. -/
+Champion Zone, the ones that play a Unit to a Battlefield, the one a Legend gets from a Battlefield,
+and the copies of a Unit's activated abilities. -/
 def keywordAbilities (c : CardDef) : List Ability :=
-  c.printedKeywordAbilities ++ c.championPlay ++ c.openPlay ++ c.ownBfPlay
+  c.printedKeywordAbilities ++ c.championPlay ++ c.openPlay ++ c.ownBfPlay ++ c.legendAbilities ++
+    c.copiedAbilities
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities

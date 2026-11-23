@@ -223,6 +223,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
+  | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
   | .lookBeforeReveal => true
   | .banishOnDeath => true

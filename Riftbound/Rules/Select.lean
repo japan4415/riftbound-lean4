@@ -321,6 +321,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some ((s.obj? id).any (fun o => o.takenBy.isSome &&
       o.takenBy == (s.cardDef? self).map (·.id) &&
       some o.controller == (s.obj? self).map (·.owner)))
+  | .givesLegendsAttach =>
+    some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
+      match ab with | .passive _ mods => mods.contains .legendsAttach | _ => false))
+  | .copiesText =>
+    some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
+      match ab with | .passive _ mods => mods.contains .copiesUnitText | _ => false))
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)

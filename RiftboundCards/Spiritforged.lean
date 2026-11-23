@@ -6123,12 +6123,7 @@ def SFD_208.meta : CardDef :=
 def SFD_208 : CardDef :=
   { SFD_208.meta with
 
-    abilities := [.activated [] .normal
-      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩],
-          Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.ifThen .legendReady
-          (.seqOf [.prim (.exhaust (Selector.one .friendly .inLegendZone [.ready])),
-            .prim (.attach (.slot 0) (.slot 1))]) .nop)) .unlimited],
+    abilities := [.passive .always [.legendsAttach]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-209

@@ -149,6 +149,10 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
+  /-- The card gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
+  | givesLegendsAttach
+  /-- The card copies the text of the Unit it is attached to (it has `copiesUnitText`). -/
+  | copiesText
   /-- The object was taken by a Unit of the same card as `self` (it goes back when that leaves). -/
   | takenByMyCard
   /-- The same, whoever controls the object now (it may have been given back already). -/
