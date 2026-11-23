@@ -788,8 +788,14 @@ def SFD_028.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Lucian, Gunslinger: the effect is not written yet. -/
-def SFD_028 : CardDef := SFD_028.meta
+/-- Lucian, Gunslinger. -/
+def SFD_028 : CardDef :=
+  { SFD_028.meta with
+
+    abilities := [.triggered (.onSelf .attack)
+      (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.kwAmount .self .assault)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-029
 /--
@@ -1237,8 +1243,13 @@ def SFD_045.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Not So Fast: the effect is not written yet. -/
-def SFD_045 : CardDef := SFD_045.meta
+/-- Not So Fast. -/
+def SFD_045 : CardDef :=
+  { SFD_045.meta with
+
+    spellEffect := some (.of [.targetOf .one .enemy .onChain [.ofType .spell, .choosesMine]]
+      (.prim (.counter (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-046
 /--
@@ -2544,8 +2555,14 @@ def SFD_093.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Dauntless Vanguard: the effect is not written yet. -/
-def SFD_093 : CardDef := SFD_093.meta
+/-- Dauntless Vanguard. -/
+def SFD_093 : CardDef :=
+  { SFD_093.meta with
+
+    abilities := [.activated [.fromHand, .pay ⟨4, [.domain .body]⟩] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .enemyOccupied]]
+        (.prim (.playTo .self (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-094
 /--
@@ -2804,8 +2821,13 @@ def SFD_103.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Jaull-Fish: the effect is not written yet. -/
-def SFD_103 : CardDef := SFD_103.meta
+/-- Jaull-Fish. -/
+def SFD_103 : CardDef :=
+  { SFD_103.meta with
+
+    abilities := [.passive .always [.costMinus .self
+      (.mul (.const 2) (.count (Selector.all .friendly .anywhere [.ofType .unit, .mighty])))]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-104
 /--
@@ -3691,8 +3713,17 @@ def SFD_136.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Hard Bargain: the effect is not written yet. -/
-def SFD_136 : CardDef := SFD_136.meta
+/-- Hard Bargain. -/
+def SFD_136 : CardDef :=
+  { SFD_136.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
+      (.eachPlayer .eachOpponent
+        (.ifThen (.canPay ⟨2, []⟩)
+          (.eitherOf (EffectList.ofList
+            [.prim (.pay ⟨2, []⟩), .prim (.counter (.slot 0))]))
+          (.prim (.counter (.slot 0)))))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-137
 /--
@@ -4451,8 +4482,13 @@ def SFD_164.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Drag Under: the effect is not written yet. -/
-def SFD_164 : CardDef := SFD_164.meta
+/-- Drag Under. -/
+def SFD_164 : CardDef :=
+  { SFD_164.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.kill (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-165
 /--
@@ -5554,8 +5590,15 @@ def SFD_206.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Riposte: the effect is not written yet. -/
-def SFD_206 : CardDef := SFD_206.meta
+/-- Riposte. -/
+def SFD_206 : CardDef :=
+  { SFD_206.meta with
+
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .any .onChain [.ofType .spell]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.costOf (.slot 1))) .thisTurn,
+        .prim (.counter (.slot 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-207
 /--

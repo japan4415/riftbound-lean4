@@ -153,6 +153,8 @@ inductive Filter where
   | isAttached
   /-- Is a token. -/
   | token
+  /-- Is a spell that chooses a unit or a gear of the player the effect belongs to. -/
+  | choosesMine
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/

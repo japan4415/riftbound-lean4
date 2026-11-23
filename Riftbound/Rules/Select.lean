@@ -337,6 +337,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .attached => pure (s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id)))
   | .token =>
     pure ((s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false))
+  | .choosesMine => do
+    let me ← s.obj? self
+    let o ← s.obj? id
+    pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
+      (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
   | .attachedTo sel => do
     -- the object the selector names: `self`, a chosen object or a variable
     let d? : Option ObjId := match sel with

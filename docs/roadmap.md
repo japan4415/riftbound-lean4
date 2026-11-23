@@ -541,6 +541,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Lonely Poro の「alone」は、能力が解決するときに数える（同時に死んだ味方は、いなかったことになる）。Zaun Punk の追加コストは、解決のときに払うので、払う前に、相手が応答できる。Card Sharp は、相手が 2 人以上いても、Gold は 1 枚（今は 1 対 1 だけ）。
 - **カードの数**: 動く Spiritforged は 133 枚から 143 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 9 — 打ち消し、キーワードの数値、コストの軽減
+
+- **キーワードの数値**: `Amount.kwAmount s k`（「my [Assault]」）。`GameState.kwAmount` を `Combat.lean` から `Passive.lean` に移した。数値の無い `[Assault]` と `[Shield]` は 1 として数える。
+- **選んだものが、自分のユニットかギアを選ぶ呪文**: `Filter.choosesMine`（Not So Fast）。
+- **書いたカード**: SFD-028、045、093、103、136、164、206（7 枚）。Jaull-Fish は、既存のコスト軽減（`costMinus` に、Mighty なユニットの数）。Hard Bargain は、相手が「払う」か「打ち消される」かを選ぶ形（`eachPlayer .eachOpponent` の `eitherOf`）。Riposte は、打ち消す前に、呪文の Energy コストを読む。Dauntless Vanguard は、手札から、自分の Energy 4 と Power 1 を払って、敵のいる Battlefield に出る能力（Champion の能力と同じ形で、軽減は掛からない）。
+- **近似**: Hard Bargain の「its controller」は、相手とした（1 対 1 では、自分の呪文を打ち消す場合だけ違う）。Drag Under の「他のゾーンからプレイするとき、Energy が 2 安い」は、書いていない（他のゾーンから、Energy を払ってプレイする手段は、ユニットとギアの `playReduced` だけ）。Not So Fast は、呪文だけ（能力は打ち消せない）。Lucian の Assault は、付与されたものも数える。
+- **カードの数**: 動く Spiritforged は 143 枚から 150 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。
