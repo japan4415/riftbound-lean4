@@ -67,6 +67,7 @@
 | 戦闘に勝つ（Spiritforged） | 「勝つ」は、戦闘の終わりに、Recall のあとで、その Battlefield に残る Unit が、1 人のプレイヤーのものだけであること。攻撃側は、防御側が残ると Recall されるので、防御側が勝つ。規則の原文（CR 468）では、Recall の前で数える読み方も、ありうる（未確認） |
 | 解決のときに払う（Spiritforged） | 「you may pay X. If you do, ...」は、解決のときに、Rune Pool にあるものから払う。Draven, Vanquisher、Sunken Temple、Treasure Hoard、Emperor's Dais、Power Nexus がそう。相手のターン（Draven の防御側の誘発）は、Rune Pool が空なので、払えない。Sunken Temple の「Mighty」は、解決のときに調べる |
 | Emperor's Dais・Piercing Light・Emperor's Divide（Spiritforged） | 返すユニットと 2 つ目の対象を、解決のときに選ぶ（Deflect の追加支払いが掛からず、「選んだとき」の誘発も働かない） |
+| 対象の組の条件（Spiritforged） | 「同じ Battlefield の 2 体」「別のユニット」のような、対象どうしの条件は、選ぶときに見られない（`Choice` が、前の対象を参照できない）。解決のとき、条件が合わなければ、何も起きない。Bonds of Strength、Deathgrip、Switcheroo、Temptation、Defiant Dance |
 | Blind Fury（プレイ回数） | Blind Fury で、相手のカードを、プレイしても、Legion などの「プレイしたカードの数」では、自分のプレイと数えない（数える判定が、カードの持ち主を見る） |
 | Blind Fury | 相手の山札の上の呪文を、「プレイする」かわりに、追放だけ行う（呪文を、コストなしで、プレイする手段が、まだ無い） |
 | Mystic Reversal | 「新しく選び直してもよい」を、書かなかった（呪文の対象は、そのまま。奪った呪文の対象は、解決のときに、再検証されないので、新しいコントローラーから見て、不正な対象（元の「味方のユニット」など）にも、効く） |

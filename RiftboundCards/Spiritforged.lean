@@ -2017,8 +2017,14 @@ def SFD_077.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rocket Barrage: the effect is not written yet. -/
-def SFD_077 : CardDef := SFD_077.meta
+/-- Rocket Barrage. -/
+def SFD_077 : CardDef :=
+  { SFD_077.meta with
+
+    spellEffect := some (.of [] (.eitherOf (EffectList.ofList
+      [.prim (.deal (Selector.one .any .atBase [.ofType .unit]) (.const 4)),
+       .prim (.kill (Selector.one .any .anywhere [.ofType .gear]))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-078
 /--
@@ -2175,8 +2181,16 @@ def SFD_084.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jayce, Man of Progress: the effect is not written yet. -/
-def SFD_084 : CardDef := SFD_084.meta
+/-- Jayce, Man of Progress. -/
+def SFD_084 : CardDef :=
+  { SFD_084.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .gear]]
+        (.may (.seqOf [.prim (.kill (.slot 0)),
+          .may (.prim (.playPaying (Selector.one .friendly .inHand
+            [.ofType .gear, .cost .le (.const 7)])))]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-085
 /--
@@ -2203,8 +2217,13 @@ def SFD_085.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ornn, Forge God: the effect is not written yet. -/
-def SFD_085 : CardDef := SFD_085.meta
+/-- Ornn, Forge God. -/
+def SFD_085 : CardDef :=
+  { SFD_085.meta with
+
+    abilities := [.passive .always
+      [.mightPlus .self (.count (Selector.all .friendly .anywhere [.ofType .gear]))]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-086
 /--
@@ -3244,8 +3263,16 @@ def SFD_125.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fae Porter: the effect is not written yet. -/
-def SFD_125 : CardDef := SFD_125.meta
+/-- Fae Porter. -/
+def SFD_125 : CardDef :=
+  { SFD_125.meta with
+
+    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+      (.of [] (.ifThen (.canPay ⟨0, [.domain .chaos]⟩)
+        (.may (.seqOf [.prim (.pay ⟨0, [.domain .chaos]⟩),
+          .prim (.move (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])
+            (.at_ .self))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-126
 /--
@@ -3311,8 +3338,14 @@ def SFD_128.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Overzealous Fan: the effect is not written yet. -/
-def SFD_128 : CardDef := SFD_128.meta
+/-- Overzealous Fan. -/
+def SFD_128 : CardDef :=
+  { SFD_128.meta with
+
+    abilities := [.triggered (.onSelf .defend)
+      (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .attacker]]
+        (.may (.seqOf [.prim (.kill .self), .prim (.move (.slot 0) .base)]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-129
 /--
@@ -3332,8 +3365,18 @@ def SFD_129.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Temptation: the effect is not written yet. -/
-def SFD_129 : CardDef := SFD_129.meta
+/-- Temptation. -/
+def SFD_129 : CardDef :=
+  { SFD_129.meta with
+
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit],
+        .targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
+        (.ifThen (.matches (.slot 1) .onBattlefield)
+          (.prim (.move (.slot 0) (.at_ (.slot 1))))
+          (.ifThen (.exists (Selector.all .any .anywhere [.sameAs (.slot 1)]))
+            (.prim (.move (.slot 0) .base)) .nop)))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-130
 /--
@@ -3734,8 +3777,23 @@ def SFD_145.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Switcheroo: the effect is not written yet. -/
-def SFD_145 : CardDef := SFD_145.meta
+/-- Switcheroo. -/
+def SFD_145 : CardDef :=
+  { SFD_145.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit],
+        .targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen (.and (.matches (.slot 1) (.at_ (.slot 0)))
+          (.matches (.slot 1) (.not (.sameAs (.slot 0)))))
+        (.bind ⟨"a"⟩ (.mightOf (.slot 0)) (.bind ⟨"b"⟩ (.mightOf (.slot 1))
+          (.seqOf [
+            .grant (.slot 0) (.mightPlus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn,
+            .grant (.slot 0) (.mightMinus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
+            .grant (.slot 1) (.mightPlus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
+            .grant (.slot 1)
+              (.mightMinus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn])))
+        .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-146
 /--
@@ -4263,8 +4321,14 @@ def SFD_165.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Glasc Mixologist: the effect is not written yet. -/
-def SFD_165 : CardDef := SFD_165.meta
+/-- Glasc Mixologist. -/
+def SFD_165 : CardDef :=
+  { SFD_165.meta with
+
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash
+        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-166
 /--
@@ -4527,8 +4591,13 @@ def SFD_176.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Xin Zhao, Vigilant: the effect is not written yet. -/
-def SFD_176 : CardDef := SFD_176.meta
+/-- Xin Zhao, Vigilant. -/
+def SFD_176 : CardDef :=
+  { SFD_176.meta with
+
+    abilities := [.passive (.cmp .ge (.count (Selector.all .friendly .atBase [.ofType .unit]))
+      (.const 2)) [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-177
 /--
@@ -4600,8 +4669,13 @@ def SFD_179.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Corina Veraza: the effect is not written yet. -/
-def SFD_179 : CardDef := SFD_179.meta
+/-- Corina Veraza. -/
+def SFD_179 : CardDef :=
+  { SFD_179.meta with
+
+    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+      (.of [] (.prim (.create "Recruit" (.const 3) .here false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-180
 /--
@@ -5014,8 +5088,16 @@ def SFD_196.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Defiant Dance: the effect is not written yet. -/
-def SFD_196 : CardDef := SFD_196.meta
+/-- Defiant Dance. -/
+def SFD_196 : CardDef :=
+  { SFD_196.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
+        .targetOf .one .any .anywhere [.ofType .unit]]
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
+        (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn,
+          .grant (.slot 1) (.mightMinus .it (.const 2)) .thisTurn]))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-197
 /--
@@ -5056,8 +5138,17 @@ def SFD_198.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Arise!: the effect is not written yet. -/
-def SFD_198 : CardDef := SFD_198.meta
+/-- Arise!. -/
+def SFD_198 : CardDef :=
+  { SFD_198.meta with
+
+    spellEffect := some (.of [] (.bind ⟨"n"⟩
+      (.count (Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩]))
+      (.seqOf [
+        .prim (.create "Sand Soldier" (.var ⟨"n"⟩) .atBase false),
+        .repeatN (.min (.const 2) (.var ⟨"n"⟩)) (.prim (.ready
+          (Selector.one .friendly .atBase [.named "Sand Soldier", .exhausted])))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-199
 /--
@@ -5184,8 +5275,13 @@ def SFD_204.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- On the Hunt: the effect is not written yet. -/
-def SFD_204 : CardDef := SFD_204.meta
+/-- On the Hunt. -/
+def SFD_204 : CardDef :=
+  { SFD_204.meta with
+
+    spellEffect := some (.of []
+      (.prim (.ready (Selector.all .friendly .anywhere [.ofType .unit])))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-205
 /--

@@ -503,6 +503,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Pickpocket の「Energy cost no more than 1」は、コストの無いカード（Gold トークン）を含まない。Beast Below の 2 つの対象は、プレイのとき両方選べないと、誘発ごと無くなる（片方だけ選ぶことはしない）。Ramhound の +1 は、他のカードの「Might 3 以下」に読まれない（Gust と同じ）。
 - **カードの数**: 動く Spiritforged は 89 枚から 101 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 5 — 今の IR で書ける 13 枚（呪文、トークン、移動）
+
+- **書いたカード**: SFD-077、084、085、125、128、129、145、165、176、179、196、198、204。新しい仕組みは無い。
+- **近似**: Jayce（SFD-084）の「このターンに、手札からギアをプレイしてもよい」は、すぐにプレイする（解決の中で、1 つ選ぶ）。Temptation（SFD-129）は、移動先が Battlefield のときだけ動く（Base にいるユニットの場所は、指せない）。Switcheroo（SFD-145）は、同じ Battlefield にいる 2 体を、プレイのときに選ぶ。Arise!（SFD-198）の「そのうち 2 体を ready にする」は、持っている exhausted の Sand Soldier から 2 体（作った分と、前からいる分を、区別しない）。Rocket Barrage（SFD-077）の「choose one」は、解決のときに選ぶ。Glasc Mixologist（SFD-165）の「コストが Rrainbow 以下」は、Power のコストが 1 つ以下、とした。Overzealous Fan（SFD-128）の攻撃側の選択は、誘発のときに行う。
+- **レビューで直したこと**: Jayce は、手札のギアの Power を払わずにプレイしていた（`playPaying` に直した。Energy だけを無視する）。Temptation は、移動先が Base にいるユニットのとき、何も起きなかった（その Base へ移る）。Arise! は、ギアの数が 2 つ未満でも、2 体を ready にしていた（作った数までにした）。Defiant Dance の対象が片方消えたとき、残りに効果が届く。足りなかったテストを足した（Jayce の Power、Switcheroo の弱い方と同じ Might、Fae Porter が Base にいるとき、Defiant Dance が終わること）。
+- **近似（レビュー）**: Switcheroo、Temptation、Defiant Dance は、対象の選びが緩い（同じ Battlefield、別のユニット、という条件を、選ぶときに見られない。違反する組を選ぶと、何も起きない）。Fae Porter は、払ってから動かすので、動かせる味方がいないと、Power だけが失われる（断れる）。誤植の「Rrainbow」は、「rainbow の Power」のこと。
+- **カードの数**: 動く Spiritforged は 101 枚から 114 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。
