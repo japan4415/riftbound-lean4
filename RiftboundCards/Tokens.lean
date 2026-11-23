@@ -22,7 +22,7 @@ open Riftbound
 
 /-- A Unit token with the Might (CR 179). -/
 def unitToken (name : String) (might : Int) (keywords : List KeywordInst := []) : CardDef :=
-  { id := ⟨"TKN-" ++ name⟩, name := name, types := [.unit], might := some might,
+  { id := ⟨"TKN-" ++ name⟩, name := name, types := [.unit], tags := [⟨name⟩], might := some might,
     keywords := keywords, status := .full }
 
 /-- The Unit tokens. -/

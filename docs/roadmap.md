@@ -475,7 +475,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Repeat、Unique**: エンジンはすでに動いていた（追加コスト、デッキの枚数制限）。`Keyword.runs` に足した。
 - **近似として残したこと**: Quick-Draw のギア（と、Reaction を持つユニット）を、Chain に項目がある間に応答としてプレイすることは、まだできない（Origins の Shen と同じ）。Weaponmaster のコストは、Equip コストの Power を先頭から 1 つ引く。
 - **レビューで直したこと**: Weaponmaster の誘発が解決するとき、ユニットが場に無ければ、付けも払いもしない。支払いは、Equipment を元にする（`.own` が Equipment のドメインになる）。CR の番号（Quick-Draw 819、Weaponmaster 821）を直した。テストを足した（断る、複数の Equipment、Power が `.any` の Equip、場に無いユニット、複数の友軍ユニットへの Quick-Draw）。
-- **カードの数**: 動く Spiritforged は 34 枚から 46 枚。テストは `RiftboundTest/SpiritforgedA.lean`。
+- **カードの数**: 動く Spiritforged は 34 枚から 46 枚。
+
+### M8a の実装の記録（2026-11-23）: Spiritforged 2 — 今の IR で書ける 29 枚
+
+- **書いたカード**: SFD-001、003、004、005、007、012、017、023、027、032、035、038、040、043、047、053、062、071、072、076、089、091、094、096、100、104、106、114、182。どれも、今の IR と解釈器だけで書けた（新しい仕組みは無い）。Token の定義に、名前と同じタグを足した（Mech、Sand Soldier などを「味方の Mech」と指せるように）。
+- **近似**: Janna（SFD-053）は、Reaction でプレイして、Battlefield に出るカードだが、Reaction のプレイが無いので、Base に出る（「ここ」は Base になり、効果は何もしない）。Detonate（SFD-005）の「その持ち主」は、「味方のギアなら自分、そうでなければ相手」で表した（2 人戦で正しい）。Dunebreaker（SFD-027）は、「手札が 2 枚以下」を、プレイするときの手札で数える。
+- **カードの数**: 動く Spiritforged は 46 枚から 75 枚。テストは `RiftboundTest/SpiritforgedA.lean`。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
