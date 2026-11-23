@@ -34,20 +34,6 @@ namespace GameState
 /-- The Might of an object, counted for damage: a negative Might counts as 0 (CR 143.2.c). -/
 def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff).getD 0
 
-/-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
-def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
-  let amount (i : KeywordInst) : Option Nat :=
-    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
-    if i.keyword == k then
-      (match i.arg with
-        | .amount n => some n
-        | .none => if k == .assault || k == .shield then some 1 else none
-        | _ => none)
-    else none
-  (match s.cardDef? u with
-    | some d => (d.keywords.filterMap amount).sum
-    | none => 0) + ((s.grantedKws u).filterMap amount).sum
-
 /-- The Might a Unit adds to the damage of its side: Assault X while attacking (CR 807), Shield X
 while defending (CR 814). -/
 def combatMight (s : GameState) (u : ObjId) (attacking : Bool) : Nat :=

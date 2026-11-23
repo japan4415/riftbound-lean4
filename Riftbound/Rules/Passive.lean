@@ -144,6 +144,20 @@ for a while (CR 479.3). -/
 def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.equipKws id ++ s.passiveKws id ++ (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
 
+/-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
+def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
+  let amount (i : KeywordInst) : Option Nat :=
+    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
+    if i.keyword == k then
+      (match i.arg with
+        | .amount n => some n
+        | .none => if k == .assault || k == .shield then some 1 else none
+        | _ => none)
+    else none
+  (match s.cardDef? u with
+    | some d => (d.keywords.filterMap amount).sum
+    | none => 0) + ((s.grantedKws u).filterMap amount).sum
+
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/
 def mightNow (s : GameState) (id : ObjId) : Option Int :=
@@ -168,6 +182,8 @@ def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amo
   | .highestMight sel =>
     (sel.eval s p self env).map (fun ids =>
       (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).foldl Nat.max 0)
+  | .kwAmount sel k =>
+    (sel.eval s p self env).map (fun ids => (ids.map (fun id => s.kwAmount id k)).sum)
   | .add a b => do pure ((← Amount.evalS s p self env a) + (← Amount.evalS s p self env b))
   | .sub a b => do pure ((← Amount.evalS s p self env a) - (← Amount.evalS s p self env b))
   | .mul a b => do pure ((← Amount.evalS s p self env a) * (← Amount.evalS s p self env b))

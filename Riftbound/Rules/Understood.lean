@@ -95,6 +95,7 @@ def Amount.understoodC : Amount → Bool
 worked out. -/
 def Amount.understoodK : Amount → Bool
   | .highestMight s => s.understood
+  | .kwAmount s _ => s.understood
   | a => a.understoodC
 
 /-- A filter that is understood. -/
