@@ -210,6 +210,7 @@ def Prim.understood : Prim → Bool
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
+  | .playPaying s => s.understoodPickAny
   | .counter s => s.understood
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understoodPickAny && b.understood

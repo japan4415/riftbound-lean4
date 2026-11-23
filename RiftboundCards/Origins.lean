@@ -3097,8 +3097,29 @@ def OGN_115.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Promising Future: the effect is not written yet. -/
-def OGN_115 : CardDef := OGN_115.meta
+/-- One recycle of what Baited Hook and Promising Future looked at: while there are cards left of the ones looked at (the
+five, less the card played: the deck had `n` cards before the play and has fewer now, so the number
+of cards left of those looked at is `5 + deckNow - n`). -/
+def baitedHookRecycle (i : Nat) : Effect :=
+  .ifThen (.and (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5])) (.const i))
+      (.cmp .ge (.sub (.add (.const 5) (.count (Selector.all .friendly .inMainDeck [])))
+        (.var ⟨"deckBefore"⟩)) (.const i)))
+    (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))) .nop
+
+/-- Promising Future. Each player looks at the top 5 cards of their Main Deck, chooses one (a Unit or a
+Gear: a Spell cannot be played here), and plays it, ignoring its Energy cost (the Power is paid);
+the rest are recycled. -/
+def OGN_115 : CardDef :=
+  { OGN_115.meta with
+    spellEffect := some (.of []
+      (.eachPlayer .eachPlayer (.seqOf [.prim (.lookTop 5),
+        .bind ⟨"deckBefore"⟩ (.count (Selector.all .friendly .inMainDeck []))
+          (.seqOf [
+            .prim (.playPaying (Selector.one .friendly .inMainDeck
+              [.top 5, .not (.ofType .spell)])),
+            baitedHookRecycle 1, baitedHookRecycle 2, baitedHookRecycle 3,
+            baitedHookRecycle 4, baitedHookRecycle 5])]))),
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-116
 /--
@@ -6522,15 +6543,6 @@ def OGN_242.meta : CardDef :=
     cost := some ⟨3, []⟩,
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
-
-/-- One recycle of what Baited Hook looked at: while there are cards left of the ones looked at (the
-five, less the card played: the deck had `n` cards before the play and has fewer now, so the number
-of cards left of those looked at is `5 + deckNow - n`). -/
-def baitedHookRecycle (i : Nat) : Effect :=
-  .ifThen (.and (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5])) (.const i))
-      (.cmp .ge (.sub (.add (.const 5) (.count (Selector.all .friendly .inMainDeck [])))
-        (.var ⟨"deckBefore"⟩)) (.const i)))
-    (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))) .nop
 
 /-- Baited Hook. Kill a friendly unit; look at the top 5 cards of the Main Deck: a unit among them with
 Might up to 1 more than the killed unit may be played for free; the rest are recycled. -/

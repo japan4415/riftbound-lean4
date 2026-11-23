@@ -4211,4 +4211,31 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return runes a s.me == 2 && runes a s.you == 2 && runes rich s.me > 2 && runes rich s.you > 2 &&
     deck a s.me > deck rich s.me && deck a s.you > deck rich s.you
 
+-- Promising Future (OGN-115): each player looks at the top 5 cards of their deck, chooses a unit
+-- or gear and plays it ignoring its Energy cost (the Power is paid), and recycles the rest; a
+-- spell cannot be played here
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-115" .hand
+  let mkDeck (x : GameState) (p : PlayerId) : Option GameState := do
+    let (d0, _) ← put (x.setZone (.player p .mainDeck) []) p "OGN-088" .mainDeck
+    let (d1, _) ← put d0 p "OGN-136" .mainDeck
+    let (d2, _) ← put d1 p "OGN-124" .mainDeck
+    let (d3, _) ← put d2 p "OGN-229" .mainDeck
+    let (d4, _) ← put d3 p "OGN-037" .mainDeck
+    let (d5, _) ← put d4 p "OGN-136" .mainDeck
+    some d5
+  let a1 ← mkDeck s1 s.me
+  let a2 ← mkDeck a1 s.you
+  let phoenix ← (a2.zone (.player s.me .mainDeck)).find? (fun x =>
+    (a2.cardDef? x).any (·.id == cid "OGN-037"))
+  let done ← play a2 s.me c [] { obj := fun o => o == phoenix }
+  let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).length
+  let ids (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).map (fun u =>
+    ((x.cardDef? u).map (·.id.code)).getD "?")
+  return done.countIn s.me .base "OGN-037" == 1 && (deck done s.me) + 1 == deck a2 s.me &&
+    (ids done s.me).head? == some "OGN-088" && (deck done s.you) + 1 == deck a2 s.you &&
+    (done.zone (.player s.you .base)).any (fun u =>
+      (done.cardDef? u).any (·.id == cid "OGN-136")) &&
+    (done.poolOf s.me).fury + 1 == ((a2.rich s.me).poolOf s.me).fury - 0
+
 end RiftboundTest

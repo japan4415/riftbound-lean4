@@ -67,6 +67,8 @@ inductive Prim where
   | counter (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
+  /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
+  | playPaying (s : Selector)
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)
   /-- Reveal cards from the top of the Main Deck until one with the properties is revealed, play it
