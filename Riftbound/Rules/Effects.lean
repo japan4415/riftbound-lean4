@@ -1060,10 +1060,17 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             exact Safe.refl s
         | cons _ _ => simp at h
 
-/-- A Unit token the player plays enters ready: an effect of the turn says the units the player plays
-enter ready ("Friendly units enter ready this turn"). -/
+/-- A Unit token the player plays enters ready: an effect of the turn says the units the player
+plays enter ready ("Friendly units enter ready this turn"), or a passive ability of an object they
+control says their tokens do. -/
 def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef) : Bool :=
-  c.hasType .unit && (s.fxOf p).any (fun k => k == .unitsReady)
+  c.hasType .unit && ((s.fxOf p).any (fun k => k == .unitsReady) ||
+    -- a passive ability of an object the player controls: "your tokens enter ready"
+    s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+      (s.activeMods g).any (fun m =>
+        match m with
+        | .entersReady (.pick .all .friendly .anywhere fs) => fs == FilterList.ofList [.token]
+        | _ => false)))
 
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
@@ -1076,7 +1083,8 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
       match place with
       | .atBase => some (createN c.id p none (ready || s.tokenReady p c) k s, [])
       | .here =>
-        (s.hereOf src).map (fun bf => (createN c.id p (some bf) (ready || s.tokenReady p c) k s, []))
+        (s.hereOf src).map (fun bf =>
+          (createN c.id p (some bf) (ready || s.tokenReady p c) k s, []))
       | _ => none)
 
 /-- Playing tokens is a safe change. -/

@@ -511,6 +511,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Switcheroo、Temptation、Defiant Dance は、対象の選びが緩い（同じ Battlefield、別のユニット、という条件を、選ぶときに見られない。違反する組を選ぶと、何も起きない）。Fae Porter は、払ってから動かすので、動かせる味方がいないと、Power だけが失われる（断れる）。誤植の「Rrainbow」は、「rainbow の Power」のこと。
 - **カードの数**: 動く Spiritforged は 101 枚から 114 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 6 — 「選んだとき」、Detach、トークンの判定
+
+- **選んだとき**: `TriggerEvent.chosen`。プレイヤーが、自分のユニットを、自分の呪文で選んだとき（プレイするときの対象）に、そのユニットの誘発（Jae Medarda、Irelia, Fervent）と、「味方のユニットを選んだとき」を見張るもの（Spirit Wheel、Blade Dancer の Legend）が働く。見張る側の効果は、選ばれたユニットを `.slot 0` で指す。能力（起動型・誘発型）で選ぶ場合は、まだ働かない。
+- **Detach**: `Prim.detach`（装備品を外す）。Filter に、`attachedTo`（あるものに付いている）、`isAttached`（何かに付いている）、`attached`（装備品が付いている）、`token`（トークン）を足した。トークンの判定で、Renata Glasc（Industrialist）の「トークンは ready で入る」を、`tokenReady`（パッシブの `entersReady` と、効果のあるターンの `unitsReady`）として実装した。
+- **書いたカード**: SFD-011、057、107、142、144、171、177、195、221（9 枚）。
+- **近似**: 「選んだとき」は、呪文のプレイ時の対象だけ（誘発する能力の対象、解決のときの選択、能力の対象は、働かない）。Irelia, Fervent の「choose or ready」の choose は、呪文だけ。Blade Dancer は、Legend を exhaust する費用を、解決のときに払う。Veiled Temple の「ready a friendly gear」の対象は、誘発のときに選ぶ。Azir, Sovereign の「any number of your token units」は、1 体ずつ「しますか」と聞く。
+- **カードの数**: 動く Spiritforged は 114 枚から 123 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

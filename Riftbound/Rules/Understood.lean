@@ -130,6 +130,7 @@ def Filter.understood : Filter → Bool
   | .defender => true
   | .alone => true
   | .isAttached => true
+  | .attached => true
   | .token => true
   | .attachedTo .self => true
   | .attachedTo (.slot _) => true

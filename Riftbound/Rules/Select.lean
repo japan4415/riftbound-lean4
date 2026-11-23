@@ -334,6 +334,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | some (bf, _), some o => o.loc == some bf && (s.unitsAtOf bf o.controller).length == 1
       | _, _ => false)
   | .isAttached => pure ((s.obj? id).any (·.attached.isSome))
+  | .attached => pure (s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id)))
   | .token =>
     pure ((s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false))
   | .attachedTo sel => do
@@ -345,7 +346,6 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _ => none
     let d ← d?
     pure ((s.obj? id).any (·.attached == some d))
-  | _ => none
 
 /-- Whether the object has every property of the list. -/
 def FilterList.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) :

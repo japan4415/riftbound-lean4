@@ -1222,4 +1222,150 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let t := r.mapObjects endTurnObj
   return t.mightNow a == s3.mightNow a && t.mightNow b == s3.mightNow b
 
+-- Angle Shot (SFD-011): attach an Equipment to a unit, or detach it (same controller), then draw 1
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-011" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let a ← play s3 s.me c [u, g] { fromEnd := some 1 }
+  let hooked := s3.modObj g (fun o => { o with attached := some u })
+  let d ← play hooked s.me c [u, g] { fromEnd := some 2 }
+  return (a.obj? g).any (·.attached == some u) && a.handN s.me == s3.handN s.me &&
+    (d.obj? g).any (·.attached == none) && d.handN s.me == s3.handN s.me
+-- (a unit of the player and an Equipment of the opponent: nothing happens, nothing is drawn)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-011" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.you "SFD-042" .base
+  let a ← play s3 s.me c [u, g]
+  return (a.obj? g).any (·.attached == none) && a.handN s.me + 1 == s3.handN s.me
+-- (the enemy's own: the Equipment may be attached to the enemy's unit)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-011" .hand
+  let (s2, u) ← put s1 s.you "OGN-051" .base
+  let (s3, g) ← put s2 s.you "SFD-042" .base
+  let a ← play s3 s.me c [u, g]
+  return (a.obj? g).any (·.attached == some u)
+
+-- Strike Down (SFD-107): an equipped friendly unit deals damage equal to its Might to an enemy
+-- unit, then an Equipment is detached from it
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-107" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let (s4, e) ← put s3 s.you "OGN-001" .base
+  let (s5, free) ← put s4 s.me "OGN-051" .base
+  let s6 := s5.modObj g (fun o => { o with attached := some u })
+  let r ← play s6 s.me c [u, e]
+  return r.dmg e == (s6.mightNow u).map Int.toNat && (r.obj? g).any (·.attached == none) &&
+    (play s6 s.me c [free, e]).isNone && (play s6 s.me c [u, free]).isNone
+
+-- (the Equipment of another unit stays attached, whichever of the two was put first)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-107" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, v) ← put s2 s.me "OGN-051" .base
+  let (s4, e) ← put s3 s.you "OGN-001" .base
+  let (a1, g) ← put s4 s.me "SFD-042" .base
+  let (a2, g2) ← put a1 s.me "SFD-051" .base
+  let (b1, h2) ← put s4 s.me "SFD-051" .base
+  let (b2, h) ← put b1 s.me "SFD-042" .base
+  let sa := (a2.modObj g (fun o => { o with attached := some u })).modObj g2
+    (fun o => { o with attached := some v })
+  let sb := (b2.modObj h (fun o => { o with attached := some u })).modObj h2
+    (fun o => { o with attached := some v })
+  let ra ← play sa s.me c [u, e]
+  let rb ← play sb s.me c [u, e]
+  return (ra.obj? g).any (·.attached == none) && (ra.obj? g2).any (·.attached == some v) &&
+    (rb.obj? h).any (·.attached == none) && (rb.obj? h2).any (·.attached == some v)
+
+-- Veiled Temple (SFD-221): conquer here, ready a friendly gear; an Equipment may be detached
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-221"
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let s4 := (s3.modObj g (fun o => { o with attached := some u })).tire g
+  let a ← fire s4 [.scored s.me bf true] { pick := fun ts => ts == [g] }
+  let b ← fire s4 [.scored s.me bf true] { pick := fun ts => ts == [g], yes := false }
+  let c ← fire s4 [.scored s.me bf false] { pick := fun ts => ts == [g] }
+  return a.tired g == some false && (a.obj? g).any (·.attached == none) &&
+    b.tired g == some true && (b.obj? g).any (·.attached == some u) &&
+    c.tired g == some true
+
+-- Jae Medarda (SFD-142): draw 1 when its player chooses it with a spell
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, jae) ← put s1 s.me "SFD-142" .base
+  let (s3, other) ← put s2 s.me "OGN-051" .base
+  let a ← play s3 s.me c [jae]
+  let b ← play s3 s.me c [other]
+  let e ← fire s3 [.chosenBySpell s.you jae]
+  return a.handN s.me == s3.handN s.me && b.handN s.me + 1 == s3.handN s.me &&
+    e.handN s.me + 1 == s3.handN s.me + 1 && s3.handN s.me ≥ 1
+
+-- Irelia, Fervent (SFD-057): +1 Might this turn when she is chosen or readied
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, i) ← put s1 s.me "SFD-057" .base
+  let a ← play s2 s.me c [i]
+  let b ← fire s2 [.readied i]
+  let n ← fire s2 [.chosenBySpell s.you i]
+  return a.mightNow i == (s2.mightNow i).map (· + 1) &&
+    b.mightNow i == (s2.mightNow i).map (· + 1) && n.mightNow i == s2.mightNow i
+
+-- Spirit Wheel (SFD-144): when its player chooses a friendly unit, pay 1 and exhaust it to draw 1
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, w) ← put s1 s.me "SFD-144" .base
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let (s4, e) ← put s3 s.you "OGN-051" .base
+  let a ← play s4 s.me c [u]
+  let b ← play s4 s.me c [e]
+  let n ← play s4 s.me c [u] { yes := false }
+  let t ← play (s4.tire w) s.me c [u]
+  let p ← cast (s4.fund s.me 1) s.me c (payOf s4 c) [u]
+  return a.handN s.me == s4.handN s.me && a.tired w == some true &&
+    b.handN s.me + 1 == s4.handN s.me && n.handN s.me + 1 == s4.handN s.me &&
+    t.handN s.me + 1 == s4.handN s.me && p.tired w == some false
+
+-- Blade Dancer (SFD-195), a Legend: when its player chooses a friendly unit, exhaust it and pay 1
+-- Power to ready the unit; when they conquer, pay 1 Energy to ready it
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGN-004" .hand
+  let (s2, l) ← put s1 s.me "SFD-195" .legendZone
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let tired := s3.tire u
+  let a ← play tired s.me c [u]
+  let b ← play (s3.tire l) s.me c [u]
+  let (s4, bf) ← putBf s3 s.me "SFD-216"
+  let k ← fire ((s4.tire l).rich s.me) [.scored s.me bf true]
+  let m ← fire ((s4.tire l).fund s.me 0) [.scored s.me bf true]
+  return a.tired u == some false && a.tired l == some true && b.tired u == some false &&
+    k.tired l == some false && m.tired l == some true
+
+-- Azir, Sovereign (SFD-177): when it attacks, the player may move their token units there
+#guard tsf fun s => do
+  let (s1, a) ← putAt s s.me "SFD-177" s.bf0
+  let (s2, _) ← applyCreate s1 s.me a {} "Sand Soldier" (.const 1) .atBase false
+  let (s3, plain) ← put s2 s.me "OGN-051" .base
+  let tok := (s3.zone (.player s.me .base)).find? (fun o =>
+    (s3.cardDef? o).any (·.name == "Sand Soldier"))
+  let t ← tok
+  let r ← fire s3 [.combatStarted s.bf0 s.me]
+  let n ← fire s3 [.combatStarted s.bf0 s.me] { yes := false }
+  let d ← fire s3 [.combatStarted s.bf0 s.you]
+  return (r.obj? t).any (·.loc == some s.bf0) && (r.obj? plain).any (·.loc.isNone) &&
+    (n.obj? t).any (·.loc.isNone) && (d.obj? t).any (·.loc.isNone)
+
+-- Renata Glasc, Industrialist (SFD-171): the player's tokens enter ready
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-076" .hand
+  let (s2, _) ← put s1 s.me "SFD-171" .base
+  let (s3, c2) ← put s1 s.me "SFD-076" .hand
+  let a ← play s2 s.me c
+  let b ← play s3 s.me c2
+  let mech (x : GameState) :=
+    (x.zone (.player s.me .base)).find? (fun o => (x.cardDef? o).any (·.name == "Mech"))
+  return (mech a).bind a.tired == some false && (mech b).bind b.tired == some true
+
 end RiftboundTest
