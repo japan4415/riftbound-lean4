@@ -145,6 +145,12 @@ inductive Filter where
   | at_ (s : Selector)
   /-- Is the only unit of its side in the combat ("alone"). -/
   | alone
+  /-- Is attached to the object the selector names (`self`, a chosen object or a variable). -/
+  | attachedTo (s : Selector)
+  /-- Is attached to a unit: an Equipment that is not detached. -/
+  | isAttached
+  /-- Is a token. -/
+  | token
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/

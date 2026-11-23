@@ -189,7 +189,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
       if (s.cardDef? t).any (·.hasType .unit) &&
           (s.obj? t).any (fun o => o.controller == p && o.loc == some bf) then
         triggersOf s bf p .chosenHere
-      else [])
+      else []) ++
+    -- a unit of the player that is chosen by their spell, and what watches the units they choose
+    (if (s.obj? t).any (·.controller == p) then
+      triggersOf s t p .chosen ++ watchersOf s t p .chosen
+    else [])
   | .killedBySpell p =>
     (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .killBySpell)
   | .recycled p =>

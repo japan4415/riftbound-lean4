@@ -129,6 +129,11 @@ def Filter.understood : Filter → Bool
   | .attacker => true
   | .defender => true
   | .alone => true
+  | .isAttached => true
+  | .token => true
+  | .attachedTo .self => true
+  | .attachedTo (.slot _) => true
+  | .attachedTo (.var _) => true
   | .onBattlefield => true
   | .noChoices => true
   | .costBelowPoints => true
@@ -238,6 +243,7 @@ def Prim.understood : Prim → Bool
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
+  | .detach s => s.understoodPick
   | .move s .base => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
@@ -338,6 +344,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .winCombat => t.subject == .self
+      | .chosen => true
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self
       | .killBySpell => t.subject == .self

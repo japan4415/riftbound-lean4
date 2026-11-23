@@ -209,6 +209,9 @@ inductive TriggerEvent where
   /-- A player chooses a unit of theirs that is at this Battlefield with a spell: the choice made
   when the spell is played (not the choices made as it resolves, nor those of abilities). -/
   | chosenHere
+  /-- The unit is chosen by a spell of its player ("when you choose me with a spell"); a Legend,
+  a Gear or a Unit that watches the units chosen has a subject that is a selector. -/
+  | chosen
   /-- The player kills a unit with a spell, and the card is in their Trash. -/
   | killBySpell
   /-- The player conquers a Battlefield, and the card is in their Trash. -/

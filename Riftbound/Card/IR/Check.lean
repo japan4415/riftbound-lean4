@@ -76,6 +76,7 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .cost _ a => Amount.ok c a
   | .powerCost _ a => Amount.ok c a
   | .at_ s => Selector.ok c s
+  | .attachedTo s => Selector.ok c s
   | .not f => Filter.ok c f
   | .sameAs s => Selector.ok c s
   | _ => true

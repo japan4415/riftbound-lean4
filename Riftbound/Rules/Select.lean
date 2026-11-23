@@ -333,6 +333,18 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     pure (match s.combatNow, s.obj? id with
       | some (bf, _), some o => o.loc == some bf && (s.unitsAtOf bf o.controller).length == 1
       | _, _ => false)
+  | .isAttached => pure ((s.obj? id).any (·.attached.isSome))
+  | .token =>
+    pure ((s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false))
+  | .attachedTo sel => do
+    -- the object the selector names: `self`, a chosen object or a variable
+    let d? : Option ObjId := match sel with
+      | .self => some self
+      | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
+      | _ => none
+    let d ← d?
+    pure ((s.obj? id).any (·.attached == some d))
   | _ => none
 
 /-- Whether the object has every property of the list. -/

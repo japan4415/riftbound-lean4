@@ -950,6 +950,14 @@ def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :
 theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=
   Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
 
+/-- Detach an Equipment: it is attached to nothing. -/
+def detachObj (s : GameState) (g : ObjId) : GameState × List Event :=
+  (s.modObj g (fun o => { o with attached := none }), [])
+
+/-- Detaching is a safe change. -/
+theorem detachObj_safe (s : GameState) (g : ObjId) : Safe s (detachObj s g).1 :=
+  Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+
 /-- Attach the objects the first selector stands for to the one the second stands for. `none` if
 the second is not exactly one object, or either cannot be answered. -/
 def applyAttach (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (gears to : Selector) :
@@ -1130,6 +1138,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
+  | .detach sel => onSelected s p src env sel detachObj
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base => onSelected s p src env sel moveHome
   | .move sel (.at_ dsel) =>
@@ -1273,6 +1282,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           · exact onSelected_safe (sendToLoc_safe _) h
           · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
+  | detach sel => exact onSelected_safe detachObj_safe h
   | buff sel => exact onSelected_safe buffObj_safe h
   | gainXP ps n =>
     simp only [applyPrim] at h
@@ -1565,6 +1575,7 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/
 def Prim.pickSel? : Prim → Option Selector
+  | .detach s => some s
   | .deal s _ => some s
   | .heal s _ => some s
   | .kill s => some s
@@ -1596,6 +1607,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   match p with
   | .deal _ n => .deal sel n
   | .heal _ n => .heal sel n
+  | .detach _ => .detach sel
   | .kill _ => .kill sel
   | .ready _ => .ready sel
   | .exhaust _ => .exhaust sel
