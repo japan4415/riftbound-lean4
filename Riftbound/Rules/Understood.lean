@@ -134,6 +134,8 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .takenByMyCard => true
+  | .wasTakenByMyCard => true
   | .playedFromElsewhere => true
   | .playedThisTurn => true
   | .inHandZone => true
@@ -257,7 +259,9 @@ def Prim.understood : Prim → Bool
   | .reveal s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood
+  | .playBanishedWith => true
   | .returnControl s => s.understood
+  | .takeControlUntilLeaves s => s.understood
   | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
@@ -410,7 +414,9 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
+      | .leave => t.subject == .self
       | .revealedFromDeck => true
+      | .playToken => true
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

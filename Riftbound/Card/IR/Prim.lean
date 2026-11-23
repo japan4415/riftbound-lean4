@@ -120,8 +120,14 @@ inductive Prim where
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)
+  /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
+  banished when its Unit died (The Zero Drive). -/
+  | playBanishedWith
   /-- The objects go back to their owners' control (Hostile Takeover). -/
   | returnControl (s : Selector)
+  /-- Take control of objects until the source (a Unit) leaves the board: the objects remember the
+  card of the source (Akshan). -/
+  | takeControlUntilLeaves (s : Selector)
   /-- The players take an extra turn (CR 734-738). -/
   | extraTurn (p : PlayerSel)
   /-- The players win the game. -/
@@ -238,6 +244,8 @@ inductive TriggerEvent where
   | recycleRune
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
+  /-- A Unit token is played (the watcher is told the token). -/
+  | playToken
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I

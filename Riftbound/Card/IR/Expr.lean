@@ -149,6 +149,10 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
+  /-- The object was taken by a Unit of the same card as `self` (it goes back when that leaves). -/
+  | takenByMyCard
+  /-- The same, whoever controls the object now (it may have been given back already). -/
+  | wasTakenByMyCard
   /-- The card was played this turn from somewhere other than a hand. -/
   | playedFromElsewhere
   /-- The card was played this turn. -/

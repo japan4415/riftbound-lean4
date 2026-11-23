@@ -120,6 +120,12 @@ structure Object where
   prevLoc : Option ObjId := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
+  /-- The card was on the board when it last changed zone (it left the board by that move). -/
+  leftBoard : Bool := false
+  /-- The card of the Unit that took control of this object until it leaves the board (Akshan). -/
+  takenBy : Option CardId := none
+  /-- The Equipment this card was banished by, when its Unit died (The Zero Drive). -/
+  banishedWith : Option ObjId := none
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/
   energyPaid : Nat := 0
   /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/

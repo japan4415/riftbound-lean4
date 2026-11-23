@@ -2658,6 +2658,9 @@ def SFD_090.meta : CardDef :=
 def SFD_090 : CardDef :=
   { SFD_090.meta with
 
+    abilities := [.activated [.pay ⟨3, [.domain .mind]⟩] .normal
+      (EffectDef.of [] (.ifThen (.not (.matches .self .isAttached))
+        (.seqOf [.prim .playBanishedWith, .prim (.banish .self)]) .nop)) .unlimited],
     grants := [.passive .always [.banishOnDeath]],
     status := .drafted }
 
@@ -3181,11 +3184,15 @@ def SFD_109 : CardDef :=
 
     additionalCost := some ⟨0, [.domain .body, .domain .body]⟩,
     abilities := [.triggered { event := .play, condition := .paid }
-      (.of [Choice.targetOf .one .enemy .anywhere [.ofType .gear]]
-        (.ifThen .paid
-          (.seqOf [.prim (.takeControl (.slot 0)), .prim (.recall (.slot 0) false),
-            .ifThen (.matches (.slot 0) (.tag ⟨"Equipment"⟩))
-              (.prim (.attach (.slot 0) .self)) .nop]) .nop)) .unlimited],
+        (.of [Choice.targetOf .one .enemy .anywhere [.ofType .gear]]
+          (.ifThen .paid
+            (.seqOf [.prim (.takeControlUntilLeaves (.slot 0)), .prim (.recall (.slot 0) false),
+              .ifThen (.matches (.slot 0) (.tag ⟨"Equipment"⟩))
+                (.prim (.attach (.slot 0) .self)) .nop]) .nop)) .unlimited,
+      .triggered (.onSelf .leave)
+        (.of [] (.seqOf [.prim (.returnControl (Selector.all .any .anywhere [.takenByMyCard])),
+          .prim (.recall (Selector.all .any .anywhere [.ofType .gear, .wasTakenByMyCard]) false)]))
+        .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-110
@@ -5779,8 +5786,15 @@ def SFD_197 : CardDef :=
   { SFD_197.meta with
 
     abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
-      (EffectDef.of [] (.ifThen (.cmp .ge .gearsPlayed (.const 1))
-        (.prim (.create "Sand Soldier" (.const 1) .atBase false)) .nop)) .unlimited],
+        (EffectDef.of [] (.ifThen (.cmp .ge .gearsPlayed (.const 1))
+          (.prim (.create "Sand Soldier" (.const 1) .atBase false)) .nop)) .unlimited,
+      -- Weaponmaster for my Sand Soldiers: when one is played, I may Equip an Equipment to it
+      -- for 1 less, even if it is attached already
+      .triggered
+        { event := .playToken,
+          subject := Selector.all .friendly .anywhere [.named "Sand Soldier"] }
+        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
+          (.may (.prim (.attachPaying (.slot 0) (.slot 1) 1)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-198

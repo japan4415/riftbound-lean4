@@ -141,7 +141,7 @@ theorem noteIf_safe (b : Bool) (f : GameState → GameState) (hf : ∀ t, Safe t
 /-- The notes of the death of a unit: that it died, and whether it was buffed or stunned as it died
 (the notes are about the dead card, which is the object it has become). -/
 def noteDeath (s : GameState) (o : Object) (isUnit : Bool) (marked : Bool) (mighty : Bool)
-    (moved : Option ObjId) : GameState :=
+    (moved : Option ObjId) (banisher : Option ObjId) : GameState :=
   let s1 := noteIf (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied) s
   match moved with
   | some n =>
@@ -151,12 +151,15 @@ def noteDeath (s : GameState) (o : Object) (isUnit : Bool) (marked : Bool) (migh
       (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) s2
     let s4 := noteIf (isUnit && mighty)
       (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) s3
-    noteIf (isUnit && marked) (fun t => t.addTurnFxOn o.controller n .recallDied) s4
+    let s5 := noteIf (isUnit && marked) (fun t => t.addTurnFxOn o.controller n .recallDied) s4
+    -- the card remembers the Equipment that banished it
+    noteIf banisher.isSome (fun t => t.modObj n (fun x => { x with banishedWith := banisher })) s5
   | none => s1
 
 /-- Noting a death is a safe change. -/
 theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool)
-    (moved : Option ObjId) : Safe s (noteDeath s o isUnit marked mighty moved) := by
+    (moved : Option ObjId) (banisher : Option ObjId) :
+    Safe s (noteDeath s o isUnit marked mighty moved banisher) := by
   unfold noteDeath
   have h1 := noteIf_safe (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied)
     (fun t => addTurnFx_safe t _ _) s
@@ -164,14 +167,24 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
   | none => exact h1
   | some n =>
     refine h1.trans ?_
-    exact (((noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _).trans
+    exact ((((noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _).trans
       (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
       (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
-      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)
+      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
+      (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
+        (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
 
 /-- An Equipment attached to the object says that it is banished when it dies. -/
 def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
   s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id) &&
+    (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
+      match ab with
+      | Ability.passive .always mods => mods.contains .banishOnDeath
+      | _ => false)))
+
+/-- The Equipment attached to the object that banishes it when it dies. -/
+def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
+  s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
     (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
       match ab with
       | Ability.passive .always mods => mods.contains .banishOnDeath
@@ -187,7 +200,8 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
         (s.turnFx.any (fun f => f.kind == .recallOnDeath && f.target == some id &&
           f.turn == s.turn))
         ((s.mightNow id).any (fun m => decide (5 ≤ m)))
-        (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none)),
+        (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
+        (s.banisherOf id),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))
@@ -198,7 +212,7 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
   unfold killObj
   generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else ZoneKind.trash) = dest
   split
-  · exact (sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _)
+  · exact (sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)
   · exact sendObj_safe dest s id
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -969,6 +983,17 @@ theorem setController_safe (p : PlayerId) (s : GameState) (id : ObjId) :
   · exact h1.trans (contestFor_safe _ _ _)
   · exact h1
 
+/-- A player takes control of an object until the Unit of the card leaves the board. -/
+def takeUntil (p : PlayerId) (card : Option CardId) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  let r := setController p s id
+  (r.1.modObj id (fun o => { o with takenBy := card }), r.2)
+
+/-- Taking control until a Unit leaves is a safe change. -/
+theorem takeUntil_safe (p : PlayerId) (card : Option CardId) (s : GameState) (id : ObjId) :
+    Safe s (takeUntil p card s id).1 :=
+  (setController_safe p s id).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
+
 /-- Recall a Unit: it goes to its controller's Base, and is exhausted if the effect says so. It is
 not a move, so no ability of a move fires (CR 456). -/
 def recallFx (ex : Bool) (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -1241,6 +1266,15 @@ def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef) : Bool :=
         | .entersReady (.pick .all .friendly .anywhere fs) => fs == FilterList.ofList [.token]
         | _ => false)))
 
+/-- The Units played as tokens between two states: they were played, as the abilities that wait for
+a Unit to be played see it (the tokens made are the objects with the new identifiers). -/
+def tokenPlays (s s' : GameState) (p : PlayerId) : List Event :=
+  (List.range (s'.nextId - s.nextId)).filterMap (fun i =>
+    if (s.obj? ⟨s.nextId + i⟩).isNone &&
+        (s'.cardDef? ⟨s.nextId + i⟩).any (·.hasType .unit) then
+      some (Event.tokenPlayed p ⟨s.nextId + i⟩)
+    else none)
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -1250,10 +1284,13 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
     | none => none
     | some c =>
       match place with
-      | .atBase => some (createN c.id p none (ready || s.tokenReady p c) k s, [])
+      | .atBase =>
+        let r := createN c.id p none (ready || s.tokenReady p c) k s
+        some (r, tokenPlays s r p)
       | .here =>
         (s.hereOf src).map (fun bf =>
-          (createN c.id p (some bf) (ready || s.tokenReady p c) k s, []))
+          let r := createN c.id p (some bf) (ready || s.tokenReady p c) k s
+          (r, tokenPlays s r p))
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
@@ -1384,7 +1421,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       l.filterMap (fun q =>
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .takeControl sel => onSelected s p src env sel (setController p)
+  | .playBanishedWith =>
+    some (applyEach (playFree p) s ((s.zone (.player p .banishment)).filter (fun id =>
+      (s.obj? id).any (·.banishedWith == some src) && (s.cardDef? id).any (·.hasType .unit))))
   | .returnControl sel => onSelected s p src env sel giveBack
+  | .takeControlUntilLeaves sel =>
+    onSelected s p src env sel (takeUntil p ((s.cardDef? src).map (·.id)))
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
     -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
@@ -1556,7 +1598,12 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       rw [← h]
       exact recycleTopAll_safe l s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
+  | playBanishedWith =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact applyEach_safe (fun t u => playFree_safe p t u) _ _
   | returnControl sel => exact onSelected_safe giveBack_safe h
+  | takeControlUntilLeaves sel => exact onSelected_safe (takeUntil_safe p _) h
   | «recall» sel ex => exact onSelected_safe (recallFx_safe ex) h
   | win ps =>
     simp only [applyPrim] at h
