@@ -138,6 +138,8 @@ inductive TurnEffect where
   | buffedUnitDied
   /-- A stunned unit died: the note is about the dead card. -/
   | stunnedUnitDied
+  /-- A Mighty unit died (its Might was 5 or more as it died): the note is about the dead card. -/
+  | mightyUnitDied
   /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
   | killOnDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/

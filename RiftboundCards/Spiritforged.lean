@@ -1367,10 +1367,11 @@ def SFD_050 : CardDef :=
 
     abilities := [.activated [.pay ⟨0, [.domain .calm]⟩] .action
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
-        (.seqOf [.prim (.swapPlaces .self (.slot 0)),
-          .forEach (Selector.all .friendly .anywhere
-              [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)])
-            (.may (.prim (.attach .it .self)))]))
+        (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs .self]))
+          (.seqOf [.prim (.swapPlaces .self (.slot 0)),
+            .forEach (Selector.all .friendly .anywhere
+                [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)])
+              (.may (.prim (.attach .it .self)))]) .nop))
       (.perTurn 1)],
     status := .drafted }
 
@@ -4529,9 +4530,8 @@ def SFD_167.meta : CardDef :=
 def SFD_167 : CardDef :=
   { SFD_167.meta with
 
-    abilities := [.triggered (.onSelf .die)
-      (.of [] (.ifThen (.matches .self .mighty) (.prim (.draw .you (.const 2))) .nop))
-      .unlimited],
+    abilities := [.triggered { event := .die, condition := .diedWith .mightyUnitDied }
+      (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-168
