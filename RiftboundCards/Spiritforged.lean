@@ -527,8 +527,21 @@ def SFD_020.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Draven, Vanquisher: the effect is not written yet. -/
-def SFD_020 : CardDef := SFD_020.meta
+/-- Draven, Vanquisher. -/
+def SFD_020 : CardDef :=
+  { SFD_020.meta with
+
+    abilities := [.triggered (.onSelf .winCombat)
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
+      .triggered (.onSelf .attack)
+        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
+          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
+            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited,
+      .triggered (.onSelf .defend)
+        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
+          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
+            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-021
 /--
@@ -2951,8 +2964,12 @@ def SFD_115.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Trinity Force: the effect is not written yet. -/
-def SFD_115 : CardDef := SFD_115.meta
+/-- Trinity Force. -/
+def SFD_115 : CardDef :=
+  { SFD_115.meta with
+
+    grants := [.triggered (.onSelf .hold) (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-116
 /--
@@ -3146,8 +3163,14 @@ def SFD_123.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Corrupt Enforcer: the effect is not written yet. -/
-def SFD_123 : CardDef := SFD_123.meta
+/-- Corrupt Enforcer. -/
+def SFD_123 : CardDef :=
+  { SFD_123.meta with
+
+    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+        (.of [] (.prim (.discard .you (.const 1)))) .unlimited,
+      .triggered (.onSelf .winCombat) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-124
 /--
@@ -4526,8 +4549,13 @@ def SFD_181.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Mechanized Menace: the effect is not written yet. -/
-def SFD_181 : CardDef := SFD_181.meta
+/-- Mechanized Menace. -/
+def SFD_181 : CardDef :=
+  { SFD_181.meta with
+
+    abilities := [.passive .always
+      [.keyword (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]) { keyword := .shield }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-182
 /--
@@ -4618,8 +4646,13 @@ def SFD_185.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Glorious Executioner: the effect is not written yet. -/
-def SFD_185 : CardDef := SFD_185.meta
+/-- Glorious Executioner. -/
+def SFD_185 : CardDef :=
+  { SFD_185.meta with
+
+    abilities := [.triggered (.onSelf .winCombat) (.of [] (.prim (.draw .you (.const 1))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-186
 /--
@@ -4738,8 +4771,15 @@ def SFD_190.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Forgefire Cape: the effect is not written yet. -/
-def SFD_190 : CardDef := SFD_190.meta
+/-- Forgefire Cape. -/
+def SFD_190 : CardDef :=
+  { SFD_190.meta with
+
+    grants := [.triggered (.onSelf .attack)
+        (.of [] (.prim (.deal (Selector.all .enemy .here [.ofType .unit]) (.const 2)))) .unlimited,
+      .triggered (.onSelf .defend)
+        (.of [] (.prim (.deal (Selector.all .enemy .here [.ofType .unit]) (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-191
 /--
@@ -5112,8 +5152,17 @@ def SFD_207.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Emperor's Dais: the effect is not written yet. -/
-def SFD_207 : CardDef := SFD_207.meta
+/-- Emperor's Dais. -/
+def SFD_207 : CardDef :=
+  { SFD_207.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
+          (.exists (Selector.all .friendly .here [.ofType .unit])))
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
+          .prim (.returnToHand (Selector.one .friendly .here [.ofType .unit])),
+          .prim (.create "Sand Soldier" (.const 1) .here false)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-208
 /--
@@ -5201,8 +5250,14 @@ def SFD_212.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Minefield: the effect is not written yet. -/
-def SFD_212 : CardDef := SFD_212.meta
+/-- Minefield. -/
+def SFD_212 : CardDef :=
+  { SFD_212.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.repeatN (.const 2)
+        (.prim (.bin (Selector.one .friendly .inMainDeck [.top 1]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-213
 /--
@@ -5237,8 +5292,15 @@ def SFD_214.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Power Nexus: the effect is not written yet. -/
-def SFD_214 : CardDef := SFD_214.meta
+/-- Power Nexus. -/
+def SFD_214 : CardDef :=
+  { SFD_214.meta with
+
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.ifThen (.canPay ⟨0, [.any, .any, .any, .any]⟩)
+        (.may (.seqOf [.prim (.pay ⟨0, [.any, .any, .any, .any]⟩),
+          .prim (.score .you (.const 1))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-215
 /--
@@ -5289,8 +5351,14 @@ def SFD_217.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Seat of Power: the effect is not written yet. -/
-def SFD_217 : CardDef := SFD_217.meta
+/-- Seat of Power. -/
+def SFD_217 : CardDef :=
+  { SFD_217.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.prim (.draw .you (.count
+        (Selector.all .any .anywhere [.ofType .battlefield, .controlled, .notSelf]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-218
 /--
@@ -5307,8 +5375,15 @@ def SFD_218.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sunken Temple: the effect is not written yet. -/
-def SFD_218 : CardDef := SFD_218.meta
+/-- Sunken Temple. -/
+def SFD_218 : CardDef :=
+  { SFD_218.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
+          (.exists (Selector.all .friendly .here [.ofType .unit, .mighty])))
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-219
 /--
@@ -5324,8 +5399,13 @@ def SFD_219.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- The Papertree: the effect is not written yet. -/
-def SFD_219 : CardDef := SFD_219.meta
+/-- The Papertree. -/
+def SFD_219 : CardDef :=
+  { SFD_219.meta with
+
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.prim (.channel .eachPlayer (.const 0) (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-220
 /--
@@ -5341,8 +5421,15 @@ def SFD_220.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Treasure Hoard: the effect is not written yet. -/
-def SFD_220 : CardDef := SFD_220.meta
+/-- Treasure Hoard. -/
+def SFD_220 : CardDef :=
+  { SFD_220.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.canPay ⟨1, []⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.create "Gold" (.const 1) .atBase false)]))
+        .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-221
 /--

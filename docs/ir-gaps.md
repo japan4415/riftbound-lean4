@@ -64,6 +64,9 @@
 | Promising Future | 山札の上 5 枚から、選べるのは、ユニットとギアだけ（呪文を、エネルギーなしで、プレイする手段が、まだ無い）。プレイは、各プレイヤーが、続けて行う（呪文をかけた人が先。見る・選ぶ・プレイ・リサイクルを、プレイヤーごとに続ける）。払えないカードを選ぶと、そのカードも、リサイクルされる |
 | Quick-Draw（Spiritforged） | Reaction の速さを持つギアとユニットを、Chain への応答としてプレイすることは、まだできない（メインフェイズに、Chain が空のときだけ）。付けるのは、場に出たときの誘発 |
 | Weaponmaster（Spiritforged） | Equip コストから Power 1 つを引く（先頭の 1 つ）。付けてもよい Equipment は、味方のもの。払うのは、解決のとき、Rune Pool にあるものだけ（足りなければ付かない）。解決のとき、ユニットが場に無ければ、何もしない。Equip コストが、読めていない Equipment（コストが Kill や Recycle のもの）を選ぶと、何も起きない（選ぶ候補から外す手段が、まだ無い）。「Equipment」のタグが無いカード（RAD-123）は、選べない |
+| 戦闘に勝つ（Spiritforged） | 「勝つ」は、戦闘の終わりに、Recall のあとで、その Battlefield に残る Unit が、1 人のプレイヤーのものだけであること。攻撃側は、防御側が残ると Recall されるので、防御側が勝つ。規則の原文（CR 468）では、Recall の前で数える読み方も、ありうる（未確認） |
+| 解決のときに払う（Spiritforged） | 「you may pay X. If you do, ...」は、解決のときに、Rune Pool にあるものから払う。Draven, Vanquisher、Sunken Temple、Treasure Hoard、Emperor's Dais、Power Nexus がそう。相手のターン（Draven の防御側の誘発）は、Rune Pool が空なので、払えない。Sunken Temple の「Mighty」は、解決のときに調べる |
+| Emperor's Dais・Piercing Light・Emperor's Divide（Spiritforged） | 返すユニットと 2 つ目の対象を、解決のときに選ぶ（Deflect の追加支払いが掛からず、「選んだとき」の誘発も働かない） |
 | Blind Fury（プレイ回数） | Blind Fury で、相手のカードを、プレイしても、Legion などの「プレイしたカードの数」では、自分のプレイと数えない（数える判定が、カードの持ち主を見る） |
 | Blind Fury | 相手の山札の上の呪文を、「プレイする」かわりに、追放だけ行う（呪文を、コストなしで、プレイする手段が、まだ無い） |
 | Mystic Reversal | 「新しく選び直してもよい」を、書かなかった（呪文の対象は、そのまま。奪った呪文の対象は、解決のときに、再検証されないので、新しいコントローラーから見て、不正な対象（元の「味方のユニット」など）にも、効く） |

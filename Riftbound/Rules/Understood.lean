@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Rules.Effects
 public import Riftbound.Rules.Chain
+public import Riftbound.Rules.Mana
 
 /-!
 # What the interpreter understands
@@ -336,6 +337,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .stun => true | .discard => true | .ready => true
       | .buff => true
+      | .winCombat => t.subject == .self
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self
       | .killBySpell => t.subject == .self
@@ -362,9 +364,11 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
-    (costPlan costs).isSome &&
+    ((costPlan costs).isSome &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
-        (body.choices.all Choice.simple && body.body.understood))
+        (body.choices.all Choice.simple && body.body.understood))) ||
+    -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
+    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body)
   | .triggered t body _ =>
     t.runs && body.choices.all Choice.simple && body.body.understood
   | .replacement .. => false
@@ -381,7 +385,8 @@ def Keyword.runs : Keyword → Bool
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
-  c.status == .drafted && c.abilities.all Ability.runs && c.keywords.all (·.keyword.runs) &&
+  c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
+    c.keywords.all (·.keyword.runs) &&
     (match c.spellEffect with
       | some e => e.choices.all Choice.simple && e.body.understood
       | none => !c.types.contains .spell)

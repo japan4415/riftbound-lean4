@@ -37,7 +37,13 @@ def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff)
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
   let amount (i : KeywordInst) : Option Nat :=
-    if i.keyword == k then (match i.arg with | .amount n => some n | _ => none) else none
+    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
+    if i.keyword == k then
+      (match i.arg with
+        | .amount n => some n
+        | .none => if k == .assault || k == .shield then some 1 else none
+        | _ => none)
+    else none
   (match s.cardDef? u with
     | some d => (d.keywords.filterMap amount).sum
     | none => 0) + ((s.grantedKws u).filterMap amount).sum
@@ -354,7 +360,10 @@ def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
     if tieAll then s1.players.flatMap (fun p => s1.unitsOf p bf) else s1.unitsOf att bf
   let r := if defenders then applyEach recallObj s1 victims else (s1, [])
   let t := endShowdown r.1 bf
-  (t.1, t.2.1, r.2 ++ t.2.2)
+  -- the player whose Units are the only ones left wins the Combat
+  let won := (r.1.players.filter (fun p => !(r.1.unitsOf p bf).isEmpty)).map
+    (fun p => Event.combatWon bf p)
+  (t.1, t.2.1, r.2 ++ (match won with | [w] => [w] | _ => []) ++ t.2.2)
 
 /-- The end of a Combat is a safe change, then points. -/
 theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :

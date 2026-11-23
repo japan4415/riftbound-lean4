@@ -222,6 +222,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
     (if conquer then
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
     else [])
+  | .combatWon bf w =>
+    (s.trigUnitsAt bf w).flatMap (fun u => triggersOf s u w .winCombat) ++
+    (s.zone (.player w .legendZone)).flatMap (fun l => triggersOf s l w .winCombat)
   | .combatStarted bf att =>
     (s.trigAllUnitsAt bf).flatMap (fun u =>
       match s.obj? u with

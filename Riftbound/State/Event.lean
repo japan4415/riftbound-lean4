@@ -76,6 +76,9 @@ inductive Event where
   | discarded (p : PlayerId) (obj : ObjId) (last : Bool)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- A Combat at a Battlefield ended and only the units of the player were left there: they won
+  it (CR 468). -/
+  | combatWon (bf : ObjId) (winner : PlayerId)
 deriving DecidableEq, Repr
 
 end Riftbound
