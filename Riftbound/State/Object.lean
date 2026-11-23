@@ -94,6 +94,8 @@ structure Object where
   attached : Option ObjId := none
   /-- For an Equipment in play: the turn it was attached (Brutalizer). -/
   attachedTurn : Option Nat := none
+  /-- The players who scored this Battlefield by holding it this turn. -/
+  held : List PlayerId := []
   /-- Whether the Unit has a buff: +1 Might (CR 701). Leaving the Board clears it. -/
   buffed : Bool := false
   /-- Whether the Unit is stunned: it deals no combat damage this turn (CR 424). -/

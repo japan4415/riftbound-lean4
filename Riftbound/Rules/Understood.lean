@@ -54,6 +54,9 @@ def Amount.understood : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .gearsPlayed => true
+  | .excess => true
+  | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
@@ -81,6 +84,9 @@ def Amount.understoodC : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .gearsPlayed => true
+  | .excess => true
+  | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true

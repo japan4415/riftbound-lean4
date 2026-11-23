@@ -236,10 +236,11 @@ def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
     decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false)
 
 /-- Remember that `tp` has scored a Battlefield this turn. -/
-def markScored (tp : PlayerId) (o : Object) : Object := { o with scored := tp :: o.scored }
+def markScored (tp : PlayerId) (o : Object) : Object :=
+  { o with scored := tp :: o.scored, held := tp :: o.held }
 
 /-- A new turn: nothing has been scored yet (CR 472). -/
-def clearScored (o : Object) : Object := { o with scored := [], used := [] }
+def clearScored (o : Object) : Object := { o with scored := [], held := [], used := [] }
 
 /-- Score by Hold: the turn player gets one point for each Battlefield they hold
 (CR 315.2.b, 471, 472). -/

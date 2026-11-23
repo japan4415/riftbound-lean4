@@ -646,6 +646,17 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     some (match s.obj? self with
       | some o => if o.movesTurn == some s.turn then o.moves else 0
       | none => 0)
+  | .excess =>
+    some ((s.turnFx.filterMap (fun f =>
+      match f.kind with
+      | .excessDamage k => if f.turn == s.turn && f.who == p then some k else none
+      | _ => none)).foldl Nat.max 0)
+  | .heldPoints =>
+    some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
+  | .gearsPlayed =>
+    some (s.objects.toList.filter (fun (k, o) =>
+      o.owner == p && o.playedTurn == some s.turn &&
+        ((s.cardDef? ⟨k⟩).any (·.hasType .gear)))).length
   | .cardsPlayed =>
     some (s.objects.toList.filter (fun (_, o) =>
       o.owner == p && o.playedTurn == some s.turn)).length

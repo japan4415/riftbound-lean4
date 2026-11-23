@@ -619,6 +619,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: Fire Below the Mountain の Add は、「Gear を遊ぶか、Gear の能力を使うときだけ」の制限がない（制限つきの Add は、解釈されない）。
 - **カードの数**: 動く Spiritforged は 190 枚から 195 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 18 — 数える量、ダメージの防止
+
+- **数える量**: `Amount.excess`（そのプレイヤーが、このターン最後の戦闘で割り当てた余りのダメージ）、`Amount.heldPoints`（このターン、hold で点を取った Battlefield の数。`Object.held` は、hold だけが付け、ターンの始めに消える）、`Amount.gearsPlayed`（このターン、遊んだ Gear の数）。
+- **ダメージの防止**: `TurnEffect.damagePrevented`（ユニットに付く）。そのターンの、そのユニットへの最初のダメージ（0 でないもの）は、防がれ、記録は消える（`GameState.shielded`、`useShield`、`dealObj`）。戦闘のダメージも、`dealObj` を通る。
+- **Battlefield の費用の変更**: Battlefield のパッシブは、それを支配しているプレイヤーのために働く（`GameState.sourceOwner`。だれも支配していなければ、働かない）。
+- **書いたカード**: SFD-055（Needlessly Large Yordle。hold の点 1 つにつき Energy を 2 安く。**Power の Calm を安くする部分は、読まない**）、120（Sivir, Ambitious）、194（Counter Strike）、213（Ornn's Forge。最初の Token でない Gear は 1 安い）。
+- **近似**: Needlessly Large Yordle の費用は、Power の Calm の減額を動かさない（高くなる側）。Counter Strike は Reaction だが、Chain に呼応して遊ぶことは、既存の近似と同じ。Ornn's Forge の「最初」は、このターンに遊んだ Gear の数が 0 のとき（Token の Gear は、遊んだ数に入らない）。
+- **カードの数**: 動く Spiritforged は 195 枚から 199 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

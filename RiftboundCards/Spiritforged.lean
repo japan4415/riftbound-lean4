@@ -1588,8 +1588,12 @@ def SFD_055.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Needlessly Large Yordle: the effect is not written yet. -/
-def SFD_055 : CardDef := SFD_055.meta
+/-- Needlessly Large Yordle. -/
+def SFD_055 : CardDef :=
+  { SFD_055.meta with
+
+    abilities := [.passive .always [.costMinus .self (.mul .heldPoints (.const 2))]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-056
 /--
@@ -3446,8 +3450,14 @@ def SFD_120.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sivir, Ambitious: the effect is not written yet. -/
-def SFD_120 : CardDef := SFD_120.meta
+/-- Sivir, Ambitious. -/
+def SFD_120 : CardDef :=
+  { SFD_120.meta with
+
+    abilities := [.triggered { event := .conquer, condition := .excessAtLeast 5 }
+      (.of [] (.may (.prim (.deal (Selector.one .enemy .anywhere [.ofType .unit]) .excess))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-121
 /--
@@ -5572,8 +5582,13 @@ def SFD_194.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Counter Strike: the effect is not written yet. -/
-def SFD_194 : CardDef := SFD_194.meta
+/-- Counter Strike. -/
+def SFD_194 : CardDef :=
+  { SFD_194.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.markOn (.slot 0) .damagePrevented), .prim (.draw .you (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-195
 /--
@@ -6029,8 +6044,13 @@ def SFD_213.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ornn's Forge: the effect is not written yet. -/
-def SFD_213 : CardDef := SFD_213.meta
+/-- Ornn's Forge. -/
+def SFD_213 : CardDef :=
+  { SFD_213.meta with
+
+    abilities := [.passive (.cmp .eq .gearsPlayed (.const 0))
+      [.costMinus (Selector.all .friendly .anywhere [.ofType .gear, .not .token]) (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-214
 /--
