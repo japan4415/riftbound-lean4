@@ -610,6 +610,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .slot i =>
     match env.slots[i]? with
     | some (.obj o) => some (if o ∈ s.inPlay ∨ o ∈ s.zone .chain then [o] else [])
+    | some (.int _) => some []  -- a target of up to one, that was left out (`slotValues`)
     | _ => none
   | .var v =>
     match env.lookup v with
@@ -803,18 +804,27 @@ choice may name an earlier pick as `slot i`): for a target of exactly one object
 objects in play. Nothing for a choice that is not understood yet. -/
 def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId) (acc : List ObjId) :
     Choice → List ObjId
-  | .target .one side place fs =>
-    ((s.candidates p self { slots := acc.map Value.obj } side place fs).getD []).filter
-      (fun id => !s.blocksChoice p id)
+  | .target q side place fs =>
+    if q == .one || q == .upTo 1 then
+      ((s.candidates p self { slots := acc.map Value.obj } side place fs).getD []).filter
+        (fun id => !s.blocksChoice p id)
+    else []
   | _ => []
 
 /-- The objects a choice can pick when nothing was picked before. -/
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self []
 
-/-- Whether a choice is one that a Spell can make for now: one target. -/
+/-- Whether a choice is one that a Spell can make for now: one target, or up to one (which may be
+left out when nothing after it is required). -/
 def Choice.simple : Choice → Bool
   | .target .one _ _ _ => true
+  | .target (.upTo 1) _ _ _ => true
+  | _ => false
+
+/-- Whether a choice may be left out: a target of up to one. -/
+def Choice.optional : Choice → Bool
+  | .target (.upTo 1) _ _ _ => true
   | _ => false
 
 /-- The objects chosen are a legal pick for the choices, one for each, each seeing the picks before
@@ -822,15 +832,26 @@ it. -/
 def targetsOkAfter (s : GameState) (p : PlayerId) (self : ObjId) (acc : List ObjId) :
     List Choice → List ObjId → Bool
   | [], [] => true
+  | c :: cs, [] => c.optional && targetsOkAfter s p self acc cs []
   | c :: cs, t :: ts =>
     c.simple && decide (t ∈ c.candidatesAfter s p self acc) &&
       targetsOkAfter s p self (acc ++ [t]) cs ts
-  | _, _ => false
+  | [], _ :: _ => false
 
 /-- The objects chosen are a legal pick for the choices. -/
 def targetsOk (s : GameState) (p : PlayerId) (self : ObjId) (cs : List Choice)
     (ts : List ObjId) : Bool :=
   targetsOkAfter s p self [] cs ts
+
+/-- The pick of nothing, when this choice and the ones after it may all be left out. -/
+def skipTuple (c : Choice) (cs : List Choice) : List (List ObjId) :=
+  if c.optional && cs.all Choice.optional then [[]] else []
+
+/-- A pick that starts with an object is not the pick of nothing. -/
+theorem cons_not_mem_skipTuple {c : Choice} {cs : List Choice} {t : ObjId} {ts : List ObjId} :
+    (t :: ts) ∉ skipTuple c cs := by
+  unfold skipTuple
+  split <;> simp
 
 /-- Every legal pick for the choices, after the picks `acc`. -/
 def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (acc : List ObjId) :
@@ -839,13 +860,28 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (acc : List 
   | c :: cs =>
     if c.simple then
       (c.candidatesAfter s p self acc).flatMap (fun t =>
-        (targetTuplesAfter s p self (acc ++ [t]) cs).map (t :: ·))
+        (targetTuplesAfter s p self (acc ++ [t]) cs).map (t :: ·)) ++
+        skipTuple c cs
     else []
 
 /-- Every legal pick for the choices. -/
 def targetTuples (s : GameState) (p : PlayerId) (self : ObjId) (cs : List Choice) :
     List (List ObjId) :=
   targetTuplesAfter s p self [] cs
+
+/-- A pick of nothing is legal exactly when every choice may be left out. -/
+theorem targetsOkAfter_nil (s : GameState) (p : PlayerId) (self : ObjId) :
+    ∀ (cs : List Choice) (acc : List ObjId),
+      targetsOkAfter s p self acc cs [] = cs.all Choice.optional
+  | [], acc => by simp [targetsOkAfter]
+  | c :: cs, acc => by simp [targetsOkAfter, targetsOkAfter_nil s p self cs acc]
+
+/-- An optional choice is one that can be made. -/
+theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
+  unfold Choice.optional at h
+  split at h
+  · rfl
+  · simp at h
 
 /-- The picks listed are exactly the legal ones. -/
 theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) :
@@ -854,12 +890,20 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) :
   | [], acc, ts => by
     cases ts <;> simp [targetTuplesAfter, targetsOkAfter]
   | c :: cs, acc, [] => by
-    simp only [targetTuplesAfter, targetsOkAfter]
-    split <;> simp
+    rw [targetsOkAfter_nil]
+    simp only [targetTuplesAfter, List.all_cons, Bool.and_eq_true]
+    by_cases hs : c.simple = true
+    · simp [hs, skipTuple]
+    · have : c.optional = false := by
+        cases h : c.optional
+        · rfl
+        · exact absurd (Choice.simple_of_optional h) hs
+      simp [hs, this]
   | c :: cs, acc, t :: ts => by
     simp only [targetTuplesAfter, targetsOkAfter, Bool.and_eq_true, decide_eq_true_eq]
     by_cases hs : c.simple = true
-    · simp only [hs, ite_true, List.mem_flatMap, List.mem_map, List.cons.injEq, true_and]
+    · simp only [hs, ite_true, List.mem_append, List.mem_flatMap, List.mem_map, List.cons.injEq,
+        true_and, cons_not_mem_skipTuple, or_false]
       constructor
       · rintro ⟨t', ht', ts', hts', rfl, rfl⟩
         exact ⟨ht', (mem_targetTuplesAfter s p self cs (acc ++ [t']) ts').mp hts'⟩
@@ -878,7 +922,7 @@ theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId} 
       ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain
   | [], _, [], _ => by simp
   | [], _, _ :: _, h => by simp [targetsOkAfter] at h
-  | _ :: _, _, [], h => by simp [targetsOkAfter] at h
+  | _ :: _, _, [], _ => by simp
   | c :: cs, acc, t :: ts, h => by
     simp only [targetsOkAfter, Bool.and_eq_true, decide_eq_true_eq] at h
     obtain ⟨⟨hs, ht⟩, hrest⟩ := h
@@ -886,13 +930,14 @@ theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId} 
     rcases List.mem_cons.mp hx with rfl | hx
     · cases c with
       | target q side place fs =>
-        cases q <;> simp [Choice.simple] at hs
         simp only [Choice.candidatesAfter] at ht
-        cases hc : s.candidates p self { slots := acc.map Value.obj } side place fs with
-        | none => simp [hc] at ht
-        | some r =>
-          simp only [hc, Option.getD_some] at ht
-          exact GameState.mem_candidates hc x (List.mem_filter.mp ht).1
+        split at ht
+        · cases hc : s.candidates p self { slots := acc.map Value.obj } side place fs with
+          | none => simp [hc] at ht
+          | some r =>
+            simp only [hc, Option.getD_some] at ht
+            exact GameState.mem_candidates hc x (List.mem_filter.mp ht).1
+        · simp at ht
       | mode _ => simp [Choice.simple] at hs
       | xValue => simp [Choice.simple] at hs
       | extraCost _ _ => simp [Choice.simple] at hs

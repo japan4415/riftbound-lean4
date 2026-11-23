@@ -233,6 +233,17 @@ theorem GameState.paysForX_total {s : GameState} {p : PlayerId} {c : ObjId} {d :
   obtain ⟨k, hk, hp⟩ := h
   exact ⟨k, hk, Cost.total_of_paidBy hp⟩
 
+/-- The Power symbols, with one of them left out, each way. -/
+def dropEach : List PowerSym → List (List PowerSym)
+  | [] => []
+  | x :: xs => xs :: (dropEach xs).map (x :: ·)
+
+/-- The Power symbols with `k` of them left out, whichever the player chooses (all of them, when
+there are fewer). -/
+def dropPowers : Nat → List PowerSym → List (List PowerSym)
+  | 0, l => [l]
+  | k + 1, l => if l.isEmpty then [l] else (dropEach l).flatMap (dropPowers k)
+
 /-- The cost with `k` less Power symbols. -/
 def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop k }
 
@@ -242,8 +253,9 @@ def Cost.cutOptions (c : Cost) (k : Nat) : List Cost :=
   -- the cut is not optional: with something to cut, the whole cost is not one of the costs
   if k = 0 then [c]
   else
-    let l := (((List.range (k + 1)).flatMap (fun a => (List.range (k + 1 - a)).map (fun b =>
-      (c.lessEnergy a).lessPower b))).filter (fun x => x != c)).eraseDups
+    let l := (((List.range (k + 1)).flatMap (fun a => (List.range (k + 1 - a)).flatMap (fun b =>
+      (dropPowers b c.power).map (fun pw => { c.lessEnergy a with power := pw })))).filter
+        (fun x => x != c)).eraseDups
     if l.isEmpty then [c] else l
 
 /-- With nothing cut, the cost itself is the one cost. -/

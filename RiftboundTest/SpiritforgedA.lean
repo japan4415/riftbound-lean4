@@ -237,8 +237,10 @@ meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat
   let (s1, c) ← put s s.me "SFD-023" .hand
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, v) ← put s2 s.you "OGN-001" .base
-  let s4 ← play s3 s.me c [u]
-  return s4.dmg u == some 2 && s4.dmg v == some 2
+  let s4 ← play s3 s.me c [u, v]
+  let s5 ← play s3 s.me c [u]
+  return s4.dmg u == some 2 && s4.dmg v == some 2 && s5.dmg u == some 2 && s5.dmg v == some 0 &&
+    (play s3 s.me c [u, u]).isNone && (play s3 s.me c []).isNone
 -- ... with no other unit, only the first is hit
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-023" .hand
@@ -3032,10 +3034,14 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s3, b) ← putAt s2 s.you "OGN-088" s.bf0
   let (s4, d) ← putAt s3 s.me "OGN-088" s.bf0
   let (s5, e) ← put s4 s.you "OGN-088" .base
-  let r ← play s5 s.me c [a]
-  let one ← play s5 s.me c [a] { yes := false }
+  let r ← play s5 s.me c [a, b, d]
+  let one ← play s5 s.me c [a]
+  let two ← play s5 s.me c [a, d]
   return r.dmg a == some 1 && r.dmg b == some 1 && r.dmg d == some 1 && r.dmg e == some 0 &&
-    one.dmg a == some 1 && one.dmg b == some 0 && one.dmg d == some 0
+    one.dmg a == some 1 && one.dmg b == some 0 && one.dmg d == some 0 &&
+    two.dmg a == some 1 && two.dmg b == some 0 && two.dmg d == some 1 &&
+    (play s5 s.me c [a, b, b]).isNone && (play s5 s.me c [a, e]).isNone &&
+    (play s5 s.me c [a, a]).isNone
 
 -- Relentless Pursuit (SFD-184): move a friendly unit; this turn it may go home when it conquers
 #guard tsf fun s => do
@@ -3447,5 +3453,12 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     activatable (x.rich s.me) s.me udyr idx ⟨0, []⟩ [] true
   return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
     !ok (s3.buff udyr) copyIdx && copyIdx > 0
+
+-- Irelia: a Power cut may leave out any symbol of the cost, not only the first
+#guard
+  let c : Cost := ⟨2, [.domain .fury, .domain .calm]⟩
+  let o := c.cutOptions 1
+  o.contains ⟨1, [.domain .fury, .domain .calm]⟩ && o.contains ⟨2, [.domain .calm]⟩ &&
+    o.contains ⟨2, [.domain .fury]⟩ && !o.contains c && o.length == 3
 
 end RiftboundTest
