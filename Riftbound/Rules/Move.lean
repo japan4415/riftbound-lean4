@@ -91,6 +91,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,
                  moves := 0, movesTurn := none,
                  prevLoc := none,
+                 leftBoard := src.isBoard,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

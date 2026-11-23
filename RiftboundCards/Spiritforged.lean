@@ -3191,7 +3191,7 @@ def SFD_109 : CardDef :=
                 (.prim (.attach (.slot 0) .self)) .nop]) .nop)) .unlimited,
       .triggered (.onSelf .leave)
         (.of [] (.seqOf [.prim (.returnControl (Selector.all .any .anywhere [.takenByMyCard])),
-          .prim (.recall (Selector.all .any .anywhere [.ofType .gear, .takenByMyCard]) false)]))
+          .prim (.recall (Selector.all .any .anywhere [.ofType .gear, .wasTakenByMyCard]) false)]))
         .unlimited],
     status := .drafted }
 

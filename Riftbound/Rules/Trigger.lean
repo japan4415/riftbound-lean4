@@ -285,7 +285,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- a card that is put where it is not on the board: what waits for it to leave fires
     (if !dst.isBoard then
       match s.obj? n with
-      | some o => triggersOf s n o.owner .leave
+      | some o => if o.leftBoard then triggersOf s n o.owner .leave else []
       | none => []
     else [])
   | .buffed u =>

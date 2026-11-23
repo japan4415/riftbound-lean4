@@ -135,6 +135,7 @@ def Filter.understood : Filter → Bool
   | .openBf => true
   | .scoredByMine => true
   | .takenByMyCard => true
+  | .wasTakenByMyCard => true
   | .playedFromElsewhere => true
   | .playedThisTurn => true
   | .inHandZone => true

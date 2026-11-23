@@ -315,8 +315,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
   | .playedFromElsewhere =>
     some ((s.obj? id).any (fun o => o.playedTurn == some s.turn && !o.playedFromHand))
-  | .takenByMyCard =>
+  | .wasTakenByMyCard =>
     some ((s.obj? id).any (fun o => o.takenBy.isSome && o.takenBy == (s.cardDef? self).map (·.id)))
+  | .takenByMyCard =>
+    some ((s.obj? id).any (fun o => o.takenBy.isSome && o.takenBy == (s.cardDef? self).map (·.id) &&
+      some o.controller == (s.obj? self).map (·.owner)))
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)

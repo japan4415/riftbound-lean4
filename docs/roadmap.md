@@ -682,6 +682,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Emperor of the Sands**: 『Sand Soldier は Weaponmaster を持つ』を、Sand Soldier が遊ばれたときの誘発（Equipment を 1 安く付けてもよい）として書いた。
 - **Akshan**: 取った Gear は、`Object.takenBy`（取った Unit のカード）を覚え、その Unit が盤面を離れる（盤面でないゾーンへ動く。`TriggerEvent.leave`、`Event.moved` から検出）と、持ち主の支配に戻り、持ち主の Base へ戻る。`Prim.takeControlUntilLeaves`。同じカードの Unit が離れるときは、その Unit が取った Gear もまとめて戻る（近似）。
 - **The Zero Drive**: 付いたユニットが死んで追放されると、そのカードは `Object.banishedWith`（Equipment）を覚える。『3 Energy と Mind、これを追放: 追放したユニットを、全部、無料で遊ぶ（付いていないときだけ）』を、`Prim.playBanishedWith` で書いた。
+- **レビューで直したこと**: `leave` は、盤面から出た移動だけで誘発する（`Object.leftBoard`）。ドローや捨てでは誘発しない。Akshan が返す物は、取ったときの支配者と、離れる Akshan の持ち主が同じ物だけ（相手の Akshan が取った物は、返さない）。残る近似: 取った印（`takenBy`）は、返したあとも残る。Zero Drive は、支配者の追放ゾーンだけを見る（持ち主と支配者が違うとき、遊ばれない）。
 - **まだ近似のもの**: SFD-018 Void Hatchling（公開のあとで見る）、SFD-029 Rek'Sai（払って ready）、SFD-141 Irelia（Energy の払い戻し）、SFD-059 Svellsongur（誘発する能力だけ）、SFD-199 Prodigal Explorer（呪文だけ数える）、SFD-208 Forge of the Fluft（Battlefield の能力）、SFD-143 Sivir（Power を数える）。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

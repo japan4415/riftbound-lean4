@@ -3316,4 +3316,24 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     inZone t1 .trash "OGN-051" == 1 && inZone used .banishment "OGN-136" == 0 &&
     (blocked.map (fun x => inZone x .banishment "OGN-051")).getD 1 == 1
 
+-- (review) Akshan: drawing or discarding him does not return the gear; the other player's Akshan is
+-- not mixed up with mine
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let base := payOf s2 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let paid ← cast (s2.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let (s3, spare) ← put paid s.me "SFD-109" .mainDeck
+  let moved ← moveObj s3 spare (.player s.me .hand)
+  let drawn ← fire moved.1 [.moved spare moved.2 (.player s.me .hand)]
+  let (t1, theirs) ← put paid s.you "SFD-109" .base
+  let k := killObj t1 theirs
+  let mirror ← fire k.1 k.2
+  let gear (x : GameState) (p : PlayerId) : Bool :=
+    (x.zone (.player p .base)).any (fun o => (x.cardDef? o).any (·.id == cid "SFD-042") &&
+      (x.obj? o).any (·.controller == p))
+  return gear paid s.me && gear drawn s.me && !gear drawn s.you && gear mirror s.me &&
+    !gear mirror s.you
+
 end RiftboundTest
