@@ -213,6 +213,8 @@ inductive Condition where
   | noted (e : TurnEffect)
   /-- The player has a passive ability that lets them hide a card for one Energy (Swift Scout). -/
   | hidesWithEnergy
+  /-- The player has a card in play, or a Legend, that is the card (Heimerdinger). -/
+  | hasFriendlyCard (id : CardId)
   /-- The object an ability watches (its first slot) was noted with the effect for its player when
   it died, this turn. -/
   | diedWith (e : TurnEffect)

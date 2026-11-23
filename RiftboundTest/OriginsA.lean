@@ -4275,4 +4275,50 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     paid.countIn s.me .trash "OGN-145" == 0 && poor.countIn s.me .trash "OGN-145" == 1 &&
     (paid.poolOf s.me).body < (withPow.poolOf s.me).body
 
+-- Heimerdinger, Inventor (OGN-111): he has the exhaust abilities of my legends, units and gear:
+-- with Lee Sin (exhaust: buff me) in play, he can exhaust to buff himself; without Lee Sin he
+-- cannot; not with the opponent's Lee Sin
+#guard t fun s => do
+  let (s1, hd) ← put s s.me "OGN-111" .base
+  let (s2, lee) ← put s1 s.me "OGN-078" .base
+  let leeIdx ← (RiftboundCards.Origins.OGN_111.fullAbilities.findIdx? (fun a => match a with
+    | .activated _ _ b _ => b.body ==
+        .ifThen (.hasFriendlyCard ⟨"OGN-078"⟩) (.prim (.buff .self)) .nop
+    | _ => false))
+  let used ← activate s2 s.me hd leeIdx [] ⟨0, []⟩
+  let (n1, nhd) ← put s s.me "OGN-111" .base
+  let without := activate n1 s.me nhd leeIdx [] ⟨0, []⟩
+  let (t1, thd) ← put s s.me "OGN-111" .base
+  let (t2, _) ← put t1 s.you "OGN-078" .base
+  let theirs := activate t2 s.me thd leeIdx [] ⟨0, []⟩
+  let again := activate used s.me hd leeIdx [] ⟨0, []⟩
+  return (used.obj? hd).map (·.buffed) == some true && used.tired hd == some true &&
+    (used.obj? lee).map (·.buffed) == some false && without.isNone && theirs.isNone &&
+    again.isNone
+
+-- Heimerdinger, Inventor (OGN-111), more: an ability with a guard that waits for a chosen
+-- object (Baited Hook) is still not there without the Hook; a Legend's mana ability is his while
+-- the Legend is there (Daughter of the Void, with a spell in hand)
+#guard t fun s => do
+  let abilities := RiftboundCards.Origins.OGN_111.fullAbilities
+  let idxOf (c : String) : Option Nat := abilities.findIdx? (fun a => match a with
+    | .activated _ _ b _ => (match b.body with
+        | .ifThen (.and (.hasFriendlyCard id) _) _ _ => id == ⟨c⟩
+        | .ifThen (.hasFriendlyCard id) _ _ => id == ⟨c⟩
+        | _ => false)
+    | _ => false)
+  let hookIdx ← idxOf "OGN-242"
+  let (s1, hd) ← put s s.me "OGN-111" .base
+  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s3, _) ← put s2 s.me "OGN-242" .base
+  let withHook := activate s3 s.me hd hookIdx [u] ⟨1, [.order]⟩
+  let withoutHook := activate s2 s.me hd hookIdx [u] ⟨1, [.order]⟩
+  let daughterIdx ← idxOf "OGN-247"
+  let (l1, _) ← put s1 s.me "OGN-247" .legendZone
+  let (l2, _) ← put l1 s.me "OGN-229" .hand
+  let (n1, _) ← put s1 s.me "OGN-229" .hand
+  let manaOk (x : GameState) :=
+    (legalActions x).contains ⟨.player s.me, .manaAbility hd daughterIdx⟩
+  return withHook.isSome && withoutHook.isNone && manaOk l2 && !manaOk n1
+
 end RiftboundTest

@@ -176,6 +176,7 @@ def Condition.understood : Condition → Bool
   | .excessAtLeast _ => true
   | .noted _ => true
   | .hidesWithEnergy => true
+  | .hasFriendlyCard _ => true
   | .diedWith _ => true
   | .discardedThisTurn => true
   | _ => false
