@@ -322,6 +322,19 @@ inductive StaticMod where
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
+  /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/
+  | doubleEquip
+  /-- (Of an Equipment) the Unit it is attached to has `n` more Might if it was attached this
+  turn (Brutalizer). -/
+  | mightIfFresh (n : Nat)
+  /-- (Of an Equipment) the Unit it is attached to also has the tag (Experimental Hexplate). -/
+  | gainsTag (t : Tag)
+  /-- (Of an Equipment) the Units of the player of the Unit it is attached to, at the place of that
+  Unit, have the keyword (Shurelya's Requiem). -/
+  | keywordHere (k : KeywordInst)
+  /-- (Of an Equipment) the hold effects of the Unit are also conquer effects, and the other way
+  round (Skyfall of Areion). -/
+  | holdIsConquer
   /-- A modification the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
 deriving DecidableEq, Repr, Hashable

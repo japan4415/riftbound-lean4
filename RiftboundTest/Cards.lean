@@ -60,11 +60,11 @@ open Riftbound RiftboundCards
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 298
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 -- Spiritforged (222): the measure of the goal "every card of the second set works"
-#guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 159
+#guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 165
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-")).length == 222
 
--- the cards written down as IR values (docs/coverage.md): 374 by hand, 169 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 543
+-- the cards written down as IR values (docs/coverage.md): 380 by hand, 169 by `transcribe.py`
+#guard (allCards.filter (·.status == .drafted)).length == 549
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo
