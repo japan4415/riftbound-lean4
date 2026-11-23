@@ -581,10 +581,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### M8a の実装の記録（2026-11-23）: Spiritforged 13 — 得点の禁止、特別な Equip
 
-- **得点の禁止**: `StaticMod.cantPlayer ps .score where_ untilTurn` を読む（`GameState.cantScoreHere`、`Passive.lean`）。`where_` は `.here`（その Battlefield）か `.anywhere`、`untilTurn` は「そのプレイヤーの N ターン目より前だけ」（0 は、いつでも）。得点の禁止された Battlefield は、hold（`GameState.holds`）でも、conquer（`scoreBf`）でも、点が入らない（支配は、移る）。証明: `scoreBf_of_cant`、`scoreBf_marks` に「禁止されていない」を足した。
+- **得点の禁止**: `StaticMod.cantPlayer ps .score where_ untilTurn` を読む（`GameState.cantScoreHere`、`Passive.lean`）。`where_` は `.here`（その Battlefield）か `.anywhere`、`untilTurn` は「そのプレイヤーの N ターン目より前だけ」（0 は、いつでも）。得点の禁止された Battlefield も、Score はされる（「Score 済み」の記録が付き、`Event.scored` が出て、conquer / hold の能力は誘発する。支配も移る）が、点だけが入らない（`scoreBf` と `hold`）。Final Point の「全部の Battlefield を Score 済み」には、禁止された Battlefield も数える。『N 回目のターン』は、そのプレイヤーの通常のターンを数える（追加ターンは、数えない）。
 - **書いたカード**: SFD-060（Tianna Crownguard）、150（Last Rites）、178（Blade of the Ruined King）、139（Edge of Night）と、209（Forgotten Monument。すでに書いてあって、動くようになった）。
 - **特別な Equip**: 「[Equip] — Rchaos, Recycle 2 cards from your trash」「[Equip] — Rorder, Kill a friendly unit」は、キーワードの引数が無いので、自動の Equip 能力が付かない。手書きの能力（Power を払って、ユニットを選ぶ。Recycle や Kill は、解決のとき、行う）で書いた。足りないとき（墓地が 2 枚未満、他のユニットがいない）は、使えない（`guardOk`）。Edge of Night の「その場所の」は、「味方のユニット」で、場所は見ない。
-- **近似**: Tianna は、Battlefield の得点だけを止める（効果による得点は、止めない）。Blade of the Ruined King で殺すユニットは、装備するユニット以外から、プレイヤーが選ぶ。
+- **近似**: Edge of Night の対象の選択は、手札から普通にプレイしても聞かれる（Hidden から出たときだけ、付く）。Tianna は、Battlefield の得点だけを止める（効果による得点は、止めない）。Blade of the Ruined King で殺すユニットは、装備するユニット以外から、プレイヤーが選ぶ。
 - **カードの数**: 動く Spiritforged は 171 枚から 176 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

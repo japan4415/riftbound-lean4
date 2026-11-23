@@ -2376,7 +2376,8 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let boosted := s2.buff e
   let a ← fire boosted [.combatStarted s.bf0 s.me]
   return a.dmg foe == (boosted.mightNow e).map Int.toNat && boosted.mightNow e == some 4
--- Tianna Crownguard (SFD-060): while it is at a battlefield, opponents can't score points
+-- Tianna Crownguard (SFD-060): while it is at a battlefield, opponents can't score points; the
+-- battlefield is still scored (the abilities fire), and the control still changes
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-216"
   let (s2, bf2) ← putBf s1 s.you "SFD-216"
@@ -2387,17 +2388,28 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let blocked := scoreBf held s.you bf2 true
   let mine := scoreBf (s3.control s.me bf) s.me bf true
   let free := scoreBf held2 s.you bf2 true
-  return (held.holds s.you).isEmpty && blocked.2.2.isEmpty && blocked.1.pointsOf s.you == 0 &&
-    (held2.holds s.you).length == 1 && free.1.pointsOf s.you == 1 && mine.1.pointsOf s.me == 1
+  let h1 := hold held s.you
+  let h2 := hold held2 s.you
+  return blocked.1.pointsOf s.you == 0 && blocked.2.2 == [.scored s.you bf2 true] &&
+    ((blocked.1.obj? bf2).map (·.scored.contains s.you)) == some true &&
+    h1.1.pointsOf s.you == 0 && h1.2 == [.scored s.you bf2 false] &&
+    free.1.pointsOf s.you == 1 && h2.1.pointsOf s.you == 1 && mine.1.pointsOf s.me == 1
 
--- Forgotten Monument (SFD-209): players can't score here until their third turn
+-- Forgotten Monument (SFD-209): players can't score here until their third turn: the first player's
+-- turns are 1, 3, 5, the second player's 2, 4, 6
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-209"
-  let held := s1.control s.me bf
-  let early := scoreBf held s.me bf true
-  let later := scoreBf { held with turn := 6 } s.me bf true
-  return early.1.pointsOf s.me == 0 && (held.holds s.me).isEmpty &&
-    later.1.pointsOf s.me == 1 && ({ held with turn := 6 }.holds s.me).length == 1
+  let atT (who : PlayerId) (t : Nat) : GameState := ({ s1 with turn := t }.control who bf)
+  let pts (who : PlayerId) (t : Nat) := (scoreBf (atT who t) who bf true).1.pointsOf who
+  let hp (who : PlayerId) (t : Nat) := (hold (atT who t) who).1.pointsOf who
+  let first := s.turnOrder.getD 0 ⟨0⟩
+  let second := s.turnOrder.getD 1 ⟨0⟩
+  let (s2, other) ← putBf s1 s.you "SFD-216"
+  let elsewhere := (scoreBf ({ s2 with turn := 1 }.control s.me other) s.me other true).1
+  return elsewhere.pointsOf s.me == 1 &&
+    pts first 3 == 0 && pts first 4 == 0 && pts first 5 == 1 &&
+    pts second 4 == 0 && pts second 5 == 0 && pts second 6 == 1 &&
+    hp first 4 == 0 && hp first 5 == 1 && hp second 4 == 0 && hp second 6 == 1
 
 -- Last Rites (SFD-150): Equip by paying 1 Chaos and recycling 2 cards from the Trash; when its unit
 -- conquers or holds, it may play a unit from the Trash
