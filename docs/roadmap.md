@@ -1803,3 +1803,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 5. 公式 FAQ・エラッタがあれば、それを反映した回帰テストがある。
 
 **キーワードだけのカード**（効果の文が無いもの）は、2 と 4 を免除する。持っているキーワードすべてに意味の補題とテストがあれば、生成だけで `full` にしてよい。
+
+### M8a の実装の記録（2026-11-24）: Spiritforged 27 — 対象の選びを、選ぶ時点で絞る
+
+- **あとの選びは、前の選びを見る**: `Choice.candidatesAfter` / `targetsOkAfter` / `targetTuplesAfter`。2 つ目の対象の候補は、1 つ目の対象を `slot 0` として読める（`Filter.sameAs (.slot 0)` など）。以前は、違反する組を選ぶと、何も起きなかった。いまは、遊べない（`targetsOk` が偽）。
+- **直したカード**: Bonds of Strength（SFD-151）と Deathgrip（163）と Defiant Dance（196）は、同じユニットを 2 回選べない。Switcheroo（145）は、同じ Battlefield の別のユニットだけ。Temptation（129）は、別のユニットだけ。Angle Shot（011）は、ユニットと同じ持ち主の Equipment だけ（`Filter.sameController`）。
+- **変わらないもの**: Mighty の判定（Show of Strength、Rumble、Jaull-Fish）がパッシブの Might 増加を読まないのは、`Select` が `Passive` より下の層にあるため（`mightNow` を呼ぶと、層が循環する）。直すには、層の組み替えが要る。Bellows Breath の 2 つ目と 3 つ目、Piercing Light の 2 つ目、Emperor's Divide は、解決のときに選ぶ（選びが解決のときなので、Deflect の追加支払いと「選んだとき」は働かない）。

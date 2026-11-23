@@ -873,10 +873,9 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s3, b) ← put s2 s.me "OGN-051" .base
   let (s4, e) ← put s3 s.you "OGN-051" .base
   let r ← play s4 s.me c [a, b]
-  let same ← play s4 s.me c [a, a]
   return r.mightNow a == (s4.mightNow a).map (· + 1) &&
     r.mightNow b == (s4.mightNow b).map (· + 1) &&
-    same.mightNow a == s4.mightNow a && (play s4 s.me c [a, e]).isNone
+    (play s4 s.me c [a, a]).isNone && (play s4 s.me c [a, e]).isNone
 
 -- Guards! (SFD-154): a Sand Soldier token; the player may pay 1 Order Power to ready it
 #guard tsf fun s => do
@@ -941,9 +940,8 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, a) ← put s1 s.me "OGN-001" .base
   let (s3, b) ← put s2 s.me "OGN-051" .base
   let r ← play s3 s.me c [a, b]
-  let same ← play s3 s.me c [a, a]
   return (r.obj? a).isNone && r.mightNow b == (s3.mightNow b).map (· + 5) &&
-    r.handN s.me == s3.handN s.me && (same.obj? a).isSome && same.handN s.me == s3.handN s.me - 1
+    r.handN s.me == s3.handN s.me && (play s3 s.me c [a, a]).isNone
 
 -- Janna, Savior (SFD-053) at a base: heals the friendly units there
 #guard tsf fun s => do
@@ -1070,8 +1068,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s3, b) ← putAt s2 s.you "OGN-001" s.bf0
   let (s4, m) ← put s3 s.me "OGN-051" .base
   let r ← play s4 s.me c [a, b]
-  let same ← play s4 s.me c [a, a]
-  return (r.obj? a).any (·.loc == some s.bf0) && (same.obj? a).any (·.loc.isNone) &&
+  return (r.obj? a).any (·.loc == some s.bf0) && (play s4 s.me c [a, a]).isNone &&
     (play s4 s.me c [m, b]).isNone
 
 -- Switcheroo (SFD-145): swap the Mights of two units at the same battlefield this turn
@@ -1089,9 +1086,8 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s3, other) ← putBf s2 s.you "SFD-216"
   let (s4, b) ← putAt s3 s.you "OGN-051" other
   let (s5, base) ← put s4 s.you "OGN-051" .base
-  let r ← play s4 s.me c [a, b]
-  return r.mightNow a == s4.mightNow a && r.mightNow b == s4.mightNow b &&
-    (play s5 s.me c [a, base]).isNone
+  return (play s4 s.me c [a, b]).isNone && (play s5 s.me c [a, base]).isNone &&
+    (play s5 s.me c [a, a]).isNone
 
 -- Glasc Mixologist (SFD-165): when it dies, may play a unit (cost 3 or less, at most 1 Power) from
 -- the Trash for nothing
@@ -1135,9 +1131,8 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s2, a) ← put s1 s.me "OGN-001" .base
   let (s3, b) ← put s2 s.you "OGN-001" .base
   let r ← play s3 s.me c [a, b]
-  let same ← play s3 s.me c [a, a]
   return r.mightNow a == (s3.mightNow a).map (· + 2) &&
-    r.mightNow b == (s3.mightNow b).map (· - 2) && same.mightNow a == s3.mightNow a
+    r.mightNow b == (s3.mightNow b).map (· - 2) && (play s3 s.me c [a, a]).isNone
 
 -- Arise! (SFD-198): a Sand Soldier for each Equipment the player controls, and two of them ready
 #guard tsf fun s => do
@@ -1232,13 +1227,12 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let d ← play hooked s.me c [u, g] { fromEnd := some 2 }
   return (a.obj? g).any (·.attached == some u) && a.handN s.me == s3.handN s.me &&
     (d.obj? g).any (·.attached == none) && d.handN s.me == s3.handN s.me
--- (a unit of the player and an Equipment of the opponent: nothing happens, nothing is drawn)
+-- (a unit of the player and an Equipment of the opponent: they cannot be chosen together)
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-011" .hand
   let (s2, u) ← put s1 s.me "OGN-051" .base
   let (s3, g) ← put s2 s.you "SFD-042" .base
-  let a ← play s3 s.me c [u, g]
-  return (a.obj? g).any (·.attached == none) && a.handN s.me + 1 == s3.handN s.me
+  return (play s3 s.me c [u, g]).isNone
 -- (the enemy's own: the Equipment may be attached to the enemy's unit)
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-011" .hand

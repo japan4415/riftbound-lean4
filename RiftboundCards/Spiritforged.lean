@@ -320,17 +320,12 @@ def SFD_011 : CardDef :=
   { SFD_011.meta with
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
-        .targetOf .one .any .anywhere [.tag ⟨"Equipment"⟩]]
-      (.ifThen (.or
-          (.and (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
-            (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 1)])))
-          (.and (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
-            (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 1)]))))
-        (.seqOf [.eitherOf (EffectList.ofList
-            [.prim (.attach (.slot 1) (.slot 0)),
-             .ifThen (.matches (.slot 1) (.attachedTo (.slot 0))) (.prim (.detach (.slot 1)))
-               .nop]),
-          .prim (.draw .you (.const 1))]) .nop)),
+        .targetOf .one .any .anywhere [.tag ⟨"Equipment"⟩, .sameController (.slot 0)]]
+      (.seqOf [.eitherOf (EffectList.ofList
+          [.prim (.attach (.slot 1) (.slot 0)),
+           .ifThen (.matches (.slot 1) (.attachedTo (.slot 0))) (.prim (.detach (.slot 1)))
+             .nop]),
+        .prim (.draw .you (.const 1))])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-012
@@ -3800,12 +3795,11 @@ def SFD_129 : CardDef :=
   { SFD_129.meta with
 
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit],
-        .targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
-        (.ifThen (.matches (.slot 1) .onBattlefield)
-          (.prim (.move (.slot 0) (.at_ (.slot 1))))
-          (.ifThen (.exists (Selector.all .any .anywhere [.sameAs (.slot 1)]))
-            (.prim (.move (.slot 0) .base)) .nop)))),
+        .targetOf .one .enemy .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
+      (.ifThen (.matches (.slot 1) .onBattlefield)
+        (.prim (.move (.slot 0) (.at_ (.slot 1))))
+        (.ifThen (.exists (Selector.all .any .anywhere [.sameAs (.slot 1)]))
+          (.prim (.move (.slot 0) .base)) .nop))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-130
@@ -4266,17 +4260,15 @@ def SFD_145 : CardDef :=
   { SFD_145.meta with
 
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit],
-        .targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.ifThen (.and (.matches (.slot 1) (.at_ (.slot 0)))
-          (.matches (.slot 1) (.not (.sameAs (.slot 0)))))
-        (.bind ⟨"a"⟩ (.mightOf (.slot 0)) (.bind ⟨"b"⟩ (.mightOf (.slot 1))
-          (.seqOf [
-            .grant (.slot 0) (.mightPlus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn,
-            .grant (.slot 0) (.mightMinus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
-            .grant (.slot 1) (.mightPlus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
-            .grant (.slot 1)
-              (.mightMinus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn])))
-        .nop)),
+        .targetOf .one .any .atBattlefield
+          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0))]]
+      (.bind ⟨"a"⟩ (.mightOf (.slot 0)) (.bind ⟨"b"⟩ (.mightOf (.slot 1))
+        (.seqOf [
+          .grant (.slot 0) (.mightPlus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn,
+          .grant (.slot 0) (.mightMinus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
+          .grant (.slot 1) (.mightPlus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
+          .grant (.slot 1)
+            (.mightMinus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn])))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-146
@@ -4462,10 +4454,9 @@ def SFD_151 : CardDef :=
   { SFD_151.meta with
 
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
-        .targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
-        (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
-          .grant (.slot 1) (.mightPlus .it (.const 1)) .thisTurn]))),
+        .targetOf .one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
+        .grant (.slot 1) (.mightPlus .it (.const 1)) .thisTurn])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-152
@@ -4799,10 +4790,9 @@ def SFD_163 : CardDef :=
   { SFD_163.meta with
 
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
-        .targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
-        (.seqOf [.grant (.slot 1) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
-          .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))]))),
+        .targetOf .one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
+      (.seqOf [.grant (.slot 1) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
+        .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-164
@@ -5777,10 +5767,9 @@ def SFD_196 : CardDef :=
   { SFD_196.meta with
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
-        .targetOf .one .any .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
-        (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn,
-          .grant (.slot 1) (.mightMinus .it (.const 2)) .thisTurn]))),
+        .targetOf .one .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn,
+        .grant (.slot 1) (.mightMinus .it (.const 2)) .thisTurn])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-197
