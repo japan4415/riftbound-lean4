@@ -236,11 +236,18 @@ def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
   | .killFriendly _ fs => FilterList.ok c fs
   | _ => true
 
+/-- How many objects the ability of a trigger gets from what it watches: one if it watches another
+object, and for the player's units elsewhere when they defend (the Battlefield). -/
+def Trigger.watched (t : Trigger) : Nat :=
+  match t.event with
+  | .youDefend => 1
+  | _ => if t.subject == .self then 0 else 1
+
 /-- A trigger refers only to what is there. -/
 def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
   -- the condition may use the object the ability watches (slot 0); the subject may not
   Selector.ok c t.subject &&
-    Condition.ok { c with slots := if t.subject == .self then 0 else 1 } t.condition
+    Condition.ok { c with slots := t.watched } t.condition
 
 /-- How many effects a list holds. -/
 def EffectList.length : EffectList → Nat
@@ -315,7 +322,7 @@ def Ability.ok : Ability → Bool
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
     Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := if t.subject == .self then 0 else 1 }
+      body.ok { itOk := true, slots := t.watched }
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

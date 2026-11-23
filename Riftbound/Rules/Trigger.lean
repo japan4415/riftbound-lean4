@@ -266,7 +266,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
       | none => []) ++
     -- the abilities of the Battlefield: for the players who attack and defend there
     (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
-      triggersOf s bf q (if q == att then TriggerEvent.attack else .defend))
+      triggersOf s bf q (if q == att then TriggerEvent.attack else .defend)) ++
+    -- the units of a defending player that are elsewhere: "when you defend at a battlefield"
+    (s.players.filter (fun q => q != att && !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
+      s.inPlay.flatMap (fun u =>
+        if (s.obj? u).any (fun o => o.controller == q && o.loc != some bf) &&
+            (s.cardDef? u).any (·.hasType .unit) then
+          (triggersOf s u q .youDefend).map (fun t => { t with subject := some bf })
+        else []))
   | _ => []
 
 /-- Keep the abilities that a limit of times per turn lets fire: the events of one step may set

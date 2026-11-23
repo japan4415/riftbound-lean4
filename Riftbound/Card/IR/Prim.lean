@@ -218,6 +218,9 @@ inductive TriggerEvent where
   | useGearAbility
   /-- An Equipment is attached to the unit (the unit itself waits for it). -/
   | attachedTo
+  /-- The player defends at a Battlefield (their units elsewhere wait for it; the ability reaches
+  the Battlefield as its first slot). -/
+  | youDefend
   /-- The player spends a buff of one of their units (their units wait for it). -/
   | spendBuff
   /-- The unit is chosen by a spell of its player ("when you choose me with a spell"); a Legend,

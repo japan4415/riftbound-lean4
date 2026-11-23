@@ -2456,4 +2456,62 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let b ← fire s2 [.played s.me g]
   return (a.obj? g).any (·.attached == some u) && (b.obj? g).any (·.attached == none)
 
+-- Ruin Runner (SFD-105): enemy spells and abilities can't choose it; its own player can
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-105" .base
+  let (s2, v) ← put s1 s.me "OGN-051" .base
+  let ch : Choice := .targetOf .one .any .anywhere [.ofType .unit]
+  return !(ch.candidates s2 s.you v).contains u && (ch.candidates s2 s.you v).contains v &&
+    (ch.candidates s2 s.me v).contains u && s2.blocksChoice s.you u && !s2.blocksChoice s.me u &&
+    !s2.blocksChoice s.you v
+
+-- Loyal Pup (SFD-126): when its player defends at a battlefield, it may move there
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, _) ← putAt s1 s.me "OGN-051" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, pup) ← put s3 s.me "SFD-126" .base
+  let a ← fire s4 [.combatStarted bf s.you]
+  let b ← fire s4 [.combatStarted bf s.you] { yes := false }
+  let c ← fire s4 [.combatStarted bf s.me]
+  return a.hereOf pup == some bf && b.hereOf pup == none && c.hereOf pup == none
+
+-- Aphelios, Exalted (SFD-049): when an Equipment is attached to it, choose a mode not yet chosen
+-- this turn: ready 2 runes, channel 1 rune exhausted, or buff a friendly unit
+#guard tsf fun s => do
+  let (s1, aph) ← put s s.me "SFD-049" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let runesOf (x : GameState) :=
+    (x.zone (.player s.me .base)).filter (fun r => (x.cardDef? r).any (·.hasType .rune))
+  let tired := (runesOf s2).foldl (fun x r => x.tire r) s2
+  let ready (x : GameState) := (runesOf x).filter (fun r => x.tired r == some false)
+  let a ← fire tired [.attached g aph] { fromEnd := some 2 }
+  let b ← fire s2 [.attached g aph] { fromEnd := some 1 }
+  let c ← fire s2 [.attached g aph] { fromEnd := some 0 }
+  return (ready a).length == min 2 (runesOf tired).length && (ready a).length > 0 &&
+    (runesOf b).length == (runesOf s2).length + 1 && !(a.obj? aph).any (·.buffed) &&
+    (c.obj? aph).any (·.buffed) && (runesOf c).length == (runesOf s2).length
+-- ... and a mode chosen already this turn does nothing the second time
+#guard tsf fun s => do
+  let (s1, aph) ← put s s.me "SFD-049" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let runesOf (x : GameState) :=
+    (x.zone (.player s.me .base)).filter (fun r => (x.cardDef? r).any (·.hasType .rune))
+  let a ← fire s2 [.attached g aph] { fromEnd := some 1 }
+  let b ← fire a [.attached g aph] { fromEnd := some 1 }
+  return (runesOf a).length == (runesOf s2).length + 1 && (runesOf b).length == (runesOf a).length
+
+-- (review) Ruin Runner: an enemy's pick of a target is refused, a choice at resolution skips it
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-105" .base
+  let (s2, v) ← put s1 s.me "OGN-051" .base
+  let ch : Choice := .targetOf .one .any .anywhere [.ofType .unit]
+  let cs := [ch]
+  return !targetsOk s2 s.you v cs [u] && targetsOk s2 s.you v cs [v] &&
+    targetsOk s2 s.me v cs [u] &&
+    ((s2.pickCandidates s.you v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).all
+      (· != u) &&
+    ((s2.pickCandidates s.me v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).any
+      (· == u)
+
 end RiftboundTest
