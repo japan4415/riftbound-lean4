@@ -4163,4 +4163,52 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     bare.countIn s.me .base "OGN-136" == 0 && mineDeck unit == mineDeck u1 &&
     mine.all (fun x => unit.tired x == some true)
 
+-- Divine Judgment (OGN-244): each player keeps 2 units, 2 gear, 2 runes and 2 cards of the hand,
+-- and recycles the rest (the players choose what goes)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-244" .hand
+  let (a1, _) ← put s1 s.me "OGN-136" .base
+  let (a2, _) ← put a1 s.me "OGN-136" .base
+  let (a3, _) ← put a2 s.me "OGN-136" .base
+  let (a4, _) ← put a3 s.me "OGN-124" .base
+  let (a5, _) ← put a4 s.me "OGN-124" .base
+  let (a6, _) ← put a5 s.me "OGN-124" .base
+  let (b1, _) ← put a6 s.you "OGN-136" .base
+  let (b2, _) ← put b1 s.you "OGN-136" .base
+  let (b3, _) ← put b2 s.you "OGN-136" .base
+  let (b4, _) ← put b3 s.you "OGN-124" .base
+  let (b5, _) ← put b4 s.you "OGN-124" .base
+  let (b6, _) ← put b5 s.you "OGN-124" .base
+  let a ← play b6 s.me c
+  let units (x : GameState) (p : PlayerId) :=
+    ((x.zone (.player p .base)).filter (fun u => (x.cardDef? u).any (·.hasType .unit))).length
+  let gear (x : GameState) (p : PlayerId) :=
+    ((x.zone (.player p .base)).filter (fun u => (x.cardDef? u).any (·.hasType .gear))).length
+  let runes (x : GameState) (p : PlayerId) :=
+    ((x.zone (.player p .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  let hand (x : GameState) (p : PlayerId) := (x.zone (.player p .hand)).length
+  return units a s.me == 2 && units a s.you == 2 && gear a s.me == 2 && gear a s.you == 2 &&
+    runes a s.me == min 2 (runes b6 s.me) && runes a s.you == min 2 (runes b6 s.you) &&
+    hand a s.me == min 2 (hand b6 s.me - 1) && hand a s.you == min 2 (hand b6 s.you) &&
+    (a.zone (.player s.me .mainDeck)).length > (b6.zone (.player s.me .mainDeck)).length
+
+-- Divine Judgment, the runes: four runes each are recycled down to two (to the Rune Deck); a kind
+-- with fewer than two is left alone
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-244" .hand
+  let (r1, _) ← put s1 s.me "OGN-007" .base
+  let (r2, _) ← put r1 s.me "OGN-007" .base
+  let (r3, _) ← put r2 s.you "OGN-007" .base
+  let (r4, _) ← put r3 s.you "OGN-007" .base
+  let (r5, _) ← put r4 s.you "OGN-007" .base
+  let rich := r5.rich s.me
+  let a ← match step 100 rich ⟨.player s.me, .playCard c (payOf rich c) []⟩ with
+    | .ok (x, _) => some (settleChain {} 80 x)
+    | .error _ => none
+  let runes (x : GameState) (p : PlayerId) :=
+    ((x.zone (.player p .base)).filter (fun u => (x.cardDef? u).any (·.hasType .rune))).length
+  let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .runeDeck)).length
+  return runes a s.me == 2 && runes a s.you == 2 && runes rich s.me > 2 && runes rich s.you > 2 &&
+    deck a s.me > deck rich s.me && deck a s.you > deck rich s.you
+
 end RiftboundTest
