@@ -310,17 +310,24 @@ def EffectList.ok (c : Ctx) : EffectList → Bool
 
 end
 
-/-- A choice refers only to what is there. A target is chosen before anything else is known. -/
-def Choice.ok : Choice → Bool
-  | .target _ _ _ fs => FilterList.ok {} fs
-  | .mode _ => true
-  | .xValue => true
-  | .extraCost cs _ => cs.all (AbilityCost.ok {})
-
 /-- Whether the choice is a target, which fills a slot. -/
 def Choice.isTarget : Choice → Bool
   | .target .. => true
   | _ => false
+
+/-- A choice refers only to what is there. A target is chosen before anything else is known. -/
+def Choice.ok (earlier : Nat) : Choice → Bool
+  | .target _ _ _ fs => FilterList.ok { slots := earlier } fs
+  | .mode _ => true
+  | .xValue => true
+  | .extraCost cs _ => cs.all (AbilityCost.ok {})
+
+/-- Every choice of a list refers only to what is there: a choice may name the targets chosen
+before it (`slot i`). `earlier` is the number of targets chosen before the list. -/
+def Choice.allOk (earlier : Nat) : List Choice → Bool
+  | [] => true
+  | c :: cs =>
+    Choice.ok earlier c && Choice.allOk (earlier + (if c.isTarget then 1 else 0)) cs
 
 /-- The number of the mode choice, if the declaration has one. -/
 def Choice.modeCount : Choice → Option Nat
@@ -336,7 +343,7 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
 
 /-- An effect with its choices refers only to what is there. -/
 def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
-  d.choices.all Choice.ok && Effect.ok (d.ctx base) d.body
+  Choice.allOk 0 d.choices && Effect.ok (d.ctx base) d.body
 
 /-- An ability refers only to what is there. -/
 def Ability.ok : Ability → Bool

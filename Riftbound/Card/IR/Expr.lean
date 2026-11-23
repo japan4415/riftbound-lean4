@@ -149,7 +149,9 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
-  /-- The card gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
+  /-- The object is controlled by the same player as the object `s` stands for. -/
+  | sameController (s : Selector)
+  /-- Gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
   | givesLegendsAttach
   /-- The card copies the text of the Unit it is attached to (it has `copiesUnitText`). -/
   | copiesText
