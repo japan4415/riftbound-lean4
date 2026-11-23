@@ -250,6 +250,8 @@ inductive Condition where
   | yourTurn
   /-- A combat is going on. -/
   | inCombat
+  /-- The Battlefield the object is at was conquered this turn while it was open. -/
+  | openConquered
   /-- A showdown is going on. -/
   | inShowdown
   /-- The point being scored comes from this source. -/

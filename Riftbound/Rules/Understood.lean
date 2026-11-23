@@ -188,6 +188,7 @@ def Condition.understood : Condition → Bool
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
   | .inCombat => true
+  | .openConquered => true
   | .legion => true
   | .paid => true
   | .playedAnother => true
@@ -249,6 +250,7 @@ def Prim.understood : Prim → Bool
   | .reveal s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood
+  | .returnControl s => s.understood
   | .recall s _ => s.understood
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood

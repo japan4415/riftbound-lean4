@@ -167,6 +167,19 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
       else []
     | _, _ => [])
 
+/-- The abilities that an effect of this turn sets off at the end of the turn (`endTrigger`): the
+ability of the card fires with the object as its source. -/
+def GameState.fxTriggers (s : GameState) (tm : Timing) : List PendTrigger :=
+  if tm == .endOfTurn then
+    s.turnFx.filterMap (fun f =>
+      match f.kind, f.target with
+      | .endTrigger c i, some u =>
+        if f.turn == s.turn && (s.obj? u).isSome then
+          some { source := u, card := ⟨c⟩, idx := i, controller := f.who }
+        else none
+      | _, _ => none)
+  else []
+
 /-- A passive ability of an object the player controls makes the abilities of the event `.die` fire
 one more time. -/
 def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
@@ -212,7 +225,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .phaseStarted p ph =>
     match ph.timing? with
-    | some tm => s.timedTriggers p tm
+    | some tm => s.timedTriggers p tm ++ s.fxTriggers tm
     | none => []
   | .conquerActivated u =>
     match s.obj? u with
@@ -310,7 +323,7 @@ fires now (CR 371). -/
 def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigger :=
   l.foldl (fun kept t =>
     let taken := (kept.filter (fun k => k.source == t.source && k.idx == t.idx)).length
-    match (s.cardDef? t.source).bind (fun d => d.allAbilities[t.idx]?),
+    match (s.cards.find? t.card).bind (fun d => d.allAbilities[t.idx]?),
         (s.obj? t.source).map (·.used) with
     | some (Ability.triggered _ _ (.perTurn n)), some used =>
       if used.count t.idx + taken < n then kept ++ [t] else kept

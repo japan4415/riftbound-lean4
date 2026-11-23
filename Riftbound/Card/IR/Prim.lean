@@ -120,6 +120,8 @@ inductive Prim where
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)
+  /-- The objects go back to their owners' control (Hostile Takeover). -/
+  | returnControl (s : Selector)
   /-- The players take an extra turn (CR 734-738). -/
   | extraTurn (p : PlayerSel)
   /-- The players win the game. -/

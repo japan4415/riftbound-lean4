@@ -3333,8 +3333,14 @@ def SFD_116.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Yone, Blademaster: the effect is not written yet. -/
-def SFD_116 : CardDef := SFD_116.meta
+/-- Yone, Blademaster. -/
+def SFD_116 : CardDef :=
+  { SFD_116.meta with
+
+    abilities := [.triggered { event := .conquer, condition := .openConquered }
+      (.of [] (.prim (.deal (Selector.one .enemy .atBase [.ofType .unit]) (.mightOf .self))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-117
 /--
@@ -5794,8 +5800,16 @@ def SFD_202.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Hostile Takeover: the effect is not written yet. -/
-def SFD_202 : CardDef := SFD_202.meta
+/-- Hostile Takeover. -/
+def SFD_202 : CardDef :=
+  { SFD_202.meta with
+
+    abilities := [.triggered { event := .at_ .endOfTurn }
+      (.of [] (.seqOf [.prim (.returnControl .self), .prim (.recall .self false)])) .unlimited],
+    spellEffect := some (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.takeControl (.slot 0)), .prim (.ready (.slot 0)),
+        .prim (.markOn (.slot 0) (.endTrigger "SFD-202" 0))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-203
 /--
