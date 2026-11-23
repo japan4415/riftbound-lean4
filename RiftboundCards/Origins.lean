@@ -4346,7 +4346,8 @@ def OGN_160.meta : CardDef :=
 def OGN_160 : CardDef :=
   { OGN_160.meta with
     abilities := [.triggered { event := .at_ .endOfTurn }
-      (.of [] (.prim (.playFirst (.cons (.ofType .unit) .nil)))) .unlimited],
+      (.of [] (.seqOf [.prim (.revealTop 1),
+        .prim (.playFirst (.cons (.ofType .unit) .nil))])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-161

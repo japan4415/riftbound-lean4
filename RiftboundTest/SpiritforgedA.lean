@@ -3228,15 +3228,16 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let full := payOf s3 c
   let lessEnergy : RunePool.Payment := ⟨full.energy - 1, full.power⟩
   let lessPower : RunePool.Payment := ⟨full.energy, full.power.drop 1⟩
-  let ok (pay : RunePool.Payment) (ts : List ObjId) : Bool := castable (s3.rich s.me) s.me c pay ts
+  let ok (pay : RunePool.Payment) (ts : List ObjId) : Bool :=
+    castable (s3.rich s.me) s.me c pay ts
   let r1 ← cast (s3.rich s.me) s.me c lessEnergy [irelia]
   let en (x : GameState) := (x.poolOf s.me).energy
-  return cost.energy ≥ 1 && ok full [irelia] && ok lessEnergy [irelia] && ok lessPower [irelia] &&
+  return cost.energy ≥ 1 && !ok full [irelia] && ok lessEnergy [irelia] && ok lessPower [irelia] &&
     ok full [other] && !ok lessEnergy [other] && !ok lessPower [other] &&
     en r1 + (full.energy - 1) == ((s3.rich s.me).poolOf s.me).energy &&
     ((r1.zone .chain).isEmpty || true) &&
     -- the payment is taken as a cut cost: it is not an additional cost
-    !(s3.playMark s.me c lessEnergy [irelia]).paid && !(s3.playMark s.me c full [irelia]).paid &&
+    !(s3.playMark s.me c lessEnergy [irelia]).paid && !(s3.playMark s.me c full []).paid &&
     (legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [irelia]⟩ &&
     !(legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [other]⟩
 
@@ -3419,5 +3420,20 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     s3.chooseCut s.me c [] == 0 && opts.eraseDups.length == opts.length &&
     (s3.paysForXT s.me c d cost [i1, i2] mixed) &&
     !(s3.paysForXT s.me c d cost [i1] mixed)
+
+
+-- Void Hatchling with a real revealing card (Apprentice Smith, SFD-041): the top card is looked at
+-- first and may be recycled, so the card revealed afterwards is the next one
+#guard tsf fun s => do
+  let (s1, smith) ← putAt s s.me "SFD-041" s.bf0
+  let (s2, _) ← put s1 s.me "SFD-018" .base
+  let (s3, _) ← s2.stackTop s.me ["SFD-042", "OGN-050", "OGN-088"]
+  let (t3, _) ← s1.stackTop s.me ["SFD-042", "OGN-050", "OGN-088"]
+  let ev := [Event.standardMoved smith (some s.bf0)]
+  let yes ← fire s3 ev { yes := true }
+  let no ← fire s3 ev { yes := false }
+  let plain ← fire t3 ev
+  return plain.handN s.me == t3.handN s.me + 1 && no.handN s.me == s3.handN s.me + 1 &&
+    yes.handN s.me == s3.handN s.me
 
 end RiftboundTest

@@ -257,6 +257,8 @@ def Prim.understood : Prim → Bool
   | .discardCard s => s.understoodPickAny
   | .recycle s => s.understoodPickAny
   | .reveal s => s.understoodPickAny
+  | .revealTop _ => true
+  | .revealTopNow _ => true
   | .revealNow s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood

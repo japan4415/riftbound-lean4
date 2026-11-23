@@ -1224,10 +1224,10 @@ def SFD_041 : CardDef :=
   { SFD_041.meta with
 
     abilities := [.triggered (.onSelf .move)
-      (.of [] (.ifThen
+      (.of [] (.seqOf [.prim (.revealTop 1), .ifThen
         (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .gear])) (.const 1))
         (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
-        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))))) .unlimited],
+        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-042
@@ -4998,7 +4998,7 @@ def SFD_170 : CardDef :=
 
     abilities := [.triggered (.onSelf .attack)
       (.of [] (.may (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
-        (.seqOf [
+        (.seqOf [.prim (.revealTop 2),
           .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 0)
             none)),
           .repeatN (.sub (.const 2)
@@ -5495,7 +5495,7 @@ def SFD_187 : CardDef :=
       (.of [] (.ifThen (.matches .self .ready)
         (.may (.seqOf [.prim (.exhaust .self),
           .bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
-            (.seqOf [
+            (.seqOf [.prim (.revealTop 2),
               .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2])
                 (.const 0) none)),
               .repeatN (.sub (.const 2)
@@ -5527,7 +5527,7 @@ def SFD_188 : CardDef :=
   { SFD_188.meta with
 
     spellEffect := some (.of [] (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
-      (.seqOf [
+      (.seqOf [.prim (.revealTop 2),
         .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
         .repeatN (.sub (.const 2)
             (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
@@ -6287,10 +6287,10 @@ def SFD_215 : CardDef :=
   { SFD_215.meta with
 
     abilities := [.triggered (.onSelf .defend)
-      (.of [] (.ifThen
+      (.of [] (.seqOf [.prim (.revealTop 1), .ifThen
         (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .spell])) (.const 1))
         (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
-        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))))) .unlimited],
+        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-216
