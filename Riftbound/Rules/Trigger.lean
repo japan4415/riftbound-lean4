@@ -90,7 +90,9 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
     | some d =>
       if s.inPlay.any (fun g => (s.obj? g).any (·.attached == some src) &&
           (s.cardDef? g).any (fun e => e.abilities.any (fun ab =>
-            match ab with | Ability.passive .always mods => mods.contains .copiesUnitText | _ => false)))
+            match ab with
+            | Ability.passive .always mods => mods.contains .copiesUnitText
+            | _ => false)))
       then triggersAmong s src p ev d 0 d.fullAbilities.length else []
     | none => []) ++
   -- an ability that an effect of this turn gave the object
@@ -269,7 +271,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .hiddenPlayed p =>
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .playHidden else [])
-  | .revealed p c => triggersOf s c p .revealedFromDeck
+  | .revealed p c => triggersOf s c p .revealedFromDeck ++ watchersOf s c p .revealedFromDeck
   | .moved _ n (.player p .runeDeck) =>
     -- a Rune recycled: the abilities of the player's objects and Legends that wait for it
     if (s.obj? n).any (·.runeDomain.isSome) then

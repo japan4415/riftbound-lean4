@@ -149,6 +149,8 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
+  /-- The card was played this turn from somewhere other than a hand. -/
+  | playedFromElsewhere
   /-- The card was played this turn. -/
   | playedThisTurn
   /-- The card is in its owner's hand. -/

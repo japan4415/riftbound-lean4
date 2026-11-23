@@ -118,6 +118,8 @@ structure Object where
   playedStamp : Option Nat := none
   /-- Where the Unit was before its last move: its Battlefield, or none for the Base. -/
   prevLoc : Option ObjId := none
+  /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
+  playedFromHand : Bool := true
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/
   energyPaid : Nat := 0
   /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/

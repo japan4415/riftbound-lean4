@@ -3218,4 +3218,49 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     ((paid.zone (.player s.me .base)).any (fun o => (paid.cardDef? o).any
       (·.id == cid "SFD-042") && (paid.obj? o).any (fun x => x.attached == akshan)))
 
+-- Irelia, Graceful (SFD-141): my spell that chooses her costs 1 Energy less (the Energy comes back)
+#guard tsf fun s => do
+  let (s1, irelia) ← put s s.me "SFD-141" .base
+  let (s2, c) ← put s1 s.me "OGN-050" .hand
+  let (s3, other) ← put s2 s.me "OGN-088" .base
+  let pay := payOf s3 c
+  let a ← play s3 s.me c [irelia]
+  let b ← play s3 s.me c [other]
+  let theirs ← fire s3 [.chosenBySpell s.you irelia]
+  let en (x : GameState) := (x.poolOf s.me).energy
+  return en a == en b + 1 && pay.energy ≥ 1 && en theirs == en s3
+
+-- Void Hatchling (SFD-018): when I reveal a card from a deck, I look at the top card first and may
+-- recycle it (here: the reveal is noted by the event)
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-018" .base
+  let (s2, top) ← s1.stackTop s.me ["OGN-088", "OGN-051"]
+  let (s3, other) ← s2.stackTop s.you ["OGN-088", "OGN-051"]
+  let revealed ← top.head?
+  let theirs ← other.head?
+  let a ← fire s3 [.revealed s.me revealed] { yes := true }
+  let b ← fire s3 [.revealed s.me revealed] { yes := false }
+  let c ← fire s3 [.revealed s.you theirs]
+  return a.topCard s.me != s3.topCard s.me && b.topCard s.me == s3.topCard s.me &&
+    c.topCard s.me == s3.topCard s.me && c.topCard s.you == s3.topCard s.you
+
+-- Rek'Sai, Breacher (SFD-029): a friendly unit played from somewhere other than a hand may pay
+-- 1 Energy and 1 Fury Power to enter ready
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-029" .base
+  let (s2, fromTrash) ← put s1 s.me "OGN-051" .trash
+  let (s3, inHand) ← put s2 s.me "OGN-051" .hand
+  let played := (playFree s.me s3 fromTrash)
+  let handPlay := (playFree s.me s3 inHand)
+  let units (x : GameState) : List ObjId :=
+    (x.zone (.player s.me .base)).filter (fun o => (x.cardDef? o).any (·.id == cid "OGN-051"))
+  let tiredAll (x : GameState) : Bool := (units x).all (fun o => x.tired o == some true)
+  let a ← fire (played.1.rich s.me) played.2 { yes := true }
+  let b ← fire (played.1.rich s.me) played.2 { yes := false }
+  let c ← fire (handPlay.1.rich s.me) handPlay.2
+  let d ← fire (played.1.fund s.me 0) played.2
+  return tiredAll played.1 && tiredAll b && tiredAll c && tiredAll d &&
+    (units a).all (fun o => a.tired o == some false) && (units a).length == 1 &&
+    ((a.poolOf s.me).energy + 1 == ((played.1.rich s.me).poolOf s.me).energy)
+
 end RiftboundTest

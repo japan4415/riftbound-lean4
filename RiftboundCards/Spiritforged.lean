@@ -524,6 +524,9 @@ def SFD_018.meta : CardDef :=
 def SFD_018 : CardDef :=
   { SFD_018.meta with
 
+    abilities := [.triggered
+      { event := .revealedFromDeck, subject := Selector.all .friendly .anywhere [] }
+      (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-019
@@ -863,6 +866,12 @@ def SFD_029.meta : CardDef :=
 def SFD_029 : CardDef :=
   { SFD_029.meta with
 
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .playedFromElsewhere] }
+      (.of [] (.ifThen (.canPay ⟨1, [.domain .fury]⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩), .prim (.ready (.slot 0))])) .nop))
+      .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-030
@@ -4117,6 +4126,8 @@ def SFD_141.meta : CardDef :=
 def SFD_141 : CardDef :=
   { SFD_141.meta with
 
+    abilities := [.triggered (.onSelf .chosen)
+      (.of [] (.prim (.addEnergy .you (.const 1) none))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-142

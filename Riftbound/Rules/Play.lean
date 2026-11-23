@@ -273,13 +273,15 @@ structure PlayMark where
   energy : Nat
   /-- The Unit is buffed as it is played, by an effect of the turn. -/
   buff : Bool := false
+  /-- The card is played from its owner's hand. -/
+  fromHand : Bool := true
 
 /-- The object after it is played: the objects chosen (for a Spell on the Chain), and the facts of
 the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
   let o1 : Object :=
     { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn,
-             buffed := o.buffed || m.buff }
+             buffed := o.buffed || m.buff, playedFromHand := m.fromHand }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
 
 /-- The facts of playing the card now with the payment. -/
@@ -287,7 +289,8 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
     PlayMark :=
   { paid := (s.cardDef? c).any (fun d => s.paidExtra p c d pay), legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
-    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (· == .unitsBuffed) }
+    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (· == .unitsBuffed),
+    fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c) }
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/

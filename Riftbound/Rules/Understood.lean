@@ -134,6 +134,7 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .playedFromElsewhere => true
   | .playedThisTurn => true
   | .inHandZone => true
   | .unitsPlayable => true
@@ -409,7 +410,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
-      | .revealedFromDeck => t.subject == .self
+      | .revealedFromDeck => true
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
