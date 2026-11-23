@@ -1473,8 +1473,12 @@ def SFD_051.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Guardian Angel: the effect is not written yet. -/
-def SFD_051 : CardDef := SFD_051.meta
+/-- Guardian Angel. -/
+def SFD_051 : CardDef :=
+  { SFD_051.meta with
+
+    grants := [.passive .always [.diesInsteadGear]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-052
 /--
@@ -4982,8 +4986,12 @@ def SFD_173.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Soraka, Wanderer: the effect is not written yet. -/
-def SFD_173 : CardDef := SFD_173.meta
+/-- Soraka, Wanderer. -/
+def SFD_173 : CardDef :=
+  { SFD_173.meta with
+
+    abilities := [.passive .always [.assignedLast, .rescueWeakerHere]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-174
 /--

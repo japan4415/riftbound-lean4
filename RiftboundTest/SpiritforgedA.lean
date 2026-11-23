@@ -2879,5 +2879,50 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let a ← play (s4.control s.you bf) s.me c [u]
   return ((a.obj? bf).bind (·.contested)) == some s.me &&
     ((s4.obj? bf).bind (·.contested)).isNone
+-- Guardian Angel (SFD-051): if the unit it is attached to would die, the Angel dies instead; the
+-- unit is healed, exhausted and recalled (the Angel adds 1 Might: 3 + 1)
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "OGN-006" bf
+  let (s3, g) ← put s2 s.me "SFD-051" .base
+  let held := (attachTo u s3 g).1
+  let hit := (dealObj 4 held u).1
+  let soft := (dealObj 2 held u).1
+  let killed := (killOrSave held u).1
+  let bare := (dealObj 3 s3 u).1
+  let isIn (x : GameState) (z : Zone) (code : String) : Bool :=
+    (x.zone z).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  return isIn hit (.player s.me .trash) "SFD-051" && isIn hit (.player s.me .base) "OGN-006" &&
+    ((hit.firstOf s.me .base "OGN-006").bind (fun o => hit.obj? o)).any
+      (fun o => o.damage == 0 && o.exhausted && o.loc.isNone) &&
+    isIn soft .battlefieldZone "OGN-006" && isIn soft (.player s.me .base) "SFD-051" &&
+    isIn killed (.player s.me .trash) "SFD-051" && isIn killed (.player s.me .base) "OGN-006" &&
+    bare.dmg u == some 3
+
+-- Soraka, Wanderer (SFD-173): another unit of mine here with less Might than her is healed,
+-- exhausted and recalled instead of dying
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-173" bf
+  let (s3, weak) ← putAt s2 s.me "OGN-006" bf
+  let (s4, strong) ← putAt s3 s.me "OGN-088" bf
+  let (s5, foe) ← putAt s4 s.you "OGN-006" bf
+  let (s6, home) ← put s5 s.me "OGN-006" .base
+  let saved := (dealObj 3 s6 weak).1
+  let (s7, other) ← putBf s6 s.me "OGN-276"
+  let (s8, apart) ← putAt s7 s.me "OGN-006" other
+  let elsewhere := (dealObj 3 s8 apart).1.dmg apart == some 3
+  let isIn (x : GameState) (z : Zone) (code : String) : Bool :=
+    (x.zone z).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  let atBf (x : GameState) : Nat :=
+    ((x.zone .battlefieldZone).filter (fun o => (x.cardDef? o).any (·.id == cid "OGN-006") &&
+      (x.obj? o).any (·.controller == s.me))).length
+  return atBf s6 == 1 && atBf saved == 0 &&
+    ((saved.zone (.player s.me .base)).filter (fun o => (saved.cardDef? o).any
+      (·.id == cid "OGN-006"))).length == 2 &&
+    (dealObj 3 s6 foe).1.dmg foe == some 3 && (dealObj 3 s6 home).1.dmg home == some 3 &&
+    (dealObj 2 s6 weak).1.dmg weak == some 2 && (dealObj 8 s6 strong).1.dmg strong == some 8 &&
+    elsewhere &&
+    !isIn saved (.player s.me .trash) "OGN-006"
 
 end RiftboundTest

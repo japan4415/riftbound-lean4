@@ -288,6 +288,12 @@ inductive StaticMod where
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
   | oppsPlayToBaseOnly
+  /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
+  and the Unit is healed, exhausted and recalled (Guardian Angel). -/
+  | diesInsteadGear
+  /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,
+  exhausted and recalled instead (Soraka). -/
+  | rescueWeakerHere
   /-- The object has Assault equal to the number of objects the selector gives (Ancient Warmonger). -/
   | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/

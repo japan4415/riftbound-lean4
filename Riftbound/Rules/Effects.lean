@@ -192,54 +192,6 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
   · exact (sendObj_safe .trash s id).trans (noteDeath_safe _ _ _ _ _ _)
   · exact sendObj_safe .trash s id
 
-/-- An effect of this turn prevents the next damage to the object. -/
-def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
-  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .damagePrevented && f.target == some id)
-
-/-- The prevention of the next damage to the object is used up. -/
-def GameState.useShield (s : GameState) (id : ObjId) : GameState :=
-  { s with turnFx := s.turnFx.eraseP (fun f =>
-      f.turn == s.turn && f.kind == .damagePrevented && f.target == some id) }
-
-/-- Using up a prevention is a safe change. -/
-theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
-
-/-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
-the next Cleanup (CR 323.4), not here. -/
-def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
-  match s.obj? id with
-  | some _ =>
-    -- an object whose passive ability says it takes no damage takes none
-    if (s.activeMods id).contains .noDamage then (s, [])
-    -- the next damage to it this turn is prevented (once, and only damage there would be)
-    else if decide (0 < n) && s.shielded id then (s.useShield id, [])
-    else
-      let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
-      -- a unit that takes damage while an effect of the turn says so is killed
-      if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
-        let k := killObj s1 id
-        (k.1, Event.damaged id n :: k.2)
-      else (s1, [Event.damaged id n])
-  | none => (s, [])
-
-/-- Dealing damage is a safe change. -/
-theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
-  unfold dealObj
-  split
-  · split
-    · exact Safe.refl s
-    · split
-      · exact useShield_safe s id
-      · dsimp only
-        have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
-          Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-        split
-        · exact h1.trans (killObj_safe _ id)
-        · exact h1
-  · exact Safe.refl s
-
 /-- Heal `n` damage from an object (CR 419). -/
 def healOne (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
@@ -1021,6 +973,119 @@ theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx
   · exact sendHome_safe s u
   · exact (sendHome_safe s u).trans (setExhausted_safe true _ u)
 
+/-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment attached
+to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the same
+Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies instead,
+`some none` if nothing does. -/
+def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
+  match s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
+      (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
+        match ab with
+        | Ability.passive .always mods => mods.contains .diesInsteadGear
+        | _ => false))) with
+  | some g => some (some g)
+  | none =>
+    match s.obj? id with
+    | some o =>
+      if o.loc.isSome && s.inPlay.any (fun u => u != id &&
+          (s.obj? u).any (fun v => v.controller == o.controller && v.loc == o.loc) &&
+          (s.activeMods u).contains .rescueWeakerHere &&
+          decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)) then some none
+      else none
+    | none => none
+
+/-- The Unit is saved: the Equipment that dies instead is killed, and the Unit is healed, exhausted
+and recalled. -/
+def saveUnit (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
+  let k := match g with | some g => killObj s g | none => (s, [])
+  let h := k.1.modObj id (fun o => { o with damage := 0 })
+  let r := recallFx true h id
+  (r.1, k.2 ++ r.2)
+
+/-- Saving a Unit is a safe change. -/
+theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
+    Safe s (saveUnit s id g).1 := by
+  unfold saveUnit
+  have hk : Safe s (match g with | some g => killObj s g | none => (s, [])).1 := by
+    cases g with
+    | none => exact Safe.refl s
+    | some g => exact killObj_safe s g
+  have hm := Safe.modObj (match g with | some g => killObj s g | none => (s, [])).1 id
+    (f := fun o => { o with damage := 0 }) (fun _ => rfl) (fun _ => rfl)
+  exact hk.trans (hm.trans (recallFx_safe true _ id))
+
+/-- Kill an object, unless something saves it (it would die). -/
+def killOrSave (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.deathSaver id with
+  | some g => if (s.cardDef? id).any (·.hasType .unit) then saveUnit s id g else killObj s id
+  | none => killObj s id
+
+/-- Killing, or saving, is a safe change. -/
+theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).1 := by
+  unfold killOrSave
+  split
+  · split
+    · exact saveUnit_safe s id _
+    · exact killObj_safe s id
+  · exact killObj_safe s id
+
+/-- An effect of this turn prevents the next damage to the object. -/
+def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .damagePrevented && f.target == some id)
+
+/-- The prevention of the next damage to the object is used up. -/
+def GameState.useShield (s : GameState) (id : ObjId) : GameState :=
+  { s with turnFx := s.turnFx.eraseP (fun f =>
+      f.turn == s.turn && f.kind == .damagePrevented && f.target == some id) }
+
+/-- Using up a prevention is a safe change. -/
+theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
+the next Cleanup (CR 323.4), not here. -/
+def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some _ =>
+    -- an object whose passive ability says it takes no damage takes none
+    if (s.activeMods id).contains .noDamage then (s, [])
+    -- the next damage to it this turn is prevented (once, and only damage there would be)
+    else if decide (0 < n) && s.shielded id then (s.useShield id, [])
+    -- damage that would be lethal, to a Unit that something saves: it is saved instead
+    else if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) &&
+        decide ((s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n) &&
+        (s.deathSaver id).isSome then
+      (match s.deathSaver id with | some g => saveUnit s id g | none => (s, []))
+    else
+      let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
+      -- a unit that takes damage while an effect of the turn says so is killed
+      if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
+        let k := killObj s1 id
+        (k.1, Event.damaged id n :: k.2)
+      else (s1, [Event.damaged id n])
+  | none => (s, [])
+
+/-- Dealing damage is a safe change. -/
+theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
+  unfold dealObj
+  split
+  · split
+    · exact Safe.refl s
+    · split
+      · exact useShield_safe s id
+      · split
+        · cases s.deathSaver id with
+          | some g => exact saveUnit_safe s id g
+          | none => exact Safe.refl s
+        · dsimp only
+          have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
+            Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+          split
+          · exact h1.trans (killObj_safe _ id)
+          · exact h1
+  · exact Safe.refl s
+
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := some u, attachedTurn := some s.turn }),
@@ -1230,7 +1295,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
-    (onSelected s p src env sel killObj).map (fun r =>
+    (onSelected s p src env sel killOrSave).map (fun r =>
       (r.1, r.2 ++ (if (s.cardDef? src).any (·.hasType .spell) &&
           r.2.any (fun e => match e with
             | .died n _ => (r.1.cardDef? n).any (·.hasType .unit)
@@ -1367,11 +1432,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       exact onSelected_safe (healOne_safe k) h
   | kill sel =>
     simp only [applyPrim] at h
-    cases hs : onSelected s p src env sel killObj with
+    cases hs : onSelected s p src env sel killOrSave with
     | none => simp [hs] at h
     | some r0 =>
       simp only [hs, Option.map_some, Option.some.injEq] at h
-      have h0 := onSelected_safe killObj_safe hs
+      have h0 := onSelected_safe killOrSave_safe hs
       rw [← h]
       exact h0
   | ready sel => exact onSelected_safe readyEffect_safe h

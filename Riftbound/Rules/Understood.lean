@@ -345,6 +345,8 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .diesInsteadGear => true
+  | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true
