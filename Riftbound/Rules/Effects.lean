@@ -192,6 +192,20 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
   · exact (sendObj_safe .trash s id).trans (noteDeath_safe _ _ _ _ _ _)
   · exact sendObj_safe .trash s id
 
+/-- An effect of this turn prevents the next damage to the object. -/
+def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .damagePrevented && f.target == some id)
+
+/-- The prevention of the next damage to the object is used up. -/
+def GameState.useShield (s : GameState) (id : ObjId) : GameState :=
+  { s with turnFx := s.turnFx.eraseP (fun f =>
+      f.turn == s.turn && f.kind == .damagePrevented && f.target == some id) }
+
+/-- Using up a prevention is a safe change. -/
+theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
 the next Cleanup (CR 323.4), not here. -/
 def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -199,6 +213,8 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   | some _ =>
     -- an object whose passive ability says it takes no damage takes none
     if (s.activeMods id).contains .noDamage then (s, [])
+    -- the next damage to it this turn is prevented (once, and only damage there would be)
+    else if decide (0 < n) && s.shielded id then (s.useShield id, [])
     else
       let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
       -- a unit that takes damage while an effect of the turn says so is killed
@@ -214,12 +230,14 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n 
   split
   · split
     · exact Safe.refl s
-    · dsimp only
-      have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
-        Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-      split
-      · exact h1.trans (killObj_safe _ id)
-      · exact h1
+    · split
+      · exact useShield_safe s id
+      · dsimp only
+        have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
+          Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+        split
+        · exact h1.trans (killObj_safe _ id)
+        · exact h1
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/

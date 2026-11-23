@@ -2766,5 +2766,71 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let a ← fire (attachTo three t g).1 [.attached g three]
   let b ← fire (attachTo five t g2).1 [.attached g2 five]
   return up a three == some true && up b five == some false && (a.mightNow three).any (5 ≤ ·)
+-- Needlessly Large Yordle (SFD-055): costs 2 Energy less for each point I scored by holding
+#guard tsf fun s => do
+  let (s1, y) ← put s s.me "SFD-055" .hand
+  let (s2, a) ← putBf s1 s.me "OGN-275"
+  let (s3, b) ← putBf s2 s.me "OGN-276"
+  let held (x : GameState) (bf : ObjId) (p : PlayerId) : GameState :=
+    x.modObj bf (fun o => { o with held := [p] })
+  let cost (x : GameState) : Option Nat :=
+    ((x.cardDef? y).bind (x.effCost s.me y)).map (·.energy)
+  return cost s3 == some 10 && cost (held s3 a s.me) == some 8 &&
+    cost (held (held s3 a s.me) b s.me) == some 6 && cost (held s3 a s.you) == some 10
+
+-- Sivir, Ambitious (SFD-120): when I conquer, if I assigned 5 or more excess damage, I may deal
+-- that much to an enemy unit
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-120" bf
+  let (s3, foe) ← putAt s2 s.you "OGN-088" s.bf0
+  let five := s3.addTurnFx s.me (.excessDamage 7)
+  let four := s3.addTurnFx s.me (.excessDamage 4)
+  let a ← fire five [.scored s.me bf true]
+  let b ← fire four [.scored s.me bf true]
+  let c ← fire five [.scored s.me bf true] { yes := false }
+  let d ← fire five [.scored s.me bf false]
+  return a.dmg foe == some 7 && b.dmg foe == some 0 && c.dmg foe == some 0 &&
+    d.dmg foe == some 0
+
+-- (the held mark comes from holding, not from conquering; and it is gone the next turn)
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, other) ← putBf s1 s.me "OGN-276"
+  let held := (s2.control s.me bf)
+  let a := (hold held s.me).1
+  let c := (scoreBf (s2.control s.me other) s.me other true).1
+  let isHeld (x : GameState) (b : ObjId) := (x.obj? b).any (·.held.contains s.me)
+  return isHeld a bf && !isHeld c other && (a.obj? bf).any (fun o => (clearScored o).held.isEmpty)
+
+-- Counter Strike (SFD-194): the next damage to the chosen unit this turn is prevented; draw 1
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-194" .hand
+  let (s2, u) ← put s1 s.me "OGN-049" .base
+  let (s3, v) ← put s2 s.me "OGN-049" .base
+  let a ← play s3 s.me c [u]
+  let first := (dealObj 3 a u).1
+  let second := (dealObj 2 first u).1
+  let other := (dealObj 3 a v).1
+  let zero := (dealObj 0 a u).1
+  let later := (dealObj 3 { a with turn := a.turn + 1 } u).1
+  return a.handN s.me == s3.handN s.me && first.dmg u == some 0 && second.dmg u == some 2 &&
+    other.dmg v == some 3 && (dealObj 3 zero u).1.dmg u == some 0 && later.dmg u == some 3
+
+-- Ornn's Forge (SFD-213): while its player controls it, their first non-token gear each turn costs
+-- 1 less
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-213"
+  let (s2, g) ← put s1 s.me "SFD-042" .hand
+  let (s3, h) ← put s2 s.me "SFD-030" .hand
+  let (s4, u) ← put s3 s.me "OGN-051" .hand
+  let cost (x : GameState) (c : ObjId) (p : PlayerId := s.me) : Option Nat :=
+    ((x.cardDef? c).bind (x.effCost p c)).map (·.energy)
+  let mine := s4.control s.me bf
+  let theirs := s4.control s.you bf
+  let played ← play mine s.me g
+  return cost s4 g == (cost mine g).map (· + 1) && cost mine g == (cost theirs g).map (· - 1) &&
+    cost mine u == cost s4 u && cost played h == cost s4 h &&
+    cost mine h == (cost s4 h).map (· - 1)
 
 end RiftboundTest

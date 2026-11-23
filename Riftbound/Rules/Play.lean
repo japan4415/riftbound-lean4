@@ -94,12 +94,22 @@ def GameState.readyNow (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) 
           | _ => false)
       | _, _ => false))
 
+/-- The player a passive ability of the object speaks for: its controller, and for a Battlefield the
+player who controls it (none while nobody does). -/
+def GameState.sourceOwner (s : GameState) (src : ObjId) : Option Object :=
+  match s.obj? src with
+  | some o =>
+    if (s.cardDef? src).any (·.hasType .battlefield) then
+      o.control.map (fun q => { o with controller := q })
+    else some o
+  | none => none
+
 /-- The cuts of the Energy cost of the card `c` of the player: each is an amount and the floor the
 cost does not go below (CR 356). They come from the passive abilities of the objects in play and of
 the card itself, whose condition holds: Legion is the player having played a card (CR 812). -/
 def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat × Nat) :=
   (s.passiveSources ++ [c]).flatMap (fun src =>
-    match s.obj? src, s.cardDef? src with
+    match s.sourceOwner src, s.cardDef? src with
     | some o, some d =>
       d.fullAbilities.flatMap (fun ab =>
         match ab with
@@ -129,7 +139,7 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
 the cost of the spells of the opponents of Vex, Cheerless goes up. -/
 def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
   (s.passiveSources ++ [c]).foldl (fun acc src =>
-    match s.obj? src, s.cardDef? src with
+    match s.sourceOwner src, s.cardDef? src with
     | some o, some d =>
       d.fullAbilities.foldl (fun acc ab =>
         match ab with
