@@ -223,7 +223,10 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
       let all := s1.battlefields.all
         (fun b => ((s1.obj? b).map (·.scored.contains r)) == some true)
-      if conquer && s.victoryScore ≤ s.pointsOf r + 1 && !all then
+      -- a card can say the player can't score points here: the Battlefield is scored all the same
+      -- (the abilities still fire), but no point comes of it
+      if s.cantScoreHere r bf then (s1, [], [Event.scored r bf conquer])
+      else if conquer && s.victoryScore ≤ s.pointsOf r + 1 && !all then
         (s1, [Frame.draw r 1], [Event.scored r bf true])
       else (s1.gainPoints r 1, [], [Event.scored r bf conquer, Event.pointsGained r 1])
 
@@ -243,9 +246,10 @@ def clearScored (o : Object) : Object := { o with scored := [], used := [] }
 def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
   let bs := s.holds tp
   let s1 := bs.foldl (fun s b => s.modObj b (markScored tp)) s
-  (s1.gainPoints tp bs.length,
+  let n := (bs.filter (fun b => !s.cantScoreHere tp b)).length
+  (s1.gainPoints tp n,
     bs.map (fun b => Event.scored tp b false) ++
-      (if bs.length = 0 then [] else [Event.pointsGained tp bs.length]))
+      (if n = 0 then [] else [Event.pointsGained tp n]))
 
 /-- The Showdown at `bf` ends (CR 348): if one player alone has Units there and does not control
 it, they get its Control and score it by Conquer (CR 348.2). The Battlefield is no longer
@@ -579,7 +583,9 @@ theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
       dsimp only
       split
       · exact SafeP.of_safe h1
-      · exact ⟨_, h1, Or.inr ⟨r, 1, rfl⟩⟩
+      · split
+        · exact SafeP.of_safe h1
+        · exact ⟨_, h1, Or.inr ⟨r, 1, rfl⟩⟩
 
 /-- Holding is a safe change, then points. -/
 theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 :=
@@ -619,8 +625,10 @@ theorem scoreBf_frames (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
     · simp at hf
     · dsimp only at hf
       split at hf
-      · simpa using hf
       · simp at hf
+      · split at hf
+        · simpa using hf
+        · simp at hf
 
 /-- The frames the end of a Showdown asks for are draws. -/
 theorem endShowdown_frames (s : GameState) (bf : ObjId) :
@@ -707,9 +715,12 @@ theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o 
   · split
     · rw [GameState.obj?_modObj]
       simp [h]
-    · show (((s.modObj bf _).obj? bf).map _) = some true
-      rw [GameState.obj?_modObj]
-      simp [h]
+    · split
+      · rw [GameState.obj?_modObj]
+        simp [h]
+      · show (((s.modObj bf _).obj? bf).map _) = some true
+        rw [GameState.obj?_modObj]
+        simp [h]
 
 /-- **I11** (roadmap.md). A player scores a Battlefield at most once in a turn: scoring it a second
 time changes nothing, whichever way it is scored (CR 472, 473). -/

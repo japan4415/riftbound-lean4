@@ -76,6 +76,24 @@ def modFloor (s : GameState) (src id : ObjId) : StaticMod → Option (Nat × Nat
     | _, _ => none
   | _ => none
 
+/-- The player `p` cannot score the Battlefield `bf` now, by a passive ability that says so ("players
+can't score here until their third turn", "while I'm at a battlefield, opponents can't score"). -/
+def cantScoreHere (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  s.passiveSources.any (fun g =>
+    let c := ((s.obj? g).map (·.controller)).getD ⟨0⟩
+    (s.activeMods g).any (fun m =>
+      match m with
+      | .cantPlayer who .score place untilTurn =>
+        ((who.resolve s c).map (·.contains p)).getD false &&
+          (match place with
+            | .here => s.hereOf g == some bf
+            | .anywhere => true
+            | _ => false) &&
+          (untilTurn == 0 ||
+            decide (((List.range (s.turn - s.turnShift)).filter
+              (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)).length < untilTurn))
+      | _ => false))
+
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
   ((s.obj? src).map (·.controller)).getD ⟨0⟩
