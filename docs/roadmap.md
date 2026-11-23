@@ -606,8 +606,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### M8a の実装の記録（2026-11-23）: Spiritforged 16 — 遊んだユニットにバフ、動いたとき
 
-- **遊んだユニットにバフ**: `TurnEffect.unitsBuffed`（Rally the Troops）。そのターンに、そのプレイヤーが遊ぶユニットは、バフを持って出る（`PlayMark.buff`。手札からの遊びと、無料の遊びの両方）。トークンを作る効果は、バフしない（近似）。
-- **書いたカード**: SFD-166（Rally the Troops）、131（Ancient Warmonger。『Assault は、ここにいる敵ユニットの数』は、攻撃側のとき Might が数だけ増える、と書いた）、065（Forecaster。味方の Mech を遊んだとき Vision。Forecaster 自身も数える）、054（Jax, Unmatched。味方の Equipment を遊んだとき、味方のユニットに付ける。手札にある間の Quick-Draw の代わり。Reaction の速さは、無い）、112（Kato the Arm。動いたとき、Deflect と自分の Might を、味方のユニットに、このターンだけ与える。Kato が持つ印刷のキーワード Deflect だけを写す近似）。
+- **遊んだユニットにバフ**: `TurnEffect.unitsBuffed`（Rally the Troops）。そのターンに、そのプレイヤーが遊ぶユニットは、バフを持って出る（`PlayMark.buff`。手札からの遊びと、無料の遊びの両方）。トークンを作る効果は、バフしない（近似）。バフは、`buffed` のイベントを出さない（「バフされたとき」は、働かない）。トークンを作る効果は、`played` を出さないので、Forecaster にも働かない。
+- **書いたカード**: SFD-166（Rally the Troops）、131（Ancient Warmonger。『Assault は、ここにいる敵ユニットの数』。`StaticMod.assaultCount`。Assault は戦闘のダメージだけを増やし、Might は増やさない）、065（Forecaster。味方の Mech を遊んだとき Vision。Forecaster 自身も数える）、054（Jax, Unmatched。味方の Equipment（印刷の Quick-Draw を持たないもの）を遊んだとき、味方のユニットに付ける。手札にある間の Quick-Draw の代わり。手札以外から遊んだときも付ける。Reaction の速さは、無い）、112（Kato the Arm。動いたとき、Deflect と自分の Might を、味方のユニットに、このターンだけ与える。Kato が持つ印刷のキーワード Deflect だけを写す近似）。
 - **カードの数**: 動く Spiritforged は 185 枚から 190 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

@@ -2621,15 +2621,16 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return a.handN s.me == s3.handN s.me && isBuffed b "OGN-051" == some true &&
     isBuffed t3 "OGN-051" == some false && isBuffed d "SFD-056" != some true
 
--- Ancient Warmonger (SFD-131): Assault for each enemy unit here (as an attacker)
+-- Ancient Warmonger (SFD-131): Assault for each enemy unit here: more damage as an attacker, but
+-- its Might (what a spell must beat) stays 4
 #guard tsf fun s => do
   let (s1, w) ← putAt s s.me "SFD-131" s.bf0
   let (s2, _) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, _) ← putAt s2 s.you "OGN-001" s.bf0
   let atk := (s3.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
-  let def_ := (s3.modObj s.bf0 (fun o => { o with contested := some s.you })).inShowdownAt
-    s.bf0 s.you
-  return atk.mightNow w == some (4 + 2) && def_.mightNow w == some 4 && s3.mightNow w == some 4
+  return s3.kwAmount w .assault == 2 && s1.kwAmount w .assault == 0 &&
+    atk.combatMight w true == 4 + 2 && atk.combatMight w false == 4 &&
+    atk.mightNow w == some 4
 
 -- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
 #guard tsf fun s => do
@@ -2653,16 +2654,21 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s4, other) ← put s3 s.me "OGN-017" .hand
   let a ← play s4 s.me g
   let b ← play s4 s.me other
+  let (q1, q) ← put s2 s.me "SFD-064" .hand
+  let qd ← play q1 s.me q
+  let (q2, q3) ← put s2 s.me "SFD-064" .base
+  let (q4, q5) ← put q2 s.me "SFD-042" .base
+  let once := (q2.detect [.played s.me q3]).length == 1 && (q4.detect [.played s.me q5]).length == 1
   let (t1, _) ← put s s.me "OGN-051" .base
   let (t2, g2) ← put t1 s.me "SFD-042" .hand
   let t ← play t2 s.me g2
   let att (x : GameState) (code : String) : Option Bool :=
     (x.firstOf s.me .base code).bind (fun o => (x.obj? o).map (·.attached.isSome))
   return att a "SFD-042" == some true && att b "OGN-017" != some true &&
-    att t "SFD-042" == some false
+    att t "SFD-042" == some false && att qd "SFD-064" == some true && once
 
--- Kato the Arm (SFD-112): when I move to a battlefield, a friendly unit gets my keywords and my Might
--- this turn
+-- Kato the Arm (SFD-112): when I move to a battlefield, a friendly unit gets my keywords and my
+-- Might this turn
 #guard tsf fun s => do
   let (s1, k) ← putAt s s.me "SFD-112" s.bf0
   let (s2, u) ← put s1 s.me "OGN-051" .base

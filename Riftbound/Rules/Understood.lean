@@ -336,6 +336,7 @@ def StaticMod.runs : StaticMod → Bool
   | .hideWithEnergy => true
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
+  | .assaultCount s => s.understood
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true

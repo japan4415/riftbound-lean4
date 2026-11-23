@@ -222,9 +222,19 @@ def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
         | .none => if k == .assault || k == .shield then some 1 else none
         | _ => none)
     else none
+  -- Assault that equals a number of objects (Ancient Warmonger: the enemy units here)
+  let counted : Nat :=
+    if k == .assault then
+      (s.activeMods u).foldl (fun acc m =>
+        match m with
+        | .assaultCount sel =>
+          acc + (((sel.eval s ((s.obj? u).map (·.controller) |>.getD ⟨0⟩) u {}).map
+            (·.length)).getD 0)
+        | _ => acc) 0
+    else 0
   (match s.cardDef? u with
     | some d => (d.keywords.filterMap amount).sum
-    | none => 0) + ((s.grantedKws u).filterMap amount).sum
+    | none => 0) + ((s.grantedKws u).filterMap amount).sum + counted
 
 /-- The Might an object has now: the printed Might, the lasting changes and the passive changes
 (CR 475-479). The rules that read a Might read this one. -/

@@ -1551,7 +1551,8 @@ def SFD_054 : CardDef :=
   { SFD_054.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩] }
+      { event := .play, subject := Selector.all .friendly .anywhere
+          [.tag ⟨"Equipment"⟩, .not (.hasKeyword .quickDraw)] }
       (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
         (.prim (.attach (.slot 1) (.slot 0)))) .unlimited],
     status := .drafted }
@@ -1864,7 +1865,8 @@ def SFD_065 : CardDef :=
   { SFD_065.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Mech"⟩] }
+      { event := .play, subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
     status := .drafted }
 
@@ -3733,8 +3735,8 @@ def SFD_131.meta : CardDef :=
 def SFD_131 : CardDef :=
   { SFD_131.meta with
 
-    abilities := [.passive (.matches .self .attacker)
-      [.mightPlus .self (.count (Selector.all .enemy .here [.ofType .unit]))]],
+    abilities := [.passive .always
+      [.assaultCount (Selector.all .enemy .here [.ofType .unit])]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-132
