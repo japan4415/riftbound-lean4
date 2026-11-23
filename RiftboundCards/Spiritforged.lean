@@ -869,27 +869,27 @@ def SFD_029 : CardDef :=
           [.ofType .unit, .playedFromElsewhere] }
       (.of [] (.seqOf [
           .ifThen (.and (.matches (.slot 0) (.domain .fury))
-              (.canPay ⟨1, [.domain .fury]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .fury]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩),
               .prim (.ready (.slot 0))])) .nop,
           .ifThen (.and (.matches (.slot 0) (.domain .calm))
-              (.canPay ⟨1, [.domain .calm]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .calm]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .calm]⟩),
               .prim (.ready (.slot 0))])) .nop,
           .ifThen (.and (.matches (.slot 0) (.domain .mind))
-              (.canPay ⟨1, [.domain .mind]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .mind]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .mind]⟩),
               .prim (.ready (.slot 0))])) .nop,
           .ifThen (.and (.matches (.slot 0) (.domain .body))
-              (.canPay ⟨1, [.domain .body]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .body]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .body]⟩),
               .prim (.ready (.slot 0))])) .nop,
           .ifThen (.and (.matches (.slot 0) (.domain .chaos))
-              (.canPay ⟨1, [.domain .chaos]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .chaos]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .chaos]⟩),
               .prim (.ready (.slot 0))])) .nop,
           .ifThen (.and (.matches (.slot 0) (.domain .order))
-              (.canPay ⟨1, [.domain .order]⟩))
+              (.and (.matches (.slot 0) .exhausted) (.canPay ⟨1, [.domain .order]⟩)))
             (.may (.seqOf [.prim (.pay ⟨1, [.domain .order]⟩),
               .prim (.ready (.slot 0))])) .nop]))
       .unlimited],

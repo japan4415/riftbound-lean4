@@ -2013,15 +2013,14 @@ theorem playSpellStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env :
     · simp at h
   · simp at h
 
-/-- The player would reveal a card from a deck (the Main Deck or the Rune Deck) and has a passive
+/-- The player would reveal a card from a Main Deck and has a passive
 ability that says to look at the top card first (Void Hatchling). -/
 def GameState.lookFirst (s : GameState) (p : PlayerId) (env : Env) (sel : Selector) : Bool :=
   (match sel with
     | .var v =>
       match env.lookup v with
       | some (.obj o) =>
-        (s.obj? o).any (fun x => (s.zone (.player x.owner .mainDeck)).contains o ||
-          (s.zone (.player x.owner .runeDeck)).contains o)
+        (s.obj? o).any (fun x => (s.zone (.player x.owner .mainDeck)).contains o)
       | _ => false
     | _ => false) &&
     s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&

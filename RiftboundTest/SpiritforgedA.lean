@@ -3240,25 +3240,30 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [irelia]⟩ &&
     !(legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [other]⟩
 
--- Void Hatchling (SFD-018): when I would reveal cards from a deck (here the Rune Deck, by
--- OGN-200 when it attacks), I look at the top card of my Main Deck first and may recycle it;
--- revealing a card of my hand does not count
+-- Void Hatchling (SFD-018): when I would reveal a card from my Main Deck, I look at the top card
+-- first and may recycle it; revealing a card of my hand or the Rune Deck does not count
+#guard tsf fun s => do
+  let (s1, hatch) ← put s s.me "SFD-018" .base
+  let (s2, _) ← s1.stackTop s.me ["OGN-088", "OGN-136"]
+  let top ← s2.topCard s.me
+  let env : Env := ({} : Env).bind pickVar (.obj top)
+  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil
+  let plain := runEffect1 (s2.modObj hatch id |>.setZone (.player s.me .base) []) s.me hatch env
+    (.prim (.reveal (.var pickVar))) .nil
+  let looks (r : GameState × List Frame × List Event) : Bool :=
+    match r.2.1 with
+    | [.run _ _ _ (.cons (.prim (.lookTop 1)) _)] => true
+    | _ => false
+  return looks a && !looks plain
+
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-018" .base
   let (s2, bf) ← putBf s1 s.me "OGN-275"
   let (s3, _) ← putAt s2 s.me "OGN-200" bf
   let (s4, _) ← putAt s3 s.you "OGN-051" bf
   let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let yes ← fire s5 [.combatStarted bf s.me] { yes := true }
-  let no ← fire s5 [.combatStarted bf s.me] { yes := false }
-  return yes.topCard s.me != s5.topCard s.me && no.topCard s.me == s5.topCard s.me
-#guard tsf fun s => do
-  let (s2, bf) ← putBf s s.me "OGN-275"
-  let (s3, _) ← putAt s2 s.me "OGN-200" bf
-  let (s4, _) ← putAt s3 s.you "OGN-051" bf
-  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let plain ← fire s5 [.combatStarted bf s.me] { yes := true }
-  return plain.topCard s.me == s5.topCard s.me
+  let r ← fire s5 [.combatStarted bf s.me] { yes := true }
+  return r.topCard s.me == s5.topCard s.me
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-018" .base
   let (s2, c) ← put s1 s.me "OGN-008" .hand
@@ -3267,5 +3272,152 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
   let r ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
   return r.topCard s.me == s5.topCard s.me && r.countIn s.me .trash "OGN-051" == 1
+
+-- Rek'Sai, Breacher (SFD-029): a friendly unit played from somewhere other than a hand may pay
+-- 1 Energy and 1 Fury Power to enter ready
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-029" .base
+  let (s2, fromTrash) ← put s1 s.me "OGN-051" .trash
+  let (s3, inHand) ← put s2 s.me "OGN-051" .hand
+  let played := (playFree s.me s3 fromTrash)
+  let handPlay := (playFree s.me s3 inHand)
+  let units (x : GameState) : List ObjId :=
+    (x.zone (.player s.me .base)).filter (fun o => (x.cardDef? o).any (·.id == cid "OGN-051"))
+  let tiredAll (x : GameState) : Bool := (units x).all (fun o => x.tired o == some true)
+  let a ← fire (played.1.rich s.me) played.2 { yes := true }
+  let b ← fire (played.1.rich s.me) played.2 { yes := false }
+  let c ← fire (handPlay.1.rich s.me) handPlay.2
+  let d ← fire (played.1.fund s.me 0) played.2
+  return tiredAll played.1 && tiredAll b && tiredAll c && tiredAll d &&
+    (units a).all (fun o => a.tired o == some false) && (units a).length == 1 &&
+    ((a.poolOf s.me).energy + 1 == ((played.1.rich s.me).poolOf s.me).energy)
+
+-- (Emperor of the Sands) a Sand Soldier token is played: I may Equip an Equipment to it for 1 less
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-197" .legendZone
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, played) ← put s2 s.me "SFD-042" .hand
+  let (s4, _) ← put s3 s.me "OGN-051" .base
+  let funded := s4.rich s.me
+  let started := funded.modObj played (fun o => { o with playedTurn := some funded.turn })
+  let a ← activate started s.me l 0 []
+    ⟨1, []⟩ { pick := fun ts => ts == [g] }
+  let sand := (a.zone (.player s.me .base)).find? (fun o =>
+    (a.cardDef? o).any (·.name == "Sand Soldier"))
+  return sand.isSome && (a.obj? g).any (fun o => o.attached == sand)
+
+-- (Akshan) the gear goes back to its owner when he leaves the board
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let base := payOf s2 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let paid ← cast (s2.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let akshan ← (paid.zone (.player s.me .base)).find? (fun o =>
+    (paid.cardDef? o).any (·.id == cid "SFD-109"))
+  let killed := killObj paid akshan
+  let after ← fire killed.1 killed.2
+  let gear (x : GameState) (p : PlayerId) : Bool :=
+    (x.zone (.player p .base)).any (fun o => (x.cardDef? o).any (·.id == cid "SFD-042") &&
+      (x.obj? o).any (·.controller == p))
+  return gear paid s.me && !gear paid s.you && gear after s.you && !gear after s.me
+
+-- (The Zero Drive) pay 3 Mind-ish and banish it: play every unit it banished, free; only unattached
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s3, g) ← put s2 s.me "SFD-090" .base
+  let held := (attachTo u s3 g).1
+  let k1 := killObj held u
+  let dead1 := k1.1
+  let (s4, _) := ((attachTo v dead1 g).1, 0)
+  let k2 := killObj s4 v
+  let both := k2.1
+  let (t1, _) ← put both s.me "OGN-051" .trash
+  let inZone (x : GameState) (z : ZoneKind) (code : String) : Nat :=
+    ((x.zone (.player s.me z)).filter (fun o => (x.cardDef? o).any (·.id == cid code))).length
+  let loose := both.modObj g (fun o => { o with attached := none })
+  let used ← activate loose s.me g 0 [] ⟨3, [.mind]⟩
+  let blocked := activate (attachTo (v) loose g).1 s.me g 0 [] ⟨3, [.mind]⟩
+  return inZone both .banishment "OGN-051" == 1 && inZone both .banishment "OGN-136" == 1 &&
+    inZone used .base "OGN-051" == 1 && inZone used .base "OGN-136" == 1 &&
+    inZone used .banishment "OGN-051" == 0 && inZone used .banishment "SFD-090" == 1 &&
+    inZone t1 .trash "OGN-051" == 1 && inZone used .banishment "OGN-136" == 0 &&
+    (blocked.map (fun x => inZone x .banishment "OGN-051")).getD 1 == 1
+
+-- (review) Akshan: drawing or discarding him does not return the gear; the other player's Akshan is
+-- not mixed up with mine
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let base := payOf s2 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let paid ← cast (s2.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let (s3, spare) ← put paid s.me "SFD-109" .mainDeck
+  let moved ← moveObj s3 spare (.player s.me .hand)
+  let drawn ← fire moved.1 [.moved spare moved.2 (.player s.me .hand)]
+  let (t1, theirs) ← put paid s.you "SFD-109" .base
+  let k := killObj t1 theirs
+  let mirror ← fire k.1 k.2
+  let gear (x : GameState) (p : PlayerId) : Bool :=
+    (x.zone (.player p .base)).any (fun o => (x.cardDef? o).any (·.id == cid "SFD-042") &&
+      (x.obj? o).any (·.controller == p))
+  return gear paid s.me && gear drawn s.me && !gear drawn s.you && gear mirror s.me &&
+    !gear mirror s.you
+
+-- (Svellsongur) the Unit's passive abilities count twice as well
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-143" .base
+  let (s2, g) ← put s1 s.me "SFD-059" .base
+  let spent := s2.setPool s.me { spent := 2 }
+  let held := (attachTo u spent g).1
+  return spent.mightNow u == some 6 && held.mightNow u == some 8
+
+-- (Prodigal Explorer) the abilities of my units that chose enemy objects count with my spells
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-199" .legendZone
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let (s4, mine) ← put s3 s.me "OGN-088" .base
+  let (s5, c) ← put s4 s.me "OGN-050" .hand
+  let d ← s5.cardDef? u
+  let pend : PendTrigger := { source := u, card := d.id, idx := 0, controller := s.me }
+  let one := putTrigger s5 pend [foe]
+  let two := putTrigger one pend [foe]
+  let own := putTrigger (putTrigger s5 pend [mine]) pend [mine]
+  let withSpell ← play one s.me c [foe]
+  let n (x : GameState) := Amount.spellsChoseEnemy.evalS x s.me l {}
+  return n s5 == some 0 && n one == some 1 && n two == some 2 && n own == some 0 &&
+    n withSpell == some 2
+
+-- (Rek'Sai) the unit pays for its own domain
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-029" .base
+  let (s2, fromTrash) ← put s1 s.me "OGN-051" .trash
+  let d ← s2.cardDef? fromTrash
+  let played := playFree s.me s2 fromTrash
+  let poor := played.1.fund s.me 5
+  let a ← fire (played.1.fund s.me 5 12 12 12 12 12 12) played.2 { yes := true }
+  let b ← fire poor played.2 { yes := true }
+  let units (x : GameState) : List ObjId :=
+    (x.zone (.player s.me .base)).filter (fun o => (x.cardDef? o).any (·.id == d.id))
+  return (units a).all (fun o => a.tired o == some false) &&
+    (units b).all (fun o => b.tired o == some true)
+
+
+-- (review) Irelia: two of her cut twice, one chosen twice cuts once, no duplicate payments
+#guard tsf fun s => do
+  let (s1, i1) ← put s s.me "SFD-141" .base
+  let (s2, i2) ← put s1 s.me "SFD-141" .base
+  let (s3, c) ← put s2 s.me "OGN-024" .hand
+  let d ← s3.cardDef? c
+  let cost ← s3.effCost s.me c d
+  let opts := cost.cutOptions 2
+  let mixed : RunePool.Payment :=
+    ⟨cost.energy - 1, (payOf s3 c).power.drop 1⟩
+  return s3.chooseCut s.me c [i1, i2] == 2 && s3.chooseCut s.me c [i1, i1] == 1 &&
+    s3.chooseCut s.me c [] == 0 && opts.eraseDups.length == opts.length &&
+    (s3.paysForXT s.me c d cost [i1, i2] mixed) &&
+    !(s3.paysForXT s.me c d cost [i1] mixed)
 
 end RiftboundTest

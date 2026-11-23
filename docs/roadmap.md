@@ -690,7 +690,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Rek'Sai**: 手札以外から遊んだ味方のユニットは、そのユニット自身の領域の Power 1 つと 1 Energy を払って ready にできる（領域ごとに 6 つの選択肢）。
 - **Svellsongur**: 付いたユニットの、パッシブ能力も、もう一度働く（`activeMods`）。
 - **Prodigal Explorer**: ユニットが使った能力（起動する能力と、誘発した能力）が選んだ敵の物も、数える（`Object.chose`、`Object.noteChose`）。
-- **残っている近似**: Svellsongur は、起動する能力を複製しない。Void Hatchling は、`Prim.reveal` を使うカードだけに働く（Main Deck の上を公開する、ほかのカードは、`top` で書いてあり、公開として扱わない）。Forge of the Fluft は、Legend が持つ能力でなく、Battlefield の能力（支配者が使い、自分の Legend を exhaust する）。Sivir の『2 つ以上の虹』は、払った Power の数で読む。
+- **レビューで直したこと**: Void Hatchling は、Main Deck から選んだカードの公開にだけ働く（手札や Rune Deck の公開には、働かない）。Irelia の削減は、2 枚の Irelia で、Energy と Power を 1 つずつ安くする組も数え、同じ物を 2 度選んでも 1 回だけ数え、同額の支払いを重ねない。Rek'Sai は、すでに ready なら、もう払わない。壊れていた Spiritforged のテスト（Akshan、Emperor、Zero Drive）を、元に戻した。
+- **残っている近似**: Irelia の割引は、全額払いも、そのまま合法（割引は、任意）。Power の割引は、先頭の記号から落とす。Energy の割引は、`effCost` の下限を見ない。AI（`riftbound-trace` の自動対戦）は、最大の支払いを選ぶので、割引を使わない。Svellsongur は、起動する能力を複製しない。Void Hatchling は、`Prim.reveal` を使うカードだけに働く（Main Deck の上を公開する、ほかのカードは、`top` で書いてあり、公開として扱わない）。Forge of the Fluft は、Legend が持つ能力でなく、Battlefield の能力（支配者が使い、自分の Legend を exhaust する）。Sivir の『2 つ以上の虹』は、払った Power の数で読む。
 - **まだ近似のもの（過去の記述。上の Spiritforged 24 で、一部は本物になった）**: SFD-018 Void Hatchling（公開のあとで見る）、SFD-029 Rek'Sai（払って ready）、SFD-141 Irelia（Energy の払い戻し）、SFD-059 Svellsongur（誘発する能力だけ）、SFD-199 Prodigal Explorer（呪文だけ数える）、SFD-208 Forge of the Fluft（Battlefield の能力）、SFD-143 Sivir（Power を数える）。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

@@ -239,12 +239,19 @@ def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop
 /-- The costs a Spell may have, by how much less (1 Energy or 1 Power each time) the objects it
 chooses make it cost (at most `k`). -/
 def Cost.cutOptions (c : Cost) (k : Nat) : List Cost :=
-  c :: (List.range k).flatMap (fun i => [c.lessEnergy (i + 1), c.lessPower (i + 1)])
+  (c :: (List.range (k + 1)).flatMap (fun a => (List.range (k + 1 - a)).map (fun b =>
+    (c.lessEnergy a).lessPower b))).eraseDups
+
+/-- The cost itself is one of the costs. -/
+theorem Cost.mem_cutOptions_self (c : Cost) (k : Nat) : c ∈ c.cutOptions k := by
+  unfold Cost.cutOptions
+  rw [List.mem_eraseDups]
+  exact List.mem_cons_self
 
 /-- How much less the Spell `c` of the player costs because of the objects it chooses (Irelia). -/
 def GameState.chooseCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
   if (s.cardDef? c).any (·.hasType .spell) then
-    ts.foldl (fun acc t =>
+    ts.eraseDups.foldl (fun acc t =>
       if (s.obj? t).any (·.controller == p) then
         (s.activeMods t).foldl (fun acc m =>
           match m with | .chosenSpellsCostLess n => acc + n | _ => acc) acc
@@ -844,7 +851,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         refine ⟨d, cost, hd, hcost, ?_, (mem_playTargets s p c d ts).mpr (Or.inl hts)⟩
         unfold GameState.paysForXT
         rw [List.any_eq_true]
-        exact ⟨cost, List.mem_cons_self, hpaid⟩
+        exact ⟨cost, Cost.mem_cutOptions_self _ _, hpaid⟩
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := castable_spec h
         obtain ⟨d', e, hd', he, hok⟩ := castable_targets h
         have : d' = d := Option.some.inj (hd'.symm.trans hd)
