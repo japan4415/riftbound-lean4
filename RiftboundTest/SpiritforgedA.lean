@@ -2879,5 +2879,131 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let a ← play (s4.control s.you bf) s.me c [u]
   return ((a.obj? bf).bind (·.contested)) == some s.me &&
     ((s4.obj? bf).bind (·.contested)).isNone
+-- Guardian Angel (SFD-051): if the unit it is attached to would die, the Angel dies instead; the
+-- unit is healed, exhausted and recalled (the Angel adds 1 Might: 3 + 1)
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "OGN-006" bf
+  let (s3, g) ← put s2 s.me "SFD-051" .base
+  let held := (attachTo u s3 g).1
+  let hit := (dealObj 4 held u).1
+  let soft := (dealObj 2 held u).1
+  let killed := (killOrSave held u).1
+  let bare := (dealObj 3 s3 u).1
+  let isIn (x : GameState) (z : Zone) (code : String) : Bool :=
+    (x.zone z).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  return isIn hit (.player s.me .trash) "SFD-051" && isIn hit (.player s.me .base) "OGN-006" &&
+    ((hit.firstOf s.me .base "OGN-006").bind (fun o => hit.obj? o)).any
+      (fun o => o.damage == 0 && o.exhausted && o.loc.isNone) &&
+    isIn soft .battlefieldZone "OGN-006" && isIn soft (.player s.me .base) "SFD-051" &&
+    isIn killed (.player s.me .trash) "SFD-051" && isIn killed (.player s.me .base) "OGN-006" &&
+    bare.dmg u == some 3
+
+-- Soraka, Wanderer (SFD-173): another unit of mine here with less Might than her is healed,
+-- exhausted and recalled instead of dying
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-173" bf
+  let (s3, weak) ← putAt s2 s.me "OGN-006" bf
+  let (s4, strong) ← putAt s3 s.me "OGN-088" bf
+  let (s5, foe) ← putAt s4 s.you "OGN-006" bf
+  let (s6, home) ← put s5 s.me "OGN-006" .base
+  let saved := (dealObj 3 s6 weak).1
+  let (s7, other) ← putBf s6 s.me "OGN-276"
+  let (s8, apart) ← putAt s7 s.me "OGN-006" other
+  let elsewhere := (dealObj 3 s8 apart).1.dmg apart == some 3
+  let isIn (x : GameState) (z : Zone) (code : String) : Bool :=
+    (x.zone z).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  let atBf (x : GameState) : Nat :=
+    ((x.zone .battlefieldZone).filter (fun o => (x.cardDef? o).any (·.id == cid "OGN-006") &&
+      (x.obj? o).any (·.controller == s.me))).length
+  return atBf s6 == 1 && atBf saved == 0 &&
+    ((saved.zone (.player s.me .base)).filter (fun o => (saved.cardDef? o).any
+      (·.id == cid "OGN-006"))).length == 2 &&
+    (dealObj 3 s6 foe).1.dmg foe == some 3 && (dealObj 3 s6 home).1.dmg home == some 3 &&
+    (dealObj 2 s6 weak).1.dmg weak == some 2 && (dealObj 8 s6 strong).1.dmg strong == some 8 &&
+    elsewhere &&
+    !isIn saved (.player s.me .trash) "OGN-006"
+
+-- Rell, Magnetic (SFD-024): when I attack, I may play an Equipment costing 2 or less, free, and
+-- attach it to me
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, rell) ← putAt s1 s.me "SFD-024" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, _) ← put s3 s.me "SFD-042" .hand
+  let (s5, _) ← put s4 s.me "SFD-030" .hand
+  let a ← fire s5 [.combatStarted bf s.me]
+  let b ← fire s5 [.combatStarted bf s.me] { yes := false }
+  let c ← fire s5 [.combatStarted bf s.you]
+  let withRell (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .base)).any (fun o => (x.cardDef? o).any (·.id == cid code) &&
+      (x.obj? o).any (·.attached == some rell))
+  return withRell a "SFD-042" && !withRell a "SFD-030" && a.handN s.me == s5.handN s.me - 1 &&
+    !withRell b "SFD-042" && b.handN s.me == s5.handN s.me && !withRell c "SFD-042" &&
+    (a.poolOf s.me).energy == (s5.poolOf s.me).energy
+
+-- Sivir, Mercenary (SFD-143): once I have spent 2 or more Power this turn, +2 Might and Ganking
+#guard tsf fun s => do
+  let (s1, sivir) ← put s s.me "SFD-143" .base
+  let pool (n : Nat) : GameState := s1.setPool s.me { spent := n }
+  let paid := ((s1.rich s.me).poolOf s.me).spend ⟨0, [.fury, .calm]⟩
+  let (s2, other) ← put (pool 0) s.you "SFD-143" .base
+  return s1.mightNow sivir == some 4 && !s1.hasKw sivir .ganking &&
+    (pool 1).mightNow sivir == some 4 && !(pool 1).hasKw sivir .ganking &&
+    (pool 2).mightNow sivir == some 6 && (pool 2).hasKw sivir .ganking &&
+    (pool 5).mightNow sivir == some 6 && paid.any (·.spent == 2) &&
+    ((s2.setPool s.me { spent := 3 }).mightNow other == some 4)
+
+-- (the Power paid by playing a card is counted)
+#guard tsf fun s => do
+  let (s1, v) ← put s s.me "SFD-146" .hand
+  let a ← play s1 s.me v
+  let (t1, c) ← put s s.me "OGN-051" .hand
+  let b ← play t1 s.me c
+  return (a.poolOf s.me).spent == 1 && (b.poolOf s.me).spent == 0
+
+-- Battle Mistress (SFD-203): when I recycle a rune, I may exhaust my legend to play an exhausted
+-- Gold; when enemy units die, ready my legend
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-203" .legendZone
+  let rune ← (s1.zone (.player s.me .base)).find? (fun o =>
+    (s1.obj? o).any (·.runeDomain.isSome))
+  let rec_ ← applyRune s1 s.me rune .recycle
+  let a ← fire rec_.1 rec_.2
+  let b ← fire rec_.1 rec_.2 { yes := false }
+  let c ← fire (rec_.1.tire l) rec_.2
+  let exh ← applyRune s1 s.me rune .exhaust
+  let d ← fire exh.1 exh.2
+  let (t1, dead) ← put s1 s.you "OGN-051" .trash
+  let e ← fire (t1.tire l) [.died dead s.you]
+  let (t2, mine) ← put s1 s.me "OGN-051" .trash
+  let f ← fire (t2.tire l) [.died mine s.me]
+  return a.countIn s.me .base "SFD-T03" == 1 && a.tired l == some true &&
+    b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
+    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true
+
+-- (review) Rell plays the Equipment for free: its Power is not paid either
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-024" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, _) ← put s3 s.me "SFD-022" .hand
+  let broke := s4.setPool s.me {}
+  let a ← fire broke [.combatStarted bf s.me]
+  return ((a.zone (.player s.me .base)).any (fun o => (a.cardDef? o).any (·.id == cid "SFD-022") &&
+    (a.obj? o).any (·.attached.isSome))) && (a.poolOf s.me).spent == 0
+
+-- (review) a unit saved by Guardian Angel is also saved from "dies when damaged" effects
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "OGN-088" bf
+  let (s3, g) ← put s2 s.me "SFD-051" .base
+  let held := (attachTo u s3 g).1.addTurnFx s.you .killOnDamage
+  let hit := (dealObj 1 held u).1
+  let bare := (dealObj 1 (s3.addTurnFx s.you .killOnDamage) u).1
+  let inTrash (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .trash)).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  return inTrash hit "SFD-051" && !inTrash hit "OGN-088" && inTrash bare "OGN-088"
 
 end RiftboundTest

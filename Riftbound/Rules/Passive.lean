@@ -76,8 +76,9 @@ def modFloor (s : GameState) (src id : ObjId) : StaticMod → Option (Nat × Nat
     | _, _ => none
   | _ => none
 
-/-- The player `p` cannot score the Battlefield `bf` now, by a passive ability that says so ("players
-can't score here until their third turn", "while I'm at a battlefield, opponents can't score"). -/
+/-- The player `p` cannot do the act `a` at the Battlefield `bf` now, by a passive ability that says
+so ("players can't score here until their third turn", "while I'm at a battlefield, opponents
+can't score"). -/
 def cantActHere (s : GameState) (p : PlayerId) (a : Act) (bf : ObjId) : Bool :=
   s.passiveSources.any (fun g =>
     let c := ((s.obj? g).map (·.controller)).getD ⟨0⟩

@@ -694,8 +694,17 @@ def SFD_024.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rell, Magnetic: the effect is not written yet. -/
-def SFD_024 : CardDef := SFD_024.meta
+/-- Rell, Magnetic. -/
+def SFD_024 : CardDef :=
+  { SFD_024.meta with
+
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.may (.seqOf
+        [.prim (.play (Selector.one .friendly .inHand
+            [.tag ⟨"Equipment"⟩, .cost .le (.const 2)])),
+         .prim (.attach (Selector.all .friendly .atBase
+            [.tag ⟨"Equipment"⟩, .playedThisTurn, .not .isAttached]) .self)]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-025
 /--
@@ -1473,8 +1482,12 @@ def SFD_051.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Guardian Angel: the effect is not written yet. -/
-def SFD_051 : CardDef := SFD_051.meta
+/-- Guardian Angel. -/
+def SFD_051 : CardDef :=
+  { SFD_051.meta with
+
+    grants := [.passive .always [.diesInsteadGear]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-052
 /--
@@ -4114,8 +4127,13 @@ def SFD_143.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Sivir, Mercenary: the effect is not written yet. -/
-def SFD_143 : CardDef := SFD_143.meta
+/-- Sivir, Mercenary. -/
+def SFD_143 : CardDef :=
+  { SFD_143.meta with
+
+    abilities := [.passive (.cmp .ge .powerSpent (.const 2))
+      [.mightPlus .self (.const 2), .keyword .self { keyword := .ganking }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-144
 /--
@@ -4982,8 +5000,12 @@ def SFD_173.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Soraka, Wanderer: the effect is not written yet. -/
-def SFD_173 : CardDef := SFD_173.meta
+/-- Soraka, Wanderer. -/
+def SFD_173 : CardDef :=
+  { SFD_173.meta with
+
+    abilities := [.passive .always [.assignedLast, .rescueWeakerHere]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-174
 /--
@@ -5828,8 +5850,17 @@ def SFD_203.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Battle Mistress: the effect is not written yet. -/
-def SFD_203 : CardDef := SFD_203.meta
+/-- Battle Mistress. -/
+def SFD_203 : CardDef :=
+  { SFD_203.meta with
+
+    abilities := [.triggered (.onSelf .recycleRune)
+        (.of [] (.ifThen (.matches .self .ready)
+          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
+          .nop)) .unlimited,
+      .triggered { event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+        (.of [] (.prim (.ready .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-204
 /--

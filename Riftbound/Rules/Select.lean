@@ -311,6 +311,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         mods.any (fun m => match m with | .cantPlayer _ .play .here _ => true | _ => false)
       | _ => false))))
   | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
+  | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)
@@ -653,6 +654,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | _ => none)).foldl Nat.max 0)
   | .heldPoints =>
     some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
+  | .powerSpent => some (s.poolOf p).spent
   | .gearsPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn &&

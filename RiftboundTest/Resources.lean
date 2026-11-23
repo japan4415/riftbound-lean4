@@ -111,7 +111,7 @@ meta def rc (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.pla
 -- paying (CR 445): the Pool loses what is paid, and a payment it cannot cover is refused
 #guard (RunePool.spend { energy := 3, fury := 2 } ⟨1, [.fury]⟩).map (·.total) == some 3
 #guard (RunePool.spend { energy := 3, fury := 2 } ⟨1, [.fury]⟩) ==
-  some { energy := 2, fury := 1 }
+  some { energy := 2, fury := 1, spent := 1 }
 #guard (RunePool.spend { energy := 3, fury := 2 } ⟨4, []⟩).isNone
 #guard (RunePool.spend { energy := 3, fury := 2 } ⟨0, [.calm]⟩).isNone
 #guard (RunePool.spend { energy := 3, fury := 2 } ⟨0, [.fury, .fury, .fury]⟩).isNone

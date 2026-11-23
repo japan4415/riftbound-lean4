@@ -52,6 +52,8 @@ inductive Amount where
   | kwAmount (s : Selector) (k : Keyword)
   /-- How many cards the player has played this turn. -/
   | cardsPlayed
+  /-- How much Power the player has paid since their Rune Pool was last emptied. -/
+  | powerSpent
   /-- How many Gear the player has played this turn. -/
   | gearsPlayed
   /-- The excess damage the player assigned to enemy Units in this turn's last Combat. -/
@@ -145,6 +147,8 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
+  /-- The card was played this turn. -/
+  | playedThisTurn
   /-- The card is in its owner's hand. -/
   | inHandZone
   /-- Units can be played to this Battlefield (it says no units can be played here: no). -/

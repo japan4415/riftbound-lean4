@@ -54,6 +54,7 @@ def Amount.understood : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
   | .heldPoints => true
@@ -84,6 +85,7 @@ def Amount.understoodC : Amount → Bool
   | .points p => p.understood
   | .victoryScore => true
   | .cardsPlayed => true
+  | .powerSpent => true
   | .gearsPlayed => true
   | .excess => true
   | .heldPoints => true
@@ -130,6 +132,7 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .playedThisTurn => true
   | .inHandZone => true
   | .unitsPlayable => true
   | .attackedByMine => true
@@ -345,6 +348,8 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .diesInsteadGear => true
+  | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true
@@ -395,6 +400,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .chosenHere => t.subject == .self
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
+      | .recycleRune => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
