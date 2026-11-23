@@ -2679,4 +2679,78 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return a.mightNow u == (s2.mightNow u).map (· + 3) && a.hasKw u .deflect &&
     !s2.hasKw u .deflect && b.mightNow ub == t2.mightNow ub && !b.hasKw ub .deflect
 
+-- Fiora, Worthy (SFD-180): when a unit I control becomes Mighty (here: by a buff to 5 Might), I may
+-- pay Order to ready it
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-180" .base
+  let (s2, four) ← put s1 s.me "OGN-012" .base
+  let (s3, three) ← put s2 s.me "OGN-006" .base
+  let (s4, five) ← put s3 s.me "OGN-049" .base
+  let (s5, foe) ← put s4 s.you "OGN-012" .base
+  let tired := ((((s5.tire four).tire three).tire five).tire foe).rich s.me
+  let up (x : GameState) (u : ObjId) : Option Bool := x.tired u |>.map (!·)
+  let a ← fire (tired.buff four) [.buffed four]
+  let b ← fire (tired.buff three) [.buffed three]
+  let c ← fire (tired.buff five) [.buffed five]
+  let d ← fire (tired.buff foe) [.buffed foe]
+  let e ← fire (tired.buff four) [.buffed four] { yes := false }
+  return up a four == some true && up b three == some false && up c five == some false &&
+    up d foe == some false && up e four == some false 
+
+-- Grand Duelist (SFD-205): when one of my units becomes Mighty, I may exhaust my legend to channel
+-- 1 rune exhausted
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-205" .legendZone
+  let (s2, four) ← put s1 s.me "OGN-012" .base
+  let (s3, three) ← put s2 s.me "OGN-006" .base
+  let (s4, foe) ← put s3 s.you "OGN-012" .base
+  let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
+  let a ← fire (s4.buff four) [.buffed four]
+  let b ← fire (s4.buff three) [.buffed three]
+  let c ← fire (s4.buff foe) [.buffed foe]
+  let d ← fire (s4.buff four) [.buffed four] { yes := false }
+  let e ← fire ((s4.buff four).tire l) [.buffed four]
+  return a.tired l == some true && runes a + 1 == runes s4 && runes b == runes s4 &&
+    runes c == runes s4 && runes d == runes s4 && d.tired l == some false &&
+    runes e == runes s4
+
+-- Hextech Anomaly (SFD-083) and Ancient Henge (SFD-117): exhaust, pay any amount of one resource:
+-- add that much of the other
+/-- Use an ability with the player's own pool as it is (`activate` makes the player rich), and let
+the Chain resolve with room for many questions. -/
+meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (says : Says := {}) : Option GameState :=
+  match step 100 s ⟨.player p, .activate src idx ⟨0, []⟩ []⟩ with
+  | .ok (s1, _) => some (settleChain says 60 s1)
+  | .error _ => none
+
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-083" .base
+  let funded := s1.fund s.me 0 0 0 0 3 0 0
+  let a ← activateAsIs funded s.me g 0 { yes := true }
+  let b ← activateAsIs funded s.me g 0 { yes := false }
+  let (t1, g2) ← put s s.me "SFD-083" .base
+  let c := activateAsIs ((t1.fund s.me 0 0 0 0 3 0 0).tire g2) s.me g2 0 { yes := true }
+  return (a.poolOf s.me).energy == 3 && (a.poolOf s.me).mind == 0 && a.tired g == some true &&
+    (b.poolOf s.me).energy == 0 && (b.poolOf s.me).mind == 3 && c.isNone
+
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-117" .base
+  let funded := s1.fund s.me 4
+  let a ← activateAsIs funded s.me g 0 { yes := true }
+  let b ← activateAsIs funded s.me g 0 { yes := false }
+  return (a.poolOf s.me).energy == 0 && (a.poolOf s.me).any == 4 &&
+    (b.poolOf s.me).energy == 4 && (b.poolOf s.me).any == 0
+
+-- Fire Below the Mountain (SFD-189): exhaust my legend: add 1 rainbow Power (a mana ability)
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-189" .legendZone
+  let r := step 100 s1 ⟨.player s.me, .manaAbility l 0⟩
+  match r with
+  | .ok (a, _) =>
+    let again := step 100 a ⟨.player s.me, .manaAbility l 0⟩
+    return (a.poolOf s.me).any == (s1.poolOf s.me).any + 1 && a.tired l == some true &&
+      (match again with | .ok _ => false | .error _ => true)
+  | .error _ => return false
+
 end RiftboundTest

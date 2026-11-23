@@ -374,6 +374,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .stun => true | .discard => true | .ready => true
       | .buff => true
+      | .becomeMighty => true
       | .winCombat => t.subject == .self
       | .chosen => true
       | .useGearAbility => t.subject == .self
