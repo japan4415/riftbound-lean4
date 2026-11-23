@@ -521,6 +521,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Angle Shot の「same controller」は、選ぶときに見られない（違う組を選ぶと、何も起きず、Draw もしない）。Strike Down の damage は、呪文が与えるものとして数える（Bonus Damage が乗る）。`tokenReady` は、`entersReady` の対象が「味方のトークン」の形のときだけ読む（他の形は、無視する）。「選んだとき」は、効果から唱える呪文（`castInline`、`Prim.play`）の対象では、出ない。Azir は、すでにその Battlefield にいる token にも「しますか」と聞く（何も起きない）。
 - **カードの数**: 動く Spiritforged は 114 枚から 123 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 7 — コストを減らしてプレイする、山札の上を見る
+
+- **コストを減らしてプレイする**: `Prim.playReduced s less to`。ユニットかギアを、コストから Energy を `less` 引いて（Power はそのまま）払ってプレイする。`to` があれば、その Battlefield へ。払えなければ、何も払わず、プレイしない。手札、山札、墓地のどこからでも選べる（Void Rush、Rek'Sai, Swarm Queen、Void Burrower、Here to Help、Rumble, Hotheaded）。呪文は、プレイしない（`playReduced` は、ユニットとギアだけ）。
+- **山札の上を見る**: 「top N cards を見て、1 枚を引き、残りをリサイクルする」を、`Selector.one .friendly .inMainDeck [.top N]` の選択（解決のとき、プレイヤーが選ぶ）、`returnToHand`、`recycle` と、数を束縛した `repeatN` で書いた（Called Shot、Apprentice Smith、Ornn, Blacksmith、Ravenbloom Conservatory）。「見る」は、プレイヤーが選ぶ、ということで表した（公開は、相手に見せる、という違いだけ）。
+- **書いたカード**: SFD-026、041、058、111、122、140、170、187、188、215（10 枚）。Fizz は、Kai'Sa と同じ `castInline`（対象を選ばない呪文だけ。Power は払い、チェーンは使わない）。
+- **近似**: Rek'Sai, Swarm Queen は、プレイしたユニットを、Base に出す（「here に出してもよい」は、まだ）。Void Rush は、見たカードのうち、呪文は、プレイしない（引く）。Here to Help は、コントロールしている Battlefield を、プレイするときの対象にするので、無いと唱えられない。Apprentice Smith と Ravenbloom は、見たカードを、引く・リサイクルするとき、プレイヤーに選ばせる形で、同じカードを選ぶ。Ornn, Blacksmith の「見たカードのうち、残り」は、枚数（4 − 引いた枚数）で数える。引く（`returnToHand`）は、「引く」の誘発を、起こさない。
+- **カードの数**: 動く Spiritforged は 123 枚から 133 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

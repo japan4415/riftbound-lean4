@@ -69,6 +69,9 @@ inductive Prim where
   | play (s : Selector)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
   | playPaying (s : Selector)
+  /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield
+  if one is given: a Unit or a Gear only (Rek'Sai, Void Rush, Here to Help). -/
+  | playReduced (s : Selector) (less : Amount) (to : Option Selector)
   /-- Cast the spell now, in place: its effect is done at once (a spell with no choice of objects to
   make), its Power cost is paid, and the card is recycled after (Kai'Sa, Evolutionary). -/
   | castInline (s : Selector)
