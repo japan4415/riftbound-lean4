@@ -480,7 +480,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### M8a の実装の記録（2026-11-23）: Spiritforged 2 — 今の IR で書ける 29 枚
 
 - **書いたカード**: SFD-001、003、004、005、007、012、017、023、027、032、035、038、040、043、047、053、062、071、072、076、089、091、094、096、100、104、106、114、182。どれも、今の IR と解釈器だけで書けた（新しい仕組みは無い）。Token の定義に、名前と同じタグを足した（Mech、Sand Soldier などを「味方の Mech」と指せるように）。
-- **近似**: Janna（SFD-053）は、Reaction でプレイして、Battlefield に出るカードだが、Reaction のプレイが無いので、Base に出る（「ここ」は Base になり、効果は何もしない）。Detonate（SFD-005）の「その持ち主」は、「味方のギアなら自分、そうでなければ相手」で表した（2 人戦で正しい）。Dunebreaker（SFD-027）は、「手札が 2 枚以下」を、プレイするときの手札で数える。
+- **近似**: Janna（SFD-053）は、Reaction でプレイして、Battlefield に出るカードだが、Reaction のプレイが無いので、Base に出る（「ここ」は Base になる。Base にいる味方の回復と、Base にいる敵の移動は行うが、意味は薄い）。Detonate（SFD-005）の「その持ち主」は、「味方のギアなら自分、敵のギアなら相手」で表した（2 人戦で正しい。対象が解決の前に消えたら、誰も引かない）。Dunebreaker（SFD-027）は、「手札が 2 枚以下」を、プレイするときの手札（自分を含む）で数えて、3 枚以下とした（他のゾーンからプレイすると 1 枚多く許す）。Blood Rush（SFD-003）の期間（データに「this turn」が無い）は、同じ型の Cleave に合わせて、このターン。
+- **レビューで直したこと**: Dunebreaker は、自分自身を手札に数えていた（境界のテストを足した）。Detonate は、対象が解決の前に消えると、相手が 2 枚引いていた。Bushwhack の「ユニットは ready で入る」が、トークンに効かなかった（`GameState.tokenReady`）。足りなかったテスト（Repeat を払う場合、別の Battlefield、Battering Ram の下限、Yordle Explorer の境界、敵の Mech だけの Production Surge など）を足した。
+- **近似（レビュー）**: Show of Strength と Rumble: 「Mighty」の判定が、パッシブの Might 増加を読まない（Gust と同じ）。Piercing Light の 2 つ目の対象と、Emperor's Divide のユニットの選択は、解決のときに選ぶので、Deflect の追加支払いと「選んだとき」の誘発が、働かない。Dropboarder の「ギアが 2 つ以上」は、解決のときに数える。
 - **カードの数**: 動く Spiritforged は 46 枚から 75 枚。テストは `RiftboundTest/SpiritforgedA.lean`。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

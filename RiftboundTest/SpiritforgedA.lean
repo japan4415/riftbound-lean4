@@ -206,8 +206,17 @@ meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat
   let (s3, b) ← put s2 s.me "OGN-051" .hand
   let s4 ← play s3 s.me a
   let s5 ← play s4 s.me b
+  let (s6, d) ← put s5 s.me "OGN-051" .hand
+  let (s7, e) ← put s6 s.me "OGN-051" .hand
+  let (s8, f) ← put s7 s.me "OGN-051" .hand
+  let (s9, g) ← put s8 s.me "OGN-051" .hand
+  let t1 ← play s9 s.me d
+  let t2 ← play t1 s.me e
+  let t3 ← play t2 s.me f
+  let t4 ← play t3 s.me g
   return s1.energyCost? s.me c == some 5 && s4.energyCost? s.me c == some 4 &&
-    s5.energyCost? s.me c == some 3
+    s5.energyCost? s.me c == some 3 && t3.energyCost? s.me c == some 1 &&
+    t4.energyCost? s.me c == some 1
 
 -- Sudden Storm (SFD-017): 2 damage to a unit at a battlefield, 4 if it is attacking
 #guard tsf fun s => do
@@ -247,8 +256,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 #guard tsf fun s => do
   let (s1, d) ← put s s.me "SFD-027" .hand
   let a ← play (s1.keepHand s.me d 1) s.me d
+  let a2 ← play (s1.keepHand s.me d 2) s.me d
   let b ← play (s1.keepHand s.me d 3) s.me d
   return (a.firstOf s.me .base "SFD-027").bind a.tired == some false &&
+    (a2.firstOf s.me .base "SFD-027").bind a2.tired == some false &&
     (b.firstOf s.me .base "SFD-027").bind b.tired == some true
 -- ... and draws 2 when it holds
 #guard tsf fun s => do
@@ -459,5 +470,87 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play s4 s.me c
   return r.mightNow m == (s4.mightNow m).map (· + 1) && r.mightNow o == s4.mightNow o &&
     r.mightNow e == s4.mightNow e
+
+-- (review) Detonate: if the gear is gone when the spell resolves, nobody draws
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-005" .hand
+  let (s2, g) ← put s1 s.me "SFD-030" .base
+  let s3 ← match step 100 (s2.rich s.me) ⟨.player s.me, .playCard c (payOf s2 c) [g]⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let s4 := (killObj s3 g).1
+  let s5 := settleChain {} 12 s4
+  return s5.handN s.me == s3.handN s.me && s5.handN s.you == s3.handN s.you
+-- (review) Against the Odds and Emperor's Divide look at the one battlefield only
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-001" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, b2) ← putBf s2 s.you "SFD-216"
+  let (s4, _) ← putAt s3 s.you "OGN-001" b2
+  let (s5, _) ← put s4 s.you "OGN-001" .base
+  let r ← play s5 s.me c [u]
+  return r.mightNow u == s5.mightNow u
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-043" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, b2) ← putBf s2 s.me "SFD-216"
+  let (s4, w) ← putAt s3 s.me "OGN-051" b2
+  let r ← play s4 s.me c [s.bf0]
+  return (r.obj? u).any (·.loc.isNone) && (r.obj? w).any (·.loc == some b2)
+-- (review) Yordle Explorer: a card with exactly one Power does not draw
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-100" .base
+  let (s2, one) ← put s1 s.me "SFD-004" .trash
+  let a ← fire s2 [.played s.me one]
+  return a.handN s.me == s2.handN s.me
+-- (review) Production Surge: an enemy Mech does not lower the cost
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-076" .hand
+  let (s2, _) ← put s1 s.you "SFD-062" .base
+  return s2.energyCost? s.me c == some 4
+-- (review) Bushwhack: the Gold token is exhausted, and a Mech token enters ready
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-004" .hand
+  let (s2, p) ← put s1 s.me "SFD-076" .hand
+  let s3 ← play s2 s.me c
+  let s4 ← play s3 s.me p
+  let gold := s4.firstOf s.me .base "SFD-T03"
+  let mech := (s4.zone (.player s.me .base)).find? (fun o => (s4.cardDef? o).any (·.name == "Mech"))
+  return gold.bind s4.tired == some true && mech.bind s4.tired == some false
+-- (review) Piercing Light with Repeat paid: the first unit is hit twice? no: the effect is done twice
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-023" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
+  let pay := payOf s2 c
+  let r ← cast (s2.rich s.me) s.me c ⟨pay.energy + 2, pay.power ++ [.fury]⟩ [u]
+  return r.dmg u == some 4
+-- (review) Blood Rush with Repeat paid: Assault 2 is given twice
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-003" .hand
+  let (s2, v) ← put s1 s.me "OGN-136" .base
+  let pay := payOf s2 c
+  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v]
+  let b ← cast (s2.rich s.me) s.me c pay [v]
+  return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
+-- (review) Marching Orders: the enemy takes the friendly unit's Might, the friendly takes the enemy's
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-114" .hand
+  let (s2, f) ← put s1 s.me "OGN-051" .base
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let r ← play s3 s.me c [f, e]
+  return r.dmg e == some 2 && (r.obj? f).isNone
+-- (review) Simian Ancestor: buffing another unit does not ready it
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-047" .base
+  let (s2, o) ← put s1 s.me "OGN-051" .base
+  let s3 := s2.tire u
+  let r ← fire s3 [.buffed o]
+  return r.tired u == some true
+-- (review) Piercing Light: with no other unit, the first unit is not hit twice
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-023" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
+  let r ← play s2 s.me c [u]
+  return r.dmg u == some 2
 
 end RiftboundTest

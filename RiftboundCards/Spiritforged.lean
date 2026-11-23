@@ -150,7 +150,8 @@ def SFD_005 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
       (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
         (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2))])
-        (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .opponent (.const 2))]))),
+        (.ifThen (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
+          (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .opponent (.const 2))]) .nop))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-006
@@ -712,7 +713,9 @@ def SFD_027.meta : CardDef :=
 def SFD_027 : CardDef :=
   { SFD_027.meta with
 
-    abilities := [.passive (.cmp .le (.handSize .you) (.const 2)) [.entersReady .self],
+    abilities := [
+      -- the card is still in the hand as it enters: "two or fewer" other cards is three here
+      .passive (.cmp .le (.handSize .you) (.const 3)) [.entersReady .self],
       .triggered (.onSelf .hold) (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
     status := .drafted }
 
