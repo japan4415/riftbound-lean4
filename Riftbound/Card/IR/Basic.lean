@@ -110,6 +110,8 @@ inductive TurnEffect where
   | nextUnitReady
   /-- The units the player plays this turn enter ready. -/
   | unitsReady
+  /-- The units the player plays this turn are buffed (Rally the Troops). -/
+  | unitsBuffed
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/

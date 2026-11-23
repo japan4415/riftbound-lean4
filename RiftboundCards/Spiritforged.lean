@@ -1546,8 +1546,15 @@ def SFD_054.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Jax, Unmatched: the effect is not written yet. -/
-def SFD_054 : CardDef := SFD_054.meta
+/-- Jax, Unmatched. -/
+def SFD_054 : CardDef :=
+  { SFD_054.meta with
+
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩] }
+      (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.attach (.slot 1) (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-055
 /--
@@ -1852,8 +1859,14 @@ def SFD_065.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Forecaster: the effect is not written yet. -/
-def SFD_065 : CardDef := SFD_065.meta
+/-- Forecaster. -/
+def SFD_065 : CardDef :=
+  { SFD_065.meta with
+
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Mech"⟩] }
+      (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-066
 /--
@@ -3175,8 +3188,16 @@ def SFD_112.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Kato the Arm: the effect is not written yet. -/
-def SFD_112 : CardDef := SFD_112.meta
+/-- Kato the Arm. -/
+def SFD_112 : CardDef :=
+  { SFD_112.meta with
+
+    abilities := [.triggered
+      { event := .move, condition := .matches .self .onBattlefield }
+      (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.seqOf [.grant (.slot 0) (.keyword .it { keyword := .deflect }) .thisTurn,
+          .grant (.slot 0) (.mightPlus .it (.mightOf .self)) .thisTurn])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-113
 /--
@@ -3708,8 +3729,13 @@ def SFD_131.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ancient Warmonger: the effect is not written yet. -/
-def SFD_131 : CardDef := SFD_131.meta
+/-- Ancient Warmonger. -/
+def SFD_131 : CardDef :=
+  { SFD_131.meta with
+
+    abilities := [.passive (.matches .self .attacker)
+      [.mightPlus .self (.count (Selector.all .enemy .here [.ofType .unit]))]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-132
 /--
@@ -4712,8 +4738,13 @@ def SFD_166.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rally the Troops: the effect is not written yet. -/
-def SFD_166 : CardDef := SFD_166.meta
+/-- Rally the Troops. -/
+def SFD_166 : CardDef :=
+  { SFD_166.meta with
+
+    spellEffect := some (.of [] (.seqOf [.prim (.turnEffect .unitsBuffed),
+      .prim (.draw .you (.const 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-167
 /--

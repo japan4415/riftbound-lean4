@@ -2606,5 +2606,71 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s2, g) ← put s1 s.me "SFD-015" .hand
   let scored := s2.modObj rock (fun o => { o with scored := [s.me] })
   return (activate scored s.me g 3 [rock] (payOf scored g)).isNone
+-- Rally the Troops (SFD-166): the units played this turn are buffed; draw 1
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-166" .hand
+  let (s2, v) ← put s1 s.me "OGN-051" .hand
+  let (s3, g) ← put s2 s.me "SFD-056" .hand
+  let a ← play s3 s.me c
+  let b ← play a s.me v
+  let d ← play b s.me g
+  let (t1, v2) ← put s s.me "OGN-051" .hand
+  let t3 ← play t1 s.me v2
+  let isBuffed (x : GameState) (code : String) : Option Bool :=
+    (x.firstOf s.me .base code).bind (fun o => (x.obj? o).map (·.buffed))
+  return a.handN s.me == s3.handN s.me && isBuffed b "OGN-051" == some true &&
+    isBuffed t3 "OGN-051" == some false && isBuffed d "SFD-056" != some true
+
+-- Ancient Warmonger (SFD-131): Assault for each enemy unit here (as an attacker)
+#guard tsf fun s => do
+  let (s1, w) ← putAt s s.me "SFD-131" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, _) ← putAt s2 s.you "OGN-001" s.bf0
+  let atk := (s3.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
+  let def_ := (s3.modObj s.bf0 (fun o => { o with contested := some s.you })).inShowdownAt
+    s.bf0 s.you
+  return atk.mightNow w == some (4 + 2) && def_.mightNow w == some 4 && s3.mightNow w == some 4
+
+-- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-065" .base
+  let (s2, m) ← put s1 s.me "SFD-062" .hand
+  let (s3, o) ← put s2 s.me "OGN-051" .hand
+  let (s4, e) ← put s3 s.you "SFD-062" .base
+  let a ← fire s4 [.played s.me m] { yes := true }
+  let b ← fire s4 [.played s.me m] { yes := false }
+  let c ← fire s4 [.played s.me o]
+  let d ← fire s4 [.played s.you e]
+  return a.topCard s.me != s4.topCard s.me && b.topCard s.me == s4.topCard s.me &&
+    c.topCard s.me == s4.topCard s.me && d.topCard s.me == s4.topCard s.me &&
+    a.deckN s.me == s4.deckN s.me
+
+-- Jax, Unmatched (SFD-054): an Equipment I play is attached to a unit I control
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-054" .base
+  let (s2, _) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .hand
+  let (s4, other) ← put s3 s.me "OGN-017" .hand
+  let a ← play s4 s.me g
+  let b ← play s4 s.me other
+  let (t1, _) ← put s s.me "OGN-051" .base
+  let (t2, g2) ← put t1 s.me "SFD-042" .hand
+  let t ← play t2 s.me g2
+  let att (x : GameState) (code : String) : Option Bool :=
+    (x.firstOf s.me .base code).bind (fun o => (x.obj? o).map (·.attached.isSome))
+  return att a "SFD-042" == some true && att b "OGN-017" != some true &&
+    att t "SFD-042" == some false
+
+-- Kato the Arm (SFD-112): when I move to a battlefield, a friendly unit gets my keywords and my Might
+-- this turn
+#guard tsf fun s => do
+  let (s1, k) ← putAt s s.me "SFD-112" s.bf0
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let a ← fire s2 [.standardMoved k (some s.bf0)] { pick := fun ts => ts == [u] }
+  let (t1, kb) ← put s s.me "SFD-112" .base
+  let (t2, ub) ← put t1 s.me "OGN-051" .base
+  let b ← fire t2 [.standardMoved kb none] { pick := fun ts => ts == [ub] }
+  return a.mightNow u == (s2.mightNow u).map (· + 3) && a.hasKw u .deflect &&
+    !s2.hasKw u .deflect && b.mightNow ub == t2.mightNow ub && !b.hasKw ub .deflect
 
 end RiftboundTest
