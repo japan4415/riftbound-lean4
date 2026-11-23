@@ -130,13 +130,13 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
-    -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 826)
+    -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
           (.prim (.attach .self (.slot 0)))) .unlimited]
     -- Weaponmaster: when the Unit is played, its player may Equip one of their Equipment to it
-    -- for one Power less, even if it is attached already (CR 827)
+    -- for one Power less, even if it is attached already (CR 821)
     | .weaponmaster, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
