@@ -2013,6 +2013,20 @@ theorem playSpellStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env :
     · simp at h
   · simp at h
 
+/-- The player would reveal a card from a deck (the Main Deck or the Rune Deck) and has a passive
+ability that says to look at the top card first (Void Hatchling). -/
+def GameState.lookFirst (s : GameState) (p : PlayerId) (env : Env) (sel : Selector) : Bool :=
+  (match sel with
+    | .var v =>
+      match env.lookup v with
+      | some (.obj o) =>
+        (s.obj? o).any (fun x => (s.zone (.player x.owner .mainDeck)).contains o ||
+          (s.zone (.player x.owner .runeDeck)).contains o)
+      | _ => false
+    | _ => false) &&
+    s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+      (s.activeMods g).contains .lookBeforeReveal)
+
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -2058,8 +2072,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | _, _ => skip
   | .prim (.reveal sel) =>
     -- the player looks at the top card first, and may recycle it, and then the cards are revealed
-    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
-        (s.activeMods g).contains .lookBeforeReveal) then
+    if s.lookFirst p env sel then
       (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
         (.cons (.prim (.revealNow sel)) es)))], [])
     else

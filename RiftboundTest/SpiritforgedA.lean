@@ -3240,39 +3240,32 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [irelia]⟩ &&
     !(legalActions (s3.rich s.me)).contains ⟨.player s.me, .playCard c lessEnergy [other]⟩
 
--- Void Hatchling (SFD-018): when I would reveal cards from a deck, I look at the top card first and
--- may recycle it (here a spell that reveals a card of my hand)
+-- Void Hatchling (SFD-018): when I would reveal cards from a deck (here the Rune Deck, by
+-- OGN-200 when it attacks), I look at the top card of my Main Deck first and may recycle it;
+-- revealing a card of my hand does not count
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-018" .base
-  let (s2, c) ← put s1 s.me "OGN-008" .hand
-  let (s3, x) ← put s2 s.me "OGN-051" .hand
-  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s2, bf) ← putBf s1 s.me "OGN-275"
+  let (s3, _) ← putAt s2 s.me "OGN-200" bf
+  let (s4, _) ← putAt s3 s.you "OGN-051" bf
   let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let _ ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
-  return true
+  let yes ← fire s5 [.combatStarted bf s.me] { yes := true }
+  let no ← fire s5 [.combatStarted bf s.me] { yes := false }
+  return yes.topCard s.me != s5.topCard s.me && no.topCard s.me == s5.topCard s.me
 #guard tsf fun s => do
-  let (s1, _) ← put s s.me "SFD-018" .base
-  let (s2, c) ← put s1 s.me "OGN-008" .hand
-  let (s3, x) ← put s2 s.me "OGN-051" .hand
-  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s2, bf) ← putBf s s.me "OGN-275"
+  let (s3, _) ← putAt s2 s.me "OGN-200" bf
+  let (s4, _) ← putAt s3 s.you "OGN-051" bf
   let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let yes ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
-  return yes.topCard s.me != s5.topCard s.me
-#guard tsf fun s => do
-  let (s1, _) ← put s s.me "SFD-018" .base
-  let (s2, c) ← put s1 s.me "OGN-008" .hand
-  let (s3, x) ← put s2 s.me "OGN-051" .hand
-  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
-  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let no ← play s5 s.me c [foe] { obj := fun o => o == x, yes := false }
-  return no.topCard s.me == s5.topCard s.me && no.countIn s.me .trash "OGN-051" == 1
-
-#guard tsf fun s => do
-  let (s2, c) ← put s s.me "OGN-008" .hand
-  let (s3, x) ← put s2 s.me "OGN-051" .hand
-  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
-  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
-  let plain ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
+  let plain ← fire s5 [.combatStarted bf s.me] { yes := true }
   return plain.topCard s.me == s5.topCard s.me
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-018" .base
+  let (s2, c) ← put s1 s.me "OGN-008" .hand
+  let (s3, x) ← put s2 s.me "OGN-051" .hand
+  let (s4, foe) ← putAt s3 s.you "OGN-116" s.bf0
+  let (s5, _) ← s4.stackTop s.me ["OGN-088", "OGN-136"]
+  let r ← play s5 s.me c [foe] { obj := fun o => o == x, yes := true }
+  return r.topCard s.me == s5.topCard s.me && r.countIn s.me .trash "OGN-051" == 1
 
 end RiftboundTest

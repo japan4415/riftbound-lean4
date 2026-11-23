@@ -670,7 +670,8 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
         ((s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear) || (s.cardDef? t).isNone))
     -- the Spells of the player that chose one, and each one the abilities of their Units chose
     let spells := (s.objects.toList.filter (fun (k, o) =>
-      o.owner == p && o.playedTurn == some s.turn && ((s.cardDef? ⟨k⟩).any (·.hasType .spell)) &&
+      o.owner == p && o.playedTurn == some s.turn &&
+        ((s.cardDef? ⟨k⟩).any (·.hasType .spell)) &&
         o.targets.any enemy)).length
     let abilities := (s.objects.toList.filter (fun (k, o) =>
       o.controller == p && o.choseTurn == some s.turn &&

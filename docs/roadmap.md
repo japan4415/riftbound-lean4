@@ -686,7 +686,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### M8a の実装の記録（2026-11-24）: Spiritforged 24 — 近似だった物を、本物にした
 
 - **Irelia**: 選んだ対象で、費用が変わる。`GameState.chooseCut`（その呪文が選んだ、自分の `chosenSpellsCostLess` を持つ物の数）、`Cost.cutOptions`（Energy を 1 つ、または Power を 1 つ、安くした費用）、`paysForXT`、`playPaymentsOfT`。`castable`、`legalPlays`、`playMark`（追加の費用の判定）、I8 の不変条件が、これを使う。『1 Energy か 1 Power』は、遊ぶ人が、払い方で選ぶ。以前の Energy の払い戻しは、やめた。
-- **Void Hatchling**: 『公開するときは、先に一番上を見て、リサイクルしてもよい』を、置き換えとして書いた。`StaticMod.lookBeforeReveal` があるとき、`Prim.reveal` は、`lookTop`、リサイクルしてもよい、`Prim.revealNow` の順に動く（`runEffect1`）。山札の公開の誘発は、やめた。
+- **Void Hatchling**: 『公開するときは、先に一番上を見て、リサイクルしてもよい』を、置き換えとして書いた。`StaticMod.lookBeforeReveal` があるとき、`Prim.reveal` は、`lookTop`、リサイクルしてもよい、`Prim.revealNow` の順に動く（`runEffect1`）。山札（Main Deck と Rune Deck）から選んだカードの公開にだけ働く（手札を公開するカードには、働かない）。山札の公開の誘発は、やめた。
 - **Rek'Sai**: 手札以外から遊んだ味方のユニットは、そのユニット自身の領域の Power 1 つと 1 Energy を払って ready にできる（領域ごとに 6 つの選択肢）。
 - **Svellsongur**: 付いたユニットの、パッシブ能力も、もう一度働く（`activeMods`）。
 - **Prodigal Explorer**: ユニットが使った能力（起動する能力と、誘発した能力）が選んだ敵の物も、数える（`Object.chose`、`Object.noteChose`）。
