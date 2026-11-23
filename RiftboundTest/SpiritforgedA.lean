@@ -1162,4 +1162,64 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let r ← play s4 s.me c
   return r.tired a == some false && r.tired b == some true
 
+-- (review) Jayce: the gear is played ignoring its Energy cost, but its Power cost is paid
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-084" .hand
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, _) ← put s2 s.me "SFD-022" .hand
+  let a ← play s3 s.me c [] { pick := fun ts => ts == [g] }
+  let n ← play (s3.fund s.me 4) s.me c [] { pick := fun ts => ts == [g] }
+  return a.countIn s.me .base "SFD-022" == 1 && (a.poolOf s.me).fury == 11 &&
+    (a.poolOf s.me).energy == 8 && n.countIn s.me .base "SFD-022" == 1
+-- (a hand with no Fury: the gear is not played, but the other gear was killed)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-084" .hand
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, _) ← put s2 s.me "SFD-022" .hand
+  let poor := s3.fund s.me 4
+  let r ← cast poor s.me c (payOf s3 c) [] { pick := fun ts => ts == [g] }
+  return (r.obj? g).isNone && r.countIn s.me .base "SFD-022" == 0
+-- (review) Switcheroo with the first unit weaker, and with equal Might
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-145" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, b) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-051" s.bf0
+  let r ← play s4 s.me c [a, b]
+  let q ← play s4 s.me c [a, e]
+  return r.mightNow a == some 5 && r.mightNow b == some 2 &&
+    q.mightNow a == some 2 && q.mightNow e == some 2
+-- (review) Temptation: to the place of a unit at a base, the unit goes to its base
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-129" .hand
+  let (s2, a) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, b) ← put s2 s.you "OGN-051" .base
+  let r ← play s3 s.me c [a, b]
+  return (r.obj? a).any (·.loc.isNone) && (r.zone (.player s.you .base)).contains a
+-- (review) Arise!: no Equipment, nothing happens; one Equipment, one new soldier ready, and
+-- another soldier was already there, exhausted
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-198" .hand
+  let (s2, old) ← put s1 s.me "TKN-Sand Soldier" .base
+  let s2t := s2.tire old
+  let (s3, _) ← put s2t s.me "SFD-042" .base
+  let r ← play s3 s.me c
+  let n ← play s2t s.me c
+  return r.soldiers s.me == (2, 1) && n.soldiers s.me == (1, 0)
+-- (review) Fae Porter at a base does not set the ability off; the move away from a battlefield
+-- to a base does not either
+#guard tsf fun s => do
+  let (s1, p) ← put s s.me "SFD-125" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let a ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p none]
+  return (a.obj? u).any (·.loc.isNone) && (a.poolOf s.me).chaos == 1
+-- (review) Defiant Dance: the changes end with the turn
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-196" .hand
+  let (s2, a) ← put s1 s.me "OGN-001" .base
+  let (s3, b) ← put s2 s.you "OGN-001" .base
+  let r ← play s3 s.me c [a, b]
+  let t := r.mapObjects endTurnObj
+  return t.mightNow a == s3.mightNow a && t.mightNow b == s3.mightNow b
+
 end RiftboundTest

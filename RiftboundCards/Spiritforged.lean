@@ -2188,7 +2188,7 @@ def SFD_084 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .gear]]
         (.may (.seqOf [.prim (.kill (.slot 0)),
-          .may (.prim (.play (Selector.one .friendly .inHand
+          .may (.prim (.playPaying (Selector.one .friendly .inHand
             [.ofType .gear, .cost .le (.const 7)])))]))) .unlimited],
     status := .drafted }
 
@@ -3371,8 +3371,11 @@ def SFD_129 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit],
         .targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.not (.sameAs (.slot 0))))
-        (.prim (.move (.slot 0) (.at_ (.slot 1)))) .nop)),
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
+        (.ifThen (.matches (.slot 1) .onBattlefield)
+          (.prim (.move (.slot 0) (.at_ (.slot 1))))
+          (.ifThen (.exists (Selector.all .any .anywhere [.sameAs (.slot 1)]))
+            (.prim (.move (.slot 0) .base)) .nop)))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-130
@@ -3787,7 +3790,8 @@ def SFD_145 : CardDef :=
             .grant (.slot 0) (.mightPlus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn,
             .grant (.slot 0) (.mightMinus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
             .grant (.slot 1) (.mightPlus .it (.sub (.var ⟨"a"⟩) (.var ⟨"b"⟩))) .thisTurn,
-            .grant (.slot 1) (.mightMinus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn])))
+            .grant (.slot 1)
+              (.mightMinus .it (.sub (.var ⟨"b"⟩) (.var ⟨"a"⟩))) .thisTurn])))
         .nop)),
     status := .drafted }
 
@@ -5090,9 +5094,9 @@ def SFD_196 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
         .targetOf .one .any .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.not (.sameAs (.slot 0))))
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
         (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn,
-          .grant (.slot 1) (.mightMinus .it (.const 2)) .thisTurn]) .nop)),
+          .grant (.slot 1) (.mightMinus .it (.const 2)) .thisTurn]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-197
@@ -5138,11 +5142,12 @@ def SFD_198.meta : CardDef :=
 def SFD_198 : CardDef :=
   { SFD_198.meta with
 
-    spellEffect := some (.of [] (.seqOf [
-      .prim (.create "Sand Soldier"
-        (.count (Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩])) .atBase false),
-      .repeatN (.const 2) (.prim (.ready
-        (Selector.one .friendly .atBase [.named "Sand Soldier", .exhausted])))])),
+    spellEffect := some (.of [] (.bind ⟨"n"⟩
+      (.count (Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩]))
+      (.seqOf [
+        .prim (.create "Sand Soldier" (.var ⟨"n"⟩) .atBase false),
+        .repeatN (.min (.const 2) (.var ⟨"n"⟩)) (.prim (.ready
+          (Selector.one .friendly .atBase [.named "Sand Soldier", .exhausted])))]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-199
@@ -5274,7 +5279,8 @@ def SFD_204.meta : CardDef :=
 def SFD_204 : CardDef :=
   { SFD_204.meta with
 
-    spellEffect := some (.of [] (.prim (.ready (Selector.all .friendly .anywhere [.ofType .unit])))),
+    spellEffect := some (.of []
+      (.prim (.ready (Selector.all .friendly .anywhere [.ofType .unit])))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-205
