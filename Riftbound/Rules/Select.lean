@@ -337,6 +337,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .attached => pure (s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id)))
   | .token =>
     pure ((s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false))
+  | .fromBattlefield => pure ((s.obj? id).any (·.prevLoc.isSome))
   | .choosesMine => do
     let me ← s.obj? self
     let o ← s.obj? id
@@ -401,6 +402,7 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inMainDeck => some .mainDeck
   | .inRuneDeck => some .runeDeck
   | .inChampionZone => some .championZone
+  | .inLegendZone => some .legendZone
   | .inHidden => some .hidden
   | _ => none
 
@@ -505,6 +507,7 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inMainDeck => simp [placeObjs] at h
   | inRuneDeck => simp [placeObjs] at h
   | inChampionZone => simp [placeObjs] at h
+  | inLegendZone => simp [placeObjs] at h
   | inHidden => simp [placeObjs] at h
   | inCombat =>
     simp only [placeObjs] at h
@@ -655,6 +658,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     let bs ← ids.mapM (fun id => f.holds s self env id)
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
+  | .inCombat => some s.combatNow.isSome
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
   | .playedAnother => some (s.playedOther p self)

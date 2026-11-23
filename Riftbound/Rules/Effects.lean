@@ -1158,6 +1158,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inMainDeck => simp at h
       | inRuneDeck => simp at h
       | inChampionZone => simp at h
+      | inLegendZone => simp at h
       | inHidden => simp at h
       | inCombat => simp at h
       | onChain => simp at h

@@ -551,6 +551,16 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Hard Bargain の支払いは、Rune Pool にあるものだけ（相手が、Chain の上の呪文を見て、先に Energy を浮かせていないと、必ず打ち消される）。Not So Fast の「choose」は、プレイするときの対象だけ（解決のときの選択は、含まない）。Mighty の判定は、パッシブの Might 増加を読まない（Jaull-Fish）。Dauntless Vanguard の能力は、Chain に載るので、相手が応答できる（普通のプレイは、載らない）。
 - **カードの数**: 動く Spiritforged は 143 枚から 150 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 10 — 1 ターンに 1 回の誘発、Legend を選ぶ、いろいろな誘発
+
+- **書いたカード**: SFD-039、044、075、079、113、121、137、148、210（9 枚）。
+- **新しい仕組み**: `Place.inLegendZone`（Legend を選ぶ。`ready`・`exhaust` が、盤面の外のゾーンから選べる）、`Filter.fromBattlefield`（直前の移動が、Battlefield からだった）、`TriggerEvent.useGearAbility`（ギアの起動型能力を使った。Prize of Progress）、`Condition.inCombat`（戦闘中）。
+- **「そのターンの最初の 1 回」**: 誘発を `perTurn 1` にする（Lucian, Merciless の conquer、Draven, Audacious の戦闘に勝つ）。
+- **近似**: Legion Quartermaster の「追加コストとして、ギアを手札に戻す」は、プレイしたときの誘発にした（ギアが無くても、プレイできる）。Bard, Mercurial の「追加コストとして Legend を exhaust する」は、プレイしたときに、してもよい、とした（払わないと、ユニットは動かない）。Draven, Audacious の「choose an opponent」は、1 対 1 なので、相手。`Condition.inCombat` は、戦闘中なら、どの Battlefield でも真。
+- **レビューで直したこと**: Draven, Audacious の「戦闘で死んだとき」は、「戦闘中」の条件を、効果の中に置いていたので、戦闘ダメージの Cleanup で死んだときには、効果が解決するときには、戦闘が終わっていて、一度も働かなかった（条件を誘発の側に置く。実際の戦闘で、テストを足した）。Prize of Progress が、手札のギアの Hide や、伏せたギアのプレイでも、働いた（場にあるギアの能力だけ）。
+- **近似（レビュー）**: Prize of Progress は、Gold などの Add 能力（Chain を通らず、`Event.activated` を出さない）を数えない。Harpoon Squad は、効果で Base へ移されるとき（`sendHome`、移動の出来事が出ない）に働かない。`perTurn` の記録は、手札に戻して出し直しても、残る（新しいカードでも、同じターンの 2 回目は、働かない）。`Condition.inCombat` は、どの Battlefield の戦闘でも真（別の戦闘の最中に、Base で死んだ場合も、真になる）。
+- **カードの数**: 動く Spiritforged は 150 枚から 159 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

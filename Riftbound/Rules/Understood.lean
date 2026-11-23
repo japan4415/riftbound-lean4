@@ -135,6 +135,7 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .fromBattlefield => true
   | .attachedTo .self => true
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
@@ -176,6 +177,7 @@ def Condition.understood : Condition → Bool
   | .exists s => s.understood
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
+  | .inCombat => true
   | .legion => true
   | .paid => true
   | .playedAnother => true
@@ -245,8 +247,8 @@ def Prim.understood : Prim → Bool
   | .kill s => s.understoodPick
   | .banish s => s.understoodPickAny
   | .returnToHand s => s.understoodPickAny
-  | .ready s => s.understoodPick
-  | .exhaust s => s.understoodPick
+  | .ready s => s.understoodPickAny
+  | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
@@ -352,6 +354,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .buff => true
       | .winCombat => t.subject == .self
       | .chosen => true
+      | .useGearAbility => t.subject == .self
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self
       | .killBySpell => t.subject == .self
