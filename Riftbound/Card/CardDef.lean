@@ -135,7 +135,8 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
          hideEnergyEffect .unlimited]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
-        (EffectDef.of [] (.may (.prim (.recycleTop .you)))) .unlimited]
+        (EffectDef.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]))
+        .unlimited]
     | .hunt, .amount n =>
       [.triggered (Trigger.onSelf .conquer) (EffectDef.of [] (.prim (.gainXP .you (.const n))))
         .unlimited,

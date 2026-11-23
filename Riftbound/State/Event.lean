@@ -58,6 +58,8 @@ inductive Event where
   | stunned (target : ObjId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
+  /-- The player looked at a card of their Main Deck (and did not draw it). -/
+  | lookedAt (p : PlayerId) (card : ObjId)
   /-- The player chose the object with a spell they played. -/
   | chosenBySpell (p : PlayerId) (target : ObjId)
   /-- The player killed a unit with a spell. -/

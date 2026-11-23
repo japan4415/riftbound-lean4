@@ -120,6 +120,8 @@ inductive Prim where
   | returnChampion
   /-- Two Units swap places: each goes to where the other is (a Battlefield or a Base). -/
   | swapPlaces (a b : Selector)
+  /-- Look at the top `n` cards of the Main Deck of the player. -/
+  | lookTop (n : Nat)
   /-- Activate the conquer effects of the units. -/
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/
@@ -194,6 +196,8 @@ inductive TriggerEvent where
   | buff
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
+  /-- The player looks at this card on the top of their Main Deck (and does not draw it). -/
+  | seenOnTop
   /-- A player chooses a unit of theirs that is at this Battlefield with a spell: the choice made
   when the spell is played (not the choices made as it resolves, nor those of abilities). -/
   | chosenHere
