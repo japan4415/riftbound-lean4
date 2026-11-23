@@ -313,7 +313,9 @@ def SFD_011 : CardDef :=
           (.and (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
             (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 1)]))))
         (.seqOf [.eitherOf (EffectList.ofList
-            [.prim (.attach (.slot 1) (.slot 0)), .prim (.detach (.slot 1))]),
+            [.prim (.attach (.slot 1) (.slot 0)),
+             .ifThen (.matches (.slot 1) (.attachedTo (.slot 0))) (.prim (.detach (.slot 1)))
+               .nop]),
           .prim (.draw .you (.const 1))]) .nop)),
     status := .drafted }
 
@@ -2819,7 +2821,7 @@ def SFD_107 : CardDef :=
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .attached],
         .targetOf .one .enemy .anywhere [.ofType .unit]]
       (.seqOf [.prim (.deal (.slot 1) (.mightOf (.slot 0))),
-        .prim (.detach (Selector.one .friendly .anywhere
+        .prim (.detach (Selector.one .any .anywhere
           [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)]))])),
     status := .drafted }
 
