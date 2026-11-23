@@ -123,6 +123,18 @@ def GameState.trigUnitsAt (s : GameState) (bf : ObjId) (p : PlayerId) : List Obj
   (s.zone .battlefieldZone).filter (fun u =>
     (s.obj? u).any (fun o => o.loc == some bf && o.controller == p))
 
+/-- The unit has an Equipment attached that makes its hold effects conquer effects, and the other
+way round. -/
+def GameState.holdIsConquer (s : GameState) (u : ObjId) : Bool :=
+  s.inPlay.any (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      o.attached == some u && d.grants.any (fun ab =>
+        match ab with
+        | Ability.passive .always mods => mods.contains .holdIsConquer
+        | _ => false)
+    | _, _ => false)
+
 /-- The Units at the Battlefield, of every player. -/
 def GameState.trigAllUnitsAt (s : GameState) (bf : ObjId) : List ObjId :=
   (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf))
@@ -218,7 +230,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
     (s.trigUnitsAt bf p).flatMap
-      (fun u => triggersOf s u p (if conquer then .conquer else .hold)) ++
+      (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
+        -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
+        (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
+         else [])) ++
     (s.zone (.player p .legendZone)).flatMap
       (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
     triggersOf s bf p (if conquer then .youConquer else .youHold) ++

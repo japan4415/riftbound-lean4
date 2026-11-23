@@ -91,10 +91,39 @@ def Amount.eval (env : Env) : Amount → Option Nat
 
 /-- What the Equipment attached to an object adds to its Might: the Might bonus of each (CR 137). -/
 def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
+  -- Gearhead: each Equipment gives double its Might bonus
+  let doubled := (s.cardDef? id).any (fun du => du.fullAbilities.any (fun ab =>
+    match ab with | Ability.passive .always mods => mods.contains .doubleEquip | _ => false))
   (s.inPlay.filterMap (fun g =>
     match s.obj? g, s.cardDef? g with
-    | some o, some d => if o.attached == some id then d.mightBonus else none
+    | some o, some d =>
+      if o.attached == some id then
+        -- Brutalizer: more Might if the Equipment was attached this turn
+        let fresh : Int := d.grants.foldl (fun acc ab =>
+          match ab with
+          | Ability.passive .always mods =>
+            mods.foldl (fun a2 m => match m with
+              | .mightIfFresh n => if o.attachedTurn == some s.turn then a2 + (n : Int) else a2
+              | _ => a2) acc
+          | _ => acc) 0
+        let b : Int := d.mightBonus.getD 0
+        some ((if doubled then 2 * b else b) + fresh)
+      else none
     | _, _ => none)).sum
+
+/-- The tags an Equipment gives to the Unit it is attached to. -/
+def GameState.gainedTags (s : GameState) (id : ObjId) : List Tag :=
+  s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      if o.attached == some id then
+        d.grants.flatMap (fun ab =>
+          match ab with
+          | Ability.passive .always mods =>
+            mods.filterMap (fun m => match m with | .gainsTag t => some t | _ => none)
+          | _ => [])
+      else []
+    | _, _ => [])
 
 /-- The Units of the player that are at the Battlefield. -/
 def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId :=
@@ -196,7 +225,7 @@ object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
   | .ofType t => (s.cardDef? id).map (·.hasType t)
   | .ofSupertype sp => (s.cardDef? id).map (·.hasSupertype sp)
-  | .tag t => (s.cardDef? id).map (·.tags.contains t)
+  | .tag t => (s.cardDef? id).map (fun d => d.tags.contains t || (s.gainedTags id).contains t)
   | .named n => (s.cardDef? id).map (fun d => d.name == n)
   | .hasKeyword k => (s.cardDef? id).map (·.hasKeyword k)
   | .domain d => (s.cardDef? id).map (·.domains.contains d)

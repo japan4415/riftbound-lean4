@@ -983,7 +983,7 @@ theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
-  (s.modObj g (fun o => { o with attached := some u }), [])
+  (s.modObj g (fun o => { o with attached := some u, attachedTurn := some s.turn }), [])
 
 /-- Attaching is a safe change. -/
 theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=

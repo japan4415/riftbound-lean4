@@ -92,6 +92,8 @@ structure Object where
   /-- For an Equipment in play: the Unit it is attached to (CR 137, 825). Leaving the Board clears
   it; a Cleanup step clears it when the Unit is gone. -/
   attached : Option ObjId := none
+  /-- For an Equipment in play: the turn it was attached (Brutalizer). -/
+  attachedTurn : Option Nat := none
   /-- Whether the Unit has a buff: +1 Might (CR 701). Leaving the Board clears it. -/
   buffed : Bool := false
   /-- Whether the Unit is stunned: it deals no combat damage this turn (CR 424). -/

@@ -849,8 +849,12 @@ def SFD_030.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Skyfall of Areion: the effect is not written yet. -/
-def SFD_030 : CardDef := SFD_030.meta
+/-- Skyfall of Areion. -/
+def SFD_030 : CardDef :=
+  { SFD_030.meta with
+
+    grants := [.passive .always [.holdIsConquer]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-031
 /--
@@ -1179,8 +1183,12 @@ def SFD_042.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Brutalizer: the effect is not written yet. -/
-def SFD_042 : CardDef := SFD_042.meta
+/-- Brutalizer. -/
+def SFD_042 : CardDef :=
+  { SFD_042.meta with
+
+    grants := [.passive .always [.mightIfFresh 2]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-043
 /--
@@ -1885,8 +1893,12 @@ def SFD_068.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Gearhead: the effect is not written yet. -/
-def SFD_068 : CardDef := SFD_068.meta
+/-- Gearhead. -/
+def SFD_068 : CardDef :=
+  { SFD_068.meta with
+
+    abilities := [.passive .always [.doubleEquip]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-069
 /--
@@ -2024,8 +2036,12 @@ def SFD_073.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Experimental Hexplate: the effect is not written yet. -/
-def SFD_073 : CardDef := SFD_073.meta
+/-- Experimental Hexplate. -/
+def SFD_073 : CardDef :=
+  { SFD_073.meta with
+
+    grants := [.passive .always [.gainsTag ⟨"Mech"⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-074
 /--
@@ -5268,8 +5284,12 @@ def SFD_191.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Rabadon's Deathcrown: the effect is not written yet. -/
-def SFD_191 : CardDef := SFD_191.meta
+/-- Rabadon's Deathcrown. -/
+def SFD_191 : CardDef :=
+  { SFD_191.meta with
+
+    grants := [.passive .always [.bonusDamage (.const 3)]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-192
 /--
@@ -5298,8 +5318,14 @@ def SFD_192.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Shurelya's Requiem: the effect is not written yet. -/
-def SFD_192 : CardDef := SFD_192.meta
+/-- Shurelya's Requiem. -/
+def SFD_192 : CardDef :=
+  { SFD_192.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.ready (Selector.all .friendly .anywhere [.ofType .unit])))) .unlimited],
+    grants := [.passive .always [.keywordHere { keyword := .ganking }]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-193
 /--

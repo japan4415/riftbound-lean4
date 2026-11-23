@@ -2120,5 +2120,83 @@ meta def playOut : Nat → GameState → GameState
   let c ← fire s4 [.activated s.me board 0]
   return a.mightNow u == s4.mightNow u && b.mightNow u == s4.mightNow u &&
     c.mightNow u == (s4.mightNow u).map (· + 1)
+/-- Attach the Equipment to the unit now. -/
+meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameState :=
+  (attachTo u s g).1
+
+-- Rabadon's Deathcrown (SFD-191): the spells and abilities of the unit's player deal 3 more damage
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-017" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-191" .base
+  let (s4, e) ← putAt s3 s.you "SFD-132" s.bf0
+  let plain ← play s4 s.me c [e]
+  let armed ← play (s4.hook g u) s.me c [e]
+  let (t1, h) ← put s3 s.you "SFD-191" .base
+  let (t2, f) ← put t1 s.you "OGN-051" .base
+  let (t3, e2) ← putAt t2 s.you "SFD-132" s.bf0
+  let theirs ← play (t3.hook h f) s.me c [e2]
+  return plain.dmg e == some 2 && armed.dmg e == some 5 && theirs.dmg e2 == some 2
+
+-- Shurelya's Requiem (SFD-192): when played, ready the player's units; the units of the player at
+-- the place of its unit have Ganking
+#guard tsf fun s => do
+  let (s1, r) ← put s s.me "SFD-192" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let a ← play (s2.tire u) s.me r
+  let (t1, host) ← putAt s s.me "OGN-051" s.bf0
+  let (t2, g) ← put t1 s.me "SFD-192" .base
+  let (t3, near) ← putAt t2 s.me "OGN-136" s.bf0
+  let (t4, far) ← put t3 s.me "OGN-136" .base
+  let (t5, foe) ← putAt t4 s.you "OGN-136" s.bf0
+  let t := t5.hook g host
+  return a.tired u == some false && t.hasKw near .ganking && t.hasKw host .ganking &&
+    !t.hasKw far .ganking && !t.hasKw foe .ganking && !t5.hasKw near .ganking
+
+-- Experimental Hexplate (SFD-073): the unit it is attached to is a Mech
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-182" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-073" .base
+  let (s4, v) ← put s3 s.me "OGN-051" .base
+  let t := s4.hook g u
+  let r ← play t s.me c
+  return r.mightNow u == (t.mightNow u).map (· + 1) && r.mightNow v == t.mightNow v
+
+-- Gearhead (SFD-068): each Equipment attached to it gives double its Might bonus
+#guard tsf fun s => do
+  let (s1, gh) ← put s s.me "SFD-068" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-115" .base
+  let (s4, h) ← put s3 s.me "SFD-115" .base
+  let a := s4.hook g gh
+  let b := s4.hook h u
+  return a.mightNow gh == (s4.mightNow gh).map (· + 4) &&
+    b.mightNow u == (s4.mightNow u).map (· + 2)
+
+-- Brutalizer (SFD-042): +2 Might more if it was attached this turn
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let a := s2.hook g u
+  let later := { a with turn := a.turn + 1 }
+  return a.mightNow u == (s2.mightNow u).map (· + 3) &&
+    later.mightNow u == (s2.mightNow u).map (· + 1)
+
+-- Skyfall of Areion (SFD-030): the hold effects of its unit are conquer effects too, and back
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, lucian) ← putAt s1 s.me "SFD-113" bf
+  let (s3, dune) ← putAt s2 s.me "SFD-027" bf
+  let (s4, g) ← put s3 s.me "SFD-030" .base
+  let (s5, h) ← put s4 s.me "SFD-030" .base
+  let l := (s5.hook g lucian).tire lucian
+  let d := s5.hook h dune
+  let a ← fire l [.scored s.me bf false]
+  let b ← fire (s5.tire lucian) [.scored s.me bf false]
+  let c ← fire d [.scored s.me bf true]
+  let e ← fire s5 [.scored s.me bf true]
+  return a.tired lucian == some false && b.tired lucian == some true &&
+    c.handN s.me == d.handN s.me + 2 && e.handN s.me == s5.handN s.me
 
 end RiftboundTest

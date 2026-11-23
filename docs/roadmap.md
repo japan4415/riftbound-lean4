@@ -561,6 +561,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: Prize of Progress は、Gold などの Add 能力（Chain を通らず、`Event.activated` を出さない）を数えない。Harpoon Squad は、効果で Base へ移されるとき（`sendHome`、移動の出来事が出ない）に働かない。`perTurn` の記録は、手札に戻して出し直しても、残る（新しいカードでも、同じターンの 2 回目は、働かない）。`Condition.inCombat` は、どの Battlefield の戦闘でも真（別の戦闘の最中に、Base で死んだ場合も、真になる）。
 - **カードの数**: 動く Spiritforged は 150 枚から 159 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 11 — 装備品が与える能力
+
+- **装備品の `grants` に書ける、パッシブの変更**: `bonusDamage`（付けたユニットのプレイヤーの呪文と能力のダメージが増える: Rabadon's Deathcrown。ユニット自身のパッシブでも働く）、`keywordHere`（付けたユニットと同じ場所の、味方のユニットに、キーワード: Shurelya's Requiem）、`gainsTag`（付けたユニットに、タグ: Experimental Hexplate）、`mightIfFresh`（今のターンに付けたとき、Might が増える: Brutalizer。装備品の `attachedTurn`）、`holdIsConquer`（付けたユニットの、hold の効果は、conquer の効果でもあり、逆もそう: Skyfall of Areion）。ユニット自身のパッシブに、`doubleEquip`（付いている装備品の Might ボーナスが 2 倍: Gearhead）。
+- **書いたカード**: SFD-030、042、068、073、191、192（6 枚）。
+- **近似**: Skyfall の入れ替えは、conquer と hold の誘発だけ（得点は、その種類のまま）。Shurelya の「ここ」は、付けたユニットと、同じ Battlefield（または、同じ Base のユニット）で数える。Hexplate の Mech は、タグの判定にだけ効く（キーワードの判定には、効かない）。
+- **カードの数**: 動く Spiritforged は 159 枚から 165 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

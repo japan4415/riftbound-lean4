@@ -335,6 +335,12 @@ def StaticMod.runs : StaticMod → Bool
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
+  | .bonusDamage a => a.understoodC
+  | .doubleEquip => true
+  | .mightIfFresh _ => true
+  | .gainsTag _ => true
+  | .keywordHere _ => true
+  | .holdIsConquer => true
   | _ => false
 
 /-- The points of the turn that fire a triggered ability. -/

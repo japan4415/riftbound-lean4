@@ -91,11 +91,35 @@ def victoryScore (s : GameState) : Nat :=
       | _ => 0))).sum
   (s.config.mode.victoryScore + delta).toNat
 
+/-- The Bonus Damage the passive abilities of the player give to each instance of damage of their
+spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
+is attached to (Rabadon's Deathcrown). -/
+def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
+  (s.passiveSources.flatMap (fun g =>
+    if (s.obj? g).any (·.controller == p) then
+      (s.activeMods g).filterMap (fun m =>
+        match m with | .bonusDamage (.const n) => some n | _ => none)
+    else [])).sum +
+  (s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      match o.attached with
+      | some u =>
+        if (s.obj? u).any (·.controller == p) then
+          d.grants.flatMap (fun ab =>
+            match ab with
+            | Ability.passive .always mods =>
+              mods.filterMap (fun m => match m with | .bonusDamage (.const n) => some n | _ => none)
+            | _ => [])
+        else []
+      | none => []
+    | _, _ => [])).sum
+
 /-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
 deals to the object `id`: that of the effect of the turn for the next spell, and that of the
 Battlefield the object is at (CR 142). -/
 def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
-  s.spellBonus p src +
+  s.spellBonus p src + s.passiveBonus p +
     (match (s.obj? id).bind (·.loc) with
       | some bf =>
         (s.activeMods bf).foldl
@@ -112,13 +136,25 @@ def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
-      if o.attached == some id then
+      -- the keywords it gives the Unit it is attached to
+      (if o.attached == some id then
         d.grants.flatMap (fun ab =>
           match ab with
           | Ability.passive .always mods =>
             mods.filterMap (fun m => match m with | .keyword .self k => some k | _ => none)
           | _ => [])
-      else []
+      else []) ++
+      -- Shurelya's Requiem: the units of the player at the place of the unit it is attached to
+      (match o.attached.bind (fun u => s.obj? u), s.obj? id with
+        | some host, some me =>
+          if host.controller == me.controller && host.loc == me.loc then
+            d.grants.flatMap (fun ab =>
+              match ab with
+              | Ability.passive .always mods =>
+                mods.filterMap (fun m => match m with | .keywordHere k => some k | _ => none)
+              | _ => [])
+          else []
+        | _, _ => [])
     | _, _ => [])
 
 /-- The keywords the passive abilities give an object now: those of the abilities whose condition

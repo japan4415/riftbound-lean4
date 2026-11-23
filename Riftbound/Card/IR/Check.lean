@@ -220,6 +220,11 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .ignoreKeyword _ _ => true
   | .entersReady s => Selector.ok c s
   | .bonusDamage a => Amount.ok c a
+  | .doubleEquip => true
+  | .mightIfFresh _ => true
+  | .gainsTag _ => true
+  | .keywordHere _ => true
+  | .holdIsConquer => true
   | .triggersExtra _ _ => true
   | .cantPlayer p _ _ _ => p.ok c
   | .custom _ args => args.ok c
