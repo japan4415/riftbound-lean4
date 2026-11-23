@@ -125,11 +125,34 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
     | _, _ => []) ++
   (if (s.cardDef? c).any (·.hasType .spell) then (s.spellCutFx p).map (fun n => (n, 0)) else [])
 
-/-- The cost the card `c` of the player is played for: its cost, less the cuts (CR 356). -/
+/-- The Energy that the passive abilities add to the cost of the card `c` of the player (CR 356):
+the cost of the spells of the opponents of Vex, Cheerless goes up. -/
+def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
+  (s.passiveSources ++ [c]).foldl (fun acc src =>
+    match s.obj? src, s.cardDef? src with
+    | some o, some d =>
+      d.fullAbilities.foldl (fun acc ab =>
+        match ab with
+        | Ability.passive cond mods =>
+          if cond.eval s o.controller src {} == some true then
+            mods.foldl (fun acc m =>
+              match m with
+              | .costPlus sel a =>
+                if s.costSelects o.controller src c sel then
+                  acc + ((a.evalS s o.controller src {}).getD 0) else acc
+              | _ => acc) acc
+          else acc
+        | _ => acc) acc
+    | _, _ => acc) 0
+
+/-- The cost the card `c` of the player is played for: its cost, less the cuts, and more by what the
+passive abilities add (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
   d.cost.map (fun k =>
+    -- the cost goes up first, then down (to its floor)
     let e := (s.costCuts p c).foldl
-      (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1)) k.energy
+      (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1))
+      (k.energy + s.costRaise c)
     { k with energy := e })
 
 /-- The payment pays more than the cost of the card: an additional cost is paid. -/
@@ -150,7 +173,10 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match s.effCost p c d with
           | some cost => d.paysFor cost pay
           | none => false) &&
-        ((s.poolOf p).spend pay).isSome
+        ((s.poolOf p).spend pay).isSome &&
+        -- a card that is played only to a Battlefield is not played to the Base
+        !(d.abilities.any (fun ab =>
+          match ab with | Ability.passive _ mods => mods.contains .noPlayToBase | _ => false))
     | _, _ => false
 
 /-- What is true when a card is played: whether an additional cost was paid, whether another card
@@ -241,7 +267,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     | some d =>
       rw [ho, hd] at hrest
       simp only [Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true] at hrest
-      obtain ⟨⟨⟨howner, hty⟩, hcost⟩, hspend⟩ := hrest
+      obtain ⟨⟨⟨⟨howner, hty⟩, hcost⟩, hspend⟩, -⟩ := hrest
       cases hc : s.effCost p c d with
       | none => rw [hc] at hcost; simp at hcost
       | some cost =>

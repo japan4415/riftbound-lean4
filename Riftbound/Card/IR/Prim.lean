@@ -286,6 +286,13 @@ inductive StaticMod where
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
   | oppsPlayToBaseOnly
+  /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/
+  | noMoveToBaseAny
+  /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is
+  attacking), as an ability. -/
+  | playToBf (fs : List Filter)
+  /-- The card is not played to the Base from the hand: only where `playToBf` says. -/
+  | noPlayToBase
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
   | noReadyOfOpps
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/

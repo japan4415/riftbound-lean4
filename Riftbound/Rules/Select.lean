@@ -304,6 +304,18 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
           (s.zone (.player o.owner .runeDeck)).contains id)
       | none => false)
   | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
+  | .unitsPlayable =>
+    some (!((s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+      match ab with
+      | Ability.passive .always mods =>
+        mods.any (fun m => match m with | .cantPlayer _ .play .here _ => true | _ => false)
+      | _ => false))))
+  | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
+  | .scoredByMine =>
+    let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
+    some (((s.obj? id).map (·.scored.contains me)).getD false)
+  | .attackedByMine =>
+    some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>

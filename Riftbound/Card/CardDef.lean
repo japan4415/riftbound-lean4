@@ -180,16 +180,39 @@ def openPlay (c : CardDef) : List Ability :=
   | some cost =>
     if c.types.contains .unit then
       [.activated [.fromHand, .pay cost] .normal
-        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+        (EffectDef.of [Choice.targetOf .one .any .anywhere
+          [.ofType .battlefield, .openBf, .unitsPlayable]]
           (.ifThen (.exists (Selector.all .friendly .anywhere [.permitsOpenPlay]))
             (.prim (.playTo .self (.slot 0))) .nop)) .unlimited]
     else []
   | none => []
 
+/-- A Unit that says it can be played to a Battlefield with some properties (Rengar: one it is
+attacking; Perched Grimwyrm: one its player scored this turn): the ability pays its printed cost and
+plays it there. It is as fast as the card. -/
+def ownBfPlay (c : CardDef) : List Ability :=
+  match c.cost with
+  | some cost =>
+    if c.types.contains .unit then
+      c.abilities.flatMap (fun ab =>
+        match ab with
+        | Ability.passive _ mods =>
+          mods.filterMap (fun m =>
+            match m with
+            | .playToBf fs =>
+              some (.activated [.fromHand, .pay cost]
+                (if c.keywords.any (·.keyword == .reaction) then .reaction else .normal)
+                (EffectDef.of [Choice.targetOf .one .any .anywhere (.ofType .battlefield :: .unitsPlayable :: fs)]
+                  (.prim (.playTo .self (.slot 0)))) .unlimited)
+            | _ => none)
+        | _ => [])
+    else []
+  | none => []
+
 /-- The abilities that the keywords of the card stand for, the one that plays a Unit from the
-Champion Zone, and the one that plays a Unit to an open Battlefield. -/
+Champion Zone, and the ones that play a Unit to a Battlefield. -/
 def keywordAbilities (c : CardDef) : List Ability :=
-  c.printedKeywordAbilities ++ c.championPlay ++ c.openPlay
+  c.printedKeywordAbilities ++ c.championPlay ++ c.openPlay ++ c.ownBfPlay
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities

@@ -279,8 +279,13 @@ def SFD_010.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Void Drone: the effect is not written yet. -/
-def SFD_010 : CardDef := SFD_010.meta
+/-- Void Drone. -/
+def SFD_010 : CardDef :=
+  { SFD_010.meta with
+
+    abilities := [.passive (.not (.matches .self .inHandZone))
+      [.costMinus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-011
 /--
@@ -391,8 +396,12 @@ def SFD_014.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Minotaur Reckoner: the effect is not written yet. -/
-def SFD_014 : CardDef := SFD_014.meta
+/-- Minotaur Reckoner. -/
+def SFD_014 : CardDef :=
+  { SFD_014.meta with
+
+    abilities := [.passive .always [.noMoveToBaseAny]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-015
 /--
@@ -412,8 +421,12 @@ def SFD_015.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Perched Grimwyrm: the effect is not written yet. -/
-def SFD_015 : CardDef := SFD_015.meta
+/-- Perched Grimwyrm. -/
+def SFD_015 : CardDef :=
+  { SFD_015.meta with
+
+    abilities := [.passive .always [.playToBf [.scoredByMine], .noPlayToBase]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-016
 /--
@@ -699,8 +712,12 @@ def SFD_025.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rengar, Pouncing: the effect is not written yet. -/
-def SFD_025 : CardDef := SFD_025.meta
+/-- Rengar, Pouncing. -/
+def SFD_025 : CardDef :=
+  { SFD_025.meta with
+
+    abilities := [.passive .always [.playToBf [.attackedByMine]]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-026
 /--
@@ -4120,8 +4137,14 @@ def SFD_146.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Vex, Cheerless: the effect is not written yet. -/
-def SFD_146 : CardDef := SFD_146.meta
+/-- Vex, Cheerless. -/
+def SFD_146 : CardDef :=
+  { SFD_146.meta with
+
+    abilities := [.passive (.exists (Selector.all .any .inCombat [.sameAs .self]))
+      [.costMinusMin (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) 1,
+       .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-147
 /--
@@ -5999,8 +6022,12 @@ def SFD_216.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rockfall Path: the effect is not written yet. -/
-def SFD_216 : CardDef := SFD_216.meta
+/-- Rockfall Path. -/
+def SFD_216 : CardDef :=
+  { SFD_216.meta with
+
+    abilities := [.passive .always [.cantPlayer .eachPlayer .play .here 0]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-217
 /--
