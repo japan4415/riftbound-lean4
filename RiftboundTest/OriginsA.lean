@@ -4230,12 +4230,18 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (a2.cardDef? x).any (·.id == cid "OGN-037"))
   let done ← play a2 s.me c [] { obj := fun o => o == phoenix }
   let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).length
+  -- the Phoenix cannot be paid for (no Power): it is not played, and nothing is paid
+  let poor := (a2.rich s.me).setPool s.me { energy := 12, mind := 3, calm := 3 }
+  let broke ← match step 100 poor ⟨.player s.me, .playCard c (payOf poor c) []⟩ with
+    | .ok (x, _) => some (settleChain { obj := fun o => o == phoenix } 40 x)
+    | .error _ => none
   let ids (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).map (fun u =>
     ((x.cardDef? u).map (·.id.code)).getD "?")
   return done.countIn s.me .base "OGN-037" == 1 && (deck done s.me) + 1 == deck a2 s.me &&
     (ids done s.me).head? == some "OGN-088" && (deck done s.you) + 1 == deck a2 s.you &&
     (done.zone (.player s.you .base)).any (fun u =>
       (done.cardDef? u).any (·.id == cid "OGN-136")) &&
-    (done.poolOf s.me).fury + 1 == ((a2.rich s.me).poolOf s.me).fury - 0
+    (done.poolOf s.me).fury + 1 == ((a2.rich s.me).poolOf s.me).fury &&
+    broke.countIn s.me .base "OGN-037" == 0
 
 end RiftboundTest

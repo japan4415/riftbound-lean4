@@ -659,9 +659,10 @@ theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool, and if that cannot be
-done, the card is not played. -/
+/-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool; if that cannot be
+done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
 def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
     match s.payNow p id ⟨0, c.power⟩ with
@@ -674,10 +675,12 @@ theorem playPaying_safe (p : PlayerId) (s : GameState) (id : ObjId) :
     Safe s (playPaying p s id).1 := by
   unfold playPaying
   split
+  · exact Safe.refl s
   · split
-    · exact (setPool_safe s p _).trans (playFree_safe p _ id)
-    · exact Safe.refl s
-  · exact playFree_safe p s id
+    · split
+      · exact (setPool_safe s p _).trans (playFree_safe p _ id)
+      · exact Safe.refl s
+    · exact playFree_safe p s id
 
 /-- Change the Rune Pools of the players, one after the other. -/
 def poolsMap (f : RunePool → RunePool) : GameState → List PlayerId → GameState
