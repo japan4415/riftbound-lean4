@@ -257,6 +257,7 @@ def Prim.understood : Prim → Bool
   | .discardCard s => s.understoodPickAny
   | .recycle s => s.understoodPickAny
   | .reveal s => s.understoodPickAny
+  | .revealNow s => s.understoodPickAny
   | .spendBuff s => s.understoodPick
   | .takeControl s => s.understood
   | .playBanishedWith => true
@@ -356,6 +357,8 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .chosenSpellsCostLess _ => true
+  | .lookBeforeReveal => true
   | .banishOnDeath => true
   | .copiesUnitText => true
   | .extraCostLess _ => true

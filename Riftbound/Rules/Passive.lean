@@ -37,7 +37,13 @@ holds. -/
 def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
   match s.obj? src, s.cardDef? src with
   | some o, some d =>
-    d.fullAbilities.flatMap (fun ab =>
+    -- an Equipment that copies the text of its Unit (Svellsongur): the Unit has its text once more
+    let copied : Bool := s.inPlay.any (fun g => (s.obj? g).any (·.attached == some src) &&
+      (s.cardDef? g).any (fun e => e.abilities.any (fun ab =>
+        match ab with
+        | Ability.passive .always mods => mods.contains .copiesUnitText
+        | _ => false)))
+    (d.fullAbilities ++ (if copied then d.fullAbilities else [])).flatMap (fun ab =>
       match ab with
       | Ability.passive cond mods =>
         if cond.eval s o.controller src {} == some true then mods else []

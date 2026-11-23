@@ -217,7 +217,8 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   | some d, some pool =>
     match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
-      (addObject (((s.modObj src (useOf idx (costExhausts costs))).setPool p pool))
+      (addObject (((s.modObj src
+          (fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts)).setPool p pool))
         (abilityItem d.id idx src p ts) .chain).map
         (fun r => (r.1, [Event.activated p src idx]))
     | _ => none
@@ -247,7 +248,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
-          exact ⟨useOf idx (costExhausts costs), pool,
+          exact ⟨fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts, pool,
             abilityItem d.id idx src p ts, id', fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
         | replacement _ _ _ => simp [hd, hs, ha] at h

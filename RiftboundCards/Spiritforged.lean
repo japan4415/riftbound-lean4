@@ -524,9 +524,7 @@ def SFD_018.meta : CardDef :=
 def SFD_018 : CardDef :=
   { SFD_018.meta with
 
-    abilities := [.triggered
-      { event := .revealedFromDeck, subject := Selector.all .friendly .anywhere [] }
-      (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
+    abilities := [.passive .always [.lookBeforeReveal]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-019
@@ -869,8 +867,31 @@ def SFD_029 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .friendly .anywhere
           [.ofType .unit, .playedFromElsewhere] }
-      (.of [] (.ifThen (.canPay ⟨1, [.domain .fury]⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩), .prim (.ready (.slot 0))])) .nop))
+      (.of [] (.seqOf [
+          .ifThen (.and (.matches (.slot 0) (.domain .fury))
+              (.canPay ⟨1, [.domain .fury]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩),
+              .prim (.ready (.slot 0))])) .nop,
+          .ifThen (.and (.matches (.slot 0) (.domain .calm))
+              (.canPay ⟨1, [.domain .calm]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .calm]⟩),
+              .prim (.ready (.slot 0))])) .nop,
+          .ifThen (.and (.matches (.slot 0) (.domain .mind))
+              (.canPay ⟨1, [.domain .mind]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .mind]⟩),
+              .prim (.ready (.slot 0))])) .nop,
+          .ifThen (.and (.matches (.slot 0) (.domain .body))
+              (.canPay ⟨1, [.domain .body]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .body]⟩),
+              .prim (.ready (.slot 0))])) .nop,
+          .ifThen (.and (.matches (.slot 0) (.domain .chaos))
+              (.canPay ⟨1, [.domain .chaos]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .chaos]⟩),
+              .prim (.ready (.slot 0))])) .nop,
+          .ifThen (.and (.matches (.slot 0) (.domain .order))
+              (.canPay ⟨1, [.domain .order]⟩))
+            (.may (.seqOf [.prim (.pay ⟨1, [.domain .order]⟩),
+              .prim (.ready (.slot 0))])) .nop]))
       .unlimited],
     status := .drafted }
 
@@ -4133,8 +4154,7 @@ def SFD_141.meta : CardDef :=
 def SFD_141 : CardDef :=
   { SFD_141.meta with
 
-    abilities := [.triggered (.onSelf .chosen)
-      (.of [] (.prim (.addEnergy .you (.const 1) none))) .unlimited],
+    abilities := [.passive .always [.chosenSpellsCostLess 1]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-142

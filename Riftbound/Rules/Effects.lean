@@ -1394,6 +1394,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
           some (Event.revealed o.owner id) else none
       | none => none))
+  | .revealNow sel =>
+    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
+    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
+      match s.obj? id with
+      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
+          some (Event.revealed o.owner id) else none
+      | none => none))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
   | .playPaying sel => onSelected s p src env sel (playPaying p)
@@ -1543,6 +1550,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       rw [← h]
       exact applyEach_safe (fun t u => recycleOne_safe t u) _ _
   | reveal sel =>
+    simp only [applyPrim, Option.some.injEq] at h
+    rw [← h]
+    exact Safe.refl s
+  | revealNow sel =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact Safe.refl s
@@ -1860,6 +1871,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .markOn s _ => some s
   | .playTo s _ => some s
   | .reveal s => some s
+  | .revealNow s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -1893,6 +1905,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
   | .reveal _ => .reveal sel
+  | .revealNow _ => .revealNow sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d
@@ -2043,6 +2056,16 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
     | _, _ => skip
+  | .prim (.reveal sel) =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+        (s.activeMods g).contains .lookBeforeReveal) then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealNow sel)) es)))], [])
+    else
+      match applyPrim s p src env (.reveal sel) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es
   | .prim (.play sel) =>
     match playSpellStep s p src env sel es with
