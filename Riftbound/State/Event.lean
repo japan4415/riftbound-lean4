@@ -74,6 +74,10 @@ inductive Event where
   whether it ends the discarding of the effect: the abilities that wait for "one or more" cards
   to be discarded fire only then. -/
   | discarded (p : PlayerId) (obj : ObjId) (last : Bool)
+  /-- An Equipment was attached to a unit. -/
+  | attached (gear unit : ObjId)
+  /-- A player spent a buff of a unit of theirs (CR 704). -/
+  | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won

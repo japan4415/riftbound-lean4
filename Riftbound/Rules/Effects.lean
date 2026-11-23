@@ -379,7 +379,10 @@ theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 := b
 def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o =>
     if 0 < o.extraBuffs then { o with extraBuffs := o.extraBuffs - 1 }
-    else { o with buffed := false }), [])
+    else { o with buffed := false }),
+    match s.obj? id with
+    | some o => [Event.buffSpent o.controller]
+    | none => [])
 
 /-- Spending a buff is a safe change. -/
 theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
@@ -983,11 +986,25 @@ theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
-  (s.modObj g (fun o => { o with attached := some u, attachedTurn := some s.turn }), [])
+  (s.modObj g (fun o => { o with attached := some u, attachedTurn := some s.turn }),
+    [Event.attached g u])
 
 /-- Attaching is a safe change. -/
 theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=
   Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+
+/-- Double the Might of an object until the end of the turn: it gains as much as it has now. -/
+def doubleObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.mightNow id with
+  | some m => (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [⟨m, .turn⟩] }), [])
+  | none => (s, [])
+
+/-- Doubling the Might is a safe change. -/
+theorem doubleObj_safe (s : GameState) (id : ObjId) : Safe s (doubleObj s id).1 := by
+  unfold doubleObj
+  split
+  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
 
 /-- Detach an Equipment: it is attached to nothing. -/
 def detachObj (s : GameState) (g : ObjId) : GameState × List Event :=
@@ -1044,7 +1061,8 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
           match (r.1.cardDef? g).bind CardDef.equipCost with
           | some c =>
             match r.1.payNow p g (c.dropPower less) with
-            | some pool => ((attachTo u (r.1.setPool p pool) g).1, r.2)
+            | some pool =>
+              ((attachTo u (r.1.setPool p pool) g).1, r.2 ++ (attachTo u r.1 g).2)
             | none => r
           | none => r) (s, []))
         else some (s, [])
@@ -1075,7 +1093,8 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                   match (r.1.cardDef? g).bind CardDef.equipCost with
                   | some c =>
                     match r.1.payNow p g (c.dropPower less) with
-                    | some pool => ((attachTo u (r.1.setPool p pool) g).1, r.2)
+                    | some pool =>
+                      ((attachTo u (r.1.setPool p pool) g).1, r.2 ++ (attachTo u r.1 g).2)
                     | none => r
                   | none => r) r0).1 := by
               intro l
@@ -1187,6 +1206,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
   | .detach sel => onSelected s p src env sel detachObj
+  | .double sel => onSelected s p src env sel doubleObj
+  | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base => onSelected s p src env sel moveHome
   | .move sel (.at_ dsel) =>
@@ -1339,6 +1360,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | detach sel => exact onSelected_safe detachObj_safe h
+  | double sel => exact onSelected_safe doubleObj_safe h
+  | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
   | buff sel => exact onSelected_safe buffObj_safe h
   | gainXP ps n =>
     simp only [applyPrim] at h
@@ -1649,6 +1672,8 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/
 def Prim.pickSel? : Prim → Option Selector
   | .detach s => some s
+  | .double s => some s
+  | .topdeck s => some s
   | .deal s _ => some s
   | .heal s _ => some s
   | .kill s => some s
@@ -1682,6 +1707,8 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .deal _ n => .deal sel n
   | .heal _ n => .heal sel n
   | .detach _ => .detach sel
+  | .double _ => .double sel
+  | .topdeck _ => .topdeck sel
   | .kill _ => .kill sel
   | .ready _ => .ready sel
   | .exhaust _ => .exhaust sel

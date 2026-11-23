@@ -570,6 +570,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: 新しい `StaticMod` は、どこに書くかで読まれる場所が決まっている（装備品の `grants` だけ: `gainsTag`・`keywordHere`・`holdIsConquer`・`mightIfFresh`、ユニット自身の `abilities` だけ: `doubleEquip`）。取り違えると、`runs` は通るが、働かない。すでに付いている装備品を、同じユニットに付け直すと、そのターンの追加は、もう一度付く。`gainedTags` と `equipKws` は、評価のたびに、場の全体を数える（遅い）。
 - **カードの数**: 動く Spiritforged は 159 枚から 165 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 12 — 装備が付いたとき、バフを使ったとき、2 倍にする
+
+- **新しい仕組み**: `Event.attached`・`TriggerEvent.attachedTo`（装備品がユニットに付いた。付いたユニットの誘発。Jax, Unrelenting）、`Event.buffSpent`・`TriggerEvent.spendBuff`（プレイヤーが、自分のユニットのバフを使った。Fae Dragon）、`Prim.double`（ターンの終わりまで、Might が 2 倍。Fiora, Peerless）、`Prim.topdeck`（山札の上に置く。Altar of Memories）、`StaticMod.noCombatDamage`（戦闘ダメージを与えない。Ezreal, Dashing）。
+- **書いたカード**: SFD-082、101、110、119、169、200（6 枚）。Arcane Shift は、「banish して、持ち主がプレイする」を、そのユニットを、もう一度プレイする（Base に出し直し、「プレイしたとき」が働く）で表した。
+- **近似**: Fiora, Peerless の「this combat」は、このターンの終わりまで。「one on one」は、自分の側 1 体と、相手の側 1 体。Fae Dragon の「up to four」は、1 体ずつ「しますか」と聞く（4 回）。Altar of Memories の、カードを置く先（上か底）は、プレイヤーが選ぶ。Arcane Shift で、ユニットを banish しないので、バフとダメージは残る（もう一度プレイするだけ）。
+- **カードの数**: 動く Spiritforged は 165 枚から 171 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

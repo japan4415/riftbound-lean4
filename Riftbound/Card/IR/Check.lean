@@ -175,6 +175,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .swapPlaces a b => Selector.ok c a && Selector.ok c b
   | .returnChampion => true
   | .pay _ => true
+  | .topdeck s => Selector.ok c s
 
 /-- A duration refers only to what is there. -/
 def Duration.ok (c : Ctx) : Duration → Bool
@@ -220,6 +221,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .ignoreKeyword _ _ => true
   | .entersReady s => Selector.ok c s
   | .bonusDamage a => Amount.ok c a
+  | .noCombatDamage => true
   | .doubleEquip => true
   | .mightIfFresh _ => true
   | .gainsTag _ => true

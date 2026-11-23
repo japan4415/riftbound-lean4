@@ -241,6 +241,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
     (if conquer then
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
     else [])
+  | .attached _ u =>
+    match s.obj? u with
+    | some o => triggersOf s u o.controller .attachedTo
+    | none => []
+  | .buffSpent p =>
+    s.inPlay.flatMap (fun u =>
+      if (s.obj? u).any (·.controller == p) then triggersOf s u p .spendBuff else [])
   | .activated p src _ =>
     -- an ability of a gear on the Board (not Hide, not the play of a hidden gear)
     if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
