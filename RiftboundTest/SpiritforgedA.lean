@@ -481,6 +481,24 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let cost (x : GameState) : Option Nat := ((x.cardDef? j).bind (x.effCost s.me j)).map (·.energy)
   return (cost mighty).map (· + 2) == cost base && cost base == some 7
 
+-- The filters read the Might the passive abilities give, with their floors: Leona, Zealot (OGN-079)
+-- takes 8 Might from a stunned enemy unit here, to a minimum of 1
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "OGN-079" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← putAt s2 s.you "OGN-001" s.bf0
+  let st := s3.modObj e (fun o => { o with stunned := true })
+  let env : Env := Env.empty.withMight st.mightTable
+  let small (x : GameState) (id : ObjId) : Bool :=
+    Filter.holds x id env id (.might .le (.const 3)) == some true
+  let lethal (x : GameState) (id : ObjId) : Bool :=
+    Filter.holds x id env id .lethal == some true
+  let hurt := st.modObj e (fun o => { o with damage := 1 })
+  let env2 : Env := Env.empty.withMight hurt.mightTable
+  return st.mightNow e == some 1 && st.mightNow f == s3.mightNow f && small st e && !small st f &&
+    Filter.holds hurt e env2 e .lethal == some true &&
+    Filter.holds hurt f env2 f .lethal == some false && !lethal st e
+
 -- Marching Orders (SFD-114): a friendly unit and an enemy unit at a battlefield deal damage
 -- equal to their Might to each other
 #guard tsf fun s => do

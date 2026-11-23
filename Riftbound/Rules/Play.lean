@@ -151,7 +151,8 @@ def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
               match m with
               | .costPlus sel a =>
                 if s.costSelects o.controller src c sel then
-                  acc + ((a.evalS s o.controller src {}).getD 0) else acc
+                  acc + ((a.evalS s o.controller src (Env.empty.withMight s.mightTable)).getD 0)
+                else acc
               | _ => acc) acc
           else acc
         | _ => acc) acc

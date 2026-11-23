@@ -168,22 +168,6 @@ def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
 
-/-- What the passive abilities add to the Might of each object in play: the table the filters read
-(`Env.passMight`). -/
-def mightTable (s : GameState) : List (ObjId × Int) :=
-  -- nothing to compute unless a card in play prints a passive change of Might
-  if !(s.inPlay.any (fun g => (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
-      match ab with
-      | Ability.passive _ mods =>
-        mods.any (fun m => match m with
-          | .mightPlus .. | .mightMinus .. | .mightMinusMin .. => true
-          | _ => false)
-      | _ => false)))) then []
-  else
-    s.inPlay.filterMap (fun id =>
-      let m := s.passiveMight id
-      if m == 0 then none else some (id, m))
-
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/
 def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
@@ -270,6 +254,26 @@ def mightNow (s : GameState) (id : ObjId) : Option Int :=
       (s.activeMods src).filterMap (s.modFloor src id))).foldl
       (fun (t : Int) (c : Nat × Nat) =>
         if t ≤ (c.2 : Int) then t else max (c.2 : Int) (t - (c.1 : Int))) total)
+
+/-- What the passive abilities do to the Might of each object in play, beyond its printed Might,
+the lasting changes, the buff and the Equipment: the table the filters read (`Env.passMight`). It
+counts the passive changes and their floors (`mightNow`). -/
+def mightTable (s : GameState) : List (ObjId × Int) :=
+  -- nothing to compute unless a card of a player prints a passive change of Might
+  if !(s.passiveSources.any (fun g => (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
+      match ab with
+      | Ability.passive _ mods =>
+        mods.any (fun m => match m with
+          | .mightPlus .. | .mightMinus .. | .mightMinusMin .. => true
+          | _ => false)
+      | _ => false)))) then []
+  else
+    s.inPlay.filterMap (fun id =>
+      match s.mightNow id, s.mightOf id with
+      | some now, some base =>
+        let d := now - (base + s.equipBonus id + s.buffBonus id)
+        if d == 0 then none else some (id, d)
+      | _, _ => none)
 
 end GameState
 

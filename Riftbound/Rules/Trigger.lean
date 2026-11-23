@@ -46,7 +46,7 @@ def condOkEnv (s : GameState) (src : ObjId) (who : PlayerId) (env : Env) : Condi
 
 /-- The same, where nothing was chosen. -/
 def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :=
-  condOkEnv s src who {}
+  condOkEnv s src who (Env.empty.withMight s.mightTable)
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
@@ -114,7 +114,7 @@ def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (wh
     Selector → Bool
   | .pick .all side .anywhere fs =>
     (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
-      (fs.holds s src {} subj == some true)
+      (fs.holds s src (Env.empty.withMight s.mightTable) subj == some true)
   | _ => false
 
 /-- The abilities of the objects in play and of the Legends that watch for the object `subj` of the
