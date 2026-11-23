@@ -3137,4 +3137,31 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (a.playMark s.me c double).paid && !(a.playMark s.me c (payOf a c)).paid &&
     a.tired g == some true && (r.extrasFor s.me c dC).length == before - 1
 
+-- (review) Marai Spire cuts Energy only: a Repeat that costs Power only keeps its Power; an
+-- additional cost cut to nothing counts as paid
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-122" .hand
+  let (s2, bf) ← putBf s1 s.me "SFD-211"
+  let d ← s2.cardDef? c
+  let mine := s2.control s.me bf
+  let (s3, y) ← put s2 s.me "SFD-109" .hand
+  let dy ← s3.cardDef? y
+  let (s4, _) ← put s3 s.me "SFD-149" .base
+  let basePay := payOf s4 y
+  return (mine.extrasFor s.me c d).all (·.power.length == 1) &&
+    (mine.extrasFor s.me c d).length == 1 &&
+    !(s4.paidExtra s.me y dy basePay) && (s4.extrasFor s.me y dy).all (·.total == 1) &&
+    s2.paidExtra s.me c d (payOf s2 c) == false
+
+-- (review) a spell that chose an enemy unit that is still there counts, one that chose its own
+-- unit does not
+#guard tsf fun s => do
+  let (s2, c) ← put s s.me "OGN-050" .hand
+  let (s3, mine) ← put s2 s.me "OGN-088" .base
+  let (s4, foe2) ← put s3 s.you "OGN-088" .base
+  let a ← play s4 s.me c [foe2]
+  let b ← play s4 s.me c [mine]
+  let n (x : GameState) : Option Nat := (Amount.spellsChoseEnemy.evalS x s.me c {})
+  return n a == some 1 && n b == some 0
+
 end RiftboundTest

@@ -169,6 +169,9 @@ def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
 def Cost.less (c : Cost) (k : Nat) : Cost :=
   { energy := c.energy - k, power := c.power.drop (k - c.energy) }
 
+/-- The cost with `k` less Energy (never Power). -/
+def Cost.lessEnergy (c : Cost) (k : Nat) : Cost := { c with energy := c.energy - k }
+
 /-- How much less the optional additional costs of the player cost (the passive abilities of their
 objects: Ezreal, Prodigy), and how much less their Repeat costs (Marai Spire). -/
 def GameState.extraCuts (s : GameState) (p : PlayerId) : Nat × Nat :=
@@ -193,10 +196,11 @@ def GameState.extrasFor (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     match i.keyword, i.arg with
     | .accelerate, _ =>
       if d.hasType .unit then some ((⟨1, [.own]⟩ : Cost).less cuts.1) else none
-    | .repeat_, .cost k => if d.hasType .spell then some (k.less (cuts.1 + cuts.2)) else none
+    | .repeat_, .cost k =>
+      if d.hasType .spell then some ((k.less cuts.1).lessEnergy cuts.2) else none
     | _, _ => none) ++
   (if d.hasType .spell && (s.fxOf p).any (· == .nextSpellRepeat) then
-    [((s.effCost p c d).getD ⟨0, []⟩).less (cuts.1 + cuts.2)]
+    [(((s.effCost p c d).getD ⟨0, []⟩).less cuts.1).lessEnergy cuts.2]
   else [])
 
 /-- The costs the card may be played for now: its cost, or its cost with one additional cost. -/
@@ -233,7 +237,8 @@ theorem GameState.paysForX_total {s : GameState} {p : PlayerId} {c : ObjId} {d :
 def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (pay : RunePool.Payment) : Bool :=
   match s.effCost p c d with
-  | some cost => !(cost.paidBy d.domains pay)
+  -- an additional cost that costs nothing is always paid
+  | some cost => !(cost.paidBy d.domains pay) || (s.extrasFor p c d).any (·.total == 0)
   | none => false
 
 /-- The player can play the object with the payment: it is the player's card, a Unit or a Gear, in

@@ -659,7 +659,9 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     some (s.objects.toList.filter (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn &&
         ((s.cardDef? ⟨k⟩).any (·.hasType .spell)) &&
-        o.targets.any (fun t => (s.obj? t).all (fun x => x.controller != p)))).length
+        o.targets.any (fun t => (s.obj? t).all (fun x => x.controller != p &&
+          ((s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear) ||
+            (s.cardDef? t).isNone))))).length
   | .powerSpent => some (s.poolOf p).spent
   | .gearsPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>

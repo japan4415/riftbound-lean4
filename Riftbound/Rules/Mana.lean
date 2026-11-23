@@ -71,7 +71,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
 (Chem-Baroness: their Gold adds one more Energy). -/
 def GameState.manaBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
   s.passiveSources.foldl (fun acc g =>
-    if (s.obj? g).any (·.controller == p) then
+    if (s.sourceOwner g).any (·.controller == p) then
       (s.activeMods g).foldl (fun acc m =>
         match m with
         | .manaExtraEnergy sel n =>
