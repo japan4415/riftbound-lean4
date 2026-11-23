@@ -586,10 +586,10 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
   | .turnsTaken ps => do
-    -- the turns the players have taken, this one included (CR 301)
+    -- the turns the players have taken, this one included (CR 301), not counting the extra turns
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q =>
-      acc + ((List.range s.turn).filter
+      acc + ((List.range (s.turn - s.turnShift)).filter
         (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == q)).length) 0)
   | .handSize ps => do
     let l ← ps.resolve s p
