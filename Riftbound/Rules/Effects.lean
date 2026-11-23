@@ -992,12 +992,21 @@ theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
 
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with controller := p }), [])
+  let s1 := s.modObj id (fun o => { o with controller := p })
+  -- a Unit at a Battlefield makes it Contested by its new controller (CR 190.3)
+  match (s.obj? id).bind (·.loc) with
+  | some bf => (contestFor p bf s1, [])
+  | none => (s1, [])
 
 /-- Taking control is a safe change. -/
 theorem setController_safe (p : PlayerId) (s : GameState) (id : ObjId) :
-    Safe s (setController p s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+    Safe s (setController p s id).1 := by
+  unfold setController
+  have h1 : Safe s (s.modObj id (fun o => { o with controller := p })) :=
+    Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  split
+  · exact h1.trans (contestFor_safe _ _ _)
+  · exact h1
 
 /-- Recall a Unit: it goes to its controller's Base, and is exhausted if the effect says so. It is
 not a move, so no ability of a move fires (CR 456). -/

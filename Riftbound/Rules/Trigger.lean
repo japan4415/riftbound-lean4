@@ -323,7 +323,7 @@ fires now (CR 371). -/
 def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigger :=
   l.foldl (fun kept t =>
     let taken := (kept.filter (fun k => k.source == t.source && k.idx == t.idx)).length
-    match (s.cardDef? t.source).bind (fun d => d.allAbilities[t.idx]?),
+    match (s.cards.find? t.card).bind (fun d => d.allAbilities[t.idx]?),
         (s.obj? t.source).map (·.used) with
     | some (Ability.triggered _ _ (.perTurn n)), some used =>
       if used.count t.idx + taken < n then kept ++ [t] else kept

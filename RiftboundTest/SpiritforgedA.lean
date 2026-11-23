@@ -2870,4 +2870,14 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return a.dmg foe == (s6.mightNow yone).map Int.toNat && a.dmg foe != some 0 &&
     b.dmg foe == some 0 && a.dmg foeAt == some 0
 
+-- (review) Hostile Takeover with another enemy unit there: the battlefield becomes Contested by me
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-202" .hand
+  let (s2, bf) ← putBf s1 s.you "OGN-275"
+  let (s3, u) ← putAt s2 s.you "OGN-051" bf
+  let (s4, _) ← putAt s3 s.you "OGN-136" bf
+  let a ← play (s4.control s.you bf) s.me c [u]
+  return ((a.obj? bf).bind (·.contested)) == some s.me &&
+    ((s4.obj? bf).bind (·.contested)).isNone
+
 end RiftboundTest

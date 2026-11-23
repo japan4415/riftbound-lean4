@@ -634,7 +634,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **ターンの終わりに戻る**: `TurnEffect.endTrigger card idx`（対象のオブジェクトに付ける）は、ターンの終わりに、そのカードの `idx` 番目の能力を、そのオブジェクトを source にして誘発させる（`GameState.fxTriggers`。カードの識別子は、データとして持つ。エンジンは、カード名を知らない）。`Prim.returnControl` は、持ち主の支配に戻す。
 - **空いた Battlefield**: `endShowdown` は、だれも支配していない Battlefield を conquer したとき、`TurnEffect.openConquest` を、その Battlefield に記録する。`Condition.openConquered`（自分のいる Battlefield に、その記録がある）で読む。
 - **書いたカード**: SFD-202（Hostile Takeover。Battlefield の敵ユニットの支配を得て、ready にする。戦闘の始まりと conquer は、Cleanup の通常の流れ。ターンの終わりに、持ち主へ戻して、recall する）、116（Yone, Blademaster）。
-- **近似**: Hostile Takeover で、相手が先にそのユニットを動かした・殺したときは、何も起きない。ターンの終わりの誘発は、そのターンの最後のフェーズの開始（`phaseStarted .. .ending`）に出る。
+- **近似**: ユニットの支配を得る（`takeControl`）と、そのユニットのいる Battlefield は、新しい支配者に Contested にされる（ほかの敵ユニットがいれば戦闘になる）。`openConquest` は、Cleanup で支配者が消えた Battlefield にも付く（守備側を全滅させた conquer でも、Yone は誘発する）。ターンの終わりの誘発は、Ending フェーズの始まりに一度だけ集める（そのあとに遊んだ Hostile Takeover は、戻らない）。Yone のダメージは、対象を選ばず、解決時に選ぶ。Hostile Takeover で、相手が先にそのユニットを動かした・殺したときは、何も起きない。ターンの終わりの誘発は、そのターンの最後のフェーズの開始（`phaseStarted .. .ending`）に出る。
 - **カードの数**: 動く Spiritforged は 199 枚から 201 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

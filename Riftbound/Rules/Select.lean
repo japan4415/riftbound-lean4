@@ -721,7 +721,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
   | .openConquered =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .openConquest &&
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .openConquest && f.who == p &&
       f.target == s.hereOf self))
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
