@@ -784,4 +784,225 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let a ← fire s1 [.combatWon s.bf0 s.you]
   return a.handN s.me == s1.handN s.me
 
+-- Chemtech Cask (SFD-063): when its player plays a spell on an opponent's turn, they may exhaust it
+-- to play a Gold token (exhausted)
+#guard tsf fun s => do
+  let (s1, k) ← put s s.me "SFD-063" .base
+  let (s2, sp) ← put s1 s.me "OGN-004" .trash
+  let theirs := { s2 with active := some s.you }
+  let a ← fire theirs [.played s.me sp]
+  let b ← fire s2 [.played s.me sp]
+  let c ← fire theirs [.played s.me sp] { yes := false }
+  let d ← fire (theirs.tire k) [.played s.me sp]
+  let e ← fire theirs [.played s.you sp]
+  let gold (x : GameState) := x.countIn s.me .base "SFD-T03"
+  return gold a == 1 && a.tired k == some true &&
+    (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
+    gold b == 0 && gold c == 0 && gold d == 0 && gold e == 0
+
+-- Pickpocket (SFD-074): kill a gear with Energy cost 1 or less, then a Gold token
+#guard tsf fun s => do
+  let (s1, p) ← put s s.me "SFD-074" .hand
+  let (s2, g) ← put s1 s.you "SFD-009" .base
+  let (s3, big) ← put s2 s.you "SFD-042" .base
+  let a ← play s3 s.me p [] { pick := fun ts => ts == [g] }
+  let b ← play s3 s.me p [] { yes := false }
+  let st ← castStop s3 s.me p
+  return (a.obj? g).isNone && a.countIn s.me .base "SFD-T03" == 1 && (a.obj? big).isSome &&
+    (b.obj? g).isSome && b.countIn s.me .base "SFD-T03" == 0 &&
+    st.trigPicks.contains g && !st.trigPicks.contains big
+
+-- Beast Below (SFD-132): when played, return another friendly unit and an enemy unit to hands
+#guard tsf fun s => do
+  let (s1, b) ← put s s.me "SFD-132" .hand
+  let (s2, f) ← put s1 s.me "OGN-051" .base
+  let (s3, e) ← put s2 s.you "OGN-001" .base
+  let r ← play s3 s.me b [] { pick := fun ts => ts == [f, e] }
+  let st ← castStop s3 s.me b
+  let beast := st.firstOf s.me .base "SFD-132"
+  return r.countIn s.me .hand "OGN-051" == 1 && r.countIn s.you .hand "OGN-001" == 1 &&
+    r.countIn s.me .base "SFD-132" == 1 && beast.any (fun x => !st.trigPicks.contains x)
+-- (an enemy unit is needed, and a friendly unit other than itself)
+#guard tsf fun s => do
+  let (s1, b) ← put s s.me "SFD-132" .hand
+  let (s2, _) ← put s1 s.me "OGN-051" .base
+  let r ← play s2 s.me b
+  return r.countIn s.me .hand "OGN-051" == 0 && r.countIn s.me .base "SFD-132" == 1
+
+-- Factory Recall (SFD-135): return a gear to its owner's hand (not a unit)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-135" .hand
+  let (s2, g) ← put s1 s.you "SFD-030" .base
+  let (s3, u) ← put s2 s.you "OGN-051" .base
+  let r ← play s3 s.me c [g]
+  return r.countIn s.you .hand "SFD-030" == 1 && (play s3 s.me c [u]).isNone
+
+-- Windsinger (SFD-138): Hidden; when played, may return another unit at a battlefield with 3 Might
+-- or less
+#guard match RiftboundCards.db.find? ⟨"SFD-138"⟩ with
+  | some c => c.hasKeyword .hidden && c.runs
+  | none => false
+#guard tsf fun s => do
+  let (s1, w) ← put s s.me "SFD-138" .hand
+  let (s2, small) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, big) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, base) ← put s3 s.you "OGN-051" .base
+  let r ← play s4 s.me w
+  let r2 ← play s4 s.me w [] { yes := false }
+  let st ← castStop s4 s.me w
+  return r.countIn s.you .hand "OGN-051" == 1 && (r.obj? small).isNone &&
+    (r.obj? big).isSome && (r.obj? base).isSome && r2.countIn s.you .hand "OGN-051" == 0 &&
+    st.trigPicks == [small]
+
+-- Downwell (SFD-147): return all units and gear to their owners' hands
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-147" .hand
+  let (s2, _) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, _) ← put s3 s.you "SFD-030" .base
+  let r ← play s4 s.me c
+  return r.countIn s.me .hand "OGN-051" == 1 && r.countIn s.you .hand "OGN-001" == 1 &&
+    r.countIn s.you .hand "SFD-030" == 1 && (r.zone .battlefieldZone).length ==
+      (s4.zone .battlefieldZone).length - 1 && (r.zone (.player s.me .base)).all (fun o =>
+        (r.cardDef? o).any (fun d => d.hasType .rune))
+
+-- Bonds of Strength (SFD-151): two different friendly units each have +1 Might
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-151" .hand
+  let (s2, a) ← put s1 s.me "OGN-051" .base
+  let (s3, b) ← put s2 s.me "OGN-051" .base
+  let (s4, e) ← put s3 s.you "OGN-051" .base
+  let r ← play s4 s.me c [a, b]
+  let same ← play s4 s.me c [a, a]
+  return r.mightNow a == (s4.mightNow a).map (· + 1) &&
+    r.mightNow b == (s4.mightNow b).map (· + 1) &&
+    same.mightNow a == s4.mightNow a && (play s4 s.me c [a, e]).isNone
+
+-- Guards! (SFD-154): a Sand Soldier token; the player may pay 1 Order Power to ready it
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-154" .hand
+  let (s2, _) ← putAt s1 s.me "OGN-001" s.bf0
+  let soldier (x : GameState) :=
+    (x.zone (.player s.me .base)).find? (fun o => (x.cardDef? o).any (·.name == "Sand Soldier"))
+  let a ← cast (s2.fund s.me 5 0 0 0 0 0 1) s.me c (payOf s2 c) [] { fromEnd := some 1 }
+  let b ← cast (s2.fund s.me 5 0 0 0 0 0 1) s.me c (payOf s2 c) [] { fromEnd := some 2 }
+  let n ← cast (s2.fund s.me 5) s.me c (payOf s2 c)
+  return (soldier a).bind a.tired == some false && (a.poolOf s.me).order == 0 &&
+    (soldier b).bind b.tired == some true && (b.poolOf s.me).order == 1 &&
+    (soldier n).bind n.tired == some true
+
+-- Sandshifter (SFD-158): when played, kill an enemy unit with 3 Might or less
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-158" .hand
+  let (s2, small) ← put s1 s.you "OGN-051" .base
+  let (s3, big) ← put s2 s.you "OGN-001" .base
+  let (s4, mine) ← put s3 s.me "OGN-051" .base
+  let r ← play s4 s.me c
+  return (r.obj? small).isNone && (r.obj? big).isSome && (r.obj? mine).isSome
+-- (nothing to kill: the unit is simply played)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-158" .hand
+  let (s2, big) ← put s1 s.you "OGN-001" .base
+  let r ← play s2 s.me c
+  return (r.obj? big).isSome && r.countIn s.me .base "SFD-158" == 1
+
+-- Trusty Ramhound (SFD-159): +1 Might while another friendly unit is at the same place
+#guard tsf fun s => do
+  let (s1, r) ← put s s.me "SFD-159" .base
+  let (s2, _) ← put s1 s.you "OGN-051" .base
+  let (s3, _) ← put s2 s.me "OGN-051" .base
+  let (t1, q) ← putAt s s.me "SFD-159" s.bf0
+  let (t2, _) ← putAt t1 s.me "OGN-051" s.bf0
+  let (t3, _) ← put t2 s.me "OGN-051" .base
+  return s2.mightNow r == s1.mightNow r && s3.mightNow r == (s1.mightNow r).map (· + 1) &&
+    t2.mightNow q == (t1.mightNow q).map (· + 1) && t1.mightNow q == s1.mightNow r &&
+    t3.mightNow q == t2.mightNow q
+
+-- Blood Money (SFD-162): kill a unit at a battlefield with 2 Might or less; 1 Gold if it was an
+-- enemy's, 2 if it was a friendly one
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-162" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, f) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, big) ← putAt s3 s.you "OGN-001" s.bf0
+  let a ← play s4 s.me c [e]
+  let b ← play s4 s.me c [f]
+  return (a.obj? e).isNone && a.countIn s.me .base "SFD-T03" == 1 &&
+    (b.obj? f).isNone && b.countIn s.me .base "SFD-T03" == 2 && (play s4 s.me c [big]).isNone
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-162" .hand
+  let (s2, e) ← put s1 s.you "OGN-051" .base
+  return (play s2 s.me c [e]).isNone
+
+-- Deathgrip (SFD-163): kill a friendly unit to give another friendly unit +Might equal to its
+-- Might this turn, and draw 1
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-163" .hand
+  let (s2, a) ← put s1 s.me "OGN-001" .base
+  let (s3, b) ← put s2 s.me "OGN-051" .base
+  let r ← play s3 s.me c [a, b]
+  let same ← play s3 s.me c [a, a]
+  return (r.obj? a).isNone && r.mightNow b == (s3.mightNow b).map (· + 5) &&
+    r.handN s.me == s3.handN s.me && (same.obj? a).isSome && same.handN s.me == s3.handN s.me - 1
+
+-- Janna, Savior (SFD-053) at a base: heals the friendly units there
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-053" .base
+  let (s2, a) ← put s1 s.me "OGN-001" .base
+  let (s3, b) ← putAt s2 s.me "OGN-001" s.bf0
+  let hurt (x : GameState) (u : ObjId) := x.modObj u (fun o => { o with damage := 3 })
+  let s4 := hurt (hurt s3 a) b
+  let r ← fire s4 [.played s.me j]
+  return r.dmg a == some 0 && r.dmg b == some 3
+
+-- (review) Chemtech Cask: a spell played from Hidden is played too; a unit played is not a spell
+#guard tsf fun s => do
+  let (s1, k) ← put s s.me "SFD-063" .base
+  let (s2, h) ← put s1 s.me "SFD-017" .hidden
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let theirs := { s3 with active := some s.you }
+  let a ← fire theirs [.played s.me h]
+  let b ← fire theirs [.played s.me u]
+  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 && k != u
+-- (review) the effect of playing a Hidden spell announces that it was played
+#guard tsf fun s => do
+  let (s1, h) ← put s s.me "SFD-017" .hidden
+  let r := applyPrim s1 s.me h {} (.turnEffect .hiddenPlayed)
+  return r.any (fun (_, es) => es.contains (.played s.me h))
+-- (review) Bonds of Strength: if the second unit is gone when the spell resolves, the first still
+-- gets +1 (and the other way round)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-151" .hand
+  let (s2, a) ← put s1 s.me "OGN-051" .base
+  let (s3, b) ← put s2 s.me "OGN-051" .base
+  let s4 ← match step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [a, b]⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let r1 := settleChain {} 12 (killObj s4 b).1
+  let r2 := settleChain {} 12 (killObj s4 a).1
+  return r1.mightNow a == (s3.mightNow a).map (· + 1) &&
+    r2.mightNow b == (s3.mightNow b).map (· + 1)
+-- (review) Windsinger: a unit of its own player is a legal choice too
+#guard tsf fun s => do
+  let (s1, w) ← put s s.me "SFD-138" .hand
+  let (s2, mine) ← putAt s1 s.me "OGN-051" s.bf0
+  let r ← play s2 s.me w
+  return r.countIn s.me .hand "OGN-051" == 1 && (r.obj? mine).isNone
+-- (review) Ramhound: an enemy at the same battlefield does not count
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-159" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  return s2.mightNow r == s1.mightNow r
+-- (review) Pickpocket: if the gear is gone when the ability resolves, no Gold
+#guard tsf fun s => do
+  let (s1, p) ← put s s.me "SFD-074" .hand
+  let (s2, g) ← put s1 s.you "SFD-009" .base
+  let s3 ← match step 100 (s2.rich s.me) ⟨.player s.me, .playCard p (payOf s2 p) []⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let s4 := settleChain { pick := fun ts => ts == [g] } 1 s3
+  let s5 := (killObj s4 g).1
+  let r := settleChain {} 12 s5
+  return r.countIn s.me .base "SFD-T03" == 0
+
 end RiftboundTest

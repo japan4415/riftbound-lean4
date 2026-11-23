@@ -495,6 +495,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **レビューで直したこと**: Mechanized Menace の Shield が、数値を持たず、防御側の +1 Might にならなかった（数値の無い `[Assault]`・`[Shield]` は 1 として数える）。`coverage.py` が、`grants` だけのカード（装備品）を「キーワードだけ」に数えていた。ビューアが `combat_won` を表示する。足りなかったテスト（支払いのちょうどの額、トークンが exhausted、Papertree の Rune、実際の Combat の終わりのイベントで誘発する Draven）を足した。
 - **カードの数**: 動く Spiritforged は 75 枚から 89 枚（うち 1 枚は Gold: 76 枚になり、さらに 13 枚）。テストは `RiftboundTest/SpiritforgedA.lean`。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 4 — 今の IR で書ける 12 枚（Gold、手札に戻す、条件つきの Might）
+
+- **書いたカード**: SFD-063、074、132、135、138、147、151、154、158、159、162、163。Janna（SFD-053）は、「ここ」を、`Filter.at_ .self`（同じ Battlefield か、同じ Base）で書き直した（Base でも、そこにいる味方を回復する）。
+- **近似**: Bonds of Strength と Deathgrip は、同じユニットを 2 回選ぶと、何も起きない（規則では、選べない）。Guards! は、トークンを、Power を払うか払わないかで、作り分ける（作ったトークンを、あとで指せないので、ready にするかどうかを、作るときに決める）。Windsinger は、データに括弧が無い Hidden を、手書きで足した。Chemtech Cask の「相手のターン」は、Cask の持ち主のターンでないこと。Drag Under と Void Drone の、他のゾーンからプレイするときの割引は、まだ（他のゾーンから、Energy を払ってプレイする効果が、まだ無い）。
+- **レビューで直したこと**: Hidden の呪文をプレイしても、「呪文をプレイしたとき」が誘発しなかった（Chemtech Cask、Lux など）。`Event.played` を出すようにした。Bonds of Strength と Deathgrip は、片方の対象が消えると、全体が飛んでいた（残った対象に効果が届く）。Pickpocket は、対象が消えても Gold が出ていた。Direwing と Blood Money の行を直した。
+- **近似（レビュー）**: Pickpocket の「Energy cost no more than 1」は、コストの無いカード（Gold トークン）を含まない。Beast Below の 2 つの対象は、プレイのとき両方選べないと、誘発ごと無くなる（片方だけ選ぶことはしない）。Ramhound の +1 は、他のカードの「Might 3 以下」に読まれない（Gust と同じ）。
+- **カードの数**: 動く Spiritforged は 89 枚から 101 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

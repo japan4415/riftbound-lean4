@@ -1190,7 +1190,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e =>
-    some (s.addTurnFx p e, if e == .hiddenPlayed then [Event.hiddenPlayed p] else [])
+    -- a Spell played from hiding is played too (what waits for a spell played fires)
+    some (s.addTurnFx p e, if e == .hiddenPlayed then
+      Event.hiddenPlayed p :: (if (s.cardDef? src).any (·.hasType .spell) then
+        [Event.played p src] else [])
+      else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
   | .returnChampion => some (returnChampion p s)
