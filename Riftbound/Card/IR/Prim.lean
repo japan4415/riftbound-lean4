@@ -236,6 +236,8 @@ inductive TriggerEvent where
   | recycle
   /-- The player recycled a Rune (to the Rune Deck). -/
   | recycleRune
+  /-- The card is revealed from its owner's deck. -/
+  | revealedFromDeck
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I
@@ -302,6 +304,12 @@ inductive StaticMod where
   | extraCostLess (n : Nat)
   /-- The Repeat costs the player pays cost this much less (Marai Spire). -/
   | repeatCostLess (n : Nat)
+  /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once
+  more (Svellsongur copies the text of the Unit). -/
+  | copiesUnitText
+  /-- (Of an Equipment's grants) the Unit it is attached to is banished when it dies, not put in the
+  Trash (The Zero Drive: Deathknell, banish me). -/
+  | banishOnDeath
   /-- The object has Assault equal to the number of objects the selector gives (Ancient Warmonger). -/
   | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/

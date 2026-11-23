@@ -658,6 +658,21 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: Forge of the Fluft は、Legend の能力ではなく、Battlefield の能力（Legend を exhaust する）。Emperor of the Sands の『Sand Soldier は Weaponmaster を持つ』は、書いていない（トークンは、遊んだイベントを出さない）。「Equipment を遊んだ」は、「Gear を遊んだ」で読む。Bellows Breath の 2 つ目と 3 つ目は、ダメージを受けていないユニットから選ぶ（同じユニットに 2 回は撃たない代わりに、ダメージの残っているユニットを選べない）。Relentless Pursuit は、Equipment を付ける部分と、Move の行き先に Base を選ぶ以外の細かい点（移動先は、Battlefield か Base）を、書いていない（Equipment を付けない）。Prodigal Explorer は、呪文だけを数える（ユニットの能力は、数えない）。Ezreal の「1 安い」は、Energy から減らす。追加の費用を 0 まで安くすると、払ったことにならない。
 - **カードの数**: 動く Spiritforged は 206 枚から 215 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 22 — 山札から公開、テキストの複製、死ぬときの追放（222 枚）
+
+- **山札から公開**: `Prim.reveal` は、山札のカードを公開すると、`Event.revealed` を出す。`TriggerEvent.revealedFromDeck` は、そのカード自身に誘発する（Undertitan: 2 Energy を Add する）。
+- **テキストの複製**: `StaticMod.copiesUnitText`（Equipment）。付いたユニットは、自分のカードの誘発能力を、もう一度持つ（Svellsongur）。
+- **死ぬときの追放**: `StaticMod.banishOnDeath`（Equipment の grants）。付いたユニットは、死ぬと、Trash でなく、Banishment に行く（The Zero Drive の Deathknell）。`killObj` の行き先が、これで決まる。
+- **書いたカード**: SFD-175（Undertitan）、059（Svellsongur）、090（The Zero Drive）、109（Akshan, Mischievous）、018（Void Hatchling）、029（Rek'Sai, Breacher）、141（Irelia, Graceful）。
+- **この 7 枚のうち、書けていない文**（`status := .drafted` で、動く数には入るが、この文は動かない）:
+  - SFD-018 Void Hatchling: 「公開するときは、先に一番上を見て、リサイクルしてもよい」。公開の置き換えは、まだ無い。
+  - SFD-029 Rek'Sai: 「手札以外から遊ぶユニットは、Accelerate を持つ」。Accelerate は、手札から遊ぶときだけで、手札以外から遊ぶ効果（`playReduced`）は、費用の外の Accelerate を読まない。
+  - SFD-141 Irelia: 「自分の呪文で自分を選ぶものは 1 安い」。費用が、選んだ対象に依る形は、まだ無い。
+  - SFD-090 The Zero Drive: 「これで追放したユニットを、全部、無料で遊ぶ」の能力。追放したユニットを覚える仕組みが無い。付いたユニットが死ぬときの追放だけを書いた。
+  - SFD-059 Svellsongur: ユニットの、誘発する能力だけを、複製する（起動する能力、パッシブは、複製しない）。
+  - SFD-109 Akshan: 取った Gear の支配は、Akshan が盤面を離れても、戻らない。
+- **カードの数**: 動く Spiritforged は 215 枚から 222 枚（全部）。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

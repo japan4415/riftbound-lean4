@@ -3163,5 +3163,59 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let b ← play s4 s.me c [mine]
   let n (x : GameState) : Option Nat := (Amount.spellsChoseEnemy.evalS x s.me c {})
   return n a == some 1 && n b == some 0
+-- Undertitan (SFD-175): when I play it, my other units get +2 Might this turn; as it is revealed
+-- from my deck, I add 2 Energy
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-175" .base
+  let (s2, ally) ← put s1 s.me "OGN-051" .base
+  let (s3, foe) ← put s2 s.you "OGN-051" .base
+  let a ← fire s3 [.played s.me u]
+  let (t1, top) ← put s3 s.me "SFD-175" .mainDeck
+  let b ← fire t1 [.revealed s.me top]
+  let c ← fire t1 [.revealed s.you top]
+  return a.mightNow ally == (s3.mightNow ally).map (· + 2) && a.mightNow u == s3.mightNow u &&
+    a.mightNow foe == s3.mightNow foe &&
+    (b.poolOf s.me).energy == (t1.poolOf s.me).energy + 2 && c.poolOf s.me == t1.poolOf s.me
+
+-- Svellsongur (SFD-059): the unit it is attached to has its own triggered abilities once more
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-149" .base
+  let (s2, g) ← put s1 s.me "SFD-059" .base
+  let held := (attachTo u s2 g).1
+  return (triggersOf s2 u s.me .play).length == 1 && (triggersOf held u s.me .play).length == 2
+
+-- The Zero Drive (SFD-090): the unit it is attached to is banished when it dies
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, g) ← put s1 s.me "SFD-090" .base
+  let held := (attachTo u s2 g).1
+  let killed := killObj held u
+  let a ← fire killed.1 killed.2
+  let (t1, v) ← put s s.me "OGN-051" .base
+  let plain := killObj t1 v
+  let b ← fire plain.1 plain.2
+  let inZone (x : GameState) (z : ZoneKind) : Bool :=
+    (x.zone (.player s.me z)).any (fun o => (x.cardDef? o).any (·.id == cid "OGN-051"))
+  return inZone a .banishment && !inZone a .trash && inZone b .trash && !inZone b .banishment
+
+-- Akshan, Mischievous (SFD-109): paying BodyBody more, when I play him I take an enemy gear (an
+-- Equipment is attached to him)
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let (s3, _) ← put s2 s.you "SFD-030" .base
+  let base := payOf s3 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let plain ← play s3 s.me a [] { pick := fun ts => ts == [g] }
+  let paid ← cast (s3.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let mine (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .base)).any (fun o => (x.cardDef? o).any (·.id == cid code) &&
+      (x.obj? o).any (·.controller == s.me))
+  let akshan := (paid.zone (.player s.me .base)).find? (fun o =>
+    (paid.cardDef? o).any (·.id == cid "SFD-109"))
+  return !mine plain "SFD-042" && plain.countIn s.you .base "SFD-042" == 1 &&
+    mine paid "SFD-042" && !mine paid "SFD-030" && paid.countIn s.you .base "SFD-042" == 0 &&
+    ((paid.zone (.player s.me .base)).any (fun o => (paid.cardDef? o).any
+      (·.id == cid "SFD-042") && (paid.obj? o).any (fun x => x.attached == akshan)))
 
 end RiftboundTest

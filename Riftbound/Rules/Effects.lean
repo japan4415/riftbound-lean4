@@ -169,9 +169,17 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
       (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
       (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)
 
-/-- Kill an object: it goes to its owner's Trash. -/
+/-- An Equipment attached to the object says that it is banished when it dies. -/
+def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
+  s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id) &&
+    (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
+      match ab with
+      | Ability.passive .always mods => mods.contains .banishOnDeath
+      | _ => false)))
+
+/-- Kill an object: it goes to its owner's Trash (or is banished, if an Equipment says so). -/
 def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .trash s id
+  let r := sendObj (if s.banishedOnDeath id then ZoneKind.banishment else .trash) s id
   match s.obj? id with
   | some o =>
     -- the death of a unit is noted for the turn (its controller, as it died)
@@ -188,9 +196,10 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
 /-- Killing an object is a safe change. -/
 theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
   unfold killObj
+  generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else ZoneKind.trash) = dest
   split
-  · exact (sendObj_safe .trash s id).trans (noteDeath_safe _ _ _ _ _ _)
-  · exact sendObj_safe .trash s id
+  · exact (sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _)
+  · exact sendObj_safe dest s id
 
 /-- Heal `n` damage from an object (CR 419). -/
 def healOne (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1341,7 +1350,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (r.1, r.2 ++ (if ids.any (fun id => (s.obj? id).isSome && recycleKind s id == .mainDeck)
         then [Event.recycled p] else [])))
   -- revealing shows information: nothing changes, but the object is chosen
-  | .reveal _ => some (s, [])
+  | .reveal sel =>
+    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
+    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
+      match s.obj? id with
+      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
+          some (Event.revealed o.owner id) else none
+      | none => none))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
   | .playPaying sel => onSelected s p src env sel (playPaying p)
