@@ -1922,4 +1922,55 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let r ← play s3 s.me c [u]
   return (r.obj? u).isNone && (play s3 s.me c [v]).isNone
 
+-- (review) Hard Bargain: the opponent's spell only (not one's own); a Repeat does not ask again
+-- once the spell is gone; a spell that left the Chain is not asked about
+#guard tsf fun s => do
+  let (s1, sp) ← onChain s s.you "OGN-004"
+  let (s2, mine) ← onChain s1 s.me "OGN-004"
+  let (s3, hb) ← put s2 s.me "SFD-136" .hand
+  let e ← effectOf "SFD-136"
+  let body := e.body
+  let twice : Effect := .seq (.cons body (.cons body .nil))
+  let r ← runBody (s3.fund s.you 5) s.me hb [sp] twice { fromEnd := some 2 }
+  let after : Effect := .seq (.cons (.prim (.counter (.slot 0))) (.cons body .nil))
+  let gone ← runBody (s3.fund s.you 5) s.me hb [sp] after
+  return (r.poolOf s.you).energy == 5 && (r.zone .chain).length == 1 &&
+    (gone.poolOf s.you).energy == 5 && targetsOk s3 s.me hb e.choices [sp] &&
+    !targetsOk s3 s.me hb e.choices [mine]
+
+-- (review) Not So Fast counters the spell; one that chooses nothing of the player is left alone
+#guard tsf fun s => do
+  let (s1, mine) ← put s s.me "OGN-051" .base
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let (s3, nsf) ← put s2 s.me "SFD-045" .hand
+  let (s4, gear) ← put s3 s.me "SFD-042" .base
+  let e ← effectOf "SFD-045"
+  let aimed := s4.modObj sp (fun o => { o with targets := [mine] })
+  let aimedAtGear := s4.modObj sp (fun o => { o with targets := [gear] })
+  let r ← runBody aimed s.me nsf [sp] e.body
+  return (r.zone .chain).isEmpty && targetsOk aimedAtGear s.me nsf e.choices [sp] &&
+    !targetsOk s4 s.me nsf e.choices [sp]
+
+-- (review) Jaull-Fish: never below 0; Drag Under can kill a friendly unit; Lucian hits one enemy
+-- unit here, and nothing at a base or at another battlefield
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-103" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s2 s.me "OGN-001" .base
+  let (s4, _) ← put s3 s.me "OGN-001" .base
+  let (s5, _) ← put s4 s.me "OGN-001" .base
+  return s5.energyCost? s.me j == some 0
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-164" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
+  let r ← play s2 s.me c [u]
+  return (r.obj? u).isNone
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-028" s.bf0
+  let (s2, near) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, base) ← put s2 s.you "OGN-001" .base
+  let (s4, mine) ← putAt s3 s.me "OGN-001" s.bf0
+  let r ← fire s4 [.combatStarted s.bf0 s.me]
+  return r.dmg near == some 1 && r.dmg base == some 0 && r.dmg mine == some 0
+
 end RiftboundTest

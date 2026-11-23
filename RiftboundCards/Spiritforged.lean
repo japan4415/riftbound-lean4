@@ -2559,7 +2559,7 @@ def SFD_093.meta : CardDef :=
 def SFD_093 : CardDef :=
   { SFD_093.meta with
 
-    abilities := [.activated [.fromHand, .pay ⟨4, [.domain .body]⟩] .normal
+    abilities := [.activated [.fromHand, .pay (SFD_093.meta.cost.getD ⟨0, []⟩)] .normal
       (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .enemyOccupied]]
         (.prim (.playTo .self (.slot 0)))) .unlimited],
     status := .drafted }
@@ -3717,12 +3717,13 @@ def SFD_136.meta : CardDef :=
 def SFD_136 : CardDef :=
   { SFD_136.meta with
 
-    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
-      (.eachPlayer .eachOpponent
-        (.ifThen (.canPay ⟨2, []⟩)
-          (.eitherOf (EffectList.ofList
-            [.prim (.pay ⟨2, []⟩), .prim (.counter (.slot 0))]))
-          (.prim (.counter (.slot 0)))))),
+    spellEffect := some (.of [.targetOf .one .enemy .onChain [.ofType .spell]]
+      (.ifThen (.exists (Selector.all .any .onChain [.sameAs (.slot 0)]))
+        (.eachPlayer .eachOpponent
+          (.ifThen (.canPay ⟨2, []⟩)
+            (.eitherOf (EffectList.ofList
+              [.prim (.pay ⟨2, []⟩), .prim (.counter (.slot 0))]))
+            (.prim (.counter (.slot 0))))) .nop)),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-137
