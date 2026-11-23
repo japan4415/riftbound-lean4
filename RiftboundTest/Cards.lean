@@ -59,6 +59,9 @@ open Riftbound RiftboundCards
 -- goal "every card of the first set works" (298)
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 298
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
+-- Spiritforged (222): the measure of the goal "every card of the second set works"
+#guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 46
+#guard (allCards.filter (fun c => c.id.code.startsWith "SFD-")).length == 222
 
 -- the cards written down as IR values (docs/coverage.md): 262 by hand, 169 by `transcribe.py`
 #guard (allCards.filter (·.status == .drafted)).length == 431
