@@ -4918,7 +4918,8 @@ def OGN_183.meta : CardDef :=
 def OGN_183 : CardDef :=
   { OGN_183.meta with
     spellEffect := some (.of []
-      (.seqOf [.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 3])),
+      (.seqOf [.prim (.lookTop 3),
+        .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 3])),
         .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])),
         .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
     status := .drafted }
@@ -5213,8 +5214,15 @@ def OGN_194.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Nocturne, Horrifying: the effect is not written yet. -/
-def OGN_194 : CardDef := OGN_194.meta
+/-- Nocturne, Horrifying. -/
+def OGN_194 : CardDef :=
+  { OGN_194.meta with
+    abilities := [.triggered { event := .seenOnTop, subject := .self }
+      (.of [] (.ifThen
+        (.and (.canPay ⟨0, [.any]⟩)
+          (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.sameAs .self])) (.const 1)))
+        (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩), .prim (.play .self)])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-195
 /--
@@ -6525,7 +6533,7 @@ def OGN_242 : CardDef :=
         (.ifThen (.exists (.slot 0))
           (.bind ⟨"hook"⟩ (.add (.mightOf (.slot 0)) (.const 1))
             (.bind ⟨"deckBefore"⟩ (.count (Selector.all .friendly .inMainDeck []))
-              (.seqOf [.prim (.kill (.slot 0)),
+              (.seqOf [.prim (.kill (.slot 0)), .prim (.lookTop 5),
                 .may (.prim (.play (Selector.one .friendly .inMainDeck
                   [.top 5, .ofType .unit, .might .le (.var ⟨"hook"⟩)]))),
                 baitedHookRecycle 1, baitedHookRecycle 2, baitedHookRecycle 3,
@@ -7793,6 +7801,7 @@ def OGN_291 : CardDef :=
   { OGN_291.meta with
     abilities := [.triggered (.onSelf .youConquer)
       (.of [] (.seqOf [
+        .prim (.lookTop 2),
         .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 2, .not (.top 1)]))),
         .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
     status := .drafted }

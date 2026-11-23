@@ -182,6 +182,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o => triggersOf s u o.controller .conquer
     | none => []
+  | .lookedAt p c => triggersOf s c p .seenOnTop
   | .chosenBySpell p t =>
     -- a Battlefield waits for its player's chosen unit at it
     (s.zone .battlefieldZone).flatMap (fun bf =>

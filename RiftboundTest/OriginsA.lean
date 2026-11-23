@@ -4077,4 +4077,30 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     fromZone.countIn s.me .hand "OGN-121" == 1 &&
     (fromZone.zone (.player s.me .championZone)).isEmpty
 
+-- Nocturne, Horrifying (OGN-194): when I look at the top card of my deck (and do not draw it) and
+-- see him, I may pay one Power to play him (Vision looks; the card must be one I see)
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-171" .hand
+  let (s2, n) ← put s1 s.me "OGN-194" .mainDeck
+  let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
+  let seen ← play s2 s.me c
+  let declined ← play s2 s.me c [] { yes := false }
+  -- he is second from the top: not seen by a Vision look
+  let (u2, _) ← put (s1.setZone (.player s.me .mainDeck) []) s.me "OGN-194" .mainDeck
+  let (u3, _) ← put u2 s.me "OGN-136" .mainDeck
+  let second ← play u3 s.me c
+  -- the event itself: with Power he comes, without he stays; the opponent's look is not mine
+  let funded := s2.fund s.me 0 (fury := 1)
+  let paid ← fire funded [.lookedAt s.me n]
+  let broke ← fire (s2.fund s.me 0) [.lookedAt s.me n]
+  let theirs ← fire funded [.lookedAt s.you n]
+  -- the card is no longer in the deck (it is in the hand): it is not played from there
+  let (h1, h) ← put s1 s.me "OGN-194" .hand
+  let inHand ← fire (h1.fund s.me 0 (fury := 1)) [.lookedAt s.me h]
+  return seen.countIn s.me .base "OGN-194" == 1 && deck seen + 1 == deck s2 &&
+    declined.countIn s.me .base "OGN-194" == 0 && second.countIn s.me .base "OGN-194" == 0 &&
+    paid.countIn s.me .base "OGN-194" == 1 && (paid.poolOf s.me).fury == 0 &&
+    broke.countIn s.me .base "OGN-194" == 0 && theirs.countIn s.me .base "OGN-194" == 0 &&
+    inHand.countIn s.me .base "OGN-194" == 0 && inHand.countIn s.me .hand "OGN-194" == 1
+
 end RiftboundTest
