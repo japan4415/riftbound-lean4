@@ -955,4 +955,54 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← fire s4 [.played s.me j]
   return r.dmg a == some 0 && r.dmg b == some 3
 
+-- (review) Chemtech Cask: a spell played from Hidden is played too; a unit played is not a spell
+#guard tsf fun s => do
+  let (s1, k) ← put s s.me "SFD-063" .base
+  let (s2, h) ← put s1 s.me "SFD-017" .hidden
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let theirs := { s3 with active := some s.you }
+  let a ← fire theirs [.played s.me h]
+  let b ← fire theirs [.played s.me u]
+  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 && k != u
+-- (review) the effect of playing a Hidden spell announces that it was played
+#guard tsf fun s => do
+  let (s1, h) ← put s s.me "SFD-017" .hidden
+  let r := applyPrim s1 s.me h {} (.turnEffect .hiddenPlayed)
+  return r.any (fun (_, es) => es.contains (.played s.me h))
+-- (review) Bonds of Strength: if the second unit is gone when the spell resolves, the first still
+-- gets +1 (and the other way round)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-151" .hand
+  let (s2, a) ← put s1 s.me "OGN-051" .base
+  let (s3, b) ← put s2 s.me "OGN-051" .base
+  let s4 ← match step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [a, b]⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let r1 := settleChain {} 12 (killObj s4 b).1
+  let r2 := settleChain {} 12 (killObj s4 a).1
+  return r1.mightNow a == (s3.mightNow a).map (· + 1) &&
+    r2.mightNow b == (s3.mightNow b).map (· + 1)
+-- (review) Windsinger: a unit of its own player is a legal choice too
+#guard tsf fun s => do
+  let (s1, w) ← put s s.me "SFD-138" .hand
+  let (s2, mine) ← putAt s1 s.me "OGN-051" s.bf0
+  let r ← play s2 s.me w
+  return r.countIn s.me .hand "OGN-051" == 1 && (r.obj? mine).isNone
+-- (review) Ramhound: an enemy at the same battlefield does not count
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-159" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  return s2.mightNow r == s1.mightNow r
+-- (review) Pickpocket: if the gear is gone when the ability resolves, no Gold
+#guard tsf fun s => do
+  let (s1, p) ← put s s.me "SFD-074" .hand
+  let (s2, g) ← put s1 s.you "SFD-009" .base
+  let s3 ← match step 100 (s2.rich s.me) ⟨.player s.me, .playCard p (payOf s2 p) []⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let s4 := settleChain { pick := fun ts => ts == [g] } 1 s3
+  let s5 := (killObj s4 g).1
+  let r := settleChain {} 12 s5
+  return r.countIn s.me .base "SFD-T03" == 0
+
 end RiftboundTest

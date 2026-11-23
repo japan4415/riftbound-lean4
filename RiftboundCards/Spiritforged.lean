@@ -1944,8 +1944,9 @@ def SFD_074 : CardDef :=
 
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .gear, .cost .le (.const 1)]]
-        (.may (.seqOf [.prim (.kill (.slot 0)),
-          .prim (.create "Gold" (.const 1) .atBase false)]))) .unlimited],
+        (.may (.ifThen (.exists (Selector.all .any .anywhere [.sameAs (.slot 0)]))
+          (.seqOf [.prim (.kill (.slot 0)), .prim (.create "Gold" (.const 1) .atBase false)])
+          .nop))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-075
@@ -2443,7 +2444,8 @@ def SFD_094.meta : CardDef :=
 def SFD_094 : CardDef :=
   { SFD_094.meta with
 
-    abilities := [.passive (.exists (Selector.all .friendly .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
+    abilities := [.passive
+      (.exists (Selector.all .friendly .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
       [.entersReady .self]],
     status := .drafted }
 
@@ -3885,9 +3887,9 @@ def SFD_151 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.not (.sameAs (.slot 0))))
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
         (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
-          .grant (.slot 1) (.mightPlus .it (.const 1)) .thisTurn]) .nop)),
+          .grant (.slot 1) (.mightPlus .it (.const 1)) .thisTurn]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-152
@@ -4180,7 +4182,8 @@ def SFD_162.meta : CardDef :=
 def SFD_162 : CardDef :=
   { SFD_162.meta with
 
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit, .might .le (.const 2)]]
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield
+        [.ofType .unit, .might .le (.const 2)]]
       (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
         (.seqOf [.prim (.kill (.slot 0)), .prim (.create "Gold" (.const 2) .atBase false)])
         (.ifThen (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
@@ -4213,9 +4216,9 @@ def SFD_163 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.ifThen (.matches (.slot 1) (.not (.sameAs (.slot 0))))
+      (.ifThen (.matches (.slot 1) (.sameAs (.slot 0))) .nop
         (.seqOf [.grant (.slot 1) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
-          .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))]) .nop)),
+          .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-164
@@ -5472,7 +5475,8 @@ def SFD_218 : CardDef :=
     abilities := [.triggered (.onSelf .youConquer)
       (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
           (.exists (Selector.all .friendly .here [.ofType .unit, .mighty])))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop)) .unlimited],
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop))
+      .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-219
