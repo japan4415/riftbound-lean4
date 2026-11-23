@@ -460,6 +460,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ## M6: 能力システムと Layers（CR 360-398, 475-482, 805-817）
 
+### M7 の実装の記録（2026-11-23）: Energy で Hide する、Champion Zone から手札へ（1 枚）
+
+- **エンジン**: Hide を持つカードに、「1 Energy を払って Hide する」能力を、足す（Swift Scout のような、パッシブ `hideWithEnergy` を持つ自分の物があるときだけ使える。`Condition.hidesWithEnergy`）。`Place.inChampionZone`（Champion Zone のカードを、選べる）。Hide の効果は、`hideEffect` に、まとめた。
+- **動くようになったカード**: Swift Scout（263。Hide を、Power のかわりに、1 Energy で行える。1 Energy を払い、疲労して、自分の Teemo のユニットを、場か Champion Zone から、手札に入れる）。
+- **動くカード**: 290 → **291 枚**。
+- **近似として残したこと**: 「場から」と「Champion Zone から」は、2 つの選択肢（「はい」で場、「いいえ」で Champion Zone）で書く。Hide の能力が、カードごとに 1 つ、増える。
+
 ### M7 の実装の記録（2026-11-23）: 呪文で選ばれたとき（1 枚）
 
 - **エンジン**: `Event.chosenBySpell`（プレイヤーが、プレイした呪文で、対象を選んだ。呪文のプレイの、対象の数だけ出る）と、`TriggerEvent.chosenHere`（戦場の誘発: そのプレイヤーの、ここにいるユニットが、選ばれた）。`TurnEffect.chosenHere`（今のターンに、もう、働いた）。

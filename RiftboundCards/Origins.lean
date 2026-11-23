@@ -7120,8 +7120,17 @@ def OGN_263.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Swift Scout: the effect is not written yet. -/
-def OGN_263 : CardDef := OGN_263.meta
+/-- Swift Scout. -/
+def OGN_263 : CardDef :=
+  { OGN_263.meta with
+    abilities := [.passive .always [.hideWithEnergy],
+      .activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
+        (.of [] (.eitherOf (.cons
+          (.prim (.returnToHand (Selector.one .friendly .anywhere
+            [.ofType .unit, .tag ⟨"Teemo"⟩])))
+          (.cons (.prim (.returnToHand (Selector.one .friendly .inChampionZone
+            [.ofType .unit, .tag ⟨"Teemo"⟩]))) .nil)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED OGN-264
 /--
