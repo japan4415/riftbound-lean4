@@ -134,6 +134,8 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .givesLegendsAttach => true
+  | .copiesText => true
   | .takenByMyCard => true
   | .wasTakenByMyCard => true
   | .playedFromElsewhere => true
@@ -359,6 +361,7 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
   | .lookBeforeReveal => true
   | .banishOnDeath => true

@@ -3013,11 +3013,12 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s3, u) ← put s2 s.me "OGN-051" .base
   let l ← s3.legendOf s.me
   let mine := s3.control s.me bf
-  let a ← activate mine s.me bf 0 [g, u]
-  let theirs := activate (s3.control s.you bf) s.me bf 0 [g, u]
-  let tiredLegend := activate (mine.tire l) s.me bf 0 [g, u]
+  let a ← activate mine s.me l 0 [g, u]
+  let theirs := activate (s3.control s.you bf) s.me l 0 [g, u]
+  let none_ := activate s3 s.me l 0 [g, u]
+  let tiredLegend := activate (mine.tire l) s.me l 0 [g, u]
   return (a.obj? g).any (·.attached == some u) && a.tired l == some true && theirs.isNone &&
-    tiredLegend.isNone
+    none_.isNone && tiredLegend.isNone
 
 -- Emperor of the Sands (SFD-197): exhaust, pay 1: a Sand Soldier token, if I played an Equipment
 #guard tsf fun s => do
@@ -3232,7 +3233,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     castable (s3.rich s.me) s.me c pay ts
   let r1 ← cast (s3.rich s.me) s.me c lessEnergy [irelia]
   let en (x : GameState) := (x.poolOf s.me).energy
-  return cost.energy ≥ 1 && !ok full [irelia] && ok lessEnergy [irelia] && ok lessPower [irelia] &&
+  return cost.energy ≥ 1 && !ok full [irelia] && ok lessEnergy [irelia] &&
+    ok lessPower [irelia] &&
     ok full [other] && !ok lessEnergy [other] && !ok lessPower [other] &&
     en r1 + (full.energy - 1) == ((s3.rich s.me).poolOf s.me).energy &&
     ((r1.zone .chain).isEmpty || true) &&
@@ -3435,5 +3437,21 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let plain ← fire t3 ev
   return plain.handN s.me == t3.handN s.me + 1 && no.handN s.me == s3.handN s.me + 1 &&
     yes.handN s.me == s3.handN s.me
+
+
+-- Svellsongur: the Unit's activated abilities are copied too (Udyr, OGN-157: spend a buff: ...)
+#guard tsf fun s => do
+  let (s1, udyr) ← put s s.me "OGN-157" .base
+  let (s2, g) ← put s1 s.me "SFD-059" .base
+  let (s3, _) ← putAt s2 s.you "OGN-088" s.bf0
+  let d ← s3.cardDef? udyr
+  let copyIdx := d.fullAbilities.length - 1
+  let held := (attachTo udyr s3 g).1
+  let buffed := held.buff udyr
+  let loose := s3.buff udyr
+  let ok (x : GameState) (idx : Nat) : Bool :=
+    activatable (x.rich s.me) s.me udyr idx ⟨0, []⟩ [] true
+  return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
+    !ok (s3.buff udyr) copyIdx && copyIdx > 0
 
 end RiftboundTest
