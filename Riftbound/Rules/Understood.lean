@@ -236,6 +236,7 @@ def Prim.understood : Prim → Bool
   | .exhaust s => s.understoodPick
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .attach g t => g.understood && t.understood
+  | .attachPaying g t _ => g.understood && t.understood
   | .move s .base => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
@@ -374,6 +375,7 @@ def Keyword.runs : Keyword → Bool
   | .tank => true | .temporary => true | .legion => true | .deflect => true
   | .deathknell => true | .hunt => true | .level => true | .equip => true
   | .accelerate => true | .vision => true | .hidden => true
+  | .repeat_ => true | .unique => true | .quickDraw => true | .weaponmaster => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are

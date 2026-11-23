@@ -982,6 +982,76 @@ theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
           exact applyEach_safe (fun s id => attachTo_safe u s id) gs s
         | cons _ _ => simp at h
 
+/-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` Power
+(Weaponmaster): an Equipment whose cost cannot be paid stays where it is, and one with no Equip
+cost is not attached. `none` if the unit is not exactly one object, or either cannot be
+answered. -/
+def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (gears to : Selector) (less : Nat) : Option (GameState × List Event) :=
+  (gears.eval s p src env).bind (fun gs =>
+    (to.eval s p src env).bind (fun tos =>
+      match tos with
+      | [u] =>
+        if u ∈ s.inPlay then
+        some (gs.foldl (fun (r : GameState × List Event) g =>
+          match (r.1.cardDef? g).bind CardDef.equipCost with
+          | some c =>
+            match r.1.payNow p g (c.dropPower less) with
+            | some pool => ((attachTo u (r.1.setPool p pool) g).1, r.2)
+            | none => r
+          | none => r) (s, []))
+        else some (s, [])
+      | _ => none))
+
+/-- Attaching Equipment for a cost is a safe change. -/
+theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {gears to : Selector} {less : Nat} {r : GameState × List Event}
+    (h : applyAttachPaying s p src env gears to less = some r) : Safe s r.1 := by
+  unfold applyAttachPaying at h
+  cases hg : gears.eval s p src env with
+  | none => simp [hg] at h
+  | some gs =>
+    cases ht : to.eval s p src env with
+    | none => simp [hg, ht] at h
+    | some tos =>
+      simp only [hg, ht, Option.bind_some] at h
+      cases tos with
+      | nil => simp at h
+      | cons u rest =>
+        cases rest with
+        | nil =>
+          by_cases hu : u ∈ s.inPlay
+          · simp only [hu, ite_true, Option.some.injEq] at h
+            rw [← h]
+            have key : ∀ (l : List ObjId) (r0 : GameState × List Event), Safe s r0.1 →
+                Safe s (l.foldl (fun (r : GameState × List Event) g =>
+                  match (r.1.cardDef? g).bind CardDef.equipCost with
+                  | some c =>
+                    match r.1.payNow p g (c.dropPower less) with
+                    | some pool => ((attachTo u (r.1.setPool p pool) g).1, r.2)
+                    | none => r
+                  | none => r) r0).1 := by
+              intro l
+              induction l with
+              | nil => intro r0 h0; exact h0
+              | cons g rest ih =>
+                intro r0 h0
+                simp only [List.foldl_cons]
+                apply ih
+                cases hc : (r0.1.cardDef? g).bind CardDef.equipCost with
+                | none => simpa [hc] using h0
+                | some c =>
+                  cases hp : r0.1.payNow p g (c.dropPower less) with
+                  | none => simpa [hc, hp] using h0
+                  | some pool =>
+                    simp only [hp]
+                    exact h0.trans ((setPool_safe r0.1 p pool).trans (attachTo_safe u _ g))
+            exact key gs (s, []) (Safe.refl s)
+          · simp only [hu, ite_false, Option.some.injEq] at h
+            rw [← h]
+            exact Safe.refl s
+        | cons _ _ => simp at h
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -1054,6 +1124,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .attach gears to => applyAttach s p src env gears to
+  | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base => onSelected s p src env sel moveHome
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
@@ -1175,6 +1246,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
   | attach gears to => exact applyAttach_safe h
+  | attachPaying gears to less => exact applyAttachPaying_safe h
   | move sel dest =>
     cases dest with
     | base => exact onSelected_safe moveHome_safe h

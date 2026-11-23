@@ -110,6 +110,13 @@ def hideEnergyEffect : EffectDef :=
   let e := hideEffectWith (.addEnergy .you (.const 1) none)
   EffectDef.mk e.choices (.ifThen .hidesWithEnergy e.body .nop)
 
+/-- The Equip cost the card prints, if it has one. -/
+def equipCost (c : CardDef) : Option Cost :=
+  c.keywords.findSome? (fun k =>
+    match k.keyword, k.arg with
+    | .equip, .cost cost => some cost
+    | _, _ => none)
+
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
@@ -123,6 +130,17 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
+    -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
+    | .quickDraw, _ =>
+      [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.prim (.attach .self (.slot 0)))) .unlimited]
+    -- Weaponmaster: when the Unit is played, its player may Equip one of their Equipment to it
+    -- for one Power less, even if it is attached already (CR 821)
+    | .weaponmaster, _ =>
+      [.triggered (Trigger.onSelf .play)
+        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
+          (.may (.prim (.attachPaying (.slot 0) .self 1)))) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)

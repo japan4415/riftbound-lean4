@@ -92,6 +92,9 @@ inductive Prim where
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
+  /-- Attach Equipment to an object, paying the Equip cost of each, less `less` Power
+  (Weaponmaster). Nothing happens if the cost cannot be paid. -/
+  | attachPaying (s : Selector) (to : Selector) (less : Nat)
   /-- Detach objects. -/
   | detach (s : Selector)
   /-- The players gain XP. -/
