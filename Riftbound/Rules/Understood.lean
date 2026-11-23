@@ -64,6 +64,7 @@ def Amount.understood : Amount → Bool
   | .min a b => Amount.understood a && Amount.understood b
   | .max a b => Amount.understood a && Amount.understood b
   | .mightOf s => Selector.understood s
+  | .kwAmount s _ => Selector.understood s
   | _ => false
 
 /-- An amount that is understood in a condition: the Might of objects is not (conditions read the
@@ -95,6 +96,7 @@ def Amount.understoodC : Amount → Bool
 worked out. -/
 def Amount.understoodK : Amount → Bool
   | .highestMight s => s.understood
+  | .kwAmount s _ => s.understood
   | a => a.understoodC
 
 /-- A filter that is understood. -/
@@ -132,6 +134,7 @@ def Filter.understood : Filter → Bool
   | .isAttached => true
   | .attached => true
   | .token => true
+  | .choosesMine => true
   | .attachedTo .self => true
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true

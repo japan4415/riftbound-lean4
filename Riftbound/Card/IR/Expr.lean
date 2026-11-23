@@ -48,6 +48,8 @@ inductive Amount where
   | victoryScore
   /-- The highest Might among the objects (0 if there are none). -/
   | highestMight (s : Selector)
+  /-- The number the keyword carries, summed over the objects ("my [Assault]"). -/
+  | kwAmount (s : Selector) (k : Keyword)
   /-- How many cards the player has played this turn. -/
   | cardsPlayed
   /-- How many Standard Moves the object made this turn. -/
@@ -151,6 +153,8 @@ inductive Filter where
   | isAttached
   /-- Is a token. -/
   | token
+  /-- Is a spell that chooses a unit or a gear of the player the effect belongs to. -/
+  | choosesMine
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/

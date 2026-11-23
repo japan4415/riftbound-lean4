@@ -1828,4 +1828,149 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let r := settleChain {} 12 s4
   return (r.obj? u).any (·.loc == some s.bf0)
 
+/-- Run the effect of the object `src` of the player, with the objects chosen in `slots`, and let
+the questions it asks be answered. -/
+meta def runBody (s : GameState) (p : PlayerId) (src : ObjId) (slots : List ObjId) (body : Effect)
+    (says : Says := {}) : Option GameState :=
+  let env : Env := { slots := slots.map Value.obj }
+  let s0 := { s with pending := Frame.run p src env (EffectList.cons body EffectList.nil) ::
+    s.pending }
+  match advance 100 s0 [] with
+  | .ok (s1, _) => some (settleChain says 12 s1)
+  | .error _ => none
+
+/-- The effect of the card. -/
+meta def effectOf (code : String) : Option EffectDef :=
+  (RiftboundCards.db.find? ⟨code⟩).bind (·.spellEffect)
+
+/-- Put a spell of the player on the Chain: the object it is there. -/
+meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameState × ObjId) := do
+  let (s1, c) ← put s p code .hand
+  let (s2, c') ← moveObj s1 c .chain
+  pure (s2, c')
+
+-- Jaull-Fish (SFD-103): costs 2 Energy less for each of its player's Mighty units
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-103" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s2 s.me "OGN-001" .base
+  let (s4, _) ← put s3 s.you "OGN-001" .base
+  let (s5, _) ← put s4 s.me "OGN-051" .base
+  return s1.energyCost? s.me j == some 7 && s2.energyCost? s.me j == some 5 &&
+    s5.energyCost? s.me j == some 3
+
+-- Hard Bargain (SFD-136): counter a spell unless its controller pays 2 Energy
+#guard tsf fun s => do
+  let (s1, sp) ← onChain s s.you "OGN-004"
+  let (s2, hb) ← put s1 s.me "SFD-136" .hand
+  let body := ((effectOf "SFD-136").map (·.body)).getD .nop
+  let poor ← runBody (s2.fund s.you 1) s.me hb [sp] body
+  let rich ← runBody (s2.fund s.you 2) s.me hb [sp] body
+  let refuse ← runBody (s2.fund s.you 2) s.me hb [sp] body { fromEnd := some 2 }
+  return (poor.zone .chain).isEmpty && (poor.poolOf s.you).energy == 1 &&
+    (rich.zone .chain).length == 1 && (rich.poolOf s.you).energy == 0 &&
+    (refuse.zone .chain).isEmpty && (refuse.poolOf s.you).energy == 2 &&
+    (s2.zone .chain).length == 1
+
+-- Not So Fast (SFD-045): counter an enemy spell that chooses a unit or gear of its player
+#guard tsf fun s => do
+  let (s1, mine) ← put s s.me "OGN-051" .base
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let (s3, nsf) ← put s2 s.me "SFD-045" .hand
+  let (s4, other) ← put s3 s.you "OGN-051" .base
+  let on (st : GameState) (sp' : ObjId) (t : ObjId) :=
+    let st' := st.modObj sp' (fun o => { o with targets := [t] })
+    match effectOf "SFD-045" with
+    | some e => targetsOk st' s.me nsf e.choices [sp']
+    | none => false
+  return on s4 sp mine && !on s4 sp other
+
+-- Riposte (SFD-206): counter a spell and give a friendly unit +Might equal to its Energy cost
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let (s3, rip) ← put s2 s.me "SFD-206" .hand
+  let body := ((effectOf "SFD-206").map (·.body)).getD .nop
+  let r ← runBody s3 s.me rip [u, sp] body
+  return (r.zone .chain).isEmpty && r.mightNow u == (s3.mightNow u).map (· + 1)
+
+-- Dauntless Vanguard (SFD-093): may be played to a battlefield where an enemy unit is
+#guard tsf fun s => do
+  let (s1, v) ← put s s.me "SFD-093" .hand
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, bf2) ← putBf s2 s.me "SFD-216"
+  let r ← activate s3 s.me v 0 [s.bf0] ⟨4, [.body]⟩
+  return (r.zone .battlefieldZone).any (fun o => r.isCard "SFD-093" o &&
+      (r.obj? o).any (·.loc == some s.bf0)) &&
+    (activate s3 s.me v 0 [bf2] ⟨4, [.body]⟩).isNone
+
+-- Lucian, Gunslinger (SFD-028): when it attacks, damage equal to its Assault to an enemy unit here
+#guard tsf fun s => do
+  let (s1, l) ← putAt s s.me "SFD-028" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let boosted := s2.modObj l (fun o => { o with tempKws := [(⟨.assault, .amount 2⟩, .turn)] })
+  let a ← fire s2 [.combatStarted s.bf0 s.me]
+  let b ← fire boosted [.combatStarted s.bf0 s.me]
+  let d ← fire s2 [.combatStarted s.bf0 s.you]
+  return a.dmg e == some 1 && b.dmg e == some 3 && d.dmg e == some 0
+
+-- Drag Under (SFD-164): kill a unit at a battlefield
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-164" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, v) ← put s2 s.you "OGN-001" .base
+  let r ← play s3 s.me c [u]
+  return (r.obj? u).isNone && (play s3 s.me c [v]).isNone
+
+-- (review) Hard Bargain: the opponent's spell only (not one's own); a Repeat does not ask again
+-- once the spell is gone; a spell that left the Chain is not asked about
+#guard tsf fun s => do
+  let (s1, sp) ← onChain s s.you "OGN-004"
+  let (s2, mine) ← onChain s1 s.me "OGN-004"
+  let (s3, hb) ← put s2 s.me "SFD-136" .hand
+  let e ← effectOf "SFD-136"
+  let body := e.body
+  let twice : Effect := .seq (.cons body (.cons body .nil))
+  let r ← runBody (s3.fund s.you 5) s.me hb [sp] twice { fromEnd := some 2 }
+  let after : Effect := .seq (.cons (.prim (.counter (.slot 0))) (.cons body .nil))
+  let gone ← runBody (s3.fund s.you 5) s.me hb [sp] after
+  return (r.poolOf s.you).energy == 5 && (r.zone .chain).length == 1 &&
+    (gone.poolOf s.you).energy == 5 && targetsOk s3 s.me hb e.choices [sp] &&
+    !targetsOk s3 s.me hb e.choices [mine]
+
+-- (review) Not So Fast counters the spell; one that chooses nothing of the player is left alone
+#guard tsf fun s => do
+  let (s1, mine) ← put s s.me "OGN-051" .base
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let (s3, nsf) ← put s2 s.me "SFD-045" .hand
+  let (s4, gear) ← put s3 s.me "SFD-042" .base
+  let e ← effectOf "SFD-045"
+  let aimed := s4.modObj sp (fun o => { o with targets := [mine] })
+  let aimedAtGear := s4.modObj sp (fun o => { o with targets := [gear] })
+  let r ← runBody aimed s.me nsf [sp] e.body
+  return (r.zone .chain).isEmpty && targetsOk aimedAtGear s.me nsf e.choices [sp] &&
+    !targetsOk s4 s.me nsf e.choices [sp]
+
+-- (review) Jaull-Fish: never below 0; Drag Under can kill a friendly unit; Lucian hits one enemy
+-- unit here, and nothing at a base or at another battlefield
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-103" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .base
+  let (s3, _) ← put s2 s.me "OGN-001" .base
+  let (s4, _) ← put s3 s.me "OGN-001" .base
+  let (s5, _) ← put s4 s.me "OGN-001" .base
+  return s5.energyCost? s.me j == some 0
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-164" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
+  let r ← play s2 s.me c [u]
+  return (r.obj? u).isNone
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-028" s.bf0
+  let (s2, near) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, base) ← put s2 s.you "OGN-001" .base
+  let (s4, mine) ← putAt s3 s.me "OGN-001" s.bf0
+  let r ← fire s4 [.combatStarted s.bf0 s.me]
+  return r.dmg near == some 1 && r.dmg base == some 0 && r.dmg mine == some 0
+
 end RiftboundTest
