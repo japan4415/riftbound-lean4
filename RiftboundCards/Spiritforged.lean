@@ -694,8 +694,17 @@ def SFD_024.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rell, Magnetic: the effect is not written yet. -/
-def SFD_024 : CardDef := SFD_024.meta
+/-- Rell, Magnetic. -/
+def SFD_024 : CardDef :=
+  { SFD_024.meta with
+
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.may (.seqOf
+        [.prim (.playReduced (Selector.one .friendly .inHand
+            [.tag ⟨"Equipment"⟩, .cost .le (.const 2)]) (.const 99) none),
+         .prim (.attach (Selector.all .friendly .atBase
+            [.tag ⟨"Equipment"⟩, .playedThisTurn, .not .isAttached]) .self)]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-025
 /--

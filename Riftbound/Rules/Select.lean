@@ -311,6 +311,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         mods.any (fun m => match m with | .cantPlayer _ .play .here _ => true | _ => false)
       | _ => false))))
   | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
+  | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)

@@ -2925,4 +2925,22 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     elsewhere &&
     !isIn saved (.player s.me .trash) "OGN-006"
 
+-- Rell, Magnetic (SFD-024): when I attack, I may play an Equipment costing 2 or less, free, and
+-- attach it to me
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, rell) ← putAt s1 s.me "SFD-024" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, _) ← put s3 s.me "SFD-042" .hand
+  let (s5, _) ← put s4 s.me "SFD-030" .hand
+  let a ← fire s5 [.combatStarted bf s.me]
+  let b ← fire s5 [.combatStarted bf s.me] { yes := false }
+  let c ← fire s5 [.combatStarted bf s.you]
+  let withRell (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .base)).any (fun o => (x.cardDef? o).any (·.id == cid code) &&
+      (x.obj? o).any (·.attached == some rell))
+  return withRell a "SFD-042" && !withRell a "SFD-030" && a.handN s.me == s5.handN s.me - 1 &&
+    !withRell b "SFD-042" && b.handN s.me == s5.handN s.me && !withRell c "SFD-042" &&
+    (a.poolOf s.me).energy == (s5.poolOf s.me).energy
+
 end RiftboundTest

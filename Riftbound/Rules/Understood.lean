@@ -130,6 +130,7 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .playedThisTurn => true
   | .inHandZone => true
   | .unitsPlayable => true
   | .attackedByMine => true
