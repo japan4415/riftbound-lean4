@@ -537,6 +537,11 @@ theorem enterBase_safe (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool)
   · exact h1.trans (setExhausted_safe true _ _)
   · exact h1
 
+/-- The facts of playing the card for free: nothing was paid, so no additional cost was (Legion and
+the turn are as for any play). -/
+def GameState.freeMark (s : GameState) (p : PlayerId) (c : ObjId) : PlayMark :=
+  { s.playMark p c ⟨0, []⟩ with paid := false }
+
 /-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,
 exhausted if it is a Unit that does not enter ready, and the play is noted, so that what waits for a
 card to be played fires. A card that is in the Base already is played again where it is. -/
@@ -547,11 +552,11 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
     if !(d.hasType .unit || d.hasType .gear) then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
-      (enterBase p d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
+      (enterBase p d (s.freeMark p id) (s.readyNow p id d) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
     | none =>
       if s.locate id = some (.player p .base) then
-        (enterBase p d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) s id, [Event.played p id])
+        (enterBase p d (s.freeMark p id) (s.readyNow p id d) s id, [Event.played p id])
       else (s, [])
   | none => (s, [])
 
@@ -1579,9 +1584,10 @@ theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   · exact Safe.refl s
 
 /-- Play a Spell for free (CR 349): it goes on the Chain as a new object, played by `p`, and its
-effect is done at once, as it would resolve; then it goes to the Trash. Only a Spell whose effect
-makes no choice is played this way; the Chain is not opened for answers (design.md §7). `none` if
-it is not such a Spell. -/
+effect is done at once, as it would resolve; then it goes to its owner's Trash, and the Cleanup
+follows. The Chain is not opened again, so an item that is being resolved is not resolved twice.
+Only a Spell whose effect makes no choice is played this way; the Chain is not opened for answers
+(design.md §7). `none` if it is not such a Spell. -/
 def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
     (es : EffectList) : Option (GameState × List Frame × List Event) :=
   match sel.eval s p src env with
@@ -1591,8 +1597,9 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
       if d.hasType .spell && e.choices.isEmpty then
         (moveObj s id .chain).map (fun r =>
           ((r.1.modObj r.2 (fun o =>
-              { Object.withPlay [] (s.playMark p id ⟨0, []⟩) o with controller := p })),
-            [.run p r.2 {} (.cons e.body .nil), .finishSpell r.2, .run p src env es],
+              { Object.withPlay [] (s.freeMark p id) o with controller := p })),
+            [.run p r.2 {} (.cons e.body (.cons (.prim (.bin .self)) .nil)), .cleanup,
+              .run p src env es],
             [Event.moved id r.2 .chain, Event.played p r.2]))
       else none
     | none => none

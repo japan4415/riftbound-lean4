@@ -4349,4 +4349,28 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (a0.mightOf stu).getD 0 == ((s5.mightOf stu).getD 0) + 1 &&
     c.countIn s.me .hand "OGN-136" == 0 && c.countIn s.me .base "OGN-136" == 1
 
+-- Playing a spell for free, more: inside an item that is being resolved the Chain is not opened
+-- again (the outer item is not resolved twice); a free play pays nothing, so it is not "paid"; a
+-- spell of the opponent goes to its owner's Trash
+#guard t fun s => do
+  let (s0, o0) ← put (s.rich s.me) s.me "OGN-129" .hand
+  let s1 ← match step 100 s0 ⟨.player s.me, .playCard o0 (payOf s0 o0) []⟩ with
+    | .ok (y, _) => some y
+    | .error _ => none
+  let outer ← (s1.zone .chain).head?
+  let (s2, inner) ← put s1 s.me "OGN-129" .hand
+  let (s3, other) ← put s2 s.you "OGN-129" .hand
+  let play (x : GameState) (c : ObjId) (rest : List Frame) : Option GameState :=
+    let x2 := { x with pending := [.run x.me outer { slots := [.obj c] } (.cons (.prim
+      (.play (Selector.one .any .inHand [.sameAs (.slot 0)]))) .nil)] ++ rest }
+    match advance 100 x2 [] with
+    | .ok (y, _) => some (settleChain {} 12 y)
+    | .error _ => none
+  let nested ← play s3 inner [.finishSpell outer]
+  let theirs ← play s3 other []
+  return nested.zone .chain == [] && nested.pending.isEmpty &&
+    nested.countIn s.me .trash "OGN-129" == 2 && nested.handN s.me == s3.handN s.me - 1 + 1 &&
+    (nested.zone (.player s.me .trash)).all (fun i => (nested.obj? i).all (!·.paid)) &&
+    theirs.countIn s.you .trash "OGN-129" == 1 && theirs.countIn s.me .trash "OGN-129" == 0
+
 end RiftboundTest
