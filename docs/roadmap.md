@@ -1816,3 +1816,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Irelia の Power の割引**: コストの、どの Power の記号を落としてもよい（`dropPowers`）。先頭の記号だけ、ではない。
 - **残っている近似**: Mighty の判定（`Filter.mighty`、`Filter.might`）は、パッシブの Might 増加を読まない（`Select` が `Passive` の下の層）。Emperor's Divide は、Battlefield を選び、そこの味方を 1 体ずつ「しますか」と聞く。Rocket Barrage の choose one は、解決のときに選ぶ。Janna は、Reaction で Battlefield へ遊べない。Irelia の Energy の割引は、`effCost` の下限を見ない。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 29 — 残っていた近似を、さらに直した
+
+- **Irelia の割引**: Energy の割引は、コストがすでに持つ下限（Vex など。`costMinusMin` の下限）を下回らない（`GameState.cutFloor`、`Cost.cutOptions` の `floor`）。Power を落とす割引で、記号の並びだけが違う選択肢は、1 つにまとめる（`canonPower`）。
+- **Rocket Barrage（SFD-077）の choose one**: 遊ぶときに、対象（ベースのユニット、または Gear）を選ぶことで、モードが決まる（`Filter.either`、`Filter.both`）。解決のときに選ぶ形をやめた。近似: Repeat の 2 回目に、別の選択をすることは、できない（同じ対象に 2 回働く）。
+- **Janna（SFD-053）**: 自分が支配する Battlefield へ、Reaction の速さで遊べる（`playToBf [.controlled]`。Rengar と同じ仕組み）。
+- **Mighty と Might の判定が、パッシブの Might 増加を読む**: `Env.passMight`（オブジェクトごとの、パッシブが足す Might の表）を、`Filter.might` / `Filter.mighty` / `Filter.lethal` が読む。表は `GameState.mightTable`（`Passive.lean`）で、効果を 1 手進めるとき（`Frames.lean` の `.run`）と、対象を選ぶとき（`targetsOk` / `targetTuples` の `pm`）と、費用の減額（`costCuts`）で、その時点の状態から作る。Mighty を数える Show of Strength、Jaull-Fish、Rumble が、Draven のような、パッシブで Might が増えるユニットを数える。パッシブ自身が選ぶ・数えるときは、パッシブなしの Might を読む（パッシブが互いに依存しないための、従来どおりの決め）。印刷されたパッシブの Might 変更がどのカードにもないときは、表は空で、計算しない（速さのため）。近似: 手札のカードを選ぶ・遊べるかの判定（`Play.lean` の `unitsPlayable` など、環境を持たない判定）は、表を渡さない。
+- **残っている近似**: Emperor's Divide は、Battlefield を選び、そこの味方を 1 体ずつ「しますか」と聞く（「選んだとき」の誘発が、自分のユニットでは働かない）。
+

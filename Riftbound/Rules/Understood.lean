@@ -127,6 +127,8 @@ def Filter.understood : Filter → Bool
   | .stunned => true
   | .buffed => true
   | .not f => Filter.understood f
+  | .either a b => Filter.understood a && Filter.understood b
+  | .both a b => Filter.understood a && Filter.understood b
   | .controlled => true
   | .controlledByOpponent => true
   | .movedFromHere => true

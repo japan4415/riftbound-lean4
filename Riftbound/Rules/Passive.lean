@@ -255,6 +255,26 @@ def mightNow (s : GameState) (id : ObjId) : Option Int :=
       (fun (t : Int) (c : Nat × Nat) =>
         if t ≤ (c.2 : Int) then t else max (c.2 : Int) (t - (c.1 : Int))) total)
 
+/-- What the passive abilities do to the Might of each object in play, beyond its printed Might,
+the lasting changes, the buff and the Equipment: the table the filters read (`Env.passMight`). It
+counts the passive changes and their floors (`mightNow`). -/
+def mightTable (s : GameState) : List (ObjId × Int) :=
+  -- nothing to compute unless a card of a player prints a passive change of Might
+  if !(s.passiveSources.any (fun g => (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
+      match ab with
+      | Ability.passive _ mods =>
+        mods.any (fun m => match m with
+          | .mightPlus .. | .mightMinus .. | .mightMinusMin .. => true
+          | _ => false)
+      | _ => false)))) then []
+  else
+    s.inPlay.filterMap (fun id =>
+      match s.mightNow id, s.mightOf id with
+      | some now, some base =>
+        let d := now - (base + s.equipBonus id + s.buffBonus id)
+        if d == 0 then none else some (id, d)
+      | _, _ => none)
+
 end GameState
 
 /-- The value of an amount in an effect. `Amount.evalS0` reads everything but the Might of objects,

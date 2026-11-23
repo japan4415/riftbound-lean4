@@ -141,6 +141,10 @@ inductive Filter where
   | notSelf
   /-- Does not have the property. -/
   | not (f : Filter)
+  /-- Satisfies one of the two filters. -/
+  | either (a b : Filter)
+  /-- Satisfies both filters. -/
+  | both (a b : Filter)
   /-- Is a card hidden face down (CR 811). -/
   | hidden
   /-- Is among the first `n` cards of the Main Deck or of the Rune Deck of its owner. -/

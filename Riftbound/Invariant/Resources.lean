@@ -108,7 +108,7 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      b ∈ cost.cutOptions (s.chooseCut p c targets) ∧ c' ∈ s.playCostsOf p c d b ∧
+      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.playCostsOf p c d b ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp

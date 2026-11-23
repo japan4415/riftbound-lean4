@@ -46,7 +46,7 @@ def condOkEnv (s : GameState) (src : ObjId) (who : PlayerId) (env : Env) : Condi
 
 /-- The same, where nothing was chosen. -/
 def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :=
-  condOkEnv s src who {}
+  condOkEnv s src who (Env.empty.withMight s.mightTable)
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
@@ -114,7 +114,7 @@ def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (wh
     Selector → Bool
   | .pick .all side .anywhere fs =>
     (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
-      (fs.holds s src {} subj == some true)
+      (fs.holds s src (Env.empty.withMight s.mightTable) subj == some true)
   | _ => false
 
 /-- The abilities of the objects in play and of the Legends that watch for the object `subj` of the
@@ -482,12 +482,12 @@ def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
 /-- Every legal pick for the ability's choices that the Pool of its controller can pay the Deflect
 of (CR 355, 809). -/
 def trigTuples (s : GameState) (t : PendTrigger) : List (List ObjId) :=
-  (targetTuples s t.controller t.source (trigChoices s t)).filter
+  (targetTuples s t.controller t.source s.mightTable (trigChoices s t)).filter
     (fun ts => s.deflectOk t.controller (s.poolOf t.controller) ts)
 
 /-- The picks listed are exactly the legal ones that the Pool can pay for. -/
 theorem mem_trigTuples (s : GameState) (t : PendTrigger) (ts : List ObjId) :
-    ts ∈ trigTuples s t ↔ (targetsOk s t.controller t.source (trigChoices s t) ts &&
+    ts ∈ trigTuples s t ↔ (targetsOk s t.controller t.source s.mightTable (trigChoices s t) ts &&
       s.deflectOk t.controller (s.poolOf t.controller) ts) = true := by
   unfold trigTuples
   rw [List.mem_filter, mem_targetTuples]
@@ -496,7 +496,7 @@ theorem mem_trigTuples (s : GameState) (t : PendTrigger) (ts : List ObjId) :
 /-- The objects are a legal pick for the ability's choices, and the Pool pays the Deflect of them,
 or the ability has no such pick and nothing is chosen (CR 355, 809). -/
 def trigLegal (s : GameState) (t : PendTrigger) (ts : List ObjId) : Bool :=
-  (targetsOk s t.controller t.source (trigChoices s t) ts &&
+  (targetsOk s t.controller t.source s.mightTable (trigChoices s t) ts &&
       s.deflectOk t.controller (s.poolOf t.controller) ts) ||
     (ts.isEmpty && (trigTuples s t).isEmpty)
 

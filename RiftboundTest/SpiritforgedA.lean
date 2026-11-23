@@ -248,6 +248,11 @@ meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat
   let s3 ← play s2 s.me c [u]
   return s3.dmg u == some 2
 
+/-- The player has `n` points. -/
+meta def _root_.Riftbound.GameState.setPoints (s : GameState) (p : PlayerId) (n : Nat) :
+    GameState :=
+  { s with points := s.points.insert p.n n }
+
 /-- The player keeps the card `c` and the first `n` other cards of their hand. -/
 meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c : ObjId) (n : Nat) :
     GameState :=
@@ -454,6 +459,45 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s5, _) ← put s4 s.you "OGN-001" .base
   let r ← play s5 s.me c
   return r.handN s.me == s5.handN s.me - 1 + 2
+
+-- Show of Strength reads the Might the passive abilities give: Draven (3 Might, +1 for each point
+-- of his player) with a buff has 5 Might with one point (Mighty), but 4 with none
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-106" .hand
+  let (s2, d) ← put s1 s.me "OGN-028" .base
+  let none_ := (s2.buff d).setPoints s.me 0
+  let one := (s2.buff d).setPoints s.me 1
+  let a ← play one s.me c
+  let b ← play none_ s.me c
+  return one.mightNow d == some 5 && none_.mightNow d == some 4 &&
+    a.handN s.me == one.handN s.me - 1 + 1 && b.handN s.me == none_.handN s.me - 1
+
+-- Jaull-Fish (SFD-103) counts a unit that is Mighty by a passive ability (Draven with a point)
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-103" .hand
+  let (s2, d) ← put s1 s.me "OGN-028" .base
+  let base := (s2.buff d).setPoints s.me 0
+  let mighty := (s2.buff d).setPoints s.me 1
+  let cost (x : GameState) : Option Nat := ((x.cardDef? j).bind (x.effCost s.me j)).map (·.energy)
+  return (cost mighty).map (· + 2) == cost base && cost base == some 7
+
+-- The filters read the Might the passive abilities give, with their floors: Leona, Zealot (OGN-079)
+-- takes 8 Might from a stunned enemy unit here, to a minimum of 1
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "OGN-079" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, f) ← putAt s2 s.you "OGN-001" s.bf0
+  let st := s3.modObj e (fun o => { o with stunned := true })
+  let env : Env := Env.empty.withMight st.mightTable
+  let small (x : GameState) (id : ObjId) : Bool :=
+    Filter.holds x id env id (.might .le (.const 3)) == some true
+  let lethal (x : GameState) (id : ObjId) : Bool :=
+    Filter.holds x id env id .lethal == some true
+  let hurt := st.modObj e (fun o => { o with damage := 1 })
+  let env2 : Env := Env.empty.withMight hurt.mightTable
+  return st.mightNow e == some 1 && st.mightNow f == s3.mightNow f && small st e && !small st f &&
+    Filter.holds hurt e env2 e .lethal == some true &&
+    Filter.holds hurt f env2 f .lethal == some false && !lethal st e
 
 -- Marching Orders (SFD-114): a friendly unit and an enemy unit at a battlefield deal damage
 -- equal to their Might to each other
@@ -1016,10 +1060,11 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
   let (s4, w) ← putAt s3 s.you "OGN-001" s.bf0
-  let a ← play s4 s.me c [] { fromEnd := some 1 }
-  let b ← play s4 s.me c [] { fromEnd := some 2 }
+  let a ← play s4 s.me c [u]
+  let b ← play s4 s.me c [g]
   return a.dmg u == some 4 && (a.obj? g).isSome && a.dmg w == some 0 &&
-    (b.obj? g).isNone && b.dmg u == some 0
+    (b.obj? g).isNone && b.dmg u == some 0 && (play s4 s.me c [w]).isNone &&
+    (play s4 s.me c []).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
 -- from the hand for nothing
@@ -1877,7 +1922,7 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let on (st : GameState) (sp' : ObjId) (t : ObjId) :=
     let st' := st.modObj sp' (fun o => { o with targets := [t] })
     match effectOf "SFD-045" with
-    | some e => targetsOk st' s.me nsf e.choices [sp']
+    | some e => targetsOk st' s.me nsf st'.mightTable e.choices [sp']
     | none => false
   return on s4 sp mine && !on s4 sp other
 
@@ -1931,8 +1976,8 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let after : Effect := .seq (.cons (.prim (.counter (.slot 0))) (.cons body .nil))
   let gone ← runBody (s3.fund s.you 5) s.me hb [sp] after
   return (r.poolOf s.you).energy == 5 && (r.zone .chain).length == 1 &&
-    (gone.poolOf s.you).energy == 5 && targetsOk s3 s.me hb e.choices [sp] &&
-    !targetsOk s3 s.me hb e.choices [mine]
+    (gone.poolOf s.you).energy == 5 && targetsOk s3 s.me hb s3.mightTable e.choices [sp] &&
+    !targetsOk s3 s.me hb s3.mightTable e.choices [mine]
 
 -- (review) Not So Fast counters the spell; one that chooses nothing of the player is left alone
 #guard tsf fun s => do
@@ -1944,8 +1989,8 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let aimed := s4.modObj sp (fun o => { o with targets := [mine] })
   let aimedAtGear := s4.modObj sp (fun o => { o with targets := [gear] })
   let r ← runBody aimed s.me nsf [sp] e.body
-  return (r.zone .chain).isEmpty && targetsOk aimedAtGear s.me nsf e.choices [sp] &&
-    !targetsOk s4 s.me nsf e.choices [sp]
+  return (r.zone .chain).isEmpty && targetsOk aimedAtGear s.me nsf aimedAtGear.mightTable e.choices [sp] &&
+    !targetsOk s4 s.me nsf s4.mightTable e.choices [sp]
 
 -- (review) Jaull-Fish: never below 0; Drag Under can kill a friendly unit; Lucian hits one enemy
 -- unit here, and nothing at a base or at another battlefield
@@ -2503,8 +2548,8 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s2, v) ← put s1 s.me "OGN-051" .base
   let ch : Choice := .targetOf .one .any .anywhere [.ofType .unit]
   let cs := [ch]
-  return !targetsOk s2 s.you v cs [u] && targetsOk s2 s.you v cs [v] &&
-    targetsOk s2 s.me v cs [u] &&
+  return !targetsOk s2 s.you v s2.mightTable cs [u] && targetsOk s2 s.you v s2.mightTable cs [v] &&
+    targetsOk s2 s.me v s2.mightTable cs [u] &&
     ((s2.pickCandidates s.you v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).all
       (· != u) &&
     ((s2.pickCandidates s.me v {} .any .anywhere (FilterList.ofList [.ofType .unit])).getD []).any
@@ -2554,6 +2599,20 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let a ← activate atk s.me g 3 [bf] (payOf atk g)
   return unitAt a "SFD-025" bf && (activate def_ s.me g 3 [bf] (payOf def_ g)).isNone &&
     (activate s2 s.me g 3 [bf] (payOf s2 g)).isNone
+
+-- Janna, Savior (SFD-053): may be played to a battlefield its player controls, as a Reaction
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, j) ← put s1 s.me "SFD-053" .hand
+  let (s3, foe) ← putAt s2 s.you "OGN-051" bf
+  let mine := s3.control s.me bf
+  let a ← activate mine s.me j 4 [bf] (payOf mine j)
+  let d ← s3.cardDef? j
+  let isReaction := match d.fullAbilities[4]? with
+    | some (.activated _ .reaction _ _) => true
+    | _ => false
+  return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && isReaction &&
+    (activate s3 s.me j 4 [bf] (payOf s3 j)).isNone
 
 -- Vex, Cheerless (SFD-146): in combat, my spells cost 1 less (not below 1), enemy spells 1 more
 #guard tsf fun s => do
@@ -3454,11 +3513,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
     !ok (s3.buff udyr) copyIdx && copyIdx > 0
 
--- Irelia: a Power cut may leave out any symbol of the cost, not only the first
+-- Irelia: a Power cut may leave out any symbol of the cost, not only the first; the same symbols in
+-- another order are one cost; the Energy does not go below a floor the cost already has
 #guard
   let c : Cost := ⟨2, [.domain .fury, .domain .calm]⟩
   let o := c.cutOptions 1
-  o.contains ⟨1, [.domain .fury, .domain .calm]⟩ && o.contains ⟨2, [.domain .calm]⟩ &&
-    o.contains ⟨2, [.domain .fury]⟩ && !o.contains c && o.length == 3
+  let has (e : Nat) (l : List PowerSym) : Bool :=
+    o.any (fun x => x.energy == e && canonPower x.power == canonPower l)
+  has 1 [.domain .fury, .domain .calm] && has 2 [.domain .calm] && has 2 [.domain .fury] &&
+    !o.contains c && o.length == 3 && o.all (fun x => x.power.length ≤ 2) &&
+    ((⟨2, [.domain .fury, .domain .calm, .domain .fury]⟩ : Cost).cutOptions 1).length == 3 &&
+    (⟨1, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨1, []⟩] &&
+    (⟨2, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨2, []⟩, ⟨1, [.domain .fury]⟩]
 
 end RiftboundTest
