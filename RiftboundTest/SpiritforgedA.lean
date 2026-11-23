@@ -2830,6 +2830,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let theirs := s4.control s.you bf
   let played ← play mine s.me g
   return cost s4 g == (cost mine g).map (· + 1) && cost mine g == (cost theirs g).map (· - 1) &&
-    cost mine u == cost s4 u && cost played h == cost s4 h && cost mine h == (cost s4 h).map (· - 1)
+    cost mine u == cost s4 u && cost played h == cost s4 h &&
+    cost mine h == (cost s4 h).map (· - 1)
 
 end RiftboundTest

@@ -625,6 +625,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **ダメージの防止**: `TurnEffect.damagePrevented`（ユニットに付く）。そのターンの、そのユニットへの最初のダメージ（0 でないもの）は、防がれ、記録は消える（`GameState.shielded`、`useShield`、`dealObj`）。戦闘のダメージも、`dealObj` を通る。
 - **Battlefield の費用の変更**: Battlefield のパッシブは、それを支配しているプレイヤーのために働く（`GameState.sourceOwner`。だれも支配していなければ、働かない）。
 - **書いたカード**: SFD-055（Needlessly Large Yordle。hold の点 1 つにつき Energy を 2 安く。**Power の Calm を安くする部分は、読まない**）、120（Sivir, Ambitious）、194（Counter Strike）、213（Ornn's Forge。最初の Token でない Gear は 1 安い）。
+- **近似（レビュー）**: `heldPoints` は、hold した Battlefield の数で、得点が禁止された Battlefield も数える。余りのダメージの記録は、「このターン最後の戦闘」で、戦闘のない conquer（空の Battlefield への移動）では古い値が残る（Sivir は、その量で撃つ）。Battlefield のパッシブの『支配しているプレイヤー』は、費用の変更だけが読み、他の変更（`entersReady` など）は、まだ所有者で読む。Counter Strike は、ダメージを防がれない（`noDamage`）ユニットには、盾を使わない。
 - **近似**: Needlessly Large Yordle の費用は、Power の Calm の減額を動かさない（高くなる側）。Counter Strike は Reaction だが、Chain に呼応して遊ぶことは、既存の近似と同じ。Ornn's Forge の「最初」は、このターンに遊んだ Gear の数が 0 のとき（Token の Gear は、遊んだ数に入らない）。
 - **カードの数**: 動く Spiritforged は 195 枚から 199 枚。
 
