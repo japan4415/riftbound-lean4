@@ -4321,4 +4321,32 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (legalActions x).contains ⟨.player s.me, .manaAbility hd daughterIdx⟩
   return withHook.isSome && withoutHook.isNone && manaOk l2 && !manaOk n1
 
+-- Playing a spell for free (the effect `play`): a spell with no choice goes on the Chain as a new
+-- object, does its effect, and goes to the Trash; it is a play (Legion); a spell with a choice is
+-- not played; a unit is still played to the Base
+#guard t fun s => do
+  let (s1, conf) ← put s s.me "OGN-129" .hand
+  let (s2, veng) ← put s1 s.me "OGN-229" .hand
+  let (s3, unit) ← put s2 s.me "OGN-136" .hand
+  let (s4, src) ← put s3 s.me "OGN-129" .trash
+  let playIt (x : GameState) (c : ObjId) : Option GameState :=
+    let x2 := { x with pending := [.run x.me src { slots := [.obj c] } (.cons (.prim
+      (.play (Selector.one .friendly .inHand [.sameAs (.slot 0)]))) .nil)] }
+    match advance 100 x2 [] with
+    | .ok (y, _) => some (settleChain {} 12 y)
+    | .error _ => none
+  let (s5, stu) ← put s4 s.me "OGN-103" .base
+  let a0 ← playIt s5 conf
+  let a ← playIt s4 conf
+  let b ← playIt s4 veng
+  let c ← playIt s4 unit
+  return a.countIn s.me .hand "OGN-129" == 0 && a.countIn s.me .trash "OGN-129" == 2 &&
+    a.handN s.me == s4.handN s.me - 1 + 1 && a.zone .chain == [] &&
+    a.playedBefore s.me &&
+    b.countIn s.me .hand "OGN-229" == 1 && b.countIn s.me .trash "OGN-229" == 0 &&
+    !(s4.playedBefore s.me) &&
+    -- the play is seen by what waits for a spell to be played (Ravenbloom Student: +1 Might)
+    (a0.mightOf stu).getD 0 == ((s5.mightOf stu).getD 0) + 1 &&
+    c.countIn s.me .hand "OGN-136" == 0 && c.countIn s.me .base "OGN-136" == 1
+
 end RiftboundTest

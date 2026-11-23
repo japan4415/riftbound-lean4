@@ -543,7 +543,7 @@ card to be played fires. A card that is in the Base already is played again wher
 def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.cardDef? id with
   | some d =>
-    -- only a Unit or a Gear enters the Base; a Spell would need the Chain
+    -- only a Unit or a Gear enters the Base; a Spell is played by `playSpellStep`
     if !(d.hasType .unit || d.hasType .gear) then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
@@ -1578,6 +1578,59 @@ theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Play a Spell for free (CR 349): it goes on the Chain as a new object, played by `p`, and its
+effect is done at once, as it would resolve; then it goes to the Trash. Only a Spell whose effect
+makes no choice is played this way; the Chain is not opened for answers (design.md §7). `none` if
+it is not such a Spell. -/
+def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
+    (es : EffectList) : Option (GameState × List Frame × List Event) :=
+  match sel.eval s p src env with
+  | some (id :: _) =>
+    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    | some (d, e) =>
+      if d.hasType .spell && e.choices.isEmpty then
+        (moveObj s id .chain).map (fun r =>
+          ((r.1.modObj r.2 (fun o =>
+              { Object.withPlay [] (s.playMark p id ⟨0, []⟩) o with controller := p })),
+            [.run p r.2 {} (.cons e.body .nil), .finishSpell r.2, .run p src env es],
+            [Event.moved id r.2 .chain, Event.played p r.2]))
+      else none
+    | none => none
+  | _ => none
+
+/-- Playing a Spell for free is a safe change of the state. -/
+theorem playSpellStep_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {es : EffectList} {r : GameState × List Frame × List Event}
+    (h : playSpellStep s p src env sel es = some r) : Safe s r.1 := by
+  unfold playSpellStep at h
+  split at h
+  · split at h
+    · split at h
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
+        exact (Safe.moveObj hm).trans
+          (Safe.modObj s2 id' (fun _ => rfl) (fun _ => rfl))
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- The frames that playing a Spell for free leaves are frames of the Spell or of the rest. -/
+theorem playSpellStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {es : EffectList} {r : GameState × List Frame × List Event}
+    (h : playSpellStep s p src env sel es = some r) {f : Frame} (hf : f ∈ r.2.1) :
+    f.isPlay = true := by
+  unfold playSpellStep at h
+  split at h
+  · split at h
+    · split at h
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+        rcases hf with rfl | rfl | rfl <;> rfl
+      · simp at h
+    · simp at h
+  · simp at h
+
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -1622,6 +1675,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es
+  | .prim (.play sel) =>
+    match playSpellStep s p src env sel es with
+    | some r => r
+    | none =>
+      match applyPrim s p src env (.play sel) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
   | .prim (.discard sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
@@ -1640,9 +1700,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
 theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : Safe s (runEffect1 s p src env e es).1 := by
   unfold runEffect1
-  split <;> (try split) <;> first
+  split <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
     | exact castInlineStep_safe s p src env _ es
+    | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
 

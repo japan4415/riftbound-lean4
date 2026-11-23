@@ -712,6 +712,9 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   unfold runEffect1 castInlineStep at h
   split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
     (try split at h) <;>
+    first
+    | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
+    | skip <;>
     simp only [List.mem_cons, List.mem_append, List.mem_map,
       List.not_mem_nil, or_false] at h <;>
     first
