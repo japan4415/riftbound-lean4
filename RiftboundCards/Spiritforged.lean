@@ -17,6 +17,15 @@ namespace RiftboundCards.Spiritforged
 
 open Riftbound
 
+/-- One unit of "pay any amount": it may be paid for, and then it is noted on the object. -/
+def payUnit (c : Cost) : Effect :=
+  .ifThen (.canPay c) (.may (.seqOf [.prim (.pay c), .prim (.markOn .self .unitPaid)])) .nop
+
+/-- Pay any amount of `c` (one unit at a time, up to 12), then do `finish`, which reads how much was
+paid: `.notes .unitPaid`. -/
+def payAny (c : Cost) (finish : Effect) : Effect :=
+  .seqOf (List.replicate 12 (payUnit c) ++ [finish])
+
 -- BEGIN GENERATED SFD-001
 /--
 **Against the Odds** — Spell · Fury · Energy 2
@@ -2372,8 +2381,14 @@ def SFD_083.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Hextech Anomaly: the effect is not written yet. -/
-def SFD_083 : CardDef := SFD_083.meta
+/-- Hextech Anomaly. -/
+def SFD_083 : CardDef :=
+  { SFD_083.meta with
+
+    abilities := [.activated [.exhaustSelf] .reaction
+      (EffectDef.of [] (payAny ⟨0, [.any]⟩ (.prim (.addEnergy .you (.notes .unitPaid) none))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-084
 /--
@@ -3334,8 +3349,14 @@ def SFD_117.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ancient Henge: the effect is not written yet. -/
-def SFD_117 : CardDef := SFD_117.meta
+/-- Ancient Henge. -/
+def SFD_117 : CardDef :=
+  { SFD_117.meta with
+
+    abilities := [.activated [.exhaustSelf] .reaction
+      (EffectDef.of [] (payAny ⟨1, []⟩ (.prim (.addPower .you (.notes .unitPaid) none none))))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-118
 /--
@@ -5139,8 +5160,16 @@ def SFD_180.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fiora, Worthy: the effect is not written yet. -/
-def SFD_180 : CardDef := SFD_180.meta
+/-- Fiora, Worthy. -/
+def SFD_180 : CardDef :=
+  { SFD_180.meta with
+
+    abilities := [.triggered
+      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.ifThen (.canPay ⟨0, [.domain .order]⟩)
+        (.may (.seqOf [.prim (.pay ⟨0, [.domain .order]⟩), .prim (.ready (.slot 0))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-181
 /--
@@ -5380,8 +5409,13 @@ def SFD_189.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fire Below the Mountain: the effect is not written yet. -/
-def SFD_189 : CardDef := SFD_189.meta
+/-- Fire Below the Mountain. -/
+def SFD_189 : CardDef :=
+  { SFD_189.meta with
+
+    abilities := [.activated [.exhaustSelf] .reaction
+      (EffectDef.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-190
 /--
@@ -5810,8 +5844,16 @@ def SFD_205.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Grand Duelist: the effect is not written yet. -/
-def SFD_205 : CardDef := SFD_205.meta
+/-- Grand Duelist. -/
+def SFD_205 : CardDef :=
+  { SFD_205.meta with
+
+    abilities := [.triggered
+      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.ifThen (.matches .self .ready)
+        (.may (.seqOf [.prim (.exhaust .self), .prim (.channel .you (.const 0) (.const 1))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-206
 /--

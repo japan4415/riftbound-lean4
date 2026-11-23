@@ -610,6 +610,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **書いたカード**: SFD-166（Rally the Troops）、131（Ancient Warmonger。『Assault は、ここにいる敵ユニットの数』。`StaticMod.assaultCount`。Assault は戦闘のダメージだけを増やし、Might は増やさない）、065（Forecaster。味方の Mech を遊んだとき Vision。Forecaster 自身も数える）、054（Jax, Unmatched。味方の Equipment（印刷の Quick-Draw を持たないもの）を遊んだとき、味方のユニットに付ける。手札にある間の Quick-Draw の代わり。手札以外から遊んだときも付ける。Reaction の速さは、無い）、112（Kato the Arm。動いたとき、Deflect と自分の Might を、味方のユニットに、このターンだけ与える。Kato が持つ印刷のキーワード Deflect だけを写す近似）。
 - **カードの数**: 動く Spiritforged は 185 枚から 190 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 17 — Mighty になったとき、好きな量を払う Add
+
+- **Mighty になったとき**: `TriggerEvent.becomeMighty` は、バフ（`Event.buffed`）か、装備品を付けた（`Event.attached`）ことで、Might が 5 未満から 5 以上になったときに誘発する（`GameState.becameMightyTriggers`: 増えた Might を引いて、5 未満になるかを見る）。永続でない Might の付与（`grant`）、Mighty のまま出てくること、パッシブで Might が増えることは、読まない（近似）。
+- **好きな量を払う**: `payAny`（1 つずつ「払ってもよい」を最大 12 回聞き、払った数を `notes .unitPaid` で読む）。Hextech Anomaly（Power → Energy）と Ancient Henge（Energy → Power）は、Reaction の能力（Chain に載る）で、「Add は応答できない」は、守らない。
+- **書いたカード**: SFD-180（Fiora, Worthy）、205（Grand Duelist）、083（Hextech Anomaly）、117（Ancient Henge）、189（Fire Below the Mountain）。
+- **近似（レビュー）**: 増えた Might は、付ける前後の `equipBonus` / `buffBonus` の差で測る（`buffDelta`、`attachDelta`）。同じ一歩に、バフと装備品が両方あると、2 回誘発しうる。`buffsExtraMight` を後から足して Might が増えても、誘発しない。好きな量を払う Add（Gear）を、同じターンに 2 回使うと、1 回目に払った分が、2 回目の数に残る（`unitPaid` の記録は、ターンごと）。
+- **近似**: Fire Below the Mountain の Add は、「Gear を遊ぶか、Gear の能力を使うときだけ」の制限がない（制限つきの Add は、解釈されない）。
+- **カードの数**: 動く Spiritforged は 190 枚から 195 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。
