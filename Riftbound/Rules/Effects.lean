@@ -520,15 +520,17 @@ def Object.cleared (o : Object) : Object :=
            tempKws := [] }
 
 /-- A card enters the Base as a new object, played. -/
-def enterBase (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :
-    GameState :=
-  let s2 := s.modObj id (fun o => (Object.freshPlay mk o).cleared)
+def enterBase (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState)
+    (id : ObjId) : GameState :=
+  -- the player who plays it controls it, even if the card is another player's (Blind Fury)
+  let s2 := s.modObj id (fun o => { (Object.freshPlay mk o).cleared with controller := p })
   if d.hasType .unit && !rdy then (setExhausted true s2 id).1 else s2
 
 /-- Entering the Base is a safe change. -/
-theorem enterBase_safe (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState) (id : ObjId) :
-    Safe s (enterBase d mk rdy s id) := by
-  have h1 : Safe s (s.modObj id (fun o => (Object.freshPlay mk o).cleared)) :=
+theorem enterBase_safe (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState)
+    (id : ObjId) : Safe s (enterBase p d mk rdy s id) := by
+  have h1 : Safe s (s.modObj id (fun o =>
+      { (Object.freshPlay mk o).cleared with controller := p })) :=
     Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   unfold enterBase
   split
@@ -545,11 +547,11 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
     if !(d.hasType .unit || d.hasType .gear) then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
-      (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
+      (enterBase p d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) r.1 r.2,
         [Event.moved id r.2 (.player p .base), Event.played p r.2])
     | none =>
       if s.locate id = some (.player p .base) then
-        (enterBase d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) s id, [Event.played p id])
+        (enterBase p d (s.playMark p id ⟨0, []⟩) (s.readyNow p id d) s id, [Event.played p id])
       else (s, [])
   | none => (s, [])
 
@@ -561,9 +563,9 @@ theorem playFree_safe (p : PlayerId) (s : GameState) (id : ObjId) : Safe s (play
     · exact Safe.refl s
     · split
       · rename_i d hd r hr
-        exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _)
+        exact (Safe.moveObj hr).trans (enterBase_safe _ _ _ _ _ _)
       · split
-        · exact enterBase_safe _ _ _ _ _
+        · exact enterBase_safe _ _ _ _ _ _
         · exact Safe.refl s
   · exact Safe.refl s
 
