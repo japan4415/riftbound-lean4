@@ -2082,4 +2082,43 @@ meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Op
   return a.tired l == some true && (a.obj? u).any (·.loc == some s.bf0) &&
     (n.obj? u).any (·.loc.isNone) && n.tired l == some false && (t.obj? u).any (·.loc.isNone)
 
+/-- Let a Combat run to its end: the first card is assigned damage, the assignment is done, the
+players pass, the questions are answered with yes. -/
+meta def playOut : Nat → GameState → GameState
+  | 0, s => s
+  | n + 1, s =>
+    let acts := legalFrameActions s
+    let pick := acts.find? (fun a => match a.kind with | .assignPick _ => true | _ => false)
+    let done := acts.find? (fun a => match a.kind with | .assignDone => true | _ => false)
+    let other := acts.find? (fun a => match a.kind with
+      | .pass | .decide _ | .choose _ | .putTrigger _ _ => true | _ => false)
+    match pick <|> done <|> other with
+    | some a =>
+      match step 100 s a with
+      | .ok (s', _) => playOut n s'
+      | .error _ => s
+    | none => s
+
+-- (review) Draven, Audacious dies in a real Combat: the opponent scores 1 point (the ability waits
+-- for the Combat Damage Cleanup, so the condition is on the trigger, not on its effect)
+#guard tsf fun s => do
+  let (s1, d) ← putAt s s.me "SFD-148" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
+  let s3 := s2.modObj d (fun o => { o with damage := 5 })
+  let r ← startCombatNow s3 s.bf0 s.me
+  let end_ := playOut 40 r
+  return (end_.obj? d).isNone && end_.pointsOf s.you > s3.pointsOf s.you && e != d
+
+-- (review) Prize of Progress: not for a gear in the hand or hidden, only for one in play (Equip too)
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-075" .base
+  let (s2, inHand) ← put s1 s.me "SFD-042" .hand
+  let (s3, hidden) ← put s2 s.me "SFD-139" .hidden
+  let (s4, board) ← put s3 s.me "SFD-042" .base
+  let a ← fire s4 [.activated s.me inHand 0]
+  let b ← fire s4 [.activated s.me hidden 0]
+  let c ← fire s4 [.activated s.me board 0]
+  return a.mightNow u == s4.mightNow u && b.mightNow u == s4.mightNow u &&
+    c.mightNow u == (s4.mightNow u).map (· + 1)
+
 end RiftboundTest

@@ -4089,8 +4089,8 @@ def SFD_148 : CardDef :=
 
     abilities := [.triggered (.onSelf .winCombat) (.of [] (.prim (.score .you (.const 1))))
         (.perTurn 1),
-      .triggered (.onSelf .die)
-        (.of [] (.ifThen .inCombat (.prim (.score .opponent (.const 1))) .nop)) .unlimited],
+      .triggered { event := .die, condition := .inCombat }
+        (.of [] (.prim (.score .opponent (.const 1)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-149

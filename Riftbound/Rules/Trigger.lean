@@ -227,7 +227,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
     else [])
   | .activated p src _ =>
-    if (s.cardDef? src).any (·.hasType .gear) then
+    -- an ability of a gear on the Board (not Hide, not the play of a hidden gear)
+    if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
       s.inPlay.flatMap (fun u =>
         if (s.obj? u).any (·.controller == p) then triggersOf s u p .useGearAbility else [])
     else []
