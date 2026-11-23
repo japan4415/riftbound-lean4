@@ -112,6 +112,11 @@ inductive TurnEffect where
   | unitsReady
   /-- The units the player plays this turn are buffed (Rally the Troops). -/
   | unitsBuffed
+  /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
+  | openConquest
+  /-- At the end of this turn, the ability of the card at the place fires, with the object as its
+  source (Hostile Takeover: the unit goes back). -/
+  | endTrigger (card : String) (idx : Nat)
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
   | damagePrevented
   /-- Spells and abilities deal no damage this turn. -/

@@ -629,6 +629,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: Needlessly Large Yordle の費用は、Power の Calm の減額を動かさない（高くなる側）。Counter Strike は Reaction だが、Chain に呼応して遊ぶことは、既存の近似と同じ。Ornn's Forge の「最初」は、このターンに遊んだ Gear の数が 0 のとき（Token の Gear は、遊んだ数に入らない）。
 - **カードの数**: 動く Spiritforged は 195 枚から 199 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 19 — ターンの終わりに戻る、空いた Battlefield
+
+- **ターンの終わりに戻る**: `TurnEffect.endTrigger card idx`（対象のオブジェクトに付ける）は、ターンの終わりに、そのカードの `idx` 番目の能力を、そのオブジェクトを source にして誘発させる（`GameState.fxTriggers`。カードの識別子は、データとして持つ。エンジンは、カード名を知らない）。`Prim.returnControl` は、持ち主の支配に戻す。
+- **空いた Battlefield**: `endShowdown` は、だれも支配していない Battlefield を conquer したとき、`TurnEffect.openConquest` を、その Battlefield に記録する。`Condition.openConquered`（自分のいる Battlefield に、その記録がある）で読む。
+- **書いたカード**: SFD-202（Hostile Takeover。Battlefield の敵ユニットの支配を得て、ready にする。戦闘の始まりと conquer は、Cleanup の通常の流れ。ターンの終わりに、持ち主へ戻して、recall する）、116（Yone, Blademaster）。
+- **近似**: Hostile Takeover で、相手が先にそのユニットを動かした・殺したときは、何も起きない。ターンの終わりの誘発は、そのターンの最後のフェーズの開始（`phaseStarted .. .ending`）に出る。
+- **カードの数**: 動く Spiritforged は 199 枚から 201 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

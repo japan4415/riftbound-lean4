@@ -982,6 +982,14 @@ theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : 
     · cases dest with
       | none => exact playFree_safe p s id
       | some bf => exact playToOrBase_safe p bf s id
+/-- The owner of an object has control of it again (CR 740). -/
+def giveBack (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with controller := o.owner }), [])
+
+/-- Giving control back is a safe change. -/
+theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with controller := p }), [])
@@ -1287,6 +1295,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       l.filterMap (fun q =>
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .takeControl sel => onSelected s p src env sel (setController p)
+  | .returnControl sel => onSelected s p src env sel giveBack
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
     -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
@@ -1458,6 +1467,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       rw [← h]
       exact recycleTopAll_safe l s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
+  | returnControl sel => exact onSelected_safe giveBack_safe h
   | «recall» sel ex => exact onSelected_safe (recallFx_safe ex) h
   | win ps =>
     simp only [applyPrim] at h

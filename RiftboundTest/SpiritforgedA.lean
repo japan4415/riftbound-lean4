@@ -2833,4 +2833,41 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     cost mine u == cost s4 u && cost played h == cost s4 h &&
     cost mine h == (cost s4 h).map (· - 1)
 
+-- Hostile Takeover (SFD-202): take control of an enemy unit at a battlefield, ready it; at the end
+-- of the turn it goes back and is recalled
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-202" .hand
+  let (s2, u) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, _) ← put s2 s.you "OGN-051" .base
+  let a ← play (s3.tire u) s.me c [u]
+  let b ← fire a [.phaseStarted s.me .ending]
+  let isCard (x : GameState) (o : ObjId) : Bool := (x.cardDef? o).any (·.id == cid "OGN-051")
+  let theirs (x : GameState) : Nat :=
+    ((x.zone (.player s.you .base)).filter (isCard x)).length
+  let stolen (x : GameState) : Nat :=
+    ((x.zone .battlefieldZone).filter (fun o => isCard x o &&
+      (x.obj? o).any (·.controller == s.me))).length
+  return (a.obj? u).any (fun o => o.controller == s.me && !o.exhausted) &&
+    theirs a == 1 && stolen a == 1 && theirs b == 2 && stolen b == 0 &&
+    (b.zone (.player s.you .base)).all (fun o => (b.obj? o).any (·.controller == s.you)) &&
+    (fire a [.phaseStarted s.me .main]).any (fun x => stolen x == 1)
+
+-- Yone, Blademaster (SFD-116): when I conquer an open battlefield, deal damage equal to my Might to
+-- an enemy unit in a base
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, yone) ← putAt s1 s.me "SFD-116" bf
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let (s4, other) ← putBf s3 s.me "OGN-276"
+  let (s5, _) ← putAt s4 s.me "SFD-116" other
+  let (s6, foeAt) ← putAt s5 s.you "OGN-088" other
+  let open_ := endShowdown s6 bf
+  let a ← fire open_.1 open_.2.2
+  -- a battlefield the opponent controlled: no damage
+  let busy := (s6.control s.you bf)
+  let clash := endShowdown busy bf
+  let b ← fire clash.1 clash.2.2
+  return a.dmg foe == (s6.mightNow yone).map Int.toNat && a.dmg foe != some 0 &&
+    b.dmg foe == some 0 && a.dmg foeAt == some 0
+
 end RiftboundTest

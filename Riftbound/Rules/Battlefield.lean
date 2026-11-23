@@ -261,7 +261,9 @@ def endShowdown (s : GameState) (bf : ObjId) : GameState × List Frame × List E
   | [r] =>
     if s.controlOf bf = some r then (s1, [], [])
     else
-      let s2 := s1.modObj bf (fun o => { o with control := some r })
+      let s2a := s1.modObj bf (fun o => { o with control := some r })
+      -- a Battlefield that nobody controlled is conquered open: noted for the turn
+      let s2 := if s.controlOf bf = none then s2a.addTurnFxOn r bf .openConquest else s2a
       let t := scoreBf s2 r bf true
       (t.1, t.2.1, Event.controlChanged bf (some r) :: t.2.2)
   | _ => (s1, [], [])
@@ -604,7 +606,12 @@ theorem endShowdown_safeP (s : GameState) (bf : ObjId) : SafeP s (endShowdown s 
     · exact SafeP.of_safe h1
     · have h2 := Safe.modObj (s.modObj bf (fun o => { o with contested := none })) bf
         (f := fun o => { o with control := some r }) (fun _ => rfl) (fun _ => rfl)
-      exact SafeP.trans_safe (h1.trans h2) (scoreBf_safeP _ _ _ _)
+      by_cases hc : s.controlOf bf = none
+      · simp only [hc, ite_true]
+        exact SafeP.trans_safe ((h1.trans h2).trans (addTurnFxOn_safe _ _ _ _))
+          (scoreBf_safeP _ _ _ _)
+      · simp only [hc, ite_false]
+        exact SafeP.trans_safe (h1.trans h2) (scoreBf_safeP _ _ _ _)
   · exact SafeP.of_safe h1
 
 /-- A Standard Move can only be made in the Main Phase (CR 144, 316). -/
