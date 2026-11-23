@@ -1052,6 +1052,11 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             exact Safe.refl s
         | cons _ _ => simp at h
 
+/-- A Unit token the player plays enters ready: an effect of the turn says the units the player plays
+enter ready ("Friendly units enter ready this turn"). -/
+def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef) : Bool :=
+  c.hasType .unit && (s.fxOf p).any (fun k => k == .unitsReady)
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -1061,8 +1066,9 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
     | none => none
     | some c =>
       match place with
-      | .atBase => some (createN c.id p none ready k s, [])
-      | .here => (s.hereOf src).map (fun bf => (createN c.id p (some bf) ready k s, []))
+      | .atBase => some (createN c.id p none (ready || s.tokenReady p c) k s, [])
+      | .here =>
+        (s.hereOf src).map (fun bf => (createN c.id p (some bf) (ready || s.tokenReady p c) k s, []))
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
