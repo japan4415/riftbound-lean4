@@ -201,6 +201,7 @@ def Prim.understood : Prim → Bool
   | .markOn s _ => s.understood
   | .activateConquer s => s.understood
   | .lookTop _ => true
+  | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
   | .returnChampion => true
   | .pay _ => true

@@ -33,16 +33,18 @@ namespace Riftbound
 /-- The player whose turn it is: the first player has turn 0, then the turn order goes round
 (CR 118, 301). -/
 def GameState.nextTurnPlayer (s : GameState) : PlayerId :=
-  s.turnOrder.getD (s.turn % s.playerCount) ⟨0⟩
+  match s.extraTurns with
+  | p :: _ => p
+  | [] => s.turnOrder.getD ((s.turn - s.turnShift) % s.playerCount) ⟨0⟩
 
 /-- The frames of a turn up to the Main Phase, where the turn player has priority (CR 315-316). -/
 def turnFrames (tp : PlayerId) : List Frame :=
   [.phase .awaken, .phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority tp]
 
 /-- How many Runes the Channel Phase channels: two (CR 315.3), and one more for the second player
-on their first turn in a 1v1 game (CR 487.7). -/
+on their first turn in a 1v1 game (CR 487.7). The turns are counted without the extra turns. -/
 def GameState.channelCount (s : GameState) : Nat :=
-  if s.playerCount = 2 ∧ s.turn = 2 then 3 else 2
+  if s.playerCount = 2 ∧ s.turn - s.turnShift = 2 then 3 else 2
 
 /-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
 format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither
@@ -67,14 +69,16 @@ def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
   else
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
-        active := some s.nextTurnPlayer, turnFx := [] }
+        active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
+        turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1) }
 
 /-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
 theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
     beginTurnStep s rest =
         { s.mapObjects clearScored with
             pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
-            active := some s.nextTurnPlayer, turnFx := [] } ∨
+            active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
+            turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1) } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
   by_cases hc : s.clockDue = true

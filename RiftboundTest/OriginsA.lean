@@ -4106,4 +4106,35 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     broke.countIn s.me .base "OGN-194" == 0 && theirs.countIn s.me .base "OGN-194" == 0 &&
     inHand.countIn s.me .base "OGN-194" == 0 && inHand.countIn s.me .hand "OGN-194" == 1
 
+-- Time Warp (OGN-122): take a turn after this one, and banish it (not the Trash): the turn after is
+-- mine, the one after that the opponent's, as if the extra turn had not been
+#guard t fun s => do
+  let (s1, c) ← put s s.me "OGN-122" .hand
+  let a ← play s1 s.me c
+  let t1 := beginTurnStep a []
+  let t2 := beginTurnStep t1 []
+  let t3 := beginTurnStep t2 []
+  let plain := beginTurnStep s1 []
+  -- two Time Warps: two extra turns of mine, then the opponent's
+  let two := { a with extraTurns := a.extraTurns ++ [s.me] }
+  let w1 := beginTurnStep two []
+  let w2 := beginTurnStep w1 []
+  let w3 := beginTurnStep w2 []
+  -- cast in the opponent's turn: the next turn is mine, then the one after the opponent's
+  let theirs := { s1 with active := some s.you, extraTurns := [s.me] }
+  let o1 := beginTurnStep theirs []
+  let o2 := beginTurnStep o1 []
+  -- the extra turn does not use up the second player's first-turn Rune (3 Runes at regular turn 2)
+  let early := { s1 with turn := 1, extraTurns := [s.me] }
+  let e1 := beginTurnStep early []
+  let e2 := beginTurnStep e1 []
+  return a.extraTurns == [s.me] && a.countIn s.me .trash "OGN-122" == 0 &&
+    a.countIn s.me .banishment "OGN-122" == 1 && t1.active == some s.me && t1.extraTurns == [] &&
+    t2.active == some s.you && t3.active == some s.me && t1.turn == a.turn + 1 &&
+    plain.active == some s.you && s1.extraTurns == [] &&
+    w1.active == some s.me && w2.active == some s.me && w3.active == some s.you &&
+    w3.turnShift == 2 && o1.active == some s.me && o2.active == some s.you &&
+    o1.turnFx.isEmpty && e1.channelCount == 2 && e2.channelCount == 3 && e1.turnShift == 1 &&
+    plain.turnShift == 0
+
 end RiftboundTest

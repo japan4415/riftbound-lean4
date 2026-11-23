@@ -45,11 +45,13 @@ theorem turnOrder_answer_sets {s s' : GameState} {rest : List Frame} {es : List 
 /-- **The first turn is the chosen player's, and the second turn the other player's** (TR 407):
 with the turn order of the chosen first player, in a 1v1 game (CR 301). -/
 theorem first_turns {s : GameState} {f : PlayerId}
-    (ho : s.turnOrder = MatchState.turnOrderOf f) (h2 : s.playerCount = 2) :
+    (ho : s.turnOrder = MatchState.turnOrderOf f) (h2 : s.playerCount = 2)
+    (he : s.extraTurns = []) (hs : s.turnShift = 0) :
     (s.turn = 0 → s.nextTurnPlayer = f) ∧
       (s.turn = 1 → s.nextTurnPlayer = MatchState.other f) := by
   unfold GameState.nextTurnPlayer
-  rw [ho, h2]
+  rw [he, hs, ho, h2]
+  dsimp only
   refine ⟨fun h => ?_, fun h => ?_⟩ <;> simp [h, MatchState.turnOrderOf]
 
 end Riftbound

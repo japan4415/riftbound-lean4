@@ -1086,6 +1086,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
   | .returnChampion => some (returnChampion p s)
+  | .extraTurn ps =>
+    (ps.resolve s p).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
   | .lookTop n => some (s, ((s.zone (.player p .mainDeck)).take n).map (Event.lookedAt p))
   | .activateConquer sel =>
     onSelected s p src env sel (fun t id => (t, [Event.conquerActivated id]))
@@ -1254,6 +1256,15 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact playFirstOf_safe fs p src env s
+  | extraTurn ps =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      simp only [hl, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+        fun _ hown => hown.congr rfl rfl, rfl⟩
   | lookTop n =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
