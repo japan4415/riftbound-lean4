@@ -700,8 +700,8 @@ def SFD_024 : CardDef :=
 
     abilities := [.triggered (.onSelf .attack)
       (.of [] (.may (.seqOf
-        [.prim (.playReduced (Selector.one .friendly .inHand
-            [.tag ⟨"Equipment"⟩, .cost .le (.const 2)]) (.const 99) none),
+        [.prim (.play (Selector.one .friendly .inHand
+            [.tag ⟨"Equipment"⟩, .cost .le (.const 2)])),
          .prim (.attach (Selector.all .friendly .atBase
             [.tag ⟨"Equipment"⟩, .playedThisTurn, .not .isAttached]) .self)]))) .unlimited],
     status := .drafted }

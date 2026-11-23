@@ -2983,4 +2983,27 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
     d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true
 
+-- (review) Rell plays the Equipment for free: its Power is not paid either
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-024" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, _) ← put s3 s.me "SFD-022" .hand
+  let broke := s4.setPool s.me {}
+  let a ← fire broke [.combatStarted bf s.me]
+  return ((a.zone (.player s.me .base)).any (fun o => (a.cardDef? o).any (·.id == cid "SFD-022") &&
+    (a.obj? o).any (·.attached.isSome))) && (a.poolOf s.me).spent == 0
+
+-- (review) a unit saved by Guardian Angel is also saved from "dies when damaged" effects
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "OGN-088" bf
+  let (s3, g) ← put s2 s.me "SFD-051" .base
+  let held := (attachTo u s3 g).1.addTurnFx s.you .killOnDamage
+  let hit := (dealObj 1 held u).1
+  let bare := (dealObj 1 (s3.addTurnFx s.you .killOnDamage) u).1
+  let inTrash (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .trash)).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  return inTrash hit "SFD-051" && !inTrash hit "OGN-088" && inTrash bare "OGN-088"
+
 end RiftboundTest

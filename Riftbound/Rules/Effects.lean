@@ -1061,7 +1061,7 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
       let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
       -- a unit that takes damage while an effect of the turn says so is killed
       if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
-        let k := killObj s1 id
+        let k := killOrSave s1 id
         (k.1, Event.damaged id n :: k.2)
       else (s1, [Event.damaged id n])
   | none => (s, [])
@@ -1082,7 +1082,7 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n 
           have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
             Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
           split
-          · exact h1.trans (killObj_safe _ id)
+          · exact h1.trans (killOrSave_safe _ id)
           · exact h1
   · exact Safe.refl s
 

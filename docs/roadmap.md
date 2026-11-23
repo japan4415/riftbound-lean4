@@ -643,6 +643,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Rune のリサイクル**: Rune が Rune Deck へ動くと（`Event.moved`）、`TriggerEvent.recycleRune` が、そのプレイヤーの物と Legend に誘発する。
 - **使った Power**: `RunePool.spent`（Rune Pool が空になるまでに払った Power の数。Main の始まりと Ending で、Pool と一緒に消える）、`Amount.powerSpent`。
 - **書いたカード**: SFD-051（Guardian Angel）、173（Soraka, Wanderer）、024（Rell, Magnetic。無料で遊んだ Equipment を付ける。このターンに遊んで、まだ付いていない Equipment は、みな付く）、143（Sivir, Mercenary）、203（Battle Mistress）。
+- **近似（レビュー）**: Soraka の「ここ」は、Battlefield だけ（Base にいる Soraka は、救わない）。救ったとき、`damaged` のイベントは出さない。Deflect の支払いは、`spent` に数えない。Rell は、費用（Power も）を払わず遊ぶ（`play`）。『ダメージを受けたら死ぬ』の効果（`killOnDamage`）も、救う。
 - **近似**: Rell は、その手前に遊んだ付いていない Equipment（このターンに遊んだもの）も、付ける。Sivir の『2 つ以上の虹』は、Power を 2 つ以上払ったこと（`spent`）。
 - **カードの数**: 動く Spiritforged は 201 枚から 206 枚。
 
