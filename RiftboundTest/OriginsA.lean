@@ -4257,9 +4257,22 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let a ← fire rich [.scored s.me bf true]
   let no ← fire rich [.scored s.me bf true] { yes := false }
   let few ← fire (s4.rich s.me) [.scored s.me bf true]
+  -- only a spell with a choice in the Trash: it stays; points equal to the cost: not enough
+  let (v1, _) ← put s2 s.me "OGN-229" .trash
+  let only := fire ((v1.gainPoints s.me 5).rich s.me) [.scored s.me bf true]
+  let onlyV ← only
+  let edge ← fire (((s3.gainPoints s.me 2)).rich s.me) [.scored s.me bf true]
+  -- a spell with a Power cost: the Power is paid from the pool (and not when it is not there)
+  let (p1, _) ← put s2 s.me "OGN-145" .trash
+  let withPow := (p1.gainPoints s.me 5).rich s.me
+  let paid ← fire withPow [.scored s.me bf true]
+  let poor ← fire (withPow.setPool s.me { energy := 12 }) [.scored s.me bf true]
   return a.turnFx.length == rich.turnFx.length + 1 && a.countIn s.me .trash "OGN-129" == 0 &&
     a.countIn s.me .mainDeck "OGN-129" == 1 && a.countIn s.me .trash "OGN-229" == 1 &&
     no.countIn s.me .trash "OGN-129" == 1 && no.turnFx.length == rich.turnFx.length &&
-    few.countIn s.me .trash "OGN-129" == 1 && few.turnFx.length == rich.turnFx.length
+    few.countIn s.me .trash "OGN-129" == 1 && few.turnFx.length == rich.turnFx.length &&
+    onlyV.countIn s.me .trash "OGN-229" == 1 && edge.countIn s.me .trash "OGN-129" == 1 &&
+    paid.countIn s.me .trash "OGN-145" == 0 && poor.countIn s.me .trash "OGN-145" == 1 &&
+    (paid.poolOf s.me).body < (withPow.poolOf s.me).body
 
 end RiftboundTest
