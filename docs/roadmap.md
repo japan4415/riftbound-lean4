@@ -531,6 +531,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似（レビュー）**: 山札の上から見たカードを、リサイクルする順は、プレイヤーが選べない（上から順に底へ）。Rumble の「another friendly unit」を、誘発のときに選ぶ。`playReduced` で Accelerate は払えない（ユニットは exhausted で入る）。Battlefield へ出す（`to`）のは、ユニットだけ（ギアに使うと、Battlefield に置かれる）。
 - **カードの数**: 動く Spiritforged は 123 枚から 133 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 8 — 費用を解決のときに払う能力、Legend の能力
+
+- **書いたカード**: SFD-019、036、046、050、081、088、160、167、183、193（10 枚）。新しい仕組みは無い。
+- **費用を、解決のときに払う**: 「Recycle a unit from your trash」（Assembly Rig）、「Kill this」（Poro Snax）、「kill a friendly gear as an additional cost」（Zaun Punk）のように、能力の費用の `AbilityCost` にまだ無いものは、能力の効果の中で行う（Energy と Power と exhaust は、これまでどおり、使うときに払う）。費用が払えなくても、能力は使えて、Energy は無くなる（Assembly Rig で、墓地にユニットが無い場合など）。
+- **使う条件**: 「Use my abilities only while I'm at a battlefield」（Renata Glasc, Mastermind）は、効果の条件に書くと、条件が偽の間は、使えない（`guardOk`）。
+- **近似**: Azir, Ascendant の「attach one of its Equipment to me」は、1 つずつ「付けますか」と聞く（複数付けられる）。Purifier の「Your Equipment each give [Assault]」は、Equipment が付いたユニットに Assault 1（Equipment 1 つにつき 1 ではない）。Card Sharp の「for each opponent who did」は、相手の Gold の数が増えたかで決める。Zaun Punk は、追加コストを、解決のときの、Kill に直した（コストを払う前にゲームが進まないので、同じ）。
+- **カードの数**: 動く Spiritforged は 133 枚から 143 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。
