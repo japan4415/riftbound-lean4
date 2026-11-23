@@ -73,6 +73,10 @@ structure GameState where
   clock : Option Nat := none
   /-- What spells and abilities made true for the rest of a turn (CR 389-393). -/
   turnFx : List TurnFx := []
+  /-- The players who take an extra turn next, in order (Time Warp). -/
+  extraTurns : List PlayerId := []
+  /-- How many of the turns taken were extra turns: the turn order goes on as if they were not. -/
+  turnShift : Nat := 0
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/
