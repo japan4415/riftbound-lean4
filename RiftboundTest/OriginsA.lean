@@ -4149,6 +4149,9 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let gear ← play g1 s.me c
   let spell ← play p1 s.me c
   let deck (x : GameState) := (x.zone (.player s.you .mainDeck)).length
+  -- the opponent's deck is empty: nothing happens; mine is not touched; the unit comes in exhausted
+  let bare ← play (s1.setZone (.player s.you .mainDeck) []) s.me c
+  let mineDeck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
   let mine := (unit.zone (.player s.me .base)).filter (fun x =>
     (unit.cardDef? x).any (·.id == cid "OGN-136"))
   let dies ← (mine.head?).map (fun x => (killObj unit x).1)
@@ -4156,6 +4159,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
       o.controller == s.me && o.owner == s.you)) && deck unit + 1 == deck u1 &&
     gear.countIn s.me .base "OGN-124" == 1 && deck gear + 1 == deck g1 &&
     spell.countIn s.you .banishment "OGN-229" == 1 && spell.countIn s.me .base "OGN-229" == 0 &&
-    dies.countIn s.you .trash "OGN-136" == 1 && dies.countIn s.me .trash "OGN-136" == 0
+    dies.countIn s.you .trash "OGN-136" == 1 && dies.countIn s.me .trash "OGN-136" == 0 &&
+    bare.countIn s.me .base "OGN-136" == 0 && mineDeck unit == mineDeck u1 &&
+    mine.all (fun x => unit.tired x == some true)
 
 end RiftboundTest
