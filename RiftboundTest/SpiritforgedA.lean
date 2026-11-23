@@ -1004,5 +1004,162 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let s5 := (killObj s4 g).1
   let r := settleChain {} 12 s5
   return r.countIn s.me .base "SFD-T03" == 0
+/-- How many Sand Soldier tokens the player has at their Base, and how many are ready. -/
+meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Nat × Nat :=
+  let l := (s.zone (.player p .base)).filter (fun o =>
+    (s.cardDef? o).any (·.name == "Sand Soldier"))
+  (l.length, (l.filter (fun o => s.tired o == some false)).length)
+
+-- Rocket Barrage (SFD-077): choose one: 4 damage to a unit in a base, or kill a gear
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-077" .hand
+  let (s2, u) ← put s1 s.you "OGN-001" .base
+  let (s3, g) ← put s2 s.you "SFD-030" .base
+  let (s4, w) ← putAt s3 s.you "OGN-001" s.bf0
+  let a ← play s4 s.me c [] { fromEnd := some 1 }
+  let b ← play s4 s.me c [] { fromEnd := some 2 }
+  return a.dmg u == some 4 && (a.obj? g).isSome && a.dmg w == some 0 &&
+    (b.obj? g).isNone && b.dmg u == some 0
+
+-- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
+-- from the hand for nothing
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-084" .hand
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, _) ← put s2 s.me "SFD-115" .hand
+  let a ← play s3 s.me c [] { pick := fun ts => ts == [g] }
+  let b ← play s3 s.me c [] { yes := false }
+  return (a.obj? g).isNone && a.countIn s.me .base "SFD-115" == 1 &&
+    a.countIn s.me .hand "SFD-115" == 0 && (a.poolOf s.me).energy == 12 - 4 &&
+    b.countIn s.me .base "SFD-115" == 0 && (b.obj? g).isSome
+
+-- Ornn, Forge God (SFD-085): +1 Might for each friendly gear
+#guard tsf fun s => do
+  let (s1, o) ← put s s.me "SFD-085" .base
+  let (s2, _) ← put s1 s.me "SFD-042" .base
+  let (s3, _) ← put s2 s.me "SFD-030" .base
+  let (s4, _) ← put s3 s.you "SFD-030" .base
+  return s3.mightNow o == (s1.mightNow o).map (· + 2) && s4.mightNow o == s3.mightNow o
+
+-- Fae Porter (SFD-125): when it moves to a battlefield, pay 1 Chaos to move another unit there
+#guard tsf fun s => do
+  let (s1, p) ← putAt s s.me "SFD-125" s.bf0
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let a ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)]
+  let b ← fire (s2.fund s.me 0) [.standardMoved p (some s.bf0)]
+  let c ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)] { yes := false }
+  return (a.obj? u).any (·.loc == some s.bf0) && (a.poolOf s.me).chaos == 0 &&
+    (b.obj? u).any (·.loc.isNone) && (c.obj? u).any (·.loc.isNone) && p != u
+
+-- Overzealous Fan (SFD-128): when it defends, may kill itself to move an attacker to its base
+#guard tsf fun s => do
+  let (s1, f) ← putAt s s.me "SFD-128" s.bf0
+  let (s2, a) ← putAt s1 s.you "OGN-001" s.bf0
+  let s3 := s2.modObj s.bf0 (fun o => { o with contested := some s.you })
+  let fight := s3.inShowdownAt s.bf0 s.you
+  let r ← fire fight [.combatStarted s.bf0 s.you]
+  let n ← fire fight [.combatStarted s.bf0 s.you] { yes := false }
+  let o ← fire fight [.combatStarted s.bf0 s.me]
+  return (r.obj? f).isNone && (r.obj? a).any (·.loc.isNone) && (n.obj? f).isSome &&
+    (n.obj? a).any (·.loc == some s.bf0) && (o.obj? a).any (·.loc == some s.bf0)
+
+-- Temptation (SFD-129): move an enemy unit to where another enemy unit is
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-129" .hand
+  let (s2, a) ← put s1 s.you "OGN-051" .base
+  let (s3, b) ← putAt s2 s.you "OGN-001" s.bf0
+  let (s4, m) ← put s3 s.me "OGN-051" .base
+  let r ← play s4 s.me c [a, b]
+  let same ← play s4 s.me c [a, a]
+  return (r.obj? a).any (·.loc == some s.bf0) && (same.obj? a).any (·.loc.isNone) &&
+    (play s4 s.me c [m, b]).isNone
+
+-- Switcheroo (SFD-145): swap the Mights of two units at the same battlefield this turn
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-145" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, b) ← putAt s2 s.you "OGN-051" s.bf0
+  let r ← play s3 s.me c [a, b]
+  return r.mightNow a == s3.mightNow b && r.mightNow b == s3.mightNow a &&
+    s3.mightNow a == some 5 && s3.mightNow b == some 2
+-- (not two units at different battlefields; not a unit at a base)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-145" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-001" s.bf0
+  let (s3, other) ← putBf s2 s.you "SFD-216"
+  let (s4, b) ← putAt s3 s.you "OGN-051" other
+  let (s5, base) ← put s4 s.you "OGN-051" .base
+  let r ← play s4 s.me c [a, b]
+  return r.mightNow a == s4.mightNow a && r.mightNow b == s4.mightNow b &&
+    (play s5 s.me c [a, base]).isNone
+
+-- Glasc Mixologist (SFD-165): when it dies, may play a unit (cost 3 or less, at most 1 Power) from
+-- the Trash for nothing
+#guard tsf fun s => do
+  let (s1, m) ← put s s.me "SFD-165" .trash
+  let (s2, _) ← put s1 s.me "OGN-051" .trash
+  let (s3, big) ← put s2 s.me "OGN-001" .trash
+  let a ← fire s3 [.died m s.me]
+  let b ← fire s3 [.died m s.me] { yes := false }
+  return a.countIn s.me .base "OGN-051" == 1 && a.countIn s.me .base "OGN-001" == 0 &&
+    b.countIn s.me .base "OGN-051" == 0 && (a.obj? big).isSome
+
+-- Xin Zhao, Vigilant (SFD-176): enters ready if two or more other units of the player are at base
+#guard tsf fun s => do
+  let (s1, x) ← put s s.me "SFD-176" .hand
+  let (s2, _) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← put s2 s.me "OGN-051" .base
+  let (s4, _) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s5, _) ← put s2 s.you "OGN-051" .base
+  let a ← play s3 s.me x
+  let b ← play s2 s.me x
+  let c ← play s4 s.me x
+  let d ← play s5 s.me x
+  let ready (r : GameState) := (r.firstOf s.me .base "SFD-176").bind r.tired
+  return ready a == some false && ready b == some true && ready c == some true &&
+    ready d == some true
+
+-- Corina Veraza (SFD-179): when it moves to a battlefield, three Recruit tokens there
+#guard tsf fun s => do
+  let (s1, c) ← putAt s s.me "SFD-179" s.bf0
+  let (s2, d) ← put s1 s.me "SFD-179" .base
+  let a ← fire s2 [.standardMoved c (some s.bf0)]
+  let b ← fire s2 [.standardMoved d none]
+  let recruits (x : GameState) := ((x.zone .battlefieldZone).filter (fun o =>
+    (x.cardDef? o).any (·.name == "Recruit") && (x.obj? o).any (·.loc == some s.bf0))).length
+  return recruits a == 3 && recruits b == 0
+
+-- Defiant Dance (SFD-196): one unit +2 Might, another -2 Might this turn
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-196" .hand
+  let (s2, a) ← put s1 s.me "OGN-001" .base
+  let (s3, b) ← put s2 s.you "OGN-001" .base
+  let r ← play s3 s.me c [a, b]
+  let same ← play s3 s.me c [a, a]
+  return r.mightNow a == (s3.mightNow a).map (· + 2) &&
+    r.mightNow b == (s3.mightNow b).map (· - 2) && same.mightNow a == s3.mightNow a
+
+-- Arise! (SFD-198): a Sand Soldier for each Equipment the player controls, and two of them ready
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-198" .hand
+  let (s2, _) ← put s1 s.me "SFD-042" .base
+  let (s3, _) ← put s2 s.me "SFD-042" .base
+  let (s4, _) ← put s3 s.me "SFD-042" .base
+  let (s5, _) ← put s3 s.you "SFD-042" .base
+  let a ← play s4 s.me c
+  let b ← play s3 s.me c
+  let n ← play s1 s.me c
+  let e ← play s5 s.me c
+  return a.soldiers s.me == (3, 2) && b.soldiers s.me == (2, 2) && n.soldiers s.me == (0, 0) &&
+    e.soldiers s.me == (2, 2)
+
+-- On the Hunt (SFD-204): ready the units of the player
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-204" .hand
+  let (s2, a) ← put s1 s.me "OGN-051" .base
+  let (s3, b) ← put s2 s.you "OGN-051" .base
+  let s4 := (s3.tire a).tire b
+  let r ← play s4 s.me c
+  return r.tired a == some false && r.tired b == some true
 
 end RiftboundTest
