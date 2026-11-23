@@ -4141,7 +4141,7 @@ def SFD_146.meta : CardDef :=
 def SFD_146 : CardDef :=
   { SFD_146.meta with
 
-    abilities := [.passive .inCombat
+    abilities := [.passive (.exists (Selector.all .any .inCombat [.sameAs .self]))
       [.costMinusMin (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) 1,
        .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1)]],
     status := .drafted }

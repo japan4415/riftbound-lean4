@@ -141,6 +141,8 @@ inductive Filter where
   | scoredByMine
   /-- The card is in its owner's hand. -/
   | inHandZone
+  /-- Units can be played to this Battlefield (it says no units can be played here: no). -/
+  | unitsPlayable
   /-- The Battlefield where the player of `self` is attacking. -/
   | attackedByMine
   /-- Is a Battlefield where a unit of another player than the one the effect belongs to is. -/

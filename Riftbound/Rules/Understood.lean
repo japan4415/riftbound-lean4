@@ -125,6 +125,7 @@ def Filter.understood : Filter → Bool
   | .openBf => true
   | .scoredByMine => true
   | .inHandZone => true
+  | .unitsPlayable => true
   | .attackedByMine => true
   | .enemyOccupied => true
   | .sameAs .self => true

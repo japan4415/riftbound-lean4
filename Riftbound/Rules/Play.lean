@@ -149,9 +149,11 @@ def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
 passive abilities add (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
   d.cost.map (fun k =>
+    -- the cost goes up first, then down (to its floor)
     let e := (s.costCuts p c).foldl
-      (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1)) k.energy
-    { k with energy := e + s.costRaise c })
+      (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1))
+      (k.energy + s.costRaise c)
+    { k with energy := e })
 
 /-- The payment pays more than the cost of the card: an additional cost is paid. -/
 def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)

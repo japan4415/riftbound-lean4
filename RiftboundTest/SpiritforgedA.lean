@@ -2589,4 +2589,22 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     ((x.cardDef? c).bind (x.effCost s.me c)).map (·.energy)
   return cost s2 inHand == some 3 && cost s2 inTrash == some 1
 
+-- (review) Vex only counts while she is in the combat; Grimwyrm cannot go to a Rockfall Path
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-146" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, other) ← putBf s3 s.me "OGN-276"
+  let (s5, _) ← putAt s4 s.me "OGN-051" other
+  let (s6, _) ← putAt s5 s.you "OGN-051" other
+  let (s7, mine) ← put s6 s.me "OGN-024" .hand
+  let cost (x : GameState) : Option Nat :=
+    ((x.cardDef? mine).bind (x.effCost s.me mine)).map (·.energy)
+  return cost (s7.inShowdownAt bf s.me) == some 2 && cost (s7.inShowdownAt other s.me) == some 3
+#guard tsf fun s => do
+  let (s1, rock) ← putBf s s.me "SFD-216"
+  let (s2, g) ← put s1 s.me "SFD-015" .hand
+  let scored := s2.modObj rock (fun o => { o with scored := [s.me] })
+  return (activate scored s.me g 3 [rock] (payOf scored g)).isNone
+
 end RiftboundTest

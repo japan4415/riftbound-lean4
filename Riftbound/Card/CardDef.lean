@@ -180,7 +180,8 @@ def openPlay (c : CardDef) : List Ability :=
   | some cost =>
     if c.types.contains .unit then
       [.activated [.fromHand, .pay cost] .normal
-        (EffectDef.of [Choice.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
+        (EffectDef.of [Choice.targetOf .one .any .anywhere
+          [.ofType .battlefield, .openBf, .unitsPlayable]]
           (.ifThen (.exists (Selector.all .friendly .anywhere [.permitsOpenPlay]))
             (.prim (.playTo .self (.slot 0))) .nop)) .unlimited]
     else []
@@ -201,7 +202,7 @@ def ownBfPlay (c : CardDef) : List Ability :=
             | .playToBf fs =>
               some (.activated [.fromHand, .pay cost]
                 (if c.keywords.any (·.keyword == .reaction) then .reaction else .normal)
-                (EffectDef.of [Choice.targetOf .one .any .anywhere (.ofType .battlefield :: fs)]
+                (EffectDef.of [Choice.targetOf .one .any .anywhere (.ofType .battlefield :: .unitsPlayable :: fs)]
                   (.prim (.playTo .self (.slot 0)))) .unlimited)
             | _ => none)
         | _ => [])
