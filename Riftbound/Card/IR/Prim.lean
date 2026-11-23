@@ -286,6 +286,8 @@ inductive StaticMod where
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
   | oppsPlayToBaseOnly
+  /-- The object has Assault equal to the number of objects the selector gives (Ancient Warmonger). -/
+  | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/
   | noMoveToBaseAny
   /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is

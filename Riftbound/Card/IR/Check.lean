@@ -211,6 +211,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .hideWithEnergy => true
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
+  | .assaultCount s => Selector.ok c s
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .noPlayToBase => true

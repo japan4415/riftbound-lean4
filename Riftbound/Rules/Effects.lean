@@ -530,14 +530,15 @@ def Object.cleared (o : Object) : Object :=
 def enterBase (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState)
     (id : ObjId) : GameState :=
   -- the player who plays it controls it, even if the card is another player's (Blind Fury)
-  let s2 := s.modObj id (fun o => { (Object.freshPlay mk o).cleared with controller := p })
+  let s2 := s.modObj id (fun o =>
+    { (Object.freshPlay mk o).cleared with controller := p, buffed := mk.buff })
   if d.hasType .unit && !rdy then (setExhausted true s2 id).1 else s2
 
 /-- Entering the Base is a safe change. -/
 theorem enterBase_safe (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState)
     (id : ObjId) : Safe s (enterBase p d mk rdy s id) := by
   have h1 : Safe s (s.modObj id (fun o =>
-      { (Object.freshPlay mk o).cleared with controller := p })) :=
+      { (Object.freshPlay mk o).cleared with controller := p, buffed := mk.buff })) :=
     Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   unfold enterBase
   split
