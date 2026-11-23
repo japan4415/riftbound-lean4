@@ -76,14 +76,14 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {es : List Event} (hp : playable s p c pay = true)
     (h : applyPlay s p c pay = some (s', es)) :
     ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      c' ∈ d.playCosts cost ∧
+      c' ∈ s.playCostsOf p c d cost ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
   rw [hpool] at hpool'
   cases hpool'
-  obtain ⟨c', hc', h2⟩ := CardDef.paysFor_total hpaid
+  obtain ⟨c', hc', h2⟩ := GameState.paysForX_total hpaid
   refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool
@@ -108,14 +108,14 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
     ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      c' ∈ d.playCosts cost ∧
+      c' ∈ s.playCostsOf p c d cost ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h
   rw [hpool] at hpool'
   cases hpool'
-  obtain ⟨c', hc', h2⟩ := CardDef.paysFor_total hpaid
+  obtain ⟨c', hc', h2⟩ := GameState.paysForX_total hpaid
   refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool

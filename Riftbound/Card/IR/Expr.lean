@@ -52,6 +52,8 @@ inductive Amount where
   | kwAmount (s : Selector) (k : Keyword)
   /-- How many cards the player has played this turn. -/
   | cardsPlayed
+  /-- How many Spells the player has played this turn that chose an enemy object. -/
+  | spellsChoseEnemy
   /-- How much Power the player has paid since their Rune Pool was last emptied. -/
   | powerSpent
   /-- How many Gear the player has played this turn. -/
@@ -254,6 +256,8 @@ inductive Condition where
   | yourTurn
   /-- A combat is going on. -/
   | inCombat
+  /-- The player has a Legend that is ready. -/
+  | legendReady
   /-- The Battlefield the object is at was conquered this turn while it was open. -/
   | openConquered
   /-- A showdown is going on. -/

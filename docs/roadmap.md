@@ -647,6 +647,17 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: Rell は、その手前に遊んだ付いていない Equipment（このターンに遊んだもの）も、付ける。Sivir の『2 つ以上の虹』は、Power を 2 つ以上払ったこと（`spent`）。
 - **カードの数**: 動く Spiritforged は 201 枚から 206 枚。
 
+### M8a の実装の記録（2026-11-23）: Spiritforged 21 — 手札に頼らない能力、ターン限りの能力、遊ぶときの追加の費用
+
+- **Battlefield の能力**: Battlefield の起動能力は、それを支配しているプレイヤーが使う（`activatable`）。Battlefield のパッシブは、その支配者のために働く（費用の変更、Add の追加）。`Condition.legendReady`（手札でなく、自分の Legend が ready）。
+- **ターン限りの能力**: `TurnEffect.grantsAbility card idx`（そのターン、ユニットが、カードの誘発能力を持つ。Relentless Pursuit）。
+- **Add の追加**: `StaticMod.manaExtraEnergy`（Add する物が、Energy を、さらに生む。Chem-Baroness の Gold）。
+- **遊ぶときの追加の費用**: 追加の費用（Accelerate、Repeat、カード自身の追加の費用）は、その時の状態で決まる（`GameState.extrasFor`）。`StaticMod.extraCostLess`（Ezreal: 追加の費用が 1 安い）、`repeatCostLess`（Marai Spire: Repeat が 1 安い）、`TurnEffect.nextSpellRepeat`（Temporal Portal: 次の呪文は、自分の費用で Repeat）。費用は、Energy から先に減り、次に Power が減る（`Cost.less`）。`playable`、`castable`、`legalPlays` と、I8 の不変条件は、この状態つきの費用を使う。
+- **書いたカード**: SFD-208（Forge of the Fluft。Battlefield の能力で、自分の Legend を exhaust して、Equipment を付ける）、197（Emperor of the Sands）、080（Bellows Breath）、184（Relentless Pursuit）、199（Prodigal Explorer）、201（Chem-Baroness）、211（Marai Spire）、078（Temporal Portal）、149（Ezreal, Prodigy）。
+- **近似（レビュー）**: Marai Spire の「1 安い」は、Energy だけを減らす（Power だけの Repeat は、安くならない）。Ezreal が追加の費用を 0 にすると、それは、必ず払ったことになる（`paidExtra`）。付与された誘発能力（Relentless Pursuit）は、解決のとき、ユニット自身の `used` の同じ番号の使用を数える（ユニットの、同じ番号の `perTurn` の能力と、数が衝突する）。`spellsChoseEnemy` は、なくなった対象（死んだユニットなど）を、敵とみなす（敵を殺す呪文を数えるため）。自分のユニットを選んで、そのユニットが消えると、誤って数える。Temporal Portal は、2 回使っても、Repeat は、1 つだけ。Battlefield の Add（`manaReady`）は、まだ所有者で読む。
+- **近似**: Forge of the Fluft は、Legend の能力ではなく、Battlefield の能力（Legend を exhaust する）。Emperor of the Sands の『Sand Soldier は Weaponmaster を持つ』は、書いていない（トークンは、遊んだイベントを出さない）。「Equipment を遊んだ」は、「Gear を遊んだ」で読む。Bellows Breath の 2 つ目と 3 つ目は、ダメージを受けていないユニットから選ぶ（同じユニットに 2 回は撃たない代わりに、ダメージの残っているユニットを選べない）。Relentless Pursuit は、Equipment を付ける部分と、Move の行き先に Base を選ぶ以外の細かい点（移動先は、Battlefield か Base）を、書いていない（Equipment を付けない）。Prodigal Explorer は、呪文だけを数える（ユニットの能力は、数えない）。Ezreal の「1 安い」は、Energy から減らす。追加の費用を 0 まで安くすると、払ったことにならない。
+- **カードの数**: 動く Spiritforged は 206 枚から 215 枚。
+
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 
 - **エンジン**: `Condition.hasFriendlyCard`（自分の、場にある、またはレジェンドの、その名前のカードがある）。

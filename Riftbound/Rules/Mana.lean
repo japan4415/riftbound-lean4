@@ -67,6 +67,18 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
         | _ => false
     | _, _ => false
 
+/-- The Energy more an Add of the object makes, by passive abilities of objects the player controls
+(Chem-Baroness: their Gold adds one more Energy). -/
+def GameState.manaBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
+  s.passiveSources.foldl (fun acc g =>
+    if (s.sourceOwner g).any (·.controller == p) then
+      (s.activeMods g).foldl (fun acc m =>
+        match m with
+        | .manaExtraEnergy sel n =>
+          if s.costSelects p g src sel then acc + ((n.evalS s p g {}).getD 0) else acc
+        | _ => acc) acc
+    else acc) 0
+
 /-- Use an Add ability: pay (exhaust, kill), and the Pool gets what is added (CR 430.2). -/
 def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) :
     Option (GameState × List Event) :=
@@ -78,7 +90,7 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) :
       | some (ex, kill), some k =>
         let s1 := s.modObj src (useOf idx ex)
         let s2 := if kill then killNow s1 src else s1
-        some (s2.setPool p (k.add (s.poolOf p)), [])
+        some (s2.setPool p ((k.add (s.poolOf p)).addEnergy (s.manaBonus p src)), [])
       | _, _ => none
     | _ => none
   | none => none

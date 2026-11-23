@@ -3005,5 +3005,163 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let inTrash (x : GameState) (code : String) : Bool :=
     (x.zone (.player s.me .trash)).any (fun o => (x.cardDef? o).any (·.id == cid code))
   return inTrash hit "SFD-051" && !inTrash hit "OGN-088" && inTrash bare "OGN-088"
+-- Forge of the Fluft (SFD-208): while I control it, my legend can exhaust: attach an Equipment I
+-- control to a unit I control
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-208"
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let l ← s3.legendOf s.me
+  let mine := s3.control s.me bf
+  let a ← activate mine s.me bf 0 [g, u]
+  let theirs := activate (s3.control s.you bf) s.me bf 0 [g, u]
+  let tiredLegend := activate (mine.tire l) s.me bf 0 [g, u]
+  return (a.obj? g).any (·.attached == some u) && a.tired l == some true && theirs.isNone &&
+    tiredLegend.isNone
+
+-- Emperor of the Sands (SFD-197): exhaust, pay 1: a Sand Soldier token, if I played an Equipment
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-197" .legendZone
+  let (s2, g) ← put s1 s.me "SFD-042" .hand
+  let before := activate (s2.fund s.me 5) s.me l 0 [] ⟨1, []⟩
+  let played ← play s2 s.me g
+  let a ← activate played s.me l 0 [] ⟨1, []⟩
+  return before.isNone && a.countIn s.me .base "SFD-T03" == 0 &&
+    ((a.zone (.player s.me .base)).filter (fun o => (a.cardDef? o).any
+      (·.name == "Sand Soldier"))).length == 1 && a.tired l == some true
+
+-- Bellows Breath (SFD-080): 1 damage to up to three units at the same location
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-080" .hand
+  let (s2, a) ← putAt s1 s.you "OGN-088" s.bf0
+  let (s3, b) ← putAt s2 s.you "OGN-088" s.bf0
+  let (s4, d) ← putAt s3 s.me "OGN-088" s.bf0
+  let (s5, e) ← put s4 s.you "OGN-088" .base
+  let r ← play s5 s.me c [a]
+  let one ← play s5 s.me c [a] { yes := false }
+  return r.dmg a == some 1 && r.dmg b == some 1 && r.dmg d == some 1 && r.dmg e == some 0 &&
+    one.dmg a == some 1 && one.dmg b == some 0 && one.dmg d == some 0
+
+-- Relentless Pursuit (SFD-184): move a friendly unit; this turn it may go home when it conquers
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-184" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, bf) ← putBf s2 s.me "OGN-275"
+  let a ← play s3 s.me c [u] { fromEnd := some 0 }
+  let atBf := (a.zone .battlefieldZone).any (fun o => (a.cardDef? o).any (·.id == cid "OGN-051") &&
+    (a.obj? o).any (·.loc == some bf))
+  let home ← fire a [.scored s.me bf true]
+  let stay ← fire a [.scored s.me bf true] { yes := false }
+  let later := (a.addTurnFx s.me .unitsReady).turn
+  return atBf && later == a.turn && ((home.zone (.player s.me .base)).any (fun o =>
+    (home.cardDef? o).any (·.id == cid "OGN-051"))) && ((stay.zone .battlefieldZone).any (fun o =>
+    (stay.cardDef? o).any (·.id == cid "OGN-051")))
+
+-- Prodigal Explorer (SFD-199): exhaust, Reaction: draw 1, only if I chose enemy objects with
+-- two spells this turn
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-199" .legendZone
+  let (s2, foe) ← put s1 s.you "OGN-088" .base
+  let (s3, mine) ← put s2 s.me "OGN-088" .base
+  let (s4, c1) ← put s3 s.me "OGN-050" .hand
+  let (s5, c2) ← put s4 s.me "OGN-050" .hand
+  let one ← play s5 s.me c1 [foe]
+  let two ← play one s.me c2 [foe]
+  let own ← play (← play s5 s.me c1 [mine]) s.me c2 [mine]
+  let mixed ← play (← play s5 s.me c1 [foe]) s.me c2 [mine]
+  let ok := activate two s.me l 0 [] ⟨0, []⟩
+  return (activate one s.me l 0 [] ⟨0, []⟩).isNone &&
+    (activate own s.me l 0 [] ⟨0, []⟩).isNone &&
+    (activate mixed s.me l 0 [] ⟨0, []⟩).isNone &&
+    ok.any (fun x => x.handN s.me == two.handN s.me + 1 && x.tired l == some true)
+
+-- Chem-Baroness (SFD-201): when I hold, I may exhaust my legend for an exhausted Gold; with my
+-- score within 3 of the Victory Score my Gold adds 1 more Energy
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-201" .legendZone
+  let (s2, bf) ← putBf s1 s.me "OGN-275"
+  let a ← fire s2 [.scored s.me bf false]
+  let b ← fire s2 [.scored s.me bf false] { yes := false }
+  let c ← fire s2 [.scored s.me bf true]
+  let (s3, gold) ← put s2 s.me "SFD-T03" .base
+  let use (x : GameState) := step 100 x ⟨.player s.me, .manaAbility gold 0⟩
+  let near := s3.gainPoints s.me 6
+  let far := s3.gainPoints s.me 4
+  let pw (r : Except _ (GameState × List Event)) : Option (Nat × Nat) :=
+    match r with | .ok (x, _) => some ((x.poolOf s.me).energy, (x.poolOf s.me).any) | _ => none
+  return a.countIn s.me .base "SFD-T03" == 1 && a.tired l == some true &&
+    b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
+    pw (use near) == some ((s3.poolOf s.me).energy + 1, (s3.poolOf s.me).any + 1) &&
+    pw (use far) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1) &&
+    pw (use s3) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1)
+
+-- Marai Spire (SFD-211) and Ezreal, Prodigy (SFD-149): optional additional costs cost less
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-023" .hand
+  let (s2, u) ← put s1 s.me "SFD-029" .hand
+  let (s3, bf) ← putBf s2 s.me "SFD-211"
+  let dC ← s3.cardDef? c
+  let dU ← s3.cardDef? u
+  let rep (x : GameState) : List Cost := x.extrasFor s.me c dC
+  let acc (x : GameState) : List Cost := x.extrasFor s.me u dU
+  let mine := s3.control s.me bf
+  let (e1, _) ← put s3 s.me "SFD-149" .base
+  let base := rep s3
+  return base.length == 1 && (rep mine).map (·.total) == base.map (fun k => k.total - 1) &&
+    (rep (s3.control s.you bf)).map (·.total) == base.map (·.total) &&
+    (acc s3).map (·.total) == [2] && (acc e1).map (·.total) == [1] &&
+    (rep e1).map (·.total) == base.map (fun k => k.total - 1) &&
+    (rep (e1.control s.me bf)).map (·.total) == base.map (fun k => k.total - 2)
+
+-- Ezreal, Prodigy: when I play it, discard 1, then draw 2
+#guard tsf fun s => do
+  let (s1, e) ← put s s.me "SFD-149" .hand
+  let a ← fire s1 [.played s.me e]
+  return a.handN s.me == s1.handN s.me + 1 && a.deckN s.me + 2 == s1.deckN s.me
+
+-- Temporal Portal (SFD-078): the next spell I play this turn has Repeat for its own cost
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-078" .base
+  let (s2, c) ← put s1 s.me "OGN-050" .hand
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let dC ← s3.cardDef? c
+  let funded := s3.fund s.me 12 12 12 12 12 12 12
+  let a ← activate funded s.me g 0 [] ⟨0, [.fury]⟩
+  let cost ← a.effCost s.me c dC
+  let double : RunePool.Payment :=
+    ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
+  let r ← cast a s.me c double [foe]
+  let before := (s3.playCostsOf s.me c dC cost).length
+  return (a.playCostsOf s.me c dC cost).length == before + 1 &&
+    s3.paysForX s.me c dC cost double == false && a.paysForX s.me c dC cost double &&
+    (a.playMark s.me c double).paid && !(a.playMark s.me c (payOf a c)).paid &&
+    a.tired g == some true && (r.extrasFor s.me c dC).length == before - 1
+
+-- (review) Marai Spire cuts Energy only: a Repeat that costs Power only keeps its Power; an
+-- additional cost cut to nothing counts as paid
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-122" .hand
+  let (s2, bf) ← putBf s1 s.me "SFD-211"
+  let d ← s2.cardDef? c
+  let mine := s2.control s.me bf
+  let (s3, y) ← put s2 s.me "SFD-109" .hand
+  let dy ← s3.cardDef? y
+  let (s4, _) ← put s3 s.me "SFD-149" .base
+  let basePay := payOf s4 y
+  return (mine.extrasFor s.me c d).all (·.power.length == 1) &&
+    (mine.extrasFor s.me c d).length == 1 &&
+    !(s4.paidExtra s.me y dy basePay) && (s4.extrasFor s.me y dy).all (·.total == 1) &&
+    s2.paidExtra s.me c d (payOf s2 c) == false
+
+-- (review) a spell that chose an enemy unit that is still there counts, one that chose its own
+-- unit does not
+#guard tsf fun s => do
+  let (s2, c) ← put s s.me "OGN-050" .hand
+  let (s3, mine) ← put s2 s.me "OGN-088" .base
+  let (s4, foe2) ← put s3 s.you "OGN-088" .base
+  let a ← play s4 s.me c [foe2]
+  let b ← play s4 s.me c [mine]
+  let n (x : GameState) : Option Nat := (Amount.spellsChoseEnemy.evalS x s.me c {})
+  return n a == some 1 && n b == some 0
 
 end RiftboundTest

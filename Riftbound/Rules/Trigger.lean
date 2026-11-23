@@ -84,6 +84,16 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
       if o.attached == some src then
         triggersAmong s src p ev d d.fullAbilities.length d.allAbilities.length
       else []
+    | _, _ => []) ++
+  -- an ability that an effect of this turn gave the object
+  s.turnFx.flatMap (fun f =>
+    match f.kind, f.target with
+    | .grantsAbility c i, some u =>
+      if u == src && f.turn == s.turn then
+        match s.cards.find? ⟨c⟩ with
+        | some d => triggersAmong s src p ev d i (i + 1)
+        | none => []
+      else []
     | _, _ => [])
 
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
