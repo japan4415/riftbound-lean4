@@ -173,13 +173,26 @@ def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
   s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
     (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
 
+/-- How much Might a buff just gave the Unit: the buff bonus with and without the last buff. -/
+def GameState.buffDelta (s : GameState) (u : ObjId) : Int :=
+  let before := s.modObj u (fun o =>
+    if 0 < o.extraBuffs then { o with extraBuffs := o.extraBuffs - 1 }
+    else { o with buffed := false })
+  s.buffBonus u - before.buffBonus u
+
+/-- How much Might the Equipment just gave the Unit: the Equipment bonus with and without it. -/
+def GameState.attachDelta (s : GameState) (g u : ObjId) : Int :=
+  let before := s.modObj g (fun o => { o with attached := none })
+  s.equipBonus u - before.equipBonus u
+
 /-- The abilities of a Unit that has just become Mighty (5 or more Might): its Might went up by
 `delta` because of the event, and was below 5 before it. The changes that are read are the buff
 and the Equipment attached; a lasting grant of Might and a Unit that is played Mighty are not. -/
 def GameState.becameMightyTriggers (s : GameState) (u : ObjId) (delta : Int) : List PendTrigger :=
   match s.obj? u with
   | some o =>
-    if (s.cardDef? u).any (·.hasType .unit) && (s.mightNow u).any (fun m => decide (5 ≤ m ∧ m - delta < 5)) then
+    if (s.cardDef? u).any (·.hasType .unit) &&
+        (s.mightNow u).any (fun m => decide (5 ≤ m ∧ m - delta < 5)) then
       triggersOf s u o.controller .becomeMighty ++ watchersOf s u o.controller .becomeMighty
     else []
   | none => []
@@ -229,7 +242,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o =>
       triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff ++
-        s.becameMightyTriggers u 1
+        s.becameMightyTriggers u (s.buffDelta u)
     | none => []
   | .readied u =>
     match s.obj? u with
@@ -258,7 +271,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o =>
       triggersOf s u o.controller .attachedTo ++
-        s.becameMightyTriggers u (((s.cardDef? g).bind (·.mightBonus)).getD 0)
+        s.becameMightyTriggers u (s.attachDelta g u)
     | none => []
   | .buffSpent p =>
     s.inPlay.flatMap (fun u =>

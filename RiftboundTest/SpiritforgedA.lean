@@ -2753,4 +2753,18 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       (match again with | .ok _ => false | .error _ => true)
   | .error _ => return false
 
+-- (review) Fiora when an Equipment makes the unit Mighty: the whole bonus counts (Brutalizer gives
+-- 1 and 2 more the turn it is attached), and a buff that was already there does not count again
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-180" .base
+  let (s2, three) ← put s1 s.me "OGN-006" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let (s4, five) ← put s3 s.me "OGN-049" .base
+  let (s5, g2) ← put s4 s.me "SFD-030" .base
+  let t := (s5.rich s.me).tire three |>.tire five
+  let up (x : GameState) (u : ObjId) : Option Bool := x.tired u |>.map (!·)
+  let a ← fire (attachTo three t g).1 [.attached g three]
+  let b ← fire (attachTo five t g2).1 [.attached g2 five]
+  return up a three == some true && up b five == some false && (a.mightNow three).any (5 ≤ ·)
+
 end RiftboundTest

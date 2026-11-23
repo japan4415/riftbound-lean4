@@ -615,6 +615,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Mighty になったとき**: `TriggerEvent.becomeMighty` は、バフ（`Event.buffed`）か、装備品を付けた（`Event.attached`）ことで、Might が 5 未満から 5 以上になったときに誘発する（`GameState.becameMightyTriggers`: 増えた Might を引いて、5 未満になるかを見る）。永続でない Might の付与（`grant`）、Mighty のまま出てくること、パッシブで Might が増えることは、読まない（近似）。
 - **好きな量を払う**: `payAny`（1 つずつ「払ってもよい」を最大 12 回聞き、払った数を `notes .unitPaid` で読む）。Hextech Anomaly（Power → Energy）と Ancient Henge（Energy → Power）は、Reaction の能力（Chain に載る）で、「Add は応答できない」は、守らない。
 - **書いたカード**: SFD-180（Fiora, Worthy）、205（Grand Duelist）、083（Hextech Anomaly）、117（Ancient Henge）、189（Fire Below the Mountain）。
+- **近似（レビュー）**: 増えた Might は、付ける前後の `equipBonus` / `buffBonus` の差で測る（`buffDelta`、`attachDelta`）。同じ一歩に、バフと装備品が両方あると、2 回誘発しうる。`buffsExtraMight` を後から足して Might が増えても、誘発しない。好きな量を払う Add（Gear）を、同じターンに 2 回使うと、1 回目に払った分が、2 回目の数に残る（`unitPaid` の記録は、ターンごと）。
 - **近似**: Fire Below the Mountain の Add は、「Gear を遊ぶか、Gear の能力を使うときだけ」の制限がない（制限つきの Add は、解釈されない）。
 - **カードの数**: 動く Spiritforged は 190 枚から 195 枚。
 
