@@ -33,7 +33,8 @@ structure RunePool where
   /-- Power of any domain (an `[Add]` of the rainbow Power): it can pay a Power symbol of any
   domain, when the Power of that domain is not there. -/
   any : Nat := 0
-  /-- How much Power was paid out of the Pool since it was last emptied (a count, not a resource). -/
+  /-- How much Power was paid out of the Pool since it was last emptied (a count, not a
+  resource). -/
   spent : Nat := 0
 deriving DecidableEq, Repr
 

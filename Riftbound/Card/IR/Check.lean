@@ -218,6 +218,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
+  | .banishOnDeath => true
+  | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n

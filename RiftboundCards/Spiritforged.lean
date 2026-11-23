@@ -520,8 +520,14 @@ def SFD_018.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Void Hatchling: the effect is not written yet. -/
-def SFD_018 : CardDef := SFD_018.meta
+/-- Void Hatchling. -/
+def SFD_018 : CardDef :=
+  { SFD_018.meta with
+
+    abilities := [.triggered
+      { event := .revealedFromDeck, subject := Selector.all .friendly .anywhere [] }
+      (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-019
 /--
@@ -856,8 +862,17 @@ def SFD_029.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rek'Sai, Breacher: the effect is not written yet. -/
-def SFD_029 : CardDef := SFD_029.meta
+/-- Rek'Sai, Breacher. -/
+def SFD_029 : CardDef :=
+  { SFD_029.meta with
+
+    abilities := [.triggered
+      { event := .play, subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .playedFromElsewhere] }
+      (.of [] (.ifThen (.canPay ⟨1, [.domain .fury]⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩), .prim (.ready (.slot 0))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-030
 /--
@@ -1722,8 +1737,12 @@ def SFD_059.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Svellsongur: the effect is not written yet. -/
-def SFD_059 : CardDef := SFD_059.meta
+/-- Svellsongur. -/
+def SFD_059 : CardDef :=
+  { SFD_059.meta with
+
+    abilities := [.passive .always [.copiesUnitText]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-060
 /--
@@ -2635,8 +2654,12 @@ def SFD_090.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- The Zero Drive: the effect is not written yet. -/
-def SFD_090 : CardDef := SFD_090.meta
+/-- The Zero Drive. -/
+def SFD_090 : CardDef :=
+  { SFD_090.meta with
+
+    grants := [.passive .always [.banishOnDeath]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-091
 /--
@@ -3152,8 +3175,18 @@ def SFD_109.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Akshan, Mischievous: the effect is not written yet. -/
-def SFD_109 : CardDef := SFD_109.meta
+/-- Akshan, Mischievous. -/
+def SFD_109 : CardDef :=
+  { SFD_109.meta with
+
+    additionalCost := some ⟨0, [.domain .body, .domain .body]⟩,
+    abilities := [.triggered { event := .play, condition := .paid }
+      (.of [Choice.targetOf .one .enemy .anywhere [.ofType .gear]]
+        (.ifThen .paid
+          (.seqOf [.prim (.takeControl (.slot 0)), .prim (.recall (.slot 0) false),
+            .ifThen (.matches (.slot 0) (.tag ⟨"Equipment"⟩))
+              (.prim (.attach (.slot 0) .self)) .nop]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-110
 /--
@@ -4089,8 +4122,13 @@ def SFD_141.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Irelia, Graceful: the effect is not written yet. -/
-def SFD_141 : CardDef := SFD_141.meta
+/-- Irelia, Graceful. -/
+def SFD_141 : CardDef :=
+  { SFD_141.meta with
+
+    abilities := [.triggered (.onSelf .chosen)
+      (.of [] (.prim (.addEnergy .you (.const 1) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-142
 /--
@@ -5073,8 +5111,16 @@ def SFD_175.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Undertitan: the effect is not written yet. -/
-def SFD_175 : CardDef := SFD_175.meta
+/-- Undertitan. -/
+def SFD_175 : CardDef :=
+  { SFD_175.meta with
+
+    abilities := [.triggered (.onSelf .play)
+        (.of [] (.grant (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])
+          (.mightPlus .it (.const 2)) .thisTurn)) .unlimited,
+      .triggered (.onSelf .revealedFromDeck)
+        (.of [] (.prim (.addEnergy .you (.const 2) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-176
 /--

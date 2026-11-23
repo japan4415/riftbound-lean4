@@ -76,6 +76,8 @@ inductive Event where
   | discarded (p : PlayerId) (obj : ObjId) (last : Bool)
   /-- An Equipment was attached to a unit. -/
   | attached (gear unit : ObjId)
+  /-- A card was revealed from a deck (the owner, the card). -/
+  | revealed (p : PlayerId) (card : ObjId)
   /-- A player spent a buff of a unit of theirs (CR 704). -/
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/

@@ -3163,5 +3163,104 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let b ← play s4 s.me c [mine]
   let n (x : GameState) : Option Nat := (Amount.spellsChoseEnemy.evalS x s.me c {})
   return n a == some 1 && n b == some 0
+-- Undertitan (SFD-175): when I play it, my other units get +2 Might this turn; as it is revealed
+-- from my deck, I add 2 Energy
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-175" .base
+  let (s2, ally) ← put s1 s.me "OGN-051" .base
+  let (s3, foe) ← put s2 s.you "OGN-051" .base
+  let a ← fire s3 [.played s.me u]
+  let (t1, top) ← put s3 s.me "SFD-175" .mainDeck
+  let b ← fire t1 [.revealed s.me top]
+  let c ← fire t1 [.revealed s.you top]
+  return a.mightNow ally == (s3.mightNow ally).map (· + 2) && a.mightNow u == s3.mightNow u &&
+    a.mightNow foe == s3.mightNow foe &&
+    (b.poolOf s.me).energy == (t1.poolOf s.me).energy + 2 && c.poolOf s.me == t1.poolOf s.me
+
+-- Svellsongur (SFD-059): the unit it is attached to has its own triggered abilities once more
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-149" .base
+  let (s2, g) ← put s1 s.me "SFD-059" .base
+  let held := (attachTo u s2 g).1
+  return (triggersOf s2 u s.me .play).length == 1 && (triggersOf held u s.me .play).length == 2
+
+-- The Zero Drive (SFD-090): the unit it is attached to is banished when it dies
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let (s2, g) ← put s1 s.me "SFD-090" .base
+  let held := (attachTo u s2 g).1
+  let killed := killObj held u
+  let a ← fire killed.1 killed.2
+  let (t1, v) ← put s s.me "OGN-051" .base
+  let plain := killObj t1 v
+  let b ← fire plain.1 plain.2
+  let inZone (x : GameState) (z : ZoneKind) : Bool :=
+    (x.zone (.player s.me z)).any (fun o => (x.cardDef? o).any (·.id == cid "OGN-051"))
+  return inZone a .banishment && !inZone a .trash && inZone b .trash && !inZone b .banishment
+
+-- Akshan, Mischievous (SFD-109): paying BodyBody more, when I play him I take an enemy gear (an
+-- Equipment is attached to him)
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let (s3, _) ← put s2 s.you "SFD-030" .base
+  let base := payOf s3 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let plain ← play s3 s.me a [] { pick := fun ts => ts == [g] }
+  let paid ← cast (s3.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let mine (x : GameState) (code : String) : Bool :=
+    (x.zone (.player s.me .base)).any (fun o => (x.cardDef? o).any (·.id == cid code) &&
+      (x.obj? o).any (·.controller == s.me))
+  let akshan := (paid.zone (.player s.me .base)).find? (fun o =>
+    (paid.cardDef? o).any (·.id == cid "SFD-109"))
+  return !mine plain "SFD-042" && plain.countIn s.you .base "SFD-042" == 1 &&
+    mine paid "SFD-042" && !mine paid "SFD-030" && paid.countIn s.you .base "SFD-042" == 0 &&
+    ((paid.zone (.player s.me .base)).any (fun o => (paid.cardDef? o).any
+      (·.id == cid "SFD-042") && (paid.obj? o).any (fun x => x.attached == akshan)))
+
+-- Irelia, Graceful (SFD-141): my spell that chooses her costs 1 Energy less (the Energy comes back)
+#guard tsf fun s => do
+  let (s1, irelia) ← put s s.me "SFD-141" .base
+  let (s2, c) ← put s1 s.me "OGN-050" .hand
+  let (s3, other) ← put s2 s.me "OGN-088" .base
+  let pay := payOf s3 c
+  let a ← play s3 s.me c [irelia]
+  let b ← play s3 s.me c [other]
+  let theirs ← fire s3 [.chosenBySpell s.you irelia]
+  let en (x : GameState) := (x.poolOf s.me).energy
+  return en a == en b + 1 && pay.energy ≥ 1 && en theirs == en s3
+
+-- Void Hatchling (SFD-018): when I reveal a card from a deck, I look at the top card first and may
+-- recycle it (here: the reveal is noted by the event)
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-018" .base
+  let (s2, top) ← s1.stackTop s.me ["OGN-088", "OGN-051"]
+  let (s3, other) ← s2.stackTop s.you ["OGN-088", "OGN-051"]
+  let revealed ← top.head?
+  let theirs ← other.head?
+  let a ← fire s3 [.revealed s.me revealed] { yes := true }
+  let b ← fire s3 [.revealed s.me revealed] { yes := false }
+  let c ← fire s3 [.revealed s.you theirs]
+  return a.topCard s.me != s3.topCard s.me && b.topCard s.me == s3.topCard s.me &&
+    c.topCard s.me == s3.topCard s.me && c.topCard s.you == s3.topCard s.you
+
+-- Rek'Sai, Breacher (SFD-029): a friendly unit played from somewhere other than a hand may pay
+-- 1 Energy and 1 Fury Power to enter ready
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-029" .base
+  let (s2, fromTrash) ← put s1 s.me "OGN-051" .trash
+  let (s3, inHand) ← put s2 s.me "OGN-051" .hand
+  let played := (playFree s.me s3 fromTrash)
+  let handPlay := (playFree s.me s3 inHand)
+  let units (x : GameState) : List ObjId :=
+    (x.zone (.player s.me .base)).filter (fun o => (x.cardDef? o).any (·.id == cid "OGN-051"))
+  let tiredAll (x : GameState) : Bool := (units x).all (fun o => x.tired o == some true)
+  let a ← fire (played.1.rich s.me) played.2 { yes := true }
+  let b ← fire (played.1.rich s.me) played.2 { yes := false }
+  let c ← fire (handPlay.1.rich s.me) handPlay.2
+  let d ← fire (played.1.fund s.me 0) played.2
+  return tiredAll played.1 && tiredAll b && tiredAll c && tiredAll d &&
+    (units a).all (fun o => a.tired o == some false) && (units a).length == 1 &&
+    ((a.poolOf s.me).energy + 1 == ((played.1.rich s.me).poolOf s.me).energy)
 
 end RiftboundTest

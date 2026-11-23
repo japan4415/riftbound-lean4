@@ -134,6 +134,7 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .playedFromElsewhere => true
   | .playedThisTurn => true
   | .inHandZone => true
   | .unitsPlayable => true
@@ -351,6 +352,8 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
+  | .banishOnDeath => true
+  | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
@@ -407,6 +410,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
+      | .revealedFromDeck => true
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

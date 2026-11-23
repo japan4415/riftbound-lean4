@@ -593,19 +593,25 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
-  -- the destination: the Trash of the owner, which is not a zone in play
+  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
+      else ZoneKind.trash) := ⟨_, rfl⟩
+  have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
+    rw [hdk]; split <;> simp
+  -- the destination: a zone of the owner that is not a zone in play
   have hdst : ∀ o', s.obj? u = some o' →
-      (Zone.normalize o'.owner (.player o'.owner .trash)).Valid s.playerCount ∧
-        z0 ≠ Zone.normalize o'.owner (.player o'.owner .trash) := by
+      (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
+        z0 ≠ Zone.normalize o'.owner (.player o'.owner dk) := by
     intro o' ho'
     have hlt := hov o' ho'
-    simp only [Zone.normalize, Zone.isBoard]
-    refine ⟨Zone.valid_player hlt _, ?_⟩
-    have hz0' := hz0
-    unfold GameState.inPlayZones at hz0'
-    simp only [List.mem_append, List.mem_map, List.mem_singleton] at hz0'
-    rcases hz0' with ⟨p, -, rfl⟩ | rfl <;> intro h <;> cases h
-  obtain ⟨r, hr⟩ := moveObj_isSome hwf huz (.player o.owner .trash) .top (by
+    rcases hk with rfl | rfl <;>
+    · simp only [Zone.normalize, Zone.isBoard]
+      refine ⟨Zone.valid_player hlt _, ?_⟩
+      have hz0' := hz0
+      unfold GameState.inPlayZones at hz0'
+      simp only [List.mem_append, List.mem_map, List.mem_singleton] at hz0'
+      rcases hz0' with ⟨p, -, rfl⟩ | rfl <;> intro h <;> cases h
+  obtain ⟨r, hr⟩ := moveObj_isSome hwf huz (.player o.owner dk) .top (by
     intro o' ho'
     rw [ho] at ho'
     cases ho'
@@ -618,7 +624,7 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   subst hsrc
   have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
-    rw [ho]
+    rw [← hdk, ho]
     simp only [hr]
     exact noteDeath_inPlay _ _ _ _ _ _
   rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
@@ -626,10 +632,11 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)
     subst this
     rw [hd]
-    simp only [Zone.normalize, Zone.isBoard]
-    unfold GameState.inPlayZones
-    simp only [List.mem_append, List.mem_map, List.mem_singleton, not_or, not_exists, not_and]
-    refine ⟨fun p _ h => ?_, fun h => ?_⟩ <;> cases h
+    rcases hk with rfl | rfl <;>
+    · simp only [Zone.normalize, Zone.isBoard]
+      unfold GameState.inPlayZones
+      simp only [List.mem_append, List.mem_map, List.mem_singleton, not_or, not_exists, not_and]
+      refine ⟨fun p _ h => ?_, fun h => ?_⟩ <;> cases h
   have hpc : s'.playerCount = s.playerCount := by
     unfold GameState.playerCount
     rw [hs.config]
