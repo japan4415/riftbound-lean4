@@ -2376,5 +2376,72 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let boosted := s2.buff e
   let a ← fire boosted [.combatStarted s.bf0 s.me]
   return a.dmg foe == (boosted.mightNow e).map Int.toNat && boosted.mightNow e == some 4
+-- Tianna Crownguard (SFD-060): while it is at a battlefield, opponents can't score points
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, bf2) ← putBf s1 s.you "SFD-216"
+  let (s3, _) ← putAt s2 s.me "SFD-060" bf
+  let held := (s3.control s.you bf2)
+  let (s4, _) ← put s2 s.me "SFD-060" .base
+  let held2 := (s4.control s.you bf2)
+  let blocked := scoreBf held s.you bf2 true
+  let mine := scoreBf (s3.control s.me bf) s.me bf true
+  let free := scoreBf held2 s.you bf2 true
+  return (held.holds s.you).isEmpty && blocked.2.2.isEmpty && blocked.1.pointsOf s.you == 0 &&
+    (held2.holds s.you).length == 1 && free.1.pointsOf s.you == 1 && mine.1.pointsOf s.me == 1
+
+-- Forgotten Monument (SFD-209): players can't score here until their third turn
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-209"
+  let held := s1.control s.me bf
+  let early := scoreBf held s.me bf true
+  let later := scoreBf { held with turn := 6 } s.me bf true
+  return early.1.pointsOf s.me == 0 && (held.holds s.me).isEmpty &&
+    later.1.pointsOf s.me == 1 && ({ held with turn := 6 }.holds s.me).length == 1
+
+-- Last Rites (SFD-150): Equip by paying 1 Chaos and recycling 2 cards from the Trash; when its unit
+-- conquers or holds, it may play a unit from the Trash
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-150" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← put s2 s.me "OGN-004" .trash
+  let (s4, _) ← put s3 s.me "OGN-004" .trash
+  let r ← activate s4 s.me g 0 [u] ⟨0, [.chaos]⟩
+  return (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&
+    (activate s3 s.me g 0 [u] ⟨0, [.chaos]⟩).isNone
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-216"
+  let (s2, u) ← putAt s1 s.me "OGN-051" bf
+  let (s3, g) ← put s2 s.me "SFD-150" .base
+  let (s4, _) ← put s3 s.me "OGN-051" .trash
+  let t := s4.hook g u
+  let a ← fire (t.rich s.me) [.scored s.me bf true]
+  let b ← fire (t.rich s.me) [.scored s.me bf false]
+  let c ← fire (t.rich s.me) [.scored s.me bf true] { yes := false }
+  let d ← fire (s4.rich s.me) [.scored s.me bf true]
+  return a.countIn s.me .base "OGN-051" == t.countIn s.me .base "OGN-051" + 1 &&
+    b.countIn s.me .base "OGN-051" == t.countIn s.me .base "OGN-051" + 1 &&
+    c.countIn s.me .base "OGN-051" == t.countIn s.me .base "OGN-051" &&
+    d.countIn s.me .base "OGN-051" == s4.countIn s.me .base "OGN-051"
+
+-- Blade of the Ruined King (SFD-178): Equip by paying 1 Order and killing a friendly unit
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-178" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  let r ← activate s3 s.me g 0 [u] ⟨0, [.order]⟩
+  let w ← activate s3 s.me g 0 [u] ⟨0, [.order]⟩ { obj := fun o => o == u }
+  return (r.obj? g).any (·.attached == some u) && (r.obj? u).isSome && (r.obj? v).isNone &&
+    (w.obj? u).isSome && (w.obj? v).isNone &&
+    (activate s2 s.me g 0 [u] ⟨0, [.order]⟩).isNone
+
+-- Edge of Night (SFD-139): when played from face down, attach it to a unit its player controls
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-139" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let hidden := s2.modObj g (fun o => { o with fromHidden := true })
+  let a ← fire hidden [.played s.me g]
+  let b ← fire s2 [.played s.me g]
+  return (a.obj? g).any (·.attached == some u) && (b.obj? g).any (·.attached == none)
 
 end RiftboundTest

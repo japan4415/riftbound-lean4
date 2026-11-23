@@ -1678,8 +1678,13 @@ def SFD_060.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Tianna Crownguard: the effect is not written yet. -/
-def SFD_060 : CardDef := SFD_060.meta
+/-- Tianna Crownguard. -/
+def SFD_060 : CardDef :=
+  { SFD_060.meta with
+
+    abilities := [.passive (.matches .self .onBattlefield)
+      [.cantPlayer .eachOpponent .score .anywhere 0]],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-061
 /--
@@ -3892,8 +3897,14 @@ def SFD_139.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Edge of Night: the effect is not written yet. -/
-def SFD_139 : CardDef := SFD_139.meta
+/-- Edge of Night. -/
+def SFD_139 : CardDef :=
+  { SFD_139.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen .fromHidden (.prim (.attach .self (.slot 0))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-140
 /--
@@ -4192,8 +4203,22 @@ def SFD_150.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Last Rites: the effect is not written yet. -/
-def SFD_150 : CardDef := SFD_150.meta
+/-- Last Rites. -/
+def SFD_150 : CardDef :=
+  { SFD_150.meta with
+
+    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 2))
+          (.seqOf [.repeatN (.const 2) (.prim (.recycle (Selector.one .friendly .inTrash []))),
+            .prim (.attach .self (.slot 0))]) .nop)) .unlimited],
+    grants := [.triggered (.onSelf .conquer)
+        (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
+          (.const 0) none)))) .unlimited,
+      .triggered (.onSelf .hold)
+        (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
+          (.const 0) none)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-151
 /--
@@ -4971,8 +4996,18 @@ def SFD_178.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Blade of the Ruined King: the effect is not written yet. -/
-def SFD_178 : CardDef := SFD_178.meta
+/-- Blade of the Ruined King. -/
+def SFD_178 : CardDef :=
+  { SFD_178.meta with
+
+    abilities := [.activated [.pay ⟨0, [.domain .order]⟩] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .unit]))
+            (.const 2))
+          (.seqOf [.prim (.kill (Selector.one .friendly .anywhere
+              [.ofType .unit, .not (.sameAs (.slot 0))])),
+            .prim (.attach .self (.slot 0))]) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-179
 /--

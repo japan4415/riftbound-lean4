@@ -334,6 +334,8 @@ def StaticMod.runs : StaticMod → Bool
   | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
+  | .cantPlayer _ .score .here _ => true
+  | .cantPlayer _ .score .anywhere _ => true
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC

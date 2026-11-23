@@ -218,7 +218,7 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
   match s.obj? bf with
   | none => (s, [], [])
   | some o =>
-    if o.scored.contains r then (s, [], [])
+    if o.scored.contains r || s.cantScoreHere r bf then (s, [], [])
     else
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
       let all := s1.battlefields.all
@@ -230,7 +230,8 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
 /-- The Battlefields the turn player holds and has not scored this turn (CR 315.2.b). -/
 def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
   s.battlefields.filter (fun b =>
-    decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false)
+    decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false &&
+      !s.cantScoreHere tp b)
 
 /-- Remember that `tp` has scored a Battlefield this turn. -/
 def markScored (tp : PlayerId) (o : Object) : Object := { o with scored := tp :: o.scored }
@@ -690,11 +691,19 @@ theorem scoreBf_of_scored {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool}
   | some o =>
     rw [ho] at h
     have h' : o.scored.contains r = true := by simpa using h
-    simp only [h', ↓reduceIte]
+    simp only [h', Bool.true_or, ↓reduceIte]
+
+/-- A player who cannot score the Battlefield scores nothing there. -/
+theorem scoreBf_of_cant {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool}
+    (h : s.cantScoreHere r bf = true) : scoreBf s r bf c = (s, [], []) := by
+  unfold scoreBf
+  cases ho : s.obj? bf with
+  | none => rfl
+  | some o => simp [h]
 
 /-- Scoring a Battlefield marks it as scored by the player (CR 472). -/
 theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o : Object}
-    (h : s.obj? bf = some o) :
+    (h : s.obj? bf = some o) (hn : s.cantScoreHere r bf = false) :
     (((scoreBf s r bf c).1.obj? bf).map (·.scored.contains r)) = some true := by
   unfold scoreBf
   simp only [h]
@@ -702,7 +711,7 @@ theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o 
   · rename_i hc
     show ((s.obj? bf).map _) = some true
     rw [h]
-    have hm : r ∈ o.scored := by simpa using hc
+    have hm : r ∈ o.scored := by simpa [hn] using hc
     simp [hm]
   · split
     · rw [GameState.obj?_modObj]
@@ -715,8 +724,13 @@ theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o 
 time changes nothing, whichever way it is scored (CR 472, 473). -/
 theorem scoreBf_twice {s : GameState} {r : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
     (h : s.obj? bf = some o) :
-    scoreBf (scoreBf s r bf c).1 r bf c' = ((scoreBf s r bf c).1, [], []) :=
-  scoreBf_of_scored (scoreBf_marks h)
+    scoreBf (scoreBf s r bf c).1 r bf c' = ((scoreBf s r bf c).1, [], []) := by
+  by_cases hn : s.cantScoreHere r bf = true
+  · have h1 := scoreBf_of_cant (c := c) hn
+    rw [h1]
+    exact scoreBf_of_cant hn
+  · have hn' : s.cantScoreHere r bf = false := by simpa using hn
+    exact scoreBf_of_scored (scoreBf_marks h hn')
 
 /-- A settled state has no Unit with lethal damage in play: the Cleanup has killed them
 (CR 323.4). -/
