@@ -217,6 +217,9 @@ inductive TriggerEvent where
   | recycle
   /-- A combat the object was in ends. -/
   | combatEnd
+  /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I
+  win", a Legend "you win"). -/
+  | winCombat
   /-- The unit becomes Mighty. -/
   | becomeMighty
   /-- The unit becomes Empowered. -/

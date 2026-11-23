@@ -354,7 +354,10 @@ def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
     if tieAll then s1.players.flatMap (fun p => s1.unitsOf p bf) else s1.unitsOf att bf
   let r := if defenders then applyEach recallObj s1 victims else (s1, [])
   let t := endShowdown r.1 bf
-  (t.1, t.2.1, r.2 ++ t.2.2)
+  -- the player whose Units are the only ones left wins the Combat
+  let won := (r.1.players.filter (fun p => !(r.1.unitsOf p bf).isEmpty)).map
+    (fun p => Event.combatWon bf p)
+  (t.1, t.2.1, r.2 ++ (match won with | [w] => [w] | _ => []) ++ t.2.2)
 
 /-- The end of a Combat is a safe change, then points. -/
 theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :

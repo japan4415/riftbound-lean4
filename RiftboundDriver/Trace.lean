@@ -122,6 +122,8 @@ def eventJson : Event → String
   | .died o p => jobj [("t", jstr "died"), ("obj", toString o.n), ("player", toString p.n)]
   | .combatStarted bf att =>
     jobj [("t", jstr "combat"), ("battlefield", toString bf.n), ("attacker", toString att.n)]
+  | .combatWon bf w =>
+    jobj [("t", jstr "combat_won"), ("battlefield", toString bf.n), ("winner", toString w.n)]
   | .activated p src idx =>
     jobj [("t", jstr "activated"), ("player", toString p.n), ("source", toString src.n),
       ("index", toString idx)]
