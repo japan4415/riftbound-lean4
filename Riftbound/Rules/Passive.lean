@@ -95,10 +95,12 @@ def victoryScore (s : GameState) : Nat :=
 spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
 is attached to (Rabadon's Deathcrown). -/
 def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
+  let amount (src : ObjId) (m : StaticMod) : Option Nat :=
+    match m with
+    | .bonusDamage a => a.evalS0 s p src {}
+    | _ => none
   (s.passiveSources.flatMap (fun g =>
-    if (s.obj? g).any (·.controller == p) then
-      (s.activeMods g).filterMap (fun m =>
-        match m with | .bonusDamage (.const n) => some n | _ => none)
+    if (s.obj? g).any (·.controller == p) then (s.activeMods g).filterMap (amount g)
     else [])).sum +
   (s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
@@ -108,8 +110,7 @@ def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
         if (s.obj? u).any (·.controller == p) then
           d.grants.flatMap (fun ab =>
             match ab with
-            | Ability.passive .always mods =>
-              mods.filterMap (fun m => match m with | .bonusDamage (.const n) => some n | _ => none)
+            | Ability.passive .always mods => mods.filterMap (amount g)
             | _ => [])
         else []
       | none => []
@@ -147,7 +148,8 @@ def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
       -- Shurelya's Requiem: the units of the player at the place of the unit it is attached to
       (match o.attached.bind (fun u => s.obj? u), s.obj? id with
         | some host, some me =>
-          if host.controller == me.controller && host.loc == me.loc then
+          if host.controller == me.controller && host.loc == me.loc && id ∈ s.inPlay &&
+              (s.cardDef? id).any (·.hasType .unit) then
             d.grants.flatMap (fun ab =>
               match ab with
               | Ability.passive .always mods =>

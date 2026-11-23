@@ -566,6 +566,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **装備品の `grants` に書ける、パッシブの変更**: `bonusDamage`（付けたユニットのプレイヤーの呪文と能力のダメージが増える: Rabadon's Deathcrown。ユニット自身のパッシブでも働く）、`keywordHere`（付けたユニットと同じ場所の、味方のユニットに、キーワード: Shurelya's Requiem）、`gainsTag`（付けたユニットに、タグ: Experimental Hexplate）、`mightIfFresh`（今のターンに付けたとき、Might が増える: Brutalizer。装備品の `attachedTurn`）、`holdIsConquer`（付けたユニットの、hold の効果は、conquer の効果でもあり、逆もそう: Skyfall of Areion）。ユニット自身のパッシブに、`doubleEquip`（付いている装備品の Might ボーナスが 2 倍: Gearhead）。
 - **書いたカード**: SFD-030、042、068、073、191、192（6 枚）。
 - **近似**: Skyfall の入れ替えは、conquer と hold の誘発だけ（得点は、その種類のまま）。Shurelya の「ここ」は、付けたユニットと、同じ Battlefield（または、同じ Base のユニット）で数える。Hexplate の Mech は、タグの判定にだけ効く（キーワードの判定には、効かない）。
+- **レビューで直したこと**: `passiveBonus` が、`.bonusDamage` の量を、定数（`.const`）しか読まなかった（`runs` が通る式は、すべて読む）。`keywordHere` が、場にいるユニット以外にも付いて見えた（場にいるユニットだけ）。足りなかったテストを足した（Annie, Fiery と Rabadon の合計、Gearhead が Brutalizer の追加を 2 倍にしないこと、Brutalizer を付け替えるとき、Shurelya が敵を ready にしないこと、Hexplate が敵のユニットに付いたとき、Skyfall が Battlefield の conquer を hold で起こさないこと）。**OGS-001 Annie, Fiery の「Bonus Damage」が、この PR から働く**（`bonusDamage` の読み手ができたため）。
+- **近似（レビュー）**: 新しい `StaticMod` は、どこに書くかで読まれる場所が決まっている（装備品の `grants` だけ: `gainsTag`・`keywordHere`・`holdIsConquer`・`mightIfFresh`、ユニット自身の `abilities` だけ: `doubleEquip`）。取り違えると、`runs` は通るが、働かない。すでに付いている装備品を、同じユニットに付け直すと、そのターンの追加は、もう一度付く。`gainedTags` と `equipKws` は、評価のたびに、場の全体を数える（遅い）。
 - **カードの数**: 動く Spiritforged は 159 枚から 165 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）

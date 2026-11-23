@@ -2109,7 +2109,8 @@ meta def playOut : Nat → GameState → GameState
   let end_ := playOut 40 r
   return (end_.obj? d).isNone && end_.pointsOf s.you > s3.pointsOf s.you && e != d
 
--- (review) Prize of Progress: not for a gear in the hand or hidden, only for one in play (Equip too)
+-- (review) Prize of Progress: not for a gear in the hand or hidden, only for one in play (Equip
+-- too)
 #guard tsf fun s => do
   let (s1, u) ← put s s.me "SFD-075" .base
   let (s2, inHand) ← put s1 s.me "SFD-042" .hand
@@ -2120,6 +2121,7 @@ meta def playOut : Nat → GameState → GameState
   let c ← fire s4 [.activated s.me board 0]
   return a.mightNow u == s4.mightNow u && b.mightNow u == s4.mightNow u &&
     c.mightNow u == (s4.mightNow u).map (· + 1)
+
 /-- Attach the Equipment to the unit now. -/
 meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameState :=
   (attachTo u s g).1
@@ -2198,5 +2200,55 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let e ← fire s5 [.scored s.me bf true]
   return a.tired lucian == some false && b.tired lucian == some true &&
     c.handN s.me == d.handN s.me + 2 && e.handN s.me == s5.handN s.me
+
+-- (review) Annie, Fiery (OGS-001): her player's spells deal 1 Bonus Damage more; with Rabadon's
+-- Deathcrown, 3 more
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-017" .hand
+  let (s2, _) ← put s1 s.me "OGS-001" .base
+  let (s3, e) ← putAt s2 s.you "SFD-132" s.bf0
+  let (s4, u) ← put s3 s.me "OGN-051" .base
+  let (s5, g) ← put s4 s.me "SFD-191" .base
+  let a ← play s3 s.me c [e]
+  let b ← play (s5.hook g u) s.me c [e]
+  return a.dmg e == some 3 && b.dmg e == some 6
+
+-- (review) Gearhead doubles the printed bonus, not Brutalizer's extra; Brutalizer's extra goes to
+-- the unit it was attached to this turn (moved to another unit, the first loses it)
+#guard tsf fun s => do
+  let (s1, gh) ← put s s.me "SFD-068" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, v) ← put s2 s.me "OGN-051" .base
+  let a := s3.hook g gh
+  let b := (s3.hook g gh).hook g v
+  return a.mightNow gh == (s3.mightNow gh).map (· + 2 + 2) &&
+    b.mightNow v == (s3.mightNow v).map (· + 3) && b.mightNow gh == s3.mightNow gh
+
+-- (review) Shurelya's Requiem readies the units of its player only; Hexplate on an enemy unit
+-- makes that unit a Mech (for its player)
+#guard tsf fun s => do
+  let (s1, r) ← put s s.me "SFD-192" .hand
+  let (s2, mine) ← put s1 s.me "OGN-051" .base
+  let (s3, foe) ← put s2 s.you "OGN-051" .base
+  let t := (s3.tire mine).tire foe
+  let a ← play t s.me r
+  return a.tired mine == some false && a.tired foe == some true
+#guard tsf fun s => do
+  let (s1, foe) ← put s s.you "OGN-051" .base
+  let (s2, g) ← put s1 s.you "SFD-073" .base
+  let t := s2.hook g foe
+  return t.gainedTags foe == [⟨"Mech"⟩] && (t.zone (.player s.you .base)).contains foe
+
+-- (review) Skyfall: a unit with only a hold ability gets it once on a conquer; the Battlefield's
+-- own conquer ability does not fire on a hold
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-220"
+  let (s2, dune) ← putAt s1 s.me "SFD-027" bf
+  let (s3, g) ← put s2 s.me "SFD-030" .base
+  let t := s3.hook g dune
+  let c ← fire (t.rich s.me) [.scored s.me bf true]
+  let h ← fire (t.rich s.me) [.scored s.me bf false]
+  return c.handN s.me == t.handN s.me + 2 && h.countIn s.me .base "SFD-T03" == 0 &&
+    c.countIn s.me .base "SFD-T03" == 1
 
 end RiftboundTest
