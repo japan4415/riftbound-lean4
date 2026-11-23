@@ -516,9 +516,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let s3 ← play s2 s.me c
   let s4 ← play s3 s.me p
   let gold := s4.firstOf s.me .base "SFD-T03"
-  let mech := (s4.zone (.player s.me .base)).find? (fun o => (s4.cardDef? o).any (·.name == "Mech"))
+  let mech := (s4.zone (.player s.me .base)).find? (fun o =>
+    (s4.cardDef? o).any (·.name == "Mech"))
   return gold.bind s4.tired == some true && mech.bind s4.tired == some false
--- (review) Piercing Light with Repeat paid: the first unit is hit twice? no: the effect is done twice
+-- (review) Piercing Light with Repeat paid: the effect is done twice
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-023" .hand
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
@@ -533,7 +534,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v]
   let b ← cast (s2.rich s.me) s.me c pay [v]
   return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
--- (review) Marching Orders: the enemy takes the friendly unit's Might, the friendly takes the enemy's
+-- (review) Marching Orders: each unit takes damage equal to the Might of the other
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-114" .hand
   let (s2, f) ← put s1 s.me "OGN-051" .base
@@ -673,10 +674,12 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 -- Draven, Vanquisher (SFD-020): when it wins a combat, a Gold token; when it attacks or defends,
 -- the player may pay 1 Fury for +2 Might
 #guard tsf fun s => do
-  let (s1, d) ← putAt s s.me "SFD-020" s.bf0
+  let (s1, _) ← putAt s s.me "SFD-020" s.bf0
   let a ← fire s1 [.combatWon s.bf0 s.me]
   let b ← fire s1 [.combatWon s.bf0 s.you]
-  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 && d != s.bf0
+  let gold := a.firstOf s.me .base "SFD-T03"
+  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 &&
+    gold.bind a.tired == some true
 #guard tsf fun s => do
   let (s1, d) ← putAt s s.me "SFD-020" s.bf0
   let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
@@ -712,5 +715,73 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s3, o) ← put s2 s.me "OGN-051" .base
   let (s4, e) ← put s3 s.you "SFD-062" .base
   return s4.hasKw m .shield && !s4.hasKw o .shield && !s4.hasKw e .shield
+
+-- (review) Mechanized Menace: Shield is +1 Might in the damage of a defending Mech
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-181" .legendZone
+  let (s2, m) ← putAt s1 s.me "SFD-062" s.bf0
+  let (s3, o) ← putAt s2 s.me "OGN-051" s.bf0
+  return s3.combatMight m false == s3.combatMight m true + 1 &&
+    s3.combatMight o false == s3.combatMight o true
+
+-- (review) the events of the end of a real Combat set off the trigger: the attacker whose
+-- opponent has no unit left wins, and Draven gets a Gold token; the defender who is left wins when
+-- the attacker is recalled (and the attacker's Draven is recalled, so nothing for it)
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-020" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
+  let dead := s2.modObj e (fun o => { o with loc := none })
+  let (t1, _, evs) := combatResolve dead s.bf0 s.me
+  let won ← fire t1 evs
+  let (u1, _, evs2) := combatResolve s2 s.bf0 s.me
+  let lost ← fire u1 evs2
+  return won.countIn s.me .base "SFD-T03" == 1 && lost.countIn s.me .base "SFD-T03" == 0
+
+-- (review) The Papertree: the runes channelled are exhausted
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-219"
+  let a ← fire s1 [.scored s.me bf false]
+  let fresh (x : GameState) (p : PlayerId) :=
+    (x.zone (.player p .base)).filter (fun r => (x.cardDef? r).any (·.hasType .rune) &&
+      (s1.zone (.player p .base)).all (· != r))
+  return (fresh a s.me).length == 1 && (fresh a s.me).all (fun r => a.tired r == some true) &&
+    (fresh a s.you).all (fun r => a.tired r == some true)
+
+-- (review) Treasure Hoard and Draven's Gold token are exhausted; the cost is exactly 1
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-220"
+  let a ← fire (s1.fund s.me 1) [.scored s.me bf true]
+  let g := a.firstOf s.me .base "SFD-T03"
+  return g.bind a.tired == some true && (a.poolOf s.me).energy == 0
+
+-- (review) Power Nexus: exactly 4 Power pays; the Power is gone afterwards
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-214"
+  let a ← fire (s1.fund s.me 0 4) [.scored s.me bf false]
+  return a.pointsOf s.me == s1.pointsOf s.me + 1 && (a.poolOf s.me).fury == 0
+
+-- (review) Emperor's Dais: no Energy, no return and no token; with 1 Energy, one cost
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-207"
+  let (s2, _) ← putAt s1 s.me "OGN-051" bf
+  let a ← fire (s2.fund s.me 0) [.scored s.me bf true]
+  let b ← fire (s2.fund s.me 1) [.scored s.me bf true]
+  return a.countIn s.me .hand "OGN-051" == s2.countIn s.me .hand "OGN-051" &&
+    b.countIn s.me .hand "OGN-051" == s2.countIn s.me .hand "OGN-051" + 1 &&
+    (b.poolOf s.me).energy == 0
+
+-- (review) Sunken Temple: no draw when the player declines, or when they hold
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-218"
+  let (s2, _) ← putAt s1 s.me "OGN-001" bf
+  let a ← fire (s2.rich s.me) [.scored s.me bf true] { yes := false }
+  let b ← fire (s2.rich s.me) [.scored s.me bf false]
+  return a.handN s.me == s2.handN s.me && b.handN s.me == s2.handN s.me
+
+-- (review) Corrupt Enforcer: the opponent's win does not draw for the player
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-123" s.bf0
+  let a ← fire s1 [.combatWon s.bf0 s.you]
+  return a.handN s.me == s1.handN s.me
 
 end RiftboundTest

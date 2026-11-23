@@ -538,6 +538,7 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'stunned') txt = cardName(e.target) + ' は Stun された';
     else if (e.t === 'discarded') txt = 'P' + e.player + ' が ' + cardName(e.obj) + ' を捨てた';
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
+    else if (e.t === 'combat_won') txt = 'P' + e.winner + ' が Combat に勝つ';
     else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
     if (txt) { const m = document.createElement('small'); m.className = 'ev'; m.textContent = txt; $('now').append(document.createElement('br'), m); }
   }

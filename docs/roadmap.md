@@ -492,7 +492,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **測り方**: `CardDef.runs` が、装備品が与える能力（`grants`）も見る。今まで動いていたカードで、数が減るものは無かった。
 - **書いたカード**: SFD-020、115、123、181、185、190、207、212、214、217、218、219、220（13 枚）。Battlefield は、プレイヤーの conquer と hold（`youConquer`、`youHold`）で誘発する。Minefield は、山札の上の 1 枚を 2 回、墓地に置く（上から 2 枚を選ぶ手段は、まだ無い）。
 - **近似**: Seat of Power の「他の Battlefield」は、「あなたが支配している」を数える（「味方が支配している」は、2 人戦では同じ）。Draven, Vanquisher の Power の支払いは、解決のときの Rune Pool から行う。
-- **カードの数**: 動く Spiritforged は 75 枚から 89 枚。テストは `RiftboundTest/SpiritforgedA.lean`。
+- **レビューで直したこと**: Mechanized Menace の Shield が、数値を持たず、防御側の +1 Might にならなかった（数値の無い `[Assault]`・`[Shield]` は 1 として数える）。`coverage.py` が、`grants` だけのカード（装備品）を「キーワードだけ」に数えていた。ビューアが `combat_won` を表示する。足りなかったテスト（支払いのちょうどの額、トークンが exhausted、Papertree の Rune、実際の Combat の終わりのイベントで誘発する Draven）を足した。
+- **カードの数**: 動く Spiritforged は 75 枚から 89 枚（うち 1 枚は Gold: 76 枚になり、さらに 13 枚）。テストは `RiftboundTest/SpiritforgedA.lean`。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
 

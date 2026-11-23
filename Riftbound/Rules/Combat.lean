@@ -37,7 +37,13 @@ def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff)
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
   let amount (i : KeywordInst) : Option Nat :=
-    if i.keyword == k then (match i.arg with | .amount n => some n | _ => none) else none
+    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
+    if i.keyword == k then
+      (match i.arg with
+        | .amount n => some n
+        | .none => if k == .assault || k == .shield then some 1 else none
+        | _ => none)
+    else none
   (match s.cardDef? u with
     | some d => (d.keywords.filterMap amount).sum
     | none => 0) + ((s.grantedKws u).filterMap amount).sum

@@ -37,7 +37,7 @@ def analyse(path: Path) -> dict:
         state = s.group(1) if s else "todo"
         n[state] += 1
         if state != "todo":
-            if "spellEffect :=" in hand or "abilities :=" in hand:
+            if "spellEffect :=" in hand or "abilities :=" in hand or "grants :=" in hand:
                 n["withEffect"] += 1
             else:
                 n["keywordOnly"] += 1
