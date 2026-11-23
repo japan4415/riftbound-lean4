@@ -2995,6 +2995,9 @@ def OGN_111.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
+-- Heimerdinger, Inventor: the definition `def OGN_111 : CardDef` is at the end of the file, before the
+-- list of the cards: it uses cards that come after this one. status := .drafted, and its
+-- abilities := the exhaust abilities of those cards.
 
 -- BEGIN GENERATED OGN-112
 /--

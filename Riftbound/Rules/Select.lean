@@ -615,8 +615,19 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     Condition → Option Bool
   | .always => some true
   | .not c => (Condition.eval s p self env c).map (fun b => !b)
-  | .and a b => do pure ((← Condition.eval s p self env a) && (← Condition.eval s p self env b))
-  | .or a b => do pure ((← Condition.eval s p self env a) || (← Condition.eval s p self env b))
+  | .and a b =>
+    -- a false side makes it false, even if the other cannot be answered yet
+    match Condition.eval s p self env a, Condition.eval s p self env b with
+    | some x, some y => some (x && y)
+    | some false, none => some false
+    | none, some false => some false
+    | _, _ => none
+  | .or a b =>
+    match Condition.eval s p self env a, Condition.eval s p self env b with
+    | some x, some y => some (x || y)
+    | some true, none => some true
+    | none, some true => some true
+    | _, _ => none
   | .cmp op a b => do
     let x ← a.evalS0 s p self env
     let y ← b.evalS0 s p self env
