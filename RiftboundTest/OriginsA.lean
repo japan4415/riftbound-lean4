@@ -4055,6 +4055,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let hides ← activate (s2.control s.me s.bf0) s.me c 2 [s.bf0] ⟨1, []⟩
   let without := activate (n1.control s.me s.bf0) s.me nc 2 [s.bf0] ⟨1, []⟩
   let normal ← activate (s2.control s.me s.bf0) s.me c 0 [s.bf0] ⟨0, [.fury]⟩
+  -- with hiding free (Guerilla Warfare) the Energy comes back, not a Power
+  let free := (s2.control s.me s.bf0).addTurnFx s.me .hideFree
+  let paid ← activate free s.me c 2 [s.bf0] ⟨1, []⟩
+  let baseline ← activate (s2.control s.me s.bf0) s.me c 2 [s.bf0] ⟨1, []⟩
+  -- the opponent's Legend gives me nothing
+  let (e1, _) ← put n1 s.you "OGN-263" .legendZone
+  let theirs := activate (e1.control s.me s.bf0) s.me nc 2 [s.bf0] ⟨1, []⟩
   -- the Teemo unit on the board goes to the hand; or the one in the Champion Zone
   let (b1, _) ← put s2 s.me "OGN-121" .base
   let (b2, _) ← put b1 s.me "OGN-136" .base
@@ -4062,7 +4069,9 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let emptyZone := b2.setZone (.player s.me .championZone) []
   let (z1, _) ← put emptyZone s.me "OGN-121" .championZone
   let fromZone ← activate z1 s.me sc 1 [] ⟨1, []⟩ { yes := false }
-  return hid hides == 1 && hid normal == 1 && without.isNone &&
+  return (paid.poolOf s.me).energy == (baseline.poolOf s.me).energy + 1 &&
+    (paid.poolOf s.me).any == (baseline.poolOf s.me).any && theirs.isNone &&
+    hid hides == 1 && hid normal == 1 && without.isNone &&
     board.countIn s.me .hand "OGN-121" == 1 && board.countIn s.me .base "OGN-121" == 0 &&
     board.countIn s.me .base "OGN-136" == 1 && board.tired sc == some true &&
     fromZone.countIn s.me .hand "OGN-121" == 1 &&

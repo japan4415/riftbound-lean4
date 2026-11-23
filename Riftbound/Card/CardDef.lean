@@ -88,18 +88,27 @@ def hiddenPlay (c : CardDef) : EffectDef :=
     EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
   else EffectDef.of [] (gate (.prim (.play .self)))
 
-/-- Hide: hide the card at a Battlefield its player controls (CR 811). Hiding is free this turn after
-Guerilla Warfare: the Power paid comes back. -/
-def hideEffect : EffectDef :=
+/-- Hide: hide the card at a Battlefield its player controls (CR 811). Hiding is free this turn
+after Guerilla Warfare: what was paid comes back (`refund`: a Power, or the Energy of the other
+Hide). -/
+def hideEffectWith (refund : Prim) : EffectDef :=
   EffectDef.of [Choice.targetOf .one .any .anywhere
     [.ofType .battlefield, .controlled, .hideRoom]]
     (.ifThen (.matches (.slot 0) .controlled)
       (.seqOf [
         .ifThen (.and (.noted .hideFree)
             (.cmp .ge (.count (Selector.all .friendly .inHand [.sameAs .self])) (.const 1)))
-          (.prim (.addPower .you (.const 1) none none)) .nop,
+          (.prim refund) .nop,
         .prim (.hideAt .self (.slot 0))])
       .nop)
+
+/-- Hide for one Power of any domain. -/
+def hideEffect : EffectDef := hideEffectWith (.addPower .you (.const 1) none none)
+
+/-- Hide for one Energy (with Swift Scout): the Energy comes back, if hiding is free. -/
+def hideEnergyEffect : EffectDef :=
+  let e := hideEffectWith (.addEnergy .you (.const 1) none)
+  EffectDef.mk e.choices (.ifThen .hidesWithEnergy e.body .nop)
 
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
@@ -123,8 +132,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
        .activated [.fromHidden] .reaction c.hiddenPlay .unlimited,
        -- with Swift Scout: hide for one Energy instead (the passive of the Legend is asked)
        .activated [.fromHand, .pay ⟨1, []⟩] .normal
-         (EffectDef.mk hideEffect.choices (.ifThen .hidesWithEnergy hideEffect.body .nop))
-         .unlimited]
+         hideEnergyEffect .unlimited]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.may (.prim (.recycleTop .you)))) .unlimited]
