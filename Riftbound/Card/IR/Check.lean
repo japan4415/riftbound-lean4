@@ -84,6 +84,8 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .at_ s => Selector.ok c s
   | .attachedTo s => Selector.ok c s
   | .not f => Filter.ok c f
+  | .either a b => Filter.ok c a && Filter.ok c b
+  | .both a b => Filter.ok c a && Filter.ok c b
   | .sameAs s => Selector.ok c s
   | .sameController s => Selector.ok c s
   | _ => true

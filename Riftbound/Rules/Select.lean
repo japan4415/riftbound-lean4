@@ -295,6 +295,14 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _, _ => false)
   | .notSelf => some (id != self)
   | .not f => (f.holds s self env id).map (fun b => !b)
+  | .either a b => do
+    let x ← a.holds s self env id
+    let y ← b.holds s self env id
+    pure (x || y)
+  | .both a b => do
+    let x ← a.holds s self env id
+    let y ← b.holds s self env id
+    pure (x && y)
   | .top n =>
     some (match s.obj? id with
       | some o =>

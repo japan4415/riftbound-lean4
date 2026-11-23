@@ -233,6 +233,10 @@ theorem GameState.paysForX_total {s : GameState} {p : PlayerId} {c : ObjId} {d :
   obtain ⟨k, hk, hp⟩ := h
   exact ⟨k, hk, Cost.total_of_paidBy hp⟩
 
+/-- The Power symbols in a fixed order, so that the same symbols in another order are one cost. -/
+def canonPower (l : List PowerSym) : List PowerSym :=
+  l.mergeSort (fun a b => decide (toString (repr a) ≤ toString (repr b)))
+
 /-- The Power symbols, with one of them left out, each way. -/
 def dropEach : List PowerSym → List (List PowerSym)
   | [] => []
@@ -249,13 +253,16 @@ def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop
 
 /-- The costs a Spell may have, by how much less (1 Energy or 1 Power each time) the objects it
 chooses make it cost (at most `k`). -/
-def Cost.cutOptions (c : Cost) (k : Nat) : List Cost :=
+def Cost.cutOptions (c : Cost) (k : Nat) (floor : Nat := 0) : List Cost :=
   -- the cut is not optional: with something to cut, the whole cost is not one of the costs
   if k = 0 then [c]
   else
-    let l := (((List.range (k + 1)).flatMap (fun a => (List.range (k + 1 - a)).flatMap (fun b =>
-      (dropPowers b c.power).map (fun pw => { c.lessEnergy a with power := pw })))).filter
-        (fun x => x != c)).eraseDups
+    -- the Energy does not go below the floor that the cost already has (Vex)
+    let es := (List.range (k + 1)).filter (fun a => a == 0 || floor + a ≤ c.energy)
+    let l := ((es.flatMap (fun a => (List.range (k + 1 - a)).flatMap (fun b =>
+      (dropPowers b c.power).map (fun pw =>
+        { c.lessEnergy a with power := canonPower pw })))).filter
+        (fun x => x != ⟨c.energy, canonPower c.power⟩)).eraseDups
     if l.isEmpty then [c] else l
 
 /-- With nothing cut, the cost itself is the one cost. -/
@@ -272,16 +279,25 @@ def GameState.chooseCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List Ob
       else acc) 0
   else 0
 
+/-- The lowest Energy the cost of the card `c` can be cut to: the greatest floor of the cuts. -/
+def GameState.cutFloor (s : GameState) (p : PlayerId) (c : ObjId) : Nat :=
+  (s.costCuts p c).foldl (fun m cut => Nat.max m cut.2) 0
+
+/-- The costs the Spell may have, with what the objects it chooses take off (Irelia). -/
+def GameState.cutOptionsOf (s : GameState) (p : PlayerId) (c : ObjId) (cost : Cost)
+    (ts : List ObjId) : List Cost :=
+  cost.cutOptions (s.chooseCut p c ts) (s.cutFloor p c)
+
 /-- The payment pays the cost of the card, less what the objects it chooses take off, or the cost
 with an additional cost. -/
 def GameState.paysForXT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
     (ts : List ObjId) (pay : RunePool.Payment) : Bool :=
-  (cost.cutOptions (s.chooseCut p c ts)).any (fun b => s.paysForX p c d b pay)
+  (s.cutOptionsOf p c cost ts).any (fun b => s.paysForX p c d b pay)
 
 /-- The payments that pay the cost of the card, with what the objects it chooses take off. -/
 def GameState.playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) : List RunePool.Payment :=
-  (cost.cutOptions (s.chooseCut p c ts)).flatMap (fun b => s.playPaymentsOf p c d b)
+  (s.cutOptionsOf p c cost ts).flatMap (fun b => s.playPaymentsOf p c d b)
 
 /-- The payments listed are exactly the payments that pay. -/
 theorem GameState.mem_playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
@@ -294,7 +310,7 @@ theorem GameState.mem_playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId)
 theorem GameState.paysForXT_total {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
     {cost : Cost} {ts : List ObjId} {pay : RunePool.Payment}
     (h : s.paysForXT p c d cost ts pay = true) :
-    ∃ b ∈ cost.cutOptions (s.chooseCut p c ts), ∃ k ∈ s.playCostsOf p c d b,
+    ∃ b ∈ s.cutOptionsOf p c cost ts, ∃ k ∈ s.playCostsOf p c d b,
       pay.energy + pay.power.length = k.total := by
   unfold paysForXT at h
   rw [List.any_eq_true] at h
@@ -359,7 +375,7 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
   { paid := (s.cardDef? c).any (fun d =>
       match s.effCost p c d with
       | some cost =>
-        (cost.cutOptions (s.chooseCut p c ts)).all (fun b => !(b.paidBy d.domains pay)) ||
+        (s.cutOptionsOf p c cost ts).all (fun b => !(b.paidBy d.domains pay)) ||
           (s.extrasFor p c d).any (·.total == 0)
       | none => false), legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
@@ -869,8 +885,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         have h0 : s.chooseCut p c [] = 0 := by
           unfold GameState.chooseCut
           split <;> simp
-        rw [h0]
-        exact ⟨cost, Cost.mem_cutOptions_zero _, hpaid⟩
+        exact ⟨cost, by simp [GameState.cutOptionsOf, h0, Cost.cutOptions], hpaid⟩
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := castable_spec h
         obtain ⟨d', e, hd', he, hok⟩ := castable_targets h
         have : d' = d := Option.some.inj (hd'.symm.trans hd)

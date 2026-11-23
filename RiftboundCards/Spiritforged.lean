@@ -1569,7 +1569,7 @@ def SFD_053.meta : CardDef :=
 def SFD_053 : CardDef :=
   { SFD_053.meta with
 
-    abilities := [.triggered (.onSelf .play)
+    abilities := [.passive .always [.playToBf [.controlled]], .triggered (.onSelf .play)
       (.of [] (.seqOf [
         .prim (.heal (Selector.all .friendly .anywhere [.ofType .unit, .at_ .self]) (.const 99)),
         .prim (.move (Selector.one .enemy .anywhere [.ofType .unit, .at_ .self]) .base)]))
@@ -2263,9 +2263,10 @@ def SFD_077.meta : CardDef :=
 def SFD_077 : CardDef :=
   { SFD_077.meta with
 
-    spellEffect := some (.of [] (.eitherOf (EffectList.ofList
-      [.prim (.deal (Selector.one .any .atBase [.ofType .unit]) (.const 4)),
-       .prim (.kill (Selector.one .any .anywhere [.ofType .gear]))]))),
+    spellEffect := some (.of [.targetOf .one .any .anywhere
+        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))]]
+      (.ifThen (.matches (.slot 0) (.ofType .gear)) (.prim (.kill (.slot 0)))
+        (.prim (.deal (.slot 0) (.const 4))))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-078

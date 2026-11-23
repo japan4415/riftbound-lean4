@@ -1016,10 +1016,11 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
   let (s4, w) ← putAt s3 s.you "OGN-001" s.bf0
-  let a ← play s4 s.me c [] { fromEnd := some 1 }
-  let b ← play s4 s.me c [] { fromEnd := some 2 }
+  let a ← play s4 s.me c [u]
+  let b ← play s4 s.me c [g]
   return a.dmg u == some 4 && (a.obj? g).isSome && a.dmg w == some 0 &&
-    (b.obj? g).isNone && b.dmg u == some 0
+    (b.obj? g).isNone && b.dmg u == some 0 && (play s4 s.me c [w]).isNone &&
+    (play s4 s.me c []).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
 -- from the hand for nothing
@@ -2555,6 +2556,20 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return unitAt a "SFD-025" bf && (activate def_ s.me g 3 [bf] (payOf def_ g)).isNone &&
     (activate s2 s.me g 3 [bf] (payOf s2 g)).isNone
 
+-- Janna, Savior (SFD-053): may be played to a battlefield its player controls, as a Reaction
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, j) ← put s1 s.me "SFD-053" .hand
+  let (s3, foe) ← putAt s2 s.you "OGN-051" bf
+  let mine := s3.control s.me bf
+  let a ← activate mine s.me j 4 [bf] (payOf mine j)
+  let d ← s3.cardDef? j
+  let isReaction := match d.fullAbilities[4]? with
+    | some (.activated _ .reaction _ _) => true
+    | _ => false
+  return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && isReaction &&
+    (activate s3 s.me j 4 [bf] (payOf s3 j)).isNone
+
 -- Vex, Cheerless (SFD-146): in combat, my spells cost 1 less (not below 1), enemy spells 1 more
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
@@ -3454,11 +3469,16 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
     !ok (s3.buff udyr) copyIdx && copyIdx > 0
 
--- Irelia: a Power cut may leave out any symbol of the cost, not only the first
+-- Irelia: a Power cut may leave out any symbol of the cost, not only the first; the same symbols in
+-- another order are one cost; the Energy does not go below a floor the cost already has
 #guard
   let c : Cost := ⟨2, [.domain .fury, .domain .calm]⟩
   let o := c.cutOptions 1
-  o.contains ⟨1, [.domain .fury, .domain .calm]⟩ && o.contains ⟨2, [.domain .calm]⟩ &&
-    o.contains ⟨2, [.domain .fury]⟩ && !o.contains c && o.length == 3
+  let has (e : Nat) (l : List PowerSym) : Bool := o.contains ⟨e, canonPower l⟩
+  has 1 [.domain .fury, .domain .calm] && has 2 [.domain .calm] && has 2 [.domain .fury] &&
+    !o.contains c && o.length == 3 &&
+    ((⟨2, [.domain .fury, .domain .calm, .domain .fury]⟩ : Cost).cutOptions 1).length == 3 &&
+    (⟨1, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨1, []⟩] &&
+    (⟨2, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨2, []⟩, ⟨1, [.domain .fury]⟩]
 
 end RiftboundTest
