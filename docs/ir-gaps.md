@@ -47,7 +47,6 @@
 |---|---|---|
 | Recruit the Vanguard | "Play four 1 Might Recruit unit tokens." | トークンの定義（名前、型、Might）と、プレイする場所の選択。`Prim.create` は名前と場所だけ |
 | Mirror Image | "Play a ready Reflection unit token ... It becomes a copy of that unit. Give it [Temporary]." | 作ったオブジェクトを後続の指示で参照すること、コピー（CR 479.1）、トークンの定義 |
-| Heimerdinger, Inventor | "I have all Exhaust abilities of all friendly legends, units, and gear." | 他のオブジェクトの能力を得ること |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間 |
 | Whirlwind（2 人戦では書けた） | "Starting with the next player, each player may return a unit ..." | 手番順に従ってプレイヤーを走査する（多人数。M9）。2 人戦は `eachPlayer .eachOpponent` の次に `eachPlayer .you` |
 | Heimerdinger, Academy Instructor | "If you would play a unit token to a location ... play a 3 Might Mech unit token to that same location instead." | トークンのプレイを置換すること、置換前の場所を参照すること |
@@ -59,6 +58,7 @@
 | Firestorm | 「a battlefield」を、プレイ時に Battlefield を 1 つ選ぶ、と読んだ（原文は選ぶと書いていない） |
 | Karthus, Eternal | Deathknell を「死んだときの誘発すべて」で表した。キーワードの Deathknell だけに絞る手段が無い |
 | Daughter of the Void | 「呪文をプレイするときだけ使える」を、「手札に呪文があるときだけ使える」で表した（足した Power は、呪文以外のプレイにも使える） |
+| Heimerdinger, Inventor | 「味方の Exhaust 能力をすべて持つ」を、Origins の、カードごとの Exhaust 能力を、写して、「その名前の味方のカードが、あるとき」だけ、使える能力として、書いた（他のセットのカードの能力は、含まない。写した能力の `self` は、Heimerdinger） |
 | Kai'Sa, Evolutionary | 墓地から唱えられるのは、対象を選ばない呪文だけ。チェーンを使わず、すぐに解決し、「呪文をプレイしたとき」の誘発は、働かない |
 | Promising Future | 山札の上 5 枚から、選べるのは、ユニットとギアだけ（呪文を、エネルギーなしで、プレイする手段が、まだ無い）。プレイは、各プレイヤーが、続けて行う（呪文をかけた人が先。見る・選ぶ・プレイ・リサイクルを、プレイヤーごとに続ける）。払えないカードを選ぶと、そのカードも、リサイクルされる |
 | Blind Fury（プレイ回数） | Blind Fury で、相手のカードを、プレイしても、Legion などの「プレイしたカードの数」では、自分のプレイと数えない（数える判定が、カードの持ち主を見る） |

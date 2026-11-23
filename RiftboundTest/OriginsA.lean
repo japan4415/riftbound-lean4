@@ -4275,4 +4275,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     paid.countIn s.me .trash "OGN-145" == 0 && poor.countIn s.me .trash "OGN-145" == 1 &&
     (paid.poolOf s.me).body < (withPow.poolOf s.me).body
 
+-- Heimerdinger, Inventor (OGN-111): he has the exhaust abilities of my legends, units and gear:
+-- with Lee Sin (exhaust: buff me) in play, he can exhaust to buff himself; without Lee Sin he
+-- cannot; not with the opponent's Lee Sin
+#guard t fun s => do
+  let (s1, hd) ← put s s.me "OGN-111" .base
+  let (s2, lee) ← put s1 s.me "OGN-078" .base
+  let leeIdx ← (RiftboundCards.Origins.OGN_111.fullAbilities.findIdx? (fun a => match a with
+    | .activated _ _ b _ => b.body ==
+        .ifThen (.hasFriendlyCard ⟨"OGN-078"⟩) (.prim (.buff .self)) .nop
+    | _ => false))
+  let used ← activate s2 s.me hd leeIdx [] ⟨0, []⟩
+  let (n1, nhd) ← put s s.me "OGN-111" .base
+  let without := activate n1 s.me nhd leeIdx [] ⟨0, []⟩
+  let (t1, thd) ← put s s.me "OGN-111" .base
+  let (t2, _) ← put t1 s.you "OGN-078" .base
+  let theirs := activate t2 s.me thd leeIdx [] ⟨0, []⟩
+  let again := activate used s.me hd leeIdx [] ⟨0, []⟩
+  return (used.obj? hd).map (·.buffed) == some true && used.tired hd == some true &&
+    (used.obj? lee).map (·.buffed) == some false && without.isNone && theirs.isNone &&
+    again.isNone
+
 end RiftboundTest

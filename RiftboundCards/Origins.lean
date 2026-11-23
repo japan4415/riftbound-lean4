@@ -2995,8 +2995,6 @@ def OGN_111.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Heimerdinger, Inventor: the effect is not written yet. -/
-def OGN_111 : CardDef := OGN_111.meta
 
 -- BEGIN GENERATED OGN-112
 /--
@@ -7993,6 +7991,31 @@ def OGN_298 : CardDef :=
   { OGN_298.meta with
     abilities := [.triggered (.onSelf .youConquer)
       (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 1))])) .unlimited],
+    status := .drafted }
+
+/-- The exhaust abilities of a card, as Heimerdinger has them: each one works only while a
+friendly card of that name is there (the Legend, the Unit or the Gear). -/
+def heimerdingerOf (d : CardDef) : List Ability :=
+  d.abilities.filterMap (fun a => match a with
+    | .activated costs sp body lim =>
+      if costs.contains .exhaustSelf then
+        some (.activated costs sp
+          (match body.body with
+            | .ifThen c e .nop =>
+              EffectDef.mk body.choices (.ifThen (.and (.hasFriendlyCard d.id) c) e .nop)
+            | e => EffectDef.mk body.choices (.ifThen (.hasFriendlyCard d.id) e .nop)) lim)
+      else none
+    | _ => none)
+
+/-- Heimerdinger, Inventor. He has all the exhaust abilities of the friendly Legends, Units and
+Gear (of Origins; himself left out): one ability for each, which works while that card is there. -/
+def OGN_111 : CardDef :=
+  { OGN_111.meta with
+    abilities :=
+      [OGN_017, OGN_021, OGN_023, OGN_032, OGN_040, OGN_068, OGN_078, OGN_081, OGN_090, OGN_098,
+        OGN_099, OGN_113, OGN_120, OGN_124, OGN_163, OGN_181, OGN_184, OGN_186, OGN_204, OGN_242,
+        OGN_245, OGN_247, OGN_253, OGN_257, OGN_259, OGN_263, OGN_265, OGN_267].flatMap
+        heimerdingerOf,
     status := .drafted }
 
 -- BEGIN GENERATED LIST

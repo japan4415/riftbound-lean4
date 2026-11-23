@@ -638,6 +638,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       | _ => false)
   | .fromHidden => some ((s.obj? self).any (·.fromHidden))
   -- the passives are read from the cards as printed (their conditions are not asked)
+  | .hasFriendlyCard cid =>
+    some ((s.players.flatMap (fun q => s.zone (.player q .legendZone)) ++ s.inPlay).any (fun g =>
+      (s.obj? g).any (·.controller == p) && (s.cardDef? g).any (·.id == cid)))
   | .hidesWithEnergy =>
     some ((s.players.flatMap (fun q => s.zone (.player q .legendZone)) ++ s.inPlay).any (fun g =>
       (s.obj? g).any (·.controller == p) &&
