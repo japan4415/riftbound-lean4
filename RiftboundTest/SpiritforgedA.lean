@@ -2065,8 +2065,10 @@ meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Op
   let b ← fire (t.rich s.me) [.scored s.me bf true] { yes := false }
   let c ← fire (t.fund s.me 0) [.scored s.me bf true]
   let d ← fire (t.rich s.me) [.scored s.me bf false]
+  let e ← fire (t.rich s.me) [.scored s.me bf true] { obj := fun o => o == other }
   return a.tired l == some false && a.tired other == some true && (a.poolOf s.me).energy == 11 &&
-    b.tired l == some true && c.tired l == some true && d.tired l == some true
+    b.tired l == some true && c.tired l == some true && d.tired l == some true &&
+    e.tired other == some true
 
 -- Bard, Mercurial (SFD-079): when played, the player may exhaust their legend to move any number
 -- of their units to an open battlefield
