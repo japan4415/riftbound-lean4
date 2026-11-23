@@ -715,8 +715,20 @@ def SFD_026.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rumble, Hotheaded: the effect is not written yet. -/
-def SFD_026 : CardDef := SFD_026.meta
+/-- Rumble, Hotheaded. -/
+def SFD_026 : CardDef :=
+  { SFD_026.meta with
+
+    abilities := [.passive .always
+        [.keyword (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩])
+          { keyword := .assault, arg := .amount 1 }],
+      .triggered (.onSelf .conquer)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
+          (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
+            (.may (.bind ⟨"m"⟩ (.mightOf (.slot 0)) (.seqOf [.prim (.recycle (.slot 0)),
+              .prim (.playReduced (Selector.one .friendly .inTrash
+                [.ofType .unit, .tag ⟨"Mech"⟩]) (.var ⟨"m"⟩) none)]))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-027
 /--
@@ -1104,8 +1116,16 @@ def SFD_041.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Apprentice Smith: the effect is not written yet. -/
-def SFD_041 : CardDef := SFD_041.meta
+/-- Apprentice Smith. -/
+def SFD_041 : CardDef :=
+  { SFD_041.meta with
+
+    abilities := [.triggered (.onSelf .move)
+      (.of [] (.ifThen
+        (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .gear])) (.const 1))
+        (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
+        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-042
 /--
@@ -1535,8 +1555,18 @@ def SFD_058.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ornn, Blacksmith: the effect is not written yet. -/
-def SFD_058 : CardDef := SFD_058.meta
+/-- Ornn, Blacksmith. -/
+def SFD_058 : CardDef :=
+  { SFD_058.meta with
+
+    abilities :=
+      let body : EffectDef := .of [] (.bind ⟨"h"⟩ (.handSize .you) (.seqOf [
+        .may (.prim (.returnToHand
+          (Selector.one .friendly .inMainDeck [.top 4, .ofType .gear]))),
+        .repeatN (.sub (.const 4) (.sub (.handSize .you) (.var ⟨"h"⟩)))
+          (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))]))
+      [.triggered (.onSelf .play) body .unlimited, .triggered (.onSelf .hold) body .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-059
 /--
@@ -2926,8 +2956,14 @@ def SFD_111.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Here to Help: the effect is not written yet. -/
-def SFD_111 : CardDef := SFD_111.meta
+/-- Here to Help. -/
+def SFD_111 : CardDef :=
+  { SFD_111.meta with
+
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .controlled]]
+      (.may (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit]) (.const 3)
+        (some (.slot 0)))))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-112
 /--
@@ -3210,8 +3246,14 @@ def SFD_122.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Called Shot: the effect is not written yet. -/
-def SFD_122 : CardDef := SFD_122.meta
+/-- Called Shot. -/
+def SFD_122 : CardDef :=
+  { SFD_122.meta with
+
+    spellEffect := some (.of [] (.seqOf [
+      .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 2])),
+      .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-123
 /--
@@ -3696,8 +3738,14 @@ def SFD_140.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fizz, Trickster: the effect is not written yet. -/
-def SFD_140 : CardDef := SFD_140.meta
+/-- Fizz, Trickster. -/
+def SFD_140 : CardDef :=
+  { SFD_140.meta with
+
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
+        [.ofType .spell, .noChoices, .cost .le (.const 3)]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-141
 /--
@@ -4484,8 +4532,19 @@ def SFD_170.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Rek'Sai, Swarm Queen: the effect is not written yet. -/
-def SFD_170 : CardDef := SFD_170.meta
+/-- Rek'Sai, Swarm Queen. -/
+def SFD_170 : CardDef :=
+  { SFD_170.meta with
+
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.may (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
+        (.seqOf [
+          .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 0)
+            none)),
+          .repeatN (.sub (.const 2)
+              (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
+            (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-171
 /--
@@ -4922,8 +4981,22 @@ def SFD_187.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Void Burrower: the effect is not written yet. -/
-def SFD_187 : CardDef := SFD_187.meta
+/-- Void Burrower. -/
+def SFD_187 : CardDef :=
+  { SFD_187.meta with
+
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.ifThen (.matches .self .ready)
+        (.may (.seqOf [.prim (.exhaust .self),
+          .bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
+            (.seqOf [
+              .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2])
+                (.const 0) none)),
+              .repeatN (.sub (.const 2)
+                  (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
+                (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])]))
+        .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-188
 /--
@@ -4943,8 +5016,17 @@ def SFD_188.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Void Rush: the effect is not written yet. -/
-def SFD_188 : CardDef := SFD_188.meta
+/-- Void Rush. -/
+def SFD_188 : CardDef :=
+  { SFD_188.meta with
+
+    spellEffect := some (.of [] (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
+      (.seqOf [
+        .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
+        .repeatN (.sub (.const 2)
+            (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
+          (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-189
 /--
@@ -5571,8 +5653,16 @@ def SFD_215.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ravenbloom Conservatory: the effect is not written yet. -/
-def SFD_215 : CardDef := SFD_215.meta
+/-- Ravenbloom Conservatory. -/
+def SFD_215 : CardDef :=
+  { SFD_215.meta with
+
+    abilities := [.triggered (.onSelf .defend)
+      (.of [] (.ifThen
+        (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .spell])) (.const 1))
+        (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
+        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-216
 /--

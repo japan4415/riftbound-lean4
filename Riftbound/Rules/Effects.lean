@@ -920,6 +920,41 @@ theorem playToOrBase_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjI
   split
   · exact playFree_safe p s id
   · exact playFreeAt_safe p bf s id
+
+/-- Play a Unit or a Gear paying its cost less `k` Energy (and all its Power), to a Battlefield if
+one is given; if the cost cannot be paid, nothing is paid and the card is not played. -/
+def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
+  -- the cost the card is played for now (the other reductions count too), less `k` Energy
+  match (s.cardDef? id).bind (fun d => s.effCost p id d) with
+  | some c =>
+    match s.payNow p id ⟨c.energy - k, c.power⟩ with
+    | some pool =>
+      match dest with
+      | some bf => playToOrBase p bf (s.setPool p pool) id
+      | none => playFree p (s.setPool p pool) id
+    | none => (s, [])
+  | none =>
+    match dest with
+    | some bf => playToOrBase p bf s id
+    | none => playFree p s id
+
+/-- Playing a card for a reduced cost is a safe change. -/
+theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState)
+    (id : ObjId) : Safe s (playReducedOne p k dest s id).1 := by
+  unfold playReducedOne
+  split
+  · exact Safe.refl s
+  · split
+    · split
+      · cases dest with
+        | none => exact (setPool_safe s p _).trans (playFree_safe p _ id)
+        | some bf => exact (setPool_safe s p _).trans (playToOrBase_safe p bf _ id)
+      · exact Safe.refl s
+    · cases dest with
+      | none => exact playFree_safe p s id
+      | some bf => exact playToOrBase_safe p bf s id
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with controller := p }), [])
@@ -1186,6 +1221,14 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (playToOrBase p b)
     | _ => none
+  | .playReduced sel less dest =>
+    (less.evalS s p src env).bind (fun k =>
+      match dest with
+      | none => onSelected s p src env sel (playReducedOne p k none)
+      | some bfs =>
+        match bfs.eval s p src env with
+        | some (b :: _) => onSelected s p src env sel (playReducedOne p k (some b))
+        | _ => none)
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
@@ -1328,6 +1371,23 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | cons b _ =>
         simp only [hb] at h
         exact onSelected_safe (playToOrBase_safe p b) h
+  | playReduced sel less dest =>
+    simp only [applyPrim] at h
+    cases hk : less.evalS s p src env with
+    | none => simp [hk] at h
+    | some k =>
+      simp only [hk, Option.bind_some] at h
+      cases dest with
+      | none => exact onSelected_safe (playReducedOne_safe p k none) h
+      | some bfs =>
+        cases hb : bfs.eval s p src env with
+        | none => simp [hb] at h
+        | some l =>
+          cases l with
+          | nil => simp [hb] at h
+          | cons b _ =>
+            simp only [hb] at h
+            exact onSelected_safe (playReducedOne_safe p k (some b)) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
@@ -1599,6 +1659,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .discardCard s => some s
   | .play s => some s
   | .playPaying s => some s
+  | .playReduced s _ _ => some s
   | .castInline s => some s
   | .markOn s _ => some s
   | .playTo s _ => some s
@@ -1629,6 +1690,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
   | .playPaying _ => .playPaying sel
+  | .playReduced _ l d => .playReduced sel l d
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf

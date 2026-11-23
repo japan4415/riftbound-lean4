@@ -1440,5 +1440,228 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let r ← fire s3 [.combatStarted s.bf0 s.me]
   return (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
     (s3.zone (.player s.you .base)).length
+/-- Put the cards on top of the player's Main Deck, the first of the list on top; their ids. -/
+meta def _root_.Riftbound.GameState.stackTop (s : GameState) (p : PlayerId) (cards : List String) :
+    Option (GameState × List ObjId) :=
+  let r := cards.foldlM (fun (acc : GameState × List ObjId) c => do
+    let (s1, o) ← put acc.1 p c .mainDeck
+    pure (s1, acc.2 ++ [o])) (s, [])
+  r.map (fun (s1, ids) =>
+    (s1.setZone (.player p .mainDeck)
+      (ids ++ (s1.zone (.player p .mainDeck)).filter (fun o => !ids.contains o)), ids))
+
+/-- The top card of the player's Main Deck. -/
+meta def _root_.Riftbound.GameState.topCard (s : GameState) (p : PlayerId) : Option ObjId :=
+  (s.zone (.player p .mainDeck)).head?
+
+/-- The last card of the player's Main Deck, the bottom one. -/
+meta def _root_.Riftbound.GameState.bottomCards (s : GameState) (p : PlayerId) (n : Nat) :
+    List ObjId :=
+  ((s.zone (.player p .mainDeck)).reverse.take n).reverse
+
+/-- The cards of the bottom `n` places of the Main Deck of the player are the card. -/
+meta def _root_.Riftbound.GameState.bottomIs (s : GameState) (p : PlayerId) (n : Nat)
+    (code : String) : Bool :=
+  (s.bottomCards p n).length == n &&
+    (s.bottomCards p n).all (fun o => (s.cardDef? o).any (·.id.code == code))
+
+/-- The number of cards in the Main Deck of the player. -/
+meta def _root_.Riftbound.GameState.deckN (s : GameState) (p : PlayerId) : Nat :=
+  (s.zone (.player p .mainDeck)).length
+
+/-- The object is a card with the identifier. -/
+meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : ObjId) : Bool :=
+  (s.cardDef? o).any (·.id.code == code)
+
+-- Apprentice Smith (SFD-041): when it moves, reveal the top card: a gear is drawn, else recycled
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-041" .base
+  let (g, _) ← s1.stackTop s.me ["SFD-042"]
+  let (u, _) ← s1.stackTop s.me ["OGN-051"]
+  let r ← fire g [.standardMoved a none]
+  let q ← fire u [.standardMoved a none]
+  return r.countIn s.me .hand "SFD-042" == g.countIn s.me .hand "SFD-042" + 1 &&
+    r.deckN s.me + 1 == g.deckN s.me &&
+    q.countIn s.me .hand "OGN-051" == u.countIn s.me .hand "OGN-051" &&
+    q.deckN s.me == u.deckN s.me && q.bottomIs s.me 1 "OGN-051"
+
+-- Ornn, Blacksmith (SFD-058): when played or when it holds, look at the top 4 cards: a gear among
+-- them may be drawn, the rest are recycled
+#guard tsf fun s => do
+  let (s1, o) ← put s s.me "SFD-058" .base
+  let (d, _) ← s1.stackTop s.me ["OGN-051", "SFD-042", "OGN-051", "OGN-051"]
+  let a ← fire d [.played s.me o]
+  let b ← fire d [.played s.me o] { yes := false }
+  let (h1, bf) ← putBf s1 s.me "SFD-216"
+  let (h2, _) ← putAt h1 s.me "SFD-058" bf
+  let (h3, _) ← h2.stackTop s.me ["OGN-051", "SFD-042", "OGN-051", "OGN-051"]
+  let c ← fire h3 [.scored s.me bf false]
+  let e ← fire h3 [.scored s.me bf true]
+  return a.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1 &&
+    a.deckN s.me + 1 == d.deckN s.me && a.bottomIs s.me 3 "OGN-051" &&
+    b.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" &&
+    b.deckN s.me == d.deckN s.me && b.bottomIs s.me 1 "OGN-051" &&
+    c.countIn s.me .hand "SFD-042" == h3.countIn s.me .hand "SFD-042" + 1 &&
+    e.deckN s.me == h3.deckN s.me
+
+-- Called Shot (SFD-122): look at the top 2 cards, draw one and recycle the other
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-122" .hand
+  let (d, _) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
+  let r ← play d s.me c
+  return r.deckN s.me + 1 == d.deckN s.me && r.handN s.me == d.handN s.me &&
+    (r.countIn s.me .hand "OGN-051" + r.countIn s.me .hand "SFD-042" ==
+      d.countIn s.me .hand "OGN-051" + d.countIn s.me .hand "SFD-042" + 1)
+
+-- Ravenbloom Conservatory (SFD-215): when its player defends here, reveal the top card: a spell is
+-- put in the hand, anything else is recycled
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "SFD-215"
+  let (s2, _) ← putAt s1 s.me "OGN-051" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (sp, _) ← s3.stackTop s.me ["OGN-004"]
+  let (un, _) ← s3.stackTop s.me ["OGN-051"]
+  let a ← fire sp [.combatStarted bf s.you]
+  let b ← fire un [.combatStarted bf s.you]
+  let c ← fire sp [.combatStarted bf s.me]
+  return a.countIn s.me .hand "OGN-004" == sp.countIn s.me .hand "OGN-004" + 1 &&
+    b.countIn s.me .hand "OGN-051" == un.countIn s.me .hand "OGN-051" &&
+    b.deckN s.me == un.deckN s.me && b.bottomIs s.me 1 "OGN-051" &&
+    c.countIn s.me .hand "OGN-004" == sp.countIn s.me .hand "OGN-004"
+
+-- Void Rush (SFD-188): reveal the top 2 cards, play one for 2 less, draw the ones not played
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-188" .hand
+  let (d, _) ← s1.stackTop s.me ["OGN-001", "SFD-042"]
+  let r ← play d s.me c [] { obj := d.isCard "OGN-001" }
+  let n ← play d s.me c [] { yes := false }
+  return r.countIn s.me .base "OGN-001" == 1 && r.countIn s.me .hand "SFD-042" ==
+      d.countIn s.me .hand "SFD-042" + 1 && (r.poolOf s.me).energy == 12 - 2 - 3 &&
+    n.countIn s.me .base "OGN-001" == 0 && n.countIn s.me .hand "OGN-001" ==
+      d.countIn s.me .hand "OGN-001" + 1 && n.countIn s.me .hand "SFD-042" ==
+      d.countIn s.me .hand "SFD-042" + 1
+
+-- Rek'Sai, Swarm Queen (SFD-170): when it attacks, may reveal the top 2, play one, recycle the rest
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-170" s.bf0
+  let (d, _) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
+  let a ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { obj := d.isCard "OGN-051" }
+  let n ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { yes := false }
+  return a.countIn s.me .base "OGN-051" == 1 && a.deckN s.me + 1 == d.deckN s.me &&
+    a.bottomIs s.me 1 "SFD-042" && n.countIn s.me .base "OGN-051" == 0 &&
+    n.deckN s.me == d.deckN s.me && r != s.bf0
+
+-- Void Burrower (SFD-187), a Legend: when its player conquers, it may be exhausted to reveal the
+-- top 2 cards, play one and recycle the rest
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-187" .legendZone
+  let (bfs, bf) ← putBf s1 s.me "SFD-216"
+  let (d, _) ← bfs.stackTop s.me ["OGN-051", "SFD-042"]
+  let a ← fire (d.rich s.me) [.scored s.me bf true] { obj := d.isCard "OGN-051" }
+  let t ← fire ((d.tire l).rich s.me) [.scored s.me bf true]
+  return a.countIn s.me .base "OGN-051" == 1 && a.tired l == some true &&
+    t.countIn s.me .base "OGN-051" == 0 && t.deckN s.me == d.deckN s.me
+
+-- Here to Help (SFD-111): play a unit from the hand to a battlefield the player controls, for 3
+-- less
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-111" .hand
+  let (s2, _) ← put s1 s.me "OGN-001" .hand
+  let s3 := s2.control s.me s.bf0
+  let r ← play s3 s.me c [s.bf0]
+  let n ← play s3 s.me c [s.bf0] { yes := false }
+  let there := (r.zone .battlefieldZone).any (fun o => r.isCard "OGN-001" o &&
+    (r.obj? o).any (·.loc == some s.bf0))
+  return there && (r.poolOf s.me).energy == 12 - 2 - 2 && n.countIn s.me .hand "OGN-001" == 1 &&
+    (play s2 s.me c [s.bf0]).isNone
+
+-- Rumble, Hotheaded (SFD-026): when it conquers, may recycle another friendly unit to play a Mech
+-- from the Trash, its Energy cost reduced by the Might of the recycled unit; Mechs have Assault
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-026" s.bf0
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← put s2 s.me "SFD-062" .trash
+  let (s4, m) ← put s3 s.me "SFD-062" .base
+  let a ← fire (s4.rich s.me) [.conquerActivated r] { pick := fun ts => ts == [u] }
+  let n ← fire (s4.rich s.me) [.conquerActivated r] { pick := fun ts => ts == [u], yes := false }
+  return a.countIn s.me .base "SFD-062" == 2 && (a.obj? u).isNone &&
+    (a.poolOf s.me).energy == 12 - 1 && n.countIn s.me .base "SFD-062" == 1 &&
+    (n.obj? u).isSome && s4.kwAmount m .assault == 1 && s4.kwAmount u .assault == 0
+
+-- (Fizz: a spell with Energy cost 4 is not a legal choice)
+#guard tsf fun s => do
+  let (s1, f) ← put s s.me "SFD-140" .hand
+  let (s2, sp) ← put s1 s.me "SFD-076" .trash
+  let r ← play s2 s.me f
+  return r.countIn s.me .trash "SFD-076" == 1 && (r.obj? sp).isSome &&
+    r.countNamed s.me .base "Mech" == 0
+
+-- Fizz, Trickster (SFD-140): when played, may play a spell from the Trash (Energy cost 3 or less),
+-- ignoring its Energy cost; it is recycled after
+#guard tsf fun s => do
+  let (s1, f) ← put s s.me "SFD-140" .hand
+  let (s2, sp) ← put s1 s.me "SFD-204" .trash
+  let (s3, u) ← put s2 s.me "OGN-051" .base
+  let (s4, big) ← put s3 s.me "SFD-147" .trash
+  let a ← play (s4.tire u) s.me f
+  let n ← play (s4.tire u) s.me f [] { yes := false }
+  return a.tired u == some false && (a.obj? sp).isNone && a.countIn s.me .trash "SFD-204" == 0 &&
+    n.tired u == some true && n.countIn s.me .trash "SFD-204" == 1 &&
+    a.countIn s.me .trash "SFD-147" == 1 && (a.poolOf s.me).energy == 12 - 3 - 0 - 0 &&
+    (a.obj? big).isSome
+
+-- (review) playing for a reduced cost: the Energy goes down to the floor of 0 and the Power is paid
+-- in full; with no Power in the Pool, nothing is paid and the card is not played
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "SFD-002" .hand
+  let rich := s1.fund s.me 3 1
+  let ok := playReducedOne s.me 3 none rich u
+  let poor := playReducedOne s.me 3 none (s1.fund s.me 3) u
+  let (s2, v) ← put s s.me "OGN-051" .hand
+  let floor := playReducedOne s.me 10 none (s2.fund s.me 0) v
+  return ok.1.countIn s.me .base "SFD-002" == 1 && (ok.1.poolOf s.me).energy == 0 &&
+    (ok.1.poolOf s.me).fury == 0 && poor.1.countIn s.me .base "SFD-002" == 0 &&
+    (poor.1.poolOf s.me).energy == 3 && floor.1.countIn s.me .base "OGN-051" == 1
+
+-- (review) Rek'Sai and Void Burrower pay the whole cost of the unit they play
+#guard tsf fun s => do
+  let (s1, _) ← putAt s s.me "SFD-170" s.bf0
+  let (d, ids) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
+  let cost := (d.energyCost? s.me (ids.head?.getD ⟨0⟩)).getD 0
+  let a ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { obj := d.isCard "OGN-051" }
+  return a.countIn s.me .base "OGN-051" == 1 && (a.poolOf s.me).energy + cost == 12 && cost > 0
+
+-- (review) Called Shot: the card not drawn goes to the bottom of the deck
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-122" .hand
+  let (d, _) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
+  let r ← play d s.me c
+  let gainedA := r.countIn s.me .hand "OGN-051" == d.countIn s.me .hand "OGN-051" + 1
+  let gainedB := r.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1
+  return (gainedA && r.bottomIs s.me 1 "SFD-042") || (gainedB && r.bottomIs s.me 1 "OGN-051")
+
+-- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-188" .hand
+  let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-051"]
+  let r ← play d s.me c [] { obj := d.isCard "OGN-004" }
+  return r.countIn s.me .hand "OGN-004" == d.countIn s.me .hand "OGN-004" + 1 &&
+    r.countIn s.me .hand "OGN-051" == d.countIn s.me .hand "OGN-051" + 1 &&
+    r.countIn s.me .base "OGN-051" == 0
+
+-- (review) Rumble: if the unit chosen is gone when the ability resolves, no Mech is played
+#guard tsf fun s => do
+  let (s1, r) ← putAt s s.me "SFD-026" s.bf0
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← put s2 s.me "SFD-062" .trash
+  let s4 := s3.rich s.me
+  let s5 := { s4 with pending := insertTriggers (s4.detect [.conquerActivated r]) s4.pending }
+  let r1 ← match advance 100 s5 [] with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let r2 := settleChain { pick := fun ts => ts == [u] } 1 r1
+  let r3 := (killObj r2 u).1
+  let r4 := settleChain {} 12 r3
+  return r4.countIn s.me .base "SFD-062" == 0 && r4.countIn s.me .trash "SFD-062" == 1
 
 end RiftboundTest
