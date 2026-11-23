@@ -168,6 +168,22 @@ def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
 def passiveMight (s : GameState) (id : ObjId) : Int :=
   (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
 
+/-- What the passive abilities add to the Might of each object in play: the table the filters read
+(`Env.passMight`). -/
+def mightTable (s : GameState) : List (ObjId × Int) :=
+  -- nothing to compute unless a card in play prints a passive change of Might
+  if !(s.inPlay.any (fun g => (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
+      match ab with
+      | Ability.passive _ mods =>
+        mods.any (fun m => match m with
+          | .mightPlus .. | .mightMinus .. | .mightMinusMin .. => true
+          | _ => false)
+      | _ => false)))) then []
+  else
+    s.inPlay.filterMap (fun id =>
+      let m := s.passiveMight id
+      if m == 0 then none else some (id, m))
+
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/
 def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=

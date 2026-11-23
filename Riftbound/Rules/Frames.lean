@@ -129,9 +129,10 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .resolveChain :: rest => some ({ s with pending := resolveFrames s rest }, [])
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])
   | .run p src env (.cons e es) :: rest =>
-    some ({ (runEffect s p src env e es).1 with
-              pending := (runEffect s p src env e es).2.1 ++ rest },
-      (runEffect s p src env e es).2.2)
+    -- the effect reads the Might the passive abilities give, as of now
+    some ({ (runEffect s p src (env.withMight s.mightTable) e es).1 with
+              pending := (runEffect s p src (env.withMight s.mightTable) e es).2.1 ++ rest },
+      (runEffect s p src (env.withMight s.mightTable) e es).2.2)
   | .finishSpell item :: rest =>
     some ({ (finishItem s item).1 with
               pending := .cleanup :: (afterItem (finishItem s item).1 ++ rest) },

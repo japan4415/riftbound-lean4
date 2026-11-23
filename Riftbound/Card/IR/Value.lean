@@ -36,6 +36,10 @@ structure Env where
   slots : List Value := []
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/
   it : Option ObjId := none
+  /-- What the passive abilities add to the Might of each object now (the Layers' last step). The
+  filters read it with the other things that make the Might: it is filled in where an effect is
+  run and where targets are chosen, and empty (nothing added) elsewhere. -/
+  passMight : List (ObjId × Int) := []
 deriving DecidableEq, Repr
 
 /-- The variable that names the object chosen while an effect resolves (CR 355). -/
@@ -45,6 +49,13 @@ namespace Env
 
 /-- The empty environment. -/
 def empty : Env := {}
+
+/-- What the passive abilities add to the Might of the object. -/
+def passOf (e : Env) (id : ObjId) : Int :=
+  ((e.passMight.find? (fun b => b.1 == id)).map (·.2)).getD 0
+
+/-- The environment with the table of what the passive abilities add to the Might. -/
+def withMight (e : Env) (t : List (ObjId × Int)) : Env := { e with passMight := t }
 
 /-- Bind a variable. It shadows an older binding of the same name. -/
 def bind (e : Env) (v : VarId) (x : Value) : Env := { e with bindings := (v, x) :: e.bindings }

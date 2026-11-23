@@ -962,7 +962,7 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hmeta := (runEffect_safe s p src env e es).same
+    have hmeta := (runEffect_safe s p src (env.withMight s.mightTable) e es).same
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hmeta.config, hmeta.turnOrder, hmeta.phase, hmeta.result⟩ (fun hm => ?_)
     rcases List.mem_append.mp hm with h1 | h1

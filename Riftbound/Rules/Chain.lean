@@ -204,7 +204,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                 (match limit with
                   | .unlimited => true
                   | .perTurn n => decide (o.used.count idx < n)) &&
-                targetsOk s p src body.choices ts
+                targetsOk s p src s.mightTable body.choices ts
           | none => false
         | _ => false
     | _, _ => false
@@ -374,7 +374,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
           (match pc with
             | some c => c.paidBy d.domains pay = true
             | none => pay = ⟨0, []⟩) ∧
-            targetsOk s p src body.choices ts = true ∧ ∃ o, s.obj? src = some o ∧
+            targetsOk s p src s.mightTable body.choices ts = true ∧ ∃ o, s.obj? src = some o ∧
               (o.controller = p ∨ o.control = some p) := by
   unfold activatable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
@@ -443,7 +443,7 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
             (match costPlan costs with
               | some (_, some c) => c.payments d.domains
               | _ => [⟨0, []⟩]).flatMap (fun pay =>
-              (([] :: (targetTuples s p src body.choices).filter
+              (([] :: (targetTuples s p src s.mightTable body.choices).filter
                   (fun ts => decide (ts ≠ []))).filter
                 (fun ts => activatable s p src idx pay ts open_)).map
                 (fun ts => ⟨.player p, .activate src idx pay ts⟩))
@@ -505,7 +505,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
           exact List.mem_cons_self
         · refine List.mem_cons_of_mem _ ?_
           simp only [List.mem_filter, decide_eq_true_eq]
-          exact ⟨(mem_targetTuples s p src body.choices ts).mpr hts, hn⟩
+          exact ⟨(mem_targetTuples s p src s.mightTable body.choices ts).mpr hts, hn⟩
 
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}

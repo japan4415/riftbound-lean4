@@ -125,10 +125,12 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
               match m with
               | .costMinus sel a =>
                 if s.costSelects o.controller src c sel then
-                  some ((a.evalS s o.controller src {}).getD 0, 0) else none
+                  some ((a.evalS s o.controller src (Env.empty.withMight s.mightTable)).getD 0, 0)
+                  else none
               | .costMinusMin sel a fl =>
                 if s.costSelects o.controller src c sel then
-                  some ((a.evalS s o.controller src {}).getD 0, fl) else none
+                  some ((a.evalS s o.controller src (Env.empty.withMight s.mightTable)).getD 0, fl)
+                  else none
               | _ => none)
           else []
         | _ => [])
@@ -259,10 +261,13 @@ def Cost.cutOptions (c : Cost) (k : Nat) (floor : Nat := 0) : List Cost :=
   else
     -- the Energy does not go below the floor that the cost already has (Vex)
     let es := (List.range (k + 1)).filter (fun a => a == 0 || floor + a ≤ c.energy)
-    let l := ((es.flatMap (fun a => (List.range (k + 1 - a)).flatMap (fun b =>
-      (dropPowers b c.power).map (fun pw =>
-        { c.lessEnergy a with power := canonPower pw })))).filter
-        (fun x => x != ⟨c.energy, canonPower c.power⟩)).eraseDups
+    let all := es.flatMap (fun a => (List.range (k + 1 - a)).flatMap (fun b =>
+      (dropPowers b c.power).map (fun pw => { c.lessEnergy a with power := pw })))
+    -- the same symbols in another order are one cost: keep the first
+    let key (x : Cost) : Cost := ⟨x.energy, canonPower x.power⟩
+    let l := (all.foldl (fun (acc : List Cost) x =>
+      if acc.any (fun y => key y == key x) then acc else acc ++ [x]) []).filter
+        (fun x => key x != key c)
     if l.isEmpty then [c] else l
 
 /-- With nothing cut, the cost itself is the one cost. -/
@@ -406,7 +411,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
         (match d.spellEffect with
-          | some e => targetsOk s p c e.choices targets
+          | some e => targetsOk s p c s.mightTable e.choices targets
           | none => false) &&
         (match s.effCost p c d with
           | some cost => s.paysForXT p c d cost targets pay
@@ -665,7 +670,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
 theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {targets : List ObjId} (h : castable s p c pay targets = true) :
     ∃ d e, s.cardDef? c = some d ∧ d.spellEffect = some e ∧
-      targetsOk s p c e.choices targets = true := by
+      targetsOk s p c s.mightTable e.choices targets = true := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨-, hrest⟩ := h
@@ -813,13 +818,13 @@ instance PlayOk.decidable (s : GameState) (p : PlayerId) (c : ObjId) (pay : Rune
 effect. -/
 def playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List (List ObjId) :=
   [] :: (match d.spellEffect with
-    | some e => (targetTuples s p c e.choices).filter (fun ts => decide (ts ≠ []))
+    | some e => (targetTuples s p c s.mightTable e.choices).filter (fun ts => decide (ts ≠ []))
     | none => [])
 
 /-- The picks listed are no target, or a legal pick of the Spell effect. -/
 theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (ts : List ObjId) : ts ∈ playTargets s p c d ↔
-      ts = [] ∨ ∃ e, d.spellEffect = some e ∧ targetsOk s p c e.choices ts = true := by
+      ts = [] ∨ ∃ e, d.spellEffect = some e ∧ targetsOk s p c s.mightTable e.choices ts = true := by
   unfold playTargets
   rw [List.mem_cons]
   constructor
@@ -831,7 +836,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       | some e =>
         rw [hs] at h
         simp only [List.mem_filter, decide_eq_true_eq] at h
-        exact ⟨e, rfl, (mem_targetTuples s p c e.choices ts).mp h.1⟩
+        exact ⟨e, rfl, (mem_targetTuples s p c s.mightTable e.choices ts).mp h.1⟩
   · rintro (h | ⟨e, he, hok⟩)
     · exact Or.inl h
     · by_cases hne : ts = []
@@ -839,7 +844,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       · right
         rw [he]
         simp only [List.mem_filter, decide_eq_true_eq]
-        exact ⟨(mem_targetTuples s p c e.choices ts).mpr hok, hne⟩
+        exact ⟨(mem_targetTuples s p c s.mightTable e.choices ts).mpr hok, hne⟩
 
 /-- Every way the player can play a card of the hand: each card with each payment that pays its
 cost, and each pick of targets, that the Pool covers. -/
