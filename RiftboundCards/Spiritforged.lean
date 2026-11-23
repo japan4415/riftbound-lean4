@@ -724,9 +724,10 @@ def SFD_026 : CardDef :=
           { keyword := .assault, arg := .amount 1 }],
       .triggered (.onSelf .conquer)
         (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
-          (.may (.bind ⟨"m"⟩ (.mightOf (.slot 0)) (.seqOf [.prim (.recycle (.slot 0)),
-            .prim (.playReduced (Selector.one .friendly .inTrash
-              [.ofType .unit, .tag ⟨"Mech"⟩]) (.var ⟨"m"⟩) none)])))) .unlimited],
+          (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
+            (.may (.bind ⟨"m"⟩ (.mightOf (.slot 0)) (.seqOf [.prim (.recycle (.slot 0)),
+              .prim (.playReduced (Selector.one .friendly .inTrash
+                [.ofType .unit, .tag ⟨"Mech"⟩]) (.var ⟨"m"⟩) none)]))) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-027

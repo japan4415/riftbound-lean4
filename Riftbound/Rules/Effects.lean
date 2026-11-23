@@ -926,7 +926,8 @@ one is given; if the cost cannot be paid, nothing is paid and the card is not pl
 def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState) (id : ObjId) :
     GameState × List Event :=
   if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
-  match (s.cardDef? id).bind (·.cost) with
+  -- the cost the card is played for now (the other reductions count too), less `k` Energy
+  match (s.cardDef? id).bind (fun d => s.effCost p id d) with
   | some c =>
     match s.payNow p id ⟨c.energy - k, c.power⟩ with
     | some pool =>

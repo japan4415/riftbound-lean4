@@ -527,6 +527,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **山札の上を見る**: 「top N cards を見て、1 枚を引き、残りをリサイクルする」を、`Selector.one .friendly .inMainDeck [.top N]` の選択（解決のとき、プレイヤーが選ぶ）、`returnToHand`、`recycle` と、数を束縛した `repeatN` で書いた（Called Shot、Apprentice Smith、Ornn, Blacksmith、Ravenbloom Conservatory）。「見る」は、プレイヤーが選ぶ、ということで表した（公開は、相手に見せる、という違いだけ）。
 - **書いたカード**: SFD-026、041、058、111、122、140、170、187、188、215（10 枚）。Fizz は、Kai'Sa と同じ `castInline`（対象を選ばない呪文だけ。Power は払い、チェーンは使わない）。
 - **近似**: Rek'Sai, Swarm Queen は、プレイしたユニットを、Base に出す（「here に出してもよい」は、まだ）。Void Rush は、見たカードのうち、呪文は、プレイしない（引く）。Here to Help は、コントロールしている Battlefield を、プレイするときの対象にするので、無いと唱えられない。Apprentice Smith と Ravenbloom は、見たカードを、引く・リサイクルするとき、プレイヤーに選ばせる形で、同じカードを選ぶ。Ornn, Blacksmith の「見たカードのうち、残り」は、枚数（4 − 引いた枚数）で数える。引く（`returnToHand`）は、「引く」の誘発を、起こさない。
+- **レビューで直したこと**: `playReduced` が、印刷コストから引いていたので、Legion などのコスト軽減と重ならなかった（`effCost` から引く）。Rumble, Hotheaded は、選んだユニットが解決のときにいないと、リサイクルしないで、Mech を出せた（いるときだけ行う）。足りなかったテストを足した（Power の支払い、払えないとき、Energy が 0 に止まること、Rek'Sai の支払い、Called Shot で戻らなかったカードが底へ行くこと、Void Rush の呪文、Rumble の対象が消えたとき）。
+- **近似（レビュー）**: 山札の上から見たカードを、リサイクルする順は、プレイヤーが選べない（上から順に底へ）。Rumble の「another friendly unit」を、誘発のときに選ぶ。`playReduced` で Accelerate は払えない（ユニットは exhausted で入る）。Battlefield へ出す（`to`）のは、ユニットだけ（ギアに使うと、Battlefield に置かれる）。
 - **カードの数**: 動く Spiritforged は 123 枚から 133 枚。
 
 ### M7 の実装の記録（2026-11-23）: 味方の Exhaust 能力を、すべて持つ（最後の 1 枚）
