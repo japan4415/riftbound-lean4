@@ -4085,6 +4085,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
   let seen ← play s2 s.me c
   let declined ← play s2 s.me c [] { yes := false }
+  -- the Vision recycle is accepted and he is declined: he stays in the deck
+  let keep ← fire (s2.fund s.me 0 (fury := 1)) [.lookedAt s.me n] { yes := false }
   -- he is second from the top: not seen by a Vision look
   let (u2, _) ← put (s1.setZone (.player s.me .mainDeck) []) s.me "OGN-194" .mainDeck
   let (u3, _) ← put u2 s.me "OGN-136" .mainDeck
@@ -4098,7 +4100,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (h1, h) ← put s1 s.me "OGN-194" .hand
   let inHand ← fire (h1.fund s.me 0 (fury := 1)) [.lookedAt s.me h]
   return seen.countIn s.me .base "OGN-194" == 1 && deck seen + 1 == deck s2 &&
-    declined.countIn s.me .base "OGN-194" == 0 && second.countIn s.me .base "OGN-194" == 0 &&
+    declined.countIn s.me .base "OGN-194" == 0 && keep.countIn s.me .base "OGN-194" == 0 &&
+    second.countIn s.me .base "OGN-194" == 0 &&
     paid.countIn s.me .base "OGN-194" == 1 && (paid.poolOf s.me).fury == 0 &&
     broke.countIn s.me .base "OGN-194" == 0 && theirs.countIn s.me .base "OGN-194" == 0 &&
     inHand.countIn s.me .base "OGN-194" == 0 && inHand.countIn s.me .hand "OGN-194" == 1

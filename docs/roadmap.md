@@ -465,6 +465,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `Prim.lookTop n`（山札の上 n 枚を見る。状態は変えない）と、`Event.lookedAt`。`TriggerEvent.seenOnTop`（山札にあるカードが、見られたときの誘発）。Vision、Stacked Deck、The Candlelit Sanctum、Baited Hook に、「見る」を足した。
 - **動くようになったカード**: Nocturne, Horrifying（194。山札の上を見て（引かずに）、自分を見たとき、1 Power を払って、プレイしてもよい）。
 - **動くカード**: 291 → **292 枚**。
+- **レビューで直したこと**: Reinforce（上 5 枚を見る）にも、「見る」を足した。
+- **近似として残したこと（レビュー）**: Stacked Deck で、手札に入れるカードは、先頭のものに決まる（選べない）。効果の解決のあいだに、山札を離れたカードの誘発は、働かない。
 - **近似として残したこと**: 「見る」を出すのは、上の 4 つの仕組みだけ（Teemo, Strategist の「公開する」や、Promising Future は、含めない）。Vision は、「リサイクルするか」を尋ねる前に、見る。
 
 ### M7 の実装の記録（2026-11-23）: Energy で Hide する、Champion Zone から手札へ（1 枚）

@@ -1662,12 +1662,13 @@ less can be chosen, and its Power is not paid. -/
 def OGN_062 : CardDef :=
   { OGN_062.meta with
     spellEffect := some (.of []
+      (.seqOf [.prim (.lookTop 5),
       (.ifThen (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 5, .ofType .unit, .cost .le (.const 5)])) (.const 1))
         (.eitherOf (.cons
           (.seqOf [.prim (.play (Selector.one .friendly .inMainDeck [.top 5, .ofType .unit, .cost .le (.const 5)])),
             .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])
           (.cons (.seqOf [.prim (.recycle (Selector.one .friendly .inMainDeck [.top 5])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))]) .nil)))
-        (.seqOf [.prim (.recycle (Selector.one .friendly .inMainDeck [.top 5])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))]))),
+        (.seqOf [.prim (.recycle (Selector.one .friendly .inMainDeck [.top 5])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 4])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 3])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])), .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))]))])),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-063
