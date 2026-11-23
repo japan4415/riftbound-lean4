@@ -1493,6 +1493,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .discardCard s => some s
   | .play s => some s
   | .playPaying s => some s
+  | .castInline s => some s
   | .markOn s _ => some s
   | .playTo s _ => some s
   | .reveal s => some s
@@ -1521,6 +1522,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
   | .playPaying _ => .playPaying sel
+  | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
   | .reveal _ => .reveal sel
@@ -1546,6 +1548,35 @@ def Effect.withPick : Effect → Effect
   | .prim p => .prim (p.withSel (.var pickVar))
   | .grant (.pick .one _ _ _) m d => .grant (.var pickVar) m d
   | e => e
+
+/-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
+recycled after; if the Power cannot be paid, the instruction is skipped. -/
+def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
+    (es : EffectList) : GameState × List Frame × List Event :=
+  let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
+  match sel.eval s p src env with
+  | some (id :: _) =>
+    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    | some (d, e) =>
+      match s.payNow p id ⟨0, ((d.cost.map (·.power)).getD [])⟩ with
+      | some pool =>
+        (s.setPool p pool, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
+          .run p src env es], [])
+      | none => skip
+    | none => skip
+  | _ => skip
+
+/-- Casting in place is a safe change of the state. -/
+theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (sel : Selector) (es : EffectList) : Safe s (castInlineStep s p src env sel es).1 := by
+  unfold castInlineStep
+  split
+  · split
+    · split
+      · exact setPool_safe s p _
+      · exact Safe.refl s
+    · exact Safe.refl s
+  · exact Safe.refl s
 
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
@@ -1590,6 +1621,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
     | _, _ => skip
+  | .prim (.castInline sel) => castInlineStep s p src env sel es
   | .prim (.discard sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
@@ -1610,6 +1642,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   unfold runEffect1
   split <;> (try split) <;> first
     | exact Safe.refl s
+    | exact castInlineStep_safe s p src env _ es
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
 

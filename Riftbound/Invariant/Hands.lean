@@ -709,8 +709,9 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {f : Frame} (h : f ∈ (runEffect1 s p src env e es).2.1) :
     f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
-  unfold runEffect1 at h
-  split at h <;> (try split at h) <;>
+  unfold runEffect1 castInlineStep at h
+  split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
+    (try split at h) <;>
     simp only [List.mem_cons, List.mem_append, List.mem_map,
       List.not_mem_nil, or_false] at h <;>
     first
