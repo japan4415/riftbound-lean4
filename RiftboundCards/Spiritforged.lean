@@ -3180,7 +3180,7 @@ def SFD_109 : CardDef :=
   { SFD_109.meta with
 
     additionalCost := some ⟨0, [.domain .body, .domain .body]⟩,
-    abilities := [.triggered (.onSelf .play)
+    abilities := [.triggered { event := .play, condition := .paid }
       (.of [Choice.targetOf .one .enemy .anywhere [.ofType .gear]]
         (.ifThen .paid
           (.seqOf [.prim (.takeControl (.slot 0)), .prim (.recall (.slot 0) false),

@@ -664,7 +664,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **テキストの複製**: `StaticMod.copiesUnitText`（Equipment）。付いたユニットは、自分のカードの誘発能力を、もう一度持つ（Svellsongur）。
 - **死ぬときの追放**: `StaticMod.banishOnDeath`（Equipment の grants）。付いたユニットは、死ぬと、Trash でなく、Banishment に行く（The Zero Drive の Deathknell）。`killObj` の行き先が、これで決まる。
 - **書いたカード**: SFD-175（Undertitan）、059（Svellsongur）、090（The Zero Drive）、109（Akshan, Mischievous）、018（Void Hatchling）、029（Rek'Sai, Breacher）、141（Irelia, Graceful）。
-- **この 7 枚のうち、書けていない文**（`status := .drafted` で、動く数には入るが、この文は動かない）:
+- **後で書いた近似**: SFD-018 Void Hatchling は、山札のカードが公開されたあと（`Event.revealed`）、一番上を見て、リサイクルしてもよい（公開の『前』ではなく、『後』）。SFD-029 Rek'Sai は、手札以外から遊んだ味方のユニットが、1 Energy と 1 Fury を払って ready になれる（`Object.playedFromHand`、`Filter.playedFromElsewhere`）。SFD-141 Irelia は、自分の呪文が自分を選んだとき、1 Energy を戻す（`.chosen` の誘発。『1 Energy か 1 Power』のうち Energy だけ。払ったあとの戻しなので、先に全額を払える必要がある）。
+- **山札から公開の限界**: `Event.revealed` を出すのは、`Prim.reveal`（OGN-008 と OGN-200）だけ。Main Deck の上を公開すると書かれた、ほかのカード（Apprentice Smith など）は、`reveal` を使わず `top` で書いてあるので、イベントを出さない（Undertitan の Add と Void Hatchling は、そこでは働かない）。
+- **追放の限界**: ユニットが死んで追放されると、`loc`（いた場所）が消える（`moveObj`）。いた場所を読む死ぬときの誘発（Kog'Maw, Caustic など）は、The Zero Drive が付いていると、働かない。死んだ瞬間に Banishment へ行くので、Trash を読む能力（Immortal Phoenix、Chosen Champion を戻す）も働かない。Svellsongur の複製は、死ぬときの誘発（死ぬと、新しい物になって Equipment が外れる）と、見ている能力には、効かない。Akshan の『もし払ったなら』は、誘発の条件でなく、解決時に読む。
+- **この 7 枚のうち、書けていなかった文**（最初は `status := .drafted` だけで、動く数には入ったが、この文は動かなかった。018、029、141 は、上の近似を後で書いた）:
   - SFD-018 Void Hatchling: 「公開するときは、先に一番上を見て、リサイクルしてもよい」。公開の置き換えは、まだ無い。
   - SFD-029 Rek'Sai: 「手札以外から遊ぶユニットは、Accelerate を持つ」。Accelerate は、手札から遊ぶときだけで、手札以外から遊ぶ効果（`playReduced`）は、費用の外の Accelerate を読まない。
   - SFD-141 Irelia: 「自分の呪文で自分を選ぶものは 1 安い」。費用が、選んだ対象に依る形は、まだ無い。
