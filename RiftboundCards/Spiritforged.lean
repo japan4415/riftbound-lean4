@@ -2287,8 +2287,20 @@ def SFD_082.meta : CardDef :=
     sets := [⟨"SFD"⟩, ⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ezreal, Dashing: the effect is not written yet. -/
-def SFD_082 : CardDef := SFD_082.meta
+/-- Ezreal, Dashing. -/
+def SFD_082 : CardDef :=
+  { SFD_082.meta with
+
+    abilities := [.triggered (.onSelf .attack)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+          (.prim (.deal (.slot 0) (.mightOf .self)))) .unlimited,
+      .triggered (.onSelf .defend)
+        (.of [.targetOf .one .enemy .here [.ofType .unit]]
+          (.prim (.deal (.slot 0) (.mightOf .self)))) .unlimited,
+      .passive .always [.noCombatDamage],
+      .activated [.pay ⟨0, [.domain .mind]⟩] .action (.of [] (.prim (.move .self .base)))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-083
 /--
@@ -2809,8 +2821,16 @@ def SFD_101.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fae Dragon: the effect is not written yet. -/
-def SFD_101 : CardDef := SFD_101.meta
+/-- Fae Dragon. -/
+def SFD_101 : CardDef :=
+  { SFD_101.meta with
+
+    abilities := [.triggered (.onSelf .play)
+        (.of [] (.repeatN (.const 4) (.may (.prim (.buff
+          (Selector.one .friendly .anywhere [.ofType .unit, .not .buffed])))))) .unlimited,
+      .triggered (.onSelf .spendBuff)
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-102
 /--
@@ -3051,8 +3071,16 @@ def SFD_110.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fiora, Peerless: the effect is not written yet. -/
-def SFD_110 : CardDef := SFD_110.meta
+/-- Fiora, Peerless. -/
+def SFD_110 : CardDef :=
+  { SFD_110.meta with
+
+    abilities :=
+      let body : EffectDef := .of [] (.ifThen (.and (.matches .self .alone)
+          (.cmp .eq (.count (Selector.all .enemy .here [.ofType .unit])) (.const 1)))
+        (.prim (.double .self)) .nop)
+      [.triggered (.onSelf .attack) body .unlimited, .triggered (.onSelf .defend) body .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-111
 /--
@@ -3299,8 +3327,15 @@ def SFD_119.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Jax, Unrelenting: the effect is not written yet. -/
-def SFD_119 : CardDef := SFD_119.meta
+/-- Jax, Unrelenting. -/
+def SFD_119 : CardDef :=
+  { SFD_119.meta with
+
+    abilities := [.triggered (.onSelf .attachedTo)
+      (.of [] (.ifThen (.canPay ⟨1, []⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-120
 /--
@@ -4677,8 +4712,18 @@ def SFD_169.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Altar of Memories: the effect is not written yet. -/
-def SFD_169 : CardDef := SFD_169.meta
+/-- Altar of Memories. -/
+def SFD_169 : CardDef :=
+  { SFD_169.meta with
+
+    abilities := [.triggered
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      (.of [] (.ifThen (.matches .self .ready)
+        (.may (.seqOf [.prim (.exhaust .self), .prim (.draw .you (.const 1)),
+          .eitherOf (EffectList.ofList
+            [.prim (.topdeck (Selector.one .friendly .inHand [])),
+             .prim (.recycle (Selector.one .friendly .inHand []))])])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-170
 /--
@@ -5532,8 +5577,15 @@ def SFD_200.meta : CardDef :=
     sets := [⟨"SFD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Arcane Shift: the effect is not written yet. -/
-def SFD_200 : CardDef := SFD_200.meta
+/-- Arcane Shift. -/
+def SFD_200 : CardDef :=
+  { SFD_200.meta with
+
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.play (.slot 0)), .prim (.deal (.slot 1) (.const 3)),
+        .prim (.banish .self)])),
+    status := .drafted }
 
 -- BEGIN GENERATED SFD-201
 /--

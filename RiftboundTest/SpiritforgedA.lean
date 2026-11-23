@@ -2250,5 +2250,131 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let h ← fire (t.rich s.me) [.scored s.me bf false]
   return c.handN s.me == t.handN s.me + 2 && h.countIn s.me .base "SFD-T03" == 0 &&
     c.countIn s.me .base "SFD-T03" == 1
+-- Ezreal, Dashing (SFD-082): when it attacks or defends, damage equal to its Might to an enemy unit
+-- here; it deals no combat damage; pay 1 Mind (an Action): move it to the base
+#guard tsf fun s => do
+  let (s1, e) ← putAt s s.me "SFD-082" s.bf0
+  let (s2, foe) ← putAt s1 s.you "OGN-001" s.bf0
+  let (s3, other) ← put s2 s.you "OGN-001" .base
+  let a ← fire s3 [.combatStarted s.bf0 s.me]
+  let b ← fire s3 [.combatStarted s.bf0 s.you]
+  let m ← activate s3 s.me e 3 [] ⟨0, [.mind]⟩
+  return a.dmg foe == some 3 && b.dmg foe == some 3 && a.dmg other == some 0 &&
+    s3.combatMight e true == 0 && s3.combatMight foe true == 5 &&
+    (m.obj? e).any (·.loc.isNone)
+
+-- Fiora, Peerless (SFD-110): attacking or defending one on one, double its Might
+#guard tsf fun s => do
+  let (s1, f) ← putAt s s.me "SFD-110" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, e2) ← putAt s2 s.you "OGN-051" s.bf0
+  let (s4, ally) ← putAt s1 s.me "OGN-051" s.bf0
+  let fight (x : GameState) (att : PlayerId) :=
+    (x.modObj s.bf0 (fun o => { o with contested := some att })).inShowdownAt s.bf0 att
+  let a ← fire (fight s2 s.me) [.combatStarted s.bf0 s.me]
+  let b ← fire (fight s3 s.me) [.combatStarted s.bf0 s.me]
+  let c ← fire (fight (s4.modObj ally (fun o => o)) s.me) [.combatStarted s.bf0 s.me]
+  let (t1, g) ← putAt s s.me "SFD-110" s.bf0
+  let (t2, _) ← putAt t1 s.you "OGN-051" s.bf0
+  let d ← fire (fight t2 s.you) [.combatStarted s.bf0 s.you]
+  return a.mightNow f == (s2.mightNow f).map (· * 2) && b.mightNow f == s3.mightNow f &&
+    d.mightNow g == (t2.mightNow g).map (· * 2) && e != e2 && ally != f &&
+    c.mightNow f == s4.mightNow f
+
+-- Jax, Unrelenting (SFD-119): when an Equipment is attached to it, may pay 1 to draw 1
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-119" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let (s3, other) ← put s2 s.me "OGN-051" .base
+  let (a1, evs) := attachTo j s2 g
+  let (b1, evs2) := attachTo other s3 g
+  let a ← fire (a1.rich s.me) evs
+  let n ← fire (a1.rich s.me) evs { yes := false }
+  let p ← fire (a1.fund s.me 0) evs
+  let one ← fire (a1.fund s.me 1) evs
+  let b ← fire (b1.rich s.me) evs2
+  return a.handN s.me == a1.handN s.me + 1 && (a.poolOf s.me).energy == 11 &&
+    one.handN s.me == a1.handN s.me + 1 && (one.poolOf s.me).energy == 0 &&
+    n.handN s.me == a1.handN s.me && p.handN s.me == a1.handN s.me &&
+    b.handN s.me == b1.handN s.me
+
+-- Altar of Memories (SFD-169): when a friendly unit dies, exhaust it to draw 1, then put a card
+-- from the hand on top or at the bottom of the deck
+#guard tsf fun s => do
+  let (s1, altar) ← put s s.me "SFD-169" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← put s2 s.me "OGN-001" .hand
+  let (s4, foe) ← put s3 s.you "OGN-051" .base
+  let die (st : GameState) (x : ObjId) (says : Says := {}) : Option GameState :=
+    let (st1, evs) := killObj st x
+    fire st1 evs says
+  let pick : Says := { obj := fun o => s4.isCard "OGN-001" o }
+  let top ← die s4 u { pick with fromEnd := some 1 }
+  let bottom ← die s4 u { pick with fromEnd := some 2 }
+  let enemy ← die s4 foe
+  let tired ← die (s4.tire altar) u
+  return top.tired altar == some true && top.handN s.me == s4.handN s.me &&
+    top.deckN s.me == s4.deckN s.me && top.countIn s.me .hand "OGN-001" == 0 &&
+    (top.topCard s.me).any (top.isCard "OGN-001") && bottom.bottomIs s.me 1 "OGN-001" &&
+    bottom.deckN s.me == s4.deckN s.me && enemy.tired altar == some false &&
+    tired.handN s.me == s4.handN s.me
+
+-- Fae Dragon (SFD-101): buff up to four friendly units when played; when a buff is spent, a Gold
+#guard tsf fun s => do
+  let (s1, d) ← put s s.me "SFD-101" .hand
+  let (s2, a) ← put s1 s.me "OGN-051" .base
+  let (s3, b) ← put s2 s.me "OGN-051" .base
+  let (s4, e) ← put s3 s.you "OGN-051" .base
+  let r ← play s4 s.me d
+  let n ← play s4 s.me d [] { yes := false }
+  return (r.obj? a).any (·.buffed) && (r.obj? b).any (·.buffed) && !(r.obj? e).any (·.buffed) &&
+    !(n.obj? a).any (·.buffed)
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-101" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (t1, ev) := unbuffObj (s2.buff u) u
+  let a ← fire t1 ev
+  let b ← fire s2 [.buffSpent s.you]
+  return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0
+
+-- Arcane Shift (SFD-200): play a friendly unit again, 3 damage to an enemy unit at a battlefield,
+-- banish the spell
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-200" .hand
+  let (s2, u) ← put s1 s.me "OGN-003" .base
+  let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let r ← play s3 s.me c [u, e]
+  return r.dmg e == some 3 && r.countIn s.me .trash "SFD-200" == 0 &&
+    r.handN s.me + 2 == s3.handN s.me
+
+-- (review) spending a buff the unit does not have is no event; Fiora with a buff and with company
+#guard tsf fun s => do
+  let (s1, u) ← put s s.me "OGN-051" .base
+  let none_ := (unbuffObj s1 u).2
+  let some_ := (unbuffObj (s1.buff u) u).2
+  return none_.isEmpty && some_ == [.buffSpent s.me]
+#guard tsf fun s => do
+  let (s1, f) ← putAt s s.me "SFD-110" s.bf0
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  let (s3, _) ← putAt s2 s.me "OGN-051" s.bf0
+  let fight (x : GameState) :=
+    (x.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
+  let alone ← fire (fight (s2.buff f)) [.combatStarted s.bf0 s.me]
+  let withAlly ← fire (fight s3) [.combatStarted s.bf0 s.me]
+  let twice ← fire alone [.combatStarted s.bf0 s.me]
+  return alone.mightNow f == ((s2.buff f).mightNow f).map (· * 2) &&
+    withAlly.mightNow f == s3.mightNow f && twice.mightNow f != none
+-- (review) Jax gets the event through the real Equip ability, and Ezreal deals his current Might
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-119" .base
+  let (s2, g) ← put s1 s.me "SFD-042" .base
+  let r ← activate s2 s.me g 0 [j] ⟨0, [.calm]⟩
+  return (r.obj? g).any (·.attached == some j) && r.handN s.me == s2.handN s.me + 1
+#guard tsf fun s => do
+  let (s1, e) ← putAt s s.me "SFD-082" s.bf0
+  let (s2, foe) ← putAt s1 s.you "OGN-001" s.bf0
+  let boosted := s2.buff e
+  let a ← fire boosted [.combatStarted s.bf0 s.me]
+  return a.dmg foe == (boosted.mightNow e).map Int.toNat && boosted.mightNow e == some 4
 
 end RiftboundTest

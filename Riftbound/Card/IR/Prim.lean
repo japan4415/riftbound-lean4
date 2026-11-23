@@ -139,6 +139,8 @@ inductive Prim where
   | markOn (s : Selector) (e : TurnEffect)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
+  /-- Put cards on the top of their owners' Main Decks. -/
+  | topdeck (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
 /-- How long an effect lasts. -/
@@ -214,6 +216,10 @@ inductive TriggerEvent where
   | chosenHere
   /-- The player uses an activated ability of a gear of theirs (a unit of theirs watches). -/
   | useGearAbility
+  /-- An Equipment is attached to the unit (the unit itself waits for it). -/
+  | attachedTo
+  /-- The player spends a buff of one of their units (their units wait for it). -/
+  | spendBuff
   /-- The unit is chosen by a spell of its player ("when you choose me with a spell"); a Legend,
   a Gear or a Unit that watches the units chosen has a subject that is a selector. -/
   | chosen
@@ -322,6 +328,8 @@ inductive StaticMod where
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
+  /-- The Unit deals no combat damage (Ezreal, Dashing). -/
+  | noCombatDamage
   /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/
   | doubleEquip
   /-- (Of an Equipment) the Unit it is attached to has `n` more Might if it was attached this

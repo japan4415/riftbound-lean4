@@ -253,6 +253,8 @@ def Prim.understood : Prim → Bool
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
+  | .topdeck s => s.understoodPickAny
+  | .double s => s.understoodPick
   | .move s .base => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
@@ -336,6 +338,7 @@ def StaticMod.runs : StaticMod → Bool
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | .bonusDamage a => a.understoodC
+  | .noCombatDamage => true
   | .doubleEquip => true
   | .mightIfFresh _ => true
   | .gainsTag _ => true
@@ -361,6 +364,8 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .winCombat => t.subject == .self
       | .chosen => true
       | .useGearAbility => t.subject == .self
+      | .attachedTo => t.subject == .self
+      | .spendBuff => t.subject == .self
       | .playHidden => t.subject == .self
       | .conquerFromTrash => t.subject == .self
       | .killBySpell => t.subject == .self

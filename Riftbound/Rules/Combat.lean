@@ -34,10 +34,15 @@ namespace GameState
 /-- The Might of an object, counted for damage: a negative Might counts as 0 (CR 143.2.c). -/
 def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff).getD 0
 
+/-- The Unit has the passive ability that says it deals no combat damage. -/
+def noCombatDamage (s : GameState) (u : ObjId) : Bool :=
+  (s.cardDef? u).any (fun d => d.fullAbilities.any (fun ab =>
+    match ab with | Ability.passive .always mods => mods.contains .noCombatDamage | _ => false))
+
 /-- The Might a Unit adds to the damage of its side: Assault X while attacking (CR 807), Shield X
 while defending (CR 814). -/
 def combatMight (s : GameState) (u : ObjId) (attacking : Bool) : Nat :=
-  if ((s.obj? u).map (·.stunned)).getD false then 0
+  if ((s.obj? u).map (·.stunned)).getD false || s.noCombatDamage u then 0
   else s.mightEff u + (if attacking then s.kwAmount u .assault else s.kwAmount u .shield)
 
 /-- The damage a side assigns: the sum of the Might of its Units at the Battlefield (CR 467.2). -/
