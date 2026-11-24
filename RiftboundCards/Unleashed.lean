@@ -5656,8 +5656,19 @@ def UNL_195.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Green Father: the effect is not written yet. -/
-def UNL_195 : CardDef := UNL_195.meta
+/-- Green Father. -/
+def UNL_195 : CardDef :=
+  { UNL_195.meta with
+    abilities := [
+      .triggered (.onSelf .youConquer)
+        (.of [] (.ifThen .legendReady (.may (.seqOf [.prim (.exhaust .self),
+          .prim (.replaceBattlefield (Selector.one .any .anywhere
+            [.ofType .battlefield, .scoredByMine]) "Brush")])) .nop)) .unlimited,
+      .triggered (.onSelf .youHold)
+        (.of [] (.ifThen .legendReady (.may (.seqOf [.prim (.exhaust .self),
+          .prim (.replaceBattlefield (Selector.one .any .anywhere
+            [.ofType .battlefield, .scoredByMine]) "Brush")])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-196
 /--
@@ -6334,8 +6345,15 @@ def UNL_T03.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Brush: the effect is not written yet. -/
-def UNL_T03 : CardDef := UNL_T03.meta
+/-- Brush. -/
+def UNL_T03 : CardDef :=
+  { UNL_T03.meta with
+    abilities := [
+      .passive .always [.mightPlus (Selector.all .any .here
+        [.ofType .unit, .either petFilter (.tag ⟨"Ivern"⟩)]) (.const 1)],
+      .triggered (.onSelf .youConquer) (.of [] (.may (.prim (.restoreBattlefield .self)))) .unlimited,
+      .triggered (.onSelf .youHold) (.of [] (.may (.prim (.restoreBattlefield .self)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-T04
 /--
