@@ -140,6 +140,30 @@ inductive Prim where
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)
+  /-- The tokens the first selector names become copies of the object the second names: they have
+  its card (Reflection). -/
+  | becomeCopy (s src : Selector)
+  /-- Add the Battlefield token to the board, if it is not there already (Baron Pit). -/
+  | addBattlefield (token : String)
+  /-- Play `n` tokens at the place the object came from by its last move: the Battlefield it left,
+  else the Base (Lillia). -/
+  | createAtPrev (token : String) (n : Amount) (ready : Bool)
+  /-- Play an additional copy of each token the selector names, where it is (Zilean). -/
+  | cloneToken (s : Selector)
+  /-- Banish the objects, and remember that this object banished them (Cursed Sarcophagus,
+  Virtuoso). -/
+  | banishWith (s : Selector)
+  /-- Move every card of a side in a zone off the board that has the properties to another zone:
+  to the Banishment, noting that this object banished them if asked (Cursed Sarcophagus). -/
+  | moveAll (side : Side) (place : Place) (fs : FilterList) (dest : Place) (mark : Bool)
+  /-- The objects gain the tag (for good): Ivern is a Bird, a Cat, a Dog or a Poro; The List names
+  a tag. -/
+  | gainTag (s : Selector) (name : String)
+  /-- Replace the Battlefield with the Battlefield token: it is set aside, and the units there stay
+  at the token (Green Father). -/
+  | replaceBattlefield (old : Selector) (token : String)
+  /-- Put the Battlefield the token replaced back, in place of the token (Brush). -/
+  | restoreBattlefield (cur : Selector)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
@@ -269,6 +293,12 @@ inductive TriggerEvent where
   | recycleRune
   /-- The player hid a card (it went face down at a Battlefield). -/
   | hide
+  /-- An opponent of the player scores (a Battlefield is conquered or held). -/
+  | opponentScores
+  /-- An opponent of the player holds a Battlefield. -/
+  | opponentHolds
+  /-- The player moves a unit with an effect (Blast Cone). -/
+  | movedByYou
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
@@ -371,16 +401,26 @@ inductive StaticMod where
   | noPlayToBase
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
   | noReadyOfOpps
+  /-- Units can move here from anywhere: from another Battlefield, too (Baron Pit). -/
+  | movesHereFromAnywhere
+  /-- The Spells of the player have Repeat, for the cost (Syndra, in a showdown). -/
+  | grantRepeat (k : Cost)
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
   | assignedLast
+  /-- Any amount of the damage of the player's side is enough to kill the enemy units (Elder
+  Dragon). -/
+  | anyDamageKills
   /-- The card enters play exhausted (a Gear: Honeyfruit, Scryer's Bloom). -/
   | entersExhausted
   /-- The Unit can have any number of buffs. -/
   | anyBuffs
   /-- The friendly Units can be played to an open Battlefield. -/
   | playToOpenBf
+  /-- The units of the player can be played to the Battlefields that have the properties (Arachnoid
+  Horror: to an occupied one with an enemy unit alone there). -/
+  | playToBfAll (fs : List Filter)
   /-- One more card can be hidden at this Battlefield. -/
   | extraHide
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/
@@ -464,6 +504,8 @@ inductive AbilityCost where
   /-- The ability can be used only while its card is in the Champion Zone: the Chosen Champion is
   played from there. -/
   | fromChampionZone
+  /-- The ability can be used only while its card is in the Trash (Undying Legion). -/
+  | fromTrash
   /-- Disempower the unit. -/
   | disempowerSelf
   /-- Recycle the object itself. -/

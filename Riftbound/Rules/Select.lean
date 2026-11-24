@@ -121,6 +121,7 @@ def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
 
 /-- The tags an Equipment gives to the Unit it is attached to. -/
 def GameState.gainedTags (s : GameState) (id : ObjId) : List Tag :=
+  ((s.obj? id).map (fun o => o.tagsGained.map (fun n => ({ name := n } : Tag)))).getD [] ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
@@ -220,6 +221,10 @@ def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
 def GameState.cantPlay (s : GameState) (p : PlayerId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsCantPlay && f.who != p)
 
+/-- The player cannot play Spells now, by an effect of this turn that is an opponent's. -/
+def GameState.noSpells (s : GameState) (p : PlayerId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsNoSpells && f.who != p)
+
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
@@ -292,6 +297,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     -- at, or a Base (the selector is `self`, a chosen object or a variable)
     let d? : Option ObjId := match sel with
       | .self => some self
+      | .it => env.it
       | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
@@ -378,6 +384,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
           o.controller == me.controller))
       | none => false)
+  | .enemyAlone =>
+    some (match s.obj? self with
+      | some me =>
+        ((s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some id &&
+          o.controller != me.controller) && (s.cardDef? u).any (·.hasType .unit))).length == 1
+      | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>
@@ -447,6 +459,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let o ← s.obj? id
     pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
       (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
+  | .sharesGainedTag =>
+    (s.cardDef? id).map (fun d =>
+      ((d.tags ++ s.gainedTags id).map (·.name)).any (fun n =>
+        (s.obj? self).any (fun o => o.tagsGained.contains n)))
   | .mightLtOf sel => do
     let d ← match sel with
       | .self => some self
@@ -497,7 +513,16 @@ def Side.admits (p : PlayerId) (side : Side) (o : Object) : Bool :=
 (CR 106). -/
 def GameState.hereOf (s : GameState) (self : ObjId) : Option ObjId :=
   match s.obj? self with
-  | some o => if (s.cardDef? self).any (·.hasType .battlefield) then some self else o.loc
+  | some o =>
+    if (s.cardDef? self).any (·.hasType .battlefield) then some self
+    else
+      match o.loc with
+      | some l => some l
+      | none =>
+        -- a Legend is "there" at the Battlefield its player has just scored (Deceiver)
+        if (s.cardDef? self).any (·.hasType .legend) then
+          (s.zone .battlefieldZone).find? (fun b => (s.obj? b).any (·.scored.contains o.controller))
+        else none
   | none => none
 
 /-- The objects a place can hold, if the place is understood. `self` is the object the effect
@@ -529,6 +554,7 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inChampionZone => some .championZone
   | .inLegendZone => some .legendZone
   | .inHidden => some .hidden
+  | .inBanishment => some .banishment
   | _ => none
 
 /-- Whether a player is on the side, seen from player `p`. -/
@@ -662,6 +688,7 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inChampionZone => simp [placeObjs] at h
   | inLegendZone => simp [placeObjs] at h
   | inHidden => simp [placeObjs] at h
+  | inBanishment => simp [placeObjs] at h
   | inCombat =>
     simp only [placeObjs] at h
     obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -888,6 +915,15 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | _ => none
     let energy (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.energy)).getD 0
     ids.map (fun l => (l.map energy).sum)
+  | .powerCostOf sel =>
+    -- the Power symbols in the cost of the card a selector names: a chosen object or a variable
+    let ids : Option (List ObjId) := match sel with
+      | .self => some [self]
+      | .slot i => match env.slots[i]? with | some (.obj o) => some [o] | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some [o] | _ => none
+      | _ => none
+    let sym (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.power.length)).getD 0
+    ids.map (fun l => (l.map sym).sum)
   | .points ps => do
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
@@ -939,6 +975,15 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
+  | .drewCards n =>
+    some ((s.drawLog.filter (fun d => d.2 == s.turn && d.1 == p)).length == n)
+  | .showdownNow =>
+    some (s.pending.any (fun f => match f with | .showdown .. => true | _ => false))
+  | .inShowdown =>
+    some (s.pending.any (fun f =>
+      match f with
+      | .showdown bf _ _ => (s.obj? self).any (·.loc == some bf)
+      | _ => false))
   | .inCombatHere =>
     some (match s.combatNow, (s.obj? self).bind (·.loc) with
       | some (bf, _), some l => bf == l
@@ -981,6 +1026,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
   | .beginningPhase => some (s.phase == .beginning)
+  | .iControlHere =>
+    some ((s.hereOf self).any (fun b => (s.obj? b).any (fun o => o.control == some p)))
   | .spentOnSpell n =>
     some (s.objects.toList.any (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&

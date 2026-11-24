@@ -50,6 +50,11 @@ meta def putAt (s : GameState) (p : PlayerId) (card : String) (bf : ObjId) :
   | some (s1, u) => some (s1.modObj u (fun o => { o with loc := some bf }), u)
   | none => none
 
+/-- The Energy cost the card is played for now. -/
+meta def _root_.Riftbound.GameState.energyCost? (s : GameState) (p : PlayerId) (c : ObjId) :
+    Option Nat :=
+  (s.cardDef? c).bind (fun d => (s.effCost p c d).map (·.energy))
+
 /-- Put a spell of the player on the Chain: the object it is there. -/
 meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameState × ObjId) := do
   let (s1, c) ← put s p code .hand

@@ -15,10 +15,24 @@ scored: `beginStep`.
 
 namespace Riftbound
 
+/-- A unit of the player at the Battlefield has the passive ability that their Temporary effects at
+its Battlefield don't happen (LeBlanc, Everywhere at Once). -/
+def GameState.ignoresTemporary (s : GameState) (u : ObjId) : Bool :=
+  match s.obj? u with
+  | some o =>
+    o.loc.isSome && s.inPlay.any (fun g =>
+      (s.obj? g).any (fun og => og.controller == o.controller && og.loc == o.loc) &&
+        (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
+          match ab with
+          | Ability.passive .always mods => mods.contains (.ignoreKeyword .temporary .here)
+          | _ => false)))
+  | none => false
+
 /-- The units of the player that have Temporary, on their Base and at the Battlefields. -/
 def tempUnits (s : GameState) (tp : PlayerId) : List ObjId :=
   (s.zone (.player tp .base) ++ s.zone .battlefieldZone).filter
-    (fun u => (s.obj? u).any (·.controller == tp) && s.hasKw u .temporary)
+    (fun u => (s.obj? u).any (·.controller == tp) && s.hasKw u .temporary &&
+      !s.ignoresTemporary u)
 
 /-- Kill the objects, one after the other. -/
 def killAll : List ObjId → GameState → List Event → GameState × List Event

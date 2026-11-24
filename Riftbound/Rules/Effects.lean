@@ -373,8 +373,9 @@ theorem setExhausted_safe (b : Bool) (s : GameState) (id : ObjId) :
 /-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
 passive ability that says so. -/
 def readyBlocked (s : GameState) (id : ObjId) : Bool :=
-  (s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
-    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)
+  ((s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
+    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) ||
+  (s.obj? id).any (·.cantReady)
 
 /-- A spell or an ability readies an object, unless it cannot. -/
 def readyEffect (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1313,6 +1314,67 @@ def giveBack (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- The object after it becomes a copy of an object of the kind: a token has the card of it. A card
+stays what it is. -/
+def copyKind (ok : ObjKind) (x : Object) : Object :=
+  match x.kind, ok with
+  | .token _, .card _ c => { x with kind := .token c }
+  | .token _, .token c => { x with kind := .token c }
+  | _, _ => x
+
+/-- Becoming a copy keeps the physical card and the owner. -/
+theorem copyKind_phys (ok : ObjKind) (x : Object) :
+    (copyKind ok x).kind.phys? = x.kind.phys? ∧ (copyKind ok x).owner = x.owner := by
+  unfold copyKind
+  split <;> simp_all [ObjKind.phys?]
+
+/-- A token becomes a copy of another object: it has its card. A card stays what it is. -/
+def becomeCopyOf (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? src with
+  | some o => (s.modObj id (copyKind o.kind), [])
+  | none => (s, [])
+
+/-- A change of one object that keeps its owner and the physical card it has (a token that
+changes its card). -/
+theorem Safe.modObjPhys (s : GameState) (id : ObjId) {f : Object → Object}
+    (hk : ∀ o, (f o).kind.phys? = o.kind.phys?) (ho : ∀ o, (f o).owner = o.owner) :
+    Safe s (s.modObj id f) :=
+  ⟨fun h => GameState.wf_modObj h id f, fun _ => by
+    have : (s.modObj id f).physIds = s.physIds := by
+      unfold GameState.physIds
+      apply filterMap_congr_mem
+      intro x _
+      rw [GameState.obj?_modObj]
+      by_cases h : id.n = x.n
+      · have hx : id = x := by cases id; cases x; simp_all
+        subst hx
+        cases s.obj? id <;> simp [hk]
+      · simp [h]
+    rw [this],
+    fun _ h => GameState.ownerOk_modObj h id ho, GameState.sameMeta_modObj s id f⟩
+
+/-- Becoming a copy is a safe change. -/
+theorem becomeCopyOf_safe (src : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (becomeCopyOf src s id).1 := by
+  unfold becomeCopyOf
+  split
+  · exact Safe.modObjPhys s id (fun x => (copyKind_phys _ x).1) (fun x => (copyKind_phys _ x).2)
+  · exact Safe.refl s
+
+/-- Add the Battlefield token to the board, if a Battlefield of the card is not there already. -/
+def addBattlefieldTok (c : CardDef) (p : PlayerId) (s : GameState) : GameState :=
+  if (s.zone .battlefieldZone).any (fun b => (s.cardDef? b).any (·.id == c.id)) then s
+  else addTok s { kind := .token c.id, owner := p, controller := p, timestamp := ⟨0⟩ }
+    .battlefieldZone
+
+/-- Adding a Battlefield token is a safe change. -/
+theorem addBattlefieldTok_safe (c : CardDef) (p : PlayerId) (s : GameState) :
+    Safe s (addBattlefieldTok c p s) := by
+  unfold addBattlefieldTok
+  split
+  · exact Safe.refl s
+  · exact addTok_safe _ _ _ rfl
+
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let s1 := s.modObj id (fun o => { o with controller := p })
@@ -1711,9 +1773,213 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inChampionZone => simp at h
       | inLegendZone => simp at h
       | inHidden => simp at h
+      | inBanishment => simp at h
       | inCombat => simp at h
       | onChain => simp at h
       | onChainAll => simp at h
+
+/-- Play tokens at the Battlefield the object left by its last move, or at the Base (Lillia). -/
+def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
+    (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
+  (n.evalS s p src env).bind (fun k =>
+    (s.tokenCard name).map (fun c =>
+      let r := createN c.id p ((s.obj? src).bind (·.prevLoc)) (ready || s.tokenReady p c) k s
+      (buffNewTokens s r p, tokenPlays s r p)))
+
+/-- Playing tokens at the place an object came from is a safe change. -/
+theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {name : String} {n : Amount} {ready : Bool} {r : GameState × List Event}
+    (h : applyCreateAtPrev s p src env name n ready = some r) : Safe s r.1 := by
+  unfold applyCreateAtPrev at h
+  cases hn : n.evalS s p src env with
+  | none => simp [hn] at h
+  | some k =>
+    simp only [hn, Option.bind_some] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+
+/-- Play one more token like the one the object is, where it is. -/
+def cloneTok (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    match o.kind with
+    | .token c => (createOne c o.controller o.loc (!o.exhausted) s, [])
+    | _ => (s, [])
+  | none => (s, [])
+
+/-- Playing a copy of a token is a safe change. -/
+theorem cloneTok_safe (s : GameState) (id : ObjId) : Safe s (cloneTok s id).1 := by
+  unfold cloneTok
+  split
+  · split
+    · exact createOne_safe _ _ _ _ s
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Banish an object, and note on the banished card that `src` banished it. -/
+def banishMarked (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .banishment s id
+  match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none) with
+  | some n => (r.1.modObj n (fun x => { x with banishedWith := some src }), r.2)
+  | none => r
+
+/-- Banishing an object, noting who did it, is a safe change. -/
+theorem banishMarked_safe (src : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (banishMarked src s id).1 := by
+  unfold banishMarked
+  dsimp only
+  split
+  · rename_i n hn
+    exact (sendObj_safe .banishment s id).trans (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
+  · exact sendObj_safe .banishment s id
+
+/-- Move the card to the zone of its owner, noting that `src` did it if asked. -/
+def sendMarked (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if mark then banishMarked src s id else sendObj k s id
+
+/-- Moving a card, noting who did it, is a safe change. -/
+theorem sendMarked_safe (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
+    Safe s (sendMarked src mark k s id).1 := by
+  unfold sendMarked
+  split
+  · exact banishMarked_safe src s id
+  · exact sendObj_safe k s id
+
+/-- Move every card of the sides in a zone of theirs that has the properties to another zone. -/
+def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side : Side)
+    (place : Place) (fs : FilterList) (dest : Place) (mark : Bool) :
+    Option (GameState × List Event) :=
+  match place.zoneKind?, dest.zoneKind? with
+  | some z, some k =>
+    let ids := (s.players.filter (fun q => side.admitsPlayer p q)).flatMap (fun q =>
+      (s.zone (.player q z)).filter (fun u => FilterList.holds s src env u fs == some true))
+    some (applyEach (sendMarked src mark k) s ids)
+  | _, _ => none
+
+/-- The object gains a tag. -/
+def gainTagObj (name : String) (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with tagsGained := o.tagsGained ++ [name] }), [])
+
+/-- Gaining a tag is a safe change. -/
+theorem gainTagObj_safe (name : String) (s : GameState) (id : ObjId) :
+    Safe s (gainTagObj name s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- An effect of the player moved the units: the events say so. -/
+def movedEvents (p : PlayerId) (r : GameState × List Event) : GameState × List Event :=
+  (r.1, r.2 ++ r.2.filterMap (fun e => match e with
+    | .standardMoved u _ => some (Event.movedByEffect p u)
+    | _ => none))
+
+/-- The units at the Battlefield `old` are at `new` instead. -/
+def relocateUnits (old new : ObjId) (s : GameState) : GameState :=
+  (s.zone .battlefieldZone).foldl (fun t u =>
+    if (t.obj? u).any (·.loc == some old) then t.modObj u (fun o => { o with loc := some new })
+    else t) s
+
+/-- Moving the units from one Battlefield to another is a safe change. -/
+theorem relocateUnits_safe (old new : ObjId) (s : GameState) : Safe s (relocateUnits old new s) := by
+  unfold relocateUnits
+  suffices h : ∀ (l : List ObjId) (t : GameState), Safe t (l.foldl (fun t u =>
+      if (t.obj? u).any (·.loc == some old) then t.modObj u (fun o => { o with loc := some new })
+      else t) t) from h _ s
+  intro l
+  induction l with
+  | nil => intro t; exact Safe.refl t
+  | cons u l ih =>
+    intro t
+    simp only [List.foldl_cons]
+    refine Safe.trans ?_ (ih _)
+    split
+    · exact Safe.modObj t u (fun _ => rfl) (fun _ => rfl)
+    · exact Safe.refl t
+
+/-- The object of the Battlefield token that replaces the Battlefield `old` that is set aside as `r`. -/
+def bfToken (c : CardDef) (p : PlayerId) (old : Object) (aside : ObjId) : Object :=
+  { kind := .token c.id, owner := p, controller := p, timestamp := ⟨0⟩, control := old.control,
+    replaces := some aside }
+
+/-- Replace the Battlefield `b` with the Battlefield token: `b` is set aside, the token is in its
+place with the units that were there, and the control of it is the one `b` had. -/
+def replaceBf (c : CardDef) (p : PlayerId) (s : GameState) (b : ObjId) : GameState × List Event :=
+  match s.obj? b with
+  | some o =>
+    match moveObj s b (.player o.owner .banishment) with
+    | some r =>
+      match addObject r.1 (bfToken c p o r.2) .battlefieldZone with
+      | some t => (relocateUnits b t.2 t.1, [])
+      | none => (s, [])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Replacing a Battlefield is a safe change. -/
+theorem replaceBf_safe (c : CardDef) (p : PlayerId) (s : GameState) (b : ObjId) :
+    Safe s (replaceBf c p s b).1 := by
+  unfold replaceBf
+  cases ho : s.obj? b with
+  | none => simp only []; exact Safe.refl s
+  | some o =>
+    simp only []
+    cases hr : moveObj s b (.player o.owner .banishment) with
+    | none => simp only []; exact Safe.refl s
+    | some r =>
+      simp only []
+      cases ht : addObject r.1 (bfToken c p o r.2) .battlefieldZone with
+      | none => simp only []; exact Safe.refl s
+      | some t =>
+        simp only []
+        exact (Safe.moveObj hr).trans ((safe_addObject rfl ht).trans (relocateUnits_safe _ _ _))
+
+/-- The Battlefield `old` is back, as `r`, where the token `cur` was: with its control, and its units. -/
+def restoreStep (cur : ObjId) (o : Object) (r : GameState × ObjId) : GameState :=
+  relocateUnits cur r.2 (r.1.modObj r.2 (fun x => { x with control := o.control }))
+
+/-- Putting a Battlefield back in place of a token is a safe change. -/
+theorem restoreStep_safe (cur : ObjId) (o : Object) (r : GameState × ObjId) :
+    Safe r.1 (restoreStep cur o r) :=
+  (Safe.modObj r.1 r.2 (f := fun x => { x with control := o.control }) (fun _ => rfl)
+    (fun _ => rfl)).trans (relocateUnits_safe _ _ _)
+
+/-- Put the Battlefield the token `cur` replaced back in its place, and the token away. -/
+def restoreBf (s : GameState) (cur : ObjId) : GameState × List Event :=
+  match s.obj? cur with
+  | some o =>
+    match o.replaces with
+    | some old =>
+      match moveObj s old .battlefieldZone with
+      | some r =>
+        match moveObj (restoreStep cur o r) cur (.player o.owner .trash) with
+        | some t => (t.1, [])
+        | none => (restoreStep cur o r, [])
+      | none => (s, [])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Putting a replaced Battlefield back is a safe change. -/
+theorem restoreBf_safe (s : GameState) (cur : ObjId) : Safe s (restoreBf s cur).1 := by
+  unfold restoreBf
+  cases ho : s.obj? cur with
+  | none => simp only []; exact Safe.refl s
+  | some o =>
+    simp only []
+    cases hq : o.replaces with
+    | none => simp only []; exact Safe.refl s
+    | some old =>
+      simp only []
+      cases hr : moveObj s old .battlefieldZone with
+      | none => simp only []; exact Safe.refl s
+      | some r =>
+        simp only []
+        cases ht : moveObj (restoreStep cur o r) cur (.player o.owner .trash) with
+        | none => simp only []; exact (Safe.moveObj hr).trans (restoreStep_safe cur o r)
+        | some t =>
+          simp only []
+          exact ((Safe.moveObj hr).trans (restoreStep_safe cur o r)).trans (Safe.moveObj ht)
 
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
@@ -1778,7 +2044,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .double sel => onSelected s p src env sel doubleObj
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
-  | .move sel .base => onSelected s p src env sel moveHome
+  | .move sel .base => (onSelected s p src env sel moveHome).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -1786,7 +2052,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       -- a Battlefield, or the Battlefield a Unit is at; a Unit at a Base names no place yet
       match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
           else (s.obj? d).bind (·.loc)) with
-      | some bf => onSelected s p src env sel (sendToLoc (some bf))
+      | some bf => (onSelected s p src env sel (sendToLoc (some bf))).map (movedEvents p)
       | none => none
     | _ => none
   | .swapPlaces a b =>
@@ -1865,6 +2131,19 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
+  | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
+  | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
+  | .cloneToken sel => onSelected s p src env sel cloneTok
+  | .banishWith sel => onSelected s p src env sel (banishMarked src)
+  | .gainTag sel name => onSelected s p src env sel (gainTagObj name)
+  | .replaceBattlefield sel name =>
+    (s.tokenCard name).bind (fun c => onSelected s p src env sel (replaceBf c p))
+  | .restoreBattlefield sel => onSelected s p src env sel restoreBf
+  | .moveAll side place fs dest mark => applyMoveAll s p src env side place fs dest mark
+  | .becomeCopy sel from_ =>
+    match from_.eval s p src env with
+    | some (c :: _) => onSelected s p src env sel (becomeCopyOf c)
+    | _ => none
   | .playBanishedWith =>
     some (applyEach (playFree p) s ((s.zone (.player p .banishment)).filter (fun id =>
       (s.obj? id).any (·.banishedWith == some src) && (s.cardDef? id).any (·.hasType .unit))))
@@ -1953,7 +2232,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | attachPaying gears to less => exact applyAttachPaying_safe h
   | move sel dest =>
     cases dest with
-    | base => exact onSelected_safe moveHome_safe h
+    | base =>
+      simp only [applyPrim] at h
+      obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+      show Safe s r0.1
+      exact onSelected_safe moveHome_safe hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -1964,7 +2247,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         | cons d _ =>
           simp only [hd] at h
           split at h
-          · exact onSelected_safe (sendToLoc_safe _) h
+          · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+            show Safe s r0.1
+            exact onSelected_safe (sendToLoc_safe _) hr0
           · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | detach sel => exact onSelected_safe detachObj_safe h
@@ -2094,6 +2379,45 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hl, Option.map_some, Option.some.injEq] at h
       rw [← h]
       exact swapTopAll_safe l s
+  | becomeCopy sel from_ =>
+    simp only [applyPrim] at h
+    cases hf : from_.eval s p src env with
+    | none => simp [hf] at h
+    | some l =>
+      cases l with
+      | nil => simp [hf] at h
+      | cons c _ =>
+        simp only [hf] at h
+        exact onSelected_safe (becomeCopyOf_safe c) h
+  | createAtPrev name n ready =>
+    simp only [applyPrim] at h
+    exact applyCreateAtPrev_safe h
+  | cloneToken sel => exact onSelected_safe cloneTok_safe h
+  | banishWith sel => exact onSelected_safe (banishMarked_safe src) h
+  | gainTag sel name => exact onSelected_safe (gainTagObj_safe name) h
+  | replaceBattlefield sel name =>
+    simp only [applyPrim] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.bind_some] at h
+      exact onSelected_safe (replaceBf_safe c p) h
+  | restoreBattlefield sel => exact onSelected_safe restoreBf_safe h
+  | moveAll side place fs dest mark =>
+    simp only [applyPrim, applyMoveAll] at h
+    split at h
+    · simp only [Option.some.injEq] at h
+      rw [← h]
+      exact applyEach_safe (fun t id => sendMarked_safe src mark _ t id) _ _
+    · simp at h
+  | addBattlefield name =>
+    simp only [applyPrim] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact addBattlefieldTok_safe c p s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
   | playBanishedWith =>
     simp only [applyPrim, Option.some.injEq] at h

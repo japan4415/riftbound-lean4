@@ -116,4 +116,201 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s3 := { s2 with phase := .main }
   return !s1.readyNow s.me c d && s3.readyNow s.me c d
 
+-- Valley of Idols (UNL-218): a unit played there is buffed for 1 Energy
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "UNL-218"
+  let (s2, u) ← putAt s1 s.me "UNL-111" bf
+  let s3 ← fire (s2.rich s.me) [Event.played s.me u]
+  return !((s2.obj? u).any (·.buffed)) && ((s3.obj? u).any (·.buffed))
+
+-- Vaults of Helia (UNL-219): after the player holds there, their units cost 1 more this turn
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "UNL-219"
+  let (s2, c) ← put s1 s.me "UNL-111" .hand
+  let s3 ← fire s2 [Event.scored s.me bf false]
+  return s2.energyCost? s.me c == some 1 && s3.energyCost? s.me c == some 2
+
+-- Mirror Image (UNL-200): a ready Reflection token at the Base becomes a copy of the unit, with
+-- Temporary
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-200" .hand
+  let (s2, e) ← putAt s1 s.you "UNL-111" s.bf0
+  let s3 ← play s2 s.me c [e]
+  let base := (s3.zone (.player s.me .base)).filter (fun u => (s3.cardDef? u).any (·.id == cid "UNL-111"))
+  return base.length == 1 && base.all (fun u => s3.hasKw u .temporary) &&
+    base.all (fun u => s3.tired u == some false)
+
+-- Keeper of Masks (UNL-081): two Reflection tokens, copies of it (so with Temporary too)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-081" .hand
+  let s2 ← play s1 s.me c
+  return s2.countIn s.me .base "UNL-081" == 3
+
+-- Baron Nashor (UNL-147): the Baron Pit enters the board once, and Baron Nashor goes there
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-147" .hand
+  let s2 ← play s1 s.me c
+  let pits := (s2.zone .battlefieldZone).filter (fun b => (s2.cardDef? b).any (·.name == "Baron Pit"))
+  let nashor := (s2.zone .battlefieldZone).find? (fun u => (s2.cardDef? u).any (·.id == cid "UNL-147"))
+  return pits.length == 1 && s2.battlefields.length == s1.battlefields.length + 1 &&
+    nashor.any (fun u => (s2.obj? u).any (fun o => o.loc == pits.head?))
+
+-- Arachnoid Horror (UNL-117): it, and the other friendly units, can be played to a Battlefield
+-- where an enemy unit is alone
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-117" .hand
+  let (s2, _) ← putAt s1 s.you "UNL-111" s.bf0
+  let (s3, _) ← putAt s2 s.you "UNL-111" s.bf0
+  let (s4, d) ← put s2 s.me "UNL-111" .hand
+  let (s5, _) ← put s4 s.me "UNL-117" .base
+  let (s6, _) ← putAt s5 s.me "UNL-117" s.bf0
+  return (s2.playBfOptions s.me c).contains s.bf0 && !(s3.playBfOptions s.me c).contains s.bf0 &&
+    (s5.playBfOptions s.me d).contains s.bf0 && !(s2.playBfOptions s.me d).contains s.bf0 &&
+    s6.hasKw c .temporary == false
+
+-- LeBlanc, Everywhere at Once (UNL-090): the Temporary units of its player at its Battlefield are
+-- not killed at the start of their Beginning Phase
+#guard tun fun s => do
+  let (s1, t) ← putAt s s.me "UNL-081" s.bf0
+  let (s2, _) ← putAt s1 s.me "UNL-090" s.bf0
+  return (tempUnits s1 s.me).contains t && !(tempUnits s2 s.me).contains t
+
+-- Katarina, Reckless (UNL-023): she readies when her player hides a card
+#guard tun fun s => do
+  let (s1, k) ← put s s.me "UNL-023" .base
+  let (s2, c) ← put s1 s.me "UNL-111" .hidden
+  let s3 := s2.tire k
+  let s4 ← fire s3 [Event.moved c c (.player s.me .hidden)]
+  return s3.tired k == some true && s4.tired k == some false
+
+-- Tricksy Tentacles (UNL-054): enemy units of total Might 8 or less are moved to one place
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-054" .hand
+  let (s2, a) ← putAt s1 s.you "UNL-111" s.bf0
+  let (s3, b) ← putAt s2 s.you "UNL-111" s.bf0
+  let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
+  return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
+
+-- Elder Dragon (UNL-118): any damage kills enemy units; the other player's units are not affected
+#guard tun fun s => do
+  let (s1, _) ← putAt s s.me "UNL-118" s.bf0
+  let (s2, e) ← putAt s1 s.you "OGN-088" s.bf0
+  let (s3, m) ← putAt s2 s.me "OGN-088" s.bf0
+  let s4 := s3.modObj e (fun o => { o with damage := 1 })
+  let s5 := s4.modObj m (fun o => { o with damage := 1 })
+  return !s2.lethal e && s4.lethal e && !s5.lethal m
+
+-- Maduli the Gatekeeper (UNL-144) can't be readied: not by the Awaken Phase, not by an effect
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-144" .hand
+  let s2 ← play s1 s.me c
+  let m ← s2.firstOf s.me .base "UNL-144"
+  let s3 := s2.tire m
+  let s4 := s3.mapObjects (readyOf s.me)
+  return s3.tired m == some true && s4.tired m == some true && (readyEffect s3 m).1.tired m == some true
+
+-- Syndra, Transcendent (UNL-146): in a showdown, the Spells of her player have Repeat for 2 Energy
+-- and a Chaos rune
+#guard tun fun s => do
+  let (s1, _) ← putAt s s.me "UNL-146" s.bf0
+  let (s2, sp) ← put s1 s.me "UNL-159" .hand
+  let d ← s2.cardDef? sp
+  let s3 := s2.inShowdownAt s.bf0 s.me
+  return (s2.extrasRaw s.me sp d).isEmpty && (s3.extrasRaw s.me sp d).length == 1
+
+-- Stalking Wolf (UNL-166): a Bird, Cat, Dog or Poro of its player is killed as it is played
+#guard tun fun s => do
+  let (s1, w) ← put s s.me "UNL-166" .hand
+  let (s2, bird) ← put s1 s.me "UNL-056" .base
+  let (s3, other) ← put s2 s.me "UNL-111" .base
+  return s3.extraOk s.me w [bird] && !s3.extraOk s.me w [other] && !s3.extraOk s.me w []
+
+-- Blighted Battleaxe (UNL-019): at the end of its turn, the unit that did not conquer is dealt 4
+-- and the Equipment is unattached
+#guard tun fun s => do
+  let (s1, u) ← putAt s s.me "OGN-088" s.bf0
+  let (s2, g) ← put s1 s.me "UNL-019" .base
+  let s3 := s2.modObj g (fun o => { o with attached := some u })
+  let ts := s3.timedTriggers s.me .endOfTurn
+  return ts.any (fun t => t.source == u && t.card == cid "UNL-019")
+
+-- Cursed Sarcophagus (UNL-148): the units of its player's Trash are banished with it
+#guard tun fun s => do
+  let (s1, g) ← put s s.me "UNL-148" .hand
+  let (s2, _) ← put s1 s.me "UNL-111" .trash
+  let (s3, _) ← put s2 s.me "OGN-007" .trash
+  let s4 ← play s3 s.me g
+  return s4.countIn s.me .banishment "UNL-111" == 1 && s4.countIn s.me .trash "UNL-111" == 0
+
+-- Frigid Jewel (UNL-074): the second card drawn in the turn gives a friendly unit +2 Might
+#guard tun fun s => do
+  let (s1, _) ← put s s.me "UNL-074" .base
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let (s3, _) ← put s2 s.me "UNL-111" .hand
+  let a ← fire { s3 with drawLog := [(s.me, s3.turn)] } [Event.drew s.me]
+  let b ← fire { s3 with drawLog := [(s.me, s3.turn), (s.me, s3.turn)] } [Event.drew s.me]
+  let c ← fire { s3 with drawLog := [(s.me, s3.turn), (s.me, s3.turn), (s.me, s3.turn)] }
+    [Event.drew s.me]
+  return a.mightNow u == s3.mightNow u && c.mightNow u == s3.mightNow u &&
+    b.mightNow u == (s3.mightNow u).map (· + 2)
+
+-- Green Father (UNL-195) and Brush (UNL-T03): the Battlefield is replaced by Brush, with its units;
+-- scoring there puts the old Battlefield back
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "UNL-111" bf
+  let some tok := s2.tokenCard "Brush" | none
+  let r := replaceBf tok s.me s2 bf
+  let s3 := r.1
+  let brush := (s3.zone .battlefieldZone).find? (fun b => (s3.cardDef? b).any (·.name == "Brush"))
+  let some nb := brush | none
+  let r2 := restoreBf s3 nb
+  let s4 := r2.1
+  return (s3.obj? u).any (·.loc == some nb) && s3.battlefields.length == s2.battlefields.length &&
+    !(s3.battlefields.contains bf) &&
+    (s4.battlefields.any (fun b => (s4.cardDef? b).any (·.id == cid "OGN-275"))) &&
+    !(s4.battlefields.any (fun b => (s4.cardDef? b).any (·.name == "Brush"))) &&
+    (s4.obj? u).any (fun o => o.loc.any (fun l => (s4.cardDef? l).any (·.id == cid "OGN-275")))
+
+-- Heedless Resurrection (UNL-142): kill a friendly unit, play a unit from the Trash that costs no
+-- more than it
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-142" .hand
+  let (s2, k) ← put s1 s.me "UNL-003" .base
+  let (s3, _) ← put s2 s.me "UNL-111" .trash
+  let s4 ← play s3 s.me c [k] { obj := fun o => (s3.cardDef? o).any (·.id == cid "UNL-111") }
+  return s4.countIn s.me .trash "UNL-003" == 1 && s4.countIn s.me .base "UNL-111" == 1
+
+-- Blast Cone (UNL-133): when its player moves an enemy unit with an effect, it can stun it
+#guard tun fun s => do
+  let (s1, g) ← put s s.me "UNL-133" .base
+  let (s2, e) ← putAt s1 s.you "UNL-111" s.bf0
+  let a ← fire s2 [Event.movedByEffect s.me e]
+  let b ← fire s2 [Event.movedByEffect s.you e]
+  return ((a.obj? e).any (·.stunned)) && !((b.obj? e).any (·.stunned)) &&
+    (a.tired g == some true)
+
+-- Undying Legion (UNL-025): with another card played this turn, it is played from the Trash
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-111" .hand
+  let (s2, l) ← put s1 s.me "UNL-025" .trash
+  let before := activate s2 s.me l (firstAct s2 l)
+  let s3 ← play s2 s.me c
+  let s4 ← activate s3 s.me l (firstAct s3 l) [] ⟨3, [.fury]⟩
+  return before.isNone && s4.countIn s.me .trash "UNL-025" == 0 && s4.countIn s.me .base "UNL-025" == 1
+
+-- Virtuoso (UNL-181): four spells banished with it go to the Trash, and its player channels
+-- and draws
+#guard tun fun s => do
+  let (s1, v) ← put s s.me "UNL-181" .legendZone
+  let (s2, a) ← put s1 s.me "UNL-159" .banishment
+  let (s3, b) ← put s2 s.me "UNL-159" .banishment
+  let (s4, c) ← put s3 s.me "UNL-159" .banishment
+  let s5 := [a, b, c].foldl (fun t x => t.modObj x (fun o => { o with banishedWith := some v })) s4
+  let (s6, sp) ← put s5 s.me "UNL-159" .hand
+  let (s7, sp') ← moveObj s6 sp .chain
+  let s8 := s7.modObj sp' (fun o => { o with energyPaid := 4, playedTurn := some s7.turn })
+  let r ← fire s8 [Event.played s.me sp']
+  return r.countIn s.me .trash "UNL-159" == 4 && r.countIn s.me .banishment "UNL-159" == 0
+
 end RiftboundTest

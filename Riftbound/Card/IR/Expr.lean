@@ -38,6 +38,8 @@ inductive Amount where
   | mightOf (s : Selector)
   /-- The Energy cost of an object. -/
   | costOf (s : Selector)
+  /-- The number of Power symbols in the cost of an object. -/
+  | powerCostOf (s : Selector)
   /-- The XP of the player the effect belongs to. -/
   | xp
   /-- How many points the player still needs to win. -/
@@ -185,6 +187,9 @@ inductive Filter where
   | enemyOccupied
   /-- Is a Battlefield where a unit of the player the effect belongs to is (Ambush). -/
   | myUnitsHere
+  /-- Is a Battlefield where exactly one unit of the other players is, and no other of theirs
+  (an enemy unit is alone there). -/
+  | enemyAlone
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/
   | controlled
   /-- Is the object a selector names (`self`, a chosen object or a variable). -/
@@ -206,6 +211,8 @@ inductive Filter where
   /-- Its Might is less than the Might of the object the selector names (`self`, a chosen object or a
   variable). -/
   | mightLtOf (s : Selector)
+  /-- Has a tag the object the effect belongs to gained or was told to name (The List). -/
+  | sharesGainedTag
   /-- Is a spell or ability that chooses the object the selector names, and no other object of its
   controller (Repulse). -/
   | choosesOnly (s : Selector)
@@ -304,6 +311,12 @@ inductive Condition where
   | inShowdown
   /-- The Beginning Phase is going on. -/
   | beginningPhase
+  /-- A showdown is going on, at any Battlefield. -/
+  | showdownNow
+  /-- The player has drawn exactly `n` cards this turn. -/
+  | drewCards (n : Nat)
+  /-- The player the effect works for controls the Battlefield the object is at. -/
+  | iControlHere
   /-- The point being scored comes from this source. -/
   | scoreFrom (src : ScoreSource)
 deriving DecidableEq, Repr, Hashable

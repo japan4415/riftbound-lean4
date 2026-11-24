@@ -55,6 +55,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
   | .costOf s => Selector.ok c s
+  | .powerCostOf s => Selector.ok c s
   | .xp => true
   | .pointsLeft => true
   | .victoryScore => true
@@ -173,6 +174,15 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
   | .gainXP p n => p.ok c && Amount.ok c n
+  | .becomeCopy s src => Selector.ok c s && Selector.ok c src
+  | .addBattlefield _ => true
+  | .createAtPrev _ n _ => Amount.ok c n
+  | .cloneToken s => Selector.ok c s
+  | .banishWith s => Selector.ok c s
+  | .gainTag s _ => Selector.ok c s
+  | .replaceBattlefield s _ => Selector.ok c s
+  | .restoreBattlefield s => Selector.ok c s
+  | .moveAll _ _ fs _ _ => FilterList.ok c fs
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n
@@ -233,6 +243,9 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .anyDamageKills => true
+  | .movesHereFromAnywhere => true
+  | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
@@ -250,6 +263,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
+  | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .noPlayToBase => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true

@@ -146,6 +146,14 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
 /-- The Energy that the passive abilities add to the cost of the card `c` of the player (CR 356):
 the cost of the spells of the opponents of Vex, Cheerless goes up. -/
 def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
+  -- the units of the player cost more this turn, by an effect (Vaults of Helia)
+  ((match s.obj? c, s.cardDef? c with
+    | some o, some d =>
+      if d.hasType .unit then
+        (s.turnFx.filter (fun f => f.turn == s.turn && f.who == o.owner)).foldl (fun a f =>
+          match f.kind with | .unitsCostMore n => a + n | _ => a) 0
+      else 0
+    | _, _ => 0) +
   (s.passiveSources ++ [c]).foldl (fun acc src =>
     match s.sourceOwner src, s.cardDef? src with
     | some o, some d =>
@@ -162,7 +170,7 @@ def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
               | _ => acc) acc
           else acc
         | _ => acc) acc
-    | _, _ => acc) 0
+    | _, _ => acc) 0)
 
 /-- Take away one Power symbol: of the domain if one is named, else the first. -/
 def removeSym (dom : Option Domain) : List PowerSym → List PowerSym
@@ -244,6 +252,22 @@ def GameState.extrasRaw (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     | .accelerate, _ => if d.hasType .unit then some (⟨1, [.own]⟩, false) else none
     | .repeat_, .cost k => if d.hasType .spell then some (k, true) else none
     | _, _ => none) ++
+  -- the Repeat that a passive ability of an object of the player gives their Spells (Syndra)
+  (if d.hasType .spell then
+    s.passiveSources.flatMap (fun g =>
+      match s.sourceOwner g, s.cardDef? g with
+      | some o, some dg =>
+        if o.controller == p then
+          dg.fullAbilities.flatMap (fun ab =>
+            match ab with
+            | Ability.passive cond mods =>
+              if cond.eval s p g {} == some true then
+                mods.filterMap (fun m => match m with | .grantRepeat k => some (k, true) | _ => none)
+              else []
+            | _ => [])
+        else []
+      | _, _ => [])
+  else []) ++
   -- each effect of the turn that gives Repeat gives one more Repeat
   (if d.hasType .spell then
     ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
@@ -420,6 +444,16 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
           mods.filterMap (fun m =>
             match m with | .playToBf fs => some (FilterList.ofList fs) | _ => none)
         | _ => [])
+      -- the units of the player can be played to the Battlefields another object of theirs names
+      let granted : List FilterList := s.inPlay.flatMap (fun g =>
+        if (s.obj? g).any (·.controller == p) then
+          ((s.cardDef? g).map (fun dg => dg.abilities.flatMap (fun ab =>
+            match ab with
+            | Ability.passive .always mods =>
+              mods.filterMap (fun m =>
+                match m with | .playToBfAll fs => some (FilterList.ofList fs) | _ => none)
+            | _ => []))).getD []
+        else [])
       let permit := (s.inPlay ++ s.zone (.player p .legendZone)).any (fun g =>
         (s.obj? g).any (·.controller == p) &&
           FilterList.holds s c Env.empty g (FilterList.ofList [.permitsOpenPlay]) == some true)
@@ -432,7 +466,7 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
           !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
           FilterList.holds s c Env.empty b
             (FilterList.ofList [.ofType .battlefield, .unitsPlayable]) == some true &&
-          (own ++ open_ ++ ambush).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
+          (own ++ open_ ++ ambush ++ granted).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
     else []
   | none => []
 
@@ -559,6 +593,11 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
       (s.cardDef? t).any (·.hasType .gear)
   | .exhaustLegend =>
     decide (t ∈ s.zone (.player p .legendZone)) && (s.obj? t).any (fun o => !o.exhausted)
+  | .killPet =>
+    decide (t ∈ s.inPlay) && (s.obj? t).any (·.controller == p) &&
+      (s.cardDef? t).any (fun d => d.hasType .unit &&
+        (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
+          g.name == "Poro")))
 
 /-- The objects an additional cost of the kind can be done to. -/
 def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : List ObjId :=
@@ -580,6 +619,9 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     Option (GameState × List Event) :=
   match k with
   | .exhaustLegend => some (s.exhaustObj t, [])
+  | .killPet =>
+    (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
+      (r.1, [Event.moved t r.2 (.player o.owner .trash), Event.died r.2 o.controller])))
   | .returnGear =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .hand)])))
@@ -702,6 +744,12 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact Safe.moveObj hm
+  | killPet =>
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨o, -, ⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact Safe.moveObj hm
 
 /-- Paying the additional cost of a card that was played is a safe change. -/
 theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
@@ -784,7 +832,7 @@ it, in the Main Phase (CR 349, 355, 356, 357). The card must also be in the hand
 states apart. -/
 def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) : Bool :=
-  s.phase == .main && !s.cantPlay p &&
+  s.phase == .main && !s.cantPlay p && !s.noSpells p &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
@@ -1064,7 +1112,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       s.paysForXT p c d cost targets pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨⟨hph, -⟩, hrest⟩ := h
+  obtain ⟨⟨⟨hph, -⟩, -⟩, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>
@@ -1295,6 +1343,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inr ht.1)
+      · exact List.mem_append.mpr (Or.inl ht.1.1)
     · right; right; right
       exact List.mem_map.mpr ⟨b, hb, rfl⟩
 

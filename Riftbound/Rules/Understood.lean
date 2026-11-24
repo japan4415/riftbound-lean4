@@ -66,6 +66,7 @@ def Amount.understood : Amount → Bool
   | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
+  | .powerCostOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -99,6 +100,7 @@ def Amount.understoodC : Amount → Bool
   | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
+  | .powerCostOf s => s.understood
   | .mightOf s => Selector.understood s
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -157,6 +159,7 @@ def Filter.understood : Filter → Bool
   | .unitsPlayable => true
   | .attackedByMine => true
   | .myUnitsHere => true
+  | .enemyAlone => true
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
@@ -169,6 +172,7 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .sharesGainedTag => true
   | .mightLtOf .self => true
   | .mightLtOf (.slot _) => true
   | .mightLtOf (.var _) => true
@@ -186,6 +190,7 @@ def Filter.understood : Filter → Bool
   | .permitsOpenPlay => true
   | .lethal => true
   | .at_ .self => true
+  | .at_ .it => true
   | .at_ (.slot _) => true
   | .at_ (.var _) => true
   | _ => false
@@ -238,6 +243,10 @@ def Condition.understood : Condition → Bool
   | .hasHidden => true
   | .spentOnSpell _ => true
   | .beginningPhase => true
+  | .inShowdown => true
+  | .showdownNow => true
+  | .drewCards _ => true
+  | .iControlHere => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
@@ -320,6 +329,16 @@ def Prim.understood : Prim → Bool
   | .stun s => s.understoodPick
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
+  | .becomeCopy s src => s.understood && src.understood
+  | .addBattlefield _ => true
+  | .createAtPrev _ n _ => n.understood
+  | .cloneToken s => s.understood
+  | .banishWith s => s.understoodPickAny
+  | .gainTag s _ => s.understood
+  | .replaceBattlefield s _ => s.understoodPick
+  | .restoreBattlefield s => s.understood
+  | .moveAll _ place fs dest _ =>
+    place.zoneKind?.isSome && dest.zoneKind?.isSome && FilterList.understood fs
   | .spendXP p n => p.understood && n.understood
   | _ => false
 
@@ -393,6 +412,9 @@ def StaticMod.runs : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .anyDamageKills => true
+  | .movesHereFromAnywhere => true
+  | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
@@ -410,8 +432,10 @@ def StaticMod.runs : StaticMod → Bool
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
+  | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true
   | .noReadyOfOpps => true
+  | .ignoreKeyword .temporary .here => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .triggersExtra .conquer .here => true
@@ -465,7 +489,11 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
       | .hide => t.subject == .self
-      | .leave => t.subject == .self
+      | .opponentScores => t.subject == .self
+      | .opponentHolds => t.subject == .self
+      | .movedByYou => true
+      | .draw => true
+      | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
       | .conquer => t.subject == .self | .hold => t.subject == .self

@@ -53,6 +53,8 @@ inductive Place where
   | inCombat
   /-- Hidden face down (CR 811). -/
   | inHidden
+  /-- In the player's Banishment. -/
+  | inBanishment
   /-- On the Chain: the spells waiting to resolve (CR 330). -/
   | onChain
   /-- On the Chain: the spells and the abilities waiting to resolve. -/
@@ -118,6 +120,8 @@ inductive TurnEffect where
   | unitsBuffed
   /-- The next unit the player plays this turn is buffed (Nami). -/
   | nextUnitBuffed
+  /-- The units the player plays this turn cost `n` Energy more (Vaults of Helia). -/
+  | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
@@ -136,6 +140,8 @@ inductive TurnEffect where
   | buffsExtraMight
   /-- The opponents of the player cannot play cards this turn. -/
   | opponentsCantPlay
+  /-- The opponents of the player cannot play Spells this turn (Lilting Lullaby). -/
+  | opponentsNoSpells
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
   /-- The unit is to be recalled the next time it dies this turn (Unlicensed Armory). -/

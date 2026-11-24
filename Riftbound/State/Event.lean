@@ -74,6 +74,10 @@ inductive Event where
   | conquerActivated (u : ObjId)
   /-- The player played a card from Hidden (CR 811). -/
   | hiddenPlayed (p : PlayerId)
+  /-- The player drew a card. -/
+  | drew (p : PlayerId)
+  /-- An effect of the player moved the unit (Blast Cone). -/
+  | movedByEffect (p : PlayerId) (u : ObjId)
   /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is
   whether it ends the discarding of the effect: the abilities that wait for "one or more" cards
   to be discarded fire only then. -/

@@ -73,6 +73,9 @@ structure GameState where
   clock : Option Nat := none
   /-- What spells and abilities made true for the rest of a turn (CR 389-393). -/
   turnFx : List TurnFx := []
+  /-- The cards drawn in the current turn: the player who drew, and the turn (older ones are
+  dropped as a card is drawn). -/
+  drawLog : List (PlayerId × Nat) := []
   /-- The players who take an extra turn next, in order (Time Warp). -/
   extraTurns : List PlayerId := []
   /-- How many of the turns taken were extra turns: the turn order goes on as if they were not. -/

@@ -20,7 +20,7 @@ def GameState.mapObjects (s : GameState) (f : Object → Object) : GameState :=
 
 /-- Ready the objects the player controls (CR 416). -/
 def readyOf (p : PlayerId) (o : Object) : Object :=
-  if o.controller = p then { o with exhausted := false } else o
+  if o.controller = p && !o.cantReady then { o with exhausted := false } else o
 
 /-- Heal an object: remove its damage (CR 419). -/
 def healObj (o : Object) : Object := { o with damage := 0 }
@@ -141,9 +141,9 @@ theorem mapObjects_ready_idem (s : GameState) (p : PlayerId) :
   simp only [GameState.mapObjects, Std.ExtTreeMap.map_map, readyOf_idem]
 
 /-- Readying makes an object of the player ready. -/
-theorem readyOf_ready {p : PlayerId} {o : Object} (h : o.controller = p) :
+theorem readyOf_ready {p : PlayerId} {o : Object} (h : o.controller = p) (hc : o.cantReady = false) :
     (readyOf p o).exhausted = false := by
-  simp [readyOf, h]
+  simp [readyOf, h, hc]
 
 /-- Readying leaves the objects of the other players as they were. -/
 theorem readyOf_other {p : PlayerId} {o : Object} (h : o.controller ≠ p) : readyOf p o = o := by

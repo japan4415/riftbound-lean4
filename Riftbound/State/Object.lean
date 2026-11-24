@@ -123,6 +123,11 @@ structure Object where
   playedStamp : Option Nat := none
   /-- Where the Unit was before its last move: its Battlefield, or none for the Base. -/
   prevLoc : Option ObjId := none
+  /-- The names of the tags the object gained, or was told to name (Ivern, The List). -/
+  tagsGained : List String := []
+  /-- For a Battlefield token that replaced a Battlefield (Brush): the Battlefield it replaced, set
+  aside in its owner's Banishment. -/
+  replaces : Option ObjId := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
@@ -153,6 +158,11 @@ structure Object where
   /-- For a card hidden face down: the turn it was hidden. -/
   hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
+
+/-- The object has the mark that it can't be readied (Maduli): the effects that ready, and the
+Awaken Phase, leave it exhausted. -/
+def Object.cantReady (o : Object) : Bool := o.tagsGained.contains "!cantReady"
+
 
 /-- The object after it used an ability in the turn `turn` that chose the objects `ts`. -/
 def Object.noteChose (turn : Nat) (ts : List ObjId) (o : Object) : Object :=
