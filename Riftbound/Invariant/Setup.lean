@@ -499,7 +499,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
         (by simp [Frame.isSetup])
   · rename_i p n rest c pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := castStep_meta h
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
   · rename_i p n rest src idx pay ts hp hk

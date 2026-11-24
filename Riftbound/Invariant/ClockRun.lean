@@ -115,6 +115,13 @@ theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   exact (tc_applyCast hm).trans ⟨rfl, rfl⟩
 
+theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new = some (s', es)) : TC s s' := by
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  · exact (tc_applyCast hm).trans ⟨rfl, rfl⟩
+  · exact (tc_applyPlay hm).trans ⟨rfl, rfl⟩
+
 theorem tc_showdownEnd (s : GameState) (bf : ObjId) (rest : List Frame) :
     TC s (showdownEnd s bf rest).1 := by
   rcases showdownEnd_cases s bf rest with ⟨a, e⟩ | e <;> rw [e]
@@ -197,7 +204,7 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact Or.inl ⟨rfl, rfl⟩)
-  · exact Or.inl (tc_castStep h)
+  · exact Or.inl (tc_reactStep h)
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_activateStep h)

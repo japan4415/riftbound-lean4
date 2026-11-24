@@ -331,8 +331,13 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · exact ⟨Frame.chainPass p n, by rw [hp]; exact List.mem_cons_self, rfl⟩
   · rename_i p n rest c pay ts hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := castStep_meta h
-    obtain ⟨-, -, -, -, hmain, -⟩ := castable_spec (reactable_spec.mp hl.2.2).1
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
+    have hmain : s.phase = .main := by
+      rcases (reactable_spec.mp hl.2.2).1 with h0 | h0
+      · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
+        exact hm
+      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2
+        exact hm
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]
       intro hh

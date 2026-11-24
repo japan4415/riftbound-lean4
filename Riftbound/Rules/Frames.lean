@@ -180,7 +180,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts =>
-    castStep s p c pay ts (.chainPass p 0 :: rest)
+    reactStep s p c pay ts (.chainPass p 0 :: rest)
   | .chainPass p _ :: rest, .activate src idx pay ts =>
     activateStep s p src idx pay ts (.chainPass p 0 :: rest)
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab

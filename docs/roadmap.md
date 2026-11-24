@@ -1884,3 +1884,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - `payByRunes`（Pool から払い、足りなければ Rune を使う）を、`Prim.pay` のほか、効果が遊ぶカードの費用（`playPaying`、`playReducedOne`）、Equipment を付ける費用（`applyAttachPaying`）、その場で唱える呪文の Power（`castInlineStep`）にも使う。以前は、どれも Pool からだけ払い、足りないと、何も起きなかった。近似: 使う Rune は、自動で選ぶ。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 38 — Reaction のユニットは、Chain に応じて遊べる
+
+- Reaction を持つユニットやギアは、Chain に応じて遊べる（`reactable`、`reactStep`）。呪文のように Chain に載らず、すぐに Base へ出て、遊んだときの誘発（Janna の「ここ」のヒールと追い出しなど）が Chain に載る。Battlefield へ遊ぶ能力（Rengar、Janna）は、これまでどおり。
+
