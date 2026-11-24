@@ -1904,3 +1904,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Legion Quartermaster（ギアを戻す。必須）、Bard, Mercurial（Legend を exhaust する。任意。払ったときだけ、ユニットを空いた Battlefield へ動かす）、Zaun Punk（友軍のギアを kill する。任意。払ったときだけ、ギアを kill する）。払うタイミングが、解決のときから、遊ぶときへ変わった。
 - **まだ**: Blade of the Ruined King の「Equip — Order、友軍のユニットを kill する」は、Equip の費用の一部だが、kill するユニットを解決のときに選ぶ。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 42 — Blade of the Ruined King
+
+- Equip の費用の「友軍のユニットを kill する」は、kill するユニットを、能力を使うとき（`activate` の対象の 2 つ目）に選ぶ。付ける先のユニットとは、別のユニット。kill は、能力が解決するときに行う（費用として、使うときに kill するのではない）。近似: 解決するまでは、そのユニットは生きている。
+- **まだ**: Guardian Angel と Soraka が、Cleanup での死を救わないこと（Cleanup の終わりを示す測り方の作り直しが要る）。Fire Below the Mountain の Add の制限（Rune Pool の払い出しの作り直しが要る）。
+
