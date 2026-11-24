@@ -109,6 +109,17 @@ def allTagNames : List String :=
 def nameATag : Effect :=
   .eitherOf (EffectList.ofList (allTagNames.map (fun t => Effect.prim (.gainTag .self t))))
 
+/-- Dancing Grenade: deal 2 to a unit, and 1 more for each time it has dealt damage this turn; the
+controller of the unit may play the spell again for one Power, and so on (`n` more times). -/
+def grenade (n bonus : Nat) : Effect :=
+  .seqOf [.prim (.deal (Selector.one .any .anywhere [.ofType .unit]) (.const (2 + bonus))),
+    match n with
+    | 0 => .nop
+    | n + 1 =>
+      .eachPlayer .eachOpponent
+        (.ifThen (.canPay ⟨0, [.any]⟩)
+          (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩), grenade n (bonus + 1)])) .nop)]
+
 /-- The number of the tags Bird, Cat, Dog and Poro that the player's units have among them. -/
 def petTags : Amount :=
   .add (.add (.min (.const 1) (.count (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Bird"⟩])))
@@ -652,8 +663,11 @@ def UNL_020.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Dancing Grenade: the effect is not written yet. -/
-def UNL_020 : CardDef := UNL_020.meta
+/-- Dancing Grenade. -/
+def UNL_020 : CardDef :=
+  { UNL_020.meta with
+    spellEffect := some (.of [] (grenade 3 0)),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-021
 /--
@@ -797,8 +811,12 @@ def UNL_025.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Undying Legion: the effect is not written yet. -/
-def UNL_025 : CardDef := UNL_025.meta
+/-- Undying Legion. -/
+def UNL_025 : CardDef :=
+  { UNL_025.meta with
+    abilities := [.activated [.fromTrash, .pay ⟨3, [.domain .fury]⟩] .normal
+      (.of [] (.ifThen .legion (.prim (.play .self)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-026
 /--
@@ -4304,8 +4322,14 @@ def UNL_150.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Vex, Apathetic: the effect is not written yet. -/
-def UNL_150 : CardDef := UNL_150.meta
+/-- Vex. -/
+def UNL_150 : CardDef :=
+  { UNL_150.meta with
+    abilities := [.triggered
+      { subject := Selector.all .enemy .anywhere [.ofType .unit],
+        condition := .matches .self .onBattlefield, event := .play }
+      (.of [] (.seqOf [.prim (.stun (.slot 0)), .prim (.exhaust (.slot 0))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-151
 /--

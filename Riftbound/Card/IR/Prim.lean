@@ -497,6 +497,8 @@ inductive AbilityCost where
   /-- The ability can be used only while its card is in the Champion Zone: the Chosen Champion is
   played from there. -/
   | fromChampionZone
+  /-- The ability can be used only while its card is in the Trash (Undying Legion). -/
+  | fromTrash
   /-- Disempower the unit. -/
   | disempowerSelf
   /-- Recycle the object itself. -/
