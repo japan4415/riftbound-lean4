@@ -101,6 +101,7 @@ def eventJson : Event → String
   | .conquerActivated u => jobj [("t", jstr "conquer_activated"), ("unit", toString u.n)]
   | .lookedAt p c => jobj [("t", jstr "looked_at"), ("player", toString p.n), ("card", toString c.n)]
   | .chosenBySpell p t => jobj [("t", jstr "chosen_by_spell"), ("player", toString p.n), ("target", toString t.n)]
+  | .chosenByAbility p t => jobj [("t", jstr "chosen_by_ability"), ("player", toString p.n), ("target", toString t.n)]
   | .killedBySpell p => jobj [("t", jstr "killed_by_spell"), ("player", toString p.n)]
   | .recycled p => jobj [("t", jstr "recycled"), ("player", toString p.n)]
   | .hiddenPlayed p => jobj [("t", jstr "hidden_played"), ("player", toString p.n)]

@@ -37,6 +37,8 @@ def ObjKind.phys? : ObjKind → Option PhysId
 inductive EndPoint where
   /-- At the end of the turn. -/
   | turn
+  /-- At the end of the combat (it also ends with the turn). -/
+  | combat
   /-- Never: for the rest of the game. -/
   | never
 deriving DecidableEq, Repr

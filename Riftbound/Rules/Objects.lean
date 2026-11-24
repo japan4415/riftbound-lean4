@@ -28,8 +28,13 @@ def healObj (o : Object) : Object := { o with damage := 0 }
 /-- What the end of the turn does to an object: it is healed, and the changes of Might that last
 until the end of the turn end (CR 317.2, 478). -/
 def endTurnObj (o : Object) : Object :=
-  let h := { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.turn) }
-  { h with stunned := false, tempKws := o.tempKws.filter (fun k => k.2 != EndPoint.turn) }
+  let h := { healObj o with mightMods := o.mightMods.filter (fun m => m.ends == EndPoint.never) }
+  { h with stunned := false, tempKws := o.tempKws.filter (fun k => k.2 == EndPoint.never) }
+
+/-- What the end of a combat does to an object: it is healed, and the changes of Might that last
+until the end of the combat end. -/
+def endCombatObj (o : Object) : Object :=
+  { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.combat) }
 
 namespace GameState
 
@@ -97,6 +102,12 @@ theorem healObj_owner (o : Object) : (healObj o).owner = o.owner := rfl
 
 /-- Healing does not change the kind. -/
 theorem healObj_kind (o : Object) : (healObj o).kind = o.kind := rfl
+
+/-- Ending a combat leaves the card of an object alone. -/
+theorem endCombatObj_kind (o : Object) : (endCombatObj o).kind = o.kind := rfl
+
+/-- Ending a combat leaves the owner of an object alone. -/
+theorem endCombatObj_owner (o : Object) : (endCombatObj o).owner = o.owner := rfl
 
 /-- The end of the turn keeps the owner. -/
 theorem endTurnObj_owner (o : Object) : (endTurnObj o).owner = o.owner := rfl

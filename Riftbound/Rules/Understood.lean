@@ -375,6 +375,7 @@ def StaticMod.runs : StaticMod → Bool
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
   | .repeatChooses => true
+  | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true
   | .rescueWeakerHere => true
@@ -418,6 +419,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .becomeMighty => true
       | .winCombat => t.subject == .self
       | .chosen => true
+      | .chosenAny => true
       | .useGearAbility => t.subject == .self
       | .attachedTo => t.subject == .self
       | .youDefend => t.subject == .self

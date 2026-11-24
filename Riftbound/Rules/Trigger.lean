@@ -33,6 +33,9 @@ def playedOf (p : PlayerId) (es : List Event) : List Event :=
 def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
   | .playCard _ _ ts, .player p => playedOf p es ++ ts.map (Event.chosenBySpell p)
+  -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
+  | .activate _ _ _ ts, .player p => ts.map (Event.chosenByAbility p)
+  | .putTrigger _ ts, .player p => ts.map (Event.chosenByAbility p)
   | _, _ => []
 
 /-- The condition holds for the object when the event happens: none, a fact of how the object was
@@ -261,8 +264,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
       else []) ++
     -- a unit of the player that is chosen by their spell, and what watches the units they choose
     (if (s.obj? t).any (·.controller == p) then
-      triggersOf s t p .chosen ++ watchersOf s t p .chosen
+      triggersOf s t p .chosen ++ watchersOf s t p .chosen ++
+        triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
     else [])
+  | .chosenByAbility p t =>
+    if (s.obj? t).any (·.controller == p) then
+      triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
+    else []
   | .killedBySpell p =>
     (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .killBySpell)
   | .recycled p =>

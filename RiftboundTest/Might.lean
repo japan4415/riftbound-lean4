@@ -43,12 +43,12 @@ meta def boon : CardDef :=
     spellEffect := some (EffectDef.of [Choice.targetOf .one .friendly .atBase [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 1)) .permanent)) }
 
-/-- A Spell that is not understood: a lasting change that ends with the Combat. -/
+/-- A Spell that is not understood: a lasting change that ends with the Showdown. -/
 meta def combatBoost : CardDef :=
   { id := cid "T-CMB", name := "Combat Boost", types := [.spell], domains := [.fury],
     cost := some ⟨1, []⟩,
     spellEffect := some (EffectDef.of [Choice.targetOf .one .friendly .atBase [.ofType .unit]]
-      (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisCombat)) }
+      (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisShowdown)) }
 
 /-- The fixtures and the test cards. -/
 meta def mightDB : CardDB := { cards := db.cards ++ [surge, smite, boon, combatBoost] }
@@ -168,7 +168,7 @@ meta def mightScene (spell : String) :
     | none => false
   | none => false
 
--- the interpreter knows the changes that end with the turn or never, not the others
+-- the interpreter knows the changes that end with the turn, the combat or never, not the others
 #guard surge.spellRuns && smite.spellRuns && boon.spellRuns && !combatBoost.spellRuns
 
 end RiftboundTest

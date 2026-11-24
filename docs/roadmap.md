@@ -1838,3 +1838,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Flash（OGS-011）**: 「最大 2 体」を、本物の選びにした（以前は、1 体目だけが動き、2 体目は無視されていた）。
 - **性能の限界**: 任意の数の対象は、候補の部分集合を全部、手として列挙する（`subseqsUpTo`。上限 n 体までだけを作る）。上限が大きい Azir, Sovereign（99）は、味方のトークンが 20 体いると、約 100 万通りになる。実際の対戦では、トークンは 10 体未満と見て、見送った。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 32 — 残っていた近似を、さらに直した
+
+- **Azir, Ascendant（SFD-050）**: 付ける Equipment を、能力を使うときに 1 つ選ぶ（最大 1 体の対象）。複数付けることはない。
+- **Purifier（SFD-183）**: 「Your Equipment each give [Assault]」は、付いている Equipment 1 つにつき Assault 1（`StaticMod.equipEach`、`passiveKws`）。
+- **Fiora, Peerless（SFD-110）**: 倍にした Might は、戦闘の終わりまで（`Duration.thisCombat`、`EndPoint.combat`、`endCombatObj`）。ターンの終わりまでではない。
+- **「選んだとき」**: 能力が選ぶ対象でも、誘発する（`Event.chosenByAbility`、`TriggerEvent.chosenAny`）。Irelia, Fervent、Spirit Wheel、Blade Dancer は、呪文でも能力でも働く。Jae Medarda（『呪文で選んだとき』）は、呪文だけ（`TriggerEvent.chosen`）。効果が唱える呪文（`castInline`、`Prim.play`）の対象は、まだ働かない（その対象は、プレイのときに選ばない）。
+- **Card Sharp（SFD-081）**: 「For each opponent who did」は、Gold を作った相手の数だけ、Gold を作る（相手が 2 人以上のとき）。
+

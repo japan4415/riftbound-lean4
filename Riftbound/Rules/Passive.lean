@@ -204,13 +204,18 @@ def passiveKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.passiveSources.flatMap (fun src =>
     match s.obj? src with
     | some o =>
-      (s.activeMods src).filterMap (fun m =>
+      (s.activeMods src).flatMap (fun m =>
         match m with
         | .keyword sel k =>
           match sel.eval s o.controller src {} with
-          | some ids => if ids.contains id then some k else none
-          | none => none
-        | _ => none)
+          | some ids => if ids.contains id then [k] else []
+          | none => []
+        | .equipEach k =>
+          -- one for each Equipment of the player of the source that is attached to the object
+          ((s.inPlay.filter (fun g => (s.obj? g).any (fun e =>
+            e.controller == o.controller && e.attached == some id) &&
+              (s.cardDef? g).any (·.hasType .gear)))).map (fun _ => k)
+        | _ => [])
     | none => [])
 
 /-- The keywords an object has besides those printed on its card: those the Equipment attached to
