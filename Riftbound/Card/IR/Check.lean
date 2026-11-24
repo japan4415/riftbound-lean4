@@ -105,6 +105,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .attachedTo s => Selector.ok c s
   | .attachments s => Selector.ok c s
   | .locationOf s => Selector.ok c s
+  | .slotsFrom i => decide (i < c.slots)
 
 /-- A condition refers only to what is there. -/
 def Condition.ok (c : Ctx) : Condition → Bool

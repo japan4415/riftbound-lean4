@@ -209,6 +209,8 @@ inductive Selector where
   | self
   /-- The object chosen into a slot when the card was played (Choose) (CR 355). -/
   | slot (i : Nat)
+  /-- The objects chosen into the slots from the slot `i` on (a choice of several objects). -/
+  | slotsFrom (i : Nat)
   /-- The object a `forEach` or a trigger is about. -/
   | it
   /-- A bound variable. -/

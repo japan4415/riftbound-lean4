@@ -1279,9 +1279,9 @@ def SFD_043.meta : CardDef :=
 def SFD_043 : CardDef :=
   { SFD_043.meta with
 
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield]]
-      (.forEach (Selector.all .friendly .atBattlefield [.ofType .unit, .at_ (.slot 0)])
-        (.may (.prim (.move .it .base))))),
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield],
+        .targetOf (.upTo 99) .friendly .anywhere [.ofType .unit, .at_ (.slot 0)]]
+      (.forEach (Selector.slotsFrom 1) (.prim (.move .it .base)))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-044

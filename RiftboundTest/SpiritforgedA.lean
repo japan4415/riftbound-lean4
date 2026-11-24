@@ -320,15 +320,23 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play (s3.inShowdownAt s.bf0 s.me) s.me c [u]
   return (r.obj? u).map (·.stunned) == some true && (play s3 s.me c [u]).isNone
 
--- Emperor's Divide (SFD-043): friendly units at a battlefield may move to their base
+-- Emperor's Divide (SFD-043): any number of friendly units at a battlefield move to their base
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-043" .hand
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
-  let (s3, e) ← putAt s2 s.you "OGN-051" s.bf0
-  let a ← play s3 s.me c [s.bf0]
-  let b ← play s3 s.me c [s.bf0] { yes := false }
-  return (a.obj? u).any (·.loc.isNone) && (a.obj? e).any (·.loc == some s.bf0) &&
-    (b.obj? u).any (·.loc == some s.bf0)
+  let (s3, v) ← putAt s2 s.me "OGN-001" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-051" s.bf0
+  let (s5, w) ← put s4 s.me "OGN-051" .base
+  let atBf (x : GameState) (o : ObjId) : Bool := (x.obj? o).any (·.loc == some s.bf0)
+  let (lo, hi) := if u.n < v.n then (u, v) else (v, u)
+  let none_ ← play s5 s.me c [s.bf0]
+  let one ← play s5 s.me c [s.bf0, lo]
+  let both ← play s5 s.me c [s.bf0, lo, hi]
+  return atBf none_ u && atBf none_ v && !atBf one lo && atBf one hi &&
+    !atBf both u && !atBf both v && atBf both e &&
+    (play s5 s.me c [s.bf0, hi, lo]).isNone && (play s5 s.me c [s.bf0, e]).isNone &&
+    (play s5 s.me c [s.bf0, w]).isNone && (play s5 s.me c [s.bf0, lo, lo]).isNone &&
+    (play s5 s.me c []).isNone
 
 -- Simian Ancestor (SFD-047): when buffed, it readies
 #guard tsf fun s => do
@@ -542,8 +550,9 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
   let (s3, b2) ← putBf s2 s.me "SFD-216"
   let (s4, w) ← putAt s3 s.me "OGN-051" b2
-  let r ← play s4 s.me c [s.bf0]
-  return (r.obj? u).any (·.loc.isNone) && (r.obj? w).any (·.loc == some b2)
+  let r ← play s4 s.me c [s.bf0, u]
+  return (r.obj? u).any (·.loc.isNone) && (r.obj? w).any (·.loc == some b2) &&
+    (play s4 s.me c [s.bf0, w]).isNone
 -- (review) Yordle Explorer: a card with exactly one Power does not draw
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-100" .base
@@ -1080,7 +1089,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let plain ← play s3 s.me c [u]
   return both.dmg u == some 4 && (both.obj? g).isNone && one.dmg u == some 4 &&
     (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
-    plain.dmg u == some 4 && (plain.obj? g).isSome
+    plain.dmg u == some 4 && (plain.obj? g).isSome && (play s3 s.me c [u, g]).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
 -- from the hand for nothing

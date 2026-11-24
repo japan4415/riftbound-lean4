@@ -630,6 +630,11 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     | some o => some (if o ∈ s.inPlay then [o] else [])
     | none => none
   | .pick .all side place fs => s.candidates p self env side place fs
+  | .slotsFrom i =>
+    some ((env.slots.drop i).filterMap (fun v =>
+      match v with
+      | .obj o => if o ∈ s.inPlay ∨ o ∈ s.zone .chain then some o else none
+      | _ => none))
   | .locationOf sel =>
     (sel.eval s p self env).map (fun ids =>
       ids.filterMap (fun u => (s.obj? u).bind (·.loc)))
@@ -808,16 +813,22 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | _ => none
 
+/-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
+def Quantity.pickable : Quantity → Bool
+  | .one => true
+  | .upTo n => decide (1 ≤ n)
+  | _ => false
+
 /-- The objects a choice of a Spell can pick, when the choices before it picked `acc` (a later
-choice may name an earlier pick as `slot i`): for a target of exactly one object, the matching
-objects in play. Nothing for a choice that is not understood yet. -/
+choice may name an earlier pick as `slot i`): for a target of one object, up to one, or any number up
+to a bound, the matching objects in play. Nothing for a choice that is not understood yet. -/
 def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) :
     Choice → List ObjId
   | .target q side place fs =>
-    if q == .one || q == .upTo 1 then
-      ((s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place fs).getD []).filter
-        (fun id => !s.blocksChoice p id)
+    if q.pickable then
+      ((s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
+        fs).getD []).filter (fun id => !s.blocksChoice p id)
     else []
   | _ => []
 
@@ -825,29 +836,99 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
 
-/-- Whether a choice is one that a Spell can make for now: one target, or up to one (which may be
-left out when nothing after it is required). -/
+/-- Whether a choice is one that a Spell can make for now: one target, or up to some number (which
+may be left out when nothing after it is required). -/
 def Choice.simple : Choice → Bool
   | .target .one _ _ _ => true
-  | .target (.upTo 1) _ _ _ => true
+  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
   | _ => false
 
-/-- Whether a choice may be left out: a target of up to one. -/
+/-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
-  | .target (.upTo 1) _ _ _ => true
+  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
   | _ => false
+
+/-- An optional choice is one that can be made. -/
+theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
+  unfold Choice.optional at h
+  split at h
+  · simpa [Choice.simple] using h
+  · simp at h
+
+/-- Whether a choice is of several objects: up to two or more. It is the last choice of its Spell,
+and the objects are chosen in the order of the objects, so that a set is chosen once. -/
+def Choice.multi : Choice → Bool
+  | .target (.upTo n) _ _ _ => decide (2 ≤ n)
+  | _ => false
+
+/-- The most objects a choice picks. -/
+def Choice.maxPicks : Choice → Nat
+  | .target (.upTo n) _ _ _ => n
+  | _ => 1
+
+/-- Every way to leave some of the objects out, the others in their order. -/
+def subseqs {α : Type} : List α → List (List α)
+  | [] => [[]]
+  | x :: xs => (subseqs xs).flatMap (fun t => [t, x :: t])
+
+/-- The ways listed are exactly the sublists. -/
+theorem mem_subseqs {α : Type} : ∀ (l t : List α), t ∈ subseqs l ↔ t.Sublist l
+  | [], t => by simp [subseqs, List.sublist_nil]
+  | x :: xs, t => by
+    rw [List.sublist_cons_iff]
+    simp only [subseqs, List.mem_flatMap, List.mem_cons, List.not_mem_nil, or_false,
+      mem_subseqs xs]
+    constructor
+    · rintro ⟨u, hu, rfl | rfl⟩
+      · exact Or.inl hu
+      · exact Or.inr ⟨u, rfl, hu⟩
+    · rintro (h | ⟨r, rfl, hr⟩)
+      · exact ⟨t, h, Or.inl rfl⟩
+      · exact ⟨r, hr, Or.inr rfl⟩
+
+/-- The objects a choice of several can pick, in the order of the objects. -/
+def Choice.sortedCands (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List ObjId :=
+  (c.candidatesAfter s p self pm acc).mergeSort (fun a b => decide (a.n ≤ b.n))
+
+/-- The choices after one can all be left out. A choice of several is the last one. -/
+def skipOk : List Choice → Bool
+  | [] => true
+  | c :: cs => c.optional && (!c.multi || cs.isEmpty) && skipOk cs
 
 /-- The objects chosen are a legal pick for the choices, one for each, each seeing the picks before
-it. -/
+it; the last choice may be of several. -/
 def targetsOkAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (ObjId × Int))
     (acc : List ObjId) :
     List Choice → List ObjId → Bool
   | [], [] => true
-  | c :: cs, [] => c.optional && targetsOkAfter s p self pm acc cs []
-  | c :: cs, t :: ts =>
-    c.simple && decide (t ∈ c.candidatesAfter s p self pm acc) &&
-      targetsOkAfter s p self pm (acc ++ [t]) cs ts
   | [], _ :: _ => false
+  | c :: cs, ts =>
+    if c.multi then
+      cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+        decide (ts.Sublist (c.sortedCands s p self pm acc))
+    else
+      match ts with
+      | [] => c.optional && skipOk cs
+      | t :: ts =>
+        c.simple && decide (t ∈ c.candidatesAfter s p self pm acc) &&
+          targetsOkAfter s p self pm (acc ++ [t]) cs ts
+
+/-- What the check of the picks says for a choice and the ones after it. -/
+theorem targetsOkAfter_cons (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (cs : List Choice)
+    (ts : List ObjId) :
+    targetsOkAfter s p self pm acc (c :: cs) ts =
+      (if c.multi then
+        cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+          decide (ts.Sublist (c.sortedCands s p self pm acc))
+      else
+        match ts with
+        | [] => c.optional && skipOk cs
+        | t :: ts =>
+          c.simple && decide (t ∈ c.candidatesAfter s p self pm acc) &&
+            targetsOkAfter s p self pm (acc ++ [t]) cs ts) := by
+  rw [targetsOkAfter.eq_def]
 
 /-- The objects chosen are a legal pick for the choices. -/
 def targetsOk (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (ObjId × Int))
@@ -856,7 +937,7 @@ def targetsOk (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (ObjId ×
 
 /-- The pick of nothing, when this choice and the ones after it may all be left out. -/
 def skipTuple (c : Choice) (cs : List Choice) : List (List ObjId) :=
-  if c.optional && cs.all Choice.optional then [[]] else []
+  if c.optional && skipOk cs then [[]] else []
 
 /-- A pick that starts with an object is not the pick of nothing. -/
 theorem cons_not_mem_skipTuple {c : Choice} {cs : List Choice} {t : ObjId} {ts : List ObjId} :
@@ -870,7 +951,11 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (
     List Choice → List (List ObjId)
   | [] => [[]]
   | c :: cs =>
-    if c.simple then
+    if c.multi then
+      (if cs.isEmpty then
+        (subseqs (c.sortedCands s p self pm acc)).filter (fun t => decide (t.length ≤ c.maxPicks))
+      else [])
+    else if c.simple then
       (c.candidatesAfter s p self pm acc).flatMap (fun t =>
         (targetTuplesAfter s p self pm (acc ++ [t]) cs).map (t :: ·)) ++
         skipTuple c cs
@@ -881,21 +966,6 @@ def targetTuples (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (ObjId
     (cs : List Choice) : List (List ObjId) :=
   targetTuplesAfter s p self pm [] cs
 
-/-- A pick of nothing is legal exactly when every choice may be left out. -/
-theorem targetsOkAfter_nil (s : GameState) (p : PlayerId) (self : ObjId)
-    (pm : List (ObjId × Int)) :
-    ∀ (cs : List Choice) (acc : List ObjId),
-      targetsOkAfter s p self pm acc cs [] = cs.all Choice.optional
-  | [], acc => by simp [targetsOkAfter]
-  | c :: cs, acc => by simp [targetsOkAfter, targetsOkAfter_nil s p self pm cs acc]
-
-/-- An optional choice is one that can be made. -/
-theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
-  unfold Choice.optional at h
-  split at h
-  · rfl
-  · simp at h
-
 /-- The picks listed are exactly the legal ones. -/
 theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) :
@@ -903,33 +973,61 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
       ts ∈ targetTuplesAfter s p self pm acc cs ↔ targetsOkAfter s p self pm acc cs ts = true
   | [], acc, ts => by
     cases ts <;> simp [targetTuplesAfter, targetsOkAfter]
-  | c :: cs, acc, [] => by
-    rw [targetsOkAfter_nil]
-    simp only [targetTuplesAfter, List.all_cons, Bool.and_eq_true]
-    by_cases hs : c.simple = true
-    · simp [hs, skipTuple]
-    · have : c.optional = false := by
-        cases h : c.optional
-        · rfl
-        · exact absurd (Choice.simple_of_optional h) hs
-      simp [hs, this]
-  | c :: cs, acc, t :: ts => by
-    simp only [targetTuplesAfter, targetsOkAfter, Bool.and_eq_true, decide_eq_true_eq]
-    by_cases hs : c.simple = true
-    · simp only [hs, ite_true, List.mem_append, List.mem_flatMap, List.mem_map, List.cons.injEq,
-        true_and, cons_not_mem_skipTuple, or_false]
-      constructor
-      · rintro ⟨t', ht', ts', hts', rfl, rfl⟩
-        exact ⟨ht', (mem_targetTuplesAfter s p self pm cs (acc ++ [t']) ts').mp hts'⟩
-      · rintro ⟨ht, hts⟩
-        exact ⟨t, ht, ts, (mem_targetTuplesAfter s p self pm cs (acc ++ [t]) ts).mpr hts, rfl, rfl⟩
-    · simp [hs]
+  | c :: cs, acc, ts => by
+    by_cases hm : c.multi = true
+    · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true,
+        decide_eq_true_eq]
+      by_cases hc : cs.isEmpty = true
+      · simp [hc, List.mem_filter, mem_subseqs, and_comm]
+      · simp [hc]
+    · have hm' : c.multi = false := by simpa using hm
+      cases ts with
+      | nil =>
+        by_cases hs : c.simple = true
+        · simp [targetTuplesAfter, targetsOkAfter_cons, hm', hs, skipTuple]
+        · have : c.optional = false := by
+            cases h : c.optional
+            · rfl
+            · exact absurd (Choice.simple_of_optional h) hs
+          simp [targetTuplesAfter, targetsOkAfter_cons, hm', hs, this, skipTuple]
+      | cons t ts =>
+        simp only [targetTuplesAfter, targetsOkAfter_cons, hm', Bool.false_eq_true, ite_false,
+          Bool.and_eq_true, decide_eq_true_eq]
+        by_cases hs : c.simple = true
+        · simp only [hs, ite_true, List.mem_append, List.mem_flatMap, List.mem_map,
+            List.cons.injEq, true_and, cons_not_mem_skipTuple, or_false]
+          constructor
+          · rintro ⟨t', ht', ts', hts', rfl, rfl⟩
+            exact ⟨ht', (mem_targetTuplesAfter s p self pm cs (acc ++ [t']) ts').mp hts'⟩
+          · rintro ⟨ht, hts⟩
+            exact ⟨t, ht, ts, (mem_targetTuplesAfter s p self pm cs (acc ++ [t]) ts).mpr hts,
+              rfl, rfl⟩
+        · simp [hs]
 
 /-- The picks listed are exactly the legal ones. -/
 theorem mem_targetTuples (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (ObjId × Int))
     (cs : List Choice) (ts : List ObjId) :
     ts ∈ targetTuples s p self pm cs ↔ targetsOk s p self pm cs ts = true :=
   mem_targetTuplesAfter s p self pm cs [] ts
+
+/-- What a choice can pick is in play, or a spell on the Chain. -/
+theorem Choice.candidatesAfter_mem {s : GameState} {p : PlayerId} {self : ObjId}
+    {pm : List (ObjId × Int)} {acc : List ObjId} {c : Choice} {x : ObjId}
+    (h : x ∈ c.candidatesAfter s p self pm acc) : x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+  cases c with
+  | target q side place fs =>
+    simp only [Choice.candidatesAfter] at h
+    split at h
+    · cases hc : s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
+        fs with
+      | none => simp [hc] at h
+      | some r =>
+        simp only [hc, Option.getD_some] at h
+        exact GameState.mem_candidates hc x (List.mem_filter.mp h).1
+    · simp at h
+  | mode _ => simp [Choice.candidatesAfter] at h
+  | xValue => simp [Choice.candidatesAfter] at h
+  | extraCost _ _ => simp [Choice.candidatesAfter] at h
 
 /-- Every object chosen is in play, or a spell on the Chain. -/
 theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
@@ -938,26 +1036,24 @@ theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
       ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain
   | [], _, [], _ => by simp
   | [], _, _ :: _, h => by simp [targetsOkAfter] at h
-  | _ :: _, _, [], _ => by simp
-  | c :: cs, acc, t :: ts, h => by
-    simp only [targetsOkAfter, Bool.and_eq_true, decide_eq_true_eq] at h
-    obtain ⟨⟨hs, ht⟩, hrest⟩ := h
+  | c :: cs, acc, ts, h => by
     intro x hx
-    rcases List.mem_cons.mp hx with rfl | hx
-    · cases c with
-      | target q side place fs =>
-        simp only [Choice.candidatesAfter] at ht
-        split at ht
-        · cases hc : s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place fs with
-          | none => simp [hc] at ht
-          | some r =>
-            simp only [hc, Option.getD_some] at ht
-            exact GameState.mem_candidates hc x (List.mem_filter.mp ht).1
-        · simp at ht
-      | mode _ => simp [Choice.simple] at hs
-      | xValue => simp [Choice.simple] at hs
-      | extraCost _ _ => simp [Choice.simple] at hs
-    · exact targetsOkAfter_mem_inPlay hrest x hx
+    by_cases hm : c.multi = true
+    · simp only [targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true, decide_eq_true_eq] at h
+      have hsub := h.2
+      have hx' : x ∈ c.sortedCands s p self pm acc := hsub.subset hx
+      exact Choice.candidatesAfter_mem
+        ((List.mem_mergeSort).mp hx')
+    · have hm' : c.multi = false := by simpa using hm
+      cases ts with
+      | nil => cases hx
+      | cons t ts =>
+        simp only [targetsOkAfter_cons, hm', Bool.false_eq_true, ite_false, Bool.and_eq_true,
+          decide_eq_true_eq] at h
+        obtain ⟨⟨hs, ht⟩, hrest⟩ := h
+        rcases List.mem_cons.mp hx with rfl | hx
+        · exact Choice.candidatesAfter_mem ht
+        · exact targetsOkAfter_mem_inPlay hrest x hx
 
 /-- Every object chosen is in play, or a spell on the Chain. -/
 theorem targetsOk_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
