@@ -243,7 +243,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .cost op a => do
     let n ← a.eval env
     let d ← s.cardDef? id
-    pure (match d.cost with | some k => op.holds (Int.ofNat k.energy) n | none => false)
+    -- a card that prints no cost (a Gold token) costs nothing
+    pure (match d.cost with
+      | some k => op.holds (Int.ofNat k.energy) n
+      | none => (d.hasType .gear || d.hasType .unit || d.hasType .spell) && op.holds 0 n)
   | .powerCost op a => do
     let n ← a.eval env
     let d ← s.cardDef? id
@@ -346,6 +349,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)
+  | .conqueredByMine =>
+    let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
+    some (((s.obj? id).map (fun o => o.scored.contains me && !o.held.contains me)).getD false)
   | .attackedByMine =>
     some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
   | .enemyOccupied =>

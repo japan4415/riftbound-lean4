@@ -136,6 +136,7 @@ def Filter.understood : Filter → Bool
   | .top _ => true
   | .openBf => true
   | .scoredByMine => true
+  | .conqueredByMine => true
   | .sameController .self => true
   | .sameController (.slot _) => true
   | .sameController (.var _) => true

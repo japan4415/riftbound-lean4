@@ -877,12 +877,16 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let beast := st.firstOf s.me .base "SFD-132"
   return r.countIn s.me .hand "OGN-051" == 1 && r.countIn s.you .hand "OGN-001" == 1 &&
     r.countIn s.me .base "SFD-132" == 1 && beast.any (fun x => !st.trigPicks.contains x)
--- (an enemy unit is needed, and a friendly unit other than itself)
+-- (with no enemy unit the friendly one is returned alone; with no other friendly unit nothing is)
 #guard tsf fun s => do
   let (s1, b) ← put s s.me "SFD-132" .hand
   let (s2, _) ← put s1 s.me "OGN-051" .base
   let r ← play s2 s.me b
-  return r.countIn s.me .hand "OGN-051" == 0 && r.countIn s.me .base "SFD-132" == 1
+  let (t1, b2) ← put s s.me "SFD-132" .hand
+  let (t2, _) ← put t1 s.you "OGN-001" .base
+  let r2 ← play t2 s.me b2
+  return r.countIn s.me .hand "OGN-051" == 1 && r.countIn s.me .base "SFD-132" == 1 &&
+    r2.countIn s.you .hand "OGN-001" == 0 && r2.countIn s.me .base "SFD-132" == 1
 
 -- Factory Recall (SFD-135): return a gear to its owner's hand (not a unit)
 #guard tsf fun s => do
@@ -3608,5 +3612,25 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let r2 ← runBody s2 s.me g [ir] (.prim (.choose (.slot 0)))
   return (r2.obj? ir).any (·.mightMods.length == 1) && (r2.obj? ir).any (·.loc.isNone) &&
     (r.obj? ir).any (·.mightMods.isEmpty)
+
+-- Pickpocket can kill a Gold token (it prints no cost: Energy cost 0); Fae Porter pays nothing when
+-- there is no other unit to move
+#guard tsf fun s => do
+  let (s1, p) ← put s s.me "SFD-074" .hand
+  let (s2, _) ← applyCreate s1 s.you p {} "Gold" (.const 1) .atBase false
+  let g ← (s2.zone (.player s.you .base)).find? (fun o => (s2.cardDef? o).any (·.name == "Gold"))
+  let a ← play s2 s.me p [] { pick := fun ts => ts == [g] }
+  let (t1, f) ← putAt s s.me "SFD-125" s.bf0
+  let alone ← fire (t1.fund s.me 0 0 0 0 0 1) [.standardMoved f (some s.bf0)]
+  return (a.obj? g).isNone && (alone.poolOf s.me).chaos == 1
+
+-- Perched Grimwyrm needs a battlefield the player conquered, not one it only held
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, g) ← put s1 s.me "SFD-015" .hand
+  let conquered := s2.modObj bf (fun o => { o with scored := [s.me] })
+  let held := s2.modObj bf (fun o => { o with scored := [s.me], held := [s.me] })
+  let a ← activate conquered s.me g 3 [bf] (payOf conquered g)
+  return unitAt a "SFD-015" bf && (activate held s.me g 3 [bf] (payOf held g)).isNone
 
 end RiftboundTest

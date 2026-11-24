@@ -153,6 +153,8 @@ inductive Filter where
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
   | scoredByMine
+  /-- The Battlefield the player of `self` conquered this turn (scored, but not by holding it). -/
+  | conqueredByMine
   /-- The object is controlled by the same player as the object `s` stands for. -/
   | sameController (s : Selector)
   /-- Gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/

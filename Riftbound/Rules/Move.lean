@@ -90,7 +90,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  extraBuffs := 0,
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,
                  moves := 0, movesTurn := none,
-                 prevLoc := none,
+                 prevLoc := none, used := [],
                  leftBoard := src.isBoard,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
