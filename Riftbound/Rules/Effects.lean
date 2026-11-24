@@ -1083,14 +1083,28 @@ forbids it (CR 447). -/
 def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=
   if ((s.obj? u).bind (·.loc)).any (fun bf => s.homeForbidden bf) then
     (s, [])
-  else sendHome s u
+  else
+    -- it is a move: it is counted, and what waits for the Unit to move from a Battlefield is told
+    match s.obj? u with
+    | some o =>
+      match moveObj s u (.player o.controller .base) with
+      | some r =>
+        (r.1.modObj r.2 (fun x => ({ x with loc := none } : Object).countMove s.turn o.loc),
+          [Event.standardMoved r.2 none])
+      | none => (s, [])
+    | none => (s, [])
 
 /-- Moving home is a safe change. -/
 theorem moveHome_safe (s : GameState) (u : ObjId) : Safe s (moveHome s u).1 := by
   unfold moveHome
   split
   · exact Safe.refl s
-  · exact sendHome_safe s u
+  · split
+    · split
+      · rename_i r hr
+        exact (Safe.moveObj hr).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+      · exact Safe.refl s
+    · exact Safe.refl s
 
 /-- Move a Unit to a place by an effect: a Battlefield (`some`) or its controller's Base. -/
 def sendToLoc (loc : Option ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -1287,13 +1301,13 @@ theorem setController_safe (p : PlayerId) (s : GameState) (id : ObjId) :
   · exact h1
 
 /-- A player takes control of an object until the Unit of the card leaves the board. -/
-def takeUntil (p : PlayerId) (card : Option CardId) (s : GameState) (id : ObjId) :
+def takeUntil (p : PlayerId) (card : Option ObjId) (s : GameState) (id : ObjId) :
     GameState × List Event :=
   let r := setController p s id
   (r.1.modObj id (fun o => { o with takenBy := card }), r.2)
 
 /-- Taking control until a Unit leaves is a safe change. -/
-theorem takeUntil_safe (p : PlayerId) (card : Option CardId) (s : GameState) (id : ObjId) :
+theorem takeUntil_safe (p : PlayerId) (card : Option ObjId) (s : GameState) (id : ObjId) :
     Safe s (takeUntil p card s id).1 :=
   (setController_safe p s id).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
 
@@ -1324,7 +1338,7 @@ def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
   | none =>
     match s.obj? id with
     | some o =>
-      if o.loc.isSome && s.inPlay.any (fun u => u != id &&
+      if s.inPlay.any (fun u => u != id &&
           (s.obj? u).any (fun v => v.controller == o.controller && v.loc == o.loc) &&
           (s.activeMods u).contains .rescueWeakerHere &&
           decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)) then some none
@@ -1576,6 +1590,37 @@ def tokenPlays (s s' : GameState) (p : PlayerId) : List Event :=
       some (Event.tokenPlayed p ⟨s.nextId + i⟩)
     else none)
 
+/-- A Unit played as a token is buffed. -/
+def buffTokenEv (t : GameState) (e : Event) : GameState :=
+  match e with
+  | .tokenPlayed _ id => t.modObj id (fun o => { o with buffed := true })
+  | _ => t
+
+/-- Buffing a token is a safe change. -/
+theorem buffTokenEv_safe (t : GameState) (e : Event) : Safe t (buffTokenEv t e) := by
+  unfold buffTokenEv
+  split
+  · exact Safe.modObj t _ (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl t
+
+/-- Buffing the tokens that were played is a safe change. -/
+theorem foldl_buffTokenEv_safe : ∀ (l : List Event) (t : GameState),
+    Safe t (l.foldl buffTokenEv t)
+  | [], t => Safe.refl t
+  | e :: l, t => (buffTokenEv_safe t e).trans (foldl_buffTokenEv_safe l _)
+
+/-- The Units played as tokens enter buffed, by an effect of the turn (Rally the Troops): `r` is
+the state after the tokens were made from `s`. -/
+def buffNewTokens (s r : GameState) (p : PlayerId) : GameState :=
+  if (s.fxOf p).any (· == .unitsBuffed) then (tokenPlays s r p).foldl buffTokenEv r else r
+
+/-- Buffing the new tokens is a safe change. -/
+theorem buffNewTokens_safe (s r : GameState) (p : PlayerId) : Safe r (buffNewTokens s r p) := by
+  unfold buffNewTokens
+  split
+  · exact foldl_buffTokenEv_safe _ r
+  · exact Safe.refl r
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -1587,11 +1632,11 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
       match place with
       | .atBase =>
         let r := createN c.id p none (ready || s.tokenReady p c) k s
-        some (r, tokenPlays s r p)
+        some (buffNewTokens s r p, tokenPlays s r p)
       | .here =>
         (s.hereOf src).map (fun bf =>
           let r := createN c.id p (some bf) (ready || s.tokenReady p c) k s
-          (r, tokenPlays s r p))
+          (buffNewTokens s r p, tokenPlays s r p))
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
@@ -1611,14 +1656,14 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | atBase =>
         simp only [Option.some.injEq] at h
         rw [← h]
-        exact createN_safe _ _ _ _ _ _
+        exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | here =>
         cases hh : s.hereOf src with
         | none => simp [hh] at h
         | some bf =>
           simp only [hh, Option.map_some, Option.some.injEq] at h
           rw [← h]
-          exact createN_safe _ _ _ _ _ _
+          exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | anywhere => simp at h
       | atBattlefield => simp at h
       | inHand => simp at h
@@ -1637,6 +1682,36 @@ a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
   if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
   else [Event.chosenByAbility p o]
+
+/-- Give an object a keyword for a while (CR 479.3). -/
+def addTempKw (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  (s.modObj id (fun o => { o with tempKws := o.tempKws ++ [(k, ends)] }), [])
+
+/-- Giving a keyword for a while is a safe change. -/
+theorem addTempKw_safe (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (addTempKw k ends s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- Give an object several keywords for a while. -/
+def addTempKws (ks : List KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  (ks.foldl (fun t k => (addTempKw k ends t id).1) s, [])
+
+/-- Giving several keywords for a while is a safe change. -/
+theorem addTempKws_safe (ks : List KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (addTempKws ks ends s id).1 := by
+  unfold addTempKws
+  suffices h : ∀ (l : List KeywordInst) (t : GameState),
+      Safe t (l.foldl (fun t k => (addTempKw k ends t id).1) t) from h ks s
+  intro l
+  induction l with
+  | nil => intro t; exact Safe.refl t
+  | cons k l ih => intro t; exact (addTempKw_safe k ends t id).trans (ih _)
+
+/-- The keywords an object has now: those printed on its card, and those it was given. -/
+def GameState.keywordsNow (s : GameState) (id : ObjId) : List KeywordInst :=
+  ((s.cardDef? id).map (·.keywords)).getD [] ++ s.grantedKws id
 
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
@@ -1730,6 +1805,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         match bfs.eval s p src env with
         | some (b :: _) => onSelected s p src env sel (playReducedOne p k (some b))
         | _ => none)
+  | .giveKeywords to from_ =>
+    (from_.eval s p src env).bind (fun l =>
+      match l with
+      | f :: _ => onSelected s p src env to (addTempKws (s.keywordsNow f) .turn)
+      | [] => none)
   | .castPicked sel less idx =>
     (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
@@ -1749,7 +1829,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (s.obj? id).any (·.banishedWith == some src) && (s.cardDef? id).any (·.hasType .unit))))
   | .returnControl sel => onSelected s p src env sel giveBack
   | .takeControlUntilLeaves sel =>
-    onSelected s p src env sel (takeUntil p ((s.cardDef? src).map (·.id)))
+    onSelected s p src env sel (takeUntil p (some src))
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
     -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
@@ -1916,6 +1996,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | cons b _ =>
             simp only [hb] at h
             exact onSelected_safe (playReducedOne_safe p k (some b)) h
+  | giveKeywords to from_ =>
+    simp only [applyPrim] at h
+    cases hf : from_.eval s p src env with
+    | none => simp [hf] at h
+    | some l =>
+      cases l with
+      | nil => simp [hf] at h
+      | cons f _ =>
+        simp only [hf, Option.bind_some] at h
+        exact onSelected_safe (addTempKws_safe _ _) h
   | castPicked sel less idx =>
     simp only [applyPrim] at h
     cases hk : less.evalS s p src env with
@@ -2109,16 +2199,6 @@ def addMightMod (m : MightMod) (s : GameState) (id : ObjId) : GameState × List 
 /-- Adding a change of Might is a safe change. -/
 theorem addMightMod_safe (m : MightMod) (s : GameState) (id : ObjId) :
     Safe s (addMightMod m s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-
-/-- Give an object a keyword for a while (CR 479.3). -/
-def addTempKw (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
-    GameState × List Event :=
-  (s.modObj id (fun o => { o with tempKws := o.tempKws ++ [(k, ends)] }), [])
-
-/-- Giving a keyword for a while is a safe change. -/
-theorem addTempKw_safe (k : KeywordInst) (ends : EndPoint) (s : GameState) (id : ObjId) :
-    Safe s (addTempKw k ends s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
 /-- The Might an object has for the choice of "to a minimum": the Might the rules read now, with

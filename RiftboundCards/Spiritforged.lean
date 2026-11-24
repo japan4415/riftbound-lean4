@@ -1923,8 +1923,13 @@ def SFD_065.meta : CardDef :=
 def SFD_065 : CardDef :=
   { SFD_065.meta with
 
+    -- a Mech token that is played counts too
     abilities := [.triggered
       { event := .play, subject := Selector.all .friendly .anywhere
+          [.ofType .unit, .tag ⟨"Mech"⟩] }
+      (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited,
+      .triggered
+      { event := .playToken, subject := Selector.all .friendly .anywhere
           [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
     status := .drafted }
@@ -3311,7 +3316,7 @@ def SFD_112 : CardDef :=
     abilities := [.triggered
       { event := .move, condition := .matches .self .onBattlefield }
       (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.seqOf [.grant (.slot 0) (.keyword .it { keyword := .deflect }) .thisTurn,
+        (.seqOf [.prim (.giveKeywords (.slot 0) .self),
           .grant (.slot 0) (.mightPlus .it (.mightOf .self)) .thisTurn])) .unlimited],
     status := .drafted }
 

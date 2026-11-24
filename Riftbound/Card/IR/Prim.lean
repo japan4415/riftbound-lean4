@@ -75,6 +75,8 @@ inductive Prim where
   /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield
   if one is given: a Unit or a Gear only (Rek'Sai, Void Rush, Here to Help). -/
   | playReduced (s : Selector) (less : Amount) (to : Option Selector)
+  /-- Give the objects all the keywords the object has now, for the turn (Kato the Arm). -/
+  | giveKeywords (to : Selector) (from_ : Selector)
   /-- Cast the spell, paying its cost less `less` Energy, choosing the `idx`-th legal pick of its
   targets: it goes on the Chain. The player chooses between the picks (Void Rush). -/
   | castPicked (s : Selector) (less : Amount) (idx : Nat)

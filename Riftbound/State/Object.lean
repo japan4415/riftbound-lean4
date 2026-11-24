@@ -131,8 +131,11 @@ structure Object where
   choseTurn : Option Nat := none
   /-- The card was on the board when it last changed zone (it left the board by that move). -/
   leftBoard : Bool := false
-  /-- The card of the Unit that took control of this object until it leaves the board (Akshan). -/
-  takenBy : Option CardId := none
+  /-- The Unit that took control of this object until it leaves the board (Akshan): its identifier
+  on the board. -/
+  takenBy : Option ObjId := none
+  /-- The identifier the card had on the board before it left it (it has a new one afterwards). -/
+  formerId : Option ObjId := none
   /-- The Equipment this card was banished by, when its Unit died (The Zero Drive). -/
   banishedWith : Option ObjId := none
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/

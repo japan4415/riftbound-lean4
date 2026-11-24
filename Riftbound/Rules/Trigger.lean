@@ -221,17 +221,33 @@ def GameState.attachDelta (s : GameState) (g u : ObjId) : Int :=
   let before := s.modObj g (fun o => { o with attached := none })
   s.equipBonus u - before.equipBonus u
 
-/-- The abilities of a Unit that has just become Mighty (5 or more Might): its Might went up by
-`delta` because of the event, and was below 5 before it. The changes that are read are the buff
-and the Equipment attached; a lasting grant of Might and a Unit that is played Mighty are not. -/
-def GameState.becameMightyTriggers (s : GameState) (u : ObjId) (delta : Int) : List PendTrigger :=
+/-- The abilities of a Unit that has just become Mighty (5 or more Might). -/
+def GameState.becameMightyTriggers (s : GameState) (u : ObjId) : List PendTrigger :=
   match s.obj? u with
   | some o =>
-    if (s.cardDef? u).any (·.hasType .unit) &&
-        (s.mightNow u).any (fun m => decide (5 ≤ m ∧ m - delta < 5)) then
+    if (s.cardDef? u).any (·.hasType .unit) then
       triggersOf s u o.controller .becomeMighty ++ watchersOf s u o.controller .becomeMighty
     else []
   | none => []
+
+/-- Some object in play has an ability that waits for a Unit to become Mighty. -/
+def GameState.watchesMighty (s : GameState) : Bool :=
+  (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))).any (fun g =>
+    (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
+      match ab with
+      | Ability.triggered t _ _ => t.event == .becomeMighty
+      | _ => false)))
+
+/-- The Units that became Mighty between two states: they were in play, with less than 5 Might, and
+have 5 or more now (a Unit that is played Mighty did not become it). -/
+def GameState.mightyEvents (s s' : GameState) : List Event :=
+  if s'.watchesMighty then
+    s'.inPlay.filterMap (fun u =>
+      if s.inPlay.contains u && (s'.cardDef? u).any (·.hasType .unit) &&
+          (s.mightNow u).any (fun m => decide (m < 5)) &&
+          (s'.mightNow u).any (fun m => decide (5 ≤ m)) then some (Event.becameMighty u)
+      else none)
+  else []
 
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
@@ -299,8 +315,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .buffed u =>
     match s.obj? u with
     | some o =>
-      triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff ++
-        s.becameMightyTriggers u (s.buffDelta u)
+      triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff
     | none => []
   | .readied u =>
     match s.obj? u with
@@ -325,12 +340,12 @@ def detectOne (s : GameState) : Event → List PendTrigger
     (if conquer then
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
     else [])
-  | .attached g u =>
+  | .attached _ u =>
     match s.obj? u with
     | some o =>
-      triggersOf s u o.controller .attachedTo ++
-        s.becameMightyTriggers u (s.attachDelta g u)
+      triggersOf s u o.controller .attachedTo
     | none => []
+  | .becameMighty u => s.becameMightyTriggers u
   | .buffSpent p =>
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .spendBuff else [])

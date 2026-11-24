@@ -30,7 +30,7 @@ theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List F
     (hp : s.pending = .phase .main :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 es
+  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
   have h2 := microStep_main_pools0 hp h0 p
   rw [hq]
   exact h2
@@ -50,7 +50,7 @@ theorem microStep_ending_pools {s s' : GameState} {es : List Event} {rest : List
     (hp : s.pending = .phase .ending :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 es
+  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
   have h2 := microStep_ending_pools0 hp h0 p
   rw [hq]
   exact h2

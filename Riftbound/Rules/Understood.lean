@@ -264,6 +264,7 @@ def Prim.understood : Prim → Bool
   | .banishReplay s => s.understoodPickAny
   | .playPaying s => s.understoodPickAny
   | .castPicked s a _ => s.understoodPickAny && a.understood
+  | .giveKeywords t f => t.understood && f.understood
   | .playReduced s a t => s.understoodPickAny && a.understood && (match t with
     | some b => b.understood
     | none => true)

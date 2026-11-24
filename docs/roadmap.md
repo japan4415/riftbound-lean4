@@ -1970,3 +1970,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Emperor of the Sands**: 「Equipment を遊んだ」を、Equipment だけで数える（`Amount.equipmentPlayed`）。
 - **Drag Under**: 手札以外から遊ぶと、2 安い（Void Drone と同じ）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 52 — 近似の再点検（2）
+
+- **Akshan, Mischievous**: 取ったギアの印を、取ったユニットの識別子にした（`Object.takenBy : Option ObjId`、`formerId`、`takerKey`）。同じカードの Akshan が、もう 1 体いても、その Akshan が場を離れたときに、返らない。
+- **Kato the Arm**: ほかのユニットに、持っているキーワードを、すべて渡す（`Prim.giveKeywords`）。以前は、Deflect だけ。
+- **Harpoon Squad**: 効果で Base へ動かされたときも、動いたことになる（`moveHome` が、動いた数と `standardMoved` を、記録する）。
+- **トークンのユニット**: Forecaster の Vision が、Mech のトークンにも働く。Rally the Troops の後に出たトークンは、バフが付く（`buffNewTokens`）。
+- **Soraka**: Base にいるユニットも、同じ場所なので、救う（`deathSaver`）。Cleanup で、Might が下がって致死になった、Base のユニットは、まだ救わない（`cleanupKill` は、Battlefield の上だけ）。
+- **Fiora**: ユニットが Mighty になるのを、バフと装備だけでなく、Might が変わる、どの変化でも、見る（`Event.becameMighty`、`GameState.mightyEvents`。作業の 1 歩ごとに、前後の状態を比べる）。
+- **Ezreal, Prodigy**: 追加の費用の「1 Energy か 1 Power 安く」を、どちらでも選べる（`extraAlts`）。追加の費用は、1 つずつ別に、選べる。
+

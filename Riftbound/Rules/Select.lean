@@ -66,6 +66,13 @@ def Cmp.holds : Cmp → Int → Int → Bool
   | .gt, a, b => decide (a > b)
   | .ge, a, b => decide (a ≥ b)
 
+/-- The identifier that the objects taken by the card `self` name: the card's own, or, if it has
+left the board, the one it had there (Akshan). -/
+def GameState.takerKey (s : GameState) (self : ObjId) : ObjId :=
+  match s.obj? self with
+  | some o => if o.leftBoard then o.formerId.getD self else self
+  | none => self
+
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
 def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (List PlayerId)
   | .you => some [self]
@@ -336,10 +343,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .playedFromElsewhere =>
     some ((s.obj? id).any (fun o => o.playedTurn == some s.turn && !o.playedFromHand))
   | .wasTakenByMyCard =>
-    some ((s.obj? id).any (fun o => o.takenBy.isSome && o.takenBy == (s.cardDef? self).map (·.id)))
+    some ((s.obj? id).any (fun o => o.takenBy.isSome && o.takenBy == some (s.takerKey self)))
   | .takenByMyCard =>
     some ((s.obj? id).any (fun o => o.takenBy.isSome &&
-      o.takenBy == (s.cardDef? self).map (·.id) &&
+      o.takenBy == some (s.takerKey self) &&
       some o.controller == (s.obj? self).map (·.owner)))
   | .givesLegendsAttach =>
     some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>

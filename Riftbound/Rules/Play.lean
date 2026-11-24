@@ -230,30 +230,59 @@ def GameState.extraCuts (s : GameState) (p : PlayerId) : Nat × Nat :=
       else acc
     | none => acc) (0, 0)
 
+/-- The cost with `k` less Power symbols. -/
+def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop k }
+
+/-- The optional additional costs the card may pay when the player plays it now, as they are
+printed: those it prints (Accelerate, Repeat, an extra cost), and the Repeat that an effect of the
+turn gives the next Spell, for its cost (Temporal Portal). A Repeat is marked: it can be cut in
+Energy by a passive ability (Marai Spire). -/
+def GameState.extrasRaw (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+    List (Cost × Bool) :=
+  d.additionalCost.toList.map (fun k => (k, false)) ++ d.keywords.filterMap (fun i =>
+    match i.keyword, i.arg with
+    | .accelerate, _ => if d.hasType .unit then some (⟨1, [.own]⟩, false) else none
+    | .repeat_, .cost k => if d.hasType .spell then some (k, true) else none
+    | _, _ => none) ++
+  -- each effect of the turn that gives Repeat gives one more Repeat
+  (if d.hasType .spell then
+    ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
+      (((s.effCost p c d).getD ⟨0, []⟩), true))
+  else [])
+
+/-- The ways to pay each optional additional cost of the card, less what the passive abilities cut
+(Ezreal, Prodigy: 1 Energy or 1 Power less): the Energy is cut first (what is left over cuts
+the Power), or only the Power is cut. -/
+def GameState.extraAlts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+    List (List Cost) :=
+  let cuts := s.extraCuts p
+  (s.extrasRaw p c d).map (fun x =>
+    let fin (k : Cost) : Cost := if x.2 then k.lessEnergy cuts.2 else k
+    let a := fin (x.1.less cuts.1)
+    let b := fin (x.1.lessPower cuts.1)
+    if a == b then [a] else [a, b])
+
 /-- The optional additional costs the card may pay when the player plays it now: those it prints
 (Accelerate, Repeat, an extra cost), less what the passive abilities cut, and the Repeat that an
 effect of the turn gives the next Spell, for its cost (Temporal Portal). -/
 def GameState.extrasFor (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List Cost :=
   let cuts := s.extraCuts p
-  d.additionalCost.toList.map (·.less cuts.1) ++ d.keywords.filterMap (fun i =>
-    match i.keyword, i.arg with
-    | .accelerate, _ =>
-      if d.hasType .unit then some ((⟨1, [.own]⟩ : Cost).less cuts.1) else none
-    | .repeat_, .cost k =>
-      if d.hasType .spell then some ((k.less cuts.1).lessEnergy cuts.2) else none
-    | _, _ => none) ++
-  -- each effect of the turn that gives Repeat gives one more Repeat
-  (if d.hasType .spell then
-    ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
-      (((s.effCost p c d).getD ⟨0, []⟩).less cuts.1).lessEnergy cuts.2)
-  else [])
+  (s.extrasRaw p c d).map (fun x =>
+    let k := x.1.less cuts.1
+    if x.2 then k.lessEnergy cuts.2 else k)
+
+/-- One way to pay each of the costs. -/
+def waysToPay : List (List Cost) → List (List Cost)
+  | [] => [[]]
+  | a :: rest => a.flatMap (fun x => (waysToPay rest).map (x :: ·))
 
 /-- The costs the card may be played for now, with how many additional costs each pays: its cost,
 with any of its additional costs paid (each one is optional, and paid at most once) (CR 820). -/
 def GameState.playCostsOfK (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) : List (Cost × Nat) :=
-  let es := s.extrasFor p c d
-  (subseqsUpTo es.length es).map (fun t => (t.foldl (fun k e => k.plus e) cost, t.length))
+  let es := s.extraAlts p c d
+  (subseqsUpTo es.length es).flatMap (fun t =>
+    (waysToPay t).map (fun cs => (cs.foldl (fun k e => k.plus e) cost, cs.length)))
 
 /-- The costs the card may be played for now: its cost, with any of its additional costs paid. -/
 def GameState.playCostsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost) :
@@ -299,9 +328,6 @@ there are fewer). -/
 def dropPowers : Nat → List PowerSym → List (List PowerSym)
   | 0, l => [l]
   | k + 1, l => if l.isEmpty then [l] else (dropEach l).flatMap (dropPowers k)
-
-/-- The cost with `k` less Power symbols. -/
-def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop k }
 
 /-- The costs a Spell may have, by how much less (1 Energy or 1 Power each time) the objects it
 chooses make it cost (at most `k`). -/

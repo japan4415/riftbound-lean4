@@ -165,6 +165,12 @@ meta def fire (s : GameState) (es : List Event) (says : Says := {}) : Option Gam
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
+/-- The game `after` a step from `before`, and the events of it: the Units that became Mighty in
+the step have set off their abilities too, as in a real step. -/
+meta def fireFrom (before after : GameState) (es : List Event) (says : Says := {}) :
+    Option GameState :=
+  fire after (es ++ before.mightyEvents after) says
+
 /-- The game with a Combat going on at the Battlefield, the player attacking, before it starts
 (its first frame is the Combat Damage, as at the end of a Showdown). -/
 meta def GameState.inCombatAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=

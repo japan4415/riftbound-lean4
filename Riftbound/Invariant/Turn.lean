@@ -47,7 +47,7 @@ theorem microStep_phase {s s' : GameState} {es : List Event} {ph : Phase} {rest 
     (hp : s.pending = .phase ph :: rest) (hne : ph ≠ .setup)
     (h : microStep s = some (s', es)) : s'.phase = ph := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 es
+  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
   have h2 := microStep_phase0 hp hne h0
   rw [hq]
   exact h2
