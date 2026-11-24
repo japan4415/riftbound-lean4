@@ -314,6 +314,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
           s.passiveSources.flatMap (fun u =>
             if (s.obj? u).any (·.controller == p) then triggersOf s u p .recycleRune else [])
         else []
+      -- a card hidden: what waits for the player to hide a card fires
+      | .player p .hidden =>
+        s.passiveSources.flatMap (fun u =>
+          if (s.obj? u).any (·.controller == p) then triggersOf s u p .hide else [])
       | _ => []) ++
     -- a card that is put where it is not on the board: what waits for it to leave fires
     (if !dst.isBoard then

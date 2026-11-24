@@ -169,6 +169,9 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .mightLtOf .self => true
+  | .mightLtOf (.slot _) => true
+  | .mightLtOf (.var _) => true
   | .choosesOnly .self => true
   | .choosesOnly (.slot _) => true
   | .choosesOnly (.var _) => true
@@ -234,6 +237,7 @@ def Condition.understood : Condition → Bool
   | .discardedThisTurn => true
   | .hasHidden => true
   | .spentOnSpell _ => true
+  | .beginningPhase => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
@@ -413,6 +417,8 @@ def StaticMod.runs : StaticMod → Bool
   | .triggersExtra .conquer .here => true
   | .triggersExtra .hold .here => true
   | .cant .self .beChosen => true
+  | .cant (.pick .all _ place fs) .beChosen => place.understood && FilterList.understood fs
+  | .noCombatDamageFor (.pick .all _ place fs) => place.understood && FilterList.understood fs
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
   | .cantPlayer _ .play .here _ => true
@@ -458,6 +464,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
+      | .hide => t.subject == .self
       | .leave => t.subject == .self
       | .revealedFromDeck => true
       | .playToken => true

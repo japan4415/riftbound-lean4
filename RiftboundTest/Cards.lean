@@ -63,11 +63,11 @@ open Riftbound RiftboundCards
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 222
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-")).length == 222
 -- Unleashed (225): the measure of the goal "every card of the third set works"
-#guard (allCards.filter (fun c => c.id.code.startsWith "UNL-" && c.runs)).length == 60
+#guard (allCards.filter (fun c => c.id.code.startsWith "UNL-" && c.runs)).length == 157
 #guard (allCards.filter (fun c => c.id.code.startsWith "UNL-")).length == 225
 
 -- the cards written down as IR values (docs/coverage.md): 436 by hand, 169 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 635
+#guard (allCards.filter (·.status == .drafted)).length == 731
 -- an Equipment's effect text is kept apart, and such a card is not written down yet
 #guard match db.find? ⟨"UNL-019"⟩ with
   | some c => c.status == .todo
@@ -93,7 +93,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 156
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 152
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 182
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 179
 
 end RiftboundTest

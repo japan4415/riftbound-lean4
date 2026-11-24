@@ -1998,3 +1998,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ロードマップに記録された Spiritforged の近似は、これですべて、直したか、近似でないと確かめたか、規則が定めていないものである。直したものは、Spiritforged 34 以降の各節にある（PR #198〜#211）。
 
+
+### M9 の実装の記録（2026-11-25）: Unleashed 1 — 第 3 弾の始まり
+
+目標は、Unleashed の 225 枚（トークン 8 種を含む）が、すべて `CardDef.runs` を満たすこと。1 つ目の区切りで、**157 枚**が動く。
+
+- **エンジンに足したもの**: Ambush（Battlefield へ、Reaction として遊ぶ）、Backline（最後に割り当てる）、XP を使う（`Prim.spendXP`）、XP を得た印（`TurnEffect.gainedXP`）、Beginning Phase に死んだ印（`diedInBeginning`）、Hide の出来事（`TriggerEvent.hide`）、2 枚の入れ替え（`Prim.swapTop`、Predict 2）、Battlefield の Conquer と Hold を 1 回多く（`triggersExtra .conquer/.hold .here`）、ダメージを倍に（`TurnEffect.doubleDamage`）、死ぬ代わりに追放（`TurnEffect.banishInstead`）、次のユニットにバフ（`nextUnitBuffed`）、疲れて入る Gear（`StaticMod.entersExhausted`）、ほかのユニットに戦闘ダメージを与えさせない（`noCombatDamageFor`）、「選べない」を、ほかのユニットにも（`cant (all ...) .beChosen`）。
+- **フィルターと条件**: `Filter.mightLtOf`（自分より Might が小さい）、`Filter.choosesOnly`（そのユニットだけを選ぶ呪文や能力）、`Filter.myUnitsHere`、`Condition.hasHidden`、`spentOnSpell`、`beginningPhase`。条件に Might の合計を書ける（`Amount.evalS0` が、バフと装備と、パッシブの分を足した Might を読む）。
+- **近似として残したこと**: 呪文の追加の費用（「味方のユニットを殺す」）は、解決のときに払う（選ぶユニットは、遊ぶときに選ぶ）。相手に選ばせる選択（Call to Battle、Safety Inspector、Shard of Undoing）は、相手が選ぶのでなく、`eachPlayer` で、そのプレイヤーの側から選ぶ。Tactical Retreat は、死んだあとで戻る（Unlicensed Armory と同じ）。Safety Inspector の XP は、解決のときに払う。

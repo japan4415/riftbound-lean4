@@ -533,7 +533,7 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
       | none => 0),
     legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
-    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (· == .unitsBuffed),
+    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (fun k => k == .unitsBuffed || k == .nextUnitBuffed),
     fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c) }
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
@@ -544,7 +544,8 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let s1 := (r.1.modObj r.2 (Object.withPlay [] (s.playMark p c pay))).setPool p pool
-      ((if d.hasType .unit && !s.readyNow p c d && !s.paidExtra p c d pay then s1.exhaustObj r.2
+      ((if (d.hasType .unit && !s.readyNow p c d && !s.paidExtra p c d pay) || d.entersExhausted
+          then s1.exhaustObj r.2
         else s1),
         [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
@@ -877,7 +878,8 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     {es : List Event} (h : applyPlay s p c pay = some (s', es)) :
     ∃ d pool s2 id' m, s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
-      s' = (if (d.hasType .unit && !s.readyNow p c d && !s.paidExtra p c d pay) = true
+      s' = (if ((d.hasType .unit && !s.readyNow p c d && !s.paidExtra p c d pay) ||
+          d.entersExhausted) = true
         then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
         else (s2.modObj id' (Object.withPlay [] m)).setPool p pool) := by
   unfold applyPlay at h
@@ -1042,7 +1044,7 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       refine ⟨id', hes.symm, fun d' hd' hu hr hx0 o ho => ?_⟩
       cases hd'
       rw [← hs'] at ho
-      simp only [hu, hr, hx0, Bool.not_false, Bool.and_self, ite_true,
+      simp only [hu, hr, hx0, Bool.not_false, Bool.and_self, Bool.true_or, ite_true,
         GameState.obj?_exhaustObj] at ho
       cases hx : ((s2.modObj id' (Object.withPlay [] (s.playMark p c pay))).setPool p pool).obj?
           id' with

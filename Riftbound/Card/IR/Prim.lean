@@ -267,6 +267,8 @@ inductive TriggerEvent where
   | recycle
   /-- The player recycled a Rune (to the Rune Deck). -/
   | recycleRune
+  /-- The player hid a card (it went face down at a Battlefield). -/
+  | hide
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
@@ -419,6 +421,8 @@ inductive StaticMod where
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
   /-- The Unit deals no combat damage (Ezreal, Dashing). -/
   | noCombatDamage
+  /-- The objects the selector names deal no combat damage (Vilemaw). -/
+  | noCombatDamageFor (s : Selector)
   /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/
   | doubleEquip
   /-- (Of an Equipment) the Unit it is attached to has `n` more Might if it was attached this

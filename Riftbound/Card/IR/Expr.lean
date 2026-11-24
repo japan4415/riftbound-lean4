@@ -203,6 +203,9 @@ inductive Filter where
   | choosesMine
   /-- Made its last move from a Battlefield. -/
   | fromBattlefield
+  /-- Its Might is less than the Might of the object the selector names (`self`, a chosen object or a
+  variable). -/
+  | mightLtOf (s : Selector)
   /-- Is a spell or ability that chooses the object the selector names, and no other object of its
   controller (Repulse). -/
   | choosesOnly (s : Selector)
@@ -299,6 +302,8 @@ inductive Condition where
   | spentOnSpell (n : Nat)
   /-- A showdown is going on. -/
   | inShowdown
+  /-- The Beginning Phase is going on. -/
+  | beginningPhase
   /-- The point being scored comes from this source. -/
   | scoreFrom (src : ScoreSource)
 deriving DecidableEq, Repr, Hashable

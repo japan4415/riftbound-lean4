@@ -262,6 +262,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .entersReady s => Selector.ok c s
   | .bonusDamage a => Amount.ok c a
   | .noCombatDamage => true
+  | .noCombatDamageFor _ => true
   | .doubleEquip => true
   | .mightIfFresh _ => true
   | .gainsTag _ => true

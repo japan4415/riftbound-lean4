@@ -660,7 +660,7 @@ theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bo
   cases moved with
   | none =>
     dsimp only
-    exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
+    exact key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_inPlay _ t) s
   | some n =>
     dsimp only
     rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
@@ -669,7 +669,7 @@ theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bo
       key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
+      key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_inPlay _ t)]
 
 /-- **Killing an object in play takes it out of play** (I12a). In a well-formed game, when the
 owner is a player, the Trash of the owner is a zone of the game and the object is on the Board, so

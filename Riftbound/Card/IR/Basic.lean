@@ -116,6 +116,8 @@ inductive TurnEffect where
   | unitsReady
   /-- The units the player plays this turn are buffed (Rally the Troops). -/
   | unitsBuffed
+  /-- The next unit the player plays this turn is buffed (Nami). -/
+  | nextUnitBuffed
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
@@ -165,8 +167,14 @@ inductive TurnEffect where
   | mightyUnitDied
   /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
   | killOnDamage
+  /-- A unit the player controlled died during a Beginning Phase (a note of the turn). -/
+  | diedInBeginning
+  /-- The player gained XP (a note of the turn). -/
+  | gainedXP
   /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
   | banishInstead
+  /-- All damage that would be dealt to the unit this turn is doubled (Lotus Trap). -/
+  | doubleDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
