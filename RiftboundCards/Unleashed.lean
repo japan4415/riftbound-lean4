@@ -2194,8 +2194,13 @@ def UNL_074.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Frigid Jewel: the effect is not written yet. -/
-def UNL_074 : CardDef := UNL_074.meta
+/-- Frigid Jewel. -/
+def UNL_074 : CardDef :=
+  { UNL_074.meta with
+    abilities := [.triggered { condition := .drewCards 2, event := .draw }
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-075
 /--

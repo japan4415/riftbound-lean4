@@ -313,6 +313,8 @@ inductive Condition where
   | beginningPhase
   /-- A showdown is going on, at any Battlefield. -/
   | showdownNow
+  /-- The player has drawn exactly `n` cards this turn. -/
+  | drewCards (n : Nat)
   /-- The player the effect works for controls the Battlefield the object is at. -/
   | iControlHere
   /-- The point being scored comes from this source. -/

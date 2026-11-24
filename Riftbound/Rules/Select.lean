@@ -975,6 +975,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
+  | .drewCards n =>
+    some ((s.turnFx.filter (fun f =>
+      f.turn == s.turn && f.who == p && f.kind == .drewCard)).length == n)
   | .showdownNow =>
     some (s.pending.any (fun f => match f with | .showdown .. => true | _ => false))
   | .inShowdown =>

@@ -346,6 +346,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
         if o.leftBoard then triggersOf s n o.owner .leave ++ watchersOf s n o.owner .leave else []
       | none => []
     else [])
+  | .drew p =>
+    s.passiveSources.flatMap (fun u =>
+      if (s.obj? u).any (·.controller == p) then triggersOf s u p .draw else [])
   | .movedByEffect p u =>
     match s.obj? u with
     | some o => (watchersOf s u o.controller .movedByYou).filter (fun t => t.controller == p)

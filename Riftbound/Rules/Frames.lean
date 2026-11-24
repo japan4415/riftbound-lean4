@@ -124,7 +124,8 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
   | .draw p (n + 1) :: rest =>
     match drawOne s p with
-    | some (s', es) => some ({ s' with pending := .draw p n :: rest }, es)
+    | some (s', es) =>
+      some ({ s'.addTurnFx p .drewCard with pending := .draw p n :: rest }, es ++ [Event.drew p])
     | none => some ({ s with pending := .chanceBurnOut p :: .draw p (n + 1) :: rest }, [])
   | .resolveChain :: rest => some ({ s with pending := resolveFrames s rest }, [])
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])

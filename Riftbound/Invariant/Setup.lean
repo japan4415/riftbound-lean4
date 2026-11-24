@@ -729,7 +729,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-        (by simp [GameState.playerCount, (drawOne_meta hd).config])
+        (by simp [GameState.playerCount, GameState.addTurnFx, (drawOne_meta hd).config])
         (new := [Frame.draw q n]) rfl (by simp [Frame.isSetup])
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h

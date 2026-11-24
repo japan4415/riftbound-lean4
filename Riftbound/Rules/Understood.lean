@@ -245,6 +245,7 @@ def Condition.understood : Condition → Bool
   | .beginningPhase => true
   | .inShowdown => true
   | .showdownNow => true
+  | .drewCards _ => true
   | .iControlHere => true
   | _ => false
 
@@ -491,6 +492,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .opponentScores => t.subject == .self
       | .opponentHolds => t.subject == .self
       | .movedByYou => true
+      | .draw => true
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
