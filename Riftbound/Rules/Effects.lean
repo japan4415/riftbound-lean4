@@ -686,14 +686,96 @@ theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Use the Rune abilities one after the other. -/
+def applyRunes (s : GameState) (p : PlayerId) :
+    List (ObjId × RuneAbility) → Option (GameState × List Event)
+  | [] => some (s, [])
+  | (r, ab) :: rest =>
+    (applyRune s p r ab).bind (fun x =>
+      (applyRunes x.1 p rest).map (fun y => (y.1, x.2 ++ y.2)))
+
+/-- Using a Rune is a safe change. -/
+theorem applyRune_safe {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
+    {es : List Event} (h : applyRune s p c ab = some (s', es)) : Safe s s' := by
+  unfold applyRune at h
+  split at h
+  · rename_i o ho
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have h1 : Safe s (s.exhaustObj c) :=
+        ⟨fun hwf => GameState.wf_exhaustObj hwf c,
+         fun _ => (GameState.physIds_exhaustObj s c) ▸ List.Perm.refl _,
+         fun _ hown => GameState.ownerOk_exhaustObj hown c, GameState.sameMeta_exhaustObj s c⟩
+      exact h1.trans (setPool_safe _ _ _)
+    · simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      exact (Safe.moveObj hm).trans (setPool_safe _ _ _)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Using Runes is a safe change. -/
+theorem applyRunes_safe {p : PlayerId} :
+    ∀ (plan : List (ObjId × RuneAbility)) {s s' : GameState} {es : List Event},
+      applyRunes s p plan = some (s', es) → Safe s s'
+  | [], s, s', es, h => by
+    simp only [applyRunes, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Safe.refl s
+  | (r, ab) :: rest, s, s', es, h => by
+    simp only [applyRunes, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨x, hx, y, hy, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (applyRune_safe hx).trans (applyRunes_safe rest hy)
+
+/-- Pay the cost `c` for the object `src`: from the Pool, or, if it falls short, with Runes (exhaust a
+ready Rune for each Energy missing, recycle a Rune of the domain for each Power missing). `none` if
+it cannot be paid. -/
+def payByRunes (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
+    Option (GameState × List Event) :=
+  match s.payNow p src c with
+  | some pool => some (s.setPool p pool, [])
+  | none =>
+    match s.runePlan p src c with
+    | some plan =>
+      (applyRunes s p plan).bind (fun r =>
+        (r.1.payNow p src c).map (fun pool => (r.1.setPool p pool, r.2)))
+    | none => none
+
+/-- Paying is a safe change. -/
+theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
+    {r : GameState × List Event} (h : payByRunes s p src c = some r) : Safe s r.1 := by
+  unfold payByRunes at h
+  cases hp : s.payNow p src c with
+  | some pool =>
+    simp only [hp, Option.some.injEq] at h
+    rw [← h]
+    exact setPool_safe s p pool
+  | none =>
+    simp only [hp] at h
+    cases hq : s.runePlan p src c with
+    | none => simp [hq] at h
+    | some plan =>
+      simp only [hq, Option.bind_eq_some_iff] at h
+      obtain ⟨x, hx, hr⟩ := h
+      cases hy : x.1.payNow p src c with
+      | none => simp [hy] at hr
+      | some pool =>
+        simp only [hy, Option.map_some, Option.some.injEq] at hr
+        rw [← hr]
+        exact (applyRunes_safe plan hx).trans (setPool_safe _ _ _)
+
 /-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool; if that cannot be
 done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
 def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
-    match s.payNow p id ⟨0, c.power⟩ with
-    | some pool => playFree p (s.setPool p pool) id
+    match payByRunes s p id ⟨0, c.power⟩ with
+    | some r => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
     | none => (s, [])
   | none => playFree p s id
 
@@ -705,7 +787,8 @@ theorem playPaying_safe (p : PlayerId) (s : GameState) (id : ObjId) :
   · exact Safe.refl s
   · split
     · split
-      · exact (setPool_safe s p _).trans (playFree_safe p _ id)
+      · rename_i r hr
+        exact (payByRunes_safe hr).trans (playFree_safe p _ id)
       · exact Safe.refl s
     · exact playFree_safe p s id
 
@@ -952,11 +1035,11 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
   -- the cost the card is played for now (the other reductions count too), less `k` Energy
   match (s.cardDef? id).bind (fun d => s.effCost p id d) with
   | some c =>
-    match s.payNow p id ⟨c.energy - k, c.power⟩ with
-    | some pool =>
+    match payByRunes s p id ⟨c.energy - k, c.power⟩ with
+    | some r =>
       match dest with
-      | some bf => playToOrBase p bf (s.setPool p pool) id
-      | none => playFree p (s.setPool p pool) id
+      | some bf => ((playToOrBase p bf r.1 id).1, r.2 ++ (playToOrBase p bf r.1 id).2)
+      | none => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
     | none => (s, [])
   | none =>
     match dest with
@@ -971,9 +1054,10 @@ theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : 
   · exact Safe.refl s
   · split
     · split
-      · cases dest with
-        | none => exact (setPool_safe s p _).trans (playFree_safe p _ id)
-        | some bf => exact (setPool_safe s p _).trans (playToOrBase_safe p bf _ id)
+      · rename_i r hr
+        cases dest with
+        | none => exact (payByRunes_safe hr).trans (playFree_safe p _ id)
+        | some bf => exact (payByRunes_safe hr).trans (playToOrBase_safe p bf _ id)
       · exact Safe.refl s
     · cases dest with
       | none => exact playFree_safe p s id
@@ -1217,9 +1301,8 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
         some (gs.foldl (fun (r : GameState × List Event) g =>
           match (r.1.cardDef? g).bind CardDef.equipCost with
           | some c =>
-            match r.1.payNow p g (c.dropPower less) with
-            | some pool =>
-              ((attachTo u (r.1.setPool p pool) g).1, r.2 ++ (attachTo u r.1 g).2)
+            match payByRunes r.1 p g (c.dropPower less) with
+            | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
             | none => r
           | none => r) (s, []))
         else some (s, [])
@@ -1249,9 +1332,8 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 Safe s (l.foldl (fun (r : GameState × List Event) g =>
                   match (r.1.cardDef? g).bind CardDef.equipCost with
                   | some c =>
-                    match r.1.payNow p g (c.dropPower less) with
-                    | some pool =>
-                      ((attachTo u (r.1.setPool p pool) g).1, r.2 ++ (attachTo u r.1 g).2)
+                    match payByRunes r.1 p g (c.dropPower less) with
+                    | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
                     | none => r
                   | none => r) r0).1 := by
               intro l
@@ -1264,11 +1346,11 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 cases hc : (r0.1.cardDef? g).bind CardDef.equipCost with
                 | none => simpa [hc] using h0
                 | some c =>
-                  cases hp : r0.1.payNow p g (c.dropPower less) with
+                  cases hp : payByRunes r0.1 p g (c.dropPower less) with
                   | none => simpa [hc, hp] using h0
-                  | some pool =>
+                  | some q =>
                     simp only [hp]
-                    exact h0.trans ((setPool_safe r0.1 p pool).trans (attachTo_safe u _ g))
+                    exact h0.trans ((payByRunes_safe hp).trans (attachTo_safe u _ g))
             exact key gs (s, []) (Safe.refl s)
           · simp only [hu, ite_false, Option.some.injEq] at h
             rw [← h]
@@ -1356,51 +1438,6 @@ a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
   if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
   else [Event.chosenByAbility p o]
-
-/-- Use the Rune abilities one after the other. -/
-def applyRunes (s : GameState) (p : PlayerId) :
-    List (ObjId × RuneAbility) → Option (GameState × List Event)
-  | [] => some (s, [])
-  | (r, ab) :: rest =>
-    (applyRune s p r ab).bind (fun x =>
-      (applyRunes x.1 p rest).map (fun y => (y.1, x.2 ++ y.2)))
-
-/-- Using a Rune is a safe change. -/
-theorem applyRune_safe {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
-    {es : List Event} (h : applyRune s p c ab = some (s', es)) : Safe s s' := by
-  unfold applyRune at h
-  split at h
-  · rename_i o ho
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      have h1 : Safe s (s.exhaustObj c) :=
-        ⟨fun hwf => GameState.wf_exhaustObj hwf c,
-         fun _ => (GameState.physIds_exhaustObj s c) ▸ List.Perm.refl _,
-         fun _ hown => GameState.ownerOk_exhaustObj hown c, GameState.sameMeta_exhaustObj s c⟩
-      exact h1.trans (setPool_safe _ _ _)
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
-      simp only [Prod.mk.injEq] at hr
-      obtain ⟨rfl, -⟩ := hr
-      exact (Safe.moveObj hm).trans (setPool_safe _ _ _)
-    · exact absurd h (by simp)
-  · exact absurd h (by simp)
-
-/-- Using Runes is a safe change. -/
-theorem applyRunes_safe {p : PlayerId} :
-    ∀ (plan : List (ObjId × RuneAbility)) {s s' : GameState} {es : List Event},
-      applyRunes s p plan = some (s', es) → Safe s s'
-  | [], s, s', es, h => by
-    simp only [applyRunes, Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact Safe.refl s
-  | (r, ab) :: rest, s, s', es, h => by
-    simp only [applyRunes, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
-    obtain ⟨x, hx, y, hy, hr⟩ := h
-    simp only [Prod.mk.injEq] at hr
-    obtain ⟨rfl, -⟩ := hr
-    exact (applyRune_safe hx).trans (applyRunes_safe rest hy)
 
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
@@ -1537,15 +1574,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .activateConquer sel =>
     onSelected s p src env sel (fun t id => (t, [Event.conquerActivated id]))
   | .pay c =>
-    match s.payNow p src c with
-    | some pool => some (s.setPool p pool, [])
-    | none =>
-      -- the Pool falls short: the player uses Runes to pay what is missing
-      match s.runePlan p src c with
-      | some plan =>
-        (applyRunes s p plan).bind (fun r =>
-          (r.1.payNow p src c).map (fun pool => (r.1.setPool p pool, r.2)))
-      | none => some (s, [])
+    -- from the Pool, or with Runes if it falls short; nothing is paid if it cannot be
+    match payByRunes s p src c with
+    | some r => some r
+    | none => some (s, [])
   | .addEnergy ps n none =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addEnergy k) s l, [])))
@@ -1845,24 +1877,12 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
             exact poolsMap_safe _ l s
   | pay c =>
     simp only [applyPrim] at h
-    cases hp : s.payNow p src c with
-    | none =>
-      simp only [hp] at h
-      cases hq : s.runePlan p src c with
-      | none => simp only [hq, Option.some.injEq] at h; subst h; exact Safe.refl s
-      | some plan =>
-        simp only [hq, Option.bind_eq_some_iff] at h
-        obtain ⟨x, hx, hr⟩ := h
-        cases hy : x.1.payNow p src c with
-        | none => simp [hy] at hr
-        | some pool =>
-          simp only [hy, Option.map_some, Option.some.injEq] at hr
-          rw [← hr]
-          exact (applyRunes_safe plan hx).trans (setPool_safe _ _ _)
-    | some pool =>
+    cases hp : payByRunes s p src c with
+    | none => simp only [hp, Option.some.injEq] at h; subst h; exact Safe.refl s
+    | some x =>
       simp only [hp, Option.some.injEq] at h
       subst h
-      exact setPool_safe s p pool
+      exact payByRunes_safe hp
   | _ => simp [applyPrim] at h
 
 /-- When a lasting effect ends, if the model has a way to end it. -/
@@ -2053,10 +2073,10 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
   | some (id :: _) =>
     match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (d, e) =>
-      match s.payNow p id ⟨0, ((d.cost.map (·.power)).getD [])⟩ with
-      | some pool =>
-        (s.setPool p pool, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
-          .run p src env es], [])
+      match payByRunes s p id ⟨0, ((d.cost.map (·.power)).getD [])⟩ with
+      | some r =>
+        (r.1, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
+          .run p src env es], r.2)
       | none => skip
     | none => skip
   | _ => skip
@@ -2068,7 +2088,8 @@ theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   split
   · split
     · split
-      · exact setPool_safe s p _
+      · rename_i r hr
+        exact payByRunes_safe hr
       · exact Safe.refl s
     · exact Safe.refl s
   · exact Safe.refl s

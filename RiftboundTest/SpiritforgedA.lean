@@ -3703,4 +3703,20 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let r ← fire st2 evs
   return r.handN s.me == st2.handN s.me + 1
 
+-- Playing a card for its cost while an effect resolves pays with Runes when the Pool is empty
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-042" .base
+  let (s2, u) ← put s1 s.me "OGN-003" .hand
+  let exhausted (x : GameState) : Nat :=
+    ((x.runesOf s.me).filter (fun r => (x.obj? r).any (·.exhausted))).length
+  let d ← s2.cardDef? u
+  let c ← s2.effCost s.me u d
+  let play := Effect.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit])
+    (.const 0) none)
+  let empty := s2.setPool s.me {}
+  let a ← runBody empty s.me g [] play
+  let b ← runBody (empty.noRunes s.me) s.me g [] play
+  return c.energy == 2 && a.countIn s.me .base "OGN-003" == 1 &&
+    exhausted a == exhausted empty + 2 && b.countIn s.me .base "OGN-003" == 0
+
 end RiftboundTest
