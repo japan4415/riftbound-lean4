@@ -1942,3 +1942,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似でないと確かめたもの**: Ruin Runner（「選べない」を与えるカードは、ほかに無い）。Altar of Memories（リサイクルは、山札の底へ置く）。Hostile Takeover（Ending フェーズの始まりより後に作った遅延誘発は、規則でも誘発しない）。
 - **まだ**: Void Rush が、見たカードの呪文を遊べない（呪文は、対象を選んで、Chain に載せる遊び方が、効果の中から、まだできない）。Fire Below the Mountain の専用の Power を、ギアで使ったとき、残りの扱いが、厳密ではない（新しく Add した Power を、制限しない、ただし、残りは、制限したままにする）。Temporal Portal を 2 回使ったときの Repeat（規則が不明）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 48 — Void Rush の呪文、ギア専用 Power の残り
+
+- **Void Rush（SFD-188）**: 見た呪文も、遊べる（`Prim.castPicked`、`castReducedStep`、`castPickedOne`）。遊べる対象の組が複数あれば、プレイヤーが選び、費用を 2 Energy 安く払って、呪文は Chain に載る（相手は応じられる）。対象が選べない呪文は、引く。
+- **Fire Below the Mountain**: ギアを遊ぶとき、ギアの能力を使うときに使った Power は、ギア専用の印から先に引く（`gearSpent`、`preCost`）。使い残した Power は、ギア以外にも使える。
+- **Temporal Portal**: 2 つ使ったときの Repeat は、規則の資料（`docs/rules-model.md` の 820）に、複数の Repeat の扱いが無いので、決められない（近似ではなく、規則が不明）。
+- **小さな漏れ**: ギアの効果の中で払う費用（`Prim.pay`）で、ギア専用の Power を使ったときは、印を引かない。
+

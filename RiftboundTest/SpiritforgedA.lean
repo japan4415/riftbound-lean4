@@ -1720,6 +1720,17 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let gainedB := r.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1
   return (gainedA && r.bottomIs s.me 1 "SFD-042") || (gainedB && r.bottomIs s.me 1 "OGN-051")
 
+-- Void Rush plays a spell it reveals: with a legal target the spell is cast (it goes on the Chain,
+-- and resolves), for 2 less Energy; with no legal target it is drawn
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-188" .hand
+  let (s2, _) ← put s1 s.me "OGN-051" .base
+  let (d, _) ← s2.stackTop s.me ["OGN-004", "SFD-042"]
+  let r ← play d s.me c [] { obj := d.isCard "OGN-004" }
+  return r.countIn s.me .trash "OGN-004" == 1 && r.countIn s.me .hand "OGN-004" ==
+      d.countIn s.me .hand "OGN-004" && (r.poolOf s.me).energy == 12 - 2 &&
+    r.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1
+
 -- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-188" .hand
@@ -3841,5 +3852,16 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       return ok && (r.zone .chain).isEmpty && (r.obj? it).isNone
     | none => return false
   | .error _ => return false
+
+-- (gear-only Power) Playing a Gear with the Power that only pays for Gear uses that Power first: the
+-- Power of Any domain that is left is free to pay for a Unit
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "OGN-021" .hand
+  let (s2, u) ← put s1 s.me "OGN-036" .hand
+  let bare := s2.noRunes s.me
+  let two := (bare.setPool s.me { energy := 8, any := 2 }).addTurnFx s.me .gearMana
+  let a ← cast two s.me g (payOf two g)
+  return playable two s.me g (payOf two g) && (a.poolOf s.me).any == 1 &&
+    a.restrictedNow s.me == 0 && playable a s.me u (payOf a u)
 
 end RiftboundTest
