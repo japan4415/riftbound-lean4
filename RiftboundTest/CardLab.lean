@@ -50,6 +50,12 @@ meta def putAt (s : GameState) (p : PlayerId) (card : String) (bf : ObjId) :
   | some (s1, u) => some (s1.modObj u (fun o => { o with loc := some bf }), u)
   | none => none
 
+/-- Put a spell of the player on the Chain: the object it is there. -/
+meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameState × ObjId) := do
+  let (s1, c) ← put s p code .hand
+  let (s2, c') ← moveObj s1 c .chain
+  pure (s2, c')
+
 /-- Put a new Battlefield card of the player on the Battlefield Zone. -/
 meta def putBf (s : GameState) (p : PlayerId) (card : String) : Option (GameState × ObjId) :=
   addObject s (newCard s.cards s p (cid card)) .battlefieldZone

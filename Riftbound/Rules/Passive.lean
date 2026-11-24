@@ -26,6 +26,13 @@ def CardDef.entersReady (d : CardDef) : Bool :=
     | Ability.passive .always mods => mods.contains (.entersReady .self)
     | _ => false)
 
+/-- The card enters play exhausted, whatever it is (Honeyfruit). -/
+def CardDef.entersExhausted (d : CardDef) : Bool :=
+  d.abilities.any (fun ab =>
+    match ab with
+    | Ability.passive .always mods => mods.contains .entersExhausted
+    | _ => false)
+
 namespace GameState
 
 /-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/

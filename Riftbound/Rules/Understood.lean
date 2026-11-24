@@ -99,6 +99,7 @@ def Amount.understoodC : Amount → Bool
   | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
+  | .mightOf s => Selector.understood s
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b
@@ -155,6 +156,7 @@ def Filter.understood : Filter → Bool
   | .inHandZone => true
   | .unitsPlayable => true
   | .attackedByMine => true
+  | .myUnitsHere => true
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
@@ -167,6 +169,12 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .mightLtOf .self => true
+  | .mightLtOf (.slot _) => true
+  | .mightLtOf (.var _) => true
+  | .choosesOnly .self => true
+  | .choosesOnly (.slot _) => true
+  | .choosesOnly (.var _) => true
   | .fromBattlefield => true
   | .attachedTo .self => true
   | .attachedTo (.slot _) => true
@@ -227,6 +235,9 @@ def Condition.understood : Condition → Bool
   | .hasFriendlyCard _ => true
   | .diedWith _ => true
   | .discardedThisTurn => true
+  | .hasHidden => true
+  | .spentOnSpell _ => true
+  | .beginningPhase => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
@@ -261,6 +272,7 @@ def Prim.understood : Prim → Bool
   | .addPower ps n (some _) none => ps.understood && n.understoodC
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
+  | .swapTop p => p.understood
   | .play s => s.understoodPickAny
   | .banishReplay s => s.understoodPickAny
   | .playPaying s => s.understoodPickAny
@@ -308,6 +320,7 @@ def Prim.understood : Prim → Bool
   | .stun s => s.understoodPick
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
+  | .spendXP p n => p.understood && n.understood
   | _ => false
 
 mutual
@@ -380,6 +393,7 @@ def StaticMod.runs : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
@@ -400,7 +414,11 @@ def StaticMod.runs : StaticMod → Bool
   | .noReadyOfOpps => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
+  | .triggersExtra .conquer .here => true
+  | .triggersExtra .hold .here => true
   | .cant .self .beChosen => true
+  | .cant (.pick .all _ place fs) .beChosen => place.understood && FilterList.understood fs
+  | .noCombatDamageFor (.pick .all _ place fs) => place.understood && FilterList.understood fs
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
   | .cantPlayer _ .play .here _ => true
@@ -446,6 +464,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .seenOnTop => t.subject == .self
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
+      | .hide => t.subject == .self
       | .leave => t.subject == .self
       | .revealedFromDeck => true
       | .playToken => true
@@ -485,6 +504,7 @@ def Keyword.runs : Keyword → Bool
   | .deathknell => true | .hunt => true | .level => true | .equip => true
   | .accelerate => true | .vision => true | .hidden => true
   | .repeat_ => true | .unique => true | .quickDraw => true | .weaponmaster => true
+  | .backline => true | .ambush => true
   | _ => false
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are

@@ -57,6 +57,9 @@ inductive Prim where
   | recycle (s : Selector)
   /-- The players recycle the top card of their Main Deck: it goes to the bottom (CR 417). -/
   | recycleTop (p : PlayerSel)
+  /-- The players swap the top two cards of their Main Deck (Predict puts the cards back in any
+  order). -/
+  | swapTop (p : PlayerSel)
   /-- The players channel `n` Runes, and `extraExhausted` more that enter exhausted. -/
   | channel (p : PlayerSel) (n : Amount) (extraExhausted : Amount)
   /-- Add Energy to a Rune Pool; it can be spent on `only` if that is given. -/
@@ -117,6 +120,8 @@ inductive Prim where
   | detach (s : Selector)
   /-- The players gain XP. -/
   | gainXP (p : PlayerSel) (n : Amount)
+  /-- The player spends XP (it goes down by the amount, to 0 at the least). -/
+  | spendXP (p : PlayerSel) (n : Amount)
   /-- The players score points. -/
   | score (p : PlayerSel) (n : Amount)
   /-- The players Burn Out `n` times in a row (CR 432). -/
@@ -262,6 +267,8 @@ inductive TriggerEvent where
   | recycle
   /-- The player recycled a Rune (to the Rune Deck). -/
   | recycleRune
+  /-- The player hid a card (it went face down at a Battlefield). -/
+  | hide
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
@@ -368,6 +375,8 @@ inductive StaticMod where
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
   | assignedLast
+  /-- The card enters play exhausted (a Gear: Honeyfruit, Scryer's Bloom). -/
+  | entersExhausted
   /-- The Unit can have any number of buffs. -/
   | anyBuffs
   /-- The friendly Units can be played to an open Battlefield. -/
@@ -412,6 +421,8 @@ inductive StaticMod where
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
   /-- The Unit deals no combat damage (Ezreal, Dashing). -/
   | noCombatDamage
+  /-- The objects the selector names deal no combat damage (Vilemaw). -/
+  | noCombatDamageFor (s : Selector)
   /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/
   | doubleEquip
   /-- (Of an Equipment) the Unit it is attached to has `n` more Might if it was attached this

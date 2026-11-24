@@ -126,6 +126,31 @@ theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- A unit of the player died: noted for the turn, and as one that died during a Beginning Phase if
+the Beginning Phase is going on. -/
+def GameState.noteUnitDied (c : PlayerId) (t : GameState) : GameState :=
+  let t1 := t.addTurnFx c .unitDied
+  if t.phase == .beginning then t1.addTurnFx c .diedInBeginning else t1
+
+/-- Noting that a unit died is a safe change. -/
+theorem noteUnitDied_safe (c : PlayerId) (t : GameState) : Safe t (t.noteUnitDied c) := by
+  unfold GameState.noteUnitDied
+  split
+  · exact (addTurnFx_safe t c _).trans (addTurnFx_safe _ c _)
+  · exact addTurnFx_safe t c _
+
+/-- Noting that a unit died leaves the zone as it was. -/
+theorem noteUnitDied_zone (c : PlayerId) (t : GameState) (z : Zone) :
+    (t.noteUnitDied c).zone z = t.zone z := by
+  unfold GameState.noteUnitDied
+  split <;> rfl
+
+/-- Noting that a unit died leaves the objects in play as they were. -/
+theorem noteUnitDied_inPlay (c : PlayerId) (t : GameState) :
+    (t.noteUnitDied c).inPlay = t.inPlay := by
+  unfold GameState.noteUnitDied
+  split <;> rfl
+
 /-- Do the change if the condition holds. -/
 def noteIf (b : Bool) (f : GameState → GameState) (s : GameState) : GameState :=
   if b then f s else s
@@ -142,7 +167,7 @@ theorem noteIf_safe (b : Bool) (f : GameState → GameState) (hf : ∀ t, Safe t
 (the notes are about the dead card, which is the object it has become). -/
 def noteDeath (s : GameState) (o : Object) (isUnit : Bool) (marked : Bool) (mighty : Bool)
     (moved : Option ObjId) (banisher : Option ObjId) : GameState :=
-  let s1 := noteIf (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied) s
+  let s1 := noteIf (isUnit && moved.isSome) (fun t => t.noteUnitDied o.controller) s
   match moved with
   | some n =>
     let s2 := noteIf (isUnit && o.buffed)
@@ -161,8 +186,8 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
     (moved : Option ObjId) (banisher : Option ObjId) :
     Safe s (noteDeath s o isUnit marked mighty moved banisher) := by
   unfold noteDeath
-  have h1 := noteIf_safe (isUnit && moved.isSome) (fun t => t.addTurnFx o.controller .unitDied)
-    (fun t => addTurnFx_safe t _ _) s
+  have h1 := noteIf_safe (isUnit && moved.isSome) (fun t => t.noteUnitDied o.controller)
+    (fun t => noteUnitDied_safe _ t) s
   cases moved with
   | none => exact h1
   | some n =>
@@ -174,9 +199,11 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
       (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
         (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
 
-/-- A unit goes to the Trash when it dies: what banishes it (the Deathknell of The Zero Drive) is an
-ability that fires after, so it is never banished instead of dying. -/
-def GameState.banishedOnDeath (_s : GameState) (_id : ObjId) : Bool := false
+/-- A unit goes to the Trash when it dies, unless an effect of this turn says it is banished instead
+(Smite). What banishes it afterwards (the Deathknell of The Zero Drive) is an ability that fires
+after, and is not this. -/
+def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.kind == .banishInstead && f.target == some id && f.turn == s.turn)
 
 /-- The Equipment attached to the object that banishes it when it dies. -/
 def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
@@ -268,7 +295,7 @@ theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool
   cases moved with
   | none =>
     dsimp only
-    exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
+    exact key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_zone _ t z) s
   | some n =>
     dsimp only
     rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
@@ -277,7 +304,7 @@ theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool
       key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
+      key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_zone _ t z)]
 
 /-- Killing an object that is on a zone other than `z`, when the Trash and the Banishment are not
 `z`, leaves `z` as it was. -/
@@ -479,17 +506,25 @@ def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
   Safe.modObj s id (fun _ => by split <;> rfl) (fun _ => by split <;> rfl)
 
-/-- The player gains XP (CR 728): it goes to their Legend. -/
+/-- The player gains XP (CR 728): it goes to their Legend, and the turn notes that they gained XP. -/
 def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
   match s.zone (.player p .legendZone) with
-  | l :: _ => s.modObj l (fun o => { o with xp := o.xp + n })
+  | l :: _ =>
+    let s1 := s.modObj l (fun o => { o with xp := o.xp + n })
+    if 0 < n then s1.addTurnFx p .gainedXP else s1
   | [] => s
 
 /-- Gaining XP is a safe change. -/
 theorem gainXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (gainXPOf n s p) := by
   unfold gainXPOf
   split
-  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+  · rename_i l tl hl
+    have h1 : Safe s (s.modObj l (fun o => { o with xp := o.xp + n })) :=
+      Safe.modObj s l (fun _ => rfl) (fun _ => rfl)
+    dsimp only
+    split
+    · exact h1.trans (addTurnFx_safe _ p _)
+    · exact h1
   · exact Safe.refl s
 
 /-- The players gain XP, one after the other. -/
@@ -502,6 +537,30 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
     Safe s (gainXPAll n s ps)
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
+
+/-- The player spends XP: it goes down, to 0 at the least. -/
+def spendXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
+  match s.zone (.player p .legendZone) with
+  | l :: _ => s.modObj l (fun o => { o with xp := o.xp - n })
+  | [] => s
+
+/-- Spending XP is a safe change. -/
+theorem spendXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (spendXPOf n s p) := by
+  unfold spendXPOf
+  split
+  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
+/-- The players spend XP, one after the other. -/
+def spendXPAll (n : Nat) : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, p :: ps => spendXPAll n (spendXPOf n s p) ps
+
+/-- Spending XP is a safe change, for any players. -/
+theorem spendXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
+    Safe s (spendXPAll n s ps)
+  | [], s => Safe.refl s
+  | p :: ps, s => (spendXPOf_safe n s p).trans (spendXPAll_safe n ps _)
 
 /-- The player recycles the top card of their Main Deck: it goes to the bottom (CR 417). -/
 def recycleTopOf (q : PlayerId) (s : GameState) : GameState :=
@@ -525,6 +584,39 @@ theorem recycleTopOf_safe (q : PlayerId) (s : GameState) : Safe s (recycleTopOf 
       exact ⟨fun hwf => GameState.wf_reorder hwf hv hp, fun _ => GameState.physIds_reorder hv hp,
         fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
     · exact Safe.refl s
+
+/-- The player swaps the top two cards of their Main Deck. -/
+def swapTopOf (q : PlayerId) (s : GameState) : GameState :=
+  match s.zone (.player q .mainDeck) with
+  | a :: b :: rest =>
+    if (Zone.player q .mainDeck).Valid s.playerCount then
+      s.reorder (.player q .mainDeck) (b :: a :: rest)
+    else s
+  | _ => s
+
+/-- Swapping the top two cards is a safe change. -/
+theorem swapTopOf_safe (q : PlayerId) (s : GameState) : Safe s (swapTopOf q s) := by
+  unfold swapTopOf
+  split
+  · rename_i a b rest hz
+    split
+    · rename_i hv
+      have hp : (b :: a :: rest).Perm (s.zone (.player q .mainDeck)) := by
+        rw [hz]; exact List.Perm.swap a b rest
+      exact ⟨fun hwf => GameState.wf_reorder hwf hv hp, fun _ => GameState.physIds_reorder hv hp,
+        fun _ hown => GameState.ownerOk_reorder hown hp, rfl⟩
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- The players swap the top two cards of their Main Deck, one after the other. -/
+def swapTopAll : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, q :: qs => swapTopAll (swapTopOf q s) qs
+
+/-- Swapping the top cards is a safe change. -/
+theorem swapTopAll_safe : ∀ (qs : List PlayerId) (s : GameState), Safe s (swapTopAll s qs)
+  | [], s => Safe.refl s
+  | q :: qs, s => (swapTopOf_safe q s).trans (swapTopAll_safe qs _)
 
 /-- The players recycle the top card of their Main Deck, one after the other. -/
 def recycleTopAll : GameState → List PlayerId → GameState
@@ -623,7 +715,7 @@ def enterBase (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : Gam
   -- the player who plays it controls it, even if the card is another player's (Blind Fury)
   let s2 := s.modObj id (fun o =>
     { (Object.freshPlay mk o).cleared with controller := p, buffed := mk.buff })
-  if d.hasType .unit && !rdy then (setExhausted true s2 id).1 else s2
+  if (d.hasType .unit && !rdy) || d.entersExhausted then (setExhausted true s2 id).1 else s2
 
 /-- Entering the Base is a safe change. -/
 theorem enterBase_safe (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool) (s : GameState)
@@ -1323,6 +1415,10 @@ theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).
 def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .damagePrevented && f.target == some id)
 
+/-- An effect of this turn doubles the damage dealt to the object. -/
+def GameState.doubleDmg (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .doubleDamage && f.target == some id)
+
 /-- The prevention of the next damage to the object is used up. -/
 def GameState.useShield (s : GameState) (id : ObjId) : GameState :=
   { s with turnFx := s.turnFx.eraseP (fun f =>
@@ -1335,7 +1431,9 @@ theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
 the next Cleanup (CR 323.4), not here. -/
-def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealObj (n0 : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+  -- an effect of the turn doubles the damage
+  let n := if s.doubleDmg id then n0 * 2 else n0
   match s.obj? id with
   | some _ =>
     -- an object whose passive ability says it takes no damage takes none
@@ -1359,6 +1457,8 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
   unfold dealObj
+  dsimp only
+  generalize (if s.doubleDmg id = true then n * 2 else n) = m
   split
   · split
     · exact Safe.refl s
@@ -1368,8 +1468,7 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n 
         · cases s.deathSaver id with
           | some g => exact saveUnit_safe s id g
           | none => exact Safe.refl s
-        · dsimp only
-          have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + n })) :=
+        · have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + m })) :=
             Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
           split
           · exact h1.trans (killOrSave_safe _ id)
@@ -1698,6 +1797,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .buff sel => onSelected s p src env sel buffObj
   | .gainXP ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
+  | .spendXP ps n =>
+    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (spendXPAll k s l, [])))
   | .channel ps n extra =>
     (ps.resolve s p).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
@@ -1762,6 +1863,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).map (fun l => (recycleTopAll s l,
       l.filterMap (fun q =>
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
+  | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .playBanishedWith =>
     some (applyEach (playFree p) s ((s.zone (.player p .banishment)).filter (fun id =>
@@ -1880,6 +1982,17 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
         exact gainXPAll_safe k l s
+  | spendXP ps n =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      cases hn : n.evalS s p src env with
+      | none => simp [hl, hn] at h
+      | some k =>
+        simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+        rw [← h]
+        exact spendXPAll_safe k l s
   | recycle sel =>
     simp only [applyPrim] at h
     cases hs : sel.eval s p src env with
@@ -1973,6 +2086,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hl, Option.map_some, Option.some.injEq] at h
       rw [← h]
       exact recycleTopAll_safe l s
+  | swapTop ps =>
+    simp only [applyPrim] at h
+    cases hl : ps.resolve s p with
+    | none => simp [hl] at h
+    | some l =>
+      simp only [hl, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact swapTopAll_safe l s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
   | playBanishedWith =>
     simp only [applyPrim, Option.some.injEq] at h
@@ -2481,7 +2602,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some k => (s, [.run p src (env.bind v (.int k)) (.cons e' .nil), .run p src env es], [])
     | none => skip
   | .ifThen c t e' =>
-    match c.eval s p src env with
+    match c.eval s p src (env.withMight s.mightTable) with
     | some b => (s, [.run p src env (.cons (if b then t else e') es)], [])
     | none => skip
   | .fillFromPick i =>

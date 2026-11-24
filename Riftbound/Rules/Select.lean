@@ -170,7 +170,8 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
-        | .nextSpellCostMinus _ | .nextUnitReady | .nextSpellRepeat | .nextGearFree _ =>
+        | .nextSpellCostMinus _ | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
+        | .nextGearFree _ =>
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
@@ -371,6 +372,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (((s.obj? id).map (fun o => o.scored.contains me && !o.held.contains me)).getD false)
   | .attackedByMine =>
     some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
+  | .myUnitsHere =>
+    some (match s.obj? self with
+      | some me =>
+        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
+          o.controller == me.controller))
+      | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>
@@ -440,6 +447,26 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let o ← s.obj? id
     pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
       (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
+  | .mightLtOf sel => do
+    let d ← match sel with
+      | .self => some self
+      | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
+      | _ => none
+    let m ← s.mightOf id
+    let m2 ← s.mightOf d
+    pure (decide (m + s.equipBonus id + s.buffBonus id + env.passOf id <
+      m2 + s.equipBonus d + s.buffBonus d + env.passOf d))
+  | .choosesOnly sel => do
+    let d ← match sel with
+      | .self => some self
+      | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
+      | _ => none
+    let dobj ← s.obj? d
+    let o ← s.obj? id
+    pure (o.targets.contains d && o.targets.all (fun t => t == d ||
+      !((s.obj? t).any (fun u => u.controller == dobj.controller))))
   | .attachedTo sel => do
     -- the object the selector names: `self`, a chosen object or a variable
     let d? : Option ObjId := match sel with
@@ -537,10 +564,25 @@ def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : En
 that says it can't be chosen by enemy spells and abilities (Ruin Runner). -/
 def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
   (s.obj? id).any (·.controller != p) &&
-    (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+    ((s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
       match ab with
       | Ability.passive .always mods => mods.contains (.cant .self .beChosen)
-      | _ => false))
+      | _ => false)) ||
+    -- an object of its controller says that some objects of theirs can't be chosen (Alpha Wildclaw)
+    s.inPlay.any (fun g =>
+      match s.obj? g, s.obj? id with
+      | some og, some o =>
+        og.controller == o.controller &&
+          (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
+            match ab with
+            | Ability.passive .always mods =>
+              mods.any (fun m => match m with
+                | .cant (.pick .all side place fs) .beChosen =>
+                  side.admits og.controller o && ((s.placeObjs g place).getD []).contains id &&
+                    FilterList.holds s g {} id fs == some true
+                | _ => false)
+            | _ => false))
+      | _, _ => false))
 
 /-- The objects of a side at a place that have the properties, for a choice made while an effect
 resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
@@ -785,6 +827,14 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
           (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
+  -- the Might the filters read: the printed Might, the buff, the Equipment and what the passive
+  -- abilities add (`env.passMight`; the Layers are defined after this)
+  | .mightOf sel =>
+    (sel.eval s p self env).map (fun ids =>
+      (ids.map (fun id =>
+        match s.mightOf id with
+        | some m => (m + s.equipBonus id + s.buffBonus id + env.passOf id).toNat
+        | none => 0)).sum)
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
@@ -929,6 +979,12 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
   | .discardedThisTurn =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
+  | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
+  | .beginningPhase => some (s.phase == .beginning)
+  | .spentOnSpell n =>
+    some (s.objects.toList.any (fun (k, o) =>
+      o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&
+        (s.cardDef? ⟨k⟩).any (·.hasType .spell)))
   | _ => none
 
 /-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
