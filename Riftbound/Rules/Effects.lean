@@ -373,8 +373,9 @@ theorem setExhausted_safe (b : Bool) (s : GameState) (id : ObjId) :
 /-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
 passive ability that says so. -/
 def readyBlocked (s : GameState) (id : ObjId) : Bool :=
-  (s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
-    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)
+  ((s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
+    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) ||
+  (s.obj? id).any (·.cantReady)
 
 /-- A spell or an ability readies an object, unless it cannot. -/
 def readyEffect (s : GameState) (id : ObjId) : GameState × List Event :=

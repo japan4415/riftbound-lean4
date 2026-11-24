@@ -156,6 +156,11 @@ structure Object where
   hiddenTurn : Option Nat := none
 deriving DecidableEq, Repr
 
+/-- The object has the mark that it can't be readied (Maduli): the effects that ready, and the
+Awaken Phase, leave it exhausted. -/
+def Object.cantReady (o : Object) : Bool := o.tagsGained.contains "!cantReady"
+
+
 /-- The object after it used an ability in the turn `turn` that chose the objects `ts`. -/
 def Object.noteChose (turn : Nat) (ts : List ObjId) (o : Object) : Object :=
   { o with chose := (if o.choseTurn == some turn then o.chose else []) ++ ts,

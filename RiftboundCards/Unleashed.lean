@@ -4146,8 +4146,17 @@ def UNL_144.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Maduli the Gatekeeper: the effect is not written yet. -/
-def UNL_144 : CardDef := UNL_144.meta
+/-- Maduli the Gatekeeper. -/
+def UNL_144 : CardDef :=
+  { UNL_144.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.prim (.gainTag .self "!cantReady"))) .unlimited,
+      .activated [.pay ⟨0, [.domain .chaos]⟩] .normal
+        (.of [.targetOf .one .any .atBattlefield [.ofType .battlefield, .enemyOccupied]]
+          (.ifThen (.cmp .gt (.mightOf .self)
+              (.mightOf (Selector.all .enemy .anywhere [.ofType .unit, .at_ (.slot 0)])))
+            (.prim (.move .self (.at_ (.slot 0)))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-145
 /--
