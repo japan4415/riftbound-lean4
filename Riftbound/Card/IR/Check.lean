@@ -55,6 +55,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
   | .costOf s => Selector.ok c s
+  | .powerCostOf s => Selector.ok c s
   | .xp => true
   | .pointsLeft => true
   | .victoryScore => true
@@ -175,6 +176,8 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .gainXP p n => p.ok c && Amount.ok c n
   | .becomeCopy s src => Selector.ok c s && Selector.ok c src
   | .addBattlefield _ => true
+  | .createAtPrev _ n _ => Amount.ok c n
+  | .cloneToken s => Selector.ok c s
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n

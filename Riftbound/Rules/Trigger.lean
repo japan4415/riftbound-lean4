@@ -355,6 +355,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
       triggersOf s bf p (if conquer then .youConquer else .youHold)
     -- the effects fire one more time if a unit there says so
     eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
+    -- what the opponents of the player who scores wait for
+    s.passiveSources.flatMap (fun u =>
+      match s.obj? u with
+      | some o => if o.controller != p then triggersOf s u o.controller .opponentScores else []
+      | none => []) ++
     -- the cards in the Trash that wait for a conquer of their player
     (if conquer then
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)

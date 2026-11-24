@@ -220,6 +220,10 @@ def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
 def GameState.cantPlay (s : GameState) (p : PlayerId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsCantPlay && f.who != p)
 
+/-- The player cannot play Spells now, by an effect of this turn that is an opponent's. -/
+def GameState.noSpells (s : GameState) (p : PlayerId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsNoSpells && f.who != p)
+
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .preventEffectDamage)
@@ -903,6 +907,15 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       | _ => none
     let energy (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.energy)).getD 0
     ids.map (fun l => (l.map energy).sum)
+  | .powerCostOf sel =>
+    -- the Power symbols in the cost of the card a selector names: a chosen object or a variable
+    let ids : Option (List ObjId) := match sel with
+      | .self => some [self]
+      | .slot i => match env.slots[i]? with | some (.obj o) => some [o] | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some [o] | _ => none
+      | _ => none
+    let sym (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.power.length)).getD 0
+    ids.map (fun l => (l.map sym).sum)
   | .points ps => do
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)

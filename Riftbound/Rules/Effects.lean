@@ -1776,6 +1776,48 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | onChain => simp at h
       | onChainAll => simp at h
 
+/-- Play tokens at the Battlefield the object left by its last move, or at the Base (Lillia). -/
+def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
+    (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
+  (n.evalS s p src env).bind (fun k =>
+    (s.tokenCard name).map (fun c =>
+      let r := createN c.id p ((s.obj? src).bind (·.prevLoc)) (ready || s.tokenReady p c) k s
+      (buffNewTokens s r p, tokenPlays s r p)))
+
+/-- Playing tokens at the place an object came from is a safe change. -/
+theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {name : String} {n : Amount} {ready : Bool} {r : GameState × List Event}
+    (h : applyCreateAtPrev s p src env name n ready = some r) : Safe s r.1 := by
+  unfold applyCreateAtPrev at h
+  cases hn : n.evalS s p src env with
+  | none => simp [hn] at h
+  | some k =>
+    simp only [hn, Option.bind_some] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+
+/-- Play one more token like the one the object is, where it is. -/
+def cloneTok (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    match o.kind with
+    | .token c => (createOne c o.controller o.loc (!o.exhausted) s, [])
+    | _ => (s, [])
+  | none => (s, [])
+
+/-- Playing a copy of a token is a safe change. -/
+theorem cloneTok_safe (s : GameState) (id : ObjId) : Safe s (cloneTok s id).1 := by
+  unfold cloneTok
+  split
+  · split
+    · exact createOne_safe _ _ _ _ s
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
@@ -1927,6 +1969,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
+  | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
+  | .cloneToken sel => onSelected s p src env sel cloneTok
   | .becomeCopy sel from_ =>
     match from_.eval s p src env with
     | some (c :: _) => onSelected s p src env sel (becomeCopyOf c)
@@ -2170,6 +2214,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | cons c _ =>
         simp only [hf] at h
         exact onSelected_safe (becomeCopyOf_safe c) h
+  | createAtPrev name n ready =>
+    simp only [applyPrim] at h
+    exact applyCreateAtPrev_safe h
+  | cloneToken sel => exact onSelected_safe cloneTok_safe h
   | addBattlefield name =>
     simp only [applyPrim] at h
     cases ht : s.tokenCard name with

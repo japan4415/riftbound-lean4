@@ -802,7 +802,7 @@ it, in the Main Phase (CR 349, 355, 356, 357). The card must also be in the hand
 states apart. -/
 def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) : Bool :=
-  s.phase == .main && !s.cantPlay p &&
+  s.phase == .main && !s.cantPlay p && !s.noSpells p &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
@@ -1082,7 +1082,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       s.paysForXT p c d cost targets pay = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨⟨hph, -⟩, hrest⟩ := h
+  obtain ⟨⟨⟨hph, -⟩, -⟩, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>

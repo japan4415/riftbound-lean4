@@ -66,6 +66,7 @@ def Amount.understood : Amount → Bool
   | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
+  | .powerCostOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
   | .sub a b => Amount.understood a && Amount.understood b
   | .mul a b => Amount.understood a && Amount.understood b
@@ -99,6 +100,7 @@ def Amount.understoodC : Amount → Bool
   | .notes _ => true
   | .energyPaid => true
   | .costOf s => s.understood
+  | .powerCostOf s => s.understood
   | .mightOf s => Selector.understood s
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
@@ -324,6 +326,8 @@ def Prim.understood : Prim → Bool
   | .gainXP p n => p.understood && n.understood
   | .becomeCopy s src => s.understood && src.understood
   | .addBattlefield _ => true
+  | .createAtPrev _ n _ => n.understood
+  | .cloneToken s => s.understood
   | .spendXP p n => p.understood && n.understood
   | _ => false
 
@@ -472,6 +476,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
       | .hide => t.subject == .self
+      | .opponentScores => t.subject == .self
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true

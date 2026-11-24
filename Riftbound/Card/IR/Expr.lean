@@ -38,6 +38,8 @@ inductive Amount where
   | mightOf (s : Selector)
   /-- The Energy cost of an object. -/
   | costOf (s : Selector)
+  /-- The number of Power symbols in the cost of an object. -/
+  | powerCostOf (s : Selector)
   /-- The XP of the player the effect belongs to. -/
   | xp
   /-- How many points the player still needs to win. -/

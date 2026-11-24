@@ -138,6 +138,8 @@ inductive TurnEffect where
   | buffsExtraMight
   /-- The opponents of the player cannot play cards this turn. -/
   | opponentsCantPlay
+  /-- The opponents of the player cannot play Spells this turn (Lilting Lullaby). -/
+  | opponentsNoSpells
   /-- A note for the turn that the object (a Battlefield) was conquered by the player. -/
   | conqueredHere
   /-- The unit is to be recalled the next time it dies this turn (Unlicensed Armory). -/

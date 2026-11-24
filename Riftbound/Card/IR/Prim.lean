@@ -145,6 +145,11 @@ inductive Prim where
   | becomeCopy (s src : Selector)
   /-- Add the Battlefield token to the board, if it is not there already (Baron Pit). -/
   | addBattlefield (token : String)
+  /-- Play `n` tokens at the place the object came from by its last move: the Battlefield it left,
+  else the Base (Lillia). -/
+  | createAtPrev (token : String) (n : Amount) (ready : Bool)
+  /-- Play an additional copy of each token the selector names, where it is (Zilean). -/
+  | cloneToken (s : Selector)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
@@ -274,6 +279,8 @@ inductive TriggerEvent where
   | recycleRune
   /-- The player hid a card (it went face down at a Battlefield). -/
   | hide
+  /-- An opponent of the player scores (a Battlefield is conquered or held). -/
+  | opponentScores
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
