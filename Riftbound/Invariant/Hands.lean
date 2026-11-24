@@ -350,7 +350,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · exact List.mem_cons_of_mem _ h1
   · rename_i p n rest src idx pay ts hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]
@@ -372,7 +372,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
   · rename_i p rest src idx pay ts hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]

@@ -2547,6 +2547,17 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
     (activate s3 s.me g 0 [u, u] ⟨0, [.order]⟩).isNone &&
     (activate s2 s.me g 0 [u] ⟨0, [.order]⟩).isNone
 
+-- (cost) The unit is killed as the ability is used, before the Chain resolves: the Equip is still
+-- on the Chain, the Blade is not attached yet, and the unit is already dead
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-178" .base
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, v) ← put s2 s.me "OGN-136" .base
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate g 0 ⟨0, [.order]⟩ [u, v]⟩ with
+  | .ok (a, _) =>
+    return (a.obj? v).isNone && (a.obj? g).any (·.attached == none) && !(a.zone .chain).isEmpty
+  | .error _ => return false
+
 -- Edge of Night (SFD-139): when played from face down, attach it to a unit its player controls
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-139" .base
