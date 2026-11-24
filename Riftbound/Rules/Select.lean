@@ -697,11 +697,37 @@ def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
     | some _ => some []
     | none => s.runeCover p pay)
 
+/-- The Power in the Pool of the player that only pays for Gear this turn (Fire Below the Mountain
+adds one): it is not more than what is in the Pool. -/
+def GameState.restrictedNow (s : GameState) (p : PlayerId) : Nat :=
+  min (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == .gearMana)).length
+    (s.poolOf p).any
+
+/-- The Pool of the player after paying: what is paid must leave the Power that only pays for Gear,
+unless it is Gear that is played or used. -/
+def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RunePool.Payment) :
+    Option RunePool :=
+  ((s.poolOf p).spend pay).filter (fun q => gear || decide (s.restrictedNow p ≤ q.any))
+
+/-- A payment that the Pool allows is a payment the Pool makes. -/
+theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
+    {pay : RunePool.Payment} {q : RunePool} (h : s.spendFor p g pay = some q) :
+    (s.poolOf p).spend pay = some q := by
+  unfold GameState.spendFor at h
+  cases hs : (s.poolOf p).spend pay with
+  | none => simp [hs] at h
+  | some q' =>
+    simp only [hs, Option.filter] at h
+    split at h
+    · simpa using h
+    · simp at h
+
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
 Power the cost may name), if it can: the first payment that the Pool has. -/
 def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) : Option RunePool :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
-  (c.payments own).findSome? (fun pay => (s.poolOf p).spend pay)
+  (c.payments own).findSome? (fun pay =>
+    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay)
 
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in

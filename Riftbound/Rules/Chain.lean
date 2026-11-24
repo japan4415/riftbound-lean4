@@ -159,6 +159,8 @@ inductive ManaKind where
   | power (d : Domain) (n : Nat)
   /-- Power of any domain. -/
   | any (n : Nat)
+  /-- Power of any domain that only pays for Gear this turn (Fire Below the Mountain). -/
+  | gear (n : Nat)
 deriving DecidableEq, Repr
 
 /-- The Pool after adding. -/
@@ -166,6 +168,7 @@ def ManaKind.add : ManaKind → RunePool → RunePool
   | .energy n, p => p.addEnergy n
   | .power d n, p => p.addPower d n
   | .any n, p => p.addAny n
+  | .gear n, p => p.addAny n
 
 /-- The effect is an Add of a fixed amount, to the player, with no restriction. -/
 def manaKind (body : EffectDef) : Option ManaKind :=
@@ -173,6 +176,9 @@ def manaKind (body : EffectDef) : Option ManaKind :=
   | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
   | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
   | [], .prim (.addPower .you (.const n) none none) => some (.any n)
+  -- the Power of Fire Below the Mountain: it pays only for Gear
+  | [], .seq (.cons (.prim (.addPower .you (.const n) none none))
+      (.cons (.prim (.turnEffect .gearMana)) .nil)) => some (.gear n)
   -- an Add that works only while a condition holds: it is used only then (`guardOk`)
   | [], .ifThen _ (.prim (.addEnergy .you (.const n) none)) .nop => some (.energy n)
   | [], .ifThen _ (.prim (.addPower .you (.const n) (some d) none)) .nop => some (.power d n)
@@ -200,7 +206,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                 (match pc with
                   | some c => c.paidBy d.domains pay
                   | none => pay == ⟨0, []⟩) &&
-                ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool ts) &&
+                (s.spendFor p (d.hasType .gear) pay).any (fun pool => s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true
                   | .perTurn n => decide (o.used.count idx < n)) &&
@@ -347,9 +353,10 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
             · simp [hm] at h
             simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hpool := h.1.1.2
-            cases hs : (s.poolOf p).spend pay with
-            | none => rw [hs] at hpool; simp at hpool
+            cases hsf : s.spendFor p (d.hasType .gear) pay with
+            | none => rw [hsf] at hpool; simp at hpool
             | some pool =>
+              have hs := GameState.spendFor_eq_some hsf
               unfold applyActivate
               simp only [hd, hs, ha]
               have hv : (Zone.chain).Valid s.playerCount ∧ Zone.chain.fits

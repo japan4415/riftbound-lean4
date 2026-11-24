@@ -165,6 +165,9 @@ inductive TurnEffect where
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
   | cardDiscarded
+  /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
+  playing a Gear or using an ability of a Gear this turn. -/
+  | gearMana
 deriving DecidableEq, Repr, Hashable
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
