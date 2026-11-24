@@ -2539,10 +2539,12 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s1, g) ← put s s.me "SFD-178" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
   let (s3, v) ← put s2 s.me "OGN-136" .base
-  let r ← activate s3 s.me g 0 [u] ⟨0, [.order]⟩
-  let w ← activate s3 s.me g 0 [u] ⟨0, [.order]⟩ { obj := fun o => o == u }
+  let r ← activate s3 s.me g 0 [u, v] ⟨0, [.order]⟩
+  let w ← activate s3 s.me g 0 [v, u] ⟨0, [.order]⟩
   return (r.obj? g).any (·.attached == some u) && (r.obj? u).isSome && (r.obj? v).isNone &&
-    (w.obj? u).isSome && (w.obj? v).isNone &&
+    (w.obj? v).isSome && (w.obj? u).isNone && (r.obj? g).any (·.attached == some u) &&
+    -- the unit to kill is chosen with the ability, and cannot be the unit it is attached to
+    (activate s3 s.me g 0 [u, u] ⟨0, [.order]⟩).isNone &&
     (activate s2 s.me g 0 [u] ⟨0, [.order]⟩).isNone
 
 -- Edge of Night (SFD-139): when played from face down, attach it to a unit its player controls
