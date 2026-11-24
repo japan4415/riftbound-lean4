@@ -140,6 +140,9 @@ inductive Prim where
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)
+  /-- The tokens the first selector names become copies of the object the second names: they have
+  its card (Reflection). -/
+  | becomeCopy (s src : Selector)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
@@ -381,6 +384,9 @@ inductive StaticMod where
   | anyBuffs
   /-- The friendly Units can be played to an open Battlefield. -/
   | playToOpenBf
+  /-- The units of the player can be played to the Battlefields that have the properties (Arachnoid
+  Horror: to an occupied one with an enemy unit alone there). -/
+  | playToBfAll (fs : List Filter)
   /-- One more card can be hidden at this Battlefield. -/
   | extraHide
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/

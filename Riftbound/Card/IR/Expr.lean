@@ -185,6 +185,9 @@ inductive Filter where
   | enemyOccupied
   /-- Is a Battlefield where a unit of the player the effect belongs to is (Ambush). -/
   | myUnitsHere
+  /-- Is a Battlefield where exactly one unit of the other players is, and no other of theirs
+  (an enemy unit is alone there). -/
+  | enemyAlone
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/
   | controlled
   /-- Is the object a selector names (`self`, a chosen object or a variable). -/

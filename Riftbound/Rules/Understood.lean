@@ -157,6 +157,7 @@ def Filter.understood : Filter → Bool
   | .unitsPlayable => true
   | .attackedByMine => true
   | .myUnitsHere => true
+  | .enemyAlone => true
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
@@ -320,6 +321,7 @@ def Prim.understood : Prim → Bool
   | .stun s => s.understoodPick
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
+  | .becomeCopy s src => s.understood && src.understood
   | .spendXP p n => p.understood && n.understood
   | _ => false
 
@@ -410,8 +412,10 @@ def StaticMod.runs : StaticMod → Bool
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
+  | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true
   | .noReadyOfOpps => true
+  | .ignoreKeyword .temporary .here => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .triggersExtra .conquer .here => true

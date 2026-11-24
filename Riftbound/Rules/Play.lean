@@ -420,6 +420,16 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
           mods.filterMap (fun m =>
             match m with | .playToBf fs => some (FilterList.ofList fs) | _ => none)
         | _ => [])
+      -- the units of the player can be played to the Battlefields another object of theirs names
+      let granted : List FilterList := s.inPlay.flatMap (fun g =>
+        if (s.obj? g).any (·.controller == p) then
+          ((s.cardDef? g).map (fun dg => dg.abilities.flatMap (fun ab =>
+            match ab with
+            | Ability.passive .always mods =>
+              mods.filterMap (fun m =>
+                match m with | .playToBfAll fs => some (FilterList.ofList fs) | _ => none)
+            | _ => []))).getD []
+        else [])
       let permit := (s.inPlay ++ s.zone (.player p .legendZone)).any (fun g =>
         (s.obj? g).any (·.controller == p) &&
           FilterList.holds s c Env.empty g (FilterList.ofList [.permitsOpenPlay]) == some true)
@@ -432,7 +442,7 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
           !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
           FilterList.holds s c Env.empty b
             (FilterList.ofList [.ofType .battlefield, .unitsPlayable]) == some true &&
-          (own ++ open_ ++ ambush).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
+          (own ++ open_ ++ ambush ++ granted).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
     else []
   | none => []
 

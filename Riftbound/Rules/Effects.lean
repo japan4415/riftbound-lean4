@@ -1313,6 +1313,53 @@ def giveBack (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- The object after it becomes a copy of an object of the kind: a token has the card of it. A card
+stays what it is. -/
+def copyKind (ok : ObjKind) (x : Object) : Object :=
+  match x.kind, ok with
+  | .token _, .card _ c => { x with kind := .token c }
+  | .token _, .token c => { x with kind := .token c }
+  | _, _ => x
+
+/-- Becoming a copy keeps the physical card and the owner. -/
+theorem copyKind_phys (ok : ObjKind) (x : Object) :
+    (copyKind ok x).kind.phys? = x.kind.phys? ∧ (copyKind ok x).owner = x.owner := by
+  unfold copyKind
+  split <;> simp_all [ObjKind.phys?]
+
+/-- A token becomes a copy of another object: it has its card. A card stays what it is. -/
+def becomeCopyOf (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? src with
+  | some o => (s.modObj id (copyKind o.kind), [])
+  | none => (s, [])
+
+/-- A change of one object that keeps its owner and the physical card it has (a token that
+changes its card). -/
+theorem Safe.modObjPhys (s : GameState) (id : ObjId) {f : Object → Object}
+    (hk : ∀ o, (f o).kind.phys? = o.kind.phys?) (ho : ∀ o, (f o).owner = o.owner) :
+    Safe s (s.modObj id f) :=
+  ⟨fun h => GameState.wf_modObj h id f, fun _ => by
+    have : (s.modObj id f).physIds = s.physIds := by
+      unfold GameState.physIds
+      apply filterMap_congr_mem
+      intro x _
+      rw [GameState.obj?_modObj]
+      by_cases h : id.n = x.n
+      · have hx : id = x := by cases id; cases x; simp_all
+        subst hx
+        cases s.obj? id <;> simp [hk]
+      · simp [h]
+    rw [this],
+    fun _ h => GameState.ownerOk_modObj h id ho, GameState.sameMeta_modObj s id f⟩
+
+/-- Becoming a copy is a safe change. -/
+theorem becomeCopyOf_safe (src : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (becomeCopyOf src s id).1 := by
+  unfold becomeCopyOf
+  split
+  · exact Safe.modObjPhys s id (fun x => (copyKind_phys _ x).1) (fun x => (copyKind_phys _ x).2)
+  · exact Safe.refl s
+
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let s1 := s.modObj id (fun o => { o with controller := p })
@@ -1865,6 +1912,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
+  | .becomeCopy sel from_ =>
+    match from_.eval s p src env with
+    | some (c :: _) => onSelected s p src env sel (becomeCopyOf c)
+    | _ => none
   | .playBanishedWith =>
     some (applyEach (playFree p) s ((s.zone (.player p .banishment)).filter (fun id =>
       (s.obj? id).any (·.banishedWith == some src) && (s.cardDef? id).any (·.hasType .unit))))
@@ -2094,6 +2145,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hl, Option.map_some, Option.some.injEq] at h
       rw [← h]
       exact swapTopAll_safe l s
+  | becomeCopy sel from_ =>
+    simp only [applyPrim] at h
+    cases hf : from_.eval s p src env with
+    | none => simp [hf] at h
+    | some l =>
+      cases l with
+      | nil => simp [hf] at h
+      | cons c _ =>
+        simp only [hf] at h
+        exact onSelected_safe (becomeCopyOf_safe c) h
   | takeControl sel => exact onSelected_safe (setController_safe p) h
   | playBanishedWith =>
     simp only [applyPrim, Option.some.injEq] at h

@@ -378,6 +378,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
           o.controller == me.controller))
       | none => false)
+  | .enemyAlone =>
+    some (match s.obj? self with
+      | some me =>
+        ((s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some id &&
+          o.controller != me.controller) && (s.cardDef? u).any (·.hasType .unit))).length == 1
+      | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>
@@ -497,7 +503,16 @@ def Side.admits (p : PlayerId) (side : Side) (o : Object) : Bool :=
 (CR 106). -/
 def GameState.hereOf (s : GameState) (self : ObjId) : Option ObjId :=
   match s.obj? self with
-  | some o => if (s.cardDef? self).any (·.hasType .battlefield) then some self else o.loc
+  | some o =>
+    if (s.cardDef? self).any (·.hasType .battlefield) then some self
+    else
+      match o.loc with
+      | some l => some l
+      | none =>
+        -- a Legend is "there" at the Battlefield its player has just scored (Deceiver)
+        if (s.cardDef? self).any (·.hasType .legend) then
+          (s.zone .battlefieldZone).find? (fun b => (s.obj? b).any (·.scored.contains o.controller))
+        else none
   | none => none
 
 /-- The objects a place can hold, if the place is understood. `self` is the object the effect

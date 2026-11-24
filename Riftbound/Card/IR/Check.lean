@@ -173,6 +173,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
   | .gainXP p n => p.ok c && Amount.ok c n
+  | .becomeCopy s src => Selector.ok c s && Selector.ok c src
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n
@@ -250,6 +251,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
+  | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .noPlayToBase => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true
