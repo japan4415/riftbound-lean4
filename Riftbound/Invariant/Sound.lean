@@ -97,9 +97,11 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i p n rest c pay ts hp hk
     rw [hp, hk] at hl
     refine reactStep_isSome hwf hl.2.1 ?_
-    rcases (reactable_spec.mp hl.2.2).1 with h | h
+    rcases (reactable_spec.mp hl.2.2).1 with (h | h) | h
     · exact Or.inl h
-    · exact Or.inr h.2.2
+    · exact Or.inr ⟨none, h.2.2⟩
+    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
+      exact Or.inr ⟨some b, hb⟩
   · rename_i p n rest src idx pay ts hp hk
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2

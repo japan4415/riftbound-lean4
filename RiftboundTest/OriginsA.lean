@@ -3578,25 +3578,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
 -- an occupied battlefield)
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-193" .hand
-  let a ← activate s1 s.me c 0 [s.bf0] (payOf s1 c)
+  let a ← play s1 s.me c [s.bf0]
   let (t1, _) ← put s s.me "OGN-193" .base
   let (t2, u) ← put t1 s.me "OGN-136" .hand
-  let viaMf ← activate t2 s.me u 2 [s.bf0] (payOf t2 u)
+  let viaMf ← play t2 s.me u [s.bf0]
   let (v1, w) ← put s s.me "OGN-136" .hand
-  let without := activate v1 s.me w 2 [s.bf0] (payOf v1 w)
+  let without := play v1 s.me w [s.bf0]
   let (x1, y) ← put t1 s.you "OGN-136" .hand
-  let theirs := activate x1 s.you y 2 [s.bf0] (payOf x1 y)
+  let theirs := play x1 s.you y [s.bf0]
   let b1 := t2.control s.you s.bf0
-  let busy := activate b1 s.me u 2 [s.bf0] (payOf b1 u)
+  let busy := play b1 s.me u [s.bf0]
   -- the opponent's "can't play cards" and a Mageseeker Warden both stop it
   let (w1, _) ← putAt t2 s.you "OGN-070" s.bf0
-  let warded := activate w1 s.me u 2 [s.bf0] (payOf w1 u)
-  let noPlay := activate (t2.addTurnFx s.you .opponentsCantPlay) s.me u 2 [s.bf0] (payOf t2 u)
-  let noPlayMf := activate (s1.addTurnFx s.you .opponentsCantPlay) s.me c 0 [s.bf0] (payOf s1 c)
+  let warded := play w1 s.me u [s.bf0]
+  let noPlay := play (t2.addTurnFx s.you .opponentsCantPlay) s.me u [s.bf0]
+  let noPlayMf := play (s1.addTurnFx s.you .opponentsCantPlay) s.me c [s.bf0]
   -- a Miss Fortune in the hand does not let other units go
   let (h1, _) ← put s s.me "OGN-193" .hand
   let (h2, hu) ← put h1 s.me "OGN-136" .hand
-  let inHand := activate h2 s.me hu 2 [s.bf0] (payOf h2 hu)
+  let inHand := play h2 s.me hu [s.bf0]
   return (a.zone .battlefieldZone).any (fun x => (a.cardDef? x).any (·.id == cid "OGN-193")) &&
     (viaMf.zone .battlefieldZone).any (fun x => (viaMf.cardDef? x).any (·.id == cid "OGN-136") &&
       (viaMf.obj? x).any (·.loc == some s.bf0)) &&

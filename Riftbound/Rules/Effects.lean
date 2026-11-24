@@ -1021,63 +1021,6 @@ theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := b
     · exact Safe.refl s
   · exact Safe.refl s
 
-/-- The Battlefield is Contested by the player if the player does not control it (CR 190.3). A
-Battlefield that is Contested already keeps the player who made it so: the rule that a Unit cannot
-be moved to a Battlefield with a Combat in progress (CR 449.2.a) is not written yet. -/
-def contestFor (p : PlayerId) (bf : ObjId) (s : GameState) : GameState :=
-  if (s.obj? bf).bind (·.control) = some p ∨ ((s.obj? bf).bind (·.contested)).isSome then s
-  else s.modObj bf (fun b => { b with contested := some p })
-
-/-- Contesting is a safe change. -/
-theorem contestFor_safe (p : PlayerId) (bf : ObjId) (s : GameState) :
-    Safe s (contestFor p bf s) := by
-  unfold contestFor
-  split
-  · exact Safe.refl s
-  · exact Safe.modObj s bf (fun _ => rfl) (fun _ => rfl)
-
-/-- Move a Unit to a Battlefield by an effect (CR 447): it is not exhausted, and it stays where it
-is if it is there already. Its controller contests the Battlefield. -/
-def sendToBf (bf : ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
-  match s.obj? u with
-  | some o =>
-    if o.loc = some bf then (s, [])
-    else if u ∈ s.zone .battlefieldZone then
-      (contestFor o.controller bf
-        (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
-        [Event.standardMoved u (some bf)])
-    else
-      match moveObj s u .battlefieldZone with
-      | some r =>
-        (contestFor o.controller bf
-          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
-          [Event.standardMoved r.2 (some bf)])
-      | none => (s, [])
-  | none => (s, [])
-
-/-- Moving to a Battlefield is a safe change. -/
-theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToBf bf s u).1 := by
-  unfold sendToBf
-  split
-  · split
-    · exact Safe.refl s
-    · split
-      · rename_i o ho hl hz
-        have h1 : Safe s
-            (s.modObj u
-              (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
-          Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
-        exact h1.trans (contestFor_safe _ _ _)
-      · split
-        · rename_i o ho hl hz r hm
-          have h1 : Safe r.1
-              (r.1.modObj r.2
-                (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
-            Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
-          exact ((Safe.moveObj hm).trans h1).trans (contestFor_safe _ _ _)
-        · exact Safe.refl s
-  · exact Safe.refl s
-
 /-- Move a Unit to the Base of its controller by an effect, unless the Battlefield it is at
 forbids it (CR 447). -/
 def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=

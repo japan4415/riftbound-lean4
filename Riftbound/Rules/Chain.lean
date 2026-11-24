@@ -532,7 +532,8 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 (CR 813). A Unit or a Gear is played at once. -/
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) : Bool :=
-  (castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay)) &&
+  (castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay) ||
+      bfPlayOk s p c pay ts) &&
     reactSpell s c
 
 /-- Every way the player can use an activated ability: each object they use abilities of, each
@@ -615,8 +616,9 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} : reactable s p c pay ts = true ↔
-      (castable s p c pay ts = true ∨
-        (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay = true)) ∧
+      ((castable s p c pay ts = true ∨
+        (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay = true)) ∨
+        bfPlayOk s p c pay ts = true) ∧
         reactSpell s c = true := by
   simp [reactable, List.isEmpty_iff, and_assoc]
 
@@ -631,9 +633,10 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     exact ⟨c, pay, ts, rfl, hc, hr⟩
   · rintro ⟨c, pay, ts, rfl, hc, hr⟩
     refine ⟨⟨c, pay, ts, rfl, hc, ?_⟩, hr⟩
-    rcases (reactable_spec.mp hr).1 with h | h
-    · exact Or.inr h
+    rcases (reactable_spec.mp hr).1 with (h | h) | h
+    · exact Or.inr (Or.inl h)
     · exact Or.inl ⟨h.2.1, h.2.2⟩
+    · exact Or.inr (Or.inr h)
 
 /-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/
 def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
@@ -767,47 +770,50 @@ stack in place of the frame that was answered. -/
 def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (new : List Frame) : Option (GameState × List Event) :=
   if castable s p c pay ts = true then castStep s p c pay ts new
-  else (applyPlay s p c pay).map (fun r => ({ r.1 with pending := new }, r.2))
+  else ((applyPlay s p c pay).bind (fun r => payExtra s c ts r)).map
+    (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- What answering with a card does. -/
 theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : reactStep s p c pay ts new = some (s', es)) :
     (∃ s2 es2, applyCast s p c pay ts = some (s2, es2) ∧ s' = { s2 with pending := new }) ∨
-    (∃ s2 es2, applyPlay s p c pay = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
+    (∃ s1 es1 s2 es2, applyPlay s p c pay = some (s1, es1) ∧
+      payExtra s c ts (s1, es1) = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
   split at h
   · exact Or.inl (castStep_cases h)
-  · simp only [Option.map_eq_some_iff] at h
-    obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
-    simp only [Prod.mk.injEq] at hr
-    exact Or.inr ⟨s2, es2, hm, hr.1.symm⟩
+  · simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+    obtain ⟨⟨s2, es2⟩, ⟨r, hr, h2⟩, hr2⟩ := h
+    simp only [Prod.mk.injEq] at hr2
+    exact Or.inr ⟨r.1, r.2, s2, es2, hr, h2, hr2.1.symm⟩
 
 /-- Answering the Chain keeps the game well formed. -/
 theorem reactStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : reactStep s p c pay ts new = some (s', es)) : s'.WF := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · exact (applyCast_wf hwf hm).congr rfl rfl rfl rfl
-  · exact (applyPlay_wf hwf hm).congr rfl rfl rfl rfl
+  · exact ((payExtra_safe hx).wf (applyPlay_wf hwf hm)).congr rfl rfl rfl rfl
 
 /-- Answering the Chain keeps the physical cards. -/
 theorem reactStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : reactStep s p c pay ts new = some (s', es)) : s'.physIds.Perm s.physIds := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · have h2 := applyCast_physIds hwf hm
     exact h2
   · have h2 := applyPlay_physIds hwf hm
-    exact h2
+    exact ((payExtra_safe hx).phys (applyPlay_wf hwf hm)).trans h2
 
 /-- Answering the Chain keeps `OwnerOk`. -/
 theorem reactStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : reactStep s p c pay ts new = some (s', es)) : s'.OwnerOk := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · exact (applyCast_ownerOk hwf hown hm).congr rfl rfl
-  · exact (applyPlay_ownerOk hwf hown hm).congr rfl rfl
+  · exact ((payExtra_safe hx).own (applyPlay_wf hwf hm) (applyPlay_ownerOk hwf hown hm)).congr rfl
+      rfl
 
 /-- Answering the Chain changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
@@ -816,26 +822,30 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     (h : reactStep s p c pay ts new = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
     exact ⟨h1, h2, h3, h4, h6, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyPlay_meta hm
-    exact ⟨h1, h2, h3, h4, h6, rfl⟩
+    have hs := (payExtra_safe hx).same
+    exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
+      (congrArg GameState.cards hs).trans h6, rfl⟩
 
 /-- A card of the hand that can be cast, or played, can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.zone (.player p .hand))
-    (h : castable s p c pay ts = true ∨ playable s p c pay = true) :
+    (h : castable s p c pay ts = true ∨ ∃ dest, playable s p c pay dest = true) :
     ∃ r, reactStep s p c pay ts new = some r := by
   unfold reactStep
   split
   · rename_i hk
     exact castStep_isSome hwf hc hk
   · rename_i hk
-    rcases h with h | h
+    rcases h with h | ⟨dest, h⟩
     · exact absurd h hk
     · obtain ⟨r, hr⟩ := applyPlay_isSome hwf hc h
-      exact ⟨_, by rw [hr]; rfl⟩
+      obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
+      refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
+      simp [hr, hr']
 
 /-! ### I9: the Chain is last in, first out (CR 340.1) -/
 
