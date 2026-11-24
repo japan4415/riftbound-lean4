@@ -38,6 +38,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .opponent => true
   | .eachPlayer => true
   | .eachOpponent => true
+  | .controllerOf _ => true
   | _ => false
 
 mutual

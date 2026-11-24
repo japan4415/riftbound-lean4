@@ -2495,8 +2495,7 @@ def SFD_084 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .gear]]
         (.may (.seqOf [.prim (.kill (.slot 0)),
-          .may (.prim (.playPaying (Selector.one .friendly .inHand
-            [.ofType .gear, .cost .le (.const 7)])))]))) .unlimited],
+          .prim (.turnEffect (.nextGearFree 7))]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-085
@@ -4015,7 +4014,7 @@ def SFD_136 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .enemy .onChain [.ofType .spell]]
       (.ifThen (.exists (Selector.all .any .onChain [.sameAs (.slot 0)]))
-        (.eachPlayer .eachOpponent
+        (.eachPlayer (.controllerOf 0)
           (.ifThen (.canPay ⟨2, []⟩)
             (.eitherOf (EffectList.ofList
               [.prim (.pay ⟨2, []⟩), .prim (.counter (.slot 0))]))

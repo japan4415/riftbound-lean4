@@ -1933,3 +1933,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Not So Fast（SFD-045）**: 呪文だけでなく、味方のユニットかギアを選ぶ敵の能力も、打ち消せる（`Place.onChainAll`。打ち消された能力は、消える。`counterObj`）。
 - **Arise!（SFD-198）**: 作った Sand Soldier のうち 2 体が、ready で出る（残りは exhausted）。以前は、前からいる exhausted の Sand Soldier を ready にしていた。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 47 — Jayce、Hard Bargain、hold の点
+
+- **Jayce（SFD-084）**: ギアを殺したあと、そのターンの間、手札から遊ぶ次のギア（Energy コストが 7 以下）は、Energy 0 で遊べる（`TurnEffect.nextGearFree`、`costCuts`）。以前は、その場で遊んでいた。Power は払う。ギアを 1 つ遊ぶと、使い切る。
+- **Hard Bargain（SFD-136）**: 払う側は、打ち消される呪文の持ち主（`PlayerSel.controllerOf`）。以前は、すべての相手。
+- **hold の点**: 得点が止められた（Tianna）Battlefield は、「hold で得た点」に数えない（`markScored`）。
+- **Fire Below the Mountain**: ギア専用の印は、Add するとき、すでに使った分を、引く（`trimGear`）。
+- **近似でないと確かめたもの**: Ruin Runner（「選べない」を与えるカードは、ほかに無い）。Altar of Memories（リサイクルは、山札の底へ置く）。Hostile Takeover（Ending フェーズの始まりより後に作った遅延誘発は、規則でも誘発しない）。
+- **まだ**: Void Rush が、見たカードの呪文を遊べない（呪文は、対象を選んで、Chain に載せる遊び方が、効果の中から、まだできない）。Fire Below the Mountain の専用の Power を、ギアで使ったとき、残りの扱いが、厳密ではない（新しく Add した Power を、制限しない、ただし、残りは、制限したままにする）。Temporal Portal を 2 回使ったときの Repeat（規則が不明）。
+

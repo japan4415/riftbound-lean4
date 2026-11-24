@@ -1095,17 +1095,22 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
     plain.dmg u == some 4 && (plain.obj? g).isSome && (play s3 s.me c [u, g]).isNone
 
--- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
--- from the hand for nothing
+-- Jayce (SFD-084): when played, may kill a friendly gear; if so, the player may play a gear (cost 7
+-- or less) from the hand this turn for no Energy: it is played later, and only the first one is free
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-084" .hand
   let (s2, g) ← put s1 s.me "SFD-042" .base
   let (s3, _) ← put s2 s.me "SFD-115" .hand
   let a ← play s3 s.me c [] { pick := fun ts => ts == [g] }
   let b ← play s3 s.me c [] { yes := false }
-  return (a.obj? g).isNone && a.countIn s.me .base "SFD-115" == 1 &&
-    a.countIn s.me .hand "SFD-115" == 0 && (a.poolOf s.me).energy == 12 - 4 &&
-    b.countIn s.me .base "SFD-115" == 0 && (b.obj? g).isSome
+  let g2 ← a.firstOf s.me .hand "SFD-115"
+  let a2 ← play a s.me g2
+  let h2 ← b.firstOf s.me .hand "SFD-115"
+  let b2 ← play b s.me h2
+  return (a.obj? g).isNone && a.countIn s.me .base "SFD-115" == 0 &&
+    a2.countIn s.me .base "SFD-115" == 1 && (a2.poolOf s.me).energy == 12 &&
+    b2.countIn s.me .base "SFD-115" == 1 && (b2.poolOf s.me).energy < 12 &&
+    (b.obj? g).isSome
 
 -- Ornn, Forge God (SFD-085): +1 Might for each friendly gear
 #guard tsf fun s => do
@@ -1238,10 +1243,12 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s1, c) ← put s s.me "SFD-084" .hand
   let (s2, g) ← put s1 s.me "SFD-042" .base
   let (s3, _) ← put s2 s.me "SFD-022" .hand
-  let a ← play s3 s.me c [] { pick := fun ts => ts == [g] }
-  let n ← play (s3.fund s.me 4) s.me c [] { pick := fun ts => ts == [g] }
+  let a0 ← play s3 s.me c [] { pick := fun ts => ts == [g] }
+  let a ← play a0 s.me (← a0.firstOf s.me .hand "SFD-022")
+  let n0 ← play (s3.fund s.me 4) s.me c [] { pick := fun ts => ts == [g] }
+  let n ← play n0 s.me (← n0.firstOf s.me .hand "SFD-022")
   return a.countIn s.me .base "SFD-022" == 1 && (a.poolOf s.me).fury == 11 &&
-    (a.poolOf s.me).energy == 8 && n.countIn s.me .base "SFD-022" == 1
+    (a.poolOf s.me).energy == 12 && n.countIn s.me .base "SFD-022" == 1
 -- (a hand with no Fury: the gear is not played, but the other gear was killed)
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-084" .hand
@@ -2491,7 +2498,10 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   return blocked.1.pointsOf s.you == 0 && blocked.2.2 == [.scored s.you bf2 true] &&
     ((blocked.1.obj? bf2).map (·.scored.contains s.you)) == some true &&
     h1.1.pointsOf s.you == 0 && h1.2 == [.scored s.you bf2 false] &&
-    free.1.pointsOf s.you == 1 && h2.1.pointsOf s.you == 1 && mine.1.pointsOf s.me == 1
+    free.1.pointsOf s.you == 1 && h2.1.pointsOf s.you == 1 && mine.1.pointsOf s.me == 1 &&
+    -- a hold that scored no point is not a held point
+    ((h1.1.obj? bf2).map (·.held.contains s.you)) == some false &&
+    ((h2.1.obj? bf2).map (·.held.contains s.you)) == some true
 
 -- Forgotten Monument (SFD-209): players can't score here until their third turn: the first player's
 -- turns are 1, 3, 5, the second player's 2, 4, 6

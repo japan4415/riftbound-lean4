@@ -99,6 +99,8 @@ inductive PlayerSel where
   | chosen (slot : Nat)
   /-- The player the replaced event is about ("they draw 1 instead"). -/
   | eventPlayer
+  /-- The controller of the object chosen at a slot of the effect ("its controller"). -/
+  | controllerOf (slot : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
@@ -170,12 +172,16 @@ inductive TurnEffect where
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana
+  /-- The next Gear the player plays from their hand this turn, with an Energy cost of no more than
+  `n`, costs no Energy (Jayce). -/
+  | nextGearFree (n : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
 def TurnEffect.playType : TurnEffect → CardType
   | .nextSpellCostMinus _ => .spell
   | .nextSpellRepeat => .spell
+  | .nextGearFree _ => .gear
   | _ => .unit
 
 /-- A point of the turn a delayed effect or a trigger waits for (CR 314-317). -/
