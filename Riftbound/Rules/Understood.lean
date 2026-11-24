@@ -239,6 +239,7 @@ def Condition.understood : Condition → Bool
   | .hasHidden => true
   | .spentOnSpell _ => true
   | .beginningPhase => true
+  | .iControlHere => true
   | _ => false
 
 /-- A selector of a primitive that returns objects to a hand: it may name one object to choose
@@ -471,7 +472,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .recycle => t.subject == .self
       | .recycleRune => t.subject == .self
       | .hide => t.subject == .self
-      | .leave => t.subject == .self
+      | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
       | .conquer => t.subject == .self | .hold => t.subject == .self

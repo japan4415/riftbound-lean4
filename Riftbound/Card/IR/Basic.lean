@@ -118,6 +118,8 @@ inductive TurnEffect where
   | unitsBuffed
   /-- The next unit the player plays this turn is buffed (Nami). -/
   | nextUnitBuffed
+  /-- The units the player plays this turn cost `n` Energy more (Vaults of Helia). -/
+  | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless

@@ -146,6 +146,14 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
 /-- The Energy that the passive abilities add to the cost of the card `c` of the player (CR 356):
 the cost of the spells of the opponents of Vex, Cheerless goes up. -/
 def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
+  -- the units of the player cost more this turn, by an effect (Vaults of Helia)
+  ((match s.obj? c, s.cardDef? c with
+    | some o, some d =>
+      if d.hasType .unit then
+        (s.turnFx.filter (fun f => f.turn == s.turn && f.who == o.owner)).foldl (fun a f =>
+          match f.kind with | .unitsCostMore n => a + n | _ => a) 0
+      else 0
+    | _, _ => 0) +
   (s.passiveSources ++ [c]).foldl (fun acc src =>
     match s.sourceOwner src, s.cardDef? src with
     | some o, some d =>
@@ -162,7 +170,7 @@ def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
               | _ => acc) acc
           else acc
         | _ => acc) acc
-    | _, _ => acc) 0
+    | _, _ => acc) 0)
 
 /-- Take away one Power symbol: of the domain if one is named, else the first. -/
 def removeSym (dom : Option Domain) : List PowerSym → List PowerSym

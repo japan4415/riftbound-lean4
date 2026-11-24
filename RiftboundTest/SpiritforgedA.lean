@@ -129,11 +129,6 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   return (r.1.obj? gear).any (·.attached == some chef) &&
     (r.1.poolOf s.me).energy + 1 == ((s2.rich s.me).poolOf s.me).energy
 
-/-- The Energy cost the card is played for now. -/
-meta def _root_.Riftbound.GameState.energyCost? (s : GameState) (p : PlayerId) (c : ObjId) :
-    Option Nat :=
-  (s.cardDef? c).bind (fun d => (s.effCost p c d).map (·.energy))
-
 /-- The damage on the object. -/
 meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat :=
   (s.obj? u).map (·.damage)

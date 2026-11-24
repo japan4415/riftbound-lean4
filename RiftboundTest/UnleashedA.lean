@@ -116,4 +116,71 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s3 := { s2 with phase := .main }
   return !s1.readyNow s.me c d && s3.readyNow s.me c d
 
+-- Valley of Idols (UNL-218): a unit played there is buffed for 1 Energy
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "UNL-218"
+  let (s2, u) ← putAt s1 s.me "UNL-111" bf
+  let s3 ← fire (s2.rich s.me) [Event.played s.me u]
+  return !((s2.obj? u).any (·.buffed)) && ((s3.obj? u).any (·.buffed))
+
+-- Vaults of Helia (UNL-219): after the player holds there, their units cost 1 more this turn
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "UNL-219"
+  let (s2, c) ← put s1 s.me "UNL-111" .hand
+  let s3 ← fire s2 [Event.scored s.me bf false]
+  return s2.energyCost? s.me c == some 1 && s3.energyCost? s.me c == some 2
+
+-- Mirror Image (UNL-200): a ready Reflection token at the Base becomes a copy of the unit, with
+-- Temporary
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-200" .hand
+  let (s2, e) ← putAt s1 s.you "UNL-111" s.bf0
+  let s3 ← play s2 s.me c [e]
+  let base := (s3.zone (.player s.me .base)).filter (fun u => (s3.cardDef? u).any (·.id == cid "UNL-111"))
+  return base.length == 1 && base.all (fun u => s3.hasKw u .temporary) &&
+    base.all (fun u => s3.tired u == some false)
+
+-- Keeper of Masks (UNL-081): two Reflection tokens, copies of it (so with Temporary too)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-081" .hand
+  let s2 ← play s1 s.me c
+  return s2.countIn s.me .base "UNL-081" == 3
+
+-- Baron Nashor (UNL-147): the Baron Pit enters the board once, and Baron Nashor goes there
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-147" .hand
+  let s2 ← play s1 s.me c
+  let pits := (s2.zone .battlefieldZone).filter (fun b => (s2.cardDef? b).any (·.name == "Baron Pit"))
+  let nashor := (s2.zone .battlefieldZone).find? (fun u => (s2.cardDef? u).any (·.id == cid "UNL-147"))
+  return pits.length == 1 && s2.battlefields.length == s1.battlefields.length + 1 &&
+    nashor.any (fun u => (s2.obj? u).any (fun o => o.loc == pits.head?))
+
+-- Arachnoid Horror (UNL-117): it, and the other friendly units, can be played to a Battlefield
+-- where an enemy unit is alone
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-117" .hand
+  let (s2, _) ← putAt s1 s.you "UNL-111" s.bf0
+  let (s3, _) ← putAt s2 s.you "UNL-111" s.bf0
+  let (s4, d) ← put s2 s.me "UNL-111" .hand
+  let (s5, _) ← put s4 s.me "UNL-117" .base
+  let (s6, _) ← putAt s5 s.me "UNL-117" s.bf0
+  return (s2.playBfOptions s.me c).contains s.bf0 && !(s3.playBfOptions s.me c).contains s.bf0 &&
+    (s5.playBfOptions s.me d).contains s.bf0 && !(s2.playBfOptions s.me d).contains s.bf0 &&
+    s6.hasKw c .temporary == false
+
+-- LeBlanc, Everywhere at Once (UNL-090): the Temporary units of its player at its Battlefield are
+-- not killed at the start of their Beginning Phase
+#guard tun fun s => do
+  let (s1, t) ← putAt s s.me "UNL-081" s.bf0
+  let (s2, _) ← putAt s1 s.me "UNL-090" s.bf0
+  return (tempUnits s1 s.me).contains t && !(tempUnits s2 s.me).contains t
+
+-- Katarina, Reckless (UNL-023): she readies when her player hides a card
+#guard tun fun s => do
+  let (s1, k) ← put s s.me "UNL-023" .base
+  let (s2, c) ← put s1 s.me "UNL-111" .hidden
+  let s3 := s2.tire k
+  let s4 ← fire s3 [Event.moved c c (.player s.me .hidden)]
+  return s3.tired k == some true && s4.tired k == some false
+
 end RiftboundTest

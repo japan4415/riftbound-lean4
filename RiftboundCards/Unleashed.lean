@@ -75,6 +75,10 @@ def reflections (n : Nat) (ready : Bool) (src : Selector) (temporary : Bool) : E
     (.seqOf [.prim (.create "Reflection" (.const n) .atBase ready), tmp .atBase,
       .prim (.becomeCopy (Selector.all .friendly .atBase [.ofType .unit, .named "Reflection"]) src)])
 
+/-- A mode that has not been chosen yet (Curtain Call): it is noted, then done. -/
+def freshMode (k : Nat) (e : Effect) : Effect :=
+  .ifThen (.not (.marked (.modeUsed k))) (.seqOf [.prim (.markOn .self (.modeUsed k)), e]) .nop
+
 /-- The number of the tags Bird, Cat, Dog and Poro that the player's units have among them. -/
 def petTags : Amount :=
   .add (.add (.min (.const 1) (.count (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Bird"⟩])))
@@ -526,8 +530,16 @@ def UNL_017.meta : CardDef :=
     sets := [⟨"UNL"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Square Up: the effect is not written yet. -/
-def UNL_017 : CardDef := UNL_017.meta
+/-- Square Up. -/
+def UNL_017 : CardDef :=
+  { UNL_017.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.keyword .it { keyword := .assault, arg := .amount 4 }) .thisTurn,
+        .ifThen (.cmp .ge (.handSize .you) (.const 1))
+          (.may (.seqOf [.prim (.discard .you (.const 1)),
+            .grant (.slot 0) (.keyword .it { keyword := .assault, arg := .amount 4 }) .thisTurn]))
+          .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-018
 /--
@@ -5010,8 +5022,19 @@ def UNL_182.meta : CardDef :=
     sets := [⟨"UNL"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Curtain Call: the effect is not written yet. -/
-def UNL_182 : CardDef := UNL_182.meta
+/-- Curtain Call. -/
+def UNL_182 : CardDef :=
+  { UNL_182.meta with
+    keywords := [{ keyword := .repeat_, arg := .cost ⟨1, []⟩ },
+      { keyword := .repeat_, arg := .cost ⟨0, [.any]⟩ },
+      { keyword := .repeat_, arg := .cost ⟨1, [.any]⟩ }],
+    spellEffect := some (.of [] (.eitherOf (EffectList.ofList
+      [freshMode 0 (.prim (.draw .you (.const 1))),
+       freshMode 1 (.prim (.deal (Selector.one .any .atBattlefield [.ofType .unit]) (.const 2))),
+       freshMode 2 (.prim (.deal (Selector.one .any .atBase [.ofType .unit]) (.const 3))),
+       freshMode 3 (.grant (Selector.one .any .atBattlefield [.ofType .unit])
+         (.mightMinus .it (.const 4)) .thisTurn)]))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-183
 /--
@@ -5604,8 +5627,14 @@ def UNL_205.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Abandoned Hall: the effect is not written yet. -/
-def UNL_205 : CardDef := UNL_205.meta
+/-- Abandoned Hall. -/
+def UNL_205 : CardDef :=
+  { UNL_205.meta with
+    abilities := [.triggered
+      { subject := Selector.all .any .anywhere [.ofType .spell], event := .play }
+      (.of [] (.may (.grant (Selector.one .friendly .anywhere [.ofType .unit, .at_ .self])
+        (.mightPlus .it (.const 1)) .thisTurn))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-206
 /--
@@ -5735,7 +5764,7 @@ def UNL_211.meta : CardDef :=
 def UNL_211 : CardDef :=
   { UNL_211.meta with
     abilities := [.triggered
-      { condition := .and (.matches .self .controlled) (.spentOnSpell 4),
+      { condition := .and .iControlHere (.spentOnSpell 4),
         subject := Selector.all .friendly .anywhere [.ofType .spell], event := .play }
       (.of [] predict1) .unlimited],
     status := .drafted }
@@ -5794,8 +5823,15 @@ def UNL_214.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Ripper's Bay: the effect is not written yet. -/
-def UNL_214 : CardDef := UNL_214.meta
+/-- Ripper's Bay. -/
+def UNL_214 : CardDef :=
+  { UNL_214.meta with
+    abilities := [.triggered
+      { subject := Selector.all .any .anywhere [.movedFromHere, .inHandZone], event := .leave }
+      (.of [] (.ifThen (.canPay ⟨1, []⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.channel .you (.const 0) (.const 1))])) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-215
 /--
@@ -5812,8 +5848,15 @@ def UNL_215.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Star Spring: the effect is not written yet. -/
-def UNL_215 : CardDef := UNL_215.meta
+/-- Star Spring. -/
+def UNL_215 : CardDef :=
+  { UNL_215.meta with
+    abilities := [.triggered
+      { subject := Selector.all .any .anywhere [.ofType .unit, .at_ .self, .not .token],
+        event := .play }
+      (.of [] (.may (.prim (.move (Selector.one .friendly .anywhere
+        [.ofType .unit, .at_ .self, .not (.sameAs (.slot 0))]) .base)))) (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-216
 /--
@@ -5880,7 +5923,7 @@ def UNL_218 : CardDef :=
     abilities := [.triggered
       { subject := Selector.all .any .anywhere [.ofType .unit, .at_ .self], event := .play }
       (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.buff .it)])) .nop)) .unlimited],
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.buff (.slot 0))])) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-219
@@ -5897,8 +5940,12 @@ def UNL_219.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Vaults of Helia: the effect is not written yet. -/
-def UNL_219 : CardDef := UNL_219.meta
+/-- Vaults of Helia. -/
+def UNL_219 : CardDef :=
+  { UNL_219.meta with
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.prim (.turnEffect (.unitsCostMore 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-T01
 /--

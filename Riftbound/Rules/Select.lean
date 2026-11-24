@@ -996,6 +996,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
   | .beginningPhase => some (s.phase == .beginning)
+  | .iControlHere =>
+    some ((s.hereOf self).any (fun b => (s.obj? b).any (fun o => o.control == some p)))
   | .spentOnSpell n =>
     some (s.objects.toList.any (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&

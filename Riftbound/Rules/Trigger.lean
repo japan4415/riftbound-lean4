@@ -127,15 +127,17 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
   (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))).flatMap (fun src =>
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
+      -- a Battlefield works for the player whose object it is about (Valley of Idols)
+      let c := if d.hasType .battlefield then who else o.controller
       (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
         match d.allAbilities[j]? with
         | some (Ability.triggered t _ lim) =>
           if t.event == ev && t.subject != .self &&
-              subjectHolds s src o.controller subj who t.subject &&
-              condOkEnv s src o.controller { slots := [.obj subj] } t.condition &&
+              subjectHolds s src c subj who t.subject &&
+              condOkEnv s src c { slots := [.obj subj] } t.condition &&
                 t.occurrence == .every &&
                 limitOk s src j lim then
-            some { source := src, card := d.id, idx := j, controller := o.controller,
+            some { source := src, card := d.id, idx := j, controller := c,
                    subject := some subj }
           else none
         | _ => none)
@@ -322,7 +324,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- a card that is put where it is not on the board: what waits for it to leave fires
     (if !dst.isBoard then
       match s.obj? n with
-      | some o => if o.leftBoard then triggersOf s n o.owner .leave else []
+      | some o =>
+        if o.leftBoard then triggersOf s n o.owner .leave ++ watchersOf s n o.owner .leave else []
       | none => []
     else [])
   | .buffed u =>

@@ -307,6 +307,8 @@ inductive Condition where
   | inShowdown
   /-- The Beginning Phase is going on. -/
   | beginningPhase
+  /-- The player the effect works for controls the Battlefield the object is at. -/
+  | iControlHere
   /-- The point being scored comes from this source. -/
   | scoreFrom (src : ScoreSource)
 deriving DecidableEq, Repr, Hashable
