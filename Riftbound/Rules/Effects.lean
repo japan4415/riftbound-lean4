@@ -236,6 +236,87 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
       (noteAlone_safe _ _ _ _)
   · exact sendObj_safe dest s id
 
+/-- What the zone of an object in a well-formed game says: no other zone holds it. -/
+theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : ObjId}
+    (hid : id ∈ s.zone z) (hy : y ∈ s.zone x) (hxz : x ≠ z) : y ≠ id := by
+  intro h
+  subst h
+  have h1 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid
+  have h2 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hy) hy
+  exact hxz (Option.some.inj (h2.symm.trans h1))
+
+/-- Noting that a unit died alone leaves the zones as they are. -/
+theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool)
+    (z : Zone) : (noteAlone s o moved alone).zone z = s.zone z := by
+  unfold noteAlone
+  cases moved with
+  | none => rfl
+  | some n =>
+    unfold noteIf
+    by_cases h : alone = true
+    · simp only [h, ite_true]; rfl
+    · simp [h]
+
+/-- Noting a death leaves the zones as they are. -/
+theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool)
+    (moved : Option ObjId) (banisher : Option ObjId) (z : Zone) :
+    (noteDeath s o isUnit marked mighty moved banisher).zone z = s.zone z := by
+  have key : ∀ (b : Bool) (f : GameState → GameState), (∀ t, (f t).zone z = t.zone z) →
+      ∀ t, (noteIf b f t).zone z = t.zone z := by
+    intro b f hf t
+    unfold noteIf
+    split
+    · exact hf t
+    · rfl
+  unfold noteDeath
+  cases moved with
+  | none =>
+    dsimp only
+    exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
+  | some n =>
+    dsimp only
+    rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
+        (fun t => by simp only [GameState.zone_modObj]),
+      key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
+
+/-- Killing an object that is on a zone other than `z`, when the Trash and the Banishment are not
+`z`, leaves `z` as it was. -/
+theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone}
+    (hu : u ∈ s.zone z0) (hne : z ≠ z0)
+    (hd : ∀ q k, (k = ZoneKind.trash ∨ k = ZoneKind.banishment) → z ≠ Zone.player q k) :
+    (killObj s u).1.zone z = s.zone z := by
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
+      else ZoneKind.trash) := ⟨_, rfl⟩
+  have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
+    rw [hdk]; split <;> simp
+  obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf hu
+  unfold killObj sendObj
+  rw [← hdk, ho]
+  simp only
+  cases hm : moveObj s u (.player o.owner dk) with
+  | none =>
+    simp only
+    exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+  | some r =>
+    obtain ⟨s', id'⟩ := r
+    simp only
+    refine (noteAlone_zone _ _ _ _ _).trans ((noteDeath_zone _ _ _ _ _ _ _ _).trans ?_)
+    obtain ⟨src, d, hs, o2, ho2, hdd⟩ := moveObj_spec_dst hm
+    have hloc : s.locate u = some z0 :=
+      GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hu) hu
+    have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
+    subst hsrc
+    have hdn : d = .player o.owner dk := by
+      have : o2 = o := Option.some.inj (ho2.symm.trans ho)
+      subst this
+      rw [hdd]
+      rcases hk with rfl | rfl <;> simp [Zone.normalize, Zone.isBoard]
+    exact hs.zone_other hne (by rw [hdn]; exact hd _ _ hk)
+
 /-- Heal `n` damage from an object (CR 419). -/
 def healOne (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with

@@ -34,7 +34,61 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .fromHand :: cs => costPlan cs
   | .fromHidden :: cs => costPlan cs
   | .fromChampionZone :: cs => costPlan cs
+  | .killFriendly _ _ :: cs => costPlan cs
   | _ :: _ => none
+
+/-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
+def costKills (costs : List AbilityCost) : Bool :=
+  costs.any (fun c => match c with | .killFriendly _ _ => true | _ => false)
+
+/-- Pay the cost of killing a friendly unit (CR 361): the last object chosen dies. -/
+def payKill (s : GameState) (p : PlayerId) (costs : List AbilityCost) (ts : List ObjId) :
+    GameState × List Event :=
+  match costKills costs, ts.getLast? with
+  | true, some v =>
+    if (s.zone (.player p .base)).contains v || (s.zone .battlefieldZone).contains v then
+      killObj s v
+    else (s, [])
+  | _, _ => (s, [])
+
+/-- Paying the cost of killing is a safe change. -/
+theorem payKill_safe (s : GameState) (p : PlayerId) (costs : List AbilityCost) (ts : List ObjId) :
+    Safe s (payKill s p costs ts).1 := by
+  unfold payKill
+  split
+  · split
+    · exact killObj_safe s _
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Paying the cost of killing leaves the hands and the Chain as they were. -/
+theorem payKill_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (costs : List AbilityCost)
+    (ts : List ObjId) :
+    (∀ q, (payKill s p costs ts).1.zone (.player q .hand) = s.zone (.player q .hand)) ∧
+      (payKill s p costs ts).1.zone .chain = s.zone .chain := by
+  unfold payKill
+  split
+  · rename_i v _ _
+    split
+    · rename_i hc
+      have hz : ∃ z0, v ∈ s.zone z0 ∧ (z0 = Zone.player p .base ∨ z0 = Zone.battlefieldZone) := by
+        simp only [Bool.or_eq_true, List.contains_iff_mem] at hc
+        rcases hc with h | h
+        · exact ⟨_, h, Or.inl rfl⟩
+        · exact ⟨_, h, Or.inr rfl⟩
+      obtain ⟨z0, hu, hz0⟩ := hz
+      refine ⟨fun q => ?_, ?_⟩
+      · refine killObj_zone_other hwf hu ?_ ?_
+        · rcases hz0 with rfl | rfl <;> intro h <;> cases h
+        · intro q' k hk h
+          cases h
+          rcases hk with h' | h' <;> cases h'
+      · refine killObj_zone_other hwf hu ?_ ?_
+        · rcases hz0 with rfl | rfl <;> intro h <;> cases h
+        · intro q' k hk h
+          cases h
+    · exact ⟨fun _ => rfl, rfl⟩
+  · exact ⟨fun _ => rfl, rfl⟩
 
 /-- Whether the costs exhaust the object. -/
 def costExhausts (costs : List AbilityCost) : Bool :=
@@ -223,10 +277,10 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   | some d, some pool =>
     match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
-      (addObject (((s.modObj src
+      (addObject ((((payKill s p costs ts).1.modObj src
           (fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts)).setPool p pool))
         (abilityItem d.id idx src p ts) .chain).map
-        (fun r => (r.1, [Event.activated p src idx]))
+        (fun r => (r.1, (payKill s p costs ts).2 ++ [Event.activated p src idx]))
     | _ => none
   | _, _ => none
 
@@ -234,10 +288,11 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
     (h : applyActivate s p src idx pay ts = some (s', es)) :
-    ∃ f pool item id', (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
+    ∃ s0 costs f pool item id', s0 = (payKill s p costs ts).1 ∧ Safe s s0 ∧
+      (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
       (s.poolOf p).spend pay = some pool ∧ item.kind.phys? = none ∧ item.owner = p ∧
-        addObject ((s.modObj src f).setPool p pool) item .chain = some (s', id') ∧
-          es = [Event.activated p src idx] := by
+        addObject ((s0.modObj src f).setPool p pool) item .chain = some (s', id') ∧
+          ∃ ke, es = ke ++ [Event.activated p src idx] := by
   unfold applyActivate at h
   cases hd : s.cardDef? src with
   | none => simp [hd] at h
@@ -254,8 +309,10 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
-          exact ⟨fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts, pool,
-            abilityItem d.id idx src p ts, id', fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, rfl⟩
+          exact ⟨(payKill s p costs ts).1, costs,
+            fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts,
+            pool, abilityItem d.id idx src p ts, id', rfl, payKill_safe s p costs ts,
+            fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
         | replacement _ _ _ => simp [hd, hs, ha] at h
         | triggered _ _ _ => simp [hd, hs, ha] at h
@@ -264,32 +321,32 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
 theorem applyActivate_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.WF := by
-  obtain ⟨f, pool, item, id', hf, -, -, -, hm, -⟩ := applyActivate_cases h
-  have h1 : ((s.modObj src f).setPool p pool).WF :=
-    (GameState.wf_modObj hwf src f).congr rfl rfl rfl rfl
+  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  have h1 : ((s0.modObj src f).setPool p pool).WF :=
+    (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
   exact addObject_wf h1 hm
 
 /-- Using an ability keeps the physical cards. -/
 theorem applyActivate_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.physIds.Perm s.physIds := by
-  obtain ⟨f, pool, item, id', hf, -, hk, -, hm, -⟩ := applyActivate_cases h
-  have h1 : ((s.modObj src f).setPool p pool).WF :=
-    (GameState.wf_modObj hwf src f).congr rfl rfl rfl rfl
+  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, hk, -, hm, -⟩ := applyActivate_cases h
+  have h1 : ((s0.modObj src f).setPool p pool).WF :=
+    (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
   have hp := addObject_physIds h1 hm hk
-  have h2 : ((s.modObj src f).setPool p pool).physIds = (s.modObj src f).physIds := rfl
-  rw [h2, GameState.physIds_modObj s src (fun o => (hf o).1)] at hp
-  exact hp
+  have h2 : ((s0.modObj src f).setPool p pool).physIds = (s0.modObj src f).physIds := rfl
+  rw [h2, GameState.physIds_modObj s0 src (fun o => (hf o).1)] at hp
+  exact hp.trans (hS.phys hwf)
 
 /-- Using an ability keeps `OwnerOk`. -/
 theorem applyActivate_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.OwnerOk := by
-  obtain ⟨f, pool, item, id', hf, -, -, -, hm, -⟩ := applyActivate_cases h
-  have h1 : ((s.modObj src f).setPool p pool).WF :=
-    (GameState.wf_modObj hwf src f).congr rfl rfl rfl rfl
-  have h2 : ((s.modObj src f).setPool p pool).OwnerOk :=
-    (GameState.ownerOk_modObj hown src (fun o => (hf o).2)).congr rfl rfl
+  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  have h1 : ((s0.modObj src f).setPool p pool).WF :=
+    (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
+  have h2 : ((s0.modObj src f).setPool p pool).OwnerOk :=
+    (GameState.ownerOk_modObj (hS.own hwf hown) src (fun o => (hf o).2)).congr rfl rfl
   exact addObject_ownerOk h1 h2 hm
 
 /-- Using an ability changes nothing of the stack, the turn order, the phase, the result, the rules
@@ -299,28 +356,35 @@ theorem applyActivate_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
     (h : applyActivate s p src idx pay ts = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
-  obtain ⟨f, pool, item, id', hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have hs1 := addObject_sameMeta hm
-  have hs2 := GameState.sameMeta_modObj s src f
-  have c1 : s'.cards = (s.modObj src f).cards := by
+  have hs2 := GameState.sameMeta_modObj s0 src f
+  have hs3 := hS.same
+  have c3 : s0.cards = s.cards := by
+    have := congrArg GameState.cards hs3
+    exact this
+  have c1 : s'.cards = (s0.modObj src f).cards := by
     have := congrArg GameState.cards hs1
     exact this
-  have c2 : (s.modObj src f).cards = s.cards := by
+  have c2 : (s0.modObj src f).cards = s0.cards := by
     have := congrArg GameState.cards hs2
     exact this
-  exact ⟨hs1.config.trans hs2.config, hs1.turnOrder.trans hs2.turnOrder,
-    hs1.phase.trans hs2.phase, hs1.result.trans hs2.result, hs1.pending.trans hs2.pending,
-    c1.trans c2⟩
+  exact ⟨hs1.config.trans (hs2.config.trans hs3.config),
+    hs1.turnOrder.trans (hs2.turnOrder.trans hs3.turnOrder),
+    hs1.phase.trans (hs2.phase.trans hs3.phase), hs1.result.trans (hs2.result.trans hs3.result),
+    hs1.pending.trans (hs2.pending.trans hs3.pending),
+    c1.trans (c2.trans c3)⟩
 
 /-- The hands are as they were after an ability is used. -/
 theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
+    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
-  obtain ⟨f, pool, item, id', hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   rw [addObject_zone_other hm (by simp)]
-  show (s.modObj src f).zone _ = _
-  exact GameState.zone_modObj s src f _
+  show (s0.modObj src f).zone _ = _
+  rw [GameState.zone_modObj s0 src f _, hs0]
+  exact (payKill_zones hwf p costs ts).1 q
 
 /-- A usable ability can be used. -/
 theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -586,16 +650,23 @@ theorem activateStep_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {id
   exact (applyActivate_ownerOk hwf hown hm).congr rfl rfl
 
 /-- Using an ability changes nothing of the turn order, the phase, the result, the rules or the
-cards, and leaves the hands; the stack is `new`. -/
+cards; the stack is `new`. -/
 theorem activateStep_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : activateStep s p src idx pay ts new = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new ∧
-        ∀ q, s'.zone (.player q .hand) = s.zone (.player q .hand) := by
+      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyActivate_meta hm
-  exact ⟨h1, h2, h3, h4, h6, rfl, fun q => applyActivate_hand hm q⟩
+  exact ⟨h1, h2, h3, h4, h6, rfl⟩
+
+/-- Using an ability leaves the hands as they were. -/
+theorem activateStep_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
+    {pay : RunePool.Payment} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (hwf : s.WF) (h : activateStep s p src idx pay ts new = some (s', es)) (q : PlayerId) :
+    s'.zone (.player q .hand) = s.zone (.player q .hand) := by
+  obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
+  exact applyActivate_hand hwf hm q
 
 /-- A usable ability can be used, with any new stack. -/
 theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -738,18 +809,20 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 /-- **An ability goes on top of the Chain**: the new item is the head of the Chain zone, and the
 items that were there are below it, in the same order. -/
 theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
+    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) :
     ∃ id', s'.zone .chain = id' :: s.zone .chain := by
-  obtain ⟨f, pool, item, id', hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   obtain ⟨hz, hid, hs'⟩ := addObject_spec hm
   refine ⟨id', ?_⟩
   rw [hs', hid]
-  show ((((s.modObj src f).setPool p pool).setZone .chain
-    (Pos.top.insert ⟨_⟩ (((s.modObj src f).setPool p pool).zone .chain)))).zone .chain = _
+  show ((((s0.modObj src f).setPool p pool).setZone .chain
+    (Pos.top.insert ⟨_⟩ (((s0.modObj src f).setPool p pool).zone .chain)))).zone .chain = _
   rw [GameState.zone_setZone_self]
-  have : ((s.modObj src f).setPool p pool).zone .chain = s.zone .chain :=
-    GameState.zone_modObj s src f _
+  have : ((s0.modObj src f).setPool p pool).zone .chain = s.zone .chain := by
+    rw [show ((s0.modObj src f).setPool p pool).zone .chain = (s0.modObj src f).zone .chain from rfl,
+      GameState.zone_modObj s0 src f _, hs0]
+    exact (payKill_zones hwf p costs ts).2
   rw [this]
   rfl
 

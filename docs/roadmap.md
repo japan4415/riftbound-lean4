@@ -1921,3 +1921,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Cleanup が終わる証明**: 測りの先頭を、場にあるものの数から、`GameState.pot`（場にあるものの数＋Battlefield Zone にあるものの数）へ変えた。ユニットを Battlefield から Base へ戻すと `pot` が 1 下がり、殺すと下がるので、救っても、Cleanup は終わる（`sendHome_core` / `saveUnit_pot_lt` / `saveUnit_none_pot_lt` / `killObj_pot_lt`）。
 - **まだ**: Blade of the Ruined King の「殺す」を、解決時に選ぶ件など、細かい点だけ。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 45 — Blade of the Ruined King の kill は費用
+
+- **Blade of the Ruined King（SFD-178）**: Equip の「友軍のユニットを kill する」を、費用として、能力を使うときに払う（`AbilityCost.killFriendly`、`payKill`）。選んだ物の最後が、死ぬユニットで、Chain に載せる前に死ぬ。解決のときは、装備するだけ。対象は、能力を使うときに選ぶ（装備するユニットと、死ぬユニット）。
+- **証明**: `applyActivate_cases` に、費用の支払いの状態（`Safe`）を足した。手札と Chain は、`killObj_zone_other` で、そのままだと示す。
+- **これで、記録していた近似は、すべて直した**。
+

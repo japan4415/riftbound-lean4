@@ -5241,11 +5241,12 @@ def SFD_178.meta : CardDef :=
 def SFD_178 : CardDef :=
   { SFD_178.meta with
 
-    -- Equip: pay Order and kill a friendly unit; the unit to kill is chosen as the ability is used
-    abilities := [.activated [.pay ⟨0, [.domain .order]⟩] .normal
+    -- Equip: pay Order and kill a friendly unit as the cost (the last object chosen is the one)
+    abilities := [.activated [.killFriendly .one (FilterList.ofList [.ofType .unit]), .pay ⟨0, [.domain .order]⟩]
+      .normal
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
           .targetOf .one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
-        (.seqOf [.prim (.kill (.slot 1)), .prim (.attach .self (.slot 0))])) .unlimited],
+        (.prim (.attach .self (.slot 0)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-179

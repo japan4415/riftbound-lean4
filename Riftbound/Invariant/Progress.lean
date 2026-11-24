@@ -163,7 +163,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hpend]
     exact hb.swap rfl [Frame.chainPass p 0]
   · rename_i p n rest src idx pay ts hp hk
-    obtain ⟨-, -, -, hres, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]
@@ -172,7 +172,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p rest src idx pay ts hp hk
-    obtain ⟨-, -, -, hres, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]

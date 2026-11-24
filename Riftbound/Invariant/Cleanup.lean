@@ -630,44 +630,6 @@ theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bo
       key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
 
-/-- Noting that a unit died alone leaves the zones as they are. -/
-theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool)
-    (z : Zone) : (noteAlone s o moved alone).zone z = s.zone z := by
-  unfold noteAlone
-  cases moved with
-  | none => rfl
-  | some n =>
-    unfold noteIf
-    by_cases h : alone = true
-    · simp only [h, ite_true]; rfl
-    · simp [h]
-
-/-- Noting a death leaves the zones as they are. -/
-theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool)
-    (moved : Option ObjId) (banisher : Option ObjId) (z : Zone) :
-    (noteDeath s o isUnit marked mighty moved banisher).zone z = s.zone z := by
-  have key : ∀ (b : Bool) (f : GameState → GameState), (∀ t, (f t).zone z = t.zone z) →
-      ∀ t, (noteIf b f t).zone z = t.zone z := by
-    intro b f hf t
-    unfold noteIf
-    split
-    · exact hf t
-    · rfl
-  unfold noteDeath
-  cases moved with
-  | none =>
-    dsimp only
-    exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
-  | some n =>
-    dsimp only
-    rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
-        (fun t => by simp only [GameState.zone_modObj]),
-      key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
-
 /-- **Killing an object in play takes it out of play** (I12a). In a well-formed game, when the
 owner is a player, the Trash of the owner is a zone of the game and the object is on the Board, so
 the move happens, and one object fewer is in play. -/
@@ -843,15 +805,6 @@ theorem filter_erase_of_true {α : Type} [BEq α] [LawfulBEq α] (p : α → Boo
       simp [List.erase_cons_head, ha]
     · have hxa : (x == a) = false := by simpa using hx
       cases hp : p x <;> simp [List.erase_cons_tail, hxa, List.filter_cons, hp, ih, hxa]
-
-/-- What the zone of an object in a well-formed game says: no other zone holds it. -/
-theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : ObjId}
-    (hid : id ∈ s.zone z) (hy : y ∈ s.zone x) (hxz : x ≠ z) : y ≠ id := by
-  intro h
-  subst h
-  have h1 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid
-  have h2 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hy) hy
-  exact hxz (Option.some.inj (h2.symm.trans h1))
 
 /-- Readying or exhausting an object leaves what goes down as it is. -/
 theorem setExhausted_pot (b : Bool) (s : GameState) (id : ObjId) :

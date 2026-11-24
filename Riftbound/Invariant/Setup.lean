@@ -503,7 +503,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
   · rename_i p n rest src idx pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
   · rename_i p n tail c ab hp hk
@@ -511,7 +511,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i p rest src idx pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend, -⟩ := activateStep_meta h
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
   · rename_i p t more others rest i ts hp hk
