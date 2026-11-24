@@ -2833,6 +2833,14 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return a.mightNow u == (s2.mightNow u).map (· + 3) && a.hasKw u .deflect &&
     !s2.hasKw u .deflect && b.mightNow ub == t2.mightNow ub && !b.hasKw ub .deflect
 
+-- (audit) Kato gives all the keywords it has, those it was given for the turn too
+#guard tsf fun s => do
+  let (s1, k) ← putAt s s.me "SFD-112" s.bf0
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let armed := (addTempKw { keyword := .assault } .turn s2 k).1
+  let a ← fire armed [.standardMoved k (some s.bf0)] { pick := fun ts => ts == [u] }
+  return a.hasKw u .deflect && a.hasKw u .assault && !armed.hasKw u .assault
+
 -- Fiora, Worthy (SFD-180): when a unit I control becomes Mighty (here: by a buff to 5 Might), I may
 -- pay Order to ready it
 #guard tsf fun s => do
@@ -2843,11 +2851,11 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s5, foe) ← put s4 s.you "OGN-012" .base
   let tired := ((((s5.tire four).tire three).tire five).tire foe).rich s.me
   let up (x : GameState) (u : ObjId) : Option Bool := x.tired u |>.map (!·)
-  let a ← fire (tired.buff four) [.buffed four]
-  let b ← fire (tired.buff three) [.buffed three]
-  let c ← fire (tired.buff five) [.buffed five]
-  let d ← fire (tired.buff foe) [.buffed foe]
-  let e ← fire (tired.buff four) [.buffed four] { yes := false }
+  let a ← fireFrom tired (tired.buff four) [.buffed four]
+  let b ← fireFrom tired (tired.buff three) [.buffed three]
+  let c ← fireFrom tired (tired.buff five) [.buffed five]
+  let d ← fireFrom tired (tired.buff foe) [.buffed foe]
+  let e ← fireFrom tired (tired.buff four) [.buffed four] { yes := false }
   return up a four == some true && up b three == some false && up c five == some false &&
     up d foe == some false && up e four == some false 
 
@@ -2859,11 +2867,11 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s3, three) ← put s2 s.me "OGN-006" .base
   let (s4, foe) ← put s3 s.you "OGN-012" .base
   let runes (x : GameState) := (x.zone (.player s.me .runeDeck)).length
-  let a ← fire (s4.buff four) [.buffed four]
-  let b ← fire (s4.buff three) [.buffed three]
-  let c ← fire (s4.buff foe) [.buffed foe]
-  let d ← fire (s4.buff four) [.buffed four] { yes := false }
-  let e ← fire ((s4.buff four).tire l) [.buffed four]
+  let a ← fireFrom s4 (s4.buff four) [.buffed four]
+  let b ← fireFrom s4 (s4.buff three) [.buffed three]
+  let c ← fireFrom s4 (s4.buff foe) [.buffed foe]
+  let d ← fireFrom s4 (s4.buff four) [.buffed four] { yes := false }
+  let e ← fireFrom s4 ((s4.buff four).tire l) [.buffed four]
   return a.tired l == some true && runes a + 1 == runes s4 && runes b == runes s4 &&
     runes c == runes s4 && runes d == runes s4 && d.tired l == some false &&
     runes e == runes s4
@@ -2917,8 +2925,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s5, g2) ← put s4 s.me "SFD-030" .base
   let t := (s5.rich s.me).tire three |>.tire five
   let up (x : GameState) (u : ObjId) : Option Bool := x.tired u |>.map (!·)
-  let a ← fire (attachTo three t g).1 [.attached g three]
-  let b ← fire (attachTo five t g2).1 [.attached g2 five]
+  let a ← fireFrom t (attachTo three t g).1 [.attached g three]
+  let b ← fireFrom t (attachTo five t g2).1 [.attached g2 five]
   return up a three == some true && up b five == some false && (a.mightNow three).any (5 ≤ ·)
 -- Needlessly Large Yordle (SFD-055): costs 2 Energy less for each point I scored by holding
 #guard tsf fun s => do
@@ -3963,5 +3971,90 @@ meta def effLen : EffectList → Nat
   let a ← s2.effCost s.me inHand dC
   let b ← s2.effCost s.me inTrash dC
   return a.energy == b.energy + 2
+
+-- (audit) The gear an Akshan took is given back when that Akshan leaves, not when another Akshan
+-- (the same card) does
+#guard tsf fun s => do
+  let (s1, a) ← put s s.me "SFD-109" .hand
+  let (s2, g) ← put s1 s.you "SFD-042" .base
+  let base := payOf s2 a
+  let more : RunePool.Payment := ⟨base.energy, base.power ++ [.body, .body]⟩
+  let paid ← cast (s2.rich s.me) s.me a more [] { pick := fun ts => ts == [g] }
+  let first ← (paid.zone (.player s.me .base)).find? (fun o =>
+    (paid.cardDef? o).any (·.id == cid "SFD-109"))
+  let (paid2, second) ← put paid s.me "SFD-109" .base
+  let kill (st : GameState) (u : ObjId) : Option GameState := do
+    let r := killObj st u
+    fire r.1 r.2
+  let afterSecond ← kill paid2 second
+  let afterFirst ← kill paid2 first
+  let gears (x : GameState) (p : PlayerId) : Nat := x.countIn p .base "SFD-042"
+  return gears afterSecond s.me == 1 && gears afterSecond s.you == 0 &&
+    gears afterFirst s.me == 0 && gears afterFirst s.you == 1
+
+-- (audit) A Unit that an effect moves from a Battlefield to its Base has moved: Harpoon Squad
+-- gets +2 Might, and the move is counted
+#guard tsf fun s => do
+  let (s1, h) ← putAt s s.me "SFD-137" s.bf0
+  let r := moveHome s1 h
+  let home ← (r.1.zone (.player s.me .base)).find? (fun o => (r.1.cardDef? o).any (·.id == cid "SFD-137"))
+  let after ← fire r.1 r.2
+  return r.2 == [Event.standardMoved home none] && (r.1.obj? home).any (·.moves == 1) &&
+    after.mightNow home == (r.1.mightNow home).map (· + 2)
+
+-- (audit) A Mech played as a token counts for Forecaster, and a token played after Rally the Troops
+-- enters buffed
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-065" .base
+  let (s2, m) ← put s1 s.me "SFD-062" .base
+  let a ← fire s2 [.tokenPlayed s.me m] { yes := true }
+  let buffed := s2.addTurnFx s.me .unitsBuffed
+  let made ← applyPrim buffed s.me m Env.empty (.create "Mech" (.const 1) .atBase false)
+  let plain ← applyPrim s2 s.me m Env.empty (.create "Mech" (.const 1) .atBase false)
+  let newOnes (x : GameState) (y : GameState) : List ObjId :=
+    (y.zone (.player s.me .base)).filter (fun o => !(x.zone (.player s.me .base)).contains o)
+  return a.topCard s.me != s2.topCard s.me &&
+    (newOnes buffed made.1).length == 1 && (newOnes buffed made.1).all (fun o => (made.1.obj? o).any (·.buffed)) &&
+    (newOnes s2 plain.1).all (fun o => (plain.1.obj? o).any (fun x => !x.buffed))
+
+-- (audit) A Base is "here" for the units on it: Soraka at the Base saves a weaker unit there
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-173" .base
+  let (s2, weak) ← put s1 s.me "OGN-006" .base
+  let hit := (dealObj 3 s2 weak).1
+  let others := ((hit.zone (.player s.me .base)).filter (fun o => (hit.cardDef? o).any
+    (·.id == cid "OGN-006"))).length
+  return others == 1 && !(hit.zone (.player s.me .trash)).any (fun o => (hit.cardDef? o).any
+    (·.id == cid "OGN-006")) &&
+    (hit.zone (.player s.me .base)).any (fun o => (hit.cardDef? o).any (·.id == cid "OGN-006") &&
+      (hit.obj? o).any (fun x => x.damage == 0 && x.exhausted))
+
+-- (audit) A Unit becomes Mighty by any change of its Might: here a lasting +2 Might, which is no buff
+-- and no Equipment, takes a 3 Might unit to 5
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-180" .base
+  let (s2, three) ← put s1 s.me "OGN-006" .base
+  let t := ((s2.tire three).rich s.me)
+  let up (x : GameState) (u : ObjId) : Option Bool := x.tired u |>.map (!·)
+  let boosted := (addMightMod ⟨2, .turn⟩ t three).1
+  let a ← fireFrom t boosted []
+  let b ← fireFrom t t []
+  return (t.mightNow three).any (· < 5) && (boosted.mightNow three).any (5 ≤ ·) &&
+    up a three == some true && up b three == some false
+
+-- (audit) Ezreal, Prodigy: an optional additional cost costs 1 Energy or 1 Power less, as the player
+-- wishes: Accelerate (1 Energy and 1 Power) can be paid with the Energy or with the Power only
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-149" .base
+  let (s2, u) ← put s1 s.me "SFD-029" .hand
+  let d ← s2.cardDef? u
+  let cost ← s2.effCost s.me u d
+  let costs := s2.playCostsOf s.me u d cost
+  let (t1, v) ← put s s.me "SFD-029" .hand
+  let dv ← t1.cardDef? v
+  let costv ← t1.effCost s.me v dv
+  let plain := t1.playCostsOf s.me v dv costv
+  return costs.contains (cost.plus ⟨0, [.own]⟩) && costs.contains (cost.plus ⟨1, []⟩) &&
+    plain.contains (costv.plus ⟨1, [.own]⟩) && !plain.contains (costv.plus ⟨0, [.own]⟩)
 
 end RiftboundTest

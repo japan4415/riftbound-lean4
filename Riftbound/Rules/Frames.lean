@@ -150,7 +150,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
 /-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
 it set off wait on the stack (CR 382-385). `none` if the top frame is not work. -/
 def microStep (s : GameState) : Option (GameState × List Event) :=
-  (microStep0 s).map (fun r => (r.1.withTriggers r.2, r.2))
+  (microStep0 s).map (fun r => (r.1.withTriggers (r.2 ++ s.mightyEvents r.1), r.2))
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
 def otherPlayer (p : PlayerId) : PlayerId := ⟨1 - p.n⟩
@@ -438,7 +438,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
 /-- What a step of work does: the step, and the triggers it set off. -/
 theorem microStep_cases {s s' : GameState} {es : List Event}
     (h : microStep s = some (s', es)) :
-    ∃ s2, microStep0 s = some (s2, es) ∧ s' = s2.withTriggers es := by
+    ∃ s2, microStep0 s = some (s2, es) ∧ s' = s2.withTriggers (es ++ s.mightyEvents s2) := by
   unfold microStep at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h

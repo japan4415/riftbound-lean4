@@ -542,7 +542,7 @@ theorem microStep_tick {s s' : GameState} {es : List Event}
     (h : microStep s = some (s', es)) : Tick s s' := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   have h1 := microStep0_tick h0
-  have h2 := tc_withTriggers s2 es
+  have h2 := tc_withTriggers s2 (es ++ s.mightyEvents s2)
   refine ⟨h2.2.trans h1.1, ?_⟩
   rcases h1.2 with h | h
   · exact Or.inl (h2.1.trans h)
