@@ -1066,6 +1066,22 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (b.obj? g).isNone && b.dmg u == some 0 && (play s4 s.me c [w]).isNone &&
     (play s4 s.me c []).isNone
 
+-- Rocket Barrage with Repeat paid: the repeat makes its own choice (a different target, or none)
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-077" .hand
+  let (s2, u) ← put s1 s.you "OGN-001" .base
+  let (s3, g) ← put s2 s.you "SFD-030" .base
+  let pay := payOf s3 c
+  let paid : RunePool.Payment := ⟨pay.energy + 4, pay.power ++ [.mind]⟩
+  let rich := s3.rich s.me
+  let both ← cast rich s.me c paid [u, g]
+  let one ← cast rich s.me c paid [u]
+  let same ← cast rich s.me c paid [g, u]
+  let plain ← play s3 s.me c [u]
+  return both.dmg u == some 4 && (both.obj? g).isNone && one.dmg u == some 4 &&
+    (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
+    plain.dmg u == some 4 && (plain.obj? g).isSome
+
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
 -- from the hand for nothing
 #guard tsf fun s => do

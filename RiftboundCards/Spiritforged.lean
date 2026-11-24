@@ -2263,10 +2263,17 @@ def SFD_077.meta : CardDef :=
 def SFD_077 : CardDef :=
   { SFD_077.meta with
 
+    abilities := [.passive .always [.repeatChooses]],
     spellEffect := some (.of [.targetOf .one .any .anywhere
+        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))],
+        .targetOf (.upTo 1) .any .anywhere
         [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))]]
-      (.ifThen (.matches (.slot 0) (.ofType .gear)) (.prim (.kill (.slot 0)))
-        (.prim (.deal (.slot 0) (.const 4))))),
+      (.seqOf [
+        .ifThen (.matches (.slot 0) (.ofType .gear)) (.prim (.kill (.slot 0)))
+          (.prim (.deal (.slot 0) (.const 4))),
+        .ifThen .paid
+          (.ifThen (.matches (.slot 1) (.ofType .gear)) (.prim (.kill (.slot 1)))
+            (.prim (.deal (.slot 1) (.const 4)))) .nop])),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-078

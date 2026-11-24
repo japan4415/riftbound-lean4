@@ -373,6 +373,7 @@ def StaticMod.runs : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
+  | .repeatChooses => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true
   | .rescueWeakerHere => true

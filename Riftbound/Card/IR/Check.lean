@@ -233,6 +233,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
+  | .repeatChooses => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear => true
   | .rescueWeakerHere => true

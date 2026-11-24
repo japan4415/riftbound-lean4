@@ -1824,3 +1824,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Mighty と Might の判定が、パッシブの Might 増加を読む**: `Env.passMight`（オブジェクトごとの、パッシブが足す Might の表）を、`Filter.might` / `Filter.mighty` / `Filter.lethal` が読む。表は `GameState.mightTable`（`Passive.lean`）で、効果を 1 手進めるとき（`Frames.lean` の `.run`）と、対象を選ぶとき（`targetsOk` / `targetTuples` の `pm`）と、費用の減額（`costCuts`）で、その時点の状態から作る。Mighty を数える Show of Strength、Jaull-Fish、Rumble が、Draven のような、パッシブで Might が増えるユニットを数える。パッシブ自身が選ぶ・数えるときは、パッシブなしの Might を読む（パッシブが互いに依存しないための、従来どおりの決め）。印刷されたパッシブの Might 変更がどのカードにもないときは、表は空で、計算しない（速さのため）。近似: 手札のカードを選ぶ・遊べるかの判定（`Play.lean` の `unitsPlayable` など、環境を持たない判定）は、表を渡さない。
 - **残っている近似**: Emperor's Divide は、Battlefield を選び、そこの味方を 1 体ずつ「しますか」と聞く（「選んだとき」の誘発が、自分のユニットでは働かない）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 30 — Rocket Barrage の Repeat
+
+- **Rocket Barrage（SFD-077）**: Repeat を払うと、2 回目の対象を、遊ぶときに選べる（`StaticMod.repeatChooses`。対象は 2 つで、2 つ目は最大 1 体）。2 回目は、`.paid` のときだけ働く。同じ効果を、同じ対象で 2 回行う仕組み（`resolveFrames`）は、この印のあるカードでは使わない。近似: Repeat を払っても、2 つ目を選ばなくてよい（何も起きない）。Repeat を払わなくても、2 つ目を選べる（効果は無視されるが、Deflect の追加支払いは求められる）。
+- **手札のカードを判定するときの Might の表**: 手札・Trash のカードは、パッシブの Might を持たない（盤上のものだけ）ので、表を渡さなくても同じ結果になる。近似ではない。
+- **残っている違い**: Emperor's Divide は、Battlefield を選んだあと、味方を 1 体ずつ「しますか」と聞く。動く結果は、「任意の数を選んで動かす」と同じ。違うのは、自分のユニットが「選ばれた」ときの誘発（Irelia の払い戻しなど）が働かないこと。任意の数の対象を選ぶには、対象の選びを、可変の長さにする必要があり、証明の作り直しが大きい（このカード 1 枚のため、見送った）。
+
