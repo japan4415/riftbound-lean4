@@ -143,6 +143,8 @@ inductive Prim where
   /-- The tokens the first selector names become copies of the object the second names: they have
   its card (Reflection). -/
   | becomeCopy (s src : Selector)
+  /-- Add the Battlefield token to the board, if it is not there already (Baron Pit). -/
+  | addBattlefield (token : String)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
@@ -374,6 +376,8 @@ inductive StaticMod where
   | noPlayToBase
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
   | noReadyOfOpps
+  /-- Units can move here from anywhere: from another Battlefield, too (Baron Pit). -/
+  | movesHereFromAnywhere
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/

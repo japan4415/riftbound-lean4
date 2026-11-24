@@ -322,6 +322,7 @@ def Prim.understood : Prim → Bool
   | .buff s => s.understoodPick
   | .gainXP p n => p.understood && n.understood
   | .becomeCopy s src => s.understood && src.understood
+  | .addBattlefield _ => true
   | .spendXP p n => p.understood && n.understood
   | _ => false
 
@@ -395,6 +396,7 @@ def StaticMod.runs : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .movesHereFromAnywhere => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood

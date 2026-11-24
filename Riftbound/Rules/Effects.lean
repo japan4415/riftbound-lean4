@@ -1360,6 +1360,20 @@ theorem becomeCopyOf_safe (src : ObjId) (s : GameState) (id : ObjId) :
   · exact Safe.modObjPhys s id (fun x => (copyKind_phys _ x).1) (fun x => (copyKind_phys _ x).2)
   · exact Safe.refl s
 
+/-- Add the Battlefield token to the board, if a Battlefield of the card is not there already. -/
+def addBattlefieldTok (c : CardDef) (p : PlayerId) (s : GameState) : GameState :=
+  if (s.zone .battlefieldZone).any (fun b => (s.cardDef? b).any (·.id == c.id)) then s
+  else addTok s { kind := .token c.id, owner := p, controller := p, timestamp := ⟨0⟩ }
+    .battlefieldZone
+
+/-- Adding a Battlefield token is a safe change. -/
+theorem addBattlefieldTok_safe (c : CardDef) (p : PlayerId) (s : GameState) :
+    Safe s (addBattlefieldTok c p s) := by
+  unfold addBattlefieldTok
+  split
+  · exact Safe.refl s
+  · exact addTok_safe _ _ _ rfl
+
 /-- A player takes control of an object (CR 740). -/
 def setController (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let s1 := s.modObj id (fun o => { o with controller := p })
@@ -1912,6 +1926,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
   | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
+  | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
   | .becomeCopy sel from_ =>
     match from_.eval s p src env with
     | some (c :: _) => onSelected s p src env sel (becomeCopyOf c)
@@ -2155,6 +2170,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | cons c _ =>
         simp only [hf] at h
         exact onSelected_safe (becomeCopyOf_safe c) h
+  | addBattlefield name =>
+    simp only [applyPrim] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact addBattlefieldTok_safe c p s
   | takeControl sel => exact onSelected_safe (setController_safe p) h
   | playBanishedWith =>
     simp only [applyPrim, Option.some.injEq] at h

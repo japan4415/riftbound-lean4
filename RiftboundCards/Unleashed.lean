@@ -4094,8 +4094,18 @@ def UNL_147.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Baron Nashor: the effect is not written yet. -/
-def UNL_147 : CardDef := UNL_147.meta
+/-- Baron Nashor. -/
+def UNL_147 : CardDef :=
+  { UNL_147.meta with
+    abilities := [
+      .triggered (.onSelf .play)
+        (.of [] (.ifThen (.not (.exists (Selector.all .any .anywhere [.named "Baron Pit"])))
+          (.seqOf [.prim (.addBattlefield "Baron Pit"),
+            .prim (.move .self (.at_ (Selector.one .any .anywhere [.named "Baron Pit"])))]) .nop))
+        .unlimited,
+      .passive .always [.cant .self .beChosen],
+      .passive .always [.mightPlus otherFriendlyUnit (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-148
 /--
@@ -5905,8 +5915,11 @@ def UNL_T01.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Baron Pit: the effect is not written yet. -/
-def UNL_T01 : CardDef := UNL_T01.meta
+/-- Baron Pit. -/
+def UNL_T01 : CardDef :=
+  { UNL_T01.meta with
+    abilities := [.passive .always [.movesHereFromAnywhere]],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-T02
 /--

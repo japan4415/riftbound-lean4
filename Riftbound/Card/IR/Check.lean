@@ -174,6 +174,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .detach s => Selector.ok c s
   | .gainXP p n => p.ok c && Amount.ok c n
   | .becomeCopy s src => Selector.ok c s && Selector.ok c src
+  | .addBattlefield _ => true
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n
@@ -234,6 +235,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .movesHereFromAnywhere => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s

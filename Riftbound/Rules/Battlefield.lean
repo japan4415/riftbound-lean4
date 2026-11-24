@@ -97,7 +97,13 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
       | .battlefield bf =>
         decide (bf ∈ s.battlefields) &&
           (decide (u ∈ s.zone (.player p .base)) ||
-            (s.hasKw u .ganking && decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
+            ((s.hasKw u .ganking ||
+                -- a Battlefield units can move to from anywhere (Baron Pit)
+                (s.cardDef? bf).any (fun d => d.fullAbilities.any (fun ab =>
+                  match ab with
+                  | Ability.passive .always mods => mods.contains .movesHereFromAnywhere
+                  | _ => false))) &&
+              decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
               decide (o.loc ≠ some bf)))
 
 /-- The change of a Unit by a Standard Move in the turn `turn`: it is exhausted, is where it went,
