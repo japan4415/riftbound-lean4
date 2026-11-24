@@ -169,6 +169,9 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .choosesOnly .self => true
+  | .choosesOnly (.slot _) => true
+  | .choosesOnly (.var _) => true
   | .fromBattlefield => true
   | .attachedTo .self => true
   | .attachedTo (.slot _) => true

@@ -203,6 +203,9 @@ inductive Filter where
   | choosesMine
   /-- Made its last move from a Battlefield. -/
   | fromBattlefield
+  /-- Is a spell or ability that chooses the object the selector names, and no other object of its
+  controller (Repulse). -/
+  | choosesOnly (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of filters. -/

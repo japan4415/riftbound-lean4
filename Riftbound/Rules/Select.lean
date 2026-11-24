@@ -446,6 +446,16 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let o ← s.obj? id
     pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
       (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
+  | .choosesOnly sel => do
+    let d ← match sel with
+      | .self => some self
+      | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
+      | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
+      | _ => none
+    let dobj ← s.obj? d
+    let o ← s.obj? id
+    pure (o.targets.contains d && o.targets.all (fun t => t == d ||
+      !((s.obj? t).any (fun u => u.controller == dobj.controller))))
   | .attachedTo sel => do
     -- the object the selector names: `self`, a chosen object or a variable
     let d? : Option ObjId := match sel with
