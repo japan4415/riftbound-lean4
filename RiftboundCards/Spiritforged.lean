@@ -1333,7 +1333,7 @@ def SFD_045.meta : CardDef :=
 def SFD_045 : CardDef :=
   { SFD_045.meta with
 
-    spellEffect := some (.of [.targetOf .one .enemy .onChain [.ofType .spell, .choosesMine]]
+    spellEffect := some (.of [.targetOf .one .enemy .onChainAll [.choosesMine]]
       (.prim (.counter (.slot 0)))),
     status := .drafted }
 
@@ -4105,9 +4105,10 @@ def SFD_139.meta : CardDef :=
 def SFD_139 : CardDef :=
   { SFD_139.meta with
 
-    abilities := [.triggered (.onSelf .play)
+    -- the trigger exists only when it is played from face down (so no target is asked otherwise)
+    abilities := [.triggered { event := .play, condition := .fromHidden }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.ifThen .fromHidden (.prim (.attach .self (.slot 0))) .nop)) .unlimited],
+        (.prim (.attach .self (.slot 0)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-140
@@ -5847,12 +5848,13 @@ def SFD_198.meta : CardDef :=
 def SFD_198 : CardDef :=
   { SFD_198.meta with
 
+    -- two of the tokens come in ready, the others exhausted
     spellEffect := some (.of [] (.bind ⟨"n"⟩
       (.count (Selector.all .friendly .anywhere [.tag ⟨"Equipment"⟩]))
       (.seqOf [
-        .prim (.create "Sand Soldier" (.var ⟨"n"⟩) .atBase false),
-        .repeatN (.min (.const 2) (.var ⟨"n"⟩)) (.prim (.ready
-          (Selector.one .friendly .atBase [.named "Sand Soldier", .exhausted])))]))),
+        .prim (.create "Sand Soldier" (.min (.const 2) (.var ⟨"n"⟩)) .atBase true),
+        .prim (.create "Sand Soldier" (.sub (.var ⟨"n"⟩) (.min (.const 2) (.var ⟨"n"⟩)))
+          .atBase false)]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-199

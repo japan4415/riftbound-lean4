@@ -29,6 +29,7 @@ def Place.understood : Place → Bool
   | .here => true
   | .inCombat => true
   | .onChain => true
+  | .onChainAll => true
   | _ => false
 
 /-- The players an effect names that are understood. -/

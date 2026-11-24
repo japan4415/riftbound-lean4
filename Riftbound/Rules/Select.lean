@@ -473,6 +473,7 @@ def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List 
     some ((s.zone .chain).filter (fun u =>
       u != self &&
         (s.obj? u).any (fun o => match o.kind with | .chainAbility .. => false | _ => true)))
+  | .onChainAll => some ((s.zone .chain).filter (fun u => u != self))
   | .inCombat =>
     s.combatNow.map (fun (bf, _) =>
       (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (·.loc == some bf)))
@@ -591,6 +592,10 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
     unfold inPlay
     exact Or.inl (List.mem_append_left _ hx)
   | onChain =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
+    exact Or.inr (List.mem_filter.mp hx).1
+  | onChainAll =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
     exact Or.inr (List.mem_filter.mp hx).1

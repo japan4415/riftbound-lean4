@@ -718,7 +718,11 @@ def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
   | some o =>
     if id ∈ s.zone .chain then
       match o.kind with
-      | .chainAbility .. => (s, [])
+      | .chainAbility .. =>
+        -- a countered ability ceases to exist
+        match removeObj s id with
+        | some s2 => (s2, [])
+        | none => (s, [])
       | _ =>
         match moveObj s id (.player o.owner .trash) with
         | some r => (r.1, [Event.moved id r.2 (.player o.owner .trash)])
@@ -726,13 +730,19 @@ def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
     else (s, [])
   | none => (s, [])
 
-/-- Countering a spell is a safe change. -/
+/-- Countering a spell or an ability is a safe change. -/
 theorem counterObj_safe (s : GameState) (id : ObjId) : Safe s (counterObj s id).1 := by
   unfold counterObj
   split
-  · split
+  · rename_i o ho
+    split
     · split
-      · exact Safe.refl s
+      · split
+        · rename_i s2 hr
+          exact ⟨fun hwf => removeObj_wf hwf hr,
+            fun hwf => removeObj_physIds hwf hr ho (by simp_all [ObjKind.phys?]),
+            fun hwf hown => removeObj_ownerOk hwf hown hr, removeObj_sameMeta hr⟩
+        · exact Safe.refl s
       · split
         · rename_i r hr
           exact Safe.moveObj hr
@@ -1538,6 +1548,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inHidden => simp at h
       | inCombat => simp at h
       | onChain => simp at h
+      | onChainAll => simp at h
 
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/

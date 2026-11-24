@@ -3813,4 +3813,23 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       (fun o => o.damage == 0 && o.exhausted) &&
     isIn bare (.player s.me .trash) "OGN-006"
 
+-- Not So Fast (SFD-045) also counters an enemy ability that chooses a unit of mine: the ability
+-- ceases to exist (Pitiless Stalker stuns a unit when it is used)
+#guard tsf fun s => do
+  let (s1, mine) ← put s s.you "OGN-051" .base
+  let (s2, stalker) ← put s1 s.me "RAD-104" .base
+  let (s3, nsf) ← put s2 s.you "SFD-045" .hand
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate stalker 0 ⟨0, []⟩ [mine]⟩ with
+  | .ok (a, _) =>
+    let item := (a.zone .chain).head?
+    match item with
+    | some it =>
+      let ok := match effectOf "SFD-045" with
+        | some e => targetsOk a s.you nsf a.mightTable e.choices [it]
+        | none => false
+      let r := (counterObj a it).1
+      return ok && (r.zone .chain).isEmpty && (r.obj? it).isNone
+    | none => return false
+  | .error _ => return false
+
 end RiftboundTest
