@@ -989,7 +989,7 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
             cases h : c.optional
             · rfl
             · exact absurd (Choice.simple_of_optional h) hs
-          simp [targetTuplesAfter, targetsOkAfter_cons, hm', hs, this, skipTuple]
+          simp [targetTuplesAfter, targetsOkAfter_cons, hm', hs, this]
       | cons t ts =>
         simp only [targetTuplesAfter, targetsOkAfter_cons, hm', Bool.false_eq_true, ite_false,
           Bool.and_eq_true, decide_eq_true_eq]
