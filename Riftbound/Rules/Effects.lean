@@ -2135,6 +2135,12 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
 
+/-- The event that says the player chose the object while the effect of `src` resolved: a choice by
+a spell, or by an ability. -/
+def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
+  if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
+  else [Event.chosenByAbility p o]
+
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
 the events. An instruction that cannot be done is skipped (design.md §7.1). An effect that names an
 object to choose while it resolves ("kill a gear") asks the player when there is more than one to
@@ -2144,7 +2150,8 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
   match e.pickSel? with
   | some (.pick _ side place fs) =>
     match s.pickCandidates p src env side place fs with
-    | some [o] => (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], [])
+    | some [o] =>
+      (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], chosenAt s p src o)
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])
   | _ => runEffect1 s p src env e es
