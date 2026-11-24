@@ -151,9 +151,16 @@ meta def play (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId := [])
     (says : Says := {}) : Option GameState :=
   cast (s.rich p) p c (payOf s c) ts says
 
+/-- What waits below the abilities that the events set off: the frames of the state, but not the
+priority of the Main Phase (the Cleanup that follows would start a Showdown of its own, and the
+attackers and defenders would set off their abilities again). -/
+meta def below : List Frame → List Frame
+  | .priority _ :: rest => rest
+  | l => l
+
 /-- Let the events happen: the abilities they set off go on the Chain, and the Chain resolves. -/
 meta def fire (s : GameState) (es : List Event) (says : Says := {}) : Option GameState :=
-  let s0 := { s with pending := insertTriggers (s.detect es) s.pending }
+  let s0 := { s with pending := insertTriggers (s.detect es) (below s.pending) }
   match advance 100 s0 [] with
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
@@ -170,7 +177,10 @@ meta def GameState.inShowdownAt (s : GameState) (bf : ObjId) (att : PlayerId) : 
 /-- Let the Combat start: the abilities it sets off resolve, until the first question. -/
 meta def startCombatNow (s : GameState) (bf : ObjId) (att : PlayerId) (says : Says := {}) :
     Option GameState :=
-  match advance 100 (s.inCombatAt bf att) [] with
+  -- the attackers and the defenders set off their abilities as the Showdown begins
+  let s0 := s.inCombatAt bf att
+  let s1 := { s0 with pending := .triggers (s0.detect [.combatStarted bf att]) :: s0.pending }
+  match advance 100 s1 [] with
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
@@ -195,7 +205,7 @@ meta def GameState.trigPicks (s : GameState) : List ObjId :=
 
 /-- The targets a player could pick for the abilities the events set off, now. -/
 meta def firePicks (s : GameState) (es : List Event) : Option (List ObjId) :=
-  match advance 100 { s with pending := insertTriggers (s.detect es) s.pending } [] with
+  match advance 100 { s with pending := insertTriggers (s.detect es) (below s.pending) } [] with
   | .ok (s1, _) => some s1.trigPicks
   | .error _ => none
 
