@@ -5250,8 +5250,29 @@ def UNL_189.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Bashful Bloom: the effect is not written yet. -/
-def UNL_189 : CardDef := UNL_189.meta
+/-- Bashful Bloom. -/
+def UNL_189 : CardDef :=
+  { UNL_189.meta with
+    abilities := [
+      .activated [.pay ⟨4, []⟩, .exhaustSelf] .normal
+        (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited,
+      .activated [.pay ⟨3, []⟩, .exhaustSelf] .normal
+        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
+          [.ofType .unit, .hasKeyword .temporary])) (.const 1))
+          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
+      .activated [.pay ⟨2, []⟩, .exhaustSelf] .normal
+        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
+          [.ofType .unit, .hasKeyword .temporary])) (.const 2))
+          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
+      .activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
+          [.ofType .unit, .hasKeyword .temporary])) (.const 3))
+          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
+      .activated [.exhaustSelf] .normal
+        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
+          [.ofType .unit, .hasKeyword .temporary])) (.const 4))
+          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-190
 /--
@@ -5328,8 +5349,15 @@ def UNL_192.meta : CardDef :=
     sets := [⟨"UNL"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Alpha Strike: the effect is not written yet. -/
-def UNL_192 : CardDef := UNL_192.meta
+/-- Alpha Strike. -/
+def UNL_192 : CardDef :=
+  { UNL_192.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 1) (.mightOf (.slot 0))),
+        .ifThen (.cmp .ge (.mightOf (.slot 0)) (.mightOf (.slot 1)))
+          (.prim (.gainXP .you (.const 1))) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-193
 /--
@@ -5376,8 +5404,16 @@ def UNL_194.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Shadow: the effect is not written yet. -/
-def UNL_194 : CardDef := UNL_194.meta
+/-- Shadow. -/
+def UNL_194 : CardDef :=
+  { UNL_194.meta with
+    abilities := [
+      .triggered { condition := .matches .self .onBattlefield, event := .play }
+        (.of [] (.prim (.ready .self))) .unlimited,
+      .activated [.pay ⟨1, [.any]⟩, .exhaustSelf] .action
+        (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .attacker, .at_ .self]]
+          (.prim (.stun (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-195
 /--
@@ -5706,8 +5742,15 @@ def UNL_206.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Altar of Blood: the effect is not written yet. -/
-def UNL_206 : CardDef := UNL_206.meta
+/-- Altar of Blood. -/
+def UNL_206 : CardDef :=
+  { UNL_206.meta with
+    abilities := [.triggered
+      { condition := .and .inCombat (.canPay ⟨0, [.any, .any, .any]⟩),
+        subject := Selector.all .any .anywhere [.ofType .unit, .at_ .self], event := .die }
+      (.of [] (.may (.seqOf [.prim (.pay ⟨0, [.any, .any, .any]⟩),
+        .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))]))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-207
 /--
@@ -5859,8 +5902,13 @@ def UNL_213.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Gardens of Becoming: the effect is not written yet. -/
-def UNL_213 : CardDef := UNL_213.meta
+/-- Gardens of Becoming. -/
+def UNL_213 : CardDef :=
+  { UNL_213.meta with
+    abilities := [.activated [] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .ready, .at_ .self]]
+        (.seqOf [.prim (.exhaust (.slot 0)), .prim (.gainXP .you (.const 1))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-214
 /--
