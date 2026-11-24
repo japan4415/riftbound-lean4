@@ -314,6 +314,11 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     if decide (u ∈ s.zone Zone.battlefieldZone) &&
         (s.obj? u).any (fun (o : Object) => decide (o.controller.n < s.playerCount)) then
       saveUnit s u none
+    -- a unit at a Base is healed and exhausted (it is at the Base already): if it had no damage
+    -- (its Might fell to 0), it dies
+    else if !decide (u ∈ s.zone Zone.battlefieldZone) &&
+        (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
+      (s.modObj u (fun o => { o with damage := 0, exhausted := true }), [])
     else killObj s u
   | none => killObj s u
 
@@ -327,7 +332,9 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
     · exact killObj_safe s u
   · split
     · exact saveUnit_safe s u none
-    · exact killObj_safe s u
+    · split
+      · exact Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
+      · exact killObj_safe s u
   · exact killObj_safe s u
 
 /-- One step of the Cleanup (CR 323): the first of these that applies is done. `none` if none does.
