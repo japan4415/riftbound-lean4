@@ -810,6 +810,10 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
       (fun acc (_, o) => acc + (o.chose.filter enemy).length) 0
     some (spells + abilities)
   | .powerSpent => some (s.poolOf p).spent
+  | .equipmentPlayed =>
+    some (s.objects.toList.filter (fun (k, o) =>
+      o.owner == p && o.playedTurn == some s.turn &&
+        ((s.cardDef? ⟨k⟩).any (fun d => d.hasType .gear && d.tags.contains ⟨"Equipment"⟩)))).length
   | .gearsPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn &&

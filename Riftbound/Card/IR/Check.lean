@@ -64,6 +64,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
+  | .equipmentPlayed => true
   | .excess => true
   | .heldPoints => true
   | .movesThisTurn => true

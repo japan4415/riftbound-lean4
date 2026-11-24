@@ -58,6 +58,8 @@ inductive Amount where
   | powerSpent
   /-- How many Gear the player has played this turn. -/
   | gearsPlayed
+  /-- How many Equipment the player has played this turn. -/
+  | equipmentPlayed
   /-- The excess damage the player assigned to enemy Units in this turn's last Combat. -/
   | excess
   /-- How many points the player scored this turn by holding (one for each Battlefield held). -/

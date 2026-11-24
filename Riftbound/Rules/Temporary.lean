@@ -24,14 +24,14 @@ def tempUnits (s : GameState) (tp : PlayerId) : List ObjId :=
 def killAll : List ObjId → GameState → List Event → GameState × List Event
   | [], s, es => (s, es)
   | u :: us, s, es =>
-    let r := killObj s u
+    let r := killOrSave s u
     killAll us r.1 (es ++ r.2)
 
 /-- Killing objects one after the other is a safe change. -/
 theorem killAll_safe : ∀ (us : List ObjId) (s : GameState) (es : List Event),
     Safe s (killAll us s es).1
   | [], s, _ => Safe.refl s
-  | u :: us, s, _ => (killObj_safe s u).trans (killAll_safe us _ _)
+  | u :: us, s, _ => (killOrSave_safe s u).trans (killAll_safe us _ _)
 
 /-- The start of the Beginning Phase: the Temporary units of the turn player are killed, and then
 the turn player scores their Holds (CR 816, 315.2). -/

@@ -2303,7 +2303,7 @@ def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (se
     (less : Amount) (dest : Option Selector) (es : EffectList) :
     Option (GameState × List Frame × List Event) :=
   match dest, sel.eval s p src env with
-  | none, some (id :: _) =>
+  | _, some (id :: _) =>
     match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (_, e) =>
       let n := (targetTuples s p id s.mightTable e.choices).length

@@ -59,6 +59,7 @@ def Amount.understood : Amount → Bool
   | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
+  | .equipmentPlayed => true
   | .excess => true
   | .heldPoints => true
   | .movesThisTurn => true
@@ -91,6 +92,7 @@ def Amount.understoodC : Amount → Bool
   | .spellsChoseEnemy => true
   | .powerSpent => true
   | .gearsPlayed => true
+  | .equipmentPlayed => true
   | .excess => true
   | .heldPoints => true
   | .movesThisTurn => true
