@@ -1989,3 +1989,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **Hextech Anomaly（SFD-083）と Ancient Henge（SFD-117）**は、Chain に載らない Add 能力（応じられない）になった。払う量と、払う Power の領域は、プレイヤーが選ぶ（`Action.manaAbility` に `pay` が付いた。`ManaKind.powerToEnergy`、`energyToPower`、`manaPays`、`powerBags`）。以前は、1 つずつ、最大 12 回、Chain 上で、順に聞いていた。Power を払うときの領域の選びは、`legalActions` に、全部の払い方が、並ぶ（Pool にある数と、`any` で足りる数まで）。
 
+### M8a の実装の記録（2026-11-25）: Spiritforged 55 — The Zero Drive の Deathknell
+
+- **The Zero Drive（SFD-090）**: 付いているユニットは、死んで、Trash へ行き、そのあとで、Zero Drive が、追放する（`Filter.banishedWithMe`）。以前は、死ぬ代わりに、すぐ Banishment へ行っていた（死んだことに、なっていなかった）。`GameState.banishedOnDeath` は、いつも偽（印は、`banishedWith` に、残る）。
+- **まだ**: Soraka は、Cleanup で、Might が下がって致死になった、Base のユニットを救わない。Battlefield の上なら、救う。Base のユニットを救うと、救っても、Might が 0 以下のままなら、同じ Base に残り、また致死になって、Cleanup が終わらない。Battlefield からなら、Base へ戻すので、2 度目は救われない。Base のユニットを救うには、Cleanup の測りに、ダメージの合計を足して、Might が 0 以下のときを、除く証明が、要る。ダメージで死ぬとき（呪文・戦闘）は、Base でも救う。
+

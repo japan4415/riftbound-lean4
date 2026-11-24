@@ -167,6 +167,8 @@ inductive Filter where
   | takenByMyCard
   /-- The same, whoever controls the object now (it may have been given back already). -/
   | wasTakenByMyCard
+  /-- Was banished by the Equipment that was attached to it as it died (The Zero Drive). -/
+  | banishedWithMe
   /-- The card was played this turn from somewhere other than a hand. -/
   | playedFromElsewhere
   /-- The card was played this turn. -/

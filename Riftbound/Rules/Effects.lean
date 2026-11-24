@@ -174,13 +174,9 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
       (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
         (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
 
-/-- An Equipment attached to the object says that it is banished when it dies. -/
-def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
-  s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id) &&
-    (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
-      match ab with
-      | Ability.passive .always mods => mods.contains .banishOnDeath
-      | _ => false)))
+/-- A unit goes to the Trash when it dies: what banishes it (the Deathknell of The Zero Drive) is an
+ability that fires after, so it is never banished instead of dying. -/
+def GameState.banishedOnDeath (_s : GameState) (_id : ObjId) : Bool := false
 
 /-- The Equipment attached to the object that banishes it when it dies. -/
 def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
