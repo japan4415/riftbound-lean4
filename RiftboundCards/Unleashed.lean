@@ -79,6 +79,36 @@ def reflections (n : Nat) (ready : Bool) (src : Selector) (temporary : Bool) : E
 def freshMode (k : Nat) (e : Effect) : Effect :=
   .ifThen (.not (.marked (.modeUsed k))) (.seqOf [.prim (.markOn .self (.modeUsed k)), e]) .nop
 
+/-- The names of the tags the cards of the game have. -/
+def allTagNames : List String :=
+  ["Ahri", "Akali", "Akshan", "Ambessa", "Anivia", "Annie",
+  "Aphelios", "Ashe", "Azir", "Bandle City", "Bard", "Bilgewater",
+  "Bird", "Blitzcrank", "Caitlyn", "Cat", "Darius", "Demacia",
+  "Demon", "Device", "Diana", "Dog", "Dr. Mundo", "Dragon",
+  "Draven", "Ekko", "Elite", "Equipment", "Evelynn", "Ezreal",
+  "Fae", "Fiora", "Fizz", "Freljord", "Galio", "Gangplank",
+  "Garen", "Graves", "Heimerdinger", "Hwei", "Icathia", "Illaoi",
+  "Ionia", "Irelia", "Ivern", "Ixtal", "Janna", "Jarvan IV",
+  "Jax", "Jayce", "Jhin", "Jinx", "K'Sante", "Kai'Sa",
+  "Karthus", "Katarina", "Kathkan", "Kayle", "Kayn", "Kennen",
+  "Kha'Zix", "Kog'Maw", "LeBlanc", "Lee Sin", "Leona", "Lillia",
+  "Lucian", "Lulu", "Lux", "Malzahar", "Master Yi", "Mech",
+  "Mel", "Miss Fortune", "Mordekaiser", "Morgana", "Mount Targon", "Nami",
+  "Nasus", "Neeko", "Nidalee", "Nilah", "Nocturne", "Noxus",
+  "Orianna", "Ornn", "Piltover", "Pirate", "Poppy", "Poro",
+  "Pyke", "Qiyana", "Recruit", "Rek'Sai", "Rell", "Renata Glasc",
+  "Renekton", "Rengar", "Riven", "Rumble", "Sentinel", "Seraphine",
+  "Sett", "Shadow Isles", "Shen", "Shurima", "Sivir", "Sona",
+  "Soraka", "Spider", "Spirit", "Swain", "Syndra", "Taric",
+  "Teemo", "The Void", "Trifarian", "Tryndamere", "Twisted Fate", "Udyr",
+  "Vayne", "Vex", "Vi", "Viktor", "Volibear", "Warwick",
+  "Xerath", "Xin Zhao", "Yasuo", "Yone", "Yordle", "Yuumi",
+  "Zaun", "Zed", "Ziggs", "Zilean"]
+
+/-- Name a tag: the object gains it (The List), one of all the tags that there are. -/
+def nameATag : Effect :=
+  .eitherOf (EffectList.ofList (allTagNames.map (fun t => Effect.prim (.gainTag .self t))))
+
 /-- The number of the tags Bird, Cat, Dog and Poro that the player's units have among them. -/
 def petTags : Amount :=
   .add (.add (.min (.const 1) (.count (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Bird"⟩])))
@@ -3907,8 +3937,15 @@ def UNL_138.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- The List: the effect is not written yet. -/
-def UNL_138 : CardDef := UNL_138.meta
+/-- The List. -/
+def UNL_138 : CardDef :=
+  { UNL_138.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] nameATag) .unlimited,
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .unit, .sharesGainedTag]]
+          (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-139
 /--
@@ -4992,8 +5029,21 @@ def UNL_177.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Ivern, Friend to All: the effect is not written yet. -/
-def UNL_177 : CardDef := UNL_177.meta
+/-- Ivern. -/
+def UNL_177 : CardDef :=
+  { UNL_177.meta with
+    abilities := [
+      .triggered (.onSelf .play)
+        (.of [] (.eitherOf (EffectList.ofList
+          [.prim (.gainTag .self "Bird"), .prim (.gainTag .self "Cat"),
+           .prim (.gainTag .self "Dog"), .prim (.gainTag .self "Poro")]))) .unlimited,
+      .triggered (.onSelf .conquer)
+        (.of [] (.ifThen (.cmp .eq petTags (.const 4)) (.prim (.score .you (.const 1))) .nop))
+        .unlimited,
+      .triggered (.onSelf .hold)
+        (.of [] (.ifThen (.cmp .eq petTags (.const 4)) (.prim (.score .you (.const 1))) .nop))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-178
 /--

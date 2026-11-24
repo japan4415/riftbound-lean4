@@ -211,6 +211,8 @@ inductive Filter where
   /-- Its Might is less than the Might of the object the selector names (`self`, a chosen object or a
   variable). -/
   | mightLtOf (s : Selector)
+  /-- Has a tag the object the effect belongs to gained or was told to name (The List). -/
+  | sharesGainedTag
   /-- Is a spell or ability that chooses the object the selector names, and no other object of its
   controller (Repulse). -/
   | choosesOnly (s : Selector)

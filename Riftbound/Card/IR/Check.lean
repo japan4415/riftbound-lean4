@@ -179,6 +179,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .createAtPrev _ n _ => Amount.ok c n
   | .cloneToken s => Selector.ok c s
   | .banishWith s => Selector.ok c s
+  | .gainTag s _ => Selector.ok c s
   | .moveAll _ _ fs _ _ => FilterList.ok c fs
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n

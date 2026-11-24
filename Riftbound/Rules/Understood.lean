@@ -172,6 +172,7 @@ def Filter.understood : Filter → Bool
   | .attached => true
   | .token => true
   | .choosesMine => true
+  | .sharesGainedTag => true
   | .mightLtOf .self => true
   | .mightLtOf (.slot _) => true
   | .mightLtOf (.var _) => true
@@ -332,6 +333,7 @@ def Prim.understood : Prim → Bool
   | .createAtPrev _ n _ => n.understood
   | .cloneToken s => s.understood
   | .banishWith s => s.understoodPickAny
+  | .gainTag s _ => s.understood
   | .moveAll _ place fs dest _ =>
     place.zoneKind?.isSome && dest.zoneKind?.isSome && FilterList.understood fs
   | .spendXP p n => p.understood && n.understood

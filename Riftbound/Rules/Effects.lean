@@ -1860,6 +1860,15 @@ def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side 
     some (applyEach (sendMarked src mark k) s ids)
   | _, _ => none
 
+/-- The object gains a tag. -/
+def gainTagObj (name : String) (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with tagsGained := o.tagsGained ++ [name] }), [])
+
+/-- Gaining a tag is a safe change. -/
+theorem gainTagObj_safe (name : String) (s : GameState) (id : ObjId) :
+    Safe s (gainTagObj name s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
@@ -2014,6 +2023,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
   | .cloneToken sel => onSelected s p src env sel cloneTok
   | .banishWith sel => onSelected s p src env sel (banishMarked src)
+  | .gainTag sel name => onSelected s p src env sel (gainTagObj name)
   | .moveAll side place fs dest mark => applyMoveAll s p src env side place fs dest mark
   | .becomeCopy sel from_ =>
     match from_.eval s p src env with
@@ -2263,6 +2273,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact applyCreateAtPrev_safe h
   | cloneToken sel => exact onSelected_safe cloneTok_safe h
   | banishWith sel => exact onSelected_safe (banishMarked_safe src) h
+  | gainTag sel name => exact onSelected_safe (gainTagObj_safe name) h
   | moveAll side place fs dest mark =>
     simp only [applyPrim, applyMoveAll] at h
     split at h

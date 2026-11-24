@@ -123,6 +123,8 @@ structure Object where
   playedStamp : Option Nat := none
   /-- Where the Unit was before its last move: its Battlefield, or none for the Base. -/
   prevLoc : Option ObjId := none
+  /-- The names of the tags the object gained, or was told to name (Ivern, The List). -/
+  tagsGained : List String := []
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/

@@ -121,6 +121,7 @@ def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
 
 /-- The tags an Equipment gives to the Unit it is attached to. -/
 def GameState.gainedTags (s : GameState) (id : ObjId) : List Tag :=
+  ((s.obj? id).map (fun o => o.tagsGained.map (fun n => ({ name := n } : Tag)))).getD [] ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
@@ -458,6 +459,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let o ← s.obj? id
     pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
       (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
+  | .sharesGainedTag =>
+    (s.cardDef? id).map (fun d =>
+      ((d.tags ++ s.gainedTags id).map (·.name)).any (fun n =>
+        (s.obj? self).any (fun o => o.tagsGained.contains n)))
   | .mightLtOf sel => do
     let d ← match sel with
       | .self => some self

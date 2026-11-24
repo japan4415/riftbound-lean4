@@ -156,6 +156,9 @@ inductive Prim where
   /-- Move every card of a side in a zone off the board that has the properties to another zone:
   to the Banishment, noting that this object banished them if asked (Cursed Sarcophagus). -/
   | moveAll (side : Side) (place : Place) (fs : FilterList) (dest : Place) (mark : Bool)
+  /-- The objects gain the tag (for good): Ivern is a Bird, a Cat, a Dog or a Poro; The List names
+  a tag. -/
+  | gainTag (s : Selector) (name : String)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
