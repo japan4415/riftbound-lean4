@@ -1330,6 +1330,12 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inCombat => simp at h
       | onChain => simp at h
 
+/-- The event that says the player chose the object while the effect of `src` resolved: a choice by
+a spell, or by an ability. -/
+def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
+  if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
+  else [Event.chosenByAbility p o]
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -1459,6 +1465,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .extraTurn ps =>
     (ps.resolve s p).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
   | .lookTop n => some (s, ((s.zone (.player p .mainDeck)).take n).map (Event.lookedAt p))
+  | .choose sel => (sel.eval s p src env).map (fun ids => (s, ids.flatMap (chosenAt s p src)))
   | .activateConquer sel =>
     onSelected s p src env sel (fun t id => (t, [Event.conquerActivated id]))
   | .pay c =>
@@ -1679,6 +1686,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact Safe.refl s
+  | choose sel =>
+    simp only [applyPrim] at h
+    cases hs : sel.eval s p src env with
+    | none => simp [hs] at h
+    | some ids =>
+      simp only [hs, Option.map_some, Option.some.injEq] at h
+      rw [← h]
+      exact Safe.refl s
   | returnChampion =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
@@ -2134,12 +2149,6 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
-
-/-- The event that says the player chose the object while the effect of `src` resolved: a choice by
-a spell, or by an ability. -/
-def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
-  if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
-  else [Event.chosenByAbility p o]
 
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
 the events. An instruction that cannot be done is skipped (design.md §7.1). An effect that names an

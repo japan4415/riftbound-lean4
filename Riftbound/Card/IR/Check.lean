@@ -186,6 +186,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .activateConquer s => Selector.ok c s
+  | .choose s => Selector.ok c s
   | .lookTop _ => true
   | .swapPlaces a b => Selector.ok c a && Selector.ok c b
   | .returnChampion => true

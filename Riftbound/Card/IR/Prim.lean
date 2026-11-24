@@ -148,6 +148,9 @@ inductive Prim where
   | swapPlaces (a b : Selector)
   /-- Look at the top `n` cards of the Main Deck of the player. -/
   | lookTop (n : Nat)
+  /-- The player chooses the objects while the effect resolves: nothing changes but the events
+  ("when you choose"). -/
+  | choose (s : Selector)
   /-- Activate the conquer effects of the units. -/
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/

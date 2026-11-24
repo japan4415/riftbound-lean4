@@ -243,6 +243,7 @@ def Prim.understood : Prim → Bool
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
   | .activateConquer s => s.understood
+  | .choose s => s.understood
   | .lookTop _ => true
   | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
