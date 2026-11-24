@@ -189,6 +189,7 @@ def Filter.understood : Filter → Bool
   | .permitsOpenPlay => true
   | .lethal => true
   | .at_ .self => true
+  | .at_ .it => true
   | .at_ (.slot _) => true
   | .at_ (.var _) => true
   | _ => false
@@ -241,6 +242,8 @@ def Condition.understood : Condition → Bool
   | .hasHidden => true
   | .spentOnSpell _ => true
   | .beginningPhase => true
+  | .inShowdown => true
+  | .showdownNow => true
   | .iControlHere => true
   | _ => false
 
@@ -404,7 +407,9 @@ def StaticMod.runs : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .anyDamageKills => true
   | .movesHereFromAnywhere => true
+  | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => s.understood

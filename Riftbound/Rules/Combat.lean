@@ -71,7 +71,10 @@ def foes (s : GameState) (bf : ObjId) (side : PlayerId) : List ObjId :=
 damage, because lethal damage is not 0 (CR 142.4.b). -/
 def need (s : GameState) (u : ObjId) : Nat :=
   let d := ((s.obj? u).map (·.damage)).getD 0
-  max (s.mightEff u - d) (if d = 0 then 1 else 0)
+  -- any amount of the damage of a side kills, while a passive ability of it says so
+  if ((s.obj? u).map (fun o => s.anyDamageKills o.controller)).getD false then
+    (if d = 0 then 1 else 0)
+  else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
 /-- Whether the Units of at least two players are at the Battlefield (CR 464). -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=

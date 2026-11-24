@@ -240,7 +240,9 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .anyDamageKills => true
   | .movesHereFromAnywhere => true
+  | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s

@@ -393,10 +393,15 @@ inductive StaticMod where
   | noReadyOfOpps
   /-- Units can move here from anywhere: from another Battlefield, too (Baron Pit). -/
   | movesHereFromAnywhere
+  /-- The Spells of the player have Repeat, for the cost (Syndra, in a showdown). -/
+  | grantRepeat (k : Cost)
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
   | assignedLast
+  /-- Any amount of the damage of the player's side is enough to kill the enemy units (Elder
+  Dragon). -/
+  | anyDamageKills
   /-- The card enters play exhausted (a Gear: Honeyfruit, Scryer's Bloom). -/
   | entersExhausted
   /-- The Unit can have any number of buffs. -/

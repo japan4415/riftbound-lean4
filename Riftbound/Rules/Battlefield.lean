@@ -66,6 +66,16 @@ def unitsOf (s : GameState) (p : PlayerId) (bf : ObjId) : List ObjId :=
 /-- The player who controls a Battlefield, if any (CR 190.6). -/
 def controlOf (s : GameState) (bf : ObjId) : Option PlayerId := (s.obj? bf).bind (·.control)
 
+/-- An object of another player than `q` in play has the passive ability that any amount of its
+damage is enough to kill the units of `q` (Elder Dragon). -/
+def anyDamageKills (s : GameState) (q : PlayerId) : Bool :=
+  s.inPlay.any (fun g =>
+    (s.obj? g).any (fun o => o.controller != q) &&
+      (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
+        match ab with
+        | Ability.passive .always mods => mods.contains .anyDamageKills
+        | _ => false)))
+
 /-- Whether a Unit has lethal damage: damage that is not 0 and reaches its Might (CR 142.4.b).
 The owner must be a player of the game, which holds for every object of a game that can be played.
 The condition is there so that the Cleanup, which kills such a Unit by sending it to its owner's
@@ -74,7 +84,7 @@ def lethal (s : GameState) (id : ObjId) : Bool :=
   match s.obj? id with
   | some o =>
     decide (o.owner.n < s.playerCount) && decide (0 < o.damage) &&
-      (s.mightNow id).any (fun m => decide (Might.eff m ≤ o.damage))
+      ((s.mightNow id).any (fun m => decide (Might.eff m ≤ o.damage)) || s.anyDamageKills o.controller)
   | none => false
 
 end GameState

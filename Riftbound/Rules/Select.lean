@@ -296,6 +296,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     -- at, or a Base (the selector is `self`, a chosen object or a variable)
     let d? : Option ObjId := match sel with
       | .self => some self
+      | .it => env.it
       | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
@@ -969,6 +970,13 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
+  | .showdownNow =>
+    some (s.pending.any (fun f => match f with | .showdown .. => true | _ => false))
+  | .inShowdown =>
+    some (s.pending.any (fun f =>
+      match f with
+      | .showdown bf _ _ => (s.obj? self).any (·.loc == some bf)
+      | _ => false))
   | .inCombatHere =>
     some (match s.combatNow, (s.obj? self).bind (·.loc) with
       | some (bf, _), some l => bf == l

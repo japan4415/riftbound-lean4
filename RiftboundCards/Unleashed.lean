@@ -3366,8 +3366,18 @@ def UNL_118.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Elder Dragon: the effect is not written yet. -/
-def UNL_118 : CardDef := UNL_118.meta
+/-- Elder Dragon. -/
+def UNL_118 : CardDef :=
+  { UNL_118.meta with
+    abilities := [.passive .always [.anyDamageKills],
+      .triggered (.onSelf .play)
+        (.of [] (.seqOf [
+          .forEach (Selector.all .any .anywhere [.ofType .battlefield])
+            (.may (.prim (.deal (Selector.one .enemy .anywhere [.ofType .unit, .at_ .it])
+              (.const 1)))),
+          .may (.prim (.deal (Selector.one .enemy .atBase [.ofType .unit]) (.const 1)))]))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-119
 /--
@@ -4128,8 +4138,11 @@ def UNL_146.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Syndra, Transcendent: the effect is not written yet. -/
-def UNL_146 : CardDef := UNL_146.meta
+/-- Syndra. -/
+def UNL_146 : CardDef :=
+  { UNL_146.meta with
+    abilities := [.passive .inShowdown [.grantRepeat ⟨2, [.domain .chaos]⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-147
 /--
@@ -5037,8 +5050,16 @@ def UNL_179.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Rift Herald: the effect is not written yet. -/
-def UNL_179 : CardDef := UNL_179.meta
+/-- Rift Herald. -/
+def UNL_179 : CardDef :=
+  { UNL_179.meta with
+    abilities := [
+      .triggered { condition := .matches .self .onBattlefield, event := .move }
+        (.of [] (lookDraw 3 [.ofType .unit])) .unlimited,
+      .triggered (.onSelf .die)
+        (.of [] (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit])
+          (.const 99) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-180
 /--
@@ -5544,8 +5565,12 @@ def UNL_197.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Scorn of the Moon: the effect is not written yet. -/
-def UNL_197 : CardDef := UNL_197.meta
+/-- Scorn of the Moon. -/
+def UNL_197 : CardDef :=
+  { UNL_197.meta with
+    abilities := [.activated [.exhaustSelf] .reaction
+      (.of [] (.ifThen .showdownNow (.prim (.addEnergy .you (.const 1) none)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-198
 /--

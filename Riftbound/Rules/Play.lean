@@ -252,6 +252,22 @@ def GameState.extrasRaw (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     | .accelerate, _ => if d.hasType .unit then some (⟨1, [.own]⟩, false) else none
     | .repeat_, .cost k => if d.hasType .spell then some (k, true) else none
     | _, _ => none) ++
+  -- the Repeat that a passive ability of an object of the player gives their Spells (Syndra)
+  (if d.hasType .spell then
+    s.passiveSources.flatMap (fun g =>
+      match s.sourceOwner g, s.cardDef? g with
+      | some o, some dg =>
+        if o.controller == p then
+          dg.fullAbilities.flatMap (fun ab =>
+            match ab with
+            | Ability.passive cond mods =>
+              if cond.eval s p g {} == some true then
+                mods.filterMap (fun m => match m with | .grantRepeat k => some (k, true) | _ => none)
+              else []
+            | _ => [])
+        else []
+      | _, _ => [])
+  else []) ++
   -- each effect of the turn that gives Repeat gives one more Repeat
   (if d.hasType .spell then
     ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
