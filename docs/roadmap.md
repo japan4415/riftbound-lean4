@@ -1927,3 +1927,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **証明**: `applyActivate_cases` に、費用の支払いの状態（`Safe`）を足した。手札と Chain は、`killObj_zone_other` で、そのままだと示す。
 - **これで、記録していた近似は、すべて直した**。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 46 — Edge of Night、Not So Fast、Arise!
+
+- **Edge of Night（SFD-139）**: 遊んだときの誘発に、`condition := .fromHidden` を付けた。手札から遊んだときは、誘発せず、対象も聞かれない。
+- **Not So Fast（SFD-045）**: 呪文だけでなく、味方のユニットかギアを選ぶ敵の能力も、打ち消せる（`Place.onChainAll`。打ち消された能力は、消える。`counterObj`）。
+- **Arise!（SFD-198）**: 作った Sand Soldier のうち 2 体が、ready で出る（残りは exhausted）。以前は、前からいる exhausted の Sand Soldier を ready にしていた。
+
