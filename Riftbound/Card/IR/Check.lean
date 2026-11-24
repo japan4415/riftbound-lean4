@@ -149,6 +149,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .addPower p n _ _ => p.ok c && Amount.ok c n
   | .counter s => Selector.ok c s
   | .play s => Selector.ok c s
+  | .banishReplay s => Selector.ok c s
   | .playPaying s => Selector.ok c s
   | .playReduced s a t => Selector.ok c s && Amount.ok c a && (match t with
     | some b => Selector.ok c b

@@ -5908,7 +5908,7 @@ def SFD_200 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .enemy .atBattlefield [.ofType .unit]]
-      (.seqOf [.prim (.play (.slot 0)), .prim (.deal (.slot 1) (.const 3)),
+      (.seqOf [.prim (.banishReplay (.slot 0)), .prim (.deal (.slot 1) (.const 3)),
         .prim (.banish .self)])),
     status := .drafted }
 

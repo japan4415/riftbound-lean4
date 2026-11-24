@@ -257,6 +257,7 @@ def Prim.understood : Prim → Bool
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .play s => s.understoodPickAny
+  | .banishReplay s => s.understoodPickAny
   | .playPaying s => s.understoodPickAny
   | .playReduced s a t => s.understoodPickAny && a.understood && (match t with
     | some b => b.understood

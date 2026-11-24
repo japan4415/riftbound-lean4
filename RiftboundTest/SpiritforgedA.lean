@@ -1445,8 +1445,11 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s3, v) ← put s2 s.me "OGN-051" .base
   let (s4, g) ← put s3 s.me "SFD-042" .base
   let hooked := s4.modObj g (fun o => { o with attached := some v })
-  let d ← play hooked s.me c [u, g] { fromEnd := some 2 }
-  return (d.obj? g).any (·.attached == some v) && d.handN s.me == hooked.handN s.me
+  -- "detach" cannot be chosen for an Equipment attached to another unit: only "attach" is left
+  let d ← play hooked s.me c [u, g] { fromEnd := some 1 }
+  let e ← play hooked s.me c [u, g] { fromEnd := some 2 }
+  return (d.obj? g).any (·.attached == some u) && d.handN s.me == hooked.handN s.me &&
+    (e.obj? g).any (·.attached == some v)
 
 -- (review) Blade Dancer: an enemy unit, a refusal, and no Power change nothing
 #guard tsf fun s => do
@@ -2425,9 +2428,16 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s1, c) ← put s s.me "SFD-200" .hand
   let (s2, u) ← put s1 s.me "OGN-003" .base
   let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
+  let hurt := (s3.buff u).modObj u (fun o => { o with damage := 1 })
   let r ← play s3 s.me c [u, e]
+  let r2 ← play hurt s.me c [u, e]
+  let again (x : GameState) : Option ObjId :=
+    (x.zone (.player s.me .base)).find? (fun o => (x.cardDef? o).any (·.id == cid "OGN-003"))
+  let n ← again r2
   return r.dmg e == some 3 && r.countIn s.me .trash "SFD-200" == 0 &&
-    r.handN s.me + 2 == s3.handN s.me
+    r.handN s.me + 2 == s3.handN s.me &&
+    -- it is a new object, with nothing of what it had: no buff, no damage, and exhausted
+    n != u && (r2.obj? n).any (fun o => !o.buffed && o.damage == 0 && o.exhausted)
 
 -- (review) spending a buff the unit does not have is no event; Fiora with a buff and with company
 #guard tsf fun s => do

@@ -1888,3 +1888,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Reaction を持つユニットやギアは、Chain に応じて遊べる（`reactable`、`reactStep`）。呪文のように Chain に載らず、すぐに Base へ出て、遊んだときの誘発（Janna の「ここ」のヒールと追い出しなど）が Chain に載る。Battlefield へ遊ぶ能力（Rengar、Janna）は、これまでどおり。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 39 — Arcane Shift、選べない分かれ道
+
+- **Arcane Shift（SFD-200）**: ユニットを追放し（`Prim.banishReplay`）、その持ち主が、費用を無視して遊ぶ。新しいオブジェクトで、バフ・ダメージ・付いていた Equipment は無く、exhausted で Base に出る。トークンは、追放されて消える（遊ばない）。
+- **選べない分かれ道**: 「条件だけの枝」（`.ifThen 条件 効果 .nop`）は、条件が偽のとき、選べない（`Effect.viable`、`eitherOk`。`Spec/Legal` と `legalFrameActions` が、同じ条件で絞る。どの枝も選べないときは、どれを選んでもよい）。Aphelios, Exalted の、このターンに選んだモードは、もう選べない。Angle Shot の「detach」は、同じユニットに付いているときだけ選べる。
+

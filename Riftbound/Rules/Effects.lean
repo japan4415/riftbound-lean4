@@ -1012,6 +1012,31 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
       (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
 
+/-- Banish a unit, then its owner plays it, ignoring its cost: it comes back as a new object, with
+nothing of what it had (a token ceases to exist when it is banished, and is not played). -/
+def banishReplay (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .banishment s id
+  match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none),
+      (s.obj? id) with
+  | some n, some o =>
+    match o.kind with
+    | .token _ => r
+    | _ =>
+      let t := playFree o.owner r.1 n
+      (t.1, r.2 ++ t.2)
+  | _, _ => r
+
+/-- Banishing a unit and playing it again is a safe change. -/
+theorem banishReplay_safe (s : GameState) (id : ObjId) : Safe s (banishReplay s id).1 := by
+  unfold banishReplay
+  dsimp only
+  split
+  · rename_i n o
+    split
+    · exact sendObj_safe .banishment s id
+    · exact (sendObj_safe .banishment s id).trans (playFree_safe _ _ _)
+  · exact sendObj_safe .banishment s id
+
 /-- Play a card without paying, to a Battlefield: to its Base, if the opponents of the player play
 Units only to their Base (Mageseeker Warden). -/
 def playToOrBase (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
@@ -1517,6 +1542,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       | none => none))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
+  | .banishReplay sel => onSelected s p src env sel banishReplay
   | .playPaying sel => onSelected s p src env sel (playPaying p)
   | .playTo sel bfs =>
     match bfs.eval s p src env with
@@ -1685,6 +1711,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact Safe.refl s
   | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
+  | banishReplay sel => exact onSelected_safe banishReplay_safe h
   | playPaying sel => exact onSelected_safe (playPaying_safe p) h
   | playTo sel bfs =>
     simp only [applyPrim] at h
@@ -2000,6 +2027,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .bin s => some s
   | .discardCard s => some s
   | .play s => some s
+  | .banishReplay s => some s
   | .playPaying s => some s
   | .playReduced s _ _ => some s
   | .castInline s => some s
@@ -2034,6 +2062,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .play _ => .play sel
+  | .banishReplay _ => .banishReplay sel
   | .playPaying _ => .playPaying sel
   | .playReduced _ l d => .playReduced sel l d
   | .castInline _ => .castInline sel
@@ -2161,6 +2190,31 @@ def GameState.lookFirst (s : GameState) (p : PlayerId) (env : Env) (sel : Select
     | _ => false) &&
     s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
       (s.activeMods g).contains .lookBeforeReveal)
+
+mutual
+
+/-- Whether a branch of a choice can be chosen: a branch that is a condition and nothing else is
+chosen only while the condition holds ("choose one that hasn't been chosen"). -/
+def Effect.viable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) : Effect → Bool
+  | .ifThen c _ .nop => c.eval s p src env == some true
+  | .eitherOf es => EffectList.anyViable s p src env es
+  | _ => true
+
+/-- Whether some branch of a choice can be chosen. -/
+def EffectList.anyViable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
+    EffectList → Bool
+  | .nil => false
+  | .cons e rest => Effect.viable s p src env e || EffectList.anyViable s p src env rest
+
+end
+
+/-- The player may answer the choice between the effects `a` and `b` with `yes` (the first) or not
+(the others): the branch must be one that can be chosen, unless none can. -/
+def eitherOk (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a b : Effect)
+    (yes : Bool) : Bool :=
+  let va := a.viable s p src env
+  let vb := b.viable s p src env
+  (if yes then va else vb) || (!va && !vb)
 
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
