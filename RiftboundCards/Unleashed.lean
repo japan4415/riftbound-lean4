@@ -4517,8 +4517,15 @@ def UNL_158.meta : CardDef :=
     sets := [⟨"UNL"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Shepherd's Heirloom: the effect is not written yet. -/
-def UNL_158 : CardDef := UNL_158.meta
+/-- Shepherd's Heirloom. -/
+def UNL_158 : CardDef :=
+  { UNL_158.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited,
+      .activated [] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (spendXpThen 1 (.prim (.attach .self (.slot 0))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-159
 /--
@@ -5371,8 +5378,25 @@ def UNL_188.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Hextech Gauntlets: the effect is not written yet. -/
-def UNL_188 : CardDef := UNL_188.meta
+/-- Hextech Gauntlets. -/
+def UNL_188 : CardDef :=
+  { UNL_188.meta with
+    abilities := [
+      .activated [.pay ⟨2, [.any]⟩] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.ifThen (.matches (.slot 0) (.might .ge (.const 1))) (.prim (.attach .self (.slot 0))) .nop))
+        .unlimited,
+      .activated [.pay ⟨1, [.any]⟩] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.ifThen (.matches (.slot 0) (.might .ge (.const 2))) (.prim (.attach .self (.slot 0))) .nop))
+        .unlimited,
+      .activated [.pay ⟨0, [.any]⟩] .normal
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.ifThen (.matches (.slot 0) (.might .ge (.const 3))) (.prim (.attach .self (.slot 0))) .nop))
+        .unlimited],
+    grants := [.triggered { condition := .excessAtLeast 3, event := .conquer }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-189
 /--
