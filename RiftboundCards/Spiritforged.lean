@@ -429,7 +429,7 @@ def SFD_015.meta : CardDef :=
 def SFD_015 : CardDef :=
   { SFD_015.meta with
 
-    abilities := [.passive .always [.playToBf [.scoredByMine], .noPlayToBase]],
+    abilities := [.passive .always [.playToBf [.conqueredByMine], .noPlayToBase]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-016
@@ -795,8 +795,11 @@ def SFD_027 : CardDef :=
   { SFD_027.meta with
 
     abilities := [
-      -- the card is still in the hand as it enters: "two or fewer" other cards is three here
-      .passive (.cmp .le (.handSize .you) (.const 3)) [.entersReady .self],
+      -- "two or fewer" other cards: the card itself is in the hand as it enters, but not when it
+      -- is played from another zone
+      .passive (.cmp .le (.sub (.handSize .you)
+        (.count (Selector.all .friendly .inHand [.sameAs .self]))) (.const 2))
+        [.entersReady .self],
       .triggered (.onSelf .hold) (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
     status := .drafted }
 
@@ -2118,9 +2121,13 @@ def SFD_072.meta : CardDef :=
 def SFD_072 : CardDef :=
   { SFD_072.meta with
 
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear]))
-        (.const 2)) (.prim (.ready .self)) .nop)) .unlimited],
+    abilities :=
+      let twoGear : Condition :=
+        .cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear])) (.const 2)
+      -- "if you control two or more gear": it is asked when the ability is set off, and again
+      -- when it resolves
+      [.triggered { event := .play, condition := twoGear }
+        (.of [] (.ifThen twoGear (.prim (.ready .self)) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-073
@@ -3274,7 +3281,7 @@ def SFD_111.meta : CardDef :=
 def SFD_111 : CardDef :=
   { SFD_111.meta with
 
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .controlled]]
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .controlled, .unitsPlayable]]
       (.may (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit]) (.const 3)
         (some (.slot 0)))))),
     status := .drafted }
@@ -3429,7 +3436,8 @@ def SFD_116 : CardDef :=
   { SFD_116.meta with
 
     abilities := [.triggered { event := .conquer, condition := .openConquered }
-      (.of [] (.prim (.deal (Selector.one .enemy .atBase [.ofType .unit]) (.mightOf .self))))
+      (.of [.targetOf .one .enemy .atBase [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.mightOf .self))))
       .unlimited],
     status := .drafted }
 
@@ -3696,7 +3704,8 @@ def SFD_125 : CardDef :=
   { SFD_125.meta with
 
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
-      (.of [] (.ifThen (.canPay ⟨0, [.domain .chaos]⟩)
+      (.of [] (.ifThen (.and (.canPay ⟨0, [.domain .chaos]⟩)
+          (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])))
         (.may (.seqOf [.prim (.pay ⟨0, [.domain .chaos]⟩),
           .prim (.move (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])
             (.at_ .self))])) .nop)) .unlimited],
@@ -3890,7 +3899,7 @@ def SFD_132 : CardDef :=
 
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf],
-          .targetOf .one .enemy .anywhere [.ofType .unit]]
+          .targetOf (.upTo 1) .enemy .anywhere [.ofType .unit]]
         (.seqOf [.prim (.returnToHand (.slot 0)), .prim (.returnToHand (.slot 1))])) .unlimited],
     status := .drafted }
 
