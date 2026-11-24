@@ -815,7 +815,7 @@ def UNL_025.meta : CardDef :=
 def UNL_025 : CardDef :=
   { UNL_025.meta with
     abilities := [.activated [.fromTrash, .pay ⟨3, [.domain .fury]⟩] .normal
-      (.of [] (.ifThen .legion (.prim (.play .self)) .nop)) .unlimited],
+      (.of [] (.ifThen .playedAnother (.prim (.play .self)) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-026

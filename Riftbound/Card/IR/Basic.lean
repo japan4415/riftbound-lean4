@@ -177,8 +177,6 @@ inductive TurnEffect where
   | diedInBeginning
   /-- The player gained XP (a note of the turn). -/
   | gainedXP
-  /-- The player drew a card (a note of the turn). -/
-  | drewCard
   /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
   | banishInstead
   /-- All damage that would be dealt to the unit this turn is doubled (Lotus Trap). -/
