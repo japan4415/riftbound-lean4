@@ -3868,6 +3868,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 -- more for each one paid. Two Portals: the spell is done three times if both are paid.
 meta def effLen : EffectList → Nat
   | .nil => 0
+  | .cons (.fillSlot _ _) rest => effLen rest
   | .cons _ rest => 1 + effLen rest
 
 #guard tsf fun s => do
@@ -3892,5 +3893,23 @@ meta def effLen : EffectList → Nat
   return (a2.playMark s.me c once).extraPaid == 0 &&
     (a2.playMark s.me c twice).extraPaid == 1 && (a2.playMark s.me c thrice).extraPaid == 2 &&
     (← runs once) == 1 && (← runs twice) == 2 && (← runs thrice) == 3
+
+-- (CR 820.2) A repeated spell chooses its targets again: the first target is dealt 3 and a second
+-- one, chosen as the effect is done again, is dealt 3 too
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-078" .base
+  let (s2, c) ← put s1 s.me "OGN-005" .hand
+  let (s3, e1) ← putAt s2 s.you "OGN-088" s.bf0
+  let (s4, e2) ← putAt s3 s.you "OGN-088" s.bf0
+  let dC ← s4.cardDef? c
+  let funded := (s4.control s.you s.bf0).fund s.me 12 12 12 12 12 12 12
+  let a ← activate funded s.me g 0 [] ⟨0, [.fury]⟩
+  let cost ← a.effCost s.me c dC
+  let double : RunePool.Payment :=
+    ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
+  let once ← cast a s.me c (payOf a c) [e1] { obj := fun o => o == e2 }
+  let twice ← cast a s.me c double [e1] { obj := fun o => o == e2 }
+  return once.dmg e1 == some 3 && once.dmg e2 == some 0 && twice.dmg e1 == some 3 &&
+    twice.dmg e2 == some 3
 
 end RiftboundTest

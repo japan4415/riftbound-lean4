@@ -2270,12 +2270,14 @@ def Effect.pickSel? : Effect → Option Selector
     | some (.pick .one side place fs) => some (.pick .one side place fs)
     | _ => none
   | .grant (.pick .one side place fs) _ _ => some (.pick .one side place fs)
+  | .fillSlot _ (.pick .one side place fs) => some (.pick .one side place fs)
   | _ => none
 
 /-- The effect with the chosen object, named by `pickVar`, in place of the selector. -/
 def Effect.withPick : Effect → Effect
   | .prim p => .prim (p.withSel (.var pickVar))
   | .grant (.pick .one _ _ _) m d => .grant (.var pickVar) m d
+  | .fillSlot i _ => .fillFromPick i
   | e => e
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
@@ -2463,6 +2465,11 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match c.eval s p src env with
     | some b => (s, [.run p src env (.cons (if b then t else e') es)], [])
     | none => skip
+  | .fillFromPick i =>
+    -- the object that was chosen becomes slot `i`
+    match env.lookup pickVar with
+    | some v => (s, [.run p src { env with slots := env.slots.set i v } es], [])
+    | none => skip
   | .forEach sel body =>
     match sel.eval s p src env with
     | some ids =>
@@ -2619,6 +2626,30 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       .finishSpell item :: rest
   | _ => .finishSpell item :: rest
 
+/-- The effects that choose the targets of an effect again: one for each target of exactly one
+object (the others keep what they were) (CR 820). -/
+def EffectDef.refills (e : EffectDef) : List Effect :=
+  let rec go : List Choice → Nat → List Effect
+    | [], _ => []
+    | .target .one side place fs :: cs, i =>
+      .fillSlot i (Selector.pick .one side place fs) :: go cs (i + 1)
+    | .target _ _ _ _ :: cs, i => go cs (i + 1)
+    | _ :: cs, i => go cs i
+  go e.choices 0
+
+/-- What a repeated effect does after the first time: the targets are chosen again, then the effect
+is done (CR 820). -/
+def EffectDef.repeats (e : EffectDef) : Nat → EffectList
+  | 0 => .nil
+  | m + 1 => (EffectList.ofList e.refills).append (.cons e.body (e.repeats m))
+
+/-- An effect done `n` times: the first time with the targets chosen when the Spell was played, the
+others with the targets chosen again (CR 820). -/
+def EffectDef.executions (e : EffectDef) (n : Nat) : EffectList :=
+  match n with
+  | 0 => .nil
+  | m + 1 => .cons e.body (e.repeats m)
+
 /-- The frames that resolve the item on top of the Chain (CR 340): run its effect, then it leaves
 the Chain (a Spell goes to the Trash, an ability ceases to exist). Nothing to resolve when the
 Chain is empty. -/
@@ -2630,9 +2661,9 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
       .run o.controller item { slots := slotValues o.targets d.spellEffect }
         (match d.spellEffect with
           | some e =>
-            -- once, and once more for each Repeat that was paid (CR 820.3)
-            EffectList.replicate
-              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1) e.body
+            -- once, and once more for each Repeat that was paid (CR 820)
+            e.executions
+              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1)
           | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest
