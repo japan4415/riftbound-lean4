@@ -320,15 +320,23 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play (s3.inShowdownAt s.bf0 s.me) s.me c [u]
   return (r.obj? u).map (·.stunned) == some true && (play s3 s.me c [u]).isNone
 
--- Emperor's Divide (SFD-043): friendly units at a battlefield may move to their base
+-- Emperor's Divide (SFD-043): any number of friendly units at a battlefield move to their base
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-043" .hand
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
-  let (s3, e) ← putAt s2 s.you "OGN-051" s.bf0
-  let a ← play s3 s.me c [s.bf0]
-  let b ← play s3 s.me c [s.bf0] { yes := false }
-  return (a.obj? u).any (·.loc.isNone) && (a.obj? e).any (·.loc == some s.bf0) &&
-    (b.obj? u).any (·.loc == some s.bf0)
+  let (s3, v) ← putAt s2 s.me "OGN-001" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-051" s.bf0
+  let (s5, w) ← put s4 s.me "OGN-051" .base
+  let atBf (x : GameState) (o : ObjId) : Bool := (x.obj? o).any (·.loc == some s.bf0)
+  let (lo, hi) := if u.n < v.n then (u, v) else (v, u)
+  let none_ ← play s5 s.me c [s.bf0]
+  let one ← play s5 s.me c [s.bf0, lo]
+  let both ← play s5 s.me c [s.bf0, lo, hi]
+  return atBf none_ u && atBf none_ v && !atBf one lo && atBf one hi &&
+    !atBf both u && !atBf both v && atBf both e &&
+    (play s5 s.me c [s.bf0, hi, lo]).isNone && (play s5 s.me c [s.bf0, e]).isNone &&
+    (play s5 s.me c [s.bf0, w]).isNone && (play s5 s.me c [s.bf0, lo, lo]).isNone &&
+    (play s5 s.me c []).isNone
 
 -- Simian Ancestor (SFD-047): when buffed, it readies
 #guard tsf fun s => do
@@ -542,8 +550,9 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
   let (s3, b2) ← putBf s2 s.me "SFD-216"
   let (s4, w) ← putAt s3 s.me "OGN-051" b2
-  let r ← play s4 s.me c [s.bf0]
-  return (r.obj? u).any (·.loc.isNone) && (r.obj? w).any (·.loc == some b2)
+  let r ← play s4 s.me c [s.bf0, u]
+  return (r.obj? u).any (·.loc.isNone) && (r.obj? w).any (·.loc == some b2) &&
+    (play s4 s.me c [s.bf0, w]).isNone
 -- (review) Yordle Explorer: a card with exactly one Power does not draw
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-100" .base
@@ -1080,7 +1089,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let plain ← play s3 s.me c [u]
   return both.dmg u == some 4 && (both.obj? g).isNone && one.dmg u == some 4 &&
     (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
-    plain.dmg u == some 4 && (plain.obj? g).isSome
+    plain.dmg u == some 4 && (plain.obj? g).isSome && (play s3 s.me c [u, g]).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, may play a gear (cost 7 or less)
 -- from the hand for nothing
@@ -1408,8 +1417,8 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let tok := (s3.zone (.player s.me .base)).find? (fun o =>
     (s3.cardDef? o).any (·.name == "Sand Soldier"))
   let t ← tok
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
-  let n ← fire s3 [.combatStarted s.bf0 s.me] { yes := false }
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts == [t] }
+  let n ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts.isEmpty }
   let d ← fire s3 [.combatStarted s.bf0 s.you]
   return (r.obj? t).any (·.loc == some s.bf0) && (r.obj? plain).any (·.loc.isNone) &&
     (n.obj? t).any (·.loc.isNone) && (d.obj? t).any (·.loc.isNone)
@@ -1494,7 +1503,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let mine (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
     (x.cardDef? o).any (·.name == "Sand Soldier") &&
       (x.obj? o).any (fun ob => ob.loc == some s.bf0 && ob.controller == s.me))
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts.length == 2 }
   return (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
     (s3.zone (.player s.you .base)).length
 /-- Put the cards on top of the player's Main Deck, the first of the list on top; their ids. -/
@@ -2382,10 +2391,11 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s2, a) ← put s1 s.me "OGN-051" .base
   let (s3, b) ← put s2 s.me "OGN-051" .base
   let (s4, e) ← put s3 s.you "OGN-051" .base
-  let r ← play s4 s.me d
-  let n ← play s4 s.me d [] { yes := false }
+  let r ← play s4 s.me d [] { pick := fun ts => ts == [a, b] || ts == [b, a] }
+  let n ← play s4 s.me d [] { pick := fun ts => ts.isEmpty }
+  let o ← play s4 s.me d [] { pick := fun ts => ts == [a] }
   return (r.obj? a).any (·.buffed) && (r.obj? b).any (·.buffed) && !(r.obj? e).any (·.buffed) &&
-    !(n.obj? a).any (·.buffed)
+    !(n.obj? a).any (·.buffed) && (o.obj? a).any (·.buffed) && !(o.obj? b).any (·.buffed)
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-101" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
@@ -3541,5 +3551,19 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     ((⟨2, [.domain .fury, .domain .calm, .domain .fury]⟩ : Cost).cutOptions 1).length == 3 &&
     (⟨1, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨1, []⟩] &&
     (⟨2, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨2, []⟩, ⟨1, [.domain .fury]⟩]
+
+-- Flash (OGS-011): up to two friendly units move to their base, both of them
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGS-011" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, b) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-051" s.bf0
+  let (lo, hi) := if a.n < b.n then (a, b) else (b, a)
+  let two ← play s4 s.me c [lo, hi]
+  let one ← play s4 s.me c [hi]
+  return (two.obj? a).any (·.loc.isNone) && (two.obj? b).any (·.loc.isNone) &&
+    (one.obj? lo).any (·.loc == some s.bf0) && (one.obj? hi).any (·.loc.isNone) &&
+    (play s4 s.me c [hi, lo]).isNone && (play s4 s.me c [e]).isNone &&
+    (play s4 s.me c [lo, hi, e]).isNone
 
 end RiftboundTest

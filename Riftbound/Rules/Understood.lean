@@ -188,6 +188,7 @@ def Selector.understood : Selector → Bool
   | .var _ => true
   | .pick .all _ place fs => place.understood && FilterList.understood fs
   | .locationOf sel => Selector.understood sel
+  | .slotsFrom _ => true
   | _ => false
 
 end

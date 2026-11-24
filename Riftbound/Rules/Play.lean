@@ -412,7 +412,9 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
         (match d.spellEffect with
-          | some e => targetsOk s p c s.mightTable e.choices targets
+          | some e => targetsOk s p c s.mightTable e.choices targets &&
+              -- the choice of the repeat is made only when the Repeat is paid
+              (!d.repeatChooses || decide (targets.length ≤ 1) || s.paidExtra p c d pay)
           | none => false) &&
         (match s.effCost p c d with
           | some cost => s.paysForXT p c d cost targets pay
@@ -688,7 +690,8 @@ theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
       | none => rw [he] at htg; simp at htg
       | some e =>
         rw [he] at htg
-        exact ⟨d, e, rfl, he, htg⟩
+        simp only [Bool.and_eq_true] at htg
+        exact ⟨d, e, rfl, he, htg.1⟩
 
 /-- The shape of a Spell being cast: the Pool after paying, and the move to the Chain. -/
 theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}

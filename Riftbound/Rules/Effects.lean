@@ -2186,13 +2186,6 @@ def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
   let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
   ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
 
-/-- The Spell lets its player make different choices when it is repeated (Rocket Barrage). -/
-def CardDef.repeatChooses (d : CardDef) : Bool :=
-  d.abilities.any (fun ab =>
-    match ab with
-    | Ability.passive _ mods => mods.contains .repeatChooses
-    | _ => false)
-
 /-- The frames that resolve an item of the Chain that is not a card: an ability runs its effect for
 its controller, with the objects chosen as the slots, and then it leaves the Chain (CR 340). -/
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=

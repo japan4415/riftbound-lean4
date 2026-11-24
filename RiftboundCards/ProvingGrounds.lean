@@ -311,7 +311,7 @@ def OGS_011.meta : CardDef :=
 def OGS_011 : CardDef :=
   { OGS_011.meta with
     spellEffect := some (.of [.targetOf (.upTo 2) .friendly .anywhere [.ofType .unit]]
-    (.prim (.move (.slot 0) .base))),
+    (.forEach (Selector.slotsFrom 0) (.prim (.move .it .base)))),
     status := .drafted }
 
 -- BEGIN GENERATED OGS-012

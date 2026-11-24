@@ -91,6 +91,6 @@ open Riftbound RiftboundCards
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
 #guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 150
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 145
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 146
 
 end RiftboundTest
