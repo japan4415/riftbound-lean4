@@ -1451,7 +1451,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (ps.resolve s p).map (fun l =>
       (gainPointsAll s.victoryScore s l, []))
   | .score ps n =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+    -- a player who cannot score gets no point from the effect either (Tianna)
+    (ps.resolve s p).bind (fun l0 => (n.evalS s p src env).map (fun k =>
+      let l := l0.filter (fun q => !s.cantActHere q .score src)
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e =>
     -- a Spell played from hiding is played too (what waits for a spell played fires)
@@ -1654,7 +1656,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | some k =>
         simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
         rw [← h]
-        exact gainPointsAll_safe k l s
+        exact gainPointsAll_safe k _ s
   | channel ps n extra =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with

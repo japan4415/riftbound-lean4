@@ -158,6 +158,40 @@ def GameState.costRaise (s : GameState) (c : ObjId) : Nat :=
         | _ => acc) acc
     | _, _ => acc) 0
 
+/-- Take away one Power symbol: of the domain if one is named, else the first. -/
+def removeSym (dom : Option Domain) : List PowerSym → List PowerSym
+  | [] => []
+  | x :: xs =>
+    match dom with
+    | none => xs
+    | some d => if x == .domain d then xs else x :: removeSym dom xs
+
+/-- The Power symbols of the cost of the card `c`, more or less by the passive abilities (Vex,
+Needlessly Large Yordle): more first, then less. -/
+def GameState.adjustPower (s : GameState) (c : ObjId) (power : List PowerSym) : List PowerSym :=
+  let changes : List (Nat × Option Domain × Bool) :=
+    (s.passiveSources ++ [c]).flatMap (fun src =>
+      match s.sourceOwner src, s.cardDef? src with
+      | some o, some d =>
+        d.fullAbilities.flatMap (fun ab =>
+          match ab with
+          | Ability.passive cond mods =>
+            if cond.eval s o.controller src {} == some true then
+              mods.filterMap (fun m =>
+                match m with
+                | .costPower sel a dom more =>
+                  if s.costSelects o.controller src c sel then
+                    some (((a.evalS s o.controller src (Env.empty.withMight s.mightTable)).getD 0),
+                      dom, more)
+                  else none
+                | _ => none)
+            else []
+          | _ => [])
+      | _, _ => [])
+  let up := changes.foldl (fun l ch => if ch.2.2 then l ++ List.replicate ch.1 .any else l) power
+  changes.foldl (fun l ch =>
+    if ch.2.2 then l else (List.range ch.1).foldl (fun l _ => removeSym ch.2.1 l) l) up
+
 /-- The cost the card `c` of the player is played for: its cost, less the cuts, and more by what the
 passive abilities add (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
@@ -166,7 +200,7 @@ def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     let e := (s.costCuts p c).foldl
       (fun e (cut : Nat × Nat) => if e ≤ cut.2 then e else Nat.max cut.2 (e - cut.1))
       (k.energy + s.costRaise c)
-    { k with energy := e })
+    { k with energy := e, power := s.adjustPower c k.power })
 
 /-- The cost less `k`: the Energy first, then the Power symbols. -/
 def Cost.less (c : Cost) (k : Nat) : Cost :=

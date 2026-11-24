@@ -781,6 +781,10 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     pure (!ids.isEmpty && bs.all id)
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
+  | .inCombatHere =>
+    some (match s.combatNow, (s.obj? self).bind (·.loc) with
+      | some (bf, _), some l => bf == l
+      | _, _ => false)
   | .legendReady =>
     some ((s.zone (.player p .legendZone)).any (fun l => (s.obj? l).any (fun o => !o.exhausted)))
   | .openConquered =>

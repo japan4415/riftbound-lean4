@@ -380,6 +380,9 @@ inductive StaticMod where
   | costPlus (s : Selector) (a : Amount)
   /-- Objects cost less Energy (CR 356). -/
   | costMinus (s : Selector) (a : Amount)
+  /-- Objects cost `a` Power symbols more (an `[A]` each: `more`), or less (the symbols of the
+  domain, or any if none is named). -/
+  | costPower (s : Selector) (a : Amount) (dom : Option Domain) (more : Bool)
   /-- Objects can't do something ("can't" beats "can") (CR 054). -/
   | cant (s : Selector) (act : Act)
   /-- Objects may do something they could not. -/

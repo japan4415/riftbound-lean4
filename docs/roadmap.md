@@ -1864,3 +1864,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   - Hard Bargain の「その持ち主」は、相手とした（1 対 1 では同じ）。Jayce は、その場で Gear を遊ぶ。Arise! は、作った Sand Soldier でなく、exhausted の Sand Soldier を ready にする。Rek'Sai、Void Rush（呪文を遊ばない）、Not So Fast（呪文だけ）、Altar of Memories（底に置く = リサイクル）、Arcane Shift（その場で遊び直す）、Edge of Night（選ぶ対象が、「ここ」に限られない）。
   - Tianna は、Battlefield の得点だけを止める。Ruin Runner は、印刷されたパッシブだけを読む。Aphelios は、選んだモードを、また選べる（何も起きない）。Vex、Needlessly Large Yordle は、Energy だけを動かす。Draven, Audacious の「戦闘で死んだとき」は、どの戦闘でも真。`heldPoints` は、得点が禁止された Battlefield も数える。Hostile Takeover の誘発は、Ending フェーズの始まりに一度だけ集める。Guardian Angel、Soraka は、Cleanup での死と Temporary を救わない。Rell は、付けていない Equipment のうち、このターンに遊んだ全部を付ける。Temporal Portal を 2 回使っても、Repeat は 1 つ。Relentless Pursuit は、Equipment を付けない。Fire Below the Mountain の Add に、制限が無い。Lonely Poro は、解決のときに数える。Loyal Pup は、`combatStarted` で誘発する。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 35 — Power の費用、Tianna、Draven
+
+- **Power の費用の変化**: `StaticMod.costPower`（`GameState.adjustPower`）。Vex, Cheerless は、味方の呪文の Power を 1 つ減らし（どの記号でもよい。先頭から落とす）、敵の呪文に `[A]` を 1 つ足す。Needlessly Large Yordle は、hold で得点した点の数だけ、Calm の記号を減らす。
+- **Tianna Crownguard**: 相手が、効果で得る点（`Prim.score`）も止める。以前は、Battlefield の得点だけ。
+- **Draven, Audacious**: 「戦闘で死んだとき」は、Draven が死んだ場所の戦闘だけ（`Condition.inCombatHere`）。
+- **直せなかった**: 攻撃と防御の誘発が起きる時（Showdown の後、戦闘ダメージの前）を、Showdown の始まりへ移す変更は、試して戻した（テストが、誘発を直接起こして確かめているので、本物の Showdown と二重になる）。Cleanup での死の置き換え（Guardian Angel、Soraka）は、Cleanup の終わりの証明（`cleanupMeasure`）の作り直しが要る。Aphelios の使用済みのモードを選べなくするには、選び（`eitherDo`）の合法手と仕様（`Spec/Legal`）を、状態で絞る必要がある。
+

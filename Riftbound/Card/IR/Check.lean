@@ -217,6 +217,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .keyword s _ => Selector.ok c s
   | .costPlus s a => Selector.ok c s && Amount.ok c a
   | .costMinus s a => Selector.ok c s && Amount.ok c a
+  | .costPower s a _ _ => Selector.ok c s && Amount.ok c a
   | .costMinusMin s a _ => Selector.ok c s && Amount.ok c a
   | .noDamage => true
   | .noMoveToBase => true

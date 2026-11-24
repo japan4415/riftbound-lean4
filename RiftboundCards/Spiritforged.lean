@@ -1636,7 +1636,8 @@ def SFD_055.meta : CardDef :=
 def SFD_055 : CardDef :=
   { SFD_055.meta with
 
-    abilities := [.passive .always [.costMinus .self (.mul .heldPoints (.const 2))]],
+    abilities := [.passive .always [.costMinus .self (.mul .heldPoints (.const 2)),
+      .costPower .self .heldPoints (some .calm) false]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-056
@@ -4314,7 +4315,9 @@ def SFD_146 : CardDef :=
 
     abilities := [.passive (.exists (Selector.all .any .inCombat [.sameAs .self]))
       [.costMinusMin (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) 1,
-       .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1)]],
+       .costPower (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) none false,
+       .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1),
+       .costPower (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1) none true]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-147
@@ -4370,7 +4373,7 @@ def SFD_148 : CardDef :=
 
     abilities := [.triggered (.onSelf .winCombat) (.of [] (.prim (.score .you (.const 1))))
         (.perTurn 1),
-      .triggered { event := .die, condition := .inCombat }
+      .triggered { event := .die, condition := .inCombatHere }
         (.of [] (.prim (.score .opponent (.const 1)))) .unlimited],
     status := .drafted }
 

@@ -2062,12 +2062,14 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let (s1, _) ← putAt s s.me "SFD-148" s.bf0
   let a ← fire s1 [.combatWon s.bf0 s.me]
   let b ← fire a [.combatWon s.bf0 s.me]
-  let (s2, x) ← put s s.me "SFD-148" .trash
+  let (s2, x) ← putAt s s.me "SFD-148" s.bf0
   let (s3, _) ← putAt s2 s.me "OGN-051" s.bf0
   let (s4, _) ← putAt s3 s.you "OGN-051" s.bf0
   let fight := s4.inShowdownAt s.bf0 s.me
-  let c ← fire fight [.died x s.me]
-  let e ← fire s4 [.died x s.me]
+  let kc := killObj fight x
+  let ke := killObj s4 x
+  let c ← fire kc.1 kc.2
+  let e ← fire ke.1 ke.2
   return a.pointsOf s.me == s1.pointsOf s.me + 1 && b.pointsOf s.me == a.pointsOf s.me &&
     c.pointsOf s.you == fight.pointsOf s.you + 1 && e.pointsOf s.you == s4.pointsOf s.you &&
     s1.pointsOf s.you == a.pointsOf s.you
@@ -2664,8 +2666,12 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     ((x.cardDef? c).bind (x.effCost p c)).map (·.energy)
   let base := cost s5 s.me mine
   let ftl := s5.inShowdownAt bf s.me
+  let powers (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
+    ((x.cardDef? c).bind (x.effCost p c)).map (·.power.length)
   return base == some 3 && cost ftl s.me mine == some 2 && cost s5 s.me mine == some 3 &&
-    cost ftl s.you theirs == some 4 && cost s5 s.you theirs == some 3
+    cost ftl s.you theirs == some 4 && cost s5 s.you theirs == some 3 &&
+    powers ftl s.you theirs == (powers s5 s.you theirs).map (· + 1) &&
+    powers ftl s.me mine == (powers s5 s.me mine).map (· - 1)
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, _) ← putAt s1 s.me "SFD-146" bf
@@ -2869,8 +2875,12 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     x.modObj bf (fun o => { o with held := [p] })
   let cost (x : GameState) : Option Nat :=
     ((x.cardDef? y).bind (x.effCost s.me y)).map (·.energy)
+  let pw (x : GameState) : Option Nat :=
+    ((x.cardDef? y).bind (x.effCost s.me y)).map (·.power.length)
   return cost s3 == some 10 && cost (held s3 a s.me) == some 8 &&
-    cost (held (held s3 a s.me) b s.me) == some 6 && cost (held s3 a s.you) == some 10
+    cost (held (held s3 a s.me) b s.me) == some 6 && cost (held s3 a s.you) == some 10 &&
+    pw s3 == some 3 && pw (held s3 a s.me) == some 2 &&
+    pw (held (held s3 a s.me) b s.me) == some 1 && pw (held s3 a s.you) == some 3
 
 -- Sivir, Ambitious (SFD-120): when I conquer, if I assigned 5 or more excess damage, I may deal
 -- that much to an enemy unit
@@ -3632,5 +3642,15 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let held := s2.modObj bf (fun o => { o with scored := [s.me], held := [s.me] })
   let a ← activate conquered s.me g 3 [bf] (payOf conquered g)
   return unitAt a "SFD-015" bf && (activate held s.me g 3 [bf] (payOf held g)).isNone
+
+-- Tianna Crownguard also stops the points an effect gives the opponent ("you score 1 point")
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt s1 s.me "SFD-060" bf
+  let (s3, g) ← put s2 s.you "SFD-042" .base
+  let (s4, g2) ← put s s.you "SFD-042" .base
+  let a ← runBody s3 s.you g [] (.prim (.score .you (.const 1)))
+  let b ← runBody s4 s.you g2 [] (.prim (.score .you (.const 1)))
+  return a.pointsOf s.you == s3.pointsOf s.you && b.pointsOf s.you == s4.pointsOf s.you + 1
 
 end RiftboundTest
