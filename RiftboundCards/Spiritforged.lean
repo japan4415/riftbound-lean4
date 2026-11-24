@@ -701,7 +701,7 @@ def SFD_024 : CardDef :=
         [.prim (.play (Selector.one .friendly .inHand
             [.tag ⟨"Equipment"⟩, .cost .le (.const 2)])),
          .prim (.attach (Selector.all .friendly .atBase
-            [.tag ⟨"Equipment"⟩, .playedThisTurn, .not .isAttached]) .self)]))) .unlimited],
+            [.tag ⟨"Equipment"⟩, .playedLast]) .self)]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-025
@@ -1085,9 +1085,7 @@ def SFD_036 : CardDef :=
   { SFD_036.meta with
 
     abilities := [.triggered (.onSelf .die)
-      (.of [] (.ifThen (.cmp .eq (.count (Selector.all .friendly .anywhere
-          [.ofType .unit, .at_ .self])) (.const 0))
-        (.prim (.draw .you (.const 1))) .nop)) .unlimited],
+      (.of [] (.ifThen (.marked .diedAlone) (.prim (.draw .you (.const 1))) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-037
@@ -5418,10 +5416,13 @@ def SFD_184 : CardDef :=
 
     abilities := [.triggered (.onSelf .conquer) (.of [] (.may (.prim (.move .self .base))))
       .unlimited],
-    spellEffect := some (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+    spellEffect := some (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit],
+        Choice.targetOf (.upTo 1) .any .anywhere
+          [.tag ⟨"Equipment"⟩, .sameController (.slot 0)]]
       (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
           (.cons (.prim (.move (.slot 0)
             (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))) .nil)),
+        .prim (.attach (.slot 1) (.slot 0)),
         .prim (.markOn (.slot 0) (.grantsAbility "SFD-184" 0))])),
     status := .drafted }
 

@@ -146,6 +146,7 @@ def Filter.understood : Filter → Bool
   | .wasTakenByMyCard => true
   | .playedFromElsewhere => true
   | .playedThisTurn => true
+  | .playedLast => true
   | .inHandZone => true
   | .unitsPlayable => true
   | .attackedByMine => true

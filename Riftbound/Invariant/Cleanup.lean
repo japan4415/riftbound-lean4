@@ -561,6 +561,18 @@ theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
   simp only [Bool.and_eq_true, decide_eq_true_eq] at h
   exact h.1.1
 
+/-- Noting that a unit died alone leaves the objects in play as they are. -/
+theorem noteAlone_inPlay (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
+    (noteAlone s o moved alone).inPlay = s.inPlay := by
+  unfold noteAlone
+  cases moved with
+  | none => rfl
+  | some n =>
+    unfold noteIf
+    by_cases h : alone = true
+    · simp only [h, ite_true]; rfl
+    · simp [h]
+
 /-- Noting a death leaves the objects in play as they are. -/
 theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bool)
     (moved : Option ObjId) (banisher : Option ObjId) :
@@ -629,7 +641,7 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     unfold killObj sendObj
     rw [← hdk, ho]
     simp only [hr]
-    exact noteDeath_inPlay _ _ _ _ _ _ _
+    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

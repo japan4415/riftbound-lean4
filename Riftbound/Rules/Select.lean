@@ -324,6 +324,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _ => false))))
   | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
   | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
+  | .playedLast =>
+    let latest := s.objects.toList.foldl (fun m (_, o) => max m (o.playedStamp.getD 0)) 0
+    some ((s.obj? id).any (fun o => o.playedStamp.isSome && o.playedStamp == some latest))
   | .playedFromElsewhere =>
     some ((s.obj? id).any (fun o => o.playedTurn == some s.turn && !o.playedFromHand))
   | .wasTakenByMyCard =>
@@ -646,6 +649,47 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       ids.filterMap (fun u => (s.obj? u).bind (·.loc)))
   | _ => none
 
+/-- The Runes of the player that can be used: on their Base, with a domain. -/
+def GameState.runesOf (s : GameState) (p : PlayerId) : List ObjId :=
+  (s.zone (.player p .base)).filter (fun r => (s.obj? r).any (fun o => o.runeDomain.isSome))
+
+/-- How the player pays the payment `pay` with Runes, if the Pool falls short: exhaust a ready Rune
+for each Energy missing, and recycle a Rune of the domain for each Power missing. -/
+def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment) :
+    Option (List (ObjId × RuneAbility)) :=
+  let pool := s.poolOf p
+  let ready := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
+  let k := pay.energy - pool.energy
+  if k ≤ ready.length then
+    let exh := ready.take k
+    let step := fun (acc : Option (RunePool × List ObjId)) (d : Domain) =>
+      match acc with
+      | none => none
+      | some (pl, used) =>
+        match pl.takePower d with
+        | some pl' => some (pl', used)
+        | none =>
+          match (s.runesOf p).find? (fun r => !used.contains r &&
+              (s.obj? r).any (fun o => o.runeDomain == some d)) with
+          | some r => some (pl, r :: used)
+          | none => none
+    match pay.power.foldl step (some (pool, exh)) with
+    | some (_, used) =>
+      some (exh.map (fun r => (r, RuneAbility.exhaust)) ++
+        (used.filter (fun r => !exh.contains r)).map (fun r => (r, RuneAbility.recycle)))
+    | none => none
+  else none
+
+/-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
+nothing to do when the Pool pays it already. -/
+def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
+    Option (List (ObjId × RuneAbility)) :=
+  let own := ((s.cardDef? src).map (·.domains)).getD []
+  (c.payments own).findSome? (fun pay =>
+    match (s.poolOf p).spend pay with
+    | some _ => some []
+    | none => s.runeCover p pay)
+
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
 Power the cost may name), if it can: the first payment that the Pool has. -/
 def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) : Option RunePool :=
@@ -793,7 +837,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
   | .playedAnother => some (s.playedOther p self)
-  | .canPay c => some (s.payNow p self c).isSome
+  | .canPay c => some ((s.payNow p self c).isSome || (s.runePlan p self c).isSome)
   | .diedWith e =>
     -- the object a watching ability is about, or (an ability of the dead card itself) the card
     some (match env.slots.head? with

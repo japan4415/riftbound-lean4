@@ -169,6 +169,8 @@ inductive Filter where
   | playedFromElsewhere
   /-- The card was played this turn. -/
   | playedThisTurn
+  /-- The card was played last: no card of any player was played after it. -/
+  | playedLast
   /-- The card is in its owner's hand. -/
   | inHandZone
   /-- Units can be played to this Battlefield (it says no units can be played here: no). -/

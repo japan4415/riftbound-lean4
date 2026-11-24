@@ -190,18 +190,38 @@ def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
       | Ability.passive .always mods => mods.contains .banishOnDeath
       | _ => false)))
 
+/-- The note that a unit died alone (no other unit of its player was where it was), about the dead
+card. -/
+def noteAlone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) : GameState :=
+  match moved with
+  | some n => noteIf alone (fun t => t.addTurnFxOn o.controller n .diedAlone) s
+  | none => s
+
+/-- Noting that a unit died alone is a safe change. -/
+theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
+    Safe s (noteAlone s o moved alone) := by
+  unfold noteAlone
+  cases moved with
+  | none => exact Safe.refl s
+  | some n => exact noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) s
+
 /-- Kill an object: it goes to its owner's Trash (or is banished, if an Equipment says so). -/
 def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj (if s.banishedOnDeath id then ZoneKind.banishment else .trash) s id
   match s.obj? id with
   | some o =>
     -- the death of a unit is noted for the turn (its controller, as it died)
-    (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
-        (s.turnFx.any (fun f => f.kind == .recallOnDeath && f.target == some id &&
-          f.turn == s.turn))
-        ((s.mightNow id).any (fun m => decide (5 ≤ m)))
-        (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
-        (s.banisherOf id),
+    (noteAlone
+        (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
+          (s.turnFx.any (fun f => f.kind == .recallOnDeath && f.target == some id &&
+            f.turn == s.turn))
+          ((s.mightNow id).any (fun m => decide (5 ≤ m)))
+          (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
+          (s.banisherOf id))
+        o (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
+        ((s.cardDef? id).any (·.hasType .unit) &&
+          !(s.inPlay.any (fun u => u != id && (s.cardDef? u).any (·.hasType .unit) &&
+            (s.obj? u).any (fun x => x.controller == o.controller && x.loc == o.loc)))),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))
@@ -212,7 +232,8 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
   unfold killObj
   generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else ZoneKind.trash) = dest
   split
-  · exact (sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)
+  · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
+      (noteAlone_safe _ _ _ _)
   · exact sendObj_safe dest s id
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -1336,6 +1357,51 @@ def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
   if (s.cardDef? src).any (·.hasType .spell) then [Event.chosenBySpell p o]
   else [Event.chosenByAbility p o]
 
+/-- Use the Rune abilities one after the other. -/
+def applyRunes (s : GameState) (p : PlayerId) :
+    List (ObjId × RuneAbility) → Option (GameState × List Event)
+  | [] => some (s, [])
+  | (r, ab) :: rest =>
+    (applyRune s p r ab).bind (fun x =>
+      (applyRunes x.1 p rest).map (fun y => (y.1, x.2 ++ y.2)))
+
+/-- Using a Rune is a safe change. -/
+theorem applyRune_safe {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
+    {es : List Event} (h : applyRune s p c ab = some (s', es)) : Safe s s' := by
+  unfold applyRune at h
+  split at h
+  · rename_i o ho
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have h1 : Safe s (s.exhaustObj c) :=
+        ⟨fun hwf => GameState.wf_exhaustObj hwf c,
+         fun _ => (GameState.physIds_exhaustObj s c) ▸ List.Perm.refl _,
+         fun _ hown => GameState.ownerOk_exhaustObj hown c, GameState.sameMeta_exhaustObj s c⟩
+      exact h1.trans (setPool_safe _ _ _)
+    · simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
+      simp only [Prod.mk.injEq] at hr
+      obtain ⟨rfl, -⟩ := hr
+      exact (Safe.moveObj hm).trans (setPool_safe _ _ _)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Using Runes is a safe change. -/
+theorem applyRunes_safe {p : PlayerId} :
+    ∀ (plan : List (ObjId × RuneAbility)) {s s' : GameState} {es : List Event},
+      applyRunes s p plan = some (s', es) → Safe s s'
+  | [], s, s', es, h => by
+    simp only [applyRunes, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Safe.refl s
+  | (r, ab) :: rest, s, s', es, h => by
+    simp only [applyRunes, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨x, hx, y, hy, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact (applyRune_safe hx).trans (applyRunes_safe rest hy)
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -1473,7 +1539,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .pay c =>
     match s.payNow p src c with
     | some pool => some (s.setPool p pool, [])
-    | none => some (s, [])
+    | none =>
+      -- the Pool falls short: the player uses Runes to pay what is missing
+      match s.runePlan p src c with
+      | some plan =>
+        (applyRunes s p plan).bind (fun r =>
+          (r.1.payNow p src c).map (fun pool => (r.1.setPool p pool, r.2)))
+      | none => some (s, [])
   | .addEnergy ps n none =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addEnergy k) s l, [])))
@@ -1774,7 +1846,19 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | pay c =>
     simp only [applyPrim] at h
     cases hp : s.payNow p src c with
-    | none => simp only [hp, Option.some.injEq] at h; subst h; exact Safe.refl s
+    | none =>
+      simp only [hp] at h
+      cases hq : s.runePlan p src c with
+      | none => simp only [hq, Option.some.injEq] at h; subst h; exact Safe.refl s
+      | some plan =>
+        simp only [hq, Option.bind_eq_some_iff] at h
+        obtain ⟨x, hx, hr⟩ := h
+        cases hy : x.1.payNow p src c with
+        | none => simp [hy] at hr
+        | some pool =>
+          simp only [hy, Option.map_some, Option.some.injEq] at hr
+          rw [← hr]
+          exact (applyRunes_safe plan hx).trans (setPool_safe _ _ _)
     | some pool =>
       simp only [hp, Option.some.injEq] at h
       subst h
