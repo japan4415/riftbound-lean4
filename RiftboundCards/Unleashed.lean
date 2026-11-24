@@ -4182,8 +4182,17 @@ def UNL_148.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Cursed Sarcophagus: the effect is not written yet. -/
-def UNL_148 : CardDef := UNL_148.meta
+/-- Cursed Sarcophagus. -/
+def UNL_148 : CardDef :=
+  { UNL_148.meta with
+    abilities := [
+      .triggered (.onSelf .play)
+        (.of [] (.prim (.moveAll .friendly .inTrash (FilterList.ofList [.ofType .unit])
+          .inBanishment true))) .unlimited,
+      .activated [.exhaustSelf] .normal
+        (.of [] (.prim (.playPaying
+          (Selector.one .friendly .inBanishment [.ofType .unit, .banishedWithMe])))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-149
 /--
@@ -4577,8 +4586,11 @@ def UNL_163.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Mageseeker Investigator: the effect is not written yet. -/
-def UNL_163 : CardDef := UNL_163.meta
+/-- Mageseeker Investigator. -/
+def UNL_163 : CardDef :=
+  { UNL_163.meta with
+    abilities := [.passive .always []],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-164
 /--
@@ -4706,8 +4718,12 @@ def UNL_168.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Undying Loyalty: the effect is not written yet. -/
-def UNL_168 : CardDef := UNL_168.meta
+/-- Undying Loyalty. -/
+def UNL_168 : CardDef :=
+  { UNL_168.meta with
+    spellEffect := some (.of [] (.prim (.play (Selector.one .friendly .inTrash
+      [.ofType .unit, .cost .le (.const 2), .powerCost .le (.const 1)])))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-169
 /--
@@ -4729,8 +4745,16 @@ def UNL_169.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Ashe, Focused: the effect is not written yet. -/
-def UNL_169 : CardDef := UNL_169.meta
+/-- Ashe. -/
+def UNL_169 : CardDef :=
+  { UNL_169.meta with
+    abilities := [
+      .triggered (.onSelf .play)
+        (.of [] (.prim (.banishWith (Selector.one .enemy .inHand [])))) .unlimited,
+      .triggered (.onSelf .opponentHolds)
+        (.of [] (.prim (.moveAll .enemy .inBanishment (FilterList.ofList [.banishedWithMe])
+          .inHand false))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-170
 /--
@@ -4754,8 +4778,13 @@ def UNL_170.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Atakhan: the effect is not written yet. -/
-def UNL_170 : CardDef := UNL_170.meta
+/-- Atakhan. -/
+def UNL_170 : CardDef :=
+  { UNL_170.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.eachPlayer .eachOpponent
+        (.prim (.kill (Selector.one .friendly .here [.ofType .unit]))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-171
 /--
@@ -4976,8 +5005,15 @@ def UNL_178.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Poppy, Defender of the Meek: the effect is not written yet. -/
-def UNL_178 : CardDef := UNL_178.meta
+/-- Poppy. -/
+def UNL_178 : CardDef :=
+  { UNL_178.meta with
+    abilities := [
+      .passive (.cmp .ge .xp (.const 3)) [.costMinus .self (.const 3)],
+      .triggered (.onSelf .play)
+        (.of [] (.ifThen (.cmp .ge .xp (.const 3)) (.prim (.spendXP .you (.const 3))) .nop))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-179
 /--
@@ -5044,8 +5080,20 @@ def UNL_181.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Virtuoso: the effect is not written yet. -/
-def UNL_181 : CardDef := UNL_181.meta
+/-- Virtuoso. -/
+def UNL_181 : CardDef :=
+  { UNL_181.meta with
+    abilities := [.triggered
+      { condition := .spentOnSpell 4,
+        subject := Selector.all .friendly .anywhere [.ofType .spell], event := .play }
+      (.of [] (.may (.seqOf [.prim (.banishWith (.slot 0)),
+        .ifThen (.cmp .ge (.count (Selector.all .friendly .inBanishment
+          [.ofType .spell, .banishedWithMe])) (.const 4))
+          (.seqOf [.prim (.moveAll .friendly .inBanishment
+              (FilterList.ofList [.ofType .spell, .banishedWithMe]) .inTrash false),
+            .prim (.channel .you (.const 4) (.const 0)), .prim (.draw .you (.const 1))]) .nop]))
+      ) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-182
 /--
@@ -5178,8 +5226,18 @@ def UNL_186.meta : CardDef :=
     sets := [⟨"UNL"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Death from Below: the effect is not written yet. -/
-def UNL_186 : CardDef := UNL_186.meta
+/-- Death from Below. -/
+def UNL_186 : CardDef :=
+  { UNL_186.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.bind ⟨"m"⟩ (.mightOf (.slot 0))
+        (.seqOf [.prim (.kill (.slot 0)),
+          .ifThen (.cmp .le (.var ⟨"m"⟩) (.const 3))
+            (.ifThen (.canPay ⟨0, [.any]⟩)
+              (.may (.seqOf [.prim (.pay ⟨0, [.any]⟩),
+                .prim (.kill (Selector.one .any .atBattlefield [.ofType .unit]))])) .nop)
+            .nop]))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-187
 /--

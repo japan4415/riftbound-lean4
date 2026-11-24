@@ -328,6 +328,9 @@ def Prim.understood : Prim → Bool
   | .addBattlefield _ => true
   | .createAtPrev _ n _ => n.understood
   | .cloneToken s => s.understood
+  | .banishWith s => s.understoodPickAny
+  | .moveAll _ place fs dest _ =>
+    place.zoneKind?.isSome && dest.zoneKind?.isSome && FilterList.understood fs
   | .spendXP p n => p.understood && n.understood
   | _ => false
 
@@ -477,6 +480,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .recycleRune => t.subject == .self
       | .hide => t.subject == .self
       | .opponentScores => t.subject == .self
+      | .opponentHolds => t.subject == .self
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true

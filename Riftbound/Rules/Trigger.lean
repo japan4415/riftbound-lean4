@@ -358,7 +358,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- what the opponents of the player who scores wait for
     s.passiveSources.flatMap (fun u =>
       match s.obj? u with
-      | some o => if o.controller != p then triggersOf s u o.controller .opponentScores else []
+      | some o =>
+        if o.controller != p then
+          triggersOf s u o.controller .opponentScores ++
+            (if conquer then [] else triggersOf s u o.controller .opponentHolds)
+        else []
       | none => []) ++
     -- the cards in the Trash that wait for a conquer of their player
     (if conquer then

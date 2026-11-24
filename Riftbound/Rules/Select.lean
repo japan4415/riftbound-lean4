@@ -548,6 +548,7 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inChampionZone => some .championZone
   | .inLegendZone => some .legendZone
   | .inHidden => some .hidden
+  | .inBanishment => some .banishment
   | _ => none
 
 /-- Whether a player is on the side, seen from player `p`. -/
@@ -681,6 +682,7 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | inChampionZone => simp [placeObjs] at h
   | inLegendZone => simp [placeObjs] at h
   | inHidden => simp [placeObjs] at h
+  | inBanishment => simp [placeObjs] at h
   | inCombat =>
     simp only [placeObjs] at h
     obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h

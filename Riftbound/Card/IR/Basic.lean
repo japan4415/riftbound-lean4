@@ -53,6 +53,8 @@ inductive Place where
   | inCombat
   /-- Hidden face down (CR 811). -/
   | inHidden
+  /-- In the player's Banishment. -/
+  | inBanishment
   /-- On the Chain: the spells waiting to resolve (CR 330). -/
   | onChain
   /-- On the Chain: the spells and the abilities waiting to resolve. -/

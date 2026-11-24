@@ -150,6 +150,12 @@ inductive Prim where
   | createAtPrev (token : String) (n : Amount) (ready : Bool)
   /-- Play an additional copy of each token the selector names, where it is (Zilean). -/
   | cloneToken (s : Selector)
+  /-- Banish the objects, and remember that this object banished them (Cursed Sarcophagus,
+  Virtuoso). -/
+  | banishWith (s : Selector)
+  /-- Move every card of a side in a zone off the board that has the properties to another zone:
+  to the Banishment, noting that this object banished them if asked (Cursed Sarcophagus). -/
+  | moveAll (side : Side) (place : Place) (fs : FilterList) (dest : Place) (mark : Bool)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith
@@ -281,6 +287,8 @@ inductive TriggerEvent where
   | hide
   /-- An opponent of the player scores (a Battlefield is conquered or held). -/
   | opponentScores
+  /-- An opponent of the player holds a Battlefield. -/
+  | opponentHolds
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/

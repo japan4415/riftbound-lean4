@@ -1772,6 +1772,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | inChampionZone => simp at h
       | inLegendZone => simp at h
       | inHidden => simp at h
+      | inBanishment => simp at h
       | inCombat => simp at h
       | onChain => simp at h
       | onChainAll => simp at h
@@ -1817,6 +1818,47 @@ theorem cloneTok_safe (s : GameState) (id : ObjId) : Safe s (cloneTok s id).1 :=
     · exact createOne_safe _ _ _ _ s
     · exact Safe.refl s
   · exact Safe.refl s
+
+/-- Banish an object, and note on the banished card that `src` banished it. -/
+def banishMarked (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .banishment s id
+  match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none) with
+  | some n => (r.1.modObj n (fun x => { x with banishedWith := some src }), r.2)
+  | none => r
+
+/-- Banishing an object, noting who did it, is a safe change. -/
+theorem banishMarked_safe (src : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (banishMarked src s id).1 := by
+  unfold banishMarked
+  dsimp only
+  split
+  · rename_i n hn
+    exact (sendObj_safe .banishment s id).trans (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
+  · exact sendObj_safe .banishment s id
+
+/-- Move the card to the zone of its owner, noting that `src` did it if asked. -/
+def sendMarked (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if mark then banishMarked src s id else sendObj k s id
+
+/-- Moving a card, noting who did it, is a safe change. -/
+theorem sendMarked_safe (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
+    Safe s (sendMarked src mark k s id).1 := by
+  unfold sendMarked
+  split
+  · exact banishMarked_safe src s id
+  · exact sendObj_safe k s id
+
+/-- Move every card of the sides in a zone of theirs that has the properties to another zone. -/
+def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side : Side)
+    (place : Place) (fs : FilterList) (dest : Place) (mark : Bool) :
+    Option (GameState × List Event) :=
+  match place.zoneKind?, dest.zoneKind? with
+  | some z, some k =>
+    let ids := (s.players.filter (fun q => side.admitsPlayer p q)).flatMap (fun q =>
+      (s.zone (.player q z)).filter (fun u => FilterList.holds s src env u fs == some true))
+    some (applyEach (sendMarked src mark k) s ids)
+  | _, _ => none
 
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
@@ -1971,6 +2013,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
   | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
   | .cloneToken sel => onSelected s p src env sel cloneTok
+  | .banishWith sel => onSelected s p src env sel (banishMarked src)
+  | .moveAll side place fs dest mark => applyMoveAll s p src env side place fs dest mark
   | .becomeCopy sel from_ =>
     match from_.eval s p src env with
     | some (c :: _) => onSelected s p src env sel (becomeCopyOf c)
@@ -2218,6 +2262,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim] at h
     exact applyCreateAtPrev_safe h
   | cloneToken sel => exact onSelected_safe cloneTok_safe h
+  | banishWith sel => exact onSelected_safe (banishMarked_safe src) h
+  | moveAll side place fs dest mark =>
+    simp only [applyPrim, applyMoveAll] at h
+    split at h
+    · simp only [Option.some.injEq] at h
+      rw [← h]
+      exact applyEach_safe (fun t id => sendMarked_safe src mark _ t id) _ _
+    · simp at h
   | addBattlefield name =>
     simp only [applyPrim] at h
     cases ht : s.tokenCard name with
