@@ -1853,11 +1853,13 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s1, z) ← put s s.me "SFD-160" .hand
   let (s2, mine) ← put s1 s.me "SFD-042" .base
   let (s3, theirs) ← put s2 s.you "SFD-042" .base
-  let a ← play s3 s.me z [] { obj := fun o => o == mine || o == theirs }
-  let n ← play s3 s.me z [] { yes := false }
+  let a ← play s3 s.me z [mine] { obj := fun o => o == theirs }
+  let n ← play s3 s.me z []
   let none_ ← play s1 s.me z
   return (a.obj? mine).isNone && (a.obj? theirs).isNone && (n.obj? mine).isSome &&
-    (n.obj? theirs).isSome && none_.countIn s.me .base "SFD-160" == 1
+    (n.obj? theirs).isSome && none_.countIn s.me .base "SFD-160" == 1 &&
+    -- a gear of the opponent cannot pay the cost
+    (play s3 s.me z [theirs]).isNone
 
 -- Card Sharp (SFD-081): the player and each opponent may play a Gold; for each opponent who did,
 -- the player plays another
@@ -1880,7 +1882,8 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s1, z) ← put s s.me "SFD-160" .hand
   let (s2, theirs) ← put s1 s.you "SFD-042" .base
   let r ← play s2 s.me z
-  return (r.obj? theirs).isSome && r.countIn s.me .base "SFD-160" == 1
+  return (r.obj? theirs).isSome && r.countIn s.me .base "SFD-160" == 1 &&
+    (play s2 s.me z [theirs]).isNone
 
 -- (review) Azir, Ascendant cannot choose itself; Grandmaster at Arms moves only its player's
 -- Equipment; Lonely Poro's enemies at the same place do not count (above)
@@ -2108,10 +2111,12 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let (s1, q) ← put s s.me "SFD-044" .hand
   let (s2, g) ← put s1 s.me "SFD-042" .base
   let (s3, h) ← put s2 s.you "SFD-042" .base
-  let a ← play s3 s.me q
-  let n ← play s1 s.me q
+  let a ← play s3 s.me q [g]
   return a.countIn s.me .hand "SFD-042" == 1 && (a.obj? h).isSome && (a.obj? g).isNone &&
-    n.countIn s.me .base "SFD-044" == 1
+    -- the cost is not optional, and an enemy gear cannot pay it; with no friendly gear it
+    -- cannot be played at all
+    (play s3 s.me q []).isNone && (play s3 s.me q [h]).isNone && (play s1 s.me q []).isNone &&
+    a.countIn s.me .base "SFD-044" == 1
 
 /-- The first Legend of the player (the lab has one for each player). -/
 meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Option ObjId :=
@@ -2155,11 +2160,12 @@ meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Op
   let (s1, b) ← put s s.me "SFD-079" .hand
   let l ← s1.legendOf s.me
   let (s3, u) ← put s1 s.me "OGN-051" .base
-  let a ← play s3 s.me b
-  let n ← play s3 s.me b [] { yes := false }
-  let t ← play (s3.tire l) s.me b
+  let a ← play s3 s.me b [l]
+  let n ← play s3 s.me b []
+  -- an exhausted legend cannot pay the cost
   return a.tired l == some true && (a.obj? u).any (·.loc == some s.bf0) &&
-    (n.obj? u).any (·.loc.isNone) && n.tired l == some false && (t.obj? u).any (·.loc.isNone)
+    (n.obj? u).any (·.loc.isNone) && n.tired l == some false &&
+    (play (s3.tire l) s.me b [l]).isNone
 
 /-- Let a Combat run to its end: the first card is assigned damage, the assignment is done, the
 players pass, the questions are answered with yes. -/

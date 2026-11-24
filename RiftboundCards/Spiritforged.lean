@@ -1307,9 +1307,8 @@ def SFD_044.meta : CardDef :=
 def SFD_044 : CardDef :=
   { SFD_044.meta with
 
-    abilities := [.triggered (.onSelf .play)
-      (.of [.targetOf .one .friendly .anywhere [.ofType .gear]]
-        (.prim (.returnToHand (.slot 0)))) .unlimited],
+    -- as an additional cost to play it, a friendly gear returns to its owner's hand
+    playExtra := some (.returnGear, true),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-045
@@ -2330,12 +2329,12 @@ def SFD_079.meta : CardDef :=
 def SFD_079 : CardDef :=
   { SFD_079.meta with
 
-    abilities := [.triggered (.onSelf .play)
+    -- the player may exhaust their legend as an additional cost to play it
+    playExtra := some (.exhaustLegend, false),
+    abilities := [.triggered { event := .play, condition := .paid }
       (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
-        (.ifThen (.cmp .ge (.count (Selector.all .friendly .inLegendZone [.ready])) (.const 1))
-          (.may (.seqOf [.prim (.exhaust (Selector.one .friendly .inLegendZone [.ready])),
-            .forEach (Selector.all .friendly .anywhere [.ofType .unit])
-              (.may (.prim (.move .it (.at_ (.slot 0)))))])) .nop)) .unlimited],
+        (.forEach (Selector.all .friendly .anywhere [.ofType .unit])
+          (.may (.prim (.move .it (.at_ (.slot 0))))))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-080
@@ -4720,11 +4719,10 @@ def SFD_160.meta : CardDef :=
 def SFD_160 : CardDef :=
   { SFD_160.meta with
 
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear]))
-          (.const 1))
-        (.may (.seqOf [.prim (.kill (Selector.one .friendly .anywhere [.ofType .gear])),
-          .prim (.kill (Selector.one .any .anywhere [.ofType .gear]))])) .nop)) .unlimited],
+    -- the player may kill a friendly gear as an additional cost to play it
+    playExtra := some (.killGear, false),
+    abilities := [.triggered { event := .play, condition := .paid }
+      (.of [] (.prim (.kill (Selector.one .any .anywhere [.ofType .gear])))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-161
