@@ -1949,3 +1949,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Temporal Portal**: 2 つ使ったときの Repeat は、規則の資料（`docs/rules-model.md` の 820）に、複数の Repeat の扱いが無いので、決められない（近似ではなく、規則が不明）。
 - **小さな漏れ**: ギアの効果の中で払う費用（`Prim.pay`）で、ギア専用の Power を使ったときは、印を引かない。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 49 — Repeat の重ね掛け、効果の中の支払い
+
+- **Repeat は、重なる**（CR 820.1。Rift Watcher、RiftJudge の裁定）: Repeat は、1 つずつ別に、1 回だけ払える。払った数だけ、呪文の効果を、もう一度行う。Temporal Portal を 2 つ使えば、Repeat が 2 つで、両方払うと、3 回行う。印刷された Repeat に、Portal の Repeat を足しても、同じ（`playCostsOfK`、`Object.extraPaid`、`resolveFrames`）。払う費用は、追加の費用の、どの組み合わせでもよい。
+- **ギアの効果の中の支払い**: ギア専用の Power は、`Prim.pay` など、ギアの効果の中の支払いでも、先に引く（`setPoolFor`）。
+- **これで、ロードマップに記録していた近似は、残っていない**。確かめていない近似が見つかれば、その都度、直す。
+

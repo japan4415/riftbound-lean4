@@ -643,7 +643,7 @@ theorem enterBase_safe (p : PlayerId) (d : CardDef) (mk : PlayMark) (rdy : Bool)
 /-- The facts of playing the card for free: nothing was paid, so no additional cost was (Legion and
 the turn are as for any play). -/
 def GameState.freeMark (s : GameState) (p : PlayerId) (c : ObjId) : PlayMark :=
-  { s.playMark p c ⟨0, []⟩ with paid := false }
+  { s.playMark p c ⟨0, []⟩ with paid := false, extraPaid := 0 }
 
 /-- Play a card without paying its cost (CR 349): a Unit or a Gear goes to the Base of the player,
 exhausted if it is a Unit that does not enter ready, and the play is noted, so that what waits for a
@@ -822,18 +822,38 @@ theorem applyRunes_safe {p : PlayerId} :
     obtain ⟨rfl, -⟩ := hr
     exact (applyRune_safe hx).trans (applyRunes_safe rest hy)
 
+/-- Set the Pool of the player after paying for the object `src`: the Power of Any domain that a
+Gear spent is no longer noted as Power that only pays for Gear (that Power is spent first). -/
+def GameState.setPoolFor (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool) :
+    GameState :=
+  let t := s.setPool p pool
+  if (s.cardDef? src).any (·.hasType .gear) then
+    let spent := (s.poolOf p).any - pool.any
+    { t with turnFx := dropGearFx s.turn p spent t.turnFx }
+  else t
+
+/-- Setting the Pool after paying is a safe change. -/
+theorem setPoolFor_safe (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool) :
+    Safe s (s.setPoolFor p src pool) := by
+  unfold GameState.setPoolFor
+  split
+  · exact (setPool_safe s p pool).trans
+      ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+        fun _ hown => hown.congr rfl rfl, rfl⟩
+  · exact setPool_safe s p pool
+
 /-- Pay the cost `c` for the object `src`: from the Pool, or, if it falls short, with Runes (exhaust a
 ready Rune for each Energy missing, recycle a Rune of the domain for each Power missing). `none` if
 it cannot be paid. -/
 def payByRunes (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
     Option (GameState × List Event) :=
   match s.payNow p src c with
-  | some pool => some (s.setPool p pool, [])
+  | some pool => some (s.setPoolFor p src pool, [])
   | none =>
     match s.runePlan p src c with
     | some plan =>
       (applyRunes s p plan).bind (fun r =>
-        (r.1.payNow p src c).map (fun pool => (r.1.setPool p pool, r.2)))
+        (r.1.payNow p src c).map (fun pool => (r.1.setPoolFor p src pool, r.2)))
     | none => none
 
 /-- Paying is a safe change. -/
@@ -844,7 +864,7 @@ theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
   | some pool =>
     simp only [hp, Option.some.injEq] at h
     rw [← h]
-    exact setPool_safe s p pool
+    exact setPoolFor_safe s p src pool
   | none =>
     simp only [hp] at h
     cases hq : s.runePlan p src c with
@@ -857,7 +877,7 @@ theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
       | some pool =>
         simp only [hy, Option.map_some, Option.some.injEq] at hr
         rw [← hr]
-        exact (applyRunes_safe plan hx).trans (setPool_safe _ _ _)
+        exact (applyRunes_safe plan hx).trans (setPoolFor_safe _ _ _ _)
 
 /-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool; if that cannot be
 done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
@@ -2610,8 +2630,9 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
       .run o.controller item { slots := slotValues o.targets d.spellEffect }
         (match d.spellEffect with
           | some e =>
-            if o.paid && !d.repeatChooses then .cons e.body (.cons e.body .nil)
-            else .cons e.body .nil
+            -- once, and once more for each Repeat that was paid (CR 820.3)
+            EffectList.replicate
+              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1) e.body
           | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest
