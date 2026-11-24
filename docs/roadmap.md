@@ -1985,3 +1985,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Battlefield へ遊ぶ**（Dauntless Vanguard、Rengar、Perched Grimwyrm、Miss Fortune、Origins の「空の Battlefield へ遊べる」）は、能力でなく、ふつうの「遊ぶ」操作になった。`playCard` の対象に、Battlefield を 1 つ選ぶ（`GameState.playBfOptions`、`bfPlayOk`、`placeAtBf`、`playable` の `dest`）。ユニットは、Chain に載らず、その場で、その Battlefield に出る。費用は、遊ぶ費用（軽減も効く）。Reaction を持つユニットは、Chain に応じても、遊べる（`reactable`、`reactStep` も、追加の費用と、遊ぶ先を、扱う）。
 - 以前は、「手札から、印刷の費用を払い、能力として、Chain に載る」ものだった。軽減が効かず、相手が、その能力に応じられた。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 54 — 「好きな量を払って、Add する」
+
+- **Hextech Anomaly（SFD-083）と Ancient Henge（SFD-117）**は、Chain に載らない Add 能力（応じられない）になった。払う量と、払う Power の領域は、プレイヤーが選ぶ（`Action.manaAbility` に `pay` が付いた。`ManaKind.powerToEnergy`、`energyToPower`、`manaPays`、`powerBags`）。以前は、1 つずつ、最大 12 回、Chain 上で、順に聞いていた。Power を払うときの領域の選びは、`legalActions` に、全部の払い方が、並ぶ（Pool にある数と、`any` で足りる数まで）。
+

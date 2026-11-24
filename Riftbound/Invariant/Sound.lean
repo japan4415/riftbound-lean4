@@ -112,10 +112,10 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2
   · exact ⟨_, rfl⟩
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
   · rename_i p n rest c hp hk
@@ -254,9 +254,9 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((putPick_safe s _ i ts).own hwf hown).congr rfl rfl
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     exact applyMana_ownerOk hwf hown h
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h

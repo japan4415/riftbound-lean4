@@ -53,6 +53,15 @@ def EffectDef.of (choices : List Choice) (body : Effect) : EffectDef := { choice
 /-- A trigger on the card itself. -/
 def Trigger.onSelf (event : TriggerEvent) : Trigger := { event }
 
+/-- One unit of "pay any amount": it may be paid for, and then it is noted on the object. -/
+def payUnit (c : Cost) : Effect :=
+  .ifThen (.canPay c) (.may (.seqOf [.prim (.pay c), .prim (.markOn .self .unitPaid)])) .nop
+
+/-- Pay any amount of `c` (one unit at a time, up to 12), then do `finish`, which reads how much was
+paid: `.notes .unitPaid`. -/
+def payAny (c : Cost) (finish : Effect) : Effect :=
+  .seqOf (List.replicate 12 (payUnit c) ++ [finish])
+
 end Riftbound
 
 end

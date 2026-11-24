@@ -189,8 +189,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .triggerOrder _ t more others :: rest, .putTrigger i ts =>
     some ({ putPick s (t :: more) i ts with
               pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
-  | .priority p :: _, .manaAbility src idx => applyMana s p src idx
-  | .chainPass p _ :: _, .manaAbility src idx => applyMana s p src idx
+  | .priority p :: _, .manaAbility src idx pay => applyMana s p src idx pay
+  | .chainPass p _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .discard p n :: rest, .discardPick c =>
     let r := sendObj .trash s c
     some ({ r.1.addTurnFx p .cardDiscarded with

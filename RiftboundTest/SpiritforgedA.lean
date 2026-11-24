@@ -2882,31 +2882,47 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   | .ok (s1, _) => some (settleChain says 60 s1)
   | .error _ => none
 
+-- Hextech Anomaly: an Add (no Chain): pay any amount of Power, the player chooses which, to add that
+-- much Energy; it is exhausted
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-083" .base
   let funded := s1.fund s.me 0 0 0 0 3 0 0
-  let a ← activateAsIs funded s.me g 0 { yes := true }
-  let b ← activateAsIs funded s.me g 0 { yes := false }
-  let (t1, g2) ← put s s.me "SFD-083" .base
-  let c := activateAsIs ((t1.fund s.me 0 0 0 0 3 0 0).tire g2) s.me g2 0 { yes := true }
-  return (a.poolOf s.me).energy == 3 && (a.poolOf s.me).mind == 0 && a.tired g == some true &&
-    (b.poolOf s.me).energy == 0 && (b.poolOf s.me).mind == 3 && c.isNone
+  let use (x : GameState) (pay : RunePool.Payment) :=
+    step 100 x ⟨.player s.me, .manaAbility g 0 pay⟩
+  let some a := (match use funded ⟨0, [.mind, .mind, .mind]⟩ with | .ok (r, _) => some r | _ => none)
+    | return false
+  let some b := (match use funded ⟨0, [.mind]⟩ with | .ok (r, _) => some r | _ => none)
+    | return false
+  let none_ := match use funded ⟨0, []⟩ with | .ok _ => false | .error _ => true
+  let toomuch := match use funded ⟨0, [.mind, .mind, .mind, .mind]⟩ with
+    | .ok _ => false | .error _ => true
+  let withEnergy := match use funded ⟨1, [.mind]⟩ with | .ok _ => false | .error _ => true
+  let again := match use a ⟨0, [.mind]⟩ with | .ok _ => false | .error _ => true
+  return (a.poolOf s.me).energy == (funded.poolOf s.me).energy + 3 && (a.poolOf s.me).mind == 0 &&
+    a.tired g == some true && (a.zone .chain).isEmpty &&
+    (b.poolOf s.me).energy == (funded.poolOf s.me).energy + 1 && (b.poolOf s.me).mind == 2 &&
+    none_ && toomuch && withEnergy && again
 
+-- Ancient Henge: an Add (no Chain): pay any amount of Energy to add that much Power of any domain
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-117" .base
   let funded := s1.fund s.me 4
-  let a ← activateAsIs funded s.me g 0 { yes := true }
-  let b ← activateAsIs funded s.me g 0 { yes := false }
-  return (a.poolOf s.me).energy == 0 && (a.poolOf s.me).any == 4 &&
-    (b.poolOf s.me).energy == 4 && (b.poolOf s.me).any == 0
+  let use (x : GameState) (pay : RunePool.Payment) :=
+    step 100 x ⟨.player s.me, .manaAbility g 0 pay⟩
+  let some a := (match use funded ⟨4, []⟩ with | .ok (r, _) => some r | _ => none) | return false
+  let some b := (match use funded ⟨1, []⟩ with | .ok (r, _) => some r | _ => none) | return false
+  let none_ := match use funded ⟨0, []⟩ with | .ok _ => false | .error _ => true
+  let toomuch := match use funded ⟨5, []⟩ with | .ok _ => false | .error _ => true
+  return (a.poolOf s.me).energy == 0 && (a.poolOf s.me).any == 4 && (a.zone .chain).isEmpty &&
+    (b.poolOf s.me).energy == 3 && (b.poolOf s.me).any == 1 && none_ && toomuch
 
 -- Fire Below the Mountain (SFD-189): exhaust my legend: add 1 rainbow Power (a mana ability)
 #guard tsf fun s => do
   let (s1, l) ← put s s.me "SFD-189" .legendZone
-  let r := step 100 s1 ⟨.player s.me, .manaAbility l 0⟩
+  let r := step 100 s1 ⟨.player s.me, .manaAbility l 0 ⟨0, []⟩⟩
   match r with
   | .ok (a, _) =>
-    let again := step 100 a ⟨.player s.me, .manaAbility l 0⟩
+    let again := step 100 a ⟨.player s.me, .manaAbility l 0 ⟨0, []⟩⟩
     return (a.poolOf s.me).any == (s1.poolOf s.me).any + 1 && a.tired l == some true &&
       (match again with | .ok _ => false | .error _ => true)
   | .error _ => return false
@@ -3251,7 +3267,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let b ← fire s2 [.scored s.me bf false] { yes := false }
   let c ← fire s2 [.scored s.me bf true]
   let (s3, gold) ← put s2 s.me "SFD-T03" .base
-  let use (x : GameState) := step 100 x ⟨.player s.me, .manaAbility gold 0⟩
+  let use (x : GameState) := step 100 x ⟨.player s.me, .manaAbility gold 0 ⟨0, []⟩⟩
   let near := s3.gainPoints s.me 6
   let far := s3.gainPoints s.me 4
   let pw (r : Except _ (GameState × List Event)) : Option (Nat × Nat) :=
@@ -3931,7 +3947,7 @@ meta def effLen : EffectList → Nat
 -- (audit) Using an Add ability is using an ability: the event is raised
 #guard tsf fun s => do
   let (s1, l) ← put s s.me "SFD-189" .legendZone
-  let r ← applyMana s1 s.me l 0
+  let r ← applyMana s1 s.me l 0 ⟨0, []⟩
   return r.2 == [Event.activated s.me l 0]
 
 -- (audit) A Temporary unit that is saved (Guardian Angel) is not killed at the start of the turn
@@ -4065,5 +4081,17 @@ meta def effLen : EffectList → Nat
     return (a.zone .chain).isEmpty && onBf.isSome &&
       (onBf.bind (a.obj? ·)).any (fun o => o.loc == some s.bf0 && o.playedFromHand)
   | .error _ => return false
+
+-- (audit) The payments of "pay any amount" are listed as legal actions: each way to take Power the Pool
+-- holds (here 2 Mind and 1 Body: 3 * 2 - 1 = 5 ways), and none when it holds none
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-083" .base
+  let funded := ((s1.noRunes s.me).setPool s.me { mind := 2, body := 1 })
+  let pays := (legalActions funded).filterMap (fun a =>
+    match a.kind with | .manaAbility src 0 pay => if src == g then some pay else none | _ => none)
+  let none_ := (legalActions ((s1.noRunes s.me).setPool s.me {})).filterMap (fun a =>
+    match a.kind with | .manaAbility src 0 pay => if src == g then some pay else none | _ => none)
+  return pays.length == 5 && pays.contains ⟨0, [.mind, .mind]⟩ && pays.contains ⟨0, [.mind, .body]⟩ &&
+    !pays.contains ⟨0, []⟩ && none_.isEmpty
 
 end RiftboundTest

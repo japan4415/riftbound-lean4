@@ -42,8 +42,9 @@ theorem of_safeP {s s' : GameState} (h : SafeP s s') : TC s s' := by
   · exact (of_safe hs).trans ⟨rfl, rfl⟩
 end TC
 
-theorem tc_applyMana {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat} {es : List Event}
-    (h : applyMana s p src idx = some (s', es)) : TC s s' := by
+theorem tc_applyMana {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
+    {pay : RunePool.Payment} {es : List Event}
+    (h : applyMana s p src idx pay = some (s', es)) : TC s s' := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
   exact (TC.of_safe hs).trans ⟨rfl, rfl⟩
 

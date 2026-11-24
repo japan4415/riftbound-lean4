@@ -2638,7 +2638,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let played := s2.modObj other (fun o => { o with playedTurn := some s2.turn })
   let pool0 := (s2.poolOf s.me).energy
   let use (x : GameState) : Option GameState :=
-    match step 100 x ⟨.player s.me, .manaAbility g 0⟩ with
+    match step 100 x ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩ with
     | .ok (y, _) => some y
     | .error _ => none
   let on ← use played
@@ -2650,8 +2650,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let real ← play s4 s.me c
   return (on.poolOf s.me).energy == pool0 + 1 && on.tired g == some true && (use s2).isNone &&
     (use old).isNone && (use theirs).isNone && (use real).isSome && (use (s2.tire g)).isNone &&
-    again.isNone && !((legalActions s2).contains ⟨.player s.me, .manaAbility g 0⟩) &&
-    (legalActions played).contains ⟨.player s.me, .manaAbility g 0⟩
+    again.isNone && !((legalActions s2).contains ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩) &&
+    (legalActions played).contains ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩
 
 -- What happened this turn is noted by the game. Spoils of War (OGN-144): costs 2 less if an enemy
 -- unit has died this turn (not a friendly one, not one that was only discarded, also when it is
@@ -3831,7 +3831,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, _) ← put s1 s.me "OGN-229" .hand
   let (s3, _) ← put s1 s.me "OGN-136" .hand
   let use (x : GameState) : Option GameState :=
-    match step 100 x ⟨.player s.me, .manaAbility g 0⟩ with
+    match step 100 x ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩ with
     | .ok (y, _) => some y
     | .error _ => none
   let on ← use s2
@@ -3843,9 +3843,9 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (o3, _) ← put (s.setZone (.player s.me .hand) []) s.me "OGN-247" .legendZone
   let (o4, _) ← put o3 s.you "OGN-229" .hand
   let (_, pg) ← put (s.setZone (.player s.me .hand) []) s.me "OGN-247" .legendZone
-  let theirsOnly := (legalActions o4).contains ⟨.player s.me, .manaAbility pg 0⟩
+  let theirsOnly := (legalActions o4).contains ⟨.player s.me, .manaAbility pg 0 ⟨0, []⟩⟩
   let useOf (x : GameState) (g : ObjId) : Bool :=
-    (legalActions x).contains ⟨.player s.me, .manaAbility g 0⟩
+    (legalActions x).contains ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩
   return (on.poolOf s.me).any == (s2.poolOf s.me).any + 1 && on.tired g == some true &&
     (use s3).isNone && (use (s2.tire g)).isNone && (use on).isNone && more.tired g == some true &&
     !(useOf o2 og) && useOf s2 g && !useOf s3 g && !theirsOnly
@@ -4318,7 +4318,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (l2, _) ← put l1 s.me "OGN-229" .hand
   let (n1, _) ← put s1 s.me "OGN-229" .hand
   let manaOk (x : GameState) :=
-    (legalActions x).contains ⟨.player s.me, .manaAbility hd daughterIdx⟩
+    (legalActions x).contains ⟨.player s.me, .manaAbility hd daughterIdx ⟨0, []⟩⟩
   return withHook.isSome && withoutHook.isNone && manaOk l2 && !manaOk n1
 
 -- Playing a spell for free (the effect `play`): a spell with no choice goes on the Chain as a new

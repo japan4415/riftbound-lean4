@@ -247,6 +247,10 @@ inductive ManaKind where
   | any (n : Nat)
   /-- Power of any domain that only pays for Gear this turn (Fire Below the Mountain). -/
   | gear (n : Nat)
+  /-- Pay any amount of Power, to add that much Energy (Hextech Anomaly): the payment is chosen. -/
+  | powerToEnergy
+  /-- Pay any amount of Energy, to add that much Power of any domain (Ancient Henge). -/
+  | energyToPower
 deriving DecidableEq, Repr
 
 /-- The Pool after adding. -/
@@ -255,6 +259,8 @@ def ManaKind.add : ManaKind → RunePool → RunePool
   | .power d n, p => p.addPower d n
   | .any n, p => p.addAny n
   | .gear n, p => p.addAny n
+  | .powerToEnergy, p => p
+  | .energyToPower, p => p
 
 /-- The effect is an Add of a fixed amount, to the player, with no restriction. -/
 def manaKind (body : EffectDef) : Option ManaKind :=
@@ -269,6 +275,13 @@ def manaKind (body : EffectDef) : Option ManaKind :=
   | [], .ifThen _ (.prim (.addEnergy .you (.const n) none)) .nop => some (.energy n)
   | [], .ifThen _ (.prim (.addPower .you (.const n) (some d) none)) .nop => some (.power d n)
   | [], .ifThen _ (.prim (.addPower .you (.const n) none none)) .nop => some (.any n)
+  -- "pay any amount of Power to add that much Energy", and the other way round
+  | [], e =>
+    if e == payAny ⟨0, [.any]⟩ (.prim (.addEnergy .you (.notes .unitPaid) none)) then
+      some .powerToEnergy
+    else if e == payAny ⟨1, []⟩ (.prim (.addPower .you (.notes .unitPaid) none none)) then
+      some .energyToPower
+    else none
   | _, _ => none
 
 /-- The player can use the activated ability at place `idx` of the object `src`, with the payment
