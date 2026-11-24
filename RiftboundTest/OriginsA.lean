@@ -3890,7 +3890,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let back ← die (funded.buff u) u
   let plain ← die funded u
   let theirs ← die (funded.buff foe) foe
-  let broke ← die (s3.buff u) u
+  let broke ← die ((s3.noRunes s.me).buff u) u
   let spent ← die ((funded.buff u).tire boss) u
   let no ← (let (k, ev) := killObj (funded.buff u) u; fire k ev { yes := false })
   let ready ← fire (s3.tire boss) [.scored s.me s.bf0 true]

@@ -54,11 +54,17 @@ meta def putAt (s : GameState) (p : PlayerId) (card : String) (bf : ObjId) :
 meta def putBf (s : GameState) (p : PlayerId) (card : String) : Option (GameState × ObjId) :=
   addObject s (newCard s.cards s p (cid card)) .battlefieldZone
 
-/-- Give the player Energy and Power of the domains in the Pool. -/
+/-- The player has no Rune to use (the Runes on their Base are no more than cards): what they can
+pay is what is in their Pool. -/
+meta def GameState.noRunes (s : GameState) (p : PlayerId) : GameState :=
+  (s.zone (.player p .base)).foldl
+    (fun x r => x.modObj r (fun o => { o with runeDomain := none })) s
+
+/-- Give the player Energy and Power of the domains in the Pool, and nothing else to pay with. -/
 meta def GameState.fund (s : GameState) (p : PlayerId) (e : Nat)
     (fury calm body mind chaos order : Nat := 0) : GameState :=
   let a : RunePool := { energy := e, fury := fury, calm := calm }
-  s.setPool p { a with body := body, mind := mind, chaos := chaos, order := order }
+  (s.noRunes p).setPool p { a with body := body, mind := mind, chaos := chaos, order := order }
 
 /-- Give the player plenty of Energy and of the Power of every domain. -/
 meta def GameState.rich (s : GameState) (p : PlayerId) : GameState :=

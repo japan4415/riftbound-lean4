@@ -152,6 +152,9 @@ inductive TurnEffect where
   | hiddenPlayed
   /-- A buffed unit died: the note is about the dead card. -/
   | buffedUnitDied
+  /-- A unit died with no other unit of its player where it was: the note is about the dead
+  card (Lonely Poro). -/
+  | diedAlone
   /-- A stunned unit died: the note is about the dead card. -/
   | stunnedUnitDied
   /-- A Mighty unit died (its Might was 5 or more as it died): the note is about the dead card. -/

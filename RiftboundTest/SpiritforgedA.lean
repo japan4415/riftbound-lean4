@@ -3653,4 +3653,54 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let b ← runBody s4 s.you g2 [] (.prim (.score .you (.const 1)))
   return a.pointsOf s.you == s3.pointsOf s.you && b.pointsOf s.you == s4.pointsOf s.you + 1
 
+-- Paying while an effect resolves uses Runes when the Pool falls short: two ready Runes are
+-- exhausted for 2 Energy; with no Rune and an empty Pool nothing is paid
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-042" .base
+  let exhausted (x : GameState) : Nat :=
+    ((x.runesOf s.me).filter (fun r => (x.obj? r).any (·.exhausted))).length
+  let ready (x : GameState) : Nat :=
+    ((x.runesOf s.me).filter (fun r => (x.obj? r).any (fun o => !o.exhausted))).length
+  let a ← runBody (s1.setPool s.me {}) s.me g [] (.prim (.pay ⟨2, []⟩))
+  let bare := (s1.noRunes s.me).setPool s.me {}
+  let b ← runBody bare s.me g [] (.prim (.pay ⟨2, []⟩))
+  let can := Condition.canPay ⟨2, []⟩
+  return 2 ≤ ready s1 && exhausted a == exhausted s1 + 2 && (a.poolOf s.me).energy == 0 &&
+    exhausted b == exhausted bare && can.eval s1 s.me g {} == some true &&
+    can.eval bare s.me g {} == some false
+
+-- Rell attaches only the Equipment it has just played, not one played earlier in the turn
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, rell) ← putAt s1 s.me "SFD-024" bf
+  let (s3, _) ← putAt s2 s.you "OGN-051" bf
+  let (s4, old) ← put s3 s.me "SFD-030" .base
+  let s5 := s4.modObj old (fun o => { o with playedTurn := some s.turn, playedStamp := some 1 })
+  let (s6, _) ← put s5 s.me "SFD-042" .hand
+  let a ← fire s6 [.combatStarted bf s.me]
+  return (a.obj? old).any (·.attached.isNone) &&
+    (a.zone (.player s.me .base)).any (fun o => (a.cardDef? o).any (·.id == cid "SFD-042") &&
+      (a.obj? o).any (·.attached == some rell))
+
+-- Relentless Pursuit may attach an Equipment with the unit's controller to the unit
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "SFD-184" .hand
+  let (s2, u) ← put s1 s.me "OGN-051" .base
+  let (s3, _) ← putBf s2 s.me "OGN-275"
+  let (s4, g) ← put s3 s.me "SFD-042" .base
+  let (s5, foe) ← put s4 s.you "SFD-042" .base
+  let a ← play s5 s.me c [u, g] { fromEnd := some 0 }
+  let ua := (a.zone .battlefieldZone).find? (fun o => (a.cardDef? o).any (·.id == cid "OGN-051"))
+  let w ← ua
+  return (a.obj? g).any (·.attached == some w) && (play s5 s.me c [u, foe] { fromEnd := some 0 }).isNone
+
+-- Lonely Poro is alone as it dies: a unit that comes there before its ability resolves does not
+-- change that
+#guard tsf fun s => do
+  let (s1, x) ← putAt s s.me "SFD-036" s.bf0
+  let (st1, evs) := killObj s1 x
+  let (st2, _) ← putAt st1 s.me "OGN-051" s.bf0
+  let r ← fire st2 evs
+  return r.handN s.me == st2.handN s.me + 1
+
 end RiftboundTest

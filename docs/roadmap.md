@@ -1871,3 +1871,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Draven, Audacious**: 「戦闘で死んだとき」は、Draven が死んだ場所の戦闘だけ（`Condition.inCombatHere`）。
 - **直せなかった**: 攻撃と防御の誘発が起きる時（Showdown の後、戦闘ダメージの前）を、Showdown の始まりへ移す変更は、試して戻した（テストが、誘発を直接起こして確かめているので、本物の Showdown と二重になる）。Cleanup での死の置き換え（Guardian Angel、Soraka）は、Cleanup の終わりの証明（`cleanupMeasure`）の作り直しが要る。Aphelios の使用済みのモードを選べなくするには、選び（`eitherDo`）の合法手と仕様（`Spec/Legal`）を、状態で絞る必要がある。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 36 — 解決のときの支払い、Rell、Poro
+
+- **解決のときに払う費用は、Rune も使う**: `Prim.pay` と `Condition.canPay` は、浮いている Rune Pool が足りないとき、Base の Rune を使う（`GameState.runePlan`、`runeCover`）。足りない Energy の分だけ、Ready の Rune を exhaust し、足りない Power の分だけ、その領域の Rune を recycle する（`applyRunes`、`applyRune_safe`）。払えないとき（Rune も足りない）は、これまでどおり払わない。Draven, Vanquisher、Guards!、Hard Bargain、Void Rush、Fae Porter、Blade Dancer などが、相手が先に Energy を浮かせなくても、払える。テストの `fund` は、Rune を使えなくして、Pool の分だけを払える状態にする（`noRunes`）。
+  - 近似: 使う Rune は、自動で選ぶ（払いに要る領域の Rune は、最後に exhaust する。recycle は、exhausted の Rune を先に使う）。プレイヤーは選べない。1 つの Rune を exhaust してから recycle することは、しない。カードを遊びながら払う費用（`playFree`、`playReduced`、`attachPaying`）は、まだ Pool からだけ払う。Lonely Poro の「一人きり」は、Cleanup が 1 体ずつ殺すので、同時に死ぬ味方がいると、順に依存する。
+- **Rell（SFD-024）**: 遊んだ直後の Equipment だけを付ける（`Filter.playedLast`）。このターンに先に遊んだ、付いていない Equipment は付けない。
+- **Relentless Pursuit（SFD-184）**: 動かしたユニットに、同じ持ち主の Equipment を付けてよい（最大 1 つ。選ぶのは遊ぶとき）。
+- **Lonely Poro（SFD-036）**: 「一人きりで死んだ」は、死んだときに数える（`TurnEffect.diedAlone`、`noteAlone`）。能力が解決する前に、ほかのユニットが来ても、変わらない。
+- **まだ**: 追加の費用を解決のときに払うこと（Legion Quartermaster ほか）、Reaction のユニットを Base へ遊ぶこと、Cleanup での死の置き換え、Aphelios の使用済みのモード、Hostile Takeover の誘発の集め方、Arcane Shift、Fire Below the Mountain の Add の制限、Temporal Portal（2 回で Repeat 1 つ。規則が不明）。
+
