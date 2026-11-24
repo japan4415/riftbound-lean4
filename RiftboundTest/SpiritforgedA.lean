@@ -3864,4 +3864,33 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return playable two s.me g (payOf two g) && (a.poolOf s.me).any == 1 &&
     a.restrictedNow s.me == 0 && playable a s.me u (payOf a u)
 
+-- Temporal Portals stack (CR 820.1): each Repeat is paid on its own, and the effect is done once
+-- more for each one paid. Two Portals: the spell is done three times if both are paid.
+meta def effLen : EffectList → Nat
+  | .nil => 0
+  | .cons _ rest => 1 + effLen rest
+
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "SFD-078" .base
+  let (s1b, g2) ← put s1 s.me "SFD-078" .base
+  let (s2, c) ← put s1b s.me "OGN-050" .hand
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let dC ← s3.cardDef? c
+  let funded := s3.fund s.me 12 12 12 12 12 12 12
+  let a ← activate funded s.me g 0 [] ⟨0, [.fury]⟩
+  let a2 ← activate (a.modObj g2 id) s.me g2 0 [] ⟨0, [.fury]⟩
+  let cost ← a2.effCost s.me c dC
+  let once : RunePool.Payment := ⟨cost.energy, (payOf a2 c).power⟩
+  let twice : RunePool.Payment := ⟨2 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power⟩
+  let thrice : RunePool.Payment :=
+    ⟨3 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power ++ (payOf a2 c).power⟩
+  let runs (pay : RunePool.Payment) : Option Nat := do
+    let (st, _) ← (applyCast a2 s.me c pay [foe])
+    match resolveFrames st [] with
+    | .run _ _ _ body :: _ => some (effLen body)
+    | _ => none
+  return (a2.playMark s.me c once).extraPaid == 0 &&
+    (a2.playMark s.me c twice).extraPaid == 1 && (a2.playMark s.me c thrice).extraPaid == 2 &&
+    (← runs once) == 1 && (← runs twice) == 2 && (← runs thrice) == 3
+
 end RiftboundTest

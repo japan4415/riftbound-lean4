@@ -204,8 +204,9 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
       .run o.controller item { slots := slotValues o.targets d.spellEffect }
         (match d.spellEffect with
           | some e =>
-            if o.paid && !d.repeatChooses then .cons e.body (.cons e.body .nil)
-            else .cons e.body .nil
+            -- once, and once more for each Repeat that was paid (CR 820.3)
+            EffectList.replicate
+              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1) e.body
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]

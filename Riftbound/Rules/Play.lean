@@ -242,14 +242,23 @@ def GameState.extrasFor (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     | .repeat_, .cost k =>
       if d.hasType .spell then some ((k.less cuts.1).lessEnergy cuts.2) else none
     | _, _ => none) ++
-  (if d.hasType .spell && (s.fxOf p).any (· == .nextSpellRepeat) then
-    [(((s.effCost p c d).getD ⟨0, []⟩).less cuts.1).lessEnergy cuts.2]
+  -- each effect of the turn that gives Repeat gives one more Repeat
+  (if d.hasType .spell then
+    ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
+      (((s.effCost p c d).getD ⟨0, []⟩).less cuts.1).lessEnergy cuts.2)
   else [])
 
-/-- The costs the card may be played for now: its cost, or its cost with one additional cost. -/
+/-- The costs the card may be played for now, with how many additional costs each pays: its cost,
+with any of its additional costs paid (each one is optional, and paid at most once) (CR 820). -/
+def GameState.playCostsOfK (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) : List (Cost × Nat) :=
+  let es := s.extrasFor p c d
+  (subseqsUpTo es.length es).map (fun t => (t.foldl (fun k e => k.plus e) cost, t.length))
+
+/-- The costs the card may be played for now: its cost, with any of its additional costs paid. -/
 def GameState.playCostsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost) :
     List Cost :=
-  cost :: (s.extrasFor p c d).map cost.plus
+  (s.playCostsOfK p c d cost).map (·.1)
 
 /-- The payment pays the cost of the card, or the cost with an additional cost. -/
 def GameState.paysForX (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
@@ -394,6 +403,8 @@ had been played in the turn (Legion), and the turn. -/
 structure PlayMark where
   /-- An additional cost was paid. -/
   paid : Bool
+  /-- How many additional costs were paid. -/
+  extraPaid : Nat := 0
   /-- Another card of the player had been played in the turn. -/
   legion : Bool
   /-- The turn. -/
@@ -411,7 +422,7 @@ structure PlayMark where
 the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
   let o1 : Object :=
-    { o with targets := ts, paid := m.paid, legion := m.legion, playedTurn := some m.turn,
+    { o with targets := ts, paid := m.paid, extraPaid := m.extraPaid, legion := m.legion, playedTurn := some m.turn,
              buffed := o.buffed || m.buff, playedFromHand := m.fromHand }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
 
@@ -423,7 +434,15 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
       | some cost =>
         (s.cutOptionsOf p c cost ts).all (fun b => !(b.paidBy d.domains pay)) ||
           (s.extrasFor p c d).any (·.total == 0)
-      | none => false), legion := s.playedBefore p,
+      | none => false),
+    extraPaid := (s.cardDef? c).elim 0 (fun d =>
+      match s.effCost p c d with
+      | some cost =>
+        ((s.cutOptionsOf p c cost ts).flatMap (fun b =>
+          ((s.playCostsOfK p c d b).filter (fun x => x.1.paidBy d.domains pay)).map (·.2))).foldl
+          Nat.max 0
+      | none => 0),
+    legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
     buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (· == .unitsBuffed),
     fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c) }
