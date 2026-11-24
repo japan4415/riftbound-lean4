@@ -1834,4 +1834,5 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - **任意の数の対象**: `Quantity.upTo n`（n ≥ 2）の対象は、最後の選びとして、候補のうち何体でも選べる（`Choice.multi`）。選ぶ順は、ObjId の昇順だけが合法（同じ組を 1 度だけ選ぶ。`subseqs`、`Choice.sortedCands`）。選んだ対象は、スロット `i` から後ろに並び、`Selector.slotsFrom i` が全部を指す。選ばない（0 体）もよい。Emperor's Divide（SFD-043）は、Battlefield を選び、そこの味方を何体でも選んで、Base へ動かす（上限は 99 で、実際のユニットの数より大きい）。自分のユニットが選ばれたときの誘発（Irelia など）が働き、Deflect の追加支払いも求める。
 - **Rocket Barrage の Repeat**: Repeat を払わないと、2 つ目の対象は選べない（`castable` が見る）。
+- **Fae Dragon（SFD-101）と Azir, Sovereign（SFD-177）**: 「最大 4 体」「任意の数のトークン」は、誘発のときに、対象として選ぶ（`Choice.multi`）。1 体ずつ「しますか」と聞くのをやめた。Deflect の追加支払いと「選んだとき」が、働く。Azir は、すでにその Battlefield にいるトークンを、選べない（動かないので）。
 

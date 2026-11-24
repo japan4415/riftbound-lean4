@@ -2975,8 +2975,9 @@ def SFD_101 : CardDef :=
   { SFD_101.meta with
 
     abilities := [.triggered (.onSelf .play)
-        (.of [] (.repeatN (.const 4) (.may (.prim (.buff
-          (Selector.one .friendly .anywhere [.ofType .unit, .not .buffed])))))) .unlimited,
+        (.of [.targetOf (.upTo 4) .friendly .anywhere [.ofType .unit]]
+          (.forEach (Selector.slotsFrom 0)
+            (.ifThen (.matches .it (.not .buffed)) (.prim (.buff .it)) .nop))) .unlimited,
       .triggered (.onSelf .spendBuff)
         (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
@@ -5203,8 +5204,9 @@ def SFD_177 : CardDef :=
   { SFD_177.meta with
 
     abilities := [.triggered (.onSelf .attack)
-      (.of [] (.forEach (Selector.all .friendly .anywhere [.ofType .unit, .token])
-        (.may (.prim (.move .it (.at_ .self)))))) .unlimited],
+      (.of [.targetOf (.upTo 99) .friendly .anywhere
+          [.ofType .unit, .token, .not (.at_ .self)]]
+        (.forEach (Selector.slotsFrom 0) (.prim (.move .it (.at_ .self))))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-178

@@ -1417,8 +1417,8 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let tok := (s3.zone (.player s.me .base)).find? (fun o =>
     (s3.cardDef? o).any (·.name == "Sand Soldier"))
   let t ← tok
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
-  let n ← fire s3 [.combatStarted s.bf0 s.me] { yes := false }
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts == [t] }
+  let n ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts.isEmpty }
   let d ← fire s3 [.combatStarted s.bf0 s.you]
   return (r.obj? t).any (·.loc == some s.bf0) && (r.obj? plain).any (·.loc.isNone) &&
     (n.obj? t).any (·.loc.isNone) && (d.obj? t).any (·.loc.isNone)
@@ -1503,7 +1503,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let mine (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
     (x.cardDef? o).any (·.name == "Sand Soldier") &&
       (x.obj? o).any (fun ob => ob.loc == some s.bf0 && ob.controller == s.me))
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ts => ts.length == 2 }
   return (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
     (s3.zone (.player s.you .base)).length
 /-- Put the cards on top of the player's Main Deck, the first of the list on top; their ids. -/
@@ -2391,10 +2391,11 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s2, a) ← put s1 s.me "OGN-051" .base
   let (s3, b) ← put s2 s.me "OGN-051" .base
   let (s4, e) ← put s3 s.you "OGN-051" .base
-  let r ← play s4 s.me d
-  let n ← play s4 s.me d [] { yes := false }
+  let r ← play s4 s.me d [] { pick := fun ts => ts == [a, b] || ts == [b, a] }
+  let n ← play s4 s.me d [] { pick := fun ts => ts.isEmpty }
+  let o ← play s4 s.me d [] { pick := fun ts => ts == [a] }
   return (r.obj? a).any (·.buffed) && (r.obj? b).any (·.buffed) && !(r.obj? e).any (·.buffed) &&
-    !(n.obj? a).any (·.buffed)
+    !(n.obj? a).any (·.buffed) && (o.obj? a).any (·.buffed) && !(o.obj? b).any (·.buffed)
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-101" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
