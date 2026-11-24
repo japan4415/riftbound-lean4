@@ -1874,7 +1874,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### M8a の実装の記録（2026-11-24）: Spiritforged 36 — 解決のときの支払い、Rell、Poro
 
 - **解決のときに払う費用は、Rune も使う**: `Prim.pay` と `Condition.canPay` は、浮いている Rune Pool が足りないとき、Base の Rune を使う（`GameState.runePlan`、`runeCover`）。足りない Energy の分だけ、Ready の Rune を exhaust し、足りない Power の分だけ、その領域の Rune を recycle する（`applyRunes`、`applyRune_safe`）。払えないとき（Rune も足りない）は、これまでどおり払わない。Draven, Vanquisher、Guards!、Hard Bargain、Void Rush、Fae Porter、Blade Dancer などが、相手が先に Energy を浮かせなくても、払える。テストの `fund` は、Rune を使えなくして、Pool の分だけを払える状態にする（`noRunes`）。
-  - 近似: 使う Rune は、先頭から選ぶ（プレイヤーが選べない）。
+  - 近似: 使う Rune は、自動で選ぶ（払いに要る領域の Rune は、最後に exhaust する。recycle は、exhausted の Rune を先に使う）。プレイヤーは選べない。1 つの Rune を exhaust してから recycle することは、しない。カードを遊びながら払う費用（`playFree`、`playReduced`、`attachPaying`）は、まだ Pool からだけ払う。Lonely Poro の「一人きり」は、Cleanup が 1 体ずつ殺すので、同時に死ぬ味方がいると、順に依存する。
 - **Rell（SFD-024）**: 遊んだ直後の Equipment だけを付ける（`Filter.playedLast`）。このターンに先に遊んだ、付いていない Equipment は付けない。
 - **Relentless Pursuit（SFD-184）**: 動かしたユニットに、同じ持ち主の Equipment を付けてよい（最大 1 つ。選ぶのは遊ぶとき）。
 - **Lonely Poro（SFD-036）**: 「一人きりで死んだ」は、死んだときに数える（`TurnEffect.diedAlone`、`noteAlone`）。能力が解決する前に、ほかのユニットが来ても、変わらない。

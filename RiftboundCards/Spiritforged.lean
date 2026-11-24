@@ -701,7 +701,7 @@ def SFD_024 : CardDef :=
         [.prim (.play (Selector.one .friendly .inHand
             [.tag ⟨"Equipment"⟩, .cost .le (.const 2)])),
          .prim (.attach (Selector.all .friendly .atBase
-            [.tag ⟨"Equipment"⟩, .playedLast]) .self)]))) .unlimited],
+            [.tag ⟨"Equipment"⟩, .playedLast, .playedThisTurn, .not .isAttached]) .self)]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-025

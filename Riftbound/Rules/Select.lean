@@ -658,7 +658,14 @@ for each Energy missing, and recycle a Rune of the domain for each Power missing
 def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment) :
     Option (List (ObjId × RuneAbility)) :=
   let pool := s.poolOf p
-  let ready := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
+  -- the Runes whose Power the payment needs are exhausted last, and exhausted Runes recycled first
+  let isNeeded (r : ObjId) : Bool :=
+    (s.obj? r).any (fun o => match o.runeDomain with
+      | some d => pay.power.contains d
+      | none => false)
+  let readyAll := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
+  let ready := readyAll.filter (fun r => !isNeeded r) ++ readyAll.filter isNeeded
+  let recyclable := (s.runesOf p).filter (fun r => (s.obj? r).any (·.exhausted)) ++ readyAll
   let k := pay.energy - pool.energy
   if k ≤ ready.length then
     let exh := ready.take k
@@ -669,7 +676,7 @@ def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment) 
         match pl.takePower d with
         | some pl' => some (pl', used)
         | none =>
-          match (s.runesOf p).find? (fun r => !used.contains r &&
+          match recyclable.find? (fun r => !used.contains r &&
               (s.obj? r).any (fun o => o.runeDomain == some d)) with
           | some r => some (pl, r :: used)
           | none => none
