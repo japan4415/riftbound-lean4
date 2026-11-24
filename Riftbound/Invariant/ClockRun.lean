@@ -120,9 +120,9 @@ theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
 theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : reactStep s p c pay ts new = some (s', es)) : TC s s' := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · exact (tc_applyCast hm).trans ⟨rfl, rfl⟩
-  · exact (tc_applyPlay hm).trans ⟨rfl, rfl⟩
+  · exact ((tc_applyPlay hm).trans (TC.of_sameMeta (payExtra_safe hx).same)).trans ⟨rfl, rfl⟩
 
 theorem tc_showdownEnd (s : GameState) (bf : ObjId) (rest : List Frame) :
     TC s (showdownEnd s bf rest).1 := by

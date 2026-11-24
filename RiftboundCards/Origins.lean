@@ -5221,11 +5221,7 @@ def OGN_193.meta : CardDef :=
 /-- Miss Fortune, Buccaneer. -/
 def OGN_193 : CardDef :=
   { OGN_193.meta with
-    abilities := [
-      .activated [.fromHand, .pay (OGN_193.meta.cost.getD ⟨0, []⟩)] .normal
-        (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .openBf]]
-          (.prim (.playTo .self (.slot 0)))) .unlimited,
-      .passive .always [.playToOpenBf]],
+    abilities := [.passive .always [.playToBf [.openBf]], .passive .always [.playToOpenBf]],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-194

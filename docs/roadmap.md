@@ -1980,3 +1980,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Fiora**: ユニットが Mighty になるのを、バフと装備だけでなく、Might が変わる、どの変化でも、見る（`Event.becameMighty`、`GameState.mightyEvents`。作業の 1 歩ごとに、前後の状態を比べる）。
 - **Ezreal, Prodigy**: 追加の費用の「1 Energy か 1 Power 安く」を、どちらでも選べる（`extraAlts`）。追加の費用は、1 つずつ別に、選べる。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 53 — Battlefield へ遊ぶのは、遊ぶこと
+
+- **Battlefield へ遊ぶ**（Dauntless Vanguard、Rengar、Perched Grimwyrm、Miss Fortune、Origins の「空の Battlefield へ遊べる」）は、能力でなく、ふつうの「遊ぶ」操作になった。`playCard` の対象に、Battlefield を 1 つ選ぶ（`GameState.playBfOptions`、`bfPlayOk`、`placeAtBf`、`playable` の `dest`）。ユニットは、Chain に載らず、その場で、その Battlefield に出る。費用は、遊ぶ費用（軽減も効く）。Reaction を持つユニットは、Chain に応じても、遊べる（`reactable`、`reactStep` も、追加の費用と、遊ぶ先を、扱う）。
+- 以前は、「手札から、印刷の費用を払い、能力として、Chain に載る」ものだった。軽減が効かず、相手が、その能力に応じられた。
+

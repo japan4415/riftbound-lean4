@@ -2770,9 +2770,8 @@ def SFD_093.meta : CardDef :=
 def SFD_093 : CardDef :=
   { SFD_093.meta with
 
-    abilities := [.activated [.fromHand, .pay (SFD_093.meta.cost.getD ⟨0, []⟩)] .normal
-      (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .enemyOccupied]]
-        (.prim (.playTo .self (.slot 0)))) .unlimited],
+    -- may be played to an occupied enemy Battlefield (as it is played, with its cost)
+    abilities := [.passive .always [.playToBf [.enemyOccupied]]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-094

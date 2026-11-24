@@ -2001,10 +2001,10 @@ meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameSt
   let (s1, v) ← put s s.me "SFD-093" .hand
   let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
   let (s3, bf2) ← putBf s2 s.me "SFD-216"
-  let r ← activate s3 s.me v 0 [s.bf0] ⟨4, [.body]⟩
+  let r ← play s3 s.me v [s.bf0]
   return (r.zone .battlefieldZone).any (fun o => r.isCard "SFD-093" o &&
       (r.obj? o).any (·.loc == some s.bf0)) &&
-    (activate s3 s.me v 0 [bf2] ⟨4, [.body]⟩).isNone
+    (play s3 s.me v [bf2]).isNone
 
 -- Lucian, Gunslinger (SFD-028): when it attacks, damage equal to its Assault to an enemy unit here
 #guard tsf fun s => do
@@ -2678,8 +2678,8 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, g) ← put s1 s.me "SFD-015" .hand
   let scored := s2.modObj bf (fun o => { o with scored := [s.me] })
-  let a ← activate scored s.me g 3 [bf] (payOf scored g)
-  let none_ := activate s2 s.me g 3 [bf] (payOf s2 g)
+  let a ← play scored s.me g [bf]
+  let none_ := play s2 s.me g [bf]
   let (s3, plain) ← put s2 s.me "OGN-051" .hand
   return !playable (s3.rich s.me) s.me g (payOf s3 g) &&
     playable (s3.rich s.me) s.me plain (payOf s3 plain) &&
@@ -2691,9 +2691,9 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s2, g) ← put s1 s.me "SFD-025" .hand
   let atk := s2.modObj bf (fun o => { o with contested := some s.me })
   let def_ := s2.modObj bf (fun o => { o with contested := some s.you })
-  let a ← activate atk s.me g 3 [bf] (payOf atk g)
-  return unitAt a "SFD-025" bf && (activate def_ s.me g 3 [bf] (payOf def_ g)).isNone &&
-    (activate s2 s.me g 3 [bf] (payOf s2 g)).isNone
+  let a ← play atk s.me g [bf]
+  return unitAt a "SFD-025" bf && (play def_ s.me g [bf]).isNone &&
+    (play s2 s.me g [bf]).isNone
 
 -- Janna, Savior (SFD-053): may be played to a battlefield its player controls, as a Reaction
 #guard tsf fun s => do
@@ -2701,13 +2701,9 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s2, j) ← put s1 s.me "SFD-053" .hand
   let (s3, foe) ← putAt s2 s.you "OGN-051" bf
   let mine := s3.control s.me bf
-  let a ← activate mine s.me j 4 [bf] (payOf mine j)
-  let d ← s3.cardDef? j
-  let isReaction := match d.fullAbilities[4]? with
-    | some (.activated _ .reaction _ _) => true
-    | _ => false
-  return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && isReaction &&
-    (activate s3 s.me j 4 [bf] (payOf s3 j)).isNone
+  let a ← play mine s.me j [bf]
+  return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && reactSpell s3 j &&
+    (play s3 s.me j [bf]).isNone
 
 -- Vex, Cheerless (SFD-146): in combat, my spells cost 1 less (not below 1), enemy spells 1 more
 #guard tsf fun s => do
@@ -3702,8 +3698,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s2, g) ← put s1 s.me "SFD-015" .hand
   let conquered := s2.modObj bf (fun o => { o with scored := [s.me] })
   let held := s2.modObj bf (fun o => { o with scored := [s.me], held := [s.me] })
-  let a ← activate conquered s.me g 3 [bf] (payOf conquered g)
-  return unitAt a "SFD-015" bf && (activate held s.me g 3 [bf] (payOf held g)).isNone
+  let a ← play conquered s.me g [bf]
+  return unitAt a "SFD-015" bf && (play held s.me g [bf]).isNone
 
 -- Tianna Crownguard also stops the points an effect gives the opponent ("you score 1 point")
 #guard tsf fun s => do
@@ -4056,5 +4052,18 @@ meta def effLen : EffectList → Nat
   let plain := t1.playCostsOf s.me v dv costv
   return costs.contains (cost.plus ⟨0, [.own]⟩) && costs.contains (cost.plus ⟨1, []⟩) &&
     plain.contains (costv.plus ⟨1, [.own]⟩) && !plain.contains (costv.plus ⟨0, [.own]⟩)
+
+-- (audit) A Unit played to a Battlefield is played, not an ability: it is on the Battlefield at
+-- once, the Chain is empty, and a cost cut applies (Legion Quartermaster-style cuts go through
+-- `effCost`)
+#guard tsf fun s => do
+  let (s1, v) ← put s s.me "SFD-093" .hand
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  match step 100 (s2.rich s.me) ⟨.player s.me, .playCard v (payOf s2 v) [s.bf0]⟩ with
+  | .ok (a, _) =>
+    let onBf := (a.zone .battlefieldZone).find? (fun o => a.isCard "SFD-093" o)
+    return (a.zone .chain).isEmpty && onBf.isSome &&
+      (onBf.bind (a.obj? ·)).any (fun o => o.loc == some s.bf0 && o.playedFromHand)
+  | .error _ => return false
 
 end RiftboundTest
