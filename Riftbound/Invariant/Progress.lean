@@ -157,7 +157,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
       rw [hp] at hb
       exact hb.swap rfl [Frame.resolveChain]
   · rename_i p n rest c pay ts hp hk
-    obtain ⟨-, -, -, hres, -, hpend⟩ := castStep_meta h
+    obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]

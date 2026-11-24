@@ -63,7 +63,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
        obtain ⟨rfl, -⟩ := h
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
   · rename_i p rest c pay ts hp hk
-    exact castStep_wf hwf h
+    exact reactStep_wf hwf h
   · rename_i p rest src idx pay ts hp hk
     exact activateStep_wf hwf h
   · rename_i p n rest c ab hp hk
@@ -319,7 +319,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
        obtain ⟨rfl, -⟩ := h
        exact List.Perm.refl _)
   · rename_i p n rest c pay ts hp hk
-    exact castStep_physIds hwf h
+    exact reactStep_physIds hwf h
   · rename_i p n rest src idx pay ts hp hk
     exact activateStep_physIds hwf h
   · rename_i p n tail c ab hp hk

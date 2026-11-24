@@ -3719,4 +3719,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return c.energy == 2 && a.countIn s.me .base "OGN-003" == 1 &&
     exhausted a == exhausted empty + 2 && b.countIn s.me .base "OGN-003" == 0
 
+-- A Unit with Reaction (Janna) answers the Chain by being played at once, to the Base
+#guard tsf fun s => do
+  let (s1, j) ← put s s.me "SFD-053" .hand
+  let (s2, plain) ← put s1 s.me "OGN-051" .hand
+  let s3 := { s2.rich s.me with pending := .chainPass s.me 0 :: s2.pending }
+  let act : Action := ⟨.player s.me, .playCard j (payOf s3 j) []⟩
+  let no : Action := ⟨.player s.me, .playCard plain (payOf s3 plain) []⟩
+  let r ← match step 100 s3 act with
+    | .ok (x, _) => some x
+    | .error _ => none
+  return (legalReactions s3 s.me).contains act && !(legalReactions s3 s.me).contains no &&
+    (r.zone (.player s.me .base)).any (fun o => (r.cardDef? o).any (·.id == cid "SFD-053"))
+
 end RiftboundTest
