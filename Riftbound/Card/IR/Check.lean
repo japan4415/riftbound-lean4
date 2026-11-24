@@ -145,6 +145,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .recycle s => Selector.ok c s
   | .spendBuff s => Selector.ok c s
   | .recycleTop p => PlayerSel.ok c p
+  | .swapTop p => PlayerSel.ok c p
   | .channel p n e => p.ok c && Amount.ok c n && Amount.ok c e
   | .addEnergy p n _ => p.ok c && Amount.ok c n
   | .addPower p n _ _ => p.ok c && Amount.ok c n
@@ -172,6 +173,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
   | .gainXP p n => p.ok c && Amount.ok c n
+  | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n
   | .predict n => Amount.ok c n
@@ -231,6 +233,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .anyBuffs => true
   | .hideWithEnergy => true
   | .assignedLast => true
+  | .entersExhausted => true
   | .oppsPlayToBaseOnly => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true

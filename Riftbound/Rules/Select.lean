@@ -371,6 +371,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (((s.obj? id).map (fun o => o.scored.contains me && !o.held.contains me)).getD false)
   | .attackedByMine =>
     some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
+  | .myUnitsHere =>
+    some (match s.obj? self with
+      | some me =>
+        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
+          o.controller == me.controller))
+      | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>
@@ -785,6 +791,14 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
           (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
+  -- the Might the filters read: the printed Might, the buff, the Equipment and what the passive
+  -- abilities add (`env.passMight`; the Layers are defined after this)
+  | .mightOf sel =>
+    (sel.eval s p self env).map (fun ids =>
+      (ids.map (fun id =>
+        match s.mightOf id with
+        | some m => (m + s.equipBonus id + s.buffBonus id + env.passOf id).toNat
+        | none => 0)).sum)
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
@@ -929,6 +943,11 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
   | .discardedThisTurn =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
+  | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
+  | .spentOnSpell n =>
+    some (s.objects.toList.any (fun (k, o) =>
+      o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&
+        (s.cardDef? ⟨k⟩).any (·.hasType .spell)))
   | _ => none
 
 /-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/

@@ -165,6 +165,8 @@ inductive TurnEffect where
   | mightyUnitDied
   /-- A unit that takes damage this turn is killed (all units, or the one it is put on). -/
   | killOnDamage
+  /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
+  | banishInstead
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
@@ -175,6 +177,9 @@ inductive TurnEffect where
   /-- The next Gear the player plays from their hand this turn, with an Energy cost of no more than
   `n`, costs no Energy (Jayce). -/
   | nextGearFree (n : Nat)
+  /-- A note of the turn on an object: an ability of the card waits for it ("at the start of your
+  next Main Phase, ..."); `n` tells the notes apart. -/
+  | armed (n : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/

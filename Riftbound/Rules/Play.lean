@@ -424,12 +424,15 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
         (s.obj? g).any (·.controller == p) &&
           FilterList.holds s c Env.empty g (FilterList.ofList [.permitsOpenPlay]) == some true)
       let open_ : List FilterList := if permit then [FilterList.ofList [.openBf]] else []
+      -- Ambush: to a Battlefield where the player has Units
+      let ambush : List FilterList :=
+        if d.hasKeyword .ambush then [FilterList.ofList [.myUnitsHere]] else []
       (s.zone .battlefieldZone).filter (fun b =>
         (s.cardDef? b).any (·.hasType .battlefield) &&
           !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
           FilterList.holds s c Env.empty b
             (FilterList.ofList [.ofType .battlefield, .unitsPlayable]) == some true &&
-          (own ++ open_).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
+          (own ++ open_ ++ ambush).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
     else []
   | none => []
 

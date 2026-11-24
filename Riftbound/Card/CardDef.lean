@@ -152,6 +152,8 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | _, _ => none) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
+    -- Backline: the Unit must be assigned combat damage last (CR 826)
+    | .backline, _ => [.passive .always [.assignedLast]]
     -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)

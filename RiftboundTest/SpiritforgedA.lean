@@ -1945,12 +1945,6 @@ meta def runBody (s : GameState) (p : PlayerId) (src : ObjId) (slots : List ObjI
 meta def effectOf (code : String) : Option EffectDef :=
   (RiftboundCards.db.find? ⟨code⟩).bind (·.spellEffect)
 
-/-- Put a spell of the player on the Chain: the object it is there. -/
-meta def onChain (s : GameState) (p : PlayerId) (code : String) : Option (GameState × ObjId) := do
-  let (s1, c) ← put s p code .hand
-  let (s2, c') ← moveObj s1 c .chain
-  pure (s2, c')
-
 -- Jaull-Fish (SFD-103): costs 2 Energy less for each of its player's Mighty units
 #guard tsf fun s => do
   let (s1, j) ← put s s.me "SFD-103" .hand

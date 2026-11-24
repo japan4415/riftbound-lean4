@@ -183,6 +183,8 @@ inductive Filter where
   | attackedByMine
   /-- Is a Battlefield where a unit of another player than the one the effect belongs to is. -/
   | enemyOccupied
+  /-- Is a Battlefield where a unit of the player the effect belongs to is (Ambush). -/
+  | myUnitsHere
   /-- Is a Battlefield its controller of the object the effect belongs to controls. -/
   | controlled
   /-- Is the object a selector names (`self`, a chosen object or a variable). -/
@@ -288,6 +290,10 @@ inductive Condition where
   | legendReady
   /-- The Battlefield the object is at was conquered this turn while it was open. -/
   | openConquered
+  /-- The player controls a card face down (Hidden). -/
+  | hasHidden
+  /-- The player spent at least `n` Energy to play a Spell this turn. -/
+  | spentOnSpell (n : Nat)
   /-- A showdown is going on. -/
   | inShowdown
   /-- The point being scored comes from this source. -/

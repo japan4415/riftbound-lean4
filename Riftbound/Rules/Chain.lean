@@ -537,6 +537,14 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
 
+/-- The Unit has Ambush and the pick names a Battlefield where its player has Units (CR 822): it can
+be played there as a Reaction. -/
+def ambushPick (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
+  (s.cardDef? c).any (·.hasKeyword .ambush) &&
+    match s.bfPick ts with
+    | some b => FilterList.holds s c Env.empty b (FilterList.ofList [.myUnitsHere]) == some true
+    | none => false
+
 /-- The card is a Reaction (CR 813): a Gear with Quick-Draw has Reaction (CR 819). -/
 def reactSpell (s : GameState) (c : ObjId) : Bool :=
   (s.cardDef? c).any (fun d => d.hasKeyword .reaction || d.hasKeyword .quickDraw)
@@ -545,9 +553,9 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 (CR 813). A Unit or a Gear is played at once. -/
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) : Bool :=
-  (castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay) ||
+  ((castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay) ||
       bfPlayOk s p c pay ts) &&
-    reactSpell s c
+    reactSpell s c) || (bfPlayOk s p c pay ts && ambushPick s c ts)
 
 /-- Every way the player can use an activated ability: each object they use abilities of, each
 ability, each payment that pays its cost, and each pick of targets, that the Pool covers. -/
@@ -629,10 +637,10 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} : reactable s p c pay ts = true ↔
-      ((castable s p c pay ts = true ∨
+      (((castable s p c pay ts = true ∨
         (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay = true)) ∨
         bfPlayOk s p c pay ts = true) ∧
-        reactSpell s c = true := by
+        reactSpell s c = true) ∨ (bfPlayOk s p c pay ts = true ∧ ambushPick s c ts = true) := by
   simp [reactable, List.isEmpty_iff, and_assoc]
 
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/
@@ -646,9 +654,10 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     exact ⟨c, pay, ts, rfl, hc, hr⟩
   · rintro ⟨c, pay, ts, rfl, hc, hr⟩
     refine ⟨⟨c, pay, ts, rfl, hc, ?_⟩, hr⟩
-    rcases (reactable_spec.mp hr).1 with (h | h) | h
+    rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inr (Or.inl h)
     · exact Or.inl ⟨h.2.1, h.2.2⟩
+    · exact Or.inr (Or.inr h)
     · exact Or.inr (Or.inr h)
 
 /-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/

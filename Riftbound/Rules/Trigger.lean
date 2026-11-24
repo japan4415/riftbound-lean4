@@ -209,6 +209,15 @@ def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
   s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
     (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
 
+/-- A unit of the player at the Battlefield has a passive ability that makes their conquer (or hold)
+effects there fire one more time (Red Brambleback, Blue Sentinel). -/
+def GameState.scoreExtra (s : GameState) (p : PlayerId) (bf : ObjId) (conquer : Bool) : Bool :=
+  (s.trigUnitsAt bf p).any (fun g =>
+    (s.activeMods g).any (fun m =>
+      match m with
+      | .triggersExtra ev .here => ev == (if conquer then TriggerEvent.conquer else .hold)
+      | _ => false))
+
 /-- How much Might a buff just gave the Unit: the buff bonus with and without the last buff. -/
 def GameState.buffDelta (s : GameState) (u : ObjId) : Int :=
   let before := s.modObj u (fun o =>
@@ -328,14 +337,17 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
-    (s.trigUnitsAt bf p).flatMap
-      (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
-        -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
-        (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
-         else [])) ++
-    (s.zone (.player p .legendZone)).flatMap
-      (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
-    triggersOf s bf p (if conquer then .youConquer else .youHold) ++
+    let eff :=
+      (s.trigUnitsAt bf p).flatMap
+        (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
+          -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
+          (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
+           else [])) ++
+      (s.zone (.player p .legendZone)).flatMap
+        (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
+      triggersOf s bf p (if conquer then .youConquer else .youHold)
+    -- the effects fire one more time if a unit there says so
+    eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
     -- the cards in the Trash that wait for a conquer of their player
     (if conquer then
       (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .conquerFromTrash)
