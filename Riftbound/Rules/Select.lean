@@ -866,25 +866,36 @@ def Choice.maxPicks : Choice → Nat
   | .target (.upTo n) _ _ _ => n
   | _ => 1
 
-/-- Every way to leave some of the objects out, the others in their order. -/
-def subseqs {α : Type} : List α → List (List α)
-  | [] => [[]]
-  | x :: xs => (subseqs xs).flatMap (fun t => [t, x :: t])
+/-- Every way to leave some of the objects out, the others in their order, keeping at most `k`. -/
+def subseqsUpTo {α : Type} : Nat → List α → List (List α)
+  | 0, _ => [[]]
+  | _ + 1, [] => [[]]
+  | k + 1, x :: xs => subseqsUpTo (k + 1) xs ++ (subseqsUpTo k xs).map (x :: ·)
 
-/-- The ways listed are exactly the sublists. -/
-theorem mem_subseqs {α : Type} : ∀ (l t : List α), t ∈ subseqs l ↔ t.Sublist l
-  | [], t => by simp [subseqs, List.sublist_nil]
-  | x :: xs, t => by
-    rw [List.sublist_cons_iff]
-    simp only [subseqs, List.mem_flatMap, List.mem_cons, List.not_mem_nil, or_false,
-      mem_subseqs xs]
+/-- The ways listed are exactly the sublists of at most `k` objects. -/
+theorem mem_subseqsUpTo {α : Type} :
+    ∀ (k : Nat) (l t : List α), t ∈ subseqsUpTo k l ↔ t.Sublist l ∧ t.length ≤ k
+  | 0, l, t => by
+    simp only [subseqsUpTo, List.mem_singleton, Nat.le_zero, List.length_eq_zero_iff]
     constructor
-    · rintro ⟨u, hu, rfl | rfl⟩
-      · exact Or.inl hu
-      · exact Or.inr ⟨u, rfl, hu⟩
-    · rintro (h | ⟨r, rfl, hr⟩)
-      · exact ⟨t, h, Or.inl rfl⟩
-      · exact ⟨r, hr, Or.inr rfl⟩
+    · rintro rfl; exact ⟨List.nil_sublist _, rfl⟩
+    · exact fun h => h.2
+  | k + 1, [], t => by
+    simp only [subseqsUpTo, List.mem_singleton, List.sublist_nil]
+    constructor
+    · rintro rfl; exact ⟨rfl, by simp⟩
+    · exact fun h => h.1
+  | k + 1, x :: xs, t => by
+    rw [List.sublist_cons_iff]
+    simp only [subseqsUpTo, List.mem_append, List.mem_map, mem_subseqsUpTo (k + 1) xs,
+      mem_subseqsUpTo k xs]
+    constructor
+    · rintro (⟨h1, h2⟩ | ⟨u, ⟨h1, h2⟩, rfl⟩)
+      · exact ⟨Or.inl h1, h2⟩
+      · exact ⟨Or.inr ⟨u, rfl, h1⟩, by simpa using h2⟩
+    · rintro ⟨h | ⟨r, rfl, hr⟩, hl⟩
+      · exact Or.inl ⟨h, hl⟩
+      · exact Or.inr ⟨r, ⟨hr, by simpa using hl⟩, rfl⟩
 
 /-- The objects a choice of several can pick, in the order of the objects. -/
 def Choice.sortedCands (s : GameState) (p : PlayerId) (self : ObjId)
@@ -953,7 +964,7 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (
   | c :: cs =>
     if c.multi then
       (if cs.isEmpty then
-        (subseqs (c.sortedCands s p self pm acc)).filter (fun t => decide (t.length ≤ c.maxPicks))
+        subseqsUpTo c.maxPicks (c.sortedCands s p self pm acc)
       else [])
     else if c.simple then
       (c.candidatesAfter s p self pm acc).flatMap (fun t =>
@@ -978,7 +989,7 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true,
         decide_eq_true_eq]
       by_cases hc : cs.isEmpty = true
-      · simp [hc, List.mem_filter, mem_subseqs, and_comm]
+      · simp [hc, mem_subseqsUpTo, and_comm]
       · simp [hc]
     · have hm' : c.multi = false := by simpa using hm
       cases ts with

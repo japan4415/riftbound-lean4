@@ -3552,4 +3552,18 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (⟨1, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨1, []⟩] &&
     (⟨2, [.domain .fury]⟩ : Cost).cutOptions 1 1 == [⟨2, []⟩, ⟨1, [.domain .fury]⟩]
 
+-- Flash (OGS-011): up to two friendly units move to their base, both of them
+#guard tsf fun s => do
+  let (s1, c) ← put s s.me "OGS-011" .hand
+  let (s2, a) ← putAt s1 s.me "OGN-051" s.bf0
+  let (s3, b) ← putAt s2 s.me "OGN-051" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-051" s.bf0
+  let (lo, hi) := if a.n < b.n then (a, b) else (b, a)
+  let two ← play s4 s.me c [lo, hi]
+  let one ← play s4 s.me c [hi]
+  return (two.obj? a).any (·.loc.isNone) && (two.obj? b).any (·.loc.isNone) &&
+    (one.obj? lo).any (·.loc == some s.bf0) && (one.obj? hi).any (·.loc.isNone) &&
+    (play s4 s.me c [hi, lo]).isNone && (play s4 s.me c [e]).isNone &&
+    (play s4 s.me c [lo, hi, e]).isNone
+
 end RiftboundTest
