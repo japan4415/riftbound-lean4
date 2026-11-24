@@ -524,9 +524,9 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
 
-/-- The Spell is a Reaction (CR 813). -/
+/-- The card is a Reaction (CR 813): a Gear with Quick-Draw has Reaction (CR 819). -/
 def reactSpell (s : GameState) (c : ObjId) : Bool :=
-  (s.cardDef? c).any (·.hasKeyword .reaction)
+  (s.cardDef? c).any (fun d => d.hasKeyword .reaction || d.hasKeyword .quickDraw)
 
 /-- The card of the hand can answer an item of the Chain: a Spell, a Unit or a Gear with Reaction
 (CR 813). A Unit or a Gear is played at once. -/

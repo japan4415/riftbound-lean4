@@ -1959,3 +1959,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - 効果をもう一度行うとき（Repeat）、対象を、もう一度選ぶ（CR 820.2）。2 回目からは、効果の前に、対象のひとつごと（1 つを選ぶもの）に `Effect.fillSlot` が入り、解決のときに、その場の状態から選び直す（`EffectDef.refills`、`executions`。選んだ物は `fillFromPick` で、スロットに入る）。最初の 1 回は、遊ぶときに選んだ対象のまま。数を選ぶ対象（up to N など）や、モードは、選び直さない。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 51 — 近似の再点検（1）
+
+ロードマップの近似を、現在のコードと照らし直した（読むだけの点検）。まだ当てはまっていたものを、順に直す。
+
+- **Quick-Draw のギアは Reaction を持つ**: Long Sword、Sterak's Gage、Cloth Armor、Spinning Axe が、Chain に応じて遊べる（`reactSpell`）。
+- **Add 能力を使うと、「能力を使った」出来事が起きる**: Prize of Progress が、Gold などの Add でも誘発する（`applyMana`）。
+- **Rek'Sai, Swarm Queen**: 遊んだユニットは、その Battlefield に出る（`playReduced` に here を渡す。呪文は、`castReducedStep` が、遊び先に関わらず遊ぶ）。
+- **Temporary のユニット**: 開始時に殺されるときも、身代わり（Guardian Angel、Soraka）が働く（`killAll` が `killOrSave`）。
+- **Emperor of the Sands**: 「Equipment を遊んだ」を、Equipment だけで数える（`Amount.equipmentPlayed`）。
+- **Drag Under**: 手札以外から遊ぶと、2 安い（Void Drone と同じ）。
+

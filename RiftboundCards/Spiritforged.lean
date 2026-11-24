@@ -4834,6 +4834,9 @@ def SFD_164.meta : CardDef :=
 def SFD_164 : CardDef :=
   { SFD_164.meta with
 
+    -- costs 2 less to play from anywhere other than the hand
+    abilities := [.passive (.not (.matches .self .inHandZone))
+      [.costMinus .self (.const 2)]],
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.prim (.kill (.slot 0)))),
     status := .drafted }
@@ -5005,8 +5008,9 @@ def SFD_170 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [] (.may (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
         (.seqOf [.prim (.revealTop 2),
+          -- a Unit is played here, where Rek'Sai is attacking
           .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 0)
-            none)),
+            (some (Selector.all .any .here [.ofType .battlefield])))),
           .repeatN (.sub (.const 2)
               (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
             (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])))) .unlimited],
@@ -5814,7 +5818,7 @@ def SFD_197 : CardDef :=
   { SFD_197.meta with
 
     abilities := [.activated [.exhaustSelf, .pay ⟨1, []⟩] .normal
-        (EffectDef.of [] (.ifThen (.cmp .ge .gearsPlayed (.const 1))
+        (EffectDef.of [] (.ifThen (.cmp .ge .equipmentPlayed (.const 1))
           (.prim (.create "Sand Soldier" (.const 1) .atBase false)) .nop)) .unlimited,
       -- Weaponmaster for my Sand Soldiers: when one is played, I may Equip an Equipment to it
       -- for 1 less, even if it is attached already

@@ -1627,7 +1627,10 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (d, _) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
   let a ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { obj := d.isCard "OGN-051" }
   let n ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { yes := false }
-  return a.countIn s.me .base "OGN-051" == 1 && a.deckN s.me + 1 == d.deckN s.me &&
+  -- the Unit is played here, where Rek'Sai attacks
+  return (a.zone .battlefieldZone).any (fun o => a.isCard "OGN-051" o &&
+      (a.obj? o).any (·.loc == some s.bf0)) && a.countIn s.me .base "OGN-051" == 0 &&
+    a.deckN s.me + 1 == d.deckN s.me &&
     a.bottomIs s.me 1 "SFD-042" && n.countIn s.me .base "OGN-051" == 0 &&
     n.deckN s.me == d.deckN s.me && r != s.bf0
 
@@ -1709,7 +1712,8 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (d, ids) ← s1.stackTop s.me ["OGN-051", "SFD-042"]
   let cost := (d.energyCost? s.me (ids.head?.getD ⟨0⟩)).getD 0
   let a ← fire (d.rich s.me) [.combatStarted s.bf0 s.me] { obj := d.isCard "OGN-051" }
-  return a.countIn s.me .base "OGN-051" == 1 && (a.poolOf s.me).energy + cost == 12 && cost > 0
+  return (a.zone .battlefieldZone).any (fun o => a.isCard "OGN-051" o) &&
+    (a.poolOf s.me).energy + cost == 12 && cost > 0
 
 -- (review) Called Shot: the card not drawn goes to the bottom of the deck
 #guard tsf fun s => do
@@ -3911,5 +3915,53 @@ meta def effLen : EffectList → Nat
   let twice ← cast a s.me c double [e1] { obj := fun o => o == e2 }
   return once.dmg e1 == some 3 && once.dmg e2 == some 0 && twice.dmg e1 == some 3 &&
     twice.dmg e2 == some 3
+
+-- (audit) Quick-Draw gives Reaction: the Gear can answer an item of the Chain, a plain Gear cannot
+#guard tsf fun s => do
+  let (s1, qd) ← put s s.me "SFD-022" .hand
+  let (s2, plain) ← put s1 s.me "SFD-042" .hand
+  let (s3, _) ← onChain s2 s.you "OGN-004"
+  let rich := s3.rich s.me
+  return reactable rich s.me qd (payOf rich qd) [] && !reactable rich s.me plain (payOf rich plain) []
+
+-- (audit) Using an Add ability is using an ability: the event is raised
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-189" .legendZone
+  let r ← applyMana s1 s.me l 0
+  return r.2 == [Event.activated s.me l 0]
+
+-- (audit) A Temporary unit that is saved (Guardian Angel) is not killed at the start of the turn
+#guard tsf fun s => do
+  let sprite : Object :=
+    { kind := .token (cid "TKN-Sprite"), owner := s.me, controller := s.me, timestamp := ⟨0⟩ }
+  let (s1, u) ← addObject s sprite (.player s.me .base)
+  let (s2, g) ← put s1 s.me "SFD-051" .base
+  let held := (attachTo u s2 g).1
+  let r := beginStep held s.me
+  let bare := beginStep s1 s.me
+  return (r.1.zone (.player s.me .base)).contains u &&
+    (r.1.zone (.player s.me .trash)).any (fun o => (r.1.cardDef? o).any (·.id == cid "SFD-051")) &&
+    !(bare.1.zone (.player s.me .base)).contains u
+
+-- (audit) Emperor of the Sands: only an Equipment played counts, not any other Gear
+#guard tsf fun s => do
+  let (s1, l) ← put s s.me "SFD-197" .legendZone
+  let (s2, g) ← put s1 s.me "SFD-117" .base
+  let (s3, e) ← put s2 s.me "SFD-022" .base
+  let played (st : GameState) (o : ObjId) : GameState :=
+    st.modObj o (fun x => { x with playedTurn := some st.turn })
+  let amt (st : GameState) : Option Nat := Amount.equipmentPlayed.evalS st s.me l Env.empty
+  let gearOnly := played s3 g
+  let equip := played s3 e
+  return amt s3 == some 0 && amt gearOnly == some 0 && amt equip == some 1
+
+-- (audit) Drag Under costs 2 less to play from anywhere other than the hand
+#guard tsf fun s => do
+  let (s1, inHand) ← put s s.me "SFD-164" .hand
+  let (s2, inTrash) ← put s1 s.me "SFD-164" .trash
+  let dC ← s2.cardDef? inHand
+  let a ← s2.effCost s.me inHand dC
+  let b ← s2.effCost s.me inTrash dC
+  return a.energy == b.energy + 2
 
 end RiftboundTest
