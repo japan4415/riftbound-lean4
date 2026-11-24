@@ -3763,4 +3763,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let inShowdown := settled.pending.any (fun fr => match fr with | .showdown .. => true | _ => false)
   return inShowdown && settled.mightNow f == (s3.mightNow f).map (· * 2)
 
+-- The Power of Fire Below the Mountain pays only for Gear: a Gear costing 2 Energy and 1 Power can be
+-- played with it, a Unit of the same cost cannot, and without it (or with other Power left) it can
+#guard tsf fun s => do
+  let (s1, g) ← put s s.me "OGN-021" .hand
+  let (s2, u) ← put s1 s.me "OGN-036" .hand
+  let bare := (s2.noRunes s.me)
+  let some_ := bare.setPool s.me { energy := 5, any := 1 }
+  let restricted := some_.addTurnFx s.me .gearMana
+  let more := (bare.setPool s.me { energy := 5, any := 2 }).addTurnFx s.me .gearMana
+  return playable restricted s.me g (payOf restricted g) &&
+    !playable restricted s.me u (payOf restricted u) &&
+    playable some_ s.me u (payOf some_ u) && playable more s.me u (payOf more u)
+
 end RiftboundTest

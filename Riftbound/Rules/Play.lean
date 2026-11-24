@@ -377,7 +377,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match s.effCost p c d with
           | some cost => s.paysForX p c d cost pay
           | none => false) &&
-        ((s.poolOf p).spend pay).isSome &&
+        (s.spendFor p (d.hasType .gear) pay).isSome &&
         -- a card that is played only to a Battlefield is not played to the Base
         !(d.abilities.any (fun ab =>
           match ab with | Ability.passive _ mods => mods.contains .noPlayToBase | _ => false))
@@ -568,7 +568,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match s.effCost p c d with
           | some cost => s.paysForXT p c d cost targets pay
           | none => false) &&
-        ((s.poolOf p).spend pay).any (fun pool => s.deflectOk p pool targets)
+        (s.spendFor p false pay).any (fun pool => s.deflectOk p pool targets)
     | _, _ => false
 
 /-- Cast a Spell (CR 354, 357): pay, and put it on the Chain with the objects chosen. -/
@@ -606,7 +606,8 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       | some cost =>
         rw [hc] at hcost
         obtain ⟨pool, hpool⟩ := Option.isSome_iff_exists.mp hspend
-        exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost, hpool⟩
+        exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost,
+          GameState.spendFor_eq_some hpool⟩
 
 /-- The shape of a card being played: its definition, the Pool after paying, and the move to the
 Base. -/
@@ -813,9 +814,9 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       | some cost =>
         rw [hc] at hcost
         obtain ⟨pool, hpool⟩ : ∃ pool, (s.poolOf p).spend pay = some pool := by
-          cases hs : (s.poolOf p).spend pay with
+          cases hs : s.spendFor p false pay with
           | none => rw [hs] at hspend; simp at hspend
-          | some pool => exact ⟨pool, rfl⟩
+          | some pool => exact ⟨pool, GameState.spendFor_eq_some hs⟩
         exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost, hpool⟩
 
 /-- A castable card is a Spell whose effect the targets are a legal pick for. -/

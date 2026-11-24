@@ -5561,8 +5561,10 @@ def SFD_189.meta : CardDef :=
 def SFD_189 : CardDef :=
   { SFD_189.meta with
 
+    -- Add one Power of any domain that only plays Gear or uses abilities of Gear this turn
     abilities := [.activated [.exhaustSelf] .reaction
-      (EffectDef.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
+      (EffectDef.of [] (.seqOf [.prim (.addPower .you (.const 1) none none),
+        .prim (.turnEffect .gearMana)])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-190

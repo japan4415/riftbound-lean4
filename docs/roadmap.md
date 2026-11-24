@@ -1909,3 +1909,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Equip の費用の「友軍のユニットを kill する」は、kill するユニットを、能力を使うとき（`activate` の対象の 2 つ目）に選ぶ。付ける先のユニットとは、別のユニット。kill は、能力が解決するときに行う（費用として、使うときに kill するのではない）。近似: 解決するまでは、そのユニットは生きている。
 - **まだ**: Guardian Angel と Soraka が、Cleanup での死を救わないこと（Cleanup の終わりを示す測り方の作り直しが要る）。Fire Below the Mountain の Add の制限（Rune Pool の払い出しの作り直しが要る）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 43 — ギア専用のマナ
+
+- **Fire Below the Mountain（SFD-189）**: Add した Power は、その回、ギアを遊ぶときと、ギアの能力にだけ使える。`ManaKind.gear`（Add して、`TurnEffect.gearMana` を、そのターンの記録に足す）。ギア以外（ユニット・呪文・ギア以外の能力・効果の中の支払い）の支払いは、記録した数（Pool の `any` を超えない。`GameState.restrictedNow`）の `any` を、残さなければならない（`GameState.spendFor`。`playable`、`castable`、`activatable`、`payNow` が使う）。
+- **近似**: 制限は、Pool の `any` の数と、ターンの記録の数（Legend は 1 ターンに 1 回だけ使うので 1）の小さい方。ギアで使ったあとに、別の Add で `any` が増えると、増えた分も、制限を受ける（制限を受ける分が、使ったあとにも残る）。
+- **まだ**: Guardian Angel と Soraka が、Cleanup での死を救わないこと（Cleanup の終わりを示す測り方の作り直しが要る）。
+
