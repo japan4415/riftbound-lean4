@@ -342,6 +342,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some ((s.obj? id).any (fun o => o.playedStamp.isSome && o.playedStamp == some latest))
   | .playedFromElsewhere =>
     some ((s.obj? id).any (fun o => o.playedTurn == some s.turn && !o.playedFromHand))
+  | .banishedWithMe => some ((s.obj? id).any (·.banishedWith == some self))
   | .wasTakenByMyCard =>
     some ((s.obj? id).any (fun o => o.takenBy.isSome && o.takenBy == some (s.takerKey self)))
   | .takenByMyCard =>

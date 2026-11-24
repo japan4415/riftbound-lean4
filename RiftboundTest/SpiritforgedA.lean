@@ -3514,10 +3514,12 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s3, g) ← put s2 s.me "SFD-090" .base
   let held := (attachTo u s3 g).1
   let k1 := killObj held u
-  let dead1 := k1.1
+  let dead1 ← fire k1.1 k1.2
   let (s4, _) := ((attachTo v dead1 g).1, 0)
   let k2 := killObj s4 v
-  let both := k2.1
+  let fired ← fire k2.1 k2.2
+  -- the Main Phase goes on, with the priority
+  let both := { fired with pending := s3.pending }
   let (t1, _) ← put both s.me "OGN-051" .trash
   let inZone (x : GameState) (z : ZoneKind) (code : String) : Nat :=
     ((x.zone (.player s.me z)).filter (fun o => (x.cardDef? o).any (·.id == cid code))).length

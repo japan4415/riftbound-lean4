@@ -2682,7 +2682,12 @@ def SFD_090 : CardDef :=
 
     abilities := [.activated [.pay ⟨3, [.domain .mind]⟩] .normal
       (EffectDef.of [] (.ifThen (.not (.matches .self .isAttached))
-        (.seqOf [.prim .playBanishedWith, .prim (.banish .self)]) .nop)) .unlimited],
+        (.seqOf [.prim .playBanishedWith, .prim (.banish .self)]) .nop)) .unlimited,
+      -- the unit it was attached to died: it is banished (a Deathknell it gave the unit)
+      .triggered { event := .die, subject := Selector.all .any .anywhere [.banishedWithMe] }
+        (.of [] (.prim (.banish (Selector.one .any .inTrash [.banishedWithMe])))) .unlimited],
+    -- Deathknell — Banish me: the unit dies (it goes to the Trash), and then it is banished (the
+    -- Equipment, which stays, does it: the unit's ability is gone with the unit)
     grants := [.passive .always [.banishOnDeath]],
     status := .drafted }
 
