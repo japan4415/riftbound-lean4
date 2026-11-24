@@ -205,6 +205,7 @@ def Condition.understood : Condition → Bool
   | .matches s f => s.understood && f.understood
   | .yourTurn => true
   | .inCombat => true
+  | .inCombatHere => true
   | .legendReady => true
   | .openConquered => true
   | .legion => true
@@ -359,6 +360,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinus s a => costSel s && a.understoodK
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .costPlus s a => costSel s && a.understoodK
+  | .costPower s a _ _ => costSel s && a.understoodK
   | .noDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true

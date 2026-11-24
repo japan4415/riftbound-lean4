@@ -276,6 +276,8 @@ inductive Condition where
   | yourTurn
   /-- A combat is going on. -/
   | inCombat
+  /-- A combat is going on at the place `self` is (or was, if it has died there). -/
+  | inCombatHere
   /-- The player has a Legend that is ready. -/
   | legendReady
   /-- The Battlefield the object is at was conquered this turn while it was open. -/
