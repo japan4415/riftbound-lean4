@@ -3586,4 +3586,18 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return a.mightNow ir == (s3.mightNow ir).map (· + 1) && b.handN s.me == s3.handN s.me &&
     b.mightNow ir == s3.mightNow ir
 
+-- A choice made while an effect resolves sets off "when you choose me" too (Irelia, Fervent gives
+-- itself +1 Might), by an ability or by a spell; the only candidate and a chosen one both count
+#guard tsf fun s => do
+  let (s1, ir) ← put s s.me "SFD-057" .base
+  let (s2, other) ← put s1 s.me "OGN-051" .base
+  let (s3, g) ← put s2 s.me "SFD-042" .base
+  let body : Effect := .prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))
+  let picked ← runBody s3 s.me g [] body { obj := fun o => o == ir }
+  let other' ← runBody s3 s.me g [] body { obj := fun o => o == other }
+  let lone ← runBody (s3.modObj other (fun o => o)) s.me g [] (.prim (.buff
+    (Selector.one .friendly .anywhere [.ofType .unit, .named "Irelia"])))
+  return (picked.obj? ir).any (·.mightMods.length == 1) &&
+    (other'.obj? ir).any (·.mightMods.isEmpty) && (lone.obj? ir).any (·.mightMods.length == 1)
+
 end RiftboundTest

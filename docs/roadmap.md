@@ -1846,3 +1846,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **「選んだとき」**: 能力が選ぶ対象でも、誘発する（`Event.chosenByAbility`、`TriggerEvent.chosenAny`）。Irelia, Fervent、Spirit Wheel、Blade Dancer は、呪文でも能力でも働く。Jae Medarda（『呪文で選んだとき』）は、呪文だけ（`TriggerEvent.chosen`）。効果が唱える呪文（`castInline`、`Prim.play`）の対象は、まだ働かない（その対象は、プレイのときに選ばない）。
 - **Card Sharp（SFD-081）**: 「For each opponent who did」は、Gold を作った相手の数だけ、Gold を作る（相手が 2 人以上のとき）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 33 — 解決のときの選びも「選んだとき」を出す
+
+- 効果が解決している間に選ぶ対象（`Selector.one` の選び: 候補が 1 つなら自動で、2 つ以上ならプレイヤーが選ぶ）も、選んだプレイヤーの物なら、「選んだとき」の誘発を出す（`chosenAt`: 呪文の効果なら `Event.chosenBySpell`、能力なら `Event.chosenByAbility`）。Irelia, Fervent・Spirit Wheel・Blade Dancer（呪文でも能力でも）と、Jae Medarda（呪文だけ）が、読む。
+- 効果が唱える呪文（`castInline`、`Prim.play`）は、対象の無い呪文（`noChoices`）だけなので、その呪文の選びは、そもそも無い。
+- **変わらない限界**: 任意の数の対象の組は、全部を手として列挙する（手の一覧が、仕様のとおり、合法な手の全部であるため）。Azir, Sovereign の上限 99 は、味方のトークンが 20 体前後いると、約 100 万通りで、遅くなる。直すには、対象を 1 体ずつ選ぶ手（`assignPick` のような、順に選ぶフレーム）に、決め方を作り直す必要がある。
+
