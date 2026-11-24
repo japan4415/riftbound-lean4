@@ -727,7 +727,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | eitherDo p src env a b es =>
     left
     by_cases hy : eitherOk s p src env a b true = true
-    · refine ⟨⟨.player p, .decide true⟩, ?_, by simp [hy]⟩
+    · refine ⟨⟨.player p, .decide true⟩, ?_, by simp⟩
       rw [hla]
       apply List.mem_append_left
       simp [legalFrameActions, hp, hy]
@@ -735,7 +735,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
         unfold eitherOk at hy ⊢
         cases hva : a.viable s p src env <;> cases hvb : b.viable s p src env <;>
           simp_all
-      refine ⟨⟨.player p, .decide false⟩, ?_, by simp [hn]⟩
+      refine ⟨⟨.player p, .decide false⟩, ?_, by simp⟩
       rw [hla]
       apply List.mem_append_left
       simp [legalFrameActions, hp, hn]
