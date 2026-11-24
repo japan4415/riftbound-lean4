@@ -33,6 +33,17 @@ inductive ImplStatus where
   | full
 deriving DecidableEq, Repr, Hashable
 
+/-- What a non-mana additional cost to play a card asks for: a friendly gear is returned to its
+owner's hand, or killed, or the player's Legend is exhausted. -/
+inductive PlayExtra where
+  /-- A friendly gear returns to its owner's hand. -/
+  | returnGear
+  /-- A friendly gear is killed. -/
+  | killGear
+  /-- The player's Legend is exhausted. -/
+  | exhaustLegend
+deriving DecidableEq, Repr, Hashable
+
 /-- The definition of one logical card. -/
 structure CardDef where
   /-- The logical card's identifier. -/
@@ -68,6 +79,10 @@ structure CardDef where
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- What else the player does as an additional cost to play the card (not Energy or Power): what
+  it is, and whether it must be done ("as an additional cost to play me, ..." or "you may ...").
+  The object it is done to is chosen as the card is played. -/
+  playExtra : Option (PlayExtra × Bool) := none
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/

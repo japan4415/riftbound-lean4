@@ -99,7 +99,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     refine reactStep_isSome hwf hl.2.1 ?_
     rcases (reactable_spec.mp hl.2.2).1 with h | h
     · exact Or.inl h
-    · exact Or.inr h.2
+    · exact Or.inr h.2.2
   · rename_i p n rest src idx pay ts hp hk
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2

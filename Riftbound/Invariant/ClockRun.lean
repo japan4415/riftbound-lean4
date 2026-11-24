@@ -93,7 +93,8 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact (tc_applyCast hm).trans ⟨rfl, rfl⟩
-  · exact tc_applyPlay h
+  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
+    exact (tc_applyPlay hr).trans (TC.of_sameMeta (payExtra_safe h2).same)
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}

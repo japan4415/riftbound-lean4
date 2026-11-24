@@ -428,7 +428,8 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 (CR 813). A Unit or a Gear is played at once. -/
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) : Bool :=
-  (castable s p c pay ts || (ts.isEmpty && playable s p c pay)) && reactSpell s c
+  (castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay)) &&
+    reactSpell s c
 
 /-- Every way the player can use an activated ability: each object they use abilities of, each
 ability, each payment that pays its cost, and each pick of targets, that the Pool covers. -/
@@ -510,9 +511,10 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} : reactable s p c pay ts = true ↔
-      (castable s p c pay ts = true ∨ (ts = [] ∧ playable s p c pay = true)) ∧
+      (castable s p c pay ts = true ∨
+        (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay = true)) ∧
         reactSpell s c = true := by
-  simp [reactable, List.isEmpty_iff]
+  simp [reactable, List.isEmpty_iff, and_assoc]
 
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/
 theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
@@ -527,7 +529,7 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     refine ⟨⟨c, pay, ts, rfl, hc, ?_⟩, hr⟩
     rcases (reactable_spec.mp hr).1 with h | h
     · exact Or.inr h
-    · exact Or.inl ⟨h.1, h.2⟩
+    · exact Or.inl ⟨h.2.1, h.2.2⟩
 
 /-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/
 def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)

@@ -1898,3 +1898,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 攻撃する・防御する能力（`TriggerEvent.attack`、`defend`、`youDefend`）の出来事（`Event.combatStarted`）は、戦闘ダメージの前でなく、**Showdown の始まり**（Cleanup が Showdown を始めるとき。両陣営にユニットがいるとき）に出す。誘発は、Showdown の途中で Chain に載り、プレイヤーが呪文を唱える前に解決する。Fiora が倍になるのも、この時。Showdown が戦闘にならずに終わっても、誘発は、すでに起きている。
 - テストの `fire` は、Main フェーズの `priority` フレームを外して動かす（その後の Cleanup が、新しい Showdown を始めて、出来事を二重にしないため）。`startCombatNow` は、出来事を自分で起こす。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 41 — ユニットの、マナでない追加の費用
+
+- カードが、追加の費用として、マナでない物を求めるときは、`CardDef.playExtra`（`PlayExtra`: ギアを手札へ戻す・ギアを kill する・Legend を exhaust する。必須かどうか）で書く。遊ぶときの対象に、その物を 1 つ選び（`playTargets`、`GameState.extraOk`）、遊ぶと同時に、費用を払う（`payExtra`、`applyExtra`）。払ったカードは、`paid` を覚え、`Condition.paid` が読める。必須の費用は、払えないと、遊べない。選べるのは、自分のギア（Legend は、ready のもの）だけ。
+- Legion Quartermaster（ギアを戻す。必須）、Bard, Mercurial（Legend を exhaust する。任意。払ったときだけ、ユニットを空いた Battlefield へ動かす）、Zaun Punk（友軍のギアを kill する。任意。払ったときだけ、ギアを kill する）。払うタイミングが、解決のときから、遊ぶときへ変わった。
+- **まだ**: Blade of the Ruined King の「Equip — Order、友軍のユニットを kill する」は、Equip の費用の一部だが、kill するユニットを解決のときに選ぶ。
+
