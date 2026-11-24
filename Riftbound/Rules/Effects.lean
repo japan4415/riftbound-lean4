@@ -1767,6 +1767,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
 /-- When a lasting effect ends, if the model has a way to end it. -/
 def Duration.endPoint? : Duration → Option EndPoint
   | .thisTurn => some .turn
+  | .thisCombat => some .combat
   | .permanent => some .never
   | _ => none
 

@@ -241,6 +241,8 @@ inductive TriggerEvent where
   /-- The unit is chosen by a spell of its player ("when you choose me with a spell"); a Legend,
   a Gear or a Unit that watches the units chosen has a subject that is a selector. -/
   | chosen
+  /-- The unit is chosen by a spell or an ability of its player ("when you choose me"). -/
+  | chosenAny
   /-- The player kills a unit with a spell, and the card is in their Trash. -/
   | killBySpell
   /-- The player conquers a Battlefield, and the card is in their Trash. -/
@@ -301,6 +303,9 @@ inductive StaticMod where
   | mightMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects get a keyword (CR 479.3). -/
   | keyword (s : Selector) (k : KeywordInst)
+  /-- Each Equipment of the player gives the Unit it is attached to the keyword (Purifier: one more
+  time for each Equipment). -/
+  | equipEach (k : KeywordInst)
   /-- The object takes no damage from anything (CR 142). -/
   | noDamage
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/

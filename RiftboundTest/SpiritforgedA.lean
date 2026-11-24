@@ -1770,12 +1770,13 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
   let (s3, g) ← put s2 s.me "SFD-042" .base
   let hooked := s3.modObj g (fun o => { o with attached := some u })
-  let r ← activate hooked s.me az 0 [u] ⟨0, [.calm]⟩
-  let n ← activate hooked s.me az 0 [u] ⟨0, [.calm]⟩ { yes := false }
+  let r ← activate hooked s.me az 0 [u, g] ⟨0, [.calm]⟩
+  let n ← activate hooked s.me az 0 [u] ⟨0, [.calm]⟩
   return (r.obj? az).any (·.loc == some s.bf0) && (r.obj? u).any (·.loc.isNone) &&
     (r.obj? g).any (·.attached == some az) && (n.obj? g).any (·.attached == some u) &&
     (n.obj? az).any (·.loc == some s.bf0) && (activate r s.me az 0 [u] ⟨0, [.calm]⟩).isNone &&
-    (r.obj? az).any (·.used.length == 1)
+    (r.obj? az).any (·.used.length == 1) &&
+    (activate hooked s.me az 0 [u, az] ⟨0, [.calm]⟩).isNone
 
 -- Grandmaster at Arms (SFD-193), a Legend: attach a detached Equipment to a unit (pay 1, exhaust);
 -- move an attached Equipment to another unit (exhaust)
@@ -1801,7 +1802,10 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s6, h) ← put s5 s.you "SFD-042" .base
   let s7 := (s6.modObj g (fun o => { o with attached := some u })).modObj h
     (fun o => { o with attached := some e })
-  return s7.kwAmount u .assault == 1 && s7.kwAmount w .assault == 0 && s7.kwAmount e .assault == 0
+  let (s8, g2) ← put s7 s.me "SFD-042" .base
+  let s9 := s8.modObj g2 (fun o => { o with attached := some u })
+  return s7.kwAmount u .assault == 1 && s7.kwAmount w .assault == 0 && s7.kwAmount e .assault == 0 &&
+    s9.kwAmount u .assault == 2
 
 -- Lonely Poro (SFD-036): when it dies alone, draw 1 (a real death by `killObj`)
 #guard tsf fun s => do
@@ -2345,7 +2349,12 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let d ← fire (fight t2 s.you) [.combatStarted s.bf0 s.you]
   return a.mightNow f == (s2.mightNow f).map (· * 2) && b.mightNow f == s3.mightNow f &&
     d.mightNow g == (t2.mightNow g).map (· * 2) && e != e2 && ally != f &&
-    c.mightNow f == s4.mightNow f
+    c.mightNow f == s4.mightNow f &&
+    -- the doubling ends with the combat, not with the turn
+    ((combatResolve a s.bf0 s.me).1.mightNow f == s2.mightNow f) &&
+    -- a Showdown that is not a Combat ends it too
+    ((endShowdown a s.bf0).1.mightNow f == s2.mightNow f) &&
+    (a.mightNow f != s2.mightNow f)
 
 -- Jax, Unrelenting (SFD-119): when an Equipment is attached to it, may pay 1 to draw 1
 #guard tsf fun s => do
@@ -3565,5 +3574,16 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (one.obj? lo).any (·.loc == some s.bf0) && (one.obj? hi).any (·.loc.isNone) &&
     (play s4 s.me c [hi, lo]).isNone && (play s4 s.me c [e]).isNone &&
     (play s4 s.me c [lo, hi, e]).isNone
+
+-- "When you choose me" counts a choice by an ability; "when you choose me with a spell" does not:
+-- Azir, Ascendant (SFD-050) chooses a friendly unit
+#guard tsf fun s => do
+  let (s1, az) ← put s s.me "SFD-050" .base
+  let (s2, ir) ← put s1 s.me "SFD-057" .base
+  let (s3, jae) ← put s2 s.me "SFD-142" .base
+  let a ← activate s3 s.me az 0 [ir] ⟨0, [.calm]⟩
+  let b ← activate s3 s.me az 0 [jae] ⟨0, [.calm]⟩
+  return a.mightNow ir == (s3.mightNow ir).map (· + 1) && b.handN s.me == s3.handN s.me &&
+    b.mightNow ir == s3.mightNow ir
 
 end RiftboundTest

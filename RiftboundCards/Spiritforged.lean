@@ -1479,12 +1479,10 @@ def SFD_050 : CardDef :=
   { SFD_050.meta with
 
     abilities := [.activated [.pay ⟨0, [.domain .calm]⟩] .action
-      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf],
+          .targetOf (.upTo 1) .friendly .anywhere [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)]]
         (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs .self]))
-          (.seqOf [.prim (.swapPlaces .self (.slot 0)),
-            .forEach (Selector.all .friendly .anywhere
-                [.tag ⟨"Equipment"⟩, .attachedTo (.slot 0)])
-              (.may (.prim (.attach .it .self)))]) .nop))
+          (.seqOf [.prim (.swapPlaces .self (.slot 0)), .prim (.attach (.slot 1) .self)]) .nop))
       (.perTurn 1)],
     status := .drafted }
 
@@ -1690,7 +1688,7 @@ def SFD_057.meta : CardDef :=
 def SFD_057 : CardDef :=
   { SFD_057.meta with
 
-    abilities := [.triggered (.onSelf .chosen)
+    abilities := [.triggered (.onSelf .chosenAny)
         (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited,
       .triggered (.onSelf .ready)
         (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
@@ -2397,9 +2395,9 @@ def SFD_081 : CardDef :=
         .bind ⟨"g"⟩ (.count (Selector.all .enemy .atBase [.named "Gold"]))
           (.seqOf [
             .eachPlayer .eachOpponent (.may (.prim (.create "Gold" (.const 1) .atBase false))),
-            .ifThen (.cmp .gt (.count (Selector.all .enemy .atBase [.named "Gold"]))
-                (.var ⟨"g"⟩))
-              (.prim (.create "Gold" (.const 1) .atBase false)) .nop])])) .unlimited],
+            -- one Gold for each opponent who did
+            .repeatN (.sub (.count (Selector.all .enemy .atBase [.named "Gold"])) (.var ⟨"g"⟩))
+              (.prim (.create "Gold" (.const 1) .atBase false))])])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-082
@@ -3244,9 +3242,10 @@ def SFD_110 : CardDef :=
   { SFD_110.meta with
 
     abilities :=
+      -- double the Might it has now, for this combat
       let body : EffectDef := .of [] (.ifThen (.and (.matches .self .alone)
           (.cmp .eq (.count (Selector.all .enemy .here [.ofType .unit])) (.const 1)))
-        (.prim (.double .self)) .nop)
+        (.grant .self (.mightPlus .it (.mightOf .self)) .thisCombat) .nop)
       [.triggered (.onSelf .attack) body .unlimited, .triggered (.onSelf .defend) body .unlimited],
     status := .drafted }
 
@@ -4238,7 +4237,7 @@ def SFD_144 : CardDef :=
   { SFD_144.meta with
 
     abilities := [.triggered
-      { event := .chosen, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
       (.of [] (.ifThen (.and (.canPay ⟨1, []⟩) (.matches .self .ready))
         (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.exhaust .self),
           .prim (.draw .you (.const 1))])) .nop)) .unlimited],
@@ -5378,9 +5377,7 @@ def SFD_183.meta : CardDef :=
 def SFD_183 : CardDef :=
   { SFD_183.meta with
 
-    abilities := [.passive .always
-      [.keyword (Selector.all .friendly .anywhere [.ofType .unit, .attached])
-        { keyword := .assault, arg := .amount 1 }]],
+    abilities := [.passive .always [.equipEach { keyword := .assault, arg := .amount 1 }]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-184
@@ -5744,7 +5741,7 @@ def SFD_195 : CardDef :=
   { SFD_195.meta with
 
     abilities := [.triggered
-        { event := .chosen, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+        { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
         (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
           (.may (.seqOf [.prim (.exhaust .self), .prim (.pay ⟨0, [.any]⟩),
             .prim (.ready (.slot 0))])) .nop)) .unlimited,
