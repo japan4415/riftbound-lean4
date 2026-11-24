@@ -188,7 +188,25 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
                 t.occurrence == .every && limitOk s src j lim then
               some { source := src, card := d.id, idx := j, controller := who }
             else none
-          | _ => none)
+          | _ => none) ++
+        -- what the Equipment attached to the object gives it
+        s.inPlay.flatMap (fun g =>
+          match s.obj? g, s.cardDef? g with
+          | some og, some dg =>
+            if og.attached == some src then
+              (List.range (dg.allAbilities.length - dg.fullAbilities.length)).filterMap
+                (fun (k : Nat) =>
+                  match dg.allAbilities[dg.fullAbilities.length + k]? with
+                  | some (Ability.triggered t _ lim) =>
+                    if t.event == .at_ tm && t.subject == .self && condOk s src who t.condition &&
+                        t.occurrence == .every &&
+                        limitOk s src (dg.fullAbilities.length + k) lim then
+                      some { source := src, card := dg.id, idx := dg.fullAbilities.length + k,
+                             controller := who }
+                    else none
+                  | _ => none)
+            else []
+          | _, _ => [])
       else []
     | _, _ => [])
 

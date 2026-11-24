@@ -623,8 +623,17 @@ def UNL_019.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Blighted Battleaxe: the effect is not written yet. -/
-def UNL_019 : CardDef := UNL_019.meta
+/-- Blighted Battleaxe. -/
+def UNL_019 : CardDef :=
+  { UNL_019.meta with
+    grants := [
+      .triggered (.onSelf .conquer) (.of [] (.prim (.markOn .self .conqueredHere))) .unlimited,
+      .triggered
+        { condition := .not (.marked .conqueredHere), event := .at_ .endOfTurn }
+        (.of [] (.seqOf [
+          .prim (.detach (Selector.all .any .anywhere [.attachedTo .self, .named "Blighted Battleaxe"])),
+          .prim (.deal .self (.const 4))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-020
 /--
@@ -4721,8 +4730,11 @@ def UNL_166.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Stalking Wolf: the effect is not written yet. -/
-def UNL_166 : CardDef := UNL_166.meta
+/-- Stalking Wolf. -/
+def UNL_166 : CardDef :=
+  { UNL_166.meta with
+    playExtra := some (.killPet, true),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-167
 /--

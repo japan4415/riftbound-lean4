@@ -593,6 +593,11 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
       (s.cardDef? t).any (·.hasType .gear)
   | .exhaustLegend =>
     decide (t ∈ s.zone (.player p .legendZone)) && (s.obj? t).any (fun o => !o.exhausted)
+  | .killPet =>
+    decide (t ∈ s.inPlay) && (s.obj? t).any (·.controller == p) &&
+      (s.cardDef? t).any (fun d => d.hasType .unit &&
+        (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
+          g.name == "Poro")))
 
 /-- The objects an additional cost of the kind can be done to. -/
 def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : List ObjId :=
@@ -614,6 +619,9 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     Option (GameState × List Event) :=
   match k with
   | .exhaustLegend => some (s.exhaustObj t, [])
+  | .killPet =>
+    (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
+      (r.1, [Event.moved t r.2 (.player o.owner .trash), Event.died r.2 o.controller])))
   | .returnGear =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .hand)])))
@@ -731,6 +739,12 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact Safe.moveObj hm
   | killGear =>
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨o, -, ⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact Safe.moveObj hm
+  | killPet =>
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨o, -, ⟨s2, id'⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -1329,6 +1343,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inr ht.1)
+      · exact List.mem_append.mpr (Or.inl ht.1.1)
     · right; right; right
       exact List.mem_map.mpr ⟨b, hb, rfl⟩
 

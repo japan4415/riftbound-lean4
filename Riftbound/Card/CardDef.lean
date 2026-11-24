@@ -42,6 +42,8 @@ inductive PlayExtra where
   | killGear
   /-- The player's Legend is exhausted. -/
   | exhaustLegend
+  /-- A friendly Bird, Cat, Dog or Poro is killed. -/
+  | killPet
 deriving DecidableEq, Repr, Hashable
 
 /-- The definition of one logical card. -/
