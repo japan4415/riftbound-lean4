@@ -334,6 +334,8 @@ def Prim.understood : Prim → Bool
   | .cloneToken s => s.understood
   | .banishWith s => s.understoodPickAny
   | .gainTag s _ => s.understood
+  | .replaceBattlefield s _ => s.understoodPick
+  | .restoreBattlefield s => s.understood
   | .moveAll _ place fs dest _ =>
     place.zoneKind?.isSome && dest.zoneKind?.isSome && FilterList.understood fs
   | .spendXP p n => p.understood && n.understood

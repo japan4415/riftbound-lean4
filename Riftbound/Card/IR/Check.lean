@@ -180,6 +180,8 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .cloneToken s => Selector.ok c s
   | .banishWith s => Selector.ok c s
   | .gainTag s _ => Selector.ok c s
+  | .replaceBattlefield s _ => Selector.ok c s
+  | .restoreBattlefield s => Selector.ok c s
   | .moveAll _ _ fs _ _ => FilterList.ok c fs
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n

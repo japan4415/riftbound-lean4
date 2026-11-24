@@ -1634,8 +1634,15 @@ def UNL_054.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Tricksy Tentacles: the effect is not written yet. -/
-def UNL_054 : CardDef := UNL_054.meta
+/-- Tricksy Tentacles. -/
+def UNL_054 : CardDef :=
+  { UNL_054.meta with
+    spellEffect := some (.of [.targetOf (.upTo 8) .enemy .anywhere [.ofType .unit]]
+      (.ifThen (.cmp .le (.mightOf (.slotsFrom 0)) (.const 8))
+        (.eitherOf (.cons (.prim (.move (.slotsFrom 0) .base))
+          (.cons (.prim (.move (.slotsFrom 0)
+            (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))) .nil))) .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-055
 /--
@@ -4006,8 +4013,14 @@ def UNL_139.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Bone Skewer: the effect is not written yet. -/
-def UNL_139 : CardDef := UNL_139.meta
+/-- Bone Skewer. -/
+def UNL_139 : CardDef :=
+  { UNL_139.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield]]
+      (.eachPlayer .eachOpponent
+        (.seqOf [.prim (.playTo (Selector.one .friendly .inHand [.ofType .unit]) (.slot 0)),
+          .prim (.stun (Selector.all .any .anywhere [.ofType .unit, .playedLast]))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-140
 /--

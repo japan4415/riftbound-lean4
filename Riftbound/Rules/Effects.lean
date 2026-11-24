@@ -1876,6 +1876,111 @@ def movedEvents (p : PlayerId) (r : GameState × List Event) : GameState × List
     | .standardMoved u _ => some (Event.movedByEffect p u)
     | _ => none))
 
+/-- The units at the Battlefield `old` are at `new` instead. -/
+def relocateUnits (old new : ObjId) (s : GameState) : GameState :=
+  (s.zone .battlefieldZone).foldl (fun t u =>
+    if (t.obj? u).any (·.loc == some old) then t.modObj u (fun o => { o with loc := some new })
+    else t) s
+
+/-- Moving the units from one Battlefield to another is a safe change. -/
+theorem relocateUnits_safe (old new : ObjId) (s : GameState) : Safe s (relocateUnits old new s) := by
+  unfold relocateUnits
+  suffices h : ∀ (l : List ObjId) (t : GameState), Safe t (l.foldl (fun t u =>
+      if (t.obj? u).any (·.loc == some old) then t.modObj u (fun o => { o with loc := some new })
+      else t) t) from h _ s
+  intro l
+  induction l with
+  | nil => intro t; exact Safe.refl t
+  | cons u l ih =>
+    intro t
+    simp only [List.foldl_cons]
+    refine Safe.trans ?_ (ih _)
+    split
+    · exact Safe.modObj t u (fun _ => rfl) (fun _ => rfl)
+    · exact Safe.refl t
+
+/-- The object of the Battlefield token that replaces the Battlefield `old` that is set aside as `r`. -/
+def bfToken (c : CardDef) (p : PlayerId) (old : Object) (aside : ObjId) : Object :=
+  { kind := .token c.id, owner := p, controller := p, timestamp := ⟨0⟩, control := old.control,
+    replaces := some aside }
+
+/-- Replace the Battlefield `b` with the Battlefield token: `b` is set aside, the token is in its
+place with the units that were there, and the control of it is the one `b` had. -/
+def replaceBf (c : CardDef) (p : PlayerId) (s : GameState) (b : ObjId) : GameState × List Event :=
+  match s.obj? b with
+  | some o =>
+    match moveObj s b (.player o.owner .banishment) with
+    | some r =>
+      match addObject r.1 (bfToken c p o r.2) .battlefieldZone with
+      | some t => (relocateUnits b t.2 t.1, [])
+      | none => (s, [])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Replacing a Battlefield is a safe change. -/
+theorem replaceBf_safe (c : CardDef) (p : PlayerId) (s : GameState) (b : ObjId) :
+    Safe s (replaceBf c p s b).1 := by
+  unfold replaceBf
+  cases ho : s.obj? b with
+  | none => simp only []; exact Safe.refl s
+  | some o =>
+    simp only []
+    cases hr : moveObj s b (.player o.owner .banishment) with
+    | none => simp only []; exact Safe.refl s
+    | some r =>
+      simp only []
+      cases ht : addObject r.1 (bfToken c p o r.2) .battlefieldZone with
+      | none => simp only []; exact Safe.refl s
+      | some t =>
+        simp only []
+        exact (Safe.moveObj hr).trans ((safe_addObject rfl ht).trans (relocateUnits_safe _ _ _))
+
+/-- The Battlefield `old` is back, as `r`, where the token `cur` was: with its control, and its units. -/
+def restoreStep (cur : ObjId) (o : Object) (r : GameState × ObjId) : GameState :=
+  relocateUnits cur r.2 (r.1.modObj r.2 (fun x => { x with control := o.control }))
+
+/-- Putting a Battlefield back in place of a token is a safe change. -/
+theorem restoreStep_safe (cur : ObjId) (o : Object) (r : GameState × ObjId) :
+    Safe r.1 (restoreStep cur o r) :=
+  (Safe.modObj r.1 r.2 (f := fun x => { x with control := o.control }) (fun _ => rfl)
+    (fun _ => rfl)).trans (relocateUnits_safe _ _ _)
+
+/-- Put the Battlefield the token `cur` replaced back in its place, and the token away. -/
+def restoreBf (s : GameState) (cur : ObjId) : GameState × List Event :=
+  match s.obj? cur with
+  | some o =>
+    match o.replaces with
+    | some old =>
+      match moveObj s old .battlefieldZone with
+      | some r =>
+        match moveObj (restoreStep cur o r) cur (.player o.owner .trash) with
+        | some t => (t.1, [])
+        | none => (restoreStep cur o r, [])
+      | none => (s, [])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Putting a replaced Battlefield back is a safe change. -/
+theorem restoreBf_safe (s : GameState) (cur : ObjId) : Safe s (restoreBf s cur).1 := by
+  unfold restoreBf
+  cases ho : s.obj? cur with
+  | none => simp only []; exact Safe.refl s
+  | some o =>
+    simp only []
+    cases hq : o.replaces with
+    | none => simp only []; exact Safe.refl s
+    | some old =>
+      simp only []
+      cases hr : moveObj s old .battlefieldZone with
+      | none => simp only []; exact Safe.refl s
+      | some r =>
+        simp only []
+        cases ht : moveObj (restoreStep cur o r) cur (.player o.owner .trash) with
+        | none => simp only []; exact (Safe.moveObj hr).trans (restoreStep_safe cur o r)
+        | some t =>
+          simp only []
+          exact ((Safe.moveObj hr).trans (restoreStep_safe cur o r)).trans (Safe.moveObj ht)
+
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
@@ -2031,6 +2136,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .cloneToken sel => onSelected s p src env sel cloneTok
   | .banishWith sel => onSelected s p src env sel (banishMarked src)
   | .gainTag sel name => onSelected s p src env sel (gainTagObj name)
+  | .replaceBattlefield sel name =>
+    (s.tokenCard name).bind (fun c => onSelected s p src env sel (replaceBf c p))
+  | .restoreBattlefield sel => onSelected s p src env sel restoreBf
   | .moveAll side place fs dest mark => applyMoveAll s p src env side place fs dest mark
   | .becomeCopy sel from_ =>
     match from_.eval s p src env with
@@ -2287,6 +2395,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | cloneToken sel => exact onSelected_safe cloneTok_safe h
   | banishWith sel => exact onSelected_safe (banishMarked_safe src) h
   | gainTag sel name => exact onSelected_safe (gainTagObj_safe name) h
+  | replaceBattlefield sel name =>
+    simp only [applyPrim] at h
+    cases ht : s.tokenCard name with
+    | none => simp [ht] at h
+    | some c =>
+      simp only [ht, Option.bind_some] at h
+      exact onSelected_safe (replaceBf_safe c p) h
+  | restoreBattlefield sel => exact onSelected_safe restoreBf_safe h
   | moveAll side place fs dest mark =>
     simp only [applyPrim, applyMoveAll] at h
     split at h

@@ -159,6 +159,11 @@ inductive Prim where
   /-- The objects gain the tag (for good): Ivern is a Bird, a Cat, a Dog or a Poro; The List names
   a tag. -/
   | gainTag (s : Selector) (name : String)
+  /-- Replace the Battlefield with the Battlefield token: it is set aside, and the units there stay
+  at the token (Green Father). -/
+  | replaceBattlefield (old : Selector) (token : String)
+  /-- Put the Battlefield the token replaced back, in place of the token (Brush). -/
+  | restoreBattlefield (cur : Selector)
   /-- Play, for free, every Unit in the player's Banishment that this object (an Equipment)
   banished when its Unit died (The Zero Drive). -/
   | playBanishedWith

@@ -125,6 +125,9 @@ structure Object where
   prevLoc : Option ObjId := none
   /-- The names of the tags the object gained, or was told to name (Ivern, The List). -/
   tagsGained : List String := []
+  /-- For a Battlefield token that replaced a Battlefield (Brush): the Battlefield it replaced, set
+  aside in its owner's Banishment. -/
+  replaces : Option ObjId := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
