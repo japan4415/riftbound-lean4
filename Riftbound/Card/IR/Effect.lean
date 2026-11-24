@@ -54,6 +54,11 @@ inductive Effect where
   | preventNext (s : Selector) (n : Amount) (d : Duration)
   /-- The next time the event would happen to the objects, do the effect instead (CR 367-375). -/
   | replaceNext (ev : ReplaceEvent) (s : Selector) (instead : Effect) (d : Duration)
+  /-- Choose an object again while the effect resolves, and make it slot `i` (the targets of a spell
+  that is repeated are chosen again) (CR 820). -/
+  | fillSlot (i : Nat) (s : Selector)
+  /-- Make the object just chosen (`pickVar`) slot `i`. -/
+  | fillFromPick (i : Nat)
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
 deriving DecidableEq, Repr, Hashable
