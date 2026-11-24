@@ -883,6 +883,39 @@ theorem playPaying_safe (p : PlayerId) (s : GameState) (id : ObjId) :
       · exact Safe.refl s
     · exact playFree_safe p s id
 
+/-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
+def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
+  | 0, l => l
+  | _ + 1, [] => []
+  | n + 1, f :: fs =>
+    if f.turn == turn && f.who == p && f.kind == .gearMana then dropGearFx turn p n fs
+    else f :: dropGearFx turn p (n + 1) fs
+
+/-- Power that pays only for Gear and has been spent is no longer noted: only as much as the Pool
+still holds stays noted (the Power that is added later is free to pay for anything). -/
+def GameState.trimGear (s : GameState) (p : PlayerId) : GameState :=
+  let noted :=
+    (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == .gearMana)).length
+  { s with turnFx := dropGearFx s.turn p (noted - (s.poolOf p).any) s.turnFx }
+
+/-- Trimming the note of Gear Power is a safe change. -/
+theorem trimGear_safe (s : GameState) (p : PlayerId) : Safe s (s.trimGear p) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Add Power of any domain to the Pools of the players, one after the other. -/
+def poolsAddAny (k : Nat) : GameState → List PlayerId → GameState
+  | s, [] => s
+  | s, q :: qs =>
+    let t := s.trimGear q
+    poolsAddAny k (t.setPool q ((t.poolOf q).addAny k)) qs
+
+/-- Adding Power is a safe change. -/
+theorem poolsAddAny_safe (k : Nat) :
+    ∀ (qs : List PlayerId) (s : GameState), Safe s (poolsAddAny k s qs)
+  | [], s => Safe.refl s
+  | q :: qs, s => ((trimGear_safe s q).trans (setPool_safe _ q _)).trans (poolsAddAny_safe k qs _)
+
 /-- Change the Rune Pools of the players, one after the other. -/
 def poolsMap (f : RunePool → RunePool) : GameState → List PlayerId → GameState
   | s, [] => s
@@ -1704,7 +1737,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       (poolsMap (fun pool => pool.addPower d k) s l, [])))
   | .addPower ps n none none =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
-      (poolsMap (fun pool => pool.addAny k) s l, [])))
+      (poolsAddAny k s l, [])))
   | _ => none
 
 /-- An action that is done is a safe change. -/
@@ -1979,7 +2012,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | some k =>
             simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
             rw [← h]
-            exact poolsMap_safe _ l s
+            exact poolsAddAny_safe _ l s
     | some dom =>
       cases only with
       | some a => simp [applyPrim] at h
@@ -2335,7 +2368,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some k => (s, [.run p src env ((EffectList.replicate k e').append es)], [])
     | none => skip
   | .eachPlayer who body =>
-    match who.resolve s p with
+    match (match who with
+      | .controllerOf i =>
+        -- the controller of the object chosen at the slot
+        match env.slots[i]? with
+        | some (.obj o) => (s.obj? o).map (fun (x : Object) => [x.controller])
+        | _ => none
+      | _ => who.resolve s p : Option (List PlayerId)) with
     | some ps => (s, ps.map (fun q => Frame.run q src env (.cons body .nil)) ++
         [.run p src env es], [])
     | none => skip

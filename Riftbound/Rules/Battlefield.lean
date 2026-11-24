@@ -235,9 +235,9 @@ def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
   s.battlefields.filter (fun b =>
     decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false)
 
-/-- Remember that `tp` has scored a Battlefield this turn. -/
-def markScored (tp : PlayerId) (o : Object) : Object :=
-  { o with scored := tp :: o.scored, held := tp :: o.held }
+/-- Remember that `tp` has scored a Battlefield this turn, and held it if a point came of it. -/
+def markScored (tp : PlayerId) (pt : Bool) (o : Object) : Object :=
+  { o with scored := tp :: o.scored, held := if pt then tp :: o.held else o.held }
 
 /-- A new turn: nothing has been scored yet (CR 472). -/
 def clearScored (o : Object) : Object := { o with scored := [], held := [], used := [] }
@@ -246,7 +246,7 @@ def clearScored (o : Object) : Object := { o with scored := [], held := [], used
 (CR 315.2.b, 471, 472). -/
 def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
   let bs := s.holds tp
-  let s1 := bs.foldl (fun s b => s.modObj b (markScored tp)) s
+  let s1 := bs.foldl (fun s' b => s'.modObj b (markScored tp (!s.cantScoreHere tp b))) s
   let n := (bs.filter (fun b => !s.cantScoreHere tp b)).length
   (s1.gainPoints tp n,
     bs.map (fun b => Event.scored tp b false) ++
@@ -491,6 +491,14 @@ theorem foldl_modObj_safe {f : Object → Object} (hk : ∀ o, (f o).kind = o.ki
   | [], s => Safe.refl s
   | b :: bs, s => (Safe.modObj s b hk ho).trans (foldl_modObj_safe hk ho bs _)
 
+/-- Changing the attributes of the objects of a list, one after the other, each by its own change,
+is safe. -/
+theorem foldl_modObj_safe' {g : ObjId → Object → Object} (hk : ∀ b o, (g b o).kind = o.kind)
+    (ho : ∀ b o, (g b o).owner = o.owner) :
+    ∀ (bs : List ObjId) (s : GameState), Safe s (bs.foldl (fun s b => s.modObj b (g b)) s)
+  | [], s => Safe.refl s
+  | b :: bs, s => (Safe.modObj s b (hk b) (ho b)).trans (foldl_modObj_safe' hk ho bs _)
+
 /-- Making a Battlefield Contested is a safe change. -/
 theorem contestBy_safe (p : PlayerId) (bf : ObjId) (s : GameState) :
     Safe s (contestBy p bf s) := by
@@ -627,7 +635,8 @@ theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
 
 /-- Holding is a safe change, then points. -/
 theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 :=
-  ⟨_, foldl_modObj_safe (f := markScored tp) (fun _ => rfl) (fun _ => rfl) _ s,
+  ⟨_, foldl_modObj_safe' (g := fun b => markScored tp (!s.cantScoreHere tp b))
+      (fun _ _ => rfl) (fun _ _ => rfl) _ s,
     Or.inr ⟨tp, _, rfl⟩⟩
 
 /-- The end of a Showdown is a safe change, then points. -/

@@ -74,6 +74,7 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (
   | .eachOpponent => some (s.players.filter (· ≠ self))
   | .chosen _ => none
   | .eventPlayer => none
+  | .controllerOf _ => none
 
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
 def Amount.eval (env : Env) : Amount → Option Nat
@@ -162,7 +163,7 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
-        | .nextSpellCostMinus _ | .nextUnitReady | .nextSpellRepeat =>
+        | .nextSpellCostMinus _ | .nextUnitReady | .nextSpellRepeat | .nextGearFree _ =>
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
@@ -173,6 +174,11 @@ def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
 /-- The Energy less the next spell of the player costs, by the effects of the turn. -/
 def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
   (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
+
+/-- The Energy cost of a Gear in the hand of the player that an effect of the turn drops: the
+limits of the Gear the player may play for free now. -/
+def GameState.gearFreeFx (s : GameState) (p : PlayerId) : List Nat :=
+  (s.fxOf p).filterMap (fun k => match k with | .nextGearFree n => some n | _ => none)
 
 /-- A unit that takes damage is killed, by an effect of this turn that is about every unit or about
 this one. -/

@@ -135,7 +135,13 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
           else []
         | _ => [])
     | _, _ => []) ++
-  (if (s.cardDef? c).any (·.hasType .spell) then (s.spellCutFx p).map (fun n => (n, 0)) else [])
+  (if (s.cardDef? c).any (·.hasType .spell) then (s.spellCutFx p).map (fun n => (n, 0)) else []) ++
+  -- the Gear played from the hand, with a cost within the limit, costs no Energy (Jayce)
+  (if (s.cardDef? c).any (·.hasType .gear) && (s.zone (.player p .hand)).contains c then
+    (if (s.gearFreeFx p).any (fun n =>
+        decide ((((s.cardDef? c).bind (·.cost)).map (·.energy)).getD 0 ≤ n))
+      then [(1000, 0)] else [])
+  else [])
 
 /-- The Energy that the passive abilities add to the cost of the card `c` of the player (CR 356):
 the cost of the spells of the opponents of Vex, Cheerless goes up. -/

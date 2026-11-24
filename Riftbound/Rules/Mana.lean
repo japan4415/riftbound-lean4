@@ -90,8 +90,10 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) :
       | some (ex, kill), some k =>
         let s1 := s.modObj src (useOf idx ex)
         let s2 := if kill then killNow s1 src else s1
+        -- Power that only paid for Gear and is spent is no longer noted
+        let s2' := s2.trimGear p
         -- the Power that only pays for Gear is noted for the turn
-        let s3 := match k with | .gear _ => s2.addTurnFx p .gearMana | _ => s2
+        let s3 := match k with | .gear _ => s2'.addTurnFx p .gearMana | _ => s2'
         some (s3.setPool p ((k.add (s.poolOf p)).addEnergy (s.manaBonus p src)), [])
       | _, _ => none
     | _ => none
@@ -127,11 +129,12 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
               cases kill
               · exact h1
               · exact h1.trans (killNow_safe _ src)
+            have h3 := h2.trans (trimGear_safe _ p)
             cases k with
-            | gear n => exact h2.trans (addTurnFx_safe _ _ _)
-            | energy n => exact h2
-            | power d n => exact h2
-            | any n => exact h2
+            | gear n => exact h3.trans (addTurnFx_safe _ _ _)
+            | energy n => exact h3
+            | power d n => exact h3
+            | any n => exact h3
       | passive _ _ => simp [hd, ha] at h
       | replacement _ _ _ => simp [hd, ha] at h
       | triggered _ _ _ => simp [hd, ha] at h
