@@ -110,7 +110,7 @@ inductive ActionKind where
   | putTrigger (idx : Nat) (targets : List ObjId)
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
-  | manaAbility (source : ObjId) (idx : Nat)
+  | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/

@@ -184,10 +184,10 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next (putPick_safe s (t :: more) i ts).same.result (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p n rest c hp hk

@@ -64,7 +64,7 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     | some (s1, g) =>
       manaReady s1 p g 0 && !manaReady s1 (otherN p) g 0 &&
       !activatable s1 p g 0 ⟨0, []⟩ [] true &&
-      (legalActions s1).contains ⟨.player p, .manaAbility g 0⟩ &&
+      (legalActions s1).contains ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ &&
       !(legalActions s1).any (fun a => match a.kind with | .activate .. => true | _ => false)
     | none => false
   | none => false
@@ -76,7 +76,7 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     let p := s0.active.getD ⟨0⟩
     match putN s0 p "T-ENG" .base with
     | some (s1, g) =>
-      match step 100 s1 ⟨.player p, .manaAbility g 0⟩ with
+      match step 100 s1 ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ with
       | .ok (s2, _) =>
         (s2.poolOf p).energy == (s1.poolOf p).energy + 1 && (s2.obj? g).any (·.exhausted) &&
         (s2.zone .chain).isEmpty && s2.pending == s1.pending && !manaReady s2 p g 0
@@ -92,8 +92,8 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     | some (s1, f), some (s2, _) =>
       match putN s1 p "T-RBW" .base with
       | some (s3, r) =>
-        match step 100 s3 ⟨.player p, .manaAbility f 0⟩,
-            step 100 s3 ⟨.player p, .manaAbility r 0⟩ with
+        match step 100 s3 ⟨.player p, .manaAbility f 0 ⟨0, []⟩⟩,
+            step 100 s3 ⟨.player p, .manaAbility r 0 ⟨0, []⟩⟩ with
         | .ok (sf, _), .ok (sr, _) =>
           (sf.poolOf p).fury == (s3.poolOf p).fury + 1 && (sr.poolOf p).any == 1 &&
           ((sr.poolOf p).spend ⟨0, [.calm]⟩).isSome &&
@@ -116,8 +116,8 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     | some (s2, c) =>
       match step 100 (s2.setPool p { energy := 1 }) ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
       | .ok (s3, _) =>
-        (legalFrameActions s3).contains ⟨.player p, .manaAbility g 0⟩ &&
-        (match step 100 s3 ⟨.player p, .manaAbility g 0⟩ with
+        (legalFrameActions s3).contains ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ &&
+        (match step 100 s3 ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ with
           | .ok (s4, _) => s4.pending == s3.pending && (s4.zone .chain).length == 1 &&
               (s4.poolOf p).energy == (s3.poolOf p).energy + 1
           | .error _ => false)
@@ -139,7 +139,7 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
         !manaReady s2 p g 0 &&
         (let s3 := s2.modObj g (fun o => { o with exhausted := false })
         manaReady s3 p g 0 &&
-        (match step 100 s3 ⟨.player p, .manaAbility g 0⟩ with
+        (match step 100 s3 ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ with
           | .ok (s4, _) =>
             (s4.poolOf p).any == 1 && !(s4.zone (.player p .base)).contains g &&
             (s4.zone (.player p .trash)).length == (s3.zone (.player p .trash)).length

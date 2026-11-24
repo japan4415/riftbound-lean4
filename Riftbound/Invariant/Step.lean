@@ -74,9 +74,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((putPick_safe s _ i ts).wf hwf).congr rfl rfl rfl rfl
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     exact applyMana_wf hwf h
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -330,9 +330,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (putPick_safe s _ i ts).phys hwf
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     exact applyMana_physIds hwf h
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h

@@ -400,20 +400,20 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases hm' with h1 | h1
     · cases h1
     · rw [hp]; exact List.mem_cons_of_mem _ h1
-  · rename_i p tail src idx hp hk
+  · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaReady_main hl.2]
+    · rw [hphase, manaOk_main hl.2]
       intro hh
       cases hh
     · rw [hpend] at hm
       exact hm
-  · rename_i p n tail src idx hp hk
+  · rename_i p n tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaReady_main hl.2]
+    · rw [hphase, manaOk_main hl.2]
       intro hh
       cases hh
     · rw [hpend] at hm

@@ -17,15 +17,6 @@ namespace RiftboundCards.Spiritforged
 
 open Riftbound
 
-/-- One unit of "pay any amount": it may be paid for, and then it is noted on the object. -/
-def payUnit (c : Cost) : Effect :=
-  .ifThen (.canPay c) (.may (.seqOf [.prim (.pay c), .prim (.markOn .self .unitPaid)])) .nop
-
-/-- Pay any amount of `c` (one unit at a time, up to 12), then do `finish`, which reads how much was
-paid: `.notes .unitPaid`. -/
-def payAny (c : Cost) (finish : Effect) : Effect :=
-  .seqOf (List.replicate 12 (payUnit c) ++ [finish])
-
 -- BEGIN GENERATED SFD-001
 /--
 **Against the Odds** — Spell · Fury · Energy 2
