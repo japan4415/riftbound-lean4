@@ -292,6 +292,8 @@ inductive TriggerEvent where
   | opponentScores
   /-- An opponent of the player holds a Battlefield. -/
   | opponentHolds
+  /-- The player moves a unit with an effect (Blast Cone). -/
+  | movedByYou
   /-- The card is revealed from its owner's deck. -/
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/

@@ -3831,8 +3831,20 @@ def UNL_133.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Blast Cone: the effect is not written yet. -/
-def UNL_133 : CardDef := UNL_133.meta
+/-- Blast Cone. -/
+def UNL_133 : CardDef :=
+  { UNL_133.meta with
+    abilities := [
+      .triggered (.onSelf .play)
+        (.of [.targetOf (.upTo 1) .enemy .anywhere [.ofType .unit]]
+          (.eitherOf (.cons (.prim (.move (.slot 0) .base))
+            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
+              .nil)))) .unlimited,
+      .triggered
+        { subject := Selector.all .enemy .anywhere [.ofType .unit], event := .movedByYou }
+        (.of [] (.ifThen (.matches .self .ready)
+          (.may (.seqOf [.prim (.exhaust .self), .prim (.stun (.slot 0))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED UNL-134
 /--

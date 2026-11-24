@@ -1870,6 +1870,12 @@ theorem gainTagObj_safe (name : String) (s : GameState) (id : ObjId) :
     Safe s (gainTagObj name s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- An effect of the player moved the units: the events say so. -/
+def movedEvents (p : PlayerId) (r : GameState × List Event) : GameState × List Event :=
+  (r.1, r.2 ++ r.2.filterMap (fun e => match e with
+    | .standardMoved u _ => some (Event.movedByEffect p u)
+    | _ => none))
+
 /-- The event that says the player chose the object while the effect of `src` resolved: a choice by
 a spell, or by an ability. -/
 def chosenAt (s : GameState) (p : PlayerId) (src o : ObjId) : List Event :=
@@ -1933,7 +1939,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .double sel => onSelected s p src env sel doubleObj
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
-  | .move sel .base => onSelected s p src env sel moveHome
+  | .move sel .base => (onSelected s p src env sel moveHome).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -1941,7 +1947,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       -- a Battlefield, or the Battlefield a Unit is at; a Unit at a Base names no place yet
       match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
           else (s.obj? d).bind (·.loc)) with
-      | some bf => onSelected s p src env sel (sendToLoc (some bf))
+      | some bf => (onSelected s p src env sel (sendToLoc (some bf))).map (movedEvents p)
       | none => none
     | _ => none
   | .swapPlaces a b =>
@@ -2118,7 +2124,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | attachPaying gears to less => exact applyAttachPaying_safe h
   | move sel dest =>
     cases dest with
-    | base => exact onSelected_safe moveHome_safe h
+    | base =>
+      simp only [applyPrim] at h
+      obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+      show Safe s r0.1
+      exact onSelected_safe moveHome_safe hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -2129,7 +2139,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         | cons d _ =>
           simp only [hd] at h
           split at h
-          · exact onSelected_safe (sendToLoc_safe _) h
+          · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+            show Safe s r0.1
+            exact onSelected_safe (sendToLoc_safe _) hr0
           · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | detach sel => exact onSelected_safe detachObj_safe h

@@ -488,6 +488,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .hide => t.subject == .self
       | .opponentScores => t.subject == .self
       | .opponentHolds => t.subject == .self
+      | .movedByYou => true
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
