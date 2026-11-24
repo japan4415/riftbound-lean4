@@ -90,6 +90,38 @@ theorem payKill_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (costs : List 
     · exact ⟨fun _ => rfl, rfl⟩
   · exact ⟨fun _ => rfl, rfl⟩
 
+/-- The costs of using an ability that change the game before the Pool is set: the unit that is
+killed, and the Power of Any domain that was spent on a Gear (the Power that only pays for Gear is
+spent first). -/
+def preCost (s : GameState) (p : PlayerId) (costs : List AbilityCost) (ts : List ObjId)
+    (gear : Bool) (pool : RunePool) : GameState × List Event :=
+  let k := payKill s p costs ts
+  if gear then
+    let spent := (s.poolOf p).any - pool.any
+    ({ k.1 with turnFx := dropGearFx s.turn p spent k.1.turnFx }, k.2)
+  else k
+
+/-- Paying the costs is a safe change. -/
+theorem preCost_safe (s : GameState) (p : PlayerId) (costs : List AbilityCost) (ts : List ObjId)
+    (gear : Bool) (pool : RunePool) : Safe s (preCost s p costs ts gear pool).1 := by
+  unfold preCost
+  split
+  · exact (payKill_safe s p costs ts).trans
+      ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+        fun _ hown => hown.congr rfl rfl, rfl⟩
+  · exact payKill_safe s p costs ts
+
+/-- Paying the costs leaves the hands and the Chain as they were. -/
+theorem preCost_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (costs : List AbilityCost)
+    (ts : List ObjId) (gear : Bool) (pool : RunePool) :
+    (∀ q, (preCost s p costs ts gear pool).1.zone (.player q .hand) = s.zone (.player q .hand)) ∧
+      (preCost s p costs ts gear pool).1.zone .chain = s.zone .chain := by
+  have h := payKill_zones hwf p costs ts
+  unfold preCost
+  split
+  · exact h
+  · exact h
+
 /-- Whether the costs exhaust the object. -/
 def costExhausts (costs : List AbilityCost) : Bool :=
   match costPlan costs with
@@ -277,10 +309,11 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   | some d, some pool =>
     match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
-      (addObject ((((payKill s p costs ts).1.modObj src
+      (addObject ((((preCost s p costs ts (d.hasType .gear) pool).1.modObj src
           (fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts)).setPool p pool))
         (abilityItem d.id idx src p ts) .chain).map
-        (fun r => (r.1, (payKill s p costs ts).2 ++ [Event.activated p src idx]))
+        (fun r => (r.1, (preCost s p costs ts (d.hasType .gear) pool).2 ++
+          [Event.activated p src idx]))
     | _ => none
   | _, _ => none
 
@@ -288,7 +321,7 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
     (h : applyActivate s p src idx pay ts = some (s', es)) :
-    ∃ s0 costs f pool item id', s0 = (payKill s p costs ts).1 ∧ Safe s s0 ∧
+    ∃ s0 costs gear f pool item id', s0 = (preCost s p costs ts gear pool).1 ∧ Safe s s0 ∧
       (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
       (s.poolOf p).spend pay = some pool ∧ item.kind.phys? = none ∧ item.owner = p ∧
         addObject ((s0.modObj src f).setPool p pool) item .chain = some (s', id') ∧
@@ -309,9 +342,9 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
-          exact ⟨(payKill s p costs ts).1, costs,
+          exact ⟨(preCost s p costs ts (d.hasType .gear) pool).1, costs, d.hasType .gear,
             fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts,
-            pool, abilityItem d.id idx src p ts, id', rfl, payKill_safe s p costs ts,
+            pool, abilityItem d.id idx src p ts, id', rfl, preCost_safe s p costs ts _ pool,
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
         | replacement _ _ _ => simp [hd, hs, ha] at h
@@ -321,7 +354,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
 theorem applyActivate_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.WF := by
-  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
   exact addObject_wf h1 hm
@@ -330,7 +363,7 @@ theorem applyActivate_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : 
 theorem applyActivate_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.physIds.Perm s.physIds := by
-  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, hk, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, hk, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
   have hp := addObject_physIds h1 hm hk
@@ -342,7 +375,7 @@ theorem applyActivate_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {i
 theorem applyActivate_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : applyActivate s p src idx pay ts = some (s', es)) : s'.OwnerOk := by
-  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
   have h2 : ((s0.modObj src f).setPool p pool).OwnerOk :=
@@ -356,7 +389,7 @@ theorem applyActivate_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
     (h : applyActivate s p src idx pay ts = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
-  obtain ⟨s0, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have hs1 := addObject_sameMeta hm
   have hs2 := GameState.sameMeta_modObj s0 src f
   have hs3 := hS.same
@@ -380,11 +413,11 @@ theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
-  obtain ⟨s0, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, costs, gear, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   rw [addObject_zone_other hm (by simp)]
   show (s0.modObj src f).zone _ = _
   rw [GameState.zone_modObj s0 src f _, hs0]
-  exact (payKill_zones hwf p costs ts).1 q
+  exact (preCost_zones hwf p costs ts gear pool).1 q
 
 /-- A usable ability can be used. -/
 theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -812,7 +845,7 @@ theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) :
     ∃ id', s'.zone .chain = id' :: s.zone .chain := by
-  obtain ⟨s0, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, costs, gear, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   obtain ⟨hz, hid, hs'⟩ := addObject_spec hm
   refine ⟨id', ?_⟩
   rw [hs', hid]
@@ -822,7 +855,7 @@ theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
   have : ((s0.modObj src f).setPool p pool).zone .chain = s.zone .chain := by
     rw [show ((s0.modObj src f).setPool p pool).zone .chain = (s0.modObj src f).zone .chain from rfl,
       GameState.zone_modObj s0 src f _, hs0]
-    exact (payKill_zones hwf p costs ts).2
+    exact (preCost_zones hwf p costs ts gear pool).2
   rw [this]
   rfl
 

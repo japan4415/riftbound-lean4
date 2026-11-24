@@ -75,6 +75,9 @@ inductive Prim where
   /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield
   if one is given: a Unit or a Gear only (Rek'Sai, Void Rush, Here to Help). -/
   | playReduced (s : Selector) (less : Amount) (to : Option Selector)
+  /-- Cast the spell, paying its cost less `less` Energy, choosing the `idx`-th legal pick of its
+  targets: it goes on the Chain. The player chooses between the picks (Void Rush). -/
+  | castPicked (s : Selector) (less : Amount) (idx : Nat)
   /-- Cast the spell now, in place: its effect is done at once (a spell with no choice of objects to
   make), its Power cost is paid, and the card is recycled after (Kai'Sa, Evolutionary). -/
   | castInline (s : Selector)

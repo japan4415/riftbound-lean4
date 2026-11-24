@@ -491,7 +491,7 @@ theorem markPaid_safe (s : GameState) (o : Option ObjId) : Safe s (markPaid s o)
 
 /-- A Unit or a Gear has been played (`r`, from `s`): the additional cost is done, if it was chosen,
 and the card remembers that it was paid. -/
-def payExtra (s : GameState) (c : ObjId) (ts : List ObjId)
+def payExtra0 (s : GameState) (c : ObjId) (ts : List ObjId)
     (r : GameState × List Event) : Option (GameState × List Event) :=
   match (s.cardDef? c).bind (·.playExtra), ts with
   | some (k, _), [t] =>
@@ -504,9 +504,9 @@ def payExtra (s : GameState) (c : ObjId) (ts : List ObjId)
   | _, _ => some r
 
 /-- Paying the additional cost of a card that was played always gives a state. -/
-theorem payExtra_isSome (s : GameState) (c : ObjId) (ts : List ObjId)
-    (r : GameState × List Event) : ∃ r', payExtra s c ts r = some r' := by
-  unfold payExtra
+theorem payExtra0_isSome (s : GameState) (c : ObjId) (ts : List ObjId)
+    (r : GameState × List Event) : ∃ r', payExtra0 s c ts r = some r' := by
+  unfold payExtra0
   split
   · split
     · exact ⟨_, rfl⟩
@@ -538,9 +538,9 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     exact Safe.moveObj hm
 
 /-- Paying the additional cost of a card that was played is a safe change. -/
-theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId}
-    {r r' : GameState × List Event} (h : payExtra s c ts r = some r') : Safe r.1 r'.1 := by
-  unfold payExtra at h
+theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
+    {r r' : GameState × List Event} (h : payExtra0 s c ts r = some r') : Safe r.1 r'.1 := by
+  unfold payExtra0 at h
   split at h
   · rename_i k b t hk
     split at h
@@ -555,6 +555,44 @@ theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId}
   · simp only [Option.some.injEq] at h
     subst h
     exact Safe.refl _
+
+/-- Power of Any domain that was spent on a Gear is no longer noted as Power that only pays for
+Gear (the Power that only pays for Gear is spent first). -/
+def gearSpent (s : GameState) (c : ObjId) (r : GameState × List Event) : GameState × List Event :=
+  match s.obj? c with
+  | some o =>
+    if (s.cardDef? c).any (·.hasType .gear) then
+      let spent := (s.poolOf o.owner).any - (r.1.poolOf o.owner).any
+      ({ r.1 with turnFx := dropGearFx s.turn o.owner spent r.1.turnFx }, r.2)
+    else r
+  | none => r
+
+/-- Noting the Power spent on a Gear is a safe change. -/
+theorem gearSpent_safe (s : GameState) (c : ObjId) (r : GameState × List Event) :
+    Safe r.1 (gearSpent s c r).1 := by
+  unfold gearSpent
+  split
+  · split
+    · exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+        fun _ hown => hown.congr rfl rfl, rfl⟩
+    · exact Safe.refl _
+  · exact Safe.refl _
+
+/-- A Unit or a Gear has been played (`r`, from `s`): the Power spent on a Gear is noted, the
+additional cost is done, if it was chosen, and the card remembers that it was paid. -/
+def payExtra (s : GameState) (c : ObjId) (ts : List ObjId)
+    (r : GameState × List Event) : Option (GameState × List Event) :=
+  payExtra0 s c ts (gearSpent s c r)
+
+/-- Paying the additional cost of a card that was played always gives a state. -/
+theorem payExtra_isSome (s : GameState) (c : ObjId) (ts : List ObjId)
+    (r : GameState × List Event) : ∃ r', payExtra s c ts r = some r' :=
+  payExtra0_isSome s c ts _
+
+/-- Paying the additional cost of a card that was played is a safe change. -/
+theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId}
+    {r r' : GameState × List Event} (h : payExtra s c ts r = some r') : Safe r.1 r'.1 :=
+  (gearSpent_safe s c r).trans (payExtra0_safe h)
 
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers

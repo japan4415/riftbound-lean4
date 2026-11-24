@@ -883,14 +883,6 @@ theorem playPaying_safe (p : PlayerId) (s : GameState) (id : ObjId) :
       · exact Safe.refl s
     · exact playFree_safe p s id
 
-/-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
-def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
-  | 0, l => l
-  | _ + 1, [] => []
-  | n + 1, f :: fs =>
-    if f.turn == turn && f.who == p && f.kind == .gearMana then dropGearFx turn p n fs
-    else f :: dropGearFx turn p (n + 1) fs
-
 /-- Power that pays only for Gear and has been spent is no longer noted: only as much as the Pool
 still holds stays noted (the Power that is added later is free to pay for anything). -/
 def GameState.trimGear (s : GameState) (p : PlayerId) : GameState :=
@@ -1194,6 +1186,43 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
     match dest with
     | some bf => playToOrBase p bf s id
     | none => playFree p s id
+
+/-- Cast a Spell from where it is, paying its cost less `k` Energy (and all its Power), with the
+`idx`-th legal pick of its targets: it goes on the Chain. If the cost cannot be paid, or there is no
+such pick, nothing is paid and it is not cast. -/
+def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+  | some (d, e) =>
+    match (targetTuples s p id s.mightTable e.choices)[idx]?, s.effCost p id d with
+    | some ts, some c =>
+      match payByRunes s p id ⟨c.energy - k, c.power⟩ with
+      | some r =>
+        match moveObj r.1 id .chain with
+        | some m =>
+          (m.1.modObj m.2 (Object.withPlay ts (r.1.playMark p id ⟨0, []⟩ ts)),
+            r.2 ++ [Event.moved id m.2 .chain])
+        | none => (s, [])
+      | none => (s, [])
+    | _, _ => (s, [])
+  | none => (s, [])
+
+/-- Casting a Spell for a reduced cost is a safe change. -/
+theorem castPickedOne_safe (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
+    Safe s (castPickedOne p k idx s id).1 := by
+  unfold castPickedOne
+  split
+  · split
+    · split
+      · rename_i r hr
+        split
+        · rename_i m hm
+          exact (payByRunes_safe hr).trans
+            ((Safe.moveObj hm).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl)))
+        · exact Safe.refl s
+      · exact Safe.refl s
+    · exact Safe.refl s
+  · exact Safe.refl s
 
 /-- Playing a card for a reduced cost is a safe change. -/
 theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState)
@@ -1681,6 +1710,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         match bfs.eval s p src env with
         | some (b :: _) => onSelected s p src env sel (playReducedOne p k (some b))
         | _ => none)
+  | .castPicked sel less idx =>
+    (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
@@ -1865,6 +1896,13 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | cons b _ =>
             simp only [hb] at h
             exact onSelected_safe (playReducedOne_safe p k (some b)) h
+  | castPicked sel less idx =>
+    simp only [applyPrim] at h
+    cases hk : less.evalS s p src env with
+    | none => simp [hk] at h
+    | some k =>
+      simp only [hk, Option.bind_some] at h
+      exact onSelected_safe (castPickedOne_safe p k idx) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
@@ -2155,6 +2193,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .banishReplay s => some s
   | .playPaying s => some s
   | .playReduced s _ _ => some s
+  | .castPicked s _ _ => some s
   | .castInline s => some s
   | .markOn s _ => some s
   | .playTo s _ => some s
@@ -2190,6 +2229,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .banishReplay _ => .banishReplay sel
   | .playPaying _ => .playPaying sel
   | .playReduced _ l d => .playReduced sel l d
+  | .castPicked _ l i => .castPicked sel l i
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
@@ -2234,6 +2274,52 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
       | none => skip
     | none => skip
   | _ => skip
+
+/-- A Spell that a card plays for a reduced cost (Void Rush): the player chooses the pick of its
+targets, as one of the ways to cast it. A card that is no Spell is played as a Unit or a Gear. -/
+def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
+    (less : Amount) (dest : Option Selector) (es : EffectList) :
+    Option (GameState × List Frame × List Event) :=
+  match dest, sel.eval s p src env with
+  | none, some (id :: _) =>
+    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    | some (_, e) =>
+      let n := (targetTuples s p id s.mightTable e.choices).length
+      some (s, [.run p src env (.cons (.eitherOf (EffectList.ofList
+        ((List.range n).map (fun i => Effect.prim (.castPicked sel less i))))) es)], [])
+    | none => none
+  | _, _ => none
+
+/-- Choosing how to cast a Spell changes nothing of the state. -/
+theorem castReducedStep_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {less : Amount} {dest : Option Selector} {es : EffectList}
+    {r : GameState × List Frame × List Event}
+    (h : castReducedStep s p src env sel less dest es = some r) : Safe s r.1 := by
+  unfold castReducedStep at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq] at h
+      rw [← h]
+      exact Safe.refl s
+    · simp at h
+  · simp at h
+
+/-- The frames that choosing how to cast a Spell leaves are frames of the Spell. -/
+theorem castReducedStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {less : Amount} {dest : Option Selector} {es : EffectList}
+    {r : GameState × List Frame × List Event}
+    (h : castReducedStep s p src env sel less dest es = some r) {f : Frame} (hf : f ∈ r.2.1) :
+    f.isPlay = true := by
+  unfold castReducedStep at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq] at h
+      rw [← h] at hf
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+      rcases hf with rfl
+      rfl
+    · simp at h
+  · simp at h
 
 /-- Casting in place is a safe change of the state. -/
 theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -2410,6 +2496,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es
+  | .prim (.playReduced sel less dest) =>
+    match castReducedStep s p src env sel less dest es with
+    | some r => r
+    | none =>
+      match applyPrim s p src env (.playReduced sel less dest) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
   | .prim (.play sel) =>
     match playSpellStep s p src env sel es with
     | some r => r
@@ -2439,6 +2532,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact Safe.refl s
     | exact castInlineStep_safe s p src env _ es
     | (rename_i r hr; exact playSpellStep_safe hr)
+    | (rename_i r hr; exact castReducedStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)
     | (rename_i r hr; exact applyGrant_safe hr)
 

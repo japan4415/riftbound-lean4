@@ -708,6 +708,14 @@ def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
     | some _ => some []
     | none => s.runeCover p pay)
 
+/-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
+def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
+  | 0, l => l
+  | _ + 1, [] => []
+  | n + 1, f :: fs =>
+    if f.turn == turn && f.who == p && f.kind == .gearMana then dropGearFx turn p n fs
+    else f :: dropGearFx turn p (n + 1) fs
+
 /-- The Power in the Pool of the player that only pays for Gear this turn (Fire Below the Mountain
 adds one): it is not more than what is in the Pool. -/
 def GameState.restrictedNow (s : GameState) (p : PlayerId) : Nat :=
