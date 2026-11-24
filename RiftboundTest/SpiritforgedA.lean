@@ -4096,4 +4096,18 @@ meta def effLen : EffectList → Nat
   return pays.length == 5 && pays.contains ⟨0, [.mind, .mind]⟩ && pays.contains ⟨0, [.mind, .body]⟩ &&
     !pays.contains ⟨0, []⟩ && none_.isEmpty
 
+-- (audit) A unit at a Base that is lethal in the Cleanup (its Might fell) is healed and exhausted by
+-- Soraka at that Base; the Cleanup ends: a second step kills it only if it still is lethal
+#guard tsf fun s => do
+  let (s1, _) ← put s s.me "SFD-173" .base
+  let (s2, weak) ← put s1 s.me "OGN-006" .base
+  let hurt := s2.modObj weak (fun o => { o with damage := 9 })
+  let a ← (cleanupStep hurt).map (·.1)
+  let alone := (s2.modObj weak (fun o => { o with damage := 9 }))
+  let (t1, w2) ← put s s.me "OGN-006" .base
+  let b ← (cleanupStep (t1.modObj w2 (fun o => { o with damage := 9 }))).map (·.1)
+  return (a.obj? weak).any (fun x => x.damage == 0 && x.exhausted) &&
+    (a.zone (.player s.me .base)).contains weak && (cleanupStep a).isNone &&
+    !(b.zone (.player s.me .base)).contains w2 && alone.dmg weak == some 9
+
 end RiftboundTest

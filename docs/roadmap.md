@@ -1992,5 +1992,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### M8a の実装の記録（2026-11-25）: Spiritforged 55 — The Zero Drive の Deathknell
 
 - **The Zero Drive（SFD-090）**: 付いているユニットは、死んで、Trash へ行き、そのあとで、Zero Drive が、追放する（`Filter.banishedWithMe`）。以前は、死ぬ代わりに、すぐ Banishment へ行っていた（死んだことに、なっていなかった）。`GameState.banishedOnDeath` は、いつも偽（印は、`banishedWith` に、残る）。
-- **まだ**: Soraka は、Cleanup で、Might が下がって致死になった、Base のユニットを救わない。Battlefield の上なら、救う。Base のユニットを救うと、救っても、Might が 0 以下のままなら、同じ Base に残り、また致死になって、Cleanup が終わらない。Battlefield からなら、Base へ戻すので、2 度目は救われない。Base のユニットを救うには、Cleanup の測りに、ダメージの合計を足して、Might が 0 以下のときを、除く証明が、要る。ダメージで死ぬとき（呪文・戦闘）は、Base でも救う。
+- **Soraka（Cleanup、Base のユニット）**: Might が下がって致死になった、Base のユニットも、癒して、exhaust する（Base にいるので、Base へ戻すのは、何も変えない）。ダメージが付いているときだけ。付いていない（Might が 0 以下で致死）なら、死ぬ。Cleanup の測りの 2 番目に、「ダメージが付いているものの数」（`GameState.dmgC`）を足したので、癒すと、測りが下がり、Cleanup は終わる（`dmgC_heal`）。
+
+### M8a の実装の記録（2026-11-25）: 近似の点検の結論
+
+ロードマップに記録された Spiritforged の近似は、これですべて、直したか、近似でないと確かめたか、規則が定めていないものである。直したものは、Spiritforged 34 以降の各節にある（PR #198〜#211）。
 
