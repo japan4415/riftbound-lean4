@@ -138,7 +138,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
       (finishItem s item).2)
   | .cleanup :: rest => some (cleanupFrame s rest)
   | .combatDamage bf att :: rest =>
-    some ({ s with pending := s.startCombat bf att ++ rest }, [Event.combatStarted bf att])
+    some ({ s with pending := s.startCombat bf att ++ rest }, [])
   | .combatResolve bf att :: rest =>
     some ({ (combatResolve s bf att).1 with
               pending := (combatResolve s bf att).2.1 ++ .cleanup :: rest },

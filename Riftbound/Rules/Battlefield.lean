@@ -379,7 +379,12 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
     | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
     | none =>
       match s.startShowdown rest with
-      | some (bf, q) => ({ s with pending := .showdown bf q 0 :: .cleanup :: rest }, [])
+      | some (bf, q) =>
+        -- the units that attack and defend set off their abilities as the Showdown begins
+        ({ s with pending := .showdown bf q 0 :: .cleanup :: rest },
+          if 2 ≤ (s.players.filter (fun r => !(s.unitsOf r bf).isEmpty)).length then
+            [Event.combatStarted bf q]
+          else [])
       | none => ({ s with pending := rest }, [])
 
 /-! ### The changes are safe -/

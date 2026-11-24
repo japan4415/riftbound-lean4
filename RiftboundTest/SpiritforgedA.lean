@@ -3742,4 +3742,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return (legalReactions s3 s.me).contains act && !(legalReactions s3 s.me).contains no &&
     (r.zone (.player s.me .base)).any (fun o => (r.cardDef? o).any (·.id == cid "SFD-053"))
 
+-- The attackers set off their abilities as the Showdown begins, before anyone passes: Fiora is
+-- doubled while the Showdown is still going on
+#guard tsf fun s => do
+  let (s1, f) ← put s s.me "SFD-110" .base
+  let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
+  let s3 := s2
+  let moved ← match step 100 s3 ⟨.player s.me, .standardMove f (.battlefield s.bf0)⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  let settled := settleChain {} 12 moved
+  let inShowdown := settled.pending.any (fun fr => match fr with | .showdown .. => true | _ => false)
+  return inShowdown && settled.mightNow f == (s3.mightNow f).map (· * 2)
+
 end RiftboundTest

@@ -1893,3 +1893,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Arcane Shift（SFD-200）**: ユニットを追放し（`Prim.banishReplay`）、その持ち主が、費用を無視して遊ぶ。新しいオブジェクトで、バフ・ダメージ・付いていた Equipment は無く、exhausted で Base に出る。トークンは、追放されて消える（遊ばない）。
 - **選べない分かれ道**: 「条件だけの枝」（`.ifThen 条件 効果 .nop`）は、条件が偽のとき、選べない（`Effect.viable`、`eitherOk`。`Spec/Legal` と `legalFrameActions` が、同じ条件で絞る。どの枝も選べないときは、どれを選んでもよい）。Aphelios, Exalted の、このターンに選んだモードは、もう選べない。Angle Shot の「detach」は、同じユニットに付いているときだけ選べる。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 40 — 攻撃と防御の誘発は、Showdown の始まりに起きる
+
+- 攻撃する・防御する能力（`TriggerEvent.attack`、`defend`、`youDefend`）の出来事（`Event.combatStarted`）は、戦闘ダメージの前でなく、**Showdown の始まり**（Cleanup が Showdown を始めるとき。両陣営にユニットがいるとき）に出す。誘発は、Showdown の途中で Chain に載り、プレイヤーが呪文を唱える前に解決する。Fiora が倍になるのも、この時。Showdown が戦闘にならずに終わっても、誘発は、すでに起きている。
+- テストの `fire` は、Main フェーズの `priority` フレームを外して動かす（その後の Cleanup が、新しい Showdown を始めて、出来事を二重にしないため）。`startCombatNow` は、出来事を自分で起こす。
+
