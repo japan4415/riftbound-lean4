@@ -5203,9 +5203,9 @@ def SFD_177 : CardDef :=
   { SFD_177.meta with
 
     abilities := [.triggered (.onSelf .attack)
-      (.of [.targetOf (.upTo 99) .friendly .anywhere
-          [.ofType .unit, .token, .not (.at_ .self)]]
-        (.forEach (Selector.slotsFrom 0) (.prim (.move .it (.at_ .self))))) .unlimited],
+      (.of [] (.forEach (Selector.all .friendly .anywhere
+          [.ofType .unit, .token, .not (.at_ .self)])
+        (.may (.seqOf [.prim (.choose .it), .prim (.move .it (.at_ .self))])))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-178
