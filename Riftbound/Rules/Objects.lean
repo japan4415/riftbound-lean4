@@ -34,7 +34,14 @@ def endTurnObj (o : Object) : Object :=
 /-- What the end of a combat does to an object: it is healed, and the changes of Might that last
 until the end of the combat end. -/
 def endCombatObj (o : Object) : Object :=
-  { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.combat) }
+  { healObj o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.combat),
+                   tempKws := o.tempKws.filter (fun k => k.2 != EndPoint.combat) }
+
+/-- What the end of a Showdown does to an object: the changes that last until the end of the
+combat end (a Showdown that is not a Combat ends them too); nothing is healed. -/
+def endShowdownObj (o : Object) : Object :=
+  { o with mightMods := o.mightMods.filter (fun m => m.ends != EndPoint.combat),
+           tempKws := o.tempKws.filter (fun k => k.2 != EndPoint.combat) }
 
 namespace GameState
 
@@ -102,6 +109,12 @@ theorem healObj_owner (o : Object) : (healObj o).owner = o.owner := rfl
 
 /-- Healing does not change the kind. -/
 theorem healObj_kind (o : Object) : (healObj o).kind = o.kind := rfl
+
+/-- Ending a Showdown leaves the card of an object alone. -/
+theorem endShowdownObj_kind (o : Object) : (endShowdownObj o).kind = o.kind := rfl
+
+/-- Ending a Showdown leaves the owner of an object alone. -/
+theorem endShowdownObj_owner (o : Object) : (endShowdownObj o).owner = o.owner := rfl
 
 /-- Ending a combat leaves the card of an object alone. -/
 theorem endCombatObj_kind (o : Object) : (endCombatObj o).kind = o.kind := rfl

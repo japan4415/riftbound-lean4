@@ -1775,7 +1775,8 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   return (r.obj? az).any (·.loc == some s.bf0) && (r.obj? u).any (·.loc.isNone) &&
     (r.obj? g).any (·.attached == some az) && (n.obj? g).any (·.attached == some u) &&
     (n.obj? az).any (·.loc == some s.bf0) && (activate r s.me az 0 [u] ⟨0, [.calm]⟩).isNone &&
-    (r.obj? az).any (·.used.length == 1) && (activate hooked s.me az 0 [u, az] ⟨0, [.calm]⟩).isNone
+    (r.obj? az).any (·.used.length == 1) &&
+    (activate hooked s.me az 0 [u, az] ⟨0, [.calm]⟩).isNone
 
 -- Grandmaster at Arms (SFD-193), a Legend: attach a detached Equipment to a unit (pay 1, exhaust);
 -- move an attached Equipment to another unit (exhaust)
@@ -2351,6 +2352,8 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
     c.mightNow f == s4.mightNow f &&
     -- the doubling ends with the combat, not with the turn
     ((combatResolve a s.bf0 s.me).1.mightNow f == s2.mightNow f) &&
+    -- a Showdown that is not a Combat ends it too
+    ((endShowdown a s.bf0).1.mightNow f == s2.mightNow f) &&
     (a.mightNow f != s2.mightNow f)
 
 -- Jax, Unrelenting (SFD-119): when an Equipment is attached to it, may pay 1 to draw 1

@@ -256,7 +256,7 @@ def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
 it, they get its Control and score it by Conquer (CR 348.2). The Battlefield is no longer
 Contested. The frames are those a Final Point asks for. -/
 def endShowdown (s : GameState) (bf : ObjId) : GameState × List Frame × List Event :=
-  let s1 := s.modObj bf (fun o => { o with contested := none })
+  let s1 := (s.mapObjects endShowdownObj).modObj bf (fun o => { o with contested := none })
   match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
   | [r] =>
     if s.controlOf bf = some r then (s1, [], [])
@@ -597,14 +597,22 @@ theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 :=
 
 /-- The end of a Showdown is a safe change, then points. -/
 theorem endShowdown_safeP (s : GameState) (bf : ObjId) : SafeP s (endShowdown s bf).1 := by
-  have h1 : Safe s (s.modObj bf (fun o => { o with contested := none })) :=
-    Safe.modObj s bf (fun _ => rfl) (fun _ => rfl)
+  have h0 : Safe s (s.mapObjects endShowdownObj) :=
+    ⟨fun h => GameState.wf_mapObjects h _,
+      fun _ => by rw [GameState.physIds_mapObjects s (f := endShowdownObj)
+        (fun o => endShowdownObj_kind o)],
+      fun _ h => GameState.ownerOk_mapObjects h (fun o => endShowdownObj_owner o),
+      GameState.sameMeta_mapObjects s _⟩
+  have h1 : Safe s ((s.mapObjects endShowdownObj).modObj bf
+      (fun o => { o with contested := none })) :=
+    h0.trans (Safe.modObj _ bf (fun _ => rfl) (fun _ => rfl))
   unfold endShowdown
   split
   · rename_i r hr
     split
     · exact SafeP.of_safe h1
-    · have h2 := Safe.modObj (s.modObj bf (fun o => { o with contested := none })) bf
+    · have h2 := Safe.modObj ((s.mapObjects endShowdownObj).modObj bf
+        (fun o => { o with contested := none })) bf
         (f := fun o => { o with control := some r }) (fun _ => rfl) (fun _ => rfl)
       by_cases hc : s.controlOf bf = none
       · simp only [hc, ite_true]
