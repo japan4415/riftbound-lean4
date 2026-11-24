@@ -319,6 +319,9 @@ inductive StaticMod where
   | extraCostLess (n : Nat)
   /-- The Repeat costs the player pays cost this much less (Marai Spire). -/
   | repeatCostLess (n : Nat)
+  /-- The Spell's Repeat lets its player make different choices: the effect is not run twice with the
+  same ones (it asks for the choices of the repeat itself). -/
+  | repeatChooses
   /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once
   more (Svellsongur copies the text of the Unit). -/
   | copiesUnitText
