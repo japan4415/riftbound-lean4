@@ -1880,3 +1880,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Lonely Poro（SFD-036）**: 「一人きりで死んだ」は、死んだときに数える（`TurnEffect.diedAlone`、`noteAlone`）。能力が解決する前に、ほかのユニットが来ても、変わらない。
 - **まだ**: 追加の費用を解決のときに払うこと（Legion Quartermaster ほか）、Reaction のユニットを Base へ遊ぶこと、Cleanup での死の置き換え、Aphelios の使用済みのモード、Hostile Takeover の誘発の集め方、Arcane Shift、Fire Below the Mountain の Add の制限、Temporal Portal（2 回で Repeat 1 つ。規則が不明）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 37 — 遊びながら払う費用も、Rune で払う
+
+- `payByRunes`（Pool から払い、足りなければ Rune を使う）を、`Prim.pay` のほか、効果が遊ぶカードの費用（`playPaying`、`playReducedOne`）、Equipment を付ける費用（`applyAttachPaying`）、その場で唱える呪文の Power（`castInlineStep`）にも使う。以前は、どれも Pool からだけ払い、足りないと、何も起きなかった。近似: 使う Rune は、自動で選ぶ。
+
