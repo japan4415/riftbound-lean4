@@ -300,6 +300,36 @@ def newContest (s : GameState) (bf : ObjId) : Option PlayerId :=
 
 end GameState
 
+/-- What the Cleanup does to a unit with lethal damage: an Equipment or Soraka saves it, or it is
+killed (CR 323.4). -/
+def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
+  -- a unit with an Equipment that dies instead (Guardian Angel) is saved, as it is by damage
+  match s.deathSaver u with
+  | some (some g) =>
+    if g != u && (s.obj? g).any (fun (o : Object) => decide (o.owner.n < s.playerCount)) then
+      saveUnit s u (some g)
+    else killObj s u
+  -- a unit on a Battlefield next to Soraka is healed, exhausted and recalled instead of dying
+  | some none =>
+    if decide (u ∈ s.zone Zone.battlefieldZone) &&
+        (s.obj? u).any (fun (o : Object) => decide (o.controller.n < s.playerCount)) then
+      saveUnit s u none
+    else killObj s u
+  | none => killObj s u
+
+/-- What the Cleanup does to a unit with lethal damage is a safe change. -/
+theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).1 := by
+  unfold cleanupKill
+  split
+  · rename_i g hg
+    split
+    · exact saveUnit_safe s u (some g)
+    · exact killObj_safe s u
+  · split
+    · exact saveUnit_safe s u none
+    · exact killObj_safe s u
+  · exact killObj_safe s u
+
 /-- One step of the Cleanup (CR 323): the first of these that applies is done. `none` if none does.
 1. A Unit with lethal damage is killed (CR 323.4).
 2. A Battlefield loses its controller who has no Unit there (CR 323.5).
@@ -307,7 +337,7 @@ end GameState
 4. A Unit at an uncontrolled Battlefield makes it Contested (CR 323.10.a). -/
 def cleanupStep0 (s : GameState) : Option (GameState × List Event) :=
   match s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
-  | some u => some (killObj s u)
+  | some u => some (cleanupKill s u)
   | none =>
     match s.battlefields.find? (fun b => s.lostControl b) with
     | some b =>
@@ -525,9 +555,9 @@ theorem cleanupStep0_safe {s s' : GameState} {es : List Event}
   split at h
   · rename_i u hu
     simp only [Option.some.injEq] at h
-    have h1 := killObj_safe s u
-    rw [h] at h1
-    exact h1
+    have hs := cleanupKill_safe s u
+    rw [h] at hs
+    exact hs
   · split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h

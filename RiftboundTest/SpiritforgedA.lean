@@ -3776,4 +3776,30 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     !playable restricted s.me u (payOf restricted u) &&
     playable some_ s.me u (payOf some_ u) && playable more s.me u (payOf more u)
 
+-- (Cleanup) A unit that is lethal in the Cleanup is saved as it is by damage: Guardian Angel dies
+-- instead, and Soraka heals, exhausts and recalls the weaker unit next to her
+#guard tsf fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, u) ← putAt s1 s.me "OGN-006" bf
+  let (s3, g) ← put s2 s.me "SFD-051" .base
+  let held := (attachTo u s3 g).1
+  let lethal := held.modObj u (fun o => { o with damage := 9 })
+  let isIn (x : GameState) (z : Zone) (code : String) : Bool :=
+    (x.zone z).any (fun o => (x.cardDef? o).any (·.id == cid code))
+  let angel ← (cleanupStep lethal).map (·.1)
+  let (t1, bf2) ← putBf s s.me "OGN-275"
+  let (t2, _) ← putAt t1 s.me "SFD-173" bf2
+  let (t3, weak) ← putAt t2 s.me "OGN-006" bf2
+  let hurt := t3.modObj weak (fun o => { o with damage := 9 })
+  let soraka ← (cleanupStep hurt).map (·.1)
+  let (r1, bf3) ← putBf s s.me "OGN-275"
+  let (r2, v) ← putAt r1 s.me "OGN-006" bf3
+  let dead := (r2.modObj v (fun o => { o with damage := 9 }))
+  let bare ← (cleanupStep dead).map (·.1)
+  return isIn angel (.player s.me .trash) "SFD-051" && isIn angel (.player s.me .base) "OGN-006" &&
+    isIn soraka (.player s.me .base) "OGN-006" && isIn soraka .battlefieldZone "SFD-173" &&
+    ((soraka.firstOf s.me .base "OGN-006").bind (fun o => soraka.obj? o)).any
+      (fun o => o.damage == 0 && o.exhausted) &&
+    isIn bare (.player s.me .trash) "OGN-006"
+
 end RiftboundTest

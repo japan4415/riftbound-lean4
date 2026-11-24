@@ -122,6 +122,16 @@ theorem inPlay_modObj : (s.modObj b f).inPlay = s.inPlay := by
   simp only [GameState.zone_modObj]
   rfl
 
+/-- What goes down when a unit dies or is recalled from a Battlefield: the objects in play, and the
+objects on the Battlefield Zone (counted twice, as a unit on it is also in play). -/
+def GameState.pot (s : GameState) : Nat :=
+  s.inPlay.length + (s.zone Zone.battlefieldZone).length
+
+theorem pot_modObj : (s.modObj b f).pot = s.pot := by
+  unfold GameState.pot
+  rw [inPlay_modObj]
+  simp only [GameState.zone_modObj]
+
 theorem unitsAt_modObj (hf : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f o).loc = o.loc)
     (bf : ObjId) : (s.modObj b f).unitsAt bf = s.unitsAt bf := by
   unfold GameState.unitsAt
@@ -165,7 +175,7 @@ end modObj
 
 /-- The measure of a state, for the Cleanup: it goes down at every step (I12a). -/
 def GameState.cleanupMeasure (s : GameState) : Nat × Nat × Nat × Nat × Nat × Nat :=
-  (s.inPlay.length, s.tokC, s.cLoose, s.cLost, s.cStale, s.cNew)
+  (s.pot, s.tokC, s.cLoose, s.cLost, s.cStale, s.cNew)
 
 /-- Lexicographic order on the measure. -/
 def MeasLt : Nat × Nat × Nat × Nat × Nat × Nat → Nat × Nat × Nat × Nat × Nat × Nat →
@@ -252,7 +262,7 @@ theorem detachStep_lt {s s' : GameState} {es : List Event} (h : detachStep s = s
   unfold GameState.looseGear at hg
   have hgm : s.looseP g = true := List.find?_some hg
   have hgmem : g ∈ s.inPlay := List.mem_of_find?_eq_some hg
-  exact MeasLt.at3 (by rw [inPlay_modObj]) (tokC_modObj s g _ hf)
+  exact MeasLt.at3 (by rw [pot_modObj]) (tokC_modObj s g _ hf)
     (cLoose_detach s g _ hf hn hgm hgmem)
 
 section bfStep
@@ -323,7 +333,7 @@ theorem lostControl_lt {s : GameState} {b : ObjId} (hb : b ∈ s.battlefields)
       cases ho : s.obj? b with
       | none => simp
       | some o => simp
-  exact MeasLt.at4 (by rw [inPlay_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha) hlt
+  exact MeasLt.at4 (by rw [pot_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha) hlt
 
 section bfStep2
 variable (s : GameState) (b : ObjId) (f : Object → Object)
@@ -418,7 +428,7 @@ theorem staleContest_lt {s : GameState} {b : ObjId} (hb : b ∈ s.battlefields)
       cases ho : s.obj? b with
       | none => simp
       | some o => simp
-  exact MeasLt.at5 (by rw [inPlay_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha)
+  exact MeasLt.at5 (by rw [pot_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha)
     hlost hlt
 
 /-- A Battlefield of the game is an object of the table. -/
@@ -506,7 +516,7 @@ theorem newContest_lt {s : GameState} {b : ObjId} {q : PlayerId} (hb : b ∈ s.b
       cases ho : s.obj? b with
       | none => rw [hob] at ho; cases ho
       | some o => cases hcx : s.controlOf b <;> simp
-  exact MeasLt.at6 (by rw [inPlay_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha)
+  exact MeasLt.at6 (by rw [pot_modObj]) (tokC_modObj s b _ hk) (cLoose_modObj s b _ hk ha)
     hlost hstale hlt
 
 /-- Taking one object out of one list of a `flatMap` takes one object out of the whole. -/
@@ -520,6 +530,27 @@ theorem length_flatMap_erase_one {L : List Zone} (hnd : L.Nodup) (f g : Zone →
   simp only [List.length_append] at h1 h2
   rw [hg, List.length_erase_of_mem hu] at h1
   have : 0 < (f z).length := List.length_pos_of_mem hu
+  omega
+
+/-- Moving one object from one list of a `flatMap` to another leaves the length of the whole as it
+was. -/
+theorem length_flatMap_move {L : List Zone} (hnd : L.Nodup) (f g : Zone → List ObjId)
+    (a b : Zone) (ha : a ∈ L) (hb : b ∈ L) (u : ObjId) (hu : u ∈ f a)
+    (hga : g a = (f a).erase u) (hgb : (g b).length = (f b).length + 1) (hab : a ≠ b)
+    (hrest : ∀ x ∈ L, x ≠ a → x ≠ b → g x = f x) :
+    (L.flatMap g).length = (L.flatMap f).length := by
+  let h : Zone → List ObjId := fun x => if x = a then g a else f x
+  have h1 := length_flatMap_erase_one hnd f h a ha u hu (by simp [h, hga])
+    (fun x hx hne => by simp [h, hne])
+  have e1 := (flatMap_split L g b hb).length_eq
+  have e2 := (flatMap_split L h b hb).length_eq
+  rw [flatMap_one_congr L hnd h g b (fun x hx hne => by
+    by_cases hxa : x = a
+    · subst hxa; simp [h]
+    · simp [h, hxa, hrest x hx hxa hne])] at e1
+  simp only [List.length_append] at e1 e2
+  have hb' : h b = f b := by simp [h, hab.symm]
+  rw [hb'] at e2
   omega
 
 /-- The zones of the objects in play: the Bases of the players, then the Battlefield Zone. -/
@@ -599,12 +630,50 @@ theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bo
       key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
       key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
 
+/-- Noting that a unit died alone leaves the zones as they are. -/
+theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool)
+    (z : Zone) : (noteAlone s o moved alone).zone z = s.zone z := by
+  unfold noteAlone
+  cases moved with
+  | none => rfl
+  | some n =>
+    unfold noteIf
+    by_cases h : alone = true
+    · simp only [h, ite_true]; rfl
+    · simp [h]
+
+/-- Noting a death leaves the zones as they are. -/
+theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool)
+    (moved : Option ObjId) (banisher : Option ObjId) (z : Zone) :
+    (noteDeath s o isUnit marked mighty moved banisher).zone z = s.zone z := by
+  have key : ∀ (b : Bool) (f : GameState → GameState), (∀ t, (f t).zone z = t.zone z) →
+      ∀ t, (noteIf b f t).zone z = t.zone z := by
+    intro b f hf t
+    unfold noteIf
+    split
+    · exact hf t
+    · rfl
+  unfold noteDeath
+  cases moved with
+  | none =>
+    dsimp only
+    exact key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl) s
+  | some n =>
+    dsimp only
+    rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
+        (fun t => by simp only [GameState.zone_modObj]),
+      key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
+      key _ (fun t => t.addTurnFx o.controller .unitDied) (fun t => rfl)]
+
 /-- **Killing an object in play takes it out of play** (I12a). In a well-formed game, when the
 owner is a player, the Trash of the owner is a zone of the game and the object is on the Board, so
 the move happens, and one object fewer is in play. -/
-theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     (hov : ∀ o, s.obj? u = some o → o.owner.n < s.playerCount)
-    (hu : u ∈ s.inPlay) : (killObj s u).1.inPlay.length < s.inPlay.length := by
+    (hu : u ∈ s.inPlay) : (killObj s u).1.pot < s.pot := by
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
@@ -642,7 +711,14 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     rw [← hdk, ho]
     simp only [hr]
     exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
-  rw [hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
+  have hkillz : ∀ z, (killObj s u).1.zone z = s'.zone z := by
+    intro z
+    unfold killObj sendObj
+    rw [← hdk, ho]
+    simp only [hr]
+    exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+  unfold GameState.pot
+  rw [hkillz, hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)
     subst this
@@ -660,8 +736,101 @@ theorem killObj_inPlay_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     rw [hpc]
   have key := length_flatMap_erase_one s.inPlayZones_nodup s.zone s'.zone src hz0 u huz
     (hs.zone_src) (fun x hx hne => hs.zone_other hne (fun h => hdnot (h ▸ hx)))
+  have hbf : (s'.zone Zone.battlefieldZone).length ≤ (s.zone Zone.battlefieldZone).length := by
+    by_cases hb : Zone.battlefieldZone = src
+    · rw [hb, hs.zone_src]
+      exact List.length_erase_le
+    · have hbd : Zone.battlefieldZone ≠ d := by
+        intro e
+        apply hdnot
+        rw [← e]
+        simp [GameState.inPlayZones]
+      rw [hs.zone_other hb hbd]
+      exact Nat.le_refl _
   rw [hsame]
   omega
+
+theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : x ≠ u)
+    (hx : x ∈ s.inPlay)
+    (hov : ∀ o, s.obj? u = some o → o.owner.n < s.playerCount)
+    (hu : u ∈ s.inPlay) : x ∈ (killObj s u).1.inPlay := by
+  rw [GameState.inPlay_eq_flatMap] at hu
+  obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
+  obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
+  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
+      else ZoneKind.trash) := ⟨_, rfl⟩
+  have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
+    rw [hdk]; split <;> simp
+  -- the destination: a zone of the owner that is not a zone in play
+  have hdst : ∀ o', s.obj? u = some o' →
+      (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
+        z0 ≠ Zone.normalize o'.owner (.player o'.owner dk) := by
+    intro o' ho'
+    have hlt := hov o' ho'
+    rcases hk with rfl | rfl <;>
+    · simp only [Zone.normalize, Zone.isBoard]
+      refine ⟨Zone.valid_player hlt _, ?_⟩
+      have hz0' := hz0
+      unfold GameState.inPlayZones at hz0'
+      simp only [List.mem_append, List.mem_map, List.mem_singleton] at hz0'
+      rcases hz0' with ⟨p, -, rfl⟩ | rfl <;> intro h <;> cases h
+  obtain ⟨r, hr⟩ := moveObj_isSome hwf huz (.player o.owner dk) .top (by
+    intro o' ho'
+    rw [ho] at ho'
+    cases ho'
+    exact hdst o ho)
+  obtain ⟨s', id'⟩ := r
+  obtain ⟨src, d, hs, o2, ho2, hd⟩ := moveObj_spec_dst hr
+  have hloc : s.locate u = some z0 :=
+    GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf huz) huz
+  have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
+  subst hsrc
+  have hkill : (killObj s u).1.inPlay = s'.inPlay := by
+    unfold killObj sendObj
+    rw [← hdk, ho]
+    simp only [hr]
+    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+  rw [hkill, GameState.inPlay_eq_flatMap]
+  have hdnot : d ∉ s.inPlayZones := by
+    have : o2 = o := Option.some.inj (ho2.symm.trans ho)
+    subst this
+    rw [hd]
+    rcases hk with rfl | rfl <;>
+    · simp only [Zone.normalize, Zone.isBoard]
+      unfold GameState.inPlayZones
+      simp only [List.mem_append, List.mem_map, List.mem_singleton, not_or, not_exists, not_and]
+      refine ⟨fun p _ h => ?_, fun h => ?_⟩ <;> cases h
+  have hpc : s'.playerCount = s.playerCount := by
+    unfold GameState.playerCount
+    rw [hs.config]
+  have hsame : s'.inPlayZones = s.inPlayZones := by
+    unfold GameState.inPlayZones GameState.players
+    rw [hpc]
+  rw [hsame]
+  obtain ⟨zx, hzx, hxz⟩ := List.mem_flatMap.mp (GameState.inPlay_eq_flatMap s ▸ hx)
+  refine List.mem_flatMap.mpr ⟨zx, hzx, ?_⟩
+  by_cases hzs : zx = src
+  · subst hzs
+    rw [hs.zone_src]
+    exact List.mem_erase_of_ne hne |>.mpr hxz
+  · rw [hs.zone_other hzs (fun h => hdnot (h ▸ hzx))]
+    exact hxz
+
+/-- The Equipment that dies instead of a unit is in play. -/
+theorem deathSaver_mem {s : GameState} {u g : ObjId} (h : s.deathSaver u = some (some g)) :
+    g ∈ s.inPlay := by
+  unfold GameState.deathSaver at h
+  split at h
+  · rename_i g' hg'
+    simp only [Option.some.injEq] at h
+    obtain rfl := h
+    exact List.mem_of_find?_eq_some hg'
+  · split at h
+    · split at h
+      · simp at h
+      · simp at h
+    · simp at h
 
 theorem filter_erase_of_true {α : Type} [BEq α] [LawfulBEq α] (p : α → Bool) (l : List α)
     (a : α)
@@ -683,6 +852,156 @@ theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : O
   have h1 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid
   have h2 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hy) hy
   exact hxz (Option.some.inj (h2.symm.trans h1))
+
+/-- Readying or exhausting an object leaves what goes down as it is. -/
+theorem setExhausted_pot (b : Bool) (s : GameState) (id : ObjId) :
+    (setExhausted b s id).1.pot = s.pot := by
+  unfold setExhausted
+  split
+  · exact pot_modObj _ _ _
+  · rfl
+
+/-- What a move of a unit in play to its controller's Base does to what goes down: nothing, but
+one less on the Battlefield Zone if it was there. -/
+theorem sendHome_core {s : GameState} (hwf : s.WF) {u : ObjId} (hu : u ∈ s.inPlay) {o : Object}
+    (ho : s.obj? u = some o) {s' : GameState} {id' : ObjId}
+    (hm : moveObj s u (.player o.controller .base) = some (s', id')) :
+    s'.pot + (if u ∈ s.zone Zone.battlefieldZone then 1 else 0) = s.pot := by
+  obtain ⟨src, d, hs, o2, ho2, hd⟩ := moveObj_spec_dst hm
+  rw [GameState.inPlay_eq_flatMap] at hu
+  obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
+  have hloc : s.locate u = some z0 :=
+    GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf huz) huz
+  have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
+  subst hsrc
+  have hdn : d = .player o.controller .base := by
+    have : o2 = o := Option.some.inj (ho2.symm.trans ho)
+    subst this
+    rw [hd]
+    simp [Zone.normalize, Zone.isBoard]
+  have hdv : d ∈ s.inPlayZones := by
+    have hmem := hs.dst_mem
+    rw [hdn] at hmem ⊢
+    unfold GameState.inPlayZones GameState.players
+    simp only [List.mem_append, List.mem_map, List.mem_range, List.mem_singleton]
+    left
+    refine ⟨o.controller, ⟨o.controller.n, ?_, rfl⟩, rfl⟩
+    exact Zone.lt_of_valid_player hmem
+  have hpc : s'.playerCount = s.playerCount := by
+    unfold GameState.playerCount
+    rw [hs.config]
+  have hsame : s'.inPlayZones = s.inPlayZones := by
+    unfold GameState.inPlayZones GameState.players
+    rw [hpc]
+  have hin : s'.inPlay.length = s.inPlay.length := by
+    rw [GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap, hsame]
+    exact length_flatMap_move s.inPlayZones_nodup s.zone s'.zone src d hz0 hdv u huz
+      hs.zone_src (by rw [hs.zone_dst, (Pos.insert_perm _ _ _).length_eq]; simp) hs.ne
+      (fun x hx h1 h2 => hs.zone_other h1 h2)
+  have hbd : Zone.battlefieldZone ≠ d := by
+    rw [hdn]
+    intro e
+    cases e
+  unfold GameState.pot
+  by_cases hb : Zone.battlefieldZone = src
+  · have hub : u ∈ s.zone Zone.battlefieldZone := by rw [hb]; exact huz
+    rw [if_pos hub, hb, hs.zone_src, List.length_erase_of_mem huz]
+    have := List.length_pos_of_mem huz
+    omega
+  · have hnu : u ∉ s.zone Zone.battlefieldZone := fun hmem =>
+      ne_of_mem_other_zone hwf huz hmem hb rfl
+    rw [if_neg hnu, hs.zone_other hb hbd]
+    omega
+
+/-- Recalling a unit in play never raises what goes down. -/
+theorem sendHome_pot_le {s : GameState} (hwf : s.WF) {u : ObjId} (hu : u ∈ s.inPlay) :
+    (sendHome s u).1.pot ≤ s.pot := by
+  unfold sendHome
+  cases ho : s.obj? u with
+  | none => exact Nat.le_refl _
+  | some o =>
+    simp only
+    cases hm : moveObj s u (.player o.controller .base) with
+    | none => exact Nat.le_refl _
+    | some r =>
+      obtain ⟨s', id'⟩ := r
+      simp only
+      rw [pot_modObj]
+      have := sendHome_core hwf hu ho hm
+      omega
+
+/-- Recalling a unit from the Battlefield Zone lowers what goes down. -/
+theorem sendHome_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+    (hb : u ∈ s.zone Zone.battlefieldZone)
+    (hc : ∀ o, s.obj? u = some o → o.controller.n < s.playerCount) :
+    (sendHome s u).1.pot < s.pot := by
+  have hu : u ∈ s.inPlay := by
+    rw [GameState.inPlay_eq_flatMap]
+    exact List.mem_flatMap.mpr ⟨Zone.battlefieldZone, by simp [GameState.inPlayZones], hb⟩
+  obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf hb
+  obtain ⟨r, hr⟩ := moveObj_isSome hwf hb (.player o.controller .base) .top (by
+    intro o' ho'
+    rw [ho] at ho'
+    cases ho'
+    refine ⟨?_, ?_⟩
+    · simp only [Zone.normalize, Zone.isBoard]
+      exact Zone.valid_player (hc o ho) _
+    · simp only [Zone.normalize, Zone.isBoard]
+      intro h
+      cases h)
+  obtain ⟨s', id'⟩ := r
+  unfold sendHome
+  rw [ho]
+  simp only [hr]
+  rw [pot_modObj]
+  have := sendHome_core hwf hu ho hr
+  rw [if_pos hb] at this
+  omega
+
+/-- Killing the Equipment of a unit that is saved, and healing, exhausting and recalling the unit,
+takes something out of play. -/
+theorem saveUnit_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u ≠ g)
+    (hu : u ∈ s.inPlay) (hg : g ∈ s.inPlay)
+    (hov : ∀ o, s.obj? g = some o → o.owner.n < s.playerCount) :
+    (saveUnit s u (some g)).1.pot < s.pot := by
+  have h1 := killObj_pot_lt hwf hov hg
+  have hwf1 : (killObj s g).1.WF := (killObj_safe s g).wf hwf
+  have hu1 : u ∈ (killObj s g).1.inPlay := killObj_mem_inPlay_ne hwf hug hu hov hg
+  have h2 : ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).pot =
+      (killObj s g).1.pot := pot_modObj _ _ _
+  have hu2 : u ∈ ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).inPlay := by
+    rw [inPlay_modObj]; exact hu1
+  have hwf2 : ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).WF :=
+    GameState.wf_modObj hwf1 _ _
+  have h3 := sendHome_pot_le hwf2 hu2
+  unfold saveUnit recallFx
+  dsimp only
+  simp only [if_true, setExhausted_pot]
+  omega
+
+/-- Saving a unit with no Equipment to die instead (Soraka), healing, exhausting and recalling it
+from the Battlefield Zone, lowers what goes down. -/
+theorem saveUnit_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+    (hb : u ∈ s.zone Zone.battlefieldZone)
+    (hc : ∀ o, s.obj? u = some o → o.controller.n < s.playerCount) :
+    (saveUnit s u none).1.pot < s.pot := by
+  have hwf2 : (s.modObj u (fun o => { o with damage := 0 })).WF := GameState.wf_modObj hwf _ _
+  have hb2 : u ∈ (s.modObj u (fun o => { o with damage := 0 })).zone Zone.battlefieldZone := by
+    rw [GameState.zone_modObj]; exact hb
+  have hc2 : ∀ o, (s.modObj u (fun o => { o with damage := 0 })).obj? u = some o →
+      o.controller.n < s.playerCount := by
+    intro o ho
+    rcases obj?_modObj_cases s u (fun o => { o with damage := 0 }) u with h | ⟨o', h1, h2⟩
+    · rw [h] at ho; exact hc o ho
+    · rw [h2] at ho
+      cases ho
+      exact hc o' h1
+  have h3 := sendHome_pot_lt hwf2 hb2 hc2
+  unfold saveUnit recallFx
+  dsimp only
+  simp only [if_true, setExhausted_pot]
+  rw [pot_modObj] at h3
+  exact h3
 
 /-- A zone of a well-formed game holds each object once. -/
 theorem zone_nodup {s : GameState} (hwf : s.WF) {z : Zone} (hz : z ∈ allZones s.playerCount) :
@@ -794,7 +1113,14 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       have key := length_flatMap_erase_one hnd (fun z => (s.zone z).filter (fun x => s.isTok x))
         (fun z => (s1.zone z).filter (fun x => s1.isTok x)) z' hmem id hu hg hrest
       omega
-    exact MeasLt.at2 (by rw [hin]) hlt
+    have hbz : Zone.battlefieldZone ≠ z' := by
+      intro e
+      rw [← e] at hnb
+      simp [Zone.isBoard] at hnb
+    have hbf : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+        GameState).zone Zone.battlefieldZone = s.zone Zone.battlefieldZone :=
+      GameState.zone_setZone_ne s hbz _
+    exact MeasLt.at2 (by unfold GameState.pot; rw [hin, hbf]) hlt
 
 /-- The Battlefield the Cleanup makes Contested is one of the game's, newly Contested. -/
 theorem findSome_newContest {s : GameState} {b : ObjId} {q : PlayerId}
@@ -815,10 +1141,28 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
   unfold cleanupStep0 at h
   split at h
   · rename_i u hu
-    obtain rfl : s' = (killObj s u).1 := (congrArg Prod.fst (Option.some.inj h)).symm
+    obtain rfl : s' = (cleanupKill s u).1 := (congrArg Prod.fst (Option.some.inj h)).symm
     have hl := List.find?_some hu
     simp only [Bool.and_eq_true] at hl
-    exact MeasLt.at1 (killObj_inPlay_lt hwf (lethal_owner hl.2) (List.mem_of_find?_eq_some hu))
+    have hmem := List.mem_of_find?_eq_some hu
+    unfold cleanupKill
+    split
+    · rename_i g hg
+      split
+      · rename_i hc
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Option.any_eq_true, decide_eq_true_eq] at hc
+        obtain ⟨hne, o, ho, hlt⟩ := hc
+        exact MeasLt.at1 (saveUnit_pot_lt hwf (Ne.symm hne) hmem (deathSaver_mem hg)
+          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+      · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
+    · split
+      · rename_i hc
+        simp only [Bool.and_eq_true, decide_eq_true_eq, Option.any_eq_true] at hc
+        obtain ⟨hb, o, ho, hlt⟩ := hc
+        exact MeasLt.at1 (saveUnit_none_pot_lt hwf hb
+          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+      · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
+    · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
   · split at h
     · rename_i b hb
       obtain rfl : s' = s.modObj b (fun o => { o with control := none }) :=

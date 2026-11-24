@@ -1915,3 +1915,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **近似**: 制限は、Pool の `any` の数と、ターンの記録の数（Legend は 1 ターンに 1 回だけ使うので 1）の小さい方。ギアで使ったあとに、別の Add で `any` が増えると、増えた分も、制限を受ける（制限を受ける分が、使ったあとにも残る）。
 - **まだ**: Guardian Angel と Soraka が、Cleanup での死を救わないこと（Cleanup の終わりを示す測り方の作り直しが要る）。
 
+### M8a の実装の記録（2026-11-24）: Spiritforged 44 — Cleanup での死の身代わり
+
+- **Guardian Angel（SFD-051）と Soraka（SFD-173）**: ダメージだけでなく、Cleanup で致死になった（Might が下がった）ユニットも、救う。`cleanupKill`（Battlefield.lean）が、Guardian Angel なら、Angel を殺して、ユニットを回復・疲労・Base へ戻す（`saveUnit`）。Soraka なら、Battlefield にいる弱いユニットを、同じように、救う。救えない場合（Battlefield 上でない、など）は、従来どおり殺す。
+- **Cleanup が終わる証明**: 測りの先頭を、場にあるものの数から、`GameState.pot`（場にあるものの数＋Battlefield Zone にあるものの数）へ変えた。ユニットを Battlefield から Base へ戻すと `pot` が 1 下がり、殺すと下がるので、救っても、Cleanup は終わる（`sendHome_core` / `saveUnit_pot_lt` / `saveUnit_none_pot_lt` / `killObj_pot_lt`）。
+- **まだ**: Blade of the Ruined King の「殺す」を、解決時に選ぶ件など、細かい点だけ。
+
