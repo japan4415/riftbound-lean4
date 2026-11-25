@@ -62,25 +62,50 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
+/-- Serialize the destination and costs chosen for a permanent played by an effect. -/
+def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (String × String) :=
+  [("card", toString card.n), ("cost", costJson plan.cost),
+    ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
+    ("additionalPaid", if plan.additionalPaid then "true" else "false"),
+    ("accelerated", if plan.accelerated then "true" else "false")] ++
+    (if plan.battlefieldFees.isEmpty then [] else
+      [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
+    plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
+    plan.discard.toList.map (fun id => ("discard", toString id.n))
+
+/-- Identify an individual Add activation in a permanent's payment. -/
+def effectAddJson : EffectAdd → String
+  | .rune id recycle => jobj [("source", toString id.n),
+    ("rune", jstr (if recycle then "recycle" else "exhaust"))]
+  | .ability id idx energy power => jobj [("source", toString id.n), ("idx", toString idx),
+    ("cost", costJson ⟨energy, power.map PowerSym.domain⟩)]
+
+/-- Describe a pending payment, including activations already chosen for that payment. -/
+def reducedPlayDecision (effect : Effect) (funding : Bool) : List (String × String) :=
+  match effect with
+  | .finishReducedPermanent card _ plan => [("reducedPlay", jobj (reducedPlayFields card plan))]
+  | .finishFundedPermanent card _ plan adds =>
+    [("reducedPlay", jobj (reducedPlayFields card plan)),
+      ("preparedAdds", jarr (adds.map effectAddJson))]
+  | .fundLookedPermanent card _ plan adds =>
+    match adds.getLast? with
+    | none => [("reducedPlay", jobj (reducedPlayFields card plan)), ("choosePlayPayment", "true")]
+    | some add => [("playAdd", effectAddJson add),
+        ("preparedAdds", jarr (adds.dropLast.map effectAddJson))]
+  | .eitherOf _ => [(if funding then "morePlayPayments" else "morePlayOptions", "true")]
+  | .nop => [("declinePlay", "true")]
+  | _ => []
+
 /-- Choices of payment and destination when a Unit or Gear is played by an effect. -/
 def reducedPermanentFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
   | some (.mayDo _ _ _ (.chooseLookedToPlay ..) _) => [("lookedPlay", "true")]
   | some (.eitherDo _ _ _ a@(.finishReducedPermanent ..) b _) =>
-    match if yes then a else b with
-    | .finishReducedPermanent card _ plan =>
-      [("reducedPlay", jobj
-        ([("card", toString card.n), ("cost", costJson plan.cost),
-          ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
-          ("additionalPaid", if plan.additionalPaid then "true" else "false"),
-          ("accelerated", if plan.accelerated then "true" else "false")] ++
-          (if plan.battlefieldFees.isEmpty then [] else
-            [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
-          plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
-          plan.discard.toList.map (fun id => ("discard", toString id.n))))]
-    | .eitherOf _ => [("morePlayOptions", "true")]
-    | .nop => [("declinePlay", "true")]
-    | _ => []
+    reducedPlayDecision (if yes then a else b) false
+  | some (.eitherDo _ _ _ a@(.finishFundedPermanent ..) b _) =>
+    reducedPlayDecision (if yes then a else b) true
+  | some (.eitherDo _ _ _ a@(.fundLookedPermanent _ _ _ adds) b _) =>
+    reducedPlayDecision (if yes then a else b) (!adds.isEmpty)
   | _ => []
 
 /-- Identify a decision to apply an optional Empower. -/

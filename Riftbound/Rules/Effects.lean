@@ -1596,16 +1596,117 @@ def banishedPlayId (es : List Event) : Option ObjId :=
     | .moved _ id (.player _ .banishment) => some id
     | _ => none)
 
+/-- The resource abilities that can be used before an effect's permanent enters play. -/
+structure EffectAddPolicy where
+  /-- The next Adds that leave at least one way to finish paying for the permanent. -/
+  choices : GameState → PlayerId → ObjId → EffectPlayTerms → ReducedPermanentPlay →
+    (includeBasic : Bool) → List EffectAdd
+  /-- Project the chosen activations or commit them as part of the successful play. -/
+  applyAll : GameState → PlayerId → List EffectAdd → Option (GameState × List Event)
+  /-- A complete sequence of activations preserves the game invariants. -/
+  safe : ∀ {s p adds r}, applyAll s p adds = some r → Safe s r.1
+
+/-- Plan one's payment after Banishment. A plan fundable by the Pool or Basic Runes is offered
+alongside any choices that require activating other resource abilities. -/
+def lookedPermanentChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (funding : EffectAddPolicy) : List (ReducedPermanentPlay × Bool) :=
+  let unit := (s.cardDef? card).any (·.hasType .unit)
+  (permanentPlayOptions s p card terms).filterMap (fun plan =>
+    let hasAdds := !(funding.choices s p card terms plan false).isEmpty
+    if hasAdds || (payByRunes s p card plan.cost unit).isSome then some (plan, hasAdds) else none)
+
 /-- A looked-at card may be offered only if it meets the filter, is still in the same deck,
 and will have a legal finalization after leaving it for Banishment (CR 355.16, 420.3.c). -/
 def lookedPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (less : Nat) (fs : FilterList) : List ObjId :=
+    (less : Nat) (fs : FilterList) (funding : EffectAddPolicy) : List ObjId :=
   let deck := s.zone (.player p .mainDeck)
   env.lookedCards.filter (fun id =>
     deck.contains id && FilterList.holds s src env id fs == some true &&
     (let banished := banishObj p s id
      (banishedPlayId banished.2).any (fun new =>
-       !(reducedPermanentPlays banished.1 p new less).isEmpty)))
+       !(lookedPermanentChoices banished.1 p new { price := .reduceEnergy less } funding).isEmpty)))
+
+/-- Apply the Banish, selected Add activations, and play together, leaving the state alone if
+any part of the finalization is impossible (CR 358.5). -/
+def finishLookedPermanent (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (adds : List EffectAdd) (funding : EffectAddPolicy) :
+    Option (GameState × ObjId × List Event) := do
+  if !(s.zone (.player p .mainDeck)).contains card then none else
+    let banished := banishObj p s card
+    let candidate ← banishedPlayId banished.2
+    let (funded, events) ← funding.applyAll banished.1 p adds
+    if !(permanentPlayPlans funded p candidate terms).contains plan then none else
+      let (played, entered, finalEvents) ← applyReducedPermanent funded p candidate plan
+      some (played, entered, banished.2 ++ events ++ finalEvents)
+
+/-- An atomic looked-at play preserves the game invariants when it succeeds. -/
+theorem finishLookedPermanent_safe {s : GameState} {p : PlayerId} {card : ObjId}
+    {terms : EffectPlayTerms} {plan : ReducedPermanentPlay} {adds : List EffectAdd}
+    {funding : EffectAddPolicy} {r : GameState × ObjId × List Event}
+    (h : finishLookedPermanent s p card terms plan adds funding = some r) : Safe s r.1 := by
+  unfold finishLookedPermanent at h
+  split at h
+  · contradiction
+  · simp only [bind, Option.bind_eq_some_iff] at h
+    obtain ⟨candidate, -, ⟨funded, events⟩, hfunded, h⟩ := h
+    split at h
+    · contradiction
+    · simp only [Option.bind_eq_some_iff, Option.some.injEq] at h
+      obtain ⟨⟨played, entered, finalEvents⟩, hplayed, hr⟩ := h
+      rw [← hr]
+      have hsafe : Safe funded played :=
+        applyReducedPermanent_safe (r := (played, entered, finalEvents)) hplayed
+      exact (banishObj_safe p s card).trans ((funding.safe hfunded).trans hsafe)
+
+/-- Project the current payment and offer one more activation, payment from the available
+resources, or abandonment of the optional play. The board is unchanged until confirmation. -/
+def fundLookedOptions (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (adds : List EffectAdd) (funding : EffectAddPolicy) :
+    List Effect := Id.run do
+  let banished := banishObj p s card
+  let some candidate := banishedPlayId banished.2 | return [.nop]
+  let some (t, _) := funding.applyAll banished.1 p adds | return [.nop]
+  let pay := if (permanentPlayPlans t p candidate terms).contains plan then
+      [.finishFundedPermanent card terms plan adds] else []
+  let activate := (funding.choices t p candidate terms plan true).map (fun a =>
+    Effect.fundLookedPermanent card terms plan (adds ++ [a]))
+  return pay ++ activate ++ [.nop]
+
+/-- Offer the finalization choices of a selected card. When an Add is available, keep the card
+in the deck until the player has chosen and confirmed the complete payment. -/
+def banishLookedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (less : Nat)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  let skip := (s, [.run p src env es], [Event.skipped src])
+  match env.lookup pickVar with
+  | some (.obj id) =>
+    if env.lookedCards.contains id && (s.zone (.player p .mainDeck)).contains id then
+      let r := banishObj p s id
+      let terms : EffectPlayTerms := { price := .reduceEnergy less }
+      let options := (banishedPlayId r.2).toList.flatMap (fun card =>
+        lookedPermanentChoices r.1 p card terms funding)
+      if options.any Prod.snd then
+        let choices := options.map (fun (plan, _) => Effect.fundLookedPermanent id terms plan [])
+        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+      else
+        let choices := (banishedPlayId r.2).toList.flatMap (fun card =>
+          options.map (fun (plan, _) => Effect.finishReducedPermanent card terms plan))
+        (r.1, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], r.2)
+    else skip
+  | _ => skip
+
+/-- Preparing or applying the Banish preserves the game invariants. -/
+theorem banishLookedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (less : Nat)
+    (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (banishLookedStep s p src env less es funding).1 := by
+  unfold banishLookedStep
+  split
+  · split
+    · dsimp only
+      split
+      · exact Safe.refl s
+      · exact banishObj_safe p s _
+    · exact Safe.refl s
+  · exact Safe.refl s
 
 /-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
 def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
@@ -4084,7 +4185,7 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
 
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
-    (es : EffectList) : GameState × List Frame × List Event :=
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   let linked (a : Prim) (body : Effect) :=
     let r := linkedAction s p src env a
@@ -4169,21 +4270,12 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src { env with lookedCards := cards } (.cons body .nil), .run p src env es],
       cards.map (.lookedAt p))
   | .banishAndPlayLooked less fs =>
-    match lookedPlayCandidates s p src env less fs with
+    match lookedPlayCandidates s p src env less fs funding with
     | first :: more => (s, [.mayDo p src env (.chooseLookedToPlay less first more) es], [])
     | [] => (s, [.run p src env es], [])
   | .chooseLookedToPlay less first more =>
     (s, [.pickDo p src env first more (.banishLookedForPlay less) es], [])
-  | .banishLookedForPlay less =>
-    match env.lookup pickVar with
-    | some (.obj id) =>
-      if env.lookedCards.contains id && (s.zone (.player p .mainDeck)).contains id then
-        let r := banishObj p s id
-        let options := (banishedPlayId r.2).toList.flatMap (fun card =>
-          (reducedPermanentPlays r.1 p card less).map (.finishReducedPermanent card { price := .reduceEnergy less }))
-        (r.1, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], r.2)
-      else skip
-    | _ => skip
+  | .banishLookedForPlay less => banishLookedStep s p src env less es funding
   | .planPermanentPlay card terms =>
     match permanentPlayPlans s p card terms with
     | [] => skip
@@ -4201,6 +4293,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         (t, [.run p src (env.bind pickVar (.obj entered)) es], events)
       | none => skip
     else skip
+  | .finishFundedPermanent card terms plan adds =>
+    match finishLookedPermanent s p card terms plan adds funding with
+    | some (t, entered, events) => (t, [.run p src (env.bind pickVar (.obj entered)) es], events)
+    | none => skip
+  | .fundLookedPermanent card terms plan adds =>
+    let choices := fundLookedOptions s p card terms plan adds funding
+    (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
   | .recycleLooked => recycleLookedStep s p src env es
   | .may e' =>
     if (requiredPlayCandidates s p src env e').any List.isEmpty then skip
@@ -4309,7 +4408,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
 
 /-- Doing an effect, but not a choice, is a safe change of the state. -/
 theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
-    (es : EffectList) : Safe s (runEffect1 s p src env e es).1 := by
+    (es : EffectList) (funding : EffectAddPolicy) : Safe s (runEffect1 s p src env e es funding).1 := by
   unfold runEffect1
   split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
@@ -4319,9 +4418,11 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _
+    | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
     | exact setPoolFor_safe s p src _
     | (exact applyReducedPermanent_safe (by assumption))
+    | (exact finishLookedPermanent_safe (by assumption))
     | exact playSpellStep_safe (by assumption)
     | exact castReducedStep_safe (by assumption)
     | exact applyPrim_safe (by assumption)
@@ -4332,7 +4433,7 @@ the events. An instruction that cannot be done is skipped (design.md §7.1). An 
 object to choose while it resolves ("kill a gear") asks the player when there is more than one to
 choose from, and goes on with the only one when there is one (CR 355). -/
 def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
-    (es : EffectList) : GameState × List Frame × List Event :=
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
   match e.pickSel? with
   | some (.pick _ side place fs) =>
     -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
@@ -4346,18 +4447,18 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
           e.pickEvents s p src o)
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])
-  | _ => runEffect1 s p src env e es
+  | _ => runEffect1 s p src env e es funding
 
 /-- Doing an effect is a safe change of the state. -/
 theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
-    (es : EffectList) : Safe s (runEffect s p src env e es).1 := by
+    (es : EffectList) (funding : EffectAddPolicy) : Safe s (runEffect s p src env e es funding).1 := by
   unfold runEffect
   split
   · split
     · split <;> exact Safe.refl s
     · exact Safe.refl s
     · exact Safe.refl s
-  · exact runEffect1_safe s p src env e es
+  · exact runEffect1_safe s p src env e es funding
 
 /-- The ability of the card identified by an item on the Chain (CR 337). -/
 def abilityAt (s : GameState) (card : CardId) (idx : Nat) : Option Ability :=

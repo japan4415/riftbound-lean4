@@ -318,6 +318,117 @@ def legalManas (s : GameState) (p : PlayerId) : List Action :=
             (fun pay => ⟨.player p, .manaAbility src idx pay⟩))
       | none => [])
 
+/-- Read Add timing as it applies while an effect's play pays its costs (CR 357.1.a). -/
+def effectAddView (s : GameState) (p : PlayerId) : GameState :=
+  { s with pending := .eitherDo p ⟨0⟩ {} (.payThen Cost.zero .nop) .nop .nil :: s.pending }
+
+/-- Apply one activation from a resource payment, checking its timing and cost again. -/
+def EffectAdd.apply (s : GameState) (p : PlayerId) : EffectAdd → Option (GameState × List Event)
+  | .rune id recycle =>
+    let ab := if recycle then RuneAbility.recycle else .exhaust
+    if (s.runesOf p).contains id && runeUsable s p id ab then applyRune s p id ab else none
+  | .ability src idx energy power =>
+    let pay := ⟨energy, power⟩
+    if manaOk (effectAddView s p) p src idx pay then applyMana s p src idx pay else none
+
+/-- An activation of either kind preserves the structural and ownership invariants. -/
+theorem EffectAdd.apply_safe {s : GameState} {p : PlayerId} {add : EffectAdd}
+    {r : GameState × List Event} (h : add.apply s p = some r) : Safe s r.1 := by
+  cases add with
+  | rune id recycle =>
+    cases recycle <;> simp only [EffectAdd.apply, Bool.false_eq_true, ↓reduceIte] at h <;>
+      split at h <;> first | exact applyRune_safe h | contradiction
+  | ability src idx energy power =>
+    simp only [EffectAdd.apply] at h
+    split at h
+    · obtain ⟨t, pool, ht, hr⟩ := applyMana_cases (s' := r.1) (es := r.2)
+        (show applyMana s p src idx ⟨energy, power⟩ = some (r.1, r.2) from h)
+      rw [hr]
+      exact ht.trans (setPool_safe t p pool)
+    · contradiction
+
+/-- Simulate the choices in order. The caller only publishes the result of a complete payment. -/
+def applyEffectAdds (s : GameState) (p : PlayerId) : List EffectAdd → Option (GameState × List Event)
+  | [] => some (s, [])
+  | a :: rest => do
+    let (t, events) ← a.apply s p
+    let (done, later) ← applyEffectAdds t p rest
+    some (done, events ++ later)
+
+/-- Every successfully applied sequence preserves the game invariants. -/
+theorem applyEffectAdds_safe {s : GameState} {p : PlayerId} {adds : List EffectAdd}
+    {r : GameState × List Event} (h : applyEffectAdds s p adds = some r) : Safe s r.1 := by
+  induction adds generalizing s r with
+  | nil =>
+    simp only [applyEffectAdds, Option.some.injEq] at h
+    subst r
+    exact Safe.refl s
+  | cons a rest ih =>
+    simp only [applyEffectAdds, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨⟨t, events⟩, ha, ⟨done, later⟩, hd, hr⟩ := h
+    rw [← hr]
+    exact (EffectAdd.apply_safe (r := (t, events)) ha).trans (ih (r := (done, later)) hd)
+
+/-- The ability slots on objects that can provide resources during the payment. -/
+def effectAddSlots (s : GameState) (p : PlayerId) : List (ObjId × Nat) :=
+  let view := effectAddView s p
+  (s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone).flatMap
+    (fun src => ((s.cardDef? src).toList.flatMap (fun d => List.range d.fullAbilities.length)).filterMap
+      (fun idx => if manaReady view p src idx then some (src, idx) else none))
+
+/-- Rune activations for a payment. For reachability only, Runes of the same domain and readiness
+can be represented by one source. -/
+def effectAddRuneUses (s : GameState) (p : PlayerId) (distinct : Bool) : List EffectAdd :=
+  let runes := s.runesOf p
+  let runes := if distinct then runes else runes.eraseDupsBy (fun a b =>
+    ((s.obj? a).map (fun o => (o.runeDomain, o.exhausted))) ==
+      ((s.obj? b).map (fun o => (o.runeDomain, o.exhausted))))
+  runes.flatMap (fun id =>
+    (if runeUsable s p id .exhaust then [.rune id false] else []) ++ [.rune id true])
+
+/-- The possible next activations. Before playing the card, early Rune use only changes what
+can be paid if some remaining Add has its own resource cost (including exchanges). -/
+def effectAddUses (s : GameState) (p : PlayerId) (includeBasic : Bool := false) : List EffectAdd :=
+  let view := effectAddView s p
+  let slots := effectAddSlots s p
+  let paidAdd := slots.any (fun (src, idx) => (s.manaOffer src idx).any (fun (_, plan, kind) =>
+    plan.cost.total != 0 || match kind with | .powerToEnergy | .energyToPower => true | _ => false))
+  slots.flatMap (fun (src, idx) =>
+    (manaPays view p src idx).filterMap (fun pay =>
+      if manaPayOk view p src idx pay then some (.ability src idx pay.energy pay.power) else none)) ++
+    (if includeBasic || paidAdd then effectAddRuneUses s p includeBasic else [])
+
+/-- An available continuation is sought only until the configuration can be paid.
+Every activation consumes one modeled Add slot, a Rune's ready state, or the Rune itself. -/
+def effectAddSuffix (p : PlayerId) (paid : GameState → Bool) :
+    Nat → GameState → Option (List EffectAdd)
+  | 0, s => if paid s then some [] else none
+  | n + 1, s =>
+    if paid s then some [] else
+      (effectAddUses s p).findSome? (fun a => do
+        let (t, _) ← a.apply s p
+        let later ← effectAddSuffix p paid n t
+        some (a :: later))
+
+/-- The activations that leave a way to fund the chosen finalization. Ordinary Rune coverage
+handles the rest of the price once no other card's Add ability is needed. -/
+def effectAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (includeBasic : Bool) : List EffectAdd :=
+  if plan.cost.total == 0 then [] else
+  let units := (s.cardDef? card).any (·.hasType .unit)
+  let paid := fun t => (payByRunes t p card plan.cost units).isSome &&
+    (permanentPlayOptions t p card terms).contains plan
+  let fuel := (effectAddSlots s p).length + 2 * (s.runesOf p).length
+  (effectAddUses s p includeBasic).filterMap (fun a => do
+    let (t, _) ← a.apply s p
+    let later ← effectAddSuffix p paid fuel t
+    let path := a :: later
+    if includeBasic || path.any (fun | .ability .. => true | _ => false) then some a else none)
+
+/-- Allow effect plays to discover and use the same Add abilities as player actions. -/
+def effectAddPolicy : EffectAddPolicy :=
+  { choices := effectAddChoices, applyAll := applyEffectAdds, safe := applyEffectAdds_safe }
+
 /-- A legal payment of an Add is one of the payments offered. -/
 theorem mem_manaPays {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} (h : manaPayOk s p src idx pay = true) :

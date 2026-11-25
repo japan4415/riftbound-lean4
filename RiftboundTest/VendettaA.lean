@@ -2548,6 +2548,64 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   return (paid.poolOf p).total == 0 &&
     events.any (fun | .moved old _ (.player who .runeDeck) => old == rune && who == p | _ => false)
 
+-- Minah is eligible when Gold can fund its Chaos Power. Selecting an Add has no side effects
+-- until the play is confirmed, and declining leaves the chosen card in the looked-at group.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let gold ← s.tokenCard "Gold"
+  let id : ObjId := ⟨s.nextId⟩
+  let (s, spell) ← put (createOne gold.id p none true (s.fund p 8 (body := 1))) p "VEN-089" .hand
+  let (s, unit) ← put s p "VEN-111" .mainDeck
+  let (s, expensive) ← put s p "VEN-064" .mainDeck
+  let z := Zone.player p .mainDeck
+  let s := s.reorder z (unit :: expensive :: ((s.zone z).erase unit).erase expensive)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (casting, _) ← act s (.playCard spell ⟨7, [.body]⟩ [])
+  let looking ← passToChoice 8 casting
+  let (choosing, _) ← act looking (.decide true)
+  let (funding, opened) ← act choosing (.choose unit)
+  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.ability source 0 0 []]) .nop _ :: _ :=
+    funding.pending | none
+  let (prepared, selected) ← act funding (.decide true)
+  let (declined, discarded) ← act prepared (.decide false)
+  let (played, events) ← act prepared (.decide true)
+  let entered ← played.firstOf p .base "VEN-111"
+  return !(legalFrameActions choosing).contains ⟨.player p, .choose expensive⟩ &&
+    source == id && opened.isEmpty && selected.isEmpty && discarded.isEmpty &&
+    (prepared.obj? id).isSome && (prepared.zone z).contains unit && (prepared.poolOf p).any == 0 &&
+    (declined.obj? id).isSome && (declined.zone z).contains unit && (declined.poolOf p).energy == 1 &&
+    (played.obj? id).isNone && !(played.zone z).contains unit && (played.poolOf p).total == 0 &&
+    events.contains (.activated p id 0 (some 0)) && events.contains (.played p entered)
+
+-- Ancient Henge can be paid with a Rune and then supply the missing flexible Power.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spell) ← put (s.fund p 7 (body := 1)) p "VEN-089" .hand
+  let (s, unit) ← put s p "VEN-111" .mainDeck
+  let (s, henge) ← put s p "SFD-117" .base
+  let (s, first) ← put s p "OGN-007" .base
+  let (s, second) ← put s p "OGN-007" .base
+  let s := [henge, first, second].foldl (fun t id => t.modObj id (fun o => { o with exhausted := false })) s
+  let z := Zone.player p .mainDeck
+  let s := s.reorder z (unit :: (s.zone z).erase unit)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (casting, _) ← act s (.playCard spell ⟨7, [.body]⟩ [])
+  let looking ← passToChoice 8 casting
+  let (choosing, _) ← act looking (.decide true)
+  let (funding, _) ← act choosing (.choose unit)
+  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.rune rune false]) _ _ :: _ := funding.pending | none
+  let (funded, _) ← act funding (.decide true)
+  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
+    funded.pending | none
+  let (prepared, _) ← act funded (.decide true)
+  let (played, events) ← act prepared (.decide true)
+  let entered ← played.firstOf p .base "VEN-111"
+  return [first, second].contains rune && source == henge &&
+    (prepared.obj? henge).any (fun o => !o.exhausted) &&
+    (played.obj? henge).any (·.exhausted) && (played.poolOf p).total == 0 &&
+    [first, second].all (fun id => (played.obj? id).any (·.exhausted)) &&
+    events.contains (.played p entered)
+
 -- Choosing to pay Accelerate for the card played by Wild Claw is separate
 -- from choosing that card. The reduction also covers the Energy of Accelerate.
 #guard vendettaCase fun s => do

@@ -238,7 +238,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])
   | .run p src env (.cons e es) :: rest =>
     -- the effect reads the Might the passive abilities give, as of now
-    let r := runEffect s p src (env.withMight s.mightTable) e es
+    let r := runEffect s p src (env.withMight s.mightTable) e es effectAddPolicy
     some ({ r.1 with pending := r.2.1 ++ rest }, r.2.2)
   | .finishSpell item :: rest =>
     some ({ (finishItem s item).1 with
@@ -472,7 +472,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((runEffect_safe _ _ _ _ _ _).wf hwf).congr rfl rfl rfl rfl
+    exact ((runEffect_safe _ _ _ _ _ _ effectAddPolicy).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_wf hwf _).congr rfl rfl rfl rfl
@@ -572,7 +572,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (runEffect_safe _ _ _ _ _ _).phys hwf
+    exact (runEffect_safe _ _ _ _ _ _ effectAddPolicy).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact finishItem_physIds hwf _

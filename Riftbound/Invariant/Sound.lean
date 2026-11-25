@@ -478,7 +478,7 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((runEffect_safe _ _ _ _ _ _).own hwf hown).congr rfl rfl
+    exact ((runEffect_safe _ _ _ _ _ _ effectAddPolicy).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_ownerOk hwf hown _).congr rfl rfl

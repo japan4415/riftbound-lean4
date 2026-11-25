@@ -500,9 +500,9 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (runEffect_safe s p src (env.withMight s.mightTable) e es).same.result (fun hb => ?_)
+    refine hinv.of_next (runEffect_safe s p src (env.withMight s.mightTable) e es effectAddPolicy).same.result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl (runEffect s p src (env.withMight s.mightTable) e es).2.1
+    exact hb.swap rfl (runEffect s p src (env.withMight s.mightTable) e es effectAddPolicy).2.1
   · rename_i item rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

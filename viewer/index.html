@@ -345,7 +345,15 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.lookedPlay) return [who + ': ' + (a.yes ? '見たカードからプレイする' : 'プレイを見送る'), ''];
       if (a.empowerOffer) return [who + ': ' + (a.yes ? 'Empower する' : 'Empower を見送る'), ''];
       if (a.morePlayOptions) return [who + ': ほかのプレイ方法を見る', ''];
+      if (a.morePlayPayments) return [who + ': ほかの支払い方を見る', ''];
       if (a.declinePlay) return [who + ': プレイを見送る', ''];
+      const prepared = a.preparedAdds?.length ? '選択済み ' + a.preparedAdds.map(add => cardName(add.source)).join('、') : '';
+      if (a.playAdd) {
+        const add = a.playAdd;
+        const ability = add.rune === 'recycle' ? 'Recycle' : add.rune === 'exhaust' ? 'Exhaust' : 'Add';
+        const cost = add.cost && (add.cost.energy || add.cost.power?.length) ? '（' + costText(add.cost) + '）' : '';
+        return [who + ': ' + cardName(add.source) + ' の ' + ability + ' を選ぶ' + cost, prepared];
+      }
       if (a.reducedPlay) {
         const plan = a.reducedPlay;
         const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
@@ -355,7 +363,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
         if (plan.accelerated) parts.push('Accelerate');
         if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
         if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
-        return [who + ': ' + cardName(plan.card) + ' を ' + dest + ' にプレイ（' + parts.join('、') + '）', ''];
+        const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
+        return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
       }
       if (a.damageOrder) {
         const first = a.damageOrder === 'preventFirst' ? 'ダメージの軽減' : 'ダメージの倍増';
@@ -703,7 +712,13 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'named_card') txt = cardName(e.source) + ' が指定したカードは ' + logicalCardName(e.cardCode);
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
     else if (e.t === 'combat_won') txt = 'P' + e.winner + ' が Combat に勝つ';
-    else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
+    else if (e.t === 'activated') {
+      const action = steps[i].action;
+      const add = action?.kind === 'manaAbility' ||
+        action?.preparedAdds?.some(item => item.source === e.source && item.idx === e.index);
+      txt = 'P' + e.player + ' が ' + cardName(e.source) +
+        (add ? ' の Add を起動' : ' の能力を起動（Chain に載る）');
+    }
     if (txt) appendEvent(txt);
   }
   const r = $('result');
@@ -1074,6 +1089,7 @@ function renderLegal(i) {
     : liveLegal.some(({ a }) => a.effectPaymentPlan) ? '支払うリソースを選ぶ'
     : liveLegal.some(({ a }) => a.remakeSpell != null) ? 'Spell の選択をやり直すか決める'
     : liveLegal.some(({ a }) => a.remadeSpell != null) ? 'Spell の新しい選択を確定する'
+    : liveLegal.some(({ a }) => a.playAdd || a.preparedAdds) ? 'プレイの支払いを選ぶ'
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';

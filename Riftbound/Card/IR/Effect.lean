@@ -53,6 +53,14 @@ structure ReducedPermanentPlay where
   battlefieldFees : List ObjId := []
 deriving DecidableEq, Repr, Hashable
 
+/-- One activation that provides resources for an effect's play (CR 357.1.a). -/
+inductive EffectAdd where
+  /-- Exhaust or Recycle a Basic Rune. -/
+  | rune (source : ObjId) (recycle : Bool)
+  /-- Use a card's Add ability with its own selected resource cost. -/
+  | ability (source : ObjId) (index energy : Nat) (power : List Domain)
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
@@ -99,6 +107,12 @@ inductive Effect where
   | banishForReplay (card : ObjId) (sameLocation : Bool)
   /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
   | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
+  /-- Continue choosing resource activations for the selected finalization. -/
+  | fundLookedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
+      (adds : List EffectAdd)
+  /-- Use the chosen Add abilities and pay for the effect's permanent as one finalization. -/
+  | finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
+      (adds : List EffectAdd)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

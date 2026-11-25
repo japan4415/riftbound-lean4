@@ -363,7 +363,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked => true
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
-      .banishForReplay .. | .finishReducedPermanent .. => false
+      .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
+      .finishFundedPermanent .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e

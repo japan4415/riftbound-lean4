@@ -3426,9 +3426,9 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s2, _) ← s1.stackTop s.me ["OGN-088", "OGN-136"]
   let top ← s2.topCard s.me
   let env : Env := ({} : Env).bind pickVar (.obj top)
-  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil
+  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil effectAddPolicy
   let plain := runEffect1 (s2.modObj hatch id |>.setZone (.player s.me .base) []) s.me hatch env
-    (.prim (.reveal (.var pickVar))) .nil
+    (.prim (.reveal (.var pickVar))) .nil effectAddPolicy
   let looks (r : GameState × List Frame × List Event) : Bool :=
     match r.2.1 with
     | [.run _ _ _ (.cons (.prim (.lookTop 1)) _)] => true

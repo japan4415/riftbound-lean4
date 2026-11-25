@@ -818,7 +818,8 @@ theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect1 s p src env e es).2.1) :
+    {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (runEffect1 s p src env e es funding).2.1) :
     f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
   unfold runEffect1 castInlineStep at h
   split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
@@ -828,6 +829,15 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
+    | (unfold banishLookedStep at h
+       split at h
+       · split at h
+         · dsimp only at h
+           split at h <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl
+         · obtain rfl := List.mem_singleton.mp h
+           exact Or.inl rfl
+       · obtain rfl := List.mem_singleton.mp h
+         exact Or.inl rfl)
     | (rcases List.mem_append.mp h with ha | hb
        · exact Or.inl (attachmentReplacementFrames_play ha)
        · obtain rfl := List.mem_singleton.mp hb
@@ -867,7 +877,8 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
 
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
+    {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (runEffect s p src env e es funding).2.1) :
     f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
   unfold runEffect at h
   split at h
@@ -1127,7 +1138,7 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hmeta := (runEffect_safe s p src (env.withMight s.mightTable) e es).same
+    have hmeta := (runEffect_safe s p src (env.withMight s.mightTable) e es effectAddPolicy).same
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hmeta.config, hmeta.turnOrder, hmeta.phase, hmeta.result⟩ (fun hm => ?_)
     rcases List.mem_append.mp hm with h1 | h1

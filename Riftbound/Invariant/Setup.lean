@@ -814,8 +814,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount,
-        (runEffect_safe s p src (env.withMight s.mightTable) e es).same.config])
-      (new := (runEffect s p src (env.withMight s.mightTable) e es).2.1) rfl (fun g hg => by
+        (runEffect_safe s p src (env.withMight s.mightTable) e es effectAddPolicy).same.config])
+      (new := (runEffect s p src (env.withMight s.mightTable) e es effectAddPolicy).2.1) rfl (fun g hg => by
         rcases runEffect_mem hg with h1 | ⟨q, k, rfl⟩ | ⟨q, rfl⟩
         · cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
         · rfl

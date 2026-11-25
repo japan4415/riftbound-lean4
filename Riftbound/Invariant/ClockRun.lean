@@ -397,8 +397,8 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · rename_i p src env e es' rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (runEffect s p src (env.withMight s.mightTable) e es').1 :=
-      TC.of_safe (runEffect_safe s p src (env.withMight s.mightTable) e es')
+    have h1 : TC s (runEffect s p src (env.withMight s.mightTable) e es' effectAddPolicy).1 :=
+      TC.of_safe (runEffect_safe s p src (env.withMight s.mightTable) e es' effectAddPolicy)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
   · rename_i item rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
