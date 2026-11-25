@@ -4094,14 +4094,34 @@ def RAD_152.meta : CardDef :=
   { id := ⟨"RAD-152"⟩,
     name := "Encore",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Seraphine"⟩],
     domains := [.mind, .order],
-    cost := some ⟨3, [.any]⟩,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    cost := some ⟨3, [.own]⟩,
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Encore: the effect is not written yet. -/
-def RAD_152 : CardDef := RAD_152.meta
+/-- Encore finalizes a pair of distinct modes and resolves them in printed order. -/
+def RAD_152 : CardDef :=
+  let damageTarget := Choice.targetOf .one .any .anywhere [.ofType .unit]
+  let boostTargets := Choice.targetOf (.upTo 2) .any .anywhere [.ofType .unit]
+  let damage := Effect.prim (.deal (.slot 0) (.const 2))
+  let recruits := Effect.repeatN (.const 2) (.prim (.playUnitToken "Recruit"))
+  let boost (first : Nat) := Effect.grant (.slotsFrom first) (.mightPlus .it (.const 1)) .thisTurn
+  let look := Effect.lookAtTop 2 (.seqOf [
+    .chooseObject .friendly .inMainDeck (.ofList [.top 2]) (.prim (.drawLooked (.var pickVar))),
+    .recycleLooked])
+  let pair (label : String) (choices : List Choice) (first second : Effect) : SpellMode :=
+    ⟨label, choices, .seqOf [first, second], none⟩
+  { RAD_152.meta with
+    spellEffect := some { body := .nop, recheckTargets := true, modes := [
+      pair "Deal damage and play Recruits" [damageTarget] damage recruits,
+      pair "Deal damage and give Might" [damageTarget, boostTargets] damage (boost 1),
+      pair "Deal damage and look at the deck" [damageTarget] damage look,
+      pair "Play Recruits and give Might" [boostTargets] recruits (boost 0),
+      pair "Play Recruits and look at the deck" [] recruits look,
+      pair "Give Might and look at the deck" [boostTargets] (boost 0) look] },
+    status := .full }
 
 -- BEGIN GENERATED RAD-153
 /--

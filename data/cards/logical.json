@@ -32260,6 +32260,7 @@
    "mightBonus": null,
    "name": "Encore",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-152/167"
    ],
@@ -32267,6 +32268,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Seraphine"
    ],
