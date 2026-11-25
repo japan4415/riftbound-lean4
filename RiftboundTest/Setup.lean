@@ -204,12 +204,13 @@ meta def burnOutScenario : Option (GameState × GameState) :=
       | .error .fuelExhausted => true | _ => false) &&
     (match runAuto 1 200 (Rng.ofSeed 1) s with
       | .error .fuelExhausted => true | _ => false) &&
-    -- the opening hands take 11 steps (laying them out, then four draws and one pop each); the
-    -- first turn up to the Main Phase takes 8 more
-    (match runAuto 10 200 (Rng.ofSeed 1) s with
+    -- Starting the first turn takes 14 work steps after the last mulligan, including the
+    -- Beginning Step and Scoring Step.
+    (match runAuto 13 200 (Rng.ofSeed 1) s with
       | .error .fuelExhausted => true | _ => false) &&
-    (match runAuto 11 200 (Rng.ofSeed 1) s with
-      | .ok s' => s'.pending.length == 1 | _ => false)
+    (match runAuto 14 200 (Rng.ofSeed 1) s with
+      | .ok s' => s'.phase == .main && s'.pending == [.priority (s'.active.getD p0)]
+      | _ => false)
   | none => false
 
 end RiftboundTest
