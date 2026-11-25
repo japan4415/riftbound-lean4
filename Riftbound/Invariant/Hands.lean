@@ -858,8 +858,8 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
     | exact Or.inl (castInlineStep_mem h)
-    | exact Or.inl (finalizeTrashStep_mem h)
-    | exact Or.inl (cancelTrashStep_mem h)
+    | exact Or.inl (finalizeLimitedStep_mem h)
+    | exact Or.inl (cancelLimitedStep_mem h)
     | exact Or.inl (resolveEffectDamageStep_mem h)
     | exact Or.inl (orderCombatDamageStep_mem h)
     | (unfold banishLookedStep at h

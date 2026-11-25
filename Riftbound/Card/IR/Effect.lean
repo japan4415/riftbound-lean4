@@ -146,14 +146,14 @@ inductive Effect where
   /-- Use the chosen Add abilities and pay for the effect's permanent as one finalization. -/
   | finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
       (adds : List EffectAdd)
-  /-- Finalize the Spell queued by an effect that plays and then recycles it. -/
-  | finalizeTrashSpell (card : ObjId)
+  /-- Finalize a Spell queued by a limited play effect. -/
+  | finalizeLimitedSpell (card : ObjId)
   /-- Continue choosing the individual Add abilities for the queued Spell's payment. -/
-  | fundTrashSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
+  | fundLimitedSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
   /-- Pay for the queued Spell and make its chosen targets and other finalization choices public. -/
-  | finishTrashSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
-  /-- Put the queued Spell back in its owner's Trash without finalizing it. -/
-  | cancelTrashSpell (card : ObjId)
+  | finishLimitedSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
+  /-- Return the queued Spell to its original zone without finalizing it. -/
+  | cancelLimitedSpell (card : ObjId)
   /-- Continue working through the events of a single damage instruction. -/
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
   /-- Apply one selected replacement and continue with the rest. -/

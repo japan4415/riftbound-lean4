@@ -4,6 +4,8 @@ public import Riftbound.Core.Ids
 public import Riftbound.Core.Domain
 public import Riftbound.Core.Keyword
 public import Riftbound.Card.IR.Basic
+public import Riftbound.Card.IR.Effect
+public import Riftbound.State.Zone
 
 /-!
 # Game objects
@@ -16,6 +18,16 @@ rules that use them.
 @[expose] public section
 
 namespace Riftbound
+
+/-- The adjustment and original position of a Spell awaiting finalization (CR 354.2, 358.5). -/
+structure PendingSpellPlay where
+  /-- The effect's adjustment to the card's cost. -/
+  price : EffectPlayPrice
+  /-- The zone from which the Spell moved to the Chain. -/
+  origin : Zone
+  /-- The objects that preceded this card in its original zone. -/
+  preceding : List ObjId
+deriving DecidableEq, Repr
 
 /-- What an object is. -/
 inductive ObjKind where
@@ -181,6 +193,8 @@ structure Object where
   flowed : Bool := false
   /-- This Spell was played by an effect that Recycles it after it resolves. -/
   recycleAfterPlay : Bool := false
+  /-- The limited play awaiting finalization once the parent effect has resolved. -/
+  pendingSpellPlay : Option PendingSpellPlay := none
   /-- The mode or destination selected when this item was finalized. -/
   spellPick : SpellPick := .plain
   /-- The watched object of a triggered ability, which is not one of its declared targets. -/

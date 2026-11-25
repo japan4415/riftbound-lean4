@@ -29,12 +29,15 @@ inductive Pos where
   | top
   /-- At the end: the bottom of a deck. -/
   | bottom
+  /-- At the index, or at the end when the list is shorter. -/
+  | atIndex (index : Nat)
 deriving DecidableEq, Repr
 
 /-- Put an object into a list at the given end. -/
 def Pos.insert : Pos → ObjId → List ObjId → List ObjId
   | .top, id, l => id :: l
   | .bottom, id, l => l ++ [id]
+  | .atIndex index, id, l => l.take index ++ id :: l.drop index
 
 /-- Inserting puts exactly one new member into the list (up to order). -/
 theorem Pos.insert_perm (pos : Pos) (id : ObjId) (l : List ObjId) :
@@ -42,10 +45,13 @@ theorem Pos.insert_perm (pos : Pos) (id : ObjId) (l : List ObjId) :
   cases pos
   · exact List.Perm.refl _
   · simp [Pos.insert]
+  · rename_i index
+    simpa [Pos.insert] using
+      (List.perm_middle (a := id) (l₁ := l.take index) (l₂ := l.drop index))
 
 /-- The inserted object is a member of the result. -/
 theorem Pos.mem_insert (pos : Pos) (id : ObjId) (l : List ObjId) : id ∈ pos.insert id l := by
-  cases pos <;> simp [Pos.insert]
+  exact (pos.insert_perm id l).mem_iff.mpr (by simp)
 
 /-- Moving between these zones makes a new object: at least one is Non-Board (CR 124). -/
 def Zone.crosses (src dst : Zone) : Bool := !(src.isBoard && dst.isBoard)
@@ -104,7 +110,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,
-                 stunned := false, flowed := false, recycleAfterPlay := false,
+                 stunned := false, flowed := false, recycleAfterPlay := false, pendingSpellPlay := none,
                  spellPick := .plain, empowerCount := 0,
                  leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }

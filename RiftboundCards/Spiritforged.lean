@@ -5534,14 +5534,12 @@ def SFD_188.meta : CardDef :=
 
 /-- Void Rush. -/
 def SFD_188 : CardDef :=
+  let deckSize := Amount.count (Selector.all .friendly .inMainDeck [])
   { SFD_188.meta with
-
-    spellEffect := some (.of [] (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
+    spellEffect := some (.of [] (.bind ⟨"d"⟩ deckSize
       (.seqOf [.prim (.revealTop 2),
         .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
-        .repeatN (.sub (.const 2)
-            (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
-          (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))]))),
+        .prim (.draw .you (.sub (.min (.const 2) (.var ⟨"d"⟩)) (.sub (.var ⟨"d"⟩) deckSize)))]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-189

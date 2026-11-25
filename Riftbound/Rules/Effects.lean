@@ -1727,35 +1727,27 @@ def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : 
 
 /-- Finalization choices and costs from the base price set by an effect (CR 420.3). -/
 def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
-    (e : EffectDef) (base : Cost) : List (List ObjId × Cost × SpellPick) :=
+    (e : EffectDef) (base : Cost) (energyCut : Nat) : List (List ObjId × Cost × SpellPick) :=
   let hasCosts := !(s.extrasRaw p id d).isEmpty
   let choices := (spellChoices s p id d e).flatMap (fun (pick, ts) =>
     let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
     (s.spellCostPlans p id d base ts).map (fun (cost, paid) =>
       let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
-      (ts, { cost with power := cost.power ++ List.replicate surcharge .any }, choice)))
+      (ts, { cost.lessEnergy energyCut with power := cost.power ++ List.replicate surcharge .any }, choice)))
   choices.eraseDups
 
-/-- Targets, finalization choices and costs for a Spell played with an Energy discount. -/
-def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
-    (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
-  (s.effCost p id d).toList.flatMap (fun base =>
-    (effectSpellOptions s p id d e (base.lessEnergy less)).filter
-      (fun (_, cost, _) => (payByRunes s p id cost).isSome))
-
 /-- A Spell on the Chain whose limited play has yet to finalize (CR 354.2, 354.3). -/
-def GameState.queuedTrashSpell (s : GameState) (card : ObjId) : Bool :=
-  (s.zone .chain).contains card && (s.obj? card).any (·.recycleAfterPlay) &&
-    !s.playLog.any (fun play => play.object == card && play.moment == .finalized)
+def GameState.pendingSpell (s : GameState) (card : ObjId) : Option PendingSpellPlay :=
+  if (s.zone .chain).contains card then (s.obj? card).bind (·.pendingSpellPlay) else none
 
 /-- The next Chain decision after a resolution. A queued play finalizes before anyone can respond. -/
 def afterItem (s : GameState) : List Frame :=
   match (s.zone .chain).head? with
   | none => []
   | some card =>
-    if s.queuedTrashSpell card then
+    if (s.pendingSpell card).isSome then
       let p := ((s.obj? card).map (·.controller)).getD (s.active.getD ⟨0⟩)
-      [.run p card {} (.cons (.finalizeTrashSpell card) .nil)]
+      [.run p card {} (.cons (.finalizeLimitedSpell card) .nil)]
     else [.chainPass (s.active.getD ⟨0⟩) 0]
 
 /-- The frames under Cleanup after a resolution are play frames. -/
@@ -1765,71 +1757,57 @@ theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) : f.is
   · simp at h
   · split at h <;> obtain rfl := List.mem_singleton.mp h <;> rfl
 
-/-- An effect's Trash spell ignores its base Energy. Its targets cannot include the item that
-is still resolving or any other unfinalized item (CR 355.9.a, 354.3). -/
-def trashSpellOptions (s : GameState) (p : PlayerId) (card : ObjId) : List EffectSpellPlay := Id.run do
+/-- A Spell played by an effect cannot target the item still resolving or an unfinalized item
+(CR 354.3, 355.9.a). -/
+def limitedSpellOptions (s : GameState) (p : PlayerId) (card : ObjId)
+    (price : EffectPlayPrice) : List EffectSpellPlay := Id.run do
   let some d := s.cardDef? card | return []
   if !d.hasType .spell || s.cantPlay p || s.noSpells p || s.blocksPlay p card d then return []
   let some effect := d.spellEffect | return []
-  let some base := EffectPlayPrice.ignoreEnergy.baseCost s p card d | return []
+  let some base := price.baseCost s p card d | return []
   let resolving := s.pending.findSome? (fun | .finishSpell id => some id | _ => none)
-  return (effectSpellOptions s p card d effect base).filterMap (fun (targets, cost, pick) =>
-    if targets.all (fun id => resolving != some id && !s.queuedTrashSpell id) then
+  return (effectSpellOptions s p card d effect base price.energyCut).filterMap (fun (targets, cost, pick) =>
+    if targets.all (fun id => resolving != some id && (s.pendingSpell id).isNone) then
       some { targets, cost, pick } else none)
 
 /-- Find individual Add activations that can pay for the Spell's chosen targets and mode. -/
-def trashSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
-    (funding : EffectAddPolicy) : List EffectAdd :=
+def effectSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
+    (plan : EffectSpellPlay) (funding : EffectAddPolicy) : List EffectAdd :=
   if plan.cost.total == 0 then [] else
   funding.choices s p (fun t => (payByRunes t p card plan.cost).isSome &&
-    (trashSpellOptions t p card).contains plan)
+    (limitedSpellOptions t p card price).contains plan)
 
 /-- Retain payable finalizations, recording whether an Add window is available for each. -/
-def trashSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) (funding : EffectAddPolicy) :
-    List (EffectSpellPlay × Bool) :=
-  (trashSpellOptions s p card).filterMap (fun plan =>
-    let hasAdds := !(trashSpellAddChoices s p card plan funding).isEmpty
+def limitedSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
+    (funding : EffectAddPolicy) : List (EffectSpellPlay × Bool) :=
+  (limitedSpellOptions s p card price).filterMap (fun plan =>
+    let hasAdds := !(effectSpellAddChoices s p card price plan funding).isEmpty
     if hasAdds || (s.payNow p card plan.cost).isSome then some (plan, hasAdds) else none)
 
-/-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
-If the cost cannot be paid or the choice is unavailable, it is not cast. -/
-def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
-    GameState × List Event :=
-  match ((s.cardDef? id).filter (fun d => !s.blocksPlay p id d)).bind
-      (fun d => d.spellEffect.map (fun e => (d, e))) with
-  | some (d, e) =>
-    match (reducedSpellChoices s p id d e k)[idx]? with
-    | some (ts, cost, pick) =>
-      match payByRunes s p id cost with
-      | some r =>
-        match moveObj r.1 id .chain with
-        | some m =>
-          let chosen := pick.optionalCosts.getD (false, 0)
-          let mark := { r.1.freeMark p id with
-            spellPick := pick, paid := chosen.1, extraPaid := chosen.2 }
-          (m.1.modObj m.2 (Object.withPlay ts mark),
-            r.2 ++ [Event.moved id m.2 .chain, Event.played p m.2] ++ ts.map (Event.chosenBySpell p))
-        | none => (s, [])
-      | none => (s, [])
-    | none => (s, [])
-  | none => (s, [])
+/-- Check the choices before paying the exact price from the Pool. -/
+def effectSpellPoolPayment (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
+    (plan : EffectSpellPlay) : Option RunePool :=
+  if (limitedSpellOptions s p card price).contains plan then s.payNow p card plan.cost else none
 
-/-- Casting a Spell for a reduced cost is a safe change. -/
-theorem castPickedOne_safe (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
-    Safe s (castPickedOne p k idx s id).1 := by
-  unfold castPickedOne
-  split
-  · split
-    · split
-      · rename_i r hr
-        split
-        · rename_i m hm
-          exact (payByRunes_safe hr).trans
-            ((Safe.moveObj hm).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl)))
-        · exact Safe.refl s
-      · exact Safe.refl s
-    · exact Safe.refl s
-  · exact Safe.refl s
+/-- Start a limited play by moving the card onto the Chain; its payment and targets wait
+for the parent resolution (CR 354.2, 354.3). -/
+def queueLimitedSpell (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
+    (recycle : Bool) : Option (GameState × ObjId) := do
+  let origin ← s.locate card
+  let preceding := (s.zone origin).takeWhile (· != card)
+  let (t, item) ← moveObj s card .chain
+  let play := { price, origin, preceding : PendingSpellPlay }
+  some (t.modObj item (fun o => { o with
+    pendingSpellPlay := some play, recycleAfterPlay := recycle, controller := p }), item)
+
+/-- Queuing a limited play preserves the game invariants. -/
+theorem queueLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId}
+    {price : EffectPlayPrice} {recycle : Bool} {t : GameState} {item : ObjId}
+    (h : queueLimitedSpell s p card price recycle = some (t, item)) : Safe s t := by
+  unfold queueLimitedSpell at h
+  simp only [bind, Option.bind_eq_some_iff, Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨origin, _, ⟨next, id⟩, moved, rfl, rfl⟩ := h
+  exact (Safe.moveObj moved).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
 
 /-- Playing a card for a reduced cost is a safe change. -/
 theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState)
@@ -3197,8 +3175,6 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       match l with
       | f :: _ => onSelected s p src env to (addTempKws (s.keywordsNow f) .turn)
       | [] => none)
-  | .castPicked sel less idx =>
-    (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
   | .bin sel => (onSelected s p src env sel (sendObj .trash)).map
     (fun r => (r.1, r.2 ++ spellCompletion s src r.2))
   | .discardCard sel => onSelected s p src env sel discardObj
@@ -3454,13 +3430,6 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | cons f _ =>
         simp only [hf, Option.bind_some] at h
         exact onSelected_safe (addTempKws_safe _ _) h
-  | castPicked sel less idx =>
-    simp only [applyPrim] at h
-    cases hk : less.evalS s p src env with
-    | none => simp [hk] at h
-    | some k =>
-      simp only [hk, Option.bind_some] at h
-      exact onSelected_safe (castPickedOne_safe p k idx) h
   | bin sel =>
     simp only [applyPrim, Option.map_eq_some_iff] at h
     obtain ⟨r, hr, rfl⟩ := h
@@ -3845,7 +3814,6 @@ def Prim.pickSel? : Prim → Option Selector
   | .banishReplay s _ => some s
   | .playPaying s => some s
   | .playReduced s _ _ => some s
-  | .castPicked s _ _ => some s
   | .castInline s => some s
   | .markOn s _ => some s
   | .delayUntilDeath s _ => some s
@@ -3889,7 +3857,6 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .banishReplay _ keep => .banishReplay sel keep
   | .playPaying _ => .playPaying sel
   | .playReduced _ l d => .playReduced sel l d
-  | .castPicked _ l i => .castPicked sel l i
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .delayUntilDeath _ idx => .delayUntilDeath sel idx
@@ -3954,91 +3921,82 @@ def Effect.pickIsTarget (e : Effect) (s : GameState) (id : ObjId) : Bool :=
 def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
   if e.pickIsTarget s id then chosenAt s p src id else []
 
-/-- Queue the selected Trash spell (Kai'Sa, Fizz). Its targets and costs are finalized only
-after the parent effect completes (CR 354.3). -/
+/-- Move a playable Spell to the Chain and continue the parent effect (CR 354.3, 420.3.c). -/
+def castLimitedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
+    (price : EffectPlayPrice) (recycle : Bool) (es : EffectList) (funding : EffectAddPolicy) :
+    GameState × List Frame × List Event :=
+  let next := [Frame.run p src env es]
+  if (limitedSpellChoices s p card price funding).isEmpty then (s, next, [.skipped src]) else
+    match queueLimitedSpell s p card price recycle with
+    | some (t, item) => (t, next, [.moved card item .chain])
+    | none => (s, next, [.skipped src])
+
+/-- Starting a limited play preserves the game invariants. -/
+theorem castLimitedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (card : ObjId) (price : EffectPlayPrice) (recycle : Bool) (es : EffectList)
+    (funding : EffectAddPolicy) : Safe s (castLimitedStep s p src env card price recycle es funding).1 := by
+  unfold castLimitedStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · split
+    · exact queueLimitedSpell_safe (by assumption)
+    · exact Safe.refl s
+
+/-- Starting a limited play only schedules the remaining work of the parent effect. -/
+theorem castLimitedStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
+    {price : EffectPlayPrice} {recycle : Bool} {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (hf : f ∈ (castLimitedStep s p src env card price recycle es funding).2.1) : f.isPlay = true := by
+  unfold castLimitedStep at hf
+  dsimp only at hf
+  split at hf
+  · obtain rfl := List.mem_singleton.mp hf
+    rfl
+  · split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
+
+/-- Queue a Trash Spell ignoring its base Energy (Kai'Sa, Fizz). -/
 def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
-  let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match sel.eval s p src env with
-  | some (id :: _) =>
-    if (trashSpellChoices s p id funding).isEmpty then skip else
-      match moveObj s id .chain with
-      | some (t, queued) =>
-        (t.modObj queued (fun o => { o with recycleAfterPlay := true, controller := p }),
-          [.run p src env es], [.moved id queued .chain])
-      | none => skip
-  | _ => skip
+  | some (id :: _) => castLimitedStep s p src env id .ignoreEnergy true es funding
+  | _ => (s, [.run p src env es], [.skipped src])
 
-/-- Undo the queued play before moving on. The chosen Add activations are still tentative
-and have had no effect (CR 358.5). -/
-def cancelTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
+/-- Queuing a Trash Spell preserves the game invariants. -/
+theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (sel : Selector) (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (castInlineStep s p src env sel es funding).1 := by
+  unfold castInlineStep
+  split
+  · exact castLimitedStep_safe _ _ _ _ _ _ _ _ _
+  · exact Safe.refl s
+
+/-- The queued play continues with the parent Spell's remaining work. -/
+theorem castInlineStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (hf : f ∈ (castInlineStep s p src env sel es funding).2.1) : f.isPlay = true := by
+  unfold castInlineStep at hf
+  split at hf
+  · exact castLimitedStep_mem hf
+  · obtain rfl := List.mem_singleton.mp hf
+    rfl
+
+/-- Undo the queued play. Returning to the original zone retains its order among the cards
+that were there before it and are still present. Tentative resource activations are discarded. -/
+def cancelLimitedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
     (es : EffectList) : GameState × List Frame × List Event :=
   let next := Frame.run p src env es
-  if !s.queuedTrashSpell card then (s, [next], []) else
-    let owner := ((s.obj? card).map (·.owner)).getD p
-    let trash := Zone.player owner .trash
-    match moveObj s card trash with
-    | some (t, restored) => (t, afterItem t ++ [next], [.moved card restored trash])
+  match s.pendingSpell card with
+  | none => (s, [next], [])
+  | some play =>
+    let index := play.preceding.countP (fun id => (s.zone play.origin).contains id)
+    match moveObj s card play.origin (.atIndex index) with
+    | some (t, restored) => (t, afterItem t ++ [next], [.moved card restored play.origin])
     | none => (s, [next], [])
 
-/-- Offer the queued Spell's legal finalizations, opening a payment choice for any plan with
-an available Add ability. -/
-def finalizeTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
-    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
-  if !s.queuedTrashSpell card then (s, [.run p src env es], []) else
-    match trashSpellChoices s p card funding with
-    | [] => cancelTrashStep s p src env card es
-    | plans =>
-      let options := plans.map (fun (plan, hasAdds) =>
-        if hasAdds then Effect.fundTrashSpell card plan [] else .finishTrashSpell card plan [])
-      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
-
-/-- Check the choices before paying the exact price from the Pool. -/
-def trashSpellPoolPayment (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay) :
-    Option RunePool :=
-  if s.queuedTrashSpell card && (trashSpellOptions s p card).contains plan then
-    s.payNow p card plan.cost
-  else none
-
-/-- Offer another Add, completion from the currently projected Pool, or cancellation. -/
-def fundTrashOptions (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
-    (adds : List EffectAdd) (funding : EffectAddPolicy) : List Effect := Id.run do
-  let cancel := Effect.cancelTrashSpell card
-  if !s.queuedTrashSpell card then return [cancel]
-  let some (t, _) := funding.applyAll s p adds | return [cancel]
-  let pay := if (trashSpellPoolPayment t p card plan).isSome then
-    [Effect.finishTrashSpell card plan adds] else []
-  let activate := (trashSpellAddChoices t p card plan funding).map (fun a =>
-    Effect.fundTrashSpell card plan (adds ++ [a]))
-  return pay ++ activate ++ [cancel]
-
-/-- Commit the selected Adds and finalize the Spell together, allowing Reactions afterwards. -/
-def commitTrashSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
-    (adds : List EffectAdd) (funding : EffectAddPolicy) : Option (GameState × List Event) := do
-  let (funded, events) ← funding.applyAll s p adds
-  let pool ← trashSpellPoolPayment funded p card plan
-  let paid := funded.setPoolFor p card pool
-  let chosen := plan.pick.optionalCosts.getD (false, 0)
-  let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ with
-    spellPick := plan.pick, paid := chosen.1, extraPaid := chosen.2 }
-  some (paid.modObj card (Object.withPlay plan.targets mark),
-    events ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
-
-/-- Committing a queued Spell preserves the game invariants. -/
-theorem commitTrashSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {plan : EffectSpellPlay}
-    {adds : List EffectAdd} {funding : EffectAddPolicy} {r : GameState × List Event}
-    (h : commitTrashSpell s p card plan adds funding = some r) : Safe s r.1 := by
-  unfold commitTrashSpell at h
-  simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-  obtain ⟨⟨t, events⟩, ht, pool, -, hr⟩ := h
-  rw [← hr]
-  exact (funding.safe (r := (t, events)) ht).trans ((setPoolFor_safe t p card pool).trans
-    (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl)))
-
-/-- Returning the card to its Trash preserves the game invariants. -/
-theorem cancelTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (card : ObjId) (es : EffectList) : Safe s (cancelTrashStep s p src env card es).1 := by
-  unfold cancelTrashStep
+/-- Returning a Spell to its original zone preserves the game invariants. -/
+theorem cancelLimitedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (card : ObjId) (es : EffectList) : Safe s (cancelLimitedStep s p src env card es).1 := by
+  unfold cancelLimitedStep
   split
   · exact Safe.refl s
   · dsimp only
@@ -4047,10 +4005,10 @@ theorem cancelTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env :
     · exact Safe.refl s
 
 /-- The continuation after cancellation consists of play frames. -/
-theorem cancelTrashStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
-    {es : EffectList} {f : Frame} (hf : f ∈ (cancelTrashStep s p src env card es).2.1) :
+theorem cancelLimitedStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
+    {es : EffectList} {f : Frame} (hf : f ∈ (cancelLimitedStep s p src env card es).2.1) :
     f.isPlay = true := by
-  unfold cancelTrashStep at hf
+  unfold cancelLimitedStep at hf
   split at hf
   · obtain rfl := List.mem_singleton.mp hf
     rfl
@@ -4063,102 +4021,119 @@ theorem cancelTrashStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {e
     · obtain rfl := List.mem_singleton.mp hf
       rfl
 
+/-- Offer legal targets, modes, and costs once the parent effect is finished. -/
+def finalizeLimitedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  match s.pendingSpell card with
+  | none => (s, [.run p src env es], [])
+  | some play =>
+    match limitedSpellChoices s p card play.price funding with
+    | [] => cancelLimitedStep s p src env card es
+    | plans =>
+      let options := plans.map (fun (plan, hasAdds) =>
+        if hasAdds then Effect.fundLimitedSpell card plan [] else .finishLimitedSpell card plan [])
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
+
 /-- Offering finalization or returning a rejected play preserves the game invariants. -/
-theorem finalizeTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+theorem finalizeLimitedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (card : ObjId) (es : EffectList) (funding : EffectAddPolicy) :
-    Safe s (finalizeTrashStep s p src env card es funding).1 := by
-  unfold finalizeTrashStep
+    Safe s (finalizeLimitedStep s p src env card es funding).1 := by
+  unfold finalizeLimitedStep
   split
   · exact Safe.refl s
   · split
-    · exact cancelTrashStep_safe s p src env card es
+    · exact cancelLimitedStep_safe s p src env card es
     · exact Safe.refl s
 
 /-- The continuation from a queued finalization consists of play frames. -/
-theorem finalizeTrashStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
+theorem finalizeLimitedStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
     {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
-    (hf : f ∈ (finalizeTrashStep s p src env card es funding).2.1) : f.isPlay = true := by
-  unfold finalizeTrashStep at hf
+    (hf : f ∈ (finalizeLimitedStep s p src env card es funding).2.1) : f.isPlay = true := by
+  unfold finalizeLimitedStep at hf
   split at hf
   · obtain rfl := List.mem_singleton.mp hf
     rfl
   · split at hf
-    · exact cancelTrashStep_mem hf
+    · exact cancelLimitedStep_mem hf
     · obtain rfl := List.mem_singleton.mp hf
       rfl
 
-/-- A Spell that a card plays for a reduced cost (Void Rush): the player chooses the pick of its
-targets, as one of the ways to cast it. A card that is no Spell is played as a Unit or a Gear. -/
+/-- Offer another Add, payment from the projected Pool, or cancellation. -/
+def fundLimitedOptions (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
+    (adds : List EffectAdd) (funding : EffectAddPolicy) : List Effect := Id.run do
+  let cancel := Effect.cancelLimitedSpell card
+  let some (t, _) := funding.applyAll s p adds | return [cancel]
+  let some play := t.pendingSpell card | return [cancel]
+  let pay := if (effectSpellPoolPayment t p card play.price plan).isSome then
+    [Effect.finishLimitedSpell card plan adds] else []
+  let activate := (effectSpellAddChoices t p card play.price plan funding).map (fun a =>
+    Effect.fundLimitedSpell card plan (adds ++ [a]))
+  return pay ++ activate ++ [cancel]
+
+/-- Commit the selected Adds and finalize the Spell together, allowing Reactions afterwards. -/
+def commitLimitedSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
+    (adds : List EffectAdd) (funding : EffectAddPolicy) : Option (GameState × List Event) := do
+  let (funded, events) ← funding.applyAll s p adds
+  let play ← funded.pendingSpell card
+  let pool ← effectSpellPoolPayment funded p card play.price plan
+  let paid := funded.setPoolFor p card pool
+  let chosen := plan.pick.optionalCosts.getD (false, 0)
+  let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ with
+    spellPick := plan.pick, paid := chosen.1, extraPaid := chosen.2,
+    fromHand := match play.origin with | .player _ .hand => true | _ => false }
+  some (paid.modObj card (fun o => { o.withPlay plan.targets mark with pendingSpellPlay := none }),
+    events ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
+
+/-- Committing a queued Spell preserves the game invariants. -/
+theorem commitLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {plan : EffectSpellPlay}
+    {adds : List EffectAdd} {funding : EffectAddPolicy} {r : GameState × List Event}
+    (h : commitLimitedSpell s p card plan adds funding = some r) : Safe s r.1 := by
+  unfold commitLimitedSpell at h
+  simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+  obtain ⟨⟨t, events⟩, ht, play, -, pool, -, hr⟩ := h
+  rw [← hr]
+  exact (funding.safe (r := (t, events)) ht).trans ((setPoolFor_safe t p card pool).trans
+    (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl)))
+
+/-- A Spell played for a reduced cost (Void Rush). If the choice is a Unit or Gear, it
+continues its own play process. -/
 def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
-    (less : Amount) (dest : Option Selector) (es : EffectList) :
+    (less : Amount) (dest : Option Selector) (es : EffectList) (funding : EffectAddPolicy) :
     Option (GameState × List Frame × List Event) :=
   match dest, sel.eval s p src env with
-  | _, some (id :: _) =>
-    match ((s.cardDef? id).filter (fun d => !s.blocksPlay p id d)).bind
-        (fun d => d.spellEffect.map (fun e => (d, e))) with
-    | some (d, e) =>
-      let n := (reducedSpellChoices s p id d e ((less.evalS s p src env).getD 0)).length
-      some (s, [.run p src env (.cons (.eitherOf (EffectList.ofList
-        ((List.range n).map (fun i => Effect.prim (.castPicked sel less i))))) es)], [])
-    | none => none
+  | none, some (id :: _) =>
+    if (s.cardDef? id).any (·.hasType .spell) then
+      let amount := (less.evalS s p src env).getD 0
+      some (castLimitedStep s p src env id (.reduceEnergy amount) false es funding)
+    else none
   | _, _ => none
 
-/-- Choosing how to cast a Spell changes nothing of the state. -/
+/-- Starting a reduced-cost Spell preserves the game invariants. -/
 theorem castReducedStep_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {sel : Selector} {less : Amount} {dest : Option Selector} {es : EffectList}
-    {r : GameState × List Frame × List Event}
-    (h : castReducedStep s p src env sel less dest es = some r) : Safe s r.1 := by
+    {funding : EffectAddPolicy} {r : GameState × List Frame × List Event}
+    (h : castReducedStep s p src env sel less dest es funding = some r) : Safe s r.1 := by
   unfold castReducedStep at h
   split at h
   · split at h
-    · simp only [Option.some.injEq] at h
-      rw [← h]
-      exact Safe.refl s
-    · simp at h
-  · simp at h
+    · obtain rfl := Option.some.inj h
+      exact castLimitedStep_safe _ _ _ _ _ _ _ _ _
+    · contradiction
+  · contradiction
 
-/-- The frames that choosing how to cast a Spell leaves are frames of the Spell. -/
+/-- Starting a reduced-cost Spell continues the parent effect. -/
 theorem castReducedStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {sel : Selector} {less : Amount} {dest : Option Selector} {es : EffectList}
-    {r : GameState × List Frame × List Event}
-    (h : castReducedStep s p src env sel less dest es = some r) {f : Frame} (hf : f ∈ r.2.1) :
-    f.isPlay = true := by
+    {funding : EffectAddPolicy} {r : GameState × List Frame × List Event}
+    (h : castReducedStep s p src env sel less dest es funding = some r) {f : Frame}
+    (hf : f ∈ r.2.1) : f.isPlay = true := by
   unfold castReducedStep at h
   split at h
   · split at h
-    · simp only [Option.some.injEq] at h
-      rw [← h] at hf
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
-      rcases hf with rfl
-      rfl
-    · simp at h
-  · simp at h
-
-/-- Queuing a limited play is a safe change of the state. -/
-theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (es : EffectList) (funding : EffectAddPolicy) :
-    Safe s (castInlineStep s p src env sel es funding).1 := by
-  unfold castInlineStep
-  split
-  · split
-    · exact Safe.refl s
-    · split
-      · exact (Safe.moveObj (by assumption)).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
-      · exact Safe.refl s
-  · exact Safe.refl s
-
-/-- The queued play continues with the parent spell's remaining work. -/
-theorem castInlineStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {sel : Selector} {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
-    (hf : f ∈ (castInlineStep s p src env sel es funding).2.1) : f.isPlay = true := by
-  unfold castInlineStep at hf
-  split at hf
-  · split at hf
-    · obtain rfl := List.mem_singleton.mp hf
-      rfl
-    · split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
-  · obtain rfl := List.mem_singleton.mp hf
-    rfl
+    · obtain rfl := Option.some.inj h
+      exact castLimitedStep_mem hf
+    · contradiction
+  · contradiction
 
 /-- Play a Spell for free (CR 349): it goes on the Chain as a new object, played by `p`, and its
 effect is done at once, as it would resolve; then it goes to its owner's Trash, and the Cleanup
@@ -4475,7 +4450,16 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     let candidates := match sel with
       | .pick .one side place fs => s.pickCandidates p src env side place fs false
       | _ => sel.eval s p src env
-    some ((candidates.getD []).filter (fun card => !(trashSpellChoices s p card funding).isEmpty))
+    some ((candidates.getD []).filter (fun card =>
+      !(limitedSpellChoices s p card .ignoreEnergy funding).isEmpty))
+  | .prim (.playReduced sel less none) => do
+    let some amount := less.evalS s p src env | return []
+    let candidates := match sel with
+      | .pick .one side place fs => s.pickCandidates p src env side place fs false
+      | _ => sel.eval s p src env
+    return (candidates.getD []).filter (fun card =>
+      !(s.cardDef? card).any (·.hasType .spell) ||
+        !(limitedSpellChoices s p card (.reduceEnergy amount) funding).isEmpty)
   | .prim (.playReduced sel less (some dest)) => do
     let some amount := less.evalS s p src env | return []
     let candidates := match sel with
@@ -4762,15 +4746,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es funding
-  | .finalizeTrashSpell card => finalizeTrashStep s p src env card es funding
-  | .fundTrashSpell card plan adds =>
-    let choices := fundTrashOptions s p card plan adds funding
+  | .finalizeLimitedSpell card => finalizeLimitedStep s p src env card es funding
+  | .fundLimitedSpell card plan adds =>
+    let choices := fundLimitedOptions s p card plan adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
-  | .cancelTrashSpell card => cancelTrashStep s p src env card es
-  | .finishTrashSpell card plan adds =>
-    match commitTrashSpell s p card plan adds funding with
+  | .cancelLimitedSpell card => cancelLimitedStep s p src env card es
+  | .finishLimitedSpell card plan adds =>
+    match commitLimitedSpell s p card plan adds funding with
     | some (t, events) => (t, [.chainPass p 0, .run p src env es], events)
-    | none => cancelTrashStep s p src env card es
+    | none => cancelLimitedStep s p src env card es
   | .resolveEffectDamage batch hit => resolveEffectDamageStep s p src env batch hit es
   | .chooseDamageReplacement batch hit replacement =>
     let (next, damage) := chooseEffectDamage batch hit replacement
@@ -4782,7 +4766,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
     (s, [.run p src env (replays.append es)], [])
   | .prim (.playReduced sel less dest) =>
-    match castReducedStep s p src env sel less dest es with
+    match castReducedStep s p src env sel less dest es funding with
     | some r => r
     | none =>
       match permanentPlayEffects s p src env (.playReduced sel less dest) with
@@ -4830,11 +4814,11 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
     | exact castInlineStep_safe s p src env _ es funding
-    | exact finalizeTrashStep_safe s p src env _ es funding
-    | exact cancelTrashStep_safe s p src env _ es
+    | exact finalizeLimitedStep_safe s p src env _ es funding
+    | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
-    | exact commitTrashSpell_safe (by assumption)
+    | exact commitLimitedSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _

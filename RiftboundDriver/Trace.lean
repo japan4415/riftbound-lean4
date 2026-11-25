@@ -197,7 +197,7 @@ def remakeSpellFields (state : Option GameState) (frame : Option Frame)
   | _ => []
 
 /-- Describe the play and cost of the chosen Spell. -/
-def trashSpellPlayFields (state : Option GameState) (card : ObjId) (plan : EffectSpellPlay) :
+def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : EffectSpellPlay) :
     List (String × String) :=
   let controllers := plan.targets.map (fun id =>
     (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
@@ -205,25 +205,28 @@ def trashSpellPlayFields (state : Option GameState) (card : ObjId) (plan : Effec
     ("targetControllers", jarr controllers), ("queuedCost", costJson plan.cost)] ++
     spellPickFields state card plan.pick
 
-/-- A queued Spell's choice of targets, payment, or cancellation. -/
-def trashSpellDecision (state : Option GameState) : Effect → List (String × String)
-  | .finishTrashSpell card plan adds => trashSpellPlayFields state card plan ++
+/-- A Spell played by an effect: its targets, payment or cancellation. -/
+def effectSpellDecision (state : Option GameState) : Effect → List (String × String)
+  | .finishLimitedSpell card plan adds =>
+    effectSpellPlayFields state card plan ++
     (if adds.isEmpty then [] else [("preparedAdds", jarr (adds.map effectAddJson))])
-  | .fundTrashSpell card plan adds =>
+  | .fundLimitedSpell card plan adds =>
     match adds.getLast? with
-    | none => trashSpellPlayFields state card plan ++ [("chooseSpellPayment", "true")]
+    | none => effectSpellPlayFields state card plan ++ [("chooseSpellPayment", "true")]
     | some add => nextEffectAddFields plan.cost adds add
-  | .cancelTrashSpell _ => [("declinePlay", "true")]
+  | .cancelLimitedSpell _ => [("declinePlay", "true")]
   | _ => [("moreTrashSpellChoices", "true")]
 
-/-- Describe the active choice for a Spell queued from the Trash. -/
-def trashSpellFields (state : Option GameState) (frame : Option Frame)
+/-- Describe an active choice for a Spell played by an effect. -/
+def effectSpellFields (state : Option GameState) (frame : Option Frame)
     (yes : Bool) : List (String × String) :=
   match frame with
   | some (.mayDo _ _ _ (.prim (.castInline _)) _) => [("trashSpellOffer", "true")]
-  | some (.eitherDo _ _ _ first@(.finishTrashSpell ..) other _)
-  | some (.eitherDo _ _ _ first@(.fundTrashSpell ..) other _) =>
-    trashSpellDecision state (if yes then first else other)
+  | some (.mayDo _ _ _ (.prim (.playReduced (.pick .one _ .inMainDeck _) _ none)) _) =>
+    [("revealedPlayOffer", "true")]
+  | some (.eitherDo _ _ _ first@(.finishLimitedSpell ..) other _)
+  | some (.eitherDo _ _ _ first@(.fundLimitedSpell ..) other _) =>
+    effectSpellDecision state (if yes then first else other)
   | _ => []
 
 /-- An action as JSON, with any context needed to describe the choice. -/
@@ -303,7 +306,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
       [("yes", if yes then "true" else "false")] ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
-        remakeSpellFields state frame yes ++ trashSpellFields state frame yes
+        remakeSpellFields state frame yes ++ effectSpellFields state frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
@@ -311,6 +314,9 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.banishLookedForPlay _) _) => [("choiceContext", jstr "lookedDeck")]
         | some (.pickDo _ _ _ _ _ (.prim (.castInline _)) _) => [("choiceContext", jstr "trashSpell")]
+        | some (.pickDo _ _ _ _ _ (.prim (.playReduced _ _ none)) _) =>
+          if (state.bind (·.locate o)).any (fun | .player _ .mainDeck => true | _ => false) then
+            [("choiceContext", jstr "revealedPlay")] else []
         | some (.pickDo _ _ env _ _ (.prim (.copyAttachedFrom _)) _) =>
           [("choiceContext", jstr "attachmentCopy")] ++ (match env.slots.head? with
             | some (.obj unit) => [("unit", toString unit.n)]

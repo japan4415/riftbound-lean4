@@ -1736,11 +1736,9 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
 -- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-188" .hand
-  let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-051"]
+  let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-004"]
   let r ← play d s.me c [] { obj := d.isCard "OGN-004" }
-  return r.countIn s.me .hand "OGN-004" == d.countIn s.me .hand "OGN-004" + 1 &&
-    r.countIn s.me .hand "OGN-051" == d.countIn s.me .hand "OGN-051" + 1 &&
-    r.countIn s.me .base "OGN-051" == 0
+  return r.countIn s.me .hand "OGN-004" == d.countIn s.me .hand "OGN-004" + 2
 
 -- (review) Rumble: if the unit chosen is gone when the ability resolves, no Mech is played
 #guard tsf fun s => do

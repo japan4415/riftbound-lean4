@@ -342,6 +342,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + spell + ' の選択を' + (a.yes ? 'やり直す' : '維持する'), ''];
       }
       if (a.trashSpellOffer) return [who + ': ' + (a.yes ? 'トラッシュから呪文をプレイする' : 'プレイを見送る'), ''];
+      if (a.revealedPlayOffer) return [who + ': ' + (a.yes ? '公開したカードからプレイする' : 'プレイを見送る'), ''];
       if (a.moreSpellChoices != null || a.moreTrashSpellChoices) return [who + ': ほかの選択肢を見る', ''];
       if (a.remadeSpell != null || a.queuedSpell != null) {
         const choices = [];
@@ -411,6 +412,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
       if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
       if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
+      if (a.choiceContext === 'revealedPlay') return [who + ': ' + card + ' を選ぶ', '公開したカードからプレイする1枚を選ぶ'];
       if (a.choiceContext === 'attachmentCopy') return [who + ': ' + card + ' をコピー元に選ぶ',
         a.unit == null ? '' : cardName(a.unit) + ' が装着中にコピーする'];
       return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
@@ -1113,6 +1115,7 @@ function renderLegal(i) {
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
+    : choiceContext === 'revealedPlay' ? '公開したカードからプレイする1枚を選ぶ'
     : choiceContext === 'trashSpell' ? 'トラッシュからプレイする呪文を選ぶ'
     : choiceContext === 'attachmentCopy' ? 'コピー元の味方 Unit を選ぶ'
     : liveLegal.some(({ a }) => a.effectCost) ? '効果の支払いを選ぶ'

@@ -166,7 +166,6 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .banishReplay s _ => Selector.ok c s
   | .copyAttachedFrom s => Selector.ok c s
   | .playPaying s => Selector.ok c s
-  | .castPicked s a _ => Selector.ok c s && Amount.ok c a
   | .giveKeywords t f => Selector.ok c t && Selector.ok c f
   | .playReduced s a t => Selector.ok c s && Amount.ok c a && (match t with
     | some b => Selector.ok c b
@@ -364,8 +363,9 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .recycleLooked => true
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
       .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
-      .finishFundedPermanent .. | .finalizeTrashSpell .. | .fundTrashSpell .. |
-      .finishTrashSpell .. | .cancelTrashSpell .. | .resolveEffectDamage .. |
+      .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
+      .finishLimitedSpell .. | .cancelLimitedSpell .. |
+      .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e

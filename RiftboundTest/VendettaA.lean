@@ -847,8 +847,8 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
   let offer ← passToChoice 8 played
   let (choice, queued) ← act offer (.decide true)
-  let .eitherDo who _ _ (.fundTrashSpell card first [])
-        (.fundTrashSpell alternative second []) _ :: _ := choice.pending | none
+  let .eitherDo who _ _ (.fundLimitedSpell card first [])
+        (.fundLimitedSpell alternative second []) _ :: _ := choice.pending | none
   let (payment, selected) ← act choice (.decide (first.targets == [enemy]))
   let (waiting, chosen) ← act payment (.decide true)
   let (passed, _) ← act waiting .pass
@@ -863,7 +863,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   return who == p && card == alternative && first.targets != second.targets &&
     [first.targets, second.targets].contains [enemy] && [first.targets, second.targets].contains [friendly] &&
     first.cost == ⟨0, [.domain .fury]⟩ && first.cost == second.cost &&
-    choice.zone .chain == [card] && choice.queuedTrashSpell card &&
+    choice.zone .chain == [card] && (choice.pendingSpell card).isSome &&
     queued.contains (.moved steel card .chain) && !(queued.contains (.played p card)) && selected.isEmpty &&
     chosen.contains (.played p card) && chosen.contains (.chosenBySpell p enemy) &&
     (waiting.obj? card).any (fun o => o.targets == [enemy] && !o.flowed && o.energyPaid == 0) &&
@@ -889,27 +889,27 @@ meta def passToChoice : Nat → GameState → Option GameState
   let gold ← s.tokenCard "Gold"
   let goldId : ObjId := ⟨s.nextId⟩
   let (goldPay, queued) ← openPay (createOne gold.id p none true s)
-  let .eitherDo _ _ _ (.fundTrashSpell item goldPlan [.ability source 0 0 []])
-        (.cancelTrashSpell cancelledItem) _ :: _ := goldPay.pending | none
+  let .eitherDo _ _ _ (.fundLimitedSpell item goldPlan [.ability source 0 0 []])
+        (.cancelLimitedSpell cancelledItem) _ :: _ := goldPay.pending | none
   let (goldPrepared, goldSelection) ← act goldPay (.decide true)
   let (goldCancelled, cancellation) ← act goldPrepared (.decide false)
   let (paidGold, goldEvents) ← act goldPrepared (.decide true)
   let (s, runeId) ← put s p "OGN-007" .base
   let (runePay, _) ← openPay (s.modObj runeId (fun o => { o with exhausted := true }))
-  let .eitherDo _ _ _ (.fundTrashSpell runeItem runePlan [.rune runeSource true])
-        (.cancelTrashSpell _) _ :: _ := runePay.pending | none
+  let .eitherDo _ _ _ (.fundLimitedSpell runeItem runePlan [.rune runeSource true])
+        (.cancelLimitedSpell _) _ :: _ := runePay.pending | none
   let (runePrepared, runeSelection) ← act runePay (.decide true)
   let (paidRune, runeEvents) ← act runePrepared (.decide true)
   return item == cancelledItem && source == goldId && runeSource == runeId &&
     goldPlan == runePlan && goldPlan.targets == [gear] && goldPlan.cost == ⟨0, [.domain .fury]⟩ &&
     queued.contains (.moved steel item .chain) && !(queued.contains (.chosenBySpell p gear)) &&
-    goldPay.queuedTrashSpell item && (goldPrepared.obj? goldId).isSome &&
+    (goldPay.pendingSpell item).isSome && (goldPrepared.obj? goldId).isSome &&
     (goldCancelled.obj? goldId).isSome && goldCancelled.countIn p .trash "VEN-003" == 1 &&
     (goldCancelled.zone .chain).isEmpty && !(cancellation.contains (.played p item)) &&
     goldSelection.isEmpty && runeSelection.isEmpty && (runePrepared.obj? runeId).isSome &&
     (paidGold.obj? goldId).isNone && (paidRune.obj? runeId).isNone &&
     (paidGold.poolOf p).total == 0 && (paidRune.poolOf p).total == 0 &&
-    !paidGold.queuedTrashSpell item && !paidRune.queuedTrashSpell runeItem &&
+    (paidGold.pendingSpell item).isNone && (paidRune.pendingSpell runeItem).isNone &&
     goldEvents.contains (.activated p goldId 0 (some 0)) && goldEvents.contains (.chosenBySpell p gear) &&
     runeEvents.contains (.chosenBySpell p gear) && runeEvents.contains (.played p runeItem) &&
     runeEvents.any (fun | .moved old _ (.player owner .runeDeck) => old == runeId && owner == p | _ => false)
@@ -930,13 +930,13 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
   let offer ← passToChoice 8 played
   let (targeting, _) ← act offer (.decide true)
-  let .eitherDo _ _ _ (.fundTrashSpell _ first []) (.fundTrashSpell _ second []) _ :: _ :=
+  let .eitherDo _ _ _ (.fundLimitedSpell _ first []) (.fundLimitedSpell _ second []) _ :: _ :=
     targeting.pending | none
   let (payment, _) ← act targeting (.decide (first.targets == [target]))
-  let .eitherDo _ _ _ (.fundTrashSpell card plan [.ability source 0 0 []]) _ _ :: _ :=
+  let .eitherDo _ _ _ (.fundLimitedSpell card plan [.ability source 0 0 []]) _ _ :: _ :=
     payment.pending | none
   let (goldStaged, _) ← act payment (.decide true)
-  let .eitherDo _ _ _ (.fundTrashSpell _ _ [_, .rune runeSource true]) _ _ :: _ :=
+  let .eitherDo _ _ _ (.fundLimitedSpell _ _ [_, .rune runeSource true]) _ _ :: _ :=
     goldStaged.pending | none
   let (funded, _) ← act goldStaged (.decide true)
   let (done, events) ← act funded (.decide true)
@@ -1209,12 +1209,10 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat)
     (cast ⟨6, [.body]⟩ true 1)).toOption
   let rep ← (repeating.zone .chain).head?
-  let defn ← s0.cardDef? card
-  let effect ← defn.spellEffect
-  let reducedIndex ← (reducedSpellChoices s0 p card defn effect 0).findIdx? (· ==
-    ([ally, enemy], ⟨1, []⟩, .withCosts .plain true 0))
-  let (reduced, _) := castPickedOne p 0 reducedIndex s0 card
-  let reducedItem ← (reduced.zone .chain).head?
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) false
+  let plan ← (limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 0)).find? (fun plan =>
+    plan.targets == [ally, enemy] && plan.cost == ⟨1, []⟩ && plan.pick == .withCosts .plain true 0)
+  let (reduced, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy
   return (legalFrameActions s).contains (cast ⟨3, [.body]⟩ true) &&
     (legalFrameActions s).contains (cast ⟨3, []⟩ false) &&
     !(legalFrameActions s).contains (cast ⟨3, []⟩ true) &&
@@ -1441,11 +1439,10 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let recycled ← (resolved.zone (.player third .mainDeck)).getLast?
   let (countered, canceled) ← settle 12 (counterObj waiting item).1 []
   let (stolen, stolenEvents) ← settle 12 (setController third waiting item).1 []
-  let definition ← s.cardDef? decree
-  let effect ← definition.spellEffect
-  let reduced := reducedSpellChoices s p decree definition effect 1
-  let castByEffect := (castPickedOne p 1 1 s decree).1
-  let reducedItem ← (castByEffect.zone .chain).head?
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s p decree (.reduceEnergy 1) false
+  let reduced := limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 1)
+  let plan ← reduced.find? (fun plan => plan.pick.playerTarget == some third)
+  let (castByEffect, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy
   let paid := (legalActions s).filter (fun a => match a.kind with
     | .playCard card _ _ _ _ _ => card == decree
     | _ => false)
@@ -1464,7 +1461,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     canceled.isEmpty && countered.zone (.player third .hand) == waiting.zone (.player third .hand) &&
     !(stolenEvents.any (fun | .handRevealed .. => true | _ => false)) &&
     stolen.countIn p .trash "VEN-085" == 1 &&
-    reduced.map (fun (_, cost, pick) => (cost.energy, pick.playerTarget)) ==
+    reduced.map (fun plan => (plan.cost.energy, plan.pick.playerTarget)) ==
       [(0, some q), (0, some third)] &&
     (castByEffect.obj? reducedItem).any (·.targetPlayer == some third)
 
@@ -2662,16 +2659,70 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   return (casting.obj? entry).any (·.extraPaid == 1) &&
     (casting.poolOf p).body == 1 && !(legalActions s).contains (pay [.body, .body])
 
+-- Void Rush draws the other revealed card before Brittle Steel can be finalized with a Gold or Rune.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, rush) ← put ((s.fund p 2 (fury := 1)).fund q 1 (mind := 1)) p "SFD-188" .hand
+  let (s, gear) ← put s q "VEN-075" .base
+  let (s, rebuttal) ← put s q "VEN-152" .hand
+  let (s, _) ← put s p "VEN-056" .mainDeck
+  let (s, steel) ← put s p "VEN-003" .mainDeck
+  let gold ← s.tokenCard "Gold"
+  let goldId : ObjId := ⟨s.nextId⟩
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let openPayment (t : GameState) := do
+    let (played, _) ← act t (.playCard rush ⟨2, [.fury]⟩ [])
+    let offer ← passToChoice 8 played
+    act offer (.decide true)
+  let (choosing, queued) ← openPayment (createOne gold.id p none true s)
+  let .eitherDo _ _ _ (.fundLimitedSpell card plan [.ability source 0 0 []])
+    (.cancelLimitedSpell canceledCard) _ :: _ := choosing.pending | none
+  let (prepared, selection) ← act choosing (.decide true)
+  let (canceled, canceledEvents) ← act prepared (.decide false)
+  let (played, playEvents) ← act prepared (.decide true)
+  let item ← (played.zone .chain).head?
+  let .chainPass owner _ :: _ := played.pending | none
+  let replyState ← if owner == q then some played else (act played .pass).map Prod.fst
+  let (replied, _) ← (step 100 replyState ⟨.player q, .playCard rebuttal ⟨1, [.mind]⟩ [item]⟩).toOption
+  let countered := settleChain { yes := false } 12 replied
+  let resolved := settleChain {} 12 played
+  let (s, rune) ← put s p "OGN-007" .base
+  let (runePay, _) ← openPayment (s.modObj rune (fun o => { o with exhausted := true }))
+  let .eitherDo _ _ _ (.fundLimitedSpell _ runePlan [.rune runeSource true])
+    (.cancelLimitedSpell _) _ :: _ := runePay.pending | none
+  let (runePrepared, _) ← act runePay (.decide true)
+  let (runePlayed, runeEvents) ← act runePrepared (.decide true)
+  let deckTop ← (canceled.zone (.player p .mainDeck)).head?
+  return card == canceledCard && source == goldId && runeSource == rune && runePlan == plan &&
+    plan.targets == [gear] && plan.cost == ⟨0, [.domain .fury]⟩ &&
+    queued.contains (.moved steel card .chain) && !(queued.contains (.chosenBySpell p gear)) &&
+    queued.contains (.drew p) && choosing.zone .chain == [card] &&
+    choosing.countIn p .hand "VEN-056" == s.countIn p .hand "VEN-056" + 1 &&
+    (choosing.pendingSpell card).any (fun x => x.price == .reduceEnergy 2) &&
+    selection.isEmpty && (prepared.obj? goldId).isSome && (prepared.pendingSpell card).isSome &&
+    (canceled.obj? goldId).isSome && (canceled.zone .chain).isEmpty &&
+    (canceled.cardDef? deckTop).any (·.id.code == "VEN-003") &&
+    canceled.countIn p .hand "VEN-056" == s.countIn p .hand "VEN-056" + 1 &&
+    !(canceledEvents.any (fun | .activated _ id _ _ => id == goldId | _ => false)) &&
+    (played.obj? goldId).isNone && (played.obj? item).any (fun o => o.targets == [gear] && o.energyPaid == 0) &&
+    played.countIn p .hand "VEN-056" == s.countIn p .hand "VEN-056" + 1 &&
+    playEvents.contains (.activated p goldId 0 (some 0)) && playEvents.contains (.chosenBySpell p gear) &&
+    (countered.obj? gear).isSome && countered.countIn p .trash "VEN-003" == 1 &&
+    (resolved.obj? gear).isNone && (runePrepared.obj? rune).isSome && (runePlayed.obj? rune).isNone &&
+    runeEvents.any (fun | .moved id _ (.player _ .runeDeck) => id == rune | _ => false)
+
 -- A Spell played for a reduced cost by another effect still gets the Tomb discount.
 #guard vendettaCase fun s => do
   let p := s.me
   let (s, tomb) ← putBf s p "VEN-164"
   let (s, unit) ← putAt s p "VEN-047" tomb
   let (s, _) ← put s p "SFD-023" .banishment
+  let (s, parent) ← onChain s p "SFD-188"
   let e := Effect.prim (.playReduced (.one .friendly .inBanishment [.ofType .spell]) (.const 2) none)
   let s := (s.control p tomb).fund p 0
   let task := Frame.run p tomb {} (.cons e .nil)
-  let (casting, _) ← (advance 100 { s with pending := [task] } []).toOption
+  let (casting, _) ← (advance 100 { s with pending := [task, .finishSpell parent] } []).toOption
   let entry ← (casting.zone .chain).head?
   return (casting.cardDef? entry).any (·.id == cid "SFD-023") &&
     (casting.obj? entry).any (fun o => o.extraPaid == 0 && o.targets == [unit])
