@@ -159,6 +159,7 @@ def Filter.understood : Filter → Bool
   | .sameController .self => true
   | .sameController (.slot _) => true
   | .sameController (.var _) => true
+  | .ownedByPlayerTarget _ => true
   | .givesLegendsAttach => true
   | .copiesText => true
   | .takenByMyCard => true

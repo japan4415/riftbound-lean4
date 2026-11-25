@@ -3224,8 +3224,16 @@ def VEN_114.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kharox: the effect is not written yet. -/
-def VEN_114 : CardDef := VEN_114.meta
+/-- Kharox. The opponent is chosen before Burn. Their Trash supplies the play choice afterward. -/
+def VEN_114 : CardDef :=
+  let units := [.ofType .unit, .ownedByPlayerTarget 0]
+  { VEN_114.meta with
+    abilities := [.triggered (.onSelf .becomeEmpowered)
+      { playerTarget := some .enemy,
+        body := .seqOf [.prim (.burn (.chosen 0) (.const 3)),
+          .ifThen (.cmp .gt (.count (Selector.all .any .inTrash units)) (.const 0))
+            (.may (.prim (.play (Selector.one .any .inTrash units)))) .nop] } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-115
 /--

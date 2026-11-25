@@ -429,6 +429,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
     other.map (fun o => decide ((s.obj? o).map (·.controller) = (s.obj? id).map (·.controller)))
+  | .ownedByPlayerTarget i => do
+    let player ← env.playerTargets[i]?
+    (s.obj? id).map (·.owner == player)
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)

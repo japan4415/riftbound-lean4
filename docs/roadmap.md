@@ -2011,6 +2011,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Empowered の Gangplank が選ばれた場合、Stun、Might 減少、手札に戻す処理をターン終了時までの +3 Might に置き換える。Switcheroo では Gangplank 側の減少だけを置き換え、もう一方の増加量を保つ（CR 370）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
 - 167 枚中 155 枚が `drafted`。転記済みの 155 枚が `CardDef.runs` を通り、12 枚が未転記。
 
+### M8c Vendetta 40 — 選んだ相手の Trash からプレイする
+
+- Kharox の Empower で誘発する能力は、相手を 1 人選んで確定する。解決時にその相手が Burn 3 し、その後、今 Burn されたカードも含め、その相手の Trash から Unit を 1 枚選んで費用を無視してプレイできる。元の所有者は維持し、能力のプレイヤーが支配する（CR 127, 355.7, 420, 441）。
+- 167 枚中 156 枚が `drafted`。転記済みの 156 枚が `CardDef.runs` を通り、11 枚が未転記。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

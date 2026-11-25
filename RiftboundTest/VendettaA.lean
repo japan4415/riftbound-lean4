@@ -423,6 +423,50 @@ meta def passToChoice : Nat → GameState → Option GameState
     deck canceled third == [top] && (movedAgain.detect events).isEmpty &&
     legalFrameActions nextChoice == s.players.map pick
 
+-- Kharox targets either opponent before Burn. The optional free play can use
+-- a Unit burned by this effect, and keeps the original owner.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode := mode }, turnOrder := [p, q, third] }
+  let (s, kharox) ← put s p "VEN-114" .base
+  let (s, recruit) ← put s third "VEN-064" .mainDeck
+  let (s, otherUnit) ← put s third "VEN-014" .mainDeck
+  let (s, spell) ← put s third "OGN-095" .mainDeck
+  let (s, distractor) ← put s q "VEN-070" .trash
+  let s := s.fund p 6 0 0 0 0 2
+  let (empowering, _) ←
+    (step 100 s ⟨.player p, .activate kharox 1 ⟨6, [.chaos, .chaos]⟩ []⟩).toOption
+  let choosing ← passToChoice 10 empowering
+  let pick (target : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some target))⟩
+  let (waiting, _) ← (step 100 choosing (pick third)).toOption
+  let item ← (waiting.zone .chain).head?
+  let deciding ← passToChoice 10 waiting
+  let (selecting, _) ← (step 100 deciding ⟨.player p, .decide true⟩).toOption
+  let chosen ← selecting.firstOf third .trash "VEN-064"
+  let backup ← selecting.firstOf third .trash "VEN-014"
+  let burnedSpell ← selecting.firstOf third .trash "OGN-095"
+  let (finished, _) ← (step 100 selecting ⟨.player p, .choose chosen⟩).toOption
+  let played ← finished.firstOf p .base "VEN-064"
+  let (refused, _) ← (step 100 deciding ⟨.player p, .decide false⟩).toOption
+  let canceled ← passToChoice 10 (counterObj waiting item).1
+  let deck (t : GameState) := t.zone (.player third .mainDeck)
+  return (legalActions choosing).contains (pick q) && !(legalActions choosing).contains (pick p) &&
+    (waiting.obj? item).any (·.targetPlayer == some third) &&
+    (deck waiting).length == 3 && deck canceled == deck waiting &&
+    (deck selecting).isEmpty && selecting.zone (.player q .trash) == [distractor] &&
+    (selecting.obj? chosen).any (·.formerId == some recruit) &&
+    (selecting.obj? backup).any (·.formerId == some otherUnit) &&
+    (selecting.obj? burnedSpell).any (·.formerId == some spell) &&
+    (legalActions selecting).contains ⟨.player p, .choose backup⟩ &&
+    !(legalActions selecting).contains ⟨.player p, .choose distractor⟩ &&
+    !(legalActions selecting).contains ⟨.player p, .choose burnedSpell⟩ &&
+    (finished.obj? played).any (fun o =>
+      o.owner == third && o.controller == p && o.exhausted && o.formerId == some chosen) &&
+    (finished.poolOf p).total == 0 && refused.countIn third .trash "VEN-064" == 1
+
 -- Jayce's controller fixes which keyword he gets before players can respond to the ability.
 #guard vendettaCase fun s => do
   let p := s.me

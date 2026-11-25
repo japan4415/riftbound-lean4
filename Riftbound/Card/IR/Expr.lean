@@ -180,6 +180,8 @@ inductive Filter where
   | conqueredByMine
   /-- The object is controlled by the same player as the object `s` stands for. -/
   | sameController (s : Selector)
+  /-- The object is owned by the player targeted in this slot (CR 127, 355.7). -/
+  | ownedByPlayerTarget (i : Nat)
   /-- Gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
   | givesLegendsAttach
   /-- The card copies the text of the Unit it is attached to (it has `copiesUnitText`). -/

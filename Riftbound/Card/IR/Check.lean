@@ -96,6 +96,7 @@ def Filter.ok (c : Ctx) : Filter → Bool
   | .both a b => Filter.ok c a && Filter.ok c b
   | .sameAs s => Selector.ok c s
   | .sameController s => Selector.ok c s
+  | .ownedByPlayerTarget i => decide (i < c.playerSlots)
   | _ => true
 
 /-- Every filter of a list refers only to what is there. -/
