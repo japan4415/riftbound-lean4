@@ -908,6 +908,12 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        · exact Or.inl (attachmentReplacementFrames_play ha)
        · obtain rfl := List.mem_singleton.mp hb
          exact Or.inl rfl)
+    | (dsimp only at h
+       split at h
+       all_goals simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+       all_goals first
+       | (subst h; exact Or.inl rfl)
+       | (rcases h with rfl | rfl <;> exact Or.inl rfl))
     | (rcases burnEffect_mem h with hp | hb
        · exact Or.inl hp
        · exact Or.inr (Or.inr hb))
