@@ -868,48 +868,37 @@ def GameState.runesOf (s : GameState) (p : PlayerId) : List ObjId :=
 /-- How the player pays the payment `pay` with Runes, if the Pool falls short: exhaust a ready Rune
 for each Energy missing, and recycle a Rune of the domain for each Power missing. -/
 def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment)
-    (unit : Bool := false) :
-    Option (List (ObjId × RuneAbility)) :=
+    (unit : Bool := false) (reservedPower : Nat := 0) :
+    Option (List (ObjId × RuneAbility)) := Id.run do
   let pool := s.poolOf p
-  -- the Runes whose Power the payment needs are exhausted last, and exhausted Runes recycled first
   let isNeeded (r : ObjId) : Bool :=
     (s.obj? r).any (fun o => match o.runeDomain with
       | some d => pay.power.contains d
       | none => false)
   let readyAll := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
   let ready := readyAll.filter (fun r => !isNeeded r) ++ readyAll.filter isNeeded
-  let recyclable := (s.runesOf p).filter (fun r => (s.obj? r).any (·.exhausted)) ++ readyAll
-  let k := pay.energy - pool.energyFor unit
-  if k ≤ ready.length then
-    let exh := ready.take k
-    let step := fun (acc : Option (RunePool × List ObjId)) (d : Domain) =>
-      match acc with
-      | none => none
-      | some (pl, used) =>
-        match pl.takePower d with
-        | some pl' => some (pl', used)
-        | none =>
-          match recyclable.find? (fun r => !used.contains r &&
-              (s.obj? r).any (fun o => o.runeDomain == some d)) with
-          | some r => some (pl, r :: used)
-          | none => none
-    match pay.power.foldl step (some (pool, exh)) with
-    | some (_, used) =>
-      some (exh.map (fun r => (r, RuneAbility.exhaust)) ++
-        (used.filter (fun r => !exh.contains r)).map (fun r => (r, RuneAbility.recycle)))
-    | none => none
-  else none
-
-/-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
-nothing to do when the Pool pays it already. -/
-def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) :
-    Option (List (ObjId × RuneAbility)) :=
-  let own := ((s.cardDef? src).map (·.domains)).getD []
-  (c.payments own).findSome? (fun pay =>
-    match (s.poolOf p).spend pay unit with
-    | some _ => some []
-    | none => s.runeCover p pay unit)
+  let energyNeeded := pay.energy - pool.energyFor unit
+  if ready.length < energyNeeded then return none
+  let exhaust := ready.take energyNeeded
+  -- Recycle a Rune after its Exhaust ability when the Power also needs that Rune (CR 164.2).
+  let recyclable := (s.runesOf p).filter (fun r => (s.obj? r).any (·.exhausted)) ++
+    readyAll.filter (fun r => !exhaust.contains r) ++ exhaust
+  let mut specific := { pool with any := 0 }
+  let mut recycle := []
+  let mut anyNeeded := 0
+  for domain in pay.power do
+    if let some rest := specific.takePower domain then
+      specific := rest
+    else if let some rune := recyclable.find? (fun r => !recycle.contains r &&
+        (s.obj? r).any (fun o => o.runeDomain == some domain)) then
+      recycle := rune :: recycle
+    else
+      anyNeeded := anyNeeded + 1
+  let anyAvailable := pool.any - reservedPower
+  if anyAvailable < anyNeeded then return none
+  let neededRunes := recycle.length - (anyAvailable - anyNeeded)
+  return some (exhaust.map (fun r => (r, RuneAbility.exhaust)) ++
+    (recycle.reverse.take neededRunes).map (fun r => (r, RuneAbility.recycle)))
 
 /-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
 def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
@@ -952,6 +941,16 @@ def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
   let own := ((s.cardDef? src).map (·.domains)).getD []
   (c.payments own).findSome? (fun pay =>
     s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit)
+
+/-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
+nothing to do when the Pool pays it already. -/
+def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
+    (unit : Bool := false) : Option (List (ObjId × RuneAbility)) :=
+  let d := s.cardDef? src
+  let gear := d.any (·.hasType .gear)
+  (c.payments ((d.map (·.domains)).getD [])).findSome? (fun pay =>
+    if (s.spendFor p gear pay unit).isSome then some []
+    else s.runeCover p pay unit (if gear then 0 else s.restrictedNow p))
 
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in

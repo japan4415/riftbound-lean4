@@ -2514,6 +2514,40 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     (gearPlayed.obj? gearInPlay).any (fun o => o.exhausted && o.empowerCount == 1) &&
     (gearPlayed.poolOf p).energy == 1 && (gearPlayed.poolOf p).chaos == 1
 
+-- A player can Exhaust and then Recycle the same Chaos Rune to pay for Wild Claw's
+-- Minah. The Pool's Power reserved for Gear cannot pay for the Unit.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spell) ← put (s.fund p 7 (body := 1)) p "VEN-089" .hand
+  let (s, unit) ← put s p "VEN-111" .mainDeck
+  let (s, rune) ← put s p "OGN-166" .base
+  let s := s.modObj rune (fun o => { o with exhausted := false })
+  let z := Zone.player p .mainDeck
+  let s := s.reorder z (unit :: (s.zone z).erase unit)
+  let s := (s.setPool p ((s.poolOf p).addAny 1)).addTurnFx p .gearMana
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (casting, _) ← act s (.playCard spell ⟨7, [.body]⟩ [])
+  let looking ← passToChoice 8 casting
+  let (choosing, _) ← act looking (.decide true)
+  let (played, events) ← act choosing (.choose unit)
+  let entered ← played.firstOf p .base "VEN-111"
+  let pool := played.poolOf p
+  return (legalFrameActions choosing).contains ⟨.player p, .choose unit⟩ &&
+    events.any (fun | .moved old _ (.player who .runeDeck) => old == rune && who == p | _ => false) &&
+    events.contains (.played p entered) && pool.energy == 0 && pool.get .chaos == 0 &&
+    pool.any == 1 && played.restrictedNow p == 1
+
+-- A flexible Power fills the domain that has no Rune to supply it.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, unit) ← put (s.noRunes p) p "VEN-111" .banishment
+  let (s, rune) ← put s p "OGN-166" .base
+  let s := s.setPool p { any := 1 }
+  let cost : Cost := ⟨0, [.domain .chaos, .domain .fury]⟩
+  let (paid, events) ← payByRunes s p unit cost true
+  return (paid.poolOf p).total == 0 &&
+    events.any (fun | .moved old _ (.player who .runeDeck) => old == rune && who == p | _ => false)
+
 -- Choosing to pay Accelerate for the card played by Wild Claw is separate
 -- from choosing that card. The reduction also covers the Energy of Accelerate.
 #guard vendettaCase fun s => do

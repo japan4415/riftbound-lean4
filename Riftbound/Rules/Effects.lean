@@ -1506,9 +1506,9 @@ def EffectPlayPrice.energyCut : EffectPlayPrice → Nat
   | .reduceEnergy k => k
   | _ => 0
 
-/-- Legal payments, additional costs, and destinations for a Unit or Gear played by an effect
-(CR 355-357, 420.3). Destination restrictions are checked before any payment is offered. -/
-def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : EffectPlayTerms) :
+/-- Costs and destinations for a Unit or Gear played by an effect, before obtaining the resources
+to pay (CR 355-357, 420.3). -/
+def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : EffectPlayTerms) :
     List ReducedPermanentPlay := Id.run do
   let some d := s.cardDef? id | return []
   if s.cantPlay p || s.blocksPlay p id d || !(d.hasType .unit || d.hasType .gear) ||
@@ -1534,7 +1534,6 @@ def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : Effe
               for adjusted in s.targetCostOptions p id (battlefield.toList ++ extra) combined do
                 for pay in adjusted.payments d.domains do
                   let fixed : Cost := ⟨pay.energy, pay.power.map PowerSym.domain⟩
-                  if (payByRunes s p id fixed (d.hasType .unit)).isNone then continue
                   for discard in discardOptions do
                     let plan : ReducedPermanentPlay := {
                       cost := fixed
@@ -1546,6 +1545,13 @@ def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : Effe
                       battlefieldFees }
                     plans := plan :: plans
   return plans.reverse.eraseDups
+
+/-- The legal finalizations that can already be funded with the Pool and Basic Runes. -/
+def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : EffectPlayTerms) :
+    List ReducedPermanentPlay :=
+  let unit := (s.cardDef? id).any (·.hasType .unit)
+  (permanentPlayOptions s p id terms).filter (fun plan =>
+    (payByRunes s p id plan.cost unit).isSome)
 
 /-- The possible reduced plays when the effect leaves the destination to the Unit's player. -/
 def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Nat) :
