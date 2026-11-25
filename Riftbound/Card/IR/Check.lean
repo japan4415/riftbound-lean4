@@ -351,6 +351,10 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .retainTargetSet _ => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
+  | .lookAtTop _ body => Effect.ok c body
+  | .banishAndPlayLooked _ fs => FilterList.ok c fs
+  | .recycleLooked => true
+  | .chooseLookedToPlay .. | .banishLookedForPlay _ | .finishReducedPermanent .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e

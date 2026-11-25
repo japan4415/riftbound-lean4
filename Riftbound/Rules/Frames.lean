@@ -366,7 +366,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)
     some ({ r.1 with pending := r.2 ++ rest }, [])
   | .chancePredict p n top _ :: rest, .arrange bottom =>
-    some ({ completePrediction s p n top bottom with pending := rest }, [])
+    some ({ completePrediction s p n top bottom with pending := rest },
+      if bottom.isEmpty then [] else [.recycled p])
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

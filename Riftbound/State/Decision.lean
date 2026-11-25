@@ -243,7 +243,8 @@ inductive Frame where
   /-- Choice: which card to keep next on top or Recycle during Predict (CR 437). The first
   remaining card makes the choice nonempty. -/
   | predict (p : PlayerId) (n : Nat) (first : ObjId) (more top bottom : List ObjId)
-  /-- Chance: Recycle multiple cards from Predict in a random order (CR 417.5, 437). -/
+  /-- Chance: Recycle the selected group from the Main Deck in a random order
+  (CR 417.5, 437). `n` is the length of the prefix partitioned into `top` and `bottom`. -/
   | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
 deriving DecidableEq, Repr
 

@@ -1652,6 +1652,97 @@ meta def passToChoice : Nat → GameState → Option GameState
     drawn == [d, b] && done.zone z == deck.drop 5 ++ order &&
     done.handN p == s.handN p + 1
 
+-- Wild Claw offers looked-at, playable Units and Gear, then Recycles the
+-- other looked-at cards before asking whether to Empower the played object.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-089" .hand
+  let (s, unit) ← put s p "VEN-111" .mainDeck
+  let (s, gear) ← put s p "VEN-075" .mainDeck
+  let (s, expensive) ← put s p "VEN-064" .mainDeck
+  let (s, reaction) ← put s p "OGN-095" .mainDeck
+  let (s, otherSpell) ← put s p "VEN-085" .mainDeck
+  let (s, outside) ← put s p "VEN-075" .mainDeck
+  let z := Zone.player p .mainDeck
+  let seen := [unit, gear, expensive, reaction, otherSpell]
+  let suffix := outside :: (s.zone z).filter (fun id => !(outside :: seen).contains id)
+  let s := (s.fund p 8 (body := 1) (chaos := 1)).reorder z (seen ++ suffix)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (casting, _) ← act s (.playCard spell ⟨7, [.body]⟩ [])
+  let (passed, _) ← act casting .pass
+  let (looking, looked) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (choosing, _) ← act looking (.decide true)
+  let (recycling, played) ← act choosing (.choose unit)
+  let unitInPlay ← recycling.firstOf p .base "VEN-111"
+  let banished ← banishedPlayId played
+  let bottom := [reaction, gear, otherSpell, expensive]
+  let (empowerChoice, recycled) ← (step 100 recycling ⟨.chance, .arrange bottom⟩).toOption
+  let (empowered, _) ← act empowerChoice (.decide true)
+  let (ordinary, _) ← act empowerChoice (.decide false)
+  let (declined, _) ← act looking (.decide false)
+  let declineOrder := [reaction, gear, otherSpell, expensive, unit]
+  let (unchosen, _) ← (step 100 declined ⟨.chance, .arrange declineOrder⟩).toOption
+  let (gearRecycling, _) ← act choosing (.choose gear)
+  let gearInPlay ← gearRecycling.firstOf p .base "VEN-075"
+  let (gearEmpower, _) ←
+    (step 100 gearRecycling ⟨.chance, .arrange [unit, reaction, otherSpell, expensive]⟩).toOption
+  let (gearPlayed, _) ← act gearEmpower (.decide true)
+  return looked == seen.map (.lookedAt p) &&
+    (legalFrameActions choosing).map Action.kind == [.choose unit, .choose gear] &&
+    played.contains (.moved unit banished (.player p .banishment)) &&
+    played.contains (.moved banished unitInPlay (.player p .base)) &&
+    played.contains (.played p unitInPlay) && !(played.any (fun | .chosenBySpell .. => true | _ => false)) &&
+    (recycling.obj? unitInPlay).any (fun o => o.energyPaid == 1 && o.exhausted && !o.playedFromHand) &&
+    (recycling.poolOf p).total == 0 && recycling.zone z == seen.erase unit ++ suffix &&
+    (step 100 recycling ⟨.player p, .arrange bottom⟩).toOption.isNone &&
+    (step 100 recycling ⟨.chance, .arrange [gear, gear, otherSpell, reaction]⟩).toOption.isNone &&
+    recycled.contains (.recycled p) && empowerChoice.zone z == suffix ++ bottom &&
+    (empowered.obj? unitInPlay).any (·.empowerCount == 1) &&
+    (ordinary.obj? unitInPlay).any (·.empowerCount == 0) &&
+    unchosen.zone z == suffix ++ declineOrder && unchosen.countIn p .base "VEN-111" == 0 &&
+    (gearPlayed.obj? gearInPlay).any (fun o => o.exhausted && o.empowerCount == 1) &&
+    (gearPlayed.poolOf p).energy == 1 && (gearPlayed.poolOf p).chaos == 1
+
+-- Choosing to pay Accelerate for the card played by Wild Claw is separate
+-- from choosing that card. The reduction also covers the Energy of Accelerate.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "VEN-089" .hand
+  let (s, rearguard) ← put s p "OGN-010" .mainDeck
+  let z := Zone.player p .mainDeck
+  let s := (s.fund p 7 (fury := 1) (body := 1)).reorder z (rearguard :: (s.zone z).erase rearguard)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption.map Prod.fst
+  let casting ← act s (.playCard spell ⟨7, [.body]⟩ [])
+  let looking ← passToChoice 8 casting
+  let choosing ← act looking (.decide true)
+  let paying ← act choosing (.choose rearguard)
+  let .eitherDo _ _ _ (.finishReducedPermanent _ _ regular) (.finishReducedPermanent _ _ fast) _ :: _ :=
+    paying.pending | none
+  let normal ← act paying (.decide true)
+  let accelerated ← act paying (.decide false)
+  let normalUnit ← normal.firstOf p .base "OGN-010"
+  let fastUnit ← accelerated.firstOf p .base "OGN-010"
+  return regular.cost == ⟨0, []⟩ && !regular.accelerated &&
+    fast.cost == ⟨0, [.domain .fury]⟩ && fast.accelerated &&
+    (normal.obj? normalUnit).any (fun o => o.exhausted && !o.paid && o.energyPaid == 0) &&
+    (accelerated.obj? fastUnit).any (fun o => !o.exhausted && o.paid && o.energyPaid == 0) &&
+    (normal.poolOf p).total == 1 && (accelerated.poolOf p).total == 0
+
+-- A Unit with a mandatory play location can only be offered once that
+-- Battlefield qualifies. Its reduced play still uses the Battlefield.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, card) ← put s p "SFD-015" .banishment
+  let legal := s.modObj field (fun o => { o with scored := [p], held := [] })
+  let [plan] := reducedPermanentPlays legal p card 5 | none
+  let (done, entered, events) ← applyReducedPermanent legal p card plan
+  return (reducedPermanentPlays s p card 5).isEmpty && plan.battlefield == some field &&
+    done.locate entered == some .battlefieldZone &&
+    (done.obj? entered).any (fun o => o.loc == some field && o.moves == 0) &&
+    events.contains (.moved card entered .battlefieldZone) && events.contains (.played p entered)
+
 -- Predict looks at a short deck as it is, including an empty one, without Burn Out.
 #guard vendettaCase fun s => do
   let p := s.me

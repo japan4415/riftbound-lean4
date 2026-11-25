@@ -16,6 +16,22 @@ types of the IR are `Effect` and the list of effects, in one `mutual` block, so 
 
 namespace Riftbound
 
+/-- A finalization choice for a Unit or Gear played by an effect (CR 355-357, 420.3). -/
+structure ReducedPermanentPlay where
+  /-- The adjusted price, with the Power domains chosen. -/
+  cost : Cost
+  /-- The Battlefield destination, or the Base when empty. -/
+  battlefield : Option ObjId
+  /-- The object selected for an additional cost. -/
+  extraObject : Option ObjId
+  /-- The card selected for an optional discard cost. -/
+  discard : Option ObjId
+  /-- Whether the card's optional resource cost is paid. -/
+  additionalPaid : Bool
+  /-- Whether the Unit is played with Accelerate. -/
+  accelerated : Bool
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
@@ -37,6 +53,19 @@ inductive Effect where
   | eachPlayer (who : PlayerSel) (body : Effect)
   /-- Reveal the specified hands for the following instructions (CR 425). -/
   | revealHand (who : PlayerSel) (body : Effect)
+  /-- Look at up to `n` cards from the top of the Main Deck for the following instructions. -/
+  | lookAtTop (n : Nat) (body : Effect)
+  /-- The player may banish a matching looked-at card and play it with an Energy reduction.
+  The object that entered play replaces the pick in `pickVar` (CR 420.3). -/
+  | banishAndPlayLooked (less : Nat) (filters : FilterList)
+  /-- Recycle the looked-at cards still in the Main Deck in a random order (CR 417.5). -/
+  | recycleLooked
+  /-- Continue after offering a choice of eligible cards from a look. -/
+  | chooseLookedToPlay (less : Nat) (first : ObjId) (more : List ObjId)
+  /-- Banish the card picked from the looked-at cards and finalize the play. -/
+  | banishLookedForPlay (less : Nat)
+  /-- Apply the selected finalization of a banished card. -/
+  | finishReducedPermanent (card : ObjId) (less : Nat) (plan : ReducedPermanentPlay)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

@@ -211,54 +211,6 @@ theorem payKill_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (costs : List 
     · exact ⟨fun _ => rfl, rfl⟩
   · exact ⟨fun _ => rfl, rfl⟩
 
-/-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
-The last discard event closes the group for effects that watch one or more discards. -/
-def payDiscards (p : PlayerId) : GameState → List ObjId → GameState × List Event
-  | s, [] => (s, [])
-  | s, id :: ids =>
-    if (s.zone (.player p .hand)).contains id then
-      let r := discardObj s id
-      let next := payDiscards p r.1 ids
-      let events := if ids.isEmpty then r.2 else r.2.map (fun e => match e with
-        | .discarded q card _ => .discarded q card false
-        | other => other)
-      (next.1, events ++ next.2)
-    else payDiscards p s ids
-
-/-- Paying with hand cards preserves well-formedness, card identities and ownership. -/
-theorem payDiscards_safe (p : PlayerId) :
-    ∀ (ds : List ObjId) (s : GameState), Safe s (payDiscards p s ds).1
-  | [], s => Safe.refl s
-  | id :: ids, s => by
-    simp only [payDiscards]
-    split
-    · exact (discardObj_safe s id).trans (payDiscards_safe p ids _)
-    · exact payDiscards_safe p ids s
-
-/-- Pay the optional discard after the mana payment, recording it on the card before the
-play and discard triggers are processed (CR 357.1-357.2, 423.3). -/
-def payPlayDiscard (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : GameState × List Event :=
-  match discard with
-  | none => r
-  | some id =>
-    let paid := payDiscards p r.1 [id]
-    let played := r.2.findSome? (fun
-      | .moved old new _ => if old == c then some new else none
-      | _ => none)
-    (if paid.2.isEmpty then paid.1 else markPaid paid.1 played true, r.2 ++ paid.2)
-
-/-- Paying the optional discard of a play preserves the structural invariants. -/
-theorem payPlayDiscard_safe (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : Safe r.1 (payPlayDiscard p c discard r).1 := by
-  unfold payPlayDiscard
-  split
-  · exact Safe.refl _
-  · dsimp only
-    split
-    · exact payDiscards_safe _ _ _
-    · exact (payDiscards_safe _ _ _).trans (markPaid_safe _ _ true)
-
 /-- A direct discard from hand leaves the Chain unchanged. -/
 theorem discardObj_chain {s : GameState} (hwf : s.WF) {p : PlayerId} {id : ObjId}
     (hc : id ∈ s.zone (.player p .hand)) : (discardObj s id).1.zone .chain = s.zone .chain := by

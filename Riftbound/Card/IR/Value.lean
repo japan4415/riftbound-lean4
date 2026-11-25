@@ -40,6 +40,8 @@ structure Env where
   playerTargets : List PlayerId := []
   /-- The cards revealed for the instructions currently resolving (CR 425.3.a). -/
   revealedCards : List ObjId := []
+  /-- The cards looked at for the instructions currently resolving (CR 432.1.c). -/
+  lookedCards : List ObjId := []
   /-- The card that defines the resolving ability, even if its source has left play. -/
   sourceCard : Option CardId := none
   /-- The controller of the original effect when an instruction is run for another player. -/

@@ -2518,8 +2518,17 @@ def VEN_089.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Wild Claw: the effect is not written yet. -/
-def VEN_089 : CardDef := VEN_089.meta
+/-- Wild Claw. Play the selected card, Recycle the rest, and optionally Empower the permanent. -/
+def VEN_089 : CardDef :=
+  let unitOrGear := Filter.either (.ofType .unit) (.ofType .gear)
+  let played := Selector.all .friendly .anywhere [.sameAs (.var pickVar)]
+  { VEN_089.meta with
+    spellEffect := some (.of [] (.bind pickVar (.const 0)
+      (.lookAtTop 5 (.seqOf [
+        .banishAndPlayLooked 5 (.ofList [unitOrGear]),
+        .recycleLooked,
+        .ifThen (.exists played) (.may (.prim (.empower played))) .nop])))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-090
 /--

@@ -946,6 +946,54 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
     · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
   · exact sendObj_safe .trash s id
 
+/-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
+The last discard event closes the group for effects that watch one or more discards. -/
+def payDiscards (p : PlayerId) : GameState → List ObjId → GameState × List Event
+  | s, [] => (s, [])
+  | s, id :: ids =>
+    if (s.zone (.player p .hand)).contains id then
+      let r := discardObj s id
+      let next := payDiscards p r.1 ids
+      let events := if ids.isEmpty then r.2 else r.2.map (fun e => match e with
+        | .discarded q card _ => .discarded q card false
+        | other => other)
+      (next.1, events ++ next.2)
+    else payDiscards p s ids
+
+/-- Paying with hand cards preserves well-formedness, card identities and ownership. -/
+theorem payDiscards_safe (p : PlayerId) :
+    ∀ (ds : List ObjId) (s : GameState), Safe s (payDiscards p s ds).1
+  | [], s => Safe.refl s
+  | id :: ids, s => by
+    simp only [payDiscards]
+    split
+    · exact (discardObj_safe s id).trans (payDiscards_safe p ids _)
+    · exact payDiscards_safe p ids s
+
+/-- Pay the optional discard after the mana payment, recording it on the card before the
+play and discard triggers are processed (CR 357.1-357.2, 423.3). -/
+def payPlayDiscard (p : PlayerId) (c : ObjId) (discard : Option ObjId)
+    (r : GameState × List Event) : GameState × List Event :=
+  match discard with
+  | none => r
+  | some id =>
+    let paid := payDiscards p r.1 [id]
+    let played := r.2.findSome? (fun
+      | .moved old new _ => if old == c then some new else none
+      | _ => none)
+    (if paid.2.isEmpty then paid.1 else markPaid paid.1 played true, r.2 ++ paid.2)
+
+/-- Paying the optional discard of a play preserves the structural invariants. -/
+theorem payPlayDiscard_safe (p : PlayerId) (c : ObjId) (discard : Option ObjId)
+    (r : GameState × List Event) : Safe r.1 (payPlayDiscard p c discard r).1 := by
+  unfold payPlayDiscard
+  split
+  · exact Safe.refl _
+  · dsimp only
+    split
+    · exact payDiscards_safe _ _ _
+    · exact (payDiscards_safe _ _ _).trans (markPaid_safe _ _ true)
+
 /-- Replacing a Rune Pool is a safe change. -/
 theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (s.setPool p pool) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
@@ -1392,6 +1440,83 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
     match dest with
     | some bf => playToOrBase p bf s id
     | none => playFree p s id
+
+/-- Legal payments, additional costs, and destinations for a reduced Unit or Gear play
+(CR 355-357, 420.3). -/
+def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Nat) :
+    List ReducedPermanentPlay := Id.run do
+  if s.cantPlay p then return []
+  let some d := s.cardDef? id | return []
+  if !(d.hasType .unit || d.hasType .gear) || d.hasType .spell then return []
+  let some base := s.effCost p id d | return []
+  let onlyBattlefield := d.abilities.any (fun ab =>
+    match ab with | .passive _ mods => mods.contains .noPlayToBase | _ => false)
+  let destinations := (if onlyBattlefield then [] else [none]) ++ (s.playBfOptions p id).map some
+  let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
+    s.extraCandidates p k)).map some)
+  let discardOptions := s.playDiscards p id
+  let plans := destinations.flatMap (fun battlefield =>
+    extraObjects.flatMap (fun extraObject =>
+      let extra := extraObject.toList
+      if !s.extraOk p id extra then [] else
+      (s.cutOptionsOf p id base extra).flatMap (fun cost =>
+        (s.playCostPlans p id d cost).flatMap (fun (total, picked) =>
+          let additionalPaid := d.additionalCost.isSome && picked.contains 0
+          let accelerated := d.hasType .unit && d.hasKeyword .accelerate &&
+            picked.contains (if d.additionalCost.isSome then 1 else 0)
+          (s.targetCostOptions p id (battlefield.toList ++ extra) (total.lessEnergy less)).flatMap (fun adjusted =>
+            ((adjusted.payments d.domains).map (fun pay =>
+              (⟨pay.energy, pay.power.map PowerSym.domain⟩ : Cost))).flatMap (fun fixed =>
+              if (payByRunes s p id fixed).isNone then []
+              else discardOptions.map (fun discard =>
+                { cost := fixed, battlefield, extraObject, discard, additionalPaid, accelerated })))))))
+  return plans.eraseDups
+
+/-- Play a Unit or Gear with a chosen reduced-cost finalization. Emit the play after its costs
+have been paid and return the identifier it acquired when it entered play. -/
+def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
+    (plan : ReducedPermanentPlay) : Option (GameState × ObjId × List Event) := do
+  let d ← s.cardDef? id
+  let paid ← payByRunes s p id plan.cost
+  let zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  let (onBoard, new) ← moveObj paid.1 id zone
+  let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
+    paid := plan.additionalPaid || plan.accelerated
+    extraPaid := (if plan.additionalPaid then 1 else 0) + (if plan.accelerated then 1 else 0) }
+  let ready := s.readyNow p id d || plan.accelerated
+  let moved := (enterBase p d mark ready onBoard new, [Event.moved id new zone])
+  let placed := placeAtBf s plan.battlefield.toList moved
+  let extra ← payExtra0 s id plan.extraObject.toList placed
+  let result := payPlayDiscard p id plan.discard extra
+  some (result.1, new, paid.2 ++ result.2 ++ [Event.played p new])
+
+/-- Reduced-cost finalization preserves the structural and ownership invariants. -/
+theorem applyReducedPermanent_safe {s : GameState} {p : PlayerId} {id : ObjId}
+    {plan : ReducedPermanentPlay} {r : GameState × ObjId × List Event}
+    (h : applyReducedPermanent s p id plan = some r) : Safe s r.1 := by
+  unfold applyReducedPermanent at h
+  simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+  obtain ⟨d, hd, paid, hp, ⟨onBoard, new⟩, hm, extra, he, rfl⟩ := h
+  exact (payByRunes_safe hp).trans ((Safe.moveObj hm).trans
+    ((enterBase_safe _ _ _ _ _ _).trans ((placeAtBf_safe _ _ _).trans
+      ((payExtra0_safe he).trans (payPlayDiscard_safe _ _ _ _)))))
+
+/-- The new identity created by banishing the chosen card. -/
+def banishedPlayId (es : List Event) : Option ObjId :=
+  es.findSome? (fun
+    | .moved _ id (.player _ .banishment) => some id
+    | _ => none)
+
+/-- A looked-at card may be offered only if it meets the filter, is still in the same deck,
+and will have a legal finalization after leaving it for Banishment (CR 355.16, 420.3.c). -/
+def lookedPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (less : Nat) (fs : FilterList) : List ObjId :=
+  let deck := s.zone (.player p .mainDeck)
+  env.lookedCards.filter (fun id =>
+    deck.contains id && FilterList.holds s src env id fs == some true &&
+    (let banished := banishObj p s id
+     (banishedPlayId banished.2).any (fun new =>
+       !(reducedPermanentPlays banished.1 p new less).isEmpty)))
 
 /-- Targets, finalization choices and costs for a Spell played by another effect (CR 420.3). -/
 def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
@@ -3565,6 +3690,41 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
       | none, _ => resume
   | _, _ => resume
 
+/-- Recycle the remaining looked-at cards. Put a random ordering decision before the rest
+when at least two cards are Recycled together (CR 417.5). -/
+def recycleLookedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (es : EffectList) : GameState × List Frame × List Event :=
+  let deck := s.zone (.player p .mainDeck)
+  let remaining := deck.filter env.lookedCards.contains
+  if 2 ≤ remaining.length then
+    let keep := deck.filter (fun id => !env.lookedCards.contains id)
+    (s, [.chancePredict p deck.length keep remaining, .run p src env es], [])
+  else
+    let r := recycleList remaining s
+    (r.1, [.run p src env es], r.2 ++ (if remaining.isEmpty then [] else [.recycled p]))
+
+/-- Recycling or asking for an order preserves the structural invariants. -/
+theorem recycleLookedStep_safe (s : GameState) (p : PlayerId) (src : ObjId)
+    (env : Env) (es : EffectList) : Safe s (recycleLookedStep s p src env es).1 := by
+  unfold recycleLookedStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · exact recycleList_safe _ _
+
+/-- A Recycle ordering decision and its continuation are both play frames. -/
+theorem recycleLookedStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {es : EffectList} {f : Frame} (h : f ∈ (recycleLookedStep s p src env es).2.1) :
+    f.isPlay = true := by
+  unfold recycleLookedStep at h
+  dsimp only at h
+  split at h
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with rfl | rfl <;> rfl
+  · simp only [List.mem_singleton] at h
+    subst f
+    rfl
+
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
@@ -3631,6 +3791,34 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       (s, [.run p src known (.cons body .nil), .run p src env es],
         hands.map (fun (q, cards) => .handRevealed q cards))
     | none => skip
+  | .lookAtTop n body =>
+    let cards := (s.zone (.player p .mainDeck)).take n
+    (s, [.run p src { env with lookedCards := cards } (.cons body .nil), .run p src env es],
+      cards.map (.lookedAt p))
+  | .banishAndPlayLooked less fs =>
+    match lookedPlayCandidates s p src env less fs with
+    | first :: more => (s, [.mayDo p src env (.chooseLookedToPlay less first more) es], [])
+    | [] => (s, [.run p src env es], [])
+  | .chooseLookedToPlay less first more =>
+    (s, [.pickDo p src env first more (.banishLookedForPlay less) es], [])
+  | .banishLookedForPlay less =>
+    match env.lookup pickVar with
+    | some (.obj id) =>
+      if env.lookedCards.contains id && (s.zone (.player p .mainDeck)).contains id then
+        let r := banishObj p s id
+        let options := (banishedPlayId r.2).toList.flatMap (fun card =>
+          (reducedPermanentPlays r.1 p card less).map (.finishReducedPermanent card less))
+        (r.1, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], r.2)
+      else skip
+    | _ => skip
+  | .finishReducedPermanent card less plan =>
+    if (reducedPermanentPlays s p card less).contains plan then
+      match applyReducedPermanent s p card plan with
+      | some (t, entered, events) =>
+        (t, [.run p src (env.bind pickVar (.obj entered)) es], events)
+      | none => skip
+    else skip
+  | .recycleLooked => recycleLookedStep s p src env es
   | .may e' => (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
@@ -3719,6 +3907,9 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact castInlineStep_safe s p src env _ es
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
+    | exact banishObj_safe p s _
+    | exact recycleLookedStep_safe s p src env es
+    | (exact applyReducedPermanent_safe (by assumption))
     | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact castReducedStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)

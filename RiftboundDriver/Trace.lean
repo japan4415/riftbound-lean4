@@ -62,6 +62,30 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
+/-- The looked-at cards may be played with a selected payment and destination. -/
+def reducedPermanentFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.mayDo _ _ _ (.chooseLookedToPlay ..) _) => [("lookedPlay", "true")]
+  | some (.eitherDo _ _ _ a@(.finishReducedPermanent ..) b _) =>
+    match if yes then a else b with
+    | .finishReducedPermanent card _ plan =>
+      [("reducedPlay", jobj
+        ([("card", toString card.n), ("cost", costJson plan.cost),
+          ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
+          ("additionalPaid", if plan.additionalPaid then "true" else "false"),
+          ("accelerated", if plan.accelerated then "true" else "false")] ++
+          plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
+          plan.discard.toList.map (fun id => ("discard", toString id.n))))]
+    | .eitherOf _ => [("morePlayOptions", "true")]
+    | _ => []
+  | _ => []
+
+/-- Identify a decision to apply an optional Empower. -/
+def empowerChoiceFields (frame : Option Frame) : List (String × String) :=
+  match frame with
+  | some (.mayDo _ _ _ (.prim (.empower _)) _) => [("empowerOffer", "true")]
+  | _ => []
+
 /-- Encode a mode number and its display name when known. -/
 def modeFields (definition : Option EffectDef) (i : Nat) : List (String × String) :=
   let label := definition.bind (fun e => (e.modes[i]?).map SpellMode.label)
@@ -144,12 +168,14 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
-        tokenLocationFields frame yes ++ damageOrderFields frame yes
+        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ reducedPermanentFields frame yes ++
+        empowerChoiceFields frame
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
+        | some (.pickDo _ _ _ _ _ (.banishLookedForPlay _) _) => [("choiceContext", jstr "lookedDeck")]
         | some (.pickDo _ _ env _ _ _ _) =>
           if env.revealedCards.contains o then [("choiceContext", jstr "revealedHand")] else []
         | _ => [])

@@ -301,6 +301,19 @@ function describeA(a, prev) {
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
+      if (a.lookedPlay) return [who + ': ' + (a.yes ? '見たカードからプレイする' : 'プレイを見送る'), ''];
+      if (a.empowerOffer) return [who + ': ' + (a.yes ? 'Empower する' : 'Empower を見送る'), ''];
+      if (a.morePlayOptions) return [who + ': ほかのプレイ方法を見る', ''];
+      if (a.reducedPlay) {
+        const plan = a.reducedPlay;
+        const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
+        const parts = [costText(plan.cost)];
+        if (plan.additionalPaid) parts.push('追加コストを払う');
+        if (plan.accelerated) parts.push('Accelerate');
+        if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
+        return [who + ': ' + cardName(plan.card) + ' を ' + dest + ' にプレイ（' + parts.join('、') + '）', ''];
+      }
       if (a.damageOrder) {
         const first = a.damageOrder === 'preventFirst' ? 'ダメージの軽減' : 'ダメージの倍増';
         return [who + ': ' + cardName(a.unit) + ' に先に' + first + 'を適用する', ''];
@@ -320,6 +333,7 @@ function describeA(a, prev) {
       if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
       if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
+      if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
       return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
     }
     case 'predictPick': {
@@ -584,6 +598,16 @@ function renderStatic(i, st, prev, animate) {
   const sm = document.createElement('small'); sm.textContent = sub; $('now').append(b, sm);
   const mv = steps[i].events.filter((e) => e.t === 'moved').length;
   if (mv) { const m = document.createElement('small'); m.textContent = ' ・ 移動 ' + mv + ' 枚'; $('now').append(m); }
+  const appendEvent = (text) => {
+    const line = document.createElement('small'); line.className = 'ev'; line.textContent = text;
+    $('now').append(document.createElement('br'), line);
+  };
+  const looked = new Map();
+  for (const e of steps[i].events.filter((event) => event.t === 'looked_at')) {
+    if (!looked.has(e.player)) looked.set(e.player, []);
+    looked.get(e.player).push(cardName(e.card));
+  }
+  for (const [player, names] of looked) appendEvent('P' + player + ' が山札の上を確認（' + names.join('、') + '）');
   for (const e of steps[i].events) {
     let txt = null;
     if (e.t === 'scored') txt = 'P' + e.player + ' が ' + cardName(e.battlefield) + ' を ' + (e.conquer ? 'Conquer' : 'Hold') + ' で得点';
@@ -599,7 +623,7 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
     else if (e.t === 'combat_won') txt = 'P' + e.winner + ' が Combat に勝つ';
     else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
-    if (txt) { const m = document.createElement('small'); m.className = 'ev'; m.textContent = txt; $('now').append(document.createElement('br'), m); }
+    if (txt) appendEvent(txt);
   }
   const r = $('result');
   if (st.result) { r.hidden = false; r.textContent = st.result === 'draw' ? '引き分け' : '勝者: P' + st.result.won.join(', P'); } else r.hidden = true;
@@ -920,6 +944,8 @@ function renderLegal(i) {
   const prompt = choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
+    : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
+    : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
   $('livemsg').textContent = liveLegal.length ? prompt + '（' + liveLegal.length + ' 個）' +

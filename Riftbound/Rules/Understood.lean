@@ -397,6 +397,9 @@ def Effect.understood : Effect → Bool
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e => w.understood && Effect.understood e
+  | .lookAtTop _ body => Effect.understood body
+  | .banishAndPlayLooked _ fs => FilterList.understood fs
+  | .recycleLooked => true
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
