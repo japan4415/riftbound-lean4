@@ -1433,6 +1433,12 @@ theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx
   · exact sendHome_safe s u
   · exact (sendHome_safe s u).trans (setExhausted_safe true _ u)
 
+/-- An effect of this turn saves the unit the next time it would die, and has not saved it yet
+(Tactical Retreat). -/
+def GameState.saveOnceFor (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.kind == .saveOnce && f.target == some id && f.turn == s.turn) &&
+    !s.turnFx.any (fun f => f.kind == .saveUsed && f.target == some id && f.turn == s.turn)
+
 /-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment
 attached to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the
 same Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies
@@ -1447,7 +1453,7 @@ def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
   | none =>
     match s.obj? id with
     | some o =>
-      if s.inPlay.any (fun u => u != id &&
+      if s.saveOnceFor id || s.inPlay.any (fun u => u != id &&
           (s.obj? u).any (fun v => v.controller == o.controller && v.loc == o.loc) &&
           (s.activeMods u).contains .rescueWeakerHere &&
           decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)) then some none
@@ -1456,16 +1462,16 @@ def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
 
 /-- The Unit is saved: the Equipment that dies instead is killed, and the Unit is healed, exhausted
 and recalled. -/
-def saveUnit (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
+def saveUnitCore (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
   let k := match g with | some g => killObj s g | none => (s, [])
   let h := k.1.modObj id (fun o => { o with damage := 0 })
   let r := recallFx true h id
   (r.1, k.2 ++ r.2)
 
 /-- Saving a Unit is a safe change. -/
-theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
-    Safe s (saveUnit s id g).1 := by
-  unfold saveUnit
+theorem saveUnitCore_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
+    Safe s (saveUnitCore s id g).1 := by
+  unfold saveUnitCore
   have hk : Safe s (match g with | some g => killObj s g | none => (s, [])).1 := by
     cases g with
     | none => exact Safe.refl s
@@ -1473,6 +1479,16 @@ theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
   have hm := Safe.modObj (match g with | some g => killObj s g | none => (s, [])).1 id
     (f := fun o => { o with damage := 0 }) (fun _ => rfl) (fun _ => rfl)
   exact hk.trans (hm.trans (recallFx_safe true _ id))
+
+/-- The Unit is saved, and the note that it has been saved is made (what saves it once is used up). -/
+def saveUnit (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
+  let r := saveUnitCore s id g
+  (r.1.addTurnFxOn (match s.obj? id with | some o => o.controller | none => ⟨0⟩) id .saveUsed, r.2)
+
+/-- Saving a Unit is a safe change. -/
+theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
+    Safe s (saveUnit s id g).1 :=
+  (saveUnitCore_safe s id g).trans (addTurnFxOn_safe _ _ _ _)
 
 /-- Kill an object, unless something saves it (it would die). -/
 def killOrSave (s : GameState) (id : ObjId) : GameState × List Event :=

@@ -179,6 +179,11 @@ inductive TurnEffect where
   | gainedXP
   /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
   | banishInstead
+  /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
+  (Tactical Retreat): a note on the unit. -/
+  | saveOnce
+  /-- The unit was saved from dying (a note of the turn, not an effect): `saveOnce` is used up. -/
+  | saveUsed
   /-- All damage that would be dealt to the unit this turn is doubled (Lotus Trap). -/
   | doubleDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/

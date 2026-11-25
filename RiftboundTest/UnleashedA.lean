@@ -419,15 +419,20 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s3 ← play s2 s.me c [e]
   return s3.countNamed s.me .base "Gold" == 1 && s3.countNamed s.you .base "Gold" == 0
 
--- Tactical Retreat (UNL-175): the unit that dies this turn comes back (approximately: from the Trash)
+-- Tactical Retreat (UNL-175): the next time the unit would die this turn it is healed, exhausted and
+-- recalled instead (it does not die: no Deathknell, same unit); the next time after that, it dies
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-175" .hand
-  let (s2, u) ← putAt s1 s.me "OGN-135" s.bf0
-  let s3 ← play s2 s.me c [u]
-  let (s4, evs) := killObj s3 u
-  let s5 ← fire s4 evs
-  return s5.countIn s.me .base "OGN-135" == 1 || (s5.zone .battlefieldZone).any (fun x =>
-    (s5.cardDef? x).any (·.id == cid "OGN-135"))
+  let (s2, u) ← putAt s1 s.me "UNL-156" s.bf0
+  let (s3, _) ← putAt s2 s.me "OGN-135" s.bf0
+  let s4 ← play s3 s.me c [u]
+  let hurt := s4.modObj u (fun o => { o with damage := 5 })
+  let (saved, evs) := killOrSave hurt u
+  let a ← fire saved evs
+  let (again, evs2) := killOrSave a u
+  let b ← fire again evs2
+  return (a.obj? u).any (fun o => o.exhausted && o.damage == 0 && o.loc.isNone) &&
+    a.handN s.me == hurt.handN s.me && (b.obj? u).isNone && b.countIn s.me .trash "UNL-156" == 1
 
 -- Soul Sword (UNL-039): +1 Might, and one more at Level 3
 #guard tun fun s => do
