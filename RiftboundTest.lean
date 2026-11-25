@@ -52,6 +52,20 @@ public import RiftboundTest.RadianceE
 public import RiftboundTest.RadianceF
 public import RiftboundTest.RadianceG
 public import RiftboundTest.RadianceH
+public import RiftboundTest.RadianceI
+public import RiftboundTest.RadianceJ
+public import RiftboundTest.RadianceK
+public import RiftboundTest.RadianceL
+public import RiftboundTest.RadianceM
+public import RiftboundTest.RadianceN
+public import RiftboundTest.RadianceO
+public import RiftboundTest.RadianceP
+public import RiftboundTest.RadianceQ
+public import RiftboundTest.RadianceR
+public import RiftboundTest.RadianceS
+public import RiftboundTest.RadianceT
+public import RiftboundTest.RadianceU
+public import RiftboundTest.RadianceV
 
 /-!
 # RiftboundTest

@@ -77,7 +77,7 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .withPlayer pick _ => e.forPick pick
   | .withShowOff pick _ => (e.forPick pick).map (fun branch =>
     { branch with choices := branch.choices ++ e.showOffChoices, showOffChoices := [] })
-  | .withCosts pick _ _ | .thenRepeat pick _ _ => e.forPick pick
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ => e.forPick pick
 
 /-- Whether the Spell can have distinct modes, targets or destinations in a Repeat (CR 820.2). -/
 def EffectDef.hasFinalizationChoice (e : EffectDef) : Bool :=

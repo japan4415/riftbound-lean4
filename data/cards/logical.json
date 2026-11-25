@@ -27986,7 +27986,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Spirit"
+   ],
    "text": [
     "I enter ready if a friendly unit or gear died this turn."
    ],
@@ -28246,7 +28249,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "You may kill a friendly unit or gear as an additional cost to play me.",
     "When you play me, if you paid the additional cost, deal 2 to a unit."
@@ -28357,7 +28362,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "I enter ready.",
     "When you play me, ready all enemy units.",
@@ -28422,6 +28429,9 @@
     "RAD"
    ],
    "subtitle": "Revolutionary",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Ekko",
     "Zaun"
@@ -29010,9 +29020,12 @@
     "RAD"
    ],
    "subtitle": "Exquisite",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Orianna"
+    "Orianna",
+    "Piltover"
    ],
    "text": [
     "[Shield] (+1 :rb_might: while I'm a defender.)",
@@ -29105,9 +29118,12 @@
     "RAD"
    ],
    "subtitle": "Dauntless",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Shurima",
-    "K'Sante"
+    "K'Sante",
+    "Shurima"
    ],
    "text": [
     "[Shield] (+1 :rb_might: while I'm a defender.)",
@@ -29571,6 +29587,9 @@
     "RAD"
    ],
    "subtitle": "Ingenious",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Ekko",
     "Zaun"
@@ -29693,7 +29712,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Spirit"
+   ],
    "text": [
     "You may return a friendly gear to its owner's hand as an additional cost to play me.",
     "When you play me, if you paid the additional cost, ready me and give me +:rb_might: this turn equal to the Energy cost of the gear you returned."
@@ -30321,9 +30343,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, you may pay :rb_rune_body: to ready a unit here.",
@@ -30411,8 +30431,12 @@
     "RAD"
    ],
    "subtitle": "Consuming",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Evelynn"
+    "Evelynn",
+    "Demon"
    ],
    "text": [
     "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)",
@@ -30913,7 +30937,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Demon"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "When you play me, choose a battlefield. If there are 4 or more units there, you may return an enemy unit there to its owner's hand."
@@ -31102,8 +31129,12 @@
     "RAD"
    ],
    "subtitle": "Deserter",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Riven"
+    "Riven",
+    "Noxus"
    ],
    "text": [
     "When another friendly unit becomes exhausted, give me +1 :rb_might: this turn.",
@@ -31538,7 +31569,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus",
+    "Trifarian"
+   ],
    "text": [
     "When you play me, look at the top 4 cards of your Main Deck. You may reveal from among them a unit or gear with Energy cost no more than :rb_energy_3: and with Power cost no more than :rb_rune_rainbow: and draw it. Recycle the rest."
    ],
@@ -31594,7 +31628,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "When one or more friendly units die, [Buff] a friendly unit. (Give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
@@ -31653,9 +31689,12 @@
     "RAD"
    ],
    "subtitle": "Royal Heir",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Demacia",
-    "Jarvan IV"
+    "Jarvan IV",
+    "Demacia"
    ],
    "text": [
     "[Assault] (+1 :rb_might: while I'm attacking.)",
@@ -31771,9 +31810,13 @@
     "RAD"
    ],
    "subtitle": "Dominating",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
+    "Mordekaiser",
     "Noxus",
-    "Mordekaiser"
+    "Spirit"
    ],
    "text": [
     "When you play me or when I attack, you may discard 1 to kill a unit or gear."
@@ -32776,6 +32819,9 @@
     "RAD"
    ],
    "subtitle": "Rebel",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Kai'Sa",
     "The Void"

@@ -100,15 +100,17 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
-    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : TC s s' := by
+    {costObject : Option ObjId}
+    (h : applyActivate s p src idx pay ts discards targetPlayer costObject = some (s', es)) : TC s s' := by
   exact TC.of_sameMeta (applyActivate_safe h).same
 
 theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame}
     {targetPlayer banisher : Option PlayerId} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards targetPlayer banisher = some (s', es)) : TC s s' := by
+    {costObject : Option ObjId}
+    (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact ((TC.of_safe (noteActivationBanisher_safe s ts banisher)).trans
+  exact ((TC.of_safe (noteActivationBanisher_safe s (ts ++ costObject.toList) banisher)).trans
     (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -358,9 +360,7 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     exact beginTurnStep_tick _ _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (s.mapObjects (readyOf (s.active.getD ⟨0⟩))) :=
-      TC.of_sameMeta (GameState.sameMeta_mapObjects s _)
-    exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+    exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     have h1 : TC s (channel (s.active.getD ⟨0⟩) s.channelCount s).1 :=

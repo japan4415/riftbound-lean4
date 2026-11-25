@@ -4,6 +4,7 @@ public import Riftbound.Rules.Play
 public import Riftbound.Rules.Remove
 public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Actions.BurnOut
+public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Tournament.DeckLegality
 
 /-!
@@ -57,46 +58,6 @@ theorem applyEach_safe {g : GameState → ObjId → GameState × List Event}
   | [], s => Safe.refl s
   | id :: ids, s => (hg s id).trans (applyEach_safe hg ids (g s id).1)
 
-/-- Send an object to the zone `k` of its owner. Nothing happens if it is not on a zone. -/
-def sendObj (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
-  match s.obj? id with
-  | some o =>
-    let dest := s.ownerDestination id o k
-    match moveObj s id (.player o.owner dest) with
-    | some r => (r.1, o.ownerMoveEvents id r.2 dest (k != dest))
-    | none => (s, [])
-  | none => (s, [])
-
-/-- Sending an object to a zone is a safe change. -/
-theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
-    Safe s (sendObj k s id).1 := by
-  unfold sendObj
-  split
-  · dsimp only
-    split
-    · rename_i r hm
-      exact Safe.moveObj hm
-    · exact Safe.refl s
-  · exact Safe.refl s
-
-/-- Attribute a successful move into Banishment to the player performing Banish (CR 428). -/
-def banishCardEvents (actor : PlayerId) (s : GameState) (id : ObjId)
-    (moves : List Event) : List Event :=
-  if (s.obj? id).any (·.kind.phys?.isSome) then
-    moves.filterMap (fun
-      | .moved _ new (.player owner .banishment) => some (.banished actor owner new)
-      | _ => none)
-  else []
-
-/-- Banish an object and, for a card, record who performed the action. -/
-def banishObj (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .banishment s id
-  (r.1, r.2 ++ banishCardEvents p s id r.2)
-
-/-- Banish has the same state invariants as the zone move it records. -/
-theorem banishObj_safe (p : PlayerId) (s : GameState) (id : ObjId) :
-    Safe s (banishObj p s id).1 := sendObj_safe .banishment s id
-
 /-- The Chosen Champion of the player: a Unit of the Champion the Legend of the player is about
 (they share a tag). The card data does not tell Champions from other Units, nor the Chosen
 Champion from its copies. -/
@@ -124,270 +85,6 @@ theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChamp
     · exact Safe.refl s
   · exact Safe.refl s
 
-/-- Make an effect true for the rest of the turn, for the player. -/
-def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
-  let playCount := match e with
-    | .nextCardCostMinus .. => s.finalizedCount p
-    | _ => 0
-  { s with turnFx := s.turnFx ++
-      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e, playCount }] }
-
-/-- The same, about an object. -/
-def GameState.addTurnFxOn (s : GameState) (p : PlayerId) (id : ObjId) (e : TurnEffect) :
-    GameState :=
-  { s with turnFx := s.turnFx ++
-      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e, target := some id }] }
-
-/-- A lasting effect about an object is a safe change. -/
-theorem addTurnFxOn_safe (s : GameState) (p : PlayerId) (id : ObjId) (e : TurnEffect) :
-    Safe s (s.addTurnFxOn p id e) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
-
-/-- A lasting effect of the turn is a safe change: it is not part of what a safe change keeps. -/
-theorem addTurnFx_safe (s : GameState) (p : PlayerId) (e : TurnEffect) :
-    Safe s (s.addTurnFx p e) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
-
-/-- A unit of the player died: noted for the turn, and as one that died during a Beginning Phase if
-the Beginning Phase is going on. -/
-def GameState.noteUnitDied (c : PlayerId) (t : GameState) : GameState :=
-  let t1 := t.addTurnFx c .unitDied
-  if t.phase == .beginning then t1.addTurnFx c .diedInBeginning else t1
-
-/-- Noting that a unit died is a safe change. -/
-theorem noteUnitDied_safe (c : PlayerId) (t : GameState) : Safe t (t.noteUnitDied c) := by
-  unfold GameState.noteUnitDied
-  split
-  · exact (addTurnFx_safe t c _).trans (addTurnFx_safe _ c _)
-  · exact addTurnFx_safe t c _
-
-/-- Noting that a unit died leaves the zone as it was. -/
-theorem noteUnitDied_zone (c : PlayerId) (t : GameState) (z : Zone) :
-    (t.noteUnitDied c).zone z = t.zone z := by
-  unfold GameState.noteUnitDied
-  split <;> rfl
-
-/-- Noting that a unit died leaves the objects in play as they were. -/
-theorem noteUnitDied_inPlay (c : PlayerId) (t : GameState) :
-    (t.noteUnitDied c).inPlay = t.inPlay := by
-  unfold GameState.noteUnitDied
-  split <;> rfl
-
-/-- Do the change if the condition holds. -/
-def noteIf (b : Bool) (f : GameState → GameState) (s : GameState) : GameState :=
-  if b then f s else s
-
-/-- A change that is safe, done if a condition holds, is a safe change. -/
-theorem noteIf_safe (b : Bool) (f : GameState → GameState) (hf : ∀ t, Safe t (f t))
-    (s : GameState) : Safe s (noteIf b f s) := by
-  unfold noteIf
-  split
-  · exact hf s
-  · exact Safe.refl s
-
-/-- The notes of the death of a unit: that it died, and whether it was buffed or stunned as it died
-(the notes are about the dead card, which is the object it has become). -/
-def noteDeath (s : GameState) (o : Object) (isUnit : Bool) (marked : Bool) (mighty : Bool)
-    (moved : Option ObjId) (banisher : Option ObjId) : GameState :=
-  let s1 := noteIf (isUnit && moved.isSome) (fun t => t.noteUnitDied o.controller) s
-  match moved with
-  | some n =>
-    let s2 := noteIf (isUnit && o.buffed)
-      (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) s1
-    let s3 := noteIf (isUnit && o.stunned)
-      (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) s2
-    let s4 := noteIf (isUnit && mighty)
-      (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) s3
-    let s5 := noteIf (isUnit && marked) (fun t => t.addTurnFxOn o.controller n .recallDied) s4
-    -- the card remembers the Equipment that banished it
-    noteIf banisher.isSome (fun t => t.modObj n (fun x => { x with banishedWith := banisher })) s5
-  | none => s1
-
-/-- Noting a death is a safe change. -/
-theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool)
-    (moved : Option ObjId) (banisher : Option ObjId) :
-    Safe s (noteDeath s o isUnit marked mighty moved banisher) := by
-  unfold noteDeath
-  have h1 := noteIf_safe (isUnit && moved.isSome) (fun t => t.noteUnitDied o.controller)
-    (fun t => noteUnitDied_safe _ t) s
-  cases moved with
-  | none => exact h1
-  | some n =>
-    refine h1.trans ?_
-    exact ((((noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _).trans
-      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
-      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
-      (noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) _)).trans
-      (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
-        (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
-
-/-- Whether this turn note has the given kind and applies to the object. -/
-def TurnFx.appliesTo (note : TurnFx) (turn : Nat) (id : ObjId) (kind : TurnEffect) : Bool :=
-  note.kind == kind && note.target == some id && note.turn == turn
-
-/-- The controller's chosen replacement for this Unit's pending death. -/
-def GameState.chosenDeathBanisher (s : GameState) (id : ObjId) : Option PlayerId :=
-  (s.turnFx.find? (·.appliesTo s.turn id .chosenDeathBanisher)).map (·.who)
-
-/-- The player whose effect replaces the kill with a Banish (Smite). A later Deathknell
-banishes separately. -/
-def GameState.banishOnDeathBy (s : GameState) (id : ObjId) : Option PlayerId :=
-  s.chosenDeathBanisher id <|>
-    (s.turnFx.find? (·.appliesTo s.turn id .banishInstead)).map (·.who)
-
-/-- A replacement banishes the object instead of sending it to the Trash on death. -/
-def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
-  (s.banishOnDeathBy id).isSome
-
-/-- The Equipment attached to the object that banishes it when it dies. -/
-def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
-  s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
-    (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
-      match ab with
-      | Ability.passive .always mods => mods.contains .banishOnDeath
-      | _ => false)))
-
-/-- The note that a unit died alone (no other unit of its player was where it was), about the dead
-card. -/
-def noteAlone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) : GameState :=
-  match moved with
-  | some n => noteIf alone (fun t => t.addTurnFxOn o.controller n .diedAlone) s
-  | none => s
-
-/-- Noting that a unit died alone is a safe change. -/
-theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
-    Safe s (noteAlone s o moved alone) := by
-  unfold noteAlone
-  cases moved with
-  | none => exact Safe.refl s
-  | some n => exact noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) s
-
-/-- A kill sends a Permanent to its owner's Trash. Replacing it with Banish suppresses the
-death event and attributes the Banish to the selected effect (CR 370.1.a.1, 428.2.a, 429.1). -/
-def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj (if s.banishedOnDeath id then ZoneKind.banishment else .trash) s id
-  match s.obj? id with
-  | some o =>
-    if s.banishedOnDeath id || r.2.any (fun | .banished .. => true | _ => false) then
-      (r.1, r.2 ++ (s.banishOnDeathBy id).toList.flatMap (fun p => banishCardEvents p s id r.2))
-    else
-    -- the death of a unit is noted for the turn (its controller, as it died)
-    (noteAlone
-        (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
-          (s.turnFx.any (fun f => f.kind == .recallOnDeath && f.target == some id &&
-            f.turn == s.turn))
-          ((s.mightNow id).any (fun m => decide (5 ≤ m)))
-          (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
-          (s.banisherOf id))
-        o (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
-        ((s.cardDef? id).any (·.hasType .unit) &&
-          !(s.inPlay.any (fun u => u != id && (s.cardDef? u).any (·.hasType .unit) &&
-            (s.obj? u).any (fun x => x.controller == o.controller && x.loc == o.loc)))),
-      r.2 ++ r.2.filterMap (fun e => match e with
-      | .moved _ n _ => some (Event.died n o.controller)
-      | _ => none))
-  | none => r
-
-/-- Killing an object is a safe change. -/
-theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := by
-  unfold killObj
-  generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else ZoneKind.trash) = dest
-  split
-  · dsimp only
-    split
-    · exact sendObj_safe dest s id
-    · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
-        (noteAlone_safe _ _ _ _)
-  · exact sendObj_safe dest s id
-
-/-- What the zone of an object in a well-formed game says: no other zone holds it. -/
-theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : ObjId}
-    (hid : id ∈ s.zone z) (hy : y ∈ s.zone x) (hxz : x ≠ z) : y ≠ id := by
-  intro h
-  subst h
-  have h1 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hid) hid
-  have h2 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hy) hy
-  exact hxz (Option.some.inj (h2.symm.trans h1))
-
-/-- Noting that a unit died alone leaves the zones as they are. -/
-theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool)
-    (z : Zone) : (noteAlone s o moved alone).zone z = s.zone z := by
-  unfold noteAlone
-  cases moved with
-  | none => rfl
-  | some n =>
-    unfold noteIf
-    by_cases h : alone = true
-    · simp only [h, ite_true]; rfl
-    · simp [h]
-
-/-- Noting a death leaves the zones as they are. -/
-theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool)
-    (moved : Option ObjId) (banisher : Option ObjId) (z : Zone) :
-    (noteDeath s o isUnit marked mighty moved banisher).zone z = s.zone z := by
-  have key : ∀ (b : Bool) (f : GameState → GameState), (∀ t, (f t).zone z = t.zone z) →
-      ∀ t, (noteIf b f t).zone z = t.zone z := by
-    intro b f hf t
-    unfold noteIf
-    split
-    · exact hf t
-    · rfl
-  unfold noteDeath
-  cases moved with
-  | none =>
-    dsimp only
-    exact key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_zone _ t z) s
-  | some n =>
-    dsimp only
-    rw [key _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
-        (fun t => by simp only [GameState.zone_modObj]),
-      key _ (fun t => t.addTurnFxOn o.controller n .recallDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .mightyUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .stunnedUnitDied) (fun t => rfl),
-      key _ (fun t => t.addTurnFxOn o.controller n .buffedUnitDied) (fun t => rfl),
-      key _ (fun t => t.noteUnitDied o.controller) (fun t => noteUnitDied_zone _ t z)]
-
-/-- Killing an object that is on a zone other than `z`, when the Trash and the Banishment are not
-`z`, leaves `z` as it was. -/
-theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone}
-    (hu : u ∈ s.zone z0) (hne : z ≠ z0)
-    (hd : ∀ q k, (k = ZoneKind.trash ∨ k = ZoneKind.banishment) → z ≠ Zone.player q k) :
-    (killObj s u).1.zone z = s.zone z := by
-  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
-      else ZoneKind.trash) := ⟨_, rfl⟩
-  have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
-    rw [hdk]; split <;> simp
-  obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf hu
-  unfold killObj sendObj
-  rw [← hdk, ho]
-  simp only
-  let dest := s.ownerDestination u o dk
-  have hdest := s.ownerDestination_trash_or_banishment u o hk
-  cases hm : moveObj s u (.player o.owner dest) with
-  | none =>
-    dsimp only
-    split
-    · rfl
-    · rw [noteAlone_zone, noteDeath_zone]
-  | some r =>
-    obtain ⟨s', id'⟩ := r
-    obtain ⟨src, d, hs, o2, ho2, hdd⟩ := moveObj_spec_dst hm
-    have hloc : s.locate u = some z0 :=
-      GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hu) hu
-    have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
-    subst hsrc
-    have hdn : d = .player o.owner dest := by
-      have : o2 = o := Option.some.inj (ho2.symm.trans ho)
-      subst this
-      exact hdd.trans (Zone.normalize_owner _ _)
-    have hzone := hs.zone_other hne (by rw [hdn]; exact hd _ _ hdest)
-    simp only
-    split
-    · exact hzone
-    · simpa only [noteAlone_zone, noteDeath_zone] using hzone
-
 /-- Heal `n` damage from an object (CR 419). -/
 def healOne (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
@@ -401,30 +98,13 @@ theorem healOne_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (healOne n 
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
-/-- Make an object ready or exhausted (CR 415, 416). -/
-def setExhausted (b : Bool) (s : GameState) (id : ObjId) : GameState × List Event :=
-  match s.obj? id with
-  | some o =>
-    -- only an object that was exhausted is readied, and only a ready one is exhausted (CR 416)
-    (s.modObj id (fun o => { o with exhausted := b }),
-      if b then (if o.exhausted then [] else [Event.exhausted id])
-      else if o.exhausted then [Event.readied id] else [])
-  | none => (s, [])
-
-/-- Readying or exhausting is a safe change. -/
-theorem setExhausted_safe (b : Bool) (s : GameState) (id : ObjId) :
-    Safe s (setExhausted b s id).1 := by
-  unfold setExhausted
-  split
-  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-  · exact Safe.refl s
-
 /-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
 passive ability that says so. -/
 def readyBlocked (s : GameState) (id : ObjId) : Bool :=
   ((s.obj? id).any (fun o => s.oppHas o.controller .noReadyOfOpps) &&
     (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) ||
-  (s.obj? id).any (·.cantReady)
+  (s.obj? id).any (·.cantReady) ||
+  (s.phase == .awaken && (s.cardDef? id).any (·.hasType .unit) && s.anyActive .skipUnitAwaken)
 
 /-- A spell or an ability readies an object, unless it cannot. -/
 def readyEffect (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1300,26 +980,6 @@ theorem channelAll_safe (n extra : Nat) :
   | [], s => Safe.refl s
   | p :: ps, s => (channelEx_safe p n extra s).trans (channelAll_safe n extra ps _)
 
-/-- Move an object to its controller's Base: a move, not a Recall (CR 144, 456). Its damage and
-status stay. -/
-def sendHome (s : GameState) (u : ObjId) : GameState × List Event :=
-  match s.obj? u with
-  | some o =>
-    match moveObj s u (.player o.controller .base) with
-    | some r => (r.1.modObj r.2 (fun o => { o with loc := none }), [])
-    | none => (s, [])
-  | none => (s, [])
-
-/-- Moving to the Base is a safe change. -/
-theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := by
-  unfold sendHome
-  split
-  · split
-    · rename_i r hm
-      exact (Safe.moveObj hm).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
-    · exact Safe.refl s
-  · exact Safe.refl s
-
 /-- Move a Unit to its controller's Base once the move is allowed, counting it and emitting its
 movement event (CR 447). -/
 def moveHomeUnchecked (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -1788,7 +1448,9 @@ def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
           let choice := if costs.isEmpty then pick else .withCosts pick printed repeats
           some (ts, { cost.lessEnergy energyCut with power := cost.power ++ List.replicate surcharge .any },
             choice))))
-  priced.eraseDups
+  (priced.flatMap (fun (ts, cost, pick) =>
+    (s.spellObjectPicks p d pick).filterMap (fun choice =>
+      if d.spellObjectPreservesTargets ts choice then some (ts, cost, choice) else none))).eraseDups
 
 /-- A Spell on the Chain whose limited play has yet to finalize (CR 354.2, 354.3). -/
 def GameState.pendingSpell (s : GameState) (card : ObjId) : Option PendingSpellPlay :=
@@ -1976,91 +1638,6 @@ def takeUntil (p : PlayerId) (card : Option ObjId) (s : GameState) (id : ObjId) 
 theorem takeUntil_safe (p : PlayerId) (card : Option ObjId) (s : GameState) (id : ObjId) :
     Safe s (takeUntil p card s id).1 :=
   (setController_safe p s id).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
-
-/-- Recall a Unit: it goes to its controller's Base, and is exhausted if the effect says so. It is
-not a move, so no ability of a move fires (CR 456). -/
-def recallFx (ex : Bool) (s : GameState) (u : ObjId) : GameState × List Event :=
-  let r := sendHome s u
-  if ex then ((setExhausted true r.1 u).1, r.2 ++ (setExhausted true r.1 u).2) else r
-
-/-- Recalling is a safe change. -/
-theorem recallFx_safe (ex : Bool) (s : GameState) (u : ObjId) : Safe s (recallFx ex s u).1 := by
-  unfold recallFx
-  cases ex
-  · exact sendHome_safe s u
-  · exact (sendHome_safe s u).trans (setExhausted_safe true _ u)
-
-/-- An effect of this turn saves the unit the next time it would die, and has not saved it yet
-(Tactical Retreat). -/
-def GameState.saveOnceFor (s : GameState) (id : ObjId) : Bool :=
-  s.turnFx.any (fun f => f.kind == .saveOnce && f.target == some id && f.turn == s.turn) &&
-    !s.turnFx.any (fun f => f.kind == .saveUsed && f.target == some id && f.turn == s.turn)
-
-/-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment
-attached to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the
-same Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies
-instead, `some none` if nothing does. -/
-def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
-  match s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
-      (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
-        match ab with
-        | Ability.passive .always mods => mods.contains .diesInsteadGear
-        | _ => false))) with
-  | some g => some (some g)
-  | none =>
-    match s.obj? id with
-    | some o =>
-      if s.saveOnceFor id || s.inPlay.any (fun u => u != id &&
-          (s.obj? u).any (fun v => v.controller == o.controller && v.loc == o.loc) &&
-          (s.activeMods u).contains .rescueWeakerHere &&
-          decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)) then some none
-      else none
-    | none => none
-
-/-- The Unit is saved: the Equipment that dies instead is killed, and the Unit is healed, exhausted
-and recalled. -/
-def saveUnitCore (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
-  let k := match g with | some g => killObj s g | none => (s, [])
-  let h := k.1.modObj id (fun o => { o with damage := 0 })
-  let r := recallFx true h id
-  (r.1, k.2 ++ r.2)
-
-/-- Saving a Unit is a safe change. -/
-theorem saveUnitCore_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
-    Safe s (saveUnitCore s id g).1 := by
-  unfold saveUnitCore
-  have hk : Safe s (match g with | some g => killObj s g | none => (s, [])).1 := by
-    cases g with
-    | none => exact Safe.refl s
-    | some g => exact killObj_safe s g
-  have hm := Safe.modObj (match g with | some g => killObj s g | none => (s, [])).1 id
-    (f := fun o => { o with damage := 0 }) (fun _ => rfl) (fun _ => rfl)
-  exact hk.trans (hm.trans (recallFx_safe true _ id))
-
-/-- The Unit is saved, and the note that it has been saved is made (what saves it once is used up). -/
-def saveUnit (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
-  let r := saveUnitCore s id g
-  (r.1.addTurnFxOn (match s.obj? id with | some o => o.controller | none => ⟨0⟩) id .saveUsed, r.2)
-
-/-- Saving a Unit is a safe change. -/
-theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
-    Safe s (saveUnit s id g).1 :=
-  (saveUnitCore_safe s id g).trans (addTurnFxOn_safe _ _ _ _)
-
-/-- Kill an object, unless something saves it (it would die). -/
-def killOrSave (s : GameState) (id : ObjId) : GameState × List Event :=
-  match s.deathSaver id with
-  | some g => if (s.cardDef? id).any (·.hasType .unit) then saveUnit s id g else killObj s id
-  | none => killObj s id
-
-/-- Killing, or saving, is a safe change. -/
-theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).1 := by
-  unfold killOrSave
-  split
-  · split
-    · exact saveUnit_safe s id _
-    · exact killObj_safe s id
-  · exact killObj_safe s id
 
 /-- Banish replacements for this Unit's death, grouped by the player credited with Banish. -/
 def GameState.deathBanisherOptions (s : GameState) (id : ObjId) : List (Option PlayerId) :=
@@ -2807,8 +2384,10 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
 /-- A Unit token the player plays enters ready: an effect of the turn says the units the player
 plays enter ready ("Friendly units enter ready this turn"), or a passive ability of an object they
 control says their tokens do. -/
-def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef) : Bool :=
+def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef)
+    (dest : Option ObjId := none) : Bool :=
   c.hasType .unit && ((s.fxOf p).any (fun k => k == .unitsReady) ||
+    s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
     -- a passive ability of an object the player controls: "your tokens enter ready"
     s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
       (s.activeMods g).any (fun m =>
@@ -2879,7 +2458,7 @@ def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Optio
   match s.tokenCard name with
   | some c =>
     if c.hasType .unit && (s.unitTokenDestinations p c).contains dest then
-      let r := createOne c.id p dest (s.tokenReady p c) s
+      let r := createOne c.id p dest (s.tokenReady p c dest) s
       let next := dest.elim r (fun bf => contestFor p bf r)
       (buffNewTokens s next p, tokenPlays s next p)
     else (s, [])
@@ -2892,7 +2471,7 @@ theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (des
   split
   · rename_i c _
     split
-    · have place := createOne_safe c.id p dest (s.tokenReady p c) s
+    · have place := createOne_safe c.id p dest (s.tokenReady p c dest) s
       cases dest with
       | none => exact place.trans (buffNewTokens_safe _ _ _)
       | some bf => exact place.trans ((contestFor_safe p bf _).trans (buffNewTokens_safe _ _ _))
@@ -2914,7 +2493,7 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
       | .here =>
         match s.hereOf src with
         | some bf =>
-          let r := createN c.id p (some bf) (ready || s.tokenReady p c) k s
+          let r := createN c.id p (some bf) (ready || s.tokenReady p c (some bf)) k s
           some (buffNewTokens s r p, tokenPlays s r p)
         | none =>
           -- at a Base, "here" is that Base
@@ -2983,7 +2562,7 @@ def applyCreateAt (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (s.tokenCard name).bind fun card =>
       ((dest.eval s p src env).bind List.head?).map fun field =>
         if s.tokenFieldAllowed p src card field then
-          let placed := createN card.id p (some field) (ready || s.tokenReady p card) count s
+          let placed := createN card.id p (some field) (ready || s.tokenReady p card (some field)) count s
           let next := if card.hasType .unit && count > 0 then contestFor p field placed else placed
           (buffNewTokens s next p, tokenPlays s next p)
         else (s, [])
@@ -3009,7 +2588,7 @@ theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : E
           split at h
           · cases h
             have placed := createN_safe card.id p (some field)
-              (ready || s.tokenReady p card) count s
+              (ready || s.tokenReady p card (some field)) count s
             change Safe s (buffNewTokens s _ p)
             split
             · exact placed.trans ((contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _))
@@ -3022,7 +2601,8 @@ def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (
     (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind (fun k =>
     (s.tokenCard name).map (fun c =>
-      let r := createN c.id p ((s.obj? src).bind (·.prevLoc)) (ready || s.tokenReady p c) k s
+      let dest := (s.obj? src).bind (·.prevLoc)
+      let r := createN c.id p dest (ready || s.tokenReady p c dest) k s
       (buffNewTokens s r p, tokenPlays s r p)))
 
 /-- Playing tokens at the place an object came from is a safe change. -/
@@ -3307,6 +2887,27 @@ def spellCompletion (s : GameState) (id : ObjId) (events : List Event) (inPlace 
     | _, _ => []
   else []
 
+/-- Draw a specific card that was looked at and is still in the player's Main Deck. -/
+def drawLookedCard (p : PlayerId) (looked : List ObjId) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if looked.contains id && (s.zone (.player p .mainDeck)).contains id then
+    match moveObj s id (.player p .hand) with
+    | some (moved, new) => (moved.noteDraw p, [.moved id new (.player p .hand), .drew p])
+    | none => (s, [])
+  else (s, [])
+
+theorem drawLookedCard_safe (p : PlayerId) (looked : List ObjId) (s : GameState) (id : ObjId) :
+    Safe s (drawLookedCard p looked s id).1 := by
+  unfold drawLookedCard
+  split
+  · split
+    · rename_i moved new found
+      exact (Safe.moveObj found).trans
+        ⟨fun h => h.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+          fun _ h => h.congr rfl rfl, rfl⟩
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -3396,6 +2997,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
   | .revealTopNow n =>
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
+  | .drawLooked sel => onSelected s p src env sel (drawLookedCard p env.lookedCards)
   | .revealNow sel =>
     -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
     some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
@@ -3631,6 +3233,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact Safe.refl s
+  | drawLooked sel => exact onSelected_safe (drawLookedCard_safe p env.lookedCards) h
   | revealNow sel =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
@@ -4080,7 +3683,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .counterToHand s => some s
   | .replaceBattlefield s _ => some s
   | .reveal s => some s
-  | .revealNow s => some s
+  | .revealNow s | .drawLooked s => some s
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => some s
@@ -4127,6 +3730,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .replaceBattlefield _ n => .replaceBattlefield sel n
   | .reveal _ => .reveal sel
   | .revealNow _ => .revealNow sel
+  | .drawLooked _ => .drawLooked sel
   | .move s d =>
     match s, d with
     | .pick .one _ _ _, _ => .move sel d
@@ -4347,7 +3951,8 @@ def commitLimitedSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : Eff
     fromHand := match play.origin with | .player _ .hand => true | _ => false }
   let final := discarded.1.modObj card (fun o =>
     { o.withPlay plan.targets mark with pendingSpellPlay := none, discardPaid })
-  some (final, events ++ paid.showOffEvents p plan.pick.showOffObject ++ discarded.2 ++
+  let completed := paySpellObject final card
+  some (completed.1, events ++ paid.showOffEvents p plan.pick.showOffObject ++ discarded.2 ++ completed.2 ++
     [.played p card] ++ plan.targets.map (.chosenBySpell p))
 
 /-- Committing a queued Spell preserves the game invariants. -/
@@ -4358,8 +3963,10 @@ theorem commitLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {p
   simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
   obtain ⟨⟨t, events⟩, ht, play, -, pool, -, hr⟩ := h
   rw [← hr]
-  exact (funding.safe (r := (t, events)) ht).trans ((setPoolFor_safe t p card pool).trans
-    ((payDiscards_safe p plan.discard.toList _).trans (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl))))
+  have hfunded := (funding.safe (r := (t, events)) ht).trans (setPoolFor_safe t p card pool)
+  refine hfunded.trans ((payDiscards_safe p plan.discard.toList _).trans ?_)
+  refine Safe.trans ?_ (paySpellObject_safe _ card)
+  exact Safe.modObj _ card (fun _ => rfl) (fun _ => rfl)
 
 /-- A Spell played for a reduced cost (Void Rush). If the choice is a Unit or Gear, it
 continues its own play process. -/
@@ -4401,16 +4008,15 @@ theorem castReducedStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env
     · contradiction
   · contradiction
 
-/-- Play a Spell for free (CR 349): it goes on the Chain as a new object, played by `p`, and its
-effect is done at once, as it would resolve; then it goes to its owner's Trash, and the Cleanup
-follows. The Chain is not opened again, so an item that is being resolved is not resolved twice.
-Only a Spell whose effect makes no choice is played this way; the Chain is not opened for answers
-(design.md §7). `none` if it is not such a Spell. -/
+/-- Play a Spell ignoring its base price. A separate object cost is still chosen and paid during
+finalization (CR 356.1, 420.3). A choice-free Spell without such a cost resolves inline. -/
 def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
-    (es : EffectList) : Option (GameState × List Frame × List Event) :=
+    (es : EffectList) (funding : EffectAddPolicy) : Option (GameState × List Frame × List Event) :=
   match sel.eval s p src env with
   | some (id :: _) =>
-    match (s.cardDef? id).bind (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
+    if (s.cardDef? id).any (·.spellObjectCost.isSome) then
+      some (castLimitedStep s p src env id .ignoreBase false es funding)
+    else match (s.cardDef? id).bind (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
       if d.hasType .spell && e.choices.isEmpty && e.playerTarget.isNone && !s.blocksPlay p id d then
         (moveObj s id .chain).map (fun r =>
@@ -4425,35 +4031,43 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
 
 /-- Playing a Spell for free is a safe change of the state. -/
 theorem playSpellStep_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {sel : Selector} {es : EffectList} {r : GameState × List Frame × List Event}
-    (h : playSpellStep s p src env sel es = some r) : Safe s r.1 := by
+    {sel : Selector} {es : EffectList} {funding : EffectAddPolicy}
+    {r : GameState × List Frame × List Event}
+    (h : playSpellStep s p src env sel es funding = some r) : Safe s r.1 := by
   unfold playSpellStep at h
   split at h
   · split at h
+    · obtain rfl := Option.some.inj h
+      exact castLimitedStep_safe _ _ _ _ _ _ _ _ _
     · split at h
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
-        exact (Safe.moveObj hm).trans
-          (Safe.modObj s2 id' (fun _ => rfl) (fun _ => rfl))
+      · split at h
+        · simp only [Option.map_eq_some_iff] at h
+          obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
+          exact (Safe.moveObj hm).trans
+            (Safe.modObj s2 id' (fun _ => rfl) (fun _ => rfl))
+        · simp at h
       · simp at h
-    · simp at h
   · simp at h
 
 /-- The frames that playing a Spell for free leaves are frames of the Spell or of the rest. -/
 theorem playSpellStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {sel : Selector} {es : EffectList} {r : GameState × List Frame × List Event}
-    (h : playSpellStep s p src env sel es = some r) {f : Frame} (hf : f ∈ r.2.1) :
+    {sel : Selector} {es : EffectList} {funding : EffectAddPolicy}
+    {r : GameState × List Frame × List Event}
+    (h : playSpellStep s p src env sel es funding = some r) {f : Frame} (hf : f ∈ r.2.1) :
     f.isPlay = true := by
   unfold playSpellStep at h
   split at h
   · split at h
+    · obtain rfl := Option.some.inj h
+      exact castLimitedStep_mem hf
     · split at h
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
-        rcases hf with rfl | rfl | rfl <;> rfl
+      · split at h
+        · simp only [Option.map_eq_some_iff] at h
+          obtain ⟨⟨s2, id'⟩, hm, rfl⟩ := h
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+          rcases hf with rfl | rfl | rfl <;> rfl
+        · simp at h
       · simp at h
-    · simp at h
   · simp at h
 
 /-- The player would reveal a card from a Main Deck and has a passive
@@ -4795,7 +4409,8 @@ locations (CR 355.1.a, 355.17). -/
 def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) : Option (Env × EffectList) :=
   let needsChoices (id : ObjId) := (s.cardDef? id).any (fun d =>
-    ((d.discardToPlay || d.showOffRequirement.isSome || !(s.extrasRaw p id d).isEmpty) &&
+    ((d.discardToPlay || d.playExtra.isSome || d.showOffRequirement.isSome ||
+      !(s.extrasRaw p id d).isEmpty) &&
       (d.hasType .unit || d.hasType .gear)) ||
       (d.hasType .unit && (env.hiddenPlayLocation.isSome ||
         !(s.battlefieldFeeChoices p id d).isEmpty)))
@@ -5218,7 +4833,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         | some r => (r.1, [.run p src env es], r.2)
         | none => skip
   | .prim (.play sel) =>
-    match playSpellStep s p src env sel es with
+    match playSpellStep s p src env sel es funding with
     | some r => r
     | none =>
       match permanentPlayEffects s p src env (.play sel) with

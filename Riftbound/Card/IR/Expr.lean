@@ -81,6 +81,8 @@ inductive Amount where
   | notes (e : TurnEffect)
   /-- The Energy that was paid to play the object (0 if it was played for nothing). -/
   | energyPaid
+  /-- The printed Energy of the Gear returned to pay the source's additional cost. -/
+  | returnedGearEnergy
   /-- How many instances of Empowered the source currently has (CR 442.1.c.1). -/
   | empowerCount
   /-- The number of cards in a player's hand. -/

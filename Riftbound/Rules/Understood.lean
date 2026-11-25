@@ -69,7 +69,7 @@ def Amount.understood : Amount → Bool
   | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
-  | .energyPaid => true
+  | .energyPaid | .returnedGearEnergy => true
   | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
@@ -108,7 +108,7 @@ def Amount.understoodC : Amount → Bool
   | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
-  | .energyPaid => true
+  | .energyPaid | .returnedGearEnergy => true
   | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
@@ -295,6 +295,7 @@ def Selector.understoodPick : Selector → Bool
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
+  | .drawLooked s => s.understoodPickAny
   | .burn p n => p.understood && n.understood
   | .burnWithUnitTrigger n _ => n.understood
   | .empower s => s.understoodPickAny
@@ -481,10 +482,11 @@ def StaticMod.runs : StaticMod → Bool
   | .assignedLast => true
   | .anyDamageKills => true
   | .movesHereFromAnywhere => true
-  | .grantRepeat _ => true
+  | .grantRepeat _ | .spellsHaveReaction => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
+  | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
@@ -494,7 +496,7 @@ def StaticMod.runs : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .firstGearAbilityLess _ | .empowerHereLess _ => true
+  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true
@@ -547,14 +549,16 @@ def Timing.runs : Timing → Bool
 
 /-- A trigger the engine detects: the event, whose subject it is about, and the condition. -/
 def Trigger.runs (t : Trigger) : Bool :=
-  t.occurrence == .every && t.condition.understood &&
+  (t.occurrence == .every || (t.occurrence == .deathGroup && t.event == .die &&
+    t.subject != .self)) && t.condition.understood &&
     (match t.cost with
      | .killFriendly _ fs => FilterList.understood fs
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .firstUnitDeathHere => t.subject != .self
       | .deathknell => t.subject == .self
-      | .firstCardResolved => t.subject == .self
+      | .firstCardResolved | .firstPermanentHere | .delayedPlay => t.subject == .self
       | .stun => true | .discard => true | .ready => true | .exhaust => true
       | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)
       | .buff => true
@@ -609,6 +613,8 @@ def Ability.runs : Ability → Bool
   | .activated costs _ body _ =>
     (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
+      | .exhaustFriendly filters | .killFriendlyPermanent filters =>
+        FilterList.understood filters && (manaKind body).isNone
       | _ => true) && (costPlan costs).isSome &&
       ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||

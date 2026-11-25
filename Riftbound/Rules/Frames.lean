@@ -176,6 +176,26 @@ def expirationFrames (s : GameState) : List Frame :=
     [.cleanup, .expireTurn]
   else []
 
+/-- An Awaken Phase can ready this object, accounting for passive limits on Units. -/
+def awakenCanReady (s : GameState) (p : PlayerId) (unitsStayExhausted : Bool)
+    (id : ObjId) (o : Object) : Bool :=
+  o.controller == p && !o.cantReady &&
+    (!unitsStayExhausted || !(s.cardDef? id).any (·.hasType .unit))
+
+/-- Ready the objects the turn player controls during Awaken. -/
+def awakenReady (eligible : ObjId → Object → Bool) (id : ObjId) (o : Object) : Object :=
+  if eligible id o then { o with exhausted := false } else o
+
+theorem awakenReady_owner (eligible : ObjId → Object → Bool) (id : ObjId) (o : Object) :
+    (awakenReady eligible id o).owner = o.owner := by
+  unfold awakenReady
+  split <;> rfl
+
+theorem awakenReady_kind (eligible : ObjId → Object → Bool) (id : ObjId) (o : Object) :
+    (awakenReady eligible id o).kind = o.kind := by
+  unfold awakenReady
+  split <;> rfl
+
 /-- Advance one work frame by one step, before the triggered abilities that the step set off are
 found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
@@ -186,13 +206,12 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
                                 [Frame.beginTurn] ++ rest }, [])
   | .beginTurn :: rest => some (beginTurnStep s rest, [])
   | .phase .awaken :: rest =>
-    let s1 := s.mapObjects (readyOf (s.active.getD ⟨0⟩))
-    -- what was exhausted and is readied now is noted
-    some ({ s1 with phase := .awaken, pending := rest },
-      Event.phaseStarted (s.active.getD ⟨0⟩) .awaken ::
-        (s.objects.toList.filter (fun (_, o) =>
-          o.controller == s.active.getD ⟨0⟩ && o.exhausted)).map
-          (fun (k, _) => Event.readied ⟨k⟩))
+    let p := s.active.getD ⟨0⟩
+    let eligible := awakenCanReady s p (s.anyActive .skipUnitAwaken)
+    let s1 := s.mapObjectsAt (awakenReady eligible)
+    let readied := s.objects.toList.filterMap (fun (k, o) =>
+      if o.exhausted && eligible ⟨k⟩ o then some (Event.readied ⟨k⟩) else none)
+    some ({ s1 with phase := .awaken, pending := rest }, Event.phaseStarted p .awaken :: readied)
   | .phase .channel :: rest =>
     let r := channel (s.active.getD ⟨0⟩) s.channelCount s
     some ({ r.1 with phase := .channel, pending := rest }, r.2)
@@ -230,9 +249,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .draw p (n + 1) :: rest =>
     match drawOne s p with
     | some (s', es) =>
-      some ({ s' with pending := .draw p n :: rest,
-                      drawLog := (s.drawLog.filter (·.2 == s.turn)) ++ [(p, s.turn)] },
-        es ++ [Event.drew p])
+      some ({ s'.noteDraw p with pending := .draw p n :: rest }, es ++ [Event.drew p])
     | none => some ({ s with pending := .chanceBurnOut p :: .draw p (n + 1) :: rest }, [])
   | .resolveChain :: rest => some ({ s with pending := resolveFrames s rest }, [])
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])
@@ -302,11 +319,11 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
     (reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick).map (payPlayDiscard p c discard)
-  | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher
+  | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
-  | .priority p :: rest, .activate src idx pay ts discards targetPlayer costBanisher =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher
+  | .priority p :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher costObject
   | .triggerOrder _ t more others funding :: rest, .putTrigger i ts payment =>
     let r := finishTrigger s (t :: more) funding i ts payment
     some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
@@ -364,8 +381,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .showdown bf q _ :: rest, .playCard c pay ts flow discard pick =>
     (reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick).map
       (payPlayDiscard q c discard)
-  | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher =>
-    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher
+  | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
@@ -434,7 +451,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     · rw [e]; exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
+    exact (GameState.wf_mapObjectsAt hwf _).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (channel_wf _ _ hwf).congr rfl rfl rfl rfl
@@ -532,7 +549,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     · rw [e]; exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (GameState.physIds_mapObjects s (fun o => readyOf_kind _ o)).symm ▸ List.Perm.refl _
+    exact (GameState.physIds_mapObjectsAt s (awakenReady_kind _)).symm ▸ List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     have hp := channel_physIds (s.active.getD ⟨0⟩) s.channelCount hwf

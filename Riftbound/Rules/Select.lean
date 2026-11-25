@@ -360,7 +360,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
   | .atEventBattlefield recorded =>
     let fields := (recorded <|> env.eventBattlefields).getD []
-    some (((s.obj? id).bind (·.loc)).any fields.contains)
+    let location := if (s.cardDef? id).any (·.hasType .battlefield) then some id
+      else (s.obj? id).bind (·.loc)
+    some (location.any fields.contains)
   | .atShowdown =>
     some ((s.obj? id).any (fun o => s.pending.any (fun f =>
       match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
@@ -1042,6 +1044,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
+  | .returnedGearEnergy => some (((s.obj? self).map (·.returnedGearEnergy)).getD 0)
   | .empowerCount => some (((s.obj? self).map (·.empowerCount)).getD 0)
   | .notes e =>
     some (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == e &&
@@ -1616,7 +1619,7 @@ theorem targetsOk_mem_targetPresent {s : GameState} {p : PlayerId} {self : ObjId
   targetsOkAfter_mem_targetPresent h
 
 /-- A change of the board that the invariants survive: it keeps the game well formed, the physical
-cards, and `OwnerOk`, and changes only objects, zones and counters. -/
+cards, and `OwnerOk`, and keeps the metadata in `SameMeta`. -/
 structure Safe (s s' : GameState) : Prop where
   /-- Well formed. -/
   wf : s.WF → s'.WF
@@ -1624,7 +1627,7 @@ structure Safe (s s' : GameState) : Prop where
   phys : s.WF → s'.physIds.Perm s.physIds
   /-- `OwnerOk`. -/
   own : s.WF → s.OwnerOk → s'.OwnerOk
-  /-- Only objects, zones and counters change. -/
+  /-- The game metadata that must stay fixed. -/
   same : SameMeta s s'
 
 namespace Safe

@@ -33,15 +33,20 @@ inductive ImplStatus where
   | full
 deriving DecidableEq, Repr, Hashable
 
-/-- What a non-mana additional cost to play a card asks for: a friendly gear is returned to its
-owner's hand, or killed, or the player's Legend is exhausted. -/
+/-- An additional cost to play a card that is paid by an action instead of Energy or Power. -/
 inductive PlayExtra where
   /-- A friendly gear returns to its owner's hand. -/
   | returnGear
+  /-- A friendly Unit returns to its owner's hand. -/
+  | returnUnit
   /-- A friendly gear is killed. -/
   | killGear
+  /-- A friendly Unit or Gear is killed. -/
+  | killUnitOrGear
   /-- The player's Legend is exhausted. -/
   | exhaustLegend
+  /-- A ready friendly Unit is exhausted. -/
+  | exhaustUnit
   /-- A friendly Bird, Cat, Dog or Poro is killed. -/
   | killPet
   /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
@@ -53,6 +58,11 @@ inductive PlayExtra where
   the cap (Conscription: with the XP it can choose any unit). Nothing is chosen for the cost. -/
   | spendXPOver (n : Nat) (cap : Nat)
 deriving DecidableEq, Repr, Hashable
+
+/-- The Spell picks the object for this cost separately from its effect's choices (CR 355, 357). -/
+def PlayExtra.separateSpellObject : PlayExtra → Bool
+  | .returnUnit | .exhaustUnit => true
+  | _ => false
 
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
 done as the card is played. -/
@@ -109,6 +119,9 @@ structure CardDef where
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- Electing the zero-resource entry option makes this Unit enter ready and unable to move
+  for the rest of the turn. The play's cost choices carry the election. -/
+  electReadyEntryNoMove : Bool := false
   /-- The player may discard a card as an additional cost to play this card (CR 357.2). -/
   discardToPlay : Bool := false
   /-- What else the player does as an additional cost to play the card (not Energy or Power): what

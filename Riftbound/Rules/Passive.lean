@@ -136,6 +136,11 @@ def drawForBattlefieldPoint (s : GameState) (p : PlayerId) : Bool :=
 def anyActive (s : GameState) (m : StaticMod) : Bool :=
   s.passiveSources.any (fun g => (s.activeMods g).contains m)
 
+/-- The player chose a Battlefield they control and has an effect that readies Units played there. -/
+def readyAtDestination (s : GameState) (p : PlayerId) (dest : Option ObjId) : Bool :=
+  dest.any (fun field => (s.obj? field).any (·.control == some p)) &&
+    s.hasControlledMod p .unitsEnterReadyAtControlledBattlefields
+
 /-- A Unit at the Battlefield `bf` cannot move to the Base: by the Battlefield, or by a Unit
 (Minotaur Reckoner). -/
 def homeForbidden (s : GameState) (bf : ObjId) : Bool :=
@@ -280,7 +285,9 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 
 /-- Whether the object has a printed or granted keyword (CR 479.3). -/
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
-  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)
+  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k) ||
+    (k == .reaction && (s.cardDef? id).any (·.hasType .spell) &&
+      (s.obj? id).any (fun o => s.hasControlledMod o.controller .spellsHaveReaction))
 
 /-- How much the passive change `m` of `src` changes the Might of `id` (CR 479.4). -/
 def modMight (s : GameState) (src id : ObjId) (m : StaticMod) : Int :=
@@ -326,14 +333,20 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
-  let amount (i : KeywordInst) : Option Nat :=
+  let instances := ((s.cardDef? u).map (·.keywords)).getD [] ++ s.grantedKws u
+  let fixedAmount (keyword : Keyword) (i : KeywordInst) : Option Nat :=
     -- Assault, Shield and Disarm default to one when they have no number.
-    if i.keyword == k then
-      (match i.arg with
-        | .amount n => some n
-        | .none => if k == .assault || k == .shield || k == .disarm then some 1 else none
-        | _ => none)
+    if i.keyword == keyword then
+      match i.arg with
+      | .amount n => some n
+      | .none =>
+        if keyword == .assault || keyword == .shield || keyword == .disarm then some 1 else none
+      | _ => none
     else none
+  let amount (i : KeywordInst) : Option Nat :=
+    if k == .assault && i.keyword == .assault && i.arg == .equalShield then
+      some ((instances.filterMap (fixedAmount .shield)).sum)
+    else fixedAmount k i
   -- Assault that equals a number of objects (Ancient Warmonger: the enemy units here)
   let counted : Nat :=
     if k == .assault then
@@ -344,9 +357,7 @@ def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
             (·.length)).getD 0)
         | _ => acc) 0
     else 0
-  (match s.cardDef? u with
-    | some d => (d.keywords.filterMap amount).sum
-    | none => 0) + ((s.grantedKws u).filterMap amount).sum + counted
+  (instances.filterMap amount).sum + counted
 
 /-- Might with the bonus from the Unit's role in combat, before taking a nonnegative damage value. -/
 def mightWithCombatBonus (s : GameState) (id : ObjId) (bonus : Nat) : Option Int :=

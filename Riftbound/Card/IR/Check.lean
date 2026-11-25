@@ -77,7 +77,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
-  | .energyPaid => true
+  | .energyPaid | .returnedGearEnergy => true
   | .empowerCount => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
@@ -141,6 +141,7 @@ def Dest.ok (c : Ctx) : Dest → Bool
 /-- A game action refers only to what is there. -/
 def Prim.ok (c : Ctx) : Prim → Bool
   | .draw p n => p.ok c && Amount.ok c n
+  | .drawLooked s => Selector.ok c s
   | .discard p n => p.ok c && Amount.ok c n
   | .deal s n => Selector.ok c s && Amount.ok c n
   | .exchangeDamage a b => Selector.ok c a && Selector.ok c b
@@ -263,10 +264,11 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .anyDamageKills => true
   | .movesHereFromAnywhere => true
-  | .grantRepeat _ => true
+  | .grantRepeat _ | .spellsHaveReaction => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
+  | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
@@ -276,7 +278,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .firstGearAbilityLess _ | .empowerHereLess _ => true
+  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear => true
@@ -316,7 +318,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
 
 /-- A cost of an ability refers only to what is there. -/
 def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
-  | .killFriendly _ fs | .discardMatching _ fs => FilterList.ok c fs
+  | .killFriendly _ fs | .discardMatching _ fs | .exhaustFriendly fs
+  | .killFriendlyPermanent fs => FilterList.ok c fs
   | .energyDiscount cond amount => Condition.ok c cond && Amount.ok c amount
   | _ => true
 

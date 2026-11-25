@@ -146,6 +146,8 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
   | .withShowOff pick object =>
     spellPickFields state c pick ++ [("showOff", toString object.n)]
+  | .withExtraObject pick object =>
+    spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
   | .thenRepeat pick _ _ => spellPickFields state c pick
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
@@ -363,17 +365,21 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.triggerOrder _ _ _ _ (some plan)) =>
           [("triggerPreparedAdds", jarr (plan.adds.map effectAddJson))]
         | _ => [])
-    | .activate src idx pay ts discards targetPlayer costBanisher =>
+    | .activate src idx pay ts discards targetPlayer costBanisher costObject =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
       targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
-      (costBanisher.toList.flatMap (fun who => ts.getLast?.toList.map (fun unit =>
+      (costBanisher.toList.flatMap (fun who => (costObject <|> ts.getLast?).toList.map (fun unit =>
         ("costBanish", costBanishJson unit who)))) ++
       (match state.bind (fun s => s.activationAt src idx) with
       | some (grant, .activated costs _ e _) =>
+        (match permanentCost costs, costObject with
+        | some (.exhaust, _), some id => [("exhaustCostObject", toString id.n)]
+        | some (.kill, _), some id => [("killCostObject", toString id.n)]
+        | _, _ => []) ++
         (if grant.isSome && e.body == .prim (.ready .self) then
           [("abilityEffect", jstr "readySelf")] else []) ++
         (if costs.contains .disempowerSelf then [("disempowerSelf", "true")] else []) ++
@@ -616,6 +622,7 @@ def kwArgJson : KeywordArg → String
   | .amount n => toString n
   | .cost k => costJson k
   | .object s => jstr s
+  | .equalShield => jstr "Shield"
 
 /-- The Lean definition of what a card does, as text: abilities, effect of a Spell, grants. -/
 def irText (c : CardDef) : String :=
@@ -643,6 +650,7 @@ def cardJson (c : CardDef) : String :=
     ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
     ("ir", jstr (irText c))] ++
     c.additionalCost.toList.map (fun cost => ("optionalCost", costJson cost)) ++
+    c.spellObjectCost.toList.map (fun cost => ("spellObjectCost", jstr (ctorName cost.1))) ++
     (if c.discardToPlay then [("discardToPlay", "true")] else []))
 
 /-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise

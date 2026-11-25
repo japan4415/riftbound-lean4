@@ -89,7 +89,7 @@ theorem beginTurn_next {s : GameState} {rest : List Frame} (hp : s.pending = .be
   · unfold microStep0
     rw [hp]
   · have hd' : s.clockDue ≠ true := by simp [hd]
-    refine ⟨by simp [beginTurnStep, hd], by simp [beginTurnStep, hd, GameState.mapObjects],
+    refine ⟨by simp [beginTurnStep, hd], by simp [beginTurnStep, hd, GameState.mapObjects, GameState.mapObjectsAt],
       fun lim hl => ?_⟩
     simp only [GameState.clockDue, hl, decide_eq_false_iff_not, Nat.not_le] at hd
     simp [beginTurnStep, hd'] 

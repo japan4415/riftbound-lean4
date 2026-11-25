@@ -177,6 +177,8 @@ structure Object where
   paid : Bool := false
   /-- Whether a hand card was discarded as an additional cost for the current play. -/
   discardPaid : Bool := false
+  /-- The printed Energy of the Gear returned to pay this card's additional cost. -/
+  returnedGearEnergy : Nat := 0
   /-- How many of the optional additional costs were paid when the card was played: a Spell does
   its effect once more for each Repeat that was paid (CR 820.3). -/
   extraPaid : Nat := 0

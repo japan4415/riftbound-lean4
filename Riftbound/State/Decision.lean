@@ -116,10 +116,11 @@ inductive ActionKind where
   place `idx` of the card of `source`, with the Power of the domains listed, and the objects
   chosen for the choices of the ability (CR 355). The hand cards in `discards` pay the cost
   before the ability goes on the Chain (CR 423.3). A declared player target is chosen separately
-  from object targets (CR 355.7). -/
+  from object targets (CR 355.7). The permanent in `costObject` pays a cost and is
+  chosen independently of any target (CR 355.10.c). -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
       (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
-      (costBanisher : Option PlayerId := none)
+      (costBanisher : Option PlayerId := none) (costObject : Option ObjId := none)
   /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
   if it is declined or cannot be finalized (CR 383.3, 355). -/
   | putTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment := .pay [])

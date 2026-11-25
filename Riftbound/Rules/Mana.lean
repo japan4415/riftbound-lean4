@@ -432,8 +432,8 @@ def declaredTriggerOk (s : GameState) (t : PendTrigger) (targets : List ObjId) :
 
 /-- The resources due for a trigger's base cost and any targets with Deflect (CR 383.3.b, 809). -/
 def triggerPrice (s : GameState) (t : PendTrigger) (targets : List ObjId) : Cost :=
-  let energy := match trigCost s t with | .energy n => n | _ => 0
-  ⟨energy, List.replicate (s.deflectCost t.controller targets) .any⟩
+  let cost := (trigCost s t).resources
+  { cost with power := cost.power ++ List.replicate (s.deflectCost t.controller targets) .any }
 
 /-- Add choices that leave the locked trigger's targets and costs payable (CR 357.1.a, 357.3).
 The Rune planner is a witness of reachability. The player selects the actual activations. -/

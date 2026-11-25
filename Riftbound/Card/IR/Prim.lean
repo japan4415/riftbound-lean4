@@ -37,6 +37,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Prim where
   /-- The players draw cards (CR 414). -/
   | draw (p : PlayerSel) (n : Amount)
+  /-- Draw the selected card from the cards looked at by this instruction (CR 414, 432). -/
+  | drawLooked (s : Selector)
   /-- The players discard cards (CR 415). -/
   | discard (p : PlayerSel) (n : Amount)
   /-- Deal damage to objects. -/
@@ -273,6 +275,10 @@ inductive TriggerEvent where
   | play
   /-- The player completes their first play of a card this turn (CR 420.4.a). -/
   | firstCardResolved
+  /-- The player plays their first Unit or Gear at this Battlefield this turn. -/
+  | firstPermanentHere
+  /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/
+  | delayedPlay
   /-- The object enters play. -/
   | enter
   /-- The object attacks. -/
@@ -287,6 +293,8 @@ inductive TriggerEvent where
   | move
   /-- The object dies. -/
   | die
+  /-- The first non-token Unit the player controls to die at this Battlefield each turn. -/
+  | firstUnitDeathHere
   /-- A Deathknell that is explicitly represented as a triggered ability (CR 808). -/
   | deathknell
   /-- The object leaves play. -/
@@ -430,6 +438,12 @@ inductive StaticMod where
   | oppsCantPlayNamed
   /-- The controller skips their Draw Phase (CR 315.4). -/
   | skipDrawPhase
+  /-- Other Units enter ready, regardless of who plays them. -/
+  | allUnitsEnterReady
+  /-- Neither player's Units ready during the Awaken Phase. -/
+  | skipUnitAwaken
+  /-- The controller's Units enter ready when played to a Battlefield they control. -/
+  | unitsEnterReadyAtControlledBattlefields
   /-- The controller can play cards from their Trash at their regular costs (CR 420.1). -/
   | playFromTrash
   /-- A card entering the controller's Trash from outside their Main Deck is banished instead
@@ -449,6 +463,8 @@ inductive StaticMod where
   | repeatCostLess (n : Nat)
   /-- The first activated ability of a Gear its controller plays each turn costs less Energy. -/
   | firstGearAbilityLess (n : Nat)
+  /-- The first Unit or Gear played here on its player's turn costs less Energy. -/
+  | firstPermanentHereLess (n : Nat)
   /-- The controller's Units here pay less for Empower, in Energy or Power per reduction. -/
   | empowerHereLess (n : Nat)
   /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once
@@ -487,6 +503,8 @@ inductive StaticMod where
   | movesHereFromAnywhere
   /-- The Spells of the player have Repeat, for the cost (Syndra, in a showdown). -/
   | grantRepeat (k : Cost)
+  /-- The Spells of the player have Reaction. -/
+  | spellsHaveReaction
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
@@ -591,6 +609,8 @@ a card are a `Cost` (`Riftbound.Core.Cost`); these are the others. -/
 inductive AbilityCost where
   /-- Exhaust the object the ability belongs to. -/
   | exhaustSelf
+  /-- Exhaust one friendly permanent that matches the filters (CR 355.10.c, 415.4). -/
+  | exhaustFriendly (filters : FilterList)
   /-- Pay Energy and Power. -/
   | pay (c : Cost)
   /-- Recycle cards from the Trash. -/
@@ -599,8 +619,10 @@ inductive AbilityCost where
   | discard (n : Nat)
   /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/
   | discardMatching (n : Nat) (fs : FilterList)
-  /-- Kill friendly objects that match. -/
+  /-- Kill friendly objects in the legacy list of declared choices. -/
   | killFriendly (q : Quantity) (fs : FilterList)
+  /-- Kill one friendly permanent selected independently of the ability's targets. -/
+  | killFriendlyPermanent (filters : FilterList)
   /-- Spend XP. -/
   | spendXP (n : Nat)
   /-- Spend a buff. -/
@@ -630,12 +652,16 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Pay Energy or Power, and optionally exhaust the source, during finalization (CR 383.3.b). -/
+  | pay (cost : Cost) (exhaustSelf : Bool := false)
   /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
   | exhaustSelf
   /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
   | burn (count : Nat)
   /-- Kill exactly this many friendly permanents that match the filters. -/
   | killFriendly (count : Nat) (filters : FilterList)
+  /-- Discard exactly this many cards of the controller's choice (CR 423). -/
+  | discard (count : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

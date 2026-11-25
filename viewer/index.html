@@ -193,7 +193,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         <option value="bo1">Best of 1</option><option value="bo3">Best of 3</option></select></label>
       <button id="newgame">新しいゲーム</button>
       <button id="undobtn" hidden title="直前の答えを取り消す（Ctrl+Z）">1 手戻す</button>
-      <span class="note" id="livemsg"></span>
+      <span class="note" id="livemsg" role="status"></span>
     </div>
     <div class="note" id="matchinfo"></div>
     <div class="choices" id="choices" aria-live="polite"></div>
@@ -317,6 +317,14 @@ function describeA(a, prev, state = steps[cur]?.state) {
     return cards[cardCode(card, state)]?.keywords?.some(({ k }) => k === 'showOff')
       ? 'Show Off を見送る' : '';
   };
+  const spellObjectCostLabel = (choice, card) => {
+    if (typeof choice.extraCostObject !== 'number') return '';
+    const name = cardName(choice.extraCostObject);
+    const kind = cards[cardCode(card, state)]?.spellObjectCost;
+    if (kind === 'exhaustUnit') return name + ' を Exhaust';
+    if (kind === 'returnUnit') return name + ' をオーナーの手札に戻す';
+    return '追加コストに ' + name + ' を使う';
+  };
   const addLabel = (add) => {
     const id = add.source;
     if (!add.rune) return cardName(id) + ' の Add';
@@ -373,7 +381,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
         const choices = a.repeatExecutions ? repeatChoices(a.repeatExecutions) : spellChoices(a);
         if (a.queuedSpell != null) {
           const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
-          const finalization = [showOffLabel(a, a.queuedSpell), choices].filter(Boolean).join('、');
+          const finalization = [showOffLabel(a, a.queuedSpell), choices,
+            spellObjectCostLabel(a, a.queuedSpell)].filter(Boolean).join('、');
           const payment = [costText(a.queuedCost)];
           if (a.playDiscard !== undefined) {
             payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
@@ -474,7 +483,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
       const targetIds = a.targets || [];
-      const targets = (a.costBanish ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
+      const legacyKill = a.costBanish && typeof a.killCostObject !== 'number';
+      const targets = (legacyKill ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const tg = targets.join('、');
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
@@ -482,7 +492,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const costs = [];
       if (a.disempowerSelf) costs.push('Disempower');
       if (a.exhaustSelf) costs.push('Exhaust');
+      if (typeof a.exhaustCostObject === 'number') costs.push(cardName(a.exhaustCostObject) + ' を Exhaust');
       if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
+      else if (typeof a.killCostObject === 'number') costs.push(cardName(a.killCostObject) + ' を Kill');
       if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
         costs.push(costText({ energy: a.pay - power.length, power }));
       }
@@ -550,7 +562,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const energy = a.pay - (a.power?.length || 0);
       const flow = base ? '（Flow ' + base.energy + ' Energy' +
         (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）' : '';
-      const cost = fees.length || permanentChoice || a.repeatExecutions
+      const objectCost = spellObjectCostLabel(a, a.card);
+      const cost = fees.length || permanentChoice || a.repeatExecutions || objectCost
         ? '（' + energy + ' Energy）' + flow
         : flow || (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
       const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
@@ -568,7 +581,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
         ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
       const showOff = showOffLabel(a, a.card);
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '');
+        discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
+        (objectCost ? '（' + objectCost + '）' : '');
       if (def && def.types.includes('spell')) {
         const targets = (a.targets || []).map(cardName);
         if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
@@ -1020,12 +1034,13 @@ function markActCards(list) {
 }
 function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
 // 手が「対象」や「移動先」だけ違うときは、カードを選んだあと、盤面の光っている所をクリックして選ぶ。
-// プレイ・起動では対象、次に捨てるカードを選ぶ。移動では Base か Battlefield を選ぶ。
+// プレイ・起動では対象、盤面のコスト、捨てるカードの順に選ぶ。移動では Base か Battlefield を選ぶ。
 // 捨てない手も選べる場合など、ほかの違いが残ればメニューを開く。
 function selSeq(a) {
   if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
   if (a.kind === 'activate' || a.kind === 'playCard') {
-    return [...(a.targets || []), ...(a.discards || [])].map(String);
+    const cost = a.exhaustCostObject ?? a.killCostObject;
+    return [...(a.targets || []), ...(typeof cost === 'number' ? [cost] : []), ...(a.discards || [])].map(String);
   }
   return [];
 }
@@ -1054,16 +1069,26 @@ function showMenu(list, title, x, y) {
   m.style.top = Math.max(8, Math.min(y + 6, innerHeight - hh - 8)) + 'px';
   const f = m.querySelector('button'); if (f) f.focus();
 }
+function showsPayment(a) {
+  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number';
+}
 function stepPick(x, y) {
   const { card, list, chosen } = pick, d = chosen.length;
   const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
   const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
   const done = rem.filter((l) => selSeq(l.a).length === d);
-  const discarding = rem.filter(({a}) => a.discards?.length &&
-    d >= (a.targets || []).length && d < selSeq(a).length);
-  if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
+  const roles = new Set(rem.map(({a}) => {
+    const afterTargets = d - (a.targets || []).length;
+    if (afterTargets < 0) return 'target';
+    const cost = typeof a.exhaustCostObject === 'number' ? 'exhaust' :
+      typeof a.killCostObject === 'number' ? 'kill' : null;
+    if (cost && afterTargets === 0) return cost;
+    if (afterTargets < (a.discards || []).length + Number(Boolean(cost))) return 'discard';
+    return 'target';
+  }));
+  if (!cands.length || done.length || roles.size !== 1) {
     pick = null; clearPickMarks();
-    if (rem.length === 1 && !rem[0].a.movePayment) { liveAct(rem[0].k); return; }
+    if (rem.length === 1 && !showsPayment(rem[0].a)) { liveAct(rem[0].k); return; }
     showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
   }
   const actor = rem[0].a.actor;
@@ -1074,7 +1099,9 @@ function stepPick(x, y) {
   document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
   cands.forEach((k, i) => elems[i].forEach((e) => { e.classList.add('tgt'); if (e.classList.contains('card')) e.tabIndex = 0; }));
   const destination = cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'));
-  const next = discarding.length ? '捨てるカード' : destination ? '移動先' : '対象';
+  const next = roles.has('discard') ? '捨てるカード' :
+    roles.has('exhaust') ? 'コストとして Exhaust するカード' :
+    roles.has('kill') ? 'コストとして Kill するカード' : destination ? '移動先' : '対象';
   $('livemsg').textContent = cardName(card) + ': ' + next + 'を選ぶ（光っている所をクリック。Escape でやめる）';
 }
 function pickClick(el, x, y) {
@@ -1085,7 +1112,7 @@ function pickClick(el, x, y) {
 function cancelPick() { if (!pick) return; pick = null; renderLegal(steps.length - 1); }
 function chooseCard(c, x, y) {
   const list = cardActs.get(c.dataset.id); if (!list || !live) return;
-  if (list.length === 1 && !list[0].a.movePayment) { hideActMenu(); liveAct(list[0].k); return; }
+  if (list.length === 1 && !showsPayment(list[0].a)) { hideActMenu(); liveAct(list[0].k); return; }
   hideActMenu();
   if (list.every((l) => selSeq(l.a).length)) { pick = { card: c.dataset.id, list, chosen: [], cands: [] }; stepPick(x, y); return; }
   showMenu(list, cardName(c.dataset.id) + ' で選べる手', x, y);

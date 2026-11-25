@@ -15,6 +15,10 @@ the engine handles because it needs decisions.
 
 namespace Riftbound
 
+/-- Record a draw, keeping only the counts from the current turn (CR 414). -/
+def GameState.noteDraw (s : GameState) (p : PlayerId) : GameState :=
+  { s with drawLog := (s.drawLog.filter (·.2 == s.turn)) ++ [(p, s.turn)] }
+
 /-- Draw the top card of the player's Main Deck into their hand (CR 414). `none` if the deck is
 empty. -/
 def drawOne (s : GameState) (p : PlayerId) : Option (GameState × List Event) :=

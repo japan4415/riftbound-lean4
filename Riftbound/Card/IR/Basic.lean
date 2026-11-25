@@ -48,6 +48,8 @@ inductive SpellPick where
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
+  /-- A permanent used to pay an additional Spell cost. It is not a target of the Spell. -/
+  | withExtraObject (pick : SpellPick) (object : ObjId)
   /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
 deriving DecidableEq, Repr, Hashable
@@ -55,7 +57,7 @@ deriving DecidableEq, Repr, Hashable
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
-  | .withPlayer pick _ | .withShowOff pick _ => pick.optionalCosts
+  | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
@@ -67,32 +69,45 @@ def SpellPick.permanentCosts : SpellPick → Option (List Nat)
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
-  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ => pick.playerTarget
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
+      .withExtraObject pick _ => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
   | .withPlayer pick _ | .withShowOff pick _ => pick.effectChoice
-  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.effectChoice
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
-  | .withCosts pick _ _ | .withShowOff pick _ => pick.hasExecutionChoices
+  | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
 def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick × List ObjId)
   | .withCosts pick _ _ => pick.executions targets
+  | .withExtraObject pick _ => pick.executions targets
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
   | pick => [(pick, targets)]
 
 /-- The object shown off for this play. -/
 def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
-  | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ => pick.showOffObject
+  | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
+      .withExtraObject pick _ => pick.showOffObject
   | _ => none
+
+/-- The permanent selected to pay the cost for this Spell play. -/
+def SpellPick.extraObject : SpellPick → Option ObjId
+  | .withExtraObject _ object => some object
+  | _ => none
+
+/-- Strip the payment choice from the rest of the Spell's finalization. -/
+def SpellPick.withoutExtraObject : SpellPick → SpellPick
+  | .withExtraObject pick _ => pick
+  | pick => pick
 
 /-- Add the optional Show Off selection to an otherwise complete finalization. -/
 def SpellPick.addShowOff (pick : SpellPick) (object : Option ObjId) : SpellPick :=
@@ -251,6 +266,11 @@ inductive TurnEffect where
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
+  /-- A delayed ability fires for the next plays of the type by this player this turn
+  (CR 391-393). Its source is the object named by the note. -/
+  | triggerOnPlays (card : CardId) (idx : Nat) (kind : CardType) (remaining : Nat)
+  /-- The player played a Unit or Gear to the Battlefield named by the note this turn. -/
+  | playedToBattlefield
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)
@@ -320,6 +340,11 @@ inductive TurnEffect where
   | doubleDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
   | unitDied
+  /-- At least one Unit or Gear the player controlled died this turn. -/
+  | permanentDied
+  /-- A Battlefield's first non-token Unit death this turn for this player.
+  The note's timestamp identifies the dead object. -/
+  | firstUnitDeathHere
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
   | cardDiscarded
   /-- The player chose an enemy Unit this turn (CR 355.7). -/
@@ -407,6 +432,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Occurrence where
   /-- Every time. -/
   | every
+  /-- Once when one or more subjects die together. -/
+  | deathGroup
   /-- On the `n`-th time only. -/
   | nth (n : Nat)
   /-- On the next `n` times, then no more. -/
