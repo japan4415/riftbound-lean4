@@ -604,6 +604,59 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
+  · rename_i bf q rest c pay ts hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
+    have hmain : s.phase = .main := by
+      rcases showdownable_spec hl.2.2 with h0 | ⟨dest, ts', h0⟩
+      · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
+        exact hm
+      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0
+        exact hm
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, hmain]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      simp only [List.mem_cons] at hm
+      rw [hp]
+      rcases hm with h1 | h1 | h1
+      · cases h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
+  · rename_i bf q rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
+    simp only [activatableSD, Bool.and_eq_true] at hl
+    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2.1
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, hmain]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      simp only [List.mem_cons] at hm
+      rw [hp]
+      rcases hm with h1 | h1 | h1
+      · cases h1
+      · cases h1
+      · exact List.mem_cons_of_mem _ h1
+  · rename_i q c ab hp hk
+    rw [hp, hk] at hl
+    have hmeta := applyRune_meta h
+    have hhand := applyRune_hand hwf hl.2.1 hl.2.2 h
+    exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
+      (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
+      (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
+  · rename_i q src idx pay hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
+    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
+    · rw [hphase, manaOk_main hl.2]
+      intro hh
+      cases hh
+    · rw [hpend] at hm
+      exact hm
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun _ _ => rfl) id

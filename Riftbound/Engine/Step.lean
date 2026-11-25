@@ -118,7 +118,9 @@ def legalFrameActions (s : GameState) : List Action :=
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
       legalActivates s p false)
   | .triggerOrder p t more _ :: _ => legalPuts s p (t :: more)
-  | .showdown _ q _ :: _ => [⟨.player q, .pass⟩]
+  | .showdown _ q _ :: _ =>
+    ⟨.player q, .pass⟩ :: (legalRunes s q ++ legalManas s q ++ legalShowdownPlays s q ++
+      legalShowdownActivates s q)
   | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc
   | _ => []
 

@@ -99,10 +99,12 @@ meta def afterMove : Option (GameState × List Event) :=
       | _ => false)
   | _, _ => false
 
--- while the Showdown is open the only answer is to pass, by the player with Focus (CR 347)
+-- while the Showdown is open the answers are the player with Focus's (pass among them), and the other
+-- player cannot pass (CR 347)
 #guard match bfReady, afterMove with
   | some (_, p, _, _, _, _), some (s1, _) =>
-    legalFrameActions s1 == [⟨.player p, .pass⟩] &&
+    (legalFrameActions s1).contains ⟨.player p, .pass⟩ &&
+    (legalFrameActions s1).all (fun a => decide (a.actor = .player p)) &&
     (match step 100 s1 ⟨.player (otherP p), .pass⟩ with | .error .illegal => true | _ => false)
   | _, _ => false
 

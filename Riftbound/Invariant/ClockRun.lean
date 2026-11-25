@@ -279,6 +279,10 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
+  · exact Or.inl (tc_reactStep h)
+  · exact Or.inl (tc_activateStep h)
+  · exact Or.inl (tc_applyRune h)
+  · exact Or.inl (tc_applyMana h)
   · rename_i l hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

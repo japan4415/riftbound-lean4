@@ -2046,3 +2046,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Atakhan**: 味方のユニットを殺すかを、遊ぶときに選ぶ。殺すと、そのユニットの Energy と Power の数だけ安い。
 - **Conscription**: 3 Might 以下の敵ユニットは、そのまま選べる。それより大きい敵ユニットは、XP が 5 以上あるときだけ選べ、**唱えるときに 5 XP を払う**（`Filter.xpAtLeast`、`PlayExtra.spendXPOver`。XP を払うかは、選ぶ対象で決まる。小さい対象を選ぶのに払う理由は、無い）。
 - **Undying Loyalty** は、まだ。選ぶ対象が Trash にあり、`placeObjs .inTrash` が未対応。
+
+### M9 の Showdown の中の Action と Reaction（2026-11-25）
+
+Showdown の中で、Focus を持つプレイヤーは、pass だけでなく、次のことができる（CR 347-348、806、813）。
+
+- **呪文**: Action を持つ呪文（`showdownable`：`reactable` か、`castable` で `actionSpell`）、Reaction を持つ呪文とユニット（Ambush を含む）。Action も Reaction も持たない呪文は、Showdown の中では唱えられない。
+- **能力**: Action か Reaction の速さの起動型能力（`activatableSD`：Chain が空で、`showdownSpeed`）。
+- **資源**: Rune の能力と、Add の能力（Chain の上の項目への応答と同じ）。
+- **仕組み**: `applyFrame0` に、`.showdown` の `playCard`、`activate`、`runeAbility`、`manaAbility` を足した。唱えたり、使ったりすると、`chainPass q 0 :: showdown bf q 0 :: rest` になる（Chain が解決すると、Showdown に戻り、pass の数は 0 から数え直す）。`legalFrameActions` と `LegalFrame` は、`legalShowdownPlays`、`legalShowdownActivates` を使う。証明は、`Sound`、`Step`、`Hands`、`Progress`、`Setup`、`ClockRun` に、`chainPass` の場合と同じ形で、4 つずつの場合を足した。`Clock.legal_timeCalled` と `Draw.legal_declareDraw` は、`LegalFrame` の場合が増え、`split` が重くなったので、`maxHeartbeats` を上げた。
+- **直したカード**: Shadow（Action の能力が、防御側の Showdown の中で、攻撃している敵を Stun する）。ほかのセットで、これまで Showdown の中で使えなかった Action と Reaction のカードも、使えるようになった。
+- **近似として残したこと**: Chain が解決したあと、Focus は、使ったプレイヤーに戻り、pass の数は 0 から数え直す（規則の Focus の移り方は、確かめていない）。通常の速さの呪文と能力は、Showdown の中では使えない（Action と Reaction だけ）。Showdown の中のプレイは、Chain の上の項目への応答と同じく、カードの `reactable` の判定をそのまま使う。
