@@ -2891,4 +2891,71 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   return options.contains (cid "OGN-058") && !options.contains (cid "OGN-047") &&
     !options.contains (cid "VEN-066") && !options.contains (cid "VEN-T99")
 
+-- Dominus uses the Unit's Might at resolution and grants a normal activation.
+-- The chosen Power is paid when that activation is put on the Chain.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, dominus) ← put s p "VEN-142" .hand
+  let (s, unit) ← put s p "VEN-014" .base
+  let d ← s.cardDef? unit
+  let s := (s.tire unit).fund p 4 1 0 0 0 0 1
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard dominus ⟨4, []⟩ [unit]⟩).toOption
+  let modified := casting.modObj unit (fun o => { o with buffed := true })
+  let boosted := settleChain {} 10 modified
+  let grant : AbilityGrant := ⟨cid "VEN-142", 0⟩
+  let idx := d.fullAbilities.length
+  let payment : RunePool.Payment := ⟨0, [.fury, .order]⟩
+  let use : Action := ⟨.player p, .activate unit idx payment []⟩
+  let (queued, es) ← (step 100 boosted use).toOption
+  let item ← (queued.zone .chain).head?
+  let activated := settleChain {} 10 queued
+  let sameTurn := boosted.modObj unit (fun o => { o with buffed := false })
+  let expired := sameTurn.mapObjects endTurnObj
+  let gone := sendObj .hand queued unit
+  let new ← gone.2.findSome? (fun e => match e with
+    | .moved _ moved _ => some moved
+    | _ => none)
+  let afterMove := settleChain {} 10 gone.1
+  let pendingWithoutGrant := queued.modObj unit (fun o => { o with tempActivations := [] })
+  return (legalActions boosted).contains use && boosted.mightNow unit == some 6 &&
+    (boosted.obj? unit).any (·.tempActivations == [grant]) &&
+    ((boosted.activationAt unit 0).map Prod.fst) == (d.fullAbilities[0]?.map (fun _ => none)) &&
+    !activatable boosted q unit idx payment [] true &&
+    !activatable boosted p unit idx ⟨0, [.fury, .fury]⟩ [] true &&
+    !activatable boosted p unit idx payment [] false &&
+    !activatableSD boosted p unit idx payment [] &&
+    (queued.poolOf p).fury == 0 && (queued.poolOf p).order == 0 &&
+    es.contains (.activated p unit idx) && queued.tired unit == some true &&
+    (queued.obj? item).any (fun o =>
+      o.kind == .chainAbility d.id idx unit && o.activationGrant == some grant) &&
+    activated.tired unit == some false && (settleChain {} 10 pendingWithoutGrant).tired unit == some false &&
+    sameTurn.mightNow unit == some 5 && expired.mightNow unit == some 2 &&
+    !(legalActions expired).contains use && (afterMove.obj? new).any (·.tempActivations.isEmpty)
+
+-- An opposing Unit is a legal target in a Showdown. A negative Might adds zero,
+-- and the Unit's controller owns the newly granted activation.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-142" .hand
+  let (s, target) ← putAt s q "VEN-014" s.bf0
+  let (s, gear) ← put s p "VEN-073" .base
+  let d ← s.cardDef? target
+  let weakened := s.modObj target (fun o => { o with exhausted := true, mightMods := [⟨-4, .turn⟩] })
+  let ready := ((weakened.control q s.bf0).rich p).rich q
+  let showing := { ready with active := some q, pending := [.showdown s.bf0 p 0, .priority q] }
+  let playOn (u : ObjId) : Action := ⟨.player p, .playCard spell ⟨4, []⟩ [u]⟩
+  let (casting, _) ← (step 100 showing (playOn target)).toOption
+  let resolved := settleChain {} 10 casting
+  let shifted := sendObj .hand casting target
+  let bounced := settleChain {} 10 shifted.1
+  let pay : RunePool.Payment := ⟨0, [.fury, .order]⟩
+  return !(legalActions showing).contains (playOn gear) && resolved.mightNow target == some (-2) &&
+    activatable resolved q target d.fullAbilities.length pay [] true &&
+    !activatable resolved p target d.fullAbilities.length pay [] true &&
+    !activatableSD resolved q target d.fullAbilities.length pay [] &&
+    bounced.countIn q .hand "VEN-014" == 1 &&
+    (bounced.zone (.player q .hand)).all (fun id => (bounced.obj? id).any (·.tempActivations.isEmpty))
+
 end RiftboundTest

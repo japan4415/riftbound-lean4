@@ -32,6 +32,7 @@ def endTurnObj (o : Object) : Object :=
     baseMightThisTurn := none
     mightMods := o.mightMods.filter (fun m => m.ends == EndPoint.never)
     stunned := false
+    tempActivations := []
     tempKws := o.tempKws.filter (fun k => k.2 == EndPoint.never) }
 
 /-- What the end of a combat does to an object: it is healed, and the changes of Might that last

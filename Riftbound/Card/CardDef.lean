@@ -91,8 +91,8 @@ structure CardDef where
   /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
   abilities that a printed keyword stands for are not here (design.md §7.4). -/
   abilities : List Ability := []
-  /-- For an Equipment: the abilities the Unit it is attached to has (CR 137): the text the card
-  gives. They are not abilities of the card itself. -/
+  /-- Abilities this card gives to other objects, through attachment or a resolving effect
+  (CR 137, 479.3). They are not abilities of the card itself. -/
   grants : List Ability := []
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
@@ -268,8 +268,8 @@ def keywordAbilities (c : CardDef) : List Ability :=
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities
 
-/-- The abilities of the card itself, and then the abilities it gives to the Unit it is attached
-to. The place of an ability in this list is what a trigger on the Chain remembers. -/
+/-- The abilities of the card itself, then the abilities it grants. The place of an ability in
+this list is what a trigger on the Chain remembers. -/
 def allAbilities (c : CardDef) : List Ability := c.fullAbilities ++ c.grants
 
 /-- The identity of a card's name: short name and subtitle together (CR 103.3.b, 132). Two

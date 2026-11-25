@@ -201,7 +201,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .burnWithUnitTrigger n _ => Amount.ok c n
   | .predict n => Amount.ok c n
   | .copy s => Selector.ok c s
-  | .double s => Selector.ok c s
+  | .double s | .grantActivation s _ => Selector.ok c s
   | .swap a b => Selector.ok c a && Selector.ok c b
   | .empower s => Selector.ok c s
   | .disempower s => Selector.ok c s

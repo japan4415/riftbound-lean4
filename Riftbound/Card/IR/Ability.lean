@@ -60,12 +60,15 @@ structure EffectDef where
   moveChoice : Option MoveChoice := none
   /-- The side from which this spell or ability chooses a player during finalization (CR 355.7). -/
   playerTarget : Option Side := none
+  /-- Recheck the declared object targets separately at resolution (CR 355.11, 359.3.e.2). -/
+  recheckTargets : Bool := false
 deriving DecidableEq, Repr, Hashable
 
 /-- Get the instructions and target requirements for the choice on the Chain. -/
 def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .mode i => e.modes[i]?.map (fun mode =>
-    { choices := mode.choices, body := mode.body, playerTarget := e.playerTarget })
+    { choices := mode.choices, body := mode.body, playerTarget := e.playerTarget,
+      recheckTargets := e.recheckTargets })
   | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
   | .withPlayer pick _ => e.forPick pick

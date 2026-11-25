@@ -370,7 +370,8 @@ function describeA(a, prev) {
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
       const power = a.power || [];
       const cost = typeof a.pay === 'number' ? costText({ energy: a.pay - power.length, power }) : '';
-      return [who + ': ' + cardName(a.source) + ' の能力を起動' +
+      const action = a.abilityEffect === 'readySelf' ? ' を Ready にする能力を起動' : ' の能力を起動';
+      return [who + ': ' + cardName(a.source) + action +
         (cost ? '（' + cost + '）' : '') +
         (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
@@ -783,7 +784,15 @@ function appendSteps(list) {
 // 取り消せる答えの数（Lean が覚えている、今のゲームの答えの数）
 let undoCount = 0;
 function setLive(j) {
-  liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  const readyPayments = new Set();
+  liveLegal = j.legal.filter(({ a }) => {
+    if (a.abilityEffect !== 'readySelf') return true;
+    const payment = JSON.stringify([a.source, a.index, a.pay, [...a.power].sort()]);
+    if (readyPayments.has(payment)) return false;
+    readyPayments.add(payment);
+    return true;
+  });
+  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
   swapOut = swapIn = null;
 }
 function matchText(m) {

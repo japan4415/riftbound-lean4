@@ -357,7 +357,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest src idx pay ts discards hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hmain, -⟩ := activatable_spec hl.2
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]
       intro hh
@@ -379,7 +379,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p rest src idx pay ts discards hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hmain, -⟩ := activatable_spec hl.2
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]
       intro hh
@@ -628,7 +628,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     simp only [activatableSD, Bool.and_eq_true] at hl
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2.1
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hmain, -⟩ := activatable_spec hl.2.1
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
     · rw [hphase, hmain]
       intro hh

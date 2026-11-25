@@ -4021,8 +4021,18 @@ def VEN_142.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dominus: the effect is not written yet. -/
-def VEN_142 : CardDef := VEN_142.meta
+/-- Dominus snapshots the chosen Unit's current Might and grants it an ability for the turn
+(CR 376-381, 433, 479.3). -/
+def VEN_142 : CardDef :=
+  { VEN_142.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+      body := .seqOf [.prim (.double (.slot 0)),
+        .prim (.grantActivation (.slot 0) ⟨⟨"VEN-142"⟩, 0⟩)]
+      recheckTargets := true }
+    grants := [.activated [.pay ⟨0, [.any, .any]⟩] .normal
+      (.of [] (.prim (.ready .self))) .unlimited]
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-143
 /--

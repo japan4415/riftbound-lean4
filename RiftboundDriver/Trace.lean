@@ -163,7 +163,11 @@ def actionJson (a : Action) (frame : Option Frame := none)
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
-      (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))])
+      (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
+      (match state.bind (fun s => s.activationAt src idx) with
+      | some (some _, .activated _ _ e _) =>
+        if e.body == .prim (.ready .self) then [("abilityEffect", jstr "readySelf")] else []
+      | _ => [])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>

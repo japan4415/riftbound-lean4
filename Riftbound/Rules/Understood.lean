@@ -357,7 +357,7 @@ def Prim.understood : Prim → Bool
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
   | .topdeck s => s.understoodPickAny
-  | .double s => s.understoodPick
+  | .double s | .grantActivation s _ => s.understoodPick
   | .move s .base => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both

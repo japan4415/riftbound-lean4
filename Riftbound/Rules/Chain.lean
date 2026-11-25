@@ -125,7 +125,7 @@ def GameState.firstGearAbilityCut (s : GameState) (p : PlayerId) (d : CardDef)
 (CR 190.6.d, 356.4.c, 827). -/
 def GameState.empowerHereCut (s : GameState) (p : PlayerId) (src : ObjId) (d : CardDef)
     (idx : Nat) : Nat :=
-  if d.hasType .unit && (d.fullAbilities[idx]?).any Ability.isEmpower then
+  if d.hasType .unit && ((s.activationList src d)[idx]?).any (·.2.isEmpower) then
     match (s.obj? src).bind (·.loc) with
     | some bf =>
       if (s.obj? bf).any (·.control == some p) then
@@ -325,8 +325,8 @@ used from the hand (Hide) or from hiding (CR 811) is used there, from the turn a
 hidden; the others, where the player uses abilities of objects. An ability with a guard is used
 only while the guard holds. -/
 def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
-  match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
-  | some (.activated costs _ body _) =>
+  match s.activationAt src idx with
+  | some (_, .activated costs _ body _) =>
     (guardOk s p src body && (!costs.contains .disempowerSelf ||
       (s.obj? src).any (fun o => 0 < o.empowerCount))) &&
       (if costs.contains .fromHand then
@@ -464,8 +464,8 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
       -- a Battlefield is used by the player who controls it
       (if d.hasType .battlefield then o.control == some p else o.controller == p) &&
         s.abilityZoneOk p src idx &&
-        match d.fullAbilities[idx]? with
-        | some (.activated costs speed body limit) =>
+        match (s.activationList src d)[idx]? with
+        | some (_, .activated costs speed body limit) =>
           match s.activationPlan p src d idx costs ts with
           | some (ex, pc) =>
             if (manaKind body).isSome then false
@@ -497,12 +497,12 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     Option (GameState × List Event) :=
   match s.cardDef? src, (s.poolOf p).spend pay with
   | some d, some pool =>
-    match d.fullAbilities[idx]? with
-    | some (.activated costs _ _ _) =>
+    match (s.activationList src d)[idx]? with
+    | some (grant, .activated costs _ _ _) =>
       let paid := preCost s p costs ts (d.hasType .gear) pool discards
       let noted := paid.1.noteGearAbility p d costs
       (addObject ((noted.modObj src (useAtCost s idx costs ts)).setPool p pool)
-        (abilityItem d.id idx src p ts) .chain).map
+        { abilityItem d.id idx src p ts with activationGrant := grant } .chain).map
         (fun r => (r.1, paid.2 ++ [Event.activated p src idx]))
     | _ => none
   | _, _ => none
@@ -525,9 +525,10 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
     cases hs : (s.poolOf p).spend pay with
     | none => simp [hd, hs] at h
     | some pool =>
-      cases ha : d.fullAbilities[idx]? with
+      cases ha : (s.activationList src d)[idx]? with
       | none => simp [hd, hs, ha] at h
-      | some ab =>
+      | some entry =>
+        obtain ⟨grant, ab⟩ := entry
         cases ab with
         | activated costs sp body lim =>
           simp only [hd, hs, ha, Option.map_eq_some_iff] at h
@@ -536,7 +537,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨rfl, rfl⟩ := hr
           let paid := (preCost s p costs ts (d.hasType .gear) pool discards).1
           exact ⟨paid.noteGearAbility p d costs, d, costs, useAtCost s idx costs ts,
-            pool, abilityItem d.id idx src p ts, id', rfl,
+            pool, { abilityItem d.id idx src p ts with activationGrant := grant }, id', rfl,
             (preCost_safe s p costs ts _ pool discards).trans (paid.noteGearAbility_safe p d costs),
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
@@ -628,9 +629,10 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
     | some d =>
       simp only [ho, hd, Bool.and_eq_true] at h
       obtain ⟨-, h⟩ := h
-      cases ha : d.fullAbilities[idx]? with
+      cases ha : (s.activationList src d)[idx]? with
       | none => simp [ha] at h
-      | some ab =>
+      | some entry =>
+        obtain ⟨grant, ab⟩ := entry
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
@@ -664,9 +666,9 @@ Phase, with a payment that pays the cost and the Pool covers, and a legal pick o
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards = true) :
-    ∃ d costs sp body lim pc, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
+    ∃ d costs sp body lim pc grant, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
-        d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
+        (s.activationList src d)[idx]? = some (grant, .activated costs sp body lim) ∧
         s.activationPlan p src d idx costs ts = some (costExhausts costs, pc) ∧
           pc.any (fun c => c.paidBy d.domains pay) = true ∧
             targetsOk s p src s.mightTable body.choices ts = true ∧
@@ -690,9 +692,10 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         · simp only [Bool.not_eq_true] at hb
           simp only [hb, Bool.false_eq_true, ite_false, beq_iff_eq] at hctl0
           exact Or.inl hctl0
-      cases ha : d.fullAbilities[idx]? with
+      cases ha : (s.activationList src d)[idx]? with
       | none => simp [ha] at h
-      | some ab =>
+      | some entry =>
+        obtain ⟨grant, ab⟩ := entry
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
@@ -710,7 +713,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
               | some base =>
                 have he := congrArg (Option.map Prod.fst) hp
                 simpa [GameState.activationPlan, costExhausts, hc] using he
-            exact ⟨d, costs, sp, body, lim, pc, hph, huse, rfl, ha, by rw [hex]; exact hp,
+            exact ⟨d, costs, sp, body, lim, pc, grant, hph, huse, rfl, ha, by rw [hex]; exact hp,
               h.1.1.1.1.2, h.1.2, h.2, o, rfl, hctl⟩
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
@@ -744,9 +747,9 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
     (fun src =>
       match s.cardDef? src with
       | some d =>
-        (List.range d.fullAbilities.length).flatMap (fun (idx : Nat) =>
-          match d.fullAbilities[idx]? with
-          | some (Ability.activated costs _ body _) =>
+        (List.range (s.activationList src d).length).flatMap (fun (idx : Nat) =>
+          match (s.activationList src d)[idx]? with
+          | some (_, .activated costs _ body _) =>
             ([] :: (targetTuples s p src s.mightTable body.choices).filter
                 (fun ts => decide (ts ≠ []))).flatMap (fun ts =>
               (match s.activationPlan p src d idx costs ts with
@@ -785,8 +788,8 @@ def legalShowdownPlays (s : GameState) (p : PlayerId) : List Action :=
 /-- The ability at place `idx` of the object has Action or Reaction speed (CR 806, 813): it can be
 used in a Showdown. -/
 def showdownSpeed (s : GameState) (src : ObjId) (idx : Nat) : Bool :=
-  match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
-  | some (.activated _ sp _ _) => decide (sp ≠ Speed.normal)
+  match s.activationAt src idx with
+  | some (_, .activated _ sp _ _) => decide (sp ≠ Speed.normal)
   | _ => false
 
 /-- The player can use the activated ability in a Showdown (CR 347-348): the Chain is empty, and the
@@ -817,9 +820,10 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
     | some d =>
       simp only [hd, List.mem_flatMap, List.mem_range] at ha
       obtain ⟨idx, hidx, ha⟩ := ha
-      cases hab : d.fullAbilities[idx]? with
+      cases hab : (s.activationList src d)[idx]? with
       | none => simp [hab] at ha
-      | some ab =>
+      | some entry =>
+        obtain ⟨grant, ab⟩ := entry
         cases ab with
         | activated costs sp body lim =>
           simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter] at ha
@@ -829,7 +833,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
         | replacement _ _ _ => simp [hab] at ha
         | triggered _ _ _ => simp [hab] at ha
   · rintro ⟨src, idx, pay, ts, discards, rfl, hact⟩
-    obtain ⟨d, costs, sp, body, lim, pc, hph, huse, hd, hab, hplan, hpay, hts, hds, o, ho, hctl⟩ :=
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hph, huse, hd, hab, hplan, hpay, hts, hds, o, ho, hctl⟩ :=
       activatable_spec hact
     unfold legalActivates
     simp only [List.mem_flatMap]

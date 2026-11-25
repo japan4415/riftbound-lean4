@@ -1942,15 +1942,50 @@ def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :
 theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=
   Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
 
-/-- Double the Might of an object until the end of the turn: it gains as much as it has now. -/
+/-- Double Might this turn by adding its current amount, with a minimum increase of zero
+(CR 433.1, 479.4.c). -/
 def doubleObj (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.mightNow id with
-  | some m => (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [⟨m, .turn⟩] }), [])
+  | some m => (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [⟨max 0 m, .turn⟩] }), [])
   | none => (s, [])
 
 /-- Doubling the Might is a safe change. -/
 theorem doubleObj_safe (s : GameState) (id : ObjId) : Safe s (doubleObj s id).1 := by
   unfold doubleObj
+  split
+  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
+/-- The activated ability described by a grant, when the referenced definition contains one. -/
+def GameState.grantedActivation (s : GameState) (grant : AbilityGrant) : Option Ability :=
+  match (s.cards.find? grant.card).bind (fun d => d.grants[grant.index]?) with
+  | some (a@(.activated ..)) => some a
+  | _ => none
+
+/-- The object's ordinary abilities with their original indices, followed by the temporary
+activations in the order they were granted. A grant identifies the reusable definition. -/
+def GameState.activationList (s : GameState) (src : ObjId) (d : CardDef) :
+    List (Option AbilityGrant × Ability) :=
+  let grants := ((s.obj? src).map (·.tempActivations)).getD []
+  d.fullAbilities.map (none, ·) ++ grants.filterMap
+    (fun grant => (s.grantedActivation grant).map (some grant, ·))
+
+/-- The available ability at its activation-menu index. -/
+def GameState.activationAt (s : GameState) (src : ObjId) (idx : Nat) :
+    Option (Option AbilityGrant × Ability) :=
+  (s.cardDef? src).bind (fun d => (s.activationList src d)[idx]?)
+
+/-- Give a board object an instance of the activated ability for the turn (CR 479.3). -/
+def grantActivationObj (grant : AbilityGrant) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if (s.locate id).any Zone.isBoard && (s.grantedActivation grant).isSome then
+    (s.modObj id (fun o => { o with tempActivations := o.tempActivations ++ [grant] }), [])
+  else (s, [])
+
+/-- Adding an activated ability to an object preserves structural invariants. -/
+theorem grantActivationObj_safe (grant : AbilityGrant) (s : GameState) (id : ObjId) :
+    Safe s (grantActivationObj grant s id).1 := by
+  unfold grantActivationObj
   split
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
@@ -2561,6 +2596,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .attach gears to => applyAttach s p src env gears to
   | .detach sel => onSelected s p src env sel detachObj
   | .double sel => onSelected s p src env sel doubleObj
+  | .grantActivation sel grant => onSelected s p src env sel (grantActivationObj grant)
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base =>
@@ -2803,6 +2839,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | stun sel => exact onSelected_safe (replaceChosenHarm_safe env stunObj_safe) h
   | detach sel => exact onSelected_safe detachObj_safe h
   | double sel => exact onSelected_safe doubleObj_safe h
+  | grantActivation sel grant => exact onSelected_safe (grantActivationObj_safe grant) h
   | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
   | buff sel => exact onSelected_safe buffObj_safe h
   | empower sel => exact onSelected_safe (empowerObj_safe p) h
@@ -3966,11 +4003,14 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
 def abilityAt (s : GameState) (card : CardId) (idx : Nat) : Option Ability :=
   (s.cards.find? card).bind (fun d => d.allAbilities[idx]?)
 
+/-- The choices and body of an ability that can go on the Chain. -/
+def Ability.effectDef : Ability → Option EffectDef
+  | .activated _ _ body _ | .triggered _ body _ => some body
+  | _ => none
+
 /-- The effect of the ability of a card: its choices and its body. -/
 def abilityDef (s : GameState) (card : CardId) (idx : Nat) : Option EffectDef :=
-  match abilityAt s card idx with
-  | some (.activated _ _ b _) | some (.triggered _ b _) => some b
-  | _ => none
+  (abilityAt s card idx).bind Ability.effectDef
 
 /-- The slots of a Spell or an ability: the objects chosen, and a filler for each target of up to one that was
 left out (it selects nothing). -/
@@ -3996,10 +4036,12 @@ def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
         | none => .int 0)
   | none => []
 
-/-- The separate targets of a Spell with a recorded mode or destination are rechecked. -/
+/-- Recheck targets for a recorded mode or destination, or when the effect opts in. -/
 def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
     (definition : Option EffectDef) (pick : SpellPick) : List Value :=
-  if pick == .plain then slotValues ts definition else recheckedSlots s p src ts definition
+  if pick != .plain || definition.any (·.recheckTargets) then
+    recheckedSlots s p src ts definition
+  else slotValues ts definition
 
 /-- Before an open-ended group resolves, filter invalid original targets and ask its controller
 to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
@@ -4028,17 +4070,20 @@ its controller, with the objects chosen as the slots, and then it leaves the Cha
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
   match o.kind with
   | .chainAbility card idx src =>
-    let definition := (abilityDef s card idx).bind (·.forPick o.spellPick)
+    let ability := match o.activationGrant with
+      | some grant => s.grantedActivation grant
+      | none => abilityAt s card idx
+    let definition := (ability.bind Ability.effectDef).bind (·.forPick o.spellPick)
     let recheck := o.spellPick != .plain || definition.any (fun e =>
-      !e.choices.isEmpty && e.choices.all (fun
+      e.recheckTargets || (!e.choices.isEmpty && e.choices.all (fun
         | .target .one .. | .target (.upTo 1) .. => true
-        | _ => false))
+        | _ => false)))
     let subject := o.triggerSubject.toList
     let targets := if o.spellPick == .plain then o.targets.take (o.targets.length - subject.length)
       else o.targets
     let slots := if recheck then recheckedSlots s o.controller src targets definition ++
       subject.map Value.obj else slotValues o.targets definition
-    let targetObjs := match abilityAt s card idx with
+    let targetObjs := match ability with
       | some (.activated costs _ _ _) =>
         if costs.any (fun | .killFriendly .. => true | _ => false) then targets.dropLast
         else targets

@@ -17,6 +17,14 @@ custom handlers. Nothing here is recursive.
 
 namespace Riftbound
 
+/-- A reusable ability described in a card definition's grants (CR 479.3). -/
+structure AbilityGrant where
+  /-- The definition that describes the ability being granted. -/
+  card : CardId
+  /-- The index within the definition's grants. -/
+  index : Nat
+deriving DecidableEq, Repr, Hashable
+
 /-- An additional selection recorded when a Spell is finalized (CR 355.3-355.4). -/
 inductive SpellPick where
   /-- The Spell only has its ordinary target and payment choices. -/

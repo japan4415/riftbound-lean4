@@ -145,6 +145,9 @@ inductive Prim where
   | copy (s : Selector)
   /-- Double the Might of an object. -/
   | double (s : Selector)
+  /-- Give the selected objects an activated ability on the Chain until the end of the turn
+  (CR 317.2, 376-381, 479.3). -/
+  | grantActivation (s : Selector) (ability : AbilityGrant)
   /-- Swap two objects. -/
   | swap (a b : Selector)
   /-- Empower Units, Gear, or Legends (CR 442). -/

@@ -98,6 +98,11 @@ structure Object where
   /-- The keywords that effects gave this object for a while, and when they end (CR 479.3).
   Leaving the Board clears them. -/
   tempKws : List (KeywordInst × EndPoint) := []
+  /-- Activated abilities gained until the end of this turn (CR 317.2, 479.3). -/
+  tempActivations : List AbilityGrant := []
+  /-- For an activated ability on the Chain, the grant it was copied from, if any.
+  The ability remains on the Chain after the source loses the grant (CR 337). -/
+  activationGrant : Option AbilityGrant := none
   /-- For an Equipment in play: the Unit it is attached to (CR 137, 825). Leaving the Board clears
   it; a Cleanup step clears it when the Unit is gone. -/
   attached : Option ObjId := none

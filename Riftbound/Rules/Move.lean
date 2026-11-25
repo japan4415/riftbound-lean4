@@ -85,7 +85,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
         { o with controller := o.owner, exhausted := false, damage := 0, damagedTurn := none,
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
-                 baseMightThisTurn := none, mightMods := [], tempKws := [],
+                 baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
                  attached := none, attachedTurn := none,
                  buffed := false,
                  extraBuffs := 0,
