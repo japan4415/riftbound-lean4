@@ -40,8 +40,10 @@ inductive SpellPick where
   | plain
   /-- The index of the chosen mode. -/
   | mode (index : Nat)
-  /-- The chosen Battlefield, or the moved Unit's Base. -/
+  /-- The chosen Battlefield, or the moved object's Base. -/
   | destination (battlefield : Option ObjId)
+  /-- The chosen mode and its required Move destination. -/
+  | modeDestination (index : Nat) (battlefield : Option ObjId)
   /-- Pay the elected Battlefields' fees and the listed optional costs of the Unit itself. -/
   | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
   /-- A Unit or Gear's elected optional costs without any Battlefield fees. -/

@@ -232,7 +232,7 @@ def Selector.understood : Selector → Bool
   | .var _ => true
   | .pick .all _ place fs => place.understood && FilterList.understood fs
   | .locationOf sel => Selector.understood sel
-  | .slotsFrom _ => true
+  | .slotsFrom _ | .revealedDeck _ => true
   | _ => false
 
 end
@@ -405,11 +405,12 @@ def Effect.understood : Effect → Bool
   | .eitherOf es => EffectList.understood es
   | .payThen _ body _ => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
-  | .revealHand w e => w.understood && Effect.understood e
+  | .revealHand w e | .revealDeckTops w e => w.understood && Effect.understood e
   | .lookAtTop _ body => Effect.understood body
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
   | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
+  | .banishAndPlayCard sel _ => sel.understood
   | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
@@ -441,7 +442,9 @@ def EffectDef.choicesRun (e : EffectDef) : Bool :=
   e.showOffChoices.all Choice.simple && if e.modes.isEmpty then
     e.choices.all Choice.simple && e.body.understood &&
       e.moveChoice.all (fun move => FilterList.understood move.filters)
-  else e.modes.all (fun mode => mode.choices.all Choice.simple && mode.body.understood)
+  else e.modes.all (fun mode =>
+    mode.choices.all Choice.simple && mode.body.understood &&
+      mode.moveChoice.all (fun move => FilterList.understood move.filters))
 
 /-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
@@ -627,7 +630,7 @@ def Ability.runs : Ability → Bool
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
     ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body))
   | .triggered t body _ =>
-    t.runs && body.moveChoice.isNone && body.choicesRun
+    t.runs && body.moveChoice.isNone && body.modes.all (·.moveChoice.isNone) && body.choicesRun
   | .replacement .attach c body =>
     c.understood && body.choices.isEmpty && body.playerTarget.isNone && body.moveChoice.isNone &&
       body.modes.isEmpty && body.choicesRun

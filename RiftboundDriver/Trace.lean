@@ -138,6 +138,9 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .plain => []
   | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
+  | .modeDestination i bf =>
+    modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i ++
+      [("moveDest", bf.elim "null" (fun id => toString id.n))]
   | .payForBattlefield sources own =>
     [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
       permanentCostFields (state.bind (·.cardDef? c)) own

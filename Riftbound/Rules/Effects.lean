@@ -4359,7 +4359,8 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     if afterNegatedMove then .seqOf [move, afterMove] else .doThen move afterMove
   let effectPick := env.executionPick <|> (s.obj? src).map (·.spellPick)
   match effectPick.map SpellPick.effectChoice, env.slots[slot]? with
-  | some (.destination dest), some (.obj id) =>
+  | some (.destination dest), some (.obj id)
+  | some (.modeDestination _ dest), some (.obj id) =>
     match s.obj? id, dest with
     | some o, none =>
       if !allowBase then resume
@@ -4370,7 +4371,7 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
           !(FilterList.holds s src env bf fs).getD false then resume
       else if o.loc == some bf || s.moveBlocked id ||
           s.blocksEnemyMove (env.effectController.getD p) id then negated
-      else if !s.effectMoveBattlefieldOk o bf then
+      else if !s.effectObjectMoveBattlefieldOk id o bf then
         let recallEffect : Effect := .prim (.recall unit false)
         (env, if afterNegatedMove then .seqOf [recallEffect, afterMove] else recallEffect)
       else (env.bind pickVar (.obj bf), thenMove (.prim (.move unit (.at_ (.var pickVar)))))
@@ -4774,6 +4775,16 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       (s, [.run p src known (.cons body .nil), .run p src env es],
         hands.map (fun (q, cards) => .handRevealed q cards))
     | none => skip
+  | .revealDeckTops who body =>
+    match who.resolve s p env with
+    | some players =>
+      let tops := players.filterMap (fun q =>
+        (s.zone (.player q .mainDeck)).head?.map (fun id => (q, id)))
+      let cards := tops.map Prod.snd
+      let known := { env with lookedCards := cards, revealedCards := cards }
+      (s, [.run p src known (.cons body .nil), .run p src env es],
+        tops.map (fun (q, id) => .revealed q id))
+    | none => skip
   | .nameCard kind =>
     match s.nameableCards kind with
     | first :: more => (s, [.nameCard p src env first more es], [])
@@ -4797,6 +4808,17 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src env (.cons (.offerNextCardPlay cards 1 price) es)], [])
   | .playCard sel price =>
     (s, [requiredCardPlayFrame s p src env sel price funding es], [])
+  | .banishAndPlayCard sel price =>
+    match sel.eval s p src env with
+    | some [id] =>
+      let banished := banishObj p s id
+      let next := match banishedPlayId banished.2 with
+        | some card =>
+          let context := env.bindPick card false
+          [.run p src context (.cons (.playCard (.var pickVar) price) .nil), .run p src env es]
+        | none => [.run p src env es]
+      (banished.1, next, banished.2)
+    | _ => skip
   | .playSelfFromTrash cost exit =>
     if (s.zone (.player p .trash)).contains src then
       let price := EffectPlayPrice.alternateBase cost

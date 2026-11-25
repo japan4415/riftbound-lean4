@@ -974,14 +974,24 @@ def GameState.effectMoveBattlefieldOk (s : GameState) (u : Object) (bf : ObjId) 
   u.loc != some bf && decide ((occupying.erase u.controller).length < 2) &&
     (!decide (s.playerCount > 2) || !(staged || running) || occupying.contains u.controller)
 
+/-- Deploy Gear can move to a different Battlefield without joining its Combat (CR 830.1.b). -/
+def GameState.effectObjectMoveBattlefieldOk (s : GameState) (id : ObjId) (o : Object)
+    (bf : ObjId) : Bool :=
+  match s.cardDef? id with
+  | some d =>
+    if d.hasType .unit then s.effectMoveBattlefieldOk o bf
+    else d.hasType .gear && s.hasKw id .deploy && o.loc != some bf
+  | none => false
+
 /-- The candidates to try for finalization. Ordinary plays, including permanents, use `.plain`. -/
 def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List SpellPick :=
   let base := .plain :: (match d.spellEffect with
     | some e =>
-        (List.range e.modes.length).map SpellPick.mode ++
-        (if e.moveChoice.isSome then .destination none ::
-          ((s.zone .battlefieldZone).filter (fun bf => (s.cardDef? bf).any (·.hasType .battlefield))).map
-            (fun bf => .destination (some bf)) else [])
+      let fields := (s.zone .battlefieldZone).filter (fun bf => (s.cardDef? bf).any (·.hasType .battlefield))
+      let destinations := none :: fields.map some
+      e.modes.zipIdx.flatMap (fun (mode, i) =>
+        if mode.moveChoice.isSome then destinations.map (.modeDestination i) else [.mode i]) ++
+      (if e.moveChoice.isSome then destinations.map .destination else [])
     | none => [])
   base ++ (match d.spellEffect.bind EffectDef.playerTarget with
     | some side =>
@@ -1031,16 +1041,13 @@ def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
 Effects that prevent the move are checked at resolution (CR 358.3.a). -/
 def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : List ObjId) :
     SpellPick → Bool
-  | .destination dest =>
+  | .destination dest | .modeDestination _ dest =>
     match e.moveChoice with
-    | some m =>
-      match ts[m.slot]?.bind s.obj? with
-      | some unit =>
-        match dest with
-        | none => m.allowBase && unit.loc.isSome
-        | some bf => s.effectMoveBattlefieldOk unit bf &&
-            (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false
-      | none => false
+    | some m => ((ts[m.slot]?).any fun id =>
+      (s.obj? id).any (fun moved => match dest with
+        | none => m.allowBase && moved.loc.isSome
+        | some bf => s.effectObjectMoveBattlefieldOk id moved bf &&
+            (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false))
     | none => false
   | .withPlayer pick _ | .withCosts pick _ _ | .withExtraObject pick _ => s.moveTargetOk c e ts pick
   | .withShowOff pick _ => s.moveTargetOk c e ts pick

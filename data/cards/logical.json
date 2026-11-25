@@ -28337,7 +28337,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus"
+   ],
    "text": [
     "When you play me, reveal the top card of each opponent's Main Deck. Choose one and banish it, then play it, ignoring its cost. Recycle the rest."
    ],
@@ -31023,7 +31025,7 @@
   {
    "cardId": "RAD-111",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 4,
@@ -31038,9 +31040,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "At the start of your Beginning Phase, each player reveals the top card of their Main Deck. If you revealed a card with the lowest Energy cost, draw it. Recycle the rest."
    ],

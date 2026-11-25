@@ -2264,9 +2264,9 @@ def SFD_077 : CardDef :=
     spellEffect := some { body := .nop, modes := [
       ⟨"Base の Unit に 4 ダメージ",
         [.targetOf .one .any .anywhere [.ofType .unit, .not .onBattlefield]],
-        .prim (.deal (.slot 0) (.const 4))⟩,
+        .prim (.deal (.slot 0) (.const 4)), none⟩,
       ⟨"Gear を Kill", [.targetOf .one .any .anywhere [.ofType .gear]],
-        .prim (.kill (.slot 0))⟩] },
+        .prim (.kill (.slot 0)), none⟩] },
     status := .drafted }
 
 -- BEGIN GENERATED SFD-078

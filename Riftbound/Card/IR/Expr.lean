@@ -284,6 +284,8 @@ inductive Selector where
   | var (v : VarId)
   /-- Objects picked while the effect resolves, or all that match (Pick) (CR 355). -/
   | pick (q : Quantity) (side : Side) (place : Place) (fs : FilterList)
+  /-- The revealed cards of this side that are still in their owners' Main Decks. -/
+  | revealedDeck (side : Side)
   /-- The object another one is attached to. -/
   | attachedTo (s : Selector)
   /-- The objects attached to another one. -/

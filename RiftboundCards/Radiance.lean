@@ -350,8 +350,8 @@ def RAD_013.meta : CardDef :=
 def RAD_013 : CardDef :=
   { RAD_013.meta with
     spellEffect := some { body := .nop, modes := [
-      ⟨"Deal 4", [.targetOf .one .any .atBattlefield [.ofType .unit]], .prim (.deal (.slot 0) (.const 4))⟩,
-      ⟨"Kill a gear", [.targetOf .one .any .anywhere [.ofType .gear]], .prim (.kill (.slot 0))⟩] },
+      ⟨"Deal 4", [.targetOf .one .any .atBattlefield [.ofType .unit]], .prim (.deal (.slot 0) (.const 4)), none⟩,
+      ⟨"Kill a gear", [.targetOf .one .any .anywhere [.ofType .gear]], .prim (.kill (.slot 0)), none⟩] },
     status := .full }
 
 -- BEGIN GENERATED RAD-014
@@ -449,14 +449,22 @@ def RAD_018.meta : CardDef :=
   { id := ⟨"RAD-018"⟩,
     name := "Drakehound Packmaster",
     types := [.unit],
+    tags := [⟨"Noxus"⟩],
     domains := [.fury],
     cost := some ⟨9, [.domain .fury, .domain .fury]⟩,
     might := some 9,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Drakehound Packmaster: the effect is not written yet. -/
-def RAD_018 : CardDef := RAD_018.meta
+/-- Drakehound Packmaster. -/
+def RAD_018 : CardDef :=
+  let take := Effect.chooseObject .enemy .inMainDeck (.ofList [.revealedByEffect])
+    (.banishAndPlayCard (.var pickVar) .ignoreBase)
+  { RAD_018.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.revealDeckTops .eachOpponent (.seqOf [
+        take, .prim (.recycle (.revealedDeck .enemy))]))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-019
 /--
@@ -876,8 +884,21 @@ def RAD_033.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Command: Attack: the effect is not written yet. -/
-def RAD_033 : CardDef := RAD_033.meta
+/-- Command: Attack. -/
+def RAD_033 : CardDef :=
+  let eligible := [Filter.top 5, .ofType .gear]
+  let gear := Selector.var pickVar
+  let revealGear := Effect.chooseObject .friendly .inMainDeck (.ofList eligible)
+    (.seqOf [.prim (.reveal gear), .prim (.drawLooked gear)])
+  let search := Effect.lookAtTop 5 (.seqOf [
+    .ifThen (.cmp .gt (.count (.all .friendly .inMainDeck eligible)) (.const 0)) (.may revealGear) .nop,
+    .recycleLooked])
+  { RAD_033.meta with
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Move a Deploy gear", [.targetOf .one .friendly .anywhere [.ofType .gear, .hasKeyword .deploy]],
+        .moveChoosing 0 false .nil .nop false, some ⟨0, false, .nil⟩⟩,
+      ⟨"Look for a gear", [], search, none⟩] },
+    status := .full }
 
 -- BEGIN GENERATED RAD-034
 /--
@@ -1128,11 +1149,11 @@ def RAD_043 : CardDef :=
   { RAD_043.meta with
     abilities := [.triggered { event := .exhaust, separateModesPerTurn := true }
       { body := .nop, modes := [
-        ⟨"Buff Riven", [], .prim (.buff .self)⟩,
+        ⟨"Buff Riven", [], .prim (.buff .self), none⟩,
         ⟨"Spend a buff to Stun", [.targetOf .one .enemy .anywhere [.ofType .unit]],
-          .doThen (.prim (.spendBuff .self)) (.prim (.stun (.slot 0)))⟩,
+          .doThen (.prim (.spendBuff .self)) (.prim (.stun (.slot 0))), none⟩,
         ⟨"Spend a buff to ready", [],
-          .doThen (.prim (.spendBuff .self)) (.prim (.ready .self))⟩] }
+          .doThen (.prim (.spendBuff .self)) (.prim (.ready .self)), none⟩] }
       .unlimited],
     status := .full }
 
@@ -2723,8 +2744,19 @@ def RAD_102.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Demon Shade: the effect is not written yet. -/
-def RAD_102 : CardDef := RAD_102.meta
+/-- Demon Shade. -/
+def RAD_102 : CardDef :=
+  let unit := Choice.targetOf .one .friendly .anywhere [.ofType .unit]
+  let openFields := Selector.all .any .atBattlefield [.ofType .battlefield, .openBf]
+  let grantGanking := Effect.ifThen (.not (.exists openFields))
+    (.grant (.slot 0) (.keyword .it ⟨.ganking, .none⟩) .thisTurn) .nop
+  let moveFilters := FilterList.ofList [.openBf]
+  { RAD_102.meta with
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Move to an open battlefield", [unit], .moveChoosing 0 false moveFilters .nop false,
+        some ⟨0, false, moveFilters⟩⟩,
+      ⟨"Give Ganking if no battlefield is open", [unit], grantGanking, none⟩] },
+    status := .full }
 
 -- BEGIN GENERATED RAD-103
 /--
@@ -2810,8 +2842,8 @@ def RAD_105 : CardDef :=
   { RAD_105.meta with
     abilities := [.triggered (.onSelf .exhaust)
       { body := .nop, modes := [
-        ⟨"Play an exhausted Gold", [], .prim (.create "Gold" (.const 1) .atBase false)⟩,
-        ⟨"Pay Chaos Power to draw", [], .payThen ⟨0, [.domain .chaos]⟩ (.prim (.draw .you (.const 1)))⟩] }
+        ⟨"Play an exhausted Gold", [], .prim (.create "Gold" (.const 1) .atBase false), none⟩,
+        ⟨"Pay Chaos Power to draw", [], .payThen ⟨0, [.domain .chaos]⟩ (.prim (.draw .you (.const 1))), none⟩] }
       .unlimited],
     status := .full }
 
@@ -2926,7 +2958,7 @@ def RAD_110 : CardDef :=
 
 -- BEGIN GENERATED RAD-111
 /--
-**Mechanical Bandit** — Gear · Fury · Energy 4 + Power 1
+**Mechanical Bandit** — Gear · Chaos · Energy 4 + Power 1
 Printings: RAD-111/167
 
 > At the start of your Beginning Phase, each player reveals the top card of their Main Deck. If
@@ -2936,14 +2968,24 @@ def RAD_111.meta : CardDef :=
   { id := ⟨"RAD-111"⟩,
     name := "Mechanical Bandit",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.fury],
-    cost := some ⟨4, [.domain .fury]⟩,
+    domains := [.chaos],
+    cost := some ⟨4, [.domain .chaos]⟩,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Mechanical Bandit: the effect is not written yet. -/
-def RAD_111 : CardDef := RAD_111.meta
+/-- Mechanical Bandit. -/
+def RAD_111 : CardDef :=
+  let mine := Selector.revealedDeck .friendly
+  let energy : VarId := ⟨"revealedEnergy"⟩
+  let cheaper := Selector.all .enemy .inMainDeck [.revealedByEffect, .cost .lt (.var energy)]
+  let drawLowest := Effect.bind energy (.costOf mine)
+    (.ifThen (.cmp .eq (.count cheaper) (.const 0)) (.prim (.drawLooked mine)) .nop)
+  { RAD_111.meta with
+    abilities := [.triggered (.onSelf (.at_ .beginning))
+      (.of [] (.revealDeckTops .eachPlayer (.seqOf [
+        .ifThen (.exists mine) drawLowest .nop, .prim (.recycle (.revealedDeck .any))])))
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-112
 /--
@@ -3880,9 +3922,9 @@ def RAD_146.meta : CardDef :=
 /-- The Ball. -/
 def RAD_146 : CardDef :=
   let action : EffectDef := { body := .nop, modes := [
-    ⟨"Draw 1", [], .prim (.draw .you (.const 1))⟩,
+    ⟨"Draw 1", [], .prim (.draw .you (.const 1)), none⟩,
     ⟨"Deal 2 to enemy units here", [],
-      .prim (.deal (.all .enemy .here [.ofType .unit]) (.const 2))⟩] }
+      .prim (.deal (.all .enemy .here [.ofType .unit]) (.const 2)), none⟩] }
   { RAD_146.meta with
     abilities := [.triggered (.onSelf .play) action .unlimited,
       .triggered (.onSelf .move) action .unlimited],

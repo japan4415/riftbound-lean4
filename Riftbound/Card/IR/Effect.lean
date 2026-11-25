@@ -137,6 +137,8 @@ inductive Effect where
   | eachPlayer (who : PlayerSel) (body : Effect)
   /-- Reveal the specified hands for the following instructions (CR 425). -/
   | revealHand (who : PlayerSel) (body : Effect)
+  /-- Reveal one top Main Deck card from each listed player and keep those cards for the body. -/
+  | revealDeckTops (who : PlayerSel) (body : Effect)
   /-- Name a format-legal card of this type and remember it on the source (CR 759-762). -/
   | nameCard (kind : CardType)
   /-- Record the answer to a naming choice on the original source. -/
@@ -163,6 +165,8 @@ inductive Effect where
   | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Play one of the matching physical cards, if it has a legal finalization (CR 420.3). -/
   | playCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Banish the selected card and play that physical card from Banishment (CR 420.3). -/
+  | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Play the source card if it is still in this player's Trash. -/
   | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
   /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/

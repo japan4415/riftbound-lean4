@@ -113,6 +113,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .it => c.itOk
   | .var v => c.vars.contains v || v == pickVar
   | .pick _ _ _ fs => FilterList.ok c fs
+  | .revealedDeck _ => true
   | .attachedTo s => Selector.ok c s
   | .attachments s => Selector.ok c s
   | .locationOf s => Selector.ok c s
@@ -364,12 +365,13 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .remakeSpellChoices spell => Selector.ok c spell
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
-  | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
+  | .revealHand w e | .revealDeckTops w e => PlayerSel.ok c w && Effect.ok c e
   | .nameCard _ | .rememberNamedCard _ => true
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
-  | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => Selector.ok c sel
+  | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
+      .mayPlayPermanents sel _ _ => Selector.ok c sel
   | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
@@ -447,7 +449,10 @@ def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
     d.modes.all (fun mode =>
       let branch : EffectDef :=
         { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget }
-      Choice.allOk 0 branch.choices && Effect.ok (branch.ctx base) branch.body)
+      let context := branch.ctx base
+      Choice.allOk 0 branch.choices && Effect.ok context branch.body &&
+        mode.moveChoice.all (fun move =>
+          decide (move.slot < context.slots) && FilterList.ok context move.filters))
 
 /-- An ability refers only to what is there. -/
 def Ability.ok : Ability → Bool

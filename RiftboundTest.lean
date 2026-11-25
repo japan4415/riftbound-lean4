@@ -73,6 +73,8 @@ public import RiftboundTest.RadianceZ
 public import RiftboundTest.RadianceAA
 public import RiftboundTest.RadianceAB
 public import RiftboundTest.RadianceAC
+public import RiftboundTest.RadianceAD
+public import RiftboundTest.RadianceAE
 
 /-!
 # RiftboundTest

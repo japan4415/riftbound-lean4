@@ -873,6 +873,9 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     | some o => some (if o ∈ s.inPlay then [o] else [])
     | none => none
   | .pick .all side place fs => s.candidates p self env side place fs
+  | .revealedDeck side => some (env.revealedCards.filter (fun id =>
+    (s.obj? id).any (fun o =>
+      side.admitsPlayer p o.owner && (s.zone (.player o.owner .mainDeck)).contains id)))
   | .slotsFrom i =>
     some ((env.slots.drop i).filterMap (fun v =>
       match v with
@@ -1089,11 +1092,11 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     some (s.objects.toList.filter (fun (_, o) =>
       o.owner == p && o.playedTurn == some s.turn)).length
   | .costOf sel =>
-    -- the Energy cost of the cards a selector names: a chosen object or a variable
     let ids : Option (List ObjId) := match sel with
       | .self => some [self]
       | .slot i => match env.slots[i]? with | some (.obj o) => some [o] | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some [o] | _ => none
+      | .revealedDeck _ => sel.eval s p self env
       | _ => none
     let energy (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.energy)).getD 0
     ids.map (fun l => (l.map energy).sum)
