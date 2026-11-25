@@ -4450,6 +4450,25 @@ def effectPermanentFinalizations (s : GameState) (p : PlayerId) (card : ObjId) (
   let decline := if plans.all (fun (plan, _) => !plan.battlefieldFees.isEmpty) then [.nop] else []
   .eitherOf (EffectList.ofList (choices ++ decline))
 
+/-- Continue a required limited Play, choosing only if more than one card is eligible. -/
+def requiredCardPlayFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) : Frame :=
+  let cards := (effectPlayCandidates s p src env sel).filter (fun id =>
+    (s.obj? id).any (·.kind.phys?.isSome) && effectCardPlayable s p id env price funding)
+  let play := Effect.playOfferedCard cards 1 price
+  match cards with
+  | [] => .run p src env es
+  | [card] => .run p src (env.bindPick card false) (.cons play es)
+  | first :: more => .pickDo p src env first more play es
+
+/-- Continuing a limited Play keeps the engine in play. -/
+theorem requiredCardPlayFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) :
+    (requiredCardPlayFrame s p src env sel price funding es).isPlay = true := by
+  unfold requiredCardPlayFrame
+  dsimp only
+  split <;> rfl
+
 /-- When an effect offers to play a card to a required location, its resolution picks must have a
 legal finalization (CR 355.16, 355.17). -/
 def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -4776,6 +4795,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .mayPlayCard sel price =>
     let cards := effectPlayCandidates s p src env sel
     (s, [.run p src env (.cons (.offerNextCardPlay cards 1 price) es)], [])
+  | .playCard sel price =>
+    (s, [requiredCardPlayFrame s p src env sel price funding es], [])
   | .playSelfFromTrash cost exit =>
     if (s.zone (.player p .trash)).contains src then
       let price := EffectPlayPrice.alternateBase cost

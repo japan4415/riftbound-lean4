@@ -161,6 +161,8 @@ inductive Effect where
   | banishLookedForPlay (less : Nat)
   /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
   | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Play one of the matching physical cards, if it has a legal finalization (CR 420.3). -/
+  | playCard (selector : Selector) (price : EffectPlayPrice)
   /-- Play the source card if it is still in this player's Trash. -/
   | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
   /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/

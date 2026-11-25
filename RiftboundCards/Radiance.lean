@@ -3645,15 +3645,21 @@ def RAD_136.meta : CardDef :=
   { id := ⟨"RAD-136"⟩,
     name := "Dockside Lock-Up",
     types := [.gear],
-    tags := [⟨"Device"⟩],
     domains := [.order],
     cost := some ⟨6, [.domain .order, .domain .order]⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Dockside Lock-Up: the effect is not written yet. -/
-def RAD_136 : CardDef := RAD_136.meta
+/-- Dockside Lock-Up. -/
+def RAD_136 : CardDef :=
+  { RAD_136.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .here [.ofType .unit]]
+        (.prim (.banishWith (.slot 0)))) .unlimited,
+      .triggered { event := .hold, cost := .killFriendly 1 (.ofList [.sameAs .self]) }
+        (.of [] (.playCard (.one .any .inBanishment [.banishedWithMe]) .ignoreBase)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-137
 /--

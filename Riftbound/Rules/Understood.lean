@@ -410,7 +410,7 @@ def Effect.understood : Effect → Bool
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
   | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
-  | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
+  | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e

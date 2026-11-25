@@ -151,6 +151,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-131": {"tags": ["Demacia"]},
     "RAD-133": {"supertypes": ["champion"], "tags": ["Jarvan IV", "Demacia"]},
     "RAD-134": {"domains": ["order"]},
+    "RAD-136": {"tags": []},
     "RAD-137": {"supertypes": ["champion"], "tags": ["Mordekaiser", "Noxus", "Spirit"]},
     "RAD-141": {"tags": ["Ziggs"]},
     "RAD-144": {"supertypes": ["signature"], "powerOwn": True},
