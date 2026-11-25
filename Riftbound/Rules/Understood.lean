@@ -47,6 +47,7 @@ mutual
 def Amount.understood : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .eventAmount => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -83,6 +84,7 @@ Might without the Layers, which they do not need yet). -/
 def Amount.understoodC : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .eventAmount => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -279,6 +281,7 @@ def Selector.understoodPick : Selector → Bool
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .burn p n => p.understood && n.understood
+  | .burnWithUnitTrigger n _ => n.understood
   | .empower s => s.understoodPickAny
   | .disempower s => s.understoodPickAny
   | .score p n => p.understood && n.understood
@@ -496,6 +499,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
+      | .linkedBurnUnit => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .chosen => true

@@ -28,7 +28,8 @@ inductive Amount where
   | x
   /-- A bound variable. -/
   | var (v : VarId)
-  /-- The amount of the event a replacement ability changes (draw N, channel N, score N). -/
+  /-- The amount carried by an event a replacement ability changes or a reflexive ability
+  reads. -/
   | eventAmount
   /-- How many turns the players have taken so far. -/
   | turnsTaken (p : PlayerSel)

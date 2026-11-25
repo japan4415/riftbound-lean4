@@ -314,6 +314,11 @@ def GameState.actionMightEvents (s s' : GameState) (a : Action) : List Event :=
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
+  | .burnedUnitFor p src card idx _ might =>
+    match s.cards.find? card with
+    | some d => (triggersAmong s src p .linkedBurnUnit d idx (idx + 1)).map
+      (fun t => { t with eventAmount := some might })
+    | none => []
   | .died obj p =>
     let own := triggersOf s obj p .die
     -- the Deathknell abilities of a unit fire one more time while a passive ability says so
@@ -641,8 +646,8 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) : ∃ ts, trigLegal s
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) : GameState :=
   let s1 := s.modObj t.source (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)
-  match addObject s1 (abilityItem t.card t.idx t.source t.controller (ts ++ t.subject.toList))
-      .chain with
+  let item := abilityItem t.card t.idx t.source t.controller (ts ++ t.subject.toList) t.eventAmount
+  match addObject s1 item .chain with
   | some r => r.1
   | none => s1
 

@@ -2854,8 +2854,17 @@ def VEN_108.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Forgotten Relic: the effect is not written yet. -/
-def VEN_108 : CardDef := VEN_108.meta
+/-- Forgotten Relic. -/
+def VEN_108 : CardDef :=
+  let burn := EffectDef.of [] (.prim (.burnWithUnitTrigger (.const 1) 2))
+  { VEN_108.meta with
+    abilities := [
+      .triggered (.onSelf .play) burn .unlimited,
+      .triggered (.onSelf (.at_ .beginning)) burn .unlimited,
+      .triggered (.onSelf .linkedBurnUnit)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.grant (.slot 0) (.mightPlus .it .eventAmount) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-109
 /--

@@ -86,6 +86,7 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
 def Amount.eval (env : Env) : Amount → Option Nat
   | .const n => some n
+  | .eventAmount => env.eventAmount
   | .var v =>
     match env.lookup v with
     | some (.int i) => some i.toNat

@@ -128,6 +128,9 @@ inductive Prim where
   | score (p : PlayerSel) (n : Amount)
   /-- Put the top `n` cards of the players' Main Decks into their Trash (CR 441). -/
   | burn (p : PlayerSel) (n : Amount)
+  /-- Burn from your Main Deck and fire the linked reflexive ability for each Unit burned
+  (CR 388-389, 441). -/
+  | burnWithUnitTrigger (n : Amount) (idx : Nat)
   /-- Look at the top cards of the Main Deck and recycle some. -/
   | predict (n : Amount)
   /-- Copy an object. -/
@@ -322,6 +325,8 @@ inductive TriggerEvent where
   | youHold
   /-- The unit's Might becomes `n` or more. -/
   | mightAtLeast (n : Nat)
+  /-- The linked Burn instruction burned a Unit card (CR 388-389). -/
+  | linkedBurnUnit
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
 deriving DecidableEq, Repr, Hashable

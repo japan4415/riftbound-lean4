@@ -1833,6 +1833,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Punching Poro は任意のカード、Sky Cruiser は Gear、Mel, Defiant Soul は Spell を捨てる。Sky Cruiser の Energy と Exhaust は同時に支払い、Mel は Empower 後に Battlefield の条件を満たす敵 Unit を追放する。
 - 167 枚中 106 枚が `drafted`、103 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 15 — Burn に続く誘発
+
+- Forgotten Relic はプレイ時と自分の Beginning Phase に Burn 1 を行う。その Burn で Unit を Trash に置いたときは、Might を記録して別の誘発型能力を Chain に載せる（CR 388-389, 441）。味方 Unit を選ぶのはこの誘発の確定時で、解決前に相手が応答できる。
+- 誘発が参照する Might は、最初の能力の発生源が場を離れたり、Burn したカードが Trash を離れたりしても使える。シナリオでは非 Unit、別の効果による Burn、Burn Out 後の Burn も検査する。
+- 167 枚中 107 枚が `drafted`、104 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

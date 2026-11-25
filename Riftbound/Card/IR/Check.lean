@@ -34,6 +34,8 @@ structure Ctx where
   itOk : Bool := false
   /-- The amount and the player of a replaced event are known. -/
   eventOk : Bool := false
+  /-- An amount was captured by a reflexive trigger. -/
+  eventAmountOk : Bool := false
 deriving DecidableEq, Repr
 
 /-- The players an effect names can be found. -/
@@ -50,7 +52,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .x => c.hasX
   | .var v => c.vars.contains v || v == pickVar
   | .points p => PlayerSel.ok c p
-  | .eventAmount => c.eventOk
+  | .eventAmount => c.eventOk || c.eventAmountOk
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
@@ -189,6 +191,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .spendXP p n => p.ok c && Amount.ok c n
   | .score p n => p.ok c && Amount.ok c n
   | .burn p n => p.ok c && Amount.ok c n
+  | .burnWithUnitTrigger n _ => Amount.ok c n
   | .predict n => Amount.ok c n
   | .copy s => Selector.ok c s
   | .double s => Selector.ok c s
@@ -395,7 +398,7 @@ def Ability.ok : Ability → Bool
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
     Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := t.watched }
+      body.ok { itOk := true, slots := t.watched, eventAmountOk := t.event == .linkedBurnUnit }
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

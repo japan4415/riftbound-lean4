@@ -771,8 +771,8 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
 
 /-- Burning schedules only effect frames and Burn Out decisions. -/
 theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {who : PlayerSel} {n : Amount} {es : EffectList} {f : Frame}
-    (h : f ∈ (burnEffect s p src env who n es).2.1) :
+    {who : PlayerSel} {n : Amount} {es : EffectList} {link : Option Nat} {f : Frame}
+    (h : f ∈ (burnEffect s p src env who n es link).2.1) :
     f.isPlay = true ∨ ∃ q, f = .chanceBurnOut q := by
   unfold burnEffect at h
   split at h

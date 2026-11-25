@@ -3036,29 +3036,49 @@ def eitherOk (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a b : Eff
   let vb := b.viable s p src env
   (if yes then va else vb) || (!va && !vb)
 
+/-- Capture the Unit cards actually put in the Trash by a linked Burn instruction. -/
+def linkedBurnEvents (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (idx : Nat)
+    (moves : List Event) : List Event :=
+  let sourceCard := env.sourceCard <|> (s.cardDef? src).map (·.id)
+  match sourceCard with
+  | none => []
+  | some card => moves.filterMap (fun
+    | .moved _ burned (.player _ .trash) => do
+      let d ← s.cardDef? burned
+      if d.hasType .unit then
+        some (.burnedUnitFor p src card idx burned (d.might.getD 0).toNat)
+      else none
+    | _ => none)
+
 /-- Burn cards for the first player and schedule the others with the same count. An exhausted
 deck is refilled through the ordinary Burn Out decisions before the remainder is burned
 (CR 432.1.b, 441.4). -/
 def burnEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (who : PlayerSel)
-    (n : Amount) (es : EffectList) : GameState × List Frame × List Event :=
+    (n : Amount) (es : EffectList) (unitTrigger : Option Nat := none) :
+    GameState × List Frame × List Event :=
   match who.resolve s p, n.evalS s p src env with
   | some (q :: qs), some count =>
     let cards := (s.zone (.player q .mainDeck)).take count
     let r := applyEach (sendObj .trash) s cards
     let burnFor (pl : PlayerId) (k : Nat) :=
-      Frame.run pl src env (.cons (.prim (.burn .you (.const k))) .nil)
+      let burn := match unitTrigger with
+        | some idx => Prim.burnWithUnitTrigger (.const k) idx
+        | none => Prim.burn .you (.const k)
+      Frame.run pl src env (.cons (.prim burn) .nil)
     let rest := qs.map (fun pl => burnFor pl count) ++ [.run p src env es]
     let next :=
       if cards.length < count then
         .chanceBurnOut q :: burnFor q (count - cards.length) :: rest
       else rest
-    (r.1, next, r.2)
+    let triggers := unitTrigger.toList.flatMap (fun idx => linkedBurnEvents r.1 q src env idx r.2)
+    (r.1, next, r.2 ++ triggers)
   | some [], some _ => (s, [.run p src env es], [])
   | _, _ => (s, [.run p src env es], [.skipped src])
 
 /-- Burning cards and scheduling Burn Out preserves the structural invariants. -/
 theorem burnEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (who : PlayerSel) (n : Amount) (es : EffectList) : Safe s (burnEffect s p src env who n es).1 := by
+    (who : PlayerSel) (n : Amount) (es : EffectList) (link : Option Nat) :
+    Safe s (burnEffect s p src env who n es link).1 := by
   unfold burnEffect
   split
   · exact applyEach_safe (sendObj_safe .trash) _ _
@@ -3116,6 +3136,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | .cons b .nil => (s, [.eitherDo p src env a b es], [])
     | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
   | .prim (.burn who n) => burnEffect s p src env who n es
+  | .prim (.burnWithUnitTrigger n idx) => burnEffect s p src env .you n es (some idx)
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
@@ -3175,7 +3196,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   split <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
     | exact castInlineStep_safe s p src env _ es
-    | exact burnEffect_safe s p src env _ _ es
+    | exact burnEffect_safe s p src env _ _ es _
     | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact castReducedStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)
@@ -3239,9 +3260,11 @@ its controller, with the objects chosen as the slots, and then it leaves the Cha
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
   match o.kind with
   | .chainAbility card idx src =>
-    .run o.controller src { slots := slotValues o.targets (abilityDef s card idx) }
-      (abilityBody s card idx) ::
-      .finishSpell item :: rest
+    let env : Env := {
+      slots := slotValues o.targets (abilityDef s card idx)
+      sourceCard := some card
+      eventAmount := o.eventAmount }
+    .run o.controller src env (abilityBody s card idx) :: .finishSpell item :: rest
   | _ => .finishSpell item :: rest
 
 /-- The effects that choose the targets of an effect again: one for each target of exactly one

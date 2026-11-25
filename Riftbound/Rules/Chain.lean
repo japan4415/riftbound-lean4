@@ -364,10 +364,10 @@ def useOf (idx : Nat) (ex : Bool) (o : Object) : Object :=
   { o with exhausted := o.exhausted || ex, used := o.used ++ [idx] }
 
 /-- The object an ability becomes on the Chain: it belongs to the player who used it (CR 337). -/
-def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : List ObjId) :
-    Object :=
+def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : List ObjId)
+    (eventAmount : Option Nat := none) : Object :=
   { kind := .chainAbility card idx src, owner := p, controller := p, timestamp := ⟨0⟩,
-    targets := ts }
+    targets := ts, eventAmount := eventAmount }
 
 /-- What an Add ability adds. -/
 inductive ManaKind where

@@ -561,4 +561,73 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (done.obj? big).isSome && (done.obj? friendly).isSome &&
     (done.obj? mel).any (·.empowerCount == 1)
 
+-- Forgotten Relic first burns without targets. The reflexive ability has separate
+-- priority and still knows the Might if the source and the burned card both leave.
+#guard vendettaCase fun s => do
+  let (s, relic) ← put s s.me "VEN-108" .hand
+  let (s, target) ← put s s.me "OGN-088" .base
+  let (s, enemy) ← put s s.you "OGN-088" .base
+  let (s, top) ← put s s.me "OGN-001" .mainDeck
+  let p := s.me
+  let q := s.you
+  let code := cid "VEN-108"
+  let pass (who : PlayerId) : Action := ⟨.player who, .pass⟩
+  let pick (u : ObjId) : Action := ⟨.player p, .putTrigger 0 [u]⟩
+  let (first, _) ← (step 100 (s.rich p) ⟨.player p, .playCard relic ⟨5, []⟩ []⟩).toOption
+  let source ← first.firstOf p .base "VEN-108"
+  let firstItem ← (first.zone .chain).head?
+  let withoutSource := (sendObj .trash first source).1
+  let (passed, _) ← (step 100 withoutSource (pass p)).toOption
+  let (waiting, es) ← (step 100 passed (pass q)).toOption
+  let burned ← waiting.firstOf p .trash "OGN-001"
+  let (second, _) ← (step 100 waiting (pick target)).toOption
+  let secondItem ← (second.zone .chain).head?
+  let (passedAgain, _) ← (step 100 (sendObj .banishment second burned).1 (pass p)).toOption
+  let (done, _) ← (step 100 passedAgain (pass q)).toOption
+  return (first.obj? firstItem).any (fun o =>
+      o.kind == .chainAbility code 0 source && o.targets.isEmpty) &&
+    (first.zone (.player p .mainDeck)).head? == some top &&
+    (waiting.zone .chain).isEmpty && waiting.mightNow target == s.mightNow target &&
+    (legalActions waiting).contains (pick target) && !(legalActions waiting).contains (pick enemy) &&
+    es.contains (.burnedUnitFor p source code 2 burned 5) &&
+    (second.obj? secondItem).any (fun o =>
+      o.kind == .chainAbility code 2 source && o.eventAmount == some 5 && o.targets == [target]) &&
+    (legalActions passedAgain).contains (pass q) &&
+    done.mightNow target == (s.mightNow target).map (· + 5)
+
+-- The Beginning Phase burn belongs to the controller. Other effects' burns and burning a
+-- non-Unit have no reflexive trigger. Burning after Burn Out still uses the linked instruction.
+#guard vendettaCase fun s => do
+  let (s, relic) ← put s s.me "VEN-108" .base
+  let (s, target) ← put s s.me "OGN-088" .base
+  let (s, top) ← put s s.me "OGN-001" .mainDeck
+  let p := s.me
+  let q := s.you
+  let deck := Zone.player p .mainDeck
+  let trash := Zone.player p .trash
+  let phase := Event.phaseStarted p .beginning
+  let otherPhase ← fire s [.phaseStarted q .beginning]
+  let (otherBurn, _, otherEvents) := burnEffect s p relic {} .you (.const 1) .nil
+  let unlinked ← fire otherBurn otherEvents
+  let normal ← fire s [phase]
+  let (gearDeck, gear) ← put s p "VEN-087" .mainDeck
+  let gearBurned ← fire gearDeck [phase]
+  let (unitGearDeck, _) ← put s p "VEN-058" .mainDeck
+  let unitGearBurned ← fire unitGearDeck [phase]
+  let empty := (applyEach (sendObj .banishment) s (s.zone deck)).1
+  let (empty, refill) ← put empty p "OGN-001" .trash
+  let awaiting ← fire empty [phase]
+  let order := refill :: (awaiting.zone trash).filter (· != refill)
+  let (shuffled, _) ← (step 100 awaiting ⟨.chance, .arrange order⟩).toOption
+  let (afterOut, events) ← (step 100 shuffled ⟨.player p, .burnOutTarget q⟩).toOption
+  let done := settleChain {} 12 afterOut
+  return (otherPhase.zone deck).head? == some top &&
+    (unlinked.obj? top).isNone && unlinked.mightNow target == s.mightNow target &&
+    normal.mightNow target == (s.mightNow target).map (· + 5) &&
+    (gearBurned.obj? gear).isNone && gearBurned.countIn p .trash "VEN-087" == 1 &&
+    gearBurned.mightNow target == s.mightNow target &&
+    unitGearBurned.mightNow target == (s.mightNow target).map (· + 2) &&
+    events.any (fun e => match e with | .burnedUnitFor _ _ _ _ _ 5 => true | _ => false) &&
+    done.mightNow target == (s.mightNow target).map (· + 5)
+
 end RiftboundTest

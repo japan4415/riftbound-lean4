@@ -23,6 +23,10 @@ inductive Event where
   | pointsGained (p : PlayerId) (n : Nat)
   /-- A player burned out (CR 432). -/
   | burnedOut (p : PlayerId)
+  /-- An instruction burned a Unit, recording its Might for the linked reflexive ability
+  (CR 388-389, 441). The burned card's identifier is the one it has in the Trash. -/
+  | burnedUnitFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (burned : ObjId)
+    (might : Nat)
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)

@@ -98,6 +98,9 @@ def eventJson : Event → String
   | .pointsGained p n =>
     jobj [("t", jstr "points"), ("player", toString p.n), ("n", toString n)]
   | .burnedOut p => jobj [("t", jstr "burnout"), ("player", toString p.n)]
+  | .burnedUnitFor p source _ idx card might =>
+    jobj [("t", jstr "burned_unit"), ("player", toString p.n), ("source", toString source.n),
+      ("index", toString idx), ("card", toString card.n), ("might", toString might)]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
