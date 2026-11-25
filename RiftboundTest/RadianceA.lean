@@ -256,4 +256,129 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
       done.mightNow id == some 5 && expired.mightNow id == some 2) &&
     done.tired enemy == some true && done.mightNow enemy == some 2
 
+-- The Chronomancer Predicts two on play and snapshots the total of its Disarm instances on attack.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, chronomancer) ← put s p "RAD-050" .hand
+  let (s, target) ← putAt s q "VEN-091" field
+  let (s, distant) ← put s q "VEN-071" .base
+  let s := s.control q field
+  let first ← (s.zone (.player p .mainDeck))[0]?
+  let second ← (s.zone (.player p .mainDeck))[1]?
+  let waiting ← play s p chronomancer
+  let (keeping, _) ← (step 100 waiting ⟨.player p, .predictPick second false⟩).toOption
+  let (played, _) ← (step 100 keeping ⟨.player p, .predictPick first false⟩).toOption
+  let unit ← played.firstOf p .base "RAD-050"
+  let strengthened := (addTempKw ⟨.disarm, .none⟩ .turn played unit).1
+  let strengthened := strengthened.modObj unit (fun o => { o with exhausted := false })
+  let (attack, _) ← (step 100 strengthened
+    ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+  let (queued, _) ← (step 100 attack ⟨.player p, .putTrigger 0 [target]⟩).toOption
+  let stripped := queued.modObj unit (fun o => { o with tempKws := [] })
+  let done := settleChain {} 8 stripped
+  let (expired, _) ← (advance 100 { done with pending := [.expireTurn] } []).toOption
+  return (played.zone (.player p .mainDeck)).take 2 == [second, first] &&
+    attack.trigPicks == [target] && !attack.trigPicks.contains distant &&
+    queued.kwAmount unit .disarm == 3 && stripped.kwAmount unit .disarm == 2 &&
+    (queued.zone .chain).length == 1 && done.mightNow target == some 7 &&
+    expired.mightNow target == some 10
+
+-- A Peddler arriving after combat starts Disarms once. Its return during the same combat does not.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, _) ← putAt s p "VEN-071" field
+  let (s, target) ← putAt s q "VEN-091" field
+  let (s, peddler) ← put s p "RAD-054" .base
+  let s := ((s.control q field).modObj field (fun o => { o with contested := some p }))
+    |>.inShowdownAt field p
+  let entered := (sendToBf field s peddler).1
+  let (combat, events) := entered.observeCombat entered.pending
+  let updated := { entered with combat }
+  let resolved ← fire updated events { pick := (· == [target]) }
+  let returned := (sendToBf field (moveHome updated peddler).1 peddler).1
+  return events == [.combatJoined field p [peddler]] && resolved.mightNow target == some 9 &&
+    (returned.observeCombat returned.pending).2.isEmpty
+
+-- Clanging Sentry is itself a Mech. Two copies grant a single, combined Disarm to each friendly Mech.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, sentry) ← putAt s p "RAD-055" field
+  let (s, extra) ← put s p "RAD-055" .base
+  let (s, nonMech) ← putAt s p "VEN-071" field
+  let (s, enemyMech) ← putAt s q "RAD-009" field
+  let (s, target) ← putAt s q "VEN-091" field
+  let s := (s.control q field).inShowdownAt field p
+  let combat := Event.combatStarted field p
+  let triggers := s.detect [combat]
+  let defenderTriggers := s.detect [.combatStarted field q]
+  let done ← fire s [combat] { pick := (· == [target]) }
+  return s.kwAmount sentry .disarm == 2 && s.kwAmount extra .disarm == 2 &&
+    s.kwAmount nonMech .disarm == 0 && s.kwAmount enemyMech .disarm == 0 &&
+    triggers.length == 1 && triggers.head?.any (fun t =>
+      t.source == sentry && t.eventAmount == some 2) &&
+    defenderTriggers.all (fun t => t.triggerKeyword != some .disarm) &&
+    done.mightNow target == some 8
+
+-- Riptide Mage can pay Accelerate and weakens only an enemy Unit.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, mage) ← put s p "RAD-058" .hand
+  let (s, enemy) ← put s s.you "VEN-091" .base
+  let (s, ally) ← put s p "VEN-071" .base
+  let waiting ← castStop s p mage
+  let accelerated ← cast (s.fund p 5 (mind := 2)) p mage ⟨5, [.mind, .mind]⟩
+    [] { pick := (· == [enemy]) }
+  let unit ← accelerated.firstOf p .base "RAD-058"
+  return waiting.trigPicks == [enemy] && !waiting.trigPicks.contains ally &&
+    accelerated.tired unit == some false && accelerated.mightNow enemy == some 7
+
+-- Supernova pays Mind Power, deals ten and then draws two.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, nova) ← put s p "RAD-059" .hand
+  let (s, target) ← put s s.you "VEN-091" .base
+  let done ← cast (s.fund p 9 (mind := 1)) p nova ⟨9, [.mind]⟩ [target]
+  return (cast (s.fund p 9 (order := 1)) p nova ⟨9, [.order]⟩ [target]).isNone &&
+    done.countIn s.you .trash "VEN-091" == 1 && done.handN p == s.handN p + 1
+
+-- Disposal Expert enters ready when alone and gives one enemy here −2 Might when attacking.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, expert) ← put s p "RAD-093" .hand
+  let (s, defender) ← putAt s q "VEN-091" field
+  let (withAlly, _) ← put s p "VEN-071" .base
+  let s := s.control q field
+  let withAlly := withAlly.control q field
+  let ready ← play s p expert
+  let exhausted ← play withAlly p expert
+  let unit ← ready.firstOf p .base "RAD-093"
+  let other ← exhausted.firstOf p .base "RAD-093"
+  let (attack, _) ← (step 100 ready ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+  let weakened := settleChain { pick := (· == [defender]) } 8 attack
+  return exhausted.tired other == some true && attack.trigPicks == [defender] &&
+    weakened.mightNow defender == some 8
+
+-- Siren uses Ganking to attack directly from another Battlefield and Disarms there.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let origin := s.bf0
+  let field ← s.battlefields.find? (· != origin)
+  let (s, siren) ← putAt s p "RAD-097" origin
+  let (s, target) ← putAt s q "VEN-091" field
+  let (s, away) ← putAt s p "VEN-071" origin
+  let s := (s.control p origin).control q field
+  let (attack, _) ← (step 100 s ⟨.player p, .standardMove siren (.battlefield field)⟩).toOption
+  let done := settleChain { pick := (· == [target]) } 8 attack
+  return attack.trigPicks == [target] && !attack.trigPicks.contains away &&
+    (done.obj? siren).any (·.loc == some field) && done.mightNow target == some 9
+
 end RiftboundTest

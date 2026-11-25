@@ -50,7 +50,6 @@ def RAD_002.meta : CardDef :=
   { id := ⟨"RAD-002"⟩,
     name := "Banner of Conquest",
     types := [.gear],
-    tags := [⟨"Device"⟩],
     domains := [.fury],
     cost := some ⟨1, [.domain .fury]⟩,
     keywords := [{ keyword := .deploy }],
@@ -66,7 +65,7 @@ def RAD_002 : CardDef :=
 
 -- BEGIN GENERATED RAD-003
 /--
-**Bilgewater Tracker** — Unit · Body · Energy 3 · Might 3
+**Bilgewater Tracker** — Unit · Fury · Energy 3 · Might 3
 Printings: RAD-003/167
 
 > When you play me, deal 1 to each of up to 2 units.
@@ -75,7 +74,8 @@ def RAD_003.meta : CardDef :=
   { id := ⟨"RAD-003"⟩,
     name := "Bilgewater Tracker",
     types := [.unit],
-    domains := [.body],
+    tags := [⟨"Bilgewater"⟩],
+    domains := [.fury],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
@@ -184,6 +184,7 @@ def RAD_008.meta : CardDef :=
   { id := ⟨"RAD-008"⟩,
     name := "War Scout",
     types := [.unit],
+    tags := [⟨"Demacia"⟩, ⟨"Yordle"⟩],
     domains := [.fury],
     cost := some ⟨3, []⟩,
     might := some 2,
@@ -1101,6 +1102,7 @@ def RAD_050.meta : CardDef :=
   { id := ⟨"RAD-050"⟩,
     name := "Mysterious Chronomancer",
     types := [.unit],
+    tags := [⟨"Shurima"⟩],
     domains := [.mind],
     cost := some ⟨5, []⟩,
     might := some 4,
@@ -1108,8 +1110,12 @@ def RAD_050.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Mysterious Chronomancer: the effect is not written yet. -/
-def RAD_050 : CardDef := RAD_050.meta
+/-- Mysterious Chronomancer. -/
+def RAD_050 : CardDef :=
+  { RAD_050.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.prim (.predict (.const 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-051
 /--
@@ -1186,6 +1192,7 @@ def RAD_054.meta : CardDef :=
   { id := ⟨"RAD-054"⟩,
     name := "Trinket Peddler",
     types := [.unit],
+    tags := [⟨"Bandle City"⟩, ⟨"Yordle"⟩],
     domains := [.mind],
     cost := some ⟨3, []⟩,
     might := some 3,
@@ -1196,7 +1203,7 @@ def RAD_054.meta : CardDef :=
 /-- Trinket Peddler. -/
 def RAD_054 : CardDef :=
   { RAD_054.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-055
 /--
@@ -1210,14 +1217,19 @@ def RAD_055.meta : CardDef :=
   { id := ⟨"RAD-055"⟩,
     name := "Clanging Sentry",
     types := [.unit],
+    tags := [⟨"Piltover"⟩, ⟨"Mech"⟩],
     domains := [.mind],
     cost := some ⟨3, []⟩,
     might := some 2,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Clanging Sentry: the effect is not written yet. -/
-def RAD_055 : CardDef := RAD_055.meta
+/-- Clanging Sentry. -/
+def RAD_055 : CardDef :=
+  { RAD_055.meta with
+    abilities := [.passive .always
+      [.keyword (.all .friendly .anywhere [.tag ⟨"Mech"⟩]) ⟨.disarm, .none⟩]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-056
 /--
@@ -1274,6 +1286,7 @@ def RAD_058.meta : CardDef :=
   { id := ⟨"RAD-058"⟩,
     name := "Riptide Mage",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩],
     domains := [.mind],
     cost := some ⟨4, [.domain .mind]⟩,
     might := some 3,
@@ -1287,11 +1300,11 @@ def RAD_058 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightMinus .it (.const 3)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-059
 /--
-**Supernova** — Spell · Order · Energy 9 + Power 1
+**Supernova** — Spell · Mind · Energy 9 + Power 1
 Printings: RAD-059/167
 
 > Deal 10 to a unit. Draw 2.
@@ -1300,8 +1313,8 @@ def RAD_059.meta : CardDef :=
   { id := ⟨"RAD-059"⟩,
     name := "Supernova",
     types := [.spell],
-    domains := [.order],
-    cost := some ⟨9, [.domain .order]⟩,
+    domains := [.mind],
+    cost := some ⟨9, [.domain .mind]⟩,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
@@ -1311,7 +1324,7 @@ def RAD_059 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.prim (.deal (.slot 0) (.const 10)),
         .prim (.draw .you (.const 2))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-060
 /--
@@ -1700,6 +1713,7 @@ def RAD_077.meta : CardDef :=
   { id := ⟨"RAD-077"⟩,
     name := "Wrath of the Freljord",
     types := [.unit],
+    tags := [⟨"Freljord"⟩, ⟨"Spirit"⟩],
     domains := [.body],
     cost := some ⟨9, []⟩,
     might := some 7,
@@ -1956,6 +1970,7 @@ def RAD_088.meta : CardDef :=
   { id := ⟨"RAD-088"⟩,
     name := "Staunch Survivor",
     types := [.unit],
+    tags := [⟨"Freljord"⟩],
     domains := [.body],
     cost := some ⟨2, [.domain .body]⟩,
     might := some 2,
@@ -2064,7 +2079,7 @@ def RAD_092 : CardDef :=
 
 -- BEGIN GENERATED RAD-093
 /--
-**Disposal Expert** — Unit · Fury · Energy 4 · Might 3
+**Disposal Expert** — Unit · Chaos · Energy 4 · Might 3
 Printings: RAD-093/167
 
 > I enter ready if you control no other units.
@@ -2074,15 +2089,20 @@ def RAD_093.meta : CardDef :=
   { id := ⟨"RAD-093"⟩,
     name := "Disposal Expert",
     types := [.unit],
-    domains := [.fury],
+    tags := [⟨"Bandle City"⟩, ⟨"Yordle"⟩],
+    domains := [.chaos],
     cost := some ⟨4, []⟩,
     might := some 3,
     keywords := [{ keyword := .disarm, arg := .amount 2 }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Disposal Expert: the effect is not written yet. -/
-def RAD_093 : CardDef := RAD_093.meta
+/-- Disposal Expert. -/
+def RAD_093 : CardDef :=
+  { RAD_093.meta with
+    abilities := [.passive (.not (.exists (.all .friendly .anywhere [.ofType .unit, .notSelf])))
+      [.entersReady .self]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-094
 /--
@@ -2162,6 +2182,7 @@ def RAD_097.meta : CardDef :=
   { id := ⟨"RAD-097"⟩,
     name := "Siren of the Shallows",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩],
     domains := [.chaos],
     cost := some ⟨2, []⟩,
     might := some 1,
@@ -2173,7 +2194,7 @@ def RAD_097.meta : CardDef :=
 /-- Siren of the Shallows. -/
 def RAD_097 : CardDef :=
   { RAD_097.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-098
 /--
@@ -2620,6 +2641,7 @@ def RAD_118.meta : CardDef :=
   { id := ⟨"RAD-118"⟩,
     name := "Herald of the Emperor",
     types := [.unit],
+    tags := [⟨"Shurima"⟩],
     domains := [.order],
     cost := some ⟨5, []⟩,
     might := some 3,
@@ -2867,6 +2889,7 @@ def RAD_128.meta : CardDef :=
   { id := ⟨"RAD-128"⟩,
     name := "Steadfast Outrider",
     types := [.unit],
+    tags := [⟨"Demacia"⟩],
     domains := [.order],
     cost := some ⟨4, []⟩,
     might := some 3,

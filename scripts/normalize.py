@@ -55,17 +55,31 @@ TEXT_ERRATA = {
 
 # The gallery omits or mislabels these fields. Checked against its card images.
 RADIANCE_PRINT_METADATA = {
+    "RAD-002": {"tags": []},
+    "RAD-003": {"domains": ["fury"], "tags": ["Bilgewater"]},
     "RAD-006": {"domains": ["fury"]},
+    "RAD-008": {"tags": ["Demacia", "Yordle"]},
     "RAD-009": {"domains": ["fury"], "tags": ["Bandle City", "Yordle", "Mech"]},
     "RAD-022": {"domains": ["fury"]},
     "RAD-026": {"domains": ["calm"], "tags": ["Freljord"]},
     "RAD-041": {"domains": ["calm"]},
     "RAD-047": {"domains": ["mind"]},
     "RAD-049": {"domains": ["mind"], "tags": ["Zaun"]},
+    "RAD-050": {"tags": ["Shurima"]},
+    "RAD-054": {"tags": ["Bandle City", "Yordle"]},
+    "RAD-055": {"tags": ["Piltover", "Mech"]},
+    "RAD-058": {"tags": ["Bilgewater"]},
+    "RAD-059": {"domains": ["mind"]},
     "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
+    "RAD-077": {"tags": ["Freljord", "Spirit"]},
+    "RAD-088": {"tags": ["Freljord"]},
+    "RAD-093": {"domains": ["chaos"], "tags": ["Bandle City", "Yordle"]},
+    "RAD-097": {"tags": ["Bilgewater"]},
     "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
+    "RAD-118": {"tags": ["Shurima"]},
     "RAD-121": {"domains": ["order"]},
     "RAD-123": {"domains": ["order"], "tags": ["Equipment"]},
+    "RAD-128": {"tags": ["Demacia"]},
     "RAD-134": {"domains": ["order"]},
 }
 

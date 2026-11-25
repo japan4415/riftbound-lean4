@@ -104,6 +104,8 @@ structure Object where
   targets : List ObjId := []
   /-- For an ability on the Chain: the amount captured when it triggered (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- For an ability assembled from the source's effective keywords. -/
+  triggerKeyword : Option Keyword := none
   /-- A Move trigger's original Battlefield information (CR 477.3.b). -/
   moveBattlefields : Option (List ObjId) := none
   /-- For a Unit at a Battlefield: that Battlefield (CR 106, 144). `none` for a Unit on a Base and

@@ -457,7 +457,9 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
           .combatControl bf | .combatFinish bf => bf == c.battlefield
         | _ => false) then
       let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
-      (some { c with units := (c.units ++ present).eraseDups }, [])
+      let joined := present.filter (fun unit => !c.units.contains unit)
+      (some { c with units := c.units ++ joined },
+        if joined.isEmpty then [] else [.combatJoined c.battlefield c.attacker joined])
     else (some c, [])
   | none =>
     match pending.findSome? (fun f => match f with

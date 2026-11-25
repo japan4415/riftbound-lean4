@@ -27898,9 +27898,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "Friendly units here have [Assault]. (+1 :rb_might: while they're attackers.)"
@@ -27913,7 +27911,7 @@
   {
    "cardId": "RAD-003",
    "domains": [
-    "body"
+    "fury"
    ],
    "effectText": [],
    "energy": 3,
@@ -27928,7 +27926,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "When you play me, deal 1 to each of up to 2 units."
    ],
@@ -28065,7 +28065,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia",
+    "Yordle"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_fury: as an additional cost to have me enter ready.)",
     "When you play me, give a unit +2 :rb_might: this turn."
@@ -29224,7 +29227,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play me, [Predict 2]. (Look at the top 2 cards of your Main Deck. Recycle any of them and put the rest back in any order.)",
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)"
@@ -29337,7 +29342,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "[Disarm] (When I attack, give an enemy unit here -1 :rb_might: this turn.)"
    ],
@@ -29364,7 +29372,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "Your Mechs have [Disarm]. (When each of us attacks, give an enemy unit there -1 :rb_might: this turn.)"
    ],
@@ -29446,7 +29457,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_mind: as an additional cost to have me enter ready.)",
     "When you play me, give an enemy unit -3 :rb_might: this turn."
@@ -29459,7 +29472,7 @@
   {
    "cardId": "RAD-059",
    "domains": [
-    "order"
+    "mind"
    ],
    "effectText": [],
    "energy": 9,
@@ -29969,7 +29982,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Spirit"
+   ],
    "text": [
     "I enter ready.",
     "[Shield 3] (+3 :rb_might: while I'm a defender.)"
@@ -30288,7 +30304,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "[Assault 2], [Shield 2] (+2 :rb_might: while I'm an attacker or defender.)"
    ],
@@ -30421,7 +30439,7 @@
   {
    "cardId": "RAD-093",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 4,
@@ -30436,7 +30454,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "I enter ready if you control no other units.",
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)"
@@ -30547,7 +30568,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "[Disarm] (When I attack, give an enemy unit here -1 :rb_might: this turn.)",
     "[Ganking] (I can move from battlefield to battlefield.)"
@@ -31126,7 +31149,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play me, choose a friendly unit. Its base Might becomes 5 this turn."
    ],
@@ -31409,7 +31434,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "[Tank] (I must be assigned combat damage first.)",
     "While there are 2 or more other friendly units and/or gear at my battlefield, I have +2 :rb_might:."

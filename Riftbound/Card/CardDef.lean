@@ -163,6 +163,13 @@ def equipCost (c : CardDef) : Option Cost :=
     | .equip, .cost cost => some cost
     | _, _ => none)
 
+/-- Keyword effects that need an effective value captured when they trigger. -/
+def keywordTrigger : Keyword → Option Ability
+  | .disarm => some (.triggered (Trigger.onSelf .attack)
+      (EffectDef.of [Choice.targetOf .one .enemy .here [.ofType .unit]]
+        (.grant (.slot 0) (.mightMinus .it .eventAmount) .thisTurn)) .unlimited)
+  | _ => none
+
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/

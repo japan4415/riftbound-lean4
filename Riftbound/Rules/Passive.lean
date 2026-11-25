@@ -302,11 +302,11 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
   let amount (i : KeywordInst) : Option Nat :=
-    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
+    -- Assault, Shield and Disarm default to one when they have no number.
     if i.keyword == k then
       (match i.arg with
         | .amount n => some n
-        | .none => if k == .assault || k == .shield then some 1 else none
+        | .none => if k == .assault || k == .shield || k == .disarm then some 1 else none
         | _ => none)
     else none
   -- Assault that equals a number of objects (Ancient Warmonger: the enemy units here)

@@ -5196,9 +5196,10 @@ its controller, with the objects chosen as the slots, and then it leaves the Cha
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
   match o.kind with
   | .chainAbility card idx src =>
-    let ability := match o.activationGrant with
-      | some grant => s.grantedActivation grant
-      | none => abilityAt s card idx
+    let ability := (o.triggerKeyword.bind CardDef.keywordTrigger) <|>
+      (match o.activationGrant with
+        | some grant => s.grantedActivation grant
+        | none => abilityAt s card idx)
     let definition := (ability.bind Ability.effectDef).bind (·.forPick o.spellPick)
     let definition := o.moveBattlefields.elim definition (fun fields =>
       definition.map (fun e => { e with choices := e.choices.map (Choice.withMoveBattlefields fields) }))

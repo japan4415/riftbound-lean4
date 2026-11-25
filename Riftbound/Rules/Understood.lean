@@ -618,7 +618,7 @@ def Keyword.runs : Keyword → Bool
   | .deathknell => true | .hunt => true | .level => true | .equip => true
   | .accelerate => true | .vision => true | .hidden => true
   | .repeat_ => true | .unique => true | .quickDraw => true | .weaponmaster => true
-  | .backline => true | .ambush => true | .deploy => true
+  | .backline => true | .ambush => true | .deploy => true | .disarm => true
   | _ => false
 
 /-- A card can model the printed Empower cost with an explicit activated ability (CR 827). -/

@@ -120,6 +120,10 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
 def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) : List PendTrigger :=
   triggersOfMatching s src p (· == ev)
 
+/-- The definition of a queued trigger, including a keyword assembled from several sources. -/
+def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
+  (t.triggerKeyword.bind CardDef.keywordTrigger) <|> abilityAt s t.card t.idx
+
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
 a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
 may have left the game, as a Spell on its way to the Chain has. A subject at a place (here, at a
@@ -341,6 +345,30 @@ def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Na
         | _ => false)
     else [])
 
+/-- Disarm fires once for the total of the attacker's instances of the keyword (CR 831). -/
+def GameState.disarmTriggers (s : GameState) (unit : ObjId) (attacker : PlayerId) : List PendTrigger :=
+  match s.cardDef? unit with
+  | some d =>
+    let amount := s.kwAmount unit .disarm
+    if d.hasType .unit && amount > 0 then
+      [{ source := unit
+         card := d.id
+         idx := d.allAbilities.length
+         controller := attacker
+         triggerKeyword := some .disarm
+         eventAmount := some amount }]
+    else []
+  | none => []
+
+/-- The triggers of an object becoming an attacker or defender in this Combat. -/
+def GameState.combatantTriggers (s : GameState) (att : PlayerId) (u : ObjId) : List PendTrigger :=
+  match s.obj? u with
+  | some o =>
+    let ev := if o.controller == att then TriggerEvent.attack else .defend
+    triggersOf s u o.controller ev ++ watchersOf s u o.controller ev ++
+      (if o.controller == att then s.disarmTriggers u att else [])
+  | none => []
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj =>
@@ -527,12 +555,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .combatStarted bf att =>
     let controller := ((s.obj? bf).bind (·.control)).getD (s.active.getD att)
     triggersOf s bf controller .combatStart ++
-    (s.trigAllUnitsAt bf).flatMap (fun u =>
-      match s.obj? u with
-      | some o =>
-        let ev := if o.controller == att then TriggerEvent.attack else .defend
-        triggersOf s u o.controller ev ++ watchersOf s u o.controller ev
-      | none => []) ++
+    (s.trigAllUnitsAt bf).flatMap (s.combatantTriggers att) ++
     -- the abilities of the Battlefield: for the players who attack and defend there
     (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       triggersOf s bf q (if q == att then TriggerEvent.attack else .defend)) ++
@@ -543,6 +566,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
             (s.cardDef? u).any (·.hasType .unit) then
           (triggersOf s u q .youDefend).map (fun t => { t with subject := some bf })
         else []))
+  | .combatJoined _ att units => units.flatMap (s.combatantTriggers att)
   | _ => []
 
 /-- Keep the abilities that a limit of times per turn lets fire: the events of one step may set
@@ -552,7 +576,7 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
   l.foldl (fun kept t =>
     let taken := (kept.filter (fun k =>
       k.source == t.source && k.idx == t.idx && k.copyStamp == t.copyStamp)).length
-    match (s.cards.find? t.card).bind (fun d => d.allAbilities[t.idx]?),
+    match triggerAbility s t,
         s.obj? t.source with
     | some (Ability.triggered _ _ (.perTurn n)), some o =>
       if o.abilityUses t.idx t.copyStamp + taken < n then kept ++ [t] else kept
@@ -735,18 +759,18 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
 
 /-- The modes on the ability that waits, or no mode for an ability without alternatives. -/
 def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
-  let modes := ((abilityDef s t.card t.idx).map (·.modes)).getD []
+  let modes := (((triggerAbility s t).bind Ability.effectDef).map (·.modes)).getD []
   if modes.isEmpty then [none] else (List.range modes.length).map some
 
 /-- The choices for the selected branch of the triggered ability (CR 355). -/
 def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
-  let choices := (((abilityDef s t.card t.idx).bind (·.forPick (mode.elim .plain SpellPick.mode))).map
-    (·.choices)).getD []
+  let effect := (triggerAbility s t).bind Ability.effectDef
+  let choices := ((effect.bind (·.forPick (mode.elim .plain SpellPick.mode))).map (·.choices)).getD []
   t.moveBattlefields.elim choices (fun fields => choices.map (Choice.withMoveBattlefields fields))
 
 /-- The trigger declaration on the queued ability, even if its source left the Board. -/
 def trigDeclaration (s : GameState) (t : PendTrigger) : Option Trigger :=
-  match (s.cards.find? t.card).bind (fun d => d.allAbilities[t.idx]?) with
+  match triggerAbility s t with
   | some (.triggered rule _ _) => some rule
   | _ => none
 
@@ -936,6 +960,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
         (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
       spellPick := mode.elim .plain SpellPick.mode
       triggerSubject := t.subject
+      triggerKeyword := t.triggerKeyword
       moveBattlefields := t.moveBattlefields
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }

@@ -70,7 +70,12 @@ open Riftbound RiftboundCards
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
 #guard (Radiance.cards.filter (fun c => c.status == .full)).all CardDef.runs
-#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 963
+#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 966
+
+-- The official image of Bilgewater Tracker shows Fury and the Bilgewater tag.
+#guard match db.find? ⟨"RAD-003"⟩ with
+  | some c => c.domains == [.fury] && c.tags == [⟨"Bilgewater"⟩]
+  | none => false
 -- an Equipment's effect text is kept apart: the abilities it gives the Unit it is attached to are
 -- `grants`, not the abilities of the card
 #guard match db.find? ⟨"UNL-019"⟩ with
