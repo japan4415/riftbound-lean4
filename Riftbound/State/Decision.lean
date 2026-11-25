@@ -162,6 +162,8 @@ structure PendTrigger where
   subject : Option ObjId := none
   /-- The amount captured by the event that fired this ability, if any (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- The Battlefields the source moved from or to when this ability triggered (CR 477.3.b). -/
+  moveBattlefields : Option (List ObjId) := none
 deriving DecidableEq, Repr
 
 /-- A trigger's declared finalization choices and its tentative resource activations. -/

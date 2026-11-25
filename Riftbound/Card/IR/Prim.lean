@@ -543,6 +543,8 @@ inductive StaticMod where
   | uncounterable
   /-- Spells and abilities controlled by this object's controller can't be countered (CR 426). -/
   | controlledItemsUncounterable
+  /-- This Unit gains the activated abilities of friendly objects that exhaust their source. -/
+  | friendlyExhaustAbilities
   /-- The controller's spells and abilities give this much extra negative Might to Units
   they choose (CR 370). -/
   | targetMightPenalty (n : Nat)

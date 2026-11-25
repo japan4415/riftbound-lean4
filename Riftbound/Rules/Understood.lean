@@ -203,7 +203,7 @@ def Filter.understood : Filter → Bool
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
   | .onBattlefield => true
-  | .atSourceMoveBattlefield => true
+  | .atSourceMoveBattlefield _ => true
   | .atShowdown => true
   | .combatsEnemyOfDomain _ | .chosenByEnemySpellOfDomain _ => true
   | .noChoices => true
@@ -516,7 +516,7 @@ def StaticMod.runs : StaticMod → Bool
   | .bonusDamage a => a.understoodC
   | .noCombatDamage => true
   | .channelLimit _ => true
-  | .uncounterable | .controlledItemsUncounterable
+  | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities
   | .targetMightPenalty _ | .chosenHarmToMight _ => true
   | .ignoreDeflectSpell => true
   | .ignoreDeflectHere => true

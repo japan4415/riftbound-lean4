@@ -352,10 +352,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       (fun e => e.choices.isEmpty && e.playerTarget.isNone))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
-  | .atSourceMoveBattlefield =>
-    some (match (s.obj? id).bind (·.loc), s.obj? self with
-      | some bf, some src => src.loc == some bf || src.prevLoc == some bf
-      | _, _ => false)
+  | .atSourceMoveBattlefield recorded =>
+    let fields := recorded.getD
+      (((s.obj? self).map (fun src => src.prevLoc.toList ++ src.loc.toList)).getD [])
+    some (((s.obj? id).bind (·.loc)).any fields.contains)
   | .atShowdown =>
     some ((s.obj? id).any (fun o => s.pending.any (fun f =>
       match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
@@ -560,10 +560,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
-    let m ← s.mightOf id
-    let m2 ← s.mightOf d
-    pure (decide (m + s.equipBonus id + s.buffBonus id + env.passOf id <
-      m2 + s.equipBonus d + s.buffBonus d + env.passOf d))
+    let model ← s.mightWithCachedPassives env d
+    pure ((s.mightWithCachedPassives env id).any (fun m => decide (m < model)))
   | .choosesOnly sel => do
     let d ← match sel with
       | .self => some self
@@ -1280,6 +1278,20 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
 /-- The objects a choice can pick when nothing was picked before. -/
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
+
+/-- Fix a Move trigger's location requirements to the event that produced it (CR 477.3.b). -/
+def Choice.withMoveBattlefields (fields : List ObjId) : Choice → Choice
+  | .target q side place fs => .target q side place (replaceAll fs)
+  | choice => choice
+where
+  replace : Filter → Filter
+    | .atSourceMoveBattlefield _ => .atSourceMoveBattlefield (some fields)
+    | .not f => .not (replace f)
+    | .either a b => .either (replace a) (replace b)
+    | f => f
+  replaceAll : FilterList → FilterList
+    | .nil => .nil
+    | .cons f rest => .cons (replace f) (replaceAll rest)
 
 /-- Whether a choice is one that a Spell can make for now: one target, or up to some number (which
 may be left out when nothing after it is required). -/

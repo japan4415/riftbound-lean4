@@ -96,16 +96,16 @@ def deflectOf (s : GameState) (u : ObjId) : Nat :=
     | some d => (d.keywords.map amount).sum
     | none => 0) + ((s.grantedKws u).map amount).sum
 
-/-- The Power the player pays more for choosing the objects. It may be waived by the spell
-or by a Battlefield for objects there (CR 809). -/
+/-- The Deflect surcharge for the entire spell or ability. Heisho waives it when any target
+is there (CR 766-767, 809). -/
 def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
     (spell : Option ObjId := none) : Nat :=
-  if spell.any (fun c => (s.activeMods c).contains .ignoreDeflectSpell) then 0
+  if spell.any (fun c => (s.activeMods c).contains .ignoreDeflectSpell) ||
+      ts.any (fun t => (s.zone .battlefieldZone).contains t &&
+        ((s.obj? t).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .ignoreDeflectHere)) then 0
   else
     (ts.map (fun t =>
-      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) &&
-          !((s.obj? t).bind (·.loc)).any
-            (fun bf => (s.activeMods bf).contains .ignoreDeflectHere) then
+      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) then
         s.deflectOf t
       else 0)).sum
 

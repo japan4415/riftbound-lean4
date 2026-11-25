@@ -2605,13 +2605,14 @@ theorem doubleObj_safe (s : GameState) (id : ObjId) : Safe s (doubleObj s id).1 
 /-- The activated ability described by a grant, when the referenced definition contains one. -/
 def GameState.grantedActivation (s : GameState) (grant : AbilityGrant) : Option Ability :=
   match (s.cards.find? grant.card).bind (fun d =>
-    if grant.copyStamp.isSome then d.textAbilities[grant.index]? else d.grants[grant.index]?) with
+    if grant.borrowed then d.fullAbilities[grant.index]?
+    else if grant.copyStamp.isSome then d.textAbilities[grant.index]? else d.grants[grant.index]?) with
   | some (a@(.activated ..)) => some a
   | _ => none
 
 /-- Own abilities keep their indices, followed by temporary grants and activations from attached
-Effect Text. Each copied activation records its definition for resolution. -/
-def GameState.activationList (s : GameState) (src : ObjId) (d : CardDef) :
+Effect Text. -/
+def GameState.nativeActivationList (s : GameState) (src : ObjId) (d : CardDef) :
     List (Option AbilityGrant × Ability) :=
   let grants := ((s.obj? src).map (·.tempActivations)).getD []
   d.fullAbilities.map (none, ·) ++ grants.filterMap
@@ -2621,6 +2622,35 @@ def GameState.activationList (s : GameState) (src : ObjId) (d : CardDef) :
         | (ability@(.activated ..), index) =>
           some (some { card := cd.id, index, copyStamp := some stamp }, ability)
         | _ => none))
+
+/-- Exhaust abilities gained from friendly Legends, Units and Gear (CR 727.1.b.1). -/
+def GameState.friendlyExhaustActivations (s : GameState) (src : ObjId) (p : PlayerId) :
+    List (Option AbilityGrant × Ability) :=
+  s.passiveSources.flatMap (fun donor =>
+    match s.obj? donor, s.cardDef? donor with
+    | some o, some d =>
+      if donor != src && o.controller == p &&
+          (d.hasType .legend || d.hasType .unit || d.hasType .gear) then
+        let stamp := (s.copyStamp? donor).getD o.timestamp
+        (s.nativeActivationList donor d).zipIdx.filterMap (fun
+          | ((grant, ability@(.activated costs _ _ _)), index) =>
+            if costs.contains .exhaustSelf then
+              some (some (grant.getD {
+                card := d.id, index, copyStamp := some stamp, borrowed := true }), ability)
+            else none
+          | _ => none)
+      else []
+    | _, _ => [])
+
+/-- The activated abilities of the object, including the definitions it gains from other objects. -/
+def GameState.activationList (s : GameState) (src : ObjId) (d : CardDef) :
+    List (Option AbilityGrant × Ability) :=
+  s.nativeActivationList src d ++
+    (if d.fullAbilities.any (fun
+        | .passive .always mods => mods.contains .friendlyExhaustAbilities
+        | _ => false)
+     then s.friendlyExhaustActivations src (s.controllerOf src)
+     else [])
 
 /-- The available ability at its activation-menu index. -/
 def GameState.activationAt (s : GameState) (src : ObjId) (idx : Nat) :
@@ -5169,6 +5199,8 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       | some grant => s.grantedActivation grant
       | none => abilityAt s card idx
     let definition := (ability.bind Ability.effectDef).bind (·.forPick o.spellPick)
+    let definition := o.moveBattlefields.elim definition (fun fields =>
+      definition.map (fun e => { e with choices := e.choices.map (Choice.withMoveBattlefields fields) }))
     let recheck := o.spellPick != .plain || definition.any (fun e =>
       e.recheckTargets || (!e.choices.isEmpty && e.choices.all (fun
         | .target .one .. | .target (.upTo 1) .. => true

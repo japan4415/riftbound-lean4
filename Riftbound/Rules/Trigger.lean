@@ -376,7 +376,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with
-    | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move
+    | some o =>
+      let fields := some (o.prevLoc.toList ++ o.loc.toList)
+      (triggersOf s u o.controller .move).map (fun t => { t with moveBattlefields := fields }) ++
+        watchersOf s u o.controller .move
     | none => []
   | .phaseStarted p ph =>
     match ph.timing? with
@@ -735,8 +738,9 @@ def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
 
 /-- The choices for the selected branch of the triggered ability (CR 355). -/
 def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
-  (((abilityDef s t.card t.idx).bind (·.forPick (mode.elim .plain SpellPick.mode))).map
+  let choices := (((abilityDef s t.card t.idx).bind (·.forPick (mode.elim .plain SpellPick.mode))).map
     (·.choices)).getD []
+  t.moveBattlefields.elim choices (fun fields => choices.map (Choice.withMoveBattlefields fields))
 
 /-- The trigger declaration on the queued ability, even if its source left the Board. -/
 def trigDeclaration (s : GameState) (t : PendTrigger) : Option Trigger :=
@@ -930,6 +934,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
         (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
       spellPick := mode.elim .plain SpellPick.mode
       triggerSubject := t.subject
+      moveBattlefields := t.moveBattlefields
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }
   match addObject s1 item .chain with

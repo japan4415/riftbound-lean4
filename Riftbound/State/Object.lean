@@ -104,6 +104,8 @@ structure Object where
   targets : List ObjId := []
   /-- For an ability on the Chain: the amount captured when it triggered (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- A Move trigger's original Battlefield information (CR 477.3.b). -/
+  moveBattlefields : Option (List ObjId) := none
   /-- For a Unit at a Battlefield: that Battlefield (CR 106, 144). `none` for a Unit on a Base and
   for what is not a Unit. Leaving the Board clears it, except into the Trash: a card there
   remembers where it was, for what it does when it dies ("here"). -/

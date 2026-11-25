@@ -56,7 +56,9 @@ def noCombatDamage (s : GameState) (u : ObjId) : Bool :=
 while defending (CR 814). -/
 def combatMight (s : GameState) (u : ObjId) (attacking : Bool) : Nat :=
   if ((s.obj? u).map (·.stunned)).getD false || s.noCombatDamage u then 0
-  else s.mightEff u + (if attacking then s.kwAmount u .assault else s.kwAmount u .shield)
+  else
+    let bonus := s.kwAmount u (if attacking then .assault else .shield)
+    ((s.mightWithCombatBonus u bonus).map Might.eff).getD 0
 
 /-- The damage a side assigns: the sum of the Might of its Units at the Battlefield (CR 467.2). -/
 def combatTotal (s : GameState) (bf : ObjId) (att side : PlayerId) : Nat :=

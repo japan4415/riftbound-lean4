@@ -273,9 +273,31 @@ def modMight (s : GameState) (src id : ObjId) (m : StaticMod) : Int :=
   -- `mightMinusMin` has a floor: it is read after the others (`modFloor`)
   | _ => 0
 
+/-- Might effects granted by Equipment are evaluated on the Unit wearing it (CR 725).
+The printed bonus, fresh attachment bonus and simple Level bonus already enter through
+`equipBonus`. -/
+def equipmentMightMods (s : GameState) : List (ObjId × StaticMod) :=
+  s.inPlay.flatMap (fun gear =>
+    match (s.obj? gear).bind (·.attached) with
+    | none => []
+    | some unit =>
+      let p := s.controllerOf unit
+      ((s.cardDef? gear).map (·.grants)).getD [] |>.flatMap (fun
+        | .passive condition mods =>
+          if condition.eval s p unit {} == some true then
+            mods.filterMap (fun m => match condition, m with
+              | .cmp .ge .xp (.const _), .mightPlus .self (.const _) => none
+              | _, .mightPlus .. | _, .mightPlusWithKeyword .. |
+                _, .mightMinus .. | _, .mightMinusMin .. => some (unit, m)
+              | _, _ => none)
+          else []
+        | _ => []))
+
 /-- What the passive abilities add to the Might of an object. -/
 def passiveMight (s : GameState) (id : ObjId) : Int :=
-  (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
+  let fromBoard := s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))
+  let fromEquipment := s.equipmentMightMods.map (fun (src, mod) => s.modMight src id mod)
+  fromBoard.sum + fromEquipment.sum
 
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
@@ -301,24 +323,37 @@ def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
     | some d => (d.keywords.filterMap amount).sum
     | none => 0) + ((s.grantedKws u).filterMap amount).sum + counted
 
-/-- The Might an object has now: the printed Might, the lasting changes and the passive changes
-(CR 475-479). The rules that read a Might read this one. -/
-def mightNow (s : GameState) (id : ObjId) : Option Int :=
+/-- Might with the bonus from the Unit's role in combat, before taking a nonnegative damage value. -/
+def mightWithCombatBonus (s : GameState) (id : ObjId) (bonus : Nat) : Option Int :=
   (s.mightOf id).map (fun m =>
-    let total := m + s.equipBonus id + s.passiveMight id +
-      s.buffBonus id
+    let total := m + s.equipBonus id + s.passiveMight id + s.buffBonus id + bonus
     -- the changes with a floor come last: they take away down to the floor, never below it
-    (s.passiveSources.flatMap (fun src =>
-      (s.activeMods src).filterMap (s.modFloor src id))).foldl
+    let floors := (s.passiveSources.flatMap (fun src =>
+      (s.activeMods src).filterMap (s.modFloor src id))) ++
+      s.equipmentMightMods.filterMap (fun (src, mod) => s.modFloor src id mod)
+    floors.foldl
       (fun (t : Int) (c : Nat × Nat) =>
         if t ≤ (c.2 : Int) then t else max (c.2 : Int) (t - (c.1 : Int))) total)
 
-/-- What the passive abilities do to the Might of each object in play, beyond its printed Might,
-the lasting changes, the buff and the Equipment: the table the filters read (`Env.passMight`). It
-counts the passive changes and their floors (`mightNow`). -/
+/-- The Might an object has now, including Assault and Shield while attacking or defending
+(CR 475-479, 807, 814). -/
+def mightNow (s : GameState) (id : ObjId) : Option Int :=
+  let bonus := match s.combatNow, s.obj? id with
+    | some (bf, attacker), some o =>
+      if o.loc != some bf || !(s.zone .battlefieldZone).contains id ||
+          !(s.cardDef? id).any (·.hasType .unit) then 0
+      else if o.controller == attacker then s.kwAmount id .assault
+      else if s.combat.isNone || s.combat.any (·.defender == o.controller) then
+        s.kwAmount id .shield
+      else 0
+    | _, _ => 0
+  s.mightWithCombatBonus id bonus
+
+/-- The adjustments beyond printed Might, lasting changes, buffs and Equipment bonuses that
+the filters read (`Env.passMight`), including passives, floors and combat keywords. -/
 def mightTable (s : GameState) : List (ObjId × Int) :=
-  -- nothing to compute unless a card of a player prints a passive change of Might
-  if !(s.passiveSources.any (fun g => (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
+  if s.combatNow.isNone && !(s.passiveSources.any (fun g => (s.cardDef? g).any (fun d =>
+    (d.abilities ++ d.grants).any (fun ab =>
       match ab with
       | Ability.passive _ mods =>
         mods.any (fun m => match m with

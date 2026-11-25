@@ -2777,8 +2777,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return a.handN s.me == s3.handN s.me && isBuffed b "OGN-051" == some true &&
     isBuffed t3 "OGN-051" == some false && isBuffed d "SFD-056" != some true
 
--- Ancient Warmonger (SFD-131): Assault for each enemy unit here: more damage as an attacker, but
--- its Might (what a spell must beat) stays 4
+-- Ancient Warmonger (SFD-131): Assault for each enemy Unit here increases its Might as an attacker.
 #guard tsf fun s => do
   let (s1, w) ← putAt s s.me "SFD-131" s.bf0
   let (s2, _) ← putAt s1 s.you "OGN-001" s.bf0
@@ -2786,7 +2785,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let atk := (s3.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
   return s3.kwAmount w .assault == 2 && s1.kwAmount w .assault == 0 &&
     atk.combatMight w true == 4 + 2 && atk.combatMight w false == 4 &&
-    atk.mightNow w == some 4
+    s3.mightNow w == some 4 && atk.mightNow w == some 6
 
 -- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
 #guard tsf fun s => do

@@ -29,6 +29,9 @@ TEXT_ERRATA = {
         "[Reaction] (Play on your turn or in showdowns.)":
             "[Reaction] (Play any time, even before spells and abilities resolve.)",
     },
+    "VEN-044": {
+        "your next card costs": "the next card you play this turn costs",
+    },
     "VEN-086": {
         "return me to hand, give me +3 :rb_might: instead.":
             "return me to hand, give me +3 :rb_might: this turn instead.",

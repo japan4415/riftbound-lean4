@@ -37,6 +37,25 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   return (ordinary.obj? target).any (·.damage == 2) &&
     (done.obj? target).any (·.damage == 4) && !(legalActions showdown).contains (act outside)
 
+-- Pendulum Blade grants two additional Might only for movement into a Battlefield.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, blade) ← put s p "VEN-011" .base
+  let (s, wearer) ← put s p "VEN-014" .base
+  let (s, returnHome) ← put s p "OGN-168" .hand
+  let (s, enemy) ← put s s.you "VEN-014" .base
+  let s := s.control p field
+  let equipped ← activate s p blade 0 [wearer] ⟨0, [.fury]⟩
+  let (moving, _) ← (step 100 equipped ⟨.player p, .standardMove wearer (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 8 moving
+  let home ← play arrived p returnHome [wearer]
+  let (expired, _) ← (advance 100 { home with pending := [.expireTurn] } []).toOption
+  return (activate s p blade 0 [enemy] ⟨0, [.fury]⟩).isNone &&
+    equipped.mightNow wearer == some 3 && arrived.mightNow wearer == some 5 &&
+    home.locate wearer == some (.player p .base) && home.mightNow wearer == some 5 &&
+    expired.mightNow wearer == some 3
+
 -- Perfect Execution readies its target and grants Assault for both ordinary play and Flow.
 #guard verifiedCase fun s => do
   let p := s.me
@@ -51,6 +70,20 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     ordinary.countIn p .trash "VEN-012" == 2 &&
     flowed.countIn p .banishment "VEN-012" == 1 && flowed.locate hand == some (.player p .hand)
 
+-- Shadow Fiend gains Assault 3 through its printed Empower and gets the Might bonus only attacking.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, fiend) ← putAt s p "VEN-014" field
+  let s := s.control p field
+  let empowered ← activate s p fiend 1 [] ⟨2, [.fury]⟩
+  let attacker := empowered.inCombatAt field p
+  let defender := empowered.inCombatAt field s.you
+  return (activate s p fiend 1 [] ⟨2, []⟩).isNone &&
+    s.kwAmount fiend .assault == 0 && empowered.kwAmount fiend .assault == 3 &&
+    empowered.mightNow fiend == some 2 && attacker.mightNow fiend == some 5 &&
+    defender.mightNow fiend == some 2 && attacker.combatMight fiend true == 5
+
 -- Field Musicians may give three Might to a Unit on either side.
 #guard verifiedCase fun s => do
   let p := s.me
@@ -61,6 +94,39 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let opposing ← play s p musicians [] { pick := (· == [enemy]) }
   return friendly.mightNow ally == some 5 && friendly.mightNow enemy == some 2 &&
     opposing.mightNow ally == some 2 && opposing.mightNow enemy == some 5
+
+-- Hand Hammer grants +2 in addition to its equipment Might with exactly one other friendly Unit.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, hammer) ← put s p "VEN-027" .base
+  let (s, wearer) ← putAt s p "VEN-014" field
+  let (s, ally) ← putAt s p "VEN-014" field
+  let s := s.control p field
+  let equipped ← activate s p hammer 0 [wearer] ⟨0, [.calm]⟩
+  let alone := (moveHome equipped ally).1
+  let atBase := (moveHome equipped wearer).1
+  let (crowded, _) ← putAt equipped p "VEN-014" field
+  let detached := (detachObj equipped hammer).1
+  return equipped.mightNow wearer == some 5 && equipped.mightTable.lookup wearer == some 2 &&
+    alone.mightNow wearer == some 3 &&
+    atBase.mightNow wearer == some 3 && crowded.mightNow wearer == some 3 &&
+    detached.mightNow wearer == some 2
+
+-- Scourge of Shadows draws on Hold with exactly one other friendly Unit at his Battlefield.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt s p "VEN-042" field
+  let (s, _) ← put s p "VEN-014" .base
+  let (paired, _) ← putAt s p "VEN-014" field
+  let (crowded, _) ← putAt paired p "VEN-014" field
+  let held ← fire paired [.scored p field false]
+  let alone ← fire s [.scored p field false]
+  let tooMany ← fire crowded [.scored p field false]
+  let conquered ← fire paired [.scored p field true]
+  return held.handN p == s.handN p + 1 &&
+    [alone, tooMany, conquered].all (fun t => t.handN p == s.handN p)
 
 -- Cloud Drake draws exactly one card as its play trigger resolves.
 #guard verifiedCase fun s => do
@@ -722,6 +788,30 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     strengthened.mightNow ally == some 7 && strengthened.mightNow ordinary == some 5 &&
     strengthened.mightNow enemy == some 5 && stripped.mightNow ally == some 5
 
+-- An attacking, Empowered Ambessa includes Assault when comparing her Might to a target's.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, ambessa) ← put s p "VEN-136" .base
+  let (s, weaker) ← putAt s q "VEN-118" field
+  let (s, equal) ← putAt s q "VEN-115" field
+  let (s, elsewhere) ← put s q "VEN-014" .base
+  let s := s.control q field
+  let powered ← activate s p ambessa 2 [] ⟨1, [.order, .order]⟩
+  let move : Action := ⟨.player p, .standardMove ambessa (.battlefield field)⟩
+  let (ordinary, _) ← (step 100 s move).toOption
+  let (attack, _) ← (step 100 powered move).toOption
+  let (queued, _) ← (step 100 attack ⟨.player p, .putTrigger 0 [weaker]⟩).toOption
+  let killed := settleChain {} 8 queued
+  let shielded := (addTempKw ⟨.shield, .amount 1⟩ .turn queued weaker).1
+  let survived := settleChain {} 8 shielded
+  return ordinary.trigPicks.isEmpty && powered.mightNow ambessa == some 5 &&
+    attack.mightNow ambessa == some 7 && attack.combatMight ambessa true == 7 &&
+    attack.trigPicks.contains weaker && !attack.trigPicks.contains equal &&
+    !attack.trigPicks.contains elsewhere && killed.countIn q .trash "VEN-118" == 1 &&
+    (survived.obj? weaker).isSome
+
 -- A Sand Soldier remains a token and gains a fresh copied Azir ability on each attachment.
 #guard verifiedCase fun s => do
   let p := s.me
@@ -794,6 +884,147 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     onOtherTurn.locate ally == some .battlefieldZone && onOtherTurn.tired legend == some true &&
     (activate (showdown s) p legend 0 [foe]).isNone &&
     (activate (showdown s) p legend 0 [outside]).isNone
+
+-- Heimerdinger gains Jayce's whole dependent ability and checks his own Empowered status (FAQ).
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, jayce) ← put s p "VEN-149" .legendZone
+  let (s, heimer) ← put s p "OGN-111" .base
+  let (s, friendly) ← put s p "VEN-054" .base
+  let (s, opposing) ← put s q "VEN-062" .base
+  let s := (s.tire friendly).tire opposing
+  let d ← s.cardDef? heimer
+  let borrowed ← (s.activationList heimer d).findIdx? (fun (grant, _) =>
+    grant.any (fun g => g.card == cid "VEN-149" && g.index == 1))
+  let cost : RunePool.Payment := ⟨1, []⟩
+  let ordinary ← activate s p jayce 0 [friendly] cost
+  let poweredJayce ← activate s p jayce 2 [] ⟨2, [.body, .mind]⟩
+  let poweredHeimer := (empowerObj p s heimer).1
+  let two ← activate poweredHeimer p heimer borrowed [friendly, opposing] cost
+  let both ← activate poweredJayce p jayce 1 [friendly, opposing] cost
+  return ordinary.tired friendly == some false && ordinary.tired opposing == some true &&
+    (activate s p jayce 1 [friendly, opposing] cost).isNone &&
+    (activate s p heimer borrowed [friendly, opposing] cost).isNone &&
+    (activate poweredJayce p heimer borrowed [friendly, opposing] cost).isNone &&
+    (activate poweredHeimer p heimer borrowed [friendly, friendly] cost).isNone &&
+    two.tired heimer == some true && two.tired jayce == some false &&
+    two.tired friendly == some false && two.tired opposing == some false &&
+    both.tired jayce == some true && both.tired friendly == some false && both.tired opposing == some false
+
+-- Soul's Reflection gains Empower from its controller and spends it to weaken a Battlefield Unit.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, legend) ← put s p "VEN-151" .legendZone
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, opponent) ← putAt s q "VEN-071" s.bf0
+  let s := s.control q s.bf0
+  let (afterAlly, allyEvents) := empowerObj p s ally
+  let (afterOpponent, opponentEvents) := empowerObj q s opponent
+  let source ← fire afterAlly allyEvents
+  let source := { source with pending := [.priority p] }
+  let unrelated ← fire afterOpponent opponentEvents
+  let spent ← activate source p legend 1 [opponent]
+  let (expired, _) ← (advance 100 { spent with pending := [.expireTurn] } []).toOption
+  return (source.obj? legend).any (·.empowerCount == 1) &&
+    (unrelated.obj? legend).any (·.empowerCount == 0) &&
+    (activate source p legend 1 [ally]).isNone && (activate s p legend 1 [opponent]).isNone &&
+    (spent.obj? legend).any (fun o => o.empowerCount == 0 && o.exhausted) &&
+    spent.mightNow opponent == some 3 && expired.mightNow opponent == some 5
+
+-- Matriarch of War gains Empower and pays one Power, Exhaust and Disempower to ready a Unit.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, legend) ← put s p "VEN-153" .legendZone
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, target) ← put s s.you "VEN-071" .base
+  let (s, gear) ← put s p "VEN-054" .base
+  let s := (s.tire target).tire gear
+  let (empowered, events) := empowerObj p s ally
+  let source ← fire empowered events
+  let now := { source.fund p 0 (mind := 1) with pending := [.priority p] }
+  let act (id : ObjId) : Action := ⟨.player p, .activate legend 1 ⟨0, [.mind]⟩ [id]⟩
+  let (waiting, _) ← (step 100 now (act target)).toOption
+  let done := settleChain {} 8 waiting
+  return !(legalActions now).contains (act gear) &&
+    (waiting.obj? legend).any (fun o => o.empowerCount == 0 && o.exhausted) &&
+    waiting.tired target == some true && done.tired target == some false &&
+    (waiting.poolOf p).totalPower == 0
+
+-- Public Execution compares its two Units' current Might and works from hand or through Flow.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, hand) ← put s p "VEN-154" .hand
+  let (s, trash) ← put s p "VEN-154" .trash
+  let (s, judge) ← put s p "VEN-071" .base
+  let (s, smaller) ← put s q "VEN-014" .base
+  let (s, equal) ← put s q "VEN-071" .base
+  let (s, sameSide) ← put s p "VEN-014" .base
+  let ordinary ← play s p hand [judge, smaller]
+  let flowed ← cast (s.fund p 5 (fury := 1) (order := 1)) p trash ⟨5, [.fury, .order]⟩ [judge, smaller]
+  return ordinary.countIn q .trash "VEN-014" == 1 && flowed.countIn q .trash "VEN-014" == 1 &&
+    ordinary.countIn p .trash "VEN-154" == 2 && flowed.countIn p .banishment "VEN-154" == 1 &&
+    (play s p hand [judge, equal]).isNone && (play s p hand [judge, sameSide]).isNone
+
+-- Heart of the Tempest Empowers for a Flow play and can grant temporary Assault in a Showdown.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, legend) ← put s p "VEN-155" .legendZone
+  let (s, hand) ← put s p "VEN-049" .hand
+  let (s, trash) ← put s p "VEN-049" .trash
+  let (s, unit) ← putAt s p "VEN-014" field
+  let (s, _) ← putAt s s.you "VEN-071" field
+  let s := s.control s.you field
+  let ordinary ← play s p hand
+  let empowered ← cast (s.fund p 2) p trash ⟨2, []⟩
+  let boosted ← activate (empowered.inShowdownAt field p) p legend 1 [unit]
+  let (expired, _) ← (advance 100 { boosted with pending := [.expireTurn] } []).toOption
+  return (ordinary.obj? legend).any (·.empowerCount == 0) &&
+    (empowered.obj? legend).any (·.empowerCount == 1) &&
+    ordinary.handN p == s.handN p && empowered.handN p == s.handN p + 1 &&
+    (boosted.obj? legend).any (fun o => o.empowerCount == 0 && o.exhausted) &&
+    boosted.kwAmount unit .assault == 2 && expired.kwAmount unit .assault == 0
+
+-- Heisho waives Deflect on all six targets of Icathian Rain if even one is there (FAQ).
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, heisho) ← putBf s q "VEN-158"
+  let (s, irelia) ← put s q "SFD-057" .base
+  let (s, rain) ← put s p "OGN-248" .hand
+  let definition ← s.tokenCard "Recruit"
+  let s := createOne definition.id q (some heisho) false (s.control q heisho)
+  let recruit ← (s.unitsAtOf heisho q).head?
+  let s := s.fund p 7 (fury := 3)
+  let pay : RunePool.Payment := ⟨7, [.fury, .fury, .fury]⟩
+  let allBase := List.replicate 6 irelia
+  let withHeisho := recruit :: List.replicate 5 irelia
+  let castAt (ts : List ObjId) : Action := ⟨.player p, .playCard rain pay ts⟩
+  let (casting, _) ← (step 100 s (castAt withHeisho)).toOption
+  let item ← (casting.zone .chain).head?
+  return definition.id == cid "VEN-T04" && s.mightNow recruit == some 1 &&
+    s.deflectCost p withHeisho == 0 && s.deflectCost p allBase == 6 &&
+    (step 100 s (castAt allBase)).toOption.isNone &&
+    (casting.poolOf p).total == 0 && (casting.obj? item).any (·.targets == withHeisho)
+
+-- Protective Sands offers a draw on Conquer at four Runes, and offers none at five or on Hold.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, sands) ← putBf s p "VEN-162"
+  let four := (channel p (4 - (s.runesOf p).length) s).1
+  let five := (channel p 1 four).1
+  let draw (t : GameState) (says : Says) (conquer : Bool) :=
+    fire (t.fund p 1) [.scored p sands conquer] says
+  let paid ← draw four {} true
+  let declined ← draw four { yes := false } true
+  let over ← draw five {} true
+  let held ← draw four {} false
+  return (four.runesOf p).length == 4 && (five.runesOf p).length == 5 &&
+    paid.handN p == s.handN p + 1 && (paid.poolOf p).energy == 0 &&
+    [declined, over, held].all (fun t => t.handN p == s.handN p && (t.poolOf p).energy == 1)
 
 -- Death Mark can Flow from Trash, burns three cards, and plays the Shadow Clone into the Base.
 #guard verifiedCase fun s => do
@@ -945,5 +1176,216 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   return arrived.mightNow akali == (s.mightNow akali).map (· + 2) &&
     afterRecall.mightNow akali == arrived.mightNow akali &&
     afterRecall.locate akali == some (.player p .base)
+
+-- Rage Fueled can Accelerate and hits every enemy Unit at his Battlefield with at most four Runes.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, renekton) ← put s p "VEN-019" .hand
+  let (s, first) ← putAt s q "VEN-071" field
+  let (s, second) ← putAt s q "VEN-071" field
+  let (s, friendly) ← putAt s p "VEN-071" field
+  let (s, elsewhere) ← put s q "VEN-071" .base
+  let runes (t : GameState) := (t.zone (.player p .base)).countP
+    (fun id => (t.cardDef? id).any (·.hasType .rune))
+  let s ← (List.range (4 - runes s)).foldlM (fun t _ =>
+    return (← put t p "OGN-007" .base).1) s
+  let (five, _) ← put s p "OGN-007" .base
+  let attack (t : GameState) : Option (GameState × ObjId) := do
+    let played ← cast (t.fund p 7 (fury := 1)) p renekton ⟨7, [.fury]⟩
+    let unit ← played.firstOf p .base "VEN-019"
+    let (moving, _) ← (step 100 (played.control q field)
+      ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+    return (settleChain {} 8 moving, unit)
+  let (fourRunes, attacker) ← attack s
+  let (fiveRunes, _) ← attack five
+  let damage (t : GameState) (id : ObjId) := (t.obj? id).map (·.damage)
+  return runes s == 4 && runes five == 5 && fourRunes.locate attacker == some .battlefieldZone &&
+    [first, second].all (fun id => damage fourRunes id == some 2 && damage fiveRunes id == some 0) &&
+    [friendly, elsewhere].all (fun id => damage fourRunes id == some 0)
+
+-- Twilight Reveler can ready an ally in base, while the Reveler and enemy Units stay exhausted.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, reveler) ← put s p "VEN-020" .base
+  let (s, ally) ← put s p "VEN-071" .base
+  let (s, foe) ← putAt s q "VEN-071" field
+  let ready := ((s.tire ally).tire foe).control q field
+  let (attacking, _) ← (step 100 ready
+    ⟨.player p, .standardMove reveler (.battlefield field)⟩).toOption
+  let done := settleChain { pick := (· == [ally]) } 8 attacking
+  return attacking.trigPicks.contains ally && !attacking.trigPicks.contains reveler &&
+    !attacking.trigPicks.contains foe && done.tired ally == some false &&
+    done.tired reveler == some true && done.tired foe == some true
+
+-- Deadly Weapon chooses at the origin or destination Battlefield and can decline the damage.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let origin := s.bf0
+  let to ← s.battlefields.find? (· != origin)
+  let (s, akali) ← putAt s p "VEN-021" origin
+  let (s, first) ← putAt s p "VEN-071" origin
+  let (s, second) ← putAt s p "VEN-071" to
+  let (s, base) ← put s p "VEN-071" .base
+  let s := (addTempKw ⟨.ganking, .none⟩ .turn ((s.control p origin).control p to) akali).1
+  let powered ← activate s p akali 2 [] ⟨2, [.fury]⟩
+  let move (t : GameState) := (step 100 t
+    ⟨.player p, .standardMove akali (.battlefield to)⟩).toOption
+  let (moving, _) ← move s
+  let (movingEmpowered, _) ← move powered
+  let done := settleChain { pick := (· == [first]) } 8 moving
+  let stronger := settleChain { pick := (· == [second]) } 8 movingEmpowered
+  let declined := settleChain { pick := List.isEmpty } 8 moving
+  let damage (t : GameState) (id : ObjId) := (t.obj? id).map (·.damage)
+  return s.mightNow akali == some 3 && powered.mightNow akali == some 4 &&
+    moving.trigPicks.contains first && moving.trigPicks.contains second &&
+    !moving.trigPicks.contains base && damage done first == some 1 &&
+    damage stronger second == some 2 && damage declined first == some 0 &&
+    damage declined second == some 0
+
+-- Hidden Blade can remove Akali in response, but the chosen Unit still takes her damage (FAQ).
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, akali) ← put s p "VEN-021" .base
+  let (s, target) ← putAt s q "VEN-071" field
+  let (s, blade) ← put s q "OGN-213" .hidden
+  let s := (s.control q field).modObj blade
+    (fun o => { o with hiddenAt := some field, hiddenTurn := some 0 })
+  let (moving, _) ← (step 100 s ⟨.player p, .standardMove akali (.battlefield field)⟩).toOption
+  let (queued, _) ← (step 100 moving ⟨.player p, .putTrigger 0 [target]⟩).toOption
+  let (answering, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (withBlade, _) ← (step 100 answering
+    ⟨.player q, .activate blade 1 ⟨0, []⟩ [akali]⟩).toOption
+  let resolved := settleChain {} 12 withBlade
+  return resolved.countIn p .trash "VEN-021" == 1 &&
+    resolved.countIn q .trash "OGN-213" == 1 &&
+    (resolved.obj? target).any (·.damage == 1)
+
+-- Serene Ascetic's Empower adds Deflect and Shield 3, with the Might applied in defense.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, ascetic) ← putAt s p "VEN-030" field
+  let s := s.control p field
+  let empowered ← activate s p ascetic 1 [] ⟨3, []⟩
+  let attacker := empowered.inCombatAt field p
+  let defender := empowered.inCombatAt field q
+  return (activate s p ascetic 1 [] ⟨2, []⟩).isNone &&
+    s.deflectCost q [ascetic] == 0 && empowered.deflectCost q [ascetic] == 1 &&
+    empowered.deflectCost p [ascetic] == 0 && empowered.kwAmount ascetic .shield == 3 &&
+    empowered.mightNow ascetic == some 3 && attacker.mightNow ascetic == some 3 &&
+    defender.mightNow ascetic == some 6 && defender.combatMight ascetic false == 6
+
+-- Frostcoat Mother counts its controller's ready and exhausted Runes toward Empower, down to zero.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mother) ← put s p "VEN-032" .base
+  let (s, _) ← put s q "OGN-007" .base
+  let (s, exhausted) ← put s p "OGN-007" .base
+  let s := s.tire exhausted
+  let runes := (s.zone (.player p .base)).countP
+    (fun id => (s.cardDef? id).any (·.hasType .rune))
+  let discount := 12 - runes
+  let empowered ← activate s p mother 0 [] ⟨discount, []⟩
+  let many ← (List.range (13 - runes)).foldlM (fun t _ =>
+    return (← put t p "OGN-007" .base).1) s
+  let free ← activate many p mother 0 [] ⟨0, []⟩
+  return (activate s p mother 0 [] ⟨discount - 1, []⟩).isNone &&
+    (activate empowered p mother 0 [] ⟨discount, []⟩).isNone &&
+    s.mightNow mother == some 3 && empowered.mightNow mother == some 6 &&
+    free.mightNow mother == some 6
+
+-- At seven Runes, Barbara kills enemy Gear or Disempowers it if it was already Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, barbara) ← put s p "VEN-037" .hand
+  let (s, enemy) ← put s q "VEN-045" .base
+  let (s, friendly) ← put s p "VEN-045" .base
+  let (s, _) ← put s q "OGN-007" .base
+  let runes := (s.zone (.player p .base)).countP
+    (fun id => (s.cardDef? id).any (·.hasType .rune))
+  let six ← (List.range (6 - runes)).foldlM (fun t _ =>
+    return (← put t p "OGN-007" .base).1) s
+  let (seven, _) ← put six p "OGN-007" .base
+  let enemyEmpowered := (empowerObj q seven enemy).1
+  let waiting ← castStop seven p barbara
+  let zero ← play six p barbara
+  let killed ← play seven p barbara [] { pick := (· == [enemy]) }
+  let stripped ← play enemyEmpowered p barbara [] { pick := (· == [enemy]) }
+  return waiting.trigPicks == [enemy] && zero.locate enemy == some (.player q .base) &&
+    killed.countIn q .trash "VEN-045" == 1 && !killed.inPlay.contains enemy &&
+    (stripped.obj? enemy).any (·.empowerCount == 0) && stripped.inPlay.contains enemy &&
+    stripped.inPlay.contains friendly
+
+-- Riven's Weaponmaster moves an attached Equipment for one less Power, and her attack counts both.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, riven) ← put s p "VEN-041" .hand
+  let (s, other) ← put s p "VEN-071" .base
+  let (s, helm) ← put s p "VEN-027" .base
+  let (s, brutalizer) ← put s p "SFD-042" .base
+  let (s, elsewhere) ← put s q "VEN-071" .base
+  let (s, target) ← putAt s q "VEN-091" field
+  let initial := (attachTo other (s.control q field) helm).1
+  let played ← cast (initial.fund p 3 (calm := 1)) p riven ⟨3, [.calm]⟩
+    [] { pick := (· == [helm]) }
+  let unit ← played.firstOf p .base "VEN-041"
+  let geared ← activate played p brutalizer 0 [unit] ⟨0, [.calm]⟩
+  let attack (t : GameState) := (step 100 ((t.control q field).modObj unit
+    (fun o => { o with exhausted := false }))
+    ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+  let (waiting, _) ← attack geared
+  let (oneGear, _) ← attack played
+  let struck := settleChain { pick := (· == [target]) } 8 waiting
+  let single := settleChain { pick := (· == [target]) } 8 oneGear
+  return (initial.obj? helm).any (·.attached == some other) &&
+    (played.obj? helm).any (·.attached == some unit) &&
+    waiting.trigPicks == [target] && !waiting.trigPicks.contains elsewhere &&
+    (struck.obj? target).any (·.damage == 4) && (single.obj? target).any (·.damage == 2)
+
+-- Helm of Suppression taxes only opposing Spells, with a Power surcharge only while Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, helm) ← put s p "VEN-045" .base
+  let (s, foeSpell) ← put s q "VEN-049" .hand
+  let (s, allySpell) ← put s p "VEN-049" .hand
+  let (s, foeUnit) ← put s q "VEN-014" .hand
+  let spell ← s.cardDef? foeSpell
+  let unit ← s.cardDef? foeUnit
+  let empowered ← activate s p helm 2 [] ⟨4, [.calm]⟩
+  let cost (t : GameState) := t.effCost q foeSpell spell
+  return (activate s p helm 2 [] ⟨4, []⟩).isNone &&
+    cost s == some ⟨3, []⟩ && cost empowered == some ⟨3, [.any]⟩ &&
+    empowered.effCost p allySpell spell == spell.cost &&
+    empowered.effCost q foeUnit unit == unit.cost
+
+-- Nasus always has Deflect 2 and only earns a bonus for his own Conquer while Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let other ← s.battlefields.find? (· != field)
+  let (s, nasus) ← putAt s p "VEN-046" field
+  let s := (s.control p field).control p other
+  let powered ← activate s p nasus 1 [] ⟨8, []⟩
+  let hold ← fire powered [.scored p field false]
+  let elsewhere ← fire powered [.scored p other true]
+  let ordinary ← fire s [.scored p field true]
+  let bonus ← fire powered [.scored p field true]
+  return (activate s p nasus 1 [] ⟨7, []⟩).isNone && s.deflectCost q [nasus] == 2 &&
+    powered.deflectCost q [nasus] == 2 && powered.deflectCost p [nasus] == 0 &&
+    [hold, elsewhere, ordinary].all (fun t => t.pointsOf p == s.pointsOf p) &&
+    bonus.pointsOf p == s.pointsOf p + 1
 
 end RiftboundTest

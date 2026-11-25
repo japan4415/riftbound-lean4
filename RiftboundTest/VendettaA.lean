@@ -4121,8 +4121,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   return (a.1.zone .chain).contains rage && a.2.isEmpty &&
     !(b.1.zone .chain).contains ordinary && (b.1.zone .chain).contains rage
 
--- Decree of Insight ignores Deflect even outside Heisho. Heisho waives the cost only for
--- things there, even if another target at the player's base still has Deflect.
+-- Decree of Insight ignores Deflect even for a spell choosing no targets at Heisho.
 #guard vendettaCase fun s => do
   let (s, heisho) ← putBf s s.me "VEN-158"
   let (s, there) ← putAt s s.you "SFD-112" heisho
@@ -4136,7 +4135,8 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (expired, _) ← (advance 100 { done with pending := [.expireTurn] } []).toOption
   let attempt (state : GameState) (id : ObjId) :=
     (legalActions state).contains ⟨.player s.me, .playCard spell ⟨1, []⟩ [id]⟩
-  return s.deflectOf there > 0 && s.deflectCost s.me [there, base] == s.deflectOf base &&
+  return s.deflectOf there > 0 && s.deflectCost s.me [base] == s.deflectOf base &&
+    s.deflectCost s.me [there, base] == 0 &&
     s.deflectCost s.me [there] == 0 && (after.poolOf s.me).totalPower == 0 &&
     !(after.zone .chain).isEmpty && done.mightNow base == some (-2) &&
     expired.mightNow base == some 3 && !attempt friendly ally && !attempt funded wrongDomain

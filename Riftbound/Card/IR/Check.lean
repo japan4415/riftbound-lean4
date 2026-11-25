@@ -296,7 +296,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .bonusDamage a => Amount.ok c a
   | .noCombatDamage => true
   | .channelLimit _ => true
-  | .uncounterable | .controlledItemsUncounterable
+  | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities
   | .targetMightPenalty _ | .chosenHarmToMight _ => true
   | .ignoreDeflectSpell => true
   | .ignoreDeflectHere => true

@@ -25,6 +25,8 @@ structure AbilityGrant where
   index : Nat
   /-- The distinct instance of copied Effect Text for an attachment, if any. -/
   copyStamp : Option Timestamp := none
+  /-- The source index is in the full definition of a friendly object whose ability was gained. -/
+  borrowed : Bool := false
 deriving DecidableEq, Repr, Hashable
 
 /-- An additional selection recorded when a card is finalized (CR 355). -/
