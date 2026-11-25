@@ -88,6 +88,8 @@ inductive Prim where
   | counterToHand (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
+  /-- Play a card ignoring its printed cost, with a requirement to play it to Base (CR 355.17). -/
+  | playAtBase (s : Selector)
   /-- Banish the Units, then play them according to the effect's instructions (CR 420.3, 428).
   A banished token ceases to exist. -/
   | banishReplay (s : Selector) (replay : BanishReplay := .byOwner)
@@ -283,6 +285,8 @@ inductive TriggerEvent where
   | move
   /-- The object dies. -/
   | die
+  /-- A Deathknell that is explicitly represented as a triggered ability (CR 808). -/
+  | deathknell
   /-- The object leaves play. -/
   | leave
   /-- A card is drawn. -/

@@ -315,7 +315,7 @@ def Prim.understood : Prim → Bool
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .swapTop p => p.understood
-  | .play s => s.understoodPickAny
+  | .play s | .playAtBase s => s.understoodPickAny
   | .banishReplay s _ => s.understoodPickAny
   | .copyAttachedFrom s => s.understoodPick
   | .playPaying s => s.understoodPickAny
@@ -543,6 +543,7 @@ def Trigger.runs (t : Trigger) : Bool :=
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .deathknell => t.subject == .self
       | .firstCardResolved => t.subject == .self
       | .stun => true | .discard => true | .ready => true
       | .buff => true

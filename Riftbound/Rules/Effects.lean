@@ -524,14 +524,6 @@ theorem createN_safe (card : CardId) (p : PlayerId) (dest : Option ObjId) (ready
   | 0, s => Safe.refl s
   | n + 1, s => (createOne_safe card p dest ready s).trans (createN_safe card p dest ready n _)
 
-/-- Stun an object: it deals no combat damage this turn (CR 424). -/
-def stunObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with stunned := true }), [Event.stunned id])
-
-/-- Stunning is a safe change. -/
-theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-
 /-- Add a lasting change of Might to an object (CR 475-478). -/
 def addMightMod (m : MightMod) (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [m] }), [])
@@ -563,6 +555,23 @@ theorem replaceChosenHarm_safe (env : Env) {apply : GameState → ObjId → Game
     · exact addMightMod_safe _ s id
     · exact h s id
   · exact h s id
+
+/-- An already stunned object produces no new stun event or replacement (CR 424, 370). -/
+def stunObj (s : GameState) (id : ObjId) (env : Env := {}) : GameState × List Event :=
+  if (s.obj? id).any (! ·.stunned) then
+    replaceChosenHarm env (fun t target =>
+      (t.modObj target (fun o => { o with stunned := true }), [Event.stunned target])) s id
+  else (s, [])
+
+/-- Stunning is a safe change. -/
+theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {}) :
+    Safe s (stunObj s id env).1 := by
+  unfold stunObj
+  split
+  · exact replaceChosenHarm_safe env (fun t target =>
+      Safe.modObj t target (f := fun o => { o with stunned := true })
+        (fun _ => rfl) (fun _ => rfl)) s id
+  · exact Safe.refl s
 
 /-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
 def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -3264,7 +3273,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some (x :: _), some (y :: _) =>
       some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p))))
     | _, _ => none
-  | .stun sel => onSelected s p src env sel (replaceChosenHarm env stunObj)
+  | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env)
   | .buff sel => onSelected s p src env sel buffObj
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
@@ -3304,7 +3313,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
           some (Event.revealed o.owner id) else none
       | none => none))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
-  | .play sel => onSelected s p src env sel (playFree p)
+  | .play sel | .playAtBase sel => onSelected s p src env sel (playFree p)
   | .banishReplay sel keep =>
     onSelected s p src env sel (fun t id => banishReplay p t id keep)
   | .playPaying sel => onSelected s p src env sel (playPaying p)
@@ -3488,7 +3497,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
             show Safe s r0.1
             exact onSelected_safe (moveByEffect_safe _ _) hr0
           · simp at h
-  | stun sel => exact onSelected_safe (replaceChosenHarm_safe env stunObj_safe) h
+  | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env) h
   | detach sel => exact onSelected_safe detachObj_safe h
   | double sel => exact onSelected_safe doubleObj_safe h
   | grantActivation sel grant => exact onSelected_safe (grantActivationObj_safe grant) h
@@ -3544,6 +3553,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact Safe.refl s
   | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
+  | playAtBase sel => exact onSelected_safe (playFree_safe p) h
   | banishReplay sel keep => exact onSelected_safe (fun t id => banishReplay_safe p t id keep) h
   | playPaying sel => exact onSelected_safe (playPaying_safe p) h
   | playTo sel bfs =>
@@ -3844,7 +3854,7 @@ theorem addMightFloor_safe (k floor : Nat) (ends : EndPoint) (s : GameState) (id
 while keeping any minimum on the reduction (CR 370). -/
 def reduceMight (p : PlayerId) (env : Env) (n : Nat) (floor : Option Nat) (ends : EndPoint)
     (s : GameState) (id : ObjId) : GameState × List Event :=
-  if n == 0 then (s, [])
+  if n == 0 || floor.any (fun minimum => decide (s.mightBase id ≤ (minimum : Int))) then (s, [])
   else replaceChosenHarm env (fun t target =>
     let extra := if env.targetObjs.contains target && (t.cardDef? target).any (·.hasType .unit) then
       ((t.controlledMods (env.effectController.getD p)).filterMap (fun
@@ -3965,7 +3975,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .spendBuff s => some s
   | .bin s => some s
   | .discardCard s | .discardWithTypeTriggers s _ => some s
-  | .play s => some s
+  | .play s | .playAtBase s => some s
   | .banishReplay s _ => some s
   | .playPaying s => some s
   | .playReduced s _ _ => some s
@@ -4010,6 +4020,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .discardCard _ => .discardCard sel
   | .discardWithTypeTriggers _ links => .discardWithTypeTriggers sel links
   | .play _ => .play sel
+  | .playAtBase _ => .playAtBase sel
   | .banishReplay _ keep => .banishReplay sel keep
   | .playPaying _ => .playPaying sel
   | .playReduced _ l d => .playReduced sel l d
@@ -4647,6 +4658,11 @@ def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
   let locations (sel : Selector) := (sel.eval s p src env).getD []
   match pr with
   | .play sel => schedule (locations sel) .ignoreBase none
+  | .playAtBase sel =>
+    let terms : EffectPlayTerms := {
+      price := .ignoreBase
+      requirements := [none] :: env.hiddenPlayRequirements }
+    some (env, EffectList.ofList ((locations sel).map (fun card => .planPermanentPlay card terms)))
   | .playPaying sel => schedule (locations sel) .ignoreEnergy none
   | .playTo sel dest => schedule (locations sel) .ignoreBase (some (locations dest))
   | .playReduced sel less dest => do

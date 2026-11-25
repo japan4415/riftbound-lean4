@@ -29,6 +29,10 @@ TEXT_ERRATA = {
         "[Reaction] (Play on your turn or in showdowns.)":
             "[Reaction] (Play any time, even before spells and abilities resolve.)",
     },
+    "VEN-086": {
+        "return me to hand, give me +3 :rb_might: instead.":
+            "return me to hand, give me +3 :rb_might: this turn instead.",
+    },
 }
 
 
@@ -101,8 +105,9 @@ def normalize(snap: dict) -> dict:
             fixes.append({"code": first["code"], "name": name, "reason": why,
                           "given": first["types"], "used": types})
         ident = card_id(first["code"])
-        errata = TEXT_ERRATA.get(ident, {})
-        text = [errata.get(line, line) for line in plain(first["text"])]
+        text = plain(first["text"])
+        for printed, corrected in TEXT_ERRATA.get(ident, {}).items():
+            text = [line.replace(printed, corrected) for line in text]
         effect_text = plain(first["effect"])
         variants = sorted({rules_text(p) for p in ps} - {()})
         cards.append({

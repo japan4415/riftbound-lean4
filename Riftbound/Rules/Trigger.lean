@@ -89,6 +89,7 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
     List PendTrigger :=
   let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? src
   let stamp := (lastCopy.map (·.stamp)) <|> s.copyStamp? src
+  let last := eventMatches .leave || eventMatches .die || eventMatches .deathknell
   (match definition with
     | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length stamp
     | none => []) ++
@@ -99,7 +100,7 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
         triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
       else []
     | _, _ => []) ++
-  (s.attachmentTextDefs src (eventMatches .leave || eventMatches .die)).flatMap (fun (d, stamp) =>
+  (s.attachmentTextDefs src last).flatMap (fun (d, stamp) =>
     triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
@@ -222,8 +223,7 @@ def GameState.fxTriggers (s : GameState) (tm : Timing) : List PendTrigger :=
       | _, _ => none)
   else []
 
-/-- A passive ability of an object the player controls makes the abilities of the event `.die` fire
-one more time. -/
+/-- A passive ability of an object the player controls makes Deathknell trigger an additional time. -/
 def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
   s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
     (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
@@ -365,13 +365,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
-    let own := triggersOfMatching s obj p (· == .die) lastCopy
-    -- the Deathknell abilities of a unit fire one more time while a passive ability says so
+    let own := triggersOfMatching s obj p (fun ev => ev == .die || ev == .deathknell) lastCopy
     let again :=
-      let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? obj
-      let deathknell := definition.any (·.hasKeyword .deathknell) ||
-        (s.attachmentTextDefs obj true).any (·.1.hasKeyword .deathknell)
-      if deathknell && s.dieExtra p then own else []
+      if s.dieExtra p then
+        let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? obj
+        let deathknell := definition.any (·.hasKeyword .deathknell) ||
+          (s.attachmentTextDefs obj true).any (·.1.hasKeyword .deathknell)
+        if deathknell then own else triggersOfMatching s obj p (· == .deathknell) lastCopy
+      else []
     own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with

@@ -298,6 +298,10 @@ def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
     else 0
   | none => 0
 
+/-- Derived Might using the same passive modifiers as the surrounding choice. -/
+def GameState.mightWithCachedPassives (s : GameState) (env : Env) (id : ObjId) : Option Int :=
+  (s.mightOf id).map (fun m => m + s.equipBonus id + s.buffBonus id + env.passOf id)
+
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
@@ -313,16 +317,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .domain d => (s.cardDef? id).map (·.domains.contains d)
   | .might op a => do
     let n ← a.eval env
-    -- an object without Might (a Battlefield, a Spell) does not have the Might asked for
-    -- the buff and the Equipment count (CR 701, 137); a passive ability is not read here, as
-    -- the Layers are (`mightNow`) defined after the filters
-    match s.mightOf id with
-    | some m =>
-      let buff : Int := s.buffBonus id
-      pure (op.holds (m + s.equipBonus id + buff + env.passOf id) n)
-    | none => pure false
+    pure ((s.mightWithCachedPassives env id).any (fun m => op.holds m n))
   | .cost op a => do
-    let n ← a.eval env
+    let n ← match a with
+      | .mightOf .self => s.mightWithCachedPassives env self
+      | _ => a.eval env
     let d ← s.cardDef? id
     -- a card that prints no cost (a Gold token) costs nothing
     pure (match d.cost with

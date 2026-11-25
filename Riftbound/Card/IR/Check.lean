@@ -163,7 +163,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .addPower p n _ _ => p.ok c && Amount.ok c n
   | .counter s => Selector.ok c s
   | .counterToHand s => Selector.ok c s
-  | .play s => Selector.ok c s
+  | .play s | .playAtBase s => Selector.ok c s
   | .banishReplay s _ => Selector.ok c s
   | .copyAttachedFrom s => Selector.ok c s
   | .playPaying s => Selector.ok c s

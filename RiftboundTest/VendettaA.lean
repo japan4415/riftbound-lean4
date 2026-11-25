@@ -1327,6 +1327,28 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
         | _ => none
     | _ => none
 
+-- The Matriarch's instruction requires the Base even when the revived Unit has an extra cost.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, matriarch) ← put s p "VEN-104" .base
+  let (s, monk) ← put s p "VEN-101" .trash
+  let (s, _) ← putAt s p "VEN-014" field
+  let s := (s.control p field).fund p 3 (chaos := 1)
+  let (starting, _) ← (step 100 s ⟨.player p, .activate matriarch 1 ⟨2, [.chaos]⟩ []⟩).toOption
+  let taking ← passToChoice 8 starting
+  let (queued, _) ← (step 100 taking ⟨.player p, .putTrigger 0 [monk]⟩).toOption
+  let choosing ← passToChoice 8 queued
+  let (free, _) ← choosePermanentPlan p (fun plan => plan.battlefield.isNone && !plan.additionalPaid)
+    12 choosing
+  let (paid, _) ← choosePermanentPlan p (fun plan => plan.battlefield.isNone && plan.additionalPaid)
+    12 choosing
+  let freeMonk ← free.firstOf p .base "VEN-101"
+  let paidMonk ← paid.firstOf p .base "VEN-101"
+  return (choosePermanentPlan p (fun plan => plan.battlefield == some field) 12 choosing).isNone &&
+    (free.obj? freeMonk).any (fun o => !o.paid && o.energyPaid == 0) &&
+    (paid.obj? paidMonk).any (fun o => o.paid && o.energyPaid == 1)
+
 -- Temporal Breach: its owner can decline the fee, pay and return to Base,
 -- or pay and go to the Roost (Vendetta FAQ, CR 355.17.a).
 #guard vendettaCase fun s => do

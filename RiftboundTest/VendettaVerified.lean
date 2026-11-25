@@ -365,6 +365,25 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let done := settleChain {} 12 waiting
   return ordinary.mightNow unit == some 4 && done.mightNow unit == some 6
 
+-- Baccai Witherclaw's Empowered Deathknell channels exhausted Runes and Karthus doubles it.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, baccai) ← put s p "VEN-078" .base
+  let empowered ← activate s p baccai 2 [] ⟨1, [.fury, .body]⟩
+  let (withKarthus, _) ← put empowered p "OGN-236" .base
+  let runes := empowered.runesOf p
+  let die (t : GameState) := do
+    let (after, events) := killObj t baccai
+    fire after events
+  let unempowered ← die s
+  let ordinary ← die empowered
+  let doubled ← die withKarthus
+  let newRunes (t : GameState) := (t.runesOf p).filter (fun id => !runes.contains id)
+  return s.mightNow baccai == some 4 && empowered.mightNow baccai == some 6 &&
+    unempowered.runesOf p == s.runesOf p &&
+    (newRunes ordinary).length == 2 && (newRunes doubled).length == 4 &&
+    (newRunes doubled).all (fun id => doubled.tired id == some true)
+
 -- Dame pays five Energy and one Body Power to Empower and cannot Empower again.
 #guard verifiedCase fun s => do
   let p := s.me
@@ -376,6 +395,143 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   return !(legalActions (s.fund p 5)).contains action && (done.poolOf p).total == 0 &&
     (done.obj? dame).any (fun o => o.empowerCount == 1) &&
     !(legalActions (done.fund p 5 (body := 1))).contains action
+
+-- Noxian Demolitionist can kill Gear costing up to its Might, only when conquering.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, demo) ← putAt s p "VEN-080" field
+  let (s, cheap) ← put s q "OGN-090" .base
+  let (s, expensive) ← put s p "VEN-062" .base
+  let (s, _) ← put s q "VEN-014" .base
+  let (fortified, _) ← put s p "VEN-018" .base
+  let possible ← firePicks s [.scored p field true]
+  let nowPossible ← firePicks fortified [.scored p field true]
+  let result ← fire fortified [.scored p field true] { pick := (· == [expensive]) }
+  let skipped ← fire s [.scored p field true] { pick := List.isEmpty }
+  let held ← fire s [.scored p field false]
+  return fortified.mightNow demo == some 2 && possible == [cheap] && nowPossible.contains expensive &&
+    result.countIn p .trash "VEN-062" == 1 && (result.obj? cheap).isSome &&
+    (skipped.obj? cheap).isSome && (held.obj? cheap).isSome
+
+-- Onslaught gives six Might whether played from hand or Trash, and expires at turn end.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, fromHand) ← put s p "VEN-081" .hand
+  let (s, fromTrash) ← put s p "VEN-081" .trash
+  let (s, unit) ← put s s.you "VEN-014" .base
+  let castFrom (card : ObjId) := cast (s.fund p 4) p card ⟨4, []⟩ [unit]
+  let plain ← castFrom fromHand
+  let flowed ← castFrom fromTrash
+  let (expired, _) ← (advance 100 { flowed with pending := [.expireTurn] } []).toOption
+  return plain.mightNow unit == some 8 && flowed.mightNow unit == some 8 &&
+    plain.countIn p .trash "VEN-081" == 2 && flowed.countIn p .banishment "VEN-081" == 1 &&
+    expired.mightNow unit == some 2
+
+-- Profiteer can Disempower Ambessa's Legend to Empower Kayle (Vendetta FAQ).
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, ambessa) ← put s p "VEN-153" .legendZone
+  let (s, kayle) ← put s p "VEN-134" .base
+  let (s, profiteer) ← put s p "VEN-082" .hand
+  let s := (empowerObj p s ambessa).1
+  let payment ← castStop s p profiteer
+  let (queued, _) ← (step 100 payment ⟨.player p, .putTrigger 0 [kayle]⟩).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (choice, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (accepted, _) ← (step 100 choice ⟨.player p, .decide true⟩).toOption
+  let (declined, _) ← (step 100 choice ⟨.player p, .decide false⟩).toOption
+  let done := settleChain {} 8 accepted
+  let stacks (t : GameState) (id : ObjId) := (t.obj? id).map (·.empowerCount)
+  return stacks accepted ambessa == some 0 && stacks accepted kayle == some 1 &&
+    stacks declined ambessa == some 1 && stacks declined kayle == some 0 &&
+    stacks done ambessa == some 1 && stacks done kayle == some 1
+
+-- The Wolf ignores damage outside her Combat when Empowered, including at other Battlefields.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, ambessa) ← putAt s p "VEN-084" s.bf0
+  let elsewhere ← s.battlefields[1]?
+  let boosted ← activate (s.control p s.bf0) p ambessa 2 [] ⟨3, [.body]⟩
+  let hit (t : GameState) := (dealObj 2 t ambessa (some s.you)).1
+  let injured (t : GameState) := (t.obj? ambessa).map (·.damage)
+  return s.mightNow ambessa == some 4 && boosted.mightNow ambessa == some 7 &&
+    injured (hit s) == some 2 && injured (hit boosted) == some 0 &&
+    injured (hit (boosted.inCombatAt elsewhere s.you)) == some 0 &&
+    injured (hit (boosted.inCombatAt s.bf0 s.you)) == some 2
+
+-- Gangplank replaces only a Stun or Might reduction that would actually occur (Vendetta FAQ).
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gangplank) ← putAt s q "VEN-086" s.bf0
+  let (s, cone) ← put s p "UNL-133" .hand
+  let (s, backOff) ← put s q "UNL-042" .hand
+  let (s, stupefy) ← put s q "OGN-095" .hand
+  let empowered := (empowerObj q (s.control q s.bf0) gangplank).1
+  let blasted ← play empowered p cone [] { pick := (· == [gangplank]) }
+  let fieldGear ← blasted.firstOf p .base "UNL-133"
+  let opponentTurn (t : GameState) := { t with active := some q, pending := [.priority q] }
+  let repeated ← play (opponentTurn blasted) q backOff [gangplank]
+  let replaced ← play (opponentTurn empowered) q backOff [gangplank]
+  let (expired, _) ← (advance 100 { replaced with pending := [.expireTurn] } []).toOption
+  let floored := (opponentTurn empowered).modObj gangplank
+    (fun o => { o with baseMightThisTurn := some 1 })
+  let unchanged ← play floored q stupefy [gangplank]
+  return blasted.locate gangplank == some (.player q .base) &&
+    blasted.tired fieldGear == some true && (blasted.obj? gangplank).any (·.stunned) &&
+    (repeated.obj? gangplank).any (·.stunned) && repeated.mightNow gangplank == some 6 &&
+    (replaced.obj? gangplank).any (! ·.stunned) && replaced.mightNow gangplank == some 9 &&
+    expired.mightNow gangplank == some 6 && unchanged.mightNow gangplank == some 1
+
+-- Hextech Disc exhausts to Empower, then spends its next exhaust and one Energy on a Base Mech.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, disc) ← put s p "VEN-087" .base
+  let s := s.control p s.bf0
+  let empowered ← activate s p disc 0
+  let ready := (readyEffect empowered disc).1
+  let (queued, _) ← (step 100 (ready.fund p 1) ⟨.player p, .activate disc 1 ⟨1, []⟩ []⟩).toOption
+  let done := settleChain {} 8 queued
+  let mech ← (done.zone (.player p .base)).find? (fun id => (done.cardDef? id).any (·.name == "Mech"))
+  return empowered.tired disc == some true &&
+    (empowered.obj? disc).any (·.empowerCount == 1) &&
+    (activate s p disc 1 [] ⟨1, []⟩).isNone &&
+    (activate empowered p disc 1 [] ⟨1, []⟩).isNone &&
+    queued.tired disc == some true && (queued.poolOf p).total == 0 &&
+    (queued.obj? disc).any (·.empowerCount == 0) &&
+    done.mightNow mech == some 3 && done.tired mech == some true
+
+-- Profiteer Disempowers Brute at eleven Might. Staying at ten or more does not Empower him.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, renekton) ← put s p "VEN-092" .base
+  let (s, kayle) ← put s p "VEN-134" .base
+  let (s, profiteer) ← put s p "VEN-082" .hand
+  let (s, stupefy) ← put s q "OGN-095" .hand
+  let enlarged := (addMightMod ⟨7, .turn⟩ s renekton).1
+  let s := (empowerObj p enlarged renekton).1
+  let stripped ← play s p profiteer [] { pick := (· == [kayle]), obj := (· == renekton) }
+  let reduced ← play { stripped with active := some q, pending := [.priority q] } q stupefy [renekton]
+  let raised ← activate stripped p renekton 0 [] ⟨1, []⟩
+  return stripped.mightNow renekton == some 11 && (stripped.obj? kayle).any (·.empowerCount == 1) &&
+    reduced.mightNow renekton == some 10 && raised.mightNow renekton == some 12 &&
+    [stripped, reduced, raised].all (fun t => (t.obj? renekton).any (·.empowerCount == 0))
+
+-- Kinkou Lifeblade gains one Might and can Gank after paying its printed Empower cost.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let other ← s.battlefields[1]?
+  let (s, lifeblade) ← putAt s p "VEN-093" s.bf0
+  let s := (s.control p s.bf0).control p other
+  let moving : Action := ⟨.player p, .standardMove lifeblade (.battlefield other)⟩
+  let boosted ← activate s p lifeblade 1 [] ⟨2, []⟩
+  let (moved, _) ← (step 100 boosted moving).toOption
+  return s.mightNow lifeblade == some 4 && !(legalActions s).contains moving &&
+    moved.mightNow lifeblade == some 5 && (moved.obj? lifeblade).any (·.loc == some other)
 
 -- Shadowblade Lurker's Energy discount counts only same-name cards in its owner's Trash.
 #guard verifiedCase fun s => do
@@ -389,6 +545,40 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (done, _) ← (step 100 (three.fund p 0) ⟨.player p, .playCard lurker ⟨0, []⟩ []⟩).toOption
   return [s, one, two, three].map (fun state => state.energyCost? p lurker) ==
     [some 5, some 3, some 1, some 0] && done.countIn p .base "VEN-096" == 1
+
+-- A hidden Spiderling enters its Battlefield and counts its other friendly copy there.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, hidden) ← put s p "VEN-097" .hidden
+  let (s, sibling) ← putAt s p "VEN-097" field
+  let s := (s.control p field).modObj hidden
+    (fun o => { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
+  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, []⟩ []⟩).toOption
+  let done := settleChain {} 8 queued
+  let flipped ← (done.unitsAtOf field p).find? (fun id =>
+    id != sibling && (done.cardDef? id).any (·.id == cid "VEN-097"))
+  return done.mightNow sibling == some 2 && done.mightNow flipped == some 2 &&
+    done.countIn p .hidden "VEN-097" == 0 && (done.obj? flipped).any (·.fromHidden)
+
+-- Wind and Ghosts checks the chosen Unit's current Might to decide where to send it.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put s p "VEN-106" .hand
+  let (s, small) ← putAt s q "VEN-014" field
+  let (s, atBase) ← put s q "VEN-014" .base
+  let s := (s.control q field).fund p 3 (chaos := 1)
+  let action (unit : ObjId) : Action := ⟨.player p, .playCard spell ⟨3, [.chaos]⟩ [unit]⟩
+  let waiting := { s with pending := [.showdown field p 0] }
+  let (casting, _) ← (step 100 waiting (action small)).toOption
+  let banished := settleChain {} 8 casting
+  let boosted := (addMightMod ⟨2, .turn⟩ casting small).1
+  let returned := settleChain {} 8 boosted
+  return !(legalActions waiting).contains (action atBase) &&
+    banished.countIn q .banishment "VEN-014" == 1 &&
+    returned.countIn q .hand "VEN-014" == 1 && returned.countIn q .banishment "VEN-014" == 0
 
 -- Baccai Sandspinner gains Deflect and Assault 2 only after its discounted Empower resolves.
 #guard verifiedCase fun s => do
