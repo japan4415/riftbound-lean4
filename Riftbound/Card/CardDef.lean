@@ -64,6 +64,14 @@ inductive PaidCut where
   | killed
 deriving DecidableEq, Repr, Hashable
 
+/-- A Show Off requirement for one object (CR 832). -/
+structure ShowOffRequirement where
+  /-- Qualities the shown card or object must have. -/
+  filters : FilterList := .nil
+  /-- The requirement specifies a card, excluding tokens (CR 185). -/
+  cardsOnly : Bool := false
+deriving DecidableEq, Repr
+
 /-- The definition of one logical card. -/
 structure CardDef where
   /-- The logical card's identifier. -/
@@ -88,6 +96,8 @@ structure CardDef where
   mightBonus : Option Int := none
   /-- The printed keywords. -/
   keywords : List KeywordInst := []
+  /-- Requirements for the optional object shown off during this card's finalization (CR 832). -/
+  showOffRequirement : Option ShowOffRequirement := none
   /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
   abilities that a printed keyword stands for are not here (design.md §7.4). -/
   abilities : List Ability := []

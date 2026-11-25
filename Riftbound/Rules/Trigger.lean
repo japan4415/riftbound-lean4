@@ -57,7 +57,9 @@ def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :
 holds. -/
 def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef) :
     Bool :=
-  t.subject == .self && condOk s src who t.condition && t.occurrence == .every
+  let shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none
+  let env : Env := { passMight := s.mightTable, shownOff }
+  t.subject == .self && condOkEnv s src who env t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
 def limitOk (s : GameState) (src : ObjId) (idx : Nat) (limit : Limit)
@@ -74,7 +76,9 @@ def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
       if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim copy then
-        some { source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy }
+        some {
+          source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy
+          shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none }
       else none
     | _ => none)
 
@@ -972,6 +976,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       triggerSubject := t.subject
       triggerKeyword := t.triggerKeyword
       eventBattlefields := t.eventBattlefields
+      shownOff := t.shownOff
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }
   match addObject s1 item .chain with

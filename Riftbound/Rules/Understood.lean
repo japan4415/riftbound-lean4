@@ -51,6 +51,7 @@ def Amount.understood : Amount → Bool
   | .const _ => true
   | .var _ => true
   | .eventAmount => true
+  | .shownOffMight | .shownOffPower => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -89,6 +90,7 @@ def Amount.understoodC : Amount → Bool
   | .const _ => true
   | .var _ => true
   | .eventAmount => true
+  | .shownOffMight | .shownOffPower => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -252,6 +254,7 @@ def Condition.understood : Condition → Bool
   | .legion => true
   | .paid => true
   | .discardPaid => true
+  | .showedOff => true
   | .playedAnother => true
   | .finalizedType _ => true
   | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => s.understood
@@ -429,7 +432,7 @@ end
 
 /-- All modes or the single effect can be played and interpreted. -/
 def EffectDef.choicesRun (e : EffectDef) : Bool :=
-  if e.modes.isEmpty then
+  e.showOffChoices.all Choice.simple && if e.modes.isEmpty then
     e.choices.all Choice.simple && e.body.understood &&
       e.moveChoice.all (fun move => FilterList.understood move.filters)
   else e.modes.all (fun mode => mode.choices.all Choice.simple && mode.body.understood)
@@ -633,7 +636,8 @@ def CardDef.runs (c : CardDef) : Bool :=
   (c.status == .drafted || c.status == .full) &&
     c.abilities.all Ability.runs && c.grants.all Ability.runs &&
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
-      (k.keyword == .empower && c.hasEmpowerAbility)) &&
+      (k.keyword == .empower && c.hasEmpowerAbility) ||
+      (k.keyword == .showOff && c.showOffRequirement.any (·.filters.understood))) &&
     (match c.spellEffect with
       | some _ => c.spellRuns
       | none => !c.types.contains .spell)

@@ -43,6 +43,8 @@ inductive SpellPick where
   | withPermanentCosts (ownCosts : List Nat)
   /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
   | withPlayer (pick : SpellPick) (player : PlayerId)
+  /-- The object revealed from hand or picked from the Board for Show Off (CR 832). -/
+  | withShowOff (pick : SpellPick) (object : ObjId)
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
@@ -53,30 +55,31 @@ deriving DecidableEq, Repr, Hashable
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
-  | .withPlayer pick _ => pick.optionalCosts
+  | .withPlayer pick _ | .withShowOff pick _ => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
+  | .withShowOff pick _ => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
-  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.playerTarget
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
-  | .withPlayer pick _ => pick.effectChoice
+  | .withPlayer pick _ | .withShowOff pick _ => pick.effectChoice
   | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
-  | .withCosts pick _ _ => pick.hasExecutionChoices
+  | .withCosts pick _ _ | .withShowOff pick _ => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
@@ -84,6 +87,29 @@ def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick 
   | .withCosts pick _ _ => pick.executions targets
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
   | pick => [(pick, targets)]
+
+/-- The object shown off for this play. -/
+def SpellPick.showOffObject : SpellPick → Option ObjId
+  | .withShowOff _ object => some object
+  | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ => pick.showOffObject
+  | _ => none
+
+/-- Add the optional Show Off selection to an otherwise complete finalization. -/
+def SpellPick.addShowOff (pick : SpellPick) (object : Option ObjId) : SpellPick :=
+  object.elim pick (.withShowOff pick)
+
+/-- Remove the permanent's Show Off choice before determining its costs. -/
+def SpellPick.withoutShowOff : SpellPick → SpellPick
+  | .withShowOff pick _ => pick
+  | pick => pick
+
+/-- Characteristics of an object shown off, as they were during finalization (CR 832). -/
+structure ShownOff where
+  /-- The effective Might on the Board or the printed Might in hand. -/
+  might : Option Int
+  /-- The number of Power symbols in its cost. -/
+  power : Nat
+deriving DecidableEq, Repr, Hashable
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where

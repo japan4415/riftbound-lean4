@@ -276,6 +276,7 @@ def RAD_011.meta : CardDef :=
   { id := ⟨"RAD-011"⟩,
     name := "Incorrigible Construct",
     types := [.unit],
+    tags := [⟨"Piltover"⟩, ⟨"Mech"⟩],
     domains := [.fury],
     cost := some ⟨4, []⟩,
     might := some 4,
@@ -283,8 +284,12 @@ def RAD_011.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Incorrigible Construct: the effect is not written yet. -/
-def RAD_011 : CardDef := RAD_011.meta
+/-- Incorrigible Construct can show off a Mech to enter ready. -/
+def RAD_011 : CardDef :=
+  { RAD_011.meta with
+    showOffRequirement := some { filters := .ofList [.tag ⟨"Mech"⟩] },
+    abilities := [.passive .showedOff [.entersReady .self]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-012
 /--
@@ -750,8 +755,17 @@ def RAD_032.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Battle Preparations: the effect is not written yet. -/
-def RAD_032 : CardDef := RAD_032.meta
+/-- Battle Preparations boosts a Unit and, after showing off Gear, can ready two Runes. -/
+def RAD_032 : CardDef :=
+  { RAD_032.meta with
+    showOffRequirement := some { filters := .ofList [.ofType .gear] },
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit]],
+      showOffChoices := [.targetOf (.upTo 2) .any .atBase [.ofType .rune]],
+      body := .seqOf [.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn,
+        .ifThen .showedOff (.prim (.ready (.slotsFrom 1))) .nop],
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-033
 /--
@@ -1375,7 +1389,7 @@ def RAD_060.meta : CardDef :=
   { id := ⟨"RAD-060"⟩,
     name := "The Empyrean",
     types := [.unit],
-    tags := [⟨"Dragon"⟩],
+    tags := [⟨"Ionia"⟩, ⟨"Dragon"⟩],
     domains := [.mind],
     cost := some ⟨8, []⟩,
     might := some 8,
@@ -1383,8 +1397,13 @@ def RAD_060.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- The Empyrean: the effect is not written yet. -/
-def RAD_060 : CardDef := RAD_060.meta
+/-- The Empyrean Predicts the shown card's Power cost and then draws two. -/
+def RAD_060 : CardDef :=
+  { RAD_060.meta with
+    showOffRequirement := some { cardsOnly := true },
+    abilities := [.triggered { event := .play, condition := .showedOff }
+      (.of [] (.seqOf [.prim (.predict .shownOffPower), .prim (.draw .you (.const 2))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-061
 /--
@@ -1882,8 +1901,15 @@ def RAD_082.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Primordial Roar: the effect is not written yet. -/
-def RAD_082 : CardDef := RAD_082.meta
+/-- Primordial Roar can use a shown Unit's captured Might to damage a chosen Unit. -/
+def RAD_082 : CardDef :=
+  { RAD_082.meta with
+    showOffRequirement := some { filters := .ofList [.ofType .unit] },
+    spellEffect := some {
+      showOffChoices := [.targetOf .one .any .anywhere [.ofType .unit]],
+      body := .ifThen .showedOff (.prim (.deal (.slot 0) .shownOffMight)) .nop,
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-083
 /--
@@ -2374,6 +2400,7 @@ def RAD_103.meta : CardDef :=
   { id := ⟨"RAD-103"⟩,
     name := "Gutter Guardian",
     types := [.unit],
+    tags := [⟨"Zaun"⟩],
     domains := [.chaos],
     cost := some ⟨3, []⟩,
     might := some 3,
@@ -2382,8 +2409,13 @@ def RAD_103.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Gutter Guardian: the effect is not written yet. -/
-def RAD_103 : CardDef := RAD_103.meta
+/-- Gutter Guardian adds one Power if it showed a card with Hidden. -/
+def RAD_103 : CardDef :=
+  { RAD_103.meta with
+    showOffRequirement := some { filters := .ofList [.hasKeyword .hidden], cardsOnly := true },
+    abilities := [.triggered { event := .play, condition := .showedOff }
+      (.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-104
 /--
@@ -2933,7 +2965,7 @@ Printings: RAD-127/167
 > [Show Off] a card with Energy cost :rb_energy_7: or more. (As you play this, you may reveal
 > such a card from hand or pick a friendly one.)
 > Play two 1 :rb_might: Recruit unit tokens to your base. If you showed off, play four to your
-> base instead.disa
+> base instead.
 -/
 def RAD_127.meta : CardDef :=
   { id := ⟨"RAD-127"⟩,
@@ -2946,8 +2978,14 @@ def RAD_127.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Rousing Display: the effect is not written yet. -/
-def RAD_127 : CardDef := RAD_127.meta
+/-- Rousing Display plays four Recruits instead of two after showing a card with base Energy 7+. -/
+def RAD_127 : CardDef :=
+  { RAD_127.meta with
+    showOffRequirement := some { filters := .ofList [.cost .ge (.const 7)], cardsOnly := true },
+    spellEffect := some (.of [] (.ifThen .showedOff
+      (.prim (.create "Recruit" (.const 4) .atBase false))
+      (.prim (.create "Recruit" (.const 2) .atBase false)))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-128
 /--

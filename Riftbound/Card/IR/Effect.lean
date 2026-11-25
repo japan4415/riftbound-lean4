@@ -51,6 +51,8 @@ structure ReducedPermanentPlay where
   accelerated : Bool
   /-- The Battlefields whose additional costs the player elected to pay. -/
   battlefieldFees : List ObjId := []
+  /-- The card revealed or friendly object picked for Show Off (CR 832). -/
+  showOff : Option ObjId := none
 deriving DecidableEq, Repr, Hashable
 
 /-- One activation that provides resources for an effect's play (CR 357.1.a). -/

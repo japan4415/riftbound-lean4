@@ -43,6 +43,9 @@ TEXT_ERRATA = {
     "RAD-081": {
         "give another friendly unit": "give a friendly unit",
     },
+    "RAD-127": {
+        "base instead.disa": "base instead.",
+    },
     "RAD-154": {
         "play this turn (even from face down) can":
             "play this turn, even from face down, can",
@@ -61,6 +64,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-006": {"domains": ["fury"]},
     "RAD-008": {"tags": ["Demacia", "Yordle"]},
     "RAD-009": {"domains": ["fury"], "tags": ["Bandle City", "Yordle", "Mech"]},
+    "RAD-011": {"tags": ["Piltover", "Mech"]},
     "RAD-017": {"domains": ["fury"], "tags": []},
     "RAD-022": {"domains": ["fury"]},
     "RAD-023": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
@@ -75,6 +79,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-055": {"tags": ["Piltover", "Mech"]},
     "RAD-058": {"tags": ["Bilgewater"]},
     "RAD-059": {"domains": ["mind"]},
+    "RAD-060": {"tags": ["Ionia", "Dragon"]},
     "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
     "RAD-072": {"tags": ["Bandle City", "Yordle"]},
     "RAD-073": {"domains": ["body"], "tags": []},
@@ -83,6 +88,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-093": {"domains": ["chaos"], "tags": ["Bandle City", "Yordle"]},
     "RAD-094": {"tags": ["Zaun"]},
     "RAD-097": {"tags": ["Bilgewater"]},
+    "RAD-103": {"tags": ["Zaun"]},
     "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
     "RAD-106": {"domains": ["chaos"], "tags": []},
     "RAD-112": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},

@@ -52,6 +52,8 @@ deriving DecidableEq, Repr, Hashable
 structure EffectDef where
   /-- The choices, in the order they are made. -/
   choices : List Choice := []
+  /-- Extra targets chosen at finalization only when the player shows off (CR 355, 832). -/
+  showOffChoices : List Choice := []
   /-- What happens when it resolves. -/
   body : Effect
   /-- Modes with their own choices and instructions. -/
@@ -73,11 +75,13 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
   | .payForBattlefield .. | .withPermanentCosts .. => none
   | .withPlayer pick _ => e.forPick pick
+  | .withShowOff pick _ => (e.forPick pick).map (fun branch =>
+    { branch with choices := branch.choices ++ e.showOffChoices, showOffChoices := [] })
   | .withCosts pick _ _ | .thenRepeat pick _ _ => e.forPick pick
 
 /-- Whether the Spell can have distinct modes, targets or destinations in a Repeat (CR 820.2). -/
 def EffectDef.hasFinalizationChoice (e : EffectDef) : Bool :=
-  e.choices.any (fun
+  (e.choices ++ e.showOffChoices).any (fun
     | .target .. => true
     | _ => false) || !e.modes.isEmpty || e.moveChoice.isSome || e.playerTarget.isSome
 

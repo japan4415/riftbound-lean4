@@ -109,6 +109,8 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env :
 def Amount.eval (env : Env) : Amount → Option Nat
   | .const n => some n
   | .eventAmount => env.eventAmount
+  | .shownOffMight => (env.shownOff.bind (·.might)).map Int.toNat
+  | .shownOffPower => env.shownOff.map (·.power)
   | .var v =>
     match env.lookup v with
     | some (.int i) => some i.toNat
@@ -1137,6 +1139,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
   | .discardPaid => some ((s.obj? self).any (·.discardPaid))
+  | .showedOff => some env.shownOff.isSome
   | .playedAnother => some (s.playedOther p self)
   | .finalizedType kind => some ((s.playsOfType .finalized kind).any (·.who == p))
   | .opponentFinalizedOtherSpell target =>

@@ -31,6 +31,10 @@ inductive Amount where
   /-- The amount carried by an event a replacement ability changes or a reflexive ability
   reads. -/
   | eventAmount
+  /-- The Might of the object shown off during finalization (CR 832). -/
+  | shownOffMight
+  /-- The number of Power symbols on the object shown off during finalization (CR 832). -/
+  | shownOffPower
   /-- How many turns the players have taken so far. -/
   | turnsTaken (p : PlayerSel)
   /-- How many objects the selector matches. -/
@@ -308,6 +312,8 @@ inductive Condition where
   | paid
   /-- The optional discard cost of playing this card was paid (CR 357.2). -/
   | discardPaid
+  /-- An object was shown off for this play (CR 832). -/
+  | showedOff
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
   /-- The player finalized a card of this type this turn (CR 420.4.b). -/

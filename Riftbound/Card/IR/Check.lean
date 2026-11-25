@@ -55,6 +55,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .var v => c.vars.contains v || v == pickVar
   | .points p => PlayerSel.ok c p
   | .eventAmount => c.eventOk || c.eventAmountOk
+  | .shownOffMight | .shownOffPower => true
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
@@ -427,12 +428,13 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
 
 /-- An effect with its choices refers only to what is there. -/
 def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
+  let d := { d with choices := d.choices ++ d.showOffChoices }
   let ctx := d.ctx base
   Choice.allOk 0 d.choices && Effect.ok ctx d.body &&
     (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
     d.modes.all (fun mode =>
       let branch : EffectDef :=
-        { choices := mode.choices, body := mode.body, playerTarget := d.playerTarget }
+        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget }
       Choice.allOk 0 branch.choices && Effect.ok (branch.ctx base) branch.body)
 
 /-- An ability refers only to what is there. -/

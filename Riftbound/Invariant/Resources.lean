@@ -179,7 +179,7 @@ theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
 `applyCast` puts on the Chain has exactly the targets of the action. -/
 theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
-    ∃ id', es = [Event.moved c id' .chain] ∧
+    ∃ id', es = s.showOffEvents p pick.showOffObject ++ [Event.moved c id' .chain] ∧
       ∀ o, s'.obj? id' = some o → o.targets = targets := by
   obtain ⟨pool, s2, id', rep, -, -, rfl, hes⟩ := applyCast_cases h
   refine ⟨id', hes, fun o ho => ?_⟩
@@ -214,6 +214,7 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
           (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
         targetObjs := o.targets
         hiddenPlayLocation := o.hiddenAt
+        shownOff := o.shownOff
         playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
             (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
           then o.targetPlayer.toList else [] }
@@ -236,7 +237,7 @@ theorem resolveFrames_execution_slots {s : GameState} {rest : List Frame} {item 
     (hd : s.cardDef? item = some d) (repeated : o.spellPick.hasExecutionChoices = true) :
     resolveFrames s rest =
       (o.spellPick.executions o.targets).map (fun (pick, targets) =>
-        .run o.controller item { hiddenPlayLocation := o.hiddenAt }
+        .run o.controller item { hiddenPlayLocation := o.hiddenAt, shownOff := o.shownOff }
           (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest) := by
   unfold resolveFrames
   rw [hc]

@@ -104,6 +104,8 @@ structure Object where
   targets : List ObjId := []
   /-- For an ability on the Chain: the amount captured when it triggered (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- Characteristics recorded during this object's play or captured by its play trigger. -/
+  shownOff : Option ShownOff := none
   /-- For an ability assembled from the source's effective keywords. -/
   triggerKeyword : Option Keyword := none
   /-- A triggered ability's original Battlefield information (CR 477.3.b). -/

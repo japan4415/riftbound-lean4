@@ -28159,7 +28159,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "[Show Off] a Mech. (As you play me, you may reveal a Mech from hand or pick another friendly Mech.)",
     "I enter ready if you showed off."
@@ -29516,6 +29519,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Ionia",
     "Dragon"
    ],
    "text": [
@@ -30741,7 +30745,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "[Show Off] a card with [Hidden]. (As you play me, you may reveal such a card from hand or pick another friendly one on the board.)",
@@ -31416,7 +31422,7 @@
    "tags": [],
    "text": [
     "[Show Off] a card with Energy cost :rb_energy_7: or more. (As you play this, you may reveal such a card from hand or pick a friendly one.)",
-    "Play two 1 :rb_might: Recruit unit tokens to your base. If you showed off, play four to your base instead.disa"
+    "Play two 1 :rb_might: Recruit unit tokens to your base. If you showed off, play four to your base instead."
    ],
    "textVariants": 1,
    "types": [

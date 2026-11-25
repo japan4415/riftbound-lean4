@@ -74,12 +74,13 @@ def GameState.costSelects (s : GameState) (p : PlayerId) (src c : ObjId) : Selec
 
 /-- The card `c` enters ready: by itself, by a passive ability of its own whose condition holds,
 by the passive ability of an object the player controls, or by an effect of the turn. -/
-def GameState.readyNow (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Bool :=
+def GameState.readyNow (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (shownOff : Option ShownOff := none) : Bool :=
   d.entersReady || s.readyByFx p ||
     (d.fullAbilities.any (fun ab =>
       match ab with
       | Ability.passive cond mods =>
-        mods.contains (.entersReady .self) && cond.eval s p c {} == some true
+        mods.contains (.entersReady .self) && cond.eval s p c { shownOff } == some true
       | _ => false)) ||
     (s.passiveSources.any (fun src =>
       match s.obj? src, s.cardDef? src with
@@ -603,7 +604,7 @@ def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
   let plans := s.playCostPlans p c d cost
   let adjusted (total : Cost) (elected : List Nat) :=
     (s.targetCostOptions p c ts total).map (·, elected.length)
-  match pick with
+  match pick.withoutShowOff with
   | .payForBattlefield sources own =>
     (s.battlefieldFeeTotals p d sources).flatMap (fun fee =>
       plans.flatMap (fun (total, elected) =>
@@ -616,7 +617,7 @@ def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
 set, or the card has both a printed cost and Accelerate (CR 355.1.a, 356.4.f.1). -/
 def GameState.permanentCostsOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) : Bool :=
-  match pick with
+  match pick.withoutShowOff with
   | .payForBattlefield .. => true
   | _ =>
     let count := (s.extrasRaw p c d).length
@@ -802,7 +803,38 @@ and can choose among the conflicting requirements those fees impose (CR 355.17.a
 def GameState.playBfPicks (s : GameState) (p : PlayerId) (c : ObjId) : SpellPick → List ObjId
   | .plain | .withPermanentCosts .. => s.playBfOptions p c
   | .payForBattlefield sources _ => sources
+  | .withShowOff pick _ => s.playBfPicks p c pick
   | _ => []
+
+/-- A Show Off choice is a matching card from hand or another matching friendly Board object.
+Neither choice is a target (CR 832). -/
+def GameState.showOffOptions (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List ObjId :=
+  match d.showOffRequirement with
+  | none => []
+  | some requirement =>
+    let env := Env.empty.withMight s.mightTable
+    let board := s.inPlay ++ s.zone (.player p .legendZone)
+    let friendly := board.filter (fun id => (s.sourceOwner id).any (·.controller == p))
+    let faceUp := (s.zone (.player p .hand) ++ friendly).filter (fun id =>
+      id != c && (s.cardDef? id).isSome &&
+        (!requirement.cardsOnly || Filter.holds s c env id .token == some false) &&
+        requirement.filters.holds s c env id == some true)
+    -- Facedown cards can satisfy an unqualified card requirement. Their traits remain private.
+    if requirement.cardsOnly && requirement.filters == .nil then
+      faceUp ++ (s.zone (.player p .hidden)).filter (· != c)
+    else faceUp
+
+/-- The characteristics referenced later by a Show Off effect (CR 832). -/
+def GameState.captureShowOff (s : GameState) (p : PlayerId) (object : Option ObjId) : Option ShownOff := do
+  let id ← object
+  if (s.zone (.player p .hidden)).contains id then return ⟨none, 0⟩
+  let defn ← s.cardDef? id
+  let might := if (s.zone (.player p .hand)).contains id then defn.might else s.mightNow id
+  return ⟨might, (defn.cost.map (·.power.length)).getD 0⟩
+
+/-- Show Off reveals a hand card. Selecting a Board object does not reveal it (CR 832). -/
+def GameState.showOffEvents (s : GameState) (p : PlayerId) (object : Option ObjId) : List Event :=
+  (object.toList.filter ((s.zone (.player p .hand)).contains)).map (Event.revealed p)
 
 /-- Nonempty sets of Battlefield fees available to the player for a Unit about to be played. -/
 def GameState.battlefieldFeeChoices (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
@@ -820,14 +852,20 @@ def GameState.permanentCostSets (s : GameState) (p : PlayerId) (c : ObjId) (d : 
 /-- Which optional costs of the Unit can be elected alongside a Battlefield's fee. -/
 def GameState.battlefieldPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List SpellPick :=
+  let options := s.showOffOptions p c d
   (s.battlefieldFeeChoices p c d).flatMap (fun sources =>
-    (s.permanentCostSets p c d).map (fun costs => .payForBattlefield sources costs))
+    (s.permanentCostSets p c d).flatMap (fun costs =>
+      let pick := .payForBattlefield sources costs
+      pick :: options.map (.withShowOff pick)))
 
 /-- A Unit or Gear may elect its own optional costs when no Battlefield fee was elected. -/
 def GameState.permanentCostPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List SpellPick :=
-  if (d.hasType .unit || d.hasType .gear) && !(s.extrasRaw p c d).isEmpty then
-    (s.permanentCostSets p c d).map SpellPick.withPermanentCosts
+  if d.hasType .unit || d.hasType .gear then
+    let costs := if (s.extrasRaw p c d).isEmpty then []
+      else (s.permanentCostSets p c d).map SpellPick.withPermanentCosts
+    let options := s.showOffOptions p c d
+    costs ++ (.plain :: costs).flatMap (fun pick => options.map (.withShowOff pick))
   else []
 
 /-- The player can play the object with the payment: it is the player's card, a Unit or a Gear, in
@@ -918,7 +956,12 @@ def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
             (if d.additionalCost.isSome then [.withCosts pick true k] else [])))
     else []
   else []
-  base ++ extra ++ (s.permanentCostPicks p c d ++ s.battlefieldPicks p c d)
+  let spells := base ++ extra
+  let showing := if d.hasType .spell then
+    let options := s.showOffOptions p c d
+    spells.flatMap (fun pick => options.map (.withShowOff pick))
+    else []
+  (spells ++ showing) ++ (s.permanentCostPicks p c d ++ s.battlefieldPicks p c d)
 
 /-- Check the chosen destination relative to the moved target (CR 355.4).
 Effects that prevent the move are checked at resolution (CR 358.3.a). -/
@@ -936,24 +979,30 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
       | none => false
     | none => false
   | .withPlayer pick _ | .withCosts pick _ _ => s.moveTargetOk c e ts pick
+  | .withShowOff pick _ => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
 
-/-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
-def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
-    List (SpellPick × List ObjId) :=
-  (s.spellPicks p d).flatMap (fun pick =>
+/-- The legal targets and modes for the supplied Show Off selections, without costs. -/
+def spellChoicesWithShowOff (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef)
+    (showOffs : List (Option ObjId)) : List (SpellPick × List ObjId) :=
+  ((s.spellPicks p d).flatMap (fun pick => showOffs.map pick.addShowOff)).flatMap (fun pick =>
     (e.forPick pick).toList.flatMap (fun branch =>
       if s.spellPlayerTargetOk p branch pick then
         ((targetTuples s p id s.mightTable branch.choices).filter
           (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
       else []))
 
+/-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
+def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
+    List (SpellPick × List ObjId) :=
+  spellChoicesWithShowOff s p id d e (none :: (s.showOffOptions p id d).map some)
+
 /-- Every object in the choices of one execution is in a legal target zone. -/
 theorem spellChoices_targets_present {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
     {e : EffectDef} {pick : SpellPick} {targets : List ObjId}
     (h : (pick, targets) ∈ spellChoices s p c d e) :
     ∀ t ∈ targets, s.targetPresent t = true := by
-  unfold spellChoices at h
+  unfold spellChoices spellChoicesWithShowOff at h
   obtain ⟨offered, -, h⟩ := List.mem_flatMap.mp h
   obtain ⟨branch, -, h⟩ := List.mem_flatMap.mp h
   split at h
@@ -1025,6 +1074,40 @@ theorem repeatSpellChoices_targets {options : List (SpellPick × List ObjId)} {P
     · exact single (first, ts) hfirst t ht
     · exact ih hlater t ht
 
+/-- Each execution can have its own targets and mode. Show Off is chosen once for the play. -/
+def repeatExecutionGroups (d : CardDef) (options : List (SpellPick × List ObjId)) :
+    List (List (SpellPick × List ObjId)) :=
+  if d.showOffRequirement.isNone then [options] else
+    let showOffs := (options.map (fun (pick, _) => pick.showOffObject)).eraseDups
+    showOffs.map (fun shown => options.filter (fun (pick, _) => pick.showOffObject == shown))
+
+/-- Offer a sequence of executions with a shared Show Off selection. -/
+def repeatExecutions (d : CardDef) (options : List (SpellPick × List ObjId)) (count : Nat) :
+    List (SpellPick × List ObjId) :=
+  (repeatExecutionGroups d options).flatMap (fun group => repeatSpellChoices group count)
+
+/-- Check a sequence of executions without enumerating all the other combinations. -/
+def repeatExecutionsOk (d : CardDef) (options : List (SpellPick × List ObjId)) (count : Nat)
+    (pick : SpellPick) (targets : List ObjId) : Bool :=
+  (repeatExecutionGroups d options).any (fun group => repeatSpellChoicesOk group count pick targets)
+
+/-- The executable check accepts exactly the offered combinations. -/
+theorem mem_repeatExecutions (d : CardDef) (options : List (SpellPick × List ObjId)) (count : Nat)
+    (pick : SpellPick) (targets : List ObjId) :
+    (pick, targets) ∈ repeatExecutions d options count ↔
+      repeatExecutionsOk d options count pick targets = true := by
+  simp [repeatExecutions, repeatExecutionsOk, mem_repeatSpellChoices]
+
+/-- A group only removes choices from the original list. -/
+theorem repeatExecutionGroups_subset {d : CardDef} {options group : List (SpellPick × List ObjId)}
+    (hg : group ∈ repeatExecutionGroups d options) : ∀ option ∈ group, option ∈ options := by
+  unfold repeatExecutionGroups at hg
+  split at hg
+  · obtain rfl := List.mem_singleton.mp hg
+    exact fun _ h => h
+  · obtain ⟨_, _, rfl⟩ := List.mem_map.mp hg
+    exact fun _ h => (List.mem_filter.mp h).1
+
 /-- The number of paid Repeats and the optional printed cost to try for a direct cast. -/
 def GameState.directRepeatCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List (Bool × Nat) :=
@@ -1038,7 +1121,7 @@ def GameState.repeatedCastChoices (s : GameState) (p : PlayerId) (c : ObjId) (d 
     List (SpellPick × List ObjId) :=
   let options := d.spellEffect.toList.flatMap (spellChoices s p c d)
   (s.directRepeatCosts p c d).flatMap (fun (printed, count) =>
-    (repeatSpellChoices options count).map (fun (pick, targets) =>
+    (repeatExecutions d options count).map (fun (pick, targets) =>
       (.withCosts pick printed count, targets)))
 
 /-- Finalization of a Spell with separate choices for each paid Repeat (CR 355, 820.2). -/
@@ -1046,7 +1129,7 @@ def GameState.repeatedCastChoicesOk (s : GameState) (p : PlayerId) (c : ObjId) (
     (targets : List ObjId) : SpellPick → Bool
   | .withCosts choices printed count =>
     (s.directRepeatCosts p c d).contains (printed, count) &&
-      repeatSpellChoicesOk (d.spellEffect.toList.flatMap (spellChoices s p c d)) count choices targets
+      repeatExecutionsOk d (d.spellEffect.toList.flatMap (spellChoices s p c d)) count choices targets
   | _ => false
 
 /-- A legal combination of repeated choices appears among the offered finalizations. -/
@@ -1054,7 +1137,7 @@ theorem GameState.mem_repeatedCastChoices (s : GameState) (p : PlayerId) (c : Ob
     (pick : SpellPick) (targets : List ObjId) :
     (pick, targets) ∈ s.repeatedCastChoices p c d ↔
       s.repeatedCastChoicesOk p c d targets pick = true := by
-  cases pick <;> simp [repeatedCastChoices, repeatedCastChoicesOk, mem_repeatSpellChoices]
+  cases pick <;> simp [repeatedCastChoices, repeatedCastChoicesOk, mem_repeatExecutions]
   rename_i choices printed repeats
   cases printed <;> simp
   all_goals
@@ -1072,9 +1155,10 @@ theorem GameState.repeatedCastChoices_targets_present {s : GameState} {p : Playe
   obtain ⟨⟨printed, count⟩, -, h⟩ := List.mem_flatMap.mp h
   obtain ⟨⟨choices, ts⟩, hchosen, eq⟩ := List.mem_map.mp h
   cases eq
+  obtain ⟨group, hg, hchosen⟩ := List.mem_flatMap.mp hchosen
   refine repeatSpellChoices_targets (P := fun t => s.targetPresent t = true) ?_ hchosen
   rintro ⟨pick, targets⟩ h
-  obtain ⟨effect, -, hs⟩ := List.mem_flatMap.mp h
+  obtain ⟨effect, -, hs⟩ := List.mem_flatMap.mp (repeatExecutionGroups_subset hg _ h)
   exact spellChoices_targets_present hs
 
 /-- A cast with one recorded execution uses a legal mode, targets and destination (CR 355). -/
@@ -1124,6 +1208,8 @@ structure PlayMark where
   spellPick : SpellPick := .plain
   /-- The hiding Battlefield, which still limits the Spell's targets (CR 811.1.d). -/
   hiddenPlayLocation : Option ObjId := none
+  /-- Characteristics recorded for Show Off during this play (CR 832). -/
+  shownOff : Option ShownOff := none
 
 /-- The object after it is played: the objects chosen (for a Spell on the Chain), and the facts of
 the play. -/
@@ -1133,7 +1219,8 @@ def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
              paid := m.paid, discardPaid := false, extraPaid := m.extraPaid,
              legion := m.legion, playedTurn := some m.turn,
              buffed := o.buffed || m.buff, playedFromHand := m.fromHand, flowed := m.flowed,
-             spellPick := m.spellPick, hiddenAt := m.hiddenPlayLocation <|> o.hiddenAt }
+             spellPick := m.spellPick, hiddenAt := m.hiddenPlayLocation <|> o.hiddenAt,
+             shownOff := m.shownOff }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
 
 /-- The greatest number of optional costs that this payment covers at the selected base cost. -/
@@ -1163,7 +1250,8 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
     buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (fun k => k == .unitsBuffed || k == .nextUnitBuffed),
     fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c),
-    flowed := directCast && s.playingFromTrash p c && (flow.isSome || !s.canPlayNormally p c) }
+    flowed := directCast && s.playingFromTrash p c && (flow.isSome || !s.canPlayNormally p c),
+    shownOff := s.captureShowOff p pick.showOffObject }
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/
@@ -1173,7 +1261,7 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   match s.cardDef? c, (s.poolOf p).spend pay ((s.cardDef? c).any (·.hasType .unit)) with
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
-      let mark := s.playMark p c pay
+      let mark := s.playMark p c pay (pick := pick)
       let mark := pick.permanentCosts.elim mark (fun own =>
         { mark with
           paid := if d.additionalCost.isSome then own.contains 0 else !own.isEmpty
@@ -1182,11 +1270,11 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
       let accelerated := pick.permanentCosts.elim (s.paidExtra p c d pay)
         (fun own => own.contains (if d.additionalCost.isSome then 1 else 0))
       let s1 := (r.1.modObj r.2 (Object.withPlay [] mark)).setPool p pool
-      ((if (d.hasType .unit && !s.readyNow p c d &&
+      ((if (d.hasType .unit && !s.readyNow p c d mark.shownOff &&
             !(d.hasKeyword .accelerate && accelerated)) || d.entersExhausted
           then s1.exhaustObj r.2
         else s1),
-        [Event.moved c r.2 (.player p .base)]))
+        s.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
 /-- The objects chosen are a legal pick for the additional cost of the card to play it: none if it
@@ -1544,7 +1632,7 @@ def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     let mark := { s.playMark p c pay targets true flow pick with spellPick := pick, hiddenPlayLocation }
     (moveObj s c .chain).map (fun r =>
       (((r.1.setPool p pool).modObj r.2 (Object.withPlay targets mark)),
-        [Event.moved c r.2 .chain]))
+        s.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 .chain]))
   | none => none
 
 /-- What a playable card is: the game is in the Main Phase, and the card is the player's, a Unit or
@@ -1803,7 +1891,8 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       refine ⟨id', hes.symm, fun d' hd' hu hr hx0 o ho => ?_⟩
       cases hd'
       rw [← hs'] at ho
-      simp only [SpellPick.permanentCosts, Option.elim_none, hu, hr, hx0, Bool.and_false,
+      have noShow : (s.playMark p c pay).shownOff = none := rfl
+      simp only [noShow, SpellPick.permanentCosts, Option.elim_none, hu, hr, hx0, Bool.and_false,
         Bool.not_false, Bool.and_self, Bool.true_or, ite_true, GameState.obj?_exhaustObj] at ho
       cases hx : ((s2.modObj id' (Object.withPlay [] (s.playMark p c pay))).setPool p pool).obj?
           id' with
@@ -1869,7 +1958,7 @@ theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     ∃ pool s2 id' rep, (s.poolOf p).spend pay = some pool ∧
       moveObj s c .chain = some (s2, id') ∧
       s' = (s2.setPool p pool).modObj id' (Object.withPlay targets rep) ∧
-        es = [Event.moved c id' .chain] := by
+        es = s.showOffEvents p pick.showOffObject ++ [Event.moved c id' .chain] := by
   unfold applyCast at h
   cases hs : (s.poolOf p).spend pay with
   | none => simp [hs] at h

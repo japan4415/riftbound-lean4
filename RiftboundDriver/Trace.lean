@@ -71,7 +71,8 @@ def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (Strin
     (if plan.battlefieldFees.isEmpty then [] else
       [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
     plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
-    plan.discard.toList.map (fun id => ("discard", toString id.n))
+    plan.discard.toList.map (fun id => ("discard", toString id.n)) ++
+    plan.showOff.toList.map (fun id => ("showOff", toString id.n))
 
 /-- Identify an individual Add activation in a permanent's payment. -/
 def effectAddJson : EffectAdd → String
@@ -143,6 +144,8 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPlayer pick player =>
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
+  | .withShowOff pick object =>
+    spellPickFields state c pick ++ [("showOff", toString object.n)]
   | .thenRepeat pick _ _ => spellPickFields state c pick
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++

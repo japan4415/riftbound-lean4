@@ -162,6 +162,8 @@ structure PendTrigger where
   subject : Option ObjId := none
   /-- The amount captured by the event that fired this ability, if any (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- Characteristics recorded for Show Off by the play that fired this ability. -/
+  shownOff : Option ShownOff := none
   /-- A keyword trigger assembled from the source's effective keywords. -/
   triggerKeyword : Option Keyword := none
   /-- The Battlefields recorded by the triggering event (CR 477.3.b). -/

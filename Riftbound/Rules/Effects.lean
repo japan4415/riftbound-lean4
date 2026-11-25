@@ -1567,6 +1567,7 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
   let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
     s.extraCandidates p k)).map some)
   let discardOptions := s.playDiscards p id
+  let showOffOptions := none :: (s.showOffOptions p id d).map some
   let mut plans := []
   for battlefieldFees in [] :: s.battlefieldFeeChoices p id d do
     let requirements := terms.requirements ++ battlefieldFees.map (fun b => [some b])
@@ -1585,15 +1586,17 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
                 for pay in adjusted.payments d.domains do
                   let fixed : Cost := ⟨pay.energy, pay.power.map PowerSym.domain⟩
                   for discard in discardOptions do
-                    let plan : ReducedPermanentPlay := {
-                      cost := fixed
-                      battlefield
-                      extraObject
-                      discard
-                      additionalPaid
-                      accelerated
-                      battlefieldFees }
-                    plans := plan :: plans
+                    for showOff in showOffOptions do
+                      let plan : ReducedPermanentPlay := {
+                        cost := fixed
+                        battlefield
+                        extraObject
+                        discard
+                        additionalPaid
+                        accelerated
+                        battlefieldFees
+                        showOff }
+                      plans := plan :: plans
   return plans.reverse.eraseDups
 
 /-- The legal finalizations that can already be funded with the Pool and Basic Runes. -/
@@ -1621,14 +1624,15 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
   let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
     paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
     extraPaid := ownCosts.length
+    shownOff := s.captureShowOff p plan.showOff
     spellPick := if plan.battlefieldFees.isEmpty then .plain
       else .payForBattlefield plan.battlefieldFees ownCosts }
-  let ready := s.readyNow p id d || plan.accelerated
+  let ready := s.readyNow p id d mark.shownOff || plan.accelerated
   let moved := (enterBase p d mark ready onBoard new, [Event.moved id new zone])
   let placed := placeAtBf s plan.battlefield.toList moved
   let extra ← payExtra0 s id plan.extraObject.toList placed
   let result := payPlayDiscard p id plan.discard extra
-  some (result.1, new, paid.2 ++ result.2 ++ [Event.played p new])
+  some (result.1, new, s.showOffEvents p plan.showOff ++ paid.2 ++ result.2 ++ [Event.played p new])
 
 /-- Reduced-cost finalization preserves the structural and ownership invariants. -/
 theorem applyReducedPermanent_safe {s : GameState} {p : PlayerId} {id : ObjId}
@@ -1773,7 +1777,7 @@ def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
   let options := spellChoices s p id d e
   let maximum := costs.countP Prod.snd
   let priced := (List.range (maximum + 1)).flatMap (fun count =>
-    let selections := if d.usesRepeatChoices then repeatSpellChoices options count
+    let selections := if d.usesRepeatChoices then repeatExecutions d options count
       else options
     selections.flatMap (fun (pick, ts) =>
       let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
@@ -4335,12 +4339,13 @@ def commitLimitedSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : Eff
   let discarded := payDiscards p paid plan.discard.toList
   let discardPaid := !discarded.2.isEmpty
   let chosen := plan.pick.optionalCosts.getD (false, 0)
-  let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ with
+  let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ (pick := plan.pick) with
     spellPick := plan.pick, paid := chosen.1 || discardPaid, extraPaid := chosen.2,
     fromHand := match play.origin with | .player _ .hand => true | _ => false }
   let final := discarded.1.modObj card (fun o =>
     { o.withPlay plan.targets mark with pendingSpellPlay := none, discardPaid })
-  some (final, events ++ discarded.2 ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
+  some (final, events ++ paid.showOffEvents p plan.pick.showOffObject ++ discarded.2 ++
+    [.played p card] ++ plan.targets.map (.chosenBySpell p))
 
 /-- Committing a queued Spell preserves the game invariants. -/
 theorem commitLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {plan : EffectSpellPlay}
@@ -4745,7 +4750,8 @@ locations (CR 355.1.a, 355.17). -/
 def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) : Option (Env × EffectList) :=
   let needsChoices (id : ObjId) := (s.cardDef? id).any (fun d =>
-    ((d.discardToPlay || !(s.extrasRaw p id d).isEmpty) && (d.hasType .unit || d.hasType .gear)) ||
+    ((d.discardToPlay || d.showOffRequirement.isSome || !(s.extrasRaw p id d).isEmpty) &&
+      (d.hasType .unit || d.hasType .gear)) ||
       (d.hasType .unit && (env.hiddenPlayLocation.isSome ||
         !(s.battlefieldFeeChoices p id d).isEmpty)))
   let schedule (ids : List ObjId) (price : EffectPlayPrice)
@@ -4841,7 +4847,7 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
       if !d.hasType .spell then [] else
         d.spellEffect.toList.flatMap (fun effect =>
           if !effect.hasFinalizationChoice then [] else
-            let choices := spellChoices s p id d effect
+            let choices := spellChoicesWithShowOff s p id d effect [item.spellPick.showOffObject]
             let executions := if d.usesRepeatChoices then repeatSpellChoices choices item.extraPaid
               else choices
             executions.map (fun (pick, targets) => .setSpellChoices id pick targets))
@@ -5296,6 +5302,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       sourceCard := some ((o.activationGrant.filter (·.copyStamp.isSome)).map (·.card) |>.getD card)
       abilityCopyStamp := o.abilityCopyStamp
       eventBattlefields := o.eventBattlefields
+      shownOff := o.shownOff
       eventAmount := o.eventAmount }
     let body := match definition with
       | some e => e.recheckTargetGroup s o.controller src o.targets (.cons e.body .nil)
@@ -5337,7 +5344,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
     | some o, some d =>
       if o.spellPick.hasExecutionChoices then
         (o.spellPick.executions o.targets).map (fun (pick, targets) =>
-          .run o.controller item { hiddenPlayLocation := o.hiddenAt }
+          .run o.controller item { hiddenPlayLocation := o.hiddenAt, shownOff := o.shownOff }
             (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest)
       else
         let definition := d.spellEffect.bind (·.forPick o.spellPick)
@@ -5345,6 +5352,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
           slots := finalizedSlots s o.controller item o.targets definition o.spellPick
           targetObjs := o.targets
           hiddenPlayLocation := o.hiddenAt
+          shownOff := o.shownOff
           playerTargets := if definition.any (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
             then o.targetPlayer.toList else [] }
           (match definition with
@@ -5471,7 +5479,7 @@ theorem resolveFrames_eq (s : GameState) (rest : List Frame) :
     · rename_i _ item _ _ _ _ o _ _ _
       split
       · let steps := (o.spellPick.executions o.targets).map fun (pick, targets) =>
-          Frame.run o.controller item { hiddenPlayLocation := o.hiddenAt }
+          Frame.run o.controller item { hiddenPlayLocation := o.hiddenAt, shownOff := o.shownOff }
             (.cons (.resolveSpellExecution pick targets) .nil)
         refine ⟨steps ++ [.finishSpell item], by simp [steps, List.append_assoc], ?_⟩
         intro g hg

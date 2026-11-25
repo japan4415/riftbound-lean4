@@ -670,4 +670,128 @@ private meta def bombsAt (s : GameState) (p : PlayerId) (field : ObjId) : List O
   return done.mightNow bird == some 1 && done.tired bird == some true &&
     done.deflectOf bird == 1 && (done.obj? bird).any (·.kind == .token ⟨"UNL-T02"⟩)
 
+-- The Construct can reveal a Mech from hand or pick a friendly Mech token to enter ready.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, construct) ← put s p "RAD-011" .hand
+  let (s, inHand) ← put s p "RAD-009" .hand
+  let (s, enemy) ← put s q "RAD-009" .base
+  let s := createOne ⟨"TKN-Mech"⟩ p none true s
+  let token ← (s.zone (.player p .base)).find? (fun id =>
+    (s.obj? id).any (fun o => match o.kind with | .token .. => true | _ => false))
+  let funded := s.fund p 4
+  let action (pick : SpellPick) : Action := ⟨.player p, .playCard construct ⟨4, []⟩ [] none none pick⟩
+  let (skipped, _) ← (step 100 funded (action .plain)).toOption
+  let (fromHand, handEvents) ← (step 100 funded (action (.withShowOff .plain inHand))).toOption
+  let (fromBoard, boardEvents) ← (step 100 funded (action (.withShowOff .plain token))).toOption
+  let ready (t : GameState) := (t.firstOf p .base "RAD-011").bind t.tired == some false
+  return !ready skipped && ready fromHand && ready fromBoard &&
+    handEvents.contains (.revealed p inHand) && boardEvents.all (fun ev => match ev with
+      | .revealed .. => false | _ => true) && fromHand.countIn p .hand "RAD-009" == 1 &&
+    [construct, enemy].all (fun id => !(legalFrameActions funded).contains
+      (action (.withShowOff .plain id)))
+
+-- Battle Preparations boosts its Unit with or without Show Off. Only the Gear play enables Runes.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "RAD-032" .hand
+  let (s, gear) ← put s p "RAD-017" .base
+  let (s, unit) ← put s p "RAD-011" .base
+  let (s, first) ← put s p "R1" .base
+  let (s, second) ← put s p "R1" .base
+  let (s, third) ← put s p "R1" .base
+  let s := ((s.fund p 2).tire first |>.tire second).tire third
+  let paid := ⟨2, []⟩
+  let shown := SpellPick.withShowOff .plain gear
+  let skipped ← cast s p spell paid [unit]
+  let readied ← cast s p spell paid [unit, first, second] (pick := shown)
+  let zero ← cast s p spell paid [unit] (pick := shown)
+  return skipped.mightNow unit == some 6 && readied.mightNow unit == some 6 &&
+    [first, second, third].all (fun r => skipped.tired r == some true && zero.tired r == some true) &&
+    readied.tired first == some false && readied.tired second == some false &&
+    readied.tired third == some true && (cast s p spell paid [unit, first]).isNone &&
+    (cast s p spell paid [unit, first, first] (pick := shown)).isNone &&
+    (cast s p spell paid [unit, first, second, third] (pick := shown)).isNone
+
+-- The Empyrean keeps its shown card's Power cost even after its own source leaves the board.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, dragon) ← put s p "RAD-060" .hand
+  let (s, shown) ← put s p "RAD-082" .hand
+  let s := s.fund p 8
+  let top := s.zone (.player p .mainDeck)
+  let first ← top[0]?
+  let second ← top[1]?
+  let third ← top[2]?
+  let skipped ← cast s p dragon ⟨8, []⟩
+  let (played, _) ← (step 100 s
+    ⟨.player p, .playCard dragon ⟨8, []⟩ [] none none (.withShowOff .plain shown)⟩).toOption
+  let source ← played.firstOf p .base "RAD-060"
+  let (gone, _) ← moveObj played source (.player p .trash)
+  let predicting := settleChain {} 8 gone
+  let (ordered, _) ← (step 100 predicting ⟨.player p, .predictPick second false⟩).toOption
+  let (done, _) ← (step 100 ordered ⟨.player p, .predictPick first false⟩).toOption
+  return (step 100 predicting ⟨.player p, .predictPick third false⟩).isOk == false &&
+    skipped.handN p + 1 == s.handN p && done.handN p == s.handN p + 1 &&
+    (done.zone (.player p .mainDeck)).head? == some third
+
+-- Roar can forgo its target. When it has one, the shown ally's old Might survives its departure.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "RAD-082" .hand
+  let (s, shown) ← put s p "RAD-011" .base
+  let (s, target) ← put s s.you "RAD-060" .base
+  let s := (s.fund p 4 (body := 2)).modObj shown (fun o => { o with baseMightThisTurn := some 6 })
+  let paid := ⟨4, [.body, .body]⟩
+  let pick := SpellPick.withShowOff .plain shown
+  let skipped ← cast s p spell paid
+  let (casted, events) ← (step 100 s
+    ⟨.player p, .playCard spell paid [target] none none pick⟩).toOption
+  let (gone, _) ← moveObj casted shown (.player p .trash)
+  let hit := settleChain {} 8 gone
+  return (skipped.obj? target).any (·.damage == 0) && (hit.obj? target).any (·.damage == 6) &&
+    (cast s p spell paid [target]).isNone && (cast s p spell paid [] (pick := pick)).isNone &&
+    events.contains (.chosenBySpell p target) && !events.contains (.chosenBySpell p shown)
+
+-- A facedown Hidden card is ineligible. A Guardian played from Hidden can still Show Off.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, guardian) ← put s p "RAD-103" .hidden
+  let (s, facedown) ← put s p "VEN-097" .hidden
+  let (s, inHand) ← put s p "VEN-097" .hand
+  let (s, _) ← putAt s p "VEN-014" field
+  let (s, _) ← putAt s p "VEN-014" away
+  let hide (loc : ObjId) (o : Object) :=
+    { o with hiddenAt := some loc, hiddenTurn := some (s.turn - 1) }
+  let s := (((s.control p field).control p away).modObj guardian (hide field)).modObj
+    facedown (hide away)
+  let d ← s.cardDef? guardian
+  let (queued, _) ← (step 100 s ⟨.player p, .activate guardian 2 ⟨0, []⟩ []⟩).toOption
+  let revealed := settleChain { fromEnd := some 0 } 14 queued
+  let declined := settleChain { fromEnd := some 1 } 14 queued
+  let entered ← (revealed.unitsAtOf field p).find? (fun id =>
+    (revealed.cardDef? id).any (·.id == cid "RAD-103"))
+  return s.showOffOptions p guardian d == [inHand] &&
+    (revealed.obj? entered).any (·.fromHidden) &&
+    (revealed.poolOf p).any == (s.poolOf p).any + 1 &&
+    (declined.poolOf p).any == (s.poolOf p).any
+
+-- Rousing Display checks the shown card's printed Energy and plays the resulting Recruits at Base.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, display) ← put s p "RAD-127" .hand
+  let (s, high) ← put s p "RAD-060" .hand
+  let (s, low) ← put s p "RAD-011" .hand
+  let s := s.fund p 5
+  let small ← cast s p display ⟨5, []⟩
+  let large ← cast s p display ⟨5, []⟩ (pick := .withShowOff .plain high)
+  let placed := (large.zone (.player p .base)).filter (fun id =>
+    (large.cardDef? id).any (·.name == "Recruit"))
+  return small.countNamed p .base "Recruit" == 2 && placed.length == 4 &&
+    placed.all (fun id => large.tired id == some true && large.mightNow id == some 1) &&
+    (cast s p display ⟨5, []⟩ (pick := .withShowOff .plain low)).isNone
+
 end RiftboundTest
