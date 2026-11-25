@@ -34,6 +34,15 @@ def lookDraw (n : Nat) (fs : List Filter) : Effect := lookDrawThen n fs .nop
 def petFilter : Filter :=
   .either (.tag ⟨"Bird"⟩) (.either (.tag ⟨"Cat"⟩) (.either (.tag ⟨"Dog"⟩) (.tag ⟨"Poro"⟩)))
 
+/-- Ivern: look at the top 3, may reveal a unit and draw it; if it is a Bird, Cat, Dog or Poro (a pet
+in the hand that was not there before), buff a friendly unit. The card that is drawn gets a new
+identifier, so it is recognised by the count of pets in the hand. -/
+def ivernLook : Effect :=
+  .bind ⟨"h"⟩ (.count (Selector.all .friendly .inHand [petFilter]))
+    (lookDrawThen 3 [.ofType .unit]
+      (.ifThen (.cmp .gt (.count (Selector.all .friendly .inHand [petFilter])) (.var ⟨"h"⟩))
+        (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))) .nop))
+
 /-- Predict 1: look at the top card of the Main Deck, and may recycle it. -/
 def predict1 : Effect := .seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]
 
@@ -1547,11 +1556,9 @@ def UNL_051.meta : CardDef :=
 def UNL_051 : CardDef :=
   { UNL_051.meta with
     abilities := [.triggered (.onSelf .play)
-        (.of [] (lookDrawThen 3 [.ofType .unit] (.ifThen (.matches (.var pickVar) petFilter)
-          (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))) .nop))) .unlimited,
+        (.of [] ivernLook) .unlimited,
       .triggered (.onSelf .hold)
-        (.of [] (lookDrawThen 3 [.ofType .unit] (.ifThen (.matches (.var pickVar) petFilter)
-          (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))) .nop))) .unlimited],
+        (.of [] ivernLook) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-052

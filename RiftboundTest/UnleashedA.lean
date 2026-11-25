@@ -438,4 +438,15 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let hi ← withXPOf s3 s.me 3
   return lo.mightNow u == (s2.mightNow u).map (· + 1) && hi.mightNow u == (s2.mightNow u).map (· + 2)
 
+-- Ivern (UNL-051): when the unit it draws is a Poro (or another pet), a friendly unit is buffed
+#guard tun fun s => do
+  let (s1, iv) ← put s s.me "UNL-051" .base
+  let few := s1.setZone (.player s.me .mainDeck) []
+  let (p1, _) ← put few s.me "UNL-156" .mainDeck
+  let (n1, _) ← put few s.me "UNL-111" .mainDeck
+  let pet ← fire p1 [Event.played s.me iv]
+  let plain ← fire n1 [Event.played s.me iv]
+  return (pet.obj? iv).any (·.buffed) && !((plain.obj? iv).any (·.buffed)) &&
+    pet.handN s.me == p1.handN s.me + 1
+
 end RiftboundTest
