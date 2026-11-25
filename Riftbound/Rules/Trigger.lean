@@ -454,7 +454,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .combatWon bf w =>
     (s.trigUnitsAt bf w).flatMap (fun u => triggersOf s u w .winCombat) ++
     (s.zone (.player w .legendZone)).flatMap (fun l => triggersOf s l w .winCombat)
+  | .combatEnded _ units =>
+    units.flatMap (fun u =>
+      if s.inPlay.contains u then
+        (s.obj? u).toList.flatMap (fun o => triggersOf s u o.controller .combatEnd)
+      else [])
   | .combatStarted bf att =>
+    let controller := ((s.obj? bf).bind (·.control)).getD (s.active.getD att)
+    triggersOf s bf controller .combatStart ++
     (s.trigAllUnitsAt bf).flatMap (fun u =>
       match s.obj? u with
       | some o =>

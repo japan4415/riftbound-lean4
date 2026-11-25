@@ -82,7 +82,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
     else if Zone.crosses src dst then
       let id' : ObjId := ⟨s.nextId⟩
       let o' : Object :=
-        { o with controller := o.owner, exhausted := false, damage := 0,
+        { o with controller := o.owner, exhausted := false, damage := 0, damagedTurn := none,
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  mightMods := [], tempKws := [], attached := none, attachedTurn := none,

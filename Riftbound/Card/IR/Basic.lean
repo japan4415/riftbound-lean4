@@ -97,6 +97,8 @@ inductive PlayerSel where
   | eachPlayer
   /-- Every opponent. -/
   | eachOpponent
+  /-- The attacker and defender of the ongoing Combat (CR 466.2.c). -/
+  | combatSides
   /-- The player who chose a slot of the effect. -/
   | chosen (slot : Nat)
   /-- The player the replaced event is about ("they draw 1 instead"). -/

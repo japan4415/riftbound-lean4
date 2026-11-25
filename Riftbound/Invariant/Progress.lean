@@ -503,8 +503,14 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next (combatResolve_safeP s bf att).result (fun hb => ?_)
     rw [hp] at hb
-    have := hb.swap rfl ((combatResolve s bf att).2.1 ++ [Frame.cleanup])
+    have := hb.swap rfl ((combatResolve s bf att).2.1 ++ [Frame.cleanup, Frame.combatFinish bf])
     simpa using this
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.cleanup]
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -800,6 +806,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | cleanup => exact absurd hw (by simp [Frame.isWork])
   | combatDamage bf att => exact absurd hw (by simp [Frame.isWork])
   | combatResolve bf att => exact absurd hw (by simp [Frame.isWork])
+  | combatFinish bf => exact absurd hw (by simp [Frame.isWork])
   | assign bf att side acc done =>
     left
     obtain ⟨a, ha, hk⟩ := assign_exists s bf side acc
@@ -882,6 +889,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | cleanup => exact absurd hc (by simp [Frame.isChance])
   | combatDamage bf att => exact absurd hc (by simp [Frame.isChance])
   | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])
+  | combatFinish bf => exact absurd hc (by simp [Frame.isChance])
   | assign bf att side acc done => exact absurd hc (by simp [Frame.isChance])
   | showdown bf q n => exact absurd hc (by simp [Frame.isChance])
   | triggerOrder p t more others => exact absurd hc (by simp [Frame.isChance])

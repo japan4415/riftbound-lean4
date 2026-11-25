@@ -63,6 +63,8 @@ structure Object where
   exhausted : Bool := false
   /-- The damage it has taken (CR 142). -/
   damage : Nat := 0
+  /-- The most recent turn on which damage was dealt to this object (CR 418-419). -/
+  damagedTurn : Option Nat := none
   /-- When it became an object (CR 482). -/
   timestamp : Timestamp
   /-- For a Rune: its domain, the domain of the Power it adds (CR 164.2). `none` for what is not

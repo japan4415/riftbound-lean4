@@ -75,13 +75,19 @@ def need (s : GameState) (u : ObjId) : Nat :=
     (if d = 0 then 1 else 0)
   else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
-/-- Whether the Units of at least two players are at the Battlefield (CR 464). -/
+/-- Whether Combat began at the Battlefield, or two sides are present in a constructed state. -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=
-  2 ≤ (s.players.filter (fun p => !(s.unitsOf p bf).isEmpty)).length
+  (s.combat.any (·.battlefield == bf)) ||
+    decide (2 ≤ (s.players.filter (fun p => !(s.unitsOf p bf).isEmpty)).length)
 
 /-- The Attacker of a Combat at the Battlefield: the player who made it Contested (CR 466). -/
 def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
-  ((s.obj? bf).bind (·.contested)).getD (s.active.getD ⟨0⟩)
+  ((s.combat.filter (·.battlefield == bf)).map (·.attacker)).getD
+    (((s.obj? bf).bind (·.contested)).getD (s.active.getD ⟨0⟩))
+
+/-- The Defender designated at the start of this Combat (CR 466.2.c.2). -/
+def defenderAt (s : GameState) (bf : ObjId) (att : PlayerId) : PlayerId :=
+  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (s.nextPlayer att)
 
 end GameState
 
@@ -343,10 +349,10 @@ theorem recallObj_safe (s : GameState) (u : ObjId) : Safe s (recallObj s u).1 :=
   · exact Safe.refl s
 
 /-- Every object is healed: step 3c of the Combat Cleanup (CR 468.1, 324). -/
-theorem safe_healAll (s : GameState) : Safe s (s.mapObjects endCombatObj) :=
+theorem safe_healAll (s : GameState) : Safe s (s.mapObjects healObj) :=
   ⟨fun h => GameState.wf_mapObjects h _,
-    fun _ => by rw [GameState.physIds_mapObjects s (f := endCombatObj) (fun o => endCombatObj_kind o)],
-    fun _ h => GameState.ownerOk_mapObjects h (fun o => endCombatObj_owner o),
+    fun _ => by rw [GameState.physIds_mapObjects s (f := healObj) (fun o => healObj_kind o)],
+    fun _ h => GameState.ownerOk_mapObjects h (fun o => healObj_owner o),
     GameState.sameMeta_mapObjects s _⟩
 
 /-- The end of a Combat (CR 468): every Unit is healed, the Attacker's Units are Recalled if a
@@ -356,7 +362,7 @@ Battlefield goes to the player whose Units are alone there, who Scores it by Con
 with lethal damage have been killed by the Cleanup before. -/
 def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
     GameState × List Frame × List Event :=
-  let s1 := s.mapObjects endCombatObj
+  let s1 := s.mapObjects healObj
   let defenders :=
     (s1.players.filter (fun p => p ≠ att)).any (fun p => !(s1.unitsOf p bf).isEmpty)
   -- a tie: Units of both sides are left; a passive ability of the attacker recalls them all
@@ -366,7 +372,7 @@ def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
   let victims :=
     if tieAll then s1.players.flatMap (fun p => s1.unitsOf p bf) else s1.unitsOf att bf
   let r := if defenders then applyEach recallObj s1 victims else (s1, [])
-  let t := endShowdown r.1 bf
+  let t := endShowdown r.1 bf false
   -- the player whose Units are the only ones left wins the Combat
   let won := (r.1.players.filter (fun p => !(r.1.unitsOf p bf).isEmpty)).map
     (fun p => Event.combatWon bf p)
@@ -378,24 +384,20 @@ theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :
   unfold combatResolve
   dsimp only
   have h1 := safe_healAll s
-  have h2 : Safe (s.mapObjects endCombatObj)
-      (if ((s.mapObjects endCombatObj).players.filter (fun p => p ≠ att)).any
-          (fun p => !((s.mapObjects endCombatObj).unitsOf p bf).isEmpty) = true then
-        applyEach recallObj (s.mapObjects endCombatObj)
-          (if ((s.mapObjects endCombatObj).players.filter (fun p => p ≠ att)).any
-              (fun p => !((s.mapObjects endCombatObj).unitsOf p bf).isEmpty) &&
-              !((s.mapObjects endCombatObj).unitsOf att bf).isEmpty &&
-              (s.mapObjects endCombatObj).passiveSources.any (fun g =>
-                ((s.mapObjects endCombatObj).obj? g).any (fun o => o.controller == att) &&
-                  ((s.mapObjects endCombatObj).activeMods g).contains .recallAllOnTie) then
-            (s.mapObjects endCombatObj).players.flatMap (fun p =>
-              (s.mapObjects endCombatObj).unitsOf p bf)
-          else (s.mapObjects endCombatObj).unitsOf att bf)
-      else ((s.mapObjects endCombatObj), [])).1 := by
+  let healed := s.mapObjects healObj
+  let defenders := (healed.players.filter (fun p => p ≠ att)).any
+    (fun p => !(healed.unitsOf p bf).isEmpty)
+  let tieAll := defenders && !(healed.unitsOf att bf).isEmpty &&
+    healed.passiveSources.any (fun g => (healed.obj? g).any (fun o => o.controller == att) &&
+      (healed.activeMods g).contains .recallAllOnTie)
+  let victims := if tieAll then healed.players.flatMap (fun p => healed.unitsOf p bf)
+    else healed.unitsOf att bf
+  have h2 : Safe healed
+      (if defenders then applyEach recallObj healed victims else (healed, [])).1 := by
     split
     · exact applyEach_safe (fun s u => recallObj_safe s u) _ _
     · exact Safe.refl _
-  exact SafeP.trans_safe (h1.trans h2) (endShowdown_safeP _ bf)
+  exact SafeP.trans_safe (h1.trans h2) (endShowdown_safeP _ bf false)
 
 /-- The frames the end of a Combat asks for are draws. -/
 theorem combatResolve_frames (s : GameState) (bf : ObjId) (att : PlayerId) :
@@ -403,7 +405,7 @@ theorem combatResolve_frames (s : GameState) (bf : ObjId) (att : PlayerId) :
   intro f hf
   unfold combatResolve at hf
   dsimp only at hf
-  exact endShowdown_frames _ bf f hf
+  exact endShowdown_frames _ bf false f hf
 
 /-- The frames that start the Combat Damage: the Attacker assigns first, then the Defender; a side
 with no damage to assign or no Unit to assign it to is skipped (CR 467.1-2). -/
@@ -418,7 +420,7 @@ def GameState.startCombat (s : GameState) (bf : ObjId) (att : PlayerId) : List F
   match s.assignFrame bf att att [] with
   | some f => [f]
   | none =>
-    match s.assignFrame bf att (s.nextPlayer att) [] with
+    match s.assignFrame bf att (s.defenderAt bf att) [] with
     | some f => [f]
     | none => [.cleanup, .combatResolve bf att]
 
@@ -476,7 +478,7 @@ asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) : GameState × List Event :=
   let done' := done ++ greedy s.need (s.combatTotal bf att side) acc
-  match (if side = att then s.assignFrame bf att (s.nextPlayer att) done' else none) with
+  match (if side = att then s.assignFrame bf att (s.defenderAt bf att) done' else none) with
   | some f => ({ s with pending := f :: rest }, [])
   | none =>
     let r := dealAll s done'

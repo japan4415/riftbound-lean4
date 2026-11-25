@@ -38,6 +38,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .opponent => true
   | .eachPlayer => true
   | .eachOpponent => true
+  | .combatSides => true
   | .controllerOf _ => true
   | _ => false
 
@@ -137,6 +138,7 @@ def Filter.understood : Filter → Bool
   | .exhausted => true
   | .ready => true
   | .damaged => true
+  | .damagedThisTurn => true
   | .notSelf => true
   | .stunned => true
   | .buffed => true
@@ -504,6 +506,8 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .linkedBurnUnit => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
+      | .combatStart => t.subject == .self
+      | .combatEnd => t.subject == .self
       | .chosen => true
       | .chosenAny => true
       | .useGearAbility => t.subject == .self

@@ -308,6 +308,8 @@ inductive TriggerEvent where
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
   | playToken
+  /-- A Combat starts at the Battlefield (CR 466.2.b). -/
+  | combatStart
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I

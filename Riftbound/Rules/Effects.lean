@@ -1544,6 +1544,10 @@ theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Record positive damage even if a subsequent game effect heals the object (CR 418-419). -/
+def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
+  { o with damage := o.damage + n, damagedTurn := if n = 0 then o.damagedTurn else some turn }
+
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
 the next Cleanup (CR 323.4), not here. -/
 def dealObj (n0 : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1559,9 +1563,13 @@ def dealObj (n0 : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
     else if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) &&
         decide ((s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n) &&
         (s.deathSaver id).isSome then
-      (match s.deathSaver id with | some g => saveUnit s id g | none => (s, []))
+      match s.deathSaver id with
+      | some g =>
+        let saved := saveUnit (s.modObj id (fun o => o.takeDamage s.turn n)) id g
+        (saved.1, Event.damaged id n :: saved.2)
+      | none => (s, [])
     else
-      let s1 := s.modObj id (fun o => { o with damage := o.damage + n })
+      let s1 := s.modObj id (fun o => o.takeDamage s.turn n)
       -- a unit that takes damage while an effect of the turn says so is killed
       if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
         let k := killOrSave s1 id
@@ -1581,9 +1589,12 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n 
       · exact useShield_safe s id
       · split
         · cases s.deathSaver id with
-          | some g => exact saveUnit_safe s id g
+          | some g =>
+            have hs := Safe.modObj s id (f := fun o => o.takeDamage s.turn m)
+              (fun _ => rfl) (fun _ => rfl)
+            exact hs.trans (saveUnit_safe _ id g)
           | none => exact Safe.refl s
-        · have h1 : Safe s (s.modObj id (fun o => { o with damage := o.damage + m })) :=
+        · have h1 : Safe s (s.modObj id (fun o => o.takeDamage s.turn m)) :=
             Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
           split
           · exact h1.trans (killOrSave_safe _ id)

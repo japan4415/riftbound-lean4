@@ -36,6 +36,18 @@ structure TurnFx where
   target : Option ObjId := none
 deriving DecidableEq, Repr
 
+/-- The sides and all Unit objects that participated in the current Combat (CR 466, 468). -/
+structure CombatParticipation where
+  /-- Where the Combat took place. -/
+  battlefield : ObjId
+  /-- The attacking player. -/
+  attacker : PlayerId
+  /-- The defending player. -/
+  defender : PlayerId
+  /-- Units that received a designation, including those that have since moved away. -/
+  units : List ObjId
+deriving DecidableEq, Repr
+
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
 structure GameState where
   /-- The rules of this game. -/
@@ -82,6 +94,8 @@ structure GameState where
   turnShift : Nat := 0
   /-- Who took each extra turn already begun, newest first (CR 301). -/
   extraTurnsTaken : List PlayerId := []
+  /-- The current Combat, including Units that left its Battlefield (CR 466, 468). -/
+  combat : Option CombatParticipation := none
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/

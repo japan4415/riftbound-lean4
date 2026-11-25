@@ -270,11 +270,16 @@ def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
     let n := awarded.length
     (s1.gainPoints tp n, scored ++ if n = 0 then [] else [Event.pointsGained tp n])
 
-/-- The Showdown at `bf` ends (CR 348): if one player alone has Units there and does not control
-it, they get its Control and score it by Conquer (CR 348.2). The Battlefield is no longer
-Contested. The frames are those a Final Point asks for. -/
-def endShowdown (s : GameState) (bf : ObjId) : GameState × List Frame × List Event :=
-  let s1 := (s.mapObjects endShowdownObj).modObj bf (fun o => { o with contested := none })
+/-- End Showdown-duration changes when no Combat still needs them. -/
+def GameState.expireShowdownMods (s : GameState) (expire : Bool) : GameState :=
+  if expire then s.mapObjects endShowdownObj else s
+
+/-- Resolve Control after a Showdown or Combat (CR 348.2, 468.5). In Combat, duration effects
+expire later, when Combat ends (CR 468.7). -/
+def endShowdown (s : GameState) (bf : ObjId) (expire : Bool := true) :
+    GameState × List Frame × List Event :=
+  let board := s.expireShowdownMods expire
+  let s1 := board.modObj bf (fun o => { o with contested := none })
   match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
   | [r] =>
     if s.controlOf bf = some r then (s1, [], [])
@@ -426,6 +431,37 @@ def GameState.startShowdown (s : GameState) (rest : List Frame) : Option (ObjId 
 declare and no step applies. -/
 def GameState.Settled (s : GameState) : Prop := s.winner = none ∧ cleanupStep s = none
 
+/-- Record new combatants at Cleanup and open a Combat at a Showdown once there are two sides
+(CR 462.1, 466.2.c.3). Units that left that Battlefield are retained until Combat ends. -/
+def GameState.observeCombat (s : GameState) (pending : List Frame) :
+    Option CombatParticipation × List Event :=
+  match s.combat with
+  | some c =>
+    if pending.any (fun
+        | .showdown bf .. | .combatResolve bf _ | .combatFinish bf => bf == c.battlefield
+        | _ => false) then
+      let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
+      (some { c with units := (c.units ++ present).eraseDups }, [])
+    else (some c, [])
+  | none =>
+    match pending.findSome? (fun f => match f with
+        | .showdown bf focus _ => some (bf, focus)
+        | _ => none) with
+    | some (bf, focus) =>
+      match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
+      | [a, b] =>
+        let contested := ((s.obj? bf).bind (·.contested)).getD focus
+        let (att, def_) := if contested == b then (b, a) else (a, b)
+        (some ⟨bf, att, def_, s.unitsOf att bf ++ s.unitsOf def_ bf⟩,
+          [Event.combatStarted bf att])
+      | _ => (none, [])
+    | none => (none, [])
+
+/-- Leave a settled Cleanup and update whether Combat has started or gained participants. -/
+def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × List Event :=
+  let r := s.observeCombat pending
+  ({ s with pending := pending, combat := r.1 }, r.2)
+
 /-- The step of the `cleanup` frame (CR 322-323): declare a winner, or do a step, or start a
 Showdown, or finish. -/
 def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :=
@@ -437,12 +473,8 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
     | none =>
       match s.startShowdown rest with
       | some (bf, q) =>
-        -- the units that attack and defend set off their abilities as the Showdown begins
-        ({ s with pending := .showdown bf q 0 :: .cleanup :: rest },
-          if 2 ≤ (s.players.filter (fun r => !(s.unitsOf r bf).isEmpty)).length then
-            [Event.combatStarted bf q]
-          else [])
-      | none => ({ s with pending := rest }, [])
+        continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+      | none => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -674,14 +706,21 @@ theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 := by
   · exact ⟨_, h, Or.inr ⟨tp, _, rfl⟩⟩
 
 /-- The end of a Showdown is a safe change, then points. -/
-theorem endShowdown_safeP (s : GameState) (bf : ObjId) : SafeP s (endShowdown s bf).1 := by
-  have h0 : Safe s (s.mapObjects endShowdownObj) :=
+theorem endShowdown_safeP (s : GameState) (bf : ObjId) (expire : Bool := true) :
+    SafeP s (endShowdown s bf expire).1 := by
+  have hm : Safe s (s.mapObjects endShowdownObj) :=
     ⟨fun h => GameState.wf_mapObjects h _,
       fun _ => by rw [GameState.physIds_mapObjects s (f := endShowdownObj)
         (fun o => endShowdownObj_kind o)],
       fun _ h => GameState.ownerOk_mapObjects h (fun o => endShowdownObj_owner o),
       GameState.sameMeta_mapObjects s _⟩
-  have h1 : Safe s ((s.mapObjects endShowdownObj).modObj bf
+  let board := s.expireShowdownMods expire
+  have h0 : Safe s board := by
+    dsimp [board, GameState.expireShowdownMods]
+    split
+    · exact hm
+    · exact Safe.refl s
+  have h1 : Safe s (board.modObj bf
       (fun o => { o with contested := none })) :=
     h0.trans (Safe.modObj _ bf (fun _ => rfl) (fun _ => rfl))
   unfold endShowdown
@@ -689,7 +728,7 @@ theorem endShowdown_safeP (s : GameState) (bf : ObjId) : SafeP s (endShowdown s 
   · rename_i r hr
     split
     · exact SafeP.of_safe h1
-    · have h2 := Safe.modObj ((s.mapObjects endShowdownObj).modObj bf
+    · have h2 := Safe.modObj (board.modObj bf
         (fun o => { o with contested := none })) bf
         (f := fun o => { o with control := some r }) (fun _ => rfl) (fun _ => rfl)
       by_cases hc : s.controlOf bf = none
@@ -727,8 +766,8 @@ theorem scoreBf_frames (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
           · simp at hf
 
 /-- The frames the end of a Showdown asks for are draws. -/
-theorem endShowdown_frames (s : GameState) (bf : ObjId) :
-    ∀ f ∈ (endShowdown s bf).2.1, ∃ r, f = Frame.draw r 1 := by
+theorem endShowdown_frames (s : GameState) (bf : ObjId) (expire : Bool := true) :
+    ∀ f ∈ (endShowdown s bf expire).2.1, ∃ r, f = Frame.draw r 1 := by
   intro f hf
   unfold endShowdown at hf
   dsimp only at hf
@@ -744,8 +783,10 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
     (∃ w, (cleanupFrame s rest).1 = { s with result := some (.won [w]), pending := [] }) ∨
     (∃ r, Safe s r ∧ (cleanupFrame s rest).1 = { r with pending := .cleanup :: rest }) ∨
     (∃ bf q, (cleanupFrame s rest).1 =
-      { s with pending := .showdown bf q 0 :: .cleanup :: rest }) ∨
-    (cleanupFrame s rest).1 = { s with pending := rest } := by
+      { s with
+        pending := .showdown bf q 0 :: .cleanup :: rest,
+        combat := (s.observeCombat (.showdown bf q 0 :: .cleanup :: rest)).1 }) ∨
+    (cleanupFrame s rest).1 = { s with pending := rest, combat := (s.observeCombat rest).1 } := by
   unfold cleanupFrame
   split
   · rename_i w hw
@@ -868,7 +909,7 @@ settled: no winner is left to declare and no step applies (CR 322-323). The stat
 reachable state with a `priority` frame on top is not proved yet (roadmap.md). -/
 theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
     (h : s.Settled) (hn : s.startShowdown rest = none) :
-    cleanupFrame s rest = ({ s with pending := rest }, []) := by
+    cleanupFrame s rest = continueAfterCleanup s rest := by
   obtain ⟨hw, hs⟩ := h
   unfold cleanupFrame
   rw [hw, hs, hn]

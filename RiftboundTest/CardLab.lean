@@ -189,7 +189,8 @@ meta def GameState.inCombatAt (s : GameState) (bf : ObjId) (att : PlayerId) : Ga
 
 /-- The game with the Showdown of a Combat going on and a player with priority in it. -/
 meta def GameState.inShowdownAt (s : GameState) (bf : ObjId) (att : PlayerId) : GameState :=
-  { s with pending := .priority att :: .showdown bf att 0 :: s.pending }
+  let pending := .priority att :: .showdown bf att 0 :: s.pending
+  { s with pending := pending, combat := (s.observeCombat pending).1 }
 
 /-- Let the Combat start: the abilities it sets off resolve, until the first question. -/
 meta def startCombatNow (s : GameState) (bf : ObjId) (att : PlayerId) (says : Says := {}) :

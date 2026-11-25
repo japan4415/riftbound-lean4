@@ -199,9 +199,10 @@ inductive Frame where
   (CR 467.2.c). `acc` is the order so far; `done` is the damage assigned by the sides before,
   all dealt together when the last side has assigned (CR 467.2.c.1). -/
   | assign (bf : ObjId) (att side : PlayerId) (acc : List ObjId) (done : List (ObjId × Nat))
-  /-- Work: the Combat at `bf` ends (CR 468): the Combat Cleanup, and then the Battlefield goes to
-  the player whose Units are alone there. -/
+  /-- Work: Combat Cleanup and control of the Battlefield (CR 468.1-468.5). -/
   | combatResolve (bf : ObjId) (att : PlayerId)
+  /-- Work: Combat ends after the result and scoring (CR 468.7). -/
+  | combatFinish (bf : ObjId)
   /-- Work: the triggered abilities that have fired go on the Chain, the turn player's first
   (CR 383.3). They wait here until a player would next receive priority (CR 383.1). -/
   | triggers (pend : List PendTrigger)
@@ -242,6 +243,7 @@ def Frame.isPlay : Frame → Bool
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
+  | .combatFinish _ => true
   | .triggers _ => true
   | .triggerOrder .. => true
   | .discard .. => true
@@ -263,6 +265,7 @@ def Frame.isWork : Frame → Bool
   | .cleanup => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .combatFinish _ => true
   | .triggers _ => true
   | _ => false
 

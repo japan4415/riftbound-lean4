@@ -79,6 +79,7 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (
   | .opponent => (s.players.filter (· ≠ self)).head?.map (fun o => [o])
   | .eachPlayer => some s.players
   | .eachOpponent => some (s.players.filter (· ≠ self))
+  | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
   | .chosen _ => none
   | .eventPlayer => none
   | .controllerOf _ => none
@@ -158,7 +159,7 @@ def GameState.turnsTaken (s : GameState) (p : PlayerId) : Nat :=
 /-- The Combat that is going on: its Battlefield and its Attacker. It goes on from the moment it
 starts (CR 466) to its end (CR 468): the frames of the Combat are on the stack. -/
 def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
-  s.pending.findSome? (fun f =>
+  (s.combat.map (fun c => (c.battlefield, c.attacker))) <|> s.pending.findSome? (fun f =>
     match f with
     | .showdown bf _ _ =>
       -- the Showdown of a Combat: Units of at least two players are at the Battlefield (CR 464);
@@ -318,6 +319,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
+  | .damagedThisTurn => (s.obj? id).map (fun o => o.damagedTurn == some s.turn)
   | .at_ sel => do
     -- the place the object named by the selector is at: a Battlefield, the Battlefield a Unit is
     -- at, or a Base (the selector is `self`, a chosen object or a variable)

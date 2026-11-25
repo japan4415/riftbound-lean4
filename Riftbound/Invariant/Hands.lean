@@ -277,7 +277,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
           hP.turnOrder hP.config (fun hmem => ?_)
         have hm2 : Frame.setupHands ∈ (endShowdown s bf).2.1 ++ rest := hmem
         rcases List.mem_append.mp hm2 with h1 | h1
-        · obtain ⟨r, hr⟩ := endShowdown_frames s bf _ h1
+        · obtain ⟨r, hr⟩ := endShowdown_frames s bf true _ h1
           cases hr
         · rw [hp]
           exact List.mem_cons_of_mem _ h1
@@ -1125,13 +1125,22 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     refine hinv.of_play
       (by show (combatResolve s bf att).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
       hP.turnOrder hP.config (fun hmem => ?_)
-    have hm2 : Frame.setupHands ∈ (combatResolve s bf att).2.1 ++ Frame.cleanup :: rest := hmem
+    have hm2 : Frame.setupHands ∈
+        (combatResolve s bf att).2.1 ++ Frame.cleanup :: Frame.combatFinish bf :: rest := hmem
     rcases List.mem_append.mp hm2 with h1 | h1
     · obtain ⟨r, hr⟩ := combatResolve_frames s bf att _ h1
       cases hr
     · have h2 : Frame.setupHands ∈ rest := by simpa using h1
       rw [hp]
       exact List.mem_cons_of_mem _ h2
+  · rename_i bf rest hp
+    have hph := hinv.play (.combatFinish bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_play hph rfl rfl (fun hmem => ?_)
+    have hrest : Frame.setupHands ∈ rest := by simpa using hmem
+    rw [hp]
+    exact List.mem_cons_of_mem _ hrest
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

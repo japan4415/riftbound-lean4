@@ -662,8 +662,13 @@ def VEN_024.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Affectionate Poro: the effect is not written yet. -/
-def VEN_024 : CardDef := VEN_024.meta
+/-- Affectionate Poro. -/
+def VEN_024 : CardDef :=
+  { VEN_024.meta with
+    abilities := [.triggered
+      { event := .combatEnd, condition := .not (.matches .self .damagedThisTurn) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-025
 /--
@@ -765,8 +770,13 @@ def VEN_028.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mournful Witness: the effect is not written yet. -/
-def VEN_028 : CardDef := VEN_028.meta
+/-- Mournful Witness. -/
+def VEN_028 : CardDef :=
+  { VEN_028.meta with
+    abilities := [.triggered (.onSelf .combatEnd)
+        (.of [] (.prim (.empower .self))) .unlimited,
+      .passive (.empowered .self) [.mightPlus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-029
 /--
@@ -4330,8 +4340,12 @@ def VEN_166.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Threshold of the Gray: the effect is not written yet. -/
-def VEN_166 : CardDef := VEN_166.meta
+/-- Threshold of the Gray. -/
+def VEN_166 : CardDef :=
+  { VEN_166.meta with
+    abilities := [.triggered (.onSelf .combatStart)
+      (.of [] (.prim (.addEnergy .combatSides (.const 1) none))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-T04
 /--

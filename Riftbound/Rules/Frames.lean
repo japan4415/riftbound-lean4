@@ -163,9 +163,12 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .combatDamage bf att :: rest =>
     some ({ s with pending := s.startCombat bf att ++ rest }, [])
   | .combatResolve bf att :: rest =>
-    some ({ (combatResolve s bf att).1 with
-              pending := (combatResolve s bf att).2.1 ++ .cleanup :: rest },
-      (combatResolve s bf att).2.2)
+    let r := combatResolve s bf att
+    some ({ r.1 with pending := r.2.1 ++ .cleanup :: .combatFinish bf :: rest }, r.2.2)
+  | .combatFinish bf :: rest =>
+    let units := ((s.combat.filter (·.battlefield == bf)).map (·.units)).getD []
+    some ({ s.mapObjects endShowdownObj with combat := none, pending := .cleanup :: rest },
+      [Event.combatEnded bf units])
   | .triggers pend :: rest =>
     some ({ (triggersStep s pend rest).1 with pending := (triggersStep s pend rest).2 ++ rest }, [])
   | _ => none
@@ -383,6 +386,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact ((combatResolve_safeP s _ _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     exact ((triggersStep_spec s _ _).1.wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
@@ -469,6 +475,9 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (combatResolve_safeP s _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.physIds_mapObjects s endShowdownObj_kind).symm ▸ List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (triggersStep_spec s _ _).1.phys hwf

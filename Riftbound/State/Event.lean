@@ -103,6 +103,8 @@ inductive Event where
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- The Combat ended (CR 468.7). The list names the Unit objects that participated. -/
+  | combatEnded (bf : ObjId) (units : List ObjId)
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won
   it (CR 468). -/
   | combatWon (bf : ObjId) (winner : PlayerId)

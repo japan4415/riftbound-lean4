@@ -140,6 +140,8 @@ inductive Filter where
   | ready
   /-- Has damage. -/
   | damaged
+  /-- Was dealt positive damage this turn, even if subsequently healed (CR 418-419). -/
+  | damagedThisTurn
   /-- Has lethal damage: damage that is not 0 and at least its Might (CR 142.4.b). -/
   | lethal
   /-- Is stunned. -/

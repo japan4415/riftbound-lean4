@@ -804,4 +804,128 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     geared.mightNow temporary == some 8 && granted.mightNow temporary == some 9 &&
     expired.mightNow temporary == some 8
 
+-- The surviving attackers are recalled before Combat ends. Both still participated; the
+-- Witness on Base never did. Damage to the Poro this turn matters even after it is healed.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s p "VEN-158"
+  let (s, poro) ← putAt s p "VEN-024" bf
+  let (s, witness) ← putAt s p "VEN-028" bf
+  let (s, idle) ← put s p "VEN-028" .base
+  let (s, defender) ← putAt s q "OGN-088" bf
+  let s := ((s.control q bf).modObj bf (fun o => { o with contested := some p })).modObj
+    defender (fun o => { o with stunned := true })
+  let resolve (t : GameState) : Option (GameState × List Event) := do
+    let (openCombat, _) ← (advance 100 { t with pending := [.cleanup, .priority p] } []).toOption
+    let (first, _) ← (step 100 openCombat ⟨.player p, .pass⟩).toOption
+    let (assigning, _) ← (step 100 first ⟨.player q, .pass⟩).toOption
+    let (assigned, _) ← (step 100 assigning ⟨.player p, .assignPick defender⟩).toOption
+    let (ended, events) ← (step 100 assigned ⟨.player p, .assignDone⟩).toOption
+    return (settleChain {} 16 ended, events)
+  let healed := (healOne 1 (dealObj 1 s poro).1 poro).1
+  let prevented := (dealObj 1 (s.addTurnFxOn p poro .damagePrevented) poro).1
+  let older := { healed with turn := healed.turn + 2 }
+  let (fresh, es) ← resolve s
+  let (hurt, _) ← resolve healed
+  let (safe, _) ← resolve prevented
+  let (previous, _) ← resolve older
+  let isEnd : Event → Bool
+    | .combatEnded where_ units =>
+      where_ == bf && units.contains poro && units.contains witness && units.contains defender &&
+        !units.contains idle
+    | _ => false
+  return es.any isEnd && es.idxOf (.recalled witness) < es.findIdx isEnd &&
+    fresh.combat.isNone && fresh.locate witness == some (.player p .base) &&
+    fresh.mightNow witness == some 4 && fresh.mightNow idle == some 2 &&
+    fresh.handN p == s.handN p + 1 && hurt.handN p == s.handN p &&
+    (hurt.obj? poro).any (fun o => o.damage == 0 && o.damagedTurn == some s.turn) &&
+    safe.handN p == s.handN p + 1 && previous.handN p == s.handN p + 1
+
+-- A defender joins during the Showdown, then Fight or Flight removes the only attacker.
+-- The Combat still ends and both participants get their triggers.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s p "VEN-158"
+  let (s, witness) ← putAt s p "VEN-028" bf
+  let (s, _) ← putAt s q "OGN-088" bf
+  let (s, poro) ← put s q "VEN-024" .base
+  let (s, arrive) ← put s q "VEN-034" .hand
+  let (s, escape) ← put s p "OGN-168" .hand
+  let s := (s.control q bf).modObj bf (fun o => { o with contested := some p })
+  let (ready, es) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
+  let (defending, _) ← (step 100 ready ⟨.player p, .pass⟩).toOption
+  let joined ← play defending q arrive [bf, poro]
+  let (attacking, _) ← (step 100 joined ⟨.player q, .pass⟩).toOption
+  let moved ← play attacking p escape [witness]
+  let (passed, _) ← (step 100 moved ⟨.player p, .pass⟩).toOption
+  let (ended, finish) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let done := settleChain {} 12 ended
+  return es.contains (.combatStarted bf p) &&
+    (ready.combat.any (fun c => !c.units.contains poro)) &&
+    (joined.combat.any (fun c => c.units.contains poro)) &&
+    moved.locate witness == some (.player p .base) &&
+    (moved.combat.any (fun c => c.units.contains witness)) &&
+    (finish.any (fun e => match e with
+      | .combatEnded at_ units => at_ == bf && units.contains witness && units.contains poro
+      | _ => false)) &&
+    (finish.all (fun e => match e with | .damaged .. => false | _ => true)) &&
+    ended.mightNow witness == some 2 && done.mightNow witness == some 4 &&
+    done.handN q == moved.handN q + 1 && done.combat.isNone
+
+-- Conquer triggers resolve before Combat ends. The temporary Might remains during the
+-- Conquer trigger, but expires before the Witness's Empower trigger resolves.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s p "VEN-162"
+  let (s, witness) ← putAt s p "VEN-028" bf
+  let (s, defender) ← putAt s q "OGN-139" bf
+  let s := ((s.rich p).control q bf).modObj bf (fun o => { o with contested := some p })
+  let s := s.modObj witness (fun o => { o with mightMods := [⟨2, .combat⟩] })
+  let (ready, _) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
+  let (passed, _) ← (step 100 ready ⟨.player p, .pass⟩).toOption
+  let (first, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (picked, _) ← (step 100 first ⟨.player p, .assignPick defender⟩).toOption
+  let (second, _) ← (step 100 picked ⟨.player p, .assignDone⟩).toOption
+  let (counterPick, _) ← (step 100 second ⟨.player q, .assignPick witness⟩).toOption
+  let (conquered, events) ← (step 100 counterPick ⟨.player q, .assignDone⟩).toOption
+  let item ← (conquered.zone .chain).head?
+  let done := settleChain {} 16 conquered
+  return events.contains (.scored p bf true) &&
+    events.all (fun e => match e with | .combatEnded .. => false | _ => true) &&
+    (conquered.obj? item).any (fun o => o.kind == .chainAbility (cid "VEN-162") 0 bf) &&
+    (conquered.obj? witness).any (fun o => o.empowerCount == 0 && o.damage == 0) &&
+    conquered.mightNow witness == some 4 && done.mightNow witness == some 4 &&
+    (done.obj? witness).any (fun o => o.empowerCount == 1 && o.mightMods.isEmpty)
+
+-- Threshold of the Gray goes on the Chain once. In a three-player turn order the two
+-- combatants gain Energy, even when the defender is not next in turn order.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode := mode }, turnOrder := [p, third, q] }
+  let (s, bf) ← putBf s q "VEN-166"
+  let (s, _) ← putAt s p "OGN-088" bf
+  let (s, defender) ← putAt s q "OGN-088" bf
+  let s := (s.control q bf).modObj bf (fun o => { o with contested := some p })
+  let setup (t : GameState) :=
+    (advance 100 { t with pending := [.cleanup, .priority p] } []).toOption
+  let (waiting, es) ← setup s
+  let item ← (waiting.zone .chain).head?
+  let (alone, noCombat) ← setup (sendObj .trash s defender).1
+  let done := settleChain {} 12 waiting
+  let energy (t : GameState) (r : PlayerId) := (t.poolOf r).energy
+  return waiting.nextPlayer p == third && es.contains (.combatStarted bf p) &&
+    waiting.zone .chain == [item] &&
+    (waiting.obj? item).any (fun o =>
+      o.owner == q && o.kind == .chainAbility (cid "VEN-166") 0 bf) &&
+    energy waiting p == energy s p && energy waiting q == energy s q &&
+    energy done p == energy s p + 1 && energy done q == energy s q + 1 &&
+    energy done third == energy s third && alone.zone .chain == [] &&
+    !noCombat.contains (.combatStarted bf p)
+
 end RiftboundTest

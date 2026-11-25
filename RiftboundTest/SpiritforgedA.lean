@@ -2373,11 +2373,13 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (t1, g) ← putAt s s.me "SFD-110" s.bf0
   let (t2, _) ← putAt t1 s.you "OGN-051" s.bf0
   let d ← fire (fight t2 s.you) [.combatStarted s.bf0 s.you]
+  let (ended, _) ← (advance 100 { a with pending := [.combatFinish s.bf0] } []).toOption
   return a.mightNow f == (s2.mightNow f).map (· * 2) && b.mightNow f == s3.mightNow f &&
     d.mightNow g == (t2.mightNow g).map (· * 2) && e != e2 && ally != f &&
     c.mightNow f == s4.mightNow f &&
     -- the doubling ends with the combat, not with the turn
-    ((combatResolve a s.bf0 s.me).1.mightNow f == s2.mightNow f) &&
+    ((combatResolve a s.bf0 s.me).1.mightNow f == a.mightNow f) &&
+    ended.mightNow f == s2.mightNow f &&
     -- a Showdown that is not a Combat ends it too
     ((endShowdown a s.bf0).1.mightNow f == s2.mightNow f) &&
     (a.mightNow f != s2.mightNow f)

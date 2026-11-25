@@ -469,7 +469,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
         exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
           (by simp [GameState.playerCount, hP.config])
           (new := (endShowdown s bf).2.1) rfl (fun g hg => by
-            obtain ⟨r, rfl⟩ := endShowdown_frames s bf g hg
+            obtain ⟨r, rfl⟩ := endShowdown_frames s bf true g hg
             rfl)
   · rename_i bf att side acc done rest u hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -817,14 +817,17 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (combatResolve_safeP s bf att).config])
-      (new := (combatResolve s bf att).2.1 ++ [Frame.cleanup]) (by simp)
+      (new := (combatResolve s bf att).2.1 ++ [Frame.cleanup, Frame.combatFinish bf]) (by simp)
       (fun g hg => by
         rcases List.mem_append.mp hg with h1 | h1
         · obtain ⟨r, rfl⟩ := combatResolve_frames s bf att g h1
           rfl
-        · simp only [List.mem_singleton] at h1
-          subst h1
-          rfl)
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at h1
+          rcases h1 with rfl | rfl <;> rfl)
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
