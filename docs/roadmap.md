@@ -2036,3 +2036,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **仕組み**: `PlayExtra` に `killUnit`（味方のユニットを殺す）と `spendXP n`（XP を払う。費用を払う相手は、プレイヤーの Legend）を足した。ユニットとギアは、これまでと同じ流れ（`playTargets` → `extraOk` → `payExtra0`）で、遊ぶときに払い、`paid` が付く。**呪文**は、`castPay`（`castStep` と `applyPlayCard` の中）で、唱えるときに払う。費用の対象は、呪文が選ぶ **1 つ目の対象**（カードの最初の `targetOf` が、費用の対象を表す。`castable` の検査はそのまま使える）。払うと、Chain の上の呪文の 1 つ目の対象は、死んだカードの新しい ID（Trash）になるので、効果は、そのユニットの費用を読める。呪文の `paid` は Repeat のための印なので、立てない。
 - **直したカード**: Heedless Resurrection、Sacrifice（唱えるときに殺す。唱える前から、味方のユニットが無いと唱えられない）、Safety Inspector（3 XP を払うかを、遊ぶときに選ぶ。払うと、自分は殺さない）。相手は、費用を払ったあとの状態に応答する。
 - **まだのもの**: Poppy, Defender of the Meek（XP で、Energy が 3 安くなる）、Atakhan（殺したユニットの費用ぶん、安くなる）、Conscription（XP を払ったか、で選べる対象が変わる）。どれも、**費用や選べる対象が、選んだ追加の費用で変わる**。`playable` と `applyPlay` が、まだ選んだ対象（`ts`）を受け取らないので、そこに `ts` を通し（`playable`、`paysForXT`、`paidExtra`、`applyPlay`）、費用を減らす関数（`cutOptionsOf` の拡張）を足す必要がある。`Undying Loyalty` は、さらに、Trash の対象を選べない（`placeObjs .inTrash` が未対応）。
+
+### M9 の追加の費用（続き、2026-11-25）: 費用が変わる 3 枚
+
+選んだ追加の費用で、費用や選べる対象が変わるカードも、遊ぶときに払うようにした。
+
+- **選んだ対象を、遊べるかの検査に通す**: `playable` が、選んだ対象（`ts`）を受け取り（省略すると空）、`paysForXT` で払える費用を調べる。`GameState.extraCutOf` が、選んだ追加の費用が、費用から引くもの（Energy と Power の数）を返し、`cutOptionsOf` がそれを使う。`PlayOk`、`bfPlayOk`、`reactable` は、`ts` を渡す。`CardDef.paidCut`（`PaidCut.energy n` / `.killed`）が、カードの印刷を表す。`paidExtra` は、減った費用を払っただけなら、Accelerate を払ったことにしない（`extraAltCosts`）。
+- **Poppy, Defender of the Meek**: 3 XP を払うかを、遊ぶときに選ぶ。払うと、費用が Energy 3 安い。払わなければ、全額で、XP はそのまま。Ambush で遊ぶときは、Battlefield を選ぶので、XP は払えない（近似）。
+- **Atakhan**: 味方のユニットを殺すかを、遊ぶときに選ぶ。殺すと、そのユニットの Energy と Power の数だけ安い。
+- **Conscription**: 3 Might 以下の敵ユニットは、そのまま選べる。それより大きい敵ユニットは、XP が 5 以上あるときだけ選べ、**唱えるときに 5 XP を払う**（`Filter.xpAtLeast`、`PlayExtra.spendXPOver`。XP を払うかは、選ぶ対象で決まる。小さい対象を選ぶのに払う理由は、無い）。
+- **Undying Loyalty** は、まだ。選ぶ対象が Trash にあり、`placeObjs .inTrash` が未対応。
