@@ -1981,7 +1981,7 @@ def OGN_073 : CardDef :=
       let r : Effect := .prim (.ready (Selector.one .friendly .atBase [.ofType .rune, .exhausted]))
       [.triggered
         { event := .at_ .endOfTurn,
-          condition := .exists (Selector.all .friendly .here [.ofType .unit, .sameAs .self]) }
+          condition := .matches .self .onBattlefield }
         (.of [] (.seqOf [r, r, r, r])) .unlimited],
     status := .drafted }
 
@@ -2289,7 +2289,7 @@ def OGN_084.meta : CardDef :=
 def OGN_084 : CardDef :=
   { OGN_084.meta with
     abilities := [.passive
-      (.exists (Selector.all .friendly .here [.ofType .unit, .sameAs .self]))
+      (.matches .self .onBattlefield)
       [.costMinusMin (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) 1]],
     status := .drafted }
 

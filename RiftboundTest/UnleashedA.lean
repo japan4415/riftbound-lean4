@@ -186,8 +186,8 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
 -- Tricksy Tentacles (UNL-054): enemy units of total Might 8 or less are moved to one place
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-054" .hand
-  let (s2, a) ← putAt s1 s.you "UNL-111" s.bf0
-  let (s3, b) ← putAt s2 s.you "UNL-111" s.bf0
+  let (s2, a) ← putAt s1 s.you "OGN-135" s.bf0
+  let (s3, b) ← putAt s2 s.you "OGN-135" s.bf0
   let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
   return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
 
@@ -312,5 +312,141 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s8 := s7.modObj sp' (fun o => { o with energyPaid := 4, playedTurn := some s7.turn })
   let r ← fire s8 [Event.played s.me sp']
   return r.countIn s.me .trash "UNL-159" == 4 && r.countIn s.me .banishment "UNL-159" == 0
+
+-- Audit fixes: Loyal Poro (UNL-156) draws when it did NOT die alone (the opposite of Lonely Poro)
+#guard tun fun s => do
+  let (s1, x) ← putAt s s.me "UNL-156" s.bf0
+  let (s3, _) ← putAt s1 s.me "OGN-051" s.bf0
+  let die (st : GameState) (u : ObjId) : Option GameState :=
+    let (st1, evs) := killObj st u
+    fire st1 evs
+  let alone ← die s1 x
+  let company ← die s3 x
+  return alone.handN s.me == s1.handN s.me && company.handN s.me == s3.handN s.me + 1
+
+-- Heroic Charge (UNL-155): +1 Might to a friendly unit and stun an enemy at its location
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-155" .hand
+  let (s2, u) ← putAt s1 s.me "UNL-111" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-088" s.bf0
+  let s4 ← play s3 s.me c [u, e]
+  return (s4.obj? e).any (·.stunned) && s4.mightNow u == (s3.mightNow u).map (· + 1)
+
+-- Flurry of Feathers (UNL-044): the Bird mode needs no spell on the Chain
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-044" .hand
+  let s2 ← play s1 s.me c [] { fromEnd := some 0 }
+  return s2.countNamed s.me .base "Bird" == 4
+
+-- Back Off (UNL-042): played from the hand, it draws 1
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-042" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-088" s.bf0
+  let s3 ← play s2 s.me c [e]
+  return (s3.obj? e).any (·.stunned) && s3.handN s.me == s2.handN s.me
+
+-- Sacrifice (UNL-173): draw 2 and channel one rune (not two)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  return s3.countIn s.me .trash "UNL-111" == 1
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  let deck (st : GameState) : Nat := (st.zone (.player s.me .runeDeck)).length
+  return deck s3 + 1 == deck big
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  return s3.handN s.me == big.handN s.me + 1
+
+-- Ashe, Focused (UNL-169): when played, a card from the opponent's hand is banished with it
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-169" .hand
+  let (s2, _) ← put s1 s.you "OGN-007" .hand
+  let s3 ← play s2 s.me c
+  return s3.countIn s.you .banishment "OGN-007" == 1 && s3.countIn s.you .hand "OGN-007" == 0
+
+
+-- Green Father (UNL-195): when its player conquers, it may exhaust to replace that Battlefield by
+-- Brush (the Battlefield is picked while the effect resolves)
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, g) ← put s1 s.me "UNL-195" .legendZone
+  let s3 := s2.modObj bf (fun o => { o with scored := [s.me] })
+  let r ← fire s3 [Event.scored s.me bf true]
+  return (r.zone .battlefieldZone).any (fun b => (r.cardDef? b).any (·.name == "Brush")) &&
+    !((r.zone .battlefieldZone).contains bf) && r.tired g == some true
+
+-- Determined Sentry (UNL-111): it cannot move to the Base; an ordinary unit can
+#guard tun fun s => do
+  let (s1, u) ← putAt s s.me "UNL-111" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-088" s.bf0
+  return !moveOk s2 s.me u .base && moveOk s2 s.me v .base
+
+-- Abandon (UNL-131): the countered spell returns to its owner's hand, not the Trash
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-131" .hand
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let before := s2.handN s.you
+  let r ← cast (s2.rich s.me) s.me c (payOf s2 c) [sp]
+  return r.handN s.you == before + 1 && r.countIn s.you .trash "OGN-004" == 0
+
+-- Frisky Hunter (UNL-033) and Lord Broadmane (UNL-012): played to the Base, "here" is the Base
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-033" .hand
+  let s2 ← play s1 s.me c
+  return s2.countNamed s.me .base "Bird" == 1
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-012" .hand
+  let (s2, u) ← put s1 s.me "OGN-088" .base
+  let s3 ← play s2 s.me c
+  return s3.hasKw u .assault
+
+-- Deadly Flourish (UNL-073): when the unit it damaged dies this turn, its caster plays a Gold
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-073" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-135" s.bf0
+  let s3 ← play s2 s.me c [e]
+  return s3.countNamed s.me .base "Gold" == 1 && s3.countNamed s.you .base "Gold" == 0
+
+-- Tactical Retreat (UNL-175): the unit that dies this turn comes back (approximately: from the Trash)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-175" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-135" s.bf0
+  let s3 ← play s2 s.me c [u]
+  let (s4, evs) := killObj s3 u
+  let s5 ← fire s4 evs
+  return s5.countIn s.me .base "OGN-135" == 1 || (s5.zone .battlefieldZone).any (fun x =>
+    (s5.cardDef? x).any (·.id == cid "OGN-135"))
+
+-- Soul Sword (UNL-039): +1 Might, and one more at Level 3
+#guard tun fun s => do
+  let (s1, u) ← put s s.me "OGN-135" .base
+  let (s2, g) ← put s1 s.me "UNL-039" .base
+  let s3 := s2.modObj g (fun o => { o with attached := some u })
+  let lo ← withXPOf s3 s.me 2
+  let hi ← withXPOf s3 s.me 3
+  return lo.mightNow u == (s2.mightNow u).map (· + 1) && hi.mightNow u == (s2.mightNow u).map (· + 2)
+
+-- Ivern (UNL-051): when the unit it draws is a Poro (or another pet), a friendly unit is buffed
+#guard tun fun s => do
+  let (s1, iv) ← put s s.me "UNL-051" .base
+  let few := s1.setZone (.player s.me .mainDeck) []
+  let (p1, _) ← put few s.me "UNL-156" .mainDeck
+  let (n1, _) ← put few s.me "UNL-111" .mainDeck
+  let pet ← fire p1 [Event.played s.me iv]
+  let plain ← fire n1 [Event.played s.me iv]
+  return (pet.obj? iv).any (·.buffed) && !((plain.obj? iv).any (·.buffed)) &&
+    pet.handN s.me == p1.handN s.me + 1
 
 end RiftboundTest

@@ -102,9 +102,11 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
     | .grantsAbility c i, some u =>
-      if u == src && f.turn == s.turn then
+      -- the object, or the card it became when it died (its new identifier in the Trash)
+      if (u == src || (s.obj? src).any (fun o => o.leftBoard && o.formerId == some u)) &&
+          f.turn == s.turn then
         match s.cards.find? ⟨c⟩ with
-        | some d => triggersAmong s src p ev d i (i + 1)
+        | some d => triggersAmong s src (if u == src then p else f.who) ev d i (i + 1)
         | none => []
       else []
     | _, _ => [])

@@ -292,6 +292,7 @@ def Prim.understood : Prim → Bool
     | none => true)
   | .castInline s => s.understoodPickAny
   | .counter s => s.understood
+  | .counterToHand s => s.understood
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understoodPickAny && b.understood
   | .bin s => s.understoodPickAny

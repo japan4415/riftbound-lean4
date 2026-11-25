@@ -802,7 +802,7 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
-def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
+def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
     if id ∈ s.zone .chain then
@@ -813,15 +813,16 @@ def counterObj (s : GameState) (id : ObjId) : GameState × List Event :=
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s id (.player o.owner .trash) with
-        | some r => (r.1, [Event.moved id r.2 (.player o.owner .trash)])
+        match moveObj s id (.player o.owner k) with
+        | some r => (r.1, [Event.moved id r.2 (.player o.owner k)])
         | none => (s, [])
     else (s, [])
   | none => (s, [])
 
 /-- Countering a spell or an ability is a safe change. -/
-theorem counterObj_safe (s : GameState) (id : ObjId) : Safe s (counterObj s id).1 := by
-  unfold counterObj
+theorem counterObjTo_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
+    Safe s (counterObjTo k s id).1 := by
+  unfold counterObjTo
   split
   · rename_i o ho
     split
@@ -838,6 +839,21 @@ theorem counterObj_safe (s : GameState) (id : ObjId) : Safe s (counterObj s id).
         · exact Safe.refl s
     · exact Safe.refl s
   · exact Safe.refl s
+
+/-- Counter a spell: it goes to the Trash of its owner (CR 356). -/
+def counterObj (s : GameState) (id : ObjId) : GameState × List Event := counterObjTo .trash s id
+
+/-- Countering a spell is a safe change. -/
+theorem counterObj_safe (s : GameState) (id : ObjId) : Safe s (counterObj s id).1 :=
+  counterObjTo_safe .trash s id
+
+/-- Counter a spell and return it to its owner's hand instead (Abandon). -/
+def counterObjHand (s : GameState) (id : ObjId) : GameState × List Event :=
+  counterObjTo .hand s id
+
+/-- Countering a spell to the hand is a safe change. -/
+theorem counterObjHand_safe (s : GameState) (id : ObjId) : Safe s (counterObjHand s id).1 :=
+  counterObjTo_safe .hand s id
 
 /-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
 def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1113,7 +1129,7 @@ theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := b
 /-- Move a Unit to the Base of its controller by an effect, unless the Battlefield it is at
 forbids it (CR 447). -/
 def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=
-  if ((s.obj? u).bind (·.loc)).any (fun bf => s.homeForbidden bf) then
+  if ((s.obj? u).bind (·.loc)).any (fun bf => s.homeForbiddenFor u bf) then
     (s, [])
   else
     -- it is a move: it is counted, and what waits for the Unit to move from a Battlefield is told
@@ -1734,9 +1750,16 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
         let r := createN c.id p none (ready || s.tokenReady p c) k s
         some (buffNewTokens s r p, tokenPlays s r p)
       | .here =>
-        (s.hereOf src).map (fun bf =>
+        match s.hereOf src with
+        | some bf =>
           let r := createN c.id p (some bf) (ready || s.tokenReady p c) k s
-          (buffNewTokens s r p, tokenPlays s r p))
+          some (buffNewTokens s r p, tokenPlays s r p)
+        | none =>
+          -- at a Base, "here" is that Base
+          if s.baseHere src then
+            let r := createN c.id p none (ready || s.tokenReady p c) k s
+            some (buffNewTokens s r p, tokenPlays s r p)
+          else none
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
@@ -1759,9 +1782,15 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
         exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | here =>
         cases hh : s.hereOf src with
-        | none => simp [hh] at h
+        | none =>
+          simp only [hh] at h
+          split at h
+          · simp only [Option.some.injEq] at h
+            rw [← h]
+            exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+          · simp at h
         | some bf =>
-          simp only [hh, Option.map_some, Option.some.injEq] at h
+          simp only [hh, Option.some.injEq] at h
           rw [← h]
           exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | anywhere => simp at h
@@ -2121,6 +2150,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
+  | .counterToHand sel => onSelected s p src env sel counterObjHand
   | .hideAt sel bfs =>
     match bfs.eval s p src env with
     | some (b :: _) => onSelected s p src env sel (hideObj b)
@@ -2353,6 +2383,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
+  | counterToHand sel => exact onSelected_safe counterObjHand_safe h
   | hideAt sel bfs =>
     simp only [applyPrim] at h
     cases hb : bfs.eval s p src env with
@@ -2681,6 +2712,9 @@ def Prim.pickSel? : Prim → Option Selector
   | .castInline s => some s
   | .markOn s _ => some s
   | .playTo s _ => some s
+  | .banishWith s => some s
+  | .counterToHand s => some s
+  | .replaceBattlefield s _ => some s
   | .reveal s => some s
   | .revealNow s => some s
   | .move s d =>
@@ -2717,6 +2751,9 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
+  | .banishWith _ => .banishWith sel
+  | .counterToHand _ => .counterToHand sel
+  | .replaceBattlefield _ n => .replaceBattlefield sel n
   | .reveal _ => .reveal sel
   | .revealNow _ => .revealNow sel
   | .move s d =>

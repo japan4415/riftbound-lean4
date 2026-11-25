@@ -114,8 +114,18 @@ def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
               | .mightIfFresh n => if o.attachedTurn == some s.turn then a2 + (n : Int) else a2
               | _ => a2) acc
           | _ => acc) 0
+        -- Soul Sword: more Might at Level 3 (a Level condition on a Might bonus the Equipment gives)
+        let level : Int := d.grants.foldl (fun acc ab =>
+          match ab with
+          | Ability.passive (.cmp .ge .xp (.const k)) mods =>
+            if decide (k ≤ (s.xpOf o.controller : Int)) then
+              mods.foldl (fun a2 m => match m with
+                | .mightPlus .self (.const n) => a2 + n
+                | _ => a2) acc
+            else acc
+          | _ => acc) 0
         let b : Int := d.mightBonus.getD 0
-        some ((if doubled then 2 * b else b) + fresh)
+        some ((if doubled then 2 * b else b) + fresh + level)
       else none
     | _, _ => none)).sum
 
@@ -525,13 +535,29 @@ def GameState.hereOf (s : GameState) (self : ObjId) : Option ObjId :=
         else none
   | none => none
 
+/-- The Unit or Gear is at its controller's Base: "here" is that Base (CR 106). -/
+def GameState.baseHere (s : GameState) (self : ObjId) : Bool :=
+  match s.obj? self with
+  | some o =>
+    (s.zone (.player o.controller .base)).contains self && o.loc.isNone &&
+      (s.cardDef? self).any (fun d => d.hasType .unit || d.hasType .gear)
+  | none => false
+
 /-- The objects a place can hold, if the place is understood. `self` is the object the effect
 belongs to: "here" is the Battlefield it is at. -/
 def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List ObjId)
   | .anywhere => some s.inPlay
   | .here =>
-    (s.hereOf self).map (fun bf =>
-      (s.zone .battlefieldZone).filter (fun u => u == bf || (s.obj? u).any (·.loc == some bf)))
+    match s.hereOf self with
+    | some bf =>
+      some ((s.zone .battlefieldZone).filter (fun u => u == bf || (s.obj? u).any (·.loc == some bf)))
+    | none =>
+      -- a Unit or a Gear at a Base is "here" with the objects of that Base
+      if s.baseHere self then
+        (s.obj? self).map (fun o =>
+          (s.players.flatMap (fun p => s.zone (.player p .base))).filter
+            (fun u => (s.obj? u).any (·.controller == o.controller)))
+      else none
   | .atBase => some (s.players.flatMap (fun p => s.zone (.player p .base)))
   | .atBattlefield => some (s.zone .battlefieldZone)
   | .onChain =>
@@ -660,9 +686,20 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
     subst h; exact Or.inl hx
   | here =>
     simp only [placeObjs] at h
-    obtain ⟨bf, -, rfl⟩ := Option.map_eq_some_iff.mp h
-    unfold inPlay
-    exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
+    split at h
+    · simp only [Option.some.injEq] at h
+      subst h
+      unfold inPlay
+      exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
+    · split at h
+      · cases hs : s.obj? self with
+        | none => simp [hs] at h
+        | some o =>
+          simp only [hs, Option.map_some, Option.some.injEq] at h
+          subst h
+          unfold inPlay
+          exact Or.inl (List.mem_append_left _ (List.mem_filter.mp hx).1)
+      · simp at h
   | atBattlefield =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
@@ -734,7 +771,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       | _ => none))
   | .locationOf sel =>
     (sel.eval s p self env).map (fun ids =>
-      ids.filterMap (fun u => (s.obj? u).bind (·.loc)))
+      ids.filterMap (fun u => (s.obj? u).bind (fun o => o.loc <|> o.hiddenAt)))
   | _ => none
 
 /-- The Runes of the player that can be used: on their Base, with a domain. -/

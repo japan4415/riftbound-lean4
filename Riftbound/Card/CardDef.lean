@@ -103,6 +103,9 @@ def hiddenPlay (c : CardDef) : EffectDef :=
   if c.types.contains .spell then
     let e := c.spellEffect.getD (EffectDef.of [] .nop)
     EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
+  else if c.types.contains .unit then
+    -- a Unit played from hiding enters the Battlefield where it was hidden (CR 811)
+    EffectDef.of [] (gate (.prim (.playTo .self (.locationOf .self))))
   else EffectDef.of [] (gate (.prim (.play .self)))
 
 /-- Hide: hide the card at a Battlefield its player controls (CR 811). Hiding is free this turn
