@@ -4192,8 +4192,12 @@ def VEN_159.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kinkou Temple: the effect is not written yet. -/
-def VEN_159 : CardDef := VEN_159.meta
+/-- Kinkou Temple. -/
+def VEN_159 : CardDef :=
+  { VEN_159.meta with
+    abilities := [.passive .always
+      [.mightPlusWithKeyword (.all .any .here [.ofType .unit]) .tank (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-160
 /--

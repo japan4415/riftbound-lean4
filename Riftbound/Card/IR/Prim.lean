@@ -351,6 +351,8 @@ deriving DecidableEq, Repr, Hashable
 inductive StaticMod where
   /-- Objects get more Might. -/
   | mightPlus (s : Selector) (a : Amount)
+  /-- Objects that have the keyword after the keyword layer get more Might (CR 479.3-479.4). -/
+  | mightPlusWithKeyword (s : Selector) (k : Keyword) (a : Amount)
   /-- Objects get less Might. -/
   | mightMinus (s : Selector) (a : Amount)
   /-- Objects get less Might, to a minimum: the change never takes their Might below `floor`

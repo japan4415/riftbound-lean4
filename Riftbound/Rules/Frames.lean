@@ -59,9 +59,9 @@ def GameState.extraDraws (s : GameState) (p : PlayerId) : Nat :=
       ((s.zone (.player p .legendZone)).isEmpty || (s.zone (.player p .championZone)).isEmpty)
   then 1 else 0
 
-/-- The extra draws at the Beginning Phase, including draws that replaced Hold points. -/
-def GameState.beginningDraws (s : GameState) (p : PlayerId) (es : List Event) : Nat :=
-  s.extraDraws p + es.countP (fun
+/-- How many of this player's Hold points were replaced with draws (CR 367, 471). -/
+def scoreDrawCount (p : PlayerId) (es : List Event) : Nat :=
+  es.countP (fun
     | .scoreDraw who _ => who == p
     | _ => false)
 
@@ -129,8 +129,15 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     let r := beginStep s p
     some ({ r.1 with
               phase := .beginning,
-              pending := .draw p (s.beginningDraws p r.2) :: .cleanup :: rest },
+              pending := .cleanup :: .draw p (s.extraDraws p) :: .scoreHolds :: rest },
       Event.phaseStarted p .beginning :: r.2)
+  | .scoreHolds :: rest =>
+    let p := s.active.getD ⟨0⟩
+    let r := hold s p
+    some ({ r.1 with
+              phase := .beginning,
+              pending := .draw p (scoreDrawCount p r.2) :: .cleanup :: rest },
+      r.2)
   | .phase .main :: rest =>
     some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
       [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
@@ -326,7 +333,10 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((beginStep_safeP s _).wf hwf).congr rfl rfl rfl rfl
+    exact ((beginStep_safe s _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((hold_safeP s _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
@@ -409,7 +419,10 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (beginStep_safeP s _).phys hwf
+    exact (beginStep_safe s _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (hold_safeP s _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _

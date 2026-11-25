@@ -706,6 +706,8 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let (s, _) ← put s q "VEN-053" .base
   let (s, a) ← putBf s p "VEN-162"
   let (s, b) ← putBf s p "VEN-160"
+  let (s, _) ← putAt s p "OGN-088" a
+  let (s, _) ← putAt s p "OGN-088" b
   let held := (s.control p a).control p b
   let queued := { held with extraTurns := [p, p] }
   let second := beginTurnStep queued []
@@ -741,5 +743,65 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     offTurn.1.pointsOf p == s.pointsOf p + 1 && offTurn.2.1.isEmpty &&
     effectPoint.1.pointsOf p == s.pointsOf p + 1 &&
     final.2.1 == [.draw p 1]
+
+-- Dusk Rose Lab can kill Otterpus before the Scoring Step. The other Battlefield then gives
+-- a point. Declining leaves Otterpus in play and both Battlefield points become draws.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, dusk) ← putBf s p "UNL-209"
+  let (s, other) ← putBf s p "VEN-158"
+  let (s, otter) ← putAt s p "VEN-053" dusk
+  let (s, _) ← putAt s p "OGN-088" other
+  let s := (s.control p dusk).control p other
+  let (waiting, es) ← (advance 100 { s with pending := [.phase .beginning] } []).toOption
+  let accepted := settleChain { yes := true } 20 waiting
+  let declined := settleChain { yes := false } 20 waiting
+  return es.contains (.phaseStarted p .beginning) &&
+    es.all (fun e => match e with | .scored .. => false | _ => true) &&
+    (waiting.obj? otter).isSome && accepted.countIn p .trash "VEN-053" == 1 &&
+    accepted.controlOf dusk == none && accepted.pointsOf p == s.pointsOf p + 1 &&
+    accepted.handN p == s.handN p + 1 &&
+    (declined.obj? otter).isSome && declined.pointsOf p == s.pointsOf p &&
+    declined.handN p == s.handN p + 2
+
+-- The draw that replaced Shadow Temple's point is part of scoring. It takes the top card
+-- before Shadow Temple's Hold trigger can burn the next three.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, temple) ← putBf s p "VEN-165"
+  let (s, _) ← putAt s p "VEN-053" temple
+  let (s, top) ← put s p "OGN-001" .mainDeck
+  let s := s.control p temple
+  let (waiting, es) ← (advance 100 { s with pending := [.phase .beginning] } []).toOption
+  let basicDraw := Event.drew p
+  let scored := Event.scored p temple false
+  let done := settleChain {} 12 waiting
+  return es.contains scored && es.contains basicDraw && es.idxOf scored < es.idxOf basicDraw &&
+    (waiting.zone .chain).length == 1 && !(waiting.zone (.player p .mainDeck)).contains top &&
+    waiting.countIn p .hand "OGN-001" == 1 && done.countIn p .hand "OGN-001" == 1 &&
+    done.countIn p .trash "OGN-001" == 0 &&
+    (done.zone (.player p .mainDeck)).length + 4 == (s.zone (.player p .mainDeck)).length
+
+-- Kinkou Temple reads Tank after equipment and temporary grants, on both sides.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let outside := s.bf0
+  let (s, temple) ← putBf s p "VEN-159"
+  let (s, printed) ← putAt s q "VEN-118" temple
+  let (s, elsewhere) ← putAt s q "VEN-118" outside
+  let (s, equipped) ← putAt s q "OGN-088" temple
+  let (s, temporary) ← putAt s p "OGN-088" temple
+  let (s, shield) ← put s q "SFD-033" .base
+  let (s, eye) ← put s p "VEN-147" .legendZone
+  let geared := (attachTo equipped s shield).1
+  let granted ← activate geared p eye 0 [temporary]
+  let expired := granted.mapObjects endTurnObj
+  let detached := (detachObj geared shield).1
+  return s.mightNow printed == some 7 && s.mightNow elsewhere == some 6 &&
+    s.mightNow equipped == some 8 && geared.mightNow equipped == some 10 &&
+    (geared.mightTable.lookup equipped) == some 1 && detached.mightNow equipped == some 8 &&
+    geared.mightNow temporary == some 8 && granted.mightNow temporary == some 9 &&
+    expired.mightNow temporary == some 8
 
 end RiftboundTest

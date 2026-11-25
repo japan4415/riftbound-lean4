@@ -233,7 +233,7 @@ def ArgList.ok (c : Ctx) : ArgList → Bool
 
 /-- A static modification refers only to what is there. -/
 def StaticMod.ok (c : Ctx) : StaticMod → Bool
-  | .mightPlus s a => Selector.ok c s && Amount.ok c a
+  | .mightPlus s a | .mightPlusWithKeyword s _ a => Selector.ok c s && Amount.ok c a
   | .mightMinus s a => Selector.ok c s && Amount.ok c a
   | .mightMinusMin s a _ => Selector.ok c s && Amount.ok c a
   | .keyword s _ => Selector.ok c s

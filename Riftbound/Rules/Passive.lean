@@ -62,23 +62,6 @@ def oppHas (s : GameState) (p : PlayerId) (m : StaticMod) : Bool :=
   s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller != p) &&
     (s.activeMods g).contains m)
 
-/-- How much the passive change `m` of `src` changes the Might of `id`: more, less, or nothing. -/
-def modMight (s : GameState) (src id : ObjId) : StaticMod → Int
-  | .mightPlus sel a =>
-    match s.obj? src, sel.eval s ((s.obj? src).map (·.controller) |>.getD ⟨0⟩) src {} with
-    | some o, some ids =>
-      if ids.contains id then ((a.evalS0 s o.controller src {}).map (fun k => (k : Int))).getD 0
-      else 0
-    | _, _ => 0
-  | .mightMinus sel a =>
-    match s.obj? src, sel.eval s ((s.obj? src).map (·.controller) |>.getD ⟨0⟩) src {} with
-    | some o, some ids =>
-      if ids.contains id then -((a.evalS0 s o.controller src {}).map (fun k => (k : Int))).getD 0
-      else 0
-    | _, _ => 0
-  -- `mightMinusMin` has a floor: it is read after the others (`modFloor`)
-  | _ => 0
-
 /-- The passive change `m` of `src` that takes Might away down to a floor, for the Might of `id`:
 how much it takes away at most, and the floor ("to a minimum of 1"). -/
 def modFloor (s : GameState) (src id : ObjId) : StaticMod → Option (Nat × Nat)
@@ -182,10 +165,6 @@ def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
           (fun acc m => match m with | .bonusDamageHere n => acc + n | _ => acc) 0
       | none => 0)
 
-/-- What the passive abilities add to the Might of an object. -/
-def passiveMight (s : GameState) (id : ObjId) : Int :=
-  (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
-
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/
 def equipKws (s : GameState) (id : ObjId) : List KeywordInst :=
@@ -242,6 +221,30 @@ for a while (CR 479.3). -/
 def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
   s.equipKws id ++ s.passiveKws id ++ (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
 
+/-- Whether the object has a printed or granted keyword (CR 479.3). -/
+def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
+  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)
+
+/-- How much the passive change `m` of `src` changes the Might of `id` (CR 479.4). -/
+def modMight (s : GameState) (src id : ObjId) (m : StaticMod) : Int :=
+  let amountAt (sel : Selector) (a : Amount) : Int :=
+    match s.obj? src with
+    | some o =>
+      if ((sel.eval s o.controller src {}).getD []).contains id then
+        ((a.evalS0 s o.controller src {}).getD 0 : Int)
+      else 0
+    | none => 0
+  match m with
+  | .mightPlus sel a => amountAt sel a
+  | .mightPlusWithKeyword sel k a => if s.hasKw id k then amountAt sel a else 0
+  | .mightMinus sel a => -(amountAt sel a)
+  -- `mightMinusMin` has a floor: it is read after the others (`modFloor`)
+  | _ => 0
+
+/-- What the passive abilities add to the Might of an object. -/
+def passiveMight (s : GameState) (id : ObjId) : Int :=
+  (s.passiveSources.flatMap (fun src => (s.activeMods src).map (s.modMight src id))).sum
+
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
   let amount (i : KeywordInst) : Option Nat :=
@@ -287,7 +290,7 @@ def mightTable (s : GameState) : List (ObjId × Int) :=
       match ab with
       | Ability.passive _ mods =>
         mods.any (fun m => match m with
-          | .mightPlus .. | .mightMinus .. | .mightMinusMin .. => true
+          | .mightPlus .. | .mightPlusWithKeyword .. | .mightMinus .. | .mightMinusMin .. => true
           | _ => false)
       | _ => false)))) then []
   else

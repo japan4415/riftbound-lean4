@@ -36,10 +36,6 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
 /-- Whether an object is a Unit. -/
 def isUnit (s : GameState) (id : ObjId) : Bool := s.hasType id .unit
 
-/-- Whether the object has the keyword: its card prints it, or an Equipment gives it. -/
-def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
-  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)
-
 /-- Whether an object is a Battlefield. -/
 def isBattlefield (s : GameState) (id : ObjId) : Bool := s.hasType id .battlefield
 

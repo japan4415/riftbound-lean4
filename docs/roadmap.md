@@ -1849,8 +1849,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Ol' Poro は自分の第 1〜3 ターンにはプレイできない。追加ターンも数える。効果で無料または軽減されたコストでプレイする場合にも制限が働く。
 - Otterpus は、得点するプレイヤー自身の第 1・2 ターンに Conquer または Hold で得る 1 点を 1 ドローに置き換える。得点済みの印は残り、Final Point の規則ですでにドローになる場合は 1 回だけ引く。
-- Beginning Step の誘発は現行エンジンでは Scoring Step と同じ処理で検出される。Beginning Step に Otterpus を場に出す、または場から離す誘発がある場合は、両ステップを分けて処理する必要がある（CR 315.2, 335）。
+- Beginning Step の誘発と Cleanup が終わってから Scoring Step を進める（CR 315.2, 335）。Dusk Rose Lab で Otterpus を倒すかどうかによって、その後の Hold が得点かドローか変わる。Shadow Temple は得点を置き換えたドローの次のカードから Burn する。
 - 167 枚中 109 枚が `drafted`、107 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 18 — 付与された Tank を Might の計算に使う
+
+- Kinkou Temple は、その Battlefield にいる両プレイヤーの Unit のうち、Tank を持つものに +1 Might を与える。キーワードのレイヤーで Tank を確定してから Might を計算する（CR 479.3-479.4）。装備や効果で与えられた Tank にも適用する。
+- 回帰テストで、Doran's Shield の装備を外したとき、Eye of Twilight が与えた Tank がターン終了時に切れたとき、別の Battlefield にいるときの Might を確認した。
+- 167 枚中 110 枚が `drafted`、108 枚が `CardDef.runs` の検査を通る。
 
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 

@@ -416,7 +416,7 @@ def costSel : Selector → Bool
 
 /-- A passive change the engine applies. -/
 def StaticMod.runs : StaticMod → Bool
-  | .mightPlus s a => s.understood && a.understoodC
+  | .mightPlus s a | .mightPlusWithKeyword s _ a => s.understood && a.understoodC
   | .mightMinus s a => s.understood && a.understoodC
   | .mightMinusMin s a _ => s.understood && a.understoodC
   | .keyword s _ => s.understood

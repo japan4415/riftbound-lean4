@@ -727,9 +727,16 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-      (by simp [GameState.playerCount, (beginStep_safeP s (s.active.getD ⟨0⟩)).config])
+      (by simp [GameState.playerCount, (beginStep_safe s (s.active.getD ⟨0⟩)).same.config])
+      (new := [Frame.cleanup, Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
+        Frame.scoreHolds]) rfl (by simp [Frame.isSetup])
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (hold_safeP s (s.active.getD ⟨0⟩)).config])
       (new := [Frame.draw (s.active.getD ⟨0⟩)
-        (s.beginningDraws (s.active.getD ⟨0⟩) (beginStep s (s.active.getD ⟨0⟩)).2),
+        (scoreDrawCount (s.active.getD ⟨0⟩) (hold s (s.active.getD ⟨0⟩)).2),
         Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h

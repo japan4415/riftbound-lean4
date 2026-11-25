@@ -413,7 +413,13 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (beginStep_safeP s (s.active.getD ⟨0⟩)).result (fun hb => ?_)
+    refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (hold_safeP s (s.active.getD ⟨0⟩)).result (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.cleanup]
   · rename_i rest hp
@@ -780,6 +786,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | draw p n => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
   | phase ph => exact absurd hw (by simp [Frame.isWork])
+  | scoreHolds => exact absurd hw (by simp [Frame.isWork])
   | chainPass p n =>
     left
     refine ⟨⟨.player p, .pass⟩, ?_, by simp⟩
@@ -865,6 +872,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | draw p n => exact absurd hc (by simp [Frame.isChance])
   | beginTurn => exact absurd hc (by simp [Frame.isChance])
   | phase ph => exact absurd hc (by simp [Frame.isChance])
+  | scoreHolds => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
   | resolveChain => exact absurd hc (by simp [Frame.isChance])

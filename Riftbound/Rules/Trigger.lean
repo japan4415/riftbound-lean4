@@ -491,10 +491,11 @@ def GameState.detect (s : GameState) (es : List Event) : List PendTrigger :=
   let a := s.active.getD ⟨0⟩
   all.filter (fun t => t.controller == a) ++ all.filter (fun t => t.controller != a)
 
-/-- The frames that do not decide anything and whose work does not wait for triggers: the Cleanup
-and the resolution of an item of the Chain. -/
+/-- The frames that complete outstanding work before triggered abilities are finalized (CR 334).
+This includes draws still owed by the current task or instruction. -/
 def Frame.isResolution : Frame → Bool
   | .cleanup => true
+  | .draw .. => true
   | .run .. => true
   | .finishSpell _ => true
   | .resolveChain => true
