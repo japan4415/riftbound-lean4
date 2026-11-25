@@ -349,4 +349,14 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (declined.obj? prefect).isSome && (declined.obj? gear).isSome &&
     (ownPlay.obj? prefect).isSome && (ownPlay.obj? friendly).isSome
 
+-- Spiderling counts other friendly units with its own name at the same location.
+#guard vendettaCase fun s => do
+  let (s, spiderling) ← putAt s s.me "VEN-097" s.bf0
+  let (s, sibling) ← putAt s s.me "VEN-097" s.bf0
+  let (s, otherPlace) ← put s s.me "VEN-097" .base
+  let (s, enemy) ← putAt s s.you "VEN-097" s.bf0
+  let (s, _) ← putAt s s.me "VEN-014" s.bf0
+  return s.mightNow spiderling == some 2 && s.mightNow sibling == some 2 &&
+    s.mightNow otherPlace == some 1 && s.mightNow enemy == some 1
+
 end RiftboundTest

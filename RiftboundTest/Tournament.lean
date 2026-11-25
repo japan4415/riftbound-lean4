@@ -4,6 +4,8 @@ import Riftbound.Tournament.DeckLegality
 meta import Riftbound.Tournament.DeckLegality
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
+import RiftboundCards.Vendetta
+meta import RiftboundCards.Vendetta
 
 /-!
 # Tests: deck legality in the tournament formats (TR 402, 601, 602)
@@ -40,6 +42,17 @@ meta def ids (n : Nat) (k : Nat) : List CardId := List.replicate k (cid s!"V{n}"
 -- name limit counts the Main Deck and the sideboard together
 #guard okCore goodDeck
 #guard !okC goodDeck [cid "V0"]
+-- Spiderling can appear more than three times in the Main Deck and sideboard.
+#guard
+  let card := RiftboundCards.Vendetta.VEN_097
+  let cards := db.cards.map (fun d =>
+    if d.id == legend.id then { d with domains := [.fury, .chaos] } else d)
+  let db := { cards := card :: cards }
+  let env := { env with legalSets := ⟨"VEN"⟩ :: env.legalSets }
+  let deck := { goodDeck with main := [goodDeck.chosenChampion] ++ List.replicate 39 card.id }
+  decide (DeckValid db Mode.duel deck) &&
+    decide (ConstructedDeckValid db env { deck, sideboard := List.replicate 10 card.id })
+
 -- the sideboard must fit the Domain Identity
 #guard !okC goodDeck [cid "X1"]
 -- an unknown card in the sideboard

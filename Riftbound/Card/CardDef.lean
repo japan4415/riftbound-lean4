@@ -107,6 +107,8 @@ structure CardDef where
   paidCut : Option PaidCut := none
   /-- The maximum number of instances of Empowered this object can have (CR 442). -/
   empowerLimit : Nat := 1
+  /-- The card's text waives the number of copies allowed in a deck (CR 002, 103.3.b). -/
+  unlimitedCopies : Bool := false
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
@@ -296,8 +298,8 @@ def IsChosenChampionCandidate (c : CardDef) : Prop :=
 instance (c : CardDef) : Decidable c.IsChosenChampionCandidate := by
   unfold IsChosenChampionCandidate; infer_instance
 
-/-- The number of copies of a card allowed in a deck: a Unique card is limited to one
-(CR 825), any other to three (CR 103.3.b). -/
+/-- The default deck limit: a Unique card is limited to one copy, other cards to three
+(CR 103.3.b, 825). -/
 def copyLimit (c : CardDef) : Nat := if c.hasKeyword .unique then 1 else 3
 
 /-- A Unique card is limited to one copy (CR 825). -/

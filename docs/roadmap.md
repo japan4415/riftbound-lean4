@@ -1808,6 +1808,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Shadows of the Past と Tail-Cloaked Matriarch に加え、Gust Monk と Ravenbloom Prefect を追加した。Gust Monk の追加コストは Assault の誘発条件であり、ユニットを Ready で出す Accelerate の支払いとは区別する。
 - 167 枚中 98 枚が `drafted`、94 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 11 — Spiderling の構築ルール
+
+- Spiderling はデッキの同名枚数制限を免除する。Core Rules と Constructed の判定で同じ規則を使い、Constructed では Main Deck とサイドボードの両方を含めて検査する。
+- 同じ場所にいる自分のほかの同名 Unit の枚数だけ Might が増える。敵の同名 Unit や別の場所にいる同名 Unit は枚数に含めない。
+- 167 枚中 99 枚が `drafted`、95 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

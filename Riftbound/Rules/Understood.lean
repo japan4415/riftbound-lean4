@@ -124,6 +124,7 @@ def Filter.understood : Filter → Bool
   | .ofSupertype _ => true
   | .tag _ => true
   | .named _ => true
+  | .sameNameAsSource => true
   | .hasKeyword _ => true
   | .domain _ => true
   | .might _ a => Amount.understood a

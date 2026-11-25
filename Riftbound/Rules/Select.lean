@@ -257,6 +257,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .ofSupertype sp => (s.cardDef? id).map (·.hasSupertype sp)
   | .tag t => (s.cardDef? id).map (fun d => d.tags.contains t || (s.gainedTags id).contains t)
   | .named n => (s.cardDef? id).map (fun d => d.name == n)
+  | .sameNameAsSource =>
+    pure ((s.cardDef? self).any (fun src => (s.cardDef? id).any (·.nameKey == src.nameKey)))
   | .hasKeyword k => (s.cardDef? id).map (·.hasKeyword k)
   | .domain d => (s.cardDef? id).map (·.domains.contains d)
   | .might op a => do

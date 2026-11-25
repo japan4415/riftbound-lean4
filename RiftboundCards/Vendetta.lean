@@ -2558,8 +2558,13 @@ def VEN_097.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Spiderling: the effect is not written yet. -/
-def VEN_097 : CardDef := VEN_097.meta
+/-- Spiderling. -/
+def VEN_097 : CardDef :=
+  { VEN_097.meta with
+    unlimitedCopies := true,
+    abilities := [.passive .always
+      [.mightPlus .self (.count (.all .friendly .here [.ofType .unit, .sameNameAsSource, .notSelf]))]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-098
 /--

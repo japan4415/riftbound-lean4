@@ -98,6 +98,8 @@ inductive Filter where
   | tag (t : Tag)
   /-- Has the name. -/
   | named (name : String)
+  /-- Has the card name of the source, including its subtitle (CR 132). -/
+  | sameNameAsSource
   /-- Has the keyword. -/
   | hasKeyword (k : Keyword)
   /-- Has the domain. -/
