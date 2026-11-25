@@ -98,6 +98,10 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
   · exact Or.inr ⟨gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩), by simp [hc]⟩
   · exact Or.inl (by simp [hc])
 
+/-- The separate Combat steps after damage and Combat Cleanup (CR 468.2-468.7). -/
+def combatSteps (bf : ObjId) : List Frame :=
+  [.combatResult bf, .combatControl bf, .combatFinish bf]
+
 /-- Advance one work frame by one step, before the triggered abilities that the step set off are
 found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
@@ -161,10 +165,20 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
       (finishItem s item).2)
   | .cleanup :: rest => some (cleanupFrame s rest)
   | .combatDamage bf att :: rest =>
-    some ({ s with pending := s.startCombat bf att ++ rest }, [])
+    let combat := (s.observeCombat [.showdown bf att 0]).1
+    some ({ s with pending := s.startCombat bf att ++ combatSteps bf ++ rest, combat := combat },
+      [])
   | .combatResolve bf att :: rest =>
-    let r := combatResolve s bf att
-    some ({ r.1 with pending := r.2.1 ++ .cleanup :: .combatFinish bf :: rest }, r.2.2)
+    let r := combatCleanup s bf att
+    let recalled := r.2.any (fun | .recalled _ => true | _ => false)
+    let combat := r.1.combat.map (fun c => { c with recalled := recalled })
+    some ({ r.1 with pending := .cleanup :: rest, combat := combat }, r.2)
+  | .combatResult bf :: rest =>
+    let recalled := (s.combat.filter (·.battlefield == bf)).any (·.recalled)
+    some ({ s with pending := rest }, combatResultEvents s bf recalled)
+  | .combatControl bf :: rest =>
+    let r := combatControl s bf
+    some ({ r.1 with pending := r.2.1 ++ .cleanup :: rest }, r.2.2)
   | .combatFinish bf :: rest =>
     let units := ((s.combat.filter (·.battlefield == bf)).map (·.units)).getD []
     some ({ s.mapObjects endShowdownObj with combat := none, pending := .cleanup :: rest },
@@ -383,7 +397,13 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact hwf.congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((combatResolve_safeP s _ _).wf hwf).congr rfl rfl rfl rfl
+    exact ((combatCleanup_safe s _ _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((combatControl_safeP s _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
@@ -474,7 +494,13 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (combatResolve_safeP s _ _).phys hwf
+    exact (combatCleanup_safe s _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (combatControl_safeP s _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.physIds_mapObjects s endShowdownObj_kind).symm ▸ List.Perm.refl _

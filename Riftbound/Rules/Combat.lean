@@ -355,13 +355,11 @@ theorem safe_healAll (s : GameState) : Safe s (s.mapObjects healObj) :=
     fun _ h => GameState.ownerOk_mapObjects h (fun o => healObj_owner o),
     GameState.sameMeta_mapObjects s _⟩
 
-/-- The end of a Combat (CR 468): every Unit is healed, the Attacker's Units are Recalled if a
-Unit of a Defender is left (a tie, if Units of the Attacker are left too: then all the Units are
-Recalled, if a passive ability of the Attacker says so, as Symbol of the Solari does), and the
-Battlefield goes to the player whose Units are alone there, who Scores it by Conquer. The Units
-with lethal damage have been killed by the Cleanup before. -/
-def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
-    GameState × List Frame × List Event :=
+/-- Combat Cleanup heals Units and Recalls attackers if defenders remain (CR 468.1). The
+ordinary Cleanup has already killed Units with lethal damage. Symbol of the Solari can extend
+the Recall to both sides. -/
+def combatCleanup (s : GameState) (bf : ObjId) (att : PlayerId) :
+    GameState × List Event :=
   let s1 := s.mapObjects healObj
   let defenders :=
     (s1.players.filter (fun p => p ≠ att)).any (fun p => !(s1.unitsOf p bf).isEmpty)
@@ -371,17 +369,12 @@ def combatResolve (s : GameState) (bf : ObjId) (att : PlayerId) :
       (s1.activeMods g).contains .recallAllOnTie)
   let victims :=
     if tieAll then s1.players.flatMap (fun p => s1.unitsOf p bf) else s1.unitsOf att bf
-  let r := if defenders then applyEach recallObj s1 victims else (s1, [])
-  let t := endShowdown r.1 bf false
-  -- the player whose Units are the only ones left wins the Combat
-  let won := (r.1.players.filter (fun p => !(r.1.unitsOf p bf).isEmpty)).map
-    (fun p => Event.combatWon bf p)
-  (t.1, t.2.1, r.2 ++ (match won with | [w] => [w] | _ => []) ++ t.2.2)
+  if defenders then applyEach recallObj s1 victims else (s1, [])
 
-/-- The end of a Combat is a safe change, then points. -/
-theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :
-    SafeP s (combatResolve s bf att).1 := by
-  unfold combatResolve
+/-- Combat Cleanup preserves the structural invariants. -/
+theorem combatCleanup_safe (s : GameState) (bf : ObjId) (att : PlayerId) :
+    Safe s (combatCleanup s bf att).1 := by
+  unfold combatCleanup
   dsimp only
   have h1 := safe_healAll s
   let healed := s.mapObjects healObj
@@ -397,15 +390,37 @@ theorem combatResolve_safeP (s : GameState) (bf : ObjId) (att : PlayerId) :
     split
     · exact applyEach_safe (fun s u => recallObj_safe s u) _ _
     · exact Safe.refl _
-  exact SafeP.trans_safe (h1.trans h2) (endShowdown_safeP _ bf false)
+  exact h1.trans h2
 
-/-- The frames the end of a Combat asks for are draws. -/
-theorem combatResolve_frames (s : GameState) (bf : ObjId) (att : PlayerId) :
-    ∀ f ∈ (combatResolve s bf att).2.1, ∃ r, f = Frame.draw r 1 := by
-  intro f hf
-  unfold combatResolve at hf
-  dsimp only at hf
-  exact endShowdown_frames _ bf false f hf
+/-- A sole remaining side wins unless Combat Cleanup recalled a Unit (CR 468.3). -/
+def combatResultEvents (s : GameState) (bf : ObjId) (recalled : Bool) : List Event :=
+  if recalled then []
+  else
+    let sides := ((s.combat.filter (·.battlefield == bf)).map
+      (fun c => [c.attacker, c.defender])).getD s.players
+    match sides.filter (fun p => !(s.unitsOf p bf).isEmpty) with
+    | [p] => [Event.combatWon bf p]
+    | _ => []
+
+/-- Establish control unless there is another staged Combat at this Battlefield (CR 468.5). -/
+def combatControl (s : GameState) (bf : ObjId) : GameState × List Frame × List Event :=
+  if 2 ≤ (s.players.filter (fun p => !(s.unitsOf p bf).isEmpty)).length then (s, [], [])
+  else endShowdown s bf false
+
+/-- Establishing control after Combat preserves the structural invariants. -/
+theorem combatControl_safeP (s : GameState) (bf : ObjId) : SafeP s (combatControl s bf).1 := by
+  unfold combatControl
+  split
+  · exact SafeP.of_safe (Safe.refl s)
+  · exact endShowdown_safeP s bf false
+
+/-- Establishing control can schedule only a draw. -/
+theorem combatControl_frames (s : GameState) (bf : ObjId) :
+    ∀ f ∈ (combatControl s bf).2.1, ∃ r, f = Frame.draw r 1 := by
+  unfold combatControl
+  split
+  · simp
+  · exact endShowdown_frames s bf false
 
 /-- The frames that start the Combat Damage: the Attacker assigns first, then the Defender; a side
 with no damage to assign or no Unit to assign it to is skipped (CR 467.1-2). -/

@@ -709,17 +709,18 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let runs := (RiftboundCards.db.find? ⟨"SFD-T03"⟩).any (·.runs)
   return runs && manaReady s1 s.me g 0
 
--- the end of a Combat: the player whose units are the only ones left at the battlefield wins it
--- (the attacker's units are recalled when a defender is left: the defender wins)
+-- A sole remaining side wins. Recalling attackers during Combat Cleanup leaves it without a result.
 #guard tsf fun s => do
   let (s1, a) ← putAt s s.me "OGN-001" s.bf0
   let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
-  let evs (x : GameState) : List Event := (combatResolve x s.bf0 s.me).2.2
-  let lost := s2.modObj e (fun o => { o with loc := none })
-  let neither := lost.modObj a (fun o => { o with loc := none })
-  return (evs s2).contains (.combatWon s.bf0 s.you) && !(evs s2).contains (.combatWon s.bf0 s.me) &&
-    (evs lost).contains (.combatWon s.bf0 s.me) && !(evs lost).contains (.combatWon s.bf0 s.you) &&
-    (evs neither).all (fun ev => match ev with | .combatWon .. => false | _ => true)
+  let (recalled, events) := combatCleanup s2 s.bf0 s.me
+  let attackerOnly := s2.modObj e (fun o => { o with loc := none })
+  let defenderOnly := s2.modObj a (fun o => { o with loc := none })
+  let neither := attackerOnly.modObj a (fun o => { o with loc := none })
+  return events.contains (.recalled a) && (combatResultEvents recalled s.bf0 true).isEmpty &&
+    combatResultEvents attackerOnly s.bf0 false == [.combatWon s.bf0 s.me] &&
+    combatResultEvents defenderOnly s.bf0 false == [.combatWon s.bf0 s.you] &&
+    (combatResultEvents neither s.bf0 false).isEmpty
 
 -- Draven, Vanquisher (SFD-020): when it wins a combat, a Gold token; when it attacks or defends,
 -- the player may pay 1 Fury for +2 Might
@@ -774,18 +775,19 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return s3.combatMight m false == s3.combatMight m true + 1 &&
     s3.combatMight o false == s3.combatMight o true
 
--- (review) the events of the end of a real Combat set off the trigger: the attacker whose
--- opponent has no unit left wins, and Draven gets a Gold token; the defender who is left wins when
--- the attacker is recalled (and the attacker's Draven is recalled, so nothing for it)
+-- Draven creates Gold if its side wins. A Combat that ends with a Recall has no winner.
 #guard tsf fun s => do
   let (s1, _) ← putAt s s.me "SFD-020" s.bf0
   let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
   let dead := s2.modObj e (fun o => { o with loc := none })
-  let (t1, _, evs) := combatResolve dead s.bf0 s.me
-  let won ← fire t1 evs
-  let (u1, _, evs2) := combatResolve s2 s.bf0 s.me
-  let lost ← fire u1 evs2
-  return won.countIn s.me .base "SFD-T03" == 1 && lost.countIn s.me .base "SFD-T03" == 0
+  let combat := (s2.observeCombat [.showdown s.bf0 s.me 0]).1
+  let finish (x : GameState) : Option GameState := do
+    let pending := .combatResolve s.bf0 s.me :: combatSteps s.bf0
+    let (waiting, _) ← (advance 100 { x with combat := combat, pending := pending } []).toOption
+    return settleChain {} 12 waiting
+  let won ← finish dead
+  let noResult ← finish s2
+  return won.countIn s.me .base "SFD-T03" == 1 && noResult.countIn s.me .base "SFD-T03" == 0
 
 -- (review) The Papertree: the runes channelled are exhausted
 #guard tsf fun s => do
@@ -2378,7 +2380,7 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
     d.mightNow g == (t2.mightNow g).map (· * 2) && e != e2 && ally != f &&
     c.mightNow f == s4.mightNow f &&
     -- the doubling ends with the combat, not with the turn
-    ((combatResolve a s.bf0 s.me).1.mightNow f == a.mightNow f) &&
+    ((combatCleanup a s.bf0 s.me).1.mightNow f == a.mightNow f) &&
     ended.mightNow f == s2.mightNow f &&
     -- a Showdown that is not a Combat ends it too
     ((endShowdown a s.bf0).1.mightNow f == s2.mightNow f) &&

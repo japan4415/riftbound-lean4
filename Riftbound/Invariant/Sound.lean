@@ -38,6 +38,8 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | cleanup => exact ⟨_, rfl⟩
   | combatDamage bf att => exact ⟨_, rfl⟩
   | combatResolve bf att => exact ⟨_, rfl⟩
+  | combatResult _ => exact ⟨_, rfl⟩
+  | combatControl _ => exact ⟨_, rfl⟩
   | combatFinish _ => exact ⟨_, rfl⟩
   | triggers pend => exact ⟨_, rfl⟩
   | _ => simp [Frame.isWork] at hf
@@ -459,7 +461,13 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((combatResolve_safeP s _ _).own hwf hown).congr rfl rfl
+    exact ((combatCleanup_safe s _ _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((combatControl_safeP s _).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_mapObjects hown endShowdownObj_owner).congr rfl rfl

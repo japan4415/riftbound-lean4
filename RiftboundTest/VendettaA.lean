@@ -874,6 +874,19 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     ended.mightNow witness == some 2 && done.mightNow witness == some 4 &&
     done.handN q == moved.handN q + 1 && done.combat.isNone
 
+/-- Start a contested Showdown and assign all Combat Damage when each side has one Unit. -/
+meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
+    Option (GameState × List Event) := do
+  let p := s.me
+  let q := s.you
+  let (ready, _) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
+  let (passed, _) ← (step 100 ready ⟨.player p, .pass⟩).toOption
+  let (first, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (picked, _) ← (step 100 first ⟨.player p, .assignPick defender⟩).toOption
+  let (second, _) ← (step 100 picked ⟨.player p, .assignDone⟩).toOption
+  let (counterPick, _) ← (step 100 second ⟨.player q, .assignPick attacker⟩).toOption
+  (step 100 counterPick ⟨.player q, .assignDone⟩).toOption
+
 -- Conquer triggers resolve before Combat ends. The temporary Might remains during the
 -- Conquer trigger, but expires before the Witness's Empower trigger resolves.
 #guard vendettaCase fun s => do
@@ -884,13 +897,7 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let (s, defender) ← putAt s q "OGN-139" bf
   let s := ((s.rich p).control q bf).modObj bf (fun o => { o with contested := some p })
   let s := s.modObj witness (fun o => { o with mightMods := [⟨2, .combat⟩] })
-  let (ready, _) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
-  let (passed, _) ← (step 100 ready ⟨.player p, .pass⟩).toOption
-  let (first, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
-  let (picked, _) ← (step 100 first ⟨.player p, .assignPick defender⟩).toOption
-  let (second, _) ← (step 100 picked ⟨.player p, .assignDone⟩).toOption
-  let (counterPick, _) ← (step 100 second ⟨.player q, .assignPick witness⟩).toOption
-  let (conquered, events) ← (step 100 counterPick ⟨.player q, .assignDone⟩).toOption
+  let (conquered, events) ← fightOneEach s witness defender
   let item ← (conquered.zone .chain).head?
   let done := settleChain {} 16 conquered
   return events.contains (.scored p bf true) &&
@@ -899,6 +906,50 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (conquered.obj? witness).any (fun o => o.empowerCount == 0 && o.damage == 0) &&
     conquered.mightNow witness == some 4 && done.mightNow witness == some 4 &&
     (done.obj? witness).any (fun o => o.empowerCount == 1 && o.mightMods.isEmpty)
+
+-- Kog'Maw's Deathknell kills the surviving attacker before the Combat result is determined.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s p "VEN-158"
+  let (s, witness) ← putAt s p "VEN-028" bf
+  let (s, defender) ← putAt s q "OGN-190" bf
+  let s := (s.control q bf).modObj bf (fun o => { o with contested := some p })
+  let (waiting, events) ← fightOneEach s witness defender
+  let item ← (waiting.zone .chain).head?
+  let source ← waiting.obj? item
+  let done := settleChain {} 16 waiting
+  let deathknell := match source.kind with
+    | .chainAbility card 0 dead => card == cid "OGN-190" && events.contains (.died dead q)
+    | _ => false
+  return deathknell &&
+    events.all (fun e => match e with | .combatWon .. => false | _ => true) &&
+    source.owner == q && waiting.controlOf bf == some q &&
+    (waiting.obj? witness).any (fun o => o.loc == some bf && o.damage == 0) &&
+    done.controlOf bf == none && done.pointsOf p == s.pointsOf p &&
+    done.countIn p .trash "VEN-028" == s.countIn p .trash "VEN-028" + 1 && done.combat.isNone
+
+-- A combat-win ability moves the last unit away. Control is determined after it resolves.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s p "VEN-158"
+  let (s, witness) ← putAt s p "VEN-028" bf
+  let (s, defender) ← putAt s q "OGN-139" bf
+  let card ← s.cardDef? witness
+  let retreat := Ability.triggered (.onSelf .winCombat)
+    (.of [] (.prim (.move .self .base))) .unlimited
+  let card := { card with abilities := retreat :: card.abilities }
+  let s := { s with cards := { s.cards with cards := card :: s.cards.cards } }
+  let s := (s.control q bf).modObj bf (fun o => { o with contested := some p })
+  let (waiting, events) ← fightOneEach s witness defender
+  let item ← (waiting.zone .chain).head?
+  let done := settleChain {} 16 waiting
+  return events.contains (.combatWon bf p) && !events.contains (.scored p bf true) &&
+    waiting.controlOf bf == some q && (waiting.obj? item).any (fun o =>
+      o.kind == .chainAbility (cid "VEN-028") 0 witness) &&
+    done.controlOf bf == none && done.pointsOf p == s.pointsOf p &&
+    done.locate witness == some (.player p .base) && done.mightNow witness == some 4
 
 -- Threshold of the Gray goes on the Chain once. In a three-player turn order the two
 -- combatants gain Energy, even when the defender is not next in turn order.

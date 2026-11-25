@@ -199,8 +199,12 @@ inductive Frame where
   (CR 467.2.c). `acc` is the order so far; `done` is the damage assigned by the sides before,
   all dealt together when the last side has assigned (CR 467.2.c.1). -/
   | assign (bf : ObjId) (att side : PlayerId) (acc : List ObjId) (done : List (ObjId × Nat))
-  /-- Work: Combat Cleanup and control of the Battlefield (CR 468.1-468.5). -/
+  /-- Work: Combat Cleanup after damage has been dealt (CR 468.1). -/
   | combatResolve (bf : ObjId) (att : PlayerId)
+  /-- Work: determine the result after Combat Cleanup and its triggers resolve (CR 468.2-468.3). -/
+  | combatResult (bf : ObjId)
+  /-- Work: establish control after combat-result triggers resolve (CR 468.4-468.5). -/
+  | combatControl (bf : ObjId)
   /-- Work: Combat ends after the result and scoring (CR 468.7). -/
   | combatFinish (bf : ObjId)
   /-- Work: the triggered abilities that have fired go on the Chain, the turn player's first
@@ -243,6 +247,7 @@ def Frame.isPlay : Frame → Bool
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
+  | .combatResult _ | .combatControl _ => true
   | .combatFinish _ => true
   | .triggers _ => true
   | .triggerOrder .. => true
@@ -265,6 +270,7 @@ def Frame.isWork : Frame → Bool
   | .cleanup => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .combatResult _ | .combatControl _ => true
   | .combatFinish _ => true
   | .triggers _ => true
   | _ => false

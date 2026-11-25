@@ -3309,17 +3309,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s3, _) ← put s2 s.me "OGN-227" .base
   let (s4, _) ← put s2 s.you "OGN-227" .base
   let here (g : GameState) (u : ObjId) : Bool := (g.obj? u).any (fun o => o.loc == some bf)
-  let withSym := (combatResolve s3 bf s.me).1
-  let without := (combatResolve s2 bf s.me).1
-  let theirs := (combatResolve s4 bf s.me).1
+  let withSym := (combatCleanup s3 bf s.me).1
+  let without := (combatCleanup s2 bf s.me).1
+  let theirs := (combatCleanup s4 bf s.me).1
   let (u1, f2) ← putAt s s.you "OGN-136" bf
   let (u2, _) ← put u1 s.me "OGN-227" .base
-  let wiped := (combatResolve u2 bf s.me).1
+  let wiped := (combatCleanup u2 bf s.me).1
   let (h1, _) ← put s2 s.me "OGN-227" .hand
-  let inHand := (combatResolve h1 bf s.me).1
+  let inHand := (combatCleanup h1 bf s.me).1
   let (k1, k) ← putAt s s.me "OGN-136" bf
   let (k2, _) ← put k1 s.me "OGN-227" .base
-  let alone := (combatResolve k2 bf s.me).1
+  let alone := (combatCleanup k2 bf s.me).1
   return !here withSym mine && !here withSym foe &&
     (withSym.zone (.player s.you .base)).length == (s3.zone (.player s.you .base)).length + 1 &&
     !here without mine && here without foe && !here theirs mine && here theirs foe &&

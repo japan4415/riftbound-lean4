@@ -1112,23 +1112,42 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
-    have hm2 : Frame.setupHands ∈ s.startCombat bf att ++ rest := hmem
+    have hm2 : Frame.setupHands ∈ s.startCombat bf att ++ combatSteps bf ++ rest := hmem
+    rw [List.append_assoc] at hm2
     rcases List.mem_append.mp hm2 with h1 | h1
     · rcases startCombat_mem s bf att _ h1 with ⟨b, a, q, e⟩ | e | e <;> cases e
     · rw [hp]
-      exact List.mem_cons_of_mem _ h1
+      exact List.mem_cons_of_mem _ (by simpa [combatSteps] using h1)
   · rename_i bf att rest hp
     have hph0 := hinv.play (.combatResolve bf att) (by rw [hp]; exact List.mem_cons_self) rfl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hP := combatResolve_safeP s bf att
+    have hP := (combatCleanup_safe s bf att).same
     refine hinv.of_play
-      (by show (combatResolve s bf att).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
+      (by show (combatCleanup s bf att).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
+      hP.turnOrder hP.config (fun hmem => ?_)
+    have hrest : Frame.setupHands ∈ rest := by simpa using hmem
+    rw [hp]
+    exact List.mem_cons_of_mem _ hrest
+  · rename_i bf rest hp
+    have hph := hinv.play (.combatResult bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_play hph rfl rfl (fun hmem => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hmem
+  · rename_i bf rest hp
+    have hph0 := hinv.play (.combatControl bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hP := combatControl_safeP s bf
+    refine hinv.of_play
+      (by show (combatControl s bf).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
       hP.turnOrder hP.config (fun hmem => ?_)
     have hm2 : Frame.setupHands ∈
-        (combatResolve s bf att).2.1 ++ Frame.cleanup :: Frame.combatFinish bf :: rest := hmem
+        (combatControl s bf).2.1 ++ Frame.cleanup :: rest := hmem
     rcases List.mem_append.mp hm2 with h1 | h1
-    · obtain ⟨r, hr⟩ := combatResolve_frames s bf att _ h1
+    · obtain ⟨r, hr⟩ := combatControl_frames s bf _ h1
       cases hr
     · have h2 : Frame.setupHands ∈ rest := by simpa using h1
       rw [hp]

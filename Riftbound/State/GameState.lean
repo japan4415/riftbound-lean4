@@ -46,6 +46,8 @@ structure CombatParticipation where
   defender : PlayerId
   /-- Units that received a designation, including those that have since moved away. -/
   units : List ObjId
+  /-- The Combat Cleanup recalled at least one attacker, giving the Combat no result (CR 468.3.d). -/
+  recalled : Bool := false
 deriving DecidableEq, Repr
 
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/

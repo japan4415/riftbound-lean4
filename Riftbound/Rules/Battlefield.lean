@@ -289,6 +289,10 @@ def endShowdown (s : GameState) (bf : ObjId) (expire : Bool := true) :
       let s2 := if s.controlOf bf = none then s2a.addTurnFxOn r bf .openConquest else s2a
       let t := scoreBf s2 r bf true
       (t.1, t.2.1, Event.controlChanged bf (some r) :: t.2.2)
+  | [] =>
+    if (s.controlOf bf).isSome then
+      (s1.modObj bf (fun o => { o with control := none }), [], [Event.controlChanged bf none])
+    else (s1, [], [])
   | _ => (s1, [], [])
 
 /-- A winner (CR 323.1): the player who has the Victory Score and more points than every
@@ -302,17 +306,25 @@ def GameState.winner (s : GameState) : Option PlayerId :=
 
 namespace GameState
 
+/-- An ongoing Showdown or Combat keeps Control and Contested status until its resolution
+determines what happens to the Battlefield (CR 190.3.b, 190.4.b). -/
+def fightingAt (s : GameState) (bf : ObjId) : Bool :=
+  s.combat.any (·.battlefield == bf) ||
+    s.pending.any (fun | .showdown there .. => there == bf | _ => false)
+
 /-- Whether the Battlefield is controlled by a player with no Unit there (CR 323.5). -/
 def lostControl (s : GameState) (bf : ObjId) : Bool :=
-  match s.controlOf bf with
-  | some r => (s.unitsOf r bf).isEmpty
-  | none => false
+  !s.fightingAt bf &&
+    match s.controlOf bf with
+    | some r => (s.unitsOf r bf).isEmpty
+    | none => false
 
 /-- Whether the Battlefield is Contested by a player with no Unit there (CR 323.10). -/
 def staleContest (s : GameState) (bf : ObjId) : Bool :=
-  match (s.obj? bf).bind (·.contested) with
-  | some q => (s.unitsOf q bf).isEmpty
-  | none => false
+  !s.fightingAt bf &&
+    match (s.obj? bf).bind (·.contested) with
+    | some q => (s.unitsOf q bf).isEmpty
+    | none => false
 
 /-- The controller of a Unit at an uncontrolled, uncontested Battlefield: they make it Contested
 (CR 323.10.a). -/
@@ -438,7 +450,8 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
   match s.combat with
   | some c =>
     if pending.any (fun
-        | .showdown bf .. | .combatResolve bf _ | .combatFinish bf => bf == c.battlefield
+        | .showdown bf .. | .combatResolve bf _ | .combatResult bf |
+          .combatControl bf | .combatFinish bf => bf == c.battlefield
         | _ => false) then
       let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
       (some { c with units := (c.units ++ present).eraseDups }, [])
@@ -452,7 +465,11 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
       | [a, b] =>
         let contested := ((s.obj? bf).bind (·.contested)).getD focus
         let (att, def_) := if contested == b then (b, a) else (a, b)
-        (some ⟨bf, att, def_, s.unitsOf att bf ++ s.unitsOf def_ bf⟩,
+        (some
+          { battlefield := bf
+            attacker := att
+            defender := def_
+            units := s.unitsOf att bf ++ s.unitsOf def_ bf },
           [Event.combatStarted bf att])
       | _ => (none, [])
     | none => (none, [])
@@ -737,6 +754,9 @@ theorem endShowdown_safeP (s : GameState) (bf : ObjId) (expire : Bool := true) :
           (scoreBf_safeP _ _ _ _)
       · simp only [hc, ite_false]
         exact SafeP.trans_safe (h1.trans h2) (scoreBf_safeP _ _ _ _)
+  · split
+    · exact SafeP.of_safe (h1.trans (Safe.modObj _ bf (fun _ => rfl) (fun _ => rfl)))
+    · exact SafeP.of_safe h1
   · exact SafeP.of_safe h1
 
 /-- A Standard Move can only be made in the Main Phase (CR 144, 316). -/
@@ -776,6 +796,7 @@ theorem endShowdown_frames (s : GameState) (bf : ObjId) (expire : Bool := true) 
     split at hf
     · simp at hf
     · exact ⟨r, scoreBf_frames _ _ _ _ f hf⟩
+  · split at hf <;> simp at hf
   · simp at hf
 
 /-- What the `cleanup` frame does, in the cases the invariants look at. -/

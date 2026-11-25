@@ -393,8 +393,15 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (combatResolve s bf att).1 := TC.of_safeP (combatResolve_safeP s bf att)
+    have h1 : TC s (combatCleanup s bf att).1 := TC.of_safe (combatCleanup_safe s bf att)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ((TC.of_safeP (combatControl_safeP s bf)).trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩

@@ -388,11 +388,12 @@ meta def duelReady : Option (GameState × PlayerId × PlayerId × ObjId × ObjId
     | some (s5, v') =>
       let s6 := (s5.modObj v' (fun o => { o with loc := some b1, damage := 1 })).modObj u1
         (fun o => { o with damage := 1 })
-      let r := combatResolve s6 b1 q
-      (r.1.obj? u1).any (fun o => o.damage == 0 && o.loc == some b1) &&
-      (r.1.obj? v').any (fun o => o.loc == none && o.damage == 0) &&
-      (r.1.zone (.player q .base)).contains v' && r.1.controlOf b1 == some p &&
-      r.1.pointsOf p == 1 && r.2.2.contains (.recalled v')
+      let (cleaned, events) := combatCleanup s6 b1 q
+      let resolved := (combatControl cleaned b1).1
+      (resolved.obj? u1).any (fun o => o.damage == 0 && o.loc == some b1) &&
+      (resolved.obj? v').any (fun o => o.loc == none && o.damage == 0) &&
+      (resolved.zone (.player q .base)).contains v' && resolved.controlOf b1 == some p &&
+      resolved.pointsOf p == 1 && events.contains (.recalled v')
     | none => false
   | none => false
 

@@ -398,6 +398,7 @@ theorem staleContest_modObj_ne (hk : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f
   unfold GameState.staleContest
   rw [contested_modObj_ne s b f hx]
   simp only [unitsOf_modObj s b f hk hl hc]
+  rfl
 
 theorem newContest_modObj_ne (hk : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f o).loc = o.loc)
     (hc : ∀ o, (f o).controller = o.controller) (hctl : ∀ o, (f o).control = o.control)
@@ -445,6 +446,7 @@ theorem staleContest_lt {s : GameState} {b : ObjId} (hb : b ∈ s.battlefields)
     unfold GameState.lostControl
     rw [controlOf_modObj_keep s b _ hctl x]
     simp only [unitsOf_modObj s b _ hk hloc hc]
+    rfl
   have hlt : (s.modObj b (fun o => { o with contested := none })).cStale < s.cStale := by
     unfold GameState.cStale
     rw [hbf]
@@ -505,6 +507,7 @@ theorem newContest_lt {s : GameState} {b : ObjId} {q : PlayerId} (hb : b ∈ s.b
     unfold GameState.lostControl
     rw [controlOf_modObj_keep s b _ hctl x]
     simp only [unitsOf_modObj s b _ hk hloc hc]
+    rfl
   have hstale : (s.modObj b (fun o => { o with contested := some q })).cStale = s.cStale := by
     unfold GameState.cStale
     rw [hbf]
@@ -514,7 +517,7 @@ theorem newContest_lt {s : GameState} {b : ObjId} {q : PlayerId} (hb : b ∈ s.b
       subst hxb
       have h1 : s.staleContest x = false := by
         unfold GameState.staleContest
-        rw [hdn]
+        simp [hdn]
       have h2 : (s.modObj x (fun o => { o with contested := some q })).staleContest x = false := by
         unfold GameState.staleContest
         rw [GameState.obj?_modObj, if_pos rfl]

@@ -497,13 +497,26 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl (s.startCombat bf att)
+    have := hb.swap rfl (s.startCombat bf att ++ combatSteps bf)
+    simpa [List.append_assoc] using this
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (combatResolve_safeP s bf att).result (fun hb => ?_)
+    refine hinv.of_next (combatCleanup_safe s bf att).same.result (fun hb => ?_)
     rw [hp] at hb
-    have := hb.swap rfl ((combatResolve s bf att).2.1 ++ [Frame.cleanup, Frame.combatFinish bf])
+    exact hb.swap rfl [Frame.cleanup]
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (combatControl_safeP s bf).result (fun hb => ?_)
+    rw [hp] at hb
+    have := hb.swap rfl ((combatControl s bf).2.1 ++ [Frame.cleanup])
     simpa using this
   · rename_i bf rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -806,6 +819,8 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | cleanup => exact absurd hw (by simp [Frame.isWork])
   | combatDamage bf att => exact absurd hw (by simp [Frame.isWork])
   | combatResolve bf att => exact absurd hw (by simp [Frame.isWork])
+  | combatResult bf => exact absurd hw (by simp [Frame.isWork])
+  | combatControl bf => exact absurd hw (by simp [Frame.isWork])
   | combatFinish bf => exact absurd hw (by simp [Frame.isWork])
   | assign bf att side acc done =>
     left
@@ -889,6 +904,8 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | cleanup => exact absurd hc (by simp [Frame.isChance])
   | combatDamage bf att => exact absurd hc (by simp [Frame.isChance])
   | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])
+  | combatResult bf => exact absurd hc (by simp [Frame.isChance])
+  | combatControl bf => exact absurd hc (by simp [Frame.isChance])
   | combatFinish bf => exact absurd hc (by simp [Frame.isChance])
   | assign bf att side acc done => exact absurd hc (by simp [Frame.isChance])
   | showdown bf q n => exact absurd hc (by simp [Frame.isChance])
