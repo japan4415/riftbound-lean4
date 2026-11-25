@@ -72,6 +72,8 @@ inductive Amount where
   | notes (e : TurnEffect)
   /-- The Energy that was paid to play the object (0 if it was played for nothing). -/
   | energyPaid
+  /-- How many instances of Empowered the source currently has (CR 442.1.c.1). -/
+  | empowerCount
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/
@@ -269,6 +271,8 @@ inductive Condition where
   | matches (s : Selector) (f : Filter)
   /-- The unit is Empowered (CR 828). -/
   | empowered (s : Selector)
+  /-- The source was Empowered when it left the Board, for its Deathknell (CR 828). -/
+  | leftEmpowered
   /-- Legion: another card was played this turn (CR 812). -/
   | legion
   /-- An additional cost was paid when the object was played (CR 357.2). -/

@@ -212,9 +212,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | .empower, .cost cost =>
       -- Untranscribed cards may qualify the printed cost, so they are not playable from metadata.
       if c.status == .todo then [] else
-        [.activated [.pay cost] .normal
-          (.of [] (.ifThen (.not (.empowered .self)) (.prim (.empower .self)) .nop))
-          .unlimited]
+        [.empower [.pay cost] c.empowerLimit]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]))

@@ -65,6 +65,7 @@ def Amount.understood : Amount → Bool
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
+  | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
@@ -99,6 +100,7 @@ def Amount.understoodC : Amount → Bool
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
+  | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
   | .mightOf s => Selector.understood s
@@ -232,6 +234,7 @@ def Condition.understood : Condition → Bool
   | .paid => true
   | .playedAnother => true
   | .empowered s => s.understood
+  | .leftEmpowered => true
   | .canPay _ => true
   | .enemyUnitDied => true
   | .marked _ => true
@@ -480,7 +483,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .becomeMighty => true
-      | .becomeEmpowered => t.subject == .self
+      | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .chosen => true
       | .chosenAny => true
@@ -542,12 +545,18 @@ def Keyword.runs : Keyword → Bool
   | .backline => true | .ambush => true
   | _ => false
 
+/-- A card can model the printed Empower cost with an explicit activated ability (CR 827). -/
+def CardDef.hasEmpowerAbility (c : CardDef) : Bool :=
+  c.fullAbilities.any (fun a => match a with
+    | .activated _ _ { body := .ifThen _ (.prim (.empower .self)) .nop, .. } _ => a.runs
+    | _ => false)
+
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.canFlow) ||
-      (k.keyword == .empower && (match k.arg with | .cost _ => true | _ => false))) &&
+      (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
       | some e => e.choices.all Choice.simple && e.body.understood
       | none => !c.types.contains .spell)

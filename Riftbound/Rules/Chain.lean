@@ -36,6 +36,7 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .fromChampionZone :: cs => costPlan cs
   | .fromTrash :: cs => costPlan cs
   | .killFriendly _ _ :: cs => costPlan cs
+  | .disempowerSelf :: cs => costPlan cs
   | _ :: _ => none
 
 /-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
@@ -169,7 +170,8 @@ only while the guard holds. -/
 def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
   match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
   | some (.activated costs _ body _) =>
-    guardOk s p src body &&
+    (guardOk s p src body && (!costs.contains .disempowerSelf ||
+      (s.obj? src).any (fun o => 0 < o.empowerCount))) &&
       (if costs.contains .fromHand then
         -- an ability that plays the card to a Battlefield is a play: "can't play" stops it
         (s.zone (.player p .hand)).contains src &&
@@ -323,6 +325,12 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
         | _ => false
     | _, _ => false
 
+/-- Record the use and pay costs that change the source before putting the ability on the Chain. -/
+def useAtCost (s : GameState) (idx : Nat) (costs : List AbilityCost) (ts : List ObjId)
+    (o : Object) : Object :=
+  let used := (useOf idx (costExhausts costs) o).noteChose s.turn ts
+  { used with empowerCount := o.empowerCount - if costs.contains .disempowerSelf then 1 else 0 }
+
 /-- Use an activated ability (CR 361, 363): pay, exhaust the object if the cost says so, and put
 the ability on the Chain with the objects chosen. -/
 def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
@@ -332,7 +340,7 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
       (addObject ((((preCost s p costs ts (d.hasType .gear) pool).1.modObj src
-          (fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts)).setPool p pool))
+          (useAtCost s idx costs ts)).setPool p pool))
         (abilityItem d.id idx src p ts) .chain).map
         (fun r => (r.1, (preCost s p costs ts (d.hasType .gear) pool).2 ++
           [Event.activated p src idx]))
@@ -365,7 +373,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
           exact ⟨(preCost s p costs ts (d.hasType .gear) pool).1, costs, d.hasType .gear,
-            fun o => (useOf idx (costExhausts costs) o).noteChose s.turn ts,
+            useAtCost s idx costs ts,
             pool, abilityItem d.id idx src p ts, id', rfl, preCost_safe s p costs ts _ pool,
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h

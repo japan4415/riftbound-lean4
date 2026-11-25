@@ -104,6 +104,8 @@ structure Object where
   stunned : Bool := false
   /-- How many times the object is Empowered (CR 442, 828). Leaving the Board clears this. -/
   empowerCount : Nat := 0
+  /-- Whether this object was Empowered before it last left the Board (CR 828). -/
+  leftEmpowered : Bool := false
   /-- For a Legend: the XP of its player (CR 728). XP is not an object; the model keeps it with the
   player's Legend. -/
   xp : Nat := 0

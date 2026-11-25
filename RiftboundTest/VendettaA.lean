@@ -156,4 +156,44 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let v ← b.firstOf s.me .base "VEN-013"
   return a.tired u == some true && b.tired v == some false
 
+-- Kayle can resolve Empower three times. Disempower removes one instance and its third-stack
+-- keywords, and makes the activated ability available again.
+#guard vendettaCase fun s => do
+  let (s, kayle) ← put s s.me "VEN-134" .base
+  let a ← activate s s.me kayle 2 [] ⟨3, []⟩
+  let b ← activate a s.me kayle 2 [] ⟨3, []⟩
+  let c ← activate b s.me kayle 2 [] ⟨3, []⟩
+  let d := (disempowerObj c kayle).1
+  let e ← activate d s.me kayle 2 [] ⟨3, []⟩
+  return a.mightNow kayle == some 5 && b.mightNow kayle == some 7 &&
+    c.mightNow kayle == some 9 && (c.keywordsNow kayle).any (·.keyword == .ganking) &&
+    (activate c s.me kayle 2 [] ⟨3, []⟩).isNone &&
+    d.mightNow kayle == some 7 && !(d.keywordsNow kayle).any (·.keyword == .ganking) &&
+    e.mightNow kayle == some 9
+
+-- Questionable Tome Disempowers as a cost, before its draw goes on the Chain.
+#guard vendettaCase fun s => do
+  let (s, tome) ← put s s.me "VEN-054" .base
+  let empowered ← activate s s.me tome 0
+  let ready := (readyEffect empowered tome).1.rich s.me
+  let draw : Action := ⟨.player s.me, .activate tome 1 ⟨1, []⟩ []⟩
+  let (pending, _) ← (step 100 ready draw).toOption
+  let resolved := settleChain {} 12 pending
+  return !(legalActions (s.rich s.me)).contains draw &&
+    (empowered.obj? tome).any (·.empowerCount == 1) &&
+    (pending.obj? tome).any (·.empowerCount == 0) &&
+    pending.handN s.me == s.handN s.me && resolved.handN s.me == s.handN s.me + 1
+
+-- Noxian Emissary's dependent Deathknell checks Empowered immediately before the move to Trash.
+#guard vendettaCase fun s => do
+  let (s, emissary) ← put s s.me "VEN-128" .base
+  let ordinary := killObj s emissary
+  let empowered := killObj (empowerObj s.me s emissary).1 emissary
+  let a ← fire ordinary.1 ordinary.2
+  let b ← fire empowered.1 empowered.2
+  let dead ← b.firstOf s.me .trash "VEN-128"
+  return a.countNamed s.me .base "Recruit" == 0 &&
+    b.countNamed s.me .base "Recruit" == 2 &&
+    (b.obj? dead).any (fun o => o.empowerCount == 0 && o.leftEmpowered)
+
 end RiftboundTest

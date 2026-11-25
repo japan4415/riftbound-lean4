@@ -401,9 +401,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
       triggersOf s u o.controller .attachedTo
     | none => []
   | .becameMighty u => s.becameMightyTriggers u
-  | .empowered _ u =>
+  | .empowered p u =>
     match s.obj? u with
-    | some o => triggersOf s u o.controller .becomeEmpowered
+    | some o => triggersOf s u o.controller .becomeEmpowered ++ watchersOf s u p .becomeEmpowered
     | none => []
   | .buffSpent p =>
     s.inPlay.flatMap (fun u =>

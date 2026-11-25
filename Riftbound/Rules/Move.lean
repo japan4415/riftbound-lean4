@@ -94,6 +94,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  leftBoard := src.isBoard,
                  formerId := some id,
                  stunned := false, flowed := false, empowerCount := 0,
+                 leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))
               with objects := (s.objects.erase id.n).insert id'.n o',

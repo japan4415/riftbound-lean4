@@ -904,6 +904,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
+  | .empowerCount => some (((s.obj? self).map (·.empowerCount)).getD 0)
   | .notes e =>
     some (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == e &&
       f.target == some self)).length
@@ -1015,6 +1016,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .empowered sel =>
     (sel.eval s p self env).map (fun ids =>
       !ids.isEmpty && ids.all (fun id => (s.obj? id).any (·.empowerCount > 0)))
+  | .leftEmpowered => some ((s.obj? self).any (·.leftEmpowered))
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
   | .drewCards n =>

@@ -1776,6 +1776,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Lacerate、Tomb-Raider Barbara、Ambessa 2 種など、11 枚の効果を追加した。Lacerate のテストでは Disempower の後の Might で撃破を判定することを確かめた。Shadow Assassin は自分の Trash に同名カードがあるときだけ Ready で出る。
 - Vendetta の 167 枚中、58 枚が `drafted`、54 枚が `CardDef.runs` を満たす。いずれの件数も `RiftboundTest/Cards.lean` で検査する。
 
+### M8c Vendetta 5 — Empower の起動コストと Deathknell
+
+- Disempower を起動コストとして支払い、効果を Chain に置く前に状態を更新する。Kayle の重ね掛けと、死亡直前の Empowered を参照する Deathknell に対応した。
+- Questionable Tome、Kayle、Noxian Emissary など 15 枚の効果を追加した。167 枚中 73 枚が `drafted`、69 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

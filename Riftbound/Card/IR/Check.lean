@@ -71,6 +71,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
+  | .empowerCount => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
   | .sub a b => Amount.ok c a && Amount.ok c b
