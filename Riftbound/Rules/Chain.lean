@@ -332,16 +332,6 @@ def GameState.usesAbilitiesOf (s : GameState) (p : PlayerId) (src : ObjId) : Boo
   (s.zone (.player p .base)).contains src || (s.zone (.player p .legendZone)).contains src ||
     (s.zone .battlefieldZone).contains src
 
-/-- A card hidden at a Battlefield cannot be revealed by its owner `p` while a Unit of an opponent
-there has the passive ability that forbids it (CR 811). -/
-def GameState.hiddenBlocked (s : GameState) (p : PlayerId) (src : ObjId) : Bool :=
-  match (s.obj? src).bind (·.hiddenAt) with
-  | some bf =>
-    (s.zone .battlefieldZone).any (fun u =>
-      (s.obj? u).any (fun o => o.loc == some bf && o.controller != p) &&
-        (s.activeMods u).contains .noHiddenReveal)
-  | none => false
-
 /-- The cost an ability pays when it resolves ("Recycle 3 from your trash: ...") is written as the
 first part of the effect, guarded by a condition: the ability cannot be used while the condition is
 false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
@@ -379,7 +369,8 @@ def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : 
         (s.zone (.player p .hidden)).contains src &&
           (((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn)) &&
             !(s.cardDef? src).any (fun d =>
-              s.blocksPlay p src d || (d.hasType .spell && (s.cantPlay p || s.noSpells p))))
+              s.blocksPlay p src d ||
+                (d.hasType .spell && (s.cantPlay p || s.noSpells p || d.hiddenUsesCast))))
       else if costs.contains .fromTrash then
         (s.zone (.player p .trash)).contains src && !s.cantPlay p
       else if costs.contains .fromChampionZone then
@@ -1359,7 +1350,8 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   · rename_i hk
     rcases h with h | ⟨dest, ts', _, h⟩
     · exact absurd h hk
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) h (applied := pick)
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf
+        (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h (applied := pick)
       obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
       refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
       simp [hr, hr']

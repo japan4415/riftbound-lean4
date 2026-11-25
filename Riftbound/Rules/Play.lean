@@ -180,10 +180,39 @@ def removeSym (dom : Option Domain) : List PowerSym → List PowerSym
     | none => xs
     | some d => if x == .domain d then xs else x :: removeSym dom xs
 
+/-- A card hidden at a Battlefield cannot be revealed by its owner `p` while a Unit of an opponent
+there has the passive ability that forbids it (CR 811). -/
+def GameState.hiddenBlocked (s : GameState) (p : PlayerId) (src : ObjId) : Bool :=
+  match (s.obj? src).bind (·.hiddenAt) with
+  | some bf =>
+    (s.zone .battlefieldZone).any (fun u =>
+      (s.obj? u).any (fun o => o.loc == some bf && o.controller != p) &&
+        (s.activeMods u).contains .noHiddenReveal)
+  | none => false
+
+/-- Whether the card is in this player's facedown zone. -/
+def GameState.playingFromHidden (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
+  (s.zone (.player p .hidden)).contains c
+
+/-- Hidden grants permission to play the Spell from the following turn onward (CR 811.1.b).
+Any effect forbidding its reveal still applies. -/
+def GameState.hiddenSpellReady (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
+  s.playingFromHidden p c &&
+    (s.obj? c).any (fun o => o.hiddenAt.isSome && o.hiddenTurn.any (· < s.turn)) &&
+    (s.cardDef? c).any (·.hasType .spell) && !s.hiddenBlocked p c
+
+/-- Use the usual Spell play action if revealing requires a mode, movement destination or
+printed optional cost. With none of these, the existing reveal action still offers the play
+without Repeat, and the usual action offers any paid Repeats (CR 355, 811.1.b). -/
+def CardDef.hiddenUsesCast (d : CardDef) : Bool :=
+  d.additionalCost.isSome || d.discardToPlay ||
+    d.spellEffect.any (fun e => !e.modes.isEmpty || e.moveChoice.isSome)
+
 /-- A card has Reaction by printing, grant or the Quick-Draw keyword (CR 813, 819.1.b).
-Ambush and Hidden grant it only for particular plays (CR 811, 822). -/
+Hidden grants it while the Spell may be played from facedown (CR 811). -/
 def GameState.cardHasReaction (s : GameState) (c : ObjId) : Bool :=
-  s.hasKw c .reaction || s.hasKw c .quickDraw
+  s.hasKw c .reaction || s.hasKw c .quickDraw ||
+    (s.obj? c).any (fun o => s.hiddenSpellReady o.owner c)
 
 /-- Additional Power due from Reaction cards at the ongoing Showdown (CR 341, 356.3). -/
 def GameState.showdownReactionTax (s : GameState) : Nat :=
@@ -260,12 +289,13 @@ def GameState.flowCosts (s : GameState) (c : ObjId) (d : CardDef) : List Cost :=
     ((d.keywords ++ temporary).filterMap KeywordInst.flowCost?).eraseDups
   else []
 
-/-- All cards in a zone that permits a direct play (CR 420.1, 829.1). -/
+/-- All cards in a zone that permits a direct play (CR 420.1, 811.1.b, 829.1). -/
 def GameState.playSources (s : GameState) (p : PlayerId) : List ObjId :=
   let trash := s.zone (.player p .trash)
   s.zone (.player p .hand) ++
     (if !trash.isEmpty && s.hasControlledMod p .playFromTrash then trash
-    else trash.filter (fun c => (s.cardDef? c).any (fun d => !(s.flowCosts c d).isEmpty)))
+    else trash.filter (fun c => (s.cardDef? c).any (fun d => !(s.flowCosts c d).isEmpty))) ++
+    ((s.zone (.player p .hidden)).filter (s.hiddenSpellReady p))
 
 /-- Whether the direct play is from the player's Trash. -/
 def GameState.playingFromTrash (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
@@ -275,17 +305,20 @@ def GameState.playingFromTrash (s : GameState) (p : PlayerId) (c : ObjId) : Bool
 def GameState.canPlayNormally (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
   !s.playingFromTrash p c || s.hasControlledMod p .playFromTrash
 
-/-- Cost choices and the resulting costs after play-time adjustments (CR 356, 829).
+/-- Cost choices and the resulting costs after play-time adjustments (CR 356, 811.1.b, 829).
 Name the chosen Flow cost whenever there is a choice, including a regular cost from the Trash. -/
 def GameState.directOptions (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List (Option Cost × Cost) :=
-  let canPlayNormally := s.canPlayNormally p c
-  let regular := if canPlayNormally then (s.effCost p c d).toList.map (none, ·) else []
-  if s.playingFromTrash p c && !s.blocksPlay p c d then
-    regular ++ (match s.flowCosts c d with
-      | [base] => [(if canPlayNormally then some base else none, s.adjustCost p c base)]
-      | costs => costs.map (fun base => (some base, s.adjustCost p c base)))
-  else regular
+  if s.playingFromHidden p c then
+    if s.hiddenSpellReady p c && !s.blocksPlay p c d then [(none, s.adjustCost p c Cost.zero)] else []
+  else
+    let canPlayNormally := s.canPlayNormally p c
+    let regular := if canPlayNormally then (s.effCost p c d).toList.map (none, ·) else []
+    if s.playingFromTrash p c && !s.blocksPlay p c d then
+      regular ++ (match s.flowCosts c d with
+        | [base] => [(if canPlayNormally then some base else none, s.adjustCost p c base)]
+        | costs => costs.map (fun base => (some base, s.adjustCost p c base)))
+    else regular
 
 /-- The cost selected for this play, after applying the normal adjustments. -/
 def GameState.directCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
@@ -795,7 +828,7 @@ card must also be in the hand, which `Legal` states apart. It is played to the B
 Battlefield `dest` if it can be played there. -/
 def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (dest : Option ObjId := none) (ts : List ObjId := []) (pick : SpellPick := .plain) : Bool :=
-  s.phase == .main && !s.cantPlay p &&
+  s.phase == .main && !s.cantPlay p && !s.playingFromHidden p c &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && (d.hasType .unit || d.hasType .gear) &&
@@ -811,6 +844,13 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
               (pick == .plain ||
                 (s.permanentCostPicks p c d ++ s.battlefieldPicks p c d).contains pick))
     | _, _ => false
+
+/-- The ordinary permanent play action leaves facedown permanents to their reveal action. -/
+theorem playable_not_hidden {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {dest : Option ObjId} {targets : List ObjId} {pick : SpellPick}
+    (h : playable s p c pay dest targets pick = true) : s.playingFromHidden p c = false := by
+  simp only [playable, Bool.and_eq_true, Bool.not_eq_true'] at h
+  exact h.1.2
 
 /-- The Unit can be played to the Battlefield the picks name, with the payment. -/
 def bfPlayOk (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
@@ -1074,6 +1114,8 @@ structure PlayMark where
   flowed : Bool := false
   /-- The mode or destination chosen during finalization. -/
   spellPick : SpellPick := .plain
+  /-- The hiding Battlefield, which still limits the Spell's targets (CR 811.1.d). -/
+  hiddenPlayLocation : Option ObjId := none
 
 /-- The object after it is played: the objects chosen (for a Spell on the Chain), and the facts of
 the play. -/
@@ -1082,7 +1124,8 @@ def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
     { o with targets := ts, targetPlayer := m.spellPick.playerTarget,
              paid := m.paid, discardPaid := false, extraPaid := m.extraPaid,
              legion := m.legion, playedTurn := some m.turn,
-             buffed := o.buffed || m.buff, playedFromHand := m.fromHand, flowed := m.flowed, spellPick := m.spellPick }
+             buffed := o.buffed || m.buff, playedFromHand := m.fromHand, flowed := m.flowed,
+             spellPick := m.spellPick, hiddenAt := m.hiddenPlayLocation <|> o.hiddenAt }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
 
 /-- The greatest number of optional costs that this payment covers at the selected base cost. -/
@@ -1445,7 +1488,8 @@ def GameState.reactionWindow (s : GameState) : Bool :=
 /-- A Spell can be cast during Main, or as a Reaction in a closed state during another
 phase of the turn (CR 337.4, 813.1.c). -/
 def GameState.castTiming (s : GameState) (c : ObjId) : Bool :=
-  s.phase == .main || (s.phase != .setup && s.cardHasReaction c && s.reactionWindow)
+  let inShowdown := s.pending.head?.any (fun | .showdown .. => true | _ => false)
+  s.phase == .main || (s.phase != .setup && s.cardHasReaction c && (s.reactionWindow || inShowdown))
 
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers
@@ -1462,7 +1506,8 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | some cost =>
             let repeats := pick.optionalCosts.elim (s.extraPaidAt p c d cost targets pay) Prod.snd
             s.paysForXT p c d cost targets pay pick && s.spellCostsOk p c d cost targets pay pick &&
-              (!d.usesRepeatChoices || pick.hasExecutionChoices == decide (0 < repeats))
+              ((!d.usesRepeatChoices || pick.hasExecutionChoices == decide (0 < repeats)) &&
+                (!s.playingFromHidden p c || d.hiddenUsesCast || decide (0 < repeats)))
           | none => false) &&
         (s.spendFor p false pay).any (fun pool =>
           s.playPowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
@@ -1474,9 +1519,10 @@ def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     Option (GameState × List Event) :=
   match (s.poolOf p).spend pay with
   | some pool =>
+    let hiddenPlayLocation := if s.playingFromHidden p c then (s.obj? c).bind (·.hiddenAt) else none
+    let mark := { s.playMark p c pay targets true flow pick with spellPick := pick, hiddenPlayLocation }
     (moveObj s c .chain).map (fun r =>
-      (((r.1.setPool p pool).modObj r.2
-          (Object.withPlay targets { s.playMark p c pay targets true flow pick with spellPick := pick })),
+      (((r.1.setPool p pool).modObj r.2 (Object.withPlay targets mark)),
         [Event.moved c r.2 .chain]))
   | none => none
 
@@ -1491,7 +1537,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       s.paysForXT p c d cost ts pay pick = true ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨⟨hph, -⟩, hrest⟩ := h
+  obtain ⟨⟨⟨hph, -⟩, -⟩, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>
@@ -1854,14 +1900,27 @@ theorem applyCast_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   exact ⟨hs.other.config, hs.other.turnOrder, hs.other.phase, hs.other.result, hs.other.pending,
     hcd⟩
 
-/-- A direct play starts in the player's hand or Trash. -/
+/-- A direct play starts in the player's hand, Trash or facedown zone. -/
 theorem GameState.playSource_zone {s : GameState} {p : PlayerId} {c : ObjId}
-    (h : c ∈ s.playSources p) : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) := by
+    (h : c ∈ s.playSources p) : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) ∨
+      c ∈ s.zone (.player p .hidden) := by
   simp only [GameState.playSources, List.mem_append] at h
-  refine h.imp id fun ht => ?_
-  split at ht
-  · exact ht
-  · exact (List.mem_filter.mp ht).1
+  rcases h with (hh | ht) | hhidden
+  · exact .inl hh
+  · right; left
+    split at ht
+    · exact ht
+    · exact (List.mem_filter.mp ht).1
+  · exact .inr (.inr (List.mem_filter.mp hhidden).1)
+
+/-- The ordinary permanent play action starts in the player's hand or Trash. -/
+theorem GameState.permanentPlaySource_zone {s : GameState} {p : PlayerId} {c : ObjId}
+    (h : c ∈ s.playSources p) (notHidden : s.playingFromHidden p c = false) :
+    c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) := by
+  rcases GameState.playSource_zone h with hh | ht | hf
+  · exact .inl hh
+  · exact .inr ht
+  · simp [GameState.playingFromHidden, hf] at notHidden
 
 /-- A playable permanent has a normal play option for its adjusted cost (CR 420.1). -/
 theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1869,9 +1928,10 @@ theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay 
     (hc : c ∈ s.playSources p) (hp : playable s p c pay dest ts pick = true)
     (hd : s.cardDef? c = some d) (he : s.effCost p c d = some cost) :
     (none, cost) ∈ s.directOptions p c d := by
+  have notHidden := playable_not_hidden hp
   have normal : s.canPlayNormally p c = true := by
     simp only [GameState.playSources, List.mem_append] at hc
-    rcases hc with hh | ht
+    rcases hc with (hh | ht) | hhidden
     · simp [GameState.canPlayNormally, GameState.playingFromTrash, hh]
     · split at ht
       · rename_i h
@@ -1885,8 +1945,10 @@ theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay 
         by_cases hspell : d.types = [.spell]
         · simp [CardDef.hasType, hspell] at hty
         · simp [GameState.flowCosts, hspell] at hflow
-  simp only [GameState.directOptions, normal, he, ite_true, Option.toList_some, List.map_cons,
-    List.map_nil]
+    · have present := (List.mem_filter.mp hhidden).1
+      simp [GameState.playingFromHidden, present] at notHidden
+  simp only [GameState.directOptions, notHidden, Bool.false_eq_true, ↓reduceIte, normal, he,
+    Option.toList_some, List.map_cons, List.map_nil]
   split <;> simp
 
 /-- A cost returned by direct-cost lookup corresponds to an actual choice in the list. -/
@@ -1905,9 +1967,10 @@ theorem applyCast_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     ∃ r, applyCast s p c pay targets flow pick = some r := by
   obtain ⟨_, _, _, pool, _, _, _, _, _, _, _, hpool⟩ := castable_spec hp
   have hz : ∃ z, c ∈ s.zone z ∧ z ≠ .chain := by
-    rcases GameState.playSource_zone hc with hm | hm
+    rcases GameState.playSource_zone hc with hm | hm | hm
     · exact ⟨.player p .hand, hm, by simp⟩
     · exact ⟨.player p .trash, hm, by simp⟩
+    · exact ⟨.player p .hidden, hm, by simp⟩
   obtain ⟨z, hm, hn⟩ := hz
   obtain ⟨r, hr⟩ := moveObj_isSome hwf hm .chain .top (fun _ _ =>
     ⟨Zone.valid_chain _, hn⟩)
@@ -2295,12 +2358,12 @@ theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : R
     exact ⟨_, rfl⟩
   · simp only [hcast]
     rcases hp with ⟨-, h, -⟩ | h | ⟨h, -⟩
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) h
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
       obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r
       exact ⟨r', by simp [hr, hr']⟩
     · exact absurd h hcast
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) hb
+      obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
       obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r
       exact ⟨r', by simp [hr, hr']⟩
 

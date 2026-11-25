@@ -298,12 +298,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _ => none)).getD c
       let battlefield := state.bind (fun s =>
         if (s.cardDef? played).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
+      let hidden := state.any (fun s =>
+        (s.obj? played).any (fun o => o.fromHidden || s.playingFromHidden o.owner c))
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
+        (if hidden then [("hiddenPlay", "true")] else []) ++
         spellPickFields state played pick ++ spellExecutionFields state played pick ts
     | .standardMove u d =>
       [("unit", toString u.n),

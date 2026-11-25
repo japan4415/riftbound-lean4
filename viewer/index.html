@@ -557,7 +557,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
         const choices = a.repeatExecutions ? '（' + repeatChoices(a.repeatExecutions) + '）'
           : targets.length ? '（対象: ' + targets.join('、') + '）' : '';
         const react = prev === 'chainPass';
-        return [who + ': ' + cardName(a.card) + (react ? ' を Reaction でプレイ' : ' をプレイ') + more + choices,
+        const play = a.hiddenPlay ? ' を Hidden からプレイ' : react ? ' を Reaction でプレイ' : ' をプレイ';
+        return [who + ': ' + cardName(a.card) + play + more + choices,
           react ? 'Chain の項目に応答する: 上に積まれ、先に解決する' : 'コストを払って Chain に載せる'];
       }
       const placement = a.playDestination == null ? '' : ' を ' + cardName(a.playDestination) + ' に';

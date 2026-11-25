@@ -3095,6 +3095,77 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
     finalized done == finalized waiting &&
     done.locate ally == some (.player p .base) && done.countIn p .trash "OGN-168" == 1
 
+-- Hidden waives Temporal Breach's base cost only. Repeat locks both targets at the hiding
+-- Battlefield and pays the Showdown tax once, plus Deflect for the enemy target.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, vortex) ← putBf s p "VEN-160"
+  let (s, hidden) ← put s p "VEN-066" .hidden
+  let (s, ally) ← putAt s p "VEN-047" vortex
+  let (s, enemy) ← putAt s q "VEN-064" vortex
+  let (s, outside) ← put s q "VEN-014" .base
+  let s := (s.control p vortex).modObj hidden (fun o =>
+    { o with hiddenAt := some vortex, hiddenTurn := some 0 })
+  let s := ((s.fund p 2 (mind := 3)).addTurnFx p .nextSpellRepeat)
+  let normal := { s with turn := max s.turn 1 }
+  let showdown := { normal with pending := [.showdown vortex p 0, .priority p] }
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let cast (targets : List ObjId) (pay : RunePool.Payment) : Action :=
+    ⟨.player p, .playCard hidden pay targets none none pick⟩
+  let action := cast [ally, enemy] ⟨2, [.mind, .mind]⟩
+  let (waiting, events) ← (step 100 showdown action).toOption
+  let item ← (waiting.zone .chain).head?
+  let done := settleChain {} 16 waiting
+  let moved := (recallObj waiting enemy).1
+  let afterMove := settleChain {} 16 moved
+  let fresh := showdown.modObj hidden (fun o => { o with hiddenTurn := some showdown.turn })
+  let (blocked, _) ← putAt showdown q "OGN-018" vortex
+  let paidAgain := cast [enemy, enemy] ⟨2, [.mind, .mind]⟩
+  let free : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ [ally]⟩
+  return (legalActions normal).contains free &&
+    (legalActions normal).contains (cast [ally, enemy] ⟨2, [.mind]⟩) &&
+    !(legalActions showdown).contains (cast [ally, enemy] ⟨2, [.mind]⟩) &&
+    !(legalActions showdown).contains (cast [ally, outside] ⟨2, [.mind, .mind]⟩) &&
+    !(legalActions showdown).contains paidAgain &&
+    !(legalActions fresh).contains action && !(legalActions blocked).contains action &&
+    (waiting.poolOf p).total == 0 &&
+    (waiting.obj? item).any (fun o => o.fromHidden && o.hiddenAt == some vortex &&
+      o.extraPaid == 1 && o.spellPick.executions o.targets == [(.plain, [ally]), (.plain, [enemy])]) &&
+    events.contains (.played p item) &&
+    events.contains (.chosenBySpell p ally) && events.contains (.chosenBySpell p enemy) &&
+    (waiting.playsOfType .finalized .spell).countP (·.object == item) == 1 &&
+    (done.obj? ally).isNone && (done.obj? enemy).isNone &&
+    (afterMove.obj? ally).isNone && afterMove.locate enemy == some (.player q .base) &&
+    done.countIn p .trash "VEN-066" == 1
+
+-- Resonating Strike's second choice can be at another location for each paid execution.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let other ← s.battlefields.find? (· != bf)
+  let (s, hidden) ← put s p "VEN-034" .hidden
+  let (s, base) ← put s p "VEN-014" .base
+  let (s, away) ← putAt s p "VEN-047" other
+  let (s, present) ← putAt s p "VEN-047" bf
+  let s := ((s.control p bf).control p other).modObj hidden (fun o =>
+    { o with hiddenAt := some bf, hiddenTurn := some 0 })
+  let s := (s.fund p 2 (calm := 1)).addTurnFx p .nextSpellRepeat
+  let s := { s with turn := max s.turn 1, phase := .ending, pending := [.chainPass p 0] }
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 2 .plain) false 1
+  let action (targets : List ObjId) : Action :=
+    ⟨.player p, .playCard hidden ⟨2, [.calm]⟩ targets none none pick⟩
+  let (casting, events) ← (step 100 s (action [bf, base, bf, away])).toOption
+  let item ← (casting.zone .chain).head?
+  let done := settleChain {} 12 casting
+  return !(legalActions s).contains (action [bf, base, other, present]) &&
+    !(legalActions s).contains (action [bf, base, bf, present]) &&
+    (casting.obj? item).any (fun o => o.hiddenAt == some bf && o.extraPaid == 1) &&
+    events.countP (· == .chosenBySpell p bf) == 2 &&
+    (done.obj? base).any (·.loc == some bf) && (done.obj? away).any (·.loc == some bf) &&
+    done.mightNow base == (s.mightNow base).map (· + 2) &&
+    done.mightNow away == (s.mightNow away).map (· + 2)
+
 -- Sandswept Tomb removes one symbol of the caster's choice per qualifying Battlefield,
 -- regardless of who controls it or how many friendly Units the Spell chooses there.
 #guard vendettaCase fun s => do
