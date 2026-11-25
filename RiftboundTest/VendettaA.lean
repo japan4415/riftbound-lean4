@@ -17,6 +17,96 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Butcher pays two Power and Exhausts immediately. Its Energy pays for a
+-- Unit or its activation, and stays separate from other payments (CR 166, 430, 445).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, legend) ← put s p "VEN-141" .legendZone
+  let (s, unit) ← put s p "VEN-074" .hand
+  let (s, mage) ← put s p "VEN-047" .base
+  let (s, spell) ← put s p "VEN-066" .hand
+  let (s, gear) ← put s p "SFD-117" .hand
+  let (s, henge) ← put s p "SFD-117" .base
+  let (s, unforgiven) ← put s p "OGN-259" .legendZone
+  let s := s.fund p 0 (fury := 1) (calm := 1) (body := 1) (mind := 1)
+  let good : Action := ⟨.player p, .manaAbility legend 0 ⟨0, [.fury, .calm]⟩⟩
+  let one : Action := ⟨.player p, .manaAbility legend 0 ⟨0, [.fury]⟩⟩
+  let unavailable : Action := ⟨.player p, .manaAbility legend 0 ⟨0, [.chaos, .order]⟩⟩
+  let (funded, events) ← (step 100 s good).toOption
+  let unitAct : Action := ⟨.player p, .playCard unit ⟨2, []⟩ []⟩
+  let empowerment : Action := ⟨.player p, .activate mage 0 ⟨2, []⟩ []⟩
+  let rejects : List Action := [⟨.player p, .playCard spell ⟨2, [.mind]⟩ [mage]⟩,
+    ⟨.player p, .playCard gear ⟨2, [.body]⟩ []⟩,
+    ⟨.player p, .activate unforgiven 0 ⟨2, []⟩ [mage]⟩,
+    ⟨.player p, .manaAbility henge 0 ⟨1, []⟩⟩,
+    ⟨.player p, .manaAbility legend 0 ⟨0, [.body, .mind]⟩⟩]
+  let (unitPlayed, _) ← (step 100 funded unitAct).toOption
+  let (activating, _) ← (step 100 funded empowerment).toOption
+  let (endTurn, _) ← microStep0 { funded with pending := [.expireTurn] }
+  let (startMain, _) ← microStep0 { funded with pending := [.phase .main] }
+  let empowered := settleChain {} 12 activating
+  let pool := funded.poolOf p
+  return (legalActions s).contains good &&
+    [one, unavailable].all (fun a => !(legalActions s).contains a && ((step 100 s a).toOption).isNone) &&
+    funded.tired legend == some true && funded.zone .chain == s.zone .chain &&
+    funded.pending == s.pending && events.contains (.activated p legend 0 (some 0)) &&
+    pool.energy == 0 && pool.unitEnergy == 2 && pool.fury == 0 && pool.calm == 0 &&
+    pool.body == 1 && pool.mind == 1 &&
+    rejects.all (fun a => !(legalActions funded).contains a && ((step 100 funded a).toOption).isNone) &&
+    unitPlayed.countIn p .base "VEN-074" == 1 && (unitPlayed.poolOf p).unitEnergy == 0 &&
+    (activating.poolOf p).unitEnergy == 0 && (empowered.obj? mage).any (·.empowerCount == 1) &&
+    (endTurn.poolOf p).unitEnergy == 0 && (startMain.poolOf p).unitEnergy == 0 &&
+    (payByRunes funded p mage ⟨1, []⟩).isNone
+
+-- Unit-only Energy pays the Unit played during an effect's resolution.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt s p "VEN-074" field
+  let (s, legend) ← put s p "VEN-141" .legendZone
+  let (s, help) ← put s p "SFD-111" .hand
+  let (s, drake) ← put s p "OGN-131" .hand
+  let s := (s.control p field).fund p 3 (fury := 2) (body := 1)
+  let (funded, _) ← (step 100 s ⟨.player p, .manaAbility legend 0 ⟨0, [.fury, .fury]⟩⟩).toOption
+  let final ← cast funded p help ⟨2, [.body]⟩ [] { obj := (· == drake) }
+  return (final.unitsAtOf field p).any (fun id => (final.cardDef? id).any (·.id.code == "OGN-131")) &&
+    (final.poolOf p).energy == 1 && (final.poolOf p).unitEnergy == 0
+
+-- Swift Scout's Energy payment to Hide a Unit is a discretionary action.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt s p "VEN-074" field
+  let (s, _) ← put s p "OGN-263" .legendZone
+  let (s, legend) ← put s p "VEN-141" .legendZone
+  let (s, disciple) ← put s p "VEN-117" .hand
+  let s := (s.control p field).fund p 0 (calm := 2)
+  let (funded, _) ← (step 100 s ⟨.player p, .manaAbility legend 0 ⟨0, [.calm, .calm]⟩⟩).toOption
+  let hide : Action := ⟨.player p, .activate disciple 3 ⟨1, []⟩ [field]⟩
+  let parts := funded.setPool p ((funded.poolOf p).addEnergy 1)
+  let (castHide, _) ← (step 100 parts hide).toOption
+  let hiddenState := settleChain {} 10 castHide
+  return !(legalActions funded).contains hide && ((step 100 funded hide).toOption).isNone &&
+    (hiddenState.countIn p .hidden "VEN-117" == 1) && (hiddenState.poolOf p).energy == 0 &&
+    (hiddenState.poolOf p).unitEnergy == 2
+
+-- Reaction Add remains immediate when a Chain is open in the Ending Step.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, legend) ← put s q "VEN-141" .legendZone
+  let (s, spell) ← put s p "VEN-066" .hand
+  let (s, unit) ← put s p "VEN-074" .base
+  let s := (s.fund p 2 (mind := 1)).fund q 0 (fury := 2)
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨2, [.mind]⟩ [unit]⟩).toOption
+  let (passed, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let ending := { passed with phase := .ending }
+  let action : Action := ⟨.player q, .manaAbility legend 0 ⟨0, [.fury, .fury]⟩⟩
+  let (paid, _) ← (step 100 ending action).toOption
+  return (legalActions ending).contains action && paid.phase == .ending &&
+    paid.pending == ending.pending && paid.zone .chain == ending.zone .chain &&
+    paid.tired legend == some true && (paid.poolOf q).unitEnergy == 2
+
 -- Any player may pay for Dragon Roost, even when the opponent controls it (CR 355.17).
 #guard vendettaCase fun s => do
   let p := s.me

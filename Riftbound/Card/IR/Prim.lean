@@ -68,6 +68,8 @@ inductive Prim where
   | channel (p : PlayerSel) (n : Amount) (extraExhausted : Amount)
   /-- Add Energy to a Rune Pool; it can be spent on `only` if that is given. -/
   | addEnergy (p : PlayerSel) (n : Amount) (only : Option Act)
+  /-- Add Energy that pays only for Units and their activated abilities. -/
+  | addUnitEnergy (p : PlayerSel) (n : Amount)
   /-- Add Power to a Rune Pool, of a domain or of any; it can be spent on `only` if given. -/
   | addPower (p : PlayerSel) (n : Amount) (d : Option Domain) (only : Option Act)
   /-- Counter a spell. -/

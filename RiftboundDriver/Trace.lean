@@ -145,8 +145,11 @@ def actionJson (a : Action) (frame : Option Frame := none)
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
     | .assignPick u => [("unit", toString u.n)]
     | .manaAbility src idx pay =>
+      let restricted := match state.bind (fun s => s.manaOffer src idx) with
+        | some (_, _, .unitEnergy n) => [("unitEnergyAdded", toString n)]
+        | _ => []
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
-       ("power", jarr (pay.power.map (fun d => jstr (toString (repr d)))))]
+       ("power", jarr (pay.power.map (fun d => jstr (ctorName d))))] ++ restricted
     | .putTrigger i ts payment =>
       let trigger : Option PendTrigger := match frame with
         | some (.triggerOrder _ t more _) => (t :: more)[i]?
@@ -320,7 +323,8 @@ def objJson (s : GameState) (id : ObjId) : String :=
 
 /-- The Rune Pool of a player as JSON. -/
 def poolJson (p : RunePool) : String :=
-  jobj [("energy", toString p.energy), ("fury", toString p.fury), ("calm", toString p.calm),
+  jobj [("energy", toString p.energy), ("unitEnergy", toString p.unitEnergy),
+    ("fury", toString p.fury), ("calm", toString p.calm),
     ("mind", toString p.mind), ("body", toString p.body), ("chaos", toString p.chaos),
     ("order", toString p.order), ("any", toString p.any)]
 

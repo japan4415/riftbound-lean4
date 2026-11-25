@@ -4010,8 +4010,13 @@ def VEN_141.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Butcher of the Sands: the effect is not written yet. -/
-def VEN_141 : CardDef := VEN_141.meta
+/-- Butcher of the Sands pays two Power and Exhaust to add two Energy for Units
+and their activated abilities (CR 357, 430, 445). -/
+def VEN_141 : CardDef :=
+  { VEN_141.meta with
+    abilities := [.activated [.pay ⟨0, [.any, .any]⟩, .exhaustSelf] .reaction
+      (.of [] (.prim (.addUnitEnergy .you (.const 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-142
 /--

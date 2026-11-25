@@ -418,6 +418,8 @@ def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : L
 inductive ManaKind where
   /-- Energy. -/
   | energy (n : Nat)
+  /-- Energy that pays only for Units and activated abilities of Units. -/
+  | unitEnergy (n : Nat)
   /-- Power of a domain. -/
   | power (d : Domain) (n : Nat)
   /-- Power of any domain. -/
@@ -431,18 +433,20 @@ inductive ManaKind where
 deriving DecidableEq, Repr
 
 /-- The Pool after adding. -/
-def ManaKind.add : ManaKind → RunePool → RunePool
-  | .energy n, p => p.addEnergy n
-  | .power d n, p => p.addPower d n
-  | .any n, p => p.addAny n
-  | .gear n, p => p.addAny n
-  | .powerToEnergy, p => p
-  | .energyToPower, p => p
+def ManaKind.add : ManaKind → RunePool → RunePool.Payment → RunePool
+  | .energy n, p, _ => p.addEnergy n
+  | .unitEnergy n, p, _ => p.addUnitEnergy n
+  | .power d n, p, _ => p.addPower d n
+  | .any n, p, _ => p.addAny n
+  | .gear n, p, _ => p.addAny n
+  | .powerToEnergy, p, payment => p.addEnergy payment.power.length
+  | .energyToPower, p, payment => p.addAny payment.energy
 
-/-- The effect is an Add of a fixed amount, to the player, with no restriction. -/
+/-- The resource effect an Add ability resolves immediately (CR 430.2). -/
 def manaKind (body : EffectDef) : Option ManaKind :=
   match body.choices, body.body with
   | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
+  | [], .prim (.addUnitEnergy .you (.const n)) => some (.unitEnergy n)
   | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
   | [], .prim (.addPower .you (.const n) none none) => some (.any n)
   -- the Power of Fire Below the Mountain: it pays only for Gear
@@ -460,6 +464,18 @@ def manaKind (body : EffectDef) : Option ManaKind :=
       some .energyToPower
     else none
   | _, _ => none
+
+/-- Unit-only Energy pays for the Unit's activated abilities and its play. The internal Hide
+activation is a discretionary action (CR 811.1.c). -/
+def GameState.unitActivationPayment (s : GameState) (src : ObjId) (idx : Nat) : Bool :=
+  (s.cardDef? src).any (fun d =>
+    d.hasType .unit && ((s.activationList src d)[idx]?).any (fun (_, ability) =>
+      match ability with
+      | .activated costs _ body _ =>
+        !costs.contains .fromHand || (match body.body with
+          | .prim (.playTo ..) | .ifThen _ (.prim (.playTo ..)) .nop => true
+          | _ => false)
+      | _ => false))
 
 /-- The player can use the activated ability at place `idx` of the object `src`, with the payment
 and the targets, in the Main Phase (CR 361, 363, 355-357). `open_` is whether the Chain is empty:
@@ -480,7 +496,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
             else
               (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
                 pc.any (fun c => c.paidBy d.domains pay) &&
-                (s.spendFor p (d.hasType .gear) pay).any (fun pool =>
+                (s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx)).any (fun pool =>
                   (costs.contains .fromHidden && s.playPowerCut p src ts != 0) ||
                     s.deflectOk p pool ts) &&
                 (match limit with
@@ -504,7 +520,7 @@ the ability on the Chain with the objects chosen. -/
 def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) :
     Option (GameState × List Event) :=
-  match s.cardDef? src, (s.poolOf p).spend pay with
+  match s.cardDef? src, (s.poolOf p).spend pay (s.unitActivationPayment src idx) with
   | some d, some pool =>
     match (s.activationList src d)[idx]? with
     | some (grant, .activated costs _ _ _) =>
@@ -524,14 +540,15 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
       s0 = (preCost s p costs ts (d.hasType .gear) pool discards).1.noteGearAbility p d costs ∧
         Safe s s0 ∧
       (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
-      (s.poolOf p).spend pay = some pool ∧ item.kind.phys? = none ∧ item.owner = p ∧
+      (s.poolOf p).spend pay (s.unitActivationPayment src idx) = some pool ∧
+        item.kind.phys? = none ∧ item.owner = p ∧
         addObject ((s0.modObj src f).setPool p pool) item .chain = some (s', id') ∧
           ∃ ke, es = ke ++ [Event.activated p src idx (baseActivationEnergy costs)] := by
   unfold applyActivate at h
   cases hd : s.cardDef? src with
   | none => simp [hd] at h
   | some d =>
-    cases hs : (s.poolOf p).spend pay with
+    cases hs : (s.poolOf p).spend pay (s.unitActivationPayment src idx) with
     | none => simp [hd, hs] at h
     | some pool =>
       cases ha : (s.activationList src d)[idx]? with
@@ -654,7 +671,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
             · simp [hm] at h
             simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hpool := h.1.1.1.2
-            cases hsf : s.spendFor p (d.hasType .gear) pay with
+            cases hsf : s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) with
             | none => rw [hsf] at hpool; simp at hpool
             | some pool =>
               have hs := GameState.spendFor_eq_some hsf

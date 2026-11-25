@@ -158,7 +158,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .recycleTop p => PlayerSel.ok c p
   | .swapTop p => PlayerSel.ok c p
   | .channel p n e => p.ok c && Amount.ok c n && Amount.ok c e
-  | .addEnergy p n _ => p.ok c && Amount.ok c n
+  | .addEnergy p n _ | .addUnitEnergy p n => p.ok c && Amount.ok c n
   | .addPower p n _ _ => p.ok c && Amount.ok c n
   | .counter s => Selector.ok c s
   | .counterToHand s => Selector.ok c s

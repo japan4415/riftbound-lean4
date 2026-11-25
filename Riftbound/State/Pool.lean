@@ -16,8 +16,10 @@ namespace Riftbound
 
 /-- A player's Rune Pool (CR 166): Energy, and Power of each domain. -/
 structure RunePool where
-  /-- Energy. -/
+  /-- Unrestricted Energy. -/
   energy : Nat := 0
+  /-- Energy available only for Units' plays and activated abilities (CR 166, 445). -/
+  unitEnergy : Nat := 0
   /-- Fury Power. -/
   fury : Nat := 0
   /-- Calm Power. -/
@@ -68,6 +70,14 @@ def addAny (p : RunePool) (n : Nat) : RunePool := { p with any := p.any + n }
 /-- Add Energy (CR 430). -/
 def addEnergy (p : RunePool) (n : Nat) : RunePool := { p with energy := p.energy + n }
 
+/-- Add Energy that can be spent only on playing a Unit or its activated ability. -/
+def addUnitEnergy (p : RunePool) (n : Nat) : RunePool :=
+  { p with unitEnergy := p.unitEnergy + n }
+
+/-- The Energy available for a payment, given whether it can use the Unit-only Energy. -/
+def energyFor (p : RunePool) (unit : Bool) : Nat :=
+  p.energy + if unit then p.unitEnergy else 0
+
 /-- Take one Power of a domain out, if there is one: Power of that domain, or else Power of any
 domain. -/
 def takePower (p : RunePool) (d : Domain) : Option RunePool :=
@@ -87,7 +97,7 @@ def totalPower (p : RunePool) : Nat :=
   p.fury + p.calm + p.mind + p.body + p.chaos + p.order + p.any
 
 /-- Everything in the Pool: Energy and Power. -/
-def total (p : RunePool) : Nat := p.energy + p.totalPower
+def total (p : RunePool) : Nat := p.energy + p.unitEnergy + p.totalPower
 
 /-- What a payment takes out of the Pool: Energy, and one Power for each domain listed
 (CR 357.1, 445). The domains are the ones the player chose for `[A]` symbols. -/
@@ -106,16 +116,27 @@ def takePowers : RunePool → List Domain → Option RunePool
     | some p' => takePowers p' ds
     | none => none
 
-/-- Pay (CR 445): `none` when the Pool cannot cover the payment. -/
-def spend (p : RunePool) (pay : Payment) : Option RunePool :=
-  if pay.energy ≤ p.energy then
-    (takePowers { p with energy := p.energy - pay.energy } pay.power).map
+/-- Pay (CR 445). Use eligible restricted Energy before unrestricted Energy. Return `none`
+if the Pool cannot cover the payment. -/
+def spend (p : RunePool) (pay : Payment) (unit : Bool := false) : Option RunePool :=
+  if pay.energy ≤ p.energyFor unit then
+    let restricted := if unit then min p.unitEnergy pay.energy else 0
+    let reduced := { p with
+      energy := p.energy - (pay.energy - restricted)
+      unitEnergy := p.unitEnergy - restricted }
+    (takePowers reduced pay.power).map
       (fun q => { q with spent := q.spent + pay.power.length })
   else none
 
 /-- Adding Energy adds exactly that much (CR 430). -/
 theorem total_addEnergy (p : RunePool) (n : Nat) : (p.addEnergy n).total = p.total + n := by
   simp only [addEnergy, total, totalPower]
+  omega
+
+/-- Restricted Energy counts toward the Pool total (CR 166). -/
+theorem total_addUnitEnergy (p : RunePool) (n : Nat) :
+    (p.addUnitEnergy n).total = p.total + n := by
+  simp only [addUnitEnergy, total, totalPower]
   omega
 
 /-- Adding Power adds exactly that much, to that domain (CR 430). -/
@@ -175,30 +196,79 @@ theorem total_takePowers :
 /-- **Paying takes out exactly what it says** (CR 445, 357.1): the Pool loses the Energy and one
 Power for each domain listed, and nothing else. The Pool cannot go below nothing, because a payment
 it cannot cover is refused. -/
-theorem total_spend {p p' : RunePool} {pay : Payment} (h : p.spend pay = some p') :
+theorem total_spend {p p' : RunePool} {pay : Payment} {unit : Bool}
+    (h : p.spend pay unit = some p') :
     p'.total + (pay.energy + pay.power.length) = p.total := by
   unfold spend at h
   split at h
   · rename_i hle
-    cases hq : takePowers { p with energy := p.energy - pay.energy } pay.power with
+    let restricted := if unit then min p.unitEnergy pay.energy else 0
+    let reduced := { p with
+      energy := p.energy - (pay.energy - restricted)
+      unitEnergy := p.unitEnergy - restricted }
+    change ((takePowers reduced pay.power).map _) = some p' at h
+    cases hq : takePowers reduced pay.power with
     | none => simp [hq] at h
     | some q =>
       simp only [hq, Option.map_some, Option.some.injEq] at h
       have := total_takePowers pay.power hq
       subst h
-      simp only [total, totalPower] at this ⊢
-      omega
+      dsimp only [total, totalPower, reduced] at this ⊢
+      cases unit <;> simp [energyFor, restricted] at hle this <;> omega
   · exact absurd h (by simp)
 
 /-- A payment is refused when the Energy is short. -/
 theorem spend_eq_none_of_energy {p : RunePool} {pay : Payment} (h : p.energy < pay.energy) :
     p.spend pay = none := by
   have : ¬ pay.energy ≤ p.energy := by omega
-  simp [spend, this]
+  simp [spend, energyFor, this]
 
 /-- Paying nothing changes nothing. -/
-theorem spend_zero (p : RunePool) : p.spend ⟨0, []⟩ = some p := by
-  simp [spend, takePowers]
+theorem spend_zero (p : RunePool) (unit : Bool := false) : p.spend ⟨0, []⟩ unit = some p := by
+  cases unit <;> simp [spend, takePowers]
+
+/-- A successful payment covers the amount of Energy from sources eligible for it. -/
+theorem spend_energy_le {p q : RunePool} {pay : Payment} {unit : Bool}
+    (h : p.spend pay unit = some q) : pay.energy ≤ p.energyFor unit := by
+  unfold spend at h
+  split at h
+  · assumption
+  · simp at h
+
+/-- Spending Power never spends Unit-only Energy. -/
+theorem unitEnergy_takePower {p q : RunePool} {domain : Domain}
+    (h : p.takePower domain = some q) : q.unitEnergy = p.unitEnergy := by
+  unfold takePower at h
+  split at h
+  · cases domain <;> injection h with h' <;> subst q <;> rfl
+  · split at h
+    · injection h with h'
+      subst q
+      rfl
+    · cases h
+
+/-- Taking any list of Power symbols preserves Unit-only Energy. -/
+theorem unitEnergy_takePowers :
+    ∀ (domains : List Domain) {p q : RunePool}, p.takePowers domains = some q →
+      q.unitEnergy = p.unitEnergy
+  | [], _, _, h => by cases h; rfl
+  | domain :: domains, p, _, h => by
+    unfold takePowers at h
+    cases hpower : p.takePower domain with
+    | none => simp [hpower] at h
+    | some remaining =>
+      rw [hpower] at h
+      exact (unitEnergy_takePowers domains h).trans (unitEnergy_takePower hpower)
+
+/-- A payment for an ineligible action cannot lower the Unit-only balance. -/
+theorem spend_preserves_unitEnergy {p q : RunePool} {pay : Payment}
+    (h : p.spend pay = some q) : q.unitEnergy = p.unitEnergy := by
+  unfold spend at h
+  split at h
+  · obtain ⟨r, hr, hq⟩ := Option.map_eq_some_iff.mp h
+    subst q
+    simpa using unitEnergy_takePowers pay.power hr
+  · simp at h
 
 end RunePool
 

@@ -407,18 +407,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · rename_i p n tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · rename_i p n rest c hp hk
@@ -652,9 +650,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · simp only [Option.some.injEq, Prod.mk.injEq] at h

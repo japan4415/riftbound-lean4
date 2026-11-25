@@ -403,8 +403,14 @@ function describeA(a, prev) {
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
     }
-    case 'manaAbility':
+    case 'manaAbility': {
+      if (a.unitEnergyAdded != null) {
+        const cost = costText({energy: a.energy, power: a.power});
+        return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
+          'Exhaust し、Unit のプレイと起動型能力に使える Energy を ' + a.unitEnergyAdded + ' 得る'];
+      }
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];
+    }
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
@@ -607,12 +613,15 @@ function renderStatic(i, st, prev, animate) {
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
     const add = (key, label) => {
       if (key !== 'energy' && !pool[key]) return;
-      const c = document.createElement('span'); c.className = 'chip' + (key === 'energy' ? ' energy' : '');
+      const c = document.createElement('span');
+      c.className = 'chip' + (key === 'energy' || key === 'unitEnergy' ? ' energy' : '');
       c.textContent = label + ' ' + pool[key];
-      if (animate && pool[key] > old[key]) c.classList.add('pop');
+      if (key === 'unitEnergy') c.title = 'Unit のプレイと Unit の起動型能力に使える';
+      if (animate && pool[key] > (old[key] ?? 0)) c.classList.add('pop');
       box.append(c);
     };
-    add('energy', 'Energy'); for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
+    add('energy', 'Energy'); add('unitEnergy', 'Unit 用 Energy');
+    for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
     for (const [k] of PILES) {
       const e = zoneBox.get('p' + p + '.' + k), n = (st.zones['p' + p + '.' + k] || []).length;
       e.querySelector('b').textContent = n; e.classList.toggle('zero', n === 0);
@@ -802,6 +811,7 @@ function setLive(j) {
   liveLegal = j.legal.filter(({ a }) => {
     let choice;
     if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
+    else if (a.unitEnergyAdded != null) choice = [a.source, a.index, a.energy];
     else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
       a.accelerated, a.additionalCostPaid, a.discards];
     else return true;

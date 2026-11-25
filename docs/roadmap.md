@@ -2072,6 +2072,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Temporal Breach で元が Base の Elder Dragon を再プレイする場合、所有者は追加コストを見送って Base に戻すか、支払って Base または Roost に出せる。Here to Help は解決中に Unit と配置先を決める。手札から使い、支配する Roost に払ったときは Roost に出す。Hidden から使った場合は Hidden の場所の指定も加わる（CR 811.1.d.5）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
 - 167 枚中 163 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
 
+### M8c Vendetta 50 — Unit 用の Energy
+
+- Butcher of the Sands は、任意のドメインの Power 2 と自身の Exhaust を払い、Chain を使わず Unit 用 Energy 2 を加える。Reaction の Add は Ending Step の Chain でも優先権を渡さず解決する（CR 357.1, 430.2–430.3）。
+- Unit 用 Energy は Unit のプレイとその起動型能力の支払いに使う。Spell、Gear、Hide、能力の解決中に単独で要求される支払いには通常の Energy が必要になる。混在時は使える Unit 用 Energy から先に消費し、Main Phase 開始時とターン終了時に Rune Pool とともに消える（CR 166–167, 445, 811.1.c）。
+- 167 枚中 164 枚が `drafted` で `CardDef.runs` を通り、3 枚が `todo`。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

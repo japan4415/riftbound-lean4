@@ -765,7 +765,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match s.effCost p c d with
           | some cost => s.paysForXT p c d cost ts pay pick
           | none => false) &&
-        (s.spendFor p (d.hasType .gear) pay).isSome &&
+        (s.spendFor p (d.hasType .gear) pay (d.hasType .unit)).isSome &&
         (match dest with
           | none => !d.playsOnlyToBattlefield && pick == .plain
           | some b => (s.playBfPicks p c pick).contains b &&
@@ -918,7 +918,7 @@ unless it enters ready or the cost of Accelerate was paid (CR 805). -/
 def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (pick : SpellPick := .plain) :
     Option (GameState × List Event) :=
-  match s.cardDef? c, (s.poolOf p).spend pay with
+  match s.cardDef? c, (s.poolOf p).spend pay ((s.cardDef? c).any (·.hasType .unit)) with
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
       let mark := s.playMark p c pay
@@ -1271,7 +1271,7 @@ theorem playable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ (d.hasType .unit = true ∨ d.hasType .gear = true) ∧
         s.effCost p c d = some cost ∧
-      s.paysForXT p c d cost ts pay pick = true ∧ (s.poolOf p).spend pay = some pool := by
+      s.paysForXT p c d cost ts pay pick = true ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool := by
   unfold playable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨⟨hph, -⟩, hrest⟩ := h
@@ -1330,7 +1330,7 @@ theorem bfPlayOk_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
 Base. -/
 theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) :
-    ∃ d pool s2 id' m exhaust, s.cardDef? c = some d ∧ (s.poolOf p).spend pay = some pool ∧
+    ∃ d pool s2 id' m exhaust, s.cardDef? c = some d ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
       s' = (if exhaust = true
         then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
@@ -1339,13 +1339,13 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
   | some d =>
-    cases hs : (s.poolOf p).spend pay with
-    | none => simp [hd, hs] at h
+    cases hs : (s.poolOf p).spend pay (d.hasType .unit) with
+    | none => simp [hd, hs, Option.any_some] at h
     | some pool =>
-      simp only [hd, hs, Option.map_eq_some_iff] at h
+      simp only [hd, Option.any_some, hs, Option.map_eq_some_iff] at h
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
-      exact ⟨d, pool, s2, id', _, _, rfl, rfl, hm, hr.1.symm⟩
+      exact ⟨d, pool, s2, id', _, _, rfl, hs, hm, hr.1.symm⟩
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlay_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1420,7 +1420,7 @@ theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     simp only [Zone.normalize, Zone.isBoard, ite_true]
     exact ⟨Zone.valid_player hpn _, by simp⟩)
   unfold applyPlay
-  rw [hd, hpool]
+  simp only [hd, Option.any_some, hpool]
   simp only [hr, Option.map_some]
   exact ⟨_, rfl⟩
 
@@ -1428,12 +1428,12 @@ theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 Pool is what the Pool is left with after paying, and no other Pool changes. -/
 theorem applyPlay_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) :
-    ∃ pool, (s.poolOf p).spend pay = some pool ∧ s'.poolOf p = pool ∧
+    ∃ d pool, s.cardDef? c = some d ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool ∧ s'.poolOf p = pool ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
-  obtain ⟨d, pool, s2, id', m, exhaust, -, hspend, hm, rfl⟩ := applyPlay_cases h
+  obtain ⟨d, pool, s2, id', m, exhaust, hd, hspend, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have hpools : (s2.modObj id' (Object.withPlay [] m)).pools = s.pools := hs.pools
-  refine ⟨pool, hspend, ?_, fun q hq => ?_⟩
+  refine ⟨d, pool, hd, hspend, ?_, fun q hq => ?_⟩
   · split
     · exact GameState.poolOf_setPool_self (s2.modObj id' (Object.withPlay [] m)) p pool
     · exact GameState.poolOf_setPool_self (s2.modObj id' (Object.withPlay [] m)) p pool
@@ -1488,10 +1488,10 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
   | some d =>
-    cases hs : (s.poolOf p).spend pay with
-    | none => simp [hd, hs] at h
+    cases hs : (s.poolOf p).spend pay (d.hasType .unit) with
+    | none => simp [hd, hs, Option.any_some] at h
     | some pool =>
-      simp only [hd, hs, Option.map_eq_some_iff] at h
+      simp only [hd, Option.any_some, hs, Option.map_eq_some_iff] at h
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
       obtain ⟨hs', hes⟩ := hr

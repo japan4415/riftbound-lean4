@@ -81,7 +81,9 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
       (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
-  obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
+  obtain ⟨d', pool', hd', hpool', hs', hq⟩ := applyPlay_pool h
+  have same : d' = d := Option.some.inj (hd'.symm.trans hd)
+  subst d'
   rw [hpool] at hpool'
   cases hpool'
   obtain ⟨b, hb, c', hc', h2⟩ := GameState.paysForXT_total hpaid
