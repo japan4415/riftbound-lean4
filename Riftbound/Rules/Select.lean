@@ -352,9 +352,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       (fun e => e.choices.isEmpty && e.playerTarget.isNone))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
-  | .atSourceMoveBattlefield recorded =>
-    let fields := recorded.getD
-      (((s.obj? self).map (fun src => src.prevLoc.toList ++ src.loc.toList)).getD [])
+  | .atEventBattlefield recorded =>
+    let fields := (recorded <|> env.eventBattlefields).getD []
     some (((s.obj? id).bind (·.loc)).any fields.contains)
   | .atShowdown =>
     some ((s.obj? id).any (fun o => s.pending.any (fun f =>
@@ -1279,13 +1278,13 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
 
-/-- Fix a Move trigger's location requirements to the event that produced it (CR 477.3.b). -/
-def Choice.withMoveBattlefields (fields : List ObjId) : Choice → Choice
+/-- Fix a trigger's location requirements to the event that produced it (CR 477.3.b). -/
+def Choice.withEventBattlefields (fields : List ObjId) : Choice → Choice
   | .target q side place fs => .target q side place (replaceAll fs)
   | choice => choice
 where
   replace : Filter → Filter
-    | .atSourceMoveBattlefield _ => .atSourceMoveBattlefield (some fields)
+    | .atEventBattlefield _ => .atEventBattlefield (some fields)
     | .not f => .not (replace f)
     | .either a b => .either (replace a) (replace b)
     | f => f

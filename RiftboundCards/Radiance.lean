@@ -17,9 +17,14 @@ namespace RiftboundCards.Radiance
 
 open Riftbound
 
+/-- Place the whole group of Bombs at a single Battlefield picked during resolution. -/
+def playBombs (count : Nat) : Effect :=
+  .prim (.createAt "Bomb" (.const count)
+    (Selector.one .any .atBattlefield [.ofType .battlefield]) true)
+
 -- BEGIN GENERATED RAD-001
 /--
-**Amateur Demolitionist** — Unit · Chaos · Energy 2 · Might 1
+**Amateur Demolitionist** — Unit · Fury · Energy 2 · Might 1
 Printings: RAD-001/167
 
 > When you play me, play a Bomb gear token to a battlefield. (It has [Deploy]. When it dies,
@@ -29,14 +34,18 @@ def RAD_001.meta : CardDef :=
   { id := ⟨"RAD-001"⟩,
     name := "Amateur Demolitionist",
     types := [.unit],
-    domains := [.chaos],
+    tags := [⟨"Bandle City"⟩, ⟨"Yordle"⟩],
+    domains := [.fury],
     cost := some ⟨2, []⟩,
     might := some 1,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Amateur Demolitionist: the effect is not written yet. -/
-def RAD_001 : CardDef := RAD_001.meta
+/-- Amateur Demolitionist. -/
+def RAD_001 : CardDef :=
+  { RAD_001.meta with
+    abilities := [.triggered (.onSelf .play) (.of [] (playBombs 1)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-002
 /--
@@ -168,8 +177,13 @@ def RAD_007.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Rally for War: the effect is not written yet. -/
-def RAD_007 : CardDef := RAD_007.meta
+/-- Rally for War. -/
+def RAD_007 : CardDef :=
+  { RAD_007.meta with
+    spellEffect := some (.of
+      [.targetOf .one .any .atBattlefield [.ofType .battlefield, .controlledByOpponent, .unitsHere .gt 0]]
+      (.prim (.createAt "Recruit" (.const 3) (.slot 0) false))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-008
 /--
@@ -226,7 +240,7 @@ def RAD_009 : CardDef :=
       .triggered (.onSelf .play)
         (.of []
         (.prim (.create "Mech" (.const 1) .here true))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-010
 /--
@@ -357,7 +371,7 @@ def RAD_016 : CardDef := RAD_016.meta
 
 -- BEGIN GENERATED RAD-017
 /--
-**Detonation Amplifier** — Gear · Chaos · Energy 4 + Power 1
+**Detonation Amplifier** — Gear · Fury · Energy 4 + Power 1
 Printings: RAD-017/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -368,15 +382,22 @@ def RAD_017.meta : CardDef :=
   { id := ⟨"RAD-017"⟩,
     name := "Detonation Amplifier",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.chaos],
-    cost := some ⟨4, [.domain .chaos]⟩,
+    domains := [.fury],
+    cost := some ⟨4, [.domain .fury]⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Detonation Amplifier: the effect is not written yet. -/
-def RAD_017 : CardDef := RAD_017.meta
+/-- Detonation Amplifier. -/
+def RAD_017 : CardDef :=
+  { RAD_017.meta with
+    abilities := [.triggered
+      { event := .play
+        optional := true
+        cost := .killFriendly 1 (.ofList [.notSelf, .either (.ofType .unit) (.ofType .gear)]) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+      .passive .always [.triggersExtra .deathknell .here]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-018
 /--
@@ -513,19 +534,24 @@ def RAD_023.meta : CardDef :=
     name := "Ziggs",
     subtitle := some "Short-Fused",
     types := [.unit],
-    tags := [⟨"Bandle City"⟩, ⟨"Ziggs"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Ziggs"⟩, ⟨"Zaun"⟩, ⟨"Yordle"⟩],
     domains := [.fury],
     cost := some ⟨5, [.domain .fury]⟩,
     might := some 5,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ziggs, Short-Fused: the effect is not written yet. -/
-def RAD_023 : CardDef := RAD_023.meta
+/-- Ziggs, Short-Fused. -/
+def RAD_023 : CardDef :=
+  { RAD_023.meta with
+    abilities := [.triggered (.onSelf .play) (.of [] (playBombs 1)) .unlimited,
+      .passive .always [.bonusAbilityDamage .gear (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-024
 /--
-**Blossoming Dreamroot** — Gear · Chaos · Energy 2
+**Blossoming Dreamroot** — Gear · Calm · Energy 2
 Printings: RAD-024/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -535,15 +561,18 @@ def RAD_024.meta : CardDef :=
   { id := ⟨"RAD-024"⟩,
     name := "Blossoming Dreamroot",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.chaos],
+    domains := [.calm],
     cost := some ⟨2, []⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Blossoming Dreamroot: the effect is not written yet. -/
-def RAD_024 : CardDef := RAD_024.meta
+/-- Blossoming Dreamroot. -/
+def RAD_024 : CardDef :=
+  { RAD_024.meta with
+    abilities := [.triggered (.onSelf .winCombat)
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-025
 /--
@@ -1087,7 +1116,7 @@ def RAD_049 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of []
         (.prim (.create "Mech" (.const 1) .here false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-050
 /--
@@ -1150,15 +1179,20 @@ def RAD_052.meta : CardDef :=
   { id := ⟨"RAD-052"⟩,
     name := "Resource Extractor",
     types := [.gear],
-    tags := [⟨"Device"⟩],
     domains := [.mind],
     cost := some ⟨1, []⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Resource Extractor: the effect is not written yet. -/
-def RAD_052 : CardDef := RAD_052.meta
+/-- Resource Extractor. -/
+def RAD_052 : CardDef :=
+  { RAD_052.meta with
+    abilities := [.triggered
+      { event := .at_ .endOfTurn
+        condition := .matches (.locationOf .self) .controlled }
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-053
 /--
@@ -1600,18 +1634,24 @@ def RAD_072.meta : CardDef :=
   { id := ⟨"RAD-072"⟩,
     name := "Overloaded Traveler",
     types := [.unit],
+    tags := [⟨"Bandle City"⟩, ⟨"Yordle"⟩],
     domains := [.body],
     cost := some ⟨2, []⟩,
     might := some 2,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Overloaded Traveler: the effect is not written yet. -/
-def RAD_072 : CardDef := RAD_072.meta
+/-- Overloaded Traveler. -/
+def RAD_072 : CardDef :=
+  { RAD_072.meta with
+    abilities := [.passive (.and (.matches .self .onBattlefield)
+      (.exists (.all .friendly .here [.ofType .gear, .hasKeyword .deploy])))
+      [.mightPlus .self (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-073
 /--
-**Pillaged Armory** — Gear · Calm · Energy 1
+**Pillaged Armory** — Gear · Body · Energy 1
 Printings: RAD-073/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -1622,15 +1662,21 @@ def RAD_073.meta : CardDef :=
   { id := ⟨"RAD-073"⟩,
     name := "Pillaged Armory",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.calm],
+    domains := [.body],
     cost := some ⟨1, []⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Pillaged Armory: the effect is not written yet. -/
-def RAD_073 : CardDef := RAD_073.meta
+/-- Pillaged Armory. -/
+def RAD_073 : CardDef :=
+  { RAD_073.meta with
+    abilities :=
+      let buff := EffectDef.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.buff (.slot 0)))
+      [.triggered (.onSelf .play) buff .unlimited,
+       .triggered (.onSelf .conquer) buff .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-074
 /--
@@ -2116,14 +2162,18 @@ def RAD_094.meta : CardDef :=
   { id := ⟨"RAD-094"⟩,
     name := "Explosimian",
     types := [.unit],
+    tags := [⟨"Zaun"⟩],
     domains := [.chaos],
     cost := some ⟨6, []⟩,
     might := some 6,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Explosimian: the effect is not written yet. -/
-def RAD_094 : CardDef := RAD_094.meta
+/-- Explosimian. -/
+def RAD_094 : CardDef :=
+  { RAD_094.meta with
+    abilities := [.triggered (.onSelf .hold) (.of [] (playBombs 3)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-095
 /--
@@ -2167,8 +2217,14 @@ def RAD_096.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Satchel Charge: the effect is not written yet. -/
-def RAD_096 : CardDef := RAD_096.meta
+/-- Satchel Charge. -/
+def RAD_096 : CardDef :=
+  { RAD_096.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil (playBombs 1) true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-097
 /--
@@ -2381,7 +2437,7 @@ def RAD_105 : CardDef := RAD_105.meta
 
 -- BEGIN GENERATED RAD-106
 /--
-**The Good Stuff** — Gear · Body · Energy 3 + Power 1
+**The Good Stuff** — Gear · Chaos · Energy 3 + Power 1
 Printings: RAD-106/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -2392,15 +2448,19 @@ def RAD_106.meta : CardDef :=
   { id := ⟨"RAD-106"⟩,
     name := "The Good Stuff",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.body],
-    cost := some ⟨3, [.domain .body]⟩,
+    domains := [.chaos],
+    cost := some ⟨3, [.domain .chaos]⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- The Good Stuff: the effect is not written yet. -/
-def RAD_106 : CardDef := RAD_106.meta
+/-- The Good Stuff. -/
+def RAD_106 : CardDef :=
+  { RAD_106.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 3))])) .unlimited,
+      .triggered (.onSelf .hold) (.of [] (.prim (.returnToHand .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-107
 /--
@@ -2504,15 +2564,22 @@ def RAD_112.meta : CardDef :=
     name := "Ziggs",
     subtitle := some "Explosive",
     types := [.unit],
-    tags := [⟨"Bandle City"⟩, ⟨"Ziggs"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Ziggs"⟩, ⟨"Zaun"⟩, ⟨"Yordle"⟩],
     domains := [.chaos],
     cost := some ⟨4, []⟩,
     might := some 4,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ziggs, Explosive: the effect is not written yet. -/
-def RAD_112 : CardDef := RAD_112.meta
+/-- Ziggs, Explosive. -/
+def RAD_112 : CardDef :=
+  { RAD_112.meta with
+    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [] (playBombs 1)) .unlimited,
+      .triggered { event := .defend, optional := true, cost := .killFriendly 1 (.ofList [.ofType .gear]) }
+        (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-113
 /--
@@ -2593,15 +2660,20 @@ def RAD_116.meta : CardDef :=
   { id := ⟨"RAD-116"⟩,
     name := "Concert Poster",
     types := [.gear],
-    tags := [⟨"Device"⟩],
     domains := [.order],
     cost := some ⟨1, []⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Concert Poster: the effect is not written yet. -/
-def RAD_116 : CardDef := RAD_116.meta
+/-- Concert Poster. -/
+def RAD_116 : CardDef :=
+  { RAD_116.meta with
+    abilities :=
+      let recruit := EffectDef.of [] (.prim (.create "Recruit" (.const 1) .atBase false))
+      [.triggered { event := .play, optional := true, cost := .energy 1 } recruit .unlimited,
+       .triggered { event := .conquer, optional := true, cost := .energy 1 } recruit .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-117
 /--
@@ -2669,6 +2741,7 @@ def RAD_119.meta : CardDef :=
   { id := ⟨"RAD-119"⟩,
     name := "Hunting Dog",
     types := [.unit],
+    tags := [⟨"Demacia"⟩, ⟨"Dog"⟩],
     domains := [.order],
     cost := some ⟨3, []⟩,
     might := some 3,
@@ -2682,7 +2755,7 @@ def RAD_119 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-120
 /--
@@ -3165,13 +3238,17 @@ def RAD_141.meta : CardDef :=
   { id := ⟨"RAD-141"⟩,
     name := "Hexplosives Expert",
     types := [.legend],
-    tags := [⟨"Yordle"⟩, ⟨"Ziggs"⟩],
+    tags := [⟨"Ziggs"⟩],
     domains := [.fury, .chaos],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hexplosives Expert: the effect is not written yet. -/
-def RAD_141 : CardDef := RAD_141.meta
+/-- Hexplosives Expert. -/
+def RAD_141 : CardDef :=
+  { RAD_141.meta with
+    abilities := [.activated [.pay ⟨1, [.any]⟩, .exhaustSelf] .normal
+      (.of [] (playBombs 1)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-142
 /--

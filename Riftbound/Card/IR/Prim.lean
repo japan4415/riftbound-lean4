@@ -132,6 +132,8 @@ inductive Prim where
   | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
+  /-- Play all the tokens at the single selected Battlefield (CR 184.2, 355.2). -/
+  | createAt (token : String) (n : Amount) (battlefield : Selector) (ready : Bool)
   /-- Play a Unit token, choosing its location as it is played (CR 185.2.a, 355.2). -/
   | playUnitToken (token : String)
   /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
@@ -531,6 +533,8 @@ inductive StaticMod where
   | entersReady (s : Selector)
   /-- The player's spells and abilities deal more damage (Bonus Damage). -/
   | bonusDamage (a : Amount)
+  /-- The player's abilities from sources of this type deal more damage (CR 142). -/
+  | bonusAbilityDamage (sourceType : CardType) (a : Amount)
   /-- The player's triggered abilities for the event fire one more time, at the place. -/
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/

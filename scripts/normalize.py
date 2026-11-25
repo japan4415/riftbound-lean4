@@ -6,7 +6,7 @@
 - `cardId` は最初の印刷の公開コードから、通し番号の分母を除いたもの（例: OGN-029）。
 - 型は、公式ギャラリーの欄が空か食い違うとき、代替テキスト（"Riftbound Unit: ..."）で補う。
 - 装備品の `effect` 欄（付けた Unit に与える文）は、`text` と別に `effectText` として持つ。
-- supertype（Champion / Signature）は公式ギャラリーに無いので、ここでは埋めない。
+- 公式ギャラリーの欄とカード画像が異なる場合は、画像で確認できた値を補う。
 """
 from __future__ import annotations
 
@@ -55,32 +55,45 @@ TEXT_ERRATA = {
 
 # The gallery omits or mislabels these fields. Checked against its card images.
 RADIANCE_PRINT_METADATA = {
+    "RAD-001": {"domains": ["fury"], "tags": ["Bandle City", "Yordle"]},
     "RAD-002": {"tags": []},
     "RAD-003": {"domains": ["fury"], "tags": ["Bilgewater"]},
     "RAD-006": {"domains": ["fury"]},
     "RAD-008": {"tags": ["Demacia", "Yordle"]},
     "RAD-009": {"domains": ["fury"], "tags": ["Bandle City", "Yordle", "Mech"]},
+    "RAD-017": {"domains": ["fury"], "tags": []},
     "RAD-022": {"domains": ["fury"]},
+    "RAD-023": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
+    "RAD-024": {"domains": ["calm"], "tags": []},
     "RAD-026": {"domains": ["calm"], "tags": ["Freljord"]},
     "RAD-041": {"domains": ["calm"]},
     "RAD-047": {"domains": ["mind"]},
     "RAD-049": {"domains": ["mind"], "tags": ["Zaun"]},
     "RAD-050": {"tags": ["Shurima"]},
+    "RAD-052": {"tags": []},
     "RAD-054": {"tags": ["Bandle City", "Yordle"]},
     "RAD-055": {"tags": ["Piltover", "Mech"]},
     "RAD-058": {"tags": ["Bilgewater"]},
     "RAD-059": {"domains": ["mind"]},
     "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
+    "RAD-072": {"tags": ["Bandle City", "Yordle"]},
+    "RAD-073": {"domains": ["body"], "tags": []},
     "RAD-077": {"tags": ["Freljord", "Spirit"]},
     "RAD-088": {"tags": ["Freljord"]},
     "RAD-093": {"domains": ["chaos"], "tags": ["Bandle City", "Yordle"]},
+    "RAD-094": {"tags": ["Zaun"]},
     "RAD-097": {"tags": ["Bilgewater"]},
     "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
+    "RAD-106": {"domains": ["chaos"], "tags": []},
+    "RAD-112": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
+    "RAD-116": {"tags": []},
     "RAD-118": {"tags": ["Shurima"]},
+    "RAD-119": {"tags": ["Demacia", "Dog"]},
     "RAD-121": {"domains": ["order"]},
     "RAD-123": {"domains": ["order"], "tags": ["Equipment"]},
     "RAD-128": {"tags": ["Demacia"]},
     "RAD-134": {"domains": ["order"]},
+    "RAD-141": {"tags": ["Ziggs"]},
 }
 
 

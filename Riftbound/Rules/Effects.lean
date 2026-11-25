@@ -1487,7 +1487,8 @@ theorem banishReplay_safe (p : PlayerId) (s : GameState) (id : ObjId) (replay : 
 Units only to their Base (Mageseeker Warden). -/
 def playToOrBase (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  if s.oppHas p .oppsPlayToBaseOnly || s.cantActHere p .play bf then playFree p s id
+  if (s.cardDef? id).any (·.hasType .unit) &&
+      (s.oppHas p .oppsPlayToBaseOnly || s.cantActHere p .play bf) then playFree p s id
   else playFreeAt p bf s id
 
 /-- Playing a card to a Battlefield or to the Base is a safe change. -/
@@ -2490,7 +2491,8 @@ def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
       if s.damageOff then none else
       let amount ← n.evalS s p src env
       let ids ← sel.eval s p src env
-      let hits := ids.map (fun id => (id, if amount == 0 then 0 else amount + s.bonusOn p src id))
+      let hits := ids.map (fun id =>
+        (id, if amount == 0 then 0 else amount + s.bonusOn p src id env.sourceCard))
       some { controller := some (env.effectController.getD p), incoming := hits }
     | .exchangeDamage a b => do
       let x ← (← a.eval s p src env).head?
@@ -2962,6 +2964,53 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
       | onChain => simp at h
       | onChainAll => simp at h
 
+/-- A token can be played at an instructed Battlefield if it passes the placement rules. -/
+def GameState.tokenFieldAllowed (s : GameState) (p : PlayerId) (src : ObjId)
+    (card : CardDef) (field : ObjId) : Bool :=
+  card.canPlayAtBattlefield && s.playBfLocationAllowed p src card field
+
+/-- Play tokens together at the Battlefield specified by the instruction. A Unit token contests
+its destination, while a Deploy Gear token does not (CR 184.2, 190.3, 830). -/
+def applyCreateAt (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (name : String) (n : Amount) (dest : Selector) (ready : Bool) : Option (GameState × List Event) :=
+  (n.evalS s p src env).bind fun count =>
+    (s.tokenCard name).bind fun card =>
+      ((dest.eval s p src env).bind List.head?).map fun field =>
+        if s.tokenFieldAllowed p src card field then
+          let placed := createN card.id p (some field) (ready || s.tokenReady p card) count s
+          let next := if card.hasType .unit && count > 0 then contestFor p field placed else placed
+          (buffNewTokens s next p, tokenPlays s next p)
+        else (s, [])
+
+/-- Playing the selected group of tokens preserves structural and physical-card invariants. -/
+theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {name : String} {n : Amount} {dest : Selector} {ready : Bool} {r : GameState × List Event}
+    (h : applyCreateAt s p src env name n dest ready = some r) : Safe s r.1 := by
+  unfold applyCreateAt at h
+  cases hn : n.evalS s p src env with
+  | none => simp [hn] at h
+  | some count =>
+    cases hc : s.tokenCard name with
+    | none => simp [hn, hc] at h
+    | some card =>
+      cases hd : dest.eval s p src env with
+      | none => simp [hn, hc, hd] at h
+      | some fields =>
+        cases fields with
+        | nil => simp [hn, hc, hd] at h
+        | cons field fields =>
+          simp [hn, hc, hd] at h
+          split at h
+          · cases h
+            have placed := createN_safe card.id p (some field)
+              (ready || s.tokenReady p card) count s
+            change Safe s (buffNewTokens s _ p)
+            split
+            · exact placed.trans ((contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _))
+            · exact placed.trans (buffNewTokens_safe _ _ _)
+          · cases h
+            exact Safe.refl _
+
 /-- Play tokens at the Battlefield the object left by its last move, or at the Base (Lillia). -/
 def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
     (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
@@ -3259,7 +3308,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .deal sel n =>
     if s.damageOff then some (s, []) else
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel
-      (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id
+      (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id env.sourceCard else k) t id
         (some (env.effectController.getD p))))
   | .exchangeDamage a b =>
     match a.eval s p src env, b.eval s p src env with
@@ -3281,6 +3330,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .banish sel => onSelected s p src env sel (banishObj p)
   | .returnToHand sel => onSelected s p src env sel (replaceChosenHarm env (sendObj .hand))
   | .create name n place ready => applyCreate s p src env name n place ready
+  | .createAt name n dest ready => applyCreateAt s p src env name n dest ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
   | .attach gears to => applyAttach s p src env gears to
   | .copyAttachedFrom model => onSelected s p src env model (copyAttachedUnit src)
@@ -3505,6 +3555,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | banish sel => exact onSelected_safe (banishObj_safe p) h
   | returnToHand sel => exact onSelected_safe (replaceChosenHarm_safe env (sendObj_safe .hand)) h
   | create name n place ready => exact applyCreate_safe h
+  | createAt name n dest ready => exact applyCreateAt_safe h
   | playUnitTokenAt name dest =>
     cases h
     exact playUnitTokenAt_safe s p name dest
@@ -3990,6 +4041,7 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/
 def Prim.pickSel? : Prim → Option Selector
+  | .createAt _ _ dest _ => some dest
   | .detach s => some s
   | .copyAttachedFrom s => some s
   | .double s => some s
@@ -4033,6 +4085,7 @@ def Prim.pickSel? : Prim → Option Selector
 /-- The primitive with its selector replaced. -/
 def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   match p with
+  | .createAt name count _ entersReady => .createAt name count sel entersReady
   | .copyAttachedFrom _ => .copyAttachedFrom sel
   | .deal _ n => .deal sel n
   | .setBaseMight _ n => .setBaseMight sel n
@@ -4110,7 +4163,7 @@ name the location (CR 355.18). -/
 def Effect.pickTargets (e : Effect) : Bool :=
   match e with
   | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ |
-      .prim (.castInline _) => false
+      .prim (.castInline _) | .prim (.createAt ..) => false
   | _ => !e.isLinkedCost
 
 /-- A resolution pick in a private or secret zone is not a target (CR 355.10.a). -/
@@ -4583,23 +4636,30 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
 /-- Use the destination chosen when the Spell was finalized (CR 355.4, 359.3.e).
 A destination forbidden by the global movement rules requires a Recall (CR 449.2.c). -/
 def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (slot : Nat) (allowBase : Bool) (fs : FilterList) (afterMove : Effect) : Env × Effect :=
+    (slot : Nat) (allowBase : Bool) (fs : FilterList) (afterMove : Effect)
+    (afterNegatedMove : Bool) : Env × Effect :=
   let unit := Selector.slot slot
   let resume := (env, Effect.nop)
+  let negated := if afterNegatedMove then (env, afterMove) else resume
+  let thenMove (move : Effect) : Effect :=
+    if afterNegatedMove then .seqOf [move, afterMove] else .doThen move afterMove
   let effectPick := env.executionPick <|> (s.obj? src).map (·.spellPick)
   match effectPick.map SpellPick.effectChoice, env.slots[slot]? with
   | some (.destination dest), some (.obj id) =>
-    if s.blocksEnemyMove (env.effectController.getD p) id then resume
-    else match s.obj? id, dest with
-      | some o, none =>
-        if allowBase && o.loc.isSome then (env, .doThen (.prim (.move unit .base)) afterMove)
-        else resume
-      | some o, some bf =>
-        if o.loc == some bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
-            !(FilterList.holds s src env bf fs).getD false then resume
-        else if !s.effectMoveBattlefieldOk o bf then (env, .prim (.recall unit false))
-        else (env.bind pickVar (.obj bf), .doThen (.prim (.move unit (.at_ (.var pickVar)))) afterMove)
-      | none, _ => resume
+    match s.obj? id, dest with
+    | some o, none =>
+      if !allowBase then resume
+      else if o.loc.isNone || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else (env, thenMove (.prim (.move unit .base)))
+    | some o, some bf =>
+      if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
+          !(FilterList.holds s src env bf fs).getD false then resume
+      else if o.loc == some bf || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else if !s.effectMoveBattlefieldOk o bf then
+        let recallEffect : Effect := .prim (.recall unit false)
+        (env, if afterNegatedMove then .seqOf [recallEffect, afterMove] else recallEffect)
+      else (env.bind pickVar (.obj bf), thenMove (.prim (.move unit (.at_ (.var pickVar)))))
+    | none, _ => resume
   | _, _ => resume
 
 /-- Recycle the remaining looked-at cards. Put a random ordering decision before the rest
@@ -4652,6 +4712,10 @@ legal finalization (CR 355.16, 355.17). -/
 def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (e : Effect) (funding : EffectAddPolicy) : Option (List ObjId) :=
   match e with
+  | .prim (.createAt name _ (.pick .one side place fs) _) => do
+    let some token := s.tokenCard name | return []
+    let candidates ← s.pickCandidates p src env side place fs false
+    return candidates.filter (s.tokenFieldAllowed p src token)
   | .prim (.castInline sel) =>
     let candidates := match sel with
       | .pick .one side place fs => s.pickCandidates p src env side place fs false
@@ -4902,8 +4966,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
       { o with targets, spellPick := newPick, targetPlayer := pick.playerTarget }
     (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
-  | .moveChoosing unit home fs afterMove =>
-    let chosen := chosenMove s p src env unit home fs afterMove
+  | .moveChoosing unit home fs afterMove afterNegatedMove =>
+    let chosen := chosenMove s p src env unit home fs afterMove afterNegatedMove
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
@@ -5201,8 +5265,8 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
         | some grant => s.grantedActivation grant
         | none => abilityAt s card idx)
     let definition := (ability.bind Ability.effectDef).bind (·.forPick o.spellPick)
-    let definition := o.moveBattlefields.elim definition (fun fields =>
-      definition.map (fun e => { e with choices := e.choices.map (Choice.withMoveBattlefields fields) }))
+    let definition := o.eventBattlefields.elim definition (fun fields =>
+      definition.map (fun e => { e with choices := e.choices.map (Choice.withEventBattlefields fields) }))
     let recheck := o.spellPick != .plain || definition.any (fun e =>
       e.recheckTargets || (!e.choices.isEmpty && e.choices.all (fun
         | .target .one .. | .target (.upTo 1) .. => true
@@ -5231,6 +5295,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       hiddenPlayLocation
       sourceCard := some ((o.activationGrant.filter (·.copyStamp.isSome)).map (·.card) |>.getD card)
       abilityCopyStamp := o.abilityCopyStamp
+      eventBattlefields := o.eventBattlefields
       eventAmount := o.eventAmount }
     let body := match definition with
       | some e => e.recheckTargetGroup s o.controller src o.targets (.cons e.body .nil)

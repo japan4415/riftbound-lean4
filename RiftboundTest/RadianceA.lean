@@ -381,4 +381,293 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   return attack.trigPicks == [target] && !attack.trigPicks.contains away &&
     (done.obj? siren).any (·.loc == some field) && done.mightNow target == some 9
 
+/-- Bomb Gear tokens controlled by the player at the given Battlefield. -/
+private meta def bombsAt (s : GameState) (p : PlayerId) (field : ObjId) : List ObjId :=
+  (s.zone .battlefieldZone).filter (fun id =>
+    (s.obj? id).any (fun o =>
+      o.kind == .token ⟨"RAD-T02"⟩ && o.controller == p && o.loc == some field))
+
+-- Amateur Demolitionist plays a ready Bomb at a Battlefield picked during resolution.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, demolitionist) ← put s p "RAD-001" .hand
+  let (s, _) ← putAt s q "VEN-071" field
+  let (s, rockfall) ← putBf s p "SFD-216"
+  let before := s.control q field
+  let placed ← play before p demolitionist [] { obj := (· == field) }
+  let atRockfall ← play before p demolitionist [] { obj := (· == rockfall) }
+  let bomb ← (bombsAt placed p field).head?
+  return (bombsAt placed p field).length == 1 && (bombsAt placed p away).isEmpty &&
+    (bombsAt atRockfall p rockfall).length == 1 && placed.tired bomb == some false &&
+    (placed.obj? field).any (fun o => o.contested.isNone && o.control == some q)
+
+-- A Bomb's death uses its old Battlefield after it disappears, and chains only to your Bombs there.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, enemy) ← putAt s q "VEN-091" field
+  let (s, distant) ← putAt s q "VEN-091" away
+  let s := (s.control q field).control q away
+  let s := createN ⟨"RAD-T02"⟩ p (some field) true 2 s
+  let s := createOne ⟨"RAD-T02"⟩ p (some away) true s
+  let s := createOne ⟨"RAD-T02"⟩ q (some field) true s
+  let bomb ← (bombsAt s p field).head?
+  let (dead, events) := killObj s bomb
+  let pending := insertTriggers (dead.detect events) [.cleanup, .priority p]
+  let (waiting, _) ← (advance 100 { dead with pending } []).toOption
+  let done := settleChain { pick := (· == [enemy]) } 16 waiting
+  return waiting.trigPicks == [enemy] && !waiting.trigPicks.contains distant &&
+    (done.obj? enemy).any (·.damage == 4) && (done.obj? distant).any (·.damage == 0) &&
+    (bombsAt done p field).isEmpty && (bombsAt done p away).length == 1 &&
+    (bombsAt done q field).length == 1 && done.offBoardToken.isNone
+
+-- Rally for War chooses an occupied enemy Battlefield and contests it with three exhausted Recruits.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let empty ← s.battlefields.find? (· != field)
+  let (s, rally) ← put s p "RAD-007" .hand
+  let (s, _) ← putAt s q "VEN-091" field
+  let (s, rockfall) ← putBf s q "SFD-216"
+  let (s, _) ← putAt s q "VEN-091" rockfall
+  let s := ((s.control q field).control q empty).control q rockfall
+  let done ← play s p rally [field]
+  let blocked ← play s p rally [rockfall]
+  let recruits := (done.unitsAtOf field p).filter (fun id =>
+    (done.obj? id).any (fun o => o.kind == .token ⟨"VEN-T04"⟩))
+  return (play s p rally [empty]).isNone && (play (s.control p field) p rally [field]).isNone &&
+    recruits.length == 3 && recruits.all (fun id => done.tired id == some true) &&
+    (blocked.unitsAtOf rockfall p).isEmpty &&
+    (done.obj? field).any (·.contested == some p)
+
+-- Both Mech makers play their tokens at the same Battlefield. Only the Apparatus readies both.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, anchor) ← putAt s p "VEN-071" field
+  let (s, apparatus) ← put s p "RAD-009" .hand
+  let (s, smith) ← put s p "RAD-049" .hand
+  let s := s.control p field
+  let ready ← play s p apparatus [field]
+  let exhausted ← play s p smith [field]
+  let others (t : GameState) := (t.unitsAtOf field p).erase anchor
+  return (others ready).length == 2 && (others exhausted).length == 2 &&
+    (others ready).all (fun id => ready.tired id == some false) &&
+    (others exhausted).all (fun id => exhausted.tired id == some true) &&
+    (others ready).any (fun id => (ready.obj? id).any (·.kind == .token (tokenId "Mech"))) &&
+    (others exhausted).any (fun id =>
+      (exhausted.obj? id).any (·.kind == .token (tokenId "Mech")) &&
+        exhausted.mightNow id == some 3)
+
+-- Short-Fused adds Bonus Damage to an allied Gear's ability even after the Bomb disappears.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, ziggs) ← put s p "RAD-023" .hand
+  let (s, curse) ← put s p "VEN-010" .hand
+  let (s, enemy) ← putAt s q "VEN-091" field
+  let s := s.control q field
+  let placed ← play s p ziggs [] { obj := (· == field) }
+  let bomb ← (bombsAt placed p field).head?
+  let (dead, events) := killObj placed bomb
+  let exploded ← fire { dead with pending := [.cleanup, .priority p] } events
+    { pick := (· == [enemy]) }
+  let cursed ← play { exploded with pending := [.priority p] } p curse [enemy]
+  return (exploded.obj? enemy).any (·.damage == 3) &&
+    (cursed.obj? enemy).any (·.damage == 5) && exploded.offBoardToken.isNone
+
+-- Dreamroot draws for a combat its controller wins at this Battlefield.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, card) ← put s p "RAD-024" .hand
+  let (s, _) ← putAt s p "VEN-071" field
+  let deployed ← play (s.control p field) p card [field]
+  let home ← fire deployed [.combatWon field p]
+  let awayWin ← fire deployed [.combatWon away p]
+  let lost ← fire deployed [.combatWon field q]
+  return home.handN p == deployed.handN p + 1 &&
+    awayWin.handN p == deployed.handN p && lost.handN p == deployed.handN p
+
+-- Resource Extractor plays exhausted Gold only at its controller's Ending Phase and with control.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, card) ← put s p "RAD-052" .hand
+  let (s, _) ← putAt s p "VEN-071" field
+  let settled ← play (s.control p field) p card [field]
+  let mine ← fire settled [.phaseStarted p .ending]
+  let theirs ← fire settled [.phaseStarted q .ending]
+  let uncontrolled ← fire (settled.control q field) [.phaseStarted p .ending]
+  let gold ← (mine.zone (.player p .base)).find? (fun id => (mine.cardDef? id).any (·.name == "Gold"))
+  return mine.countNamed p .base "Gold" == 1 && mine.tired gold == some true &&
+    theirs.countNamed p .base "Gold" == 0 && uncontrolled.countNamed p .base "Gold" == 0
+
+-- Traveler checks the location, controller and Deploy keyword of the Gear.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, traveler) ← putAt s p "RAD-072" field
+  let (s, _) ← putAt s p "SFD-117" field
+  let (s, _) ← putAt s q "RAD-002" field
+  let (s, gear) ← putAt s p "RAD-002" away
+  let nearby := (sendToBf field s gear).1
+  let home := (moveHome nearby traveler).1
+  return s.mightNow traveler == some 2 && nearby.mightNow traveler == some 3 &&
+    home.mightNow traveler == some 2
+
+-- Pillaged Armory can Buff on play and on a Conquer at its own Battlefield, even for an ally in Base.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, armory) ← put s p "RAD-073" .hand
+  let (s, _) ← putAt s p "VEN-071" field
+  let (s, first) ← put s p "VEN-071" .base
+  let (s, second) ← put s p "VEN-071" .base
+  let made ← play (s.control p field) p armory [field] { pick := (· == [first]) }
+  let conquered ← fire made [.scored p field true] { pick := (· == [second]) }
+  let distant ← fire made [.scored p away true] { pick := (· == [second]) }
+  return (made.obj? first).any (·.buffed) && (conquered.obj? second).any (·.buffed) &&
+    (distant.obj? second).any (fun o => !o.buffed)
+
+-- Explosimian plays three Bombs together at a single Battlefield after Hold.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, _) ← putAt s p "RAD-094" field
+  let s := s.control p field
+  let held ← fire s [.scored p field false] { obj := (· == away) }
+  let conquered ← fire s [.scored p field true] { obj := (· == away) }
+  return (bombsAt held p field).isEmpty && (bombsAt held p away).length == 3 &&
+    (bombsAt conquered p away).isEmpty
+
+-- Satchel Charge moves the friendly target to its finalized destination and picks a Bomb location later.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, card) ← put s p "RAD-096" .hand
+  let (s, anchor) ← putAt s p "VEN-071" field
+  let (s, unit) ← put s p "VEN-071" .base
+  let s := (s.control p field).fund p 3 (chaos := 1)
+  let (onChain, _) ← (step 100 s
+    ⟨.player p, .playCard card ⟨3, [.chaos]⟩ [unit] none none (.destination (some field))⟩).toOption
+  let says : Says := { obj := (· == away) }
+  let done := settleChain says 12 onChain
+  let negated := settleChain says 12 (sendToBf field onChain unit).1
+  let ignored := settleChain says 12 (sendObj .trash onChain unit).1
+  return (done.unitsAtOf field p).contains unit && (done.unitsAtOf field p).contains anchor &&
+    (bombsAt done p field).isEmpty && (bombsAt done p away).length == 1 &&
+    (bombsAt negated p away).length == 1 && (bombsAt ignored p away).isEmpty
+
+-- The Good Stuff discards, draws, and returns to hand on a friendly Hold at that Battlefield.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, card) ← put s p "RAD-106" .hand
+  let (s, _) ← putAt s p "VEN-071" field
+  let made ← play (s.control p field) p card [field]
+  let held ← fire made [.scored p field false]
+  let lost ← fire made [.scored q field false]
+  return made.handN p == s.handN p + 1 && held.countIn p .hand "RAD-106" == 1 &&
+    lost.countIn p .trash "RAD-106" == 1
+
+-- Explosive separately pays for Bomb creation and can sacrifice a friendly Gear when defending.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, ziggs) ← putAt s p "RAD-112" field
+  let (s, _) ← putAt s q "VEN-091" field
+  let (s, gear) ← put s p "SFD-117" .base
+  let s := s.control p field
+  let placed ← activate s p ziggs 0 [] ⟨1, []⟩ { obj := (· == field) }
+  let defense := s.inShowdownAt field q
+  let stronger ← fire defense [.combatStarted field q]
+  let declined ← fire defense [.combatStarted field q] { yes := false }
+  return (activate s p ziggs 0).isNone &&
+    (bombsAt placed p field).length == 1 && placed.tired ziggs == some true &&
+    (activate placed p ziggs 0 [] ⟨1, []⟩).isNone &&
+    stronger.mightNow ziggs == some 6 && stronger.countIn p .trash "SFD-117" == 1 &&
+    declined.inPlay.contains gear && declined.mightNow ziggs == some 4
+
+-- Hexplosives Expert spends one Energy, Power of any domain and its own Exhaust to play a Bomb.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, legend) ← put s p "RAD-141" .legendZone
+  let (s, _) ← putAt s s.you "VEN-071" field
+  let s := s.control s.you field
+  let paid ← activate s p legend 0 [] ⟨1, [.mind]⟩ { obj := (· == field) }
+  return (activate s p legend 0 [] ⟨1, []⟩).isNone &&
+    (activate s p legend 0 [] ⟨0, [.mind]⟩).isNone &&
+    paid.tired legend == some true && (bombsAt paid p field).length == 1
+
+-- Amplifier can sacrifice a friendly Bomb to draw and doubles its Deathknell only at this Battlefield.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, card) ← put s p "RAD-017" .hand
+  let (s, enemy) ← putAt s q "VEN-091" field
+  let (s, distant) ← putAt s q "VEN-091" away
+  let s := (s.control q field).control q away
+  let s := createOne ⟨"RAD-T02"⟩ p (some field) true s
+  let skipped ← play s p card [field] { yes := false }
+  let paid ← play s p card [field] { pick := (· == [enemy]) }
+  let separate := createOne ⟨"RAD-T02"⟩ p (some away) true paid
+  let awayBomb ← (bombsAt separate p away).head?
+  let (dead, events) := killObj separate awayBomb
+  let awayResult ← fire { dead with pending := [.cleanup, .priority p] } events
+    { pick := (· == [distant]) }
+  return skipped.handN p + 1 == s.handN p && (bombsAt skipped p field).length == 1 &&
+    paid.handN p == s.handN p && (bombsAt paid p field).isEmpty &&
+    (paid.obj? enemy).any (·.damage == 4) && (awayResult.obj? distant).any (·.damage == 2)
+
+-- The Poster offers an Energy payment on play and on Conquer at its location.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let away ← s.battlefields.find? (· != field)
+  let (s, poster) ← put s p "RAD-116" .hand
+  let (s, _) ← putAt s p "VEN-071" field
+  let s := s.control p field
+  let recruitIds (t : GameState) := (t.zone (.player p .base)).filter (fun id =>
+    (t.obj? id).any (·.kind == .token ⟨"VEN-T04"⟩))
+  let paid ← cast (s.fund p 2) p poster ⟨1, []⟩ [field]
+  let declined ← cast (s.fund p 2) p poster ⟨1, []⟩ [field] { yes := false }
+  let broke ← cast (s.fund p 1) p poster ⟨1, []⟩ [field]
+  let conquered ← fire (paid.fund p 1) [.scored p field true]
+  let distant ← fire (paid.fund p 1) [.scored p away true]
+  return (recruitIds paid).length == 1 && (recruitIds declined).isEmpty &&
+    (recruitIds broke).isEmpty && (recruitIds conquered).length == 2 &&
+    (recruitIds distant).length == 1 && (conquered.poolOf p).energy == 0 &&
+    (recruitIds conquered).all (fun id => conquered.tired id == some true)
+
+-- Hunting Dog plays the printed Bird token in Base, exhausted with Might 1 and Deflect.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, dog) ← put s p "RAD-119" .base
+  let (dead, events) := killObj s dog
+  let done ← fire dead events
+  let bird ← done.firstOf p .base "UNL-T02"
+  return done.mightNow bird == some 1 && done.tired bird == some true &&
+    done.deflectOf bird == 1 && (done.obj? bird).any (·.kind == .token ⟨"UNL-T02"⟩)
+
 end RiftboundTest

@@ -178,6 +178,7 @@ inductive Effect where
   /-- Move the Unit in the given slot to the location chosen during finalization (CR 355.4).
   If the move happens, run the follow-up with a chosen Battlefield available as the latest pick. -/
   | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)
+      (afterNegatedMove : Bool := false)
   /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
   | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
       (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)

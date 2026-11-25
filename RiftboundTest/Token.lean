@@ -50,8 +50,10 @@ meta def tokensOn (s : GameState) (z : Zone) : List ObjId :=
     | .token _ => true | _ => false))
 
 -- the tokens are in the database, and have a Might and the keywords they print
-#guard (RiftboundCards.Tokens.cards.length == 5) &&
+#guard (RiftboundCards.Tokens.cards.length == 6) &&
   (RiftboundCards.db.find? (tokenId "Sprite")).any (·.hasKeyword .temporary) &&
+  (RiftboundCards.db.find? ⟨"RAD-T02"⟩).any (fun d =>
+    d.hasType .gear && d.hasKeyword .deploy && d.hasKeyword .deathknell) &&
   decide RiftboundCards.db.WF
 
 -- the tokens the data prints are found by name (CR 179): Recruit, Bird, Gold; the others by the

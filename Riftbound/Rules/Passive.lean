@@ -164,10 +164,13 @@ def victoryScore (s : GameState) : Nat :=
 /-- The Bonus Damage the passive abilities of the player give to each instance of damage of their
 spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
 is attached to (Rabadon's Deathcrown). -/
-def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
+def passiveBonus (s : GameState) (p : PlayerId) (source : Option CardDef := none) : Nat :=
   let amount (src : ObjId) (m : StaticMod) : Option Nat :=
     match m with
     | .bonusDamage a => a.evalS0 s p src {}
+    | .bonusAbilityDamage type a =>
+      if source.any (fun d => d.hasType type && !d.hasType .spell) then a.evalS0 s p src {}
+      else none
     | _ => none
   (s.passiveSources.flatMap (fun g =>
     if (s.obj? g).any (·.controller == p) then (s.activeMods g).filterMap (amount g)
@@ -189,8 +192,10 @@ def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
 /-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
 deals to the object `id`: that of the effect of the turn for the next spell, and that of the
 Battlefield the object is at (CR 142). -/
-def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
-  s.spellBonus p src + s.passiveBonus p +
+def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId)
+    (originalCard : Option CardId := none) : Nat :=
+  let definition := s.cardDef? src <|> originalCard.bind s.cards.find?
+  s.spellBonus p src + s.passiveBonus p definition +
     (match (s.obj? id).bind (·.loc) with
       | some bf =>
         (s.activeMods bf).foldl

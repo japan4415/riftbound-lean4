@@ -597,7 +597,7 @@ def VEN_021 : CardDef :=
   { VEN_021.meta with
     abilities := [.passive (.empowered .self) [.mightPlus .self (.const 1)],
       .triggered (.onSelf .move)
-        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atSourceMoveBattlefield]]
+        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atEventBattlefield]]
           (.ifThen (.empowered .self)
             (.prim (.deal (.slot 0) (.const 2))) (.prim (.deal (.slot 0) (.const 1))))) .unlimited],
     status := .full }

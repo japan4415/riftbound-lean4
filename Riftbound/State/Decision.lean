@@ -164,8 +164,8 @@ structure PendTrigger where
   eventAmount : Option Nat := none
   /-- A keyword trigger assembled from the source's effective keywords. -/
   triggerKeyword : Option Keyword := none
-  /-- The Battlefields the source moved from or to when this ability triggered (CR 477.3.b). -/
-  moveBattlefields : Option (List ObjId) := none
+  /-- The Battlefields recorded by the triggering event (CR 477.3.b). -/
+  eventBattlefields : Option (List ObjId) := none
 deriving DecidableEq, Repr
 
 /-- A trigger's declared finalization choices and its tentative resource activations. -/

@@ -8,7 +8,7 @@
 - 生成ブロックだけを書き換える。手書きの部分、ファイルの先頭（ヘッダ）は触れない。
 - 新しいカードには、生成ブロックと手書きの雛形を足す。
 - 弾ごとのカード一覧（`cards`）と RiftboundCards/Registry.lean も生成する。
-- 公式ギャラリーに無い supertype は空のまま。2 つのドメインを持つカードの Power の
+- 公式ギャラリーの画像から確認した supertype を反映する。2 つのドメインを持つカードの Power の
   ドメインの割り当ては分からないので、任意のドメイン（`.any`）にして、印を付ける。
 """
 from __future__ import annotations
@@ -162,6 +162,8 @@ def card_block(c: dict) -> str:
     if c["subtitle"]:
         fields.append(f"subtitle := some {lean_str(c['subtitle'])}")
     fields.append(f"types := [{', '.join('.' + t for t in types)}]")
+    if c.get("supertypes"):
+        fields.append(f"supertypes := [{', '.join('.' + s for s in c['supertypes'])}]")
     if c["tags"]:
         fields.append("tags := [" + ", ".join(f"⟨{lean_str(t)}⟩" for t in c["tags"]) + "]")
     if doms:

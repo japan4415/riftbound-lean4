@@ -227,10 +227,16 @@ def GameState.fxTriggers (s : GameState) (tm : Timing) : List PendTrigger :=
       | _, _ => none)
   else []
 
-/-- A passive ability of an object the player controls makes Deathknell trigger an additional time. -/
-def GameState.dieExtra (s : GameState) (p : PlayerId) : Bool :=
-  s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller == p) &&
-    (s.activeMods g).any (fun m => match m with | .triggersExtra .die _ => true | _ => false))
+/-- Each matching passive ability adds one instance of the player's Deathknell abilities. -/
+def GameState.deathknellExtras (s : GameState) (p : PlayerId) (dead : ObjId) : Nat :=
+  let field := (s.obj? dead).bind (·.loc)
+  (s.passiveSources.map (fun source =>
+    if (s.obj? source).any (·.controller == p) then
+      (s.activeMods source).countP (fun
+        | .triggersExtra .die .anywhere => true
+        | .triggersExtra .deathknell .here => field.isSome && s.hereOf source == field
+        | _ => false)
+    else 0)).sum
 
 /-- A unit of the player at the Battlefield has a passive ability that makes their conquer (or hold)
 effects there fire one more time (Red Brambleback, Blue Sentinel). -/
@@ -394,19 +400,23 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
     let own := triggersOfMatching s obj p (fun ev => ev == .die || ev == .deathknell) lastCopy
+    let extras := s.deathknellExtras p obj
     let again :=
-      if s.dieExtra p then
+      if extras > 0 then
         let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? obj
         let deathknell := definition.any (·.hasKeyword .deathknell) ||
           (s.attachmentTextDefs obj true).any (·.1.hasKeyword .deathknell)
-        if deathknell then own else triggersOfMatching s obj p (· == .deathknell) lastCopy
+        let matching := if deathknell then own else triggersOfMatching s obj p (· == .deathknell) lastCopy
+        (List.replicate extras matching).flatten
       else []
-    own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
+    let fields := (s.obj? obj).map (fun o => o.loc.toList)
+    (own ++ again).map (fun t => { t with eventBattlefields := fields }) ++
+      watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with
     | some o =>
       let fields := some (o.prevLoc.toList ++ o.loc.toList)
-      (triggersOf s u o.controller .move).map (fun t => { t with moveBattlefields := fields }) ++
+      (triggersOf s u o.controller .move).map (fun t => { t with eventBattlefields := fields }) ++
         watchersOf s u o.controller .move
     | none => []
   | .phaseStarted p ph =>
@@ -766,7 +776,7 @@ def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
 def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
   let effect := (triggerAbility s t).bind Ability.effectDef
   let choices := ((effect.bind (·.forPick (mode.elim .plain SpellPick.mode))).map (·.choices)).getD []
-  t.moveBattlefields.elim choices (fun fields => choices.map (Choice.withMoveBattlefields fields))
+  t.eventBattlefields.elim choices (fun fields => choices.map (Choice.withEventBattlefields fields))
 
 /-- The trigger declaration on the queued ability, even if its source left the Board. -/
 def trigDeclaration (s : GameState) (t : PendTrigger) : Option Trigger :=
@@ -961,7 +971,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       spellPick := mode.elim .plain SpellPick.mode
       triggerSubject := t.subject
       triggerKeyword := t.triggerKeyword
-      moveBattlefields := t.moveBattlefields
+      eventBattlefields := t.eventBattlefields
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }
   match addObject s1 item .chain with

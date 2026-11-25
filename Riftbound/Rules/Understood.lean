@@ -203,7 +203,7 @@ def Filter.understood : Filter → Bool
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
   | .onBattlefield => true
-  | .atSourceMoveBattlefield _ => true
+  | .atEventBattlefield _ => true
   | .atShowdown => true
   | .combatsEnemyOfDomain _ | .chosenByEnemySpellOfDomain _ => true
   | .noChoices => true
@@ -353,6 +353,7 @@ def Prim.understood : Prim → Bool
   | .ready s => s.understoodPickAny
   | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
+  | .createAt _ n bf _ => n.understood && bf.understoodPick
   | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
@@ -408,7 +409,7 @@ def Effect.understood : Effect → Bool
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
-  | .moveChoosing _ _ fs e => FilterList.understood fs && Effect.understood e
+  | .moveChoosing _ _ fs e _ => FilterList.understood fs && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
@@ -500,6 +501,7 @@ def StaticMod.runs : StaticMod → Bool
   | .ignoreKeyword .temporary .here | .ignoreKeyword .tank .here => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
+  | .triggersExtra .deathknell .here => true
   | .triggersExtra .conquer .here => true
   | .triggersExtra .hold .here => true
   | .cant .self .beChosen => true
@@ -513,7 +515,7 @@ def StaticMod.runs : StaticMod → Bool
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
-  | .bonusDamage a => a.understoodC
+  | .bonusDamage a | .bonusAbilityDamage _ a => a.understoodC
   | .noCombatDamage => true
   | .channelLimit _ => true
   | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities

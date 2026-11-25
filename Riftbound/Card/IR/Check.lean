@@ -182,6 +182,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .revealTop _ => true
   | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
+  | .createAt _ n bf _ => Amount.ok c n && Selector.ok c bf
   | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
@@ -293,7 +294,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .victoryScoreMinus a => Amount.ok c a
   | .ignoreKeyword _ _ => true
   | .entersReady s => Selector.ok c s
-  | .bonusDamage a => Amount.ok c a
+  | .bonusDamage a | .bonusAbilityDamage _ a => Amount.ok c a
   | .noCombatDamage => true
   | .channelLimit _ => true
   | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities
@@ -370,7 +371,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
-  | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
+  | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
   | .collectOwnPicks .. => false
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b

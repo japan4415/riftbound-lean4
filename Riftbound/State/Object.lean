@@ -106,8 +106,8 @@ structure Object where
   eventAmount : Option Nat := none
   /-- For an ability assembled from the source's effective keywords. -/
   triggerKeyword : Option Keyword := none
-  /-- A Move trigger's original Battlefield information (CR 477.3.b). -/
-  moveBattlefields : Option (List ObjId) := none
+  /-- A triggered ability's original Battlefield information (CR 477.3.b). -/
+  eventBattlefields : Option (List ObjId) := none
   /-- For a Unit at a Battlefield: that Battlefield (CR 106, 144). `none` for a Unit on a Base and
   for what is not a Unit. Leaving the Board clears it, except into the Trash: a card there
   remembers where it was, for what it does when it dies ("here"). -/
