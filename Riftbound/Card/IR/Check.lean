@@ -281,6 +281,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
+  | .playHereFor _ _ => true
   | .noPlayToBase => true
   | .noReadyOfOpps => true
   | .noHiddenReveal => true

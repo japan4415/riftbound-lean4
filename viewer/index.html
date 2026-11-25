@@ -410,7 +410,8 @@ function describeA(a, prev) {
       const o = objs[a.card], def = o && cards[o.card];
       const base = a.flowCost;
       const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
-      const cost = base
+      const fees = a.battlefieldFees || [];
+      const cost = fees.length ? '（' + (a.pay - (a.power?.length || 0)) + ' Energy）' : base
         ? '（Flow ' + base.energy + ' Energy' +
           (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）'
         : (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
@@ -422,8 +423,10 @@ function describeA(a, prev) {
         ? '（Repeat ' + a.repeatsPaid + ' 回）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
       const dest = 'moveDest' in a ? '（移動先 ' + (a.moveDest === null ? 'Base' : cardName(a.moveDest)) + '）' : '';
+      const fee = fees.length ? '（' + fees.map(cardName).join('、') + ' の追加コストを払う）' : '';
+      const accelerate = a.accelerated ? '（Accelerate）' : '';
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        discard + extra + repeat + mode + dest;
+        discard + extra + repeat + mode + dest + fee + accelerate;
       if (def && def.types.includes('spell')) {
         const targets = (a.targets || []).map(cardName);
         if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
@@ -432,7 +435,8 @@ function describeA(a, prev) {
         return [who + ': ' + cardName(a.card) + (react ? ' を Reaction でプレイ' : ' をプレイ') + more + (tg ? '（対象: ' + tg + '）' : ''),
           react ? 'Chain の項目に応答する: 上に積まれ、先に解決する' : 'コストを払って Chain に載せる'];
       }
-      return [who + ': ' + cardName(a.card) + ' をプレイ' + more,
+      const placement = a.playDestination == null ? '' : ' を ' + cardName(a.playDestination) + ' に';
+      return [who + ': ' + cardName(a.card) + (placement || ' を') + 'プレイ' + more,
         'コストを払って場に出す（通常、Unit は Exhaust で入る）'];
     }
     case 'concede': return [who + ': 投了する', 'ゲームを投了する。相手の勝ちになる（CR 651）'];
@@ -792,12 +796,16 @@ function appendSteps(list) {
 // 取り消せる答えの数（Lean が覚えている、今のゲームの答えの数）
 let undoCount = 0;
 function setLive(j) {
-  const readyPayments = new Set();
+  const shownPayments = new Set();
   liveLegal = j.legal.filter(({ a }) => {
-    if (a.abilityEffect !== 'readySelf') return true;
-    const payment = JSON.stringify([a.source, a.index, a.pay, [...a.power].sort()]);
-    if (readyPayments.has(payment)) return false;
-    readyPayments.add(payment);
+    let choice;
+    if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
+    else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
+      a.accelerated, a.additionalCostPaid, a.discards];
+    else return true;
+    const payment = JSON.stringify([a.actor, a.kind, choice, a.pay, [...a.power].sort()]);
+    if (shownPayments.has(payment)) return false;
+    shownPayments.add(payment);
     return true;
   });
   liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;

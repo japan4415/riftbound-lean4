@@ -491,6 +491,7 @@ def StaticMod.runs : StaticMod → Bool
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
+  | .playHereFor _ _ => true
   | .noPlayToBase => true
   | .noReadyOfOpps => true
   | .ignoreKeyword .temporary .here | .ignoreKeyword .tank .here => true

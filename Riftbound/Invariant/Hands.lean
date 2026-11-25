@@ -338,10 +338,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2.2.2
         exact hm
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2.2
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
         exact hm
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2.2
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
         exact hm
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
@@ -608,7 +608,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
     have hmain : s.phase = .main := by
-      rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', h0⟩
+      rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', choice, h0⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0

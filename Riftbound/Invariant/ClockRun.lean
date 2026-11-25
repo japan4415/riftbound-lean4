@@ -68,8 +68,8 @@ theorem tc_applyRune {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbi
   · exact absurd h (by simp)
 
 theorem tc_applyPlay {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {es : List Event} (h : applyPlay s p c pay = some (s', es)) : TC s s' := by
-  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
+    {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) : TC s s' := by
+  obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have h1 : TC s s2 := TC.of_sameMeta hs.other
   split

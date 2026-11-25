@@ -468,6 +468,8 @@ inductive StaticMod where
   /-- The units of the player can be played to the Battlefields that have the properties (Arachnoid
   Horror: to an occupied one with an enemy unit alone there). -/
   | playToBfAll (fs : List Filter)
+  /-- Any player may pay this additional cost to play a Unit with the given tag here (CR 355.17). -/
+  | playHereFor (tag : Tag) (cost : Cost)
   /-- One more card can be hidden at this Battlefield. -/
   | extraHide
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/

@@ -25,7 +25,7 @@ structure AbilityGrant where
   index : Nat
 deriving DecidableEq, Repr, Hashable
 
-/-- An additional selection recorded when a Spell is finalized (CR 355.3-355.4). -/
+/-- An additional selection recorded when a card is finalized (CR 355). -/
 inductive SpellPick where
   /-- The Spell only has its ordinary target and payment choices. -/
   | plain
@@ -33,6 +33,8 @@ inductive SpellPick where
   | mode (index : Nat)
   /-- The chosen Battlefield, or the moved Unit's Base. -/
   | destination (battlefield : Option ObjId)
+  /-- Pay the elected Battlefields' fees and the listed optional costs of the Unit itself. -/
+  | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
   /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
   | withPlayer (pick : SpellPick) (player : PlayerId)
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
@@ -44,6 +46,11 @@ deriving DecidableEq, Repr, Hashable
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
   | .withPlayer pick _ => pick.optionalCosts
+  | _ => none
+
+/-- The Unit's optional costs when the Battlefield's fee was elected. -/
+def SpellPick.battlefieldCosts : SpellPick → Option (List Nat)
+  | .payForBattlefield _ costs => some costs
   | _ => none
 
 /-- The player targeted during finalization. -/

@@ -102,14 +102,14 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     split <;> exact ⟨_, rfl⟩
   · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    have hplay : castable s p c pay ts flow pick = true ∨ ∃ d xs, playable s p c pay d xs = true := by
+    have hplay : castable s p c pay ts flow pick = true ∨ ∃ d xs choice, playable s p c pay d xs choice = true := by
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inl h
-      · exact Or.inr ⟨none, ts, h.2.2.2.2⟩
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
-        exact Or.inr ⟨some b, ts, hb⟩
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
-        exact Or.inr ⟨some b, ts, hb⟩
+      · exact Or.inr ⟨none, ts, .plain, h.2.2.2.2⟩
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+        exact Or.inr ⟨some b, ts, pick, hb⟩
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+        exact Or.inr ⟨some b, ts, pick, hb⟩
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) hwf hl.2.1 hplay
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
   · rename_i p n rest src idx pay ts discards targetPlayer hp hk

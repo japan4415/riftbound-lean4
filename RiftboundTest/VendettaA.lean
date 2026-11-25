@@ -17,6 +17,83 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Any player may pay for Dragon Roost, even when the opponent controls it (CR 355.17).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "VEN-157"
+  let (s, dragon) ← put s p "OGN-131" .hand
+  let (s, other) ← put s p "VEN-014" .hand
+  let s := (s.control q field).fund p 5 1 0 0 1
+  let pay : RunePool.Payment := ⟨5, [.fury, .mind]⟩
+  let elect (card : ObjId) (pay : RunePool.Payment) (ts : List ObjId) : Action :=
+    ⟨.player p, .playCard card pay ts none none (.payForBattlefield [field])⟩
+  let legal := elect dragon pay [field]
+  let rejected := [elect other pay [field], elect dragon ⟨5, [.fury]⟩ [field],
+    elect dragon pay [], ⟨.player p, .playCard dragon ⟨5, []⟩ [field]⟩]
+  let (played, events) ← (step 100 s legal).toOption
+  let unit ← (played.unitsAtOf field p).find? (fun id => (played.cardDef? id).any (·.id == cid "OGN-131"))
+  return (legalActions s).contains legal && rejected.all (fun a =>
+      !(legalActions s).contains a && ((step 100 s a).toOption).isNone) &&
+    (played.poolOf p).energy == 0 && (played.poolOf p).fury == 0 &&
+    (played.poolOf p).mind == 0 && played.tired unit == some true &&
+    events.contains (.played p unit) && !(events.any (fun
+      | .standardMoved id _ => id == unit
+      | _ => false))
+
+-- Electing the location fee is independent of Accelerate, even when discounts remove Power.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "VEN-157"
+  let (s, dragon) ← put s p "VEN-016" .hand
+  let s := ((s.control p field).fund p 9).addTurnFx p (.nextCardCostMinus 0 3)
+  let ordinary : Action := ⟨.player p, .playCard dragon ⟨8, []⟩ [field]⟩
+  let fee : Action := ⟨.player p, .playCard dragon ⟨8, []⟩ [field] none none (.payForBattlefield [field])⟩
+  let ready : Action := ⟨.player p, .playCard dragon ⟨9, []⟩ [field] none none (.payForBattlefield [field] [0])⟩
+  let (normal, _) ← (step 100 s fee).toOption
+  let (accelerated, _) ← (step 100 s ready).toOption
+  let a ← (normal.unitsAtOf field p).find? (fun id => (normal.cardDef? id).any (·.id == cid "VEN-016"))
+  let b ← (accelerated.unitsAtOf field p).find? (fun id => (accelerated.cardDef? id).any (·.id == cid "VEN-016"))
+  return [ordinary, fee, ready].all ((legalActions s).contains ·) &&
+    normal.tired a == some true && accelerated.tired b == some false &&
+    (normal.obj? a).any (fun o => o.spellPick == .payForBattlefield [field] && !o.paid) &&
+    (accelerated.obj? b).any (fun o => o.spellPick == .payForBattlefield [field] [0] && o.paid)
+
+-- A paid destination remains subject to a Unit's own restriction and opponents' restrictions.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let other := s.bf0
+  let (s, field) ← putBf s q "VEN-157"
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let s := s.fund p 4 2
+  let elsewhere := s.modObj other (fun o => { o with scored := [p] })
+  let permitted := elsewhere.modObj field (fun o => { o with scored := [p] })
+  let (warden, _) ← putAt permitted q "OGN-070" other
+  let action : Action :=
+    ⟨.player p, .playCard grimwyrm ⟨4, [.fury, .fury]⟩ [field] none none (.payForBattlefield [field])⟩
+  return !(legalActions s).contains action && !(legalActions elsewhere).contains action &&
+    (legalActions permitted).contains action && !(legalActions warden).contains action
+
+-- Two independent fees impose conflicting locations. The player can choose either (CR 355.17.a).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let other := s.bf0
+  let (s, left) ← putBf s p "VEN-157"
+  let (s, right) ← putBf s s.you "VEN-157"
+  let (s, dragon) ← put s p "OGN-131" .hand
+  let s := s.fund p 5 4
+  let sources := s.battlefields.filter (fun id => id == left || id == right)
+  let pay : RunePool.Payment := ⟨5, List.replicate 4 .fury⟩
+  let choose (bf : ObjId) (sources : List ObjId) : Action :=
+    ⟨.player p, .playCard dragon pay [bf] none none (.payForBattlefield sources)⟩
+  let (first, _) ← (step 100 s (choose left sources)).toOption
+  let (second, _) ← (step 100 s (choose right sources)).toOption
+  return (first.unitsAtOf left p).any (fun id => (first.cardDef? id).any (·.id == cid "OGN-131")) &&
+    (second.unitsAtOf right p).any (fun id => (second.cardDef? id).any (·.id == cid "OGN-131")) &&
+    !(legalActions s).contains (choose other sources) &&
+    !(legalActions s).contains (choose left [left, left])
+
 -- Cataclysmic Duel asks each player for their own non-targeted choice in turn
 -- order, skips a player with no Units, and kills only after the choices finish.
 #guard vendettaCase fun s => do

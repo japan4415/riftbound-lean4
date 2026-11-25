@@ -747,8 +747,8 @@ def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     (ts : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) : Bool :=
   ((castable s p c pay ts flow pick ||
       (flow.isNone && pick == .plain && ts.isEmpty && s.extraOk p c ts && playable s p c pay none ts) ||
-      (flow.isNone && pick == .plain && bfPlayOk s p c pay ts)) &&
-    reactSpell s c) || ((flow.isNone && pick == .plain && bfPlayOk s p c pay ts) && ambushPick s c ts)
+      (flow.isNone && bfPlayOk s p c pay ts pick)) &&
+    reactSpell s c) || ((flow.isNone && bfPlayOk s p c pay ts pick) && ambushPick s c ts)
 
 /-- Every way the player can use an activated ability: each object they use abilities of, each
 ability, each payment that pays its cost, and each pick of targets, that the Pool covers. -/
@@ -870,9 +870,9 @@ theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
     {ts : List ObjId} {flow : Option Cost} {pick : SpellPick} : reactable s p c pay ts flow pick = true ↔
       (((castable s p c pay ts flow pick = true ∨
         (flow = none ∧ pick = .plain ∧ ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay none ts = true)) ∨
-        (flow = none ∧ pick = .plain ∧ bfPlayOk s p c pay ts = true)) ∧
+        (flow = none ∧ bfPlayOk s p c pay ts pick = true)) ∧
         reactSpell s c = true) ∨
-        ((flow = none ∧ pick = .plain ∧ bfPlayOk s p c pay ts = true) ∧ ambushPick s c ts = true) := by
+        ((flow = none ∧ bfPlayOk s p c pay ts pick = true) ∧ ambushPick s c ts = true) := by
   simp [reactable, List.isEmpty_iff, and_assoc]
 
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/
@@ -891,23 +891,23 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inr (Or.inl h)
     · exact Or.inl ⟨h.2.2.2.1, h.2.2.2.2, h.1, h.2.1⟩
-    · exact Or.inr (Or.inr ⟨h.2.2, h.1, h.2.1⟩)
-    · exact Or.inr (Or.inr ⟨h.2.2, h.1, h.2.1⟩)
+    · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
+    · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
 
 /-- A card that can be played in a Showdown is a Spell that can be cast, or can be played as a card
 of the hand. -/
 theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {flow : Option Cost} {pick : SpellPick} (h : showdownable s p c pay ts flow pick = true) :
-    castable s p c pay ts flow pick = true ∨ ∃ dest ts', playable s p c pay dest ts' = true := by
+    castable s p c pay ts flow pick = true ∨ ∃ dest ts' pick', playable s p c pay dest ts' pick' = true := by
   simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at h
   rcases h with h | h
   · rcases reactable_spec.mp h with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inl h
-    · exact Or.inr ⟨none, ts, h.2.2.2.2⟩
-    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
-      exact Or.inr ⟨some b, ts, hb⟩
-    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
-      exact Or.inr ⟨some b, ts, hb⟩
+    · exact Or.inr ⟨none, ts, .plain, h.2.2.2.2⟩
+    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+      exact Or.inr ⟨some b, ts, pick, hb⟩
+    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+      exact Or.inr ⟨some b, ts, pick, hb⟩
   · exact Or.inl h.1
 
 /-- The plays listed are exactly the cards that can be played in a Showdown. -/
@@ -928,8 +928,8 @@ theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
     · rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inr (Or.inl h)
       · exact Or.inl ⟨h.2.2.2.1, h.2.2.2.2, h.1, h.2.1⟩
-      · exact Or.inr (Or.inr ⟨h.2.2, h.1, h.2.1⟩)
-      · exact Or.inr (Or.inr ⟨h.2.2, h.1, h.2.1⟩)
+      · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
+      · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
     · exact Or.inr (Or.inl hr.1)
 
 /-- The abilities listed are exactly the ones that can be used in a Showdown. -/
@@ -1086,7 +1086,7 @@ def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     (ts : List ObjId) (new : List Frame) (flow : Option Cost := none)
     (pick : SpellPick := .plain) : Option (GameState × List Event) :=
   if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick
-  else ((applyPlay s p c pay).bind (fun r => payExtra s c ts r)).map
+  else ((applyPlay s p c pay pick).bind (fun r => payExtra s c ts r)).map
     (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- What answering with a card does. -/
@@ -1095,7 +1095,7 @@ theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (h : reactStep s p c pay ts new flow pick = some (s', es)) :
     (∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
       s' = { (castPay s c ts (s2, es2)).1 with pending := new }) ∨
-    (∃ s1 es1 s2 es2, applyPlay s p c pay = some (s1, es1) ∧
+    (∃ s1 es1 s2 es2, applyPlay s p c pay pick = some (s1, es1) ∧
       payExtra s c ts (s1, es1) = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
   split at h
@@ -1184,16 +1184,16 @@ theorem reactStep_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
 /-- A card from a permitted zone can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
-    (h : castable s p c pay ts flow pick = true ∨ ∃ dest ts', playable s p c pay dest ts' = true) :
+    (h : castable s p c pay ts flow pick = true ∨ ∃ dest ts' pick', playable s p c pay dest ts' pick' = true) :
     ∃ r, reactStep s p c pay ts new flow pick = some r := by
   unfold reactStep
   split
   · rename_i hk
     exact castStep_isSome hwf hc hk
   · rename_i hk
-    rcases h with h | ⟨dest, ts', h⟩
+    rcases h with h | ⟨dest, ts', _, h⟩
     · exact absurd h hk
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc h) h
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc h) h (applied := pick)
       obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
       refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
       simp [hr, hr']

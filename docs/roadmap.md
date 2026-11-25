@@ -2060,6 +2060,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Battlefield への通常プレイと、Here to Help のように配置先を指定する軽減プレイで、プレイ制限を共通に検査する（CR 054.2, 355.17.b）。Perched Grimwyrm は、Arachnoid Horror が配置を許可していても、そのターンに Conquer した Battlefield にしか出せない。効果が禁止された場所を指定した場合は、その Unit のコストを支払わない。
 - Dragon Roost の任意コストと、Temporal Breach などの効果と配置先が競合した場合の選択を、続けて実装する（CR 355.17.a）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
 
+### M8c Vendetta 48 — Dragon Roost の任意コスト
+
+- 通常プレイでは、Dragon Roost の支配者にかかわらず、Dragon のプレイヤーが任意で Power 2 を払ってそこにプレイできる。複数の Roost に払う場合は、そのうちどこに出すかを選ぶ。Perched Grimwyrm 自身の配置制限と Mageseeker Warden の制限を適用する（CR 054.2, 355.1, 355.17）。
+- Battlefield の追加コストと Unit 自身の追加コストを別々に確定する。軽減後の支払額が同じでも、支払うと決めたコストを記録し、Accelerate を選んだときに Unit が Ready で入る（CR 356.4, 805）。
+- Dragon Roost は `partial`。Temporal Breach や Here to Help からのプレイにも追加コストの選択を出し、効果から受けた配置指定と競合する場合を扱う必要がある。167 枚中 162 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

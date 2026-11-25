@@ -96,6 +96,13 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .plain => []
   | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
+  | .payForBattlefield sources own =>
+    let definition := state.bind (fun s => s.cardDef? c)
+    let printed := definition.any (·.additionalCost.isSome)
+    [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
+      (if printed then [("additionalCostPaid", if own.contains 0 then "true" else "false")] else []) ++
+      (if definition.any (·.hasKeyword .accelerate) &&
+          own.contains (if printed then 1 else 0) then [("accelerated", "true")] else [])
   | .withPlayer pick player =>
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
   | .withCosts pick printed repeats =>
@@ -121,11 +128,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
     | .playCard c pay ts flow discard pick =>
+      let battlefield := state.bind (fun s =>
+        if (s.cardDef? c).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
-        (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++ spellPickFields state c pick
+        (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
+        (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
+        spellPickFields state c pick
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]

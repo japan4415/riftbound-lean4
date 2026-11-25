@@ -4462,8 +4462,12 @@ def VEN_157.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dragon Roost: the effect is not written yet. -/
-def VEN_157 : CardDef := VEN_157.meta
+/-- Dragon Roost offers a paid Dragon destination during normal play. Plays initiated by other
+effects still need to offer this fee and resolve competing destination requirements. -/
+def VEN_157 : CardDef :=
+  { VEN_157.meta with
+    abilities := [.passive .always [.playHereFor ⟨"Dragon"⟩ ⟨0, [.any, .any]⟩]],
+    status := .partial }
 
 -- BEGIN GENERATED VEN-158
 /--
