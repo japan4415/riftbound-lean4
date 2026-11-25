@@ -449,4 +449,40 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return (pet.obj? iv).any (·.buffed) && !((plain.obj? iv).any (·.buffed)) &&
     pet.handN s.me == p1.handN s.me + 1
 
+-- Additional costs are paid as the card is played (CR 357.2): Sacrifice and Heedless Resurrection kill
+-- the unit while the spell is cast, before it resolves, and cannot be cast without one
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let r ← match step 100 (big.rich s.me) ⟨.player s.me, .playCard c (payOf big c) [u]⟩ with
+    | .ok (s3, _) => some s3
+    | .error _ => none
+  return r.countIn s.me .trash "UNL-111" == 1 && r.handN s.me == big.handN s.me - 1 &&
+    (play s2 s.me c [u]).isNone
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-142" .hand
+  let (s2, k) ← put s1 s.me "UNL-003" .base
+  let (s3, _) ← put s2 s.me "UNL-111" .trash
+  let r ← match step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [k]⟩ with
+    | .ok (s4, _) => some s4
+    | .error _ => none
+  return r.countIn s.me .trash "UNL-003" == 1 && r.countIn s.me .base "UNL-111" == 0 &&
+    (play (s3.modObj k (fun o => o)) s.me c []).isNone
+
+-- Safety Inspector (UNL-164): the additional cost is 3 XP; if it is paid, only the opponents kill a unit
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-164" .hand
+  let (s2, u) ← put s1 s.me "OGN-135" .base
+  let (s3, e) ← put s2 s.you "OGN-135" .base
+  let s4 ← withXPOf s3 s.me 3
+  let leg ← (s4.zone (.player s.me .legendZone)).head?
+  let paid ← play s4 s.me c [leg]
+  let free ← play s4 s.me c []
+  return (paid.obj? u).isSome && (paid.obj? e).isNone && paid.xpOf s.me == 0 &&
+    (free.zone (.player s.me .base)).length + 1 == (paid.zone (.player s.me .base)).length &&
+    (free.obj? e).isNone && free.xpOf s.me == 3
+
+
 end RiftboundTest

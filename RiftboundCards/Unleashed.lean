@@ -4126,9 +4126,10 @@ def UNL_142 : CardDef :=
   { UNL_142.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
       (.bind ⟨"e"⟩ (.costOf (.slot 0)) (.bind ⟨"w"⟩ (.powerCostOf (.slot 0))
-        (.seqOf [.prim (.kill (.slot 0)),
-          .prim (.play (Selector.one .friendly .inTrash
-            [.ofType .unit, .cost .le (.var ⟨"e"⟩), .powerCost .le (.var ⟨"w"⟩)]))])))),
+        (.prim (.play (Selector.one .friendly .inTrash
+          [.ofType .unit, .cost .le (.var ⟨"e"⟩), .powerCost .le (.var ⟨"w"⟩)])))))),
+    -- the unit killed as the additional cost is the first thing the spell chooses
+    playExtra := some (.killUnit, true),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-143
@@ -4756,12 +4757,10 @@ def UNL_164.meta : CardDef :=
 def UNL_164 : CardDef :=
   { UNL_164.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge .xp (.const 3))
-        (.eitherOf (EffectList.ofList
-          [.seqOf [.prim (.spendXP .you (.const 3)),
-            .eachPlayer .eachOpponent (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit])))],
-           .eachPlayer .eachPlayer (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit])))]))
+      (.of [] (.ifThen .paid
+        (.eachPlayer .eachOpponent (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit]))))
         (.eachPlayer .eachPlayer (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit])))))) .unlimited],
+    playExtra := some (.spendXP 3, false),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-165
@@ -5013,8 +5012,10 @@ def UNL_173.meta : CardDef :=
 def UNL_173 : CardDef :=
   { UNL_173.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .mighty]]
-      (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2)),
+      (.seqOf [.prim (.draw .you (.const 2)),
         .prim (.channel .you (.const 0) (.const 1))])),
+    -- the Mighty unit killed as the additional cost is the first thing the spell chooses
+    playExtra := some (.killUnit, true),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-174

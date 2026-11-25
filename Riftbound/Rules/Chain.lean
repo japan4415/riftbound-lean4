@@ -678,7 +678,9 @@ def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay :
 answered. -/
 def castStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (new : List Frame) : Option (GameState × List Event) :=
-  (applyCast s p c pay ts).map (fun r => ({ r.1 with pending := new }, r.2))
+  (applyCast s p c pay ts).map (fun r =>
+    let r' := castPay s c ts r
+    ({ r'.1 with pending := new }, r'.2))
 
 /-- What using an ability with a new stack does. -/
 theorem activateStep_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -747,7 +749,8 @@ theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : 
 theorem castStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : castStep s p c pay ts new = some (s', es)) :
-    ∃ s2 es2, applyCast s p c pay ts = some (s2, es2) ∧ s' = { s2 with pending := new } := by
+    ∃ s2 es2, applyCast s p c pay ts = some (s2, es2) ∧
+      s' = { (castPay s c ts (s2, es2)).1 with pending := new } := by
   unfold castStep at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -759,7 +762,7 @@ theorem castStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : castStep s p c pay ts new = some (s', es)) : s'.WF := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
-  exact (applyCast_wf hwf hm).congr rfl rfl rfl rfl
+  exact ((castPay_safe s c ts (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
 
 /-- Casting a Spell keeps the physical cards. -/
 theorem castStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -767,14 +770,15 @@ theorem castStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     (h : castStep s p c pay ts new = some (s', es)) : s'.physIds.Perm s.physIds := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   have h2 := applyCast_physIds hwf hm
-  exact h2
+  exact ((castPay_safe s c ts (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
 
 /-- Casting a Spell keeps `OwnerOk`. -/
 theorem castStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : castStep s p c pay ts new = some (s', es)) : s'.OwnerOk := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
-  exact (applyCast_ownerOk hwf hown hm).congr rfl rfl
+  exact ((castPay_safe s c ts (s2, es2)).own (applyCast_wf hwf hm)
+    (applyCast_ownerOk hwf hown hm)).congr rfl rfl
 
 /-- Casting a Spell changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
@@ -785,7 +789,9 @@ theorem castStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
-  exact ⟨h1, h2, h3, h4, h6, rfl⟩
+  have hs := (castPay_safe s c ts (s2, es2)).same
+  exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
+    (congrArg GameState.cards hs).trans h6, rfl⟩
 
 /-- A castable Spell of the hand can be cast, with any new stack. -/
 theorem castStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -808,7 +814,8 @@ def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
 theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : reactStep s p c pay ts new = some (s', es)) :
-    (∃ s2 es2, applyCast s p c pay ts = some (s2, es2) ∧ s' = { s2 with pending := new }) ∨
+    (∃ s2 es2, applyCast s p c pay ts = some (s2, es2) ∧
+      s' = { (castPay s c ts (s2, es2)).1 with pending := new }) ∨
     (∃ s1 es1 s2 es2, applyPlay s p c pay = some (s1, es1) ∧
       payExtra s c ts (s1, es1) = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
@@ -824,7 +831,7 @@ theorem reactStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : reactStep s p c pay ts new = some (s', es)) : s'.WF := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
-  · exact (applyCast_wf hwf hm).congr rfl rfl rfl rfl
+  · exact ((castPay_safe s c ts (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
   · exact ((payExtra_safe hx).wf (applyPlay_wf hwf hm)).congr rfl rfl rfl rfl
 
 /-- Answering the Chain keeps the physical cards. -/
@@ -833,7 +840,7 @@ theorem reactStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     (h : reactStep s p c pay ts new = some (s', es)) : s'.physIds.Perm s.physIds := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · have h2 := applyCast_physIds hwf hm
-    exact h2
+    exact ((castPay_safe s c ts (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
   · have h2 := applyPlay_physIds hwf hm
     exact ((payExtra_safe hx).phys (applyPlay_wf hwf hm)).trans h2
 
@@ -842,7 +849,8 @@ theorem reactStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : reactStep s p c pay ts new = some (s', es)) : s'.OwnerOk := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
-  · exact (applyCast_ownerOk hwf hown hm).congr rfl rfl
+  · exact ((castPay_safe s c ts (s2, es2)).own (applyCast_wf hwf hm)
+      (applyCast_ownerOk hwf hown hm)).congr rfl rfl
   · exact ((payExtra_safe hx).own (applyPlay_wf hwf hm) (applyPlay_ownerOk hwf hown hm)).congr rfl
       rfl
 
@@ -855,7 +863,9 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
-    exact ⟨h1, h2, h3, h4, h6, rfl⟩
+    have hs := (castPay_safe s c ts (s2, es2)).same
+    exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
+      (congrArg GameState.cards hs).trans h6, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyPlay_meta hm
     have hs := (payExtra_safe hx).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,

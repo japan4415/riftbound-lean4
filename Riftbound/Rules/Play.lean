@@ -598,6 +598,11 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
       (s.cardDef? t).any (fun d => d.hasType .unit &&
         (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
           g.name == "Poro")))
+  | .killUnit =>
+    decide (t ∈ s.inPlay) && (s.obj? t).any (·.controller == p) &&
+      (s.cardDef? t).any (·.hasType .unit)
+  | .spendXP n =>
+    decide (t ∈ s.zone (.player p .legendZone)) && decide (n ≤ s.xpOf p)
 
 /-- The objects an additional cost of the kind can be done to. -/
 def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : List ObjId :=
@@ -619,9 +624,10 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     Option (GameState × List Event) :=
   match k with
   | .exhaustLegend => some (s.exhaustObj t, [])
-  | .killPet =>
+  | .killPet | .killUnit =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .trash), Event.died r.2 o.controller])))
+  | .spendXP n => some (s.modObj t (fun o => { o with xp := o.xp - n }), [])
   | .returnGear =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .hand)])))
@@ -750,6 +756,16 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact Safe.moveObj hm
+  | killUnit =>
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨o, -, ⟨s2, id'⟩, hm, hr⟩ := h
+    simp only [Prod.mk.injEq] at hr
+    obtain ⟨rfl, -⟩ := hr
+    exact Safe.moveObj hm
+  | spendXP n =>
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Safe.modObj s t (fun _ => rfl) (fun _ => rfl)
 
 /-- Paying the additional cost of a card that was played is a safe change. -/
 theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
@@ -769,6 +785,32 @@ theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
   · simp only [Option.some.injEq] at h
     subst h
     exact Safe.refl _
+
+/-- A Spell has been cast (`r`, from `s`): the additional cost is done, as it is cast. The object it
+is done to is the first object the Spell chooses (the card's first choice names it); the Spell on
+the Chain then has the object the cost made of it (a killed Unit is in the Trash) in its place. -/
+def castPay (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameState × List Event) :
+    GameState × List Event :=
+  match (s.cardDef? c).bind (·.playExtra), ts,
+      r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none) with
+  | some (k, _), t :: rest, some n =>
+    match applyExtra r.1 k t with
+    | some x =>
+      let t' := (x.2.findSome? (fun e => match e with | .moved _ m _ => some m | _ => none)).getD t
+      (x.1.modObj n (fun o => { o with targets := t' :: rest }), r.2 ++ x.2)
+    | none => r
+  | _, _, _ => r
+
+/-- Paying the additional cost of a Spell that was cast is a safe change. -/
+theorem castPay_safe (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameState × List Event) :
+    Safe r.1 (castPay s c ts r).1 := by
+  unfold castPay
+  split
+  · split
+    · rename_i x hx
+      exact (applyExtra_safe hx).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+    · exact Safe.refl _
+  · exact Safe.refl _
 
 /-- Power of Any domain that was spent on a Gear is no longer noted as Power that only pays for
 Gear (the Power that only pays for Gear is spent first). -/
@@ -1344,6 +1386,8 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inr ht.1)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
+      · exact List.mem_append.mpr (Or.inl ht.1.1)
+      · exact List.mem_append.mpr (Or.inr ht.1)
     · right; right; right
       exact List.mem_map.mpr ⟨b, hb, rfl⟩
 
@@ -1473,7 +1517,9 @@ def applyPlayCard (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Pay
     (targets : List ObjId) (rest : List Frame) : Option (GameState × List Event) :=
   if castable s p c pay targets = true then
     (applyCast s p c pay targets).map
-      (fun r => ({ r.1 with pending := .chainPass p 0 :: .priority p :: rest }, r.2))
+      (fun r =>
+        let r' := castPay s c targets r
+        ({ r'.1 with pending := .chainPass p 0 :: .priority p :: rest }, r'.2))
   else (applyPlay s p c pay).bind (fun r => payExtra s c targets r)
 
 /-- Playing a card keeps the game well formed. -/
@@ -1486,7 +1532,7 @@ theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
-    exact (applyCast_wf hwf hm).congr rfl rfl rfl rfl
+    exact ((castPay_safe s c targets (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
   · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
     exact (payExtra_safe h2).wf (applyPlay_wf hwf hr)
 
@@ -1502,7 +1548,7 @@ theorem applyPlayCard_physIds {s s' : GameState} {p : PlayerId} {c : ObjId}
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     have hp := applyCast_physIds hwf hm
-    exact hp
+    exact ((castPay_safe s c targets (s2, es2)).phys (applyCast_wf hwf hm)).trans hp
   · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
     exact ((payExtra_safe h2).phys (applyPlay_wf hwf hr)).trans (applyPlay_physIds hwf hr)
 
@@ -1517,7 +1563,8 @@ theorem applyPlayCard_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
-    exact (applyCast_ownerOk hwf hown hm).congr rfl rfl
+    exact ((castPay_safe s c targets (s2, es2)).own (applyCast_wf hwf hm)
+      (applyCast_ownerOk hwf hown hm)).congr rfl rfl
   · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
     exact (payExtra_safe h2).own (applyPlay_wf hwf hr) (applyPlay_ownerOk hwf hown hr)
 
@@ -1536,7 +1583,9 @@ theorem applyPlayCard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
-    exact ⟨h1, h2, h3, h4, h6, Or.inr rfl⟩
+    have hs := (castPay_safe s c targets (s2, es2)).same
+    exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
+      (congrArg GameState.cards hs).trans h6, Or.inr rfl⟩
   · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨h1, h2', h3, h4, h5, h6⟩ := applyPlay_meta hr
     have hs := (payExtra_safe h2).same
