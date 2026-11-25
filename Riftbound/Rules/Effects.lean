@@ -955,16 +955,24 @@ theorem exhaustAll_safe : ∀ (ids : List ObjId) (s : GameState), Safe s (exhaus
   | [], s => Safe.refl s
   | id :: ids, s => (setExhausted_safe true s id).trans (exhaustAll_safe ids _)
 
-/-- Channel `n` Runes ready, and `extra` more that enter exhausted (CR 431). -/
+/-- Extra Runes supplied by replacement effects. Each active copy adds to the same instruction. -/
+def GameState.channelBonuses (s : GameState) (p : PlayerId) (requested : Nat) : Nat :=
+  if requested == 0 then 0 else
+    ((s.controlledMods p).filterMap (fun
+      | .additionalExhaustedRunes n => some n
+      | _ => none)).sum
+
+/-- Channel `n` Runes ready and the rest exhausted, including replacement effects (CR 431). -/
 def channelEx (p : PlayerId) (n extra : Nat) (s : GameState) : GameState × List Event :=
   let r1 := channel p n s
-  let r2 := channel p extra r1.1
+  let r2 := channel p (extra + s.channelBonuses p (n + extra)) r1.1
   (exhaustAll (movedNew r2.2) r2.1, r1.2 ++ r2.2)
 
 /-- Channeling some Runes exhausted is a safe change. -/
 theorem channelEx_safe (p : PlayerId) (n extra : Nat) (s : GameState) :
     Safe s (channelEx p n extra s).1 :=
-  ((channel_safe p n s).trans (channel_safe p extra _)).trans (exhaustAll_safe _ _)
+  ((channel_safe p n s).trans (channel_safe p (extra + s.channelBonuses p (n + extra)) _)).trans
+    (exhaustAll_safe _ _)
 
 /-- The players channel. -/
 def channelAll (n extra : Nat) : GameState → List PlayerId → GameState × List Event
@@ -2196,8 +2204,29 @@ def GameState.grantedActivation (s : GameState) (grant : AbilityGrant) : Option 
   | some (a@(.activated ..)) => some a
   | _ => none
 
-/-- Own abilities keep their indices, followed by temporary grants and activations from attached
-Effect Text. -/
+/-- Each friendly source with a continuous Legend grant contributes its own abilities. -/
+def GameState.legendActivations (s : GameState) (legend : ObjId) (d : CardDef) :
+    List (Option AbilityGrant × Ability) :=
+  if d.hasType .legend then
+    match s.obj? legend with
+    | some recipient =>
+      s.passiveSources.flatMap (fun src =>
+        match s.obj? src, s.cardDef? src with
+        | some donor, some card =>
+          if donor.controller == recipient.controller &&
+              card.fullAbilities.any (fun
+                | .passive .always mods => mods.contains .grantFriendlyLegendsActivations
+                | _ => false) then
+            card.grants.zipIdx.filterMap (fun
+              | (ability@(.activated ..), index) =>
+                some (some { card := card.id, index, sourceStamp := some donor.timestamp }, ability)
+              | _ => none)
+          else []
+        | _, _ => [])
+    | none => []
+  else []
+
+/-- Own abilities keep their indices, followed by temporary, attachment and continuous grants. -/
 def GameState.nativeActivationList (s : GameState) (src : ObjId) (d : CardDef) :
     List (Option AbilityGrant × Ability) :=
   let grants := ((s.obj? src).map (·.tempActivations)).getD []
@@ -2207,7 +2236,8 @@ def GameState.nativeActivationList (s : GameState) (src : ObjId) (d : CardDef) :
       cd.textAbilities.zipIdx.filterMap (fun
         | (ability@(.activated ..), index) =>
           some (some { card := cd.id, index, copyStamp := some stamp }, ability)
-        | _ => none))
+        | _ => none)) ++
+    s.legendActivations src d
 
 /-- Exhaust abilities gained from friendly Legends, Units and Gear (CR 727.1.b.1). -/
 def GameState.friendlyExhaustActivations (s : GameState) (src : ObjId) (p : PlayerId) :

@@ -66,6 +66,8 @@ public import RiftboundTest.RadianceS
 public import RiftboundTest.RadianceT
 public import RiftboundTest.RadianceU
 public import RiftboundTest.RadianceV
+public import RiftboundTest.RadianceW
+public import RiftboundTest.RadianceX
 
 /-!
 # RiftboundTest

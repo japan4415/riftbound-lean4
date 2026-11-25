@@ -1016,14 +1016,24 @@ def RAD_040.meta : CardDef :=
   { id := ⟨"RAD-040"⟩,
     name := "Heartening Soul",
     types := [.unit],
+    tags := [⟨"Shadow Isles"⟩, ⟨"Spirit"⟩],
     domains := [.calm],
     cost := some ⟨7, [.domain .calm]⟩,
     might := some 7,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Heartening Soul: the effect is not written yet. -/
-def RAD_040 : CardDef := RAD_040.meta
+/-- Heartening Soul. -/
+def RAD_040 : CardDef :=
+  { RAD_040.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .boardOrLegend [.ofType .legend]] (.prim (.ready (.slot 0))))
+        .unlimited,
+      .passive .always [.grantFriendlyLegendsActivations]],
+    grants := [.activated [.exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-041
 /--
@@ -2415,7 +2425,7 @@ def RAD_092.meta : CardDef :=
   { id := ⟨"RAD-092"⟩,
     name := "Seraphic Wyvern",
     types := [.unit],
-    tags := [⟨"Dragon"⟩],
+    tags := [⟨"Mount Targon"⟩, ⟨"Dragon"⟩],
     domains := [.body],
     cost := some ⟨7, []⟩,
     might := some 7,
@@ -2425,9 +2435,8 @@ def RAD_092.meta : CardDef :=
 /-- Seraphic Wyvern. -/
 def RAD_092 : CardDef :=
   { RAD_092.meta with
-    abilities := [.replacement .channel .always
-      (.of [] (.prim (.channel .you .eventAmount (.const 1))))],
-    status := .drafted }
+    abilities := [.passive .always [.additionalExhaustedRunes 1]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-093
 /--
@@ -3813,16 +3822,25 @@ def RAD_146.meta : CardDef :=
   { id := ⟨"RAD-146"⟩,
     name := "The Ball",
     types := [.gear],
-    tags := [⟨"Device"⟩, ⟨"Orianna"⟩],
+    supertypes := [.signature],
+    tags := [⟨"Orianna"⟩],
     domains := [.calm, .mind],
-    cost := some ⟨5, [.any]⟩,
+    cost := some ⟨5, [.own]⟩,
     keywords := [{ keyword := .deploy },
       { keyword := .ganking }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- The Ball: the effect is not written yet. -/
-def RAD_146 : CardDef := RAD_146.meta
+/-- The Ball. -/
+def RAD_146 : CardDef :=
+  let action : EffectDef := { body := .nop, modes := [
+    ⟨"Draw 1", [], .prim (.draw .you (.const 1))⟩,
+    ⟨"Deal 2 to enemy units here", [],
+      .prim (.deal (.all .enemy .here [.ofType .unit]) (.const 2))⟩] }
+  { RAD_146.meta with
+    abilities := [.triggered (.onSelf .play) action .unlimited,
+      .triggered (.onSelf .move) action .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-147
 /--
@@ -4112,8 +4130,13 @@ def RAD_158.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Black Market: the effect is not written yet. -/
-def RAD_158 : CardDef := RAD_158.meta
+/-- Black Market. -/
+def RAD_158 : CardDef :=
+  { RAD_158.meta with
+    abilities := [.passive .always [.sharedBattlefieldActivation],
+      .activated [.pay ⟨0, [.any, .any]⟩] .normal
+        (.of [] (.prim (.draw .you (.const 1)))) (.perTurn 1)],
+    status := .full }
 
 -- BEGIN GENERATED RAD-159
 /--

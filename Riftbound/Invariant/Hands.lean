@@ -1019,11 +1019,11 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-    have hmeta := channel_sameMeta (s.active.getD ⟨0⟩) s.channelCount s
-    show (channel (s.active.getD ⟨0⟩) s.channelCount s).1.turnOrder.Perm
-      (allPlayers (channel (s.active.getD ⟨0⟩) s.channelCount s).1.playerCount)
+    have hmeta := (channelEx_safe (s.active.getD ⟨0⟩) s.channelCount 0 s).same
+    show (channelEx (s.active.getD ⟨0⟩) s.channelCount 0 s).1.turnOrder.Perm
+      (allPlayers (channelEx (s.active.getD ⟨0⟩) s.channelCount 0 s).1.playerCount)
     rw [hmeta.turnOrder]
-    have hc : (channel (s.active.getD ⟨0⟩) s.channelCount s).1.playerCount = s.playerCount := by
+    have hc : (channelEx (s.active.getD ⟨0⟩) s.channelCount 0 s).1.playerCount = s.playerCount := by
       simp [GameState.playerCount, hmeta.config]
     rw [hc]
     exact h1

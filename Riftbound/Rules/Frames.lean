@@ -213,7 +213,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
       if o.exhausted && eligible ⟨k⟩ o then some (Event.readied ⟨k⟩) else none)
     some ({ s1 with phase := .awaken, pending := rest }, Event.phaseStarted p .awaken :: readied)
   | .phase .channel :: rest =>
-    let r := channel (s.active.getD ⟨0⟩) s.channelCount s
+    let r := channelEx (s.active.getD ⟨0⟩) s.channelCount 0 s
     some ({ r.1 with phase := .channel, pending := rest }, r.2)
   | .phase .draw :: rest =>
     let p := s.active.getD ⟨0⟩
@@ -454,7 +454,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact (GameState.wf_mapObjectsAt hwf _).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (channel_wf _ _ hwf).congr rfl rfl rfl rfl
+    exact ((channelEx_safe _ _ _ _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
@@ -552,8 +552,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact (GameState.physIds_mapObjectsAt s (awakenReady_kind _)).symm ▸ List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hp := channel_physIds (s.active.getD ⟨0⟩) s.channelCount hwf
-    exact hp
+    exact (channelEx_safe _ _ _ _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _

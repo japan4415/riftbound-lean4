@@ -28963,7 +28963,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Spirit"
+   ],
    "text": [
     "When you play me, ready a friendly legend.",
     "Friendly legends have \":rb_exhaust:: Give a unit +3 :rb_might: this turn.\""
@@ -30498,6 +30501,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Mount Targon",
     "Dragon"
    ],
    "text": [
@@ -32059,6 +32063,7 @@
    "mightBonus": null,
    "name": "The Ball",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-146/167"
    ],
@@ -32066,8 +32071,10 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
-    "Device",
     "Orianna"
    ],
    "text": [

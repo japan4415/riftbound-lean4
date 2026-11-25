@@ -578,11 +578,11 @@ def useOf (idx : Nat) (ex : Bool) (copy : Option Timestamp) (o : Object) : Objec
 /-- A granted activation keeps its identity even while the Unit's printed rules text is copied. -/
 def GameState.activationCopyStamp (s : GameState) (src : ObjId) (grant : Option AbilityGrant) :
     Option Timestamp :=
-  grant.elim (s.copyStamp? src) (·.copyStamp)
+  grant.elim (s.copyStamp? src) AbilityGrant.instanceStamp
 
 /-- Copied text has a stable rules-text index independently of the menu order. -/
 def activationUseIndex (idx : Nat) (grant : Option AbilityGrant) : Nat :=
-  ((grant.filter (·.copyStamp.isSome)).map (·.index)).getD idx
+  ((grant.filter (·.instanceStamp.isSome)).map (·.index)).getD idx
 
 /-- The object an ability becomes on the Chain: it belongs to the player who used it (CR 337). -/
 def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : List ObjId)
@@ -658,6 +658,15 @@ Chain priority can use a Reaction (CR 337.4, 813.1.c). -/
 def GameState.activationTiming (s : GameState) (open_ : Bool) (speed : Speed) : Bool :=
   (open_ || speed == .reaction) && (s.phase == .main || (s.reactionWindow && speed == .reaction))
 
+/-- Who can activate abilities of this object. Some Battlefields grant use to the active
+player, regardless of control. -/
+def GameState.canUseAbilityOf (s : GameState) (p : PlayerId) (src : ObjId)
+    (o : Object) (d : CardDef) : Bool :=
+  if d.hasType .battlefield then
+    if (s.activeMods src).contains .sharedBattlefieldActivation then s.active == some p
+    else o.control == some p
+  else o.controller == p
+
 /-- The player can use an ability of the object `src` with the payment and targets. `open_`
 indicates whether the Chain is empty (CR 312, 355-357, 361, 813). -/
 def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
@@ -666,9 +675,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
   s.phase != .setup &&
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
-      -- a Battlefield is used by the player who controls it
-      (if d.hasType .battlefield then o.control == some p else o.controller == p) &&
-        s.abilityZoneOk p src idx &&
+      s.canUseAbilityOf p src o d && s.abilityZoneOk p src idx &&
         match (s.activationList src d)[idx]? with
         | some (grant, .activated costs speed body limit) =>
           match s.activationPlan p src d idx costs ts with
@@ -963,8 +970,8 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
 
-/-- A usable ability belongs to an object the player controls. Its costs and targets are legal,
-and setup has finished. -/
+/-- A usable ability is accessible to the player, its costs and targets are legal, and setup
+has finished. -/
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {costObject : Option ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards targetPlayer costObject = true) :
@@ -977,7 +984,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
             s.discardCostOk p src costs discards = true ∧
             targetPlayer ∈ s.playerTargetOptions p body.playerTarget ∧
             costObject ∈ s.activationCostObjects p src costs ∧ ∃ o, s.obj? src = some o ∧
-              (o.controller = p ∨ o.control = some p) := by
+              s.canUseAbilityOf p src o d = true := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨hph, h⟩ := h
@@ -991,14 +998,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     | none => simp [ho, hd] at h
     | some d =>
       simp only [ho, hd, Bool.and_eq_true] at h
-      obtain ⟨⟨hctl0, huse⟩, h⟩ := h
-      have hctl : o.controller = p ∨ o.control = some p := by
-        by_cases hb : d.hasType .battlefield = true
-        · simp only [hb, ite_true, beq_iff_eq] at hctl0
-          exact Or.inr hctl0
-        · simp only [Bool.not_eq_true] at hb
-          simp only [hb, Bool.false_eq_true, ite_false, beq_iff_eq] at hctl0
-          exact Or.inl hctl0
+      obtain ⟨⟨hctl, huse⟩, h⟩ := h
       cases ha : (s.activationList src d)[idx]? with
       | none => simp [ha] at h
       | some entry =>

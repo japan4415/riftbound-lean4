@@ -750,7 +750,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hmeta := channel_sameMeta (s.active.getD ⟨0⟩) s.channelCount s
+    have hmeta := (channelEx_safe (s.active.getD ⟨0⟩) s.channelCount 0 s).same
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, hmeta.config]) (new := []) rfl (by simp)
   · rename_i rest hp
@@ -805,7 +805,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-        (by simp [GameState.playerCount, (drawOne_meta hd).config])
+        (by simp [GameState.noteDraw, GameState.playerCount, (drawOne_meta hd).config])
         (new := [Frame.draw q n]) rfl (by simp [Frame.isSetup])
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h

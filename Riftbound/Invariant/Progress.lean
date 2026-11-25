@@ -435,7 +435,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (channel_sameMeta (s.active.getD ⟨0⟩) s.channelCount s).result
+    refine hinv.of_next (channelEx_safe (s.active.getD ⟨0⟩) s.channelCount 0 s).same.result
       (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl

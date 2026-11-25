@@ -269,6 +269,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
   | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
+  | .sharedBattlefieldActivation | .grantFriendlyLegendsActivations
+  | .additionalExhaustedRunes _ => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true

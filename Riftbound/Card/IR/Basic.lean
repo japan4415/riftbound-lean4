@@ -27,7 +27,12 @@ structure AbilityGrant where
   copyStamp : Option Timestamp := none
   /-- The source index is in the full definition of a friendly object whose ability was gained. -/
   borrowed : Bool := false
+  /-- The object supplying a continuous grant, identified by its unique entry timestamp. -/
+  sourceStamp : Option Timestamp := none
 deriving DecidableEq, Repr, Hashable
+
+/-- Distinguish different instances of the same granted text. -/
+def AbilityGrant.instanceStamp (g : AbilityGrant) : Option Timestamp := g.copyStamp <|> g.sourceStamp
 
 /-- An additional selection recorded when a card is finalized (CR 355). -/
 inductive SpellPick where

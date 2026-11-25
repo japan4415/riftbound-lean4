@@ -444,6 +444,12 @@ inductive StaticMod where
   | skipUnitAwaken
   /-- The controller's Units enter ready when played to a Battlefield they control. -/
   | unitsEnterReadyAtControlledBattlefields
+  /-- Each player can use this Battlefield's activated ability during their own turn. -/
+  | sharedBattlefieldActivation
+  /-- Friendly Legends gain the activated abilities in the source's grants while it is in play. -/
+  | grantFriendlyLegendsActivations
+  /-- Channel this many additional exhausted Runes when the controller channels (CR 431). -/
+  | additionalExhaustedRunes (count : Nat)
   /-- The controller can play cards from their Trash at their regular costs (CR 420.1). -/
   | playFromTrash
   /-- A card entering the controller's Trash from outside their Main Deck is banished instead

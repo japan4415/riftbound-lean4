@@ -452,7 +452,7 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact (GameState.ownerOk_mapObjectsAt hown (awakenReady_owner _)).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (channel_ownerOk _ _ hwf hown).congr rfl rfl
+    exact ((channelEx_safe _ _ _ _).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl

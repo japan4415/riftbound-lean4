@@ -487,6 +487,8 @@ def StaticMod.runs : StaticMod → Bool
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
   | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
+  | .sharedBattlefieldActivation | .grantFriendlyLegendsActivations
+  | .additionalExhaustedRunes _ => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
@@ -609,7 +611,8 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 
 /-- An ability the engine carries out. -/
 def Ability.runs : Ability → Bool
-  | .passive c mods => c.understood && mods.all StaticMod.runs
+  | .passive c mods => c.understood && mods.all StaticMod.runs &&
+      (c == .always || !mods.contains .grantFriendlyLegendsActivations)
   | .activated costs _ body _ =>
     (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
