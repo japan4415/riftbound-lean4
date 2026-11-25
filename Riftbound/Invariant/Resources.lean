@@ -196,8 +196,8 @@ theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
   obtain ⟨d, e, -, -, hok⟩ := castable_targets h
   exact targetsOk_mem_targetPresent hok
 
-/-- **A Spell resolves with the targets it was cast with** (CR 340, 355): the effect is run with
-the chosen objects as its slots, and the Spell goes to the Trash when the effect is done. -/
+/-- A Spell starts from the targets it was cast with (CR 340, 355). An open-ended group is
+rechecked before the effect, and the Spell leaves the Chain after the effect. -/
 theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {more : List ObjId}
     {o : Object} {d : CardDef} (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
     (hd : s.cardDef? item = some d) :
@@ -206,8 +206,8 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
         (match d.spellEffect with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
-            e.executions
-              (if !d.repeatChooses then 1 + o.extraPaid else 1)
+            e.recheckTargetGroup s o.controller item o.targets
+              (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]

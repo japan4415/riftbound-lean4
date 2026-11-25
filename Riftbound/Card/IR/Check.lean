@@ -340,6 +340,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s
   | .fillFromPick _ => true
+  | .retainTargetSet _ => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b

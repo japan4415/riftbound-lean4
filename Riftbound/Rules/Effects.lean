@@ -3020,7 +3020,9 @@ def Effect.isLinkedCost : Effect → Bool
 
 /-- Picks for costs do not count as targets of the resolving instruction (CR 355.10.c.1). -/
 def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
-  if e.isLinkedCost then [] else chosenAt s p src id
+  match e with
+  | .retainTargetSet _ => []
+  | _ => if e.isLinkedCost then [] else chosenAt s p src id
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
 recycled after; if the Power cannot be paid, the instruction is skipped. -/
@@ -3268,8 +3270,20 @@ theorem linkedAction_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : En
   · rename_i r h
     exact applyPrim_safe h
 
-/-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
-`run` frame, and the events. -/
+/-- Each answer keeps the remaining groups containing that unit. Only units that distinguish
+groups are offered, so an answer always reduces the number of alternatives (CR 355.11.b). -/
+def retainTargetSetFrame (p : PlayerId) (src : ObjId) (env : Env)
+    (groups : List (List ObjId)) (es : EffectList) : Frame :=
+  let remaining := match env.lookup pickVar with
+    | some (.obj id) => groups.filter (·.contains id)
+    | _ => groups
+  let candidates := remaining.flatten.eraseDups.filter
+    (fun id => remaining.any (fun group => !group.contains id))
+  match candidates with
+  | id :: more => .pickDo p src env id more (.retainTargetSet remaining) es
+  | [] => .run p src { env with slots := (remaining.headD []).map Value.obj } es
+
+/-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
@@ -3292,6 +3306,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match env.lookup pickVar with
     | some v => (s, [.run p src { env with slots := env.slots.set i v } es], [])
     | none => skip
+  | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
   | .forEach sel body =>
     match sel.eval s p src env with
     | some ids =>
@@ -3433,17 +3448,6 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
     · exact Safe.refl s
   · exact runEffect1_safe s p src env e es
 
-/-- What an ability on the Chain does: the effect of the ability the card has at that place
-(CR 361). Nothing if the card or the ability is not there. -/
-def abilityBody (s : GameState) (card : CardId) (idx : Nat) : EffectList :=
-  match s.cards.find? card with
-  | some d =>
-    match d.allAbilities[idx]? with
-    | some (.activated _ _ b _) => .cons b.body .nil
-    | some (.triggered _ b _) => .cons b.body .nil
-    | _ => .nil
-  | none => .nil
-
 /-- The effect of the ability of a card: its choices and its body. -/
 def abilityDef (s : GameState) (card : CardId) (idx : Nat) : Option EffectDef :=
   match s.cards.find? card with
@@ -3460,16 +3464,42 @@ def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
   let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
   ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
 
+/-- Before an open-ended group resolves, filter invalid original targets and ask its controller
+to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
+def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
+    (src : ObjId) (targets : List ObjId) (body : EffectList) : EffectList :=
+  match e.choices.getLast? with
+  | some c =>
+    match c with
+    | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let pm := s.mightTable
+      let legal := c.candidatesAfter s p src pm fixed
+      let original := (targets.drop fixed.length).filter legal.contains
+      let weight := c.groupWeight s pm
+      let limit := c.groupLimit
+      let total (ids : List ObjId) := (ids.map weight).sum
+      let groups := if total original ≤ limit then [original] else
+        (subseqsWithin weight limit original).filter (fun group =>
+          original.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      .cons (.retainTargetSet (groups.map (fixed ++ ·))) body
+    | _ => body
+  | none => body
+
 /-- The frames that resolve an item of the Chain that is not a card: an ability runs its effect for
 its controller, with the objects chosen as the slots, and then it leaves the Chain (CR 340). -/
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
   match o.kind with
   | .chainAbility card idx src =>
+    let definition := abilityDef s card idx
     let env : Env := {
-      slots := slotValues o.targets (abilityDef s card idx)
+      slots := slotValues o.targets definition
       sourceCard := some card
       eventAmount := o.eventAmount }
-    .run o.controller src env (abilityBody s card idx) :: .finishSpell item :: rest
+    let body := match definition with
+      | some e => e.recheckTargetGroup s o.controller src o.targets (.cons e.body .nil)
+      | none => .nil
+    .run o.controller src env body :: .finishSpell item :: rest
   | _ => .finishSpell item :: rest
 
 /-- The effects that choose the targets of an effect again: one for each target of exactly one
@@ -3508,8 +3538,8 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
         (match d.spellEffect with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
-            e.executions
-              (if !d.repeatChooses then 1 + o.extraPaid else 1)
+            e.recheckTargetGroup s o.controller item o.targets
+              (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
           | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest

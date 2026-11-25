@@ -69,6 +69,10 @@ inductive Quantity where
   | one
   /-- Up to `n`. -/
   | upTo (n : Nat)
+  /-- Any subset, including the empty one (CR 355.13). -/
+  | anyNumber
+  /-- Any subset whose total Might is at most the limit (CR 355.11). -/
+  | combinedMightAtMost (limit : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/

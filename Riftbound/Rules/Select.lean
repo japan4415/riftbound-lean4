@@ -1175,10 +1175,11 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
   | none => (s.candidates p self env side place fs).map
     (·.filter (fun id => !target || !s.blocksChoice p id))
 
-/-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
+/-- Whether the engine can enumerate target choices of this quantity. -/
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n => decide (1 ≤ n)
+  | .anyNumber | .combinedMightAtMost _ => true
   | _ => false
 
 /-- The objects a choice of a Spell can pick, when the choices before it picked `acc` (a later
@@ -1202,31 +1203,39 @@ def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice)
 /-- Whether a choice is one that a Spell can make for now: one target, or up to some number (which
 may be left out when nothing after it is required). -/
 def Choice.simple : Choice → Bool
-  | .target .one _ _ _ => true
-  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
+  | .target q _ _ _ => q.pickable
   | _ => false
 
 /-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
-  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
+  | .target q _ _ _ => q.pickable && q != .one
   | _ => false
 
 /-- An optional choice is one that can be made. -/
 theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
-  unfold Choice.optional at h
-  split at h
-  · simpa [Choice.simple] using h
-  · simp at h
+  cases c <;> simp_all [Choice.optional, Choice.simple]
 
 /-- Whether a choice is of several objects: up to two or more. It is the last choice of its Spell,
 and the objects are chosen in the order of the objects, so that a set is chosen once. -/
 def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
+  | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ => true
   | _ => false
 
-/-- The most objects a choice picks. -/
-def Choice.maxPicks : Choice → Nat
+/-- A group is limited by its size or by its total effective Might. -/
+def Choice.groupLimit : Choice → Nat
   | .target (.upTo n) _ _ _ => n
+  | .target .anyNumber _ _ _ => 0
+  | .target (.combinedMightAtMost limit) _ _ _ => limit
+  | _ => 1
+
+/-- The contribution of each object to the group limit, using current Might (CR 143, 355.11). -/
+def Choice.groupWeight (s : GameState) (pm : List (ObjId × Int)) (c : Choice) (id : ObjId) : Nat :=
+  match c with
+  | .target .anyNumber _ _ _ => 0
+  | .target (.combinedMightAtMost _) _ _ _ =>
+    let env : Env := { passMight := pm }
+    ((s.mightOf id).getD 0 + s.equipBonus id + s.buffBonus id + env.passOf id).toNat
   | _ => 1
 
 /-- Every way to leave some of the objects out, the others in their order, keeping at most `k`. -/
@@ -1260,6 +1269,43 @@ theorem mem_subseqsUpTo {α : Type} :
       · exact Or.inl ⟨h, hl⟩
       · exact Or.inr ⟨r, ⟨hr, by simpa using hl⟩, rfl⟩
 
+/-- Every sublist within a nonnegative budget. A branch is cut off as soon as it costs too much. -/
+def subseqsWithin {α : Type} (weight : α → Nat) (limit : Nat) : List α → List (List α)
+  | [] => [[]]
+  | x :: xs => subseqsWithin weight limit xs ++
+    if weight x ≤ limit then
+      (subseqsWithin weight (limit - weight x) xs).map (x :: ·)
+    else []
+
+/-- Enumerating sets within a budget agrees with checking the total of a sublist. -/
+theorem mem_subseqsWithin {α : Type} (weight : α → Nat) :
+    ∀ (l : List α) (limit : Nat) (t : List α),
+      t ∈ subseqsWithin weight limit l ↔ t.Sublist l ∧ (t.map weight).sum ≤ limit
+  | [], limit, t => by cases t <;> simp [subseqsWithin]
+  | x :: xs, limit, t => by
+    rw [List.sublist_cons_iff]
+    by_cases h : weight x ≤ limit
+    · simp only [subseqsWithin, h, ite_true, List.mem_append, List.mem_map,
+        mem_subseqsWithin weight xs]
+      constructor
+      · rintro (⟨ht, hw⟩ | ⟨ys, ⟨hy, hw⟩, rfl⟩)
+        · exact ⟨Or.inl ht, hw⟩
+        · refine ⟨Or.inr ⟨ys, rfl, hy⟩, ?_⟩
+          simp only [List.map_cons, List.sum_cons]
+          omega
+      · rintro ⟨(ht | ⟨ys, rfl, hy⟩), hw⟩
+        · exact Or.inl ⟨ht, hw⟩
+        · refine Or.inr ⟨ys, ⟨hy, ?_⟩, rfl⟩
+          simp only [List.map_cons, List.sum_cons] at hw
+          omega
+    · simp only [subseqsWithin, h, ite_false, List.append_nil, mem_subseqsWithin weight xs]
+      constructor
+      · exact fun ⟨ht, hw⟩ => ⟨Or.inl ht, hw⟩
+      · rintro ⟨(ht | ⟨ys, rfl, hy⟩), hw⟩
+        · exact ⟨ht, hw⟩
+        · simp only [List.map_cons, List.sum_cons] at hw
+          omega
+
 /-- The objects a choice of several can pick, in the order of the objects. -/
 def Choice.sortedCands (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List ObjId :=
@@ -1279,7 +1325,7 @@ def targetsOkAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (Obj
   | [], _ :: _ => false
   | c :: cs, ts =>
     if c.multi then
-      cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+      cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
         decide (ts.Sublist (c.sortedCands s p self pm acc))
     else
       match ts with
@@ -1294,7 +1340,7 @@ theorem targetsOkAfter_cons (s : GameState) (p : PlayerId) (self : ObjId)
     (ts : List ObjId) :
     targetsOkAfter s p self pm acc (c :: cs) ts =
       (if c.multi then
-        cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+        cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
           decide (ts.Sublist (c.sortedCands s p self pm acc))
       else
         match ts with
@@ -1327,7 +1373,7 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (
   | c :: cs =>
     if c.multi then
       (if cs.isEmpty then
-        subseqsUpTo c.maxPicks (c.sortedCands s p self pm acc)
+        subseqsWithin (c.groupWeight s pm) c.groupLimit (c.sortedCands s p self pm acc)
       else [])
     else if c.simple then
       (c.candidatesAfter s p self pm acc).flatMap (fun t =>
@@ -1352,7 +1398,7 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true,
         decide_eq_true_eq]
       by_cases hc : cs.isEmpty = true
-      · simp [hc, mem_subseqsUpTo, and_comm]
+      · simp [hc, mem_subseqsWithin, and_comm]
       · simp [hc]
     · have hm' : c.multi = false := by simpa using hm
       cases ts with

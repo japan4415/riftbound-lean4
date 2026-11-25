@@ -17,6 +17,78 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Decree of Discord can choose zero or more Order units. A Reaction raises one unit
+-- from 1 Might to 4, so the caster must keep it alone or keep the two 2-Might units.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, decree) ← put s p "VEN-107" .hand
+  let (s, answer) ← put s q "OGN-207" .hand
+  let (s, first) ← put s q "VEN-117" .base
+  let (s, second) ← put s q "VEN-128" .base
+  let (s, third) ← put s q "VEN-128" .base
+  let (s, large) ← put s q "VEN-118" .base
+  let (s, wrongDomain) ← put s q "VEN-014" .base
+  let s := (s.rich p).rich q
+  let cast (ts : List ObjId) : Action := ⟨.player p, .playCard decree ⟨1, [.chaos]⟩ ts⟩
+  let pass (t : GameState) : Option GameState := do
+    let .chainPass actor _ :: _ := t.pending | none
+    (step 100 t ⟨.player actor, .pass⟩).toOption.map Prod.fst
+  let (casting, _) ← (step 100 s (cast [first, second, third])).toOption
+  let priority ← pass casting
+  let (reacting, _) ←
+    (step 100 priority ⟨.player q, .playCard answer ⟨3, []⟩ [first]⟩).toOption
+  let stronger ← pass reacting >>= pass
+  let deciding ← pass stronger >>= pass
+  let (one, oneEvents) ← (step 100 deciding ⟨.player p, .choose first⟩).toOption
+  let (pair, _) ← (step 100 deciding ⟨.player p, .choose second⟩).toOption
+  let returned (t : GameState) (old : ObjId) :=
+    (t.zone (.player q .hand)).any (fun id => (t.obj? id).any (·.formerId == some old))
+  return (legalActions s).contains (cast []) && !(legalActions s).contains (cast [first, first]) &&
+    !(legalActions s).contains (cast [large]) && !(legalActions s).contains (cast [wrongDomain]) &&
+    stronger.mightNow first == some 4 && returned one first &&
+    !returned one second && !returned one third &&
+    !returned pair first && returned pair second && returned pair third &&
+    !(oneEvents.any (fun
+      | .chosenBySpell _ _ | .chosenByAbility _ _ => true
+      | _ => false))
+
+-- Corrupted Dragon's attack selects a subset at its Battlefield. Each selected
+-- Unit is rechecked after Reactions, and declining leaves all defenders in place.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, dragon) ← putAt s p "VEN-091" field
+  let (s, first) ← putAt s q "VEN-014" field
+  let (s, second) ← putAt s q "VEN-014" field
+  let (s, large) ← putAt s q "VEN-091" field
+  let (s, elsewhere) ← put s q "VEN-014" .base
+  let s := (s.modObj first (fun o => { o with baseMightThisTurn := some 5 })).control q field
+  let (picking, _) ← (advance 100 (s.withTriggers [.combatStarted field p]) []).toOption
+  let target (ts : List ObjId) : Action := ⟨.player p, .putTrigger 0 ts⟩
+  let (declined, _) ← (step 100 picking (target [])).toOption
+  let (chosen, _) ← (step 100 picking (target [first, second])).toOption
+  let stronger := chosen.modObj first (fun o => { o with baseMightThisTurn := some 6 })
+  let resolved := settleChain {} 8 stronger
+  return (legalActions picking).contains (target [first]) &&
+    !(legalActions picking).contains (target [large]) &&
+    !(legalActions picking).contains (target [elsewhere]) &&
+    (declined.obj? second).any (·.loc == some field) &&
+    (resolved.obj? dragon).isSome && (resolved.obj? first).any (·.loc == some field) &&
+    resolved.locate second == some (.player q .base) &&
+    (resolved.obj? large).any (·.loc == some field)
+
+-- The Dragon enters ready with four points left and exhausted with three.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, card) ← put s p "VEN-091" .hand
+  let far ← play (s.gainPoints p (s.victoryScore - 4)) p card
+  let close ← play (s.gainPoints p (s.victoryScore - 3)) p card
+  let ready ← far.firstOf p .base "VEN-091"
+  let exhausted ← close.firstOf p .base "VEN-091"
+  return far.tired ready == some false && close.tired exhausted == some true
+
 -- The Legend watches its controller's action on their own card, even when that card
 -- was controlled by someone else. The Action spends Empowered and exhausts it up front.
 #guard vendettaCase fun s => do

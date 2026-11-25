@@ -59,6 +59,8 @@ inductive Effect where
   | fillSlot (i : Nat) (s : Selector)
   /-- Make the object just chosen (`pickVar`) slot `i`. -/
   | fillFromPick (i : Nat)
+  /-- At resolution, keep one of the remaining legal groups of original targets (CR 355.11.b). -/
+  | retainTargetSet (groups : List (List ObjId))
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
 deriving DecidableEq, Repr, Hashable

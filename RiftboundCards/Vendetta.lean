@@ -2485,8 +2485,15 @@ def VEN_091.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Corrupted Dragon: the effect is not written yet. -/
-def VEN_091 : CardDef := VEN_091.meta
+/-- Corrupted Dragon. -/
+def VEN_091 : CardDef :=
+  { VEN_091.meta with
+    abilities := [.passive (.cmp .lt (.add (.points .you) (.const 3)) .victoryScore)
+      [.entersReady .self],
+      .triggered (.onSelf .attack)
+        (.of [.targetOf .anyNumber .enemy .here [.ofType .unit, .might .le (.const 5)]]
+          (.prim (.move (.slotsFrom 0) .base))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-092
 /--
@@ -2912,8 +2919,13 @@ def VEN_107.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Discord: the effect is not written yet. -/
-def VEN_107 : CardDef := VEN_107.meta
+/-- Decree of Discord. -/
+def VEN_107 : CardDef :=
+  { VEN_107.meta with
+    spellEffect := some (.of
+      [.targetOf (.combinedMightAtMost 5) .enemy .anywhere [.ofType .unit, .domain .order]]
+      (.prim (.returnToHand (.slotsFrom 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-108
 /--
