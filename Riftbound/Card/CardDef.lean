@@ -44,6 +44,11 @@ inductive PlayExtra where
   | exhaustLegend
   /-- A friendly Bird, Cat, Dog or Poro is killed. -/
   | killPet
+  /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
+  a friendly Unit). -/
+  | killUnit
+  /-- The player spends this much XP (the object it is done to is their Legend). -/
+  | spendXP (n : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- The definition of one logical card. -/

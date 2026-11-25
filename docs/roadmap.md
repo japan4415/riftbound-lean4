@@ -2028,3 +2028,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   4. 呪文のプレイを選ぶ・相手の手札から選ぶ（Bone Skewer、Call to Battle ほか）、ダメージの分配（Alpha Strike）、同時の移動（Mageseeker Investigator）、Battlefield を選んで出す（Thrill of the Hunt）、手札へ離れるときの元の Battlefield（Ripper's Bay）。
   5. 条件が、誘発した呪文を見ない（`spentOnSpell`：Revna、Virtuoso、Forgotten Library）、`excessAtLeast` が、その Conquer を生んだ戦闘に結びつかない（Piltover Enforcer、Hextech Gauntlets、Trapping Grounds）、`Filter.hasKeyword` が、与えられたキーワードを読まない（Petal Pixie、Smoke and Mirrors、Bashful Bloom、Black Flame Altar）、Level の条件つきの能力を `blocksChoice` が読まない（Master Yi, Unstoppable の Level 16）、Honeyfruit の Level 6 の Add が、Chain に載る。
 - **近似として、残してよいもの（C）**: 解決のときに選ぶ対象（Deflect の支払いが働かない）、手札を見せない、Dancing Grenade、Death from Below、Scorn of the Moon、Star Spring、Zilean、Gardens of Becoming、Curtain Call と Square Up の Repeat、`returnToHand` が「引く」の誘発を起こさない、など。
+
+### M9 の追加の費用（2026-11-25）: 遊ぶときに払う
+
+点検（上の節）の次の一手として、追加の費用を、解決のときでなく、遊ぶときに払うようにした。
+
+- **仕組み**: `PlayExtra` に `killUnit`（味方のユニットを殺す）と `spendXP n`（XP を払う。費用を払う相手は、プレイヤーの Legend）を足した。ユニットとギアは、これまでと同じ流れ（`playTargets` → `extraOk` → `payExtra0`）で、遊ぶときに払い、`paid` が付く。**呪文**は、`castPay`（`castStep` と `applyPlayCard` の中）で、唱えるときに払う。費用の対象は、呪文が選ぶ **1 つ目の対象**（カードの最初の `targetOf` が、費用の対象を表す。`castable` の検査はそのまま使える）。払うと、Chain の上の呪文の 1 つ目の対象は、死んだカードの新しい ID（Trash）になるので、効果は、そのユニットの費用を読める。呪文の `paid` は Repeat のための印なので、立てない。
+- **直したカード**: Heedless Resurrection、Sacrifice（唱えるときに殺す。唱える前から、味方のユニットが無いと唱えられない）、Safety Inspector（3 XP を払うかを、遊ぶときに選ぶ。払うと、自分は殺さない）。相手は、費用を払ったあとの状態に応答する。
+- **まだのもの**: Poppy, Defender of the Meek（XP で、Energy が 3 安くなる）、Atakhan（殺したユニットの費用ぶん、安くなる）、Conscription（XP を払ったか、で選べる対象が変わる）。どれも、**費用や選べる対象が、選んだ追加の費用で変わる**。`playable` と `applyPlay` が、まだ選んだ対象（`ts`）を受け取らないので、そこに `ts` を通し（`playable`、`paysForXT`、`paidExtra`、`applyPlay`）、費用を減らす関数（`cutOptionsOf` の拡張）を足す必要がある。`Undying Loyalty` は、さらに、Trash の対象を選べない（`placeObjs .inTrash` が未対応）。
