@@ -1729,27 +1729,6 @@ theorem banishLookedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env 
   unfold banishLookedStep
   split <;> (try split) <;> exact Safe.refl s
 
-/-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
-def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
-    List (SpellPick × List ObjId) :=
-  (s.spellPicks p d).flatMap (fun pick =>
-    (e.forPick pick).toList.flatMap (fun branch =>
-      if s.spellPlayerTargetOk p branch pick then
-        ((targetTuples s p id s.mightTable branch.choices).filter
-          (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
-      else []))
-
-/-- Assemble a fixed number of executions. Each may choose a different mode and targets, or
-choose the same ones again. Keep their targets in order for additional costs (CR 820.2). -/
-def repeatSpellChoices (options : List (SpellPick × List ObjId)) :
-    Nat → List (SpellPick × List ObjId)
-  | 0 => options
-  | n + 1 =>
-    let later := repeatSpellChoices options n
-    options.flatMap (fun (pick, targets) =>
-      later.map (fun (next, remaining) =>
-        (.thenRepeat pick targets.length next, targets ++ remaining)))
-
 /-- Finalization choices and costs from the base price set by an effect (CR 420.3, 820.2). -/
 def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (base : Cost) (energyCut : Nat) : List (List ObjId × Cost × SpellPick) :=
@@ -1757,7 +1736,7 @@ def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
   let options := spellChoices s p id d e
   let maximum := costs.countP Prod.snd
   let priced := (List.range (maximum + 1)).flatMap (fun count =>
-    let selections := if e.hasFinalizationChoice && !d.repeatChooses then repeatSpellChoices options count
+    let selections := if d.usesRepeatChoices then repeatSpellChoices options count
       else options
     selections.flatMap (fun (pick, ts) =>
       let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
@@ -4709,11 +4688,16 @@ theorem attachmentReplacementFrames_play {s : GameState} {events : List Event} {
 def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (spell : Selector) (es : EffectList) : Frame :=
   let options := ((spell.eval s p src env).getD []).flatMap (fun id =>
-    ((s.cardDef? id).filter (·.hasType .spell)).toList.flatMap (fun d =>
-      d.spellEffect.toList.flatMap (fun effect =>
-        (spellChoices s p id d effect).filterMap (fun (pick, targets) =>
-          if pick == .plain && effect.choices.isEmpty then none
-          else some (.setSpellChoices id pick targets)))))
+    match s.obj? id, s.cardDef? id with
+    | some item, some d =>
+      if !d.hasType .spell then [] else
+        d.spellEffect.toList.flatMap (fun effect =>
+          if !effect.hasFinalizationChoice then [] else
+            let choices := spellChoices s p id d effect
+            let executions := if d.usesRepeatChoices then repeatSpellChoices choices item.extraPaid
+              else choices
+            executions.map (fun (pick, targets) => .setSpellChoices id pick targets))
+    | _, _ => [])
   if options.isEmpty then .run p src env es
   else .mayDo p src env (.eitherOf (EffectList.ofList options)) es
 
@@ -4831,7 +4815,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     let updated := s.modObj spell fun o =>
       let newPick := match o.spellPick.optionalCosts with
         | some (printed, repeats) => .withCosts pick printed repeats
-        | none => pick
+        | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
       { o with targets, spellPick := newPick, targetPlayer := pick.playerTarget }
     (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
   | .moveChoosing unit home fs afterMove =>
@@ -5215,7 +5199,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
             | some e =>
               -- once, and once more for each Repeat that was paid (CR 820)
               e.recheckTargetGroup s o.controller item o.targets
-                (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
+                (e.executions (1 + o.extraPaid))
             | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest

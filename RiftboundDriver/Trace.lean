@@ -198,20 +198,6 @@ def effectPaymentFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreEffectPayments", "true")]
   | _ => []
 
-/-- Describe whether to choose again, and the new finalization choices on offer (CR 750-755). -/
-def remakeSpellFields (state : Option GameState) (frame : Option Frame)
-    (yes : Bool) : List (String × String) :=
-  match frame with
-  | some (.mayDo _ _ _ (.eitherOf (.cons (.setSpellChoices spell _ _) _)) _) =>
-    [("remakeSpell", toString spell.n)]
-  | some (.eitherDo _ _ _ first@(.setSpellChoices spell _ _) other _) =>
-    match if yes then first else other with
-    | .setSpellChoices item pick targets =>
-      [("remadeSpell", toString item.n), ("targets", jarr (targets.map (fun id => toString id.n)))] ++
-        spellPickFields state item pick
-    | _ => [("moreSpellChoices", toString spell.n)]
-  | _ => []
-
 /-- Encode the targets together with their controllers for the viewer. -/
 def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (String × String) :=
   let controllers := targets.map (fun id =>
@@ -226,6 +212,20 @@ def spellExecutionFields (state : Option GameState) (card : ObjId) (pick : Spell
     [("repeatExecutions", jarr ((pick.executions targets).map (fun (choice, ts) =>
       jobj (spellTargetFields state ts ++ spellPickFields state card choice))))]
   else []
+
+/-- Describe whether to choose again, and the new finalization choices on offer (CR 750-755). -/
+def remakeSpellFields (state : Option GameState) (frame : Option Frame)
+    (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.mayDo _ _ _ (.eitherOf (.cons (.setSpellChoices spell _ _) _)) _) =>
+    [("remakeSpell", toString spell.n)]
+  | some (.eitherDo _ _ _ first@(.setSpellChoices spell _ _) other _) =>
+    match if yes then first else other with
+    | .setSpellChoices item pick targets =>
+      [("remadeSpell", toString item.n)] ++ spellTargetFields state targets ++
+        spellPickFields state item pick ++ spellExecutionFields state item pick targets
+    | _ => [("moreSpellChoices", toString spell.n)]
+  | _ => []
 
 /-- Describe the play and cost of the chosen Spell. -/
 def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : EffectSpellPlay) :
@@ -304,7 +304,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
-        spellPickFields state played pick
+        spellPickFields state played pick ++ spellExecutionFields state played pick ts
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]

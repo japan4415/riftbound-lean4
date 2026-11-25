@@ -486,7 +486,6 @@ def StaticMod.runs : StaticMod → Bool
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
   | .firstGearAbilityLess _ | .empowerHereLess _ => true
-  | .repeatChooses => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true

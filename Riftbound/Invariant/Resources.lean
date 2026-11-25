@@ -197,8 +197,11 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
     ∀ t ∈ targets, s.targetPresent t = true := by
-  obtain ⟨d, e, -, -, hok, -⟩ := castable_targets h
-  exact targetsOk_mem_targetPresent hok
+  obtain ⟨d, -, hchoices⟩ := castable_choices h
+  rcases hchoices with h | h
+  · obtain ⟨e, -, hok, -⟩ := GameState.ordinaryCastChoices_spec h
+    exact targetsOk_mem_targetPresent hok
+  · exact GameState.repeatedCastChoices_targets_present h
 
 /-- A Spell starts from the targets it was cast with (CR 340, 355). An open-ended group is
 rechecked before the effect, and the Spell leaves the Chain after the effect. -/
@@ -218,7 +221,7 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.recheckTargetGroup s o.controller item o.targets
-              (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
+              (e.executions (1 + o.extraPaid))
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]

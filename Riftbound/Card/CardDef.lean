@@ -156,13 +156,6 @@ def hideEnergyEffect : EffectDef :=
   let e := hideEffectWith (.addEnergy .you (.const 1) none)
   EffectDef.of e.choices (.ifThen .hidesWithEnergy e.body .nop)
 
-/-- The Spell lets its player make different choices when it is repeated (Rocket Barrage). -/
-def repeatChooses (d : CardDef) : Bool :=
-  d.abilities.any (fun ab =>
-    match ab with
-    | Ability.passive _ mods => mods.contains .repeatChooses
-    | _ => false)
-
 /-- The Equip cost the card prints, if it has one. -/
 def equipCost (c : CardDef) : Option Cost :=
   c.keywords.findSome? (fun k =>

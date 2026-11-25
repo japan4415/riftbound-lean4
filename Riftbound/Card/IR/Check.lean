@@ -274,7 +274,6 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
   | .firstGearAbilityLess _ | .empowerHereLess _ => true
-  | .repeatChooses => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear => true

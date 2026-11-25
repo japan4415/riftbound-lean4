@@ -574,14 +574,16 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, c) ← put s s.me "SFD-023" .hand
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   let pay := payOf s2 c
-  let r ← cast (s2.rich s.me) s.me c ⟨pay.energy + 2, pay.power ++ [.fury]⟩ [u]
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let r ← cast (s2.rich s.me) s.me c ⟨pay.energy + 2, pay.power ++ [.fury]⟩ [u, u] (pick := pick)
   return r.dmg u == some 4
 -- (review) Blood Rush with Repeat paid: Assault 2 is given twice
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-003" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
   let pay := payOf s2 c
-  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v]
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
   let b ← cast (s2.rich s.me) s.me c pay [v]
   return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
 -- (review) Marching Orders: each unit takes damage equal to the Might of the other
@@ -1064,33 +1066,45 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (s.cardDef? o).any (·.name == "Sand Soldier"))
   (l.length, (l.filter (fun o => s.tired o == some false)).length)
 
--- Rocket Barrage (SFD-077): choose one: 4 damage to a unit in a base, or kill a gear
+-- Rocket Barrage offers its mode and target even when no Repeat is paid.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-077" .hand
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
   let (s4, w) ← putAt s3 s.you "OGN-001" s.bf0
-  let a ← play s4 s.me c [u]
-  let b ← play s4 s.me c [g]
+  let castMode (i : Nat) (targets : List ObjId) :=
+    cast (s4.rich s.me) s.me c (payOf s4 c) targets (pick := .mode i)
+  let a ← castMode 0 [u]
+  let b ← castMode 1 [g]
   return a.dmg u == some 4 && (a.obj? g).isSome && a.dmg w == some 0 &&
-    (b.obj? g).isNone && b.dmg u == some 0 && (play s4 s.me c [w]).isNone &&
-    (play s4 s.me c []).isNone
+    (b.obj? g).isNone && b.dmg u == some 0 && (castMode 0 [w]).isNone &&
+    (castMode 0 []).isNone && (castMode 1 [u]).isNone && (castMode 0 [g]).isNone
 
--- Rocket Barrage with Repeat paid: the repeat makes its own choice (a different target, or none)
+-- Rocket Barrage locks the ordered choices for both the printed and a granted Repeat.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-077" .hand
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
-  let pay := payOf s3 c
-  let paid : RunePool.Payment := ⟨pay.energy + 4, pay.power ++ [.mind]⟩
-  let rich := s3.rich s.me
-  let both ← cast rich s.me c paid [u, g]
-  let one ← cast rich s.me c paid [u]
-  let same ← cast rich s.me c paid [g, u]
-  let plain ← play s3 s.me c [u]
-  return both.dmg u == some 4 && (both.obj? g).isNone && one.dmg u == some 4 &&
-    (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
-    plain.dmg u == some 4 && (plain.obj? g).isSome && (play s3 s.me c [u, g]).isNone
+  let (s4, h) ← put s3 s.you "SFD-030" .base
+  let p := s.me
+  let rich := s4.rich p
+  let paid : RunePool.Payment := ⟨8, [.mind, .mind]⟩
+  let order (i j : Nat) : SpellPick := .withCosts (.thenRepeat (.mode i) 1 (.mode j)) false 1
+  let both ← cast rich p c paid [u, g] (pick := order 0 1)
+  let reversed ← cast rich p c paid [g, u] (pick := order 1 0)
+  let gears ← cast rich p c paid [g, h] (pick := order 1 1)
+  let plain ← cast rich p c (payOf rich c) [u] (pick := .mode 0)
+  let three : SpellPick := .withCosts
+    (.thenRepeat (.mode 1) 1 (.thenRepeat (.mode 0) 1 (.mode 1))) false 2
+  let thrice ← cast (rich.addTurnFx p .nextSpellRepeat) p c ⟨12, [.mind, .mind, .mind]⟩
+    [g, u, h] (pick := three)
+  return both.dmg u == some 4 && (both.obj? g).isNone && (both.obj? h).isSome &&
+    reversed.dmg u == some 4 && (reversed.obj? g).isNone &&
+    (gears.obj? g).isNone && (gears.obj? h).isNone && gears.dmg u == some 0 &&
+    plain.dmg u == some 4 && (plain.obj? g).isSome &&
+    thrice.dmg u == some 4 && (thrice.obj? g).isNone && (thrice.obj? h).isNone &&
+    (cast rich p c paid [u] (pick := order 0 1)).isNone &&
+    (cast rich p c paid [u] (pick := .mode 0)).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, the player may play a gear (cost 7
 -- or less) from the hand this turn for no Energy: it is played later, and only the first one is free
@@ -3305,7 +3319,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let cost ← a.effCost s.me c dC
   let double : RunePool.Payment :=
     ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
-  let r ← cast a s.me c double [foe]
+  let picks : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let r ← cast a s.me c double [foe, foe] (pick := picks)
   let before := (s3.playCostsOf s.me c dC cost).length
   return (a.playCostsOf s.me c dC cost).length == before + 1 &&
     s3.paysForX s.me c dC cost double == false && a.paysForX s.me c dC cost double &&
@@ -3917,11 +3932,6 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 
 -- Temporal Portals stack (CR 820.1): each Repeat is paid on its own, and the effect is done once
 -- more for each one paid. Two Portals: the spell is done three times if both are paid.
-meta def effLen : EffectList → Nat
-  | .nil => 0
-  | .cons (.fillSlot _ _) rest => effLen rest
-  | .cons _ rest => 1 + effLen rest
-
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-078" .base
   let (s1b, g2) ← put s1 s.me "SFD-078" .base
@@ -3936,17 +3946,17 @@ meta def effLen : EffectList → Nat
   let twice : RunePool.Payment := ⟨2 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power⟩
   let thrice : RunePool.Payment :=
     ⟨3 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power ++ (payOf a2 c).power⟩
-  let runs (pay : RunePool.Payment) : Option Nat := do
-    let (st, _) ← (applyCast a2 s.me c pay [foe])
-    match resolveFrames st [] with
-    | .run _ _ _ body :: _ => some (effLen body)
-    | _ => none
-  return (a2.playMark s.me c once).extraPaid == 0 &&
-    (a2.playMark s.me c twice).extraPaid == 1 && (a2.playMark s.me c thrice).extraPaid == 2 &&
-    (← runs once) == 1 && (← runs twice) == 2 && (← runs thrice) == 3
+  let runs (pay : RunePool.Payment) (targets : List ObjId) (pick : SpellPick) : Option (Nat × Nat) := do
+    let (st, _) ← (step 100 a2 ⟨.player s.me, .playCard c pay targets none none pick⟩).toOption
+    let item ← (st.zone .chain).head?
+    let o ← st.obj? item
+    return (o.extraPaid, (resolveFrames st []).countP (fun | .run .. => true | _ => false))
+  let two : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let three : SpellPick := .withCosts (.thenRepeat .plain 1 (.thenRepeat .plain 1 .plain)) false 2
+  return runs once [foe] .plain == some (0, 1) &&
+    runs twice [foe, foe] two == some (1, 2) && runs thrice [foe, foe, foe] three == some (2, 3)
 
--- (CR 820.2) A repeated spell chooses its targets again: the first target is dealt 3 and a second
--- one, chosen as the effect is done again, is dealt 3 too
+-- (CR 820.2) A repeated spell locks both targets while it is cast.
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-078" .base
   let (s2, c) ← put s1 s.me "OGN-005" .hand
@@ -3959,9 +3969,10 @@ meta def effLen : EffectList → Nat
   let double : RunePool.Payment :=
     ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
   let once ← cast a s.me c (payOf a c) [e1] { obj := fun o => o == e2 }
-  let twice ← cast a s.me c double [e1] { obj := fun o => o == e2 }
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let twice ← cast a s.me c double [e1, e2] { obj := fun _ => false } pick
   return once.dmg e1 == some 3 && once.dmg e2 == some 0 && twice.dmg e1 == some 3 &&
-    twice.dmg e2 == some 3
+    twice.dmg e2 == some 3 && (cast a s.me c double [e1]).isNone
 
 -- (audit) Quick-Draw gives Reaction: the Gear can answer an item of the Chain, a plain Gear cannot
 #guard tsf fun s => do

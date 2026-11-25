@@ -1447,8 +1447,8 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (s, enemy) ← put s q "VEN-014" .base
   let (s, card) ← put s p "VEN-083" .hand
   let s := s.rich p
-  let cast (pay : RunePool.Payment) (paid : Bool) (repeats : Nat := 0) : Action :=
-    ⟨.player p, .playCard card pay [ally, enemy] none none (.withCosts .plain paid repeats)⟩
+  let cast (pay : RunePool.Payment) (paid : Bool) : Action :=
+    ⟨.player p, .playCard card pay [ally, enemy] none none (.withCosts .plain paid 0)⟩
   let s0 := ((s.fund p 1).addTurnFx p (.nextCardCostMinus 2 2)).addTurnFx q .preventEffectDamage
   let accept := cast ⟨1, []⟩ true
   let decline := cast ⟨1, []⟩ false
@@ -1461,8 +1461,9 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let retargeted := accepted.modObj paidItem (fun o =>
     { o with controller := q, targets := [enemy, ally] })
   let taken ← passToChoice 8 retargeted
-  let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat)
-    (cast ⟨6, [.body]⟩ true 1)).toOption
+  let twice : Action := ⟨.player p, .playCard card ⟨6, [.body]⟩ [ally, enemy, ally, enemy]
+    none none (.withCosts (.thenRepeat .plain 2 .plain) true 1)⟩
+  let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat) twice).toOption
   let rep ← (repeating.zone .chain).head?
   let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) false
   let plan ← (limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 0)).find? (fun plan =>
@@ -1487,7 +1488,9 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (s, spell) ← put s p "OGN-009" .hand
   let s := ((s.fund p 0).addTurnFx p .nextSpellRepeat).addTurnFx p (.nextCardCostMinus 2 2)
   let cast (copies : Nat) : Action :=
-    ⟨.player p, .playCard spell ⟨0, []⟩ [target] none none (.withCosts .plain false copies)⟩
+    let pick := if copies == 0 then .plain else .thenRepeat .plain 1 .plain
+    let targets := if copies == 0 then [target] else [target, target]
+    ⟨.player p, .playCard spell ⟨0, []⟩ targets none none (.withCosts pick false copies)⟩
   let (once, _) ← (step 100 s (cast 0)).toOption
   let (twice, _) ← (step 100 s (cast 1)).toOption
   let count (t : GameState) := (t.zone .chain).head?.bind (fun item =>
@@ -2676,9 +2679,11 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let (s, spell) ← put s p "VEN-008" .hand
   let (s, payment) ← put s p "VEN-047" .hand
   let s := (s.rich p).addTurnFx p .nextSpellRepeat
-  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨6, []⟩ [target]⟩).toOption
+  let repeatPick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let (casting, _) ← (step 100 s
+    ⟨.player p, .playCard spell ⟨6, []⟩ [target, target] none none repeatPick⟩).toOption
   let (withDiscard, _) ← (step 100 s
-    ⟨.player p, .playCard spell ⟨6, []⟩ [target] none (some payment)⟩).toOption
+    ⟨.player p, .playCard spell ⟨6, []⟩ [target, target] none (some payment) repeatPick⟩).toOption
   let top ← (casting.zone .chain).head?
   let paidTop ← (withDiscard.zone .chain).head?
   let done := settleChain {} 12 casting
@@ -2768,6 +2773,84 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
     (casting.obj? item).any (fun o => o.spellPick.executions o.targets == expected) &&
     (casting.poolOf p).total == 0 &&
     (done.obj? first).any (·.loc.isNone) && (done.obj? second).any (·.loc == some away)
+
+-- From hand or Trash, the same Repeat locks Twilight Step's two moves before responses.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let origin := s.bf0
+  let away ← s.battlefields.find? (· != origin)
+  let (s, hand) ← put s p "VEN-105" .hand
+  let (s, flow) ← put s p "VEN-105" .trash
+  let (s, first) ← putAt s q "VEN-014" origin
+  let (s, second) ← put s q "VEN-014" .base
+  let s := ((s.control q origin).fund p 6 (chaos := 2)).addTurnFx p .nextSpellRepeat
+  let plan : SpellPick := .thenRepeat (.destination none) 1 (.destination (some away))
+  let expected : List (SpellPick × List ObjId) :=
+    [(.destination none, [first]), (.destination (some away), [second])]
+  let cast (card : ObjId) (energy : Nat) (choices : SpellPick) : Action :=
+    ⟨.player p, .playCard card ⟨energy, [.chaos, .chaos]⟩ [first, second]
+      none none (.withCosts choices false 1)⟩
+  let (ordinary, events) ← (step 100 s (cast hand 4 plan)).toOption
+  let (fromTrash, _) ← (step 100 s (cast flow 6 plan)).toOption
+  let item ← (ordinary.zone .chain).head?
+  let ordinaryDone ← passToChoice 8 ordinary
+  let flowDone ← passToChoice 8 fromTrash
+  let correctMoves (game : GameState) :=
+    (game.obj? first).any (·.loc.isNone) && (game.obj? second).any (·.loc == some away)
+  return events.contains (.chosenBySpell p first) && events.contains (.chosenBySpell p second) &&
+    (ordinary.obj? item).any (fun o => o.spellPick.executions o.targets == expected) &&
+    correctMoves ordinaryDone && correctMoves flowDone &&
+    (flowDone.countIn p .banishment "VEN-105" == 1) &&
+    !(legalActions s).contains (cast hand 4
+      (.thenRepeat (.destination none) 2 (.destination (some away)))) &&
+    !(legalActions s).contains (cast hand 4
+      (.thenRepeat (.destination (some origin)) 1 (.destination (some away)))) &&
+    !(legalActions s).contains (cast hand 2 plan)
+
+-- Deflect is due separately for each execution that targets the same enemy Unit.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "VEN-052" .hand
+  let (s, enemy) ← put s s.you "VEN-064" .base
+  let setup (power : Nat) := (s.fund p 2 (mind := power)).addTurnFx p .nextSpellRepeat
+  let action : Action := ⟨.player p, .playCard spell ⟨2, [.mind, .mind]⟩ [enemy, enemy]
+    none none (.withCosts (.thenRepeat (.mode 1) 1 (.mode 1)) false 1)⟩
+  let (casting, events) ← (step 100 (setup 4) action).toOption
+  let done := settleChain {} 12 casting
+  return !(legalActions (setup 3)).contains action && (casting.poolOf p).total == 0 &&
+    events.countP (· == .chosenBySpell p enemy) == 2 &&
+    done.mightNow enemy == (s.mightNow enemy).map (· - 4)
+
+-- Rebuttal remakes all paid executions without charging for either new Deflect target.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, ours) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s q "VEN-064" .base
+  let (s, spell) ← put s q "VEN-052" .hand
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let s := ((s.fund q 2 (mind := 2)).fund p 1 (chaos := 2)).addTurnFx q .nextSpellRepeat
+  let s := { s with pending := [.priority q] }
+  let act (t : GameState) (who : PlayerId) (a : ActionKind) := (step 100 t ⟨.player who, a⟩).toOption
+  let original : SpellPick := .withCosts (.thenRepeat (.mode 0) 1 (.mode 1)) false 1
+  let (casting, _) ← act s q (.playCard spell ⟨2, [.mind, .mind]⟩ [enemy, ours] none none original)
+  let item ← (casting.zone .chain).head?
+  let (answer, _) ← act casting q .pass
+  let (responding, _) ← act answer p (.playCard rebuttal ⟨1, [.chaos]⟩ [item])
+  let (passed, _) ← act responding p .pass
+  let (waiting, _) ← act passed q .pass
+  let (taken, _) ← act waiting p (.decide true)
+  let (choice, _) ← act taken p (.decide true)
+  let expected : List (SpellPick × List ObjId) := [(.mode 1, [enemy]), (.mode 1, [enemy])]
+  let (changed, events) ← chooseEffectPlay (fun
+    | .setSpellChoices card pick targets => card == item && pick.executions targets == expected
+    | _ => false) 40 choice
+  let done := settleChain {} 12 changed
+  return (changed.obj? item).any (fun o => o.controller == p && o.extraPaid == 1 &&
+    o.spellPick.optionalCosts == some (false, 1) && o.spellPick.executions o.targets == expected) &&
+    (changed.poolOf p).total == 0 && events.countP (· == .chosenBySpell p enemy) == 2 &&
+    done.mightNow enemy == (s.mightNow enemy).map (· - 4) && (done.obj? ours).isSome
 
 -- Fizz offers the optional hand cost when he plays Ruthless Strike from the Trash.
 #guard vendettaCase fun s => do
@@ -3071,7 +3154,8 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let (s, spell) ← put s p "SFD-023" .hand
   let s := s.fund p 4
   let ordinary : Action := ⟨.player p, .playCard spell ⟨2, []⟩ [a, b]⟩
-  let repeat_ : Action := ⟨.player p, .playCard spell ⟨4, []⟩ [a, b]⟩
+  let repeat_ : Action := ⟨.player p, .playCard spell ⟨4, []⟩ [a, b, a, b]
+    none none (.withCosts (.thenRepeat .plain 2 .plain) false 1)⟩
   let (one, _) ← (step 100 s ordinary).toOption
   let (two, _) ← (step 100 s repeat_).toOption
   let paidRepeats (t : GameState) :=
@@ -4052,7 +4136,11 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let high : Cost := ⟨2, []⟩
   let s := (addTempKw ⟨.flow, .cost high⟩ .turn (s.rich s.me) spell).1
   let s := (addTempKw ⟨.flow, .cost low⟩ .turn s spell).1
-  let action (flow : Option Cost) : Action := ⟨.player s.me, .playCard spell ⟨2, []⟩ [unit] flow⟩
+  let action (flow : Option Cost) : Action :=
+    if flow == some low then
+      ⟨.player s.me, .playCard spell ⟨2, []⟩ [unit, unit] flow none
+        (.withCosts (.thenRepeat .plain 1 .plain) false 1)⟩
+    else ⟨.player s.me, .playCard spell ⟨2, []⟩ [unit] flow⟩
   let (a, _) ← (step 100 s (action (some low))).toOption
   let (b, _) ← (step 100 s (action (some high))).toOption
   let aSpell ← (a.zone .chain).head?

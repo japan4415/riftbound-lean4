@@ -2261,18 +2261,12 @@ def SFD_077.meta : CardDef :=
 /-- Rocket Barrage. -/
 def SFD_077 : CardDef :=
   { SFD_077.meta with
-
-    abilities := [.passive .always [.repeatChooses]],
-    spellEffect := some (.of [.targetOf .one .any .anywhere
-        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))],
-        .targetOf (.upTo 1) .any .anywhere
-        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))]]
-      (.seqOf [
-        .ifThen (.matches (.slot 0) (.ofType .gear)) (.prim (.kill (.slot 0)))
-          (.prim (.deal (.slot 0) (.const 4))),
-        .ifThen .paid
-          (.ifThen (.matches (.slot 1) (.ofType .gear)) (.prim (.kill (.slot 1)))
-            (.prim (.deal (.slot 1) (.const 4)))) .nop])),
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Base の Unit に 4 ダメージ",
+        [.targetOf .one .any .anywhere [.ofType .unit, .not .onBattlefield]],
+        .prim (.deal (.slot 0) (.const 4))⟩,
+      ⟨"Gear を Kill", [.targetOf .one .any .anywhere [.ofType .gear]],
+        .prim (.kill (.slot 0))⟩] },
     status := .drafted }
 
 -- BEGIN GENERATED SFD-078

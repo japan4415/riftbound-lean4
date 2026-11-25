@@ -613,7 +613,8 @@ def GameState.spellCostsOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardD
   let choices := ((s.spellCostPlans p c d cost ts).filterMap (fun (cost, paid) =>
     if cost.paidBy d.domains pay then some paid else none)).eraseDups
   match pick.optionalCosts with
-  | some paid => choices.contains paid && (d.additionalCost.isSome || 1 < choices.length)
+  | some paid =>
+    choices.contains paid && (d.additionalCost.isSome || pick.hasExecutionChoices || 1 < choices.length)
   | none => d.additionalCost.isNone && choices.length == 1
 
 /-- The payment pays the cost of the card, less what the objects it chooses take off, or the cost
@@ -888,6 +889,167 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
     | none => false
   | .withPlayer pick _ | .withCosts pick _ _ => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
+
+/-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
+def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
+    List (SpellPick × List ObjId) :=
+  (s.spellPicks p d).flatMap (fun pick =>
+    (e.forPick pick).toList.flatMap (fun branch =>
+      if s.spellPlayerTargetOk p branch pick then
+        ((targetTuples s p id s.mightTable branch.choices).filter
+          (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
+      else []))
+
+/-- Every object in the choices of one execution is in a legal target zone. -/
+theorem spellChoices_targets_present {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
+    {e : EffectDef} {pick : SpellPick} {targets : List ObjId}
+    (h : (pick, targets) ∈ spellChoices s p c d e) :
+    ∀ t ∈ targets, s.targetPresent t = true := by
+  unfold spellChoices at h
+  obtain ⟨offered, -, h⟩ := List.mem_flatMap.mp h
+  obtain ⟨branch, -, h⟩ := List.mem_flatMap.mp h
+  split at h
+  · obtain ⟨ts, hs, eq⟩ := List.mem_map.mp h
+    cases eq
+    exact targetsOk_mem_targetPresent ((mem_targetTuples _ _ _ _ _ _).mp (List.mem_filter.mp hs).1)
+  · simp at h
+
+/-- Assemble a fixed number of executions. Each may choose a different mode and targets, or
+choose the same ones again. Keep their targets in order for additional costs (CR 820.2). -/
+def repeatSpellChoices (options : List (SpellPick × List ObjId)) :
+    Nat → List (SpellPick × List ObjId)
+  | 0 => options
+  | n + 1 =>
+    let later := repeatSpellChoices options n
+    options.flatMap (fun (pick, targets) =>
+      later.map (fun (next, remaining) =>
+        (.thenRepeat pick targets.length next, targets ++ remaining)))
+
+/-- A Spell with finalization choices records them separately for each execution (CR 820.2). -/
+def CardDef.usesRepeatChoices (d : CardDef) : Bool :=
+  d.spellEffect.any EffectDef.hasFinalizationChoice
+
+/-- Check recorded executions without enumerating the combinations of other executions. -/
+def repeatSpellChoicesOk (options : List (SpellPick × List ObjId)) :
+    Nat → SpellPick → List ObjId → Bool
+  | 0, pick, targets => options.contains (pick, targets)
+  | n + 1, .thenRepeat pick count next, targets =>
+    decide (count ≤ targets.length) && options.contains (pick, targets.take count) &&
+      repeatSpellChoicesOk options n next (targets.drop count)
+  | _ + 1, _, _ => false
+
+/-- A recorded combination is valid exactly when it appears among the offered choices. -/
+theorem mem_repeatSpellChoices (options : List (SpellPick × List ObjId)) (n : Nat)
+    (pick : SpellPick) (targets : List ObjId) :
+    (pick, targets) ∈ repeatSpellChoices options n ↔
+      repeatSpellChoicesOk options n pick targets = true := by
+  induction n generalizing pick targets with
+  | zero => simp [repeatSpellChoices, repeatSpellChoicesOk]
+  | succ n ih =>
+    constructor
+    · intro h
+      obtain ⟨⟨first, ts⟩, hfirst, h⟩ := List.mem_flatMap.mp h
+      obtain ⟨⟨later, us⟩, hlater, eq⟩ := List.mem_map.mp h
+      cases eq
+      simp [repeatSpellChoicesOk, hfirst, (ih later us).mp hlater]
+    · intro h
+      cases pick <;> simp only [repeatSpellChoicesOk, Bool.and_eq_true, decide_eq_true_eq,
+        List.contains_iff_mem, Bool.false_eq_true] at h
+      rename_i first count next
+      obtain ⟨⟨hcount, hfirst⟩, hlater⟩ := h
+      refine List.mem_flatMap.mpr ⟨(first, targets.take count), hfirst, List.mem_map.mpr ?_⟩
+      refine ⟨(next, targets.drop count), (ih _ _).mpr hlater, ?_⟩
+      simp [List.length_take, Nat.min_eq_left hcount]
+
+/-- Combining executions preserves the target property of each component. -/
+theorem repeatSpellChoices_targets {options : List (SpellPick × List ObjId)} {P : ObjId → Prop}
+    (single : ∀ pair ∈ options, ∀ t ∈ pair.2, P t) {n : Nat} {pick : SpellPick}
+    {targets : List ObjId} (h : (pick, targets) ∈ repeatSpellChoices options n) :
+    ∀ t ∈ targets, P t := by
+  induction n generalizing pick targets with
+  | zero => exact single (pick, targets) h
+  | succ n ih =>
+    obtain ⟨⟨first, ts⟩, hfirst, h⟩ := List.mem_flatMap.mp h
+    obtain ⟨⟨later, us⟩, hlater, eq⟩ := List.mem_map.mp h
+    cases eq
+    intro t ht
+    rcases List.mem_append.mp ht with ht | ht
+    · exact single (first, ts) hfirst t ht
+    · exact ih hlater t ht
+
+/-- The number of paid Repeats and the optional printed cost to try for a direct cast. -/
+def GameState.directRepeatCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+    List (Bool × Nat) :=
+  if d.usesRepeatChoices then
+    (List.range ((s.extrasRaw p c d).countP Prod.snd)).flatMap (fun k =>
+      (false, k + 1) :: (if d.additionalCost.isSome then [(true, k + 1)] else []))
+  else []
+
+/-- The per-execution choices available for a Spell before payment. -/
+def GameState.repeatedCastChoices (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+    List (SpellPick × List ObjId) :=
+  let options := d.spellEffect.toList.flatMap (spellChoices s p c d)
+  (s.directRepeatCosts p c d).flatMap (fun (printed, count) =>
+    (repeatSpellChoices options count).map (fun (pick, targets) =>
+      (.withCosts pick printed count, targets)))
+
+/-- Finalization of a Spell with separate choices for each paid Repeat (CR 355, 820.2). -/
+def GameState.repeatedCastChoicesOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (targets : List ObjId) : SpellPick → Bool
+  | .withCosts choices printed count =>
+    (s.directRepeatCosts p c d).contains (printed, count) &&
+      repeatSpellChoicesOk (d.spellEffect.toList.flatMap (spellChoices s p c d)) count choices targets
+  | _ => false
+
+/-- A legal combination of repeated choices appears among the offered finalizations. -/
+theorem GameState.mem_repeatedCastChoices (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (pick : SpellPick) (targets : List ObjId) :
+    (pick, targets) ∈ s.repeatedCastChoices p c d ↔
+      s.repeatedCastChoicesOk p c d targets pick = true := by
+  cases pick <;> simp [repeatedCastChoices, repeatedCastChoicesOk, mem_repeatSpellChoices]
+  rename_i choices printed repeats
+  cases printed <;> simp
+  all_goals
+    constructor
+    · rintro ⟨_, hcost, _, hchoices, rfl, rfl⟩
+      exact ⟨hcost, hchoices⟩
+    · rintro ⟨hcost, hchoices⟩
+      exact ⟨repeats, hcost, choices, hchoices, rfl, rfl⟩
+
+/-- Every target in the combined choices is in a legal target zone. -/
+theorem GameState.repeatedCastChoices_targets_present {s : GameState} {p : PlayerId}
+    {c : ObjId} {d : CardDef} {pick : SpellPick} {targets : List ObjId}
+    (h : (pick, targets) ∈ s.repeatedCastChoices p c d) :
+    ∀ t ∈ targets, s.targetPresent t = true := by
+  obtain ⟨⟨printed, count⟩, -, h⟩ := List.mem_flatMap.mp h
+  obtain ⟨⟨choices, ts⟩, hchosen, eq⟩ := List.mem_map.mp h
+  cases eq
+  refine repeatSpellChoices_targets (P := fun t => s.targetPresent t = true) ?_ hchosen
+  rintro ⟨pick, targets⟩ h
+  obtain ⟨effect, -, hs⟩ := List.mem_flatMap.mp h
+  exact spellChoices_targets_present hs
+
+/-- A cast with one recorded execution uses a legal mode, targets and destination (CR 355). -/
+def GameState.ordinaryCastChoicesOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (targets : List ObjId) (pick : SpellPick) : Bool :=
+  match d.spellEffect.bind (·.forPick pick) with
+  | some e => targetsOk s p c s.mightTable e.choices targets &&
+      (s.castPicks p c d).contains pick && s.moveTargetOk c e targets pick &&
+      s.spellPlayerTargetOk p e pick
+  | none => false
+
+/-- A Spell's ordinary choice identifies its effect and a legal pick of targets. -/
+theorem GameState.ordinaryCastChoices_spec {s : GameState} {p : PlayerId} {c : ObjId}
+    {d : CardDef} {pick : SpellPick} {targets : List ObjId}
+    (h : s.ordinaryCastChoicesOk p c d targets pick = true) :
+    ∃ e, d.spellEffect.bind (·.forPick pick) = some e ∧
+      targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.castPicks p c d := by
+  unfold ordinaryCastChoicesOk at h
+  cases he : d.spellEffect.bind (·.forPick pick) with
+  | none => simp [he] at h
+  | some e =>
+    simp only [he, Bool.and_eq_true, List.contains_iff_mem] at h
+    exact ⟨e, rfl, h.1.1.1, h.1.1.2⟩
 
 /-- What is true when a card is played: whether an additional cost was paid, whether another card
 had been played in the turn (Legion), and the turn. -/
@@ -1295,15 +1457,12 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
-        (match d.spellEffect.bind (·.forPick pick) with
-          | some e => targetsOk s p c s.mightTable e.choices targets &&
-              (s.castPicks p c d).contains pick &&
-                (s.moveTargetOk c e targets pick && s.spellPlayerTargetOk p e pick)
-          | none => false) &&
+        (s.ordinaryCastChoicesOk p c d targets pick || s.repeatedCastChoicesOk p c d targets pick) &&
         (match s.directCost p c d flow with
-          | some cost => s.paysForXT p c d cost targets pay pick && s.spellCostsOk p c d cost targets pay pick &&
-              (!d.repeatChooses || decide (targets.length ≤ 1) ||
-                decide (0 < pick.optionalCosts.elim (s.extraPaidAt p c d cost targets pay) Prod.snd))
+          | some cost =>
+            let repeats := pick.optionalCosts.elim (s.extraPaidAt p c d cost targets pay) Prod.snd
+            s.paysForXT p c d cost targets pay pick && s.spellCostsOk p c d cost targets pay pick &&
+              (!d.usesRepeatChoices || pick.hasExecutionChoices == decide (0 < repeats))
           | none => false) &&
         (s.spendFor p false pay).any (fun pool =>
           s.playPowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
@@ -1619,29 +1778,23 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
           | some pool => exact ⟨pool, GameState.spendFor_eq_some hs⟩
         exact ⟨o, d, cost, pool, hturn, rfl, rfl, howner, hty, hc, hcost.1.1, hpool⟩
 
-/-- A castable card is a Spell whose effect the targets are a legal pick for. -/
-theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
-    ∃ d e, s.cardDef? c = some d ∧ d.spellEffect.bind (·.forPick pick) = some e ∧
-      targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.castPicks p c d := by
+/-- A castable Spell has legal ordinary or per-execution finalization choices. -/
+theorem castable_choices {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId}
+    (h : castable s p c pay targets flow pick = true) :
+    ∃ d, s.cardDef? c = some d ∧ (s.ordinaryCastChoicesOk p c d targets pick = true ∨
+      (pick, targets) ∈ s.repeatedCastChoices p c d) := by
   unfold castable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨-, hrest⟩ := h
   cases ho : s.obj? c with
-  | none => rw [ho] at hrest; simp at hrest
+  | none => simp [ho] at hrest
   | some o =>
     cases hd : s.cardDef? c with
-    | none => rw [ho, hd] at hrest; simp at hrest
+    | none => simp [ho, hd] at hrest
     | some d =>
-      rw [ho, hd] at hrest
-      simp only [Bool.and_eq_true, beq_iff_eq] at hrest
-      obtain ⟨⟨⟨⟨-, -⟩, htg⟩, -⟩, -⟩ := hrest
-      cases he : d.spellEffect.bind (·.forPick pick) with
-      | none => rw [he] at htg; simp at htg
-      | some e =>
-        rw [he] at htg
-        simp only [Bool.and_eq_true, List.contains_iff_mem] at htg
-        exact ⟨d, e, rfl, he, htg.1.1, htg.1.2⟩
+      simp only [ho, hd, Bool.and_eq_true, Bool.or_eq_true] at hrest
+      exact ⟨d, rfl, hrest.1.1.2.imp_right (s.mem_repeatedCastChoices p c d pick targets).mpr⟩
 
 /-- The shape of a Spell being cast: the Pool after paying, and the move to the Chain. -/
 theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1957,19 +2110,32 @@ theorem GameState.mem_playDiscards (s : GameState) (p : PlayerId) (c : ObjId) (o
     · simp [playDiscards, playDiscardOk, h, and_comm]
     · simp [playDiscards, playDiscardOk, h]
 
+/-- Offer the ordinary choices and the per-execution choices for paid Repeats. -/
+def playSelections (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+    List (SpellPick × List ObjId) :=
+  ((s.castPicks p c d).flatMap (fun pick => (playTargets s p c d pick).map (pick, ·))) ++
+    s.repeatedCastChoices p c d
+
+/-- All ordinary target picks and all recorded Repeat combinations are considered for a play. -/
+theorem mem_playSelections (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (pick : SpellPick) (targets : List ObjId) :
+    (pick, targets) ∈ playSelections s p c d ↔
+      (pick ∈ s.castPicks p c d ∧ targets ∈ playTargets s p c d pick) ∨
+        (pick, targets) ∈ s.repeatedCastChoices p c d := by
+  simp [playSelections]
+
 /-- Every way the player can play a card from a permitted zone: each card with each payment that pays its
 cost, and each pick of targets, that the Pool covers. -/
 def legalPlays (s : GameState) (p : PlayerId) : List Action :=
   (s.playSources p).flatMap (fun c =>
     match s.cardDef? c with
     | some d =>
-      (s.castPicks p c d).flatMap (fun pick =>
+      (playSelections s p c d).flatMap (fun (pick, ts) =>
         (s.directOptions p c d).flatMap (fun (flow, cost) =>
-          (playTargets s p c d pick).flatMap (fun ts =>
-            ((s.playPaymentsOfT p c d cost ts pick).filter
-              (fun pay => decide (PlayOk s p c pay ts flow pick))).flatMap
-              (fun pay => (s.playDiscards p c).map
-                (fun discard => ⟨.player p, .playCard c pay ts flow discard pick⟩)))))
+          ((s.playPaymentsOfT p c d cost ts pick).filter
+            (fun pay => decide (PlayOk s p c pay ts flow pick))).flatMap
+            (fun pay => (s.playDiscards p c).map
+              (fun discard => ⟨.player p, .playCard c pay ts flow discard pick⟩))))
     | none => [])
 
 /-- The plays listed are exactly the card, payment, targets and base-cost choice that can be played. -/
@@ -1985,38 +2151,40 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     | none => simp [hd] at ha
     | some d =>
       simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq] at ha
-      obtain ⟨pick, -, ⟨flow, cost⟩, -, ts, -, pay, ⟨-, hok⟩, discard, hdiscard, rfl⟩ := ha
+      obtain ⟨⟨pick, ts⟩, -, ⟨flow, cost⟩, -, pay, ⟨-, hok⟩, discard, hdiscard, rfl⟩ := ha
       exact ⟨c, pay, ts, flow, discard, pick, rfl, hc, hok, (s.mem_playDiscards p c discard).mp hdiscard⟩
   · rintro ⟨c, pay, ts, flow, discard, pick, rfl, hc, hok, hdiscard⟩
     have hdc : ∃ d cost, s.cardDef? c = some d ∧ (flow, cost) ∈ s.directOptions p c d ∧
-        s.paysForXT p c d cost ts pay pick = true ∧ ts ∈ playTargets s p c d pick ∧
-        pick ∈ s.castPicks p c d := by
+        s.paysForXT p c d cost ts pay pick = true ∧ (pick, ts) ∈ playSelections s p c d := by
       rcases hok with ⟨hts, h, rfl⟩ | h | ⟨hb, rfl⟩
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h
         refine ⟨d, cost, hd, playable_directCost_mem hc h hd hcost, hpaid,
-          extraOk_mem_playTargets hd hts, ?_⟩
+          (mem_playSelections _ _ _ _ _ _).mpr (.inl ⟨?_, extraOk_mem_playTargets hd hts⟩)⟩
         rcases playable_basePick hd h with rfl | hpick
         · simp [GameState.castPicks, GameState.spellPicks]
         · exact List.mem_append_right _ (List.mem_append_left _ hpick)
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := castable_spec h
-        obtain ⟨d', e, hd', he, hok, hpick⟩ := castable_targets h
+        obtain ⟨d', hd', hchoices⟩ := castable_choices h
         have : d' = d := Option.some.inj (hd'.symm.trans hd)
         subst this
-        exact ⟨d', cost, hd, GameState.directCost_mem hcost, hpaid,
-          (mem_playTargets s p c d' ts pick).mpr (Or.inr (Or.inl ⟨e, he, hok⟩)), hpick⟩
+        refine ⟨d', cost, hd, GameState.directCost_mem hcost, hpaid,
+          (mem_playSelections _ _ _ _ _ _).mpr ?_⟩
+        refine hchoices.imp_left fun hc => ?_
+        obtain ⟨e, he, ht, hpick⟩ := GameState.ordinaryCastChoices_spec hc
+        exact ⟨hpick, (mem_playTargets _ _ _ _ _ _).mpr (.inr (.inl ⟨e, he, ht⟩))⟩
       · obtain ⟨b, hts, hb'⟩ := bfPlayOk_spec hb
         obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec hb'
         obtain ⟨hbf, hpick⟩ := playable_dest hd hb'
-        refine ⟨d, cost, hd, ?_, hpaid, (mem_playTargets s p c d ts pick).mpr
-          (Or.inr (Or.inr (Or.inr ⟨b, hts, hbf⟩))), ?_⟩
-        · exact playable_directCost_mem hc hb' hd hcost
+        refine ⟨d, cost, hd, playable_directCost_mem hc hb' hd hcost, hpaid,
+          (mem_playSelections _ _ _ _ _ _).mpr (.inl ⟨?_, ?_⟩)⟩
         · rcases hpick with rfl | hpick
           · simp [GameState.castPicks, GameState.spellPicks]
           · exact List.mem_append_right _ hpick
-    obtain ⟨d, cost, hd, hcost, hpaid, hts, hpick⟩ := hdc
+        · exact (mem_playTargets _ _ _ _ _ _).mpr (.inr (.inr (.inr ⟨b, hts, hbf⟩)))
+    obtain ⟨d, cost, hd, hcost, hpaid, hselection⟩ := hdc
     refine ⟨c, hc, ?_⟩
     simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq]
-    exact ⟨pick, hpick, (flow, cost), hcost, ts, hts, pay,
+    exact ⟨(pick, ts), hselection, (flow, cost), hcost, pay,
       ⟨(GameState.mem_playPaymentsOfT _ _ _ _ _ _ _ _).mpr hpaid, hok⟩,
       discard, (s.mem_playDiscards p c discard).mpr hdiscard, rfl⟩
 

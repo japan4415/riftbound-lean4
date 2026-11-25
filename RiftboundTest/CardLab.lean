@@ -154,8 +154,8 @@ meta def payOf (s : GameState) (c : ObjId) : RunePool.Payment :=
 
 /-- Play the card with the payment and the chosen targets, and let the Chain resolve. -/
 meta def cast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
-    (ts : List ObjId := []) (says : Says := {}) : Option GameState :=
-  match step 100 s ⟨.player p, .playCard c pay ts⟩ with
+    (ts : List ObjId := []) (says : Says := {}) (pick : SpellPick := .plain) : Option GameState :=
+  match step 100 s ⟨.player p, .playCard c pay ts none none pick⟩ with
   | .ok (s1, _) => some (settleChain says 12 s1)
   | .error _ => none
 
