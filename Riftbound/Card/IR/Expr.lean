@@ -101,6 +101,8 @@ deriving DecidableEq, Repr, Hashable
 
 /-- A property an object can have, used to pick objects. -/
 inductive Filter where
+  /-- An actual card, rather than a token, copy, or ability. -/
+  | physicalCard
   /-- Has the card type. -/
   | ofType (t : CardType)
   /-- Has the supertype. -/

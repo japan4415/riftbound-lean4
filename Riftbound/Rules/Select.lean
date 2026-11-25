@@ -309,6 +309,7 @@ def GameState.moveBlocked (s : GameState) (unit : ObjId) : Bool :=
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
+  | .physicalCard => (s.obj? id).map (·.kind.phys?.isSome)
   | .ofType t => (s.cardDef? id).map (·.hasType t)
   | .ofSupertype sp => (s.cardDef? id).map (·.hasSupertype sp)
   | .tag t => (s.cardDef? id).map (fun d => d.tags.contains t || (s.gainedTags id).contains t)

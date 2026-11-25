@@ -183,8 +183,14 @@ def hideEnergyEffect : EffectDef :=
 def equipCost (c : CardDef) : Option Cost :=
   c.keywords.findSome? (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost => some cost
+    | .equip, .cost cost | .equip, .costOrExhaustUnit cost => some cost
     | _, _ => none)
+
+/-- Whether the Equipment lets its controller exhaust a Unit to pay its Equip cost. -/
+def equipCanExhaust (c : CardDef) : Bool :=
+  c.keywords.any (fun k => match k.keyword, k.arg with
+    | .equip, .costOrExhaustUnit _ => true
+    | _, _ => false)
 
 /-- Keyword effects that need an effective value captured when they trigger. -/
 def keywordTrigger : Keyword → Option Ability
@@ -197,13 +203,16 @@ def keywordTrigger : Keyword → Option Ability
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def printedKeywordAbilities (c : CardDef) : List Ability :=
-  c.keywords.filterMap (fun k =>
+  let equipAbility (cost : AbilityCost) : Ability :=
+    .activated [cost] .normal
+      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.attach .self (.slot 0)))) .unlimited
+  c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost =>
-      some (.activated [.pay cost] .normal
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (.prim (.attach .self (.slot 0)))) .unlimited)
-    | _, _ => none) ++
+    | .equip, .cost cost => [equipAbility (.pay cost)]
+    | .equip, .costOrExhaustUnit cost =>
+      [equipAbility (.pay cost), equipAbility (.exhaustFriendly (.ofList [.ofType .unit]))]
+    | _, _ => []) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
     -- Backline: the Unit must be assigned combat damage last (CR 826)
@@ -222,7 +231,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | .weaponmaster, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
-          (.may (.prim (.attachPaying (.slot 0) .self 1)))) .unlimited]
+          (.may (.equipWithCost (.slot 0) .self 1))) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)

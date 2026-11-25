@@ -20,7 +20,7 @@ to do, and the cards a mulligan has set aside (they are drawn again when it ends
 def Frame.contrib (p : PlayerId) : Frame → Nat
   | .chanceTurnOrder => 4
   | .setupHands => 4
-  | .draw q n => if q = p then n else 0
+  | .draw q n _ => if q = p then n else 0
   | .mulligan q k => if q = p then k else 0
   | _ => 0
 
@@ -864,6 +864,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        | (subst h; exact Or.inl rfl)
        | (rcases h with rfl | rfl <;> exact Or.inl rfl)
        | (subst h; exact Or.inl (requiredCardPlayFrame_play _ _ _ _ _ _ _ _))
+       | (subst h; exact Or.inl (equipWithCostFrame_play _ _ _ _ _ _ _ _))
        | (rcases h with rfl
           left
           unfold retainTargetSetFrame
@@ -1116,11 +1117,11 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
     exact h1
-  · rename_i q n rest hp
+  · rename_i q n startingHand rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
-  · rename_i q n rest hp
+  · rename_i q n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -1142,7 +1143,7 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
         rw [hcount] at hr
         have h0 := hinv.hands hph hres r hr
         rw [hp, stackContrib_cons] at h0
-        show s1.handLen r + stackContrib r (Frame.draw q n :: rest) = 4
+        show s1.handLen r + stackContrib r (Frame.draw q n (startingHand <|> some (s.zone (.player q .hand)).length) :: rest) = 4
         rw [stackContrib_cons]
         by_cases hrq : r = q
         · subst hrq
@@ -1153,7 +1154,7 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
           have hqr : ¬ q = r := fun e => hrq e.symm
           simp only [Frame.contrib, hqr, ite_false] at h0 ⊢
           omega
-      · have hf' : f ∈ Frame.draw q n :: rest := hf
+      · have hf' : f ∈ Frame.draw q n (startingHand <|> some (s.zone (.player q .hand)).length) :: rest := hf
         rcases List.mem_cons.mp hf' with rfl | h
         · simp [Frame.isPlay] at hpf
         · show s1.phase ≠ .setup
@@ -1163,13 +1164,13 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_same ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) (fun r _ => ?_) (fun hmem => ?_)
         (fun f hf hpf => ?_)
-      · show stackContrib r (Frame.chanceBurnOut q :: Frame.draw q (n + 1) :: rest) =
+      · show stackContrib r (Frame.chanceBurnOut q :: Frame.draw q (n + 1) startingHand :: rest) =
           stackContrib r s.pending
         rw [hp, stackContrib_cons, stackContrib_cons]
         simp [Frame.contrib]
       · have : Frame.setupHands ∈ rest := by simpa using hmem
         rw [hp]; exact List.mem_cons_of_mem _ this
-      · have hf' : f ∈ Frame.chanceBurnOut q :: Frame.draw q (n + 1) :: rest := hf
+      · have hf' : f ∈ Frame.chanceBurnOut q :: Frame.draw q (n + 1) startingHand :: rest := hf
         simp only [List.mem_cons] at hf'
         rcases hf' with rfl | rfl | h
         · simp [Frame.isPlay] at hpf

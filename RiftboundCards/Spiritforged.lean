@@ -5817,7 +5817,7 @@ def SFD_197 : CardDef :=
         { event := .playToken,
           subject := Selector.all .friendly .anywhere [.named "Sand Soldier"] }
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
-          (.may (.prim (.attachPaying (.slot 0) (.slot 1) 1)))) .unlimited],
+          (.may (.equipWithCost (.slot 0) (.slot 1) 1))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-198

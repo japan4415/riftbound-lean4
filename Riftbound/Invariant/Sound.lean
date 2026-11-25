@@ -27,7 +27,7 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | phase ph => cases ph <;> exact ⟨_, rfl⟩
   | scoreHolds => exact ⟨_, rfl⟩
   | expireTurn => exact ⟨_, rfl⟩
-  | draw p n =>
+  | draw p n startingHand =>
     cases n with
     | zero => exact ⟨_, rfl⟩
     | succ n =>
@@ -481,7 +481,7 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
-  · rename_i p n rest hp
+  · rename_i p n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h

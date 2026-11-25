@@ -98,6 +98,9 @@ inductive Event where
   | hiddenPlayed (p : PlayerId)
   /-- The player drew a card. -/
   | drew (p : PlayerId)
+  /-- The player completed a draw instruction that drew at least one card (CR 414).
+  Count the other cards from before the first draw of this instruction. -/
+  | drewGroup (p : PlayerId) (otherCards : Nat)
   /-- An effect of the player moved the unit (Blast Cone). -/
   | movedByEffect (p : PlayerId) (u : ObjId)
   /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is

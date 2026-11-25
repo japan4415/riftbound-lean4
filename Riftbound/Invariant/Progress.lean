@@ -490,25 +490,25 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.cleanup]
-  · rename_i q rest hp
+  · rename_i q startingHand rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
-  · rename_i q n rest hp
+  · rename_i q n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next (drawOne_meta hd).result (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.draw q n]
+      exact hb.swap rfl [Frame.draw q n (startingHand <|> some (s.zone (.player q .hand)).length)]
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.chanceBurnOut q, Frame.draw q (n + 1)]
+      exact hb.swap rfl [Frame.chanceBurnOut q, Frame.draw q (n + 1) startingHand]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -887,7 +887,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | chanceBurnOut p => right; exact ⟨_, rest, hp, rfl⟩
   | chancePredict p n top bottom => right; exact ⟨_, rest, hp, rfl⟩
   | setupHands => exact absurd hw (by simp [Frame.isWork])
-  | draw p n => exact absurd hw (by simp [Frame.isWork])
+  | draw p n startingHand => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
   | phase ph => exact absurd hw (by simp [Frame.isWork])
   | scoreHolds => exact absurd hw (by simp [Frame.isWork])
@@ -993,7 +993,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
-  | draw p n => exact absurd hc (by simp [Frame.isChance])
+  | draw p n startingHand => exact absurd hc (by simp [Frame.isChance])
   | beginTurn => exact absurd hc (by simp [Frame.isChance])
   | phase ph => exact absurd hc (by simp [Frame.isChance])
   | scoreHolds => exact absurd hc (by simp [Frame.isChance])

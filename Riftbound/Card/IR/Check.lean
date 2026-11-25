@@ -356,6 +356,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .eitherOf modes => EffectList.ok c modes
+  | .equipWithCost gear recipient _ => gear.ok c && recipient.ok c
   | .payThen _ body _ => Effect.ok c body
   | .paySelected .. | .moveAfterFee .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e

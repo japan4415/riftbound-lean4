@@ -116,11 +116,17 @@ def keywords_of(lines: list[str]) -> tuple[list[str], int]:
             if name in AMOUNT_KW:
                 arg = f", arg := .amount {int(n) if n else 1}"
             elif name in COST_KW:
-                c = parse_cost(line[pos:])
+                tail = line[pos:]
+                alternative = (
+                    re.match(r"\s*—\s*(.*?)\s+or exhaust a friendly unit\b", tail)
+                    if name == "Equip" else None
+                )
+                c = parse_cost(alternative.group(1) if alternative else tail)
                 if c is None:
                     unparsed += 1
                 else:
-                    arg = f", arg := .cost {c}"
+                    variant = "costOrExhaustUnit" if alternative else "cost"
+                    arg = f", arg := .{variant} {c}"
             elif name == "Show Off":
                 mo = re.match(r"\s*(.+?)(?:\.|\s\(|$)", line[pos:])
                 if mo:

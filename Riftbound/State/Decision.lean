@@ -213,7 +213,7 @@ inductive Frame where
   /-- Work: lay out the opening hands and the mulligans of all players (CR 116-117). -/
   | setupHands
   /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/
-  | draw (p : PlayerId) (n : Nat)
+  | draw (p : PlayerId) (n : Nat) (startingHand : Option Nat := none)
   /-- Work: begin the next turn: the turn player is the next in the turn order (CR 301, 118). -/
   | beginTurn
   /-- Work: the phase `ph` of the turn (CR 314-317). -/
@@ -330,7 +330,7 @@ def Frame.isPlay : Frame → Bool
 /-- Frames the engine advances by itself. -/
 def Frame.isWork : Frame → Bool
   | .setupHands => true
-  | .draw _ _ => true
+  | .draw .. => true
   | .beginTurn => true
   | .phase _ => true
   | .scoreHolds => true

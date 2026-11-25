@@ -405,6 +405,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
       [("yes", if yes then "true" else "false")] ++
         (match frame with
         | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
+        | some (.eitherDo _ _ _ (.prim (.attachPaying ..)) (.doThen (.prim (.exhaust _)) _) _) =>
+          [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ damageDivisionFields frame yes ++
         deathBanishFields frame yes ++
@@ -416,6 +418,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (match frame with
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
+        | some (.pickDo _ _ _ _ _ (.doThen (.prim (.exhaust _)) _) _) =>
+          [("choiceContext", jstr "equipExhaust")]
         | some (.pickDo _ _ _ _ _ (.banishLookedForPlay _) _) => [("choiceContext", jstr "lookedDeck")]
         | some (.pickDo _ _ _ _ _ (.prim (.castInline _)) _) => [("choiceContext", jstr "trashSpell")]
         | some (.pickDo _ _ _ _ _ (.prim (.playReduced _ _ none)) _) =>
@@ -481,6 +485,8 @@ def eventJson : Event → String
   | .recycled p => jobj [("t", jstr "recycled"), ("player", toString p.n)]
   | .hiddenPlayed p => jobj [("t", jstr "hidden_played"), ("player", toString p.n)]
   | .drew p => jobj [("t", jstr "drew"), ("player", toString p.n)]
+  | .drewGroup p otherCards =>
+    jobj [("t", jstr "drewGroup"), ("player", toString p.n), ("otherCards", toString otherCards)]
   | .movedByEffect p u =>
     jobj [("t", jstr "moved_by_effect"), ("player", toString p.n), ("unit", toString u.n)]
   | .discarded p o _ =>
@@ -637,6 +643,7 @@ def kwArgJson : KeywordArg → String
   | .none => "null"
   | .amount n => toString n
   | .cost k => costJson k
+  | .costOrExhaustUnit k => jobj [("resources", costJson k), ("orExhaustFriendlyUnit", "true")]
   | .object s => jstr s
   | .equalShield => jstr "Shield"
 

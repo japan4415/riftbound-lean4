@@ -245,12 +245,14 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .main :: rest =>
     some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
       [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
-  | .draw _ 0 :: rest => some ({ s with pending := rest }, [])
-  | .draw p (n + 1) :: rest =>
+  | .draw p 0 startingHand :: rest =>
+    some ({ s with pending := rest }, startingHand.toList.map (.drewGroup p))
+  | .draw p (n + 1) startingHand :: rest =>
     match drawOne s p with
     | some (s', es) =>
-      some ({ s'.noteDraw p with pending := .draw p n :: rest }, es ++ [Event.drew p])
-    | none => some ({ s with pending := .chanceBurnOut p :: .draw p (n + 1) :: rest }, [])
+      let otherCards := startingHand <|> some ((s.zone (.player p .hand)).length)
+      some ({ s'.noteDraw p with pending := .draw p n otherCards :: rest }, es ++ [Event.drew p])
+    | none => some ({ s with pending := .chanceBurnOut p :: .draw p (n + 1) startingHand :: rest }, [])
   | .resolveChain :: rest => some ({ s with pending := resolveFrames s rest }, [])
   | .run _ _ _ .nil :: rest => some ({ s with pending := rest }, [])
   | .run p src env (.cons e es) :: rest =>
@@ -485,7 +487,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · rename_i p n rest hp
+  · rename_i p n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -583,7 +585,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i p n rest hp
+  · rename_i p n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h

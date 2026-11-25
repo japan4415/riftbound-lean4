@@ -364,6 +364,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
       if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
+      if (a.equipPayment) return [who + ': ' + (a.equipPayment === 'resources'
+        ? '割引後の Equip コストを支払う' : '味方のユニットを Exhaust して支払う'), ''];
       if (a.effectCost) {
         const cost = costText(a.effectCost);
         if (a.spellPaymentTarget != null) {
@@ -464,6 +466,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
       if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
+      if (a.choiceContext === 'equipExhaust') return [who + ': ' + card + ' を Exhaust', 'Equip コストとして支払う'];
       if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
       if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
       if (a.choiceContext === 'revealedPlay') return [who + ': ' + card + ' を選ぶ', '公開したカードからプレイする1枚を選ぶ'];
@@ -938,7 +941,10 @@ function showCardInfo(id, x, y) {
   if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
   if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
   if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
-  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map((k) => k.k + (k.arg === null ? '' : typeof k.arg === 'object' ? ' [' + costText(k.arg) + ']' : ' ' + k.arg)).join('、'));
+  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map(({ k, arg }) => {
+    if (arg?.orExhaustFriendlyUnit) return k + ' [' + costText(arg.resources) + ' または味方ユニットを Exhaust]';
+    return k + (arg === null ? '' : typeof arg === 'object' ? ' [' + costText(arg) + ']' : ' ' + arg);
+  }).join('、'));
   const zone = Object.keys(st.zones).find((z) => st.zones[z].includes(nid));
   if (zone) { const [who, k] = zone.includes('.') ? zone.split('.') : [null, zone]; row('場所', (who ? 'P' + who.slice(1) + ' の ' : '') + (ZONE_JA[k] || (k === 'battlefield' ? 'Battlefield の Unit' : k === 'chain' ? 'Chain' : k))); }
   row('持ち主', 'P' + o.owner);
@@ -1224,6 +1230,8 @@ function renderLegal(i) {
     : guessing ? 'P' + guessing.a.actor.slice(1) + ' がカードの種別を予想する'
     : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
+    : choiceContext === 'equipExhaust' ? 'Equip コストで Exhaust するユニットを選ぶ'
+    : liveLegal.some(({ a }) => a.equipPayment) ? 'Equip コストの支払い方を選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
     : choiceContext === 'revealedPlay' ? '公開したカードからプレイする1枚を選ぶ'

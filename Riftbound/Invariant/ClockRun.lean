@@ -397,7 +397,7 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩
-  · rename_i p n rest hp
+  · rename_i p n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h

@@ -2966,7 +2966,9 @@ def drawLookedCard (p : PlayerId) (looked : List ObjId) (s : GameState) (id : Ob
     GameState × List Event :=
   if looked.contains id && (s.zone (.player p .mainDeck)).contains id then
     match moveObj s id (.player p .hand) with
-    | some (moved, new) => (moved.noteDraw p, [.moved id new (.player p .hand), .drew p])
+    | some (moved, new) =>
+      (moved.noteDraw p, [.moved id new (.player p .hand), .drew p,
+        .drewGroup p (s.zone (.player p .hand)).length])
     | none => (s, [])
   else (s, [])
 
@@ -3816,7 +3818,8 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
 selector that does it. -/
 def Effect.pickSel? : Effect → Option Selector
   | .doThen (.prim (.banish (.pick .one side place fs))) _
-  | .doThen (.prim (.disempower (.pick .one side place fs))) _ =>
+  | .doThen (.prim (.disempower (.pick .one side place fs))) _
+  | .doThen (.prim (.exhaust (.pick .one side place fs))) _ =>
     some (.pick .one side place fs)
   | .prim p =>
     match p.pickSel? with
@@ -3839,7 +3842,7 @@ def Effect.withPick : Effect → Effect
 /-- Whether the object is picked for the cost of a linked instruction (CR 355.10.c.1). -/
 def Effect.isLinkedCost : Effect → Bool
   | .doThen (.prim (.banish _)) _ | .doThen (.prim (.disempower _)) _
-  | .doThen (.prim (.spendBuff _)) _ => true
+  | .doThen (.prim (.spendBuff _)) _ | .doThen (.prim (.exhaust _)) _ => true
   | _ => false
 
 /-- Picks for costs or by multiple players do not fire target effects (CR 355.10.c.1, 355.10.e).
@@ -4264,6 +4267,7 @@ def linkedAction (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : P
       | .disempower sel => ((sel.eval s p src env).getD []).any (fun id =>
         ((r.1.obj? id).map (·.empowerCount)).getD 0 <
           ((s.obj? id).map (·.empowerCount)).getD 0)
+      | .exhaust _ => r.2.any (fun | .exhausted _ => true | _ => false)
       | .spendBuff _ => r.2.any (fun | .buffSpent _ => true | _ => false)
       | .move .. => r.2.any (fun | .standardMoved _ _ => true | _ => false)
       | _ => false
@@ -4768,6 +4772,42 @@ theorem damageDivisions_valid :
       · simp
       · exact hp _ hn
 
+/-- Choose between the Equipment's printed ways of paying before attaching (CR 821). -/
+def equipWithCostFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (gear recipient : Selector) (less : Nat) (es : EffectList) : Frame :=
+  let resourcePayment := Effect.prim (.attachPaying gear recipient less)
+  let useResources := Frame.run p src env (.cons resourcePayment es)
+  match gear.eval s p src env, recipient.eval s p src env with
+  | some [g], some [u] =>
+    if (s.cardDef? g).any CardDef.equipCanExhaust then
+      if !s.inPlay.contains g || !s.inPlay.contains u ||
+          !(s.cardDef? u).any (·.hasType .unit) || (s.cardDef? g).any (·.hasType .unit) ||
+          s.controllerOf g != p || s.controllerOf u != p || (s.obj? g).any (·.attached == some u) then
+        .run p src env es
+      else
+        let filters := FilterList.ofList [.ofType .unit, .ready]
+        let payer := Selector.pick .one .friendly .anywhere filters
+        if (s.pickCandidates p src env .friendly .anywhere filters false).any (fun candidates => !candidates.isEmpty) then
+          let exhaust := Effect.doThen (.prim (.exhaust payer)) (.prim (.attach gear recipient))
+          .eitherDo p src env resourcePayment exhaust es
+        else useResources
+    else useResources
+  | _, _ => useResources
+
+/-- An Equip payment choice stays inside the resolution of the current item. -/
+theorem equipWithCostFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (g u : Selector) (less : Nat) (es : EffectList) :
+    (equipWithCostFrame s p src env g u less es).isPlay = true := by
+  unfold equipWithCostFrame
+  split
+  · dsimp only
+    split
+    · split
+      · rfl
+      · split <;> rfl
+    · rfl
+  · rfl
+
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
@@ -4813,6 +4853,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
   | .forceMoveToBattlefield who destination =>
     (s, [forceMoveToBattlefieldFrame s p src env who destination es], [])
+  | .equipWithCost gear recipient less =>
+    (s, [equipWithCostFrame s p src env gear recipient less es], [])
   | .grantNumericKeyword objects keyword amount duration =>
     match amount.evalS s p src env with
     | some n => (s, [.run p src env
@@ -4995,6 +5037,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     else (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
+  | .doThen (.prim (.exhaust sel)) body => linked (.exhaust sel) body
   | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
   | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es
   | .prim (move@(.move ..)) | .prim (move@(.swapPlaces ..)) =>

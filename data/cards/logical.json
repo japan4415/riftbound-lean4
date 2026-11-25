@@ -32198,6 +32198,7 @@
    "mightBonus": 3,
    "name": "Blade of the Exile",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-150/167"
    ],
@@ -32205,6 +32206,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Equipment",
     "Riven"

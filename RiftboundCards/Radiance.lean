@@ -1855,8 +1855,17 @@ def RAD_069.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Zero Point Inflection: the effect is not written yet. -/
-def RAD_069 : CardDef := RAD_069.meta
+/-- Zero Point Inflection rewards each card play and checks the hand once per draw instruction. -/
+def RAD_069 : CardDef :=
+  { RAD_069.meta with
+    abilities := [
+      .triggered { event := .play, subject := .all .friendly .anywhere [.physicalCard] }
+        (.of [] (.prim (.draw .you (.const 2)))) .unlimited,
+      .triggered (.onSelf (.drawGroupWithHand 9))
+        { playerTarget := some .enemy
+          body := .seqOf [.prim (.discard .you (.handSize .you)), .prim (.kill .self),
+            .prim (.score (.chosen 0) (.const 1))] } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-070
 /--
@@ -4054,17 +4063,21 @@ def RAD_150.meta : CardDef :=
   { id := ⟨"RAD-150"⟩,
     name := "Blade of the Exile",
     types := [.gear],
+    supertypes := [.signature],
     tags := [⟨"Equipment"⟩, ⟨"Riven"⟩],
     domains := [.calm, .chaos],
-    cost := some ⟨3, [.any]⟩,
+    cost := some ⟨3, [.own]⟩,
     might := some 3,
     mightBonus := some 3,
-    keywords := [{ keyword := .equip }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown; keyword cost unread
+    keywords := [{ keyword := .equip, arg := .costOrExhaustUnit ⟨0, [.any]⟩ }],
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Blade of the Exile: the effect is not written yet. -/
-def RAD_150 : CardDef := RAD_150.meta
+/-- Blade of the Exile gives its equipped Unit Ganking. -/
+def RAD_150 : CardDef :=
+  { RAD_150.meta with
+    grants := [.passive .always [.keyword .self { keyword := .ganking }]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-151
 /--

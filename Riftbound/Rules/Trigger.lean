@@ -608,6 +608,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .drew p =>
     s.passiveSources.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .draw else [])
+  | .drewGroup p otherCards =>
+    s.passiveSources.flatMap (fun u =>
+      if (s.obj? u).any (·.controller == p) then
+        triggersOfMatching s u p (fun
+          | .drawGroupWithHand minimum => decide (minimum ≤ otherCards)
+          | _ => false)
+      else [])
   | .banished p owner _ =>
     if p == owner then
       s.passiveSources.flatMap (fun u =>
@@ -749,6 +756,7 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.chooseDamageReplacement ..) _ _ => true
   | .eitherDo _ _ _ (.orderCombatDamage ..) _ _ => true
   | .eitherDo _ _ _ (.applySplitDamage _) _ _ => true
+  | .eitherDo _ _ _ (.prim (.attachPaying ..)) _ _ => true
   | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
   | .eitherDo _ _ _ first _ _ => first.isPayment
   | _ => false

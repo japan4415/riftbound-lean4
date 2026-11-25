@@ -303,6 +303,8 @@ inductive TriggerEvent where
   | leave
   /-- A card is drawn. -/
   | draw
+  /-- The controller draws one or more cards with at least this many other cards in hand. -/
+  | drawGroupWithHand (minimum : Nat)
   /-- The player banishes a card they own. -/
   | banishOwn
   /-- A card is discarded. -/

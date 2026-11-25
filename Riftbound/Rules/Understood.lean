@@ -130,6 +130,7 @@ def Amount.understoodK : Amount → Bool
 
 /-- A filter that is understood. -/
 def Filter.understood : Filter → Bool
+  | .physicalCard => true
   | .ofType _ => true
   | .ofSupertype _ => true
   | .tag _ => true
@@ -401,8 +402,9 @@ def Effect.understood : Effect → Bool
   | .prim p => p.understood
   | .may e => Effect.understood e
   | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e
-  | .doThen (.prim (.spendBuff s)) e =>
+  | .doThen (.prim (.spendBuff s)) e | .doThen (.prim (.exhaust s)) e =>
     s.understoodPickAny && Effect.understood e
+  | .equipWithCost gear recipient _ => gear.understood && recipient.understood
   | .eitherOf es => EffectList.understood es
   | .payThen _ body _ => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
@@ -596,6 +598,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .opponentHolds | .opponentHoldsHere => t.subject == .self
       | .movedByYou => true
       | .draw => true
+      | .drawGroupWithHand _ => t.subject == .self
       | .banishOwn => t.subject == .self
       | .leave => true
       | .revealedFromDeck => true

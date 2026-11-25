@@ -124,6 +124,8 @@ inductive Effect where
   | seq (es : EffectList)
   /-- Do the mode that was chosen when the card was played (CR 355). -/
   | chooseOne (modes : EffectList)
+  /-- Attach the Equipment to the Unit after paying a discounted Equip cost (CR 821). -/
+  | equipWithCost (gear recipient : Selector) (powerDiscount : Nat)
   /-- The player chooses one of the effects while the effect resolves, and does it. -/
   | eitherOf (modes : EffectList)
   /-- Pay a resource cost from the Rune Pool, then continue with the effect (CR 445.2). -/

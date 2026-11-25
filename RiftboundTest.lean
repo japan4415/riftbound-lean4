@@ -80,7 +80,9 @@ public import RiftboundTest.RadianceAG
 public import RiftboundTest.RadianceAH
 public import RiftboundTest.RadianceAI
 public import RiftboundTest.RadianceAJ
+public import RiftboundTest.RadianceAK
 public import RiftboundTest.RadianceAL
+public import RiftboundTest.RadianceAM
 public import RiftboundTest.RadianceAN
 
 /-!

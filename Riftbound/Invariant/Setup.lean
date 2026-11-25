@@ -801,22 +801,22 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.cleanup]) rfl
       (by simp [Frame.isSetup])
-  · rename_i q rest hp
+  · rename_i q startingHand rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
-  · rename_i q n rest hp
+  · rename_i q n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
         (by simp [GameState.noteDraw, GameState.playerCount, (drawOne_meta hd).config])
-        (new := [Frame.draw q n]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.draw q n (startingHand <|> some (s.zone (.player q .hand)).length)]) rfl (by simp [Frame.isSetup])
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.chanceBurnOut q, Frame.draw q (n + 1)]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.chanceBurnOut q, Frame.draw q (n + 1) startingHand]) rfl (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
