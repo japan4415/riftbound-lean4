@@ -587,6 +587,8 @@ def Frame.isResolution : Frame → Bool
   | .predict .. | .chancePredict .. => true
   | .eitherDo _ _ _ (.fundLookedPermanent ..) _ _ => true
   | .eitherDo _ _ _ (.finishFundedPermanent ..) _ _ => true
+  | .eitherDo _ _ _ (.fundTrashSpell ..) _ _ => true
+  | .eitherDo _ _ _ (.finishTrashSpell ..) _ _ => true
   | .eitherDo _ _ _ first _ _ => first.isPayment
   | _ => false
 

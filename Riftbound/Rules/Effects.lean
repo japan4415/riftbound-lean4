@@ -1596,10 +1596,10 @@ def banishedPlayId (es : List Event) : Option ObjId :=
     | .moved _ id (.player _ .banishment) => some id
     | _ => none)
 
-/-- The resource abilities that can be used before an effect's permanent enters play. -/
+/-- Discover and project resource abilities for a card played by an effect. -/
 structure EffectAddPolicy where
-  /-- The next Adds that leave at least one way to finish paying for the permanent. -/
-  choices : GameState → PlayerId → ObjId → EffectPlayTerms → ReducedPermanentPlay → List EffectAdd
+  /-- The next Adds that leave a way to reach a state satisfying the supplied funding check. -/
+  choices : GameState → PlayerId → (GameState → Bool) → List EffectAdd
   /-- Project the chosen activations or commit them as part of the successful play. -/
   applyAll : GameState → PlayerId → List EffectAdd → Option (GameState × List Event)
   /-- A complete sequence of activations preserves the game invariants. -/
@@ -1616,12 +1616,20 @@ def permanentPlayReady (s : GameState) (p : PlayerId) (card : ObjId) (terms : Ef
     (plan : ReducedPermanentPlay) : Bool :=
   permanentPriceInPool s p card plan && (permanentPlayOptions s p card terms).contains plan
 
+/-- Find individual Add activations that can fund this permanent without invalidating its plan. -/
+def permanentAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (funding : EffectAddPolicy) : List EffectAdd :=
+  if plan.cost.total == 0 then [] else
+  let unit := (s.cardDef? card).any (·.hasType .unit)
+  funding.choices s p (fun t => (payByRunes t p card plan.cost unit).isSome &&
+    (permanentPlayOptions t p card terms).contains plan)
+
 /-- After simulating Banishment, retain the finalizations that can be paid, and record which
 offer a choice of Add activations. -/
 def lookedPermanentChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
     (funding : EffectAddPolicy) : List (ReducedPermanentPlay × Bool) :=
   (permanentPlayOptions s p card terms).filterMap (fun plan =>
-    let hasAdds := !(funding.choices s p card terms plan).isEmpty
+    let hasAdds := !(permanentAddChoices s p card terms plan funding).isEmpty
     if hasAdds || permanentPriceInPool s p card plan then some (plan, hasAdds) else none)
 
 /-- A looked-at card may be offered only if it meets the filter, is still in the same deck,
@@ -1677,7 +1685,7 @@ def fundLookedOptions (s : GameState) (p : PlayerId) (card : ObjId) (terms : Eff
   let some (t, _) := funding.applyAll banished.1 p adds | return [.nop]
   let pay := if permanentPlayReady t p candidate terms plan then
       [.finishFundedPermanent card terms plan adds] else []
-  let activate := (funding.choices t p candidate terms plan).map (fun a =>
+  let activate := (permanentAddChoices t p candidate terms plan funding).map (fun a =>
     Effect.fundLookedPermanent card terms plan (adds ++ [a]))
   return pay ++ activate ++ [.nop]
 
@@ -1718,7 +1726,7 @@ def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : 
       else []))
 
 /-- Finalization choices and costs from the base price set by an effect (CR 420.3). -/
-def effectSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
+def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (base : Cost) : List (List ObjId × Cost × SpellPick) :=
   let hasCosts := !(s.extrasRaw p id d).isEmpty
   let choices := (spellChoices s p id d e).flatMap (fun (pick, ts) =>
@@ -1726,12 +1734,14 @@ def effectSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (s.spellCostPlans p id d base ts).map (fun (cost, paid) =>
       let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
       (ts, { cost with power := cost.power ++ List.replicate surcharge .any }, choice)))
-  choices.eraseDups.filter (fun (_, cost, _) => (payByRunes s p id cost).isSome)
+  choices.eraseDups
 
 /-- Targets, finalization choices and costs for a Spell played with an Energy discount. -/
 def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
-  (s.effCost p id d).toList.flatMap (fun base => effectSpellChoices s p id d e (base.lessEnergy less))
+  (s.effCost p id d).toList.flatMap (fun base =>
+    (effectSpellOptions s p id d e (base.lessEnergy less)).filter
+      (fun (_, cost, _) => (payByRunes s p id cost).isSome))
 
 /-- A Spell on the Chain whose limited play has yet to finalize (CR 354.2, 354.3). -/
 def GameState.queuedTrashSpell (s : GameState) (card : ObjId) : Bool :=
@@ -1757,15 +1767,29 @@ theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) : f.is
 
 /-- An effect's Trash spell ignores its base Energy. Its targets cannot include the item that
 is still resolving or any other unfinalized item (CR 355.9.a, 354.3). -/
-def trashSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) :
-    List (List ObjId × Cost × SpellPick) := Id.run do
+def trashSpellOptions (s : GameState) (p : PlayerId) (card : ObjId) : List EffectSpellPlay := Id.run do
   let some d := s.cardDef? card | return []
   if !d.hasType .spell || s.cantPlay p || s.noSpells p || s.blocksPlay p card d then return []
   let some effect := d.spellEffect | return []
   let some base := EffectPlayPrice.ignoreEnergy.baseCost s p card d | return []
   let resolving := s.pending.findSome? (fun | .finishSpell id => some id | _ => none)
-  return (effectSpellChoices s p card d effect base).filter (fun (ts, _, _) =>
-    ts.all (fun id => resolving != some id && !s.queuedTrashSpell id))
+  return (effectSpellOptions s p card d effect base).filterMap (fun (targets, cost, pick) =>
+    if targets.all (fun id => resolving != some id && !s.queuedTrashSpell id) then
+      some { targets, cost, pick } else none)
+
+/-- Find individual Add activations that can pay for the Spell's chosen targets and mode. -/
+def trashSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
+    (funding : EffectAddPolicy) : List EffectAdd :=
+  if plan.cost.total == 0 then [] else
+  funding.choices s p (fun t => (payByRunes t p card plan.cost).isSome &&
+    (trashSpellOptions t p card).contains plan)
+
+/-- Retain payable finalizations, recording whether an Add window is available for each. -/
+def trashSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) (funding : EffectAddPolicy) :
+    List (EffectSpellPlay × Bool) :=
+  (trashSpellOptions s p card).filterMap (fun plan =>
+    let hasAdds := !(trashSpellAddChoices s p card plan funding).isEmpty
+    if hasAdds || (s.payNow p card plan.cost).isSome then some (plan, hasAdds) else none)
 
 /-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
 If the cost cannot be paid or the choice is unavailable, it is not cast. -/
@@ -3728,11 +3752,11 @@ def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjI
 /-- Queue the selected Trash spell (Kai'Sa, Fizz). Its targets and costs are finalized only
 after the parent effect completes (CR 354.3). -/
 def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
-    (es : EffectList) : GameState × List Frame × List Event :=
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match sel.eval s p src env with
   | some (id :: _) =>
-    if (trashSpellChoices s p id).isEmpty then skip else
+    if (trashSpellChoices s p id funding).isEmpty then skip else
       match moveObj s id .chain with
       | some (t, queued) =>
         (t.modObj queued (fun o => { o with recycleAfterPlay := true, controller := p }),
@@ -3740,75 +3764,121 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
       | none => skip
   | _ => skip
 
-/-- Offer a queued Spell's finalization choices. If its play has become impossible, move it back
-to its Trash and advance the Chain (CR 358.5). -/
-def finalizeTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
+/-- Undo the queued play before moving on. The chosen Add activations are still tentative
+and have had no effect (CR 358.5). -/
+def cancelTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
     (es : EffectList) : GameState × List Frame × List Event :=
   let next := Frame.run p src env es
   if !s.queuedTrashSpell card then (s, [next], []) else
-    match trashSpellChoices s p card with
-    | [] =>
-      match moveObj s card (.player p .trash) with
-      | some (t, restored) => (t, afterItem t ++ [next], [.moved card restored (.player p .trash)])
-      | none => (s, [next], [])
+    let owner := ((s.obj? card).map (·.owner)).getD p
+    let trash := Zone.player owner .trash
+    match moveObj s card trash with
+    | some (t, restored) => (t, afterItem t ++ [next], [.moved card restored trash])
+    | none => (s, [next], [])
+
+/-- Offer the queued Spell's legal finalizations, opening a payment choice for any plan with
+an available Add ability. -/
+def finalizeTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (card : ObjId)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  if !s.queuedTrashSpell card then (s, [.run p src env es], []) else
+    match trashSpellChoices s p card funding with
+    | [] => cancelTrashStep s p src env card es
     | plans =>
-      let options := plans.map (fun (targets, cost, pick) => Effect.finishTrashSpell card targets cost pick)
+      let options := plans.map (fun (plan, hasAdds) =>
+        if hasAdds then Effect.fundTrashSpell card plan [] else .finishTrashSpell card plan [])
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
 
-/-- The queued Spell becomes a regular finalized Chain item, eligible for Reactions. -/
-def commitTrashSpell (s : GameState) (p : PlayerId) (card : ObjId) (targets : List ObjId)
-    (cost : Cost) (pick : SpellPick) : Option (GameState × List Event) := do
-  if !s.queuedTrashSpell card || !(trashSpellChoices s p card).contains (targets, cost, pick) then
-    none
-  else
-    let (paid, events) ← payByRunes s p card cost
-    let chosen := pick.optionalCosts.getD (false, 0)
-    let mark := { paid.playMark p card ⟨cost.energy, []⟩ with
-      spellPick := pick, paid := chosen.1, extraPaid := chosen.2 }
-    some (paid.modObj card (Object.withPlay targets mark),
-      events ++ [.played p card] ++ targets.map (.chosenBySpell p))
+/-- Check the choices before paying the exact price from the Pool. -/
+def trashSpellPoolPayment (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay) :
+    Option RunePool :=
+  if s.queuedTrashSpell card && (trashSpellOptions s p card).contains plan then
+    s.payNow p card plan.cost
+  else none
+
+/-- Offer another Add, completion from the currently projected Pool, or cancellation. -/
+def fundTrashOptions (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
+    (adds : List EffectAdd) (funding : EffectAddPolicy) : List Effect := Id.run do
+  let cancel := Effect.cancelTrashSpell card
+  if !s.queuedTrashSpell card then return [cancel]
+  let some (t, _) := funding.applyAll s p adds | return [cancel]
+  let pay := if (trashSpellPoolPayment t p card plan).isSome then
+    [Effect.finishTrashSpell card plan adds] else []
+  let activate := (trashSpellAddChoices t p card plan funding).map (fun a =>
+    Effect.fundTrashSpell card plan (adds ++ [a]))
+  return pay ++ activate ++ [cancel]
+
+/-- Commit the selected Adds and finalize the Spell together, allowing Reactions afterwards. -/
+def commitTrashSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : EffectSpellPlay)
+    (adds : List EffectAdd) (funding : EffectAddPolicy) : Option (GameState × List Event) := do
+  let (funded, events) ← funding.applyAll s p adds
+  let pool ← trashSpellPoolPayment funded p card plan
+  let paid := funded.setPoolFor p card pool
+  let chosen := plan.pick.optionalCosts.getD (false, 0)
+  let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ with
+    spellPick := plan.pick, paid := chosen.1, extraPaid := chosen.2 }
+  some (paid.modObj card (Object.withPlay plan.targets mark),
+    events ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
 
 /-- Committing a queued Spell preserves the game invariants. -/
-theorem commitTrashSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {targets : List ObjId}
-    {cost : Cost} {pick : SpellPick} {r : GameState × List Event}
-    (h : commitTrashSpell s p card targets cost pick = some r) : Safe s r.1 := by
+theorem commitTrashSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {plan : EffectSpellPlay}
+    {adds : List EffectAdd} {funding : EffectAddPolicy} {r : GameState × List Event}
+    (h : commitTrashSpell s p card plan adds funding = some r) : Safe s r.1 := by
   unfold commitTrashSpell at h
-  split at h
-  · contradiction
-  · simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨⟨t, events⟩, hp, hr⟩ := h
-    rw [← hr]
-    exact (payByRunes_safe (r := (t, events)) hp).trans
-      (Safe.modObj t card (fun _ => rfl) (fun _ => rfl))
+  simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+  obtain ⟨⟨t, events⟩, ht, pool, -, hr⟩ := h
+  rw [← hr]
+  exact (funding.safe (r := (t, events)) ht).trans ((setPoolFor_safe t p card pool).trans
+    (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl)))
 
-/-- Offering finalization or restoring a rejected play preserves the game invariants. -/
+/-- Returning the card to its Trash preserves the game invariants. -/
+theorem cancelTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (card : ObjId) (es : EffectList) : Safe s (cancelTrashStep s p src env card es).1 := by
+  unfold cancelTrashStep
+  split
+  · exact Safe.refl s
+  · dsimp only
+    split
+    · exact Safe.moveObj (by assumption)
+    · exact Safe.refl s
+
+/-- The continuation after cancellation consists of play frames. -/
+theorem cancelTrashStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
+    {es : EffectList} {f : Frame} (hf : f ∈ (cancelTrashStep s p src env card es).2.1) :
+    f.isPlay = true := by
+  unfold cancelTrashStep at hf
+  split at hf
+  · obtain rfl := List.mem_singleton.mp hf
+    rfl
+  · dsimp only at hf
+    split at hf
+    · rcases List.mem_append.mp hf with ha | hn
+      · exact afterItem_mem ha
+      · obtain rfl := List.mem_singleton.mp hn
+        rfl
+    · obtain rfl := List.mem_singleton.mp hf
+      rfl
+
+/-- Offering finalization or returning a rejected play preserves the game invariants. -/
 theorem finalizeTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (card : ObjId) (es : EffectList) : Safe s (finalizeTrashStep s p src env card es).1 := by
+    (card : ObjId) (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (finalizeTrashStep s p src env card es funding).1 := by
   unfold finalizeTrashStep
   split
   · exact Safe.refl s
   · split
-    · split
-      · exact Safe.moveObj (by assumption)
-      · exact Safe.refl s
+    · exact cancelTrashStep_safe s p src env card es
     · exact Safe.refl s
 
 /-- The continuation from a queued finalization consists of play frames. -/
 theorem finalizeTrashStep_mem {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
-    {es : EffectList} {f : Frame} (hf : f ∈ (finalizeTrashStep s p src env card es).2.1) :
-    f.isPlay = true := by
+    {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (hf : f ∈ (finalizeTrashStep s p src env card es funding).2.1) : f.isPlay = true := by
   unfold finalizeTrashStep at hf
   split at hf
   · obtain rfl := List.mem_singleton.mp hf
     rfl
   · split at hf
-    · split at hf
-      · rcases List.mem_append.mp hf with ha | hn
-        · exact afterItem_mem ha
-        · obtain rfl := List.mem_singleton.mp hn
-          rfl
-      · obtain rfl := List.mem_singleton.mp hf
-        rfl
+    · exact cancelTrashStep_mem hf
     · obtain rfl := List.mem_singleton.mp hf
       rfl
 
@@ -3861,7 +3931,8 @@ theorem castReducedStep_frames {s : GameState} {p : PlayerId} {src : ObjId} {env
 
 /-- Queuing a limited play is a safe change of the state. -/
 theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (es : EffectList) : Safe s (castInlineStep s p src env sel es).1 := by
+    (sel : Selector) (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (castInlineStep s p src env sel es funding).1 := by
   unfold castInlineStep
   split
   · split
@@ -3870,6 +3941,19 @@ theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
       · exact (Safe.moveObj (by assumption)).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
       · exact Safe.refl s
   · exact Safe.refl s
+
+/-- The queued play continues with the parent spell's remaining work. -/
+theorem castInlineStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (hf : f ∈ (castInlineStep s p src env sel es funding).2.1) : f.isPlay = true := by
+  unfold castInlineStep at hf
+  split at hf
+  · split at hf
+    · obtain rfl := List.mem_singleton.mp hf
+      rfl
+    · split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
+  · obtain rfl := List.mem_singleton.mp hf
+    rfl
 
 /-- Play a Spell for free (CR 349): it goes on the Chain as a new object, played by `p`, and its
 effect is done at once, as it would resolve; then it goes to its owner's Trash, and the Cleanup
@@ -4180,13 +4264,13 @@ def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Optio
 /-- When an effect offers to play a card to a required location, its resolution picks must have a
 legal finalization (CR 355.16, 355.17). -/
 def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (e : Effect) : Option (List ObjId) :=
+    (e : Effect) (funding : EffectAddPolicy) : Option (List ObjId) :=
   match e with
   | .prim (.castInline sel) =>
     let candidates := match sel with
       | .pick .one side place fs => s.pickCandidates p src env side place fs false
       | _ => sel.eval s p src env
-    some ((candidates.getD []).filter (fun card => !(trashSpellChoices s p card).isEmpty))
+    some ((candidates.getD []).filter (fun card => !(trashSpellChoices s p card funding).isEmpty))
   | .prim (.playReduced sel less (some dest)) => do
     let some amount := less.evalS s p src env | return []
     let candidates := match sel with
@@ -4410,7 +4494,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
   | .recycleLooked => recycleLookedStep s p src env es
   | .may e' =>
-    if (requiredPlayCandidates s p src env e').any List.isEmpty then skip
+    if (requiredPlayCandidates s p src env e' funding).any List.isEmpty then skip
     else (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
@@ -4472,12 +4556,16 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       match applyPrim s p src env (.revealTop n) with
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
-  | .prim (.castInline sel) => castInlineStep s p src env sel es
-  | .finalizeTrashSpell card => finalizeTrashStep s p src env card es
-  | .finishTrashSpell card targets cost pick =>
-    match commitTrashSpell s p card targets cost pick with
+  | .prim (.castInline sel) => castInlineStep s p src env sel es funding
+  | .finalizeTrashSpell card => finalizeTrashStep s p src env card es funding
+  | .fundTrashSpell card plan adds =>
+    let choices := fundTrashOptions s p card plan adds funding
+    (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+  | .cancelTrashSpell card => cancelTrashStep s p src env card es
+  | .finishTrashSpell card plan adds =>
+    match commitTrashSpell s p card plan adds funding with
     | some (t, events) => (t, [.chainPass p 0, .run p src env es], events)
-    | none => skip
+    | none => cancelTrashStep s p src env card es
   | .prim (.banishReplay sel sameLocation) =>
     let units := (sel.eval s p src env).getD []
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
@@ -4527,8 +4615,9 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact Safe.refl s
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
-    | exact castInlineStep_safe s p src env _ es
-    | exact finalizeTrashStep_safe s p src env _ es
+    | exact castInlineStep_safe s p src env _ es funding
+    | exact finalizeTrashStep_safe s p src env _ es funding
+    | exact cancelTrashStep_safe s p src env _ es
     | exact commitTrashSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
@@ -4552,7 +4641,7 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
   match e.pickSel? with
   | some (.pick _ side place fs) =>
     -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
-    match requiredPlayCandidates s p src env e <|>
+    match requiredPlayCandidates s p src env e funding <|>
         s.pickCandidates p src env side place fs (!e.isLinkedCost) with
     | some [o] =>
       match e with

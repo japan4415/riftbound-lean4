@@ -407,12 +407,7 @@ def effectAddReachable (p : PlayerId) (paid : GameState → Bool) : Nat → Game
       (a.apply s p).any (fun (t, _) => effectAddReachable p paid n t))
 
 /-- The individual activations after which the chosen finalization can still be paid. -/
-def effectAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
-    (plan : ReducedPermanentPlay) : List EffectAdd :=
-  if plan.cost.total == 0 then [] else
-  let units := (s.cardDef? card).any (·.hasType .unit)
-  let paid := fun t => (payByRunes t p card plan.cost units).isSome &&
-    (permanentPlayOptions t p card terms).contains plan
+def effectAddChoices (s : GameState) (p : PlayerId) (paid : GameState → Bool) : List EffectAdd :=
   let fuel := (effectAddSlots s p).length + 2 * (s.runesOf p).length
   (effectAddUses s p true).filter (fun a =>
     (a.apply s p).any (fun (t, _) => effectAddReachable p paid fuel t))

@@ -80,6 +80,12 @@ def effectAddJson : EffectAdd → String
   | .ability id idx energy power => jobj [("source", toString id.n), ("idx", toString idx),
     ("cost", costJson ⟨energy, power.map PowerSym.domain⟩)]
 
+/-- Serialize an Add the player can choose and the activations they have already chosen. -/
+def nextEffectAddFields (cost : Cost) (adds : List EffectAdd) (add : EffectAdd) :
+    List (String × String) :=
+  [("playAdd", effectAddJson add), ("playPaymentCost", costJson cost),
+    ("preparedAdds", jarr (adds.dropLast.map effectAddJson))]
+
 /-- Describe a pending payment, including activations already chosen for that payment. -/
 def reducedPlayDecision (effect : Effect) (funding : Bool) : List (String × String) :=
   match effect with
@@ -90,8 +96,7 @@ def reducedPlayDecision (effect : Effect) (funding : Bool) : List (String × Str
   | .fundLookedPermanent card _ plan adds =>
     match adds.getLast? with
     | none => [("reducedPlay", jobj (reducedPlayFields card plan)), ("choosePlayPayment", "true")]
-    | some add => [("playAdd", effectAddJson add), ("playPaymentCost", costJson plan.cost),
-        ("preparedAdds", jarr (adds.dropLast.map effectAddJson))]
+    | some add => nextEffectAddFields plan.cost adds add
   | .eitherOf _ => [(if funding then "morePlayPayments" else "morePlayOptions", "true")]
   | .nop => [("declinePlay", "true")]
   | _ => []
@@ -177,20 +182,34 @@ def remakeSpellFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreSpellChoices", toString spell.n)]
   | _ => []
 
-/-- Describe the targets, mode, and cost of the Spell queued from the Trash. -/
+/-- Describe the play and cost of the chosen Spell. -/
+def trashSpellPlayFields (state : Option GameState) (card : ObjId) (plan : EffectSpellPlay) :
+    List (String × String) :=
+  let controllers := plan.targets.map (fun id =>
+    (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
+  [("queuedSpell", toString card.n), ("targets", jarr (plan.targets.map (fun id => toString id.n))),
+    ("targetControllers", jarr controllers), ("queuedCost", costJson plan.cost)] ++
+    spellPickFields state card plan.pick
+
+/-- A queued Spell's choice of targets, payment, or cancellation. -/
+def trashSpellDecision (state : Option GameState) : Effect → List (String × String)
+  | .finishTrashSpell card plan adds => trashSpellPlayFields state card plan ++
+    (if adds.isEmpty then [] else [("preparedAdds", jarr (adds.map effectAddJson))])
+  | .fundTrashSpell card plan adds =>
+    match adds.getLast? with
+    | none => trashSpellPlayFields state card plan ++ [("chooseSpellPayment", "true")]
+    | some add => nextEffectAddFields plan.cost adds add
+  | .cancelTrashSpell _ => [("declinePlay", "true")]
+  | _ => [("moreTrashSpellChoices", "true")]
+
+/-- Describe the active choice for a Spell queued from the Trash. -/
 def trashSpellFields (state : Option GameState) (frame : Option Frame)
     (yes : Bool) : List (String × String) :=
   match frame with
   | some (.mayDo _ _ _ (.prim (.castInline _)) _) => [("trashSpellOffer", "true")]
-  | some (.eitherDo _ _ _ first@(.finishTrashSpell ..) other _) =>
-    match if yes then first else other with
-    | .finishTrashSpell card targets cost pick =>
-      let controllers := targets.map (fun id =>
-        (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
-      [("queuedSpell", toString card.n), ("targets", jarr (targets.map (fun id => toString id.n))),
-        ("targetControllers", jarr controllers), ("queuedCost", costJson cost)] ++
-        spellPickFields state card pick
-    | _ => [("moreTrashSpellChoices", "true")]
+  | some (.eitherDo _ _ _ first@(.finishTrashSpell ..) other _)
+  | some (.eitherDo _ _ _ first@(.fundTrashSpell ..) other _) =>
+    trashSpellDecision state (if yes then first else other)
   | _ => []
 
 /-- An action as JSON, with any context needed to describe the choice. -/

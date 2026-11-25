@@ -847,9 +847,10 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
   let offer ← passToChoice 8 played
   let (choice, queued) ← act offer (.decide true)
-  let .eitherDo who _ _ (.finishTrashSpell card first firstCost _)
-        (.finishTrashSpell alternative second secondCost _) _ :: _ := choice.pending | none
-  let (waiting, chosen) ← act choice (.decide (first == [enemy]))
+  let .eitherDo who _ _ (.fundTrashSpell card first [])
+        (.fundTrashSpell alternative second []) _ :: _ := choice.pending | none
+  let (payment, selected) ← act choice (.decide (first.targets == [enemy]))
+  let (waiting, chosen) ← act payment (.decide true)
   let (passed, _) ← act waiting .pass
   let response : Action := ⟨.player q, .playCard rebuttal ⟨1, [.chaos]⟩ [card]⟩
   let (reacted, _) ← (step 100 passed response).toOption
@@ -859,11 +860,11 @@ meta def passToChoice : Nat → GameState → Option GameState
   let blocked ← passToChoice 8 banned
   let steelAtBottom (t : GameState) := ((t.zone (.player p .mainDeck)).getLast?).any (fun id =>
     (t.cardDef? id).any (·.id.code == "VEN-003"))
-  return who == p && card == alternative && first != second &&
-    [first, second].contains [enemy] && [first, second].contains [friendly] &&
-    firstCost == ⟨0, [.domain .fury]⟩ && firstCost == secondCost &&
+  return who == p && card == alternative && first.targets != second.targets &&
+    [first.targets, second.targets].contains [enemy] && [first.targets, second.targets].contains [friendly] &&
+    first.cost == ⟨0, [.domain .fury]⟩ && first.cost == second.cost &&
     choice.zone .chain == [card] && choice.queuedTrashSpell card &&
-    queued.contains (.moved steel card .chain) && !(queued.contains (.played p card)) &&
+    queued.contains (.moved steel card .chain) && !(queued.contains (.played p card)) && selected.isEmpty &&
     chosen.contains (.played p card) && chosen.contains (.chosenBySpell p enemy) &&
     (waiting.obj? card).any (fun o => o.targets == [enemy] && !o.flowed && o.energyPaid == 0) &&
     (waiting.poolOf p).total == 0 &&
@@ -871,6 +872,79 @@ meta def passToChoice : Nat → GameState → Option GameState
     steelAtBottom resolved && countered.countIn p .trash "VEN-003" == 1 &&
     (countered.obj? enemy).isSome && !steelAtBottom countered &&
     blocked.countIn p .trash "VEN-003" == 1 && (blocked.zone .chain).isEmpty
+
+-- A queued Brittle Steel can be funded by a Gold or by a Rune. The selected Add
+-- and the targets are only made effective when the play is confirmed.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, fizz) ← put (s.fund p 3 (chaos := 1)) p "SFD-140" .hand
+  let (s, steel) ← put s p "VEN-003" .trash
+  let (s, gear) ← put s q "VEN-075" .base
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let openPay (t : GameState) := do
+    let (played, _) ← act t (.playCard fizz ⟨3, [.chaos]⟩ [])
+    let offer ← passToChoice 8 played
+    act offer (.decide true)
+  let gold ← s.tokenCard "Gold"
+  let goldId : ObjId := ⟨s.nextId⟩
+  let (goldPay, queued) ← openPay (createOne gold.id p none true s)
+  let .eitherDo _ _ _ (.fundTrashSpell item goldPlan [.ability source 0 0 []])
+        (.cancelTrashSpell cancelledItem) _ :: _ := goldPay.pending | none
+  let (goldPrepared, goldSelection) ← act goldPay (.decide true)
+  let (goldCancelled, cancellation) ← act goldPrepared (.decide false)
+  let (paidGold, goldEvents) ← act goldPrepared (.decide true)
+  let (s, runeId) ← put s p "OGN-007" .base
+  let (runePay, _) ← openPay (s.modObj runeId (fun o => { o with exhausted := true }))
+  let .eitherDo _ _ _ (.fundTrashSpell runeItem runePlan [.rune runeSource true])
+        (.cancelTrashSpell _) _ :: _ := runePay.pending | none
+  let (runePrepared, runeSelection) ← act runePay (.decide true)
+  let (paidRune, runeEvents) ← act runePrepared (.decide true)
+  return item == cancelledItem && source == goldId && runeSource == runeId &&
+    goldPlan == runePlan && goldPlan.targets == [gear] && goldPlan.cost == ⟨0, [.domain .fury]⟩ &&
+    queued.contains (.moved steel item .chain) && !(queued.contains (.chosenBySpell p gear)) &&
+    goldPay.queuedTrashSpell item && (goldPrepared.obj? goldId).isSome &&
+    (goldCancelled.obj? goldId).isSome && goldCancelled.countIn p .trash "VEN-003" == 1 &&
+    (goldCancelled.zone .chain).isEmpty && !(cancellation.contains (.played p item)) &&
+    goldSelection.isEmpty && runeSelection.isEmpty && (runePrepared.obj? runeId).isSome &&
+    (paidGold.obj? goldId).isNone && (paidRune.obj? runeId).isNone &&
+    (paidGold.poolOf p).total == 0 && (paidRune.poolOf p).total == 0 &&
+    !paidGold.queuedTrashSpell item && !paidRune.queuedTrashSpell runeItem &&
+    goldEvents.contains (.activated p goldId 0 (some 0)) && goldEvents.contains (.chosenBySpell p gear) &&
+    runeEvents.contains (.chosenBySpell p gear) && runeEvents.contains (.played p runeItem) &&
+    runeEvents.any (fun | .moved old _ (.player owner .runeDeck) => old == runeId && owner == p | _ => false)
+
+-- Lacerate needs both sources when Fizz plays it against Plaza Guardian: one
+-- Order Power for the Spell and one extra Power for Deflect.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, fizz) ← put (s.fund p 3 (chaos := 1)) p "SFD-140" .hand
+  let (s, _) ← put s p "VEN-127" .trash
+  let (s, target) ← put s s.you "VEN-064" .base
+  let (s, rune) ← put s p "OGN-214" .base
+  let s := s.modObj rune (fun o => { o with exhausted := true })
+  let gold ← s.tokenCard "Gold"
+  let goldId : ObjId := ⟨s.nextId⟩
+  let s := createOne gold.id p none true s
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let offer ← passToChoice 8 played
+  let (targeting, _) ← act offer (.decide true)
+  let .eitherDo _ _ _ (.fundTrashSpell _ first []) (.fundTrashSpell _ second []) _ :: _ :=
+    targeting.pending | none
+  let (payment, _) ← act targeting (.decide (first.targets == [target]))
+  let .eitherDo _ _ _ (.fundTrashSpell card plan [.ability source 0 0 []]) _ _ :: _ :=
+    payment.pending | none
+  let (goldStaged, _) ← act payment (.decide true)
+  let .eitherDo _ _ _ (.fundTrashSpell _ _ [_, .rune runeSource true]) _ _ :: _ :=
+    goldStaged.pending | none
+  let (funded, _) ← act goldStaged (.decide true)
+  let (done, events) ← act funded (.decide true)
+  return first.targets != second.targets && plan.targets == [target] && source == goldId &&
+    runeSource == rune && plan.cost == ⟨0, [.domain .order, .any]⟩ &&
+    (funded.obj? goldId).isSome && (funded.obj? rune).isSome &&
+    (done.obj? goldId).isNone && (done.obj? rune).isNone && (done.poolOf p).total == 0 &&
+    events.contains (.played p card) && events.contains (.chosenBySpell p target)
 
 -- Kai'Sa can choose Mesmerize's enemy mode even with no Energy in the Pool.
 #guard vendettaCase fun s => do

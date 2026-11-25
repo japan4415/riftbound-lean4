@@ -821,15 +821,45 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
     (h : f ∈ (runEffect1 s p src env e es funding).2.1) :
     f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
-  unfold runEffect1 castInlineStep at h
+  unfold runEffect1 at h
   split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
-    (try split at h) <;>
-    first
+    (try split at h)
+  all_goals first
+    | (simp only [List.mem_cons, List.mem_append, List.mem_map,
+         List.not_mem_nil, or_false] at h
+       first
+       | (subst h; exact Or.inl rfl)
+       | (rcases h with rfl | rfl <;> exact Or.inl rfl)
+       | (rcases h with rfl
+          left
+          unfold retainTargetSetFrame
+          dsimp only
+          split <;> rfl)
+       | (rcases h with rfl
+          left
+          unfold remakeSpellChoicesFrame
+          dsimp only
+          split <;> rfl)
+       | (rcases h with rfl
+          left
+          unfold collectOwnPicksFrame
+          dsimp only
+          split
+          · rfl
+          · split <;> rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl
+          · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
+          · exact Or.inl rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl
+          · exact Or.inl rfl
+          · exact Or.inl rfl))
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
+    | exact Or.inl (castInlineStep_mem h)
     | exact Or.inl (finalizeTrashStep_mem h)
+    | exact Or.inl (cancelTrashStep_mem h)
     | (unfold banishLookedStep at h
        split at h
        all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)
@@ -840,35 +870,6 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (rcases burnEffect_mem h with hp | hb
        · exact Or.inl hp
        · exact Or.inr (Or.inr hb))
-    | skip <;>
-    simp only [List.mem_cons, List.mem_append, List.mem_map,
-      List.not_mem_nil, or_false] at h <;>
-    first
-    | (subst h; exact Or.inl rfl)
-    | (rcases h with rfl
-       left
-       unfold retainTargetSetFrame
-       dsimp only
-       split <;> rfl)
-    | (rcases h with rfl
-       left
-       unfold remakeSpellChoicesFrame
-       dsimp only
-       split <;> rfl)
-    | (rcases h with rfl
-       left
-       unfold collectOwnPicksFrame
-       dsimp only
-       split
-       · rfl
-       · split <;> rfl)
-    | (rcases h with rfl | rfl <;> exact Or.inl rfl)
-    | (rcases h with ⟨q, -, rfl⟩ | rfl
-       · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
-       · exact Or.inl rfl)
-    | (rcases h with ⟨q, -, rfl⟩ | rfl
-       · exact Or.inl rfl
-       · exact Or.inl rfl)
 
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}

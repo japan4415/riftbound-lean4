@@ -61,6 +61,16 @@ inductive EffectAdd where
   | ability (source : ObjId) (index energy : Nat) (power : List Domain)
 deriving DecidableEq, Repr, Hashable
 
+/-- Choices and resource price of a Spell under a limited play effect. -/
+structure EffectSpellPlay where
+  /-- The objects chosen by the Spell. -/
+  targets : List ObjId
+  /-- The resources due for the selected choices. -/
+  cost : Cost
+  /-- Its mode, player target, destination or optional cost choices. -/
+  pick : SpellPick
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
@@ -115,8 +125,12 @@ inductive Effect where
       (adds : List EffectAdd)
   /-- Finalize the Spell queued by an effect that plays and then recycles it. -/
   | finalizeTrashSpell (card : ObjId)
+  /-- Continue choosing the individual Add abilities for the queued Spell's payment. -/
+  | fundTrashSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
   /-- Pay for the queued Spell and make its chosen targets and other finalization choices public. -/
-  | finishTrashSpell (card : ObjId) (targets : List ObjId) (cost : Cost) (pick : SpellPick)
+  | finishTrashSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
+  /-- Put the queued Spell back in its owner's Trash without finalizing it. -/
+  | cancelTrashSpell (card : ObjId)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)
