@@ -630,4 +630,46 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     events.any (fun e => match e with | .burnedUnitFor _ _ _ _ _ 5 => true | _ => false) &&
     done.mightNow target == (s.mightNow target).map (· + 5)
 
+-- Pakaa's Standard Move reveals and draws a Unit, even if that card is also a Gear.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, camp) ← putBf s p "VEN-162"
+  let (s, pakaa) ← putAt (s.control p camp) p "VEN-033" camp
+  let (s, top) ← put s p "VEN-058" .mainDeck
+  let (moved, _) ← (step 100 s ⟨.player p, .standardMove pakaa .base⟩).toOption
+  let (passed, _) ← (step 100 moved ⟨.player p, .pass⟩).toOption
+  let (done, events) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let revealed := Event.revealed p top
+  let drew := Event.drew p
+  return events.contains revealed && events.contains drew &&
+    events.idxOf revealed < events.idxOf drew && done.countIn p .hand "VEN-058" == 1 &&
+    done.mightNow pakaa == s.mightNow pakaa
+
+-- Swapping to Base counts as moving, Recall does not. An empty deck cannot reveal a card
+-- and never burns out while resolving this ability (CR 432.1.c).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, camp) ← putBf s p "VEN-162"
+  let (s, pakaa) ← putAt (s.control p camp) p "VEN-033" camp
+  let (s, friend) ← put s p "OGN-088" .base
+  let (s, gear) ← put s p "VEN-087" .mainDeck
+  let swap (t : GameState) := applyPrim t p pakaa { slots := [.obj friend] }
+    (.swapPlaces .self (.slot 0))
+  let (moved, events) ← swap s
+  let done ← fire moved events
+  let (recalled, recallEvents) := recallFx false s pakaa
+  let afterRecall ← fire recalled recallEvents
+  let empty := (applyEach (sendObj .banishment) s (s.zone (.player p .mainDeck))).1
+  let (movedEmpty, emptyEvents) ← swap empty
+  let afterEmpty ← fire movedEmpty emptyEvents
+  return events.count (.standardMoved pakaa none) == 1 &&
+    events.contains (.movedByEffect p pakaa) &&
+    done.countIn p .trash "VEN-087" == 1 && done.handN p == s.handN p &&
+    done.mightNow pakaa == (s.mightNow pakaa).map (· + 2) &&
+    (afterRecall.zone (.player p .mainDeck)).head? == some gear &&
+    afterRecall.mightNow pakaa == s.mightNow pakaa &&
+    (afterEmpty.zone .chain).isEmpty && (afterEmpty.zone (.player p .mainDeck)).isEmpty &&
+    afterEmpty.mightNow pakaa == s.mightNow pakaa && afterEmpty.pointsOf s.you == s.pointsOf s.you
+
 end RiftboundTest

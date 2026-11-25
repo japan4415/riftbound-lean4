@@ -892,8 +892,19 @@ def VEN_033.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Pakaa Protector: the effect is not written yet. -/
-def VEN_033 : CardDef := VEN_033.meta
+/-- Pakaa Protector. -/
+def VEN_033 : CardDef :=
+  let top := Amount.count (.all .friendly .inMainDeck [.top 1])
+  let topUnit := Amount.count (.all .friendly .inMainDeck [.top 1, .ofType .unit])
+  { VEN_033.meta with
+    abilities := [.triggered (.onSelf .move)
+      (.of [] (.seqOf [.prim (.revealTop 1),
+        .ifThen (.cmp .gt top (.const 0))
+          (.ifThen (.cmp .gt topUnit (.const 0)) (.prim (.draw .you (.const 1)))
+            (.seqOf [.prim (.bin (.one .friendly .inMainDeck [.top 1])),
+              .grant .self (.mightPlus .it (.const 2)) .thisTurn]))
+          .nop])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-034
 /--

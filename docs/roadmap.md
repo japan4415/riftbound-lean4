@@ -1839,6 +1839,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 誘発が参照する Might は、最初の能力の発生源が場を離れたり、Burn したカードが Trash を離れたりしても使える。シナリオでは非 Unit、別の効果による Burn、Burn Out 後の Burn も検査する。
 - 167 枚中 107 枚が `drafted`、104 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 16 — 移動後に山札の上を公開する
+
+- Pakaa Protector が移動したら、山札の一番上を公開する。Unit なら引き、それ以外なら Trash に置き、Pakaa Protector に +2 Might を与える。山札が空なら公開も後続処理も行わない（CR 432.1.c）。
+- 位置の入れ替えで Base に戻った Unit も移動として記録する。Standard Move、入れ替え、Recall、複数の型を持つ Unit をシナリオで検査する。
+- 167 枚中 108 枚が `drafted`、105 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

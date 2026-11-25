@@ -1130,45 +1130,54 @@ theorem sendHome_safe (s : GameState) (u : ObjId) : Safe s (sendHome s u).1 := b
     · exact Safe.refl s
   · exact Safe.refl s
 
-/-- Move a Unit to the Base of its controller by an effect, unless the Battlefield it is at
-forbids it (CR 447). -/
+/-- Move a Unit to its controller's Base once the move is allowed, counting it and emitting its
+movement event (CR 447). -/
+def moveHomeUnchecked (s : GameState) (u : ObjId) : GameState × List Event :=
+  match s.obj? u with
+  | some o =>
+    match moveObj s u (.player o.controller .base) with
+    | some r =>
+      (r.1.modObj r.2 (fun x => ({ x with loc := none } : Object).countMove s.turn o.loc),
+        [Event.standardMoved r.2 none])
+    | none => (s, [])
+  | none => (s, [])
+
+/-- Moving an allowed Unit to its Base preserves the structural invariants. -/
+theorem moveHomeUnchecked_safe (s : GameState) (u : ObjId) :
+    Safe s (moveHomeUnchecked s u).1 := by
+  unfold moveHomeUnchecked
+  split
+  · split
+    · rename_i r hr
+      exact (Safe.moveObj hr).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Move a Unit to the Base of its controller by an effect, unless the move is forbidden
+(CR 447). -/
 def moveHome (s : GameState) (u : ObjId) : GameState × List Event :=
   if ((s.obj? u).bind (·.loc)).any (fun bf => s.homeForbiddenFor u bf) then
     (s, [])
-  else
-    -- it is a move: it is counted, and what waits for the Unit to move from a Battlefield is told
-    match s.obj? u with
-    | some o =>
-      match moveObj s u (.player o.controller .base) with
-      | some r =>
-        (r.1.modObj r.2 (fun x => ({ x with loc := none } : Object).countMove s.turn o.loc),
-          [Event.standardMoved r.2 none])
-      | none => (s, [])
-    | none => (s, [])
+  else moveHomeUnchecked s u
 
 /-- Moving home is a safe change. -/
 theorem moveHome_safe (s : GameState) (u : ObjId) : Safe s (moveHome s u).1 := by
   unfold moveHome
   split
   · exact Safe.refl s
-  · split
-    · split
-      · rename_i r hr
-        exact (Safe.moveObj hr).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
-      · exact Safe.refl s
-    · exact Safe.refl s
+  · exact moveHomeUnchecked_safe s u
 
 /-- Move a Unit to a place by an effect: a Battlefield (`some`) or its controller's Base. -/
 def sendToLoc (loc : Option ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
   match loc with
   | some bf => sendToBf bf s u
-  | none => sendHome s u
+  | none => moveHomeUnchecked s u
 
 /-- Moving to a place is a safe change. -/
 theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
     Safe s (sendToLoc loc s u).1 := by
   cases loc with
-  | none => exact sendHome_safe s u
+  | none => exact moveHomeUnchecked_safe s u
   | some bf => exact sendToBf_safe bf s u
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
@@ -1176,9 +1185,8 @@ at the same place, or if a Battlefield that a Unit would leave for the Base forb
 def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  let forbids (l : Option ObjId) : Bool :=
-    l.any (fun bf => s.homeForbidden bf)
-  if lx == ly || (lx.isNone && forbids ly) || (ly.isNone && forbids lx) then (s, [])
+  if lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
+      (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
   else
     let r1 := sendToLoc ly s x
     let r2 := sendToLoc lx r1.1 y
@@ -2143,7 +2151,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | _ => none
   | .swapPlaces a b =>
     match a.eval s p src env, b.eval s p src env with
-    | some (x :: _), some (y :: _) => some (swapPlaces s x y)
+    | some (x :: _), some (y :: _) => some (movedEvents p (swapPlaces s x y))
     | _, _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
