@@ -400,4 +400,16 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let r ← cast (s2.rich s.me) s.me c (payOf s2 c) [sp]
   return r.handN s.you == before + 1 && r.countIn s.you .trash "OGN-004" == 0
 
+-- Frisky Hunter (UNL-033) and Lord Broadmane (UNL-012): played to the Base, "here" is the Base
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-033" .hand
+  let s2 ← play s1 s.me c
+  return s2.countNamed s.me .base "Bird" == 1
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-012" .hand
+  let (s2, u) ← put s1 s.me "OGN-088" .base
+  let s3 ← play s2 s.me c
+  return s3.hasKw u .assault
+
 end RiftboundTest

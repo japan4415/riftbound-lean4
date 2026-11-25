@@ -1750,9 +1750,16 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
         let r := createN c.id p none (ready || s.tokenReady p c) k s
         some (buffNewTokens s r p, tokenPlays s r p)
       | .here =>
-        (s.hereOf src).map (fun bf =>
+        match s.hereOf src with
+        | some bf =>
           let r := createN c.id p (some bf) (ready || s.tokenReady p c) k s
-          (buffNewTokens s r p, tokenPlays s r p))
+          some (buffNewTokens s r p, tokenPlays s r p)
+        | none =>
+          -- at a Base, "here" is that Base
+          if s.baseHere src then
+            let r := createN c.id p none (ready || s.tokenReady p c) k s
+            some (buffNewTokens s r p, tokenPlays s r p)
+          else none
       | _ => none)
 
 /-- Playing tokens is a safe change. -/
@@ -1775,9 +1782,15 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
         exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | here =>
         cases hh : s.hereOf src with
-        | none => simp [hh] at h
+        | none =>
+          simp only [hh] at h
+          split at h
+          · simp only [Option.some.injEq] at h
+            rw [← h]
+            exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+          · simp at h
         | some bf =>
-          simp only [hh, Option.map_some, Option.some.injEq] at h
+          simp only [hh, Option.some.injEq] at h
           rw [← h]
           exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | anywhere => simp at h
