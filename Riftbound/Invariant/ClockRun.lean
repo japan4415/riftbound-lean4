@@ -104,10 +104,12 @@ theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : 
   exact TC.of_sameMeta (applyActivate_safe h).same
 
 theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {targetPlayer : Option PlayerId} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame}
+    {targetPlayer banisher : Option PlayerId} {es : List Event}
+    (h : activateStep s p src idx pay ts new discards targetPlayer banisher = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact (tc_applyActivate hm).trans ⟨rfl, rfl⟩
+  exact ((TC.of_safe (noteActivationBanisher_safe s ts banisher)).trans
+    (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}

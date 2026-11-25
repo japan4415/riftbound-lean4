@@ -296,13 +296,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
          mode.toList.flatMap (modeFields definition) ++ costs ++
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
-    | .activate src idx pay ts discards targetPlayer =>
+    | .activate src idx pay ts discards targetPlayer costBanisher =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
       targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
+      (costBanisher.toList.flatMap (fun who => ts.getLast?.toList.map (fun unit =>
+        ("costBanish", jobj [("player", toString who.n), ("unit", toString unit.n)])))) ++
       (match state.bind (fun s => s.activationAt src idx) with
       | some (grant, .activated costs _ e _) =>
         (if grant.isSome && e.body == .prim (.ready .self) then

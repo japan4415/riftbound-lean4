@@ -352,10 +352,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       rcases hm with h1 | h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
@@ -371,10 +371,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i p rest src idx pay ts discards targetPlayer hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
@@ -611,11 +611,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i bf q rest src idx pay ts discards targetPlayer hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     simp only [activatableSD, Bool.and_eq_true] at hl
-    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm

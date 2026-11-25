@@ -935,6 +935,30 @@ meta def passToChoice : Nat → GameState → Option GameState
     !(events.any (fun | .died .. => true | _ => false)) && done.preventValue defender == 0 &&
     !done.shielded attacker && (done.obj? attacker).isSome && excess == [0]
 
+-- Escaped Grayback locks in which player's Banish replaces its Kill cost (CR 357.2.a, 372).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "VEN-022" .base
+  let (s, grayback) ← put s p "VEN-124" .base
+  let (s, cost) ← put s p "VEN-128" .base
+  let s := (s.fund p 0).addTurnFxOn q cost .banishInstead
+  let choose (banisher : Option PlayerId) : Action :=
+    ⟨.player p, .activate grayback 0 ⟨0, []⟩ [cost] [] none banisher⟩
+  let verify (who : PlayerId) : Option Bool := do
+    let (paid, events) ← (step 100 s (choose (some who))).toOption
+    let banished ← paid.firstOf p .banishment "VEN-128"
+    let resolved := settleChain {} 8 paid
+    return events.filter (fun | .banished .. => true | _ => false) == [.banished who p banished] &&
+      !(events.any (fun | .died .. => true | _ => false)) &&
+      paid.countIn p .banishment "VEN-128" == 1 && (paid.zone .chain).length == 1 &&
+      resolved.mightNow grayback == some 5
+  let byRiches ← verify p
+  let bySmite ← verify q
+  return (legalActions s).contains (choose (some p)) && (legalActions s).contains (choose (some q)) &&
+    !(legalActions s).contains (choose none) && !(legalActions s).contains (choose (some ⟨2⟩)) &&
+    byRiches && bySmite
+
 -- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
 -- is finalized after the trigger leaves the Chain, and the opponent can respond.
 #guard vendettaCase fun s => do

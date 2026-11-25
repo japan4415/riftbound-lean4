@@ -75,7 +75,7 @@ end RunePool
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
   | .playCard _ _ ts _ _ _ => ts
-  | .activate _ _ _ ts _ _ => ts
+  | .activate _ _ _ ts _ _ _ => ts
   | .putTrigger _ ts _ => ts
   | _ => []
 
@@ -136,7 +136,7 @@ to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). 
 def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
   match a.kind with
   | .playCard c _ ts _ _ _ => s.playPowerCut p c ts != 0
-  | .activate c idx _ ts _ _ =>
+  | .activate c idx _ ts _ _ _ =>
     s.playPowerCut p c ts != 0 &&
       (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with
       | some (.activated costs _ _ _) => costs.contains .fromHidden

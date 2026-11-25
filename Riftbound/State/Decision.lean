@@ -118,6 +118,7 @@ inductive ActionKind where
   from object targets (CR 355.7). -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
       (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
+      (costBanisher : Option PlayerId := none)
   /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
   if it is declined or cannot be finalized (CR 383.3, 355). -/
   | putTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment := .pay [])

@@ -2020,22 +2020,28 @@ theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).
     · exact killObj_safe s id
   · exact killObj_safe s id
 
+/-- Banish replacements for this Unit's death, grouped by the player credited with Banish. -/
+def GameState.deathBanisherOptions (s : GameState) (id : ObjId) : List (Option PlayerId) :=
+  if (s.chosenDeathBanisher id).isSome || (s.deathSaver id).isSome ||
+      !(s.cardDef? id).any (·.hasType .unit) then [none] else
+    let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
+    let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
+    match (marked ++ trash).eraseDups with
+    | first :: second :: rest => (first :: second :: rest).map some
+    | _ => [none]
+
 /-- Competing Banish effects with different attribution require the Unit's controller to
 choose. After the chosen replacement applies, there is no kill or Trash move left to replace
 (CR 370.1.a.1, 372). -/
 def GameState.deathBanishChoice (s : GameState) (id : ObjId) :
     Option (ObjId × PlayerId × Effect × Effect) := do
-  if (s.chosenDeathBanisher id).isSome || (s.deathSaver id).isSome ||
-      !(s.cardDef? id).any (·.hasType .unit) then none else
-    let unit ← s.obj? id
-    let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
-    let trash := if s.replacesTrash id unit then [unit.owner] else []
-    let choices := (marked ++ trash).eraseDups.map (Effect.chooseDeathBanisher id)
-    match choices with
-    | first :: second :: rest =>
-      let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
-      some (id, unit.controller, first, other)
-    | _ => none
+  let unit ← s.obj? id
+  let choices := (s.deathBanisherOptions id).filterMap (Option.map (Effect.chooseDeathBanisher id))
+  match choices with
+  | first :: second :: rest =>
+    let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
+    some (id, unit.controller, first, other)
+  | _ => none
 
 /-- A Trash replacement can still apply to a simultaneous kill after its own source was removed
 by the same instruction (CR 370.1.a.2, 370.4). -/

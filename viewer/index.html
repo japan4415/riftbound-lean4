@@ -442,7 +442,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
-      const targets = (a.targets || []).map((t) => cardName(t));
+      const targetIds = a.targets || [];
+      const targets = (a.costBanish ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const tg = targets.join('、');
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
@@ -450,6 +451,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const costs = [];
       if (a.disempowerSelf) costs.push('Disempower');
       if (a.exhaustSelf) costs.push('Exhaust');
+      if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
       if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
         costs.push(costText({ energy: a.pay - power.length, power }));
       }
