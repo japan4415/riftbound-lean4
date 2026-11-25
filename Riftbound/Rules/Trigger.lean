@@ -603,13 +603,69 @@ theorem insertTriggers_contrib (pend : List PendTrigger) (q : PlayerId) (contrib
       · simp [h0]
       · simp [h0]
 
+/-- Add a play to the current turn's history, with the types and player fixed at that moment. -/
+def addCardPlay (turn : Nat) (plays : List CardPlay) (p : PlayerId) (obj : ObjId)
+    (d : CardDef) (moment : PlayMoment) : List CardPlay :=
+  ⟨p, obj, d.types, turn, moment⟩ ::
+    (if plays.head?.map (·.turn) == some turn then plays else [])
+
+/-- Whether the hidden card is already recorded as finalized in its original zone. -/
+def hiddenFinalized (plays : List CardPlay) (turn : Nat) (p : PlayerId) (id : ObjId) : Bool :=
+  plays.any (fun play => play.moment == .finalized && play.turn == turn &&
+    play.who == p && play.object == id)
+
+/-- Record completed finalizations and permanent plays. Hidden plays are finalized by the
+activation that pays for the play; the later movement of the card is its resolution
+(CR 811, 420.4). Token creation and ordinary ability activations do not finalize a card. -/
+def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event → List CardPlay
+  | .played p id =>
+    match s.obj? id, s.cardDef? id with
+    | some o, some d =>
+      if o.kind.phys?.isSome then
+        let original := if o.fromHidden then o.formerId.getD id else id
+        let noted := if (o.fromHidden || o.hiddenAt.isSome) &&
+            hiddenFinalized plays s.turn p original then plays
+          else addCardPlay s.turn plays p id d .finalized
+        if d.hasType .spell then noted else addCardPlay s.turn noted p id d .resolved
+      else plays
+    | _, _ => plays
+  | .activated p id idx =>
+    match s.obj? id, s.cardDef? id with
+    | some o, some d =>
+      match d.fullAbilities[idx]? with
+      | some (.activated costs _ _ _) =>
+        if o.kind.phys?.isSome && costs.contains .fromHidden &&
+            !hiddenFinalized plays s.turn p id then addCardPlay s.turn plays p id d .finalized
+        else plays
+      | _ => plays
+    | _, _ => plays
+  | _ => plays
+
+/-- Remember a player's choice of an enemy Unit, even if it later changes zones or control. -/
+def GameState.recordEnemyChoice (s : GameState) (notes : List TurnFx) : Event → List TurnFx
+  | .chosenBySpell p id | .chosenByAbility p id =>
+    if s.inPlay.contains id && (s.obj? id).any (·.controller != p) &&
+        (s.cardDef? id).any (·.hasType .unit) &&
+        !(notes.any (fun f => f.turn == s.turn && f.who == p && f.kind == .choseEnemyUnit)) then
+      { who := p, turn := s.turn, stamp := s.nextTimestamp, kind := .choseEnemyUnit } :: notes
+    else notes
+  | _ => notes
+
+/-- Update the play and choice history before evaluating triggers. Ignore events during setup. -/
+def GameState.recordTurnEvents (s : GameState) (es : List Event) : GameState :=
+  let inPlay := s.phase != .setup && s.pending.all (fun f => !f.isSetup)
+  { s with
+    playLog := if inPlay then es.foldl s.recordPlayEvent s.playLog else s.playLog
+    turnFx := if inPlay then es.foldl s.recordEnemyChoice s.turnFx else s.turnFx }
+
 /-- After a step: the abilities that fired wait on the stack. Not during the setup. -/
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
+  let next := s.recordTurnEvents es
   if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-    match s.detect es with
-    | [] => s
-    | pend => { s with pending := insertTriggers pend s.pending }
-  else s
+    match next.detect es with
+    | [] => next
+    | pend => { next with pending := insertTriggers pend s.pending }
+  else next
 
 /-- The choices of the triggered ability that waits (CR 355). -/
 def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
@@ -755,30 +811,29 @@ theorem triggersStep_spec (s : GameState) (pend : List PendTrigger) (rest : List
       simp only [List.mem_singleton] at hg
       exact Or.inr (Or.inr ⟨_, _, _, _, hg⟩)
 
-/-- What a step of `withTriggers` does: nothing, or insert triggers where no setup frame is left
-and the game is not in its setup. -/
+/-- After recording plays, triggers are inserted only outside the setup. -/
 theorem withTriggers_cases (s : GameState) (es : List Event) :
-    s.withTriggers es = s ∨ ∃ pend, s.withTriggers es = { s with
+    s.withTriggers es = s.recordTurnEvents es ∨ ∃ pend, s.withTriggers es = { s.recordTurnEvents es with
         pending := insertTriggers pend s.pending } ∧ s.phase ≠ .setup ∧
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
   by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
-  · cases hd : s.detect es with
-    | nil => simp [hg]
+  · cases hd : (s.recordTurnEvents es).detect es with
+    | nil => simp [hg, hd]
     | cons x xs =>
       right
-      refine ⟨x :: xs, by simp [hg], ?_, ?_⟩
+      refine ⟨x :: xs, by simp [hg, hd], ?_, ?_⟩
       · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hg
         exact hg.1
       · simp only [Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hg
         exact hg.2
   · simp [hg]
 
-/-- `withTriggers` changes the stack and nothing else. -/
+/-- Besides recording plays, `withTriggers` changes only the stack. -/
 theorem withTriggers_pending (s : GameState) (es : List Event) :
-    ∃ p, s.withTriggers es = { s with pending := p } := by
+    ∃ p, s.withTriggers es = { s.recordTurnEvents es with pending := p } := by
   rcases withTriggers_cases s es with h | ⟨pend, h, -⟩
-  · exact ⟨s.pending, by rw [h]⟩
+  · exact ⟨s.pending, by rw [h]; rfl⟩
   · exact ⟨_, h⟩
 
 /-- Finding the triggers keeps the game well formed. -/
@@ -806,8 +861,8 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   unfold GameState.withTriggers
   split
-  · simp [GameState.detect, GameState.trimLimits]
-  · rfl
+  · simp [GameState.recordTurnEvents, GameState.detect, GameState.trimLimits]
+  · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/
 theorem triggersStep_frames {s : GameState} {pend : List PendTrigger} {rest : List Frame}

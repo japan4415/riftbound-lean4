@@ -298,6 +298,13 @@ inductive Condition where
   | discardPaid
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
+  /-- The player finalized a card of this type this turn (CR 420.4.b). -/
+  | finalizedType (kind : CardType)
+  /-- An opponent finalized a Spell other than the selected Spell this turn (CR 420.4.b). -/
+  | opponentFinalizedOtherSpell (target : Selector)
+  /-- The selected permanent was the player's first resolved play of this type this turn
+  (CR 383.1, 420.4.a). -/
+  | firstResolvedType (kind : CardType) (played : Selector)
   /-- The player's Rune Pool can pay the cost. -/
   | canPay (c : Cost)
   /-- A unit of an opponent has died this turn. -/

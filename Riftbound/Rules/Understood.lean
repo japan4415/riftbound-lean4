@@ -247,6 +247,8 @@ def Condition.understood : Condition → Bool
   | .paid => true
   | .discardPaid => true
   | .playedAnother => true
+  | .finalizedType _ => true
+  | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => s.understood
   | .empowered s => s.understood
   | .leftEmpowered => true
   | .canPay _ => true

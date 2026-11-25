@@ -123,6 +123,7 @@ def Condition.ok (c : Ctx) : Condition → Bool
   | .exists s => Selector.ok c s
   | .matches s f => Selector.ok c s && Filter.ok c f
   | .empowered s => Selector.ok c s
+  | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => Selector.ok c s
   | _ => true
 
 end

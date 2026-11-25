@@ -1904,6 +1904,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - ビューアでは対象を選んだ後に、捨てない手と捨てられるカードを表示する。効果によるプレイで物品や手札を任意の追加コストとして使う選択は別途必要。
 - 167 枚中 126 枚が `drafted`、124 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 25 — 確定したプレイとパーマネントの解決
+
+- そのターンに確定したプレイについて、プレイヤー、当時のオブジェクト ID、カードの型を保持する。パーマネントのプレイが解決した順も記録する。Hidden からのプレイは確定時に記録し、解決時に重複して数えない（CR 420.4, 811）。
+- Crumbling Sands は対象と別の Spell をいずれかの対戦相手が確定していれば、対象を打ち消す。その別の Spell が先に打ち消されていた場合も数える。Swain, Visionary はそのターンに Unit、Gear、Spell を確定していた場合、Conquer 時に 1 点を得る。Patched Porobot は Unit と Gear の両方を満たす（CR 420.4.b）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Jayce, Brilliant Inventor は自身のプレイ時と、そのターンに自分の非トークン Gear のプレイが初めて解決したときに、自身以外の Exhausted のオブジェクトを Ready にできる。Legend も選べる。誘発を見送っても、その Gear が最初だった記録は残る（CR 355.10.a, 383.1, 383.3.a, 420.4.a）。
+- Hungry Wolf は敵 Unit を対象に選んだターンに限り、Order Power を払って自身を Ready にし、ターン終了まで Might を 1 増やせる。1 ターンに 1 回。その Unit が場を離れても対象に選んだ履歴は残る（CR 355.7, 371）。
+- 167 枚中 130 枚が `drafted`、128 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

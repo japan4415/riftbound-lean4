@@ -17,6 +17,124 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- The second opponent's Spell still counts for Crumbling Sands after Defy has
+-- countered it. The same target remains on the Chain if it is the only enemy Spell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with
+    config := { s.config with mode := mode }
+    turnOrder := [q, third, p]
+    active := some q
+    pending := [.priority q] }
+  let (s, unit) ← put s q "VEN-091" .base
+  let (s, first) ← put s q "OGN-095" .hand
+  let (s, second) ← put s third "OGN-095" .hand
+  let (s, defy) ← put s p "OGN-045" .hand
+  let (s, sands) ← put s p "VEN-039" .hand
+  let s := ((s.rich p).rich q).rich third
+  let (casting, _) ← (step 100 s ⟨.player q, .playCard first ⟨1, []⟩ [unit]⟩).toOption
+  let original ← (casting.zone .chain).head?
+  let (priThird, _) ← (step 100 casting ⟨.player q, .pass⟩).toOption
+  let (onlyOne, _) ← (step 100 priThird ⟨.player third, .pass⟩).toOption
+  let counter : Action := ⟨.player p, .playCard sands ⟨1, [.calm]⟩ [original]⟩
+  let (attempt, _) ← (step 100 onlyOne counter).toOption
+  let (two, _) ← (step 100 priThird ⟨.player third, .playCard second ⟨1, []⟩ [unit]⟩).toOption
+  let later ← (two.zone .chain).head?
+  let (west, _) ← (step 100 two ⟨.player third, .pass⟩).toOption
+  let (defying, _) ← (step 100 west ⟨.player p, .playCard defy ⟨1, [.calm]⟩ [later]⟩).toOption
+  let negated := settleChain {} 3 defying
+  let (passQ, _) ← (step 100 negated ⟨.player q, .pass⟩).toOption
+  let (available, _) ← (step 100 passQ ⟨.player third, .pass⟩).toOption
+  let (answered, _) ← (step 100 available counter).toOption
+  let noCounter := settleChain {} 3 attempt
+  let done := settleChain {} 3 answered
+  return (negated.zone .chain) == [original] && negated.countIn third .trash "OGN-095" == 1 &&
+    (noCounter.zone .chain).contains original && done.zone .chain == [] &&
+    done.countIn q .trash "OGN-095" == 1
+
+-- Patched Porobot counts once as a Unit and once as a Gear, even after leaving the
+-- Board. Swain also counts a countered Spell, but tokens and plays last turn are excluded.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, swain) ← putAt s p "VEN-065" field
+  let (s, porobot) ← put s p "VEN-058" .hand
+  let (s, spell) ← put s p "OGN-095" .hand
+  let s := s.rich p
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [swain]⟩).toOption
+  let item ← (casting.zone .chain).head?
+  let afterCounter := (counterObj casting item).1
+  let afterCounter := { afterCounter with pending := [.priority p] }
+  let gold ← s.tokenCard "Gold"
+  let tentacles := createOne (tokenId "Tentacle") p none false afterCounter
+  let tokens := createOne gold.id p none true tentacles
+  let tokens := tokens.withTriggers [.tokenPlayed p ⟨afterCounter.nextId⟩,
+    .tokenPlayed p ⟨tentacles.nextId⟩]
+  let noBonus ← fire tokens [.scored p field true]
+  let withBoth ← play afterCounter p porobot
+  let robot ← withBoth.firstOf p .base "VEN-058"
+  let (left, _) ← moveObj withBoth robot (.player p .trash)
+  let scored ← fire left [.scored p field true]
+  let later ← fire { left with turn := left.turn + 1 } [.scored p field true]
+  return (left.playsOfType .finalized .unit).any (·.object == robot) &&
+    (left.playsOfType .finalized .gear).any (·.object == robot) &&
+    scored.pointsOf p == s.pointsOf p + 1 && later.pointsOf p == s.pointsOf p &&
+    noBonus.pointsOf p == s.pointsOf p
+
+-- Jayce's own play can ready a Legend. The first card Gear play counts even if its
+-- trigger is declined. There is a new first Gear on the next turn.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let legend ← (s.zone (.player p .legendZone)).head?
+  let (s, jayce) ← put s p "VEN-068" .hand
+  let (s, first) ← put s p "VEN-058" .hand
+  let (s, second) ← put s p "VEN-058" .hand
+  let enter := s.tire legend
+  let onPlay ← castStop enter p jayce
+  let onBoard ← onPlay.firstOf p .base "VEN-068"
+  let ready := settleChain { pick := (· == [legend]) } 12 onPlay
+  let gold ← s.tokenCard "Gold"
+  let ready := createOne gold.id p none true ready
+  let waiting ← castStop (ready.tire legend) p first
+  let viaGear := settleChain { pick := (· == [legend]) } 12 waiting
+  let (declined, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 []⟩).toOption
+  let noSecond ← play declined p second [] { pick := (· == [legend]) }
+  let turn := { declined with turn := declined.turn + 1 }
+  let nextFirst ← play turn p second [] { pick := (· == [legend]) }
+  return !(onPlay.trigPicks.contains onBoard) && ready.tired legend == some false &&
+    waiting.trigPicks.contains legend && viaGear.tired legend == some false &&
+    (declined.zone .chain).isEmpty && noSecond.tired legend == some true &&
+    nextFirst.tired legend == some false
+
+-- Hungry Wolf checks who controlled the Unit when it was chosen. A later move
+-- does not forget the choice, and the ability can only be used once that turn.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, wolf) ← put s p "VEN-125" .base
+  let (s, enemy) ← put s q "VEN-091" .base
+  let (s, gear) ← put s q "VEN-011" .base
+  let (s, spell) ← put s p "OGN-095" .hand
+  let s := (s.tire wolf).rich p
+  let action : Action := ⟨.player p, .activate wolf 0 ⟨0, [.order]⟩ []⟩
+  let friendly ← cast s p spell ⟨1, []⟩ [wolf]
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [enemy]⟩).toOption
+  let (left, _) ← moveObj casting enemy (.player q .hand)
+  let done := settleChain {} 12 left
+  let (used, _) ← (step 100 done action).toOption
+  let used := settleChain {} 12 used
+  let later := { done with turn := done.turn + 1 }
+  let noted := s.withTriggers [.chosenByAbility p enemy]
+  let pickedGear := s.withTriggers [.chosenByAbility p gear]
+  return !(legalActions s).contains action && !(legalActions friendly).contains action &&
+    !(legalActions pickedGear).contains action && (legalActions noted).contains action &&
+    (legalActions done).contains action && !(legalActions used).contains action &&
+    !(legalActions later).contains action && used.tired wolf == some false &&
+    used.mightNow wolf == some 5
+
 -- Ruthless Strike can discard a different hand card at Action speed. The discard
 -- is paid before reactions and is neither a target nor a second play.
 #guard vendettaCase fun s => do
@@ -241,10 +359,12 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let action (power : List Domain) : Action := ⟨.player p, .activate hidden 1 ⟨0, power⟩ [ally]⟩
   let (waiting, _) ← (step 100 showdown (action [.calm])).toOption
   let done := settleChain {} 12 waiting
+  let finalized (t : GameState) := (t.playsOfType .finalized .spell).map (·.object)
   return (legalActions s).contains (action []) &&
     !(legalActions showdown).contains (action []) &&
     (legalActions showdown).contains (action [.calm]) &&
     (waiting.poolOf p).calm + 1 == (s.poolOf p).calm &&
+    (finalized waiting).count hidden == 1 && finalized done == finalized waiting &&
     done.locate ally == some (.player p .base) && done.countIn p .trash "OGN-168" == 1
 
 -- Sandswept Tomb removes one symbol of the caster's choice per qualifying Battlefield,

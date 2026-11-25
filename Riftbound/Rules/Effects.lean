@@ -1311,7 +1311,7 @@ def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
         match moveObj r.1 id .chain with
         | some m =>
           (m.1.modObj m.2 (Object.withPlay ts (r.1.freeMark p id)),
-            r.2 ++ [Event.moved id m.2 .chain])
+            r.2 ++ [Event.moved id m.2 .chain, Event.played p m.2] ++ ts.map (Event.chosenBySpell p))
         | none => (s, [])
       | none => (s, [])
     | none => (s, [])
@@ -2997,7 +2997,7 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
       match payByRunes s p id ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩ with
       | some r =>
         (r.1, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
-          .run p src env es], r.2)
+          .run p src env es], r.2 ++ [Event.played p id])
       | none => skip
     | none => skip
   | _ => skip

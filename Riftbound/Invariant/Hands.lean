@@ -691,7 +691,8 @@ on the stack, and not during the setup. -/
 theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event) :
     HandInv (s.withTriggers es) := by
   rcases withTriggers_cases s es with h | ⟨pend, h, hph, -⟩
-  · rw [h]; exact hinv
+  · rw [h]
+    exact ⟨hinv.turn, hinv.hands, hinv.play⟩
   · rw [h]
     refine hinv.of_play hph rfl rfl (fun hm => ?_)
     rcases insertTriggers_mem pend _ hm with h1 | ⟨x, h1⟩

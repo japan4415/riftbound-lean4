@@ -1083,8 +1083,12 @@ def VEN_039.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Crumbling Sands: the effect is not written yet. -/
-def VEN_039 : CardDef := VEN_039.meta
+/-- Crumbling Sands counters a Spell if an opponent finalized another Spell this turn. -/
+def VEN_039 : CardDef :=
+  { VEN_039.meta with
+    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
+      (.ifThen (.opponentFinalizedOtherSpell (.slot 0)) (.prim (.counter (.slot 0))) .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-040
 /--
@@ -1785,8 +1789,14 @@ def VEN_065.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Swain, Visionary: the effect is not written yet. -/
-def VEN_065 : CardDef := VEN_065.meta
+/-- Swain gains a point on Conquer after a Unit, a Gear and a Spell were finalized. -/
+def VEN_065 : CardDef :=
+  { VEN_065.meta with
+    abilities := [.triggered
+      { event := .conquer, condition :=
+          .and (.finalizedType .unit) (.and (.finalizedType .gear) (.finalizedType .spell)) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-066
 /--
@@ -1853,8 +1863,19 @@ def VEN_068.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jayce, Brilliant Inventor: the effect is not written yet. -/
-def VEN_068 : CardDef := VEN_068.meta
+/-- Jayce can ready another object on play and when his controller's first Gear play resolves. -/
+def VEN_068 : CardDef :=
+  let ready := EffectDef.of
+    [.targetOf (.upTo 1) .any .boardOrLegend [.exhausted, .notSelf]]
+    (.prim (.ready (.slot 0)))
+  { VEN_068.meta with
+    abilities := [.triggered (.onSelf .play) ready .unlimited,
+      .triggered
+        { event := .play,
+          subject := .all .friendly .anywhere [.ofType .gear, .not .token, .notSelf],
+          condition := .firstResolvedType .gear (.slot 0) }
+        ready .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-069
 /--
@@ -3379,8 +3400,14 @@ def VEN_125.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Hungry Wolf: the effect is not written yet. -/
-def VEN_125 : CardDef := VEN_125.meta
+/-- Hungry Wolf can ready itself and gain Might once each turn after choosing an enemy Unit. -/
+def VEN_125 : CardDef :=
+  { VEN_125.meta with
+    abilities := [.activated [.pay ⟨0, [.domain .order]⟩] .normal
+      (.of [] (.ifThen (.noted .choseEnemyUnit) (.seqOf [.prim (.ready .self),
+        .grant .self (.mightPlus .it (.const 1)) .thisTurn]) .nop))
+      (.perTurn 1)],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-126
 /--

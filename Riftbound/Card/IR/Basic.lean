@@ -199,6 +199,8 @@ inductive TurnEffect where
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
   | cardDiscarded
+  /-- The player chose an enemy Unit this turn (CR 355.7). -/
+  | choseEnemyUnit
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana

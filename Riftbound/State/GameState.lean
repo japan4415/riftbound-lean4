@@ -50,6 +50,28 @@ structure CombatParticipation where
   recalled : Bool := false
 deriving DecidableEq, Repr
 
+/-- The point of a play that history records (CR 420.4). -/
+inductive PlayMoment where
+  /-- Choices and costs have been finalized, even if the card is later countered. -/
+  | finalized
+  /-- A permanent has entered the Board when its play resolved. -/
+  | resolved
+deriving DecidableEq, Repr
+
+/-- A completed part of a card's play, independent of the object's later zones or controller. -/
+structure CardPlay where
+  /-- The player who performed this part of the play. -/
+  who : PlayerId
+  /-- The object identifier at this point of the play. -/
+  object : ObjId
+  /-- The types of the card at that point, including both types of a Unit Gear. -/
+  types : List CardType
+  /-- The turn in which it happened. -/
+  turn : Nat
+  /-- Whether this is a finalization or a resolved permanent play. -/
+  moment : PlayMoment
+deriving DecidableEq, Repr
+
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
 structure GameState where
   /-- The rules of this game. -/
@@ -90,6 +112,8 @@ structure GameState where
   /-- The cards drawn in the current turn: the player who drew, and the turn (older ones are
   dropped as a card is drawn). -/
   drawLog : List (PlayerId × Nat) := []
+  /-- Finalizations and resolved permanent plays, newest first (CR 420.4). -/
+  playLog : List CardPlay := []
   /-- The players who take an extra turn next, in order (Time Warp). -/
   extraTurns : List PlayerId := []
   /-- How many of the turns taken were extra turns: the turn order goes on as if they were not. -/

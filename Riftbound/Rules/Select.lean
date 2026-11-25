@@ -183,6 +183,11 @@ def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp :
 def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
   s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
 
+/-- This turn's plays of a type at a given moment, newest first. -/
+def GameState.playsOfType (s : GameState) (moment : PlayMoment) (kind : CardType) : List CardPlay :=
+  s.playLog.filter (fun play => play.turn == s.turn && play.moment == moment &&
+    play.types.contains kind)
+
 /-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
 a kind, no card of the kind has been played since. -/
 def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
@@ -1084,6 +1089,15 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .paid => some ((s.obj? self).any (·.paid))
   | .discardPaid => some ((s.obj? self).any (·.discardPaid))
   | .playedAnother => some (s.playedOther p self)
+  | .finalizedType kind => some ((s.playsOfType .finalized kind).any (·.who == p))
+  | .opponentFinalizedOtherSpell target =>
+    (target.eval s p self env).map (fun ids =>
+      ids.any (fun id => (s.playsOfType .finalized .spell).any
+        (fun play => play.who != p && play.object != id)))
+  | .firstResolvedType kind played =>
+    (played.eval s p self env).map (fun ids =>
+      (((s.playsOfType .resolved kind).filter (·.who == p)).getLast?).any
+        (fun play => ids.contains play.object))
   | .canPay c => some ((s.payNow p self c).isSome || (s.runePlan p self c).isSome)
   | .diedWith e =>
     -- the object a watching ability is about, or (an ability of the dead card itself) the card
