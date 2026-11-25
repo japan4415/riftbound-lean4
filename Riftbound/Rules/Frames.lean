@@ -44,7 +44,12 @@ def turnFrames (tp : PlayerId) : List Frame :=
 /-- How many Runes the Channel Phase channels: two (CR 315.3), and one more for the second player
 on their first turn in a 1v1 game (CR 487.7). The turns are counted without the extra turns. -/
 def GameState.channelCount (s : GameState) : Nat :=
-  if s.playerCount = 2 ∧ s.turn - s.turnShift = 2 then 3 else 2
+  let normal := if s.playerCount = 2 ∧ s.turn - s.turnShift = 2 then 3 else 2
+  s.passiveSources.foldl (fun count src =>
+    (s.activeMods src).foldl (fun count mod =>
+      match mod with
+      | .channelLimit n => min count n
+      | _ => count) count) normal
 
 /-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
 format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither

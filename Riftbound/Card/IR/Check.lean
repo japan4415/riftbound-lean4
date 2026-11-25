@@ -278,6 +278,10 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .entersReady s => Selector.ok c s
   | .bonusDamage a => Amount.ok c a
   | .noCombatDamage => true
+  | .channelLimit _ => true
+  | .uncounterable => true
+  | .ignoreDeflectSpell => true
+  | .ignoreDeflectHere => true
   | .noCombatDamageFor _ => true
   | .doubleEquip => true
   | .mightIfFresh _ => true

@@ -974,7 +974,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
         (match s.directCost p c d with
           | some cost => s.paysForXT p c d cost targets pay
           | none => false) &&
-        (s.spendFor p false pay).any (fun pool => s.deflectOk p pool targets)
+        (s.spendFor p false pay).any (fun pool => s.deflectOk p pool targets (some c))
     | _, _ => false
 
 /-- Cast a Spell (CR 354, 357): pay, and put it on the Chain with the objects chosen. -/

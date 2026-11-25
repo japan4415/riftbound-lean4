@@ -809,7 +809,7 @@ Nothing happens to what is not a spell on the Chain. -/
 def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    if id ∈ s.zone .chain then
+    if id ∈ s.zone .chain ∧ !(s.activeMods id).contains .uncounterable then
       match o.kind with
       | .chainAbility .. =>
         -- a countered ability ceases to exist

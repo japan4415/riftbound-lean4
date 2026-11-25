@@ -222,4 +222,33 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (s.directCost s.me ownHand d).map (·.energy) == some 2 &&
     (s.directCost s.you enemyTrash d).map (·.energy) == some 2
 
+-- Decree of Rage stays on the Chain when countered; an ordinary spell is removed.
+#guard vendettaCase fun s => do
+  let (s, rage) ← onChain s s.me "VEN-015"
+  let (s, ordinary) ← onChain s s.me "VEN-049"
+  let a := counterObj s rage
+  let b := counterObj a.1 ordinary
+  return (a.1.zone .chain).contains rage && a.2.isEmpty &&
+    !(b.1.zone .chain).contains ordinary && (b.1.zone .chain).contains rage
+
+-- Decree of Insight ignores Deflect even outside Heisho. Heisho waives the cost only for
+-- things there, even if another target at the player's base still has Deflect.
+#guard vendettaCase fun s => do
+  let (s, heisho) ← putBf s s.me "VEN-158"
+  let (s, there) ← putAt s s.you "SFD-112" heisho
+  let (s, base) ← put s s.you "SFD-112" .base
+  let (s, spell) ← put s s.me "VEN-061" .hand
+  let funded := s.fund s.me 1
+  let (after, _) ← (step 100 funded ⟨.player s.me, .playCard spell ⟨1, []⟩ [base]⟩).toOption
+  return s.deflectOf there > 0 && s.deflectCost s.me [there, base] == s.deflectOf base &&
+    s.deflectCost s.me [there] == 0 && (after.poolOf s.me).totalPower == 0 &&
+    !(after.zone .chain).isEmpty
+
+-- Sandstone Chimera limits the Channel Phase only while at a Battlefield.
+#guard vendettaCase fun s => do
+  let (s, _) ← put s s.me "VEN-036" .base
+  let (t, _) ← putAt s s.you "VEN-036" s.bf0
+  return s.channelCount == 2 && t.channelCount == 1 &&
+    ({ t with turn := 2 } : GameState).channelCount == 1
+
 end RiftboundTest

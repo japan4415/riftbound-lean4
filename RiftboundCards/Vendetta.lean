@@ -409,8 +409,13 @@ def VEN_015.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Rage: the effect is not written yet. -/
-def VEN_015 : CardDef := VEN_015.meta
+/-- Decree of Rage. -/
+def VEN_015 : CardDef :=
+  { VEN_015.meta with
+    abilities := [.passive .always [.uncounterable]],
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .domain .calm]]
+      (.prim (.deal (.slot 0) (.const 4)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-016
 /--
@@ -941,8 +946,11 @@ def VEN_036.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sandstone Chimera: the effect is not written yet. -/
-def VEN_036 : CardDef := VEN_036.meta
+/-- Sandstone Chimera. -/
+def VEN_036 : CardDef :=
+  { VEN_036.meta with
+    abilities := [.passive (.matches .self .onBattlefield) [.channelLimit 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-037
 /--
@@ -1597,8 +1605,13 @@ def VEN_061.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Insight: the effect is not written yet. -/
-def VEN_061 : CardDef := VEN_061.meta
+/-- Decree of Insight. -/
+def VEN_061 : CardDef :=
+  { VEN_061.meta with
+    abilities := [.passive .always [.ignoreDeflectSpell]],
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .domain .body]]
+      (.grant (.slot 0) (.mightMinus .it (.const 5)) .thisTurn)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-062
 /--
@@ -3302,8 +3315,14 @@ def VEN_129.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sacred Protector: the effect is not written yet. -/
-def VEN_129 : CardDef := VEN_129.meta
+/-- Sacred Protector. -/
+def VEN_129 : CardDef :=
+  { VEN_129.meta with
+    abilities := [.passive
+      (.not (.and (.matches .self .onBattlefield)
+        (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1))))
+      [.noCombatDamage]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-130
 /--
@@ -4030,8 +4049,11 @@ def VEN_158.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Heisho, Shell of the World: the effect is not written yet. -/
-def VEN_158 : CardDef := VEN_158.meta
+/-- Heisho, Shell of the World. -/
+def VEN_158 : CardDef :=
+  { VEN_158.meta with
+    abilities := [.passive .always [.ignoreDeflectHere]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-159
 /--

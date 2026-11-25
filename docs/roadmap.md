@@ -1786,6 +1786,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 起動コストの Energy 軽減を合法手の列挙と受理に反映した。Baccai Sandspinner は Rune 4 枚と 5 枚で費用が変わる。Stargazer は自分の Trash から唱える Flow 呪文にだけ適用し、最低 1 Energy を保つ。
 - Platewyrm Egg、Public Execution など 10 枚の効果を追加した。167 枚中 83 枚が `drafted`、79 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 7 — 打ち消し、Deflect、Channel の制約
+
+- Decree of Rage は打ち消しても Chain に残る。Decree of Insight と Heisho は合法性の判定と実際の支払いの両方で Deflect を無視する。Heisho の効果は、その Battlefield にいる対象に限る。
+- Sandstone Chimera の Channel 枚数制限と、Sacred Protector の戦闘ダメージ条件を追加した。167 枚中 88 枚が `drafted`、84 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

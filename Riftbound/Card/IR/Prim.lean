@@ -463,6 +463,14 @@ inductive StaticMod where
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
   /-- The Unit deals no combat damage (Ezreal, Dashing). -/
   | noCombatDamage
+  /-- Limit the number of runes normally channeled at the start of the Channel Phase. -/
+  | channelLimit (n : Nat)
+  /-- This spell can't be countered (CR 426). -/
+  | uncounterable
+  /-- Ignore Deflect when paying the cost of this spell (CR 809). -/
+  | ignoreDeflectSpell
+  /-- Ignore Deflect on objects chosen at this Battlefield (CR 809). -/
+  | ignoreDeflectHere
   /-- The objects the selector names deal no combat damage (Vilemaw). -/
   | noCombatDamageFor (s : Selector)
   /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/

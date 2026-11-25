@@ -36,8 +36,7 @@ def mightEff (s : GameState) (u : ObjId) : Nat := ((s.mightNow u).map Might.eff)
 
 /-- The Unit has the passive ability that says it deals no combat damage. -/
 def noCombatDamage (s : GameState) (u : ObjId) : Bool :=
-  (s.cardDef? u).any (fun d => d.fullAbilities.any (fun ab =>
-    match ab with | Ability.passive .always mods => mods.contains .noCombatDamage | _ => false)) ||
+  (s.activeMods u).contains .noCombatDamage ||
   -- another unit says the units it names deal none (Vilemaw)
   s.inPlay.any (fun g =>
     match s.obj? g, s.obj? u with

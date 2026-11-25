@@ -462,6 +462,10 @@ def StaticMod.runs : StaticMod → Bool
   | .victoryScoreMinus a => a.understoodC
   | .bonusDamage a => a.understoodC
   | .noCombatDamage => true
+  | .channelLimit _ => true
+  | .uncounterable => true
+  | .ignoreDeflectSpell => true
+  | .ignoreDeflectHere => true
   | .doubleEquip => true
   | .mightIfFresh _ => true
   | .gainsTag _ => true

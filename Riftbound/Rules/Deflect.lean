@@ -79,6 +79,12 @@ def Action.targetsOf (a : Action) : List ObjId :=
   | .putTrigger _ ts => ts
   | _ => []
 
+/-- An answer that plays a card can have a printed exception to the Deflect cost. -/
+def Action.spellSource (a : Action) : Option ObjId :=
+  match a.kind with
+  | .playCard c _ _ => some c
+  | _ => none
+
 namespace GameState
 
 /-- The X of the Deflect of an object: its card prints it, or an Equipment gives it. A Deflect with
@@ -90,21 +96,29 @@ def deflectOf (s : GameState) (u : ObjId) : Nat :=
     | some d => (d.keywords.map amount).sum
     | none => 0) + ((s.grantedKws u).map amount).sum
 
-/-- The Power the player pays more for choosing the objects: the Deflect of each one that another
-player controls (CR 809). -/
-def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId) : Nat :=
-  (ts.map (fun t => if ((s.obj? t).map (·.controller)).any (fun c => c != p) then s.deflectOf t
-    else 0)).sum
+/-- The Power the player pays more for choosing the objects. It may be waived by the spell
+or by a Battlefield for objects there (CR 809). -/
+def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
+    (spell : Option ObjId := none) : Nat :=
+  if spell.any (fun c => (s.activeMods c).contains .ignoreDeflectSpell) then 0
+  else
+    (ts.map (fun t =>
+      if (s.obj? t).any (·.controller != p) &&
+          !((s.obj? t).bind (·.loc)).any
+            (fun bf => (s.activeMods bf).contains .ignoreDeflectHere) then
+        s.deflectOf t
+      else 0)).sum
 
 /-- The Pool covers what the player pays more for choosing the objects. -/
-def deflectOk (s : GameState) (p : PlayerId) (pool : RunePool) (ts : List ObjId) : Bool :=
-  decide (s.deflectCost p ts ≤ pool.totalPower)
+def deflectOk (s : GameState) (p : PlayerId) (pool : RunePool) (ts : List ObjId)
+    (spell : Option ObjId := none) : Bool :=
+  decide (s.deflectCost p ts spell ≤ pool.totalPower)
 
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
   match a.actor with
-  | .player p => s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf))
+  | .player p => s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/
