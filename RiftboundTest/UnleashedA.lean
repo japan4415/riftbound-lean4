@@ -310,7 +310,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s6, sp) ← put s5 s.me "UNL-159" .hand
   let (s7, sp') ← moveObj s6 sp .chain
   let s8 := s7.modObj sp' (fun o => { o with energyPaid := 4, playedTurn := some s7.turn })
-  let r ← fire s8 [Event.played s.me sp']
+  let r ← fire s8 [.spellResolved s.me sp']
   return r.countIn s.me .trash "UNL-159" == 4 && r.countIn s.me .banishment "UNL-159" == 0
 
 -- Audit fixes: Loyal Poro (UNL-156) draws when it did NOT die alone (the opposite of Lonely Poro)
@@ -555,7 +555,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let rich := sd.rich s.me
   let acts := legalFrameActions rich
   let inList (card : ObjId) := acts.any (fun a => match a.kind with
-    | .playCard x _ _ => x == card | _ => false)
+    | .playCard x _ _ _ _ _ => x == card | _ => false)
   return (r.obj? e).any (·.stunned) && back && inList c && !inList d &&
     (cast rich s.me d (payOf rich d) [e]).isNone
 

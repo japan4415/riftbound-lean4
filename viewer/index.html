@@ -160,6 +160,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices button { text-align: left; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
 .choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.choices .name-cards { display: grid; gap: 6px; min-width: 0; width: min(100%, 26rem); }
+.name-cards input { width: 100%; min-height: 2.75rem; font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.name-cards .name-results { display: grid; gap: 4px; max-height: 10rem; overflow: auto; }
+.name-cards button { min-height: 2.75rem; }
 </style>
 </head>
 <body>
@@ -234,7 +239,16 @@ const zoneBox = new Map();    // zone name -> container element
 const poolBox = [], pointsBox = [], seatBox = [];
 const bfGroup = new Map();    // Battlefield id -> its column
 
-function cardName(id) { const o = objs[id]; return o ? (cards[o.card] ? cards[o.card].name : o.card) : '#' + id; }
+function cardCode(id, state) { return state?.copies?.[id] || objs[id]?.card; }
+function cardNameAt(id, state) {
+  const code = cardCode(id, state);
+  return cards[code]?.name || code || '#' + id;
+}
+function cardName(id) { return cardNameAt(id, steps[cur]?.state); }
+function logicalCardName(code) {
+  const card = cards[code];
+  return card ? [card.name, card.subtitle].filter(Boolean).join(', ') : code;
+}
 function dur() { return reduce ? 0 : 480 / speed; }
 
 function load(t) {
@@ -287,21 +301,147 @@ function buildBoard() {
 function describe(i) {
   const a = steps[i].action;
   if (!a) return ['ゲーム開始前', '山札・Rune Deck・Battlefield の準備ができた状態'];
-  return describeA(a, i > 0 ? steps[i - 1].state.pending : null);
+  const before = steps[i - 1]?.state;
+  return describeA(a, before?.pending, before);
 }
 
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
-function describeA(a, prev) {
+function describeA(a, prev, state = steps[cur]?.state) {
+  const cardName = (id) => cardNameAt(id, state);
+  const addLabel = (add) => {
+    const id = add.source;
+    if (!add.rune) return cardName(id) + ' の Add';
+    const runes = (state?.zones['p' + objs[id]?.owner + '.base'] || [])
+      .filter(candidate => cardCode(candidate, state) === cardCode(id, state));
+    const order = runes.indexOf(id);
+    const name = runes.length > 1 && order >= 0 ? cardName(id) + '（' + (order + 1) + '枚目）' : cardName(id);
+    return name + (add.rune === 'recycle' ? ' の Recycle' : ' の Exhaust');
+  };
+  const spellChoices = (execution) => {
+    const choices = [];
+    if (typeof execution.mode === 'number') choices.push(execution.modeLabel || 'モード ' + (execution.mode + 1));
+    if (execution.moveDest !== undefined) choices.push(execution.moveDest === null ? 'Base' : cardName(execution.moveDest));
+    const targets = (execution.targets || []).map((id, i) => {
+      const controller = execution.targetControllers?.[i];
+      return (controller == null ? '' : 'P' + controller + ' の ') + cardName(id);
+    });
+    if (typeof execution.targetPlayer === 'number') targets.unshift('P' + execution.targetPlayer);
+    choices.push(targets.length ? '対象 ' + targets.join('、') : '対象なし');
+    return choices.join('、');
+  };
+  const repeatChoices = (executions) =>
+    executions.map((execution, i) => (i + 1) + '回目 ' + spellChoices(execution)).join(' ／ ');
+
   const who = a.actor === 'chance' ? '乱数' : a.actor === 'clock' ? '時計' : a.actor === 'judge' ? 'ジャッジ' : 'P' + a.actor.slice(1);
   switch (a.kind) {
     case 'arrange': return [who + ': 並び替え', 'シャッフル、または Recycle の順番'];
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
+    case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
-    case 'decide': return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
-    case 'choose': return [who + ': ' + cardName(a.obj) + ' を選ぶ', '効果の対象に ' + cardName(a.obj) + ' を選ぶ'];
+    case 'decide': {
+      if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
+      if (a.effectCost) {
+        const cost = costText(a.effectCost);
+        if (a.spellPaymentTarget != null) {
+          const spell = cardName(a.spellPaymentTarget);
+          return [who + ': ' + (a.yes ? cost + ' を払って ' + spell + ' を奪う' : spell + ' を打ち消す'), ''];
+        }
+        return [who + ': ' + (a.yes ? cost + ' を支払う' : '支払いを見送る'), ''];
+      }
+      if (a.effectPaymentPlan) return [who + ': ' + costText(a.effectPaymentPlan) + ' を支払う', ''];
+      if (a.moreEffectPayments) return [who + ': ほかの支払い方を見る', ''];
+      if (a.remakeSpell != null) {
+        const spell = cardName(a.remakeSpell);
+        return [who + ': ' + spell + ' の選択を' + (a.yes ? 'やり直す' : '維持する'), ''];
+      }
+      if (a.trashSpellOffer) return [who + ': ' + (a.yes ? 'トラッシュから呪文をプレイする' : 'プレイを見送る'), ''];
+      if (a.revealedPlayOffer) return [who + ': ' + (a.yes ? '公開したカードからプレイする' : 'プレイを見送る'), ''];
+      if (a.moreSpellChoices != null || a.moreTrashSpellChoices) return [who + ': ほかの選択肢を見る', ''];
+      if (a.remadeSpell != null || a.queuedSpell != null) {
+        const choices = a.repeatExecutions ? repeatChoices(a.repeatExecutions) : spellChoices(a);
+        if (a.queuedSpell != null) {
+          const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
+          const payment = [costText(a.queuedCost)];
+          if (a.playDiscard !== undefined) {
+            payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
+          }
+          if (a.preparedAdds?.length) payment.push('選択済み ' + a.preparedAdds.map(addLabel).join('、'));
+          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices + '）', payment.join(' ・ ')];
+        }
+        return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices + '）', ''];
+      }
+      if (a.lookedPlay) return [who + ': ' + (a.yes ? '見たカードからプレイする' : 'プレイを見送る'), ''];
+      if (a.empowerOffer) return [who + ': ' + (a.yes ? 'Empower する' : 'Empower を見送る'), ''];
+      if (a.morePlayOptions) return [who + ': ほかのプレイ方法を見る', ''];
+      if (a.morePlayPayments) return [who + ': ほかの支払い方を見る', ''];
+      if (a.declinePlay) return [who + ': プレイを見送る', ''];
+      const prepared = a.preparedAdds?.length ? '選択済み ' + a.preparedAdds.map(addLabel).join('、') : '';
+      if (a.playAdd) {
+        const add = a.playAdd;
+        const cost = add.cost && (add.cost.energy || add.cost.power?.length) ? '（' + costText(add.cost) + '）' : '';
+        return [who + ': ' + addLabel(add) + ' を選ぶ' + cost, prepared];
+      }
+      if (a.reducedPlay) {
+        const plan = a.reducedPlay;
+        const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
+        const parts = [costText(plan.cost)];
+        if (plan.battlefieldFees?.length) parts.push(plan.battlefieldFees.map(cardName).join('、') + ' の追加コストを払う');
+        const def = cards[cardCode(plan.card, state)];
+        if (plan.additionalPaid || def?.optionalCost) parts.push(plan.additionalPaid ? '追加コストを払う' : '追加コストを見送る');
+        if (plan.accelerated || def?.keywords?.some(({ k }) => k === 'accelerate')) {
+          parts.push(plan.accelerated ? 'Accelerate を使う' : 'Accelerate を見送る');
+        }
+        if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
+        const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
+        return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
+      }
+      if (a.moreDamageReplacements) return [who + ': ほかの置換効果を見る', ''];
+      if (a.banishDeathUnit != null) {
+        if (a.banishingPlayer == null) return [who + ': ほかの置換効果を見る', ''];
+        return [who + ': P' + a.banishingPlayer + ' の効果で ' + cardName(a.banishDeathUnit) + ' を Banish',
+          'このユニットの死亡を置き換える'];
+      }
+      if (a.damageReplacement) {
+        const replacement = a.damageReplacement === 'double' ? '2倍にする' :
+          a.damageReplacement === 'shield' ? 'すべて防ぐ' : '最大 ' + a.preventValue + ' 軽減する';
+        const detail = a.combatDamageOrder ? '戦闘ダメージの割り振りに適用' : '置換前のダメージ ' + a.incomingDamage;
+        return [who + ': ' + cardName(a.unit) + ' へのダメージを' + replacement, detail];
+      }
+      if (a.damageOrder) {
+        const first = a.damageOrder === 'preventFirst' ? 'ダメージの軽減' : 'ダメージの倍増';
+        return [who + ': ' + cardName(a.unit) + ' に先に' + first + 'を適用する', ''];
+      }
+      if (a.moreLocations) return [who + ': ' + a.token + ' を Battlefield に出す', '行き先を選ぶ'];
+      if (a.moveLocation === 'base') return [who + ': ' + cardName(a.unit) + ' を Base に移動する', ''];
+      if (a.moveLocation === 'battlefield') return [who + ': 移動先の Battlefield を選ぶ', ''];
+      if (a.token) {
+        const dest = a.dest === null ? 'Base' : cardName(a.dest);
+        return [who + ': ' + a.token + ' を ' + dest + ' に出す', ''];
+      }
+      return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
+    }
+    case 'choose': {
+      const card = cardName(a.obj);
+      if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
+      if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
+      if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
+      if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
+      if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
+      if (a.choiceContext === 'revealedPlay') return [who + ': ' + card + ' を選ぶ', '公開したカードからプレイする1枚を選ぶ'];
+      if (a.choiceContext === 'attachmentCopy') return [who + ': ' + card + ' をコピー元に選ぶ',
+        a.unit == null ? '' : cardName(a.unit) + ' が装着中にコピーする'];
+      return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
+    }
+    case 'predictPick': {
+      const card = cardName(a.card);
+      return a.recycle
+        ? [who + ': ' + card + ' を Recycle', '山札の下へ送る。複数枚なら順番はランダム']
+        : [who + ': ' + card + ' を山札の上に残す', '残すカードは選んだ順に上から並ぶ'];
+    }
     case 'mulliganPick': return [who + ': ' + cardName(a.card) + ' をマリガン', cardName(a.card) + ' を脇に置く'];
     case 'burnOutTarget': return [who + ': Burn Out の相手を選ぶ', 'P' + a.opponent + ' が 1 点を得る'];
     case 'assignPick':
@@ -316,34 +456,114 @@ function describeA(a, prev) {
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
-      const tg = (a.targets || []).map((t) => cardName(t)).join('、');
-      return [who + ': ' + cardName(a.source) + ' の能力を起動' + (tg ? '（対象: ' + tg + '）' : ''),
+      const targetIds = a.targets || [];
+      const targets = (a.costBanish ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
+      if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
+      const tg = targets.join('、');
+      const dc = (a.discards || []).map((t) => cardName(t)).join('、');
+      const power = a.power || [];
+      const costs = [];
+      if (a.disempowerSelf) costs.push('Disempower');
+      if (a.exhaustSelf) costs.push('Exhaust');
+      if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
+      if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
+        costs.push(costText({ energy: a.pay - power.length, power }));
+      }
+      const action = a.abilityEffect === 'readySelf' ? ' を Ready にする能力を起動' : ' の能力を起動';
+      return [who + ': ' + cardName(a.source) + action +
+        (costs.length ? '（' + costs.join('、') + '）' : '') +
+        (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
-    case 'putTrigger': {
-      const tg = (a.targets || []).map((t) => cardName(t)).join('、');
-      return [who + ': 誘発能力を Chain に載せる' + (tg ? '（対象: ' + tg + '）' : '（対象なし: 対象が無ければ取り除かれる）'),
-        '待っている誘発能力から 1 つを選んで載せる。最後に載せたものが先に解決する'];
+    case 'triggerAdd': {
+      const selected = a.triggerPreparedAdds || [];
+      return [who + ': ' + addLabel(a.playAdd) + ' を選ぶ',
+        selected.length ? '選択済み ' + selected.map(addLabel).join('、') : '確定時に支払う'];
     }
-    case 'manaAbility':
+    case 'prepareTrigger':
+    case 'putTrigger': {
+      const ability = a.source == null ? '誘発能力' : cardName(a.source) + ' の誘発能力';
+      if (a.decline) return [who + ': ' + ability + 'を見送る', 'コストは支払わず、能力は Chain に載らない'];
+      if (a.unavailable) return [who + ': ' + ability + 'を取り除く', '選べる対象がないため、能力は Chain に残らない'];
+      const targets = (a.targets || []).map(cardName);
+      if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
+      const replacements = new Map((a.costBanishes || []).map(({unit, player}) => [unit, player]));
+      const sacrifices = (a.sacrifices || []).map((id) => {
+        const card = cardName(id);
+        return replacements.has(id) ? 'P' + replacements.get(id) + ' の効果で ' + card + ' を Banish' :
+          card + ' を Kill';
+      }).join('、');
+      const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
+      const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
+      const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
+      const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
+      const deflect = a.triggerDeflect ? '（Deflect ' + a.triggerDeflect + ' Power）' : '';
+      const targetText = targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）';
+      const choices = mode + energy + deflect + exhaust + burn +
+        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') + targetText;
+      if (a.kind === 'prepareTrigger') {
+        return [who + ': ' + ability + 'の支払いを選ぶ' + choices, 'Add や Rune を選ぶ'];
+      }
+      if (a.triggerPreparedAdds?.length) {
+        return [who + ': ' + ability + 'を確定' + choices, '支払い ' + a.triggerPreparedAdds.map(addLabel).join('、')];
+      }
+      return [who + ': ' + ability + 'を確定' + choices,
+        sacrifices ? 'コストを払ってから能力を Chain に載せる' :
+          (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
+            '確定した能力は最後に Chain に載ったものから解決する')];
+    }
+    case 'manaAbility': {
+      if (a.unitEnergyAdded != null) {
+        const cost = costText({energy: a.energy, power: a.power});
+        return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
+          'Exhaust し、Unit のプレイと起動型能力に使える Energy を ' + a.unitEnergyAdded + ' 得る'];
+      }
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];
+    }
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
     case 'playCard': {
       const o = objs[a.card], def = o && cards[o.card];
-      const more = (def && typeof def.cost === 'number' && a.pay > def.cost
-        ? '（追加コスト +' + (a.pay - def.cost) + '）' : '')
-        + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '');
+      const base = a.flowCost;
+      const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
+      const fees = a.battlefieldFees || [];
+      const permanentChoice = def && !def.types.includes('spell') &&
+        (typeof a.additionalCostPaid === 'boolean' || typeof a.accelerated === 'boolean');
+      const energy = a.pay - (a.power?.length || 0);
+      const flow = base ? '（Flow ' + base.energy + ' Energy' +
+        (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）' : '';
+      const cost = fees.length || permanentChoice || a.repeatExecutions
+        ? '（' + energy + ' Energy）' + flow
+        : flow || (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
+      const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
+        : def?.discardToPlay ? '（捨てない）' : '';
+      const extra = def?.optionalCost && typeof a.additionalCostPaid === 'boolean'
+        ? (a.additionalCostPaid ? '（追加コストを払う）' : '（追加コストを見送る）') : '';
+      const repeat = typeof a.repeatsPaid === 'number' && (a.repeatsPaid || !def?.optionalCost)
+        ? '（Repeat ' + a.repeatsPaid + ' 回）' : '';
+      const mode = !a.repeatExecutions && typeof a.mode === 'number'
+        ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
+      const dest = !a.repeatExecutions && 'moveDest' in a
+        ? '（移動先 ' + (a.moveDest === null ? 'Base' : cardName(a.moveDest)) + '）' : '';
+      const fee = fees.length ? '（' + fees.map(cardName).join('、') + ' の追加コストを払う）' : '';
+      const accelerate = typeof a.accelerated === 'boolean'
+        ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
+      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
+        discard + extra + repeat + mode + dest + fee + accelerate;
       if (def && def.types.includes('spell')) {
-        const tg = (a.targets || []).map((t) => cardName(t)).join('、');
+        const targets = (a.targets || []).map(cardName);
+        if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
+        const choices = a.repeatExecutions ? '（' + repeatChoices(a.repeatExecutions) + '）'
+          : targets.length ? '（対象: ' + targets.join('、') + '）' : '';
         const react = prev === 'chainPass';
-        return [who + ': ' + cardName(a.card) + (react ? ' を Reaction でプレイ' : ' をプレイ') + more + (tg ? '（対象: ' + tg + '）' : ''),
+        const play = a.hiddenPlay ? ' を Hidden からプレイ' : react ? ' を Reaction でプレイ' : ' をプレイ';
+        return [who + ': ' + cardName(a.card) + play + more + choices,
           react ? 'Chain の項目に応答する: 上に積まれ、先に解決する' : 'コストを払って Chain に載せる'];
       }
-      return [who + ': ' + cardName(a.card) + ' をプレイ' + more,
-        more ? 'コストと追加コストを払って Base に出す（Accelerate で払えば ready で入る）'
-          : 'コストを払って Base に出す（Unit は Exhaust で入る）'];
+      const placement = a.playDestination == null ? '' : ' を ' + cardName(a.playDestination) + ' に';
+      return [who + ': ' + cardName(a.card) + (placement || ' を') + 'プレイ' + more,
+        'コストを払って場に出す（通常、Unit は Exhaust で入る）'];
     }
     case 'concede': return [who + ': 投了する', 'ゲームを投了する。相手の勝ちになる（CR 651）'];
     case 'timeCalled': return [who + ': 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
@@ -369,16 +589,24 @@ function visibleZones() {
 }
 
 function makeCard(id) {
-  const o = objs[id] || { card: '?', rune: null }, def = cards[o.card] || { name: o.card, types: [] };
   const el = document.createElement('div'); el.className = 'card'; el.dataset.id = id;
+  return el;
+}
+
+function updateCardTraits(el, id, state) {
+  const code = cardCode(id, state) || '?';
+  if (el.dataset.card === code) return;
+  el.dataset.card = code;
+  const o = objs[id] || {}, def = cards[code] || { name: code, types: [], domains: [] };
   const inn = document.createElement('div'); inn.className = 'card-in';
   const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = def.name;
   inn.append(nm);
-  if (o.ability !== undefined) {
+  if (o.ability !== undefined && !el.querySelector('.ab')) {
     el.classList.add('ability');
     const ab = document.createElement('span'); ab.className = 'ab'; ab.textContent = '能力'; el.append(ab);
   }
-  if (def.types.includes('rune')) { el.classList.add('rune'); if (o.rune) inn.classList.add('d-' + o.rune); }
+  el.classList.toggle('rune', def.types.includes('rune'));
+  if (def.types.includes('rune')) { if (o.rune) inn.classList.add('d-' + o.rune); }
   else {
     const st = document.createElement('div'); st.className = 'st';
     const c = document.createElement('span'); c.textContent = def.cost != null ? def.cost : '';
@@ -386,10 +614,13 @@ function makeCard(id) {
     st.append(c, m); inn.append(st);
     if (def.domains[0]) inn.classList.add('d-' + def.domains[0]);
   }
-  el.append(inn); applyArt(el); return el;
+  const old = el.querySelector('.card-in');
+  if (old) old.replaceWith(inn); else el.prepend(inn);
+  applyArt(el);
 }
 
 function decorate(e, st, id) {
+  updateCardTraits(e, id, st);
   e.firstChild.classList.toggle('exh', st.exhausted.includes(+id));
   let d = e.querySelector('.dmg'); const dm = st.damaged.find((x) => x[0] === +id);
   if (dm) { if (!d) { d = document.createElement('span'); d.className = 'dmg'; e.append(d); } d.textContent = dm[1]; } else if (d) d.remove();
@@ -397,7 +628,7 @@ function decorate(e, st, id) {
   if (bo) { if (!b) { b = document.createElement('span'); b.className = 'bst'; e.append(b); } b.textContent = (bo[1] > 0 ? '+' : '') + bo[1]; } else if (b) b.remove();
   let z = e.querySelector('.stn'); const sn = (st.stunned || []).includes(+id);
   if (sn) { if (!z) { z = document.createElement('span'); z.className = 'stn'; e.append(z); } z.textContent = 'Stun'; } else if (z) z.remove();
-  let q = e.querySelector('.eqp'); const eq = (st.attached || []).filter((x) => x[1] === +id).map((x) => cardName(x[0]));
+  let q = e.querySelector('.eqp'); const eq = (st.attached || []).filter((x) => x[1] === +id).map((x) => cardNameAt(x[0], st));
   if (eq.length) { if (!q) { q = document.createElement('span'); q.className = 'eqp'; e.append(q); } q.textContent = '装備'; q.title = eq.join('、'); } else if (q) q.remove();
 }
 
@@ -470,7 +701,8 @@ function show(i, animate) {
     const grp = baseGroups.get(z);
     for (const id of (st.zones[z] || [])) {
       let e = els.get(id); if (!e) { e = makeCard(id); els.set(id, e); }
-      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e); decorate(e, st, id);
+      decorate(e, st, id);
+      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e);
     }
   }
   // animate what moved
@@ -502,6 +734,7 @@ function fly(src, from, to) {
 }
 
 function renderStatic(i, st, prev, animate) {
+  const cardName = (id) => cardNameAt(id, st);
   $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}`
     + (st.active !== null ? ` ・ P${st.active} の番` : '') + ` ・ seed ${trace.seed}`;
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
@@ -511,12 +744,15 @@ function renderStatic(i, st, prev, animate) {
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
     const add = (key, label) => {
       if (key !== 'energy' && !pool[key]) return;
-      const c = document.createElement('span'); c.className = 'chip' + (key === 'energy' ? ' energy' : '');
+      const c = document.createElement('span');
+      c.className = 'chip' + (key === 'energy' || key === 'unitEnergy' ? ' energy' : '');
       c.textContent = label + ' ' + pool[key];
-      if (animate && pool[key] > old[key]) c.classList.add('pop');
+      if (key === 'unitEnergy') c.title = 'Unit のプレイと Unit の起動型能力に使える';
+      if (animate && pool[key] > (old[key] ?? 0)) c.classList.add('pop');
       box.append(c);
     };
-    add('energy', 'Energy'); for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
+    add('energy', 'Energy'); add('unitEnergy', 'Unit 用 Energy');
+    for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
     for (const [k] of PILES) {
       const e = zoneBox.get('p' + p + '.' + k), n = (st.zones['p' + p + '.' + k] || []).length;
       e.querySelector('b').textContent = n; e.classList.toggle('zero', n === 0);
@@ -527,6 +763,16 @@ function renderStatic(i, st, prev, animate) {
   const sm = document.createElement('small'); sm.textContent = sub; $('now').append(b, sm);
   const mv = steps[i].events.filter((e) => e.t === 'moved').length;
   if (mv) { const m = document.createElement('small'); m.textContent = ' ・ 移動 ' + mv + ' 枚'; $('now').append(m); }
+  const appendEvent = (text) => {
+    const line = document.createElement('small'); line.className = 'ev'; line.textContent = text;
+    $('now').append(document.createElement('br'), line);
+  };
+  const looked = new Map();
+  for (const e of steps[i].events.filter((event) => event.t === 'looked_at')) {
+    if (!looked.has(e.player)) looked.set(e.player, []);
+    looked.get(e.player).push(cardName(e.card));
+  }
+  for (const [player, names] of looked) appendEvent('P' + player + ' が山札の上を確認（' + names.join('、') + '）');
   for (const e of steps[i].events) {
     let txt = null;
     if (e.t === 'scored') txt = 'P' + e.player + ' が ' + cardName(e.battlefield) + ' を ' + (e.conquer ? 'Conquer' : 'Hold') + ' で得点';
@@ -537,10 +783,19 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'phase') txt = 'P' + e.player + ' の ' + ({awaken: 'Awaken', beginning: 'Beginning', main: 'Main', ending: 'Ending'}[e.phase] || e.phase) + ' Phase の始まり';
     else if (e.t === 'stunned') txt = cardName(e.target) + ' は Stun された';
     else if (e.t === 'discarded') txt = 'P' + e.player + ' が ' + cardName(e.obj) + ' を捨てた';
+    else if (e.t === 'hand_revealed') txt = 'P' + e.player + ' の手札を公開' +
+      (e.cards.length ? '（' + e.cards.map(cardName).join('、') + '）' : '（手札なし）');
+    else if (e.t === 'named_card') txt = cardName(e.source) + ' が指定したカードは ' + logicalCardName(e.cardCode);
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
     else if (e.t === 'combat_won') txt = 'P' + e.winner + ' が Combat に勝つ';
-    else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
-    if (txt) { const m = document.createElement('small'); m.className = 'ev'; m.textContent = txt; $('now').append(document.createElement('br'), m); }
+    else if (e.t === 'activated') {
+      const action = steps[i].action;
+      const add = action?.kind === 'manaAbility' ||
+        action?.preparedAdds?.some(item => item.source === e.source && item.idx === e.index);
+      txt = 'P' + e.player + ' が ' + cardName(e.source) +
+        (add ? ' の Add を起動' : ' の能力を起動（Chain に載る）');
+    }
+    if (txt) appendEvent(txt);
   }
   const r = $('result');
   if (st.result) { r.hidden = false; r.textContent = st.result === 'draw' ? '引き分け' : '勝者: P' + st.result.won.join(', P'); } else r.hidden = true;
@@ -594,12 +849,15 @@ function costText(c) {
 let artFile = {};
 function artUrl(cid) { const u = artFile[cid]; return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
 function applyArt(el) {
-  const o = objs[el.dataset.id], u = o && artUrl(o.card), inn = el.firstChild;
+  const u = artUrl(el.dataset.card), inn = el.firstChild;
   let img = inn.querySelector(':scope > .art');
   if (!u) { if (img) img.remove(); el.classList.remove('hasart'); return; }
   if (!img) {
     img = document.createElement('img'); img.className = 'art'; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
-    img.addEventListener('error', () => { img.remove(); el.classList.remove('hasart'); });
+    img.addEventListener('error', () => {
+      img.remove();
+      if (inn.parentElement === el) el.classList.remove('hasart');
+    });
     inn.prepend(img);
   }
   if (img.getAttribute('src') !== u) img.src = u;
@@ -620,16 +878,17 @@ function artBox(el, cid) {
 
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
-  const o = objs[id], def = o && cards[o.card]; if (!def) return;
   const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
+  const o = objs[id], code = cardCode(id, st), def = o && cards[code]; if (!def) return;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
   box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
   const sub = [def.subtitle, [...(def.supertypes || []), ...def.types].join(' · '), def.domains.map((d) => DOMAIN_JA[d] || d).join(' / ')].filter(Boolean).join(' ・ ');
   box.append(el('div', 'sub', sub));
-  box.append(artBox(el, o.card));
+  box.append(artBox(el, code));
   const dl = el('dl'); const row = (k, v) => { if (v === null || v === undefined || v === '') return; dl.append(el('dt', '', k), el('dd', '', v)); };
   if (def.costFull) row('コスト', costText(def.costFull));
+  if (st.copies?.[nid]) row('元のカード', logicalCardName(o.card));
   if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
   if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
   if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
@@ -645,6 +904,7 @@ function showCardInfo(id, x, y) {
   const at = st.attached.find((a) => a[0] === nid); if (at) row('Attach 先', cardName(at[1]));
   const eq = st.attached.filter((a) => a[1] === nid).map((a) => cardName(a[0])); if (eq.length) row('Attach 中', eq.join('、'));
   const loc = st.at.find((a) => a[0] === nid); if (loc) row('いる所', cardName(loc[1]));
+  if (st.namedCards?.[nid]) row('指定した名前', logicalCardName(st.namedCards[nid]));
   box.append(dl);
   if (def.ir) { const d = el('details'); d.append(el('summary', '', 'Lean の定義（能力・効果）'), el('pre', '', def.ir)); d.open = true; box.append(d); }
   else box.append(el('div', 'note', '能力・効果の定義はありません（キーワードと数値だけのカード）。'));
@@ -688,7 +948,20 @@ function appendSteps(list) {
 // 取り消せる答えの数（Lean が覚えている、今のゲームの答えの数）
 let undoCount = 0;
 function setLive(j) {
-  liveLegal = j.legal; liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  const shownPayments = new Set();
+  liveLegal = j.legal.filter(({ a }) => {
+    let choice;
+    if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
+    else if (a.unitEnergyAdded != null) choice = [a.source, a.index, a.energy];
+    else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
+      a.accelerated, a.additionalCostPaid, a.discards];
+    else return true;
+    const payment = JSON.stringify([a.actor, a.kind, choice, a.pay, [...a.power].sort()]);
+    if (shownPayments.has(payment)) return false;
+    shownPayments.add(payment);
+    return true;
+  });
+  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
   swapOut = swapIn = null;
 }
 function matchText(m) {
@@ -703,6 +976,7 @@ function matchText(m) {
 // 手とカードの結びつき: カードをクリックして答える。手が 1 つならすぐ、複数ならメニューで選ぶ。
 // 結びつけるのは、盤面にそのカードがあるときだけ（無ければボタンのまま）。
 function actCard(a) {
+  if (a.playAdd?.rune) return a.playAdd.source;
   switch (a.kind) {
     case 'runeAbility': case 'playCard': case 'mulliganPick': case 'discardPick': return a.card;
     case 'choose': return a.obj;
@@ -728,10 +1002,13 @@ function markActCards(list) {
 }
 function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
 // 手が「対象」や「移動先」だけ違うときは、カードを選んだあと、盤面の光っている所をクリックして選ぶ。
-// 選ぶ順は、手の targets（プレイ・起動）か、移動先（Base か Battlefield）。ほかに違いが残れば、メニューで選ぶ。
+// プレイ・起動では対象、次に捨てるカードを選ぶ。移動では Base か Battlefield を選ぶ。
+// 捨てない手も選べる場合など、ほかの違いが残ればメニューを開く。
 function selSeq(a) {
   if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
-  if ((a.kind === 'playCard' || a.kind === 'activate') && a.targets && a.targets.length) return a.targets.map(String);
+  if (a.kind === 'activate' || a.kind === 'playCard') {
+    return [...(a.targets || []), ...(a.discards || [])].map(String);
+  }
   return [];
 }
 let pick = null;
@@ -745,9 +1022,10 @@ function clearPickMarks() {
 }
 function showMenu(list, title, x, y) {
   const m = $('actmenu'); m.textContent = '';
+  const state = steps[steps.length - 1].state;
   const h = document.createElement('h3'); h.textContent = title + '（' + list.length + ' 個）'; m.append(h);
   for (const l of list) {
-    const [t, detail] = describeA(l.a, steps[steps.length - 1].state.pending);
+    const [t, detail] = describeA(l.a, state.pending, state);
     const b = document.createElement('button'); b.textContent = t.replace(/^P\d: /, ''); b.title = detail || '';
     b.addEventListener('click', (e) => { e.stopPropagation(); hideActMenu(); liveAct(l.k); });
     m.append(b);
@@ -763,7 +1041,9 @@ function stepPick(x, y) {
   const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
   const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
   const done = rem.filter((l) => selSeq(l.a).length === d);
-  if (!cands.length || done.length) {
+  const discarding = rem.filter(({a}) => a.discards?.length &&
+    d >= (a.targets || []).length && d < selSeq(a).length);
+  if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
     pick = null; clearPickMarks();
     if (rem.length === 1) { liveAct(rem[0].k); return; }
     showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
@@ -775,8 +1055,9 @@ function stepPick(x, y) {
   clearPickMarks(); pick.cands = cands; pick.actor = actor;
   document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
   cands.forEach((k, i) => elems[i].forEach((e) => { e.classList.add('tgt'); if (e.classList.contains('card')) e.tabIndex = 0; }));
-  $('livemsg').textContent = cardName(card) + ': ' + (cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'))
-    ? '移動先' : '対象') + 'を選ぶ（光っている所をクリック。Escape でやめる）';
+  const destination = cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'));
+  const next = discarding.length ? '捨てるカード' : destination ? '移動先' : '対象';
+  $('livemsg').textContent = cardName(card) + ': ' + next + 'を選ぶ（光っている所をクリック。Escape でやめる）';
 }
 function pickClick(el, x, y) {
   const key = el.classList.contains('lane') ? 'base' : el.dataset.bf !== undefined ? el.dataset.bf : el.dataset.id;
@@ -809,6 +1090,28 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault(); const r = e.target.getBoundingClientRect(); chooseCard(e.target, r.left + r.width / 2, r.top + r.height / 2);
   }
 });
+
+function renderNameCards(box, options, btn) {
+  const section = document.createElement('div'); section.className = 'name-cards';
+  const input = document.createElement('input'); input.type = 'search'; input.id = 'name-card-filter';
+  const label = document.createElement('label'); label.htmlFor = input.id; label.textContent = 'カード名を検索';
+  const results = document.createElement('div'); results.className = 'name-results';
+  const status = document.createElement('small'); status.setAttribute('role', 'status');
+  const entries = options.map((l) => ({ ...l, name: logicalCardName(l.a.cardCode) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const update = () => {
+    const query = input.value.trim().toLocaleLowerCase();
+    const matches = entries.filter(({ name, a }) =>
+      name.toLocaleLowerCase().includes(query) || a.cardCode.toLowerCase().includes(query));
+    results.replaceChildren(...matches.map(({ k, a, name }) =>
+      btn(name, a.cardCode, () => liveAct(k))));
+    results.scrollTop = 0;
+    status.textContent = matches.length ? matches.length + ' 件' : '該当するカードはありません';
+  };
+  input.addEventListener('input', update);
+  section.append(label, input, status, results); box.append(section);
+  update();
+}
 
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
@@ -846,16 +1149,48 @@ function renderLegal(i) {
   markActCards(liveLegal);
   const bound = (l) => { const id = actCard(l.a); return id !== null && id !== undefined && cardActs.has(String(id)); };
   const nBound = liveLegal.filter(bound).length;
+  const naming = liveLegal.filter(({ a }) => a.kind === 'nameCard');
   const by = new Map();
   for (const l of liveLegal) {
-    if (bound(l) && !showAllMoves) continue;
+    if (l.a.kind === 'nameCard' || (bound(l) && !showAllMoves)) continue;
     if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l);
   }
-  $('livemsg').textContent = liveLegal.length ? '答えを選ぶ（' + liveLegal.length + ' 個）' +
+  const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
+  const damageChoices = liveLegal.filter(({ a }) => a.damageReplacement);
+  const banishChoices = liveLegal.filter(({ a }) => a.banishDeathUnit != null);
+  const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
+  const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
+  const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
+    : choiceContext === 'own' ? '自分のカードから選ぶ'
+    : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
+    : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
+    : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
+    : choiceContext === 'revealedPlay' ? '公開したカードからプレイする1枚を選ぶ'
+    : choiceContext === 'trashSpell' ? 'トラッシュからプレイする呪文を選ぶ'
+    : choiceContext === 'attachmentCopy' ? 'コピー元の味方 Unit を選ぶ'
+    : liveLegal.some(({ a }) => a.cancelTriggerFunding) ? '誘発能力の支払いを選ぶ'
+    : liveLegal.some(({ a }) => a.effectCost) ? '効果の支払いを選ぶ'
+    : liveLegal.some(({ a }) => a.effectPaymentPlan) ? '支払うリソースを選ぶ'
+    : liveLegal.some(({ a }) => a.remakeSpell != null) ? 'Spell の選択をやり直すか決める'
+    : liveLegal.some(({ a }) => a.remadeSpell != null) ? 'Spell の新しい選択を確定する'
+    : liveLegal.some(({ a }) => a.queuedSpell != null) ? '呪文の対象と支払いを選ぶ'
+    : playPayment ? 'プレイの支払いを選ぶ' + (playPrice ? '（' + costText(playPrice) + '）' : '')
+    : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
+    : damageChoices[0]?.a.combatDamageOrder ? '割り振り前に戦闘ダメージの置換順を選ぶ'
+    : damageChoices.length ? '次に適用するダメージの置換効果を選ぶ'
+    : banishChoices.length ? 'Banish に置き換える効果を選ぶ'
+    : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
+    : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
+  const answerCount = damageChoices.length
+    ? liveLegal.filter(({ a }) => a.damageReplacement || a.moreDamageReplacements).length
+    : banishChoices.length || (choiceContext === 'attachmentCopy'
+      ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length);
+  $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + answerCount + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
+  if (naming.length) renderNameCards(box, naming, btn);
   for (const [actor, list] of by) {
     group('P' + actor.slice(1) + ' の合法手', list.map((l) => {
-      const [title, detail] = describeA(l.a, last.pending);
+      const [title, detail] = describeA(l.a, last.pending, last);
       return btn(title.replace(/^P\d: /, ''), detail, () => liveAct(l.k), l.a.kind === 'concede' ? 'danger' : null);
     }));
   }

@@ -53,7 +53,16 @@ inductive MoveDest where
   | battlefield (bf : ObjId)
 deriving DecidableEq, Repr
 
-/-- What an action says. -/
+/-- Accept the trigger with the objects offered as costs, or let it go without finalizing it. -/
+inductive TriggerPayment where
+  /-- Accept with the selected mode, a player target, and any objects used as costs. -/
+  | pay (sacrifices : List ObjId) (mode : Option Nat := none) (player : Option PlayerId := none)
+      (costBanishers : List (ObjId × PlayerId) := [])
+  /-- Decline an optional trigger. -/
+  | skip
+deriving DecidableEq, Repr
+
+/-- An answer the engine can receive from a player, chance, clock or judge. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
   | arrange (order : List ObjId)
@@ -73,6 +82,8 @@ inductive ActionKind where
   | decide (yes : Bool)
   /-- Choose this object, when an effect says to choose one while it resolves (CR 355). -/
   | choose (obj : ObjId)
+  /-- Name the card uniquely identified by its logical ID (CR 759-762). -/
+  | nameCard (card : CardId)
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
   | burnOutTarget (opponent : PlayerId)
   /-- Pass priority. In the Main Phase with an empty Chain, the turn player passing ends the
@@ -87,10 +98,11 @@ inductive ActionKind where
   | declareDraw
   /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
   | runeAbility (card : ObjId) (ability : RuneAbility)
-  /-- Play a card from the hand, paying with the Power of the domains listed (CR 349-359). The
-  Energy and the Power are taken from the player's Rune Pool (CR 357, 445). `targets` are the
-  objects chosen for the choices of a Spell, in the order of its declaration (CR 355). -/
+  /-- Play a card, paying from the Rune Pool and naming the Spell's targets in order (CR 355, 357).
+  For Flow from the Trash, name the unadjusted cost when several costs are available (CR 829).
+  The card chosen for an optional discard cost is a separate choice (CR 355.10.c, 357.2). -/
   | playCard (card : ObjId) (pay : RunePool.Payment) (targets : List ObjId)
+      (flowCost : Option Cost := none) (discard : Option ObjId := none) (spellPick : SpellPick := .plain)
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
   back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
   | standardMove (unit : ObjId) (dest : MoveDest)
@@ -102,15 +114,25 @@ inductive ActionKind where
   | assignDone
   /-- Use an activated ability of an object, paying its costs (CR 361, 363, 356-357): the ability at
   place `idx` of the card of `source`, with the Power of the domains listed, and the objects
-  chosen for the choices of the ability (CR 355). The ability goes on the Chain. -/
+  chosen for the choices of the ability (CR 355). The hand cards in `discards` pay the cost
+  before the ability goes on the Chain (CR 423.3). A declared player target is chosen separately
+  from object targets (CR 355.7). -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
-  /-- Put the `idx`-th of the triggered abilities that wait on the Chain, with the objects chosen
-  for its choices (CR 383.3.d, 355). An ability with no legal pick is removed with no objects
-  (CR 355). -/
-  | putTrigger (idx : Nat) (targets : List ObjId)
+      (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
+      (costBanisher : Option PlayerId := none)
+  /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
+  if it is declined or cannot be finalized (CR 383.3, 355). -/
+  | putTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment := .pay [])
+  /-- Lock the trigger's choices before selecting resource abilities (CR 355, 357.1.a). -/
+  | prepareTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment)
+  /-- Select one Add during trigger finalization. It is applied with the full payment. -/
+  | triggerAdd (add : EffectAdd)
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
   | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)
+  /-- Place the next looked-at card on top in the chosen order, or mark it for Recycle
+  (CR 437). -/
+  | predictPick (card : ObjId) (recycle : Bool)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -131,11 +153,29 @@ structure PendTrigger where
   card : CardId
   /-- The place of the ability among the abilities of the card. -/
   idx : Nat
+  /-- The copied rules text that fired this ability, if any. -/
+  copyStamp : Option Timestamp := none
   /-- The player who controls the ability. -/
   controller : PlayerId
   /-- The object the ability watches, for an ability that is not about its own object: it is
   the last slot of the ability when it resolves. -/
   subject : Option ObjId := none
+  /-- The amount captured by the event that fired this ability, if any (CR 388-389). -/
+  eventAmount : Option Nat := none
+  /-- The Battlefields the source moved from or to when this ability triggered (CR 477.3.b). -/
+  moveBattlefields : Option (List ObjId) := none
+deriving DecidableEq, Repr
+
+/-- A trigger's declared finalization choices and its tentative resource activations. -/
+structure TriggerFunding where
+  /-- The selected ability in the group. -/
+  index : Nat
+  /-- The objects the selected ability targets. -/
+  targets : List ObjId
+  /-- The selected mode, player target and non-resource costs. -/
+  payment : TriggerPayment
+  /-- The Add abilities chosen to fund this payment, in order. -/
+  adds : List EffectAdd := []
 deriving DecidableEq, Repr
 
 /-- A frame of the stack. A frame holds no part of the board: everything a decision is about is read
@@ -167,6 +207,10 @@ inductive Frame where
   | beginTurn
   /-- Work: the phase `ph` of the turn (CR 314-317). -/
   | phase (ph : Phase)
+  /-- Work: the turn player Holds their Battlefields after Beginning Step effects (CR 315.2). -/
+  | scoreHolds
+  /-- Work: after Ending Step effects, heal Units and expire turn effects (CR 317.2). -/
+  | expireTurn
   /-- Choice: the turn player has priority in the Main Phase (CR 311-312, 316). -/
   | priority (p : PlayerId)
   /-- Choice: player `p` has priority while the Chain holds a Spell (CR 311-313); `passes` players
@@ -193,9 +237,14 @@ inductive Frame where
   (CR 467.2.c). `acc` is the order so far; `done` is the damage assigned by the sides before,
   all dealt together when the last side has assigned (CR 467.2.c.1). -/
   | assign (bf : ObjId) (att side : PlayerId) (acc : List ObjId) (done : List (ObjId × Nat))
-  /-- Work: the Combat at `bf` ends (CR 468): the Combat Cleanup, and then the Battlefield goes to
-  the player whose Units are alone there. -/
+  /-- Work: Combat Cleanup after damage has been dealt (CR 468.1). -/
   | combatResolve (bf : ObjId) (att : PlayerId)
+  /-- Work: determine the result after Combat Cleanup and its triggers resolve (CR 468.2-468.3). -/
+  | combatResult (bf : ObjId)
+  /-- Work: establish control after combat-result triggers resolve (CR 468.4-468.5). -/
+  | combatControl (bf : ObjId)
+  /-- Work: Combat ends after the result and scoring (CR 468.7). -/
+  | combatFinish (bf : ObjId)
   /-- Work: the triggered abilities that have fired go on the Chain, the turn player's first
   (CR 383.3). They wait here until a player would next receive priority (CR 383.1). -/
   | triggers (pend : List PendTrigger)
@@ -203,7 +252,7 @@ inductive Frame where
   chooses its targets (CR 383.3.d); `others` are the abilities of the other players, still to come.
   The group is never empty. -/
   | triggerOrder (p : PlayerId) (first : PendTrigger) (more : List PendTrigger)
-      (others : List PendTrigger)
+      (others : List PendTrigger) (funding : Option TriggerFunding := none)
   /-- Choice: player `p` discards `n` more cards of their hand, one at a time (CR 415). -/
   | discard (p : PlayerId) (n : Nat)
   /-- Choice: player `p` may do the effect `e`; the effects `rest` of the item follow (CR 355). -/
@@ -216,7 +265,22 @@ inductive Frame where
   (CR 355). -/
   | pickDo (p : PlayerId) (src : ObjId) (env : Env) (c : ObjId) (more : List ObjId) (e : Effect)
       (rest : EffectList)
+  /-- Choice: name one of the format-legal cards offered while an ability resolves (CR 759-762).
+  These are card definitions, independent of any copies on the board or in private zones. -/
+  | nameCard (p : PlayerId) (src : ObjId) (env : Env) (first : CardId) (more : List CardId)
+      (rest : EffectList)
+  /-- Choice: which card to keep next on top or Recycle during Predict (CR 437). The first
+  remaining card makes the choice nonempty. -/
+  | predict (p : PlayerId) (n : Nat) (first : ObjId) (more top bottom : List ObjId)
+  /-- Chance: Recycle the selected group from the Main Deck in a random order
+  (CR 417.5, 437). `n` is the length of the prefix partitioned into `top` and `bottom`. -/
+  | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
 deriving DecidableEq, Repr
+
+/-- Whether this branch asks the player to pay resources during resolution. -/
+def Effect.isPayment : Effect → Bool
+  | .payThen .. => true
+  | _ => false
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
 def Frame.isSetup : Frame → Bool
@@ -227,6 +291,7 @@ def Frame.isSetup : Frame → Bool
 
 /-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
 def Frame.isPlay : Frame → Bool
+  | .expireTurn => true
   | .chainPass .. => true
   | .resolveChain => true
   | .run .. => true
@@ -236,12 +301,16 @@ def Frame.isPlay : Frame → Bool
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
+  | .combatResult _ | .combatControl _ => true
+  | .combatFinish _ => true
   | .triggers _ => true
   | .triggerOrder .. => true
   | .discard .. => true
   | .mayDo .. => true
   | .eitherDo .. => true
   | .pickDo .. => true
+  | .nameCard .. => true
+  | .predict .. | .chancePredict .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
@@ -250,12 +319,16 @@ def Frame.isWork : Frame → Bool
   | .draw _ _ => true
   | .beginTurn => true
   | .phase _ => true
+  | .scoreHolds => true
+  | .expireTurn => true
   | .resolveChain => true
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .combatResult _ | .combatControl _ => true
+  | .combatFinish _ => true
   | .triggers _ => true
   | _ => false
 

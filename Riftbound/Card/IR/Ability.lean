@@ -28,13 +28,58 @@ inductive Choice where
   | extraCost (cs : List AbilityCost) (optional : Bool)
 deriving DecidableEq, Repr, Hashable
 
+/-- A mode with its own targets and instructions (CR 355.3). -/
+structure SpellMode where
+  /-- The label shown with the legal action. -/
+  label : String
+  /-- The targets required by this mode. -/
+  choices : List Choice
+  /-- What this mode does on resolution. -/
+  body : Effect
+deriving DecidableEq, Repr, Hashable
+
+/-- A destination chosen for a Unit named by a Spell's targets (CR 355.4). -/
+structure MoveChoice where
+  /-- The target slot of the Unit to move. -/
+  slot : Nat
+  /-- Allow the Unit's Base. -/
+  allowBase : Bool
+  /-- Additional requirements on destination Battlefields. -/
+  filters : FilterList := .nil
+deriving DecidableEq, Repr, Hashable
+
 /-- An effect with the choices made when it starts: a Spell, or an ability. -/
 structure EffectDef where
   /-- The choices, in the order they are made. -/
   choices : List Choice := []
   /-- What happens when it resolves. -/
   body : Effect
+  /-- Modes with their own choices and instructions. -/
+  modes : List SpellMode := []
+  /-- The declared destination choice, if any. -/
+  moveChoice : Option MoveChoice := none
+  /-- The side from which this spell or ability chooses a player during finalization (CR 355.7). -/
+  playerTarget : Option Side := none
+  /-- Recheck the declared object targets separately at resolution (CR 355.11, 359.3.e.2). -/
+  recheckTargets : Bool := false
 deriving DecidableEq, Repr, Hashable
+
+/-- Get the instructions and target requirements for the choice on the Chain. -/
+def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
+  | .mode i => e.modes[i]?.map (fun mode =>
+    { choices := mode.choices, body := mode.body, playerTarget := e.playerTarget,
+      recheckTargets := e.recheckTargets })
+  | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
+  | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
+  | .payForBattlefield .. | .withPermanentCosts .. => none
+  | .withPlayer pick _ => e.forPick pick
+  | .withCosts pick _ _ | .thenRepeat pick _ _ => e.forPick pick
+
+/-- Whether the Spell can have distinct modes, targets or destinations in a Repeat (CR 820.2). -/
+def EffectDef.hasFinalizationChoice (e : EffectDef) : Bool :=
+  e.choices.any (fun
+    | .target .. => true
+    | _ => false) || !e.modes.isEmpty || e.moveChoice.isSome || e.playerTarget.isSome
 
 /-- How often an ability can be used. -/
 inductive Limit where

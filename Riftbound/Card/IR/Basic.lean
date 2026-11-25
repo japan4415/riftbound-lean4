@@ -17,6 +17,74 @@ custom handlers. Nothing here is recursive.
 
 namespace Riftbound
 
+/-- A reusable ability described in a card definition's grants (CR 479.3). -/
+structure AbilityGrant where
+  /-- The definition that describes the ability being granted. -/
+  card : CardId
+  /-- The index within the definition's grants, or within the copied rules text. -/
+  index : Nat
+  /-- The distinct instance of copied Effect Text for an attachment, if any. -/
+  copyStamp : Option Timestamp := none
+  /-- The source index is in the full definition of a friendly object whose ability was gained. -/
+  borrowed : Bool := false
+deriving DecidableEq, Repr, Hashable
+
+/-- An additional selection recorded when a card is finalized (CR 355). -/
+inductive SpellPick where
+  /-- The Spell only has its ordinary target and payment choices. -/
+  | plain
+  /-- The index of the chosen mode. -/
+  | mode (index : Nat)
+  /-- The chosen Battlefield, or the moved Unit's Base. -/
+  | destination (battlefield : Option ObjId)
+  /-- Pay the elected Battlefields' fees and the listed optional costs of the Unit itself. -/
+  | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
+  /-- A Unit or Gear's elected optional costs without any Battlefield fees. -/
+  | withPermanentCosts (ownCosts : List Nat)
+  /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
+  | withPlayer (pick : SpellPick) (player : PlayerId)
+  /-- The choices before resolution, with the printed optional cost and the number of Repeats
+  chosen for this play (CR 355.1, 356.4.f.1). -/
+  | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
+  /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
+  | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
+deriving DecidableEq, Repr, Hashable
+
+/-- The choices of costs, when declared explicitly. -/
+def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
+  | .withCosts _ printed repeats => some (printed, repeats)
+  | .withPlayer pick _ => pick.optionalCosts
+  | _ => none
+
+/-- The explicitly elected optional costs of a Unit or Gear. -/
+def SpellPick.permanentCosts : SpellPick → Option (List Nat)
+  | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
+  | _ => none
+
+/-- The player targeted during finalization. -/
+def SpellPick.playerTarget : SpellPick → Option PlayerId
+  | .withPlayer _ player => some player
+  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.playerTarget
+  | _ => none
+
+/-- The mode or destination selected for the effect, independently of its optional costs. -/
+def SpellPick.effectChoice : SpellPick → SpellPick
+  | .withPlayer pick _ => pick.effectChoice
+  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.effectChoice
+  | pick => pick
+
+/-- Whether this play has distinct recorded choices for each execution. -/
+def SpellPick.hasExecutionChoices : SpellPick → Bool
+  | .thenRepeat .. => true
+  | .withCosts pick _ _ => pick.hasExecutionChoices
+  | _ => false
+
+/-- Read the ordered finalization choices with the targets belonging to each execution. -/
+def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick × List ObjId)
+  | .withCosts pick _ _ => pick.executions targets
+  | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
+  | pick => [(pick, targets)]
+
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where
   /-- Friendly: controlled by the player. -/
@@ -31,6 +99,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Place where
   /-- Anywhere in play. -/
   | anywhere
+  /-- On the Board or in a Legend Zone. -/
+  | boardOrLegend
   /-- At the Battlefield the effect is about: "here" (a Battlefield's own text, or a Unit's). -/
   | here
   /-- At a Battlefield (any). -/
@@ -67,6 +137,10 @@ inductive Quantity where
   | one
   /-- Up to `n`. -/
   | upTo (n : Nat)
+  /-- Any subset, including the empty one (CR 355.13). -/
+  | anyNumber
+  /-- Any subset whose total Might is at most the limit (CR 355.11). -/
+  | combinedMightAtMost (limit : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/
@@ -97,7 +171,9 @@ inductive PlayerSel where
   | eachPlayer
   /-- Every opponent. -/
   | eachOpponent
-  /-- The player who chose a slot of the effect. -/
+  /-- The attacker and defender of the ongoing Combat (CR 466.2.c). -/
+  | combatSides
+  /-- The player chosen at a player target slot when the item was finalized (CR 355.7). -/
   | chosen (slot : Nat)
   /-- The player the replaced event is about ("they draw 1 instead"). -/
   | eventPlayer
@@ -105,10 +181,25 @@ inductive PlayerSel where
   | controllerOf (slot : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- A replacement still available for one damage event. Turn notes use their positions in
+the original damage batch, so individual effects can be spent independently. -/
+inductive DamageReplacement where
+  /-- One instance of doubling the incoming damage. -/
+  | double
+  /-- A remaining finite Prevent Value. -/
+  | prevent (note remaining : Nat)
+  /-- One effect that prevents the next hit in full. -/
+  | shield (note : Nat)
+deriving DecidableEq, Repr, Hashable
+
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
+  /-- The unit can't be chosen by enemy spells and abilities this turn. -/
+  | unchoosableEnemy
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
+  /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
+  | nextCardCostMinus (energy power : Nat)
   /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of
   damage it deals (CR 142). -/
   | nextSpellBonus (n : Nat)
@@ -127,6 +218,9 @@ inductive TurnEffect where
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
+  /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
+  (CR 391-393). -/
+  | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)
@@ -134,6 +228,10 @@ inductive TurnEffect where
   | nextSpellRepeat
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
   | damagePrevented
+  /-- Prevent this much of the next damage to the marked Unit this turn (CR 438). -/
+  | preventDamage (remaining : Nat)
+  /-- The replacement order chosen for the Unit's current combat damage (CR 467.2.c.5). -/
+  | combatDamageOrder (order : List DamageReplacement)
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/
@@ -160,6 +258,8 @@ inductive TurnEffect where
   | excessDamage (n : Nat)
   /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
   | modeUsed (n : Nat)
+  /-- A copied ability has chosen mode `n` in this instance of its rules text (CR 479.1). -/
+  | copiedModeUsed (copy : Timestamp) (n : Nat)
   /-- A card is played from Hidden: the event it makes is what matters. -/
   | hiddenPlayed
   /-- A buffed unit died: the note is about the dead card. -/
@@ -179,6 +279,8 @@ inductive TurnEffect where
   | gainedXP
   /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
   | banishInstead
+  /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
+  | chosenDeathBanisher
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce
@@ -190,6 +292,10 @@ inductive TurnEffect where
   | unitDied
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
   | cardDiscarded
+  /-- The player chose an enemy Unit this turn (CR 355.7). -/
+  | choseEnemyUnit
+  /-- The player already played an activated ability of a Gear this turn. -/
+  | usedGearAbility
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana
@@ -200,6 +306,12 @@ inductive TurnEffect where
   next Main Phase, ..."); `n` tells the notes apart. -/
   | armed (n : Nat)
 deriving DecidableEq, Repr, Hashable
+
+/-- Choices limited by an ability's rules text belong to that instance. -/
+def TurnEffect.forCopy (effect : TurnEffect) (copy : Option Timestamp) : TurnEffect :=
+  match effect, copy with
+  | .modeUsed mode, some stamp => .copiedModeUsed stamp mode
+  | _, _ => effect
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
 def TurnEffect.playType : TurnEffect → CardType

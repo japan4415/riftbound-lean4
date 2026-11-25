@@ -2261,18 +2261,12 @@ def SFD_077.meta : CardDef :=
 /-- Rocket Barrage. -/
 def SFD_077 : CardDef :=
   { SFD_077.meta with
-
-    abilities := [.passive .always [.repeatChooses]],
-    spellEffect := some (.of [.targetOf .one .any .anywhere
-        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))],
-        .targetOf (.upTo 1) .any .anywhere
-        [.either (.ofType .gear) (.both (.ofType .unit) (.not .onBattlefield))]]
-      (.seqOf [
-        .ifThen (.matches (.slot 0) (.ofType .gear)) (.prim (.kill (.slot 0)))
-          (.prim (.deal (.slot 0) (.const 4))),
-        .ifThen .paid
-          (.ifThen (.matches (.slot 1) (.ofType .gear)) (.prim (.kill (.slot 1)))
-            (.prim (.deal (.slot 1) (.const 4)))) .nop])),
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Base の Unit に 4 ダメージ",
+        [.targetOf .one .any .anywhere [.ofType .unit, .not .onBattlefield]],
+        .prim (.deal (.slot 0) (.const 4))⟩,
+      ⟨"Gear を Kill", [.targetOf .one .any .anywhere [.ofType .gear]],
+        .prim (.kill (.slot 0))⟩] },
     status := .drafted }
 
 -- BEGIN GENERATED SFD-078
@@ -3274,13 +3268,12 @@ def SFD_111.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Here to Help. -/
+/-- Here to Help chooses the Unit's destination when it plays the Unit (CR 355.17, 420.3). -/
 def SFD_111 : CardDef :=
+  let unit := Selector.one .friendly .inHand [.ofType .unit]
+  let fields := Selector.all .any .anywhere [.ofType .battlefield, .controlled]
   { SFD_111.meta with
-
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .controlled, .unitsPlayable]]
-      (.may (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit]) (.const 3)
-        (some (.slot 0)))))),
+    spellEffect := some (.of [] (.may (.prim (.playReduced unit (.const 3) (some fields))))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-112
@@ -4137,7 +4130,7 @@ def SFD_140 : CardDef :=
 
     abilities := [.triggered (.onSelf .play)
       (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
-        [.ofType .spell, .noChoices, .cost .le (.const 3)]))))) .unlimited],
+        [.ofType .spell, .cost .le (.const 3)]))))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-141
@@ -5535,14 +5528,12 @@ def SFD_188.meta : CardDef :=
 
 /-- Void Rush. -/
 def SFD_188 : CardDef :=
+  let deckSize := Amount.count (Selector.all .friendly .inMainDeck [])
   { SFD_188.meta with
-
-    spellEffect := some (.of [] (.bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
+    spellEffect := some (.of [] (.bind ⟨"d"⟩ deckSize
       (.seqOf [.prim (.revealTop 2),
         .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
-        .repeatN (.sub (.const 2)
-            (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
-          (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))]))),
+        .prim (.draw .you (.sub (.min (.const 2) (.var ⟨"d"⟩)) (.sub (.var ⟨"d"⟩) deckSize)))]))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-189

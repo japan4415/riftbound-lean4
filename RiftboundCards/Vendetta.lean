@@ -39,8 +39,15 @@ def VEN_001.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Baccai Sandspinner: the effect is not written yet. -/
-def VEN_001 : CardDef := VEN_001.meta
+/-- Baccai Sandspinner. -/
+def VEN_001 : CardDef :=
+  { VEN_001.meta with
+    abilities := [.empower [.pay ⟨5, []⟩,
+        .energyDiscount (.cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4))
+          (.const 3)],
+      .passive (.empowered .self)
+        [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.assault, .amount 2⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-002
 /--
@@ -61,8 +68,12 @@ def VEN_002.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Blade Twirler: the effect is not written yet. -/
-def VEN_002 : CardDef := VEN_002.meta
+/-- Blade Twirler targets a player the first time it moves each turn. -/
+def VEN_002 : CardDef :=
+  { VEN_002.meta with
+    abilities := [.triggered { event := .move, condition := .cmp .eq .movesThisTurn (.const 1) }
+      { body := .prim (.burn (.chosen 0) (.const 1)), playerTarget := some .any } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-003
 /--
@@ -83,8 +94,11 @@ def VEN_003.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Brittle Steel: the effect is not written yet. -/
-def VEN_003 : CardDef := VEN_003.meta
+/-- Brittle Steel. -/
+def VEN_003 : CardDef :=
+  { VEN_003.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]] (.prim (.kill (.slot 0)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-004
 /--
@@ -108,7 +122,7 @@ def VEN_004.meta : CardDef :=
 def VEN_004 : CardDef :=
   { VEN_004.meta with
     abilities := [.passive .always [.ignoreKeyword .tank .here]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-005
 /--
@@ -129,8 +143,13 @@ def VEN_005.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Forsaken Baccai: the effect is not written yet. -/
-def VEN_005 : CardDef := VEN_005.meta
+/-- Forsaken Baccai. -/
+def VEN_005 : CardDef :=
+  { VEN_005.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-006
 /--
@@ -151,8 +170,14 @@ def VEN_006.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Oasis Raider: the effect is not written yet. -/
-def VEN_006 : CardDef := VEN_006.meta
+/-- Oasis Raider. -/
+def VEN_006 : CardDef :=
+  { VEN_006.meta with
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
+      (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn,
+        .grant .self (.keyword .it ⟨.ganking, .none⟩) .thisTurn])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-007
 /--
@@ -174,8 +199,11 @@ def VEN_007.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Punching Poro: the effect is not written yet. -/
-def VEN_007 : CardDef := VEN_007.meta
+/-- Punching Poro. -/
+def VEN_007 : CardDef :=
+  { VEN_007.meta with
+    abilities := [.empower [.discard 1], .passive (.empowered .self) [.mightPlus .self (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-008
 /--
@@ -196,8 +224,13 @@ def VEN_008.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ruthless Strike: the effect is not written yet. -/
-def VEN_008 : CardDef := VEN_008.meta
+/-- Ruthless Strike deals three damage, or five if a hand card paid its extra cost. -/
+def VEN_008 : CardDef :=
+  { VEN_008.meta with
+    discardToPlay := true,
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen .discardPaid (.prim (.deal (.slot 0) (.const 5))) (.prim (.deal (.slot 0) (.const 3))))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-009
 /--
@@ -218,8 +251,14 @@ def VEN_009.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Baccai Reaper: the effect is not written yet. -/
-def VEN_009 : CardDef := VEN_009.meta
+/-- Baccai Reaper. -/
+def VEN_009 : CardDef :=
+  { VEN_009.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.eitherOf (.ofList [
+        .payThen ⟨0, [.domain .fury]⟩ (.grant .self (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn),
+        .nop]))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-010
 /--
@@ -240,8 +279,13 @@ def VEN_010.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Consuming Curse: the effect is not written yet. -/
-def VEN_010 : CardDef := VEN_010.meta
+/-- Consuming Curse. -/
+def VEN_010 : CardDef :=
+  { VEN_010.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.add (.const 2)
+        (.count (.all .friendly .inTrash [.named "Consuming Curse"])))))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-011
 /--
@@ -267,8 +311,12 @@ def VEN_011.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Pendulum Blade: the effect is not written yet. -/
-def VEN_011 : CardDef := VEN_011.meta
+/-- Pendulum Blade. -/
+def VEN_011 : CardDef :=
+  { VEN_011.meta with
+    grants := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-012
 /--
@@ -289,8 +337,13 @@ def VEN_012.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Perfect Execution: the effect is not written yet. -/
-def VEN_012 : CardDef := VEN_012.meta
+/-- Perfect Execution. -/
+def VEN_012 : CardDef :=
+  { VEN_012.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.ready (.slot 0)),
+        .grant (.slot 0) (.keyword .it ⟨.assault, .amount 3⟩) .thisTurn])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-013
 /--
@@ -310,8 +363,13 @@ def VEN_013.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Assassin: the effect is not written yet. -/
-def VEN_013 : CardDef := VEN_013.meta
+/-- Shadow Assassin. -/
+def VEN_013 : CardDef :=
+  { VEN_013.meta with
+    abilities := [.passive (.cmp .ge
+        (.count (.all .friendly .inTrash [.named "Shadow Assassin"])) (.const 1))
+      [.entersReady .self]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-014
 /--
@@ -334,8 +392,11 @@ def VEN_014.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Fiend: the effect is not written yet. -/
-def VEN_014 : CardDef := VEN_014.meta
+/-- Shadow Fiend. -/
+def VEN_014 : CardDef :=
+  { VEN_014.meta with
+    abilities := [.passive (.empowered .self) [.keyword .self ⟨.assault, .amount 3⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-015
 /--
@@ -356,8 +417,13 @@ def VEN_015.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Rage: the effect is not written yet. -/
-def VEN_015 : CardDef := VEN_015.meta
+/-- Decree of Rage. -/
+def VEN_015 : CardDef :=
+  { VEN_015.meta with
+    abilities := [.passive .always [.uncounterable]],
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .domain .calm]]
+      (.prim (.deal (.slot 0) (.const 4)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-016
 /--
@@ -380,8 +446,14 @@ def VEN_016.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Eclipse Dragon: the effect is not written yet. -/
-def VEN_016 : CardDef := VEN_016.meta
+/-- Eclipse Dragon. -/
+def VEN_016 : CardDef :=
+  { VEN_016.meta with
+    abilities := [.triggered
+      { event := .move,
+        condition := .cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-017
 /--
@@ -404,8 +476,13 @@ def VEN_017.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Morgana, Vindictive: the effect is not written yet. -/
-def VEN_017 : CardDef := VEN_017.meta
+/-- Morgana, Vindictive. -/
+def VEN_017 : CardDef :=
+  { VEN_017.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.damageOn (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-018
 /--
@@ -426,8 +503,14 @@ def VEN_018.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rage Amplifier: the effect is not written yet. -/
-def VEN_018 : CardDef := VEN_018.meta
+/-- Rage Amplifier. -/
+def VEN_018 : CardDef :=
+  { VEN_018.meta with
+    abilities := [.passive .always
+      [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 1)],
+      .passive (.empowered .self)
+        [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-019
 /--
@@ -458,7 +541,7 @@ def VEN_019 : CardDef :=
       { event := .attack,
         condition := .cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4) }
       (.of [] (.prim (.deal (.all .enemy .here [.ofType .unit]) (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-020
 /--
@@ -478,8 +561,12 @@ def VEN_020.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Twilight Reveler: the effect is not written yet. -/
-def VEN_020 : CardDef := VEN_020.meta
+/-- Twilight Reveler. -/
+def VEN_020 : CardDef :=
+  { VEN_020.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]] (.prim (.ready (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-021
 /--
@@ -505,8 +592,15 @@ def VEN_021.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Akali, Deadly Weapon: the effect is not written yet. -/
-def VEN_021 : CardDef := VEN_021.meta
+/-- Akali, Deadly Weapon. -/
+def VEN_021 : CardDef :=
+  { VEN_021.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 1)],
+      .triggered (.onSelf .move)
+        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atSourceMoveBattlefield]]
+          (.ifThen (.empowered .self)
+            (.prim (.deal (.slot 0) (.const 2))) (.prim (.deal (.slot 0) (.const 1))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-022
 /--
@@ -527,8 +621,15 @@ def VEN_022.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Endless Riches: the effect is not written yet. -/
-def VEN_022 : CardDef := VEN_022.meta
+/-- Endless Riches: exchange the hand and Trash for Burn 7 and play cards from the Trash. -/
+def VEN_022 : CardDef :=
+  { VEN_022.meta with
+    abilities := [.triggered { event := .play } (.of [] (.seqOf [
+      .prim (.moveAll .friendly .inHand .nil .inBanishment false),
+      .prim (.moveAll .friendly .inTrash .nil .inBanishment false),
+      .prim (.burn .you (.const 7))])) .unlimited,
+      .passive .always [.skipDrawPhase, .playFromTrash, .banishInsteadOfTrash]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-023
 /--
@@ -552,8 +653,13 @@ def VEN_023.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Zed, From the Shadows: the effect is not written yet. -/
-def VEN_023 : CardDef := VEN_023.meta
+/-- Zed plays a Shadow Clone if a hand card paid his extra cost. -/
+def VEN_023 : CardDef :=
+  { VEN_023.meta with
+    discardToPlay := true,
+    abilities := [.triggered { event := .play, condition := .discardPaid }
+      (.of [] (.prim (.playUnitToken "Shadow Clone"))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-024
 /--
@@ -573,8 +679,13 @@ def VEN_024.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Affectionate Poro: the effect is not written yet. -/
-def VEN_024 : CardDef := VEN_024.meta
+/-- Affectionate Poro. -/
+def VEN_024 : CardDef :=
+  { VEN_024.meta with
+    abilities := [.triggered
+      { event := .combatEnd, condition := .not (.matches .self .damagedThisTurn) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-025
 /--
@@ -595,8 +706,13 @@ def VEN_025.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Esteemed Hierophant: the effect is not written yet. -/
-def VEN_025 : CardDef := VEN_025.meta
+/-- Esteemed Hierophant. -/
+def VEN_025 : CardDef :=
+  { VEN_025.meta with
+    abilities := [.passive
+      (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7))
+      [.noEnemyEffectDamage]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-026
 /--
@@ -622,7 +738,7 @@ def VEN_026 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-027
 /--
@@ -648,8 +764,14 @@ def VEN_027.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Hand Hammer: the effect is not written yet. -/
-def VEN_027 : CardDef := VEN_027.meta
+/-- Hand Hammer. -/
+def VEN_027 : CardDef :=
+  { VEN_027.meta with
+    grants := [.passive
+      (.and (.matches .self .onBattlefield)
+        (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1)))
+      [.mightPlus .self (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-028
 /--
@@ -670,8 +792,13 @@ def VEN_028.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mournful Witness: the effect is not written yet. -/
-def VEN_028 : CardDef := VEN_028.meta
+/-- Mournful Witness. -/
+def VEN_028 : CardDef :=
+  { VEN_028.meta with
+    abilities := [.triggered (.onSelf .combatEnd)
+        (.of [] (.prim (.empower .self))) .unlimited,
+      .passive (.empowered .self) [.mightPlus .self (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-029
 /--
@@ -691,8 +818,12 @@ def VEN_029.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ol' Poro: the effect is not written yet. -/
-def VEN_029 : CardDef := VEN_029.meta
+/-- Ol' Poro. -/
+def VEN_029 : CardDef :=
+  { VEN_029.meta with
+    abilities := [.passive (.and .yourTurn (.cmp .le (.turnsTaken .you) (.const 3)))
+      [.cant .self .play]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-030
 /--
@@ -715,8 +846,12 @@ def VEN_030.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Serene Ascetic: the effect is not written yet. -/
-def VEN_030 : CardDef := VEN_030.meta
+/-- Serene Ascetic. -/
+def VEN_030 : CardDef :=
+  { VEN_030.meta with
+    abilities := [.passive (.empowered .self)
+      [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.shield, .amount 3⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-031
 /--
@@ -737,8 +872,13 @@ def VEN_031.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Twilight Shroud: the effect is not written yet. -/
-def VEN_031 : CardDef := VEN_031.meta
+/-- Twilight Shroud. -/
+def VEN_031 : CardDef :=
+  { VEN_031.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
+        .prim (.markOn (.slot 0) .unchoosableEnemy)])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-032
 /--
@@ -761,8 +901,13 @@ def VEN_032.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Frostcoat Mother: the effect is not written yet. -/
-def VEN_032 : CardDef := VEN_032.meta
+/-- Frostcoat Mother. -/
+def VEN_032 : CardDef :=
+  { VEN_032.meta with
+    abilities := [.empower [.pay ⟨12, []⟩, .energyDiscount .always
+        (.count (.all .friendly .anywhere [.ofType .rune]))],
+      .passive (.empowered .self) [.mightPlus .self (.const 3)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-033
 /--
@@ -783,8 +928,19 @@ def VEN_033.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Pakaa Protector: the effect is not written yet. -/
-def VEN_033 : CardDef := VEN_033.meta
+/-- Pakaa Protector. -/
+def VEN_033 : CardDef :=
+  let top := Amount.count (.all .friendly .inMainDeck [.top 1])
+  let topUnit := Amount.count (.all .friendly .inMainDeck [.top 1, .ofType .unit])
+  { VEN_033.meta with
+    abilities := [.triggered (.onSelf .move)
+      (.of [] (.seqOf [.prim (.revealTop 1),
+        .ifThen (.cmp .gt top (.const 0))
+          (.ifThen (.cmp .gt topUnit (.const 0)) (.prim (.draw .you (.const 1)))
+            (.seqOf [.prim (.bin (.one .friendly .inMainDeck [.top 1])),
+              .grant .self (.mightPlus .it (.const 2)) .thisTurn]))
+          .nop])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-034
 /--
@@ -792,7 +948,7 @@ def VEN_033 : CardDef := VEN_033.meta
 Printings: VEN-034/166
 
 > [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)
-> [Reaction] (Play on your turn or in showdowns.)
+> [Reaction] (Play any time, even before spells and abilities resolve.)
 > Choose a battlefield you control and a unit you control at a different location. Move that
 > unit to that battlefield and give it +2 :rb_might: this turn.
 -/
@@ -807,8 +963,15 @@ def VEN_034.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Resonating Strike: the effect is not written yet. -/
-def VEN_034 : CardDef := VEN_034.meta
+/-- Resonating Strike. -/
+def VEN_034 : CardDef :=
+  { VEN_034.meta with
+    spellEffect := some (.of
+      [.targetOf .one .any .atBattlefield [.ofType .battlefield, .controlled],
+        .targetOf .one .friendly .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
+      (.seqOf [.prim (.move (.slot 1) (.at_ (.slot 0))),
+        .grant (.slot 1) (.mightPlus .it (.const 2)) .thisTurn])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-035
 /--
@@ -829,8 +992,19 @@ def VEN_035.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sanction: the effect is not written yet. -/
-def VEN_035 : CardDef := VEN_035.meta
+/-- Sanction. Its two end-of-turn effects refer to the originally chosen Unit. -/
+def VEN_035 : CardDef :=
+  let delayed : Trigger := { event := .at_ .endOfTurn, condition := .not .always }
+  { VEN_035.meta with
+    abilities := [
+      .triggered delayed (.of [] (.prim (.disempower .self))) .unlimited,
+      .triggered delayed (.of [] (.prim (.empower .self))) .unlimited],
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Empower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit]],
+        .seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 0))]⟩,
+      ⟨"Disempower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit, .empowered]],
+        .seqOf [.prim (.disempower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 1))]⟩] },
+    status := .full }
 
 -- BEGIN GENERATED VEN-036
 /--
@@ -850,8 +1024,11 @@ def VEN_036.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sandstone Chimera: the effect is not written yet. -/
-def VEN_036 : CardDef := VEN_036.meta
+/-- Sandstone Chimera. -/
+def VEN_036 : CardDef :=
+  { VEN_036.meta with
+    abilities := [.passive (.matches .self .onBattlefield) [.channelLimit 1]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-037
 /--
@@ -872,8 +1049,16 @@ def VEN_037.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tomb-Raider Barbara: the effect is not written yet. -/
-def VEN_037 : CardDef := VEN_037.meta
+/-- Tomb-Raider Barbara. -/
+def VEN_037 : CardDef :=
+  { VEN_037.meta with
+    abilities := [.triggered
+      { event := .play,
+        condition := .cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7) }
+      (.of [.targetOf .one .enemy .anywhere [.ofType .gear]]
+        (.ifThen (.empowered (.slot 0))
+          (.prim (.disempower (.slot 0))) (.prim (.kill (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-038
 /--
@@ -895,8 +1080,13 @@ def VEN_038.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Akali, Silent: the effect is not written yet. -/
-def VEN_038 : CardDef := VEN_038.meta
+/-- Akali, Silent. -/
+def VEN_038 : CardDef :=
+  { VEN_038.meta with
+    abilities := [.passive (.not .inCombatHere) [.cant .self .beChosen],
+      .triggered { event := .move, condition := .matches .self .onBattlefield }
+        (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-039
 /--
@@ -916,8 +1106,12 @@ def VEN_039.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Crumbling Sands: the effect is not written yet. -/
-def VEN_039 : CardDef := VEN_039.meta
+/-- Crumbling Sands counters a Spell if an opponent finalized another Spell this turn. -/
+def VEN_039 : CardDef :=
+  { VEN_039.meta with
+    spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
+      (.ifThen (.opponentFinalizedOtherSpell (.slot 0)) (.prim (.counter (.slot 0))) .nop)),
+    status := .full }
 
 -- BEGIN GENERATED VEN-040
 /--
@@ -938,8 +1132,15 @@ def VEN_040.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Focus: the effect is not written yet. -/
-def VEN_040 : CardDef := VEN_040.meta
+/-- Decree of Focus. -/
+def VEN_040 : CardDef :=
+  let againstFury : Filter :=
+    .either (.combatsEnemyOfDomain .fury) (.chosenByEnemySpellOfDomain .fury)
+  { VEN_040.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit, againstFury]]
+      (.ifThen (.matches (.slot 0) (.both (.sameController .self) againstFury))
+        (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn) .nop)),
+    status := .full }
 
 -- BEGIN GENERATED VEN-041
 /--
@@ -963,8 +1164,14 @@ def VEN_041.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Riven, Shattered: the effect is not written yet. -/
-def VEN_041 : CardDef := VEN_041.meta
+/-- Riven, Shattered. -/
+def VEN_041 : CardDef :=
+  { VEN_041.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.mul (.const 2)
+          (.count (.all .any .anywhere [.attachedTo .self, .tag ⟨"Equipment"⟩])))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-042
 /--
@@ -985,8 +1192,14 @@ def VEN_042.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shen, Scourge of Shadows: the effect is not written yet. -/
-def VEN_042 : CardDef := VEN_042.meta
+/-- Shen, Scourge of Shadows. -/
+def VEN_042 : CardDef :=
+  { VEN_042.meta with
+    abilities := [.triggered
+      { event := .hold,
+        condition := .cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-043
 /--
@@ -1014,15 +1227,15 @@ def VEN_043.meta : CardDef :=
 def VEN_043 : CardDef :=
   { VEN_043.meta with
     abilities := [.passive (.empowered .self) [.mightPlus .self (.const 7)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-044
 /--
 **Astral Heron** — Unit · Calm · Energy 7 · Might 7
 Printings: VEN-044/166
 
-> When you play your first card each turn, if I'm at a battlefield, your next card costs
-> :rb_energy_2::rb_rune_rainbow::rb_rune_rainbow: less.
+> When you play your first card each turn, if I'm at a battlefield, the next card you play this
+> turn costs :rb_energy_2::rb_rune_rainbow::rb_rune_rainbow: less.
 -/
 def VEN_044.meta : CardDef :=
   { id := ⟨"VEN-044"⟩,
@@ -1035,8 +1248,12 @@ def VEN_044.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Astral Heron: the effect is not written yet. -/
-def VEN_044 : CardDef := VEN_044.meta
+/-- Astral Heron. -/
+def VEN_044 : CardDef :=
+  { VEN_044.meta with
+    abilities := [.triggered { event := .firstCardResolved, condition := .matches .self .onBattlefield }
+      (.of [] (.prim (.turnEffect (.nextCardCostMinus 2 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-045
 /--
@@ -1058,8 +1275,14 @@ def VEN_045.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Helm of Suppression: the effect is not written yet. -/
-def VEN_045 : CardDef := VEN_045.meta
+/-- Helm of Suppression. -/
+def VEN_045 : CardDef :=
+  { VEN_045.meta with
+    abilities := [.passive .always
+      [.costPlus (.all .enemy .anywhere [.ofType .spell]) (.const 1)],
+      .passive (.empowered .self)
+        [.costPower (.all .enemy .anywhere [.ofType .spell]) (.const 1) none true]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-046
 /--
@@ -1085,8 +1308,12 @@ def VEN_046.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Nasus, Ascended: the effect is not written yet. -/
-def VEN_046 : CardDef := VEN_046.meta
+/-- Nasus, Ascended. -/
+def VEN_046 : CardDef :=
+  { VEN_046.meta with
+    abilities := [.triggered { event := .conquer, condition := .empowered .self }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-047
 /--
@@ -1110,8 +1337,13 @@ def VEN_047.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Apprentice Mage: the effect is not written yet. -/
-def VEN_047 : CardDef := VEN_047.meta
+/-- Apprentice Mage Predicts when it becomes Empowered and gains Might while Empowered. -/
+def VEN_047 : CardDef :=
+  { VEN_047.meta with
+    abilities := [.empower [.pay ⟨2, []⟩],
+      .triggered (.onSelf .becomeEmpowered) (.of [] (.prim (.predict (.const 2)))) .unlimited,
+      .passive (.empowered .self) [.mightPlus .self (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-048
 /--
@@ -1137,7 +1369,7 @@ def VEN_048 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-049
 /--
@@ -1162,7 +1394,7 @@ def VEN_049 : CardDef :=
   { VEN_049.meta with
     spellEffect := some (.of []
       (.prim (.draw .you (.const 1)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-050
 /--
@@ -1186,8 +1418,14 @@ def VEN_050.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Grumpy Rockbear: the effect is not written yet. -/
-def VEN_050 : CardDef := VEN_050.meta
+/-- Grumpy Rockbear. -/
+def VEN_050 : CardDef :=
+  { VEN_050.meta with
+    abilities := [.empower [.pay ⟨12, []⟩, .energyDiscount .always
+        (.count (.all .friendly .anywhere [.ofType .rune]))],
+      .passive (.empowered .self)
+        [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.shield, .amount 3⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-051
 /--
@@ -1211,9 +1449,8 @@ def VEN_051.meta : CardDef :=
 /-- Iterative Design. -/
 def VEN_051 : CardDef :=
   { VEN_051.meta with
-    spellEffect := some (.of []
-      (.prim (.create "Mech" (.const 1) .atBase false))),
-    status := .drafted }
+    spellEffect := some (.of [] (.prim (.playUnitToken "Mech"))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-052
 /--
@@ -1234,8 +1471,15 @@ def VEN_052.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mesmerize: the effect is not written yet. -/
-def VEN_052 : CardDef := VEN_052.meta
+/-- Mesmerize. -/
+def VEN_052 : CardDef :=
+  { VEN_052.meta with
+    spellEffect := some { body := .nop, modes := [
+      ⟨"味方を手札に戻す", [.targetOf .one .friendly .anywhere [.ofType .unit]],
+        .prim (.returnToHand (.slot 0))⟩,
+      ⟨"敵に Might −2", [.targetOf .one .enemy .anywhere [.ofType .unit]],
+        .grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn⟩] },
+    status := .full }
 
 -- BEGIN GENERATED VEN-053
 /--
@@ -1259,12 +1503,8 @@ def VEN_053.meta : CardDef :=
 /-- Otterpus. -/
 def VEN_053 : CardDef :=
   { VEN_053.meta with
-    abilities := [.replacement .score
-      (.and (.or (.scoreFrom .conquer) (.scoreFrom .hold))
-        (.and (.cmp .le (.turnsTaken .eventPlayer) (.const 2))
-          (.cmp .eq .eventAmount (.const 1))))
-      (.of [] (.prim (.draw .eventPlayer (.const 1))))],
-    status := .drafted }
+    abilities := [.passive .always [.earlyScoreDraw 2]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-054
 /--
@@ -1284,8 +1524,13 @@ def VEN_054.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Questionable Tome: the effect is not written yet. -/
-def VEN_054 : CardDef := VEN_054.meta
+/-- Questionable Tome. -/
+def VEN_054 : CardDef :=
+  { VEN_054.meta with
+    abilities := [.empower [.exhaustSelf],
+      .activated [.disempowerSelf, .pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-055
 /--
@@ -1308,8 +1553,13 @@ def VEN_055.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Applied Researchers: the effect is not written yet. -/
-def VEN_055 : CardDef := VEN_055.meta
+/-- Applied Researchers. -/
+def VEN_055 : CardDef :=
+  { VEN_055.meta with
+    abilities := [.passive (.empowered .self)
+      [.costMinusMin (.all .friendly .anywhere [.ofType .spell]) (.const 1) 1,
+        .costPower (.all .friendly .anywhere [.ofType .spell]) (.const 1) none false]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-056
 /--
@@ -1331,8 +1581,12 @@ def VEN_056.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Clairvoyance: the effect is not written yet. -/
-def VEN_056 : CardDef := VEN_056.meta
+/-- Clairvoyance Predicts five cards and then draws two from the resulting deck. -/
+def VEN_056 : CardDef :=
+  { VEN_056.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.predict (.const 5)), .prim (.draw .you (.const 2))])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-057
 /--
@@ -1354,8 +1608,12 @@ def VEN_057.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Covert Informant: the effect is not written yet. -/
-def VEN_057 : CardDef := VEN_057.meta
+/-- Covert Informant. -/
+def VEN_057 : CardDef :=
+  { VEN_057.meta with
+    abilities := [.triggered { event := .move, condition := .empowered .self }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-058
 /--
@@ -1376,8 +1634,15 @@ def VEN_058.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Patched Porobot: the effect is not written yet. -/
-def VEN_058 : CardDef := VEN_058.meta
+/-- Patched Porobot. -/
+def VEN_058 : CardDef :=
+  { VEN_058.meta with
+    abilities := [.passive .always [.entersExhausted],
+      .triggered
+        { event := .play, condition := .cmp .ge
+            (.count (.all .friendly .anywhere [.ofType .gear, .notSelf])) (.const 3) }
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-059
 /--
@@ -1398,8 +1663,16 @@ def VEN_059.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shock Blast: the effect is not written yet. -/
-def VEN_059 : CardDef := VEN_059.meta
+/-- Shock Blast. -/
+def VEN_059 : CardDef :=
+  { VEN_059.meta with
+    abilities := [.passive
+      (.or (.exists (.all .friendly .anywhere [.empowered]))
+        (.cmp .gt (.count (.all .friendly .inLegendZone [.empowered])) (.const 0)))
+      [.costMinus .self (.const 2)]],
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.const 4)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-060
 /--
@@ -1419,8 +1692,13 @@ def VEN_060.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sky Cruiser: the effect is not written yet. -/
-def VEN_060 : CardDef := VEN_060.meta
+/-- Sky Cruiser. -/
+def VEN_060 : CardDef :=
+  { VEN_060.meta with
+    abilities := [.activated [.discardMatching 1 (.ofList [.ofType .gear]), .pay ⟨1, []⟩, .exhaustSelf]
+      .normal (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 4)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-061
 /--
@@ -1441,8 +1719,13 @@ def VEN_061.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Insight: the effect is not written yet. -/
-def VEN_061 : CardDef := VEN_061.meta
+/-- Decree of Insight. -/
+def VEN_061 : CardDef :=
+  { VEN_061.meta with
+    abilities := [.passive .always [.ignoreDeflectSpell]],
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .domain .body]]
+      (.grant (.slot 0) (.mightMinus .it (.const 5)) .thisTurn)),
+    status := .full }
 
 -- BEGIN GENERATED VEN-062
 /--
@@ -1461,8 +1744,14 @@ def VEN_062.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Hextech Formula: the effect is not written yet. -/
-def VEN_062 : CardDef := VEN_062.meta
+/-- Hextech Formula. -/
+def VEN_062 : CardDef :=
+  { VEN_062.meta with
+    abilities := [.passive .always [.entersExhausted],
+      .activated [.exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .gear, .notSelf]]
+          (.prim (.empower (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-063
 /--
@@ -1483,8 +1772,13 @@ def VEN_063.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Nasus, Guardian of Knowledge: the effect is not written yet. -/
-def VEN_063 : CardDef := VEN_063.meta
+/-- Nasus, Guardian of Knowledge. -/
+def VEN_063 : CardDef :=
+  { VEN_063.meta with
+    abilities := [.triggered
+      { event := .die, subject := .all .enemy .anywhere [.ofType .unit, .at_ .self] }
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) (.perTurn 1)],
+    status := .full }
 
 -- BEGIN GENERATED VEN-064
 /--
@@ -1506,8 +1800,12 @@ def VEN_064.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Plaza Guardian: the effect is not written yet. -/
-def VEN_064 : CardDef := VEN_064.meta
+/-- Plaza Guardian. -/
+def VEN_064 : CardDef :=
+  { VEN_064.meta with
+    abilities := [.passive .always
+      [.costMinus .self (.count (.all .friendly .anywhere [.ofType .gear]))]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-065
 /--
@@ -1531,8 +1829,14 @@ def VEN_065.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Swain, Visionary: the effect is not written yet. -/
-def VEN_065 : CardDef := VEN_065.meta
+/-- Swain gains a point on Conquer after a Unit, a Gear and a Spell were finalized. -/
+def VEN_065 : CardDef :=
+  { VEN_065.meta with
+    abilities := [.triggered
+      { event := .conquer, condition :=
+          .and (.finalizedType .unit) (.and (.finalizedType .gear) (.finalizedType .spell)) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-066
 /--
@@ -1552,8 +1856,12 @@ def VEN_066.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Temporal Breach: the effect is not written yet. -/
-def VEN_066 : CardDef := VEN_066.meta
+/-- Temporal Breach. -/
+def VEN_066 : CardDef :=
+  { VEN_066.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.banishReplay (.slot 0) .sameLocation))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-067
 /--
@@ -1572,8 +1880,15 @@ def VEN_067.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Bottled Constellation: the effect is not written yet. -/
-def VEN_067 : CardDef := VEN_067.meta
+/-- Bottled Constellation. -/
+def VEN_067 : CardDef :=
+  { VEN_067.meta with
+    abilities := [.triggered
+      { event := .at_ .startOfMain
+        optional := true
+        cost := .killFriendly 3 (.ofList [.notSelf, .either (.ofType .unit) (.ofType .gear)]) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-068
 /--
@@ -1595,8 +1910,19 @@ def VEN_068.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jayce, Brilliant Inventor: the effect is not written yet. -/
-def VEN_068 : CardDef := VEN_068.meta
+/-- Jayce can ready another object on play and when his controller's first Gear play resolves. -/
+def VEN_068 : CardDef :=
+  let ready := EffectDef.of
+    [.targetOf (.upTo 1) .any .boardOrLegend [.exhausted, .notSelf]]
+    (.prim (.ready (.slot 0)))
+  { VEN_068.meta with
+    abilities := [.triggered (.onSelf .play) ready .unlimited,
+      .triggered
+        { event := .play,
+          subject := .all .friendly .anywhere [.ofType .gear, .not .token, .notSelf],
+          condition := .firstResolvedType .gear (.slot 0) }
+        ready .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-069
 /--
@@ -1621,8 +1947,12 @@ def VEN_069.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mel, Newly Awakened: the effect is not written yet. -/
-def VEN_069 : CardDef := VEN_069.meta
+/-- Mel, Newly Awakened. -/
+def VEN_069 : CardDef :=
+  { VEN_069.meta with
+    abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+      .passive (.empowered .self) [.controlledItemsUncounterable, .targetMightPenalty 1]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-070
 /--
@@ -1645,8 +1975,12 @@ def VEN_070.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Brutal Hunter: the effect is not written yet. -/
-def VEN_070 : CardDef := VEN_070.meta
+/-- Brutal Hunter. -/
+def VEN_070 : CardDef :=
+  { VEN_070.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 2), .keyword .self ⟨.ganking, .none⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-071
 /--
@@ -1666,8 +2000,12 @@ def VEN_071.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Fretful Feline: the effect is not written yet. -/
-def VEN_071 : CardDef := VEN_071.meta
+/-- Fretful Feline. -/
+def VEN_071 : CardDef :=
+  { VEN_071.meta with
+    abilities := [.triggered (.onSelf .ready)
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-072
 /--
@@ -1688,8 +2026,14 @@ def VEN_072.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Guttural Roar: the effect is not written yet. -/
-def VEN_072 : CardDef := VEN_072.meta
+/-- Guttural Roar. -/
+def VEN_072 : CardDef :=
+  { VEN_072.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.ifThen (.empowered (.slot 0))
+        (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn)
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-073
 /--
@@ -1714,8 +2058,12 @@ def VEN_073.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jagged Cutlass: the effect is not written yet. -/
-def VEN_073 : CardDef := VEN_073.meta
+/-- Jagged Cutlass. -/
+def VEN_073 : CardDef :=
+  { VEN_073.meta with
+    keywords := [⟨.equip, .cost ⟨0, [.domain .body]⟩⟩],
+    grants := [.passive .always [.noEnemyEffectMove]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-074
 /--
@@ -1738,8 +2086,12 @@ def VEN_074.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Legion Marauder: the effect is not written yet. -/
-def VEN_074 : CardDef := VEN_074.meta
+/-- Legion Marauder. -/
+def VEN_074 : CardDef :=
+  { VEN_074.meta with
+    abilities := [.empower [.pay ⟨1, []⟩], .empower [.pay ⟨0, [.domain .body]⟩],
+      .passive (.empowered .self) [.mightPlus .self (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-075
 /--
@@ -1763,8 +2115,18 @@ def VEN_075.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Platewyrm Egg: the effect is not written yet. -/
-def VEN_075 : CardDef := VEN_075.meta
+/-- Platewyrm Egg. -/
+def VEN_075 : CardDef :=
+  { VEN_075.meta with
+    abilities := [.passive .always [.entersExhausted],
+      .empower [.pay ⟨1, []⟩, .exhaustSelf],
+      .activated [.exhaustSelf] .reaction
+        (.of [] (.ifThen (.not (.empowered .self))
+          (.prim (.addEnergy .you (.const 1) none)) .nop)) .unlimited,
+      .activated [.exhaustSelf] .reaction
+        (.of [] (.ifThen (.empowered .self)
+          (.prim (.addEnergy .you (.const 2) none)) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-076
 /--
@@ -1785,8 +2147,11 @@ def VEN_076.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Repair Specialist: the effect is not written yet. -/
-def VEN_076 : CardDef := VEN_076.meta
+/-- Repair Specialist. -/
+def VEN_076 : CardDef :=
+  { VEN_076.meta with
+    abilities := [.passive .always [.assaultCount (.all .friendly .anywhere [.ofType .gear])]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-077
 /--
@@ -1807,8 +2172,15 @@ def VEN_077.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tools of Empire: the effect is not written yet. -/
-def VEN_077 : CardDef := VEN_077.meta
+/-- Tools of Empire. -/
+def VEN_077 : CardDef :=
+  { VEN_077.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.ifThen (.empowered .self)
+          (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn)
+          (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-078
 /--
@@ -1833,8 +2205,13 @@ def VEN_078.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Baccai Witherclaw: the effect is not written yet. -/
-def VEN_078 : CardDef := VEN_078.meta
+/-- Baccai Witherclaw. -/
+def VEN_078 : CardDef :=
+  { VEN_078.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 2)],
+      .triggered { event := .deathknell, condition := .leftEmpowered }
+        (.of [] (.prim (.channel .you (.const 0) (.const 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-079
 /--
@@ -1858,8 +2235,17 @@ def VEN_079.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dame the Despoiler: the effect is not written yet. -/
-def VEN_079 : CardDef := VEN_079.meta
+/-- Dame the Despoiler. -/
+def VEN_079 : CardDef :=
+  { VEN_079.meta with
+    abilities :=
+      let effect := EffectDef.of [.targetOf .one .any .here [.ofType .unit]]
+        (.seqOf [
+          .grant .self (.mightPlus .it (.mightIncreaseTo .self (.slot 0))) .thisTurn,
+          .grant .self (.mightPlus .it (.const 1)) .thisTurn])
+      [.triggered { event := .attack, condition := .empowered .self } effect .unlimited,
+        .triggered { event := .defend, condition := .empowered .self } effect .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-080
 /--
@@ -1879,8 +2265,13 @@ def VEN_080.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Noxian Demolitionist: the effect is not written yet. -/
-def VEN_080 : CardDef := VEN_080.meta
+/-- Noxian Demolitionist. -/
+def VEN_080 : CardDef :=
+  { VEN_080.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [.targetOf (.upTo 1) .any .anywhere
+        [.ofType .gear, .cost .le (.mightOf .self)]] (.prim (.kill (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-081
 /--
@@ -1905,7 +2296,7 @@ def VEN_081 : CardDef :=
   { VEN_081.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 6)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-082
 /--
@@ -1925,8 +2316,18 @@ def VEN_082.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Profiteer: the effect is not written yet. -/
-def VEN_082 : CardDef := VEN_082.meta
+/-- Profiteer can disempower an object it controls to empower a chosen object. -/
+def VEN_082 : CardDef :=
+  let empowered := Selector.all .friendly .boardOrLegend [.empowered]
+  let cost := Selector.one .friendly .boardOrLegend [.empowered]
+  { VEN_082.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .boardOrLegend [.either (.ofType .legend)
+        (.either (.ofType .unit) (.ofType .gear))]]
+        (.ifThen (.and (.exists empowered) (.exists (.slot 0)))
+          (.may (.doThen (.prim (.disempower cost)) (.prim (.empower (.slot 0))))) .nop))
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-083
 /--
@@ -1946,8 +2347,17 @@ def VEN_083.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rampage: the effect is not written yet. -/
-def VEN_083 : CardDef := VEN_083.meta
+/-- Rampage. The Might bonus depends on the explicitly selected additional cost. -/
+def VEN_083 : CardDef :=
+  { VEN_083.meta with
+    additionalCost := some ⟨0, [.domain .body]⟩,
+    spellEffect := some (.of [
+      .targetOf .one .friendly .anywhere [.ofType .unit],
+      .targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.seqOf [
+        .ifThen .paid (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn) .nop,
+        .prim (.exchangeDamage (.slot 0) (.slot 1))])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-084
 /--
@@ -1971,8 +2381,12 @@ def VEN_084.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ambessa, The Wolf: the effect is not written yet. -/
-def VEN_084 : CardDef := VEN_084.meta
+/-- Ambessa, The Wolf. -/
+def VEN_084 : CardDef :=
+  { VEN_084.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 3)],
+      .passive (.and (.empowered .self) (.not .inCombatHere)) [.noDamage]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-085
 /--
@@ -1991,8 +2405,16 @@ def VEN_085.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Strength: the effect is not written yet. -/
-def VEN_085 : CardDef := VEN_085.meta
+/-- Decree of Strength. The caster picks a revealed Mind card; the opponent recycles it. -/
+def VEN_085 : CardDef :=
+  { VEN_085.meta with
+    spellEffect := some {
+      playerTarget := some .enemy
+      body := .revealHand (.chosen 0)
+        (.chooseObject .any .inHand
+          (.ofList [.ownedByPlayerTarget 0, .revealedByEffect, .domain .mind])
+          (.eachPlayer (.chosen 0) (.prim (.recycle (.var pickVar))))) },
+    status := .full }
 
 -- BEGIN GENERATED VEN-086
 /--
@@ -2002,7 +2424,7 @@ Printings: VEN-086/166, VEN-181/166
 > [Empower] :rb_rune_body::rb_rune_body: (:rb_rune_body::rb_rune_body:: Empower me. Use only if
 > not Empowered.)
 > [Empowered][>] If a spell or ability that chooses me would stun me, give me -:rb_might:, or
-> return me to hand, give me +3 :rb_might: instead.
+> return me to hand, give me +3 :rb_might: this turn instead.
 -/
 def VEN_086.meta : CardDef :=
   { id := ⟨"VEN-086"⟩,
@@ -2017,8 +2439,11 @@ def VEN_086.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Gangplank, Naval: the effect is not written yet. -/
-def VEN_086 : CardDef := VEN_086.meta
+/-- Gangplank, Naval. -/
+def VEN_086 : CardDef :=
+  { VEN_086.meta with
+    abilities := [.passive (.empowered .self) [.chosenHarmToMight 3]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-087
 /--
@@ -2039,8 +2464,13 @@ def VEN_087.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Hextech Disc: the effect is not written yet. -/
-def VEN_087 : CardDef := VEN_087.meta
+/-- Hextech Disc. -/
+def VEN_087 : CardDef :=
+  { VEN_087.meta with
+    abilities := [.empower [.exhaustSelf],
+      .activated [.disempowerSelf, .pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [] (.prim (.playUnitTokenAt "Mech" none))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-088
 /--
@@ -2063,8 +2493,15 @@ def VEN_088.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jayce, Hammer in Hand: the effect is not written yet. -/
-def VEN_088 : CardDef := VEN_088.meta
+/-- Jayce, Hammer in Hand. -/
+def VEN_088 : CardDef :=
+  let grant (k : KeywordInst) := Effect.grant .self (.keyword .it k) .thisTurn
+  { VEN_088.meta with
+    abilities := [.triggered (.onSelf .ready) { body := .nop, modes := [
+      ⟨"Assault 2 を得る", [], grant ⟨.assault, .amount 2⟩⟩,
+      ⟨"Deflect 2 を得る", [], grant ⟨.deflect, .amount 2⟩⟩,
+      ⟨"Ganking を得る", [], grant ⟨.ganking, .none⟩⟩] } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-089
 /--
@@ -2084,8 +2521,17 @@ def VEN_089.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Wild Claw: the effect is not written yet. -/
-def VEN_089 : CardDef := VEN_089.meta
+/-- Wild Claw. Play the selected card, Recycle the rest, and optionally Empower the permanent. -/
+def VEN_089 : CardDef :=
+  let unitOrGear := Filter.either (.ofType .unit) (.ofType .gear)
+  let played := Selector.all .friendly .anywhere [.sameAs (.var pickVar)]
+  { VEN_089.meta with
+    spellEffect := some (.of [] (.bind pickVar (.const 0)
+      (.lookAtTop 5 (.seqOf [
+        .banishAndPlayLooked 5 (.ofList [unitOrGear]),
+        .recycleLooked,
+        .ifThen (.exists played) (.may (.prim (.empower played))) .nop])))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-090
 /--
@@ -2103,8 +2549,12 @@ def VEN_090.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Cataclysmic Duel: the effect is not written yet. -/
-def VEN_090 : CardDef := VEN_090.meta
+/-- Cataclysmic Duel. -/
+def VEN_090 : CardDef :=
+  { VEN_090.meta with
+    spellEffect := some (.of [] (.pickOwn .anywhere (.ofList [.ofType .unit])
+      (.prim (.kill (.all .any .anywhere [.ofType .unit, .not (.sameAs (.slotsFrom 0))]))))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-091
 /--
@@ -2126,8 +2576,15 @@ def VEN_091.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Corrupted Dragon: the effect is not written yet. -/
-def VEN_091 : CardDef := VEN_091.meta
+/-- Corrupted Dragon. -/
+def VEN_091 : CardDef :=
+  { VEN_091.meta with
+    abilities := [.passive (.cmp .lt (.add (.points .you) (.const 3)) .victoryScore)
+      [.entersReady .self],
+      .triggered { event := .attack, optional := true }
+        (.of [.targetOf .anyNumber .enemy .here [.ofType .unit, .might .le (.const 5)]]
+          (.prim (.move (.slotsFrom 0) .base))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-092
 /--
@@ -2161,7 +2618,7 @@ def VEN_092 : CardDef :=
       .passive (.empowered .self)
         [.keyword .self { keyword := .deflect, arg := .amount 1 },
          .keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-093
 /--
@@ -2184,8 +2641,12 @@ def VEN_093.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kinkou Lifeblade: the effect is not written yet. -/
-def VEN_093 : CardDef := VEN_093.meta
+/-- Kinkou Lifeblade. -/
+def VEN_093 : CardDef :=
+  { VEN_093.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 1), .keyword .self ⟨.ganking, .none⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-094
 /--
@@ -2206,8 +2667,16 @@ def VEN_094.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mask Mother: the effect is not written yet. -/
-def VEN_094 : CardDef := VEN_094.meta
+/-- Mask Mother. -/
+def VEN_094 : CardDef :=
+  { VEN_094.meta with
+    abilities := [.triggered (.onSelf .discard)
+      (.of [.targetOf (.upTo 1) .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.exists (.slot 0))
+          (.eitherOf (.ofList [
+            .payThen ⟨1, []⟩ (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn),
+            .nop])) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-095
 /--
@@ -2228,8 +2697,12 @@ def VEN_095.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Order Disciple: the effect is not written yet. -/
-def VEN_095 : CardDef := VEN_095.meta
+/-- Shadow Order Disciple. -/
+def VEN_095 : CardDef :=
+  { VEN_095.meta with
+    abilities := [.triggered { event := .move, optional := true, cost := .burn 1 }
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-096
 /--
@@ -2249,8 +2722,12 @@ def VEN_096.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadowblade Lurker: the effect is not written yet. -/
-def VEN_096 : CardDef := VEN_096.meta
+/-- Shadowblade Lurker. -/
+def VEN_096 : CardDef :=
+  { VEN_096.meta with
+    abilities := [.passive .always [.costMinus .self (.mul (.const 2)
+      (.count (.all .friendly .inTrash [.named "Shadowblade Lurker"])))]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-097
 /--
@@ -2273,8 +2750,13 @@ def VEN_097.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Spiderling: the effect is not written yet. -/
-def VEN_097 : CardDef := VEN_097.meta
+/-- Spiderling. -/
+def VEN_097 : CardDef :=
+  { VEN_097.meta with
+    unlimitedCopies := true,
+    abilities := [.passive .always
+      [.mightPlus .self (.count (.all .friendly .here [.ofType .unit, .sameNameAsSource, .notSelf]))]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-098
 /--
@@ -2295,8 +2777,13 @@ def VEN_098.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Stargazer: the effect is not written yet. -/
-def VEN_098 : CardDef := VEN_098.meta
+/-- Stargazer. -/
+def VEN_098 : CardDef :=
+  { VEN_098.meta with
+    abilities := [.passive .always
+      [.costMinusMin (.all .friendly .anywhere [.ofType .spell, .hasKeyword .flow, .inTrashZone])
+        (.const 2) 1]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-099
 /--
@@ -2318,8 +2805,17 @@ def VEN_099.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tornado Warrior: the effect is not written yet. -/
-def VEN_099 : CardDef := VEN_099.meta
+/-- Tornado Warrior. -/
+def VEN_099 : CardDef :=
+  let delayed : Trigger := { event := .at_ .endOfTurn, condition := .not .always }
+  { VEN_099.meta with
+    abilities := [
+      .triggered { event := .play, condition := .fromHidden, optional := true }
+        (.of [.targetOf .one .any .here []]
+          (.seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-099" 1))]))
+        .unlimited,
+      .triggered delayed (.of [] (.prim (.disempower .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-100
 /--
@@ -2339,8 +2835,11 @@ def VEN_100.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Up from the Deep: the effect is not written yet. -/
-def VEN_100 : CardDef := VEN_100.meta
+/-- Up from the Deep plays two Tentacle tokens, including when played with Flow. -/
+def VEN_100 : CardDef :=
+  { VEN_100.meta with
+    spellEffect := some (.of [] (.repeatN (.const 2) (.prim (.playUnitToken "Tentacle")))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-101
 /--
@@ -2362,8 +2861,17 @@ def VEN_101.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Gust Monk: the effect is not written yet. -/
-def VEN_101 : CardDef := VEN_101.meta
+/-- Gust Monk. -/
+def VEN_101 : CardDef :=
+  { VEN_101.meta with
+    additionalCost := some ⟨1, []⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.ifThen (.cmp .gt (.count (.all .any .inTrash [])) (.const 0))
+          (.seqOf [.prim (.banish (.one .any .inTrash [])),
+            .grant (.slot 0) (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn]) .nop))
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-102
 /--
@@ -2383,8 +2891,15 @@ def VEN_102.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ravenbloom Prefect: the effect is not written yet. -/
-def VEN_102 : CardDef := VEN_102.meta
+/-- Ravenbloom Prefect. -/
+def VEN_102 : CardDef :=
+  let watch (event : TriggerEvent) : Ability :=
+    .triggered { event, subject := .all .enemy .anywhere [.ofType .gear] }
+      (.of [] (.ifThen (.exists (.all .any .anywhere [.sameAs .self]))
+        (.may (.seqOf [.prim (.banish .self), .prim (.banish (.slot 0))])) .nop)) .unlimited
+  { VEN_102.meta with
+    abilities := [watch .play, watch .playToken],
+    status := .full }
 
 -- BEGIN GENERATED VEN-103
 /--
@@ -2406,8 +2921,12 @@ def VEN_103.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadows of the Past: the effect is not written yet. -/
-def VEN_103 : CardDef := VEN_103.meta
+/-- Shadows of the Past. -/
+def VEN_103 : CardDef :=
+  { VEN_103.meta with
+    spellEffect := some (.of [.targetOf (.upTo 2) .any .inTrash [.ofType .unit]]
+      (.prim (.returnToHand (.slotsFrom 0)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-104
 /--
@@ -2432,8 +2951,14 @@ def VEN_104.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tail-Cloaked Matriarch: the effect is not written yet. -/
-def VEN_104 : CardDef := VEN_104.meta
+/-- Tail-Cloaked Matriarch. -/
+def VEN_104 : CardDef :=
+  { VEN_104.meta with
+    abilities := [.triggered (Trigger.onSelf .becomeEmpowered)
+      (.of [.targetOf (.upTo 1) .friendly .inTrash
+        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
+        (.prim (.playAtBase (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-105
 /--
@@ -2454,8 +2979,14 @@ def VEN_105.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Twilight Step: the effect is not written yet. -/
-def VEN_105 : CardDef := VEN_105.meta
+/-- Twilight Step. -/
+def VEN_105 : CardDef :=
+  { VEN_105.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit, .might .le (.const 3)]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil .nop },
+    status := .full }
 
 -- BEGIN GENERATED VEN-106
 /--
@@ -2476,8 +3007,13 @@ def VEN_106.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Wind and Ghosts: the effect is not written yet. -/
-def VEN_106 : CardDef := VEN_106.meta
+/-- Wind and Ghosts. -/
+def VEN_106 : CardDef :=
+  { VEN_106.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen (.matches (.slot 0) (.might .le (.const 3)))
+        (.prim (.banish (.slot 0))) (.prim (.returnToHand (.slot 0))))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-107
 /--
@@ -2496,8 +3032,13 @@ def VEN_107.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Discord: the effect is not written yet. -/
-def VEN_107 : CardDef := VEN_107.meta
+/-- Decree of Discord. -/
+def VEN_107 : CardDef :=
+  { VEN_107.meta with
+    spellEffect := some (.of
+      [.targetOf (.combinedMightAtMost 5) .enemy .anywhere [.ofType .unit, .domain .order]]
+      (.prim (.returnToHand (.slotsFrom 0)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-108
 /--
@@ -2517,8 +3058,17 @@ def VEN_108.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Forgotten Relic: the effect is not written yet. -/
-def VEN_108 : CardDef := VEN_108.meta
+/-- Forgotten Relic. -/
+def VEN_108 : CardDef :=
+  let burn := EffectDef.of [] (.prim (.burnWithUnitTrigger (.const 1) 2))
+  { VEN_108.meta with
+    abilities := [
+      .triggered (.onSelf .play) burn .unlimited,
+      .triggered (.onSelf (.at_ .beginning)) burn .unlimited,
+      .triggered (.onSelf .linkedBurnUnit)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.grant (.slot 0) (.mightPlus .it .eventAmount) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-109
 /--
@@ -2541,8 +3091,14 @@ def VEN_109.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Illaoi, Prophet of the Great Kraken: the effect is not written yet. -/
-def VEN_109 : CardDef := VEN_109.meta
+/-- Illaoi makes a Tentacle on play, Conquer or Hold and gains Might for friendly Unit tokens. -/
+def VEN_109 : CardDef :=
+  let make := EffectDef.of [] (.prim (.playUnitToken "Tentacle"))
+  { VEN_109.meta with
+    abilities := [.triggered (.onSelf .play) make .unlimited,
+      .triggered (.onSelf .scored) make .unlimited,
+      .passive .always [.mightPlus .self (.count (.all .friendly .anywhere [.ofType .unit, .token]))]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-110
 /--
@@ -2565,8 +3121,14 @@ def VEN_110.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Mel, Defiant Soul: the effect is not written yet. -/
-def VEN_110 : CardDef := VEN_110.meta
+/-- Mel, Defiant Soul. -/
+def VEN_110 : CardDef :=
+  { VEN_110.meta with
+    abilities := [.empower [.discardMatching 1 (.ofList [.ofType .spell])],
+      .triggered (.onSelf .becomeEmpowered)
+        (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit, .might .le (.const 3)]]
+          (.prim (.banish (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-111
 /--
@@ -2586,8 +3148,14 @@ def VEN_111.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Minah Swiftfoot: the effect is not written yet. -/
-def VEN_111 : CardDef := VEN_111.meta
+/-- Minah Swiftfoot. -/
+def VEN_111 : CardDef :=
+  { VEN_111.meta with
+    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+      { body := .nop, modes := [
+        ⟨"全員が手札を1枚捨てる", [], .prim (.discard .eachPlayer (.const 1))⟩,
+        ⟨"全員がカードを1枚引く", [], .prim (.draw .eachPlayer (.const 1))⟩] } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-112
 /--
@@ -2612,8 +3180,18 @@ def VEN_112.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Zed, Without a Sound: the effect is not written yet. -/
-def VEN_112 : CardDef := VEN_112.meta
+/-- Zed makes a Shadow Clone at his Base on Conquer and can swap locations with a friendly clone. -/
+def VEN_112 : CardDef :=
+  let clone := Filter.named "Shadow Clone"
+  { VEN_112.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [] (.prim (.playUnitTokenAt "Shadow Clone" none))) .unlimited,
+      .activated [.pay ⟨1, [.domain .chaos]⟩] .action
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit, clone]]
+          (.ifThen (.and (.exists (.all .any .anywhere [.sameAs .self]))
+            (.exists (.all .friendly .anywhere [.ofType .unit, clone, .sameAs (.slot 0)])))
+            (.prim (.swapPlaces .self (.slot 0))) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-113
 /--
@@ -2636,8 +3214,15 @@ def VEN_113.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kennen, Storm of Shuriken: the effect is not written yet. -/
-def VEN_113 : CardDef := VEN_113.meta
+/-- Kennen, Storm of Shuriken. -/
+def VEN_113 : CardDef :=
+  { VEN_113.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.prim (.burn .you (.const 2)))) .unlimited,
+      .triggered (.onSelf .conquer)
+        (.of [.targetOf .one .friendly .inTrash [.ofType .spell]]
+          (.grant (.slot 0) .flowAtBaseCost .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-114
 /--
@@ -2662,8 +3247,16 @@ def VEN_114.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kharox: the effect is not written yet. -/
-def VEN_114 : CardDef := VEN_114.meta
+/-- Kharox. The opponent is chosen before Burn. Their Trash supplies the play choice afterward. -/
+def VEN_114 : CardDef :=
+  let units := [.ofType .unit, .ownedByPlayerTarget 0]
+  { VEN_114.meta with
+    abilities := [.triggered (.onSelf .becomeEmpowered)
+      { playerTarget := some .enemy,
+        body := .seqOf [.prim (.burn (.chosen 0) (.const 3)),
+          .ifThen (.cmp .gt (.count (Selector.all .any .inTrash units)) (.const 0))
+            (.may (.prim (.play (Selector.one .any .inTrash units)))) .nop] } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-115
 /--
@@ -2684,8 +3277,14 @@ def VEN_115.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ocean Drake: the effect is not written yet. -/
-def VEN_115 : CardDef := VEN_115.meta
+/-- Ocean Drake. -/
+def VEN_115 : CardDef :=
+  { VEN_115.meta with
+    abilities := [.passive .always [.playToBf [.openBf], .playToOpenBf],
+      .triggered (.onSelf .play)
+        (.of [.targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.tag ⟨"Dragon"⟩)]]
+          (.prim (.returnToHand (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-116
 /--
@@ -2705,8 +3304,12 @@ def VEN_116.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dragon Form: the effect is not written yet. -/
-def VEN_116 : CardDef := VEN_116.meta
+/-- Dragon Form sets the chosen Unit's base Might to 5 for the turn. -/
+def VEN_116 : CardDef :=
+  { VEN_116.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.setBaseMight (.slot 0) (.const 5)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-117
 /--
@@ -2729,8 +3332,14 @@ def VEN_117.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Disciple of Shen: the effect is not written yet. -/
-def VEN_117 : CardDef := VEN_117.meta
+/-- Disciple of Shen. -/
+def VEN_117 : CardDef :=
+  { VEN_117.meta with
+    abilities := [.passive
+      (.and (.matches .self .onBattlefield)
+        (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1)))
+      [.keyword .self ⟨.shield, .amount 3⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-118
 /--
@@ -2754,7 +3363,7 @@ def VEN_118.meta : CardDef :=
 /-- Horns of the Dragon. -/
 def VEN_118 : CardDef :=
   { VEN_118.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-119
 /--
@@ -2775,8 +3384,12 @@ def VEN_119.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Keeper of Law: the effect is not written yet. -/
-def VEN_119 : CardDef := VEN_119.meta
+/-- Keeper of Law. -/
+def VEN_119 : CardDef :=
+  { VEN_119.meta with
+    abilities := [.passive (.exists (.all .any .atBattlefield [.controlled, .unitsHere .eq 2]))
+      [.costMinus .self (.const 2), .costPower .self (.const 1) (some .order) false]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-120
 /--
@@ -2805,7 +3418,7 @@ def VEN_120 : CardDef :=
     abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
         (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
         (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-121
 /--
@@ -2825,8 +3438,14 @@ def VEN_121.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Reluctant Leader: the effect is not written yet. -/
-def VEN_121 : CardDef := VEN_121.meta
+/-- Reluctant Leader. -/
+def VEN_121 : CardDef :=
+  let watch (event : TriggerEvent) : Ability :=
+    .triggered { event, subject := .all .friendly .anywhere [.ofType .unit, .notSelf] }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
+  { VEN_121.meta with
+    abilities := [watch .play, watch .playToken],
+    status := .full }
 
 -- BEGIN GENERATED VEN-122
 /--
@@ -2849,8 +3468,12 @@ def VEN_122.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Solari Sunhawk: the effect is not written yet. -/
-def VEN_122 : CardDef := VEN_122.meta
+/-- Solari Sunhawk. -/
+def VEN_122 : CardDef :=
+  { VEN_122.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 1), .keyword .self ⟨.deflect, .amount 2⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-123
 /--
@@ -2874,7 +3497,7 @@ def VEN_123.meta : CardDef :=
 /-- Soulspinner. -/
 def VEN_123 : CardDef :=
   { VEN_123.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-124
 /--
@@ -2896,8 +3519,13 @@ def VEN_124.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Escaped Grayback: the effect is not written yet. -/
-def VEN_124 : CardDef := VEN_124.meta
+/-- Escaped Grayback. -/
+def VEN_124 : CardDef :=
+  { VEN_124.meta with
+    abilities := [.empower [.killFriendly .one (.ofList [.ofType .unit])] 1
+        [.targetOf .one .friendly .anywhere [.ofType .unit]],
+      .passive (.empowered .self) [.mightPlus .self (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-125
 /--
@@ -2918,8 +3546,14 @@ def VEN_125.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Hungry Wolf: the effect is not written yet. -/
-def VEN_125 : CardDef := VEN_125.meta
+/-- Hungry Wolf can ready itself and gain Might once each turn after choosing an enemy Unit. -/
+def VEN_125 : CardDef :=
+  { VEN_125.meta with
+    abilities := [.activated [.pay ⟨0, [.domain .order]⟩] .normal
+      (.of [] (.ifThen (.noted .choseEnemyUnit) (.seqOf [.prim (.ready .self),
+        .grant .self (.mightPlus .it (.const 1)) .thisTurn]) .nop))
+      (.perTurn 1)],
+    status := .full }
 
 -- BEGIN GENERATED VEN-126
 /--
@@ -2945,7 +3579,7 @@ def VEN_126 : CardDef :=
   { VEN_126.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
     (.preventNext (.slot 0) (.const 7) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-127
 /--
@@ -2967,8 +3601,13 @@ def VEN_127.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Lacerate: the effect is not written yet. -/
-def VEN_127 : CardDef := VEN_127.meta
+/-- Lacerate. -/
+def VEN_127 : CardDef :=
+  { VEN_127.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.disempower (.slot 0)),
+        .ifThen (.matches (.slot 0) (.might .le (.const 3))) (.prim (.kill (.slot 0))) .nop])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-128
 /--
@@ -2992,8 +3631,12 @@ def VEN_128.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Noxian Emissary: the effect is not written yet. -/
-def VEN_128 : CardDef := VEN_128.meta
+/-- Noxian Emissary. -/
+def VEN_128 : CardDef :=
+  { VEN_128.meta with
+    abilities := [.triggered { event := .deathknell, condition := .leftEmpowered }
+      (.of [] (.prim (.create "Recruit" (.const 2) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-129
 /--
@@ -3014,8 +3657,14 @@ def VEN_129.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sacred Protector: the effect is not written yet. -/
-def VEN_129 : CardDef := VEN_129.meta
+/-- Sacred Protector. -/
+def VEN_129 : CardDef :=
+  { VEN_129.meta with
+    abilities := [.passive
+      (.not (.and (.matches .self .onBattlefield)
+        (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1))))
+      [.noCombatDamage]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-130
 /--
@@ -3038,8 +3687,12 @@ def VEN_130.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Aurok General: the effect is not written yet. -/
-def VEN_130 : CardDef := VEN_130.meta
+/-- Aurok General. -/
+def VEN_130 : CardDef :=
+  { VEN_130.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus (.all .friendly .anywhere [.ofType .unit, .empowered]) (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-131
 /--
@@ -3057,8 +3710,13 @@ def VEN_131.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Unity: the effect is not written yet. -/
-def VEN_131 : CardDef := VEN_131.meta
+/-- Decree of Unity. -/
+def VEN_131 : CardDef :=
+  { VEN_131.meta with
+    spellEffect := some (.of
+      [.targetOf .one .enemy .anywhere [.domain .chaos, .either (.ofType .unit) (.ofType .gear)]]
+      (.prim (.kill (.slot 0)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-132
 /--
@@ -3079,8 +3737,14 @@ def VEN_132.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Fallen Feline: the effect is not written yet. -/
-def VEN_132 : CardDef := VEN_132.meta
+/-- Fallen Feline names a spell on resolution and prohibits opponents from playing it while
+Fallen Feline is at a Battlefield (CR 054, 759-762). -/
+def VEN_132 : CardDef :=
+  { VEN_132.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.nameCard .spell)) .unlimited,
+      .passive (.matches .self .onBattlefield) [.oppsCantPlayNamed]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-133
 /--
@@ -3103,8 +3767,19 @@ def VEN_133.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Glowstone: the effect is not written yet. -/
-def VEN_133 : CardDef := VEN_133.meta
+/-- Glowstone changes controller and is Recalled, then threatens the units of its current
+controller during that player's Ending Step (CR 317.1, 355.7, 456-460, 739-743). -/
+def VEN_133 : CardDef :=
+  { VEN_133.meta with
+    abilities := [
+      .activated [.disempowerSelf, .exhaustSelf] .normal
+        { playerTarget := some .any
+          body := .eachPlayer (.chosen 0) (.seqOf [
+            .prim (.takeControl .self), .prim (.recall .self false)]) } .unlimited,
+      .triggered { event := .at_ .endOfTurn }
+        (.of [] (.seqOf [.prim (.kill .self),
+          .prim (.deal (.all .friendly .anywhere [.ofType .unit]) (.const 5))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-134
 /--
@@ -3129,8 +3804,16 @@ def VEN_134.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kayle, Justified: the effect is not written yet. -/
-def VEN_134 : CardDef := VEN_134.meta
+/-- Kayle, Justified. -/
+def VEN_134 : CardDef :=
+  { VEN_134.meta with
+    empowerLimit := 3,
+    abilities := [.passive .always [.mightPlus .self (.mul (.const 2) .empowerCount)],
+      .passive (.cmp .eq .empowerCount (.const 3))
+        [.keyword .self ⟨.deflect, .amount 3⟩, .keyword .self ⟨.ganking, .none⟩],
+      -- The printed Empower can be activated while Kayle has three instances of Empowered.
+      .activated [.pay ⟨3, []⟩] .normal (.of [] (.prim (.empower .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-135
 /--
@@ -3155,8 +3838,16 @@ def VEN_135.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kennen, Keeper of Balance: the effect is not written yet. -/
-def VEN_135 : CardDef := VEN_135.meta
+/-- Kennen, Keeper of Balance. -/
+def VEN_135 : CardDef :=
+  let stun := EffectDef.of [.targetOf .one .any .anywhere [.ofType .unit]] (.prim (.stun (.slot 0)))
+  { VEN_135.meta with
+    abilities := [
+      .triggered { event := .play, optional := true, cost := .energy 2 } stun .unlimited,
+      .triggered { event := .attack, optional := true, cost := .energy 2 } stun .unlimited,
+      .passive (.exists (.all .enemy .here [.ofType .unit, .stunned]))
+        [.mightPlus .self (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-136
 /--
@@ -3181,8 +3872,14 @@ def VEN_136.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ambessa, Respected and Feared: the effect is not written yet. -/
-def VEN_136 : CardDef := VEN_136.meta
+/-- Ambessa, Respected and Feared. -/
+def VEN_136 : CardDef :=
+  { VEN_136.meta with
+    abilities := [.passive (.empowered .self) [.keyword .self ⟨.assault, .amount 2⟩],
+      .triggered { event := .attack, condition := .empowered .self }
+        (.of [.targetOf .one .enemy .here [.ofType .unit, .mightLtOf .self]]
+          (.prim (.kill (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-137
 /--
@@ -3211,8 +3908,12 @@ def VEN_137.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shady Spectacles: the effect is not written yet. -/
-def VEN_137 : CardDef := VEN_137.meta
+/-- Shady Spectacles. The attachment happens before its copy instruction (CR 370.1.b.1). -/
+def VEN_137 : CardDef :=
+  { VEN_137.meta with
+    abilities := [.replacement .attach .always (.of [] (.prim (.copyAttachedFrom
+      (.one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]))))],
+    status := .full }
 
 -- BEGIN GENERATED VEN-138
 /--
@@ -3235,8 +3936,14 @@ def VEN_138.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shen, Leader of the Kinkou Order: the effect is not written yet. -/
-def VEN_138 : CardDef := VEN_138.meta
+/-- Shen, Leader of the Kinkou Order. -/
+def VEN_138 : CardDef :=
+  { VEN_138.meta with
+    abilities := [.triggered
+      { event := .hold,
+        condition := .cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-139
 /--
@@ -3259,8 +3966,15 @@ def VEN_139.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rogue Assassin: the effect is not written yet. -/
-def VEN_139 : CardDef := VEN_139.meta
+/-- Rogue Assassin. -/
+def VEN_139 : CardDef :=
+  { VEN_139.meta with
+    abilities := [.activated [.exhaustSelf] .action
+      (.of [.targetOf .one .friendly .atBattlefield [.ofType .unit, .atShowdown]]
+        (.seqOf [.ifThen .yourTurn
+          (.seqOf [.prim (.move (.slot 0) .base),
+            .ifThen (.empowered .self) (.prim (.ready (.slot 0))) .nop]) .nop])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-140
 /--
@@ -3282,8 +3996,15 @@ def VEN_140.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Shuriken Flip: the effect is not written yet. -/
-def VEN_140 : CardDef := VEN_140.meta
+/-- Shuriken Flip. The required friendly target fills the first slot so the other can be omitted. -/
+def VEN_140 : CardDef :=
+  { VEN_140.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf (.upTo 1) .enemy .atBattlefield [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .seqOf [.prim (.deal (.slot 1) (.const 2)), .moveChoosing 0 true .nil .nop] },
+    status := .full }
 
 -- BEGIN GENERATED VEN-141
 /--
@@ -3303,8 +4024,13 @@ def VEN_141.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Butcher of the Sands: the effect is not written yet. -/
-def VEN_141 : CardDef := VEN_141.meta
+/-- Butcher of the Sands pays two Power and Exhaust to add two Energy for Units
+and their activated abilities (CR 357, 430, 445). -/
+def VEN_141 : CardDef :=
+  { VEN_141.meta with
+    abilities := [.activated [.pay ⟨0, [.any, .any]⟩, .exhaustSelf] .reaction
+      (.of [] (.prim (.addUnitEnergy .you (.const 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-142
 /--
@@ -3325,8 +4051,18 @@ def VEN_142.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dominus: the effect is not written yet. -/
-def VEN_142 : CardDef := VEN_142.meta
+/-- Dominus snapshots the chosen Unit's current Might and grants it an ability for the turn
+(CR 376-381, 433, 479.3). -/
+def VEN_142 : CardDef :=
+  { VEN_142.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+      body := .seqOf [.prim (.double (.slot 0)),
+        .prim (.grantActivation (.slot 0) { card := ⟨"VEN-142"⟩, index := 0 })]
+      recheckTargets := true }
+    grants := [.activated [.pay ⟨0, [.any, .any]⟩] .normal
+      (.of [] (.prim (.ready .self))) .unlimited]
+    status := .full }
 
 -- BEGIN GENERATED VEN-143
 /--
@@ -3346,8 +4082,15 @@ def VEN_143.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Master of Shadows: the effect is not written yet. -/
-def VEN_143 : CardDef := VEN_143.meta
+/-- Master of Shadows. -/
+def VEN_143 : CardDef :=
+  { VEN_143.meta with
+    abilities := [.triggered (.onSelf .banishOwn)
+      (.of [] (.prim (.empower .self))) .unlimited,
+      .activated [.disempowerSelf, .exhaustSelf] .action
+        (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 1))]))
+        .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-144
 /--
@@ -3371,8 +4114,12 @@ def VEN_144.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Death Mark: the effect is not written yet. -/
-def VEN_144 : CardDef := VEN_144.meta
+/-- Death Mark burns three cards before playing a Shadow Clone. -/
+def VEN_144 : CardDef :=
+  { VEN_144.meta with
+    spellEffect := some (.of [] (.seqOf
+      [.prim (.burn .you (.const 3)), .prim (.playUnitToken "Shadow Clone")])),
+    status := .full }
 
 -- BEGIN GENERATED VEN-145
 /--
@@ -3391,8 +4138,16 @@ def VEN_145.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Curator of the Sands: the effect is not written yet. -/
-def VEN_145 : CardDef := VEN_145.meta
+/-- Curator of the Sands watches base Energy costs, and pays Exhaust when its trigger is finalized
+(CR 206-206.1, 355.9, 383.3, 415.4). -/
+def VEN_145 : CardDef :=
+  { VEN_145.meta with
+    abilities := [
+      .triggered { event := .playAtBaseEnergy 7, optional := true, cost := .exhaustSelf }
+        { choices := [.targetOf (.upTo 2) .any .atBase [.ofType .rune]]
+          body := .prim (.ready (.slotsFrom 0))
+          recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-146
 /--
@@ -3412,8 +4167,18 @@ def VEN_146.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Siphoning Strike: the effect is not written yet. -/
-def VEN_146 : CardDef := VEN_146.meta
+/-- Siphoning Strike deals 4 or 7 damage and channels an exhausted Rune if that Unit dies
+this turn. -/
+def VEN_146 : CardDef :=
+  { VEN_146.meta with
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen (.matches (.slot 0) (.both (.ofType .unit) .onBattlefield))
+        (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
+          .ifThen (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7))
+            (.prim (.deal (.slot 0) (.const 7))) (.prim (.deal (.slot 0) (.const 4)))]) .nop)),
+    status := .full }
 
 -- BEGIN GENERATED VEN-147
 /--
@@ -3433,8 +4198,13 @@ def VEN_147.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Eye of Twilight: the effect is not written yet. -/
-def VEN_147 : CardDef := VEN_147.meta
+/-- Eye of Twilight. -/
+def VEN_147 : CardDef :=
+  { VEN_147.meta with
+    abilities := [.activated [.exhaustSelf] .action
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.keyword .it ⟨.tank, .none⟩) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-148
 /--
@@ -3457,8 +4227,17 @@ def VEN_148.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Shadow Dash: the effect is not written yet. -/
-def VEN_148 : CardDef := VEN_148.meta
+/-- Shadow Dash. -/
+def VEN_148 : CardDef :=
+  let allies := Selector.all .friendly .atBattlefield [.ofType .unit, .at_ (.var pickVar)]
+  let bump := Effect.ifThen (.cmp .eq (.count allies) (.const 2))
+    (.grant allies (.mightPlus .it (.const 1)) .thisTurn) .nop
+  { VEN_148.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, false, .ofList [.myUnitsHere]⟩
+      body := .moveChoosing 0 false (.ofList [.myUnitsHere]) bump },
+    status := .full }
 
 -- BEGIN GENERATED VEN-149
 /--
@@ -3480,8 +4259,17 @@ def VEN_149.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Defender of Tomorrow: the effect is not written yet. -/
-def VEN_149 : CardDef := VEN_149.meta
+/-- Defender of Tomorrow. -/
+def VEN_149 : CardDef :=
+  { VEN_149.meta with
+    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .gear]]
+        (.prim (.ready (.slot 0)))) .unlimited,
+      .activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .gear],
+          .targetOf .one .any .anywhere [.ofType .gear, .not (.sameAs (.slot 0))]]
+          (.ifThen (.empowered .self) (.prim (.ready (.slotsFrom 0))) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-150
 /--
@@ -3500,8 +4288,13 @@ def VEN_150.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Acceleration Gate: the effect is not written yet. -/
-def VEN_150 : CardDef := VEN_150.meta
+/-- Acceleration Gate. -/
+def VEN_150 : CardDef :=
+  { VEN_150.meta with
+    spellEffect := some (.of [.targetOf (.upTo 4) .any .anywhere
+      [.either (.ofType .unit) (.either (.ofType .gear) (.ofType .rune))]]
+      (.prim (.ready (.slotsFrom 0)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-151
 /--
@@ -3520,8 +4313,16 @@ def VEN_151.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Soul's Reflection: the effect is not written yet. -/
-def VEN_151 : CardDef := VEN_151.meta
+/-- Soul's Reflection. -/
+def VEN_151 : CardDef :=
+  { VEN_151.meta with
+    abilities := [.triggered
+      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      (.of [] (.prim (.empower .self))) .unlimited,
+      .activated [.disempowerSelf, .exhaustSelf] .normal
+        (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+          (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-152
 /--
@@ -3543,8 +4344,18 @@ def VEN_152.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Rebuttal: the effect is not written yet. -/
-def VEN_152 : CardDef := VEN_152.meta
+/-- Rebuttal counters a low-Energy Spell unless its controller pays to take it. -/
+def VEN_152 : CardDef :=
+  let power : Cost := ⟨0, [.any]⟩
+  let counter := Effect.prim (.counter (.slot 0))
+  { VEN_152.meta with
+    spellEffect := some { EffectDef.of [.targetOf .one .any .onChain [.ofType .spell, .cost .le (.const 4)]]
+      (.ifThen (.exists (.slot 0))
+        (.eitherOf (.ofList [
+          .payThen power (.seqOf [.prim (.takeControl (.slot 0)), .remakeSpellChoices (.slot 0)]),
+          counter]))
+        .nop) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED VEN-153
 /--
@@ -3563,8 +4374,16 @@ def VEN_153.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Matriarch of War: the effect is not written yet. -/
-def VEN_153 : CardDef := VEN_153.meta
+/-- Matriarch of War. -/
+def VEN_153 : CardDef :=
+  { VEN_153.meta with
+    abilities := [.triggered
+      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      (.of [] (.prim (.empower .self))) .unlimited,
+      .activated [.disempowerSelf, .pay ⟨0, [.any]⟩, .exhaustSelf] .normal
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+          (.prim (.ready (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-154
 /--
@@ -3586,8 +4405,13 @@ def VEN_154.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Public Execution: the effect is not written yet. -/
-def VEN_154 : CardDef := VEN_154.meta
+/-- Public Execution. -/
+def VEN_154 : CardDef :=
+  { VEN_154.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+      .targetOf .one .enemy .anywhere [.ofType .unit, .mightLtOf (.slot 0)]]
+      (.prim (.kill (.slot 1)))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-155
 /--
@@ -3608,8 +4432,16 @@ def VEN_155.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Heart of the Tempest: the effect is not written yet. -/
-def VEN_155 : CardDef := VEN_155.meta
+/-- Heart of the Tempest. -/
+def VEN_155 : CardDef :=
+  { VEN_155.meta with
+    abilities := [.triggered
+      { event := .play, subject := .all .friendly .anywhere [.playedFromElsewhere] }
+      (.of [] (.prim (.empower .self))) .unlimited,
+      .activated [.disempowerSelf, .exhaustSelf] .action
+        (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+          (.grant (.slot 0) (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-156
 /--
@@ -3632,8 +4464,17 @@ def VEN_156.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Lightning Rush: the effect is not written yet. -/
-def VEN_156 : CardDef := VEN_156.meta
+/-- Lightning Rush. -/
+def VEN_156 : CardDef :=
+  let size := Amount.count (.all .friendly .inMainDeck [])
+  let top := Selector.one .friendly .inMainDeck [.top 3]
+  { VEN_156.meta with
+    spellEffect := some (.of []
+      (.bind ⟨"deck"⟩ size (.seqOf [.prim (.lookTop 3),
+        .ifThen (.cmp .gt (.var ⟨"deck"⟩) (.const 0)) (.may (.prim (.returnToHand top))) .nop,
+        .repeatN (.sub (.min (.const 3) (.var ⟨"deck"⟩)) (.sub (.var ⟨"deck"⟩) size))
+          (.prim (.bin (.one .friendly .inMainDeck [.top 1])))]))),
+    status := .full }
 
 -- BEGIN GENERATED VEN-157
 /--
@@ -3650,8 +4491,12 @@ def VEN_157.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dragon Roost: the effect is not written yet. -/
-def VEN_157 : CardDef := VEN_157.meta
+/-- Dragon Roost offers any player a paid destination for a Dragon during finalization
+(CR 355.1, 355.17, 356.4). -/
+def VEN_157 : CardDef :=
+  { VEN_157.meta with
+    abilities := [.passive .always [.playHereFor ⟨"Dragon"⟩ ⟨0, [.any, .any]⟩]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-158
 /--
@@ -3667,8 +4512,11 @@ def VEN_158.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Heisho, Shell of the World: the effect is not written yet. -/
-def VEN_158 : CardDef := VEN_158.meta
+/-- Heisho, Shell of the World. -/
+def VEN_158 : CardDef :=
+  { VEN_158.meta with
+    abilities := [.passive .always [.ignoreDeflectHere]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-159
 /--
@@ -3684,8 +4532,12 @@ def VEN_159.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kinkou Temple: the effect is not written yet. -/
-def VEN_159 : CardDef := VEN_159.meta
+/-- Kinkou Temple. -/
+def VEN_159 : CardDef :=
+  { VEN_159.meta with
+    abilities := [.passive .always
+      [.mightPlusWithKeyword (.all .any .here [.ofType .unit]) .tank (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-160
 /--
@@ -3702,8 +4554,9 @@ def VEN_160.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mystic Vortex: the effect is not written yet. -/
-def VEN_160 : CardDef := VEN_160.meta
+/-- Mystic Vortex increases the Power cost of Reaction cards during its Showdown. -/
+def VEN_160 : CardDef :=
+  { VEN_160.meta with abilities := [.passive .always [.showdownReactionTax 1]], status := .full }
 
 -- BEGIN GENERATED VEN-161
 /--
@@ -3720,8 +4573,9 @@ def VEN_161.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Piltovan Forge: the effect is not written yet. -/
-def VEN_161 : CardDef := VEN_161.meta
+/-- Piltovan Forge discounts the controller's first Gear ability each turn. -/
+def VEN_161 : CardDef :=
+  { VEN_161.meta with abilities := [.passive .always [.firstGearAbilityLess 1]], status := .full }
 
 -- BEGIN GENERATED VEN-162
 /--
@@ -3737,8 +4591,15 @@ def VEN_162.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Protective Sands: the effect is not written yet. -/
-def VEN_162 : CardDef := VEN_162.meta
+/-- Protective Sands. -/
+def VEN_162 : CardDef :=
+  { VEN_162.meta with
+    abilities := [.triggered
+      { event := .youConquer,
+        condition := .cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4) }
+      (.of [] (.ifThen (.canPay ⟨1, []⟩)
+        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-163
 /--
@@ -3755,8 +4616,12 @@ def VEN_163.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Risen Altar: the effect is not written yet. -/
-def VEN_163 : CardDef := VEN_163.meta
+/-- Risen Altar discounts Empower abilities of the controller's Units here. -/
+def VEN_163 : CardDef :=
+  { VEN_163.meta with
+    keywords := [],
+    abilities := [.passive .always [.empowerHereLess 1]],
+    status := .full }
 
 -- BEGIN GENERATED VEN-164
 /--
@@ -3773,8 +4638,9 @@ def VEN_164.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sandswept Tomb: the effect is not written yet. -/
-def VEN_164 : CardDef := VEN_164.meta
+/-- Sandswept Tomb reduces the Power cost of Spells that choose a friendly Unit there. -/
+def VEN_164 : CardDef :=
+  { VEN_164.meta with abilities := [.passive .always [.friendlyTargetPowerCut 1]], status := .full }
 
 -- BEGIN GENERATED VEN-165
 /--
@@ -3790,8 +4656,12 @@ def VEN_165.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Temple: the effect is not written yet. -/
-def VEN_165 : CardDef := VEN_165.meta
+/-- Shadow Temple. -/
+def VEN_165 : CardDef :=
+  { VEN_165.meta with
+    abilities := [.triggered (.onSelf .youHold)
+      (.of [] (.prim (.burn .you (.const 3)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-166
 /--
@@ -3807,8 +4677,12 @@ def VEN_166.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Threshold of the Gray: the effect is not written yet. -/
-def VEN_166 : CardDef := VEN_166.meta
+/-- Threshold of the Gray. -/
+def VEN_166 : CardDef :=
+  { VEN_166.meta with
+    abilities := [.triggered (.onSelf .combatStart)
+      (.of [] (.prim (.addEnergy .combatSides (.const 1) none))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED VEN-T04
 /--
@@ -3829,7 +4703,7 @@ def VEN_T04.meta : CardDef :=
 /-- Recruit. -/
 def VEN_T04 : CardDef :=
   { VEN_T04.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Vendetta. -/

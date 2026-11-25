@@ -121,7 +121,7 @@ meta def afterUse : Option (GameState × List Event) :=
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with
   | some (_, p, _, a, e, _), some (s1, es) =>
-    es.contains (.activated p a 0) &&
+    es.contains (.activated p a 0 (some 0)) &&
     (s1.obj? a).any (fun o => o.exhausted && o.used == [0]) &&
     (s1.zone .chain).length == 1 &&
     (match (s1.zone .chain).head?.bind s1.obj? with
@@ -233,7 +233,7 @@ meta def sceneSpell : Option (GameState × PlayerId × PlayerId × ObjId × ObjI
   | some (s, _, q, a, c, d) =>
     (legalFrameActions s).contains ⟨.player q, .playCard c ⟨1, []⟩ [a]⟩ &&
     !(legalFrameActions s).any (fun x => match x.kind with
-      | .playCard c' _ _ => c' == d | _ => false) &&
+      | .playCard c' _ _ _ _ _ => c' == d | _ => false) &&
     reactable s q c ⟨1, []⟩ [a] && !reactable s q d ⟨1, []⟩ []
   | none => false
 
@@ -289,7 +289,7 @@ meta def afterSpell : Option (GameState × GameState) :=
     | none => false
   | none => false
 
--- an ability with a cost the model cannot pay yet is never usable (CR 361)
+-- Discard is a supported cost, and activation requires the selected hand cards (CR 423.3).
 #guard match mainC 1 with
   | some s0 =>
     let p := s0.active.getD ⟨0⟩
@@ -297,7 +297,8 @@ meta def afterSpell : Option (GameState × GameState) :=
     | some (s1, a) =>
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
-        costPlan [.discard 1] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
+        costPlan [.discard 1] == some (false, none) &&
+      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
         costPlan [.exhaustSelf, .pay ⟨1, []⟩] == some (true, some ⟨1, []⟩) &&
         costPlan [.exhaustSelf, .exhaustSelf] == none
       | none => false

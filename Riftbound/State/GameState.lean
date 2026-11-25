@@ -34,6 +34,44 @@ structure TurnFx where
   kind : TurnEffect
   /-- The object it is about, if it is about one. -/
   target : Option ObjId := none
+  /-- The number of cards the player had finalized when a next-card discount was created. -/
+  playCount : Nat := 0
+deriving DecidableEq, Repr
+
+/-- The sides and all Unit objects that participated in the current Combat (CR 466, 468). -/
+structure CombatParticipation where
+  /-- Where the Combat took place. -/
+  battlefield : ObjId
+  /-- The attacking player. -/
+  attacker : PlayerId
+  /-- The defending player. -/
+  defender : PlayerId
+  /-- Units that received a designation, including those that have since moved away. -/
+  units : List ObjId
+  /-- The Combat Cleanup recalled at least one attacker, giving the Combat no result (CR 468.3.d). -/
+  recalled : Bool := false
+deriving DecidableEq, Repr
+
+/-- The point of a play that history records (CR 420.4). -/
+inductive PlayMoment where
+  /-- Choices and costs have been finalized, even if the card is later countered. -/
+  | finalized
+  /-- The permanent or Spell has resolved. -/
+  | resolved
+deriving DecidableEq, Repr
+
+/-- A completed part of a card's play, independent of the object's later zones or controller. -/
+structure CardPlay where
+  /-- The player who performed this part of the play. -/
+  who : PlayerId
+  /-- The object identifier at this point of the play. -/
+  object : ObjId
+  /-- The types of the card at that point, including both types of a Unit Gear. -/
+  types : List CardType
+  /-- The turn in which it happened. -/
+  turn : Nat
+  /-- Whether this is a finalization or a resolved play. -/
+  moment : PlayMoment
 deriving DecidableEq, Repr
 
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
@@ -76,10 +114,16 @@ structure GameState where
   /-- The cards drawn in the current turn: the player who drew, and the turn (older ones are
   dropped as a card is drawn). -/
   drawLog : List (PlayerId × Nat) := []
+  /-- Finalizations and resolved permanent plays, newest first (CR 420.4). -/
+  playLog : List CardPlay := []
   /-- The players who take an extra turn next, in order (Time Warp). -/
   extraTurns : List PlayerId := []
   /-- How many of the turns taken were extra turns: the turn order goes on as if they were not. -/
   turnShift : Nat := 0
+  /-- Who took each extra turn already begun, newest first (CR 301). -/
+  extraTurnsTaken : List PlayerId := []
+  /-- The current Combat, including Units that left its Battlefield (CR 466, 468). -/
+  combat : Option CombatParticipation := none
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/
@@ -147,6 +191,28 @@ def setZone (s : GameState) (z : Zone) (l : List ObjId) : GameState :=
 
 /-- The attributes of an object. -/
 def obj? (s : GameState) (id : ObjId) : Option Object := s.objects[id.n]?
+
+/-- A copy effect applies for the same occurrence of the attachment that created it. -/
+def attachmentCopyActive (s : GameState) (unit : ObjId) (copy : AttachmentCopy) : Bool :=
+  (s.obj? copy.gear).any (fun o =>
+    o.attached == some unit && o.attachmentCopyStamp == some copy.stamp)
+
+/-- The last applied copy whose Equipment is still attached (CR 479.1, 482). -/
+def attachmentCopyOf (s : GameState) (unit : ObjId) (o : Object) : Option AttachmentCopy :=
+  o.attachmentCopies.find? (s.attachmentCopyActive unit)
+
+/-- Check that the Effect Text belongs to this occurrence of the attachment (CR 436, 482). -/
+def attachmentTextActive (s : GameState) (unit : ObjId) (copy : AttachmentCopy) : Bool :=
+  (s.obj? copy.gear).any (fun o =>
+    o.attached == some unit && o.attachmentTextStamp == some copy.stamp)
+
+/-- The active Effect Text copies currently appended to a Unit's rules text (CR 719.1, 479.3.c). -/
+def activeAttachmentText (s : GameState) (unit : ObjId) : List AttachmentCopy :=
+  ((s.obj? unit).map (·.attachmentTextCopies)).getD [] |>.filter (s.attachmentTextActive unit)
+
+/-- The instance of the object's current copied rules text, if any. -/
+def copyStamp? (s : GameState) (unit : ObjId) : Option Timestamp :=
+  (s.obj? unit).bind (fun o => (s.attachmentCopyOf unit o).map (·.stamp))
 
 /-- The Rune Pool of a player (CR 166). -/
 def poolOf (s : GameState) (p : PlayerId) : RunePool := s.pools.getD p.n RunePool.empty

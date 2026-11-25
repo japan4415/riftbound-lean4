@@ -34,6 +34,26 @@ structure Env where
   bindings : List (VarId × Value) := []
   /-- The values chosen when the card was played: slot `i` is `slots[i]` (CR 355). -/
   slots : List Value := []
+  /-- The objects this spell or ability chose as targets (CR 355.7, 355.10). -/
+  targetObjs : List ObjId := []
+  /-- The mode and destination for the current execution of a repeated Spell. -/
+  executionPick : Option SpellPick := none
+  /-- The players chosen during finalization, indexed separately from object slots. -/
+  playerTargets : List PlayerId := []
+  /-- The cards revealed for the instructions currently resolving (CR 425.3.a). -/
+  revealedCards : List ObjId := []
+  /-- The cards looked at for the instructions currently resolving (CR 432.1.c). -/
+  lookedCards : List ObjId := []
+  /-- The card that defines the resolving ability, even if its source has left play. -/
+  sourceCard : Option CardId := none
+  /-- The copied rules text that defines the resolving ability. -/
+  abilityCopyStamp : Option Timestamp := none
+  /-- The controller of the original effect when an instruction is run for another player. -/
+  effectController : Option PlayerId := none
+  /-- The location required for Units played by this resolving Hidden effect (CR 811.1.d.5). -/
+  hiddenPlayLocation : Option ObjId := none
+  /-- A value saved by the event that triggered the resolving ability (CR 388-389). -/
+  eventAmount : Option Nat := none
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/
   it : Option ObjId := none
   /-- What the passive abilities add to the Might of each object now (the Layers' last step). The
@@ -59,6 +79,11 @@ def withMight (e : Env) (t : List (ObjId × Int)) : Env := { e with passMight :=
 
 /-- Bind a variable. It shadows an older binding of the same name. -/
 def bind (e : Env) (v : VarId) (x : Value) : Env := { e with bindings := (v, x) :: e.bindings }
+
+/-- Bind the current pick and record it as a target when the effect chooses it (CR 355.10). -/
+def bindPick (e : Env) (id : ObjId) (targeted : Bool) : Env :=
+  let picked := e.bind pickVar (.obj id)
+  if targeted then { picked with targetObjs := id :: e.targetObjs } else picked
 
 /-- The value of a variable, if it is bound. -/
 def lookup (e : Env) (v : VarId) : Option Value :=

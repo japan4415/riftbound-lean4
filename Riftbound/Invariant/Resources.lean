@@ -36,8 +36,8 @@ theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List F
   exact h2
 
 /-- **The Rune Pool is empty at the end of the turn** (CR 167, 317.2). -/
-theorem microStep_ending_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
-    (hp : s.pending = .phase .ending :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
+theorem microStep_expiration_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .expireTurn :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   unfold microStep0 at h
   rw [hp] at h
@@ -46,12 +46,12 @@ theorem microStep_ending_pools0 {s s' : GameState} {es : List Event} {rest : Lis
   simp [GameState.poolOf, RunePool.empty]
 
 /-- **The Rune Pool is empty at the end of the turn** (CR 167, 317.2). -/
-theorem microStep_ending_pools {s s' : GameState} {es : List Event} {rest : List Frame}
-    (hp : s.pending = .phase .ending :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
+theorem microStep_expiration_pools {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .expireTurn :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
-  have h2 := microStep_ending_pools0 hp h0 p
+  have h2 := microStep_expiration_pools0 hp h0 p
   rw [hq]
   exact h2
 
@@ -77,11 +77,13 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : playable s p c pay none ts = true)
     (h : applyPlay s p c pay = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      b ∈ s.cutOptionsOf p c cost ts ∧ c' ∈ s.playCostsOf p c d b ∧
-      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
+      b ∈ s.cutOptionsOf p c cost ts ∧ c' ∈ s.targetCosts p c d b ts ∧
+      (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
-  obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
+  obtain ⟨d', pool', hd', hpool', hs', hq⟩ := applyPlay_pool h
+  have same : d' = d := Option.some.inj (hd'.symm.trans hd)
+  subst d'
   rw [hpool] at hpool'
   cases hpool'
   obtain ⟨b, hb, c', hc', h2⟩ := GameState.paysForXT_total hpaid
@@ -105,12 +107,12 @@ theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
 smaller by the total of the card's cost, or of its cost with an additional cost (Repeat), and no
 other player's Pool changes. -/
 theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
-    (hp : castable s p c pay targets = true)
-    (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.playCostsOf p c d b ∧
-      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event}
+    (hp : castable s p c pay targets flow pick = true)
+    (h : applyCast s p c pay targets flow pick = some (s', es)) :
+    ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
+      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.targetCosts p c d b targets pick ∧
+      (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h
@@ -143,17 +145,19 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
     s'.pending = .resolveChain :: rest := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
   obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
-  simpa [extraEvents, withTriggers_nil, h3.pending_eq] using hpend
+  simpa [extraEvents, GameState.actionMightEvents, hp, withTriggers_nil, h3.pending_eq] using hpend
 
-/-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
-theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
+/-- A resolved Spell goes to the Trash, subject to replacements (CR 359.3.d, 367-370, 829.1.b.1). -/
+theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
-    (hm : ∃ r, moveObj s item (.player o.owner .trash) = some r) :
-    ∃ id', (finishItem s item).2 = [Event.moved item id' (.player o.owner .trash)] ∧
-      id' ∈ (finishItem s item).1.zone (.player o.owner .trash) := by
+    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) = some r) :
+    ∃ id', (finishItem s item).2 = s.chainExitEvents o item id' .trash ++
+        spellCompletion s item (s.chainExitEvents o item id' .trash) ∧
+      id' ∈ (finishItem s item).1.zone (s.chainDestination item o .trash) := by
   obtain ⟨⟨s2, id'⟩, hm⟩ := hm
-  have hf : finishItem s item = (s2, [Event.moved item id' (.player o.owner .trash)]) := by
+  have hf : finishItem s item = (s2, s.chainExitEvents o item id' .trash ++
+      spellCompletion s item (s.chainExitEvents o item id' .trash)) := by
     unfold finishItem
     simp only [ho, hc, ite_true]
     cases hkd : o.kind with
@@ -165,15 +169,16 @@ theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
   obtain ⟨src, d, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hoo : o' = o := Option.some.inj (ho'.symm.trans ho)
   have h2 := hs.id'_mem
-  have hd2 : d = .player o.owner .trash := by
-    rw [hdd, hoo]; simp [Zone.normalize, Zone.isBoard]
+  have hd2 : d = s.chainDestination item o .trash := by
+    rw [hdd, hoo]
+    exact Zone.normalize_owner _ _
   rw [hd2] at h2
   exact h2
 
 /-- **A Spell on the Chain carries the objects chosen when it was cast** (CR 355): the object that
 `applyCast` puts on the Chain has exactly the targets of the action. -/
 theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
     ∃ id', es = [Event.moved c id' .chain] ∧
       ∀ o, s'.obj? id' = some o → o.targets = targets := by
   obtain ⟨pool, s2, id', rep, -, -, rfl, hes⟩ := applyCast_cases h
@@ -188,31 +193,54 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     subst ho
     rfl
 
-/-- **The targets of a Spell are objects in play** (CR 355), or Spells on the Chain: a Spell that
-can be cast with some targets has all of them there. -/
-theorem castable_targets_inPlay {s : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {targets : List ObjId} (h : castable s p c pay targets = true) :
-    ∀ t ∈ targets, t ∈ s.inPlay ∨ t ∈ s.zone .chain := by
-  obtain ⟨d, e, -, -, hok⟩ := castable_targets h
-  exact targetsOk_mem_inPlay hok
+/-- **The targets of a Spell are in supported target zones** (CR 355). -/
+theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
+    ∀ t ∈ targets, s.targetPresent t = true := by
+  obtain ⟨d, -, hchoices⟩ := castable_choices h
+  rcases hchoices with h | h
+  · obtain ⟨e, -, hok, -⟩ := GameState.ordinaryCastChoices_spec h
+    exact targetsOk_mem_targetPresent hok
+  · exact GameState.repeatedCastChoices_targets_present h
 
-/-- **A Spell resolves with the targets it was cast with** (CR 340, 355): the effect is run with
-the chosen objects as its slots, and the Spell goes to the Trash when the effect is done. -/
+/-- A Spell starts from the targets it was cast with (CR 340, 355). An open-ended group is
+rechecked before the effect, and the Spell leaves the Chain after the effect. -/
 theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {more : List ObjId}
     {o : Object} {d : CardDef} (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
-    (hd : s.cardDef? item = some d) :
+    (hd : s.cardDef? item = some d) (single : o.spellPick.hasExecutionChoices = false) :
     resolveFrames s rest =
-      .run o.controller item { slots := slotValues o.targets d.spellEffect }
-        (match d.spellEffect with
+      .run o.controller item {
+        slots := finalizedSlots s o.controller item o.targets
+          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
+        targetObjs := o.targets
+        hiddenPlayLocation := o.hiddenAt
+        playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
+            (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
+          then o.targetPlayer.toList else [] }
+        (match d.spellEffect.bind (·.forPick o.spellPick) with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
-            e.executions
-              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1)
+            e.recheckTargetGroup s o.controller item o.targets
+              (e.executions (1 + o.extraPaid))
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]
-  simp only [ho, hd]
+  simp only [ho, hd, single, Bool.false_eq_true, ↓reduceIte]
   rfl
+
+/-- Each recorded execution receives its own original targets and rechecks them when it starts
+(CR 359.3.e.2, 820.2). The Spell leaves the Chain once the last execution is finished. -/
+theorem resolveFrames_execution_slots {s : GameState} {rest : List Frame} {item : ObjId}
+    {more : List ObjId} {o : Object} {d : CardDef}
+    (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
+    (hd : s.cardDef? item = some d) (repeated : o.spellPick.hasExecutionChoices = true) :
+    resolveFrames s rest =
+      (o.spellPick.executions o.targets).map (fun (pick, targets) =>
+        .run o.controller item { hiddenPlayLocation := o.hiddenAt }
+          (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest) := by
+  unfold resolveFrames
+  rw [hc]
+  simp [ho, hd, repeated]
 
 end Riftbound
 

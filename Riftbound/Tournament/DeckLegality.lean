@@ -19,14 +19,6 @@ Chosen Champion.
 
 namespace Riftbound
 
-/-- Which cards a format allows: the legal sets and the banned cards (TR 601.2-3, 602.1). -/
-structure LegalityEnv where
-  /-- The sets whose cards are legal. -/
-  legalSets : List SetCode
-  /-- Banned cards. -/
-  banned : List CardId
-deriving DecidableEq, Repr
-
 /-- A card is legal in Constructed: not banned, and printed in a legal set (TR 601.2-3). -/
 def CardLegal (env : LegalityEnv) (c : CardDef) : Prop :=
   c.id ∉ env.banned ∧ ∃ s ∈ c.sets, s ∈ env.legalSets
@@ -96,9 +88,10 @@ sideboard together. -/
 theorem copyLimitOk_of_append {main side : List CardDef}
     (h : CopyLimitOk (main ++ side)) : CopyLimitOk main := by
   intro c hc
-  have h1 := h c (List.mem_append_left side hc)
-  rw [List.countP_append] at h1
-  omega
+  rcases h c (List.mem_append_left side hc) with hu | hn
+  · exact Or.inl hu
+  · rw [List.countP_append] at hn
+    exact Or.inr (by omega)
 
 /-- **I13.** A legal Constructed deck, without its sideboard, is legal under the Core Rules in
 every mode that asks for three Battlefields (for example 1v1 Duel). The Battlefield count is

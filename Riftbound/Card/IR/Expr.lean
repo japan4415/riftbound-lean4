@@ -28,7 +28,8 @@ inductive Amount where
   | x
   /-- A bound variable. -/
   | var (v : VarId)
-  /-- The amount of the event a replacement ability changes (draw N, channel N, score N). -/
+  /-- The amount carried by an event a replacement ability changes or a reflexive ability
+  reads. -/
   | eventAmount
   /-- How many turns the players have taken so far. -/
   | turnsTaken (p : PlayerSel)
@@ -36,6 +37,10 @@ inductive Amount where
   | count (s : Selector)
   /-- The Might of an object. -/
   | mightOf (s : Selector)
+  /-- An increase that raises the first Unit's actual Might to the second's (CR 143.2.c.1, 479.4.c). -/
+  | mightIncreaseTo (unit reference : Selector)
+  /-- The damage currently marked on the selected objects (CR 142.4). -/
+  | damageOn (s : Selector)
   /-- The Energy cost of an object. -/
   | costOf (s : Selector)
   /-- The number of Power symbols in the cost of an object. -/
@@ -72,6 +77,8 @@ inductive Amount where
   | notes (e : TurnEffect)
   /-- The Energy that was paid to play the object (0 if it was played for nothing). -/
   | energyPaid
+  /-- How many instances of Empowered the source currently has (CR 442.1.c.1). -/
+  | empowerCount
   /-- The number of cards in a player's hand. -/
   | handSize (p : PlayerSel)
   /-- The sum. -/
@@ -96,6 +103,8 @@ inductive Filter where
   | tag (t : Tag)
   /-- Has the name. -/
   | named (name : String)
+  /-- Has the card name of the source, including its subtitle (CR 132). -/
+  | sameNameAsSource
   /-- Has the keyword. -/
   | hasKeyword (k : Keyword)
   /-- Has the domain. -/
@@ -108,12 +117,22 @@ inductive Filter where
   | powerCost (op : Cmp) (a : Amount)
   /-- Is a Battlefield an opponent of the object's controller controls. -/
   | controlledByOpponent
+  /-- Has a number of Units at this Battlefield that satisfies the comparison. -/
+  | unitsHere (op : Cmp) (n : Nat)
   /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
   | movedFromHere
   /-- Is exhausted. -/
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/
   | onBattlefield
+  /-- The unit is at a Battlefield the source just moved from or to. -/
+  | atSourceMoveBattlefield (recorded : Option (List ObjId) := none)
+  /-- The unit is at a Battlefield with an active Showdown (CR 341). -/
+  | atShowdown
+  /-- The unit is in combat with an enemy unit of the given domain. -/
+  | combatsEnemyOfDomain (domain : Domain)
+  /-- A finalized enemy spell of the given domain currently chooses this unit. -/
+  | chosenByEnemySpellOfDomain (domain : Domain)
   /-- A Spell whose effect has no choice to make when it is played. -/
   | noChoices
   /-- The Energy cost is less than the points of the player the effect belongs to. -/
@@ -127,6 +146,8 @@ inductive Filter where
   | ready
   /-- Has damage. -/
   | damaged
+  /-- Was dealt positive damage this turn, even if subsequently healed (CR 418-419). -/
+  | damagedThisTurn
   /-- Has lethal damage: damage that is not 0 and at least its Might (CR 142.4.b). -/
   | lethal
   /-- Is stunned. -/
@@ -161,6 +182,10 @@ inductive Filter where
   | conqueredByMine
   /-- The object is controlled by the same player as the object `s` stands for. -/
   | sameController (s : Selector)
+  /-- The object is owned by the player targeted in this slot (CR 127, 355.7). -/
+  | ownedByPlayerTarget (i : Nat)
+  /-- The current effect revealed this card (CR 425.3.a.1). -/
+  | revealedByEffect
   /-- Gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
   | givesLegendsAttach
   /-- The card copies the text of the Unit it is attached to (it has `copiesUnitText`). -/
@@ -179,6 +204,10 @@ inductive Filter where
   | playedLast
   /-- The card is in its owner's hand. -/
   | inHandZone
+  /-- The card is in its owner's Trash. -/
+  | inTrashZone
+  /-- The object is Empowered (CR 442). -/
+  | empowered
   /-- Units can be played to this Battlefield (it says no units can be played here: no). -/
   | unitsPlayable
   /-- The Battlefield where the player of `self` is attacking. -/
@@ -265,16 +294,29 @@ inductive Condition where
   | cmp (op : Cmp) (a b : Amount)
   /-- At least one object matches the selector. -/
   | exists (s : Selector)
+  /-- At least one opponent individually controls more Runes than the player. -/
+  | fewerRunesThanOpponent
   /-- The object matches the filter. -/
   | matches (s : Selector) (f : Filter)
   /-- The unit is Empowered (CR 828). -/
   | empowered (s : Selector)
+  /-- The source was Empowered when it left the Board, for its Deathknell (CR 828). -/
+  | leftEmpowered
   /-- Legion: another card was played this turn (CR 812). -/
   | legion
   /-- An additional cost was paid when the object was played (CR 357.2). -/
   | paid
+  /-- The optional discard cost of playing this card was paid (CR 357.2). -/
+  | discardPaid
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
+  /-- The player finalized a card of this type this turn (CR 420.4.b). -/
+  | finalizedType (kind : CardType)
+  /-- An opponent finalized a Spell other than the selected Spell this turn (CR 420.4.b). -/
+  | opponentFinalizedOtherSpell (target : Selector)
+  /-- The selected permanent was the player's first resolved play of this type this turn
+  (CR 383.1, 420.4.a). -/
+  | firstResolvedType (kind : CardType) (played : Selector)
   /-- The player's Rune Pool can pay the cost. -/
   | canPay (c : Cost)
   /-- A unit of an opponent has died this turn. -/

@@ -55,6 +55,7 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ eitherOk s p src env x y yes = true
   -- an object chosen while an effect resolves (CR 355): one of the candidates
   | .pickDo p _ _ c more _ _ :: _, .choose o => a.actor = .player p ∧ o ∈ c :: more
+  | .nameCard p _ _ c more _ :: _, .nameCard named => a.actor = .player p ∧ named ∈ c :: more
   -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards set aside
   | .chanceRecycle p :: _, .arrange l =>
     a.actor = .chance ∧ l.Perm (s.zone (.player p .setAside))
@@ -69,30 +70,40 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)
   | .priority p :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
-  -- a Unit or a Gear of the player's hand, or a Spell with its targets, paid for from the Rune
-  -- Pool, in the Main Phase (CR 349-359)
-  | .priority p :: _, .playCard c pay ts =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ PlayOk s p c pay ts
+  -- a Unit or Gear from hand, or a Spell with targets from hand or via Flow, in the Main Phase
+  -- (CR 349-359, 829)
+  | .priority p :: _, .playCard c pay ts flow discard pick =>
+    a.actor = .player p ∧ c ∈ s.playSources p ∧
+      PlayOk s p c pay ts flow pick ∧ s.playDiscardOk p c discard = true
   -- a Standard Move of a Unit of the player's, in the Main Phase (CR 144)
   | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
   -- an activated ability of an object the player controls, paid for from the Rune Pool, when the
   -- Chain is empty (CR 361, 363, 356-357)
-  | .priority p :: _, .activate src idx pay ts =>
-    a.actor = .player p ∧ activatable s p src idx pay ts true = true
+  | .priority p :: _, .activate src idx pay ts discards targetPlayer costBanisher =>
+    a.actor = .player p ∧ activatable s p src idx pay ts true discards targetPlayer = true ∧
+      costBanisher ∈ activationBanisherOptions s src idx ts
   -- the player with priority passes while the Chain holds an item (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
-  -- in answer to the Chain: a Spell with Reaction from the hand (CR 813)
-  | .chainPass p _ :: _, .playCard c pay ts =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ reactable s p c pay ts = true
+  -- in answer to the Chain: a play with Reaction from a permitted zone (CR 813, 829)
+  | .chainPass p _ :: _, .playCard c pay ts flow discard pick =>
+    a.actor = .player p ∧ c ∈ s.playSources p ∧
+      reactable s p c pay ts flow pick = true ∧ s.playDiscardOk p c discard = true
   -- in answer to the Chain: an activated ability with Reaction (CR 813)
-  | .chainPass p _ :: _, .activate src idx pay ts =>
-    a.actor = .player p ∧ activatable s p src idx pay ts false = true
+  | .chainPass p _ :: _, .activate src idx pay ts discards targetPlayer costBanisher =>
+    a.actor = .player p ∧ activatable s p src idx pay ts false discards targetPlayer = true ∧
+      costBanisher ∈ activationBanisherOptions s src idx ts
   -- in answer to the Chain: a Basic Rune adds a resource (CR 164.2, 430)
   | .chainPass p _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
   -- one of the abilities that wait goes on the Chain, with its targets (CR 383.3.d, 355)
-  | .triggerOrder p t more _ :: _, .putTrigger i ts =>
-    a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => trigLegal s g ts)) = true
+  | .triggerOrder p t more _ funding :: _, .putTrigger i ts payment =>
+    a.actor = .player p ∧ triggerFinishOk s (t :: more) funding i ts payment = true
+  | .triggerOrder p t more _ none :: _, .prepareTrigger i ts payment =>
+    a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => triggerPreparation s g ts payment)) = true
+  | .triggerOrder p t more _ (some plan) :: _, .triggerAdd add =>
+    a.actor = .player p ∧ add ∈ triggerFundingAdds s (t :: more) plan
+  | .triggerOrder p _ _ _ (some _) :: _, .decide yes =>
+    a.actor = .player p ∧ yes = false
   -- an Add ability resolves at once, with the Chain empty or not (CR 430)
   | .priority p :: _, .manaAbility src idx pay =>
     a.actor = .player p ∧ manaOk s p src idx pay = true
@@ -100,12 +111,14 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ manaOk s p src idx pay = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
-  -- in a Showdown: a Spell with Action, or a card with Reaction, from the hand (CR 806, 813)
-  | .showdown _ q _ :: _, .playCard c pay ts =>
-    a.actor = .player q ∧ c ∈ s.zone (.player q .hand) ∧ showdownable s q c pay ts = true
+  -- in a Showdown: a Spell with Action, or a card with Reaction (CR 806, 813, 829)
+  | .showdown _ q _ :: _, .playCard c pay ts flow discard pick =>
+    a.actor = .player q ∧ c ∈ s.playSources q ∧
+      showdownable s q c pay ts flow pick = true ∧ s.playDiscardOk q c discard = true
   -- in a Showdown: an activated ability with Action or Reaction (CR 806, 813)
-  | .showdown _ q _ :: _, .activate src idx pay ts =>
-    a.actor = .player q ∧ activatableSD s q src idx pay ts = true
+  | .showdown _ q _ :: _, .activate src idx pay ts discards targetPlayer costBanisher =>
+    a.actor = .player q ∧ activatableSD s q src idx pay ts discards targetPlayer = true ∧
+      costBanisher ∈ activationBanisherOptions s src idx ts
   -- in a Showdown: a Basic Rune adds a resource (CR 164.2, 430)
   | .showdown _ q _ :: _, .runeAbility c ab =>
     a.actor = .player q ∧ c ∈ s.zone (.player q .base) ∧ runeUsable s q c ab = true
@@ -126,6 +139,16 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- the judge declares a draw, whatever question is open, under the Tournament Rules: the players
   -- agree to it (TR 410.1), or a loop has no end (TR 505.6)
   | _, .declareDraw => a.actor = .judge ∧ s.config.ruleSet.isTournament = true
+  -- Predict: choose a remaining inspected card to keep next on top or Recycle (CR 437).
+  | .predict p _ c cs _ _ :: _, .predictPick id _ => a.actor = .player p ∧ id ∈ c :: cs
+  -- The simultaneous Recycle goes to the bottom in random order (CR 417.5).
+  | .chancePredict _ _ _ bottom :: _, .arrange l => a.actor = .chance ∧ l.Perm bottom
+  -- Basic Runes and Reaction Add abilities can supply a cost during resolution (CR 445.2.c).
+  | .eitherDo p _ _ first _ _ :: _, .runeAbility c ab =>
+    a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true ∧
+      first.isPayment = true
+  | .eitherDo p _ _ first _ _ :: _, .manaAbility src idx pay =>
+    a.actor = .player p ∧ manaOk s p src idx pay = true ∧ first.isPayment = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

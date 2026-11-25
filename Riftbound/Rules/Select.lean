@@ -7,8 +7,8 @@ public import Riftbound.Rules.Pay
 # Choosing objects
 
 What a Spell can choose when it is played, and which objects a selector of an effect stands for
-when it resolves (CR 355, 340) (design.md §7.2). A target is chosen among the objects in play that
-match the declaration of the choice. The selector of an effect names objects by the slot of a
+when it resolves (CR 355, 340) (design.md §7.2). A target must match the declaration of the choice.
+A declaration can explicitly name cards in a public off-board zone (CR 355.9.a, 355.10.a). The selector of an effect names objects by the slot of a
 choice, by a variable, or as all that match.
 
 Only what can be read from the printed card and the attributes of the object is understood:
@@ -26,15 +26,27 @@ namespace Riftbound
 
 namespace GameState
 
-/-- The definition of the card an object is. -/
+/-- The definition before applying copy effects from attached Equipment. -/
+def printedCardDef? (s : GameState) (id : ObjId) : Option CardDef :=
+  ((s.obj? id).bind (·.kind.cardId?)).bind s.cards.find?
+
+/-- The definition of the card an object has in the Copy Effects layer (CR 479.1). -/
 def cardDef? (s : GameState) (c : ObjId) : Option CardDef :=
-  match s.obj? c with
-  | some o =>
-    match o.kind with
-    | .card _ id => s.cards.find? id
-    | .token id => s.cards.find? id
-    | .chainAbility .. => none
-  | none => none
+  (s.obj? c).bind (fun o =>
+    (((s.attachmentCopyOf c o).map (·.card)) <|> o.kind.cardId?).bind s.cards.find?)
+
+/-- Card definitions captured when Equipment attached, with their distinct ability instances.
+Leave and death events use the last active copies preserved on the object that changed zones. -/
+def attachmentTextDefs (s : GameState) (id : ObjId) (last : Bool := false) :
+    List (CardDef × Timestamp) :=
+  let copies := if last && (s.obj? id).any (·.leftBoard) then
+    ((s.obj? id).map (·.attachmentTextCopies)).getD []
+    else s.activeAttachmentText id
+  copies.filterMap (fun copy => (s.cards.find? copy.card).map (·, copy.stamp))
+
+/-- The object's ordinary abilities together with the text appended by copying Equipment. -/
+def appendedAbilities (s : GameState) (id : ObjId) (d : CardDef) : List Ability :=
+  d.fullAbilities ++ (s.attachmentTextDefs id).flatMap (·.1.textAbilities)
 
 /-- The players of the game, in seat order. -/
 def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (fun i => ⟨i⟩)
@@ -47,14 +59,15 @@ def inPlay (s : GameState) : List ObjId :=
 def xpOf (s : GameState) (p : PlayerId) : Nat :=
   ((s.zone (.player p .legendZone)).map (fun l => ((s.obj? l).map (·.xp)).getD 0)).sum
 
-/-- The Might an object has: the printed Might and the lasting changes effects made to it
-(CR 475-478). The abilities that change Might as long as a condition holds come with the full
-Layers (roadmap.md, M6). -/
+/-- Might before the passive, buff and Equipment adjustments. Trait changes set the base
+before lasting increases and decreases are added (CR 143.2.a, 479.2, 479.4). -/
 def mightOf (s : GameState) (id : ObjId) : Option Int :=
-  ((s.cardDef? id).bind (·.might)).map (fun m =>
-    m + match s.obj? id with
-      | some o => (o.mightMods.map (·.amount)).sum
-      | none => 0)
+  let printed := (s.cardDef? id).bind (·.might)
+  match s.obj? id with
+  | some o =>
+    ((o.baseMightThisTurn.map Int.ofNat) <|> printed).map (fun base =>
+      base + (o.mightMods.map (·.amount)).sum)
+  | none => printed
 
 end GameState
 
@@ -73,19 +86,29 @@ def GameState.takerKey (s : GameState) (self : ObjId) : ObjId :=
   | some o => if o.leftBoard then o.formerId.getD self else self
   | none => self
 
+/-- Order for an instruction that applies to multiple players (CR 303.2.a). -/
+def GameState.pickOrder (s : GameState) : List PlayerId :=
+  let order := if s.turnOrder.isEmpty then s.players else s.turnOrder
+  let i := (s.active.bind order.idxOf?).getD 0
+  order.drop i ++ order.take i
+
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
-def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (List PlayerId)
+def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env : Env := {}) :
+    Option (List PlayerId) :=
+  match sel with
   | .you => some [self]
   | .opponent => (s.players.filter (· ≠ self)).head?.map (fun o => [o])
-  | .eachPlayer => some s.players
+  | .eachPlayer => some s.pickOrder
   | .eachOpponent => some (s.players.filter (· ≠ self))
-  | .chosen _ => none
+  | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
+  | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])
   | .eventPlayer => none
   | .controllerOf _ => none
 
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
 def Amount.eval (env : Env) : Amount → Option Nat
   | .const n => some n
+  | .eventAmount => env.eventAmount
   | .var v =>
     match env.lookup v with
     | some (.int i) => some i.toNat
@@ -149,10 +172,15 @@ def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId
   (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf &&
     o.controller == p) && (s.cardDef? u).any (·.hasType .unit))
 
+/-- The turns of this player that have begun, including extra turns and the current turn (CR 301). -/
+def GameState.turnsTaken (s : GameState) (p : PlayerId) : Nat :=
+  ((List.range (s.turn - s.turnShift)).countP
+    (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)) + s.extraTurnsTaken.count p
+
 /-- The Combat that is going on: its Battlefield and its Attacker. It goes on from the moment it
 starts (CR 466) to its end (CR 468): the frames of the Combat are on the stack. -/
 def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
-  s.pending.findSome? (fun f =>
+  (s.combat.map (fun c => (c.battlefield, c.attacker))) <|> s.pending.findSome? (fun f =>
     match f with
     | .showdown bf _ _ =>
       -- the Showdown of a Combat: Units of at least two players are at the Battlefield (CR 464);
@@ -175,12 +203,22 @@ def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp :
 def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
   s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
 
+/-- This turn's plays of a type at a given moment, newest first. -/
+def GameState.playsOfType (s : GameState) (moment : PlayMoment) (kind : CardType) : List CardPlay :=
+  s.playLog.filter (fun play => play.turn == s.turn && play.moment == moment &&
+    play.types.contains kind)
+
+/-- The number of card plays the player has finalized this turn (CR 420.4-420.5). -/
+def GameState.finalizedCount (s : GameState) (p : PlayerId) : Nat :=
+  s.playLog.countP (fun play => play.turn == s.turn && play.who == p && play.moment == .finalized)
+
 /-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
 a kind, no card of the kind has been played since. -/
 def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
+        | .nextCardCostMinus .. => f.playCount == s.finalizedCount p
         | .nextSpellCostMinus _ | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
         | .nextGearFree _ =>
           !s.playedSince p f.kind.playType f.stamp
@@ -193,6 +231,16 @@ def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
 /-- The Energy less the next spell of the player costs, by the effects of the turn. -/
 def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
   (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
+
+/-- Total discounts that apply to the player's next play of any card (CR 356.4, 420.5). -/
+def GameState.nextCardDiscount (s : GameState) (p : PlayerId) : Nat × Nat :=
+  s.turnFx.foldl (fun a f =>
+    match f.kind with
+    | .nextCardCostMinus e w =>
+      if f.turn == s.turn && f.who == p && f.playCount == s.finalizedCount p then
+        (a.1 + e, a.2 + w)
+      else a
+    | _ => a) (0, 0)
 
 /-- The Energy cost of a Gear in the hand of the player that an effect of the turn drops: the
 limits of the Gear the player may play for free now. -/
@@ -250,6 +298,10 @@ def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
     else 0
   | none => 0
 
+/-- Derived Might using the same passive modifiers as the surrounding choice. -/
+def GameState.mightWithCachedPassives (s : GameState) (env : Env) (id : ObjId) : Option Int :=
+  (s.mightOf id).map (fun m => m + s.equipBonus id + s.buffBonus id + env.passOf id)
+
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
@@ -257,20 +309,19 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .ofSupertype sp => (s.cardDef? id).map (·.hasSupertype sp)
   | .tag t => (s.cardDef? id).map (fun d => d.tags.contains t || (s.gainedTags id).contains t)
   | .named n => (s.cardDef? id).map (fun d => d.name == n)
-  | .hasKeyword k => (s.cardDef? id).map (·.hasKeyword k)
+  | .sameNameAsSource =>
+    pure ((s.cardDef? self).any (fun src => (s.cardDef? id).any (·.nameKey == src.nameKey)))
+  | .hasKeyword k => (s.cardDef? id).map (fun d =>
+    d.hasKeyword k || (s.attachmentTextDefs id).any (·.1.hasKeyword k) ||
+      (s.obj? id).any (fun o => o.tempKws.any (fun a => a.1.keyword == k)))
   | .domain d => (s.cardDef? id).map (·.domains.contains d)
   | .might op a => do
     let n ← a.eval env
-    -- an object without Might (a Battlefield, a Spell) does not have the Might asked for
-    -- the buff and the Equipment count (CR 701, 137); a passive ability is not read here, as
-    -- the Layers are (`mightNow`) defined after the filters
-    match s.mightOf id with
-    | some m =>
-      let buff : Int := s.buffBonus id
-      pure (op.holds (m + s.equipBonus id + buff + env.passOf id) n)
-    | none => pure false
+    pure ((s.mightWithCachedPassives env id).any (fun m => op.holds m n))
   | .cost op a => do
-    let n ← a.eval env
+    let n ← match a with
+      | .mightOf .self => s.mightWithCachedPassives env self
+      | _ => a.eval env
     let d ← s.cardDef? id
     -- a card that prints no cost (a Gold token) costs nothing
     pure (match d.cost with
@@ -297,14 +348,24 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let d ← s.cardDef? id
     pure (match d.cost with | some k => decide (k.energy < s.pointsOf o.controller) | none => false)
   | .noChoices =>
-    some (((s.cardDef? id).bind (·.spellEffect)).any (fun e => e.choices.isEmpty))
+    some (((s.cardDef? id).bind (·.spellEffect)).any
+      (fun e => e.choices.isEmpty && e.playerTarget.isNone))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
+  | .atSourceMoveBattlefield recorded =>
+    let fields := recorded.getD
+      (((s.obj? self).map (fun src => src.prevLoc.toList ++ src.loc.toList)).getD [])
+    some (((s.obj? id).bind (·.loc)).any fields.contains)
+  | .atShowdown =>
+    some ((s.obj? id).any (fun o => s.pending.any (fun f =>
+      match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
+  | .damagedThisTurn => (s.obj? id).map (fun o => o.damagedTurn == some s.turn)
   | .at_ sel => do
     -- the place the object named by the selector is at: a Battlefield, the Battlefield a Unit is
-    -- at, or a Base (the selector is `self`, a chosen object or a variable)
+    -- at, or a Base (the selector is `self`, a chosen object or a variable).
+    -- A card that left the board retains its last controller for Base comparisons.
     let d? : Option ObjId := match sel with
       | .self => some self
       | .it => env.it
@@ -317,7 +378,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         if (s.cardDef? d).any (·.hasType .battlefield) then o.loc == some d
         else
           match s.obj? d with
-          | some od => o.loc == od.loc && (od.loc.isSome || o.controller == od.controller)
+          | some od => o.loc == od.loc &&
+              (od.loc.isSome || o.leftController.getD o.controller == od.leftController.getD od.controller)
           | none => false
       | none => false)
   | .lethal =>
@@ -353,6 +415,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         mods.any (fun m => match m with | .cantPlayer _ .play .here _ => true | _ => false)
       | _ => false))))
   | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
+  | .inTrashZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .trash))))
+  | .empowered => some ((s.obj? id).any (fun o => 0 < o.empowerCount))
   | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
   | .playedLast =>
     let latest := s.objects.toList.foldl (fun m (_, o) => max m (o.playedStamp.getD 0)) 0
@@ -369,9 +433,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .givesLegendsAttach =>
     some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
       match ab with | .passive _ mods => mods.contains .legendsAttach | _ => false))
-  | .copiesText =>
-    some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
-      match ab with | .passive _ mods => mods.contains .copiesUnitText | _ => false))
+  | .copiesText => some ((s.cardDef? id).any CardDef.copiesUnitText)
   | .sameController sel =>
     let other : Option ObjId :=
       match sel with
@@ -380,6 +442,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
     other.map (fun o => decide ((s.obj? o).map (·.controller) = (s.obj? id).map (·.controller)))
+  | .ownedByPlayerTarget i => do
+    let player ← env.playerTargets[i]?
+    (s.obj? id).map (·.owner == player)
+  | .revealedByEffect => some (env.revealedCards.contains id)
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)
@@ -389,11 +455,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .attackedByMine =>
     some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
   | .myUnitsHere =>
-    some (match s.obj? self with
-      | some me =>
-        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          o.controller == me.controller))
-      | none => false)
+    some ((s.obj? self).any (fun me => !(s.unitsAtOf id me.controller).isEmpty))
   | .enemyAlone =>
     some (match s.obj? self with
       | some me =>
@@ -421,6 +483,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
                 (if (s.cardDef? self).any (·.hasType .battlefield) then some self else me.loc)
             | none => false)
       | none => false)
+  | .unitsHere op n =>
+    let count := (s.zone .battlefieldZone).countP (fun u =>
+      (s.obj? u).any (·.loc == some id) && (s.cardDef? u).any (·.hasType .unit))
+    pure ((s.cardDef? id).any (·.hasType .battlefield) && op.holds (Int.ofNat count) (Int.ofNat n))
   | .controlledByOpponent =>
     some (match s.obj? id, s.obj? self with
       | some b, some o => b.control.any (fun q => q != o.controller)
@@ -434,8 +500,21 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     match sel with
     | .self => some (id == self)
     | .slot i => match env.slots[i]? with | some (.obj o) => some (id == o) | _ => none
+    | .slotsFrom i => some ((env.slots.drop i).contains (.obj id))
     | .var v => match env.lookup v with | some (.obj o) => some (id == o) | _ => none
     | _ => none
+  | .combatsEnemyOfDomain dom =>
+    some (match s.combatNow, s.obj? id with
+      | some (bf, _), some unit =>
+        unit.loc == some bf && s.players.any (fun q =>
+          q != unit.controller && (s.unitsAtOf bf q).any (fun enemy =>
+            (s.cardDef? enemy).any (fun card => card.domains.contains dom)))
+      | _, _ => false)
+  | .chosenByEnemySpellOfDomain dom =>
+    some ((s.obj? id).any (fun unit => (s.zone .chain).any (fun item =>
+      (s.obj? item).any (fun spell => spell.controller != unit.controller &&
+        spell.targets.contains id) &&
+      (s.cardDef? item).any (fun card => card.hasType .spell && card.domains.contains dom))))
   | .stunned => (s.obj? id).map (·.stunned)
   | .buffed => (s.obj? id).map (·.buffed)
   | .mighty =>
@@ -481,10 +560,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | .slot i => match env.slots[i]? with | some (.obj o) => some o | _ => none
       | .var v => match env.lookup v with | some (.obj o) => some o | _ => none
       | _ => none
-    let m ← s.mightOf id
-    let m2 ← s.mightOf d
-    pure (decide (m + s.equipBonus id + s.buffBonus id + env.passOf id <
-      m2 + s.equipBonus d + s.buffBonus d + env.passOf d))
+    let model ← s.mightWithCachedPassives env d
+    pure ((s.mightWithCachedPassives env id).any (fun m => decide (m < model)))
   | .choosesOnly sel => do
     let d ← match sel with
       | .self => some self
@@ -549,6 +626,7 @@ def GameState.baseHere (s : GameState) (self : ObjId) : Bool :=
 belongs to: "here" is the Battlefield it is at. -/
 def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List ObjId)
   | .anywhere => some s.inPlay
+  | .boardOrLegend => some (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone)))
   | .here =>
     match s.hereOf self with
     | some bf =>
@@ -614,42 +692,6 @@ def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : En
   let objs ← s.placeObjs self place
   s.keepMatching p self env side fs objs
 
-/-- The player `p` cannot choose the object: it is of another player, and it has the passive ability
-that says it can't be chosen by enemy spells and abilities (Ruin Runner). -/
-def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
-  (s.obj? id).any (·.controller != p) &&
-    ((s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
-      match ab with
-      | Ability.passive .always mods => mods.contains (.cant .self .beChosen)
-      | _ => false)) ||
-    -- an object of its controller says that some objects of theirs can't be chosen (Alpha Wildclaw)
-    s.inPlay.any (fun g =>
-      match s.obj? g, s.obj? id with
-      | some og, some o =>
-        og.controller == o.controller &&
-          (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
-            match ab with
-            | Ability.passive .always mods =>
-              mods.any (fun m => match m with
-                | .cant (.pick .all side place fs) .beChosen =>
-                  side.admits og.controller o && ((s.placeObjs g place).getD []).contains id &&
-                    FilterList.holds s g {} id fs == some true
-                | _ => false)
-            | _ => false))
-      | _, _ => false))
-
-/-- The objects of a side at a place that have the properties, for a choice made while an effect
-resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
-target cannot be. -/
-def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
-    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
-  match place.zoneKind? with
-  | some z =>
-    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
-      acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
-        FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
-  | none => (s.candidates p self env side place fs).map (·.filter (fun id => !s.blocksChoice p id))
-
 /-- A member of the answer is a member of the list that was filtered. -/
 theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {fs : FilterList} {l r : List ObjId}
@@ -678,14 +720,20 @@ theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId}
           · exact List.mem_cons_self
           · exact List.mem_cons_of_mem _ (ih htl x hx)
 
-/-- A candidate is in play when the place is a place of the board, or a spell on the Chain. -/
+/-- An object at a supported place is on the Board, on the Chain, or in a Legend Zone. -/
 theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l : List ObjId}
-    (h : s.placeObjs self pl = some l) : ∀ x ∈ l, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    (h : s.placeObjs self pl = some l) :
+    ∀ x ∈ l, x ∈ s.inPlay ∨ x ∈ s.zone .chain ∨
+      ∃ p ∈ s.players, x ∈ s.zone (.player p .legendZone) := by
   intro x hx
   cases pl with
   | anywhere =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h; exact Or.inl hx
+  | boardOrLegend =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
+    exact (List.mem_append.mp hx).elim Or.inl (fun h => Or.inr (Or.inr (List.mem_flatMap.mp h)))
   | here =>
     simp only [placeObjs] at h
     split at h
@@ -715,11 +763,11 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | onChain =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
-    exact Or.inr (List.mem_filter.mp hx).1
+    exact Or.inr (Or.inl (List.mem_filter.mp hx).1)
   | onChainAll =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
-    exact Or.inr (List.mem_filter.mp hx).1
+    exact Or.inr (Or.inl (List.mem_filter.mp hx).1)
   | inHand => simp [placeObjs] at h
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
@@ -734,11 +782,12 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
     unfold inPlay
     exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
 
-/-- The objects a candidate list can hold are objects in play, or spells on the Chain. -/
+/-- A candidate at a supported place is on the Board, on the Chain, or in a Legend Zone. -/
 theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
     (h : s.candidates p self env side place fs = some r) :
-    ∀ x ∈ r, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    ∀ x ∈ r, x ∈ s.inPlay ∨ x ∈ s.zone .chain ∨
+      ∃ q ∈ s.players, x ∈ s.zone (.player q .legendZone) := by
   unfold candidates at h
   cases hp : s.placeObjs self place with
   | none => simp [hp] at h
@@ -746,15 +795,62 @@ theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {
     simp only [hp] at h
     exact fun x hx => GameState.mem_placeObjs hp x (GameState.mem_keepMatching h x hx)
 
+/-- Player zones whose cards may be named explicitly as targets. Facedown cards remain private
+(CR 107.3.f, 355.10.a). -/
+def targetZoneKinds : List ZoneKind := [.trash, .legendZone, .championZone]
+
+/-- A selected object still exists in a zone supported by object targeting. A zone change from
+or to one of the off-board zones creates a fresh object ID, so it cannot renew a stale target
+(CR 124, 340, 355.9). -/
+def GameState.targetPresent (s : GameState) (id : ObjId) : Bool :=
+  s.inPlay.contains id || (s.zone .chain).contains id ||
+    targetZoneKinds.any (fun z => s.players.any (fun p => (s.zone (.player p z)).contains id))
+
+/-- The matching targets for a declaration. An explicit player zone uses the side relative to
+the player whose zone it is. Other declarations keep their board and Chain semantics. -/
+def GameState.targetCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
+    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
+  match place.zoneKind? with
+  | none => s.candidates p self env side place fs
+  | some z =>
+    if targetZoneKinds.contains z then
+      let objs := (s.players.filter (side.admitsPlayer p)).flatMap (fun q => s.zone (.player q z))
+      s.keepMatching p self env .any fs objs
+    else some []
+
+/-- Every candidate is in a supported target zone. -/
+theorem GameState.mem_targetCandidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
+    {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
+    (h : s.targetCandidates p self env side place fs = some r) :
+    ∀ x ∈ r, s.targetPresent x = true := by
+  intro x hx
+  unfold targetCandidates at h
+  cases hz : place.zoneKind? with
+  | none =>
+    rw [hz] at h
+    rcases mem_candidates h x hx with hb | hc | ⟨q, hq, hl⟩
+    · simp [targetPresent, hb]
+    · simp [targetPresent, hc]
+    · simp only [targetPresent, Bool.or_eq_true, List.any_eq_true, List.contains_iff_mem]
+      exact Or.inr ⟨.legendZone, by decide, q, hq, hl⟩
+  | some z =>
+    by_cases hp : z ∈ targetZoneKinds
+    · simp only [hz, List.contains_iff_mem, hp, ite_true] at h
+      obtain ⟨q, hq, hxq⟩ := List.mem_flatMap.mp (mem_keepMatching h x hx)
+      have hq' := (List.mem_filter.mp hq).1
+      simp only [targetPresent, Bool.or_eq_true, List.any_eq_true, List.contains_iff_mem]
+      exact Or.inr ⟨z, hp, q, hq', hxq⟩
+    · simp_all
+
 /-- The objects a selector stands for when an effect resolves, seen by `p`, for the object `self`.
-A chosen object that has left play is nothing (CR 340): the selector stands for no object.
+A target whose object no longer exists stands for no object (CR 340).
 `none` if the selector cannot be answered yet. -/
 def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     Selector → Option (List ObjId)
   | .self => some [self]
   | .slot i =>
     match env.slots[i]? with
-    | some (.obj o) => some (if o ∈ s.inPlay ∨ o ∈ s.zone .chain then [o] else [])
+    | some (.obj o) => some (if s.targetPresent o then [o] else [])
     | some (.int _) => some []  -- a target of up to one, that was left out (`slotValues`)
     | _ => none
   | .var v =>
@@ -769,7 +865,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .slotsFrom i =>
     some ((env.slots.drop i).filterMap (fun v =>
       match v with
-      | .obj o => if o ∈ s.inPlay ∨ o ∈ s.zone .chain then some o else none
+      | .obj o => if s.targetPresent o then some o else none
       | _ => none))
   | .locationOf sel =>
     (sel.eval s p self env).map (fun ids =>
@@ -782,47 +878,38 @@ def GameState.runesOf (s : GameState) (p : PlayerId) : List ObjId :=
 
 /-- How the player pays the payment `pay` with Runes, if the Pool falls short: exhaust a ready Rune
 for each Energy missing, and recycle a Rune of the domain for each Power missing. -/
-def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment) :
-    Option (List (ObjId × RuneAbility)) :=
+def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment)
+    (unit : Bool := false) (reservedPower : Nat := 0) :
+    Option (List (ObjId × RuneAbility)) := Id.run do
   let pool := s.poolOf p
-  -- the Runes whose Power the payment needs are exhausted last, and exhausted Runes recycled first
   let isNeeded (r : ObjId) : Bool :=
     (s.obj? r).any (fun o => match o.runeDomain with
       | some d => pay.power.contains d
       | none => false)
   let readyAll := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
   let ready := readyAll.filter (fun r => !isNeeded r) ++ readyAll.filter isNeeded
-  let recyclable := (s.runesOf p).filter (fun r => (s.obj? r).any (·.exhausted)) ++ readyAll
-  let k := pay.energy - pool.energy
-  if k ≤ ready.length then
-    let exh := ready.take k
-    let step := fun (acc : Option (RunePool × List ObjId)) (d : Domain) =>
-      match acc with
-      | none => none
-      | some (pl, used) =>
-        match pl.takePower d with
-        | some pl' => some (pl', used)
-        | none =>
-          match recyclable.find? (fun r => !used.contains r &&
-              (s.obj? r).any (fun o => o.runeDomain == some d)) with
-          | some r => some (pl, r :: used)
-          | none => none
-    match pay.power.foldl step (some (pool, exh)) with
-    | some (_, used) =>
-      some (exh.map (fun r => (r, RuneAbility.exhaust)) ++
-        (used.filter (fun r => !exh.contains r)).map (fun r => (r, RuneAbility.recycle)))
-    | none => none
-  else none
-
-/-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
-nothing to do when the Pool pays it already. -/
-def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) :
-    Option (List (ObjId × RuneAbility)) :=
-  let own := ((s.cardDef? src).map (·.domains)).getD []
-  (c.payments own).findSome? (fun pay =>
-    match (s.poolOf p).spend pay with
-    | some _ => some []
-    | none => s.runeCover p pay)
+  let energyNeeded := pay.energy - pool.energyFor unit
+  if ready.length < energyNeeded then return none
+  let exhaust := ready.take energyNeeded
+  -- Recycle a Rune after its Exhaust ability when the Power also needs that Rune (CR 164.2).
+  let recyclable := (s.runesOf p).filter (fun r => (s.obj? r).any (·.exhausted)) ++
+    readyAll.filter (fun r => !exhaust.contains r) ++ exhaust
+  let mut specific := { pool with any := 0 }
+  let mut recycle := []
+  let mut anyNeeded := 0
+  for domain in pay.power do
+    if let some rest := specific.takePower domain then
+      specific := rest
+    else if let some rune := recyclable.find? (fun r => !recycle.contains r &&
+        (s.obj? r).any (fun o => o.runeDomain == some domain)) then
+      recycle := rune :: recycle
+    else
+      anyNeeded := anyNeeded + 1
+  let anyAvailable := pool.any - reservedPower
+  if anyAvailable < anyNeeded then return none
+  let neededRunes := recycle.length - (anyAvailable - anyNeeded)
+  return some (exhaust.map (fun r => (r, RuneAbility.exhaust)) ++
+    (recycle.reverse.take neededRunes).map (fun r => (r, RuneAbility.recycle)))
 
 /-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
 def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
@@ -838,18 +925,19 @@ def GameState.restrictedNow (s : GameState) (p : PlayerId) : Nat :=
   min (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == .gearMana)).length
     (s.poolOf p).any
 
-/-- The Pool of the player after paying: what is paid must leave the Power that only pays for Gear,
-unless it is Gear that is played or used. -/
-def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RunePool.Payment) :
+/-- Spend the resources eligible for this cost. Power reserved for Gear stays in the Pool
+when paying for other objects. -/
+def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RunePool.Payment)
+    (unit : Bool := false) :
     Option RunePool :=
-  ((s.poolOf p).spend pay).filter (fun q => gear || decide (s.restrictedNow p ≤ q.any))
+  ((s.poolOf p).spend pay unit).filter (fun q => gear || decide (s.restrictedNow p ≤ q.any))
 
 /-- A payment that the Pool allows is a payment the Pool makes. -/
 theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
-    {pay : RunePool.Payment} {q : RunePool} (h : s.spendFor p g pay = some q) :
-    (s.poolOf p).spend pay = some q := by
+    {pay : RunePool.Payment} {unit : Bool} {q : RunePool} (h : s.spendFor p g pay unit = some q) :
+    (s.poolOf p).spend pay unit = some q := by
   unfold GameState.spendFor at h
-  cases hs : (s.poolOf p).spend pay with
+  cases hs : (s.poolOf p).spend pay unit with
   | none => simp [hs] at h
   | some q' =>
     simp only [hs, Option.filter] at h
@@ -859,10 +947,21 @@ theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
 
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
 Power the cost may name), if it can: the first payment that the Pool has. -/
-def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost) : Option RunePool :=
+def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
+    (unit : Bool := false) : Option RunePool :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
   (c.payments own).findSome? (fun pay =>
-    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay)
+    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit)
+
+/-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
+nothing to do when the Pool pays it already. -/
+def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
+    (unit : Bool := false) : Option (List (ObjId × RuneAbility)) :=
+  let d := s.cardDef? src
+  let gear := d.any (·.hasType .gear)
+  (c.payments ((d.map (·.domains)).getD [])).findSome? (fun pay =>
+    if (s.spendFor p gear pay unit).isSome then some []
+    else s.runeCover p pay unit (if gear then 0 else s.restrictedNow p))
 
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in
@@ -893,6 +992,8 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
           (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
+  | .damageOn sel => (sel.eval s p self env).map (fun ids =>
+    (ids.map (fun id => ((s.obj? id).map (·.damage)).getD 0)).sum)
   -- the Might the filters read: the printed Might, the buff, the Equipment and what the passive
   -- abilities add (`env.passMight`; the Layers are defined after this)
   | .mightOf sel =>
@@ -904,6 +1005,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .xp => some (s.xpOf p)
   | .victoryScore => some s.victoryBase
   | .energyPaid => some (((s.obj? self).map (·.energyPaid)).getD 0)
+  | .empowerCount => some (((s.obj? self).map (·.empowerCount)).getD 0)
   | .notes e =>
     some (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == e &&
       f.target == some self)).length
@@ -964,16 +1066,13 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     let sym (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.power.length)).getD 0
     ids.map (fun l => (l.map sym).sum)
   | .points ps => do
-    let l ← ps.resolve s p
+    let l ← ps.resolve s p env
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
   | .turnsTaken ps => do
-    -- the turns the players have taken, this one included (CR 301), not counting the extra turns
-    let l ← ps.resolve s p
-    pure (l.foldl (fun acc q =>
-      acc + ((List.range (s.turn - s.turnShift)).filter
-        (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == q)).length) 0)
+    let l ← ps.resolve s p env
+    pure ((l.map s.turnsTaken).sum)
   | .handSize ps => do
-    let l ← ps.resolve s p
+    let l ← ps.resolve s p env
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)
   | .add a b => do pure ((← Amount.evalS0 s p self env a) + (← Amount.evalS0 s p self env b))
   | .sub a b => do pure ((← Amount.evalS0 s p self env a) - (← Amount.evalS0 s p self env b))
@@ -1012,6 +1111,10 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     let ids ← sel.eval s p self env
     let bs ← ids.mapM (fun id => f.holds s self env id)
     pure (!ids.isEmpty && bs.all id)
+  | .empowered sel =>
+    (sel.eval s p self env).map (fun ids =>
+      !ids.isEmpty && ids.all (fun id => (s.obj? id).any (·.empowerCount > 0)))
+  | .leftEmpowered => some ((s.obj? self).any (·.leftEmpowered))
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
   | .drewCards n =>
@@ -1034,7 +1137,20 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       f.target == s.hereOf self))
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
+  | .discardPaid => some ((s.obj? self).any (·.discardPaid))
   | .playedAnother => some (s.playedOther p self)
+  | .finalizedType kind => some ((s.playsOfType .finalized kind).any (·.who == p))
+  | .opponentFinalizedOtherSpell target =>
+    (target.eval s p self env).map (fun ids =>
+      ids.any (fun id => (s.playsOfType .finalized .spell).any
+        (fun play => play.who != p && play.object != id)))
+  | .firstResolvedType kind played =>
+    (played.eval s p self env).map (fun ids =>
+      (((s.playsOfType .resolved kind).filter (·.who == p)).getLast?).any
+        (fun play => ids.contains play.object))
+  | .fewerRunesThanOpponent =>
+    let own := (s.runesOf p).length
+    some (s.players.any (fun q => q != p && own < (s.runesOf q).length))
   | .canPay c => some ((s.payNow p self c).isSome || (s.runePlan p self c).isSome)
   | .diedWith e =>
     -- the object a watching ability is about, or (an ability of the dead card itself) the card
@@ -1057,7 +1173,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p &&
       (match f.kind with | .excessDamage k => decide (n ≤ k) | _ => false)))
   | .marked e =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.who == p &&
+    let kind := e.forCopy env.abilityCopyStamp
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == kind && f.who == p &&
       f.target == some self))
   | .enemyUnitDied =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
@@ -1073,22 +1190,88 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
         (s.cardDef? ⟨k⟩).any (·.hasType .spell)))
   | _ => none
 
-/-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
+/-- The player can't choose an object protected from enemy spells and abilities. Read conditions
+as well as protection granted by an effect of this turn (CR 355). -/
+def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
+  match s.obj? id with
+  | none => false
+  | some o => o.controller != p &&
+    (s.turnFx.any (fun f =>
+        f.turn == s.turn && f.target == some id && f.kind == .unchoosableEnemy) ||
+      ((s.inPlay.contains id || (s.zone (.player o.owner .legendZone)).contains id) &&
+        (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+          match ab with
+          | .passive cond mods =>
+            mods.contains (.cant .self .beChosen) && cond.eval s o.controller id {} == some true
+          | _ => false))) ||
+      s.inPlay.any (fun src =>
+        (s.obj? src).any (·.controller == o.controller) &&
+          (s.cardDef? src).any (fun d => d.fullAbilities.any (fun ab =>
+            match ab with
+            | .passive cond mods =>
+              mods.any (fun m => match m with
+                | .cant (.pick .all side place fs) .beChosen =>
+                  side.admits o.controller o && ((s.placeObjs src place).getD []).contains id &&
+                    FilterList.holds s src {} id fs == some true
+                | _ => false) && cond.eval s o.controller src {} == some true
+            | _ => false))))
+
+/-- The objects of a side at a place that have the properties, for a choice made while an effect
+resolves: also the cards of a player's zone off the board, including private zones such as
+the hand or a deck when the effect allows it. -/
+def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
+    (side : Side) (place : Place) (fs : FilterList) (target : Bool := true) : Option (List ObjId) :=
+  match place.zoneKind? with
+  | some z =>
+    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+      acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
+        FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
+  | none => (s.candidates p self env side place fs).map
+    (·.filter (fun id => !target || !s.blocksChoice p id))
+
+/-- Whether the engine can enumerate target choices of this quantity. -/
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n => decide (1 ≤ n)
+  | .anyNumber | .combinedMightAtMost _ => true
   | _ => false
+
+/-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
+def Filter.requiresOtherLocation (s : GameState) (bf : ObjId) (acc : List ObjId) : Filter → Bool
+  | .at_ (.slot i) => acc[i]?.any (fun id => s.hereOf id != some bf)
+  | .not (.at_ (.slot i)) => acc[i]?.any (fun id => s.hereOf id == some bf)
+  | .either a b => a.requiresOtherLocation s bf acc && b.requiresOtherLocation s bf acc
+  | _ => false
+
+/-- Whether a conjunction of target filters rules out the hiding Battlefield. -/
+def FilterList.requiresOtherLocation (s : GameState) (bf : ObjId) (acc : List ObjId) :
+    FilterList → Bool
+  | .nil => false
+  | .cons f rest => f.requiresOtherLocation s bf acc || rest.requiresOtherLocation s bf acc
+
+/-- Object targets of a hidden Spell are at its Battlefield unless the choice specifies a
+different location (CR 811.1.d.2, 811.1.d.4, 753.3). -/
+def GameState.hiddenSpellTargetOk (s : GameState) (self : ObjId) (acc : List ObjId)
+    (place : Place) (fs : FilterList) (id : ObjId) : Bool :=
+  if (s.cardDef? self).any (·.hasType .spell) then
+    match (s.obj? self).bind (·.hiddenAt), place with
+    | some bf, .anywhere | some bf, .atBattlefield | some bf, .here | some bf, .boardOrLegend =>
+      fs.requiresOtherLocation s bf acc || s.hereOf id == some bf
+    | _, _ => true
+  else true
 
 /-- The objects a choice of a Spell can pick, when the choices before it picked `acc` (a later
 choice may name an earlier pick as `slot i`): for a target of one object, up to one, or any number up
-to a bound, the matching objects in play. Nothing for a choice that is not understood yet. -/
+to a bound, the matching objects in an eligible zone. Nothing for a choice that is not understood
+yet. -/
 def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) :
     Choice → List ObjId
   | .target q side place fs =>
     if q.pickable then
-      ((s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
-        fs).getD []).filter (fun id => !s.blocksChoice p id)
+      ((s.targetCandidates p self { slots := acc.map Value.obj, passMight := pm } side place
+        fs).getD []).filter (fun id => !s.blocksChoice p id &&
+          s.hiddenSpellTargetOk self acc place fs id)
     else []
   | _ => []
 
@@ -1096,34 +1279,56 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
 
+/-- Fix a Move trigger's location requirements to the event that produced it (CR 477.3.b). -/
+def Choice.withMoveBattlefields (fields : List ObjId) : Choice → Choice
+  | .target q side place fs => .target q side place (replaceAll fs)
+  | choice => choice
+where
+  replace : Filter → Filter
+    | .atSourceMoveBattlefield _ => .atSourceMoveBattlefield (some fields)
+    | .not f => .not (replace f)
+    | .either a b => .either (replace a) (replace b)
+    | f => f
+  replaceAll : FilterList → FilterList
+    | .nil => .nil
+    | .cons f rest => .cons (replace f) (replaceAll rest)
+
 /-- Whether a choice is one that a Spell can make for now: one target, or up to some number (which
 may be left out when nothing after it is required). -/
 def Choice.simple : Choice → Bool
-  | .target .one _ _ _ => true
-  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
+  | .target q _ _ _ => q.pickable
   | _ => false
 
 /-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
-  | .target (.upTo n) _ _ _ => decide (1 ≤ n)
+  | .target q _ _ _ => q.pickable && q != .one
   | _ => false
 
 /-- An optional choice is one that can be made. -/
 theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
-  unfold Choice.optional at h
-  split at h
-  · simpa [Choice.simple] using h
-  · simp at h
+  cases c <;> simp_all [Choice.optional, Choice.simple]
 
 /-- Whether a choice is of several objects: up to two or more. It is the last choice of its Spell,
 and the objects are chosen in the order of the objects, so that a set is chosen once. -/
 def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
+  | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ => true
   | _ => false
 
-/-- The most objects a choice picks. -/
-def Choice.maxPicks : Choice → Nat
+/-- A group is limited by its size or by its total effective Might. -/
+def Choice.groupLimit : Choice → Nat
   | .target (.upTo n) _ _ _ => n
+  | .target .anyNumber _ _ _ => 0
+  | .target (.combinedMightAtMost limit) _ _ _ => limit
+  | _ => 1
+
+/-- The contribution of each object to the group limit, using current Might (CR 143, 355.11). -/
+def Choice.groupWeight (s : GameState) (pm : List (ObjId × Int)) (c : Choice) (id : ObjId) : Nat :=
+  match c with
+  | .target .anyNumber _ _ _ => 0
+  | .target (.combinedMightAtMost _) _ _ _ =>
+    let env : Env := { passMight := pm }
+    ((s.mightOf id).getD 0 + s.equipBonus id + s.buffBonus id + env.passOf id).toNat
   | _ => 1
 
 /-- Every way to leave some of the objects out, the others in their order, keeping at most `k`. -/
@@ -1157,6 +1362,43 @@ theorem mem_subseqsUpTo {α : Type} :
       · exact Or.inl ⟨h, hl⟩
       · exact Or.inr ⟨r, ⟨hr, by simpa using hl⟩, rfl⟩
 
+/-- Every sublist within a nonnegative budget. A branch is cut off as soon as it costs too much. -/
+def subseqsWithin {α : Type} (weight : α → Nat) (limit : Nat) : List α → List (List α)
+  | [] => [[]]
+  | x :: xs => subseqsWithin weight limit xs ++
+    if weight x ≤ limit then
+      (subseqsWithin weight (limit - weight x) xs).map (x :: ·)
+    else []
+
+/-- Enumerating sets within a budget agrees with checking the total of a sublist. -/
+theorem mem_subseqsWithin {α : Type} (weight : α → Nat) :
+    ∀ (l : List α) (limit : Nat) (t : List α),
+      t ∈ subseqsWithin weight limit l ↔ t.Sublist l ∧ (t.map weight).sum ≤ limit
+  | [], limit, t => by cases t <;> simp [subseqsWithin]
+  | x :: xs, limit, t => by
+    rw [List.sublist_cons_iff]
+    by_cases h : weight x ≤ limit
+    · simp only [subseqsWithin, h, ite_true, List.mem_append, List.mem_map,
+        mem_subseqsWithin weight xs]
+      constructor
+      · rintro (⟨ht, hw⟩ | ⟨ys, ⟨hy, hw⟩, rfl⟩)
+        · exact ⟨Or.inl ht, hw⟩
+        · refine ⟨Or.inr ⟨ys, rfl, hy⟩, ?_⟩
+          simp only [List.map_cons, List.sum_cons]
+          omega
+      · rintro ⟨(ht | ⟨ys, rfl, hy⟩), hw⟩
+        · exact Or.inl ⟨ht, hw⟩
+        · refine Or.inr ⟨ys, ⟨hy, ?_⟩, rfl⟩
+          simp only [List.map_cons, List.sum_cons] at hw
+          omega
+    · simp only [subseqsWithin, h, ite_false, List.append_nil, mem_subseqsWithin weight xs]
+      constructor
+      · exact fun ⟨ht, hw⟩ => ⟨Or.inl ht, hw⟩
+      · rintro ⟨(ht | ⟨ys, rfl, hy⟩), hw⟩
+        · exact ⟨ht, hw⟩
+        · simp only [List.map_cons, List.sum_cons] at hw
+          omega
+
 /-- The objects a choice of several can pick, in the order of the objects. -/
 def Choice.sortedCands (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List ObjId :=
@@ -1176,7 +1418,7 @@ def targetsOkAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (Obj
   | [], _ :: _ => false
   | c :: cs, ts =>
     if c.multi then
-      cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+      cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
         decide (ts.Sublist (c.sortedCands s p self pm acc))
     else
       match ts with
@@ -1191,7 +1433,7 @@ theorem targetsOkAfter_cons (s : GameState) (p : PlayerId) (self : ObjId)
     (ts : List ObjId) :
     targetsOkAfter s p self pm acc (c :: cs) ts =
       (if c.multi then
-        cs.isEmpty && decide (ts.length ≤ c.maxPicks) &&
+        cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
           decide (ts.Sublist (c.sortedCands s p self pm acc))
       else
         match ts with
@@ -1224,7 +1466,7 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (
   | c :: cs =>
     if c.multi then
       (if cs.isEmpty then
-        subseqsUpTo c.maxPicks (c.sortedCands s p self pm acc)
+        subseqsWithin (c.groupWeight s pm) c.groupLimit (c.sortedCands s p self pm acc)
       else [])
     else if c.simple then
       (c.candidatesAfter s p self pm acc).flatMap (fun t =>
@@ -1249,7 +1491,7 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true,
         decide_eq_true_eq]
       by_cases hc : cs.isEmpty = true
-      · simp [hc, mem_subseqsUpTo, and_comm]
+      · simp [hc, mem_subseqsWithin, and_comm]
       · simp [hc]
     · have hm' : c.multi = false := by simpa using hm
       cases ts with
@@ -1281,30 +1523,30 @@ theorem mem_targetTuples (s : GameState) (p : PlayerId) (self : ObjId) (pm : Lis
     ts ∈ targetTuples s p self pm cs ↔ targetsOk s p self pm cs ts = true :=
   mem_targetTuplesAfter s p self pm cs [] ts
 
-/-- What a choice can pick is in play, or a spell on the Chain. -/
+/-- What a choice can pick is in a supported target zone. -/
 theorem Choice.candidatesAfter_mem {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} {acc : List ObjId} {c : Choice} {x : ObjId}
-    (h : x ∈ c.candidatesAfter s p self pm acc) : x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    (h : x ∈ c.candidatesAfter s p self pm acc) : s.targetPresent x = true := by
   cases c with
   | target q side place fs =>
     simp only [Choice.candidatesAfter] at h
     split at h
-    · cases hc : s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
+    · cases hc : s.targetCandidates p self { slots := acc.map Value.obj, passMight := pm } side place
         fs with
       | none => simp [hc] at h
       | some r =>
         simp only [hc, Option.getD_some] at h
-        exact GameState.mem_candidates hc x (List.mem_filter.mp h).1
+        exact GameState.mem_targetCandidates hc x (List.mem_filter.mp h).1
     · simp at h
   | mode _ => simp [Choice.candidatesAfter] at h
   | xValue => simp [Choice.candidatesAfter] at h
   | extraCost _ _ => simp [Choice.candidatesAfter] at h
 
-/-- Every object chosen is in play, or a spell on the Chain. -/
-theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
+/-- Every object chosen is in a supported target zone. -/
+theorem targetsOkAfter_mem_targetPresent {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} :
     ∀ {cs : List Choice} {acc ts : List ObjId}, targetsOkAfter s p self pm acc cs ts = true →
-      ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain
+      ∀ t ∈ ts, s.targetPresent t = true
   | [], _, [], _ => by simp
   | [], _, _ :: _, h => by simp [targetsOkAfter] at h
   | c :: cs, acc, ts, h => by
@@ -1324,14 +1566,14 @@ theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
         obtain ⟨⟨hs, ht⟩, hrest⟩ := h
         rcases List.mem_cons.mp hx with rfl | hx
         · exact Choice.candidatesAfter_mem ht
-        · exact targetsOkAfter_mem_inPlay hrest x hx
+        · exact targetsOkAfter_mem_targetPresent hrest x hx
 
-/-- Every object chosen is in play, or a spell on the Chain. -/
-theorem targetsOk_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
+/-- Every object chosen is in a supported target zone. -/
+theorem targetsOk_mem_targetPresent {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} {cs : List Choice}
     {ts : List ObjId} (h : targetsOk s p self pm cs ts = true) :
-    ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain :=
-  targetsOkAfter_mem_inPlay h
+    ∀ t ∈ ts, s.targetPresent t = true :=
+  targetsOkAfter_mem_targetPresent h
 
 /-- A change of the board that the invariants survive: it keeps the game well formed, the physical
 cards, and `OwnerOk`, and changes only objects, zones and counters. -/

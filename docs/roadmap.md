@@ -366,7 +366,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Chain 上の Spell が対象を持つ**: `Object.targets`。解決のとき、`Env.slots` に入り、`Selector.slot i` が読む。選ばれた物が盤面から消えていたら、その Selector は何も指さない（CR 340。効果は何もしない）。
 - **プリミティブ**: `deal`・`heal`・`kill`・`ready`・`exhaust`。Selector は `self`・`slot`・`var`・`pick .all`。ダメージが Might に届いた物は、その場で Trash に行く（CR 417 の Cleanup を前倒ししたもの。Cleanup は戦闘（M5）で足す）。
 - **状態を変える部品**（`Safe`）: 効果が盤面を変える操作は、`WF`・I1・`OwnerOk` を保ち、物・ゾーン・カウンタだけを変える。この `Safe s s'` を `modObj`（1 つの物の属性を変える。kind と owner を変えない）と `moveObj` から組み、`runEffect_safe` で解釈器全体が `Safe` だと示した。そのため、既存の不変条件の証明は、`run` の腕に `Safe` を 1 つ使うだけで済んだ。
-- **証明**: `applyCast_targets`（Chain の Spell は、選んだ対象を持つ）、`castable_targets_inPlay`（Spell の対象は盤面の物）、`resolveFrames_slots`（解決は、持った対象を slot にして効果を走らせる）、`mem_legalPlays`（列挙は、カード・支払い・対象の合法な組だけ）、`runEffect_safe`。**不変条件**は引き続き証明済み。
+- **証明**: `applyCast_targets`（Chain の Spell は、選んだ対象を持つ）、`castable_targets_present`（Spell の対象は合法なゾーンにある）、`resolveFrames_slots`（解決は、持った対象を slot にして効果を走らせる）、`mem_legalPlays`（列挙は、カード・支払い・対象の合法な組だけ）、`runEffect_safe`。**不変条件**は引き続き証明済み。
 - **ビューア**: デモのデッキに「敵の Unit に 2 ダメージ」の Spell（Spark）が入り、対象つきでプレイされ、Unit が Trash に行く。ログに「（対象: …）」が出る。
 - **まだ無いもの**: 複数の対象・`upTo`・`exactly`・モード・X・追加コスト（選択のフレーム）、`here`・`inHand` などの place、条件（`ifThen`）、`forEach`、`pick .one`、Reaction と複数項目の Chain（I9）、Spell の速さ、Cleanup（ダメージによる死を Cleanup で行う）、Layers（現在の Might は印刷値のまま）。
 
@@ -1169,7 +1169,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### M7 の実装の記録（2026-11-23）: 打ち消し（Chain の上のスペルを選ぶ）、3 枚
 
-- **エンジン**: `Place.onChain`（Chain の上のスペル。自分自身と、能力は含まない）。選ぶ対象が、盤面か Chain の上のスペルになった（`mem_candidates`・`targetsOk_mem_inPlay`・`castable_targets_inPlay` の主張を、「盤面、または Chain の上のスペル」に広げた。`.slot` も同じ）。`Prim.counter`（スペルを、解決せずに、持ち主の Trash へ送る）。
+- **エンジン**: `Place.onChain`（Chain の上のスペル。自分自身と、能力は含まない）。選ぶ対象が、盤面か Chain の上のスペルになった（`mem_candidates`・当時の `targetsOk_mem_inPlay`・`castable_targets_inPlay` の主張を、「盤面、または Chain の上のスペル」に広げた。`.slot` も同じ）。`Prim.counter`（スペルを、解決せずに、持ち主の Trash へ送る）。
 - **動くようになったカード**: Defy（045。費用の上限は、Energy 4 と Power 1）、Wind Wall（064）、Stormbringer, Volibear（250）。
 - **動くカード**: 213 → **216 枚**。
 - **レビューで足したこと**: 負のテスト（Chain が空、自分自身は対象にできない、Stormbringer の第 1 対象は、基地の味方ユニット）。
@@ -1755,6 +1755,346 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 | M8c Vendetta | Empower / Empowered / Flow / Burn（827-829, 441-443）、複数の型を持つカード（177-178）、Skip（444） |
 | M8d Radiance | Deploy、Disarm、Show Off（830-832）、Copy 層（479.1）、Pick と Choose の区別、構築時の追加選択（103.1） |
 | M8e Legacy（2027-01） | ルールの全面改番への追従、新しいカード文面のテンプレート |
+
+### M8c Vendetta 1 — Burn と既存の効果 IR で書けるカード
+
+- `Prim.burn` は CR 441 に従い、Main Deck の上から指定枚数を Trash に置く。残りが足りない場合は、置ける分を置いて Burn Out を処理し、山札を補充して残りを置く。移動には `sendObj` を使い、`burnEffect_safe` で物理カードの保存などを示した。Burn 専用の誘発は後続のカードで扱う。
+- Shadow Temple、Oasis Raider、Fretful Feline、Decree of Unity、Acceleration Gate など、21 枚の効果を追加した。Vendetta の `drafted` は 167 枚中 36 枚になった。これら 5 枚は `RiftboundTest/VendettaA.lean` で、誘発条件、対象の選択、山札の残り枚数などを検査する。
+
+### M8c Vendetta 2 — 印刷された Flow コスト
+
+- 呪文は通常のタイミングで、Trash からは Flow の代替コストでプレイできる（CR 829）。Flow でプレイした呪文は、解決または打ち消しで Chain を離れるとき Banishment へ置く。
+- Brittle Steel と Perfect Execution の効果を追加した。Brittle Steel は手札と Trash でコストが異なること、Reaction の許可が増えないこと、解決と打ち消しの両方で Banishment へ置かれることをテストした。
+
+### M8c Vendetta 3 — Empower の状態と印刷されたマナコスト
+
+- CR 442–443 に対応し、Unit・Gear・Legend の Empowered を記録する。盤外へ出ると状態は消え、Disempower すると 1 回分を失う。CR 827 のマナコストを持つカードは、Empowered でない間に起動できる。
+- Steel Paws の既存定義が動くようになり、Rage Amplifier、Guttural Roar など 9 枚の効果を追加した。割引、マナ以外の Empower コスト、Empowered の複数回起動を許すカードは後続で扱う。
+
+### M8c Vendetta 4 — Flow と Empower を使うカード
+
+- Lacerate、Tomb-Raider Barbara、Ambessa 2 種など、11 枚の効果を追加した。Lacerate のテストでは Disempower の後の Might で撃破を判定することを確かめた。Shadow Assassin は自分の Trash に同名カードがあるときだけ Ready で出る。
+- Vendetta の 167 枚中、58 枚が `drafted`、54 枚が `CardDef.runs` を満たす。いずれの件数も `RiftboundTest/Cards.lean` で検査する。
+
+### M8c Vendetta 5 — Empower の起動コストと Deathknell
+
+- Disempower を起動コストとして支払い、効果を Chain に置く前に状態を更新する。Kayle の重ね掛けと、死亡直前の Empowered を参照する Deathknell に対応した。
+- Questionable Tome、Kayle、Noxian Emissary など 15 枚の効果を追加した。167 枚中 73 枚が `drafted`、69 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 6 — 起動コストの軽減と対象条件
+
+- 起動コストの Energy 軽減を合法手の列挙と受理に反映した。Baccai Sandspinner は Rune 4 枚と 5 枚で費用が変わる。Stargazer は自分の Trash から唱える Flow 呪文にだけ適用し、最低 1 Energy を保つ。
+- Platewyrm Egg、Public Execution など 10 枚の効果を追加した。167 枚中 83 枚が `drafted`、79 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 7 — 打ち消し、Deflect、Channel の制約
+
+- Decree of Rage は打ち消しても Chain に残る。Decree of Insight と Heisho は合法性の判定と実際の支払いの両方で Deflect を無視する。Heisho の効果は、その Battlefield にいる対象に限る。
+- Sandstone Chimera の Channel 枚数制限と、Sacred Protector の戦闘ダメージ条件を追加した。167 枚中 88 枚が `drafted`、84 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 8 — 移動前後の対象と再プレイ
+
+- Akali は移動元か移動先の Battlefield の Unit を選び、Rogue Assassin は Showdown 中の Battlefield にいる味方 Unit を選ぶ。Mask Mother の捨てたときの効果も追加した。
+- Temporal Breach では、追放した Unit を持ち主が元の Battlefield へプレイする。相手に支配されていた Unit も、新しいオブジェクトとして持ち主の側に戻ることをテストした。
+- 167 枚中 92 枚が `drafted`、88 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 9 — 敵から選ばれない効果
+
+- Twilight Shroud の保護はターン中だけ働き、Akali, Silent の保護は同じ Battlefield で戦闘をしている間だけ外れる。どちらも味方の選択は許す。
+- 167 枚中 94 枚が `drafted`、90 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 10 — Trash のカードを対象にする
+
+- CR 355 に従い、明示された Trash・Legend Zone・Champion Zone のカードを Chain に置く段階で選べる。解決前に対象が別のゾーンへ移ると、その対象の ObjId は無効になる。Trash にあるカードの Deflect は働かない。
+- Shadows of the Past と Tail-Cloaked Matriarch に加え、Gust Monk と Ravenbloom Prefect を追加した。Gust Monk の追加コストは Assault の誘発条件であり、ユニットを Ready で出す Accelerate の支払いとは区別する。
+- 167 枚中 98 枚が `drafted`、94 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 11 — Spiderling の構築ルール
+
+- Spiderling はデッキの同名枚数制限を免除する。Core Rules と Constructed の判定で同じ規則を使い、Constructed では Main Deck とサイドボードの両方を含めて検査する。
+- 同じ場所にいる自分のほかの同名 Unit の枚数だけ Might が増える。敵の同名 Unit や別の場所にいる同名 Unit は枚数に含めない。
+- 167 枚中 99 枚が `drafted`、95 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 12 — 付与された Flow と複数の代替コスト
+
+- Kennen, Storm of Shuriken はプレイ時に Burn 2 を行い、Conquer 時には自分の Trash の呪文に、そのカードの基本コストを Flow としてターン終了まで与える。
+- CR 829 に従い、異なる Flow コストが複数あれば、プレイ時に使うコストを指定できる。割引後に支払いが一致しても区別し、Repeat の計算には選んだコストを使う。合法手の列挙と `Legal` の一致は `mem_legalPlays` と `legalActions_iff`、支払いの保存則は `applyCast_pays_cost` で検査する。
+- Lightning Rush は見たカードのうち 1 枚を引くか見送り、残りを Trash に置く。山札が 3 枚未満の場合も、見たカードの範囲で処理する。
+- 167 枚中 101 枚が `drafted`、97 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 13 — Might の閾値と盤面から読む効果
+
+- Renekton, Brute の誘発は、すでに場にいる Unit の実効 Might が 10 未満から 10 以上になったときに発生する。効果の解決に加え、Standard Move で Battlefield のパッシブが適用された場合も検出する。閾値以上を維持している間は再誘発せず、下がってからもう一度到達すれば再誘発する。
+- Morgana, Vindictive は解決時に対象に記録されているダメージと同じ量のダメージを与える。Keeper of Law は、Unit がちょうど 2 体いる Battlefield を支配している場合に 2 Energy と 1 Order Power が軽減される。
+- 167 枚中 103 枚が `drafted`、100 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 14 — 起動コストとして手札を捨てる
+
+- CR 423.3 に従い、必要な枚数をすべて選べる場合にだけ起動できる。手札から選んだカードを対象と区別し、能力を Chain に置く前に捨てる。列挙と合法性の一致を `mem_discardPayments` と `mem_legalActivates` で検査する。
+- Punching Poro は任意のカード、Sky Cruiser は Gear、Mel, Defiant Soul は Spell を捨てる。Sky Cruiser の Energy と Exhaust は同時に支払い、Mel は Empower 後に Battlefield の条件を満たす敵 Unit を追放する。
+- 167 枚中 106 枚が `drafted`、103 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 15 — Burn に続く誘発
+
+- Forgotten Relic はプレイ時と自分の Beginning Phase に Burn 1 を行う。その Burn で Unit を Trash に置いたときは、Might を記録して別の誘発型能力を Chain に載せる（CR 388-389, 441）。味方 Unit を選ぶのはこの誘発の確定時で、解決前に相手が応答できる。
+- 誘発が参照する Might は、最初の能力の発生源が場を離れたり、Burn したカードが Trash を離れたりしても使える。シナリオでは非 Unit、別の効果による Burn、Burn Out 後の Burn も検査する。
+- 167 枚中 107 枚が `drafted`、104 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 16 — 移動後に山札の上を公開する
+
+- Pakaa Protector が移動したら、山札の一番上を公開する。Unit なら引き、それ以外なら Trash に置き、Pakaa Protector に +2 Might を与える。山札が空なら公開も後続処理も行わない（CR 432.1.c）。
+- 位置の入れ替えで Base に戻った Unit も移動として記録する。Standard Move、入れ替え、Recall、複数の型を持つ Unit をシナリオで検査する。
+- 167 枚中 108 枚が `drafted`、105 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 17 — 各プレイヤーのターン数と得点の置換
+
+- Ol' Poro は自分の第 1〜3 ターンにはプレイできない。追加ターンも数える。効果で無料または軽減されたコストでプレイする場合にも制限が働く。
+- Otterpus は、得点するプレイヤー自身の第 1・2 ターンに Conquer または Hold で得る 1 点を 1 ドローに置き換える。得点済みの印は残り、Final Point の規則ですでにドローになる場合は 1 回だけ引く。
+- Beginning Step の誘発と Cleanup が終わってから Scoring Step を進める（CR 315.2, 335）。Dusk Rose Lab で Otterpus を倒すかどうかによって、その後の Hold が得点かドローか変わる。Shadow Temple は得点を置き換えたドローの次のカードから Burn する。
+- 167 枚中 109 枚が `drafted`、107 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 18 — 付与された Tank を Might の計算に使う
+
+- Kinkou Temple は、その Battlefield にいる両プレイヤーの Unit のうち、Tank を持つものに +1 Might を与える。キーワードのレイヤーで Tank を確定してから Might を計算する（CR 479.3-479.4）。装備や効果で与えられた Tank にも適用する。
+- 回帰テストで、Doran's Shield の装備を外したとき、Eye of Twilight が与えた Tank がターン終了時に切れたとき、別の Battlefield にいるときの Might を確認した。
+- 167 枚中 110 枚が `drafted`、108 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 19 — 戦闘参加とターン中のダメージ
+
+- 戦闘の開始時と Cleanup で参加した Unit を記録する。戦闘結果と Conquer に続く処理が済んでから戦闘を終え、途中で移動したり Recall されたりして場に残る Unit の能力も誘発させる（CR 466.2.c.3, 468.7）。
+- Mournful Witness は自分が参加した戦闘の終了時に Empower される。Affectionate Poro はそのターン中にダメージを受けていなければ 1 枚引く。正のダメージを受けたターンは回復後も参照でき、無効化されたダメージは記録しない（CR 418-419）。
+- Threshold of the Gray は戦闘開始時に 1 回誘発し、戦闘に参加する攻撃側と防御側に Energy を 1 ずつ与える。3 人のターン順で、防御側と次の手番のプレイヤーが異なる場合をテストした。
+- 戦闘ダメージと特殊 Cleanup に伴う誘発を解決してから勝敗を判定する。特殊 Cleanup の Recall が起きた戦闘には勝敗がつかない。戦闘結果の誘発が解決した時点の盤面で Control と Conquer を判定する（CR 468.2-468.5）。
+- 戦闘ダメージで倒れた Kog'Maw の Deathknell が勝敗の判定に間に合うことと、戦闘勝利時の効果で最後の Unit が移動すると Conquer が起きないことをテストした。
+- 167 枚中 113 枚が `drafted`、111 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 20 — Predict で選んだ順に山札へ戻す
+
+- Predict は山札の先頭から指定枚数までを見て、残すカードと Recycle するカードを選ぶ。残すカードは選んだ順に先頭へ戻し、2 枚以上を Recycle するときは乱数で順を決めて末尾へ送る。山札が足りない場合はある分だけを見る（CR 417.5, 437）。
+- Apprentice Mage は Empower されたときに Predict 2 を行い、Empowered の間は +1 Might を得る。Clairvoyance は Predict 5 の並べ替えが済んだ山札から 2 枚引く。
+- 回帰テストで、残す順序、Recycle の乱数回答、指定枚数より短い山札、先頭に戻したカードのドローを確認した。
+- 167 枚中 115 枚が `drafted`、113 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 21 — 基礎 Might と死亡時の遅延誘発
+
+- Dragon Form は指定した Unit の基礎 Might を 5 にする。バフ、装備、加減算はその基礎値に適用する。基礎 Might の変更はターンの終了時または Unit が盤面を離れると失効する。手札からのプレイと Trash からの Flow の両方を確認した（CR 143.2.a, 479.2, 479.4）。
+- Ending Step の誘発を解決したあと、Expiration Step で回復、ターン効果の失効、Rune Pool の消去を行う。Blighted Battleaxe の終了時ダメージが Dragon Form の失効より先に解決することをテストした（CR 317.1-317.2）。
+- Siphoning Strike は Rune が 7 枚以上なら 7 ダメージ、それ以外なら 4 ダメージを与える。対象の Unit がそのターン中に倒れたとき、呪文を使ったプレイヤーが Rune を 1 枚 Exhausted で Channel する。対象自身の Deathknell と別に誘発する（CR 391-393）。Deadly Flourish も同じ遅延誘発の処理を使う。
+- 167 枚中 117 枚が `drafted`、115 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 22 — Battlefield による Power の増減
+
+- Mystic Vortex の Showdown 中、Reaction を持つカードのプレイに Power を 1 加える。Quick-Draw、Ambush、Hidden から Reaction を得る場合にも適用する（CR 341, 356.3, 811.6, 813, 819.1.b, 822.1.b）。
+- Sandswept Tomb は、そこにいる味方 Unit を選ぶ Spell の総 Power コストを Battlefield ごとに 1 減らす。複数のドメインの Power がある場合は、どの記号を減らすか選べる。Repeat や Deflect を含む支払いと、効果でコストを払ってプレイする Spell も検査した（CR 355-356, 420.3, 809）。
+- Temporal Portal が付ける Repeat は Spell の印刷コストを参照する。Mystic Vortex の追加 Power を Repeat のコストにも足してしまうことを防ぐ。[Spiritforged 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 軽減で任意の追加コストが 0 になり、支払い額が一致する場合は、追加コストを払うかどうかを明示的に選ぶ処理が残っている。
+- 167 枚中 119 枚が `drafted`、117 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 23 — Unit トークンと効果内のコスト
+
+- Up from the Deep は Tentacle 2 体を出す。Flow でも 1 体ずつ行き先を選ぶ。Illaoi, Prophet of the Great Kraken はプレイ時と自身のいる Battlefield の Conquer・Hold 時に Tentacle を 1 体出し、自分が支配する Unit トークン 1 体につき Might が 1 増える。Tentacle は Bilgewater タグを持つ（CR 185.2.a, 187.10, 355.2, 473.2）。
+- Death Mark は Burn 3 の後に Shadow Clone を出す。Zed, Without a Sound の Conquer は Shadow Clone を Base に出す。起動型能力で味方の Shadow Clone と位置を入れ替える。Shadow Clone は 0 Might で場に残り、自身が攻撃するとき、Trash の Unit を Banish して Assault 4 をそのターン中得られる（CR 142.4.b, 187.11, 359.3.e.14.b, 807）。
+- Profiteer は能力を Chain に置くときに対象を選び、解決時に自分の Legend などから Empowered を 1 つ取り除いて、その対象を Empower できる。Shadow Clone の Banish と同じく、先の処理が成立したときだけ後続の指示を実行する（CR 355.10.c.1, 359.3.e.14.b, 443）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- ビューアにトークンの行き先を Base または Battlefield の名前で表示する。
+- 167 枚中 124 枚が `drafted`、122 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 24 — プレイ時に手札を捨てる追加コスト
+
+- 追加コストを払うプレイでは、対象や Flow コストと別に、捨てる手札を指定する。プレイするカード自身は候補に入らない。Energy と Power の支払い後に捨て、相手が Reaction を選べる前に処理する。捨てたカードについても Discard の誘発を発生させる（CR 353, 355.10.c, 357.1–357.2, 423.3）。[Radiance 公式 FAQ](https://playriftbound.com/en-us/news/organizedplay/radiance-rules-faq-and-clarifications/)
+- Ruthless Strike は 3 ダメージを与え、手札を捨てた場合は 5 ダメージを与える。Repeat だけを払った場合は 3 ダメージを繰り返す。Zed, From the Shadows は手札を捨ててプレイしたときに Shadow Clone を出す。
+- ビューアでは対象を選んだ後に、捨てない手と捨てられるカードを表示する。効果によるプレイで物品や手札を任意の追加コストとして使う選択は別途必要。
+- 167 枚中 126 枚が `drafted`、124 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 25 — 確定したプレイとパーマネントの解決
+
+- そのターンに確定したプレイについて、プレイヤー、当時のオブジェクト ID、カードの型を保持する。パーマネントのプレイが解決した順も記録する。Hidden からのプレイは確定時に記録し、解決時に重複して数えない（CR 420.4, 811）。
+- Crumbling Sands は対象と別の Spell をいずれかの対戦相手が確定していれば、対象を打ち消す。その別の Spell が先に打ち消されていた場合も数える。Swain, Visionary はそのターンに Unit、Gear、Spell を確定していた場合、Conquer 時に 1 点を得る。Patched Porobot は Unit と Gear の両方を満たす（CR 420.4.b）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Jayce, Brilliant Inventor は自身のプレイ時と、そのターンに自分の非トークン Gear のプレイが初めて解決したときに、自身以外の Exhausted のオブジェクトを Ready にできる。Legend も選べる。誘発を見送っても、その Gear が最初だった記録は残る（CR 355.10.a, 383.1, 383.3.a, 420.4.a）。
+- Hungry Wolf は敵 Unit を対象に選んだターンに限り、Order Power を払って自身を Ready にし、ターン終了まで Might を 1 増やせる。1 ターンに 1 回。その Unit が場を離れても対象に選んだ履歴は残る（CR 355.7, 371）。
+- 167 枚中 130 枚が `drafted`、128 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 26 — 起動型能力のコスト軽減
+
+- Piltovan Forge の支配者は、そのターン最初にプレイする自分の Gear の起動型能力のコストを 1 Energy 軽減する。コストが 0 の Add や打ち消された能力も最初の 1 回として数える（CR 356.4, 357, 430.2）。
+- Risen Altar の支配者は、その戦場にいる自分の Unit の Empower コストから 1 Energy または任意の 1 Power を軽減できる（CR 190.6.d, 356.4.c, 827）。
+- 167 枚中 132 枚が `drafted`、130 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 27 — Banish の実行者とダメージの発生元
+
+- Master of Shadows は、支配者が所有するカードを自分で Banish したときに Empower される。Flow の Spell は打ち消されても Banish される。Disempower と Exhaust を起動時に支払い、解決時に手札を 1 枚捨ててから 1 枚引く（CR 383, 428, 829.1.b.1）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Esteemed Hierophant は支配者が Rune を 7 枚以上持つ間、敵の Spell と能力からのダメージを防ぐ。味方の効果と Combat Damage は通常どおり受ける（CR 142, 438）。
+- 同じ Unit に複数の Banish 置換が重なる場合は、先に作られた置換を適用する。支配者による適用順の選択は未実装（CR 372）。
+- 167 枚中 134 枚が `drafted`、132 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 28 — 上限のない対象選択と合計 Might
+
+- Corrupted Dragon は勝利まで 4 点以上なら Ready で出る。攻撃時に同じ戦場にいる Might 5 以下の敵 Unit を任意の数だけ対象にし、解決時も条件を満たす対象を Base に移動する（CR 355.13, 359.3.e.2）。
+- 対象を 0 体にして能力を確定する選択と、能力を見送る選択は、M8c Vendetta 30 で区別した（CR 355.13, 383.3.a）。
+- Decree of Discord は敵の Order Unit を合計 Might 5 まで選び、手札に戻す。解決時に合計が上限を超えたら、追加できる対象をすべて含む組み合わせから選ぶ。対象は確定時に選んだ Unit に限り、組み合わせの決定で対象指定の誘発は再発生しない（CR 355.11, 359.3.e.2）。
+- 別の効果で Repeat が付いた場合は、実行ごとの対象の組み合わせを確定時に選ぶ処理が残る（CR 820.2）。
+- 167 枚中 136 枚が `drafted`、134 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 29 — 支配者ごとの選択と敵の効果
+
+- Cataclysmic Duel は、解決時にターンプレイヤーから順に各プレイヤーが自分の Unit を 1 体選び、その後で残りを Kill する。Unit がいないプレイヤーの選択は飛ばす。これらの選択は対象指定の誘発を起こさない（CR 303.2.a, 355.10.e）。
+- Jagged Cutlass は Body Power 1 で Equip し、装備先を敵の Spell や能力による移動から守る。味方の移動効果、Standard Move、Recall は引き続き行える（CR 358.3.a, 447, 451, 456）。
+- Decree of Focus は、敵の Fury Unit と戦闘しているか敵の Fury Spell に指定されている味方 Unit に、そのターン中 Might を 4 与える。解決時にも対象の条件を確認する（CR 355.9.b, 359.3.e.2）。
+- ビューアは各プレイヤーが自分のカードを選ぶ場面と、解決時に対象を絞る場面を区別して案内する。
+- 167 枚中 139 枚が `drafted`、137 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 30 — 誘発型能力を確定するときの費用
+
+- Bottled Constellation は、自分の Main Phase の開始時に、ほかの味方 Unit と Gear から計 3 枚を選んで Kill できる。これらはコストの選択なので対象指定の誘発を起こさない。能力を解決したときに 1 点を得る（CR 355.10.c, 357.2.a, 383.3.a, 383.3.b）。
+- Kennen, Keeper of Balance は、プレイして出たときと攻撃したときに、Energy 2 を払うと Unit を対象に取る。Stun は解決時に行う。同じ場所に Stun された敵 Unit がいる間は Might が 2 上がる（CR 383.3.a, 383.3.b, 424）。
+- 見送った能力は Chain に載らず、対象を 0 体選んで確定した Corrupted Dragon の能力には応答できる。費用は確定時に支払い、打ち消されても戻らない（CR 355.13, 383.3.a, 383.3.b, 426.1.c）。
+- 現状は Pool と Basic Rune で誘発コストの Energy を支払える。確定中に任意の Add 能力を起動する選択と、Rune から Deflect の Power を捻出する選択は残っている（CR 357.1.a, 809）。
+- 167 枚中 141 枚が `drafted`、139 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 31 — 移動の効果
+
+- Twilight Step は Might 3 以下の Unit を対象に取り、その Unit の Base または別の Battlefield へ移動する。行き先を選ぶ時点は Vendetta 33 で確定時に修正した（CR 355.4, 421, 451, 829）。
+- Shuriken Flip は味方 Unit を必ず対象に取り、Battlefield にいる敵 Unit を 1 体まで追加で対象に取る。敵にダメージを与えてから味方を移動する。敵の対象を省いた場合や失った場合も、有効な味方の対象は移動できる（CR 355.13, 355.18, 359.3.e）。
+- Shadow Dash は自分の Unit がいる Battlefield に敵 Unit を移動し、そこに自分の Unit がちょうど 2 体いれば、その 2 体にターン終了まで Might を 1 ずつ与える。移動前の場所や、第三者が入れない戦場は候補から除く（CR 359.3.e.14, 449.2.a, 451.2, 464）。
+- 移動先を選んでも対象指定の誘発は起きない（CR 355.4, 355.6）。
+- 167 枚中 144 枚が `drafted`、142 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 32 — Tank の優先順と有限のダメージ軽減
+
+- Dune Surfer の支配者は、同じ Battlefield で戦闘ダメージを割り振るときに Tank の優先順を無視する。相手側の割り振りや、カードが持つキーワード自体はそのまま扱う（CR 467.2.c.2, 815）。
+- Ki Barrier はそのターン中の受けるダメージを合計 7 まで軽減する。残量は次のダメージに持ち越し、場に留まる移動でも維持する。戦闘では残量を含めて致死ダメージに必要な割り振り量を計算する（CR 438.2, 438.3, 438.5, 467.2.c.5）。
+- 戦闘で Ki Barrier と Lotus Trap が重なる場合は、影響を受ける Unit の支配者が軽減と倍増の適用順を選ぶ。戦闘外のダメージで複数の置換が重なったときの選択と、複数の軽減・倍増を交互に適用する選択は未実装（CR 372, 467.2.c.5）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- 167 枚中 144 枚が `drafted`。転記済みの 144 枚すべてが `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 33 — 呪文を確定するときのモードと移動先
+
+- Sanction と Mesmerize は、呪文を確定するときにモードとそのモードの対象を選ぶ。選択は応答中も保持する。Sanction は対象の Empowered をターン終了時に切り替える遅延誘発を作る（CR 355.3, 355.5, 390-393, 442, 443）。
+- Twilight Step、Shuriken Flip、Shadow Dash の移動先は、通常プレイでも Flow でも、相手が応答する前に選ぶ。有効な対象の効果だけを解決する。Shadow Dash で選んだ Battlefield から味方 Unit がいなくなっても、別の Battlefield は選び直さない（CR 355.4, 358.3.a, 359.3.e, 451.1）。
+- ビューアは、モード名または移動先と、対象を選択前に表示する。
+- Repeat を別の効果で得た場合に、追加実行ごとのモードや移動先を確定時に選ぶ処理が残っている（CR 820.2）。
+- 167 枚中 146 枚が `drafted`。転記済みの 146 枚が `CardDef.runs` を通る。
+
+### M8c Vendetta 34 — 誘発型能力を確定するときのモード
+
+- Jayce, Hammer in Hand は Ready したとき、Assault 2・Deflect 2・Ganking のうち 1 つを選んでから Chain に載る。解決時にそのキーワードをターン終了まで得る（CR 355.3, 383.3）。
+- Minah Swiftfoot は Battlefield に移動したとき、全員が 1 枚捨てるか、全員が 1 枚引くかを選ぶ。解決時はターンプレイヤーから手番順に実行する（CR 303.2.a, 355.3, 383.3）。
+- ビューアに、誘発型能力を確定するときに選べるモード名を表示する。
+- 167 枚中 148 枚が `drafted`。転記済みの 148 枚が `CardDef.runs` を通り、19 枚が未転記。
+
+### M8c Vendetta 35 — 誘発型能力の Burn コストと Hidden
+
+- Shadow Order Disciple は移動時に、山札の一番上のカードを Burn して能力を確定するか、見送るかを選べる。Burn は応答前に支払い、能力が打ち消されても支払いは戻らない。山札が空なら見送りだけが可能（CR 383.3.a, 383.3.b, 441.3, 441.4）。
+- Tornado Warrior は伏せた状態からプレイしたときに、その場所のオブジェクトを選んで能力を確定できる。解決時も対象がその場所にいれば Empower し、ターン終了時に Disempower する。移動で対象が不正になった場合は両方の指示を実行しない（CR 199.1, 355.5, 359.3.e, 359.3.f, 383.3.a, 390-393, 442, 443）。
+- 167 枚中 150 枚が `drafted`。転記済みの 150 枚が `CardDef.runs` を通り、17 枚が未転記。
+
+### M8c Vendetta 36 — 誘発型能力でプレイヤーを対象にする
+
+- Blade Twirler は各ターンの最初の移動で誘発する。自分も含めて 1 人を対象に選び、相手が応答する前に確定する。解決時には選んだプレイヤーだけが Burn 1 する（CR 355.7, 355.15, 383.3, 441）。
+- 対象プレイヤーの選択をオブジェクトの対象枠と別に保持し、ビューアにプレイヤーの席番号を表示する。
+- 167 枚中 151 枚が `drafted`。転記済みの 151 枚が `CardDef.runs` を通り、16 枚が未転記。
+
+### M8c Vendetta 37 — 最初に解決したカードと、次のカードの軽減
+
+- Astral Heron は、そのターンに初めてカードのプレイが解決した時点で Battlefield にいれば誘発する。誘発の解決後にプレイする次のカードの総コストを Energy 2 と Power 2 軽減する（CR 356.4, 420.4, 420.5）。
+- 通常プレイ、Flow、Hidden、効果によるプレイが、次のカードとして軽減を使う。無料でプレイしたカードや、確定後に打ち消されたカードも軽減を使う。Deflect は軽減前の総 Power に含める（CR 356.2.a.2, 356.4.d, 811, 829）。
+- 軽減後の支払額が一致する任意の追加コストを、支払いと別に選ぶ処理が残っている。
+- 167 枚中 152 枚が `drafted`。転記済みの 152 枚が `CardDef.runs` を通り、15 枚が未転記。
+
+### M8c Vendetta 38 — 呪文の追加コストを選んで確定する
+
+- Rampage は印刷された Body Power の追加コストを払うか見送るかを確定時に選ぶ。軽減後の総額が同じでも選択を分け、支払いの記録は呪文の支配者が変わっても保持する（CR 135.2.b.7, 355.1, 356.4.f.1）。
+- 追加コストを選んだ場合だけ味方 Unit に +2 Might を与える。その後、2体が互いに現在の Might に等しいダメージを与える。ダメージの発生源は Unit として扱う（CR 359.3.e, 418.6.b.3）。
+- 呪文の印刷された追加コストと Repeat の回数を別々に記録し、両方の選択をビューアに表示する。Unit や Gear の一部では、同額の任意コストを個別に選ぶ処理が残る。
+- 167 枚中 153 枚が `drafted`。転記済みの 153 枚が `CardDef.runs` を通り、14 枚が未転記。
+
+### M8c Vendetta 39 — 対象を選ぶ効果と Might の置換
+
+- Empowered の Mel がいる間、そのプレイヤーが支配する呪文と能力は打ち消せない。選ばれた Unit の Might 減少量は 1 増え、元の効果の下限も適用する。Moonfall は移動させる Unit を確定時に最大 1 体選んで Deflect を払い、解決時に移動するか決める（CR 355.5, 355.12, 370, 426, 809）。
+- Empowered の Gangplank が選ばれた場合、Stun、Might 減少、手札に戻す処理をターン終了時までの +3 Might に置き換える。Switcheroo では Gangplank 側の減少だけを置き換え、もう一方の増加量を保つ（CR 370）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- 167 枚中 155 枚が `drafted`。転記済みの 155 枚が `CardDef.runs` を通り、12 枚が未転記。
+
+### M8c Vendetta 40 — 選んだ相手の Trash からプレイする
+
+- Kharox の Empower で誘発する能力は、相手を 1 人選んで確定する。解決時にその相手が Burn 3 し、その後、今 Burn されたカードも含め、その相手の Trash から Unit を 1 枚選んで費用を無視してプレイできる。元の所有者は維持し、能力のプレイヤーが支配する（CR 127, 355.7, 420, 441）。
+- 167 枚中 156 枚が `drafted`。転記済みの 156 枚が `CardDef.runs` を通り、11 枚が未転記。
+
+### M8c Vendetta 41 — 呪文が相手を選び、その手札を公開する
+
+- Decree of Strength は相手を 1 人選んで確定し、相手が応答できる。解決時にその相手は現在の手札をすべて公開する。術者は公開された Mind カードを 1 枚選び、相手がそれを自分の Main Deck の下に置く（CR 355.7, 355.10.a, 417, 425.3.a）。
+- 呪文のプレイヤー対象をオブジェクト対象や支払いと別に記録する。ビューアで対象の席番号、公開されたカード、選べる手札を確認できる。
+- 167 枚中 157 枚が `drafted`。転記済みの 157 枚が `CardDef.runs` を通り、10 枚が未転記。
+
+### M8c Vendetta 42 — 山札で見たカードを軽減してプレイする
+
+- Wild Claw は Main Deck の上から最大 5 枚を記録し、Banish 後にプレイできる Unit または Gear だけを候補にする。追加コストを選んだ後で総 Energy を 5 軽減し、必要な Power と行き先を確定する（CR 355-357, 356.4.f, 420.3, 432.1.c）。
+- 選んだカードを Banish してプレイし、残りをランダムな順で Main Deck の下に置く。その後、場に出たカードを Empower するか選ぶ（CR 417.5, 442）。
+- 必要な基本 Rune の操作は、効果による既存の支払い処理で補う。プレイの確定中に起動する Add 能力を個別に選ぶ操作が残る。
+- 167 枚中 158 枚が `drafted`。転記済みの 158 枚が `CardDef.runs` を通り、9 枚が未転記。
+
+### M8c Vendetta 43 — 解決中に呪文の名前を指定する
+
+- Fallen Feline の誘発が解決するときに、フォーマットで使える呪文を論理カード ID で指定する。指定は公開され、カードのコピーがゲーム内にあるかどうかに依存しない（CR 759-762）。
+- Fallen Feline が Battlefield にいる間、相手は指定された呪文をプレイできない。Chain にすでに置かれた呪文は解決できる。Base に戻ると制限が解除され、場を離れて別のオブジェクトになると指定を失う（CR 054, 124）。
+- 通常の Unit をプレイする際に、自分が支配する Battlefield を選べる。Perched Grimwyrm のようにプレイ先を指定するカードには、固有の制限を適用する（CR 355.2）。
+- 167 枚中 159 枚が `drafted`。転記済みの 159 枚が `CardDef.runs` を通り、8 枚が未転記。
+
+### M8c Vendetta 44 — 解決時の Might とターン中の起動型能力
+
+- Dominus は確定時に Unit を対象にし、解決時にも適切な対象か確認する。その時点の Might と同じ値をターン終了まで加える。Might が負なら増加量は 0（CR 355.11, 359.3.e.2, 433.1, 479.4.c）。
+- 対象 Unit はターン終了まで、無指定の Power を 2 つ払って自身を Ready にする起動型能力を得る。Unit の支配者が通常の速度で起動し、費用の支払い後に相手は応答できる。Chain に載った能力の定義は、付与の失効後も参照できる（CR 317.2, 337, 376-381, 479.3）。
+- 167 枚中 160 枚が `drafted`。転記済みの 160 枚が `CardDef.runs` を通り、7 枚が未転記。
+
+### M8c Vendetta 45 — 起動型能力でプレイヤーを選び、Gear を渡す
+
+- Glowstone は Power 2 で Empower できる。Disempower と Exhaust を支払う起動型能力では、確定時に自分を含むプレイヤーを 1 人対象にする。解決時にそのプレイヤーへ支配権が移り、その Base に Recall する。所有者と Exhausted 状態は保たれる（CR 355.7, 357, 456-460, 739-743）。
+- 現在の支配者の Ending Step に誘発し、Glowstone を Kill した後、その能力の支配者の Unit すべてに 5 ダメージを与える。誘発後に Glowstone が場を離れた場合も、ダメージは解決する（CR 317.1, 337）。
+- Ending Step の Chain で Reaction をプレイする処理は、既存の Main Phase 制限の見直しが必要（CR 312.2.c-d, 813.1.c）。
+- 167 枚中 161 枚が `drafted`。転記済みの 161 枚が `CardDef.runs` を通り、6 枚が未転記。
+
+### M8c Vendetta 46 — 基礎 Energy と Legend の Exhaust
+
+- Curator of the Sands は、プレイヤー自身が基礎 Energy 7 以上の Unit・Gear・起動型能力をプレイすると誘発する。カードは印刷・コピーされたコスト、能力は選んだ基礎コストを参照する。軽減や追加コストは判定に含めない（CR 204.1.b, 206-206.1）。
+- 誘発を確定するとき、Rune を最大 2 枚指定し、Curator 自身を Exhaust する。見送る選択や 0 枚を指定する選択があり、すでに Exhausted なら支払えない。解決時には残っている合法な対象を Ready にする（CR 355.7, 355.11, 383.3, 415.4, 416）。
+- 167 枚中 162 枚が `drafted`。転記済みの 162 枚が `CardDef.runs` を通り、5 枚が未転記。
+
+### M8c Vendetta 47 — Battlefield の配置許可と制限
+
+- Battlefield への通常プレイと、Here to Help のように配置先を指定する軽減プレイで、プレイ制限を共通に検査する（CR 054.2, 355.17.b）。Perched Grimwyrm は、Arachnoid Horror が配置を許可していても、そのターンに Conquer した Battlefield にしか出せない。効果が禁止された場所を指定した場合は、その Unit のコストを支払わない。
+- Dragon Roost の任意コストと、Temporal Breach などの効果と配置先が競合した場合の選択を、続けて実装する（CR 355.17.a）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+
+### M8c Vendetta 48 — Dragon Roost の任意コスト
+
+- 通常プレイでは、Dragon Roost の支配者にかかわらず、Dragon のプレイヤーが任意で Power 2 を払ってそこにプレイできる。複数の Roost に払う場合は、そのうちどこに出すかを選ぶ。Perched Grimwyrm 自身の配置制限と Mageseeker Warden の制限を適用する（CR 054.2, 355.1, 355.17）。
+- Battlefield の追加コストと Unit 自身の追加コストを別々に確定する。軽減後の支払額が同じでも、支払うと決めたコストを記録し、Accelerate を選んだときに Unit が Ready で入る（CR 356.4, 805）。
+- Dragon Roost は `partial`。Temporal Breach や Here to Help からのプレイにも追加コストの選択を出し、効果から受けた配置指定と競合する場合を扱う必要がある。167 枚中 162 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
+
+### M8c Vendetta 49 — 効果で Dragon をプレイする場合の配置先
+
+- 効果による Unit のプレイでも、Roost の追加コストを選べる。必須の配置指定が複数あるときは、同時に満たせる指定をまとめ、互いに両立しない組み合わせからプレイヤーが選ぶ。Unit 自身や場の効果による配置制限を先に適用する（CR 355.16–355.17, 420.3）。
+- Temporal Breach で元が Base の Elder Dragon を再プレイする場合、所有者は追加コストを見送って Base に戻すか、支払って Base または Roost に出せる。Here to Help は解決中に Unit と配置先を決める。手札から使い、支配する Roost に払ったときは Roost に出す。Hidden から使った場合は Hidden の場所の指定も加わる（CR 811.1.d.5）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- 167 枚中 163 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
+
+### M8c Vendetta 50 — Unit 用の Energy
+
+- Butcher of the Sands は、任意のドメインの Power 2 と自身の Exhaust を払い、Chain を使わず Unit 用 Energy 2 を加える。Reaction の Add は Ending Step の Chain でも優先権を渡さず解決する（CR 357.1, 430.2–430.3）。
+- Unit 用 Energy は Unit のプレイとその起動型能力の支払いに使う。Spell、Gear、Hide、能力の解決中に単独で要求される支払いには通常の Energy が必要になる。混在時は使える Unit 用 Energy から先に消費し、Main Phase 開始時とターン終了時に Rune Pool とともに消える（CR 166–167, 445, 811.1.c）。
+- 167 枚中 164 枚が `drafted` で `CardDef.runs` を通り、3 枚が `todo`。
+
+### M8c Vendetta 51 — Trash からの通常プレイ
+
+- Endless Riches をプレイすると、その誘発能力が手札と Trash を追放してから Burn 7 を行う。場にある間はコントローラーの Draw Phase を省き、効果によるドローは通常どおり行う（CR 315.4, 428, 441）。
+- コントローラーは Trash の Unit・Gear・Spell を通常コストでプレイできる。Flow を持つ Spell は Flow コストも選べる。Chain に入れた時点で Flow の使用を記録する（CR 356, 420.1, 829.1）。
+- Main Deck 以外からコントローラーの Trash に入るカードは追放する。Spell が解決したときは、その時点の効果を適用する。Thermo Beam のように複数の Gear を同時に破壊する場合は、同時に場を離れる Endless Riches の置換も適用する（CR 052, 367–370, 428）。
+- 167 枚中 165 枚が `drafted` で `CardDef.runs` を通り、2 枚が `todo`。
+
+### M8c Vendetta 52 — Equipment の装着中に Unit をコピーする
+
+- Shady Spectacles の装着で誘発する能力は、コピー効果を適用する前に判定する。その後、Equipment のコントローラーが装着先とは別の味方 Unit を選ぶ（CR 370.1.b.1, 435, 725.1）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- コピー元の印刷・コピー済みの特性を記録し、装着先の状態と物理カードを保持する。複数のコピーは適用順に重なり、装着が解けると下のコピーか元の特性に戻る。付け直すと起動回数とモードの選択履歴は新しい能力で数え直す。場を離れる直前のコピーで Deathknell や退場時の能力を判定する（CR 371, 429.1.a.1.b, 479.1, 482）。
+- Rebuttal は Energy が4以下の Spell を選ぶ。解決時に Power を支払ったプレイヤーが Spell のコントロールを得て、対象・モードなどを選び直すか決める。選び直しでは追加の費用を払わず、新たに選んだ対象の誘発を処理する。プレイを確定したプレイヤーと、解決時にコントロールしていたプレイヤーは別々に記録する（CR 420.4.a, 750–755）。
+- Spell のプレイを監視する誘発は、Spell が解決したときに、その時点のコントローラーに対して判定する。Ravenbloom Student は、Rebuttal で奪った Spell と Rebuttal 自体の解決でそれぞれ誘発する。打ち消された Spell の確定履歴は Legion などで引き続き参照する（CR 420.4.a–b）。
+- Hidden の Spell はプレイ確定時にカード本体が Chain に載る。伏せていた Battlefield は、対象の確定・再選択、Spell の効果による Unit の配置に適用する。別の場所を明示する対象にはその指定を適用する（CR 753.3, 811.1.d）。
+- Rebuttal の解決中に基本 Rune と Reaction の Add 能力を使える。支払えるリソースが複数あれば選択でき、Add で発生した誘発は支払いと Spell の解決が終わるまで待つ（CR 334, 430.2, 445.2.c）。
+- Main Phase 以外でも、Chain の優先権を持つプレイヤーは Reaction の起動型能力を使える。Hidden からのプレイと、それに対する Rebuttal もこのタイミングで行う（CR 337.4, 811.6, 813.1.c）。
+- 167 枚すべてが `drafted`。
 
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 

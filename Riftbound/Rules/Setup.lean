@@ -181,7 +181,7 @@ that. -/
 def GameState.initialLimited (db : CardDB) (env : LegalityEnv) (config : GameConfig)
     (decks : List LimitedDeck) : Option GameState :=
   if LimitedStartOk db env config decks then
-    ((GameState.empty config db).addLimitedDecks db 0 decks).map
+    ((GameState.empty { config with formatLegality := some env } db).addLimitedDecks db 0 decks).map
       (fun s => { s with pending := startFrames config.mode.players })
   else none
 
@@ -304,7 +304,7 @@ theorem GameState.initialLimited_wf {db : CardDB} {env : LegalityEnv} {config : 
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨s1, h1, rfl⟩ := h
     exact GameState.WF.congr
-      (GameState.addLimitedDecks_wf decks (GameState.wf_empty config db) h1) rfl rfl rfl rfl
+      (GameState.addLimitedDecks_wf decks (GameState.wf_empty _ db) h1) rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- A Limited game that has been set up satisfies `OwnerOk`. -/
@@ -315,8 +315,8 @@ theorem GameState.initialLimited_ownerOk {db : CardDB} {env : LegalityEnv} {conf
   split at h
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨s1, h1, rfl⟩ := h
-    exact (GameState.addLimitedDecks_ownerOk decks (GameState.wf_empty config db)
-      (GameState.ownerOk_empty config db) h1).congr rfl rfl
+    exact (GameState.addLimitedDecks_ownerOk decks (GameState.wf_empty _ db)
+      (GameState.ownerOk_empty _ db) h1).congr rfl rfl
   · exact absurd h (by simp)
 
 end Riftbound

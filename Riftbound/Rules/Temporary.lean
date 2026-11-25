@@ -47,16 +47,13 @@ theorem killAll_safe : ∀ (us : List ObjId) (s : GameState) (es : List Event),
   | [], s, _ => Safe.refl s
   | u :: us, s, _ => (killOrSave_safe s u).trans (killAll_safe us _ _)
 
-/-- The start of the Beginning Phase: the Temporary units of the turn player are killed, and then
-the turn player scores their Holds (CR 816, 315.2). -/
+/-- The Beginning Step kills the turn player's Temporary Units (CR 315.2.a, 816). -/
 def beginStep (s : GameState) (tp : PlayerId) : GameState × List Event :=
-  let k := killAll (tempUnits s tp) s []
-  let h := hold k.1 tp
-  (h.1, k.2 ++ h.2)
+  killAll (tempUnits s tp) s []
 
-/-- The start of the Beginning Phase is a safe change, then points. -/
-theorem beginStep_safeP (s : GameState) (tp : PlayerId) : SafeP s (beginStep s tp).1 :=
-  SafeP.trans_safe (killAll_safe _ s []) (hold_safeP _ tp)
+/-- The Beginning Step preserves the structural invariants. -/
+theorem beginStep_safe (s : GameState) (tp : PlayerId) : Safe s (beginStep s tp).1 :=
+  killAll_safe _ s []
 
 end Riftbound
 

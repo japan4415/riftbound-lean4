@@ -50,6 +50,23 @@ def Choice.targetOf (q : Quantity) (side : Side) (place : Place) (fs : List Filt
 /-- A spell with the choices it needs and what it does. -/
 def EffectDef.of (choices : List Choice) (body : Effect) : EffectDef := { choices, body }
 
+/-- Empower is usable up to the source's limit. The choices, if any, are for its costs (CR 827). -/
+def Ability.empower (costs : List AbilityCost) (limit : Nat := 1)
+    (choices : List Choice := []) : Ability :=
+  .activated costs .normal
+    (.of choices (.ifThen (.cmp .lt .empowerCount (.const limit)) (.prim (.empower .self)) .nop))
+    .unlimited
+
+/-- Whether the ability is an explicit implementation of Empower, including a guarded copy. -/
+def Ability.isEmpower : Ability → Bool
+  | .activated _ _ body _ => isEmpowerBody body.body
+  | _ => false
+where
+  isEmpowerBody : Effect → Bool
+    | .prim (.empower .self) => true
+    | .ifThen _ body .nop => isEmpowerBody body
+    | _ => false
+
 /-- A trigger on the card itself. -/
 def Trigger.onSelf (event : TriggerEvent) : Trigger := { event }
 

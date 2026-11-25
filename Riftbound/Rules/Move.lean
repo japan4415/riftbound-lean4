@@ -29,12 +29,15 @@ inductive Pos where
   | top
   /-- At the end: the bottom of a deck. -/
   | bottom
+  /-- At the index, or at the end when the list is shorter. -/
+  | atIndex (index : Nat)
 deriving DecidableEq, Repr
 
 /-- Put an object into a list at the given end. -/
 def Pos.insert : Pos → ObjId → List ObjId → List ObjId
   | .top, id, l => id :: l
   | .bottom, id, l => l ++ [id]
+  | .atIndex index, id, l => l.take index ++ id :: l.drop index
 
 /-- Inserting puts exactly one new member into the list (up to order). -/
 theorem Pos.insert_perm (pos : Pos) (id : ObjId) (l : List ObjId) :
@@ -42,10 +45,13 @@ theorem Pos.insert_perm (pos : Pos) (id : ObjId) (l : List ObjId) :
   cases pos
   · exact List.Perm.refl _
   · simp [Pos.insert]
+  · rename_i index
+    simpa [Pos.insert] using
+      (List.perm_middle (a := id) (l₁ := l.take index) (l₂ := l.drop index))
 
 /-- The inserted object is a member of the result. -/
 theorem Pos.mem_insert (pos : Pos) (id : ObjId) (l : List ObjId) : id ∈ pos.insert id l := by
-  cases pos <;> simp [Pos.insert]
+  exact (pos.insert_perm id l).mem_iff.mpr (by simp)
 
 /-- Moving between these zones makes a new object: at least one is Non-Board (CR 124). -/
 def Zone.crosses (src dst : Zone) : Bool := !(src.isBoard && dst.isBoard)
@@ -54,6 +60,11 @@ def Zone.crosses (src dst : Zone) : Bool := !(src.isBoard && dst.isBoard)
 def Zone.normalize (owner : PlayerId) : Zone → Zone
   | .player q k => if (Zone.player q k).isBoard then .player q k else .player owner k
   | z => z
+
+/-- A destination already in the owner's zones is unchanged. -/
+theorem Zone.normalize_owner (owner : PlayerId) (k : ZoneKind) :
+    Zone.normalize owner (.player owner k) = .player owner k := by
+  cases k <;> rfl
 
 namespace GameState
 
@@ -82,18 +93,28 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
     else if Zone.crosses src dst then
       let id' : ObjId := ⟨s.nextId⟩
       let o' : Object :=
-        { o with controller := o.owner, exhausted := false, damage := 0,
+        { o with controller := o.owner, exhausted := false, damage := 0, damagedTurn := none,
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
-                 mightMods := [], tempKws := [], attached := none, attachedTurn := none,
+                 baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
+                 attached := none, attachedTurn := none, attachmentCopyStamp := none,
+                 attachmentTextStamp := none,
+                 attachmentTextCopies := if src.isBoard then s.activeAttachmentText id else [],
+                 attachmentCopies := [],
+                 leftController := if src.isBoard then some o.controller else none,
+                 lastAttachmentCopy := if src.isBoard then s.attachmentCopyOf id o else none,
                  buffed := false,
                  extraBuffs := 0,
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,
                  moves := 0, movesTurn := none,
-                 prevLoc := none, used := [],
+                 prevLoc := none, used := [], copiedUses :=
+                   if src.isBoard then o.copiedUses else [],
+                 namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,
-                 stunned := false,
+                 stunned := false, flowed := false, recycleAfterPlay := false, pendingSpellPlay := none,
+                 spellPick := .plain, empowerCount := 0,
+                 leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))
               with objects := (s.objects.erase id.n).insert id'.n o',

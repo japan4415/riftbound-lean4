@@ -25,6 +25,8 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | setupHands => exact ⟨_, rfl⟩
   | beginTurn => exact ⟨_, rfl⟩
   | phase ph => cases ph <;> exact ⟨_, rfl⟩
+  | scoreHolds => exact ⟨_, rfl⟩
+  | expireTurn => exact ⟨_, rfl⟩
   | draw p n =>
     cases n with
     | zero => exact ⟨_, rfl⟩
@@ -37,6 +39,9 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | cleanup => exact ⟨_, rfl⟩
   | combatDamage bf att => exact ⟨_, rfl⟩
   | combatResolve bf att => exact ⟨_, rfl⟩
+  | combatResult _ => exact ⟨_, rfl⟩
+  | combatControl _ => exact ⟨_, rfl⟩
+  | combatFinish _ => exact ⟨_, rfl⟩
   | triggers pend => exact ⟨_, rfl⟩
   | _ => simp [Frame.isWork] at hf
 
@@ -80,9 +85,10 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i p _ c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
-  · rename_i p _ c pay ts hp hk
+  · rename_i p rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    exact applyPlayCard_isSome hwf hl.2.1 hl.2.2
+    obtain ⟨r, hr⟩ := applyPlayCard_isSome (rest := rest) hwf hl.2.1 hl.2.2.1
+    exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
   · rename_i p rest u d hp hk
     rw [hp, hk] at hl
     obtain ⟨r, hr⟩ := applyMove_isSome hwf hl.2
@@ -94,25 +100,30 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · rename_i p n rest hp hk
     split <;> exact ⟨_, rfl⟩
-  · rename_i p n rest c pay ts hp hk
+  · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    refine reactStep_isSome hwf hl.2.1 ?_
-    rcases reactable_spec.mp hl.2.2 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
-    · exact Or.inl h
-    · exact Or.inr ⟨none, ts, h.2.2⟩
-    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      exact Or.inr ⟨some b, ts, hb⟩
-    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      exact Or.inr ⟨some b, ts, hb⟩
-  · rename_i p n rest src idx pay ts hp hk
+    have hplay : castable s p c pay ts flow pick = true ∨ ∃ d xs choice, playable s p c pay d xs choice = true := by
+      rcases reactable_spec.mp hl.2.2.1 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
+      · exact Or.inl h
+      · exact Or.inr ⟨none, ts, pick, h.2.2.2⟩
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+        exact Or.inr ⟨some b, ts, pick, hb⟩
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+        exact Or.inr ⟨some b, ts, pick, hb⟩
+    obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) hwf hl.2.1 hplay
+    exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
-    exact activateStep_isSome hl.2
+    exact activateStep_isSome hl.2.1
   · rename_i p n tail c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
-    exact activateStep_isSome hl.2
+    exact activateStep_isSome hl.2.1
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
@@ -178,13 +189,15 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     simp only [hs2]
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
-  · rename_i bf q rest c pay ts hp hk
+  · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    exact reactStep_isSome hwf hl.2.1 (showdownable_spec hl.2.2)
-  · rename_i bf q rest src idx pay ts hp hk
+    obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass q 0 :: .showdown bf q 0 :: rest)
+      hwf hl.2.1 (showdownable_spec hl.2.2.1)
+    exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     simp only [activatableSD, Bool.and_eq_true] at hl
-    exact activateStep_isSome hl.2.1
+    exact activateStep_isSome hl.2.1.1
   · rename_i q c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
@@ -193,6 +206,15 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     exact applyMana_isSome hl.2
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · rename_i c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2.1
+  · rename_i src idx pay hp hk
+    rw [hp, hk] at hl
+    exact applyMana_isSome hl.2.1
   · exact absurd hl (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
@@ -221,7 +243,11 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
   · exact applyRune_ownerOk hwf hown h
-  · exact applyPlayCard_ownerOk hwf hown h
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).own (applyPlayCard_wf hwf hr)
+      (applyPlayCard_ownerOk hwf hown hr)
   · rename_i p rest u d hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -248,8 +274,9 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact (hr.own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk
@@ -257,18 +284,33 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact hown.congr rfl rfl)
-  · rename_i p n rest c pay ts hp hk
-    exact reactStep_ownerOk hwf hown h
-  · rename_i p n rest src idx pay ts hp hk
+  · rename_i p n rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).own (reactStep_wf hwf hr) (reactStep_ownerOk hwf hown hr)
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_ownerOk hwf hown h
   · rename_i p n tail c ab hp hk
     exact applyRune_ownerOk hwf hown h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_ownerOk hwf hown h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putPick_safe s _ i ts).own hwf hown).congr rfl rfl
+    exact ((finishTrigger_safe s _ funding i ts payment).own hwf hown).congr rfl rfl
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n tail src idx pay hp hk
@@ -276,7 +318,7 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((sendObj_safe .trash s c).own hwf hown).congr rfl rfl
+    exact ((discardObj_safe s c).own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -341,9 +383,12 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
-  · rename_i bf q rest c pay ts hp hk
-    exact reactStep_ownerOk hwf hown h
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).own (reactStep_wf hwf hr) (reactStep_ownerOk hwf hown hr)
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_ownerOk hwf hown h
   · rename_i q c ab hp hk
     exact applyRune_ownerOk hwf hown h
@@ -355,6 +400,17 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((continuePrediction_safe _ _ _ _ _ _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((completePrediction_safe _ _ _ _ _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · exact applyRune_ownerOk hwf hown h
+  · exact applyMana_ownerOk hwf hown h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer to the open question keeps `OwnerOk`. -/
@@ -402,13 +458,19 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_mapObjects hown (fun o => endTurnObj_owner o)).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((beginStep_safeP s _).own hwf hown).congr rfl rfl
+    exact ((beginStep_safe s _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((hold_safeP s _).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
@@ -432,7 +494,7 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((runEffect_safe _ _ _ _ _ _).own hwf hown).congr rfl rfl
+    exact ((runEffect_safe _ _ _ _ _ _ effectAddPolicy).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (finishItem_ownerOk hwf hown _).congr rfl rfl
@@ -441,8 +503,9 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
+    · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact (hr.own hwf hown).congr rfl rfl
     · exact hown.congr rfl rfl
@@ -454,7 +517,16 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((combatResolve_safeP s _ _).own hwf hown).congr rfl rfl
+    exact ((combatCleanup_safe s _ _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((combatControl_safeP s _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_mapObjects hown endShowdownObj_owner).congr rfl rfl
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

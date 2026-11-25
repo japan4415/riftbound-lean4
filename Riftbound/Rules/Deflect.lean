@@ -50,7 +50,7 @@ theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) :
 theorem totalPower_takeOne {p : RunePool} (h : 0 < p.totalPower) :
     p.takeOne.totalPower + 1 = p.totalPower := by
   have h1 := total_takeOne h
-  have h2 : p.takeOne.energy = p.energy := by
+  have h2 : p.takeOne.energy + p.takeOne.unitEnergy = p.energy + p.unitEnergy := by
     unfold takeOne
     split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
       (try split) <;> simp
@@ -74,10 +74,16 @@ end RunePool
 /-- The objects an answer chooses. -/
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
-  | .playCard _ _ ts => ts
-  | .activate _ _ _ ts => ts
-  | .putTrigger _ ts => ts
+  | .playCard _ _ ts _ _ _ => ts
+  | .activate _ _ _ ts _ _ _ => ts
+  | .putTrigger _ ts _ => ts
   | _ => []
+
+/-- An answer that plays a card can have a printed exception to the Deflect cost. -/
+def Action.spellSource (a : Action) : Option ObjId :=
+  match a.kind with
+  | .playCard c _ _ _ _ _ => some c
+  | _ => none
 
 namespace GameState
 
@@ -90,21 +96,64 @@ def deflectOf (s : GameState) (u : ObjId) : Nat :=
     | some d => (d.keywords.map amount).sum
     | none => 0) + ((s.grantedKws u).map amount).sum
 
-/-- The Power the player pays more for choosing the objects: the Deflect of each one that another
-player controls (CR 809). -/
-def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId) : Nat :=
-  (ts.map (fun t => if ((s.obj? t).map (·.controller)).any (fun c => c != p) then s.deflectOf t
-    else 0)).sum
+/-- The Deflect surcharge for the entire spell or ability. Heisho waives it when any target
+is there (CR 766-767, 809). -/
+def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
+    (spell : Option ObjId := none) : Nat :=
+  if spell.any (fun c => (s.activeMods c).contains .ignoreDeflectSpell) ||
+      ts.any (fun t => (s.zone .battlefieldZone).contains t &&
+        ((s.obj? t).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .ignoreDeflectHere)) then 0
+  else
+    (ts.map (fun t =>
+      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) then
+        s.deflectOf t
+      else 0)).sum
 
 /-- The Pool covers what the player pays more for choosing the objects. -/
-def deflectOk (s : GameState) (p : PlayerId) (pool : RunePool) (ts : List ObjId) : Bool :=
-  decide (s.deflectCost p ts ≤ pool.totalPower)
+def deflectOk (s : GameState) (p : PlayerId) (pool : RunePool) (ts : List ObjId)
+    (spell : Option ObjId := none) : Bool :=
+  decide (s.deflectCost p ts spell ≤ pool.totalPower)
+
+/-- A qualifying spell gets each Battlefield's Power discount once, even when it chooses
+several friendly Units there (CR 355-356). -/
+def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  if (s.cardDef? c).any (·.hasType .spell) then
+    let fields := ts.filterMap (fun t =>
+      if (s.cardDef? t).any (·.hasType .unit) then
+        ((s.obj? t).filter (·.controller == p)).bind (·.loc)
+      else none)
+    (fields.eraseDups.flatMap (fun bf => (s.activeMods bf).filterMap (fun
+      | .friendlyTargetPowerCut n => some n
+      | _ => none))).sum
+  else 0
+
+/-- The Power reductions for a card play, from its targets and effects of the turn (CR 356.4). -/
+def playPowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  s.choosePowerCut p c ts + (s.nextCardDiscount p).2
+
+/-- Deflect is part of the combined payment when a target-based Power discount applies
+to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). -/
+def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
+  match a.kind with
+  | .putTrigger .. =>
+    match s.pending with
+    | .triggerOrder _ _ _ _ (some _) :: _ => true
+    | _ => false
+  | .playCard c _ ts _ _ _ => s.playPowerCut p c ts != 0
+  | .activate c idx _ ts _ _ _ =>
+    s.playPowerCut p c ts != 0 &&
+      (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with
+      | some (.activated costs _ _ _) => costs.contains .fromHidden
+      | _ => false)
+  | _ => false
 
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
   match a.actor with
-  | .player p => s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf))
+  | .player p =>
+    if s.deflectInPayment p a then s2
+    else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/
@@ -112,7 +161,9 @@ theorem paySurcharge_cases (s : GameState) (a : Action) (s2 : GameState) :
     paySurcharge s a s2 = s2 ∨ ∃ p pool, paySurcharge s a s2 = s2.setPool p pool := by
   unfold paySurcharge
   split
-  · exact Or.inr ⟨_, _, rfl⟩
+  · split
+    · exact Or.inl rfl
+    · exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inl rfl
 
 /-- `s3` is `s2`, or `s2` with the Pool of a player replaced: the change that paying a surcharge

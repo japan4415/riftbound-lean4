@@ -1614,7 +1614,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 -- Block (OGN-057), a spell: hidden, then played from hiding: Shield 3 and Tank, and into my Trash
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand
-  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
   let mine := s2.control s.me s.bf0
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
@@ -1665,10 +1665,10 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, c) ← put s2 s.me "OGN-135" .hand
   return (activate s3 s.me g 1 [e]).isNone && (activate s3 s.me c 1 [] ⟨0, []⟩).isNone
 
--- A hidden spell used twice while its first use is still on the Chain has its effect once
+-- A Hidden Spell leaves its facedown zone during finalization, so it can only be played once.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand
-  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
   let mine := s2.control s.me s.bf0
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
@@ -2117,18 +2117,18 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s1, c) ← put s s.me "OGN-102" .hand
   let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
   let hurt := (s2.modObj u (fun o => { o with damage := 2 })).buff u
-  let a ← play hurt s.me c
+  let a ← play hurt s.me c [u]
   let w ← a.firstOf s.me .base "OGN-001"
   -- a unit at the Base is played again where it is
   let (t1, v) ← put s1 s.me "OGN-001" .base
-  let b ← play ((t1.modObj v (fun o => { o with damage := 2 })).buff v) s.me c
+  let b ← play ((t1.modObj v (fun o => { o with damage := 2 })).buff v) s.me c [v]
   let x ← b.firstOf s.me .base "OGN-001"
   return a.where? w == some (.player s.me .base) && a.tired w == some true &&
     (a.obj? w).map (·.damage) == some 0 && (a.obj? w).map (·.buffed) == some false &&
     (a.obj? w).map (·.loc) == some none && s2.where? u == some .battlefieldZone &&
     a.countIn s.me .base "OGN-001" == 1 &&
     b.tired x == some true && (b.obj? x).map (·.damage) == some 0 &&
-    b.countIn s.me .base "OGN-001" == 1
+    b.countIn s.me .base "OGN-001" == 1 && a.locate u == none && b.locate v == none
 -- Soulgorger and Spectral Matron put the unit in exhausted
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-196" .hand
@@ -2756,7 +2756,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t2, v) ← putAt t1 s.you "OGN-001" s.bf0
   let mine ← play (t2.addTurnFx s.you (.nextSpellBonus 1)) s.me h2 [v]
   return (boosted.obj? u).map (·.damage) == some 4 && (plain.obj? u).map (·.damage) == some 3 &&
-    on.tired g == some true && on.turnFx.map (·.kind) == [TurnEffect.nextSpellBonus 1] &&
+    on.tired g == some true && (on.fxOf s.me).contains (.nextSpellBonus 1) &&
     (mine.obj? v).map (·.damage) == some 3
 
 -- Void Gate (OGN-296): spells and abilities that affect the units at it deal 1 more
@@ -2797,7 +2797,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return !castable rich s.you ray (payOf rich ray) [u] &&
     castable free s.you ray (payOf free ray) [u] &&
     !(legalPlays rich s.you).any
-      (fun a => match a.kind with | .playCard c _ _ => c == ray | _ => false)
+      (fun a => match a.kind with | .playCard c _ _ _ _ _ => c == ray | _ => false)
 
 -- The ability that watches an object gets it as its last slot. Pirate's Haven (OGN-143): when I
 -- ready a friendly unit, it gets +1 Might this turn
@@ -3204,7 +3204,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let unitIn ← activate next s.me h 1 [] ⟨0, []⟩
   let (t1, m2) ← put s s.me "OGN-167" .base
   let (t2, sp) ← put t1 s.me "OGN-057" .hand
-  let (t3, u) ← put t2 s.me "OGN-136" .base
+  let (t3, u) ← putAt t2 s.me "OGN-136" s.bf0
   let mine2 := t3.control s.me s.bf0
   let hide2 ← activate mine2 s.me sp 0 [s.bf0] ⟨0, [.fury]⟩
   let h2 ← (hide2.zone (.player s.me .hidden)).head?
@@ -3309,17 +3309,17 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s3, _) ← put s2 s.me "OGN-227" .base
   let (s4, _) ← put s2 s.you "OGN-227" .base
   let here (g : GameState) (u : ObjId) : Bool := (g.obj? u).any (fun o => o.loc == some bf)
-  let withSym := (combatResolve s3 bf s.me).1
-  let without := (combatResolve s2 bf s.me).1
-  let theirs := (combatResolve s4 bf s.me).1
+  let withSym := (combatCleanup s3 bf s.me).1
+  let without := (combatCleanup s2 bf s.me).1
+  let theirs := (combatCleanup s4 bf s.me).1
   let (u1, f2) ← putAt s s.you "OGN-136" bf
   let (u2, _) ← put u1 s.me "OGN-227" .base
-  let wiped := (combatResolve u2 bf s.me).1
+  let wiped := (combatCleanup u2 bf s.me).1
   let (h1, _) ← put s2 s.me "OGN-227" .hand
-  let inHand := (combatResolve h1 bf s.me).1
+  let inHand := (combatCleanup h1 bf s.me).1
   let (k1, k) ← putAt s s.me "OGN-136" bf
   let (k2, _) ← put k1 s.me "OGN-227" .base
-  let alone := (combatResolve k2 bf s.me).1
+  let alone := (combatCleanup k2 bf s.me).1
   return !here withSym mine && !here withSym foe &&
     (withSym.zone (.player s.you .base)).length == (s3.zone (.player s.you .base)).length + 1 &&
     !here without mine && here without foe && !here theirs mine && here theirs foe &&
@@ -4247,21 +4247,20 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     broke.countIn s.me .base "OGN-037" == 0
 
 -- Kai'Sa, Evolutionary (OGN-112): when she conquers, I may play a spell from my Trash with an
--- Energy cost less than my points, without its Energy (its Power is paid), then recycle it; only a
--- spell with no choice of objects to make (Confront) is played here
+-- Energy cost less than my points, without its Energy (its Power is paid), then recycle it.
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-294"
   let (s2, _) ← putAt s1 s.me "OGN-112" bf
-  let (s3, _) ← put s2 s.me "OGN-129" .trash
+  let (s3, confront) ← put s2 s.me "OGN-129" .trash
   let (s4, _) ← put s3 s.me "OGN-229" .trash
   let points := s4.gainPoints s.me 5
   let rich := points.rich s.me
-  let a ← fire rich [.scored s.me bf true]
+  let a ← fire rich [.scored s.me bf true] { obj := (· == confront) }
   let no ← fire rich [.scored s.me bf true] { yes := false }
   let few ← fire (s4.rich s.me) [.scored s.me bf true]
-  -- only a spell with a choice in the Trash: it stays; points equal to the cost: not enough
+  -- Vengeance requires two Order Power; points equal to the Energy cost are insufficient.
   let (v1, _) ← put s2 s.me "OGN-229" .trash
-  let only := fire ((v1.gainPoints s.me 5).rich s.me) [.scored s.me bf true]
+  let only := fire ((v1.gainPoints s.me 5).fund s.me 0) [.scored s.me bf true]
   let onlyV ← only
   let edge ← fire (((s3.gainPoints s.me 2)).rich s.me) [.scored s.me bf true]
   -- a spell with a Power cost: the Power is paid from the pool (and not when it is not there)
@@ -4277,50 +4276,47 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     paid.countIn s.me .trash "OGN-145" == 0 && poor.countIn s.me .trash "OGN-145" == 1 &&
     (paid.poolOf s.me).body < (withPow.poolOf s.me).body
 
+private meta def gainedExhaustIndex (s : GameState) (src : ObjId) (code : String) : Option Nat := do
+  let d ← s.cardDef? src
+  (s.activationList src d).findIdx? (fun (grant, _) => grant.any (·.card == cid code))
+
 -- Heimerdinger, Inventor (OGN-111): he has the exhaust abilities of my legends, units and gear:
 -- with Lee Sin (exhaust: buff me) in play, he can exhaust to buff himself; without Lee Sin he
 -- cannot; not with the opponent's Lee Sin
 #guard t fun s => do
   let (s1, hd) ← put s s.me "OGN-111" .base
   let (s2, lee) ← put s1 s.me "OGN-078" .base
-  let leeIdx ← (RiftboundCards.Origins.OGN_111.fullAbilities.findIdx? (fun a => match a with
-    | .activated _ _ b _ => b.body ==
-        .ifThen (.hasFriendlyCard ⟨"OGN-078"⟩) (.prim (.buff .self)) .nop
-    | _ => false))
+  let leeIdx ← gainedExhaustIndex s2 hd "OGN-078"
   let used ← activate s2 s.me hd leeIdx [] ⟨0, []⟩
+  let (queued, _) ← (step 100 (s2.rich s.me) ⟨.player s.me, .activate hd leeIdx ⟨0, []⟩ []⟩).toOption
+  let gone := (sendObj .trash queued lee).1
+  let resolved := settleChain {} 8 gone
   let (n1, nhd) ← put s s.me "OGN-111" .base
-  let without := activate n1 s.me nhd leeIdx [] ⟨0, []⟩
+  let without := gainedExhaustIndex n1 nhd "OGN-078"
   let (t1, thd) ← put s s.me "OGN-111" .base
   let (t2, _) ← put t1 s.you "OGN-078" .base
-  let theirs := activate t2 s.me thd leeIdx [] ⟨0, []⟩
+  let theirs := gainedExhaustIndex t2 thd "OGN-078"
   let again := activate used s.me hd leeIdx [] ⟨0, []⟩
   return (used.obj? hd).map (·.buffed) == some true && used.tired hd == some true &&
     (used.obj? lee).map (·.buffed) == some false && without.isNone && theirs.isNone &&
-    again.isNone
+    again.isNone && gainedExhaustIndex gone hd "OGN-078" == none &&
+    (resolved.obj? hd).any (·.buffed)
 
 -- Heimerdinger, Inventor (OGN-111), more: an ability with a guard that waits for a chosen
 -- object (Baited Hook) is still not there without the Hook; a Legend's mana ability is his while
 -- the Legend is there (Daughter of the Void, with a spell in hand)
 #guard t fun s => do
-  let abilities := RiftboundCards.Origins.OGN_111.fullAbilities
-  let idxOf (c : String) : Option Nat := abilities.findIdx? (fun a => match a with
-    | .activated _ _ b _ => (match b.body with
-        | .ifThen (.and (.hasFriendlyCard id) _) _ _ => id == ⟨c⟩
-        | .ifThen (.hasFriendlyCard id) _ _ => id == ⟨c⟩
-        | _ => false)
-    | _ => false)
-  let hookIdx ← idxOf "OGN-242"
   let (s1, hd) ← put s s.me "OGN-111" .base
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let (s3, _) ← put s2 s.me "OGN-242" .base
+  let hookIdx ← gainedExhaustIndex s3 hd "OGN-242"
   let withHook := activate s3 s.me hd hookIdx [u] ⟨1, [.order]⟩
-  let withoutHook := activate s2 s.me hd hookIdx [u] ⟨1, [.order]⟩
-  let daughterIdx ← idxOf "OGN-247"
+  let withoutHook := gainedExhaustIndex s2 hd "OGN-242"
   let (l1, _) ← put s1 s.me "OGN-247" .legendZone
   let (l2, _) ← put l1 s.me "OGN-229" .hand
   let (n1, _) ← put s1 s.me "OGN-229" .hand
-  let manaOk (x : GameState) :=
-    (legalActions x).contains ⟨.player s.me, .manaAbility hd daughterIdx ⟨0, []⟩⟩
+  let manaOk (x : GameState) := (gainedExhaustIndex x hd "OGN-247").any (fun i =>
+    (legalActions x).contains ⟨.player s.me, .manaAbility hd i ⟨0, []⟩⟩)
   return withHook.isSome && withoutHook.isNone && manaOk l2 && !manaOk n1
 
 -- Playing a spell for free (the effect `play`): a spell with no choice goes on the Chain as a new

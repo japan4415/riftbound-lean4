@@ -24,6 +24,7 @@ namespace Riftbound
 /-- The places that are understood. -/
 def Place.understood : Place → Bool
   | .anywhere => true
+  | .boardOrLegend => true
   | .atBase => true
   | .atBattlefield => true
   | .here => true
@@ -38,6 +39,8 @@ def PlayerSel.understood : PlayerSel → Bool
   | .opponent => true
   | .eachPlayer => true
   | .eachOpponent => true
+  | .combatSides => true
+  | .chosen _ => true
   | .controllerOf _ => true
   | _ => false
 
@@ -47,6 +50,7 @@ mutual
 def Amount.understood : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .eventAmount => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -65,6 +69,7 @@ def Amount.understood : Amount → Bool
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
+  | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
   | .add a b => Amount.understood a && Amount.understood b
@@ -73,6 +78,8 @@ def Amount.understood : Amount → Bool
   | .min a b => Amount.understood a && Amount.understood b
   | .max a b => Amount.understood a && Amount.understood b
   | .mightOf s => Selector.understood s
+  | .mightIncreaseTo unit reference => unit.understood && reference.understood
+  | .damageOn s => Selector.understood s
   | .kwAmount s _ => Selector.understood s
   | _ => false
 
@@ -81,6 +88,7 @@ Might without the Layers, which they do not need yet). -/
 def Amount.understoodC : Amount → Bool
   | .const _ => true
   | .var _ => true
+  | .eventAmount => true
   | .count (.pick .all _ place fs) =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs
   | .count s => Selector.understood s
@@ -99,9 +107,11 @@ def Amount.understoodC : Amount → Bool
   | .movesThisTurn => true
   | .notes _ => true
   | .energyPaid => true
+  | .empowerCount => true
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
   | .mightOf s => Selector.understood s
+  | .damageOn s => Selector.understood s
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b
@@ -122,6 +132,7 @@ def Filter.understood : Filter → Bool
   | .ofSupertype _ => true
   | .tag _ => true
   | .named _ => true
+  | .sameNameAsSource => true
   | .hasKeyword _ => true
   | .domain _ => true
   | .might _ a => Amount.understood a
@@ -130,6 +141,7 @@ def Filter.understood : Filter → Bool
   | .exhausted => true
   | .ready => true
   | .damaged => true
+  | .damagedThisTurn => true
   | .notSelf => true
   | .stunned => true
   | .buffed => true
@@ -138,6 +150,7 @@ def Filter.understood : Filter → Bool
   | .both a b => Filter.understood a && Filter.understood b
   | .controlled => true
   | .controlledByOpponent => true
+  | .unitsHere _ _ => true
   | .movedFromHere => true
   | .hidden => true
   | .top _ => true
@@ -147,6 +160,8 @@ def Filter.understood : Filter → Bool
   | .sameController .self => true
   | .sameController (.slot _) => true
   | .sameController (.var _) => true
+  | .ownedByPlayerTarget _ => true
+  | .revealedByEffect => true
   | .givesLegendsAttach => true
   | .copiesText => true
   | .takenByMyCard => true
@@ -156,6 +171,8 @@ def Filter.understood : Filter → Bool
   | .playedThisTurn => true
   | .playedLast => true
   | .inHandZone => true
+  | .inTrashZone => true
+  | .empowered => true
   | .unitsPlayable => true
   | .attackedByMine => true
   | .myUnitsHere => true
@@ -163,6 +180,7 @@ def Filter.understood : Filter → Bool
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
+  | .sameAs (.slotsFrom _) => true
   | .sameAs (.var _) => true
   | .mighty => true
   | .attacker => true
@@ -185,6 +203,9 @@ def Filter.understood : Filter → Bool
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
   | .onBattlefield => true
+  | .atSourceMoveBattlefield _ => true
+  | .atShowdown => true
+  | .combatsEnemyOfDomain _ | .chosenByEnemySpellOfDomain _ => true
   | .noChoices => true
   | .costBelowPoints => true
   | .hideRoom => true
@@ -230,8 +251,13 @@ def Condition.understood : Condition → Bool
   | .openConquered => true
   | .legion => true
   | .paid => true
+  | .discardPaid => true
   | .playedAnother => true
-  | .canPay _ => true
+  | .finalizedType _ => true
+  | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => s.understood
+  | .empowered s => s.understood
+  | .leftEmpowered => true
+  | .fewerRunesThanOpponent | .canPay _ => true
   | .enemyUnitDied => true
   | .marked _ => true
   | .fromHidden => true
@@ -266,27 +292,33 @@ def Selector.understoodPick : Selector → Bool
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
+  | .burn p n => p.understood && n.understood
+  | .burnWithUnitTrigger n _ => n.understood
+  | .empower s => s.understoodPickAny
+  | .disempower s => s.understoodPickAny
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
+  | .delayUntilDeath s _ => s.understood
   | .activateConquer s => s.understood
   | .choose s => s.understood
   | .lookTop _ => true
+  | .predict n => n.understood
   | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
   | .returnChampion => true
   | .pay _ => true
-  | .addEnergy ps n none => ps.understood && n.understoodC
+  | .addEnergy ps n none | .addUnitEnergy ps n => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
   | .swapTop p => p.understood
-  | .play s => s.understoodPickAny
-  | .banishReplay s => s.understoodPickAny
+  | .play s | .playAtBase s => s.understoodPickAny
+  | .banishReplay s _ => s.understoodPickAny
+  | .copyAttachedFrom s => s.understoodPick
   | .playPaying s => s.understoodPickAny
-  | .castPicked s a _ => s.understoodPickAny && a.understood
   | .giveKeywords t f => t.understood && f.understood
   | .playReduced s a t => s.understoodPickAny && a.understood && (match t with
     | some b => b.understood
@@ -297,7 +329,7 @@ def Prim.understood : Prim → Bool
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understoodPickAny && b.understood
   | .bin s => s.understoodPickAny
-  | .discardCard s => s.understoodPickAny
+  | .discardCard s | .discardWithTypeTriggers s _ => s.understoodPickAny
   | .recycle s => s.understoodPickAny
   | .reveal s => s.understoodPickAny
   | .revealTop _ => true
@@ -312,6 +344,8 @@ def Prim.understood : Prim → Bool
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood
+  | .exchangeDamage a b => a.understood && b.understood
+  | .setBaseMight s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
   | .kill s => s.understoodPick
   | .banish s => s.understoodPickAny
@@ -319,11 +353,12 @@ def Prim.understood : Prim → Bool
   | .ready s => s.understoodPickAny
   | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
+  | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
   | .topdeck s => s.understoodPickAny
-  | .double s => s.understoodPick
+  | .double s | .grantActivation s _ => s.understoodPick
   | .move s .base => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
@@ -353,13 +388,27 @@ def Effect.understood : Effect → Bool
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e
   | .forEach s body => s.understood && Effect.understood body
   | .fillSlot _ s => s.understoodPickAny
+  | .remakeSpellChoices spell => spell.understood
   | .fillFromPick _ => true
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
   | .may e => Effect.understood e
+  | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e =>
+    s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
+  | .payThen _ body => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
+  | .revealHand w e => w.understood && Effect.understood e
+  | .lookAtTop _ body => Effect.understood body
+  | .nameCard _ | .rememberNamedCard _ => true
+  | .banishAndPlayLooked _ fs => FilterList.understood fs
+  | .recycleLooked => true
+  | .chooseObject _ place fs e =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
+  | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
+  | .preventNext s n .thisTurn => s.understoodPick && n.understood
+  | .moveChoosing _ _ fs e => FilterList.understood fs && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
@@ -367,6 +416,7 @@ def Effect.understood : Effect → Bool
   | .grant s (.mightMinusMin .it a _) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.keyword .it _) d => s.understoodPick && d.endPoint?.isSome
+  | .grant s .flowAtBaseCost d => s.understoodPick && d.endPoint?.isSome
   | _ => false
 
 /-- Every effect of a list is understood. -/
@@ -376,10 +426,17 @@ def EffectList.understood : EffectList → Bool
 
 end
 
-/-- A Spell that can be played and run: every choice is one target, and the effect is understood. -/
+/-- All modes or the single effect can be played and interpreted. -/
+def EffectDef.choicesRun (e : EffectDef) : Bool :=
+  if e.modes.isEmpty then
+    e.choices.all Choice.simple && e.body.understood &&
+      e.moveChoice.all (fun move => FilterList.understood move.filters)
+  else e.modes.all (fun mode => mode.choices.all Choice.simple && mode.body.understood)
+
+/-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
-  | some e => e.choices.all Choice.simple && e.body.understood
+  | some e => e.choicesRun
   | none => false
 
 /-! ### What a card does when it is played
@@ -397,7 +454,7 @@ def costSel : Selector → Bool
 
 /-- A passive change the engine applies. -/
 def StaticMod.runs : StaticMod → Bool
-  | .mightPlus s a => s.understood && a.understoodC
+  | .mightPlus s a | .mightPlusWithKeyword s _ a => s.understood && a.understoodC
   | .mightMinus s a => s.understood && a.understoodC
   | .mightMinusMin s a _ => s.understood && a.understoodC
   | .keyword s _ => s.understood
@@ -406,7 +463,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .costPlus s a => costSel s && a.understoodK
   | .costPower s a _ _ => costSel s && a.understoodK
-  | .noDamage => true
+  | .noDamage | .noEnemyEffectDamage | .noEnemyEffectMove => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true
@@ -418,16 +475,18 @@ def StaticMod.runs : StaticMod → Bool
   | .movesHereFromAnywhere => true
   | .grantRepeat _ => true
   | .entersExhausted => true
-  | .oppsPlayToBaseOnly => true
+  | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
+  | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
+  | .friendlyTargetPowerCut _ | .showdownReactionTax _ => true
   | .lookBeforeReveal => true
   | .banishOnDeath => true
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .repeatChooses => true
+  | .firstGearAbilityLess _ | .empowerHereLess _ => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear => true
@@ -435,24 +494,32 @@ def StaticMod.runs : StaticMod → Bool
   | .noMoveToBaseAny => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
+  | .playHereFor _ _ => true
   | .noPlayToBase => true
   | .noReadyOfOpps => true
-  | .ignoreKeyword .temporary .here => true
+  | .ignoreKeyword .temporary .here | .ignoreKeyword .tank .here => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .triggersExtra .conquer .here => true
   | .triggersExtra .hold .here => true
   | .cant .self .beChosen => true
+  | .cant .self .play => true
   | .cant (.pick .all _ place fs) .beChosen => place.understood && FilterList.understood fs
   | .noCombatDamageFor (.pick .all _ place fs) => place.understood && FilterList.understood fs
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
   | .cantPlayer _ .play .here _ => true
+  | .earlyScoreDraw _ => true
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC
   | .bonusDamage a => a.understoodC
   | .noCombatDamage => true
+  | .channelLimit _ => true
+  | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities
+  | .targetMightPenalty _ | .chosenHarmToMight _ => true
+  | .ignoreDeflectSpell => true
+  | .ignoreDeflectHere => true
   | .doubleEquip => true
   | .mightIfFresh _ => true
   | .gainsTag _ => true
@@ -471,15 +538,24 @@ def Timing.runs : Timing → Bool
 /-- A trigger the engine detects: the event, whose subject it is about, and the condition. -/
 def Trigger.runs (t : Trigger) : Bool :=
   t.occurrence == .every && t.condition.understood &&
+    (match t.cost with
+     | .killFriendly _ fs => FilterList.understood fs
+     | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .deathknell => t.subject == .self
+      | .firstCardResolved => t.subject == .self
       | .stun => true | .discard => true | .ready => true
       | .buff => true
-      | .becomeMighty => true
+      | .becomeMighty | .mightAtLeast _ => true
+      | .linkedBurnUnit | .linkedDiscardType => t.subject == .self
+      | .becomeEmpowered => true
       | .winCombat => t.subject == .self
+      | .combatStart => t.subject == .self
+      | .combatEnd => t.subject == .self
       | .chosen => true
       | .chosenAny => true
-      | .useGearAbility => t.subject == .self
+      | .useGearAbility | .playAtBaseEnergy _ => t.subject == .self
       | .attachedTo => t.subject == .self
       | .youDefend => t.subject == .self
       | .spendBuff => t.subject == .self
@@ -495,9 +571,11 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .opponentHolds => t.subject == .self
       | .movedByYou => true
       | .draw => true
+      | .banishOwn => t.subject == .self
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
+      | .scored => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
@@ -518,13 +596,19 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
-    ((costPlan costs).isSome &&
+    (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
+      | .energyDiscount c a => c.understood && a.understoodK
+      | _ => true) && (costPlan costs).isSome &&
+      ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
         (body.choices.all Choice.simple && body.body.understood))) ||
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
-    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body)
+    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body))
   | .triggered t body _ =>
-    t.runs && body.choices.all Choice.simple && body.body.understood
+    t.runs && body.moveChoice.isNone && body.choicesRun
+  | .replacement .attach c body =>
+    c.understood && body.choices.isEmpty && body.playerTarget.isNone && body.moveChoice.isNone &&
+      body.modes.isEmpty && body.choicesRun
   | .replacement .. => false
 
 /-- A keyword the engine knows. -/
@@ -537,13 +621,19 @@ def Keyword.runs : Keyword → Bool
   | .backline => true | .ambush => true
   | _ => false
 
+/-- A card can model the printed Empower cost with an explicit activated ability (CR 827). -/
+def CardDef.hasEmpowerAbility (c : CardDef) : Bool :=
+  c.fullAbilities.any (fun a => a.isEmpower && a.runs)
+
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
-  c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
-    c.keywords.all (·.keyword.runs) &&
+  (c.status == .drafted || c.status == .full) &&
+    c.abilities.all Ability.runs && c.grants.all Ability.runs &&
+    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
+      (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
-      | some e => e.choices.all Choice.simple && e.body.understood
+      | some _ => c.spellRuns
       | none => !c.types.contains .spell)
 
 end Riftbound

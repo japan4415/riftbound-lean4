@@ -437,8 +437,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p rest c pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
+  · rename_i p rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_discard_meta h
     rcases hpend with e | e
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
         (new := [Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
@@ -469,7 +469,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
         exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
           (by simp [GameState.playerCount, hP.config])
           (new := (endShowdown s bf).2.1) rfl (fun g hg => by
-            obtain ⟨r, rfl⟩ := endShowdown_frames s bf g hg
+            obtain ⟨r, rfl⟩ := endShowdown_frames s bf true g hg
             rfl)
   · rename_i bf att side acc done rest u hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -481,10 +481,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨damage, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.assign b a q [] d]) rfl (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
         (by simp [GameState.playerCount, hr.same.config])
         (new := [Frame.cleanup, Frame.combatResolve bf att]) rfl (by simp [Frame.isSetup])
@@ -498,11 +500,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
         (by simp [Frame.isSetup])
-  · rename_i p n rest c pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+  · rename_i p n rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
-  · rename_i p n rest src idx pay ts hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
@@ -510,16 +512,28 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp rfl
-      (by simp [GameState.playerCount, (putPick_safe s (t :: more) i ts).same.config])
+      (by simp [GameState.playerCount, (finishTrigger_safe s (t :: more) funding i ts payment).same.config])
       (new := [Frame.triggers ((t :: more).eraseIdx i ++ others)]) rfl (by simp [Frame.isSetup])
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := [_]) rfl (by simp [Frame.isSetup])
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := [_]) rfl (by simp [Frame.isSetup])
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := [_]) rfl (by simp [Frame.isSetup])
   · rename_i p tail src idx pay hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -531,8 +545,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hc : (sendObj .trash s c).1.playerCount = s.playerCount := by
-      simp [GameState.playerCount, (sendObj_safe .trash s c).same.config]
+    have hc : (discardObj s c).1.playerCount = s.playerCount := by
+      simp [GameState.playerCount, (discardObj_safe s c).same.config]
     by_cases hn : n ≤ 1
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) hc (new := []) (by simp [hn])
         (by simp)
@@ -558,7 +572,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-      (new := [Frame.run p src (env.bind pickVar (Value.obj o)) (EffectList.cons e es)]) rfl
+      (new := [Frame.run p src (env.bindPick o (e.pickIsTarget s o)) (EffectList.cons e es)]) rfl
       (by simp [Frame.isSetup])
   · rename_i z rest l hp hk
     rw [hp, hk] at hl
@@ -615,11 +629,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
-  · rename_i bf q n rest c pay ts hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+  · rename_i bf q n rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
-  · rename_i bf q n rest src idx pay ts hp hk
+  · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
@@ -637,6 +651,35 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)
+    refine hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config]) rfl ?_
+    intro f hf
+    have hplay := continuePrediction_frames _ _ _ _ _ _ hf
+    cases f <;> simp_all [Frame.isSetup, Frame.isPlay]
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := completePrediction_safe s p n top bottom
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
+      (new := []) rfl (by simp)
+  · rename_i p src env first more es rest card hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.run p src env (.cons (.rememberNamedCard card) es)]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p source env first other es rest c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p source env first other es rest src idx pay hp hk
+    have hmeta := applyMana_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
@@ -713,12 +756,21 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-      (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) rfl (by simp [Frame.isSetup])
+    by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) (by simp [hs]) (by simp)
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) (by simp [hs]) (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.cleanup, Frame.expireTurn]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_nonsetup hp rfl rfl (new := expirationFrames s) rfl ?_
+    unfold expirationFrames
+    split <;> simp [Frame.isSetup]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -727,8 +779,16 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-      (by simp [GameState.playerCount, (beginStep_safeP s (s.active.getD ⟨0⟩)).config])
-      (new := [Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
+      (by simp [GameState.playerCount, (beginStep_safe s (s.active.getD ⟨0⟩)).same.config])
+      (new := [Frame.cleanup, Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
+        Frame.scoreHolds]) rfl (by simp [Frame.isSetup])
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (hold_safeP s (s.active.getD ⟨0⟩)).config])
+      (new := [Frame.draw (s.active.getD ⟨0⟩)
+        (scoreDrawCount (s.active.getD ⟨0⟩) (hold s (s.active.getD ⟨0⟩)).2),
         Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -768,29 +828,30 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount,
-        (runEffect_safe s p src (env.withMight s.mightTable) e es).same.config])
-      (new := (runEffect s p src (env.withMight s.mightTable) e es).2.1) rfl (fun g hg => by
-        rcases runEffect_mem hg with h1 | ⟨q, k, rfl⟩
+        (runEffect_safe s p src (env.withMight s.mightTable) e es effectAddPolicy).same.config])
+      (new := (runEffect s p src (env.withMight s.mightTable) e es effectAddPolicy).2.1) rfl (fun g hg => by
+        rcases runEffect_mem hg with h1 | ⟨q, k, rfl⟩ | ⟨q, rfl⟩
         · cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
+        · rfl
         · rfl)
   · rename_i item rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (finishItem_sameMeta s item).config])
-      (new := Frame.cleanup :: afterItem (finishItem s item).1) rfl (fun g hg => by
-        rcases List.mem_cons.mp hg with rfl | hg
-        · rfl
-        · obtain ⟨q, rfl⟩ := afterItem_mem hg
-          rfl)
+      (new := finishedItemFrames s item (finishItem s item)) rfl (fun g hg => by
+        have hplay := finishedItemFrames_mem hg
+        cases g <;> simp_all [Frame.isPlay, Frame.isSetup])
   · rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
     · exact ⟨hinv.1, Or.inr (fun g hg => by cases hg)⟩
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [.eitherDo p u {} a b .nil, .cleanup]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
         (by simp [GameState.playerCount, hr.same.config]) (new := [Frame.cleanup]) rfl
         (by simp [Frame.isSetup])
@@ -800,22 +861,41 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := s.startCombat bf att) rfl
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := s.startCombat bf att ++ combatSteps bf) (by simp [List.append_assoc])
       (fun g hg => by
-        rcases startCombat_mem s bf att g hg with ⟨b, a, q, e⟩ | e | e <;> subst e <;> rfl)
+        rcases List.mem_append.mp hg with h1 | h1
+        · have play := startCombat_play s bf att h1
+          cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
+        · simp [combatSteps] at h1
+          rcases h1 with rfl | rfl | rfl <;> rfl)
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-      (by simp [GameState.playerCount, (combatResolve_safeP s bf att).config])
-      (new := (combatResolve s bf att).2.1 ++ [Frame.cleanup]) (by simp)
+      (by simp [GameState.playerCount, (combatCleanup_safe s bf att).same.config])
+      (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
+      (by simp [GameState.playerCount, (combatControl_safeP s bf).config])
+      (new := (combatControl s bf).2.1 ++ [Frame.cleanup]) (by simp)
       (fun g hg => by
         rcases List.mem_append.mp hg with h1 | h1
-        · obtain ⟨r, rfl⟩ := combatResolve_frames s bf att g h1
+        · obtain ⟨_, rfl⟩ := combatControl_frames s bf g h1
           rfl
         · simp only [List.mem_singleton] at h1
           subst h1
           rfl)
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -1001,6 +1081,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceTurnOrder => trivial
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
+    | chancePredict p n top bottom => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
   · have := hn f (by rw [hp]; exact List.mem_cons_self)
     cases f with
@@ -1009,6 +1090,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceTurnOrder => exact absurd this (by simp [Frame.isSetup])
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
+    | chancePredict p n top bottom => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
 
 /-- **I5, in full.** A reachable game that is not over always has a legal answer other than a

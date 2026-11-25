@@ -23,6 +23,16 @@ inductive Dest where
   | at_ (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
+/-- Who replays a banished Unit and where the effect requires it to enter. -/
+inductive BanishReplay where
+  /-- Its owner plays it to a legal location. -/
+  | byOwner
+  /-- Its owner plays it to the location it left. -/
+  | sameLocation
+  /-- The effect's controller plays it to their Base. -/
+  | toBase
+deriving DecidableEq, Repr, Hashable
+
 /-- A game action: one thing an effect does (CR 408-446). -/
 inductive Prim where
   /-- The players draw cards (CR 414). -/
@@ -31,6 +41,10 @@ inductive Prim where
   | discard (p : PlayerSel) (n : Amount)
   /-- Deal damage to objects. -/
   | deal (s : Selector) (n : Amount)
+  /-- Two units deal damage equal to their current Mights to each other (CR 418.6.b.3). -/
+  | exchangeDamage (a b : Selector)
+  /-- Set a Unit's base Might for the rest of the turn (CR 143.2.a, 479.2). -/
+  | setBaseMight (s : Selector) (n : Amount)
   /-- Heal damage from objects. -/
   | heal (s : Selector) (n : Amount)
   /-- Kill objects. -/
@@ -64,6 +78,8 @@ inductive Prim where
   | channel (p : PlayerSel) (n : Amount) (extraExhausted : Amount)
   /-- Add Energy to a Rune Pool; it can be spent on `only` if that is given. -/
   | addEnergy (p : PlayerSel) (n : Amount) (only : Option Act)
+  /-- Add Energy that pays only for Units and their activated abilities. -/
+  | addUnitEnergy (p : PlayerSel) (n : Amount)
   /-- Add Power to a Rune Pool, of a domain or of any; it can be spent on `only` if given. -/
   | addPower (p : PlayerSel) (n : Amount) (d : Option Domain) (only : Option Act)
   /-- Counter a spell. -/
@@ -72,21 +88,22 @@ inductive Prim where
   | counterToHand (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
-  /-- Banish the units, then their owners play them, ignoring their cost (a token that is banished
-  ceases to exist). -/
-  | banishReplay (s : Selector)
+  /-- Play a card ignoring its printed cost, with a requirement to play it to Base (CR 355.17). -/
+  | playAtBase (s : Selector)
+  /-- Banish the Units, then play them according to the effect's instructions (CR 420.3, 428).
+  A banished token ceases to exist. -/
+  | banishReplay (s : Selector) (replay : BanishReplay := .byOwner)
+  /-- The Unit attached to this Equipment snapshots the chosen Unit's copyable traits (CR 479.1). -/
+  | copyAttachedFrom (s : Selector)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
   | playPaying (s : Selector)
   /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield
-  if one is given: a Unit or a Gear only (Rek'Sai, Void Rush, Here to Help). -/
+  if one is given. Spells are cast on the Chain (Void Rush). -/
   | playReduced (s : Selector) (less : Amount) (to : Option Selector)
   /-- Give the objects all the keywords the object has now, for the turn (Kato the Arm). -/
   | giveKeywords (to : Selector) (from_ : Selector)
-  /-- Cast the spell, paying its cost less `less` Energy, choosing the `idx`-th legal pick of its
-  targets: it goes on the Chain. The player chooses between the picks (Void Rush). -/
-  | castPicked (s : Selector) (less : Amount) (idx : Nat)
-  /-- Cast the spell now, in place: its effect is done at once (a spell with no choice of objects to
-  make), its Power cost is paid, and the card is recycled after (Kai'Sa, Evolutionary). -/
+  /-- Queue the Trash spell, ignoring its base Energy cost, and Recycle it after it resolves
+  (Kai'Sa, Evolutionary and Fizz, Trickster). -/
   | castInline (s : Selector)
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)
@@ -100,6 +117,8 @@ inductive Prim where
   | bin (s : Selector)
   /-- Discard cards of a hand: the player of the cards discards them (CR 423). -/
   | discardCard (s : Selector)
+  /-- Discard a card, with a linked reflexive trigger for each matching type (CR 387.1.b). -/
+  | discardWithTypeTriggers (s : Selector) (links : List (CardType × Nat))
   /-- Hide a card. -/
   | hide (s : Selector)
   /-- Reveal cards. -/
@@ -113,6 +132,10 @@ inductive Prim where
   | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
+  /-- Play a Unit token, choosing its location as it is played (CR 185.2.a, 355.2). -/
+  | playUnitToken (token : String)
+  /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
+  | playUnitTokenAt (token : String) (dest : Option ObjId)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
   /-- Attach Equipment to an object, paying the Equip cost of each, less `less` Power
@@ -126,19 +149,25 @@ inductive Prim where
   | spendXP (p : PlayerSel) (n : Amount)
   /-- The players score points. -/
   | score (p : PlayerSel) (n : Amount)
-  /-- The players Burn Out `n` times in a row (CR 432). -/
+  /-- Put the top `n` cards of the players' Main Decks into their Trash (CR 441). -/
   | burn (p : PlayerSel) (n : Amount)
+  /-- Burn from your Main Deck and fire the linked reflexive ability for each Unit burned
+  (CR 388-389, 441). -/
+  | burnWithUnitTrigger (n : Amount) (idx : Nat)
   /-- Look at the top cards of the Main Deck and recycle some. -/
   | predict (n : Amount)
   /-- Copy an object. -/
   | copy (s : Selector)
   /-- Double the Might of an object. -/
   | double (s : Selector)
+  /-- Give the selected objects an activated ability on the Chain until the end of the turn
+  (CR 317.2, 376-381, 479.3). -/
+  | grantActivation (s : Selector) (ability : AbilityGrant)
   /-- Swap two objects. -/
   | swap (a b : Selector)
-  /-- Empower units. -/
+  /-- Empower Units, Gear, or Legends (CR 442). -/
   | empower (s : Selector)
-  /-- Disempower units. -/
+  /-- Disempower Units, Gear, or Legends (CR 443). -/
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)
@@ -194,6 +223,8 @@ inductive Prim where
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/
   | markOn (s : Selector) (e : TurnEffect)
+  /-- Create the source's delayed trigger for when a selected Unit dies this turn (CR 391-393). -/
+  | delayUntilDeath (s : Selector) (idx : Nat)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
   /-- Put cards on the top of their owners' Main Decks. -/
@@ -238,6 +269,8 @@ deriving DecidableEq, Repr, Hashable
 inductive TriggerEvent where
   /-- The object is played. -/
   | play
+  /-- The player completes their first play of a card this turn (CR 420.4.a). -/
+  | firstCardResolved
   /-- The object enters play. -/
   | enter
   /-- The object attacks. -/
@@ -252,10 +285,14 @@ inductive TriggerEvent where
   | move
   /-- The object dies. -/
   | die
+  /-- A Deathknell that is explicitly represented as a triggered ability (CR 808). -/
+  | deathknell
   /-- The object leaves play. -/
   | leave
   /-- A card is drawn. -/
   | draw
+  /-- The player banishes a card they own. -/
+  | banishOwn
   /-- A card is discarded. -/
   | discard
   /-- The object is stunned. -/
@@ -273,6 +310,9 @@ inductive TriggerEvent where
   | chosenHere
   /-- The player uses an activated ability of a gear of theirs (a unit of theirs watches). -/
   | useGearAbility
+  /-- The player plays a Unit, Gear, or activated ability whose base Energy cost is at least this
+  much (CR 206-206.1). -/
+  | playAtBaseEnergy (minimum : Nat)
   /-- An Equipment is attached to the unit (the unit itself waits for it). -/
   | attachedTo
   /-- The player defends at a Battlefield (their units elsewhere wait for it; the ability reaches
@@ -305,6 +345,8 @@ inductive TriggerEvent where
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
   | playToken
+  /-- A Combat starts at the Battlefield (CR 466.2.b). -/
+  | combatStart
   /-- A combat the object was in ends. -/
   | combatEnd
   /-- The object's side wins a combat: only its units are left at the Battlefield (a Unit says "I
@@ -322,6 +364,10 @@ inductive TriggerEvent where
   | youHold
   /-- The unit's Might becomes `n` or more. -/
   | mightAtLeast (n : Nat)
+  /-- The linked Burn instruction burned a Unit card (CR 388-389). -/
+  | linkedBurnUnit
+  /-- The linked Discard instruction discarded a card of the corresponding type. -/
+  | linkedDiscardType
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
 deriving DecidableEq, Repr, Hashable
@@ -340,12 +386,16 @@ inductive ReplaceEvent where
   | channel
   /-- The object would enter play exhausted. -/
   | enterExhausted
+  /-- This Equipment attaches, then runs an instruction with its new Unit in slot 0 (CR 370.1.b.1). -/
+  | attach
 deriving DecidableEq, Repr, Hashable
 
 /-- What a static ability changes in the game (design.md §7.3). -/
 inductive StaticMod where
   /-- Objects get more Might. -/
   | mightPlus (s : Selector) (a : Amount)
+  /-- Objects that have the keyword after the keyword layer get more Might (CR 479.3-479.4). -/
+  | mightPlusWithKeyword (s : Selector) (k : Keyword) (a : Amount)
   /-- Objects get less Might. -/
   | mightMinus (s : Selector) (a : Amount)
   /-- Objects get less Might, to a minimum: the change never takes their Might below `floor`
@@ -353,15 +403,30 @@ inductive StaticMod where
   | mightMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects get a keyword (CR 479.3). -/
   | keyword (s : Selector) (k : KeywordInst)
+  /-- A granted Flow instance whose cost is the affected Spell's base cost (CR 829). -/
+  | flowAtBaseCost
   /-- Each Equipment of the player gives the Unit it is attached to the keyword (Purifier: one more
   time for each Equipment). -/
   | equipEach (k : KeywordInst)
   /-- The object takes no damage from anything (CR 142). -/
   | noDamage
+  /-- Prevent damage from enemy spells and abilities. -/
+  | noEnemyEffectDamage
+  /-- Enemy spells and abilities cannot move this Unit. -/
+  | noEnemyEffectMove
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
   | oppsPlayToBaseOnly
+  /-- Opponents cannot play a card with the name this source chose (CR 054, 759-762). -/
+  | oppsCantPlayNamed
+  /-- The controller skips their Draw Phase (CR 315.4). -/
+  | skipDrawPhase
+  /-- The controller can play cards from their Trash at their regular costs (CR 420.1). -/
+  | playFromTrash
+  /-- A card entering the controller's Trash from outside their Main Deck is banished instead
+  (CR 367-370). -/
+  | banishInsteadOfTrash
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear
@@ -374,9 +439,10 @@ inductive StaticMod where
   | extraCostLess (n : Nat)
   /-- The Repeat costs the player pays cost this much less (Marai Spire). -/
   | repeatCostLess (n : Nat)
-  /-- The Spell's Repeat lets its player make different choices: the effect is not run twice with the
-  same ones (it asks for the choices of the repeat itself). -/
-  | repeatChooses
+  /-- The first activated ability of a Gear its controller plays each turn costs less Energy. -/
+  | firstGearAbilityLess (n : Nat)
+  /-- The controller's Units here pay less for Empower, in Energy or Power per reduction. -/
+  | empowerHereLess (n : Nat)
   /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once
   more (Svellsongur copies the text of the Unit). -/
   | copiesUnitText
@@ -389,6 +455,10 @@ inductive StaticMod where
   /-- Spells of the player that choose this object cost this much less (1 Energy or 1 Power of
   any domain: the player's choice) (Irelia). -/
   | chosenSpellsCostLess (n : Nat)
+  /-- Spells that choose a friendly Unit here cost less Power (CR 355-356). -/
+  | friendlyTargetPowerCut (n : Nat)
+  /-- Cards with Reaction cost more Power during the Showdown here (CR 341, 356, 813). -/
+  | showdownReactionTax (n : Nat)
   /-- Legends of the controller of this Battlefield can: Exhaust, attach an Equipment they control to
   a unit they control (Forge of the Fluft). -/
   | legendsAttach
@@ -423,6 +493,8 @@ inductive StaticMod where
   /-- The units of the player can be played to the Battlefields that have the properties (Arachnoid
   Horror: to an occupied one with an enemy unit alone there). -/
   | playToBfAll (fs : List Filter)
+  /-- Any player may pay this additional cost to play a Unit with the given tag here (CR 355.17). -/
+  | playHereFor (tag : Tag) (cost : Cost)
   /-- One more card can be hidden at this Battlefield. -/
   | extraHide
   /-- A Combat where the player attacks that ends in a tie recalls all Units, not only theirs. -/
@@ -461,8 +533,28 @@ inductive StaticMod where
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
+  /-- Replace a point from scoring a Battlefield on one's first `turns` turns with a draw. -/
+  | earlyScoreDraw (turns : Nat)
   /-- The Unit deals no combat damage (Ezreal, Dashing). -/
   | noCombatDamage
+  /-- Limit the number of runes normally channeled at the start of the Channel Phase. -/
+  | channelLimit (n : Nat)
+  /-- This spell can't be countered (CR 426). -/
+  | uncounterable
+  /-- Spells and abilities controlled by this object's controller can't be countered (CR 426). -/
+  | controlledItemsUncounterable
+  /-- This Unit gains the activated abilities of friendly objects that exhaust their source. -/
+  | friendlyExhaustAbilities
+  /-- The controller's spells and abilities give this much extra negative Might to Units
+  they choose (CR 370). -/
+  | targetMightPenalty (n : Nat)
+  /-- If a spell or ability that chooses this Unit would stun, reduce its Might, or return it
+  to hand, give it this much Might this turn instead (CR 370). -/
+  | chosenHarmToMight (n : Nat)
+  /-- Ignore Deflect when paying the cost of this spell (CR 809). -/
+  | ignoreDeflectSpell
+  /-- Ignore Deflect on objects chosen at this Battlefield (CR 809). -/
+  | ignoreDeflectHere
   /-- The objects the selector names deal no combat damage (Vilemaw). -/
   | noCombatDamageFor (s : Selector)
   /-- Each Equipment attached to the Unit gives double its Might bonus (Gearhead). -/
@@ -493,6 +585,8 @@ inductive AbilityCost where
   | recycleFromTrash (n : Nat)
   /-- Discard cards. -/
   | discard (n : Nat)
+  /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/
+  | discardMatching (n : Nat) (fs : FilterList)
   /-- Kill friendly objects that match. -/
   | killFriendly (q : Quantity) (fs : FilterList)
   /-- Spend XP. -/
@@ -510,10 +604,26 @@ inductive AbilityCost where
   | fromTrash
   /-- Disempower the unit. -/
   | disempowerSelf
+  /-- Reduce the activated ability's Energy cost when the condition holds (CR 827.1.c.3). -/
+  | energyDiscount (cond : Condition) (amount : Amount)
   /-- Recycle the object itself. -/
   | recycleSelf
   /-- Kill the object the ability belongs to ("Kill this"). -/
   | killSelf
+deriving DecidableEq, Repr, Hashable
+
+/-- A cost paid before a triggered ability becomes a finalized Chain item (CR 383.3.b). -/
+inductive TriggerCost where
+  /-- The ability requires no payment. -/
+  | free
+  /-- Spend the specified amount of Energy. -/
+  | energy (amount : Nat)
+  /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
+  | exhaustSelf
+  /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
+  | burn (count : Nat)
+  /-- Kill exactly this many friendly permanents that match the filters. -/
+  | killFriendly (count : Nat) (filters : FilterList)
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/
@@ -526,6 +636,10 @@ structure Trigger where
   condition : Condition := .always
   /-- How many times it fires. -/
   occurrence : Occurrence := .every
+  /-- A leading "you may" is a choice whether to finalize the ability (CR 383.3.a). -/
+  optional : Bool := false
+  /-- The cost in an instruction that precedes its effect. -/
+  cost : TriggerCost := .free
 deriving DecidableEq, Repr, Hashable
 
 end Riftbound

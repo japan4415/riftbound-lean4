@@ -74,14 +74,14 @@ meta def putDf (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
 meta def canPlay (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
   (legalFrameActions s).any (fun a =>
     match a.kind with
-    | .playCard c' _ ts' => c' == c && ts' == ts
+    | .playCard c' _ ts' _ _ _ => c' == c && ts' == ts
     | _ => false)
 
 /-- The player can use the ability at place 0 of the object with these targets. -/
 meta def canUse (s : GameState) (src : ObjId) (ts : List ObjId) : Bool :=
   (legalFrameActions s).any (fun a =>
     match a.kind with
-    | .activate src' 0 _ ts' => src' == src && ts' == ts
+    | .activate src' 0 _ ts' _ _ _ => src' == src && ts' == ts
     | _ => false)
 
 -- the Deflect of the Unit is paid by the opponents of its controller, for each time it is chosen
@@ -162,8 +162,8 @@ meta def canUse (s : GameState) (src : ObjId) (ts : List ObjId) : Bool :=
     | none => false
   | none => false
 
--- a triggered ability that chooses the Unit pays for it too; when the Pool cannot pay, it chooses
--- another Unit, or nothing (CR 355, 809)
+-- A trigger can choose the guarded Unit when Power is already in the Pool or can be
+-- added from a Rune. An unfunded trigger has no valid target (CR 355, 357.1.a, 809).
 #guard match mainDf with
   | some s0 =>
     let p := s0.active.getD ⟨0⟩
@@ -178,7 +178,11 @@ meta def canUse (s : GameState) (src : ObjId) (ts : List ObjId) : Bool :=
           match step 100 s ⟨.player p, .playCard arc ⟨1, []⟩ []⟩ with
           | .ok (s3, _) => (legalFrameActions s3).map (·.kind)
           | .error _ => []
-        kinds rich == [.putTrigger 0 [foe]] && kinds poor == [.putTrigger 0 []] &&
+        let disableRunes (s : GameState) := (s.runesOf p).foldl (fun t rune =>
+          t.modObj rune (fun r => { r with runeDomain := none })) s
+        kinds (disableRunes rich) == [.putTrigger 0 [foe]] &&
+        kinds (disableRunes poor) == [.putTrigger 0 []] &&
+        (kinds poor).contains (.prepareTrigger 0 [foe] (.pay [])) &&
         (match step 100 rich ⟨.player p, .playCard arc ⟨1, []⟩ []⟩ with
           | .ok (s3, _) =>
             (match step 100 s3 ⟨.player p, .putTrigger 0 [foe]⟩ with

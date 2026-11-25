@@ -68,8 +68,8 @@ theorem tc_applyRune {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbi
   · exact absurd h (by simp)
 
 theorem tc_applyPlay {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {es : List Event} (h : applyPlay s p c pay = some (s', es)) : TC s s' := by
-  obtain ⟨d, pool, s2, id', m, -, -, hm, rfl⟩ := applyPlay_cases h
+    {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) : TC s s' := by
+  obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
   have h1 : TC s s2 := TC.of_sameMeta hs.other
   split
@@ -77,7 +77,7 @@ theorem tc_applyPlay {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
   · exact h1.trans ⟨rfl, rfl⟩
 
 theorem tc_applyCast {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
     TC s s' := by
   obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
@@ -85,8 +85,8 @@ theorem tc_applyCast {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
   exact h1.trans ⟨rfl, rfl⟩
 
 theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {targets : List ObjId} {rest : List Frame} {es : List Event}
-    (h : applyPlayCard s p c pay targets rest = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {rest : List Frame} {es : List Event}
+    (h : applyPlayCard s p c pay targets rest flow pick = some (s', es)) : TC s s' := by
   unfold applyPlayCard at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
@@ -99,30 +99,28 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
     exact (tc_applyPlay hr).trans (TC.of_sameMeta (payExtra_safe h2).same)
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
-    (h : applyActivate s p src idx pay ts = some (s', es)) : TC s s' := by
-  obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
-  have h0 : TC s s0 := TC.of_sameMeta hS.same
-  have h1 : TC s0 (s0.modObj src f) := TC.of_sameMeta (GameState.sameMeta_modObj s0 src f)
-  have h2 : TC (s0.modObj src f) ((s0.modObj src f).setPool p pool) := ⟨rfl, rfl⟩
-  exact ((h0.trans h1).trans h2).trans (TC.of_sameMeta (addObject_sameMeta hm))
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : TC s s' := by
+  exact TC.of_sameMeta (applyActivate_safe h).same
 
 theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : activateStep s p src idx pay ts new = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame}
+    {targetPlayer banisher : Option PlayerId} {es : List Event}
+    (h : activateStep s p src idx pay ts new discards targetPlayer banisher = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact (tc_applyActivate hm).trans ⟨rfl, rfl⟩
+  exact ((TC.of_safe (noteActivationBanisher_safe s ts banisher)).trans
+    (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : castStep s p c pay ts new = some (s', es)) : TC s s' := by
+    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : castStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
     ⟨rfl, rfl⟩
 
 theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : reactStep s p c pay ts new = some (s', es)) : TC s s' := by
+    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
@@ -138,7 +136,8 @@ theorem tc_assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (ac
     (done : List (ObjId × Nat)) (rest : List Frame) :
     TC s (assignDoneStep s bf att side acc done rest).1 := by
   rcases assignDoneStep_cases s bf att side acc done rest with
-    ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;> rw [e]
+    ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;> rw [e]
+  · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
 
@@ -155,7 +154,8 @@ theorem tc_paySurcharge (s : GameState) (a : Action) (s2 : GameState) :
 
 theorem tc_cleanupFrame (s : GameState) (rest : List Frame) :
     TC s (cleanupFrame s rest).1 := by
-  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
@@ -182,7 +182,10 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyRune h)
-  · exact Or.inl (tc_applyPlayCard h)
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((tc_applyPlayCard hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -210,21 +213,36 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact Or.inl ⟨rfl, rfl⟩)
-  · exact Or.inl (tc_reactStep h)
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((tc_reactStep hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_activateStep h)
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (putPick s (t :: more) i ts) := TC.of_safe (putPick_safe s _ i ts)
+    have h1 : TC s ((finishTrigger s (t :: more) funding i ts payment).1) := TC.of_safe (finishTrigger_safe s _ funding i ts payment)
     exact Or.inl (h1.trans ⟨rfl, rfl⟩)
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyMana h)
   · exact Or.inl (tc_applyMana h)
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (sendObj .trash s c).1 := TC.of_safe (sendObj_safe .trash s c)
+    have h1 : TC s (discardObj s c).1 := TC.of_safe (discardObj_safe s c)
     exact Or.inl (h1.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -279,7 +297,10 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
-  · exact Or.inl (tc_reactStep h)
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((tc_reactStep hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
@@ -290,6 +311,22 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom))
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (completePrediction_safe s p n top bottom)
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · exact Or.inl (tc_applyRune h)
+  · exact Or.inl (tc_applyMana h)
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the
@@ -334,6 +371,9 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     have h1 : TC s (s.mapObjects endTurnObj) :=
       TC.of_sameMeta (GameState.sameMeta_mapObjects s _)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
@@ -342,7 +382,11 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safeP (beginStep_safeP s _)
+    have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safe (beginStep_safe s _)
+    exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have h1 : TC s (hold s (s.active.getD ⟨0⟩)).1 := TC.of_safeP (hold_safeP s _)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -369,8 +413,8 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · rename_i p src env e es' rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (runEffect s p src (env.withMight s.mightTable) e es').1 :=
-      TC.of_safe (runEffect_safe s p src (env.withMight s.mightTable) e es')
+    have h1 : TC s (runEffect s p src (env.withMight s.mightTable) e es' effectAddPolicy).1 :=
+      TC.of_safe (runEffect_safe s p src (env.withMight s.mightTable) e es' effectAddPolicy)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
   · rename_i item rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -389,8 +433,18 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (combatResolve s bf att).1 := TC.of_safeP (combatResolve_safeP s bf att)
+    have h1 : TC s (combatCleanup s bf att).1 := TC.of_safe (combatCleanup_safe s bf att)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
+  · rename_i bf rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ((TC.of_safeP (combatControl_safeP s bf)).trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -501,7 +555,8 @@ theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2)) := tc_withTriggers _ _
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+    tc_withTriggers _ _
   obtain ⟨actor, kind⟩ := a
   simp only at hk
   subst hk
@@ -518,7 +573,8 @@ theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2)) := tc_withTriggers _ _
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+    tc_withTriggers _ _
   rcases applyFrame0_tc h0 with h1 | ⟨hk, ht, hcl⟩
   · exact Or.inl ((h1.trans h2).trans h4)
   · exact Or.inr ⟨hk, h4.1.trans (h2.1.trans ht), h4.2.trans (h2.2.trans hcl)⟩

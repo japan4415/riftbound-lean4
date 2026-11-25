@@ -2181,7 +2181,7 @@ def UNL_073 : CardDef :=
     abilities := [.triggered (.onSelf .die) (.of [] (.prim (.create "Gold" (.const 1) .atBase false)))
       .unlimited],
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.markOn (.slot 0) (.grantsAbility "UNL-073" 0)),
+      (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
         .prim (.deal (.slot 0) (.const 3))])),
     status := .drafted }
 
@@ -2373,21 +2373,19 @@ def UNL_080.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Hwei. -/
+/-- Hwei's discard can trigger all the effects corresponding to that card's types. -/
 def UNL_080 : CardDef :=
   { UNL_080.meta with
     abilities := [.triggered (.onSelf .move)
       (.of [] (.seqOf [.prim (.draw .you (.const 1)),
-        .eitherOf (EffectList.ofList
-          [.ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .spell])) (.const 1))
-            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .spell])),
-              .prim (.draw .you (.const 1))]) .nop,
-           .ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .gear])) (.const 1))
-            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .gear])),
-              readyTwoRunes]) .nop,
-           .ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .unit])) (.const 1))
-            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .unit])),
-              .grant .self (.mightPlus .it (.const 3)) .thisTurn]) .nop])])) .unlimited],
+        .prim (.discardWithTypeTriggers (.one .friendly .inHand [])
+          [(.spell, 1), (.gear, 2), (.unit, 3)])])) .unlimited,
+      .triggered (.onSelf .linkedDiscardType)
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+      .triggered (.onSelf .linkedDiscardType)
+        (.of [] readyTwoRunes) .unlimited,
+      .triggered (.onSelf .linkedDiscardType)
+        (.of [] (.grant .self (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-081
@@ -5770,9 +5768,13 @@ def UNL_198.meta : CardDef :=
 
 /-- Moonfall. -/
 def UNL_198 : CardDef :=
+  let toMove := Selector.all .enemy .anywhere
+    [.ofType .unit, .sameAs (.slot 1), .not (.at_ (.slot 0))]
   { UNL_198.meta with
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .myUnitsHere]]
-      (.seqOf [.may (.prim (.move (Selector.one .enemy .anywhere [.ofType .unit]) (.at_ (.slot 0)))),
+    spellEffect := some (.of
+      [.targetOf .one .any .anywhere [.ofType .battlefield, .myUnitsHere],
+        .targetOf (.upTo 1) .enemy .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
+      (.seqOf [.ifThen (.exists toMove) (.may (.prim (.move toMove (.at_ (.slot 0))))) .nop,
         .grant (Selector.all .enemy .anywhere [.ofType .unit, .at_ (.slot 0)])
           (.mightMinus .it (.const 2)) .thisTurn])),
     status := .drafted }

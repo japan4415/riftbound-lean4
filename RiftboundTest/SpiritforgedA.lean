@@ -440,9 +440,9 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, _) ← put s s.me "SFD-100" .base
   let (s2, hi) ← put s1 s.me "OGN-029" .trash
   let (s3, lo) ← put s2 s.me "OGN-051" .trash
-  let a ← fire s3 [.played s.me hi]
+  let a ← fire s3 [.spellResolved s.me hi]
   let b ← fire s3 [.played s.me lo]
-  let c ← fire s3 [.played s.you hi]
+  let c ← fire s3 [.spellResolved s.you hi]
   return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == s3.handN s.me &&
     c.handN s.me == s3.handN s.me
 
@@ -574,14 +574,16 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, c) ← put s s.me "SFD-023" .hand
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   let pay := payOf s2 c
-  let r ← cast (s2.rich s.me) s.me c ⟨pay.energy + 2, pay.power ++ [.fury]⟩ [u]
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let r ← cast (s2.rich s.me) s.me c ⟨pay.energy + 2, pay.power ++ [.fury]⟩ [u, u] (pick := pick)
   return r.dmg u == some 4
 -- (review) Blood Rush with Repeat paid: Assault 2 is given twice
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-003" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
   let pay := payOf s2 c
-  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v]
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
   let b ← cast (s2.rich s.me) s.me c pay [v]
   return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
 -- (review) Marching Orders: each unit takes damage equal to the Might of the other
@@ -709,17 +711,18 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let runs := (RiftboundCards.db.find? ⟨"SFD-T03"⟩).any (·.runs)
   return runs && manaReady s1 s.me g 0
 
--- the end of a Combat: the player whose units are the only ones left at the battlefield wins it
--- (the attacker's units are recalled when a defender is left: the defender wins)
+-- A sole remaining side wins. Recalling attackers during Combat Cleanup leaves it without a result.
 #guard tsf fun s => do
   let (s1, a) ← putAt s s.me "OGN-001" s.bf0
   let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
-  let evs (x : GameState) : List Event := (combatResolve x s.bf0 s.me).2.2
-  let lost := s2.modObj e (fun o => { o with loc := none })
-  let neither := lost.modObj a (fun o => { o with loc := none })
-  return (evs s2).contains (.combatWon s.bf0 s.you) && !(evs s2).contains (.combatWon s.bf0 s.me) &&
-    (evs lost).contains (.combatWon s.bf0 s.me) && !(evs lost).contains (.combatWon s.bf0 s.you) &&
-    (evs neither).all (fun ev => match ev with | .combatWon .. => false | _ => true)
+  let (recalled, events) := combatCleanup s2 s.bf0 s.me
+  let attackerOnly := s2.modObj e (fun o => { o with loc := none })
+  let defenderOnly := s2.modObj a (fun o => { o with loc := none })
+  let neither := attackerOnly.modObj a (fun o => { o with loc := none })
+  return events.contains (.recalled a) && (combatResultEvents recalled s.bf0 true).isEmpty &&
+    combatResultEvents attackerOnly s.bf0 false == [.combatWon s.bf0 s.me] &&
+    combatResultEvents defenderOnly s.bf0 false == [.combatWon s.bf0 s.you] &&
+    (combatResultEvents neither s.bf0 false).isEmpty
 
 -- Draven, Vanquisher (SFD-020): when it wins a combat, a Gold token; when it attacks or defends,
 -- the player may pay 1 Fury for +2 Might
@@ -774,18 +777,19 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return s3.combatMight m false == s3.combatMight m true + 1 &&
     s3.combatMight o false == s3.combatMight o true
 
--- (review) the events of the end of a real Combat set off the trigger: the attacker whose
--- opponent has no unit left wins, and Draven gets a Gold token; the defender who is left wins when
--- the attacker is recalled (and the attacker's Draven is recalled, so nothing for it)
+-- Draven creates Gold if its side wins. A Combat that ends with a Recall has no winner.
 #guard tsf fun s => do
   let (s1, _) ← putAt s s.me "SFD-020" s.bf0
   let (s2, e) ← putAt s1 s.you "OGN-051" s.bf0
   let dead := s2.modObj e (fun o => { o with loc := none })
-  let (t1, _, evs) := combatResolve dead s.bf0 s.me
-  let won ← fire t1 evs
-  let (u1, _, evs2) := combatResolve s2 s.bf0 s.me
-  let lost ← fire u1 evs2
-  return won.countIn s.me .base "SFD-T03" == 1 && lost.countIn s.me .base "SFD-T03" == 0
+  let combat := (s2.observeCombat [.showdown s.bf0 s.me 0]).1
+  let finish (x : GameState) : Option GameState := do
+    let pending := .combatResolve s.bf0 s.me :: combatSteps s.bf0
+    let (waiting, _) ← (advance 100 { x with combat := combat, pending := pending } []).toOption
+    return settleChain {} 12 waiting
+  let won ← finish dead
+  let noResult ← finish s2
+  return won.countIn s.me .base "SFD-T03" == 1 && noResult.countIn s.me .base "SFD-T03" == 0
 
 -- (review) The Papertree: the runes channelled are exhausted
 #guard tsf fun s => do
@@ -840,11 +844,11 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, k) ← put s s.me "SFD-063" .base
   let (s2, sp) ← put s1 s.me "OGN-004" .trash
   let theirs := { s2 with active := some s.you }
-  let a ← fire theirs [.played s.me sp]
-  let b ← fire s2 [.played s.me sp]
-  let c ← fire theirs [.played s.me sp] { yes := false }
-  let d ← fire (theirs.tire k) [.played s.me sp]
-  let e ← fire theirs [.played s.you sp]
+  let a ← fire theirs [.spellResolved s.me sp]
+  let b ← fire s2 [.spellResolved s.me sp]
+  let c ← fire theirs [.spellResolved s.me sp] { yes := false }
+  let d ← fire (theirs.tire k) [.spellResolved s.me sp]
+  let e ← fire theirs [.spellResolved s.you sp]
   let gold (x : GameState) := x.countIn s.me .base "SFD-T03"
   return gold a == 1 && a.tired k == some true &&
     (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
@@ -1013,7 +1017,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, h) ← put s1 s.me "SFD-017" .hidden
   let (s3, u) ← put s2 s.me "OGN-051" .base
   let theirs := { s3 with active := some s.you }
-  let a ← fire theirs [.played s.me h]
+  let a ← fire theirs [.spellResolved s.me h]
   let b ← fire theirs [.played s.me u]
   return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 && k != u
 -- (review) the effect of playing a Hidden spell announces that it was played
@@ -1062,33 +1066,45 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (s.cardDef? o).any (·.name == "Sand Soldier"))
   (l.length, (l.filter (fun o => s.tired o == some false)).length)
 
--- Rocket Barrage (SFD-077): choose one: 4 damage to a unit in a base, or kill a gear
+-- Rocket Barrage offers its mode and target even when no Repeat is paid.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-077" .hand
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
   let (s4, w) ← putAt s3 s.you "OGN-001" s.bf0
-  let a ← play s4 s.me c [u]
-  let b ← play s4 s.me c [g]
+  let castMode (i : Nat) (targets : List ObjId) :=
+    cast (s4.rich s.me) s.me c (payOf s4 c) targets (pick := .mode i)
+  let a ← castMode 0 [u]
+  let b ← castMode 1 [g]
   return a.dmg u == some 4 && (a.obj? g).isSome && a.dmg w == some 0 &&
-    (b.obj? g).isNone && b.dmg u == some 0 && (play s4 s.me c [w]).isNone &&
-    (play s4 s.me c []).isNone
+    (b.obj? g).isNone && b.dmg u == some 0 && (castMode 0 [w]).isNone &&
+    (castMode 0 []).isNone && (castMode 1 [u]).isNone && (castMode 0 [g]).isNone
 
--- Rocket Barrage with Repeat paid: the repeat makes its own choice (a different target, or none)
+-- Rocket Barrage locks the ordered choices for both the printed and a granted Repeat.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-077" .hand
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, g) ← put s2 s.you "SFD-030" .base
-  let pay := payOf s3 c
-  let paid : RunePool.Payment := ⟨pay.energy + 4, pay.power ++ [.mind]⟩
-  let rich := s3.rich s.me
-  let both ← cast rich s.me c paid [u, g]
-  let one ← cast rich s.me c paid [u]
-  let same ← cast rich s.me c paid [g, u]
-  let plain ← play s3 s.me c [u]
-  return both.dmg u == some 4 && (both.obj? g).isNone && one.dmg u == some 4 &&
-    (one.obj? g).isSome && (same.obj? g).isNone && same.dmg u == some 4 &&
-    plain.dmg u == some 4 && (plain.obj? g).isSome && (play s3 s.me c [u, g]).isNone
+  let (s4, h) ← put s3 s.you "SFD-030" .base
+  let p := s.me
+  let rich := s4.rich p
+  let paid : RunePool.Payment := ⟨8, [.mind, .mind]⟩
+  let order (i j : Nat) : SpellPick := .withCosts (.thenRepeat (.mode i) 1 (.mode j)) false 1
+  let both ← cast rich p c paid [u, g] (pick := order 0 1)
+  let reversed ← cast rich p c paid [g, u] (pick := order 1 0)
+  let gears ← cast rich p c paid [g, h] (pick := order 1 1)
+  let plain ← cast rich p c (payOf rich c) [u] (pick := .mode 0)
+  let three : SpellPick := .withCosts
+    (.thenRepeat (.mode 1) 1 (.thenRepeat (.mode 0) 1 (.mode 1))) false 2
+  let thrice ← cast (rich.addTurnFx p .nextSpellRepeat) p c ⟨12, [.mind, .mind, .mind]⟩
+    [g, u, h] (pick := three)
+  return both.dmg u == some 4 && (both.obj? g).isNone && (both.obj? h).isSome &&
+    reversed.dmg u == some 4 && (reversed.obj? g).isNone &&
+    (gears.obj? g).isNone && (gears.obj? h).isNone && gears.dmg u == some 0 &&
+    plain.dmg u == some 4 && (plain.obj? g).isSome &&
+    thrice.dmg u == some 4 && (thrice.obj? g).isNone && (thrice.obj? h).isNone &&
+    (cast rich p c paid [u] (pick := order 0 1)).isNone &&
+    (cast rich p c paid [u] (pick := .mode 0)).isNone
 
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, the player may play a gear (cost 7
 -- or less) from the hand this turn for no Energy: it is played later, and only the first one is free
@@ -1646,12 +1662,13 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s1, c) ← put s s.me "SFD-111" .hand
   let (s2, _) ← put s1 s.me "OGN-001" .hand
   let s3 := s2.control s.me s.bf0
-  let r ← play s3 s.me c [s.bf0]
-  let n ← play s3 s.me c [s.bf0] { yes := false }
+  let r ← play s3 s.me c []
+  let n ← play s3 s.me c [] { yes := false }
+  let nowhere ← play s2 s.me c []
   let there := (r.zone .battlefieldZone).any (fun o => r.isCard "OGN-001" o &&
     (r.obj? o).any (·.loc == some s.bf0))
   return there && (r.poolOf s.me).energy == 12 - 2 - 2 && n.countIn s.me .hand "OGN-001" == 1 &&
-    (play s2 s.me c [s.bf0]).isNone
+    nowhere.countIn s.me .hand "OGN-001" == 1 && (play s3 s.me c [s.bf0]).isNone
 
 -- Rumble, Hotheaded (SFD-026): when it conquers, may recycle another friendly unit to play a Mech
 -- from the Trash, its Energy cost reduced by the Might of the recycled unit; Mechs have Assault
@@ -1733,11 +1750,9 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
 -- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-188" .hand
-  let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-051"]
+  let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-004"]
   let r ← play d s.me c [] { obj := d.isCard "OGN-004" }
-  return r.countIn s.me .hand "OGN-004" == d.countIn s.me .hand "OGN-004" + 1 &&
-    r.countIn s.me .hand "OGN-051" == d.countIn s.me .hand "OGN-051" + 1 &&
-    r.countIn s.me .base "OGN-051" == 0
+  return r.countIn s.me .hand "OGN-004" == d.countIn s.me .hand "OGN-004" + 2
 
 -- (review) Rumble: if the unit chosen is gone when the ability resolves, no Mech is played
 #guard tsf fun s => do
@@ -2187,7 +2202,7 @@ meta def playOut : Nat → GameState → GameState
     let pick := acts.find? (fun a => match a.kind with | .assignPick _ => true | _ => false)
     let done := acts.find? (fun a => match a.kind with | .assignDone => true | _ => false)
     let other := acts.find? (fun a => match a.kind with
-      | .pass | .decide _ | .choose _ | .putTrigger _ _ => true | _ => false)
+      | .pass | .decide _ | .choose _ | .putTrigger _ _ _ => true | _ => false)
     match pick <|> done <|> other with
     | some a =>
       match step 100 s a with
@@ -2373,11 +2388,13 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (t1, g) ← putAt s s.me "SFD-110" s.bf0
   let (t2, _) ← putAt t1 s.you "OGN-051" s.bf0
   let d ← fire (fight t2 s.you) [.combatStarted s.bf0 s.you]
+  let (ended, _) ← (advance 100 { a with pending := [.combatFinish s.bf0] } []).toOption
   return a.mightNow f == (s2.mightNow f).map (· * 2) && b.mightNow f == s3.mightNow f &&
     d.mightNow g == (t2.mightNow g).map (· * 2) && e != e2 && ally != f &&
     c.mightNow f == s4.mightNow f &&
     -- the doubling ends with the combat, not with the turn
-    ((combatResolve a s.bf0 s.me).1.mightNow f == s2.mightNow f) &&
+    ((combatCleanup a s.bf0 s.me).1.mightNow f == a.mightNow f) &&
+    ended.mightNow f == s2.mightNow f &&
     -- a Showdown that is not a Combat ends it too
     ((endShowdown a s.bf0).1.mightNow f == s2.mightNow f) &&
     (a.mightNow f != s2.mightNow f)
@@ -2760,8 +2777,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return a.handN s.me == s3.handN s.me && isBuffed b "OGN-051" == some true &&
     isBuffed t3 "OGN-051" == some false && isBuffed d "SFD-056" != some true
 
--- Ancient Warmonger (SFD-131): Assault for each enemy unit here: more damage as an attacker, but
--- its Might (what a spell must beat) stays 4
+-- Ancient Warmonger (SFD-131): Assault for each enemy Unit here increases its Might as an attacker.
 #guard tsf fun s => do
   let (s1, w) ← putAt s s.me "SFD-131" s.bf0
   let (s2, _) ← putAt s1 s.you "OGN-001" s.bf0
@@ -2769,7 +2785,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let atk := (s3.modObj s.bf0 (fun o => { o with contested := some s.me })).inShowdownAt s.bf0 s.me
   return s3.kwAmount w .assault == 2 && s1.kwAmount w .assault == 0 &&
     atk.combatMight w true == 4 + 2 && atk.combatMight w false == 4 &&
-    atk.mightNow w == some 4
+    s3.mightNow w == some 4 && atk.mightNow w == some 6
 
 -- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
 #guard tsf fun s => do
@@ -3302,7 +3318,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let cost ← a.effCost s.me c dC
   let double : RunePool.Payment :=
     ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
-  let r ← cast a s.me c double [foe]
+  let picks : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let r ← cast a s.me c double [foe, foe] (pick := picks)
   let before := (s3.playCostsOf s.me c dC cost).length
   return (a.playCostsOf s.me c dC cost).length == before + 1 &&
     s3.paysForX s.me c dC cost double == false && a.paysForX s.me c dC cost double &&
@@ -3421,9 +3438,9 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s2, _) ← s1.stackTop s.me ["OGN-088", "OGN-136"]
   let top ← s2.topCard s.me
   let env : Env := ({} : Env).bind pickVar (.obj top)
-  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil
+  let a := runEffect1 s2 s.me hatch env (.prim (.reveal (.var pickVar))) .nil effectAddPolicy
   let plain := runEffect1 (s2.modObj hatch id |>.setZone (.player s.me .base) []) s.me hatch env
-    (.prim (.reveal (.var pickVar))) .nil
+    (.prim (.reveal (.var pickVar))) .nil effectAddPolicy
   let looks (r : GameState × List Frame × List Event) : Bool :=
     match r.2.1 with
     | [.run _ _ _ (.cons (.prim (.lookTop 1)) _)] => true
@@ -3618,7 +3635,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s2, g) ← put s1 s.me "SFD-059" .base
   let (s3, _) ← putAt s2 s.you "OGN-088" s.bf0
   let d ← s3.cardDef? udyr
-  let copyIdx := d.fullAbilities.length - 1
+  let copyIdx := d.fullAbilities.length
   let held := (attachTo udyr s3 g).1
   let buffed := held.buff udyr
   let loose := s3.buff udyr
@@ -3707,6 +3724,39 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let held := s2.modObj bf (fun o => { o with scored := [s.me], held := [s.me] })
   let a ← play conquered s.me g [bf]
   return unitAt a "SFD-015" bf && (play held s.me g [bf]).isNone
+
+-- Another object's permission cannot bypass Perched Grimwyrm's location restriction.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, other) ← putBf s p "OGN-275"
+  let (s, _) ← putAt (s.control q field) q "OGN-051" field
+  let (s, _) ← put s p "UNL-117" .base
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let (s, ordinary) ← put s p "VEN-014" .hand
+  let scored := s.modObj other (fun o => { o with scored := [p] })
+  let scoredBoth := scored.modObj field (fun o => { o with scored := [p] })
+  let paid := scored.rich p
+  let invalid : Action := ⟨.player p, .playCard grimwyrm ⟨4, []⟩ [field]⟩
+  let allowed ← play scored p grimwyrm [other]
+  let atEnemyField ← play scoredBoth p grimwyrm [field]
+  return (scored.playBfOptions p ordinary).contains field &&
+    !(legalActions paid).contains invalid && ((step 100 paid invalid).toOption).isNone &&
+    unitAt allowed "SFD-015" other && unitAt atEnemyField "SFD-015" field
+
+-- Here to Help's mandatory destination must also satisfy the Unit's restriction (CR 355.17.b).
+#guard tsf fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, help) ← put (s.control p field) p "SFD-111" .hand
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let scored := s.modObj field (fun o => { o with scored := [p] })
+  let blocked ← play s p help [] { obj := (· == grimwyrm) }
+  let allowed ← play scored p help [] { obj := (· == grimwyrm) }
+  return blocked.locate grimwyrm == some (.player p .hand) &&
+    (blocked.poolOf p).energy == 10 && unitAt allowed "SFD-015" field &&
+    (allowed.poolOf p).energy == 9
 
 -- Tianna Crownguard also stops the points an effect gives the opponent ("you score 1 point")
 #guard tsf fun s => do
@@ -3881,11 +3931,6 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 
 -- Temporal Portals stack (CR 820.1): each Repeat is paid on its own, and the effect is done once
 -- more for each one paid. Two Portals: the spell is done three times if both are paid.
-meta def effLen : EffectList → Nat
-  | .nil => 0
-  | .cons (.fillSlot _ _) rest => effLen rest
-  | .cons _ rest => 1 + effLen rest
-
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-078" .base
   let (s1b, g2) ← put s1 s.me "SFD-078" .base
@@ -3900,17 +3945,17 @@ meta def effLen : EffectList → Nat
   let twice : RunePool.Payment := ⟨2 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power⟩
   let thrice : RunePool.Payment :=
     ⟨3 * cost.energy, (payOf a2 c).power ++ (payOf a2 c).power ++ (payOf a2 c).power⟩
-  let runs (pay : RunePool.Payment) : Option Nat := do
-    let (st, _) ← (applyCast a2 s.me c pay [foe])
-    match resolveFrames st [] with
-    | .run _ _ _ body :: _ => some (effLen body)
-    | _ => none
-  return (a2.playMark s.me c once).extraPaid == 0 &&
-    (a2.playMark s.me c twice).extraPaid == 1 && (a2.playMark s.me c thrice).extraPaid == 2 &&
-    (← runs once) == 1 && (← runs twice) == 2 && (← runs thrice) == 3
+  let runs (pay : RunePool.Payment) (targets : List ObjId) (pick : SpellPick) : Option (Nat × Nat) := do
+    let (st, _) ← (step 100 a2 ⟨.player s.me, .playCard c pay targets none none pick⟩).toOption
+    let item ← (st.zone .chain).head?
+    let o ← st.obj? item
+    return (o.extraPaid, (resolveFrames st []).countP (fun | .run .. => true | _ => false))
+  let two : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let three : SpellPick := .withCosts (.thenRepeat .plain 1 (.thenRepeat .plain 1 .plain)) false 2
+  return runs once [foe] .plain == some (0, 1) &&
+    runs twice [foe, foe] two == some (1, 2) && runs thrice [foe, foe, foe] three == some (2, 3)
 
--- (CR 820.2) A repeated spell chooses its targets again: the first target is dealt 3 and a second
--- one, chosen as the effect is done again, is dealt 3 too
+-- (CR 820.2) A repeated spell locks both targets while it is cast.
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-078" .base
   let (s2, c) ← put s1 s.me "OGN-005" .hand
@@ -3923,9 +3968,10 @@ meta def effLen : EffectList → Nat
   let double : RunePool.Payment :=
     ⟨2 * cost.energy, (payOf a c).power ++ (payOf a c).power⟩
   let once ← cast a s.me c (payOf a c) [e1] { obj := fun o => o == e2 }
-  let twice ← cast a s.me c double [e1] { obj := fun o => o == e2 }
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let twice ← cast a s.me c double [e1, e2] { obj := fun _ => false } pick
   return once.dmg e1 == some 3 && once.dmg e2 == some 0 && twice.dmg e1 == some 3 &&
-    twice.dmg e2 == some 3
+    twice.dmg e2 == some 3 && (cast a s.me c double [e1]).isNone
 
 -- (audit) Quick-Draw gives Reaction: the Gear can answer an item of the Chain, a plain Gear cannot
 #guard tsf fun s => do
@@ -3939,7 +3985,7 @@ meta def effLen : EffectList → Nat
 #guard tsf fun s => do
   let (s1, l) ← put s s.me "SFD-189" .legendZone
   let r ← applyMana s1 s.me l 0 ⟨0, []⟩
-  return r.2 == [Event.activated s.me l 0]
+  return r.2 == [Event.activated s.me l 0 (some 0)]
 
 -- (audit) A Temporary unit that is saved (Guardian Angel) is not killed at the start of the turn
 #guard tsf fun s => do

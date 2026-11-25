@@ -80,10 +80,11 @@ def MainSizeOk (r : Resolved) : Prop := 40 ≤ r.main.length
 def MainTypesOk (cards : List CardDef) : Prop :=
   ∀ c ∈ cards, c.hasType .unit = true ∨ c.hasType .gear = true ∨ c.hasType .spell = true
 
-/-- No card name appears more often than its limit (CR 103.3.b, 825). The Chosen Champion is
-counted, because it is one of the cards. -/
+/-- Each name respects its limit unless the card's text waives it (CR 002, 103.3.b, 825).
+The Chosen Champion is counted because it is one of the cards. -/
 def CopyLimitOk (cards : List CardDef) : Prop :=
-  ∀ c ∈ cards, cards.countP (fun x => x.nameKey == c.nameKey) ≤ c.copyLimit
+  ∀ c ∈ cards, c.unlimitedCopies = true ∨
+    cards.countP (fun x => x.nameKey == c.nameKey) ≤ c.copyLimit
 
 /-- At most three Signature cards in total, all with the Champion Tag of the Legend
 (CR 103.3.d). -/
@@ -183,19 +184,19 @@ theorem chosenChampion_mem {mode : Mode} {r : Resolved} (h : r.Valid mode) :
     r.chosenChampion ∈ r.main :=
   h.2.1.2.2
 
-/-- A card that is not Unique appears at most three times (CR 103.3.b). -/
+/-- A card with the default non-Unique limit appears at most three times (CR 103.3.b). -/
 theorem count_le_three {mode : Mode} {r : Resolved} (h : r.Valid mode) {c : CardDef}
-    (hc : c ∈ r.main) (hu : c.hasKeyword .unique = false) :
+    (hc : c ∈ r.main) (hl : c.unlimitedCopies = false) (hu : c.hasKeyword .unique = false) :
     r.main.countP (fun x => x.nameKey == c.nameKey) ≤ 3 := by
-  have := h.2.2.2.2.1 c hc
-  rwa [CardDef.copyLimit_of_not_unique hu] at this
+  have hn := (h.2.2.2.2.1 c hc).resolve_left (by simp [hl])
+  rwa [CardDef.copyLimit_of_not_unique hu] at hn
 
-/-- A Unique card appears at most once (CR 825). -/
+/-- A Unique card whose text does not waive the limit appears at most once (CR 825). -/
 theorem count_le_one_of_unique {mode : Mode} {r : Resolved} (h : r.Valid mode) {c : CardDef}
-    (hc : c ∈ r.main) (hu : c.hasKeyword .unique = true) :
+    (hc : c ∈ r.main) (hl : c.unlimitedCopies = false) (hu : c.hasKeyword .unique = true) :
     r.main.countP (fun x => x.nameKey == c.nameKey) ≤ 1 := by
-  have := h.2.2.2.2.1 c hc
-  rwa [CardDef.copyLimit_of_unique hu] at this
+  have hn := (h.2.2.2.2.1 c hc).resolve_left (by simp [hl])
+  rwa [CardDef.copyLimit_of_unique hu] at hn
 
 end Deck.Resolved
 

@@ -19,10 +19,19 @@ namespace Riftbound
 inductive Event where
   /-- An object moved to a zone. It has the new identifier `new`. -/
   | moved (old new : ObjId) (dst : Zone)
+  /-- A player banished a physical card. The owner and new identifier are recorded at the move
+  (CR 428). -/
+  | banished (actor owner : PlayerId) (card : ObjId)
   /-- A player gained points (CR 194). -/
   | pointsGained (p : PlayerId) (n : Nat)
   /-- A player burned out (CR 432). -/
   | burnedOut (p : PlayerId)
+  /-- An instruction burned a Unit, recording its Might for the linked reflexive ability
+  (CR 388-389, 441). The burned card's identifier is the one it has in the Trash. -/
+  | burnedUnitFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (burned : ObjId)
+    (might : Nat)
+  /-- An instruction discarded a card with the type required by the linked reflexive ability. -/
+  | discardedTypeFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (discarded : ObjId)
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)
@@ -41,14 +50,19 @@ inductive Event where
   | controlChanged (battlefield : ObjId) (controller : Option PlayerId)
   /-- A player scored a Battlefield (CR 471): by Conquer (`true`) or by Hold (`false`). -/
   | scored (p : PlayerId) (battlefield : ObjId) (conquer : Bool)
+  /-- A draw replaces the point that scoring this Battlefield would award (CR 367, 471). -/
+  | scoreDraw (p : PlayerId) (battlefield : ObjId)
   /-- A Unit was Recalled to its controller's Base (CR 456). -/
   | recalled (unit : ObjId)
   /-- A player won the game (CR 323.1). -/
   | won (p : PlayerId)
-  /-- A player used an ability (CR 361): the ability at place `idx` of the card of `source`. -/
-  | activated (p : PlayerId) (source : ObjId) (idx : Nat)
+  /-- A player used the ability at place `idx` of `source` (CR 361). An actual activation
+  records its base Energy before any adjustments (CR 206.1). -/
+  | activated (p : PlayerId) (source : ObjId) (idx : Nat) (baseEnergy : Option Nat := none)
   /-- A player played a card: the object it has become on the Base or on the Chain (CR 349-359). -/
   | played (p : PlayerId) (obj : ObjId)
+  /-- A Spell completed its resolution, with its new identifier after leaving (CR 420.4.a). -/
+  | spellResolved (p : PlayerId) (obj : ObjId)
   /-- An object was killed (CR 323.4, 419): the object it has become in the Trash, and the player
   who controlled it. -/
   | died (obj : ObjId) (controller : PlayerId)
@@ -60,8 +74,14 @@ inductive Event where
   | buffed (target : ObjId)
   /-- A Unit became Mighty: its Might was below 5 and is 5 or more now. -/
   | becameMighty (u : ObjId)
+  /-- A Unit crossed a specified Might threshold from below (CR 383). -/
+  | mightReached (u : ObjId) (threshold : Nat)
+  /-- An object gained an instance of Empowered (CR 442). -/
+  | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/
   | lookedAt (p : PlayerId) (card : ObjId)
+  /-- A player publicly named a card while an effect resolved (CR 759-762). -/
+  | namedCard (p : PlayerId) (source : ObjId) (card : CardId)
   /-- The player chose the object with a spell they played. -/
   | chosenBySpell (p : PlayerId) (target : ObjId)
   /-- The player chose the object with an ability of theirs. -/
@@ -86,13 +106,17 @@ inductive Event where
   | attached (gear unit : ObjId)
   /-- A card was revealed from a deck (the owner, the card). -/
   | revealed (p : PlayerId) (card : ObjId)
-  /-- A Unit token was played (the player, the token). A token is not a card: what waits for a
+  /-- The player revealed the cards currently in their hand (CR 425.3.a). -/
+  | handRevealed (p : PlayerId) (cards : List ObjId)
+  /-- A token was played (the player, the token). A token is not a card: what waits for a
   card to be played does not see it. -/
   | tokenPlayed (p : PlayerId) (token : ObjId)
   /-- A player spent a buff of a unit of theirs (CR 704). -/
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- The Combat ended (CR 468.7). The list names the Unit objects that participated. -/
+  | combatEnded (bf : ObjId) (units : List ObjId)
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won
   it (CR 468). -/
   | combatWon (bf : ObjId) (winner : PlayerId)

@@ -91,20 +91,26 @@ structure CardDef where
   /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
   abilities that a printed keyword stands for are not here (design.md §7.4). -/
   abilities : List Ability := []
-  /-- For an Equipment: the abilities the Unit it is attached to has (CR 137): the text the card
-  gives. They are not abilities of the card itself. -/
+  /-- Abilities this card gives to other objects, through attachment or a resolving effect
+  (CR 137, 479.3). They are not abilities of the card itself. -/
   grants : List Ability := []
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- The player may discard a card as an additional cost to play this card (CR 357.2). -/
+  discardToPlay : Bool := false
   /-- What else the player does as an additional cost to play the card (not Energy or Power): what
   it is, and whether it must be done ("as an additional cost to play me, ..." or "you may ...").
   The object it is done to is chosen as the card is played. -/
   playExtra : Option (PlayExtra × Bool) := none
   /-- What the additional cost `playExtra` takes off the cost of the card, if it is done. -/
   paidCut : Option PaidCut := none
+  /-- The maximum number of instances of Empowered this object can have (CR 442). -/
+  empowerLimit : Nat := 1
+  /-- The card's text waives the number of copies allowed in a deck (CR 002, 103.3.b). -/
+  unlimitedCopies : Bool := false
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
@@ -122,7 +128,7 @@ def hiddenPlay (c : CardDef) : EffectDef :=
       (.seq (.cons (.prim (.turnEffect .hiddenPlayed)) (.cons e .nil))) .nop
   if c.types.contains .spell then
     let e := c.spellEffect.getD (EffectDef.of [] .nop)
-    EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
+    EffectDef.of e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
   else if c.types.contains .unit then
     -- a Unit played from hiding enters the Battlefield where it was hidden (CR 811)
     EffectDef.of [] (gate (.prim (.playTo .self (.locationOf .self))))
@@ -148,14 +154,7 @@ def hideEffect : EffectDef := hideEffectWith (.addPower .you (.const 1) none non
 /-- Hide for one Energy (with Swift Scout): the Energy comes back, if hiding is free. -/
 def hideEnergyEffect : EffectDef :=
   let e := hideEffectWith (.addEnergy .you (.const 1) none)
-  EffectDef.mk e.choices (.ifThen .hidesWithEnergy e.body .nop)
-
-/-- The Spell lets its player make different choices when it is repeated (Rocket Barrage). -/
-def repeatChooses (d : CardDef) : Bool :=
-  d.abilities.any (fun ab =>
-    match ab with
-    | Ability.passive _ mods => mods.contains .repeatChooses
-    | _ => false)
+  EffectDef.of e.choices (.ifThen .hidesWithEnergy e.body .nop)
 
 /-- The Equip cost the card prints, if it has one. -/
 def equipCost (c : CardDef) : Option Cost :=
@@ -200,6 +199,10 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
        -- with Swift Scout: hide for one Energy instead (the passive of the Legend is asked)
        .activated [.fromHand, .pay ⟨1, []⟩] .normal
          hideEnergyEffect .unlimited]
+    | .empower, .cost cost =>
+      -- Untranscribed cards may qualify the printed cost, so they are not playable from metadata.
+      if c.status == .todo || c.abilities.any Ability.isEmpower then [] else
+        [.empower [.pay cost] c.empowerLimit]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]))
@@ -234,32 +237,24 @@ def legendAbilities (c : CardDef) : List Ability :=
           (.prim (.attach (.slot 0) (.slot 1))) .nop)) .unlimited]
   else []
 
-/-- A Unit with an Equipment attached that copies its text has its activated abilities once more
-(Svellsongur): the same abilities, usable only while such an Equipment is attached. -/
-def copiedAbilities (c : CardDef) : List Ability :=
-  if c.types.contains .unit then
-    c.abilities.filterMap (fun ab =>
-      match ab with
-      | .activated costs sp body lim =>
-        some (.activated costs sp
-          (EffectDef.mk body.choices
-            (.ifThen (.exists (Selector.all .friendly .anywhere [.attachedTo .self, .copiesText]))
-              body.body .nop)) lim)
-      | _ => none)
-  else []
+/-- The abilities from the card's copyable rules text, including printed keywords (CR 479.1). -/
+def textAbilities (c : CardDef) : List Ability := c.abilities ++ c.printedKeywordAbilities
 
-/-- The abilities that the keywords of the card stand for, the one that plays a Unit from the
-Champion Zone, the ones that play a Unit to a Battlefield, the one a Legend gets from a Battlefield,
-and the copies of a Unit's activated abilities. -/
+/-- Whether this Equipment copies the Unit's text to its own Effect Text when attaching. -/
+def copiesUnitText (c : CardDef) : Bool :=
+  c.abilities.any (fun
+    | .passive .always mods => mods.contains .copiesUnitText
+    | _ => false)
+
+/-- The abilities from keywords and the implicit abilities of Champion Zone cards and Legends. -/
 def keywordAbilities (c : CardDef) : List Ability :=
-  c.printedKeywordAbilities ++ c.championPlay ++ c.legendAbilities ++
-    c.copiedAbilities
+  c.printedKeywordAbilities ++ c.championPlay ++ c.legendAbilities
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities
 
-/-- The abilities of the card itself, and then the abilities it gives to the Unit it is attached
-to. The place of an ability in this list is what a trigger on the Chain remembers. -/
+/-- The abilities of the card itself, then the abilities it grants. The place of an ability in
+this list is what a trigger on the Chain remembers. -/
 def allAbilities (c : CardDef) : List Ability := c.fullAbilities ++ c.grants
 
 /-- The identity of a card's name: short name and subtitle together (CR 103.3.b, 132). Two
@@ -283,8 +278,8 @@ def IsChosenChampionCandidate (c : CardDef) : Prop :=
 instance (c : CardDef) : Decidable c.IsChosenChampionCandidate := by
   unfold IsChosenChampionCandidate; infer_instance
 
-/-- The number of copies of a card allowed in a deck: a Unique card is limited to one
-(CR 825), any other to three (CR 103.3.b). -/
+/-- The default deck limit: a Unique card is limited to one copy, other cards to three
+(CR 103.3.b, 825). -/
 def copyLimit (c : CardDef) : Nat := if c.hasKeyword .unique then 1 else 3
 
 /-- A Unique card is limited to one copy (CR 825). -/

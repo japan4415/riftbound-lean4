@@ -58,17 +58,17 @@ def legalRunes (s : GameState) (p : PlayerId) : List Action :=
       (fun ab => ⟨.player p, .runeAbility c ab⟩))
 
 /-- Every way the player can put one of the abilities of the group on the Chain: each ability with
-each legal pick of targets (CR 383.3.d, 355). -/
+each legal pick of targets and costs, or a decision to pass it over (CR 383.3, 355). -/
 def legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) : List Action :=
   (List.range grp.length).flatMap (fun (i : Nat) =>
     match grp[i]? with
-    | some g => (trigOptions s g).map (fun ts => ⟨.player p, .putTrigger i ts⟩)
+    | some g => (trigOptions s g).map (fun (ts, payment) => ⟨.player p, .putTrigger i ts payment⟩)
     | none => [])
 
 /-- The puts listed are exactly the legal ones. -/
 theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a : Action) :
-    a ∈ legalPuts s p grp ↔ ∃ i ts, a = ⟨.player p, .putTrigger i ts⟩ ∧
-      (grp[i]?.any (fun g => trigLegal s g ts)) = true := by
+    a ∈ legalPuts s p grp ↔ ∃ i ts payment, a = ⟨.player p, .putTrigger i ts payment⟩ ∧
+      (grp[i]?.any (fun g => trigLegal s g ts payment)) = true := by
   unfold legalPuts
   simp only [List.mem_flatMap, List.mem_range]
   constructor
@@ -78,9 +78,9 @@ theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a
       simp at ha
     · rw [hg] at ha
       simp only [List.mem_map] at ha
-      obtain ⟨ts, hts, rfl⟩ := ha
-      exact ⟨i, ts, rfl, by rw [hg]; simp [(mem_trigOptions s g ts).mp hts]⟩
-  · rintro ⟨i, ts, rfl, h⟩
+      obtain ⟨⟨ts, payment⟩, hts, rfl⟩ := ha
+      exact ⟨i, ts, payment, rfl, by rw [hg]; simp [(mem_trigOptions s g ts payment).mp hts]⟩
+  · rintro ⟨i, ts, payment, rfl, h⟩
     rcases hg : grp[i]? with _ | g
     · rw [hg] at h
       simp at h
@@ -89,7 +89,48 @@ theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a
       rw [hg]
       simp only [Option.any_some] at h
       simp only [List.mem_map]
-      exact ⟨ts, (mem_trigOptions s g ts).mpr h, rfl⟩
+      exact ⟨(ts, payment), (mem_trigOptions s g ts payment).mpr h, rfl⟩
+
+/-- The target and cost selections for which the player can open a trigger's Add window. -/
+def legalTriggerPreparations (s : GameState) (p : PlayerId) (group : List PendTrigger) : List Action :=
+  (List.range group.length).flatMap (fun idx =>
+    group[idx]?.elim [] (fun t =>
+      ((acceptedTriggers s t false).filter (fun (ts, payment) =>
+        !(triggerAdds s t ts payment).isEmpty)).map (fun (ts, payment) =>
+          ⟨.player p, .prepareTrigger idx ts payment⟩)))
+
+/-- The payment windows offered are exactly the preparations that can be chosen. -/
+theorem mem_legalTriggerPreparations (s : GameState) (p : PlayerId) (group : List PendTrigger)
+    (a : Action) : a ∈ legalTriggerPreparations s p group ↔
+    ∃ i ts payment, a = ⟨.player p, .prepareTrigger i ts payment⟩ ∧
+      (group[i]?.any (fun t => triggerPreparation s t ts payment)) = true := by
+  unfold legalTriggerPreparations
+  simp only [List.mem_flatMap, List.mem_range]
+  constructor
+  · rintro ⟨i, hi, ha⟩
+    cases hg : group[i]? with
+    | none => simp [hg] at ha
+    | some t =>
+      simp only [hg, Option.elim_some, List.mem_map, List.mem_filter] at ha
+      obtain ⟨⟨ts, payment⟩, ⟨ht, hd⟩, rfl⟩ := ha
+      exact ⟨i, ts, payment, rfl, by simp [hg, triggerPreparation, ht, hd]⟩
+  · rintro ⟨i, ts, payment, rfl, h⟩
+    cases hg : group[i]? with
+    | none => simp [hg] at h
+    | some t =>
+      simp only [hg, Option.any_some, triggerPreparation, Bool.and_eq_true,
+        List.contains_iff_mem] at h
+      refine ⟨i, (List.getElem?_eq_some_iff.mp hg).1, ?_⟩
+      simp only [hg, Option.elim_some, List.mem_map, List.mem_filter]
+      exact ⟨(ts, payment), h, rfl⟩
+
+/-- The next Add or finalization to choose while a trigger's other choices are locked. -/
+def legalTriggerFunding (s : GameState) (p : PlayerId) (group : List PendTrigger)
+    (plan : TriggerFunding) : List Action :=
+  (if (commitTriggerFunding s group plan).isSome then
+    [⟨.player p, .putTrigger plan.index plan.targets plan.payment⟩] else []) ++
+    (triggerFundingAdds s group plan).map (fun a => ⟨.player p, .triggerAdd a⟩) ++
+    [⟨.player p, .decide false⟩]
 
 /-- The answers of the players to the open question. Chance answers are not listed. -/
 def legalFrameActions (s : GameState) : List Action :=
@@ -106,8 +147,10 @@ def legalFrameActions (s : GameState) : List Action :=
     ([⟨.player p, .decide true⟩, ⟨.player p, .decide false⟩] : List Action).filter (fun a =>
       match a.kind with
       | .decide yes => eitherOk s p src env x y yes
-      | _ => true)
+      | _ => true) ++
+    (if x.isPayment then legalRunes s p ++ legalManas s p else [])
   | .pickDo p _ _ c more _ _ :: _ => (c :: more).map (fun o => ⟨.player p, .choose o⟩)
+  | .nameCard p _ _ c more _ :: _ => (c :: more).map (fun id => ⟨.player p, .nameCard id⟩)
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
@@ -117,11 +160,15 @@ def legalFrameActions (s : GameState) : List Action :=
   | .chainPass p _ :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
       legalActivates s p false)
-  | .triggerOrder p t more _ :: _ => legalPuts s p (t :: more)
+  | .triggerOrder p t more _ none :: _ =>
+    legalPuts s p (t :: more) ++ legalTriggerPreparations s p (t :: more)
+  | .triggerOrder p t more _ (some plan) :: _ => legalTriggerFunding s p (t :: more) plan
   | .showdown _ q _ :: _ =>
     ⟨.player q, .pass⟩ :: (legalRunes s q ++ legalManas s q ++ legalShowdownPlays s q ++
       legalShowdownActivates s q)
   | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc
+  | .predict p _ c cs _ _ :: _ =>
+    (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
 /-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/

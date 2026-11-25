@@ -26,7 +26,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
-  · exact applyPlayCard_wf hwf h
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).wf (applyPlayCard_wf hwf hr)
   · rename_i p rest u d hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -53,8 +56,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact (hr.wf hwf).congr rfl rfl rfl rfl
   · rename_i p n rest hp hk
@@ -62,18 +66,33 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
-  · rename_i p rest c pay ts hp hk
-    exact reactStep_wf hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
   · rename_i p n rest c ab hp hk
     exact applyRune_wf hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putPick_safe s _ i ts).wf hwf).congr rfl rfl rfl rfl
+    exact ((finishTrigger_safe s _ funding i ts payment).wf hwf).congr rfl rfl rfl rfl
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n tail src idx pay hp hk
@@ -81,7 +100,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((sendObj_safe .trash s c).wf hwf).congr rfl rfl rfl rfl
+    exact ((discardObj_safe s c).wf hwf).congr rfl rfl rfl rfl
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -146,9 +165,12 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
-  · rename_i bf q rest c pay ts hp hk
-    exact reactStep_wf hwf h
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
   · rename_i q c ab hp hk
     exact applyRune_wf hwf h
@@ -160,6 +182,17 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((continuePrediction_safe _ _ _ _ _ _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((completePrediction_safe _ _ _ _ _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · exact applyRune_wf hwf h
+  · exact applyMana_wf hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -290,7 +323,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
-  · exact applyPlayCard_physIds hwf h
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((payPlayDiscard_safe _ _ _ _).phys (applyPlayCard_wf hwf hr)).trans
+      (applyPlayCard_physIds hwf hr)
   · rename_i p rest u d hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -317,8 +354,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact List.Perm.refl _
     · exact List.Perm.refl _
     · exact hr.phys hwf
   · rename_i p n rest hp hk
@@ -326,18 +364,33 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact List.Perm.refl _)
-  · rename_i p n rest c pay ts hp hk
-    exact reactStep_physIds hwf h
-  · rename_i p n rest src idx pay ts hp hk
+  · rename_i p n rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
   · rename_i p n tail c ab hp hk
     exact applyRune_physIds hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (putPick_safe s _ i ts).phys hwf
+    exact (finishTrigger_safe s _ funding i ts payment).phys hwf
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · rename_i p tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n tail src idx pay hp hk
@@ -345,7 +398,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (sendObj_safe .trash s c).phys hwf
+    exact (discardObj_safe s c).phys hwf
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -414,9 +467,12 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i bf q rest c pay ts hp hk
-    exact reactStep_physIds hwf h
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest c pay ts flow hp hk
+    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
   · rename_i q c ab hp hk
     exact applyRune_physIds hwf h
@@ -428,6 +484,17 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (continuePrediction_safe _ _ _ _ _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (completePrediction_safe _ _ _ _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · exact applyRune_physIds hwf h
+  · exact applyMana_physIds hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/
@@ -495,6 +562,7 @@ theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+set_option maxHeartbeats 1000000 in
 /-- The answers of the players to the open question that `legalFrameActions` lists are exactly
 the legal ones by a player. -/
 theorem legalFrameActions_iff (s : GameState) (a : Action) :
@@ -503,10 +571,17 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   unfold legalFrameActions LegalFrame
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · cases kind <;> cases actor <;> simp [Actor.isPlayer]
-  · cases f <;> cases kind <;> cases actor <;>
-      simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
-        mem_legalActivates, mem_legalReactions, mem_legalPuts, mem_legalManas,
-        mem_legalShowdownPlays, mem_legalShowdownActivates]
+  · cases f
+    case triggerOrder p t more others funding =>
+      cases funding <;> cases kind <;> cases actor <;>
+        simp [Actor.isPlayer, mem_legalPuts, mem_legalTriggerPreparations,
+          legalTriggerFunding, triggerFinishOk]
+      all_goals grind
+    all_goals
+      cases kind <;> cases actor <;>
+        simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
+          mem_legalActivates, mem_legalReactions, mem_legalManas,
+          mem_legalShowdownPlays, mem_legalShowdownActivates]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

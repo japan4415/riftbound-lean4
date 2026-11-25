@@ -23863,7 +23863,7 @@
    "tags": [],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
-    "[Reaction] (Play on your turn or in showdowns.)",
+    "[Reaction] (Play any time, even before spells and abilities resolve.)",
     "Choose a battlefield you control and a unit you control at a different location. Move that unit to that battlefield and give it +2 :rb_might: this turn."
    ],
    "textVariants": 1,
@@ -24164,7 +24164,7 @@
     "Mount Targon"
    ],
    "text": [
-    "When you play your first card each turn, if I'm at a battlefield, your next card costs :rb_energy_2::rb_rune_rainbow::rb_rune_rainbow: less."
+    "When you play your first card each turn, if I'm at a battlefield, the next card you play this turn costs :rb_energy_2::rb_rune_rainbow::rb_rune_rainbow: less."
    ],
    "textVariants": 1,
    "types": [
@@ -25413,7 +25413,7 @@
    ],
    "text": [
     "[Empower] :rb_rune_body::rb_rune_body: (:rb_rune_body::rb_rune_body:: Empower me. Use only if not Empowered.)",
-    "[Empowered][>] If a spell or ability that chooses me would stun me, give me -:rb_might:, or return me to hand, give me +3 :rb_might: instead."
+    "[Empowered][>] If a spell or ability that chooses me would stun me, give me -:rb_might:, or return me to hand, give me +3 :rb_might: this turn instead."
    ],
    "textVariants": 1,
    "types": [

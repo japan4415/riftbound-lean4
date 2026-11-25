@@ -214,10 +214,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i p _ c pay ts hp hk
+  · rename_i p _ c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    have hmain := playOk_main hl.2.2
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_meta h
+    have hturn := playOk_not_setup hl.2.2.1
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_discard_meta h
+    have hturn' : s'.phase ≠ .setup := by simpa only [hphase] using hturn
     have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
     refine ⟨fun hm => ?_, fun hph => ?_, fun f hf hpf => ?_⟩
     · show s'.turnOrder.Perm (allPlayers s'.playerCount)
@@ -232,12 +233,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         · cases h
         · cases h
         · exact List.mem_cons_of_mem _ h
-    · exfalso
-      rw [hphase, hmain] at hph
-      cases hph
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+    · exact (hturn' hph).elim
+    · exact fun hh => (hturn' hh).elim
   · rename_i p rest u d hp hk
     rw [hp, hk] at hl
     simp only [Option.map_eq_some_iff] at h
@@ -277,7 +274,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
           hP.turnOrder hP.config (fun hmem => ?_)
         have hm2 : Frame.setupHands ∈ (endShowdown s bf).2.1 ++ rest := hmem
         rcases List.mem_append.mp hm2 with h1 | h1
-        · obtain ⟨r, hr⟩ := endShowdown_frames s bf _ h1
+        · obtain ⟨r, hr⟩ := endShowdown_frames s bf true _ h1
           cases hr
         · rw [hp]
           exact List.mem_cons_of_mem _ h1
@@ -295,8 +292,12 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]
+      exact List.mem_cons_of_mem _ this
     · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
       have : Frame.setupHands ∈ rest := by simpa using hmem
       rw [hp]
@@ -329,39 +330,33 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · have : Frame.setupHands ∈ rest := by simpa using hmem
         rw [hp]; exact List.mem_cons_of_mem _ this
       · exact ⟨Frame.chainPass p n, by rw [hp]; exact List.mem_cons_self, rfl⟩
-  · rename_i p n rest c pay ts hp hk
+  · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
-    have hmain : s.phase = .main := by
-      rcases reactable_spec.mp hl.2.2 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    have hturn : s.phase ≠ .setup := by
+      rcases reactable_spec.mp hl.2.2.1 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
-      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2
-        exact hm
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0
+      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2.2
+        simp [hm]
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
-        exact hm
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0
+        simp [hm]
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
-        exact hm
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+        simp [hm]
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
       rcases hm with h1 | h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i p n rest src idx pay ts hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
@@ -376,14 +371,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
@@ -391,11 +383,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hm := (putPick_safe s (t :: more) i ts).same
-    have hph : (putPick s (t :: more) i ts).phase ≠ .setup := by
+    have hm := (finishTrigger_safe s (t :: more) funding i ts payment).same
+    have hph : ((finishTrigger s (t :: more) funding i ts payment).1).phase ≠ .setup := by
       rw [hm.phase]
       exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
@@ -403,29 +395,54 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases hm' with h1 | h1
     · cases h1
     · rw [hp]; exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
   · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · rename_i p n tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hm := (sendObj_safe .trash s c).same
-    have hph : (sendObj .trash s c).1.phase ≠ .setup := by
+    have hm := (discardObj_safe s c).same
+    have hph : (discardObj s c).1.phase ≠ .setup := by
       rw [hm.phase]
       exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
@@ -604,19 +621,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
-  · rename_i bf q rest c pay ts hp hk
+  · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
-    have hmain : s.phase = .main := by
-      rcases showdownable_spec hl.2.2 with h0 | ⟨dest, ts', h0⟩
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    have hturn : s.phase ≠ .setup := by
+      rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', choice, h0⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0
-        exact hm
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+        simp [hm]
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
@@ -624,15 +638,12 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     simp only [activatableSD, Bool.and_eq_true] at hl
-    obtain ⟨d, costs, sp, body, lim, pc, hmain, -⟩ := activatable_spec hl.2.1
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1.1
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
@@ -652,9 +663,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, manaOk_main hl.2]
-      intro hh
-      cases hh
+    · rw [hphase]
+      exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -664,6 +674,49 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ⟨fun hm => by simp at hm, fun _ hres => by simp at hres, fun f hf _ => by simp at hf⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play (.predict p n c cs top bottom) (by rw [hp]; exact List.mem_cons_self) rfl
+    have hm := (continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)).same
+    refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
+    rcases List.mem_append.mp hf with hnew | hrest
+    · have : Frame.setupHands.isPlay = true := continuePrediction_frames _ _ _ _ _ _ hnew
+      contradiction
+    · rw [hp]
+      exact List.mem_cons_of_mem _ hrest
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play (.chancePredict p n top old) (by rw [hp]; exact List.mem_cons_self) rfl
+    have hm := (completePrediction_safe s p n top bottom).same
+    refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hf
+  · rename_i p src env first more es rest card hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i c ab hp hk
+    rw [hp, hk] at hl
+    have hmeta := applyRune_meta h
+    have hhand := applyRune_hand hwf hl.2.1 hl.2.2.1 h
+    exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
+      (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
+      (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
+  · rename_i src idx pay hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
+    refine hinv.of_play (by rw [hphase]; exact manaOk_not_setup hl.2.1) hto hcfg (fun hm => ?_)
+    rwa [hpend] at hm
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put
@@ -671,7 +724,8 @@ on the stack, and not during the setup. -/
 theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event) :
     HandInv (s.withTriggers es) := by
   rcases withTriggers_cases s es with h | ⟨pend, h, hph, -⟩
-  · rw [h]; exact hinv
+  · rw [h]
+    exact ⟨hinv.turn, hinv.hands, hinv.play⟩
   · rw [h]
     refine hinv.of_play hph rfl rfl (fun hm => ?_)
     rcases insertTriggers_mem pend _ hm with h1 | ⟨x, h1⟩
@@ -744,63 +798,111 @@ theorem allPlayers_nodup (n : Nat) : (allPlayers n).Nodup := by
 /-- Where the frames that resolve the Chain come from: the stack below, or the frames of a Spell. -/
 theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
     (h : f ∈ resolveFrames s rest) : f ∈ rest ∨ f.isPlay = true := by
-  unfold resolveFrames at h
-  split at h
-  · split at h
-    · simp only [List.mem_cons] at h
-      rcases h with rfl | rfl | h
-      · exact Or.inr rfl
-      · exact Or.inr rfl
-      · exact Or.inl h
-    · unfold itemFrames at h
-      split at h
-      · simp only [List.mem_cons] at h
-        rcases h with rfl | rfl | h
-        · exact Or.inr rfl
-        · exact Or.inr rfl
-        · exact Or.inl h
-      · simp only [List.mem_cons] at h
-        rcases h with rfl | h
-        · exact Or.inr rfl
-        · exact Or.inl h
-    · simp only [List.mem_cons] at h
-      rcases h with rfl | h
-      · exact Or.inr rfl
-      · exact Or.inl h
+  obtain ⟨pre, eq, play⟩ := resolveFrames_eq s rest
+  rw [eq] at h
+  rcases List.mem_append.mp h with h | h
+  · exact Or.inr (play f h)
   · exact Or.inl h
 
-/-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
+/-- Burning schedules only effect frames and Burn Out decisions. -/
+theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {who : PlayerSel} {n : Amount} {es : EffectList} {link : Option Nat} {f : Frame}
+    (h : f ∈ (burnEffect s p src env who n es link).2.1) :
+    f.isPlay = true ∨ ∃ q, f = .chanceBurnOut q := by
+  unfold burnEffect at h
+  split at h
+  · dsimp only at h
+    split at h
+    · simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil, or_false] at h
+      rcases h with rfl | rfl | ⟨_, _, rfl⟩ | rfl
+      · exact Or.inr ⟨_, rfl⟩
+      · exact Or.inl rfl
+      · exact Or.inl rfl
+      · exact Or.inl rfl
+    · simp only [List.mem_append, List.mem_map, List.mem_singleton] at h
+      rcases h with ⟨_, _, rfl⟩ | rfl <;> exact Or.inl rfl
+  · simp only [List.mem_singleton] at h
+    subst f
+    exact Or.inl rfl
+  · simp only [List.mem_singleton] at h
+    subst f
+    exact Or.inl rfl
+
+/-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect1 s p src env e es).2.1) :
-    f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
-  unfold runEffect1 castInlineStep at h
+    {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (runEffect1 s p src env e es funding).2.1) :
+    f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
+  unfold runEffect1 at h
   split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
-    (try split at h) <;>
-    first
+    (try split at h)
+  all_goals first
+    | (simp only [List.mem_cons, List.mem_append, List.mem_map,
+         List.not_mem_nil, or_false] at h
+       first
+       | (subst h; exact Or.inl rfl)
+       | (rcases h with rfl | rfl <;> exact Or.inl rfl)
+       | (rcases h with rfl
+          left
+          unfold retainTargetSetFrame
+          dsimp only
+          split <;> rfl)
+       | (rcases h with rfl
+          left
+          unfold remakeSpellChoicesFrame
+          dsimp only
+          split <;> rfl)
+       | (rcases h with rfl
+          left
+          unfold collectOwnPicksFrame
+          dsimp only
+          split
+          · rfl
+          · split <;> rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl
+          · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
+          · exact Or.inl rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl
+          · exact Or.inl rfl
+          · exact Or.inl rfl))
+    | (rcases List.mem_append.mp h with ha | hb
+       · unfold spellExecutionFrames at ha
+         dsimp only at ha
+         split at ha
+         · obtain rfl := List.mem_singleton.mp ha
+           exact Or.inl rfl
+         · simp at ha
+       · obtain rfl := List.mem_singleton.mp hb
+         exact Or.inl rfl)
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
-    | skip <;>
-    simp only [List.mem_cons, List.mem_append, List.mem_map,
-      List.not_mem_nil, or_false] at h <;>
-    first
-    | (subst h; exact Or.inl rfl)
-    | (rcases h with rfl | rfl <;> exact Or.inl rfl)
-    | (rcases h with ⟨q, -, rfl⟩ | rfl
-       · exact Or.inr ⟨q, _, rfl⟩
-       · exact Or.inl rfl)
-    | (rcases h with ⟨q, -, rfl⟩ | rfl
-       · exact Or.inl rfl
-       · exact Or.inl rfl)
+    | exact Or.inl (recycleLookedStep_mem h)
+    | exact Or.inl (replayFrames_mem h)
+    | exact Or.inl (castInlineStep_mem h)
+    | exact Or.inl (finalizeLimitedStep_mem h)
+    | exact Or.inl (cancelLimitedStep_mem h)
+    | exact Or.inl (resolveEffectDamageStep_mem h)
+    | exact Or.inl (orderCombatDamageStep_mem h)
+    | (unfold banishLookedStep at h
+       split at h
+       all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)
+    | (rcases List.mem_append.mp h with ha | hb
+       · exact Or.inl (attachmentReplacementFrames_play ha)
+       · obtain rfl := List.mem_singleton.mp hb
+         exact Or.inl rfl)
+    | (rcases burnEffect_mem h with hp | hb
+       · exact Or.inl hp
+       · exact Or.inr (Or.inr hb))
 
-/-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
+/-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
-    {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
-    f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
+    {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (runEffect s p src env e es funding).2.1) :
+    f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
   unfold runEffect at h
   split at h
   · split at h
-    · simp only [List.mem_singleton] at h
-      subst h; exact Or.inl rfl
+    · split at h <;> simp only [List.mem_singleton] at h <;> subst h <;> exact Or.inl rfl
     · simp only [List.mem_singleton] at h
       subst h; exact Or.inl rfl
     · simp only [List.mem_singleton] at h
@@ -913,10 +1015,14 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
-    have : Frame.setupHands ∈ rest := by simpa using hmem
-    have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-    exact h1
+    by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
+    · simpa only [hs, ite_true] using
+        (hinv.of_pop (s2 := { s with pending := rest }) hp (by simp [Frame.contrib])
+          ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl)
+    · simp only [hs]
+      refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      exact hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
   · -- Ending
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -925,6 +1031,17 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
     exact h1
+  · -- Expiration
+    rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play .expireTurn (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hf => ?_)
+    rcases List.mem_append.mp hf with hnew | hrest
+    · unfold expirationFrames at hnew
+      split at hnew <;> simp at hnew
+    · rw [hp]
+      exact List.mem_cons_of_mem _ hrest
   · -- a phase frame for the setup: nothing to do
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -934,13 +1051,26 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hP := beginStep_safeP s (s.active.getD ⟨0⟩)
+    have hP := (beginStep_safe s (s.active.getD ⟨0⟩)).same
     refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
     show (beginStep s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
       (allPlayers (beginStep s (s.active.getD ⟨0⟩)).1.playerCount)
     rw [hP.turnOrder, show (beginStep s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
+      simp [GameState.playerCount, hP.config]]
+    exact h1
+  · -- Scoring Step
+    rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hP := hold_safeP s (s.active.getD ⟨0⟩)
+    refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
+    have : Frame.setupHands ∈ rest := by simpa using hmem
+    have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
+    show (hold s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
+      (allPlayers (hold s (s.active.getD ⟨0⟩)).1.playerCount)
+    rw [hP.turnOrder, show (hold s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
       simp [GameState.playerCount, hP.config]]
     exact h1
   · -- Main
@@ -1027,12 +1157,13 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · rename_i p src env e es rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hmeta := (runEffect_safe s p src (env.withMight s.mightTable) e es).same
+    have hmeta := (runEffect_safe s p src (env.withMight s.mightTable) e es effectAddPolicy).same
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hmeta.config, hmeta.turnOrder, hmeta.phase, hmeta.result⟩ (fun hm => ?_)
     rcases List.mem_append.mp hm with h1 | h1
-    · rcases runEffect_mem h1 with h2 | ⟨q, k, h2⟩
+    · rcases runEffect_mem h1 with h2 | ⟨q, k, h2⟩ | ⟨q, h2⟩
       · simp [Frame.isPlay] at h2
+      · cases h2
       · cases h2
     · rw [hp]; exact List.mem_cons_of_mem _ h1
   · rename_i item rest hp
@@ -1041,14 +1172,10 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hm := finishItem_sameMeta s item
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hm.config, hm.turnOrder, hm.phase, hm.result⟩ (fun hm' => ?_)
-    have hm2 : Frame.setupHands ∈ rest := by
-      simp only [List.mem_cons, List.mem_append] at hm'
-      rcases hm' with h1 | h1 | h1
-      · cases h1
-      · obtain ⟨q, hq⟩ := afterItem_mem h1
-        cases hq
-      · exact h1
-    rw [hp]; exact List.mem_cons_of_mem _ hm2
+    rcases List.mem_append.mp hm' with h1 | h1
+    · have hplay := finishedItemFrames_mem h1
+      simp [Frame.isPlay] at hplay
+    · rw [hp]; exact List.mem_cons_of_mem _ h1
   · -- Cleanup
     rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by
@@ -1059,9 +1186,10 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hsub : Frame.setupHands ∈ rest → Frame.setupHands ∈ s.pending := fun hm => by
       rw [hp]
       exact List.mem_cons_of_mem _ hm
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
     · exact hinv.of_play hph0 rfl rfl (fun hm => absurd hm (by simp))
+    · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play (by show r.phase ≠ .setup; rw [hr.same.phase]; exact hph0)
         hr.same.turnOrder hr.same.config (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
@@ -1071,26 +1199,54 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
-    have hm2 : Frame.setupHands ∈ s.startCombat bf att ++ rest := hmem
+    have hm2 : Frame.setupHands ∈ s.startCombat bf att ++ combatSteps bf ++ rest := hmem
+    rw [List.append_assoc] at hm2
     rcases List.mem_append.mp hm2 with h1 | h1
-    · rcases startCombat_mem s bf att _ h1 with ⟨b, a, q, e⟩ | e | e <;> cases e
+    · simpa [Frame.isPlay] using startCombat_play s bf att h1
     · rw [hp]
-      exact List.mem_cons_of_mem _ h1
+      exact List.mem_cons_of_mem _ (by simpa [combatSteps] using h1)
   · rename_i bf att rest hp
     have hph0 := hinv.play (.combatResolve bf att) (by rw [hp]; exact List.mem_cons_self) rfl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hP := combatResolve_safeP s bf att
+    have hP := (combatCleanup_safe s bf att).same
     refine hinv.of_play
-      (by show (combatResolve s bf att).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
+      (by show (combatCleanup s bf att).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
       hP.turnOrder hP.config (fun hmem => ?_)
-    have hm2 : Frame.setupHands ∈ (combatResolve s bf att).2.1 ++ Frame.cleanup :: rest := hmem
+    have hrest : Frame.setupHands ∈ rest := by simpa using hmem
+    rw [hp]
+    exact List.mem_cons_of_mem _ hrest
+  · rename_i bf rest hp
+    have hph := hinv.play (.combatResult bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_play hph rfl rfl (fun hmem => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hmem
+  · rename_i bf rest hp
+    have hph0 := hinv.play (.combatControl bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hP := combatControl_safeP s bf
+    refine hinv.of_play
+      (by show (combatControl s bf).1.phase ≠ .setup; rw [hP.phase]; exact hph0)
+      hP.turnOrder hP.config (fun hmem => ?_)
+    have hm2 : Frame.setupHands ∈
+        (combatControl s bf).2.1 ++ Frame.cleanup :: rest := hmem
     rcases List.mem_append.mp hm2 with h1 | h1
-    · obtain ⟨r, hr⟩ := combatResolve_frames s bf att _ h1
+    · obtain ⟨r, hr⟩ := combatControl_frames s bf _ h1
       cases hr
     · have h2 : Frame.setupHands ∈ rest := by simpa using h1
       rw [hp]
       exact List.mem_cons_of_mem _ h2
+  · rename_i bf rest hp
+    have hph := hinv.play (.combatFinish bf) (by rw [hp]; exact List.mem_cons_self) rfl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_play hph rfl rfl (fun hmem => ?_)
+    have hrest : Frame.setupHands ∈ rest := by simpa using hmem
+    rw [hp]
+    exact List.mem_cons_of_mem _ hrest
   · rename_i pend rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

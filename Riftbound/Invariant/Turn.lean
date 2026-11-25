@@ -27,10 +27,12 @@ theorem turnPhases_chain : List.Pairwise (fun a b => a.next = b) [Phase.awaken, 
     Phase.ending.next = .awaken := by
   decide
 
-/-- A phase frame sets the phase of the game to its own (CR 314-317). -/
+/-- A phase frame sets the phase of the game unless the Draw Phase is skipped (CR 314-317). -/
 theorem microStep_phase0 {s s' : GameState} {es : List Event} {ph : Phase} {rest : List Frame}
     (hp : s.pending = .phase ph :: rest) (hne : ph ≠ .setup)
-    (h : microStep0 s = some (s', es)) : s'.phase = ph := by
+    (h : microStep0 s = some (s', es)) :
+    s'.phase = if ph == .draw && s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase
+      then s.phase else ph := by
   unfold microStep0 at h
   rw [hp] at h
   cases ph with
@@ -42,10 +44,12 @@ theorem microStep_phase0 {s s' : GameState} {es : List Event} {ph : Phase} {rest
   | main => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | ending => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
 
-/-- A phase frame sets the phase of the game. -/
+/-- Detecting triggers preserves the phase set by the phase frame. -/
 theorem microStep_phase {s s' : GameState} {es : List Event} {ph : Phase} {rest : List Frame}
     (hp : s.pending = .phase ph :: rest) (hne : ph ≠ .setup)
-    (h : microStep s = some (s', es)) : s'.phase = ph := by
+    (h : microStep s = some (s', es)) :
+    s'.phase = if ph == .draw && s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase
+      then s.phase else ph := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
   have h2 := microStep_phase0 hp hne h0

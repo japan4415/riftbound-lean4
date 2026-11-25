@@ -66,8 +66,10 @@ open Riftbound RiftboundCards
 #guard (allCards.filter (fun c => c.id.code.startsWith "UNL-" && c.runs)).length == 225
 #guard (allCards.filter (fun c => c.id.code.startsWith "UNL-")).length == 225
 
--- the cards written down as IR values (docs/coverage.md): 436 by hand, 169 by `transcribe.py`
-#guard (allCards.filter (·.status == .drafted)).length == 799
+-- The set is present as IR throughout scenario verification (docs/coverage.md).
+#guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
+#guard (Vendetta.cards.filter CardDef.runs).length == 167
+#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 951
 -- an Equipment's effect text is kept apart: the abilities it gives the Unit it is attached to are
 -- `grants`, not the abilities of the card
 #guard match db.find? ⟨"UNL-019"⟩ with
@@ -90,11 +92,11 @@ open Riftbound RiftboundCards
   | some c => c.status == .todo && c.spellEffect.isNone
   | none => false
 
--- the drafted Spells: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
+-- the Spells with written effects: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 197
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 194
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 234
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 232
 
 end RiftboundTest

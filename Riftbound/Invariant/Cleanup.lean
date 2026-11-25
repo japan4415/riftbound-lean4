@@ -91,26 +91,26 @@ theorem obj?_modObj_cases (x : ObjId) :
   · rw [if_neg h]
     exact Or.inl rfl
 
-theorem cardDef?_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
-    (s.modObj b f).cardDef? x = s.cardDef? x := by
+theorem printedCardDef?_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
+    (s.modObj b f).printedCardDef? x = s.printedCardDef? x := by
   rcases obj?_modObj_cases s b f x with h | ⟨o, h1, h2⟩
-  · unfold GameState.cardDef?
+  · unfold GameState.printedCardDef?
     rw [h]
     rfl
-  · unfold GameState.cardDef?
+  · unfold GameState.printedCardDef?
     rw [h1, h2]
-    simp only [hf]
-    rfl
+    change (f o).kind.cardId?.bind s.cards.find? = o.kind.cardId?.bind s.cards.find?
+    rw [hf]
 
 theorem isUnit_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
     (s.modObj b f).isUnit x = s.isUnit x := by
-  unfold GameState.isUnit GameState.hasType
-  rw [cardDef?_modObj s b f hf]
+  unfold GameState.isUnit
+  rw [printedCardDef?_modObj s b f hf]
 
 theorem isBattlefield_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
     (s.modObj b f).isBattlefield x = s.isBattlefield x := by
-  unfold GameState.isBattlefield GameState.hasType
-  rw [cardDef?_modObj s b f hf]
+  unfold GameState.isBattlefield
+  rw [printedCardDef?_modObj s b f hf]
 
 theorem battlefields_modObj (hf : ∀ o, (f o).kind = o.kind) :
     (s.modObj b f).battlefields = s.battlefields := by
@@ -398,6 +398,7 @@ theorem staleContest_modObj_ne (hk : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f
   unfold GameState.staleContest
   rw [contested_modObj_ne s b f hx]
   simp only [unitsOf_modObj s b f hk hl hc]
+  rfl
 
 theorem newContest_modObj_ne (hk : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f o).loc = o.loc)
     (hc : ∀ o, (f o).controller = o.controller) (hctl : ∀ o, (f o).control = o.control)
@@ -445,6 +446,7 @@ theorem staleContest_lt {s : GameState} {b : ObjId} (hb : b ∈ s.battlefields)
     unfold GameState.lostControl
     rw [controlOf_modObj_keep s b _ hctl x]
     simp only [unitsOf_modObj s b _ hk hloc hc]
+    rfl
   have hlt : (s.modObj b (fun o => { o with contested := none })).cStale < s.cStale := by
     unfold GameState.cStale
     rw [hbf]
@@ -476,7 +478,7 @@ theorem obj?_of_mem_battlefields {s : GameState} {b : ObjId} (hb : b ∈ s.battl
     ∃ o, s.obj? b = some o := by
   unfold GameState.battlefields at hb
   have h := (List.mem_filter.mp hb).2
-  unfold GameState.isBattlefield GameState.hasType GameState.cardDef? at h
+  unfold GameState.isBattlefield GameState.printedCardDef? at h
   cases ho : s.obj? b with
   | none => simp [ho] at h
   | some o => exact ⟨o, rfl⟩
@@ -505,6 +507,7 @@ theorem newContest_lt {s : GameState} {b : ObjId} {q : PlayerId} (hb : b ∈ s.b
     unfold GameState.lostControl
     rw [controlOf_modObj_keep s b _ hctl x]
     simp only [unitsOf_modObj s b _ hk hloc hc]
+    rfl
   have hstale : (s.modObj b (fun o => { o with contested := some q })).cStale = s.cStale := by
     unfold GameState.cStale
     rw [hbf]
@@ -514,7 +517,7 @@ theorem newContest_lt {s : GameState} {b : ObjId} {q : PlayerId} (hb : b ∈ s.b
       subst hxb
       have h1 : s.staleContest x = false := by
         unfold GameState.staleContest
-        rw [hdn]
+        simp [hdn]
       have h2 : (s.modObj x (fun o => { o with contested := some q })).staleContest x = false := by
         unfold GameState.staleContest
         rw [GameState.obj?_modObj, if_pos rfl]
@@ -680,11 +683,12 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
-  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
-  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
-      else ZoneKind.trash) := ⟨_, rfl⟩
+  -- The destination of a kill accounts for the replacements that banish the card.
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = s.ownerDestination u o
+      (if s.banishedOnDeath u then .banishment else .trash) := ⟨_, rfl⟩
   have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
-    rw [hdk]; split <;> simp
+    rw [hdk]
+    exact s.ownerDestination_trash_or_banishment u o (by split <;> simp)
   -- the destination: a zone of the owner that is not a zone in play
   have hdst : ∀ o', s.obj? u = some o' →
       (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
@@ -711,15 +715,27 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   subst hsrc
   have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   have hkillz : ∀ z, (killObj s u).1.zone z = s'.zone z := by
     intro z
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
   unfold GameState.pot
   rw [hkillz, hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
@@ -760,11 +776,12 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
-  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
-  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
-      else ZoneKind.trash) := ⟨_, rfl⟩
+  -- The destination of a kill accounts for the replacements that banish the card.
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = s.ownerDestination u o
+      (if s.banishedOnDeath u then .banishment else .trash) := ⟨_, rfl⟩
   have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
-    rw [hdk]; split <;> simp
+    rw [hdk]
+    exact s.ownerDestination_trash_or_banishment u o (by split <;> simp)
   -- the destination: a zone of the owner that is not a zone in play
   have hdst : ∀ o', s.obj? u = some o' →
       (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
@@ -791,9 +808,15 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
   subst hsrc
   have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   rw [hkill, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

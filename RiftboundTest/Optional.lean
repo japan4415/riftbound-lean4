@@ -69,7 +69,7 @@ meta def putOp (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
 meta def paysOf (s : GameState) (c : ObjId) : List RunePool.Payment :=
   (legalFrameActions s).filterMap (fun a =>
     match a.kind with
-    | .playCard c' pay [] => if c' == c then some pay else none
+    | .playCard c' pay [] _ _ _ => if c' == c then some pay else none
     | _ => none)
 
 -- Accelerate: the Unit can be played for its cost, or for its cost and 1 Energy and a Power of its
