@@ -161,6 +161,17 @@ inductive PlayerSel where
   | controllerOf (slot : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- A replacement still available for one damage event. Turn notes use their positions in
+the original damage batch, so individual effects can be spent independently. -/
+inductive DamageReplacement where
+  /-- One instance of doubling the incoming damage. -/
+  | double
+  /-- A remaining finite Prevent Value. -/
+  | prevent (note remaining : Nat)
+  /-- One effect that prevents the next hit in full. -/
+  | shield (note : Nat)
+deriving DecidableEq, Repr, Hashable
+
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
@@ -199,8 +210,8 @@ inductive TurnEffect where
   | damagePrevented
   /-- Prevent this much of the next damage to the marked Unit this turn (CR 438). -/
   | preventDamage (remaining : Nat)
-  /-- For the current combat assignment, apply finite prevention before damage doubling (CR 467.2.c.5). -/
-  | preventBeforeDouble
+  /-- The replacement order chosen for the Unit's current combat damage (CR 467.2.c.5). -/
+  | combatDamageOrder (order : List DamageReplacement)
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/

@@ -366,7 +366,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
       .finishFundedPermanent .. | .finalizeTrashSpell .. | .fundTrashSpell .. |
       .finishTrashSpell .. | .cancelTrashSpell .. | .resolveEffectDamage .. |
-      .chooseDamageReplacement .. => false
+      .chooseDamageReplacement .. | .orderCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e

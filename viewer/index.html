@@ -388,7 +388,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.damageReplacement) {
         const replacement = a.damageReplacement === 'double' ? '2倍にする' :
           a.damageReplacement === 'shield' ? 'すべて防ぐ' : '最大 ' + a.preventValue + ' 軽減する';
-        return [who + ': ' + cardName(a.unit) + ' へのダメージを' + replacement, '置換前のダメージ ' + a.incomingDamage];
+        const detail = a.combatDamageOrder ? '戦闘ダメージの割り振りに適用' : '置換前のダメージ ' + a.incomingDamage;
+        return [who + ': ' + cardName(a.unit) + ' へのダメージを' + replacement, detail];
       }
       if (a.damageOrder) {
         const first = a.damageOrder === 'preventFirst' ? 'ダメージの軽減' : 'ダメージの倍増';
@@ -1104,6 +1105,7 @@ function renderLegal(i) {
     if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l);
   }
   const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
+  const damageChoices = liveLegal.filter(({ a }) => a.damageReplacement);
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
   const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
   const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
@@ -1120,11 +1122,14 @@ function renderLegal(i) {
     : liveLegal.some(({ a }) => a.queuedSpell != null) ? '呪文の対象と支払いを選ぶ'
     : playPayment ? 'プレイの支払いを選ぶ' + (playPrice ? '（' + costText(playPrice) + '）' : '')
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
-    : liveLegal.some(({a}) => a.damageReplacement) ? '次に適用するダメージの置換効果を選ぶ'
+    : damageChoices[0]?.a.combatDamageOrder ? '割り振り前に戦闘ダメージの置換順を選ぶ'
+    : damageChoices.length ? '次に適用するダメージの置換効果を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
-  const answerCount = choiceContext === 'attachmentCopy'
-    ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length;
+  const answerCount = damageChoices.length
+    ? liveLegal.filter(({ a }) => a.damageReplacement || a.moreDamageReplacements).length
+    : choiceContext === 'attachmentCopy'
+      ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length;
   $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + answerCount + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
   if (naming.length) renderNameCards(box, naming, btn);

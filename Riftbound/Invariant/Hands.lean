@@ -861,6 +861,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (finalizeTrashStep_mem h)
     | exact Or.inl (cancelTrashStep_mem h)
     | exact Or.inl (resolveEffectDamageStep_mem h)
+    | exact Or.inl (orderCombatDamageStep_mem h)
     | (unfold banishLookedStep at h
        split at h
        all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)

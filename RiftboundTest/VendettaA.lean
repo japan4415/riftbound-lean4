@@ -1692,7 +1692,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     excessOf preventionFirst p [(defender, 8)] == 0 &&
     excessOf doublingFirst p [(defender, 8)] == 5 &&
     held.preventValue defender == 3 && spent.preventValue defender == 0 &&
-    !held.preventFirst defender &&
+    (held.combatDamageOrder defender).isNone &&
     !(firstEvents.any (fun | .damaged u n => u == defender && n > 0 | _ => false)) &&
     secondEvents.contains (.damaged defender 1)
 
@@ -1704,6 +1704,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
     let answer (yes : Bool) := (step 100 s ⟨.player p, .decide yes⟩).toOption
     let selected : Effect → Bool
       | .chooseDamageReplacement _ _ kind => accept kind
+      | .orderCombatDamage _ (kind :: _) _ => accept kind
       | _ => false
     match s.pending with
     | .eitherDo who _ _ first other _ :: _ =>
@@ -1714,6 +1715,67 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
         | .eitherOf _ => (answer false).bind (selectDamageReplacement p accept fuel ∘ Prod.fst)
         | _ => none
     | _ => none
+
+-- Interleaving the combat replacements changes the least lethal assignment
+-- and the amount left for the next Unit.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, attacker) ← putAt s p "VEN-091" field
+  let (s, defender) ← putAt s q "VEN-091" field
+  let (s, spare) ← putAt s q "VEN-091" field
+  let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 8 })
+  let s := s.modObj defender (fun o => { o with baseMightThisTurn := some 4 })
+  let s := (s.addTurnFxOn p defender .doubleDamage).addTurnFxOn p defender (.preventDamage 7)
+  let s := (s.addTurnFxOn p defender .doubleDamage).addTurnFxOn q defender (.preventDamage 3)
+  let (question, _) ← (advance 100 { s with pending := [.combatDamage field p] } []).toOption
+  let choose := selectDamageReplacement q
+  let prevent : DamageReplacement → Bool | .prevent _ 7 => true | _ => false
+  let (first, _) ← choose (· == .double) 4 question
+  let (middle, _) ← choose prevent 4 first
+  let (interleaved, _) ← choose (· == .double) 4 middle
+  let (twice, _) ← choose (· == .double) 4 first
+  let (doubled, _) ← choose prevent 4 twice
+  let finish (t : GameState) := do
+    let (first, _) ← (step 100 t ⟨.player p, .assignPick defender⟩).toOption
+    let (second, _) ← (step 100 first ⟨.player p, .assignPick spare⟩).toOption
+    let (next, _) ← (step 100 second ⟨.player p, .assignDone⟩).toOption
+    let (last, _) ← (step 100 next ⟨.player q, .assignPick attacker⟩).toOption
+    (step 100 last ⟨.player q, .assignDone⟩).toOption
+  let (finished, mixedEvents) ← finish interleaved
+  let (_, doubledEvents) ← finish doubled
+  return !(legalActions question).contains ⟨.player p, .decide true⟩ &&
+    interleaved.combatNeed defender == some 6 && doubled.combatNeed defender == some 4 &&
+    excessOf interleaved p [(defender, 6)] == 3 && excessOf doubled p [(defender, 4)] == 2 &&
+    mixedEvents.contains (.damaged defender 7) && mixedEvents.contains (.damaged spare 2) &&
+    doubledEvents.contains (.damaged defender 6) && doubledEvents.contains (.damaged spare 4) &&
+    (finished.combatDamageOrder defender).isNone
+
+-- Both combat orders fully protect the Unit, but the chosen replacement determines
+-- whether the full shield or the finite Prevent Value remains available afterward.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, attacker) ← putAt s p "VEN-091" field
+  let (s, defender) ← putAt s q "VEN-091" field
+  let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 4 })
+  let s := (s.addTurnFxOn q defender (.preventDamage 7)).addTurnFxOn q defender .damagePrevented
+  let (question, _) ← (advance 100 { s with pending := [.combatDamage field p] } []).toOption
+  let (finiteFirst, _) ← selectDamageReplacement q (fun | .prevent _ 7 => true | _ => false) 4 question
+  let (shieldFirst, _) ← selectDamageReplacement q (fun | .shield _ => true | _ => false) 4 question
+  let finish (t : GameState) := do
+    let (t, _) ← (step 100 t ⟨.player p, .assignPick defender⟩).toOption
+    let (t, _) ← (step 100 t ⟨.player p, .assignDone⟩).toOption
+    let (t, _) ← (step 100 t ⟨.player q, .assignPick attacker⟩).toOption
+    (step 100 t ⟨.player q, .assignDone⟩).toOption
+  let (finite, firstEvents) ← finish finiteFirst
+  let (shield, lastEvents) ← finish shieldFirst
+  return (finiteFirst.combatNeed defender).isNone && (shieldFirst.combatNeed defender).isNone &&
+    finite.shielded defender && finite.preventValue defender == 3 &&
+    !shield.shielded defender && shield.preventValue defender == 7 &&
+    !((firstEvents ++ lastEvents).any (fun | .damaged id _ => id == defender | _ => false))
 
 -- Shock Blast is outside Combat. Its target's controller may order Ki Barrier
 -- and Lotus Trap, or keep either a finite prevention or a full shield for later.
@@ -1741,7 +1803,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   return !(legalActions question).contains ⟨.player p, .decide true⟩ &&
     prevented.preventValue target == 3 && doubled.preventValue target == 0 &&
     !(firstEvents.any (fun | .damaged id _ => id == target | _ => false)) &&
-    secondEvents.contains (.damaged target 1) && !prevented.preventFirst target &&
+    secondEvents.contains (.damaged target 1) && (prevented.combatDamageOrder target).isNone &&
     kept.shielded target && kept.preventValue target == 3 &&
     !used.shielded target && used.preventValue target == 7
 

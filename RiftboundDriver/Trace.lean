@@ -142,20 +142,24 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
 
+/-- Describe one of the replacement effects that can be chosen next. -/
+def damageReplacementFields (unit : ObjId) (replacement : DamageReplacement) : List (String × String) :=
+  let (kind, extra) := match replacement with
+    | .double => ("double", [])
+    | .prevent _ value => ("prevent", [("preventValue", toString value)])
+    | .shield _ => ("shield", [])
+  [("unit", toString unit.n), ("damageReplacement", jstr kind)] ++ extra
+
 /-- The order the affected Unit's controller chooses for damage replacement. -/
 def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
-  | some (.eitherDo _ unit _ (.prim (.markOn _ .preventBeforeDouble)) .nop _) =>
-    [("unit", toString unit.n), ("damageOrder", jstr (if yes then "preventFirst" else "doubleFirst"))]
-  | some (.eitherDo _ _ _ first@(.chooseDamageReplacement ..) other _) =>
+  | some (.eitherDo _ _ _ first@(.chooseDamageReplacement ..) other _)
+  | some (.eitherDo _ _ _ first@(.orderCombatDamage ..) other _) =>
     match if yes then first else other with
     | .chooseDamageReplacement _ hit replacement =>
-      let (kind, extra) := match replacement with
-        | .double => ("double", [])
-        | .prevent _ value => ("prevent", [("preventValue", toString value)])
-        | .shield _ => ("shield", [])
-      [("unit", toString hit.target.n), ("incomingDamage", toString hit.amount),
-        ("damageReplacement", jstr kind)] ++ extra
+      damageReplacementFields hit.target replacement ++ [("incomingDamage", toString hit.amount)]
+    | .orderCombatDamage unit (replacement :: _) _ =>
+      damageReplacementFields unit replacement ++ [("combatDamageOrder", "true")]
     | _ => [("moreDamageReplacements", "true")]
   | _ => []
 

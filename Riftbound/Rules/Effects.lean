@@ -2098,11 +2098,6 @@ theorem spendPrevent_safe (s : GameState) (id : ObjId) (n : Nat) :
 def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
   { o with damage := o.damage + n, damagedTurn := if n = 0 then o.damagedTurn else some turn }
 
-/-- In the current Combat, this Unit's controller chose to apply Prevent before doubling. -/
-def GameState.preventFirst (s : GameState) (id : ObjId) : Bool :=
-  s.turnFx.any (fun note =>
-    note.turn == s.turn && note.target == some id && note.kind == .preventBeforeDouble)
-
 /-- Damage is excluded by the Unit's immunity, with enemy-effect immunity scoped to its source. -/
 def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option PlayerId) : Bool :=
   let mods := s.activeMods id
@@ -2138,14 +2133,11 @@ theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId) :
     · exact damaged.trans (killOrSave_safe _ id)
     · exact damaged
 
-/-- Preview how much finite prevention is spent and how much damage remains, in the chosen order
-(CR 438.2-438.4, 467.2.c.5). -/
+/-- Preview the immediate damage path, where there is no choice of replacement order (CR 438.2-438.4). -/
 def GameState.previewPrevent (s : GameState) (id : ObjId) (n : Nat) : Nat × Nat :=
-  let scale := if s.doubleDmg id then 2 else 1
-  let early := s.preventFirst id
-  let incoming := if early then n else n * scale
+  let incoming := if s.doubleDmg id then 2 * n else n
   let prevented := min incoming (s.preventValue id)
-  (prevented, (incoming - prevented) * (if early then scale else 1))
+  (prevented, incoming - prevented)
 
 /-- Spend finite prevention, then apply any damage left (CR 438.2-438.4). -/
 def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -2222,22 +2214,60 @@ def damageReplacements (s : GameState) (batch : EffectDamageBatch) (target : Obj
       | .damagePrevented => if batch.spentOn idx == 0 then some (.shield idx) else none
       | _ => none)
 
-/-- Apply one replacement to the tentative damage event (CR 370.2, 438.2). -/
+/-- Apply one replacement to a positive incoming amount, or leave its effects unspent if
+earlier replacements reduced the damage to zero (CR 370.2, 438.2, 438.4). -/
+def DamageReplacement.applyAmount (replacement : DamageReplacement) (batch : EffectDamageBatch)
+    (amount : Nat) : EffectDamageBatch × Nat :=
+  if amount == 0 then (batch, 0) else
+  match replacement with
+  | .double => (batch, 2 * amount)
+  | .prevent note remaining =>
+    let spent := min amount remaining
+    ({ batch with spent := (note, spent) :: batch.spent }, amount - spent)
+  | .shield note => ({ batch with spent := (note, 1) :: batch.spent }, 0)
+
+/-- Apply one replacement to the tentative damage event. -/
 def chooseEffectDamage (batch : EffectDamageBatch) (hit : EffectDamageHit)
     (replacement : DamageReplacement) : EffectDamageBatch × EffectDamageHit :=
-  let hit := { hit with replacements := hit.replacements.erase replacement }
-  match replacement with
-  | .double => (batch, { hit with amount := 2 * hit.amount })
-  | .prevent note remaining =>
-    let spent := min hit.amount remaining
-    ({ batch with spent := (note, spent) :: batch.spent }, { hit with amount := hit.amount - spent })
-  | .shield note => ({ batch with spent := (note, 1) :: batch.spent }, { hit with amount := 0 })
+  let (next, amount) := replacement.applyAmount batch hit.amount
+  (next, { hit with amount, replacements := hit.replacements.erase replacement })
 
 /-- Effects with the same remaining value are interchangeable for this choice. -/
 def DamageReplacement.sameChoice : DamageReplacement → DamageReplacement → Bool
   | .double, .double | .shield _, .shield _ => true
   | .prevent _ a, .prevent _ b => a == b
   | _, _ => false
+
+/-- Store the chosen combat order, or keep asking while distinguishable replacements remain.
+The note only records the order. No Prevent Value or shield is spent until damage is assigned. -/
+def orderCombatDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (target : ObjId) (chosen remaining : List DamageReplacement) (es : EffectList) :
+    GameState × List Frame × List Event :=
+  let options := remaining.eraseDupsBy DamageReplacement.sameChoice
+  if 1 < options.length then
+    let choices := options.map (fun r => Effect.orderCombatDamage target (r :: chosen) (remaining.erase r))
+    (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+  else
+    (s.addTurnFxOn p target (.combatDamageOrder (chosen.reverse ++ remaining)), [.run p src env es], [])
+
+/-- Recording or continuing the combat order preserves the game invariants. -/
+theorem orderCombatDamageStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (target : ObjId) (chosen remaining : List DamageReplacement) (es : EffectList) :
+    Safe s (orderCombatDamageStep s p src env target chosen remaining es).1 := by
+  unfold orderCombatDamageStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · exact addTurnFxOn_safe _ _ _ _
+
+/-- A combat replacement decision only schedules more play frames. -/
+theorem orderCombatDamageStep_mem {s : GameState} {p : PlayerId} {src target : ObjId}
+    {env : Env} {chosen remaining : List DamageReplacement} {es : EffectList} {f : Frame}
+    (hf : f ∈ (orderCombatDamageStep s p src env target chosen remaining es).2.1) :
+    f.isPlay = true := by
+  unfold orderCombatDamageStep at hf
+  dsimp only at hf
+  split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
 
 /-- Record the damage dealt by one instruction and collect all its damage events together. -/
 def applyEffectDamageAmounts (s : GameState) : List (ObjId × Nat) → GameState × List Event
@@ -4745,6 +4775,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .chooseDamageReplacement batch hit replacement =>
     let (next, damage) := chooseEffectDamage batch hit replacement
     (s, [.run p src env (.cons (.resolveEffectDamage next (some damage)) es)], [])
+  | .orderCombatDamage target chosen remaining =>
+    orderCombatDamageStep s p src env target chosen remaining es
   | .prim (.banishReplay sel sameLocation) =>
     let units := (sel.eval s p src env).getD []
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
@@ -4801,6 +4833,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact finalizeTrashStep_safe s p src env _ es funding
     | exact cancelTrashStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
+    | exact orderCombatDamageStep_safe s p src env _ _ _ es
     | exact commitTrashSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _

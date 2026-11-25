@@ -75,17 +75,47 @@ def need (s : GameState) (u : ObjId) : Nat :=
     (if d = 0 then 1 else 0)
   else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
-/-- The raw assignment that becomes lethal after accounting for damage replacement effects
-(CR 438.5, 467.2.c.5). Full prevention has no finite lethal assignment. -/
+/-- The order chosen for this Unit in the current combat, once all its replacements are ordered. -/
+def combatDamageOrder (s : GameState) (u : ObjId) : Option (List DamageReplacement) :=
+  s.turnFx.findSome? (fun note =>
+    if note.turn == s.turn && note.target == some u then
+      match note.kind with
+      | .combatDamageOrder order => some order
+      | _ => none
+    else none)
+
+/-- Raw replacements for the Unit. Without a recorded decision, use the immediate order:
+consume a full shield first, then double and apply finite prevention. -/
+def combatReplacements (s : GameState) (u : ObjId) : List DamageReplacement :=
+  match s.combatDamageOrder u with
+  | some order => order
+  | none =>
+    let effects := damageReplacements s { controller := none, incoming := [] } u
+    let shields := effects.filter (fun | .shield _ => true | _ => false)
+    let doubles := effects.filter (· == .double)
+    let prevents := effects.filter (fun | .prevent .. => true | _ => false)
+    shields ++ doubles ++ prevents
+
+/-- Preview one assigned hit using the same ordered replacements used to compute lethality. -/
+def combatDamagePreview (s : GameState) (u : ObjId) (raw : Nat) (batch : EffectDamageBatch) :
+    EffectDamageBatch × Nat :=
+  (s.combatReplacements u).foldl (fun (now, amount) replacement =>
+    match replacement with
+    | .prevent idx value => (.prevent idx (value - now.spentOn idx) : DamageReplacement).applyAmount now amount
+    | .shield idx => if now.spentOn idx == 0 then replacement.applyAmount now amount else (now, amount)
+    | .double => replacement.applyAmount now amount) (batch, raw)
+
+/-- The least raw damage yielding lethal damage in the selected order. Work backwards through
+the replacements. Full prevention has no finite lethal assignment (CR 438.5, 467.2.c.5). -/
 def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
   let base := s.need u
   if base == 0 then some 0
-  else if s.shielded u || (s.activeMods u).contains .noDamage then none
-  else
-    let prevent := s.preventValue u
-    some (if !s.doubleDmg u then base + prevent
-      else if s.preventFirst u then (base + 1) / 2 + prevent
-      else (base + prevent + 1) / 2)
+  else if (s.activeMods u).contains .noDamage then none
+  else (s.combatReplacements u).foldr (fun replacement lethal => lethal.bind (fun needed =>
+    match replacement with
+    | .double => some ((needed + 1) / 2)
+    | .prevent _ value => some (needed + value)
+    | .shield _ => none)) (some base)
 
 /-- Whether Combat began at the Battlefield, or two sides are present in a constructed state. -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=
@@ -332,19 +362,24 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
 
 /-! ### Dealing the damage and ending the Combat -/
 
-/-- Deal the damages of a list, one after the other. They are one simultaneous event
-(CR 467.2.c.1), so the order does not matter for the result. -/
-def dealAll : GameState → List (ObjId × Nat) → GameState × List Event
-  | s, [] => (s, [])
-  | s, (u, n) :: l =>
-    let r := dealObj n s u
-    let r2 := dealAll r.1 l
-    (r2.1, r.2 ++ r2.2)
+/-- Apply the assigned damage and its ordered replacements as one simultaneous instruction
+(CR 467.2.c.1, 467.2.c.5). -/
+def dealAll (s : GameState) (hits : List (ObjId × Nat)) : GameState × List Event :=
+  let batch : EffectDamageBatch := { controller := none, incoming := [] }
+  let finished := hits.foldl (fun now (u, raw) =>
+    match s.obj? u with
+    | none => now
+    | some o =>
+      if damageImmune s u o none then now else
+      let (next, amount) := s.combatDamagePreview u raw now
+      if amount == 0 && raw != 0 then next
+      else { next with resolved := (u, amount) :: next.resolved }) batch
+  commitEffectDamage s finished
 
 /-- Dealing the damages is a safe change. -/
-theorem dealAll_safe : ∀ (l : List (ObjId × Nat)) (s : GameState), Safe s (dealAll s l).1
-  | [], s => Safe.refl s
-  | (u, n) :: l, s => (dealObj_safe n s u).trans (dealAll_safe l (dealObj n s u).1)
+theorem dealAll_safe (hits : List (ObjId × Nat)) (s : GameState) : Safe s (dealAll s hits).1 := by
+  unfold dealAll
+  exact commitEffectDamage_safe s _
 
 /-- Recall a Unit to its controller's Base (CR 456): its damage and status stay. -/
 def recallObj (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -447,16 +482,16 @@ def GameState.assignFrame (s : GameState) (bf : ObjId) (att side : PlayerId)
     some (.assign bf att side [] done)
   else none
 
-/-- Before a side assigns damage, each affected Unit's controller orders its Prevent and doubling
-effects (CR 372, 467.2.c.5). Choices for different Units do not change one another. -/
+/-- Before assignment, each affected Unit's controller orders its applicable replacements
+(CR 372, 467.2.c.5). Choices for different Units do not change one another. -/
 def damageOrderFrames (s : GameState) (bf : ObjId) (att side : PlayerId) : List Frame :=
   if s.combatTotal bf att side == 0 then []
   else (s.foes bf side).filterMap (fun u =>
     (s.obj? u).bind (fun unit =>
-      if s.doubleDmg u && decide (0 < s.preventValue u) && !s.shielded u &&
-          !(s.activeMods u).contains .noDamage then
-        some (.eitherDo unit.controller u { slots := [.obj u] }
-          (.prim (.markOn (.slot 0) .preventBeforeDouble)) .nop .nil)
+      let replacements := damageReplacements s { controller := none, incoming := [] } u
+      if 1 < (replacements.eraseDupsBy DamageReplacement.sameChoice).length &&
+          !damageImmune s u unit none then
+        some (.run unit.controller u {} (.cons (.orderCombatDamage u [] replacements) .nil))
       else none))
 
 /-- The frames that ask for ordering damage replacements are play frames. -/
@@ -519,7 +554,9 @@ theorem startCombat_play (s : GameState) (bf : ObjId) (att : PlayerId) {f : Fram
 
 /-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
 def clearDamageOrder (s : GameState) : GameState :=
-  { s with turnFx := s.turnFx.filter (·.kind != .preventBeforeDouble) }
+  { s with turnFx := s.turnFx.filter (fun note => match note.kind with
+    | .combatDamageOrder _ => false
+    | _ => true) }
 
 /-- Forgetting the order of damage replacements changes no structural properties. -/
 theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
@@ -531,8 +568,10 @@ last Unit of an order gets what is left). -/
 def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
   (done.filter (fun e => (s.obj? e.1).any (fun o => o.controller != att))).foldl
     (fun acc (unit, raw) =>
-      if s.shielded unit || (s.activeMods unit).contains .noDamage then acc
-      else acc + ((s.previewPrevent unit raw).2 - s.need unit)) 0
+      if (s.activeMods unit).contains .noDamage then acc
+      else
+        let damage := (s.combatDamagePreview unit raw { controller := none, incoming := [] }).2
+        acc + (damage - s.need unit)) 0
 
 /-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
 def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=

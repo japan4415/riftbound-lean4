@@ -71,17 +71,6 @@ structure EffectSpellPlay where
   pick : SpellPick
 deriving DecidableEq, Repr, Hashable
 
-/-- A replacement still available for one damage event. Turn notes use their positions in
-the original damage batch, so individual effects can be spent independently. -/
-inductive DamageReplacement where
-  /-- One instance of doubling the incoming damage. -/
-  | double
-  /-- A remaining finite Prevent Value. -/
-  | prevent (note remaining : Nat)
-  /-- One effect that prevents the next hit in full. -/
-  | shield (note : Nat)
-deriving DecidableEq, Repr, Hashable
-
 /-- A damage event while its controller is ordering the applicable replacements. -/
 structure EffectDamageHit where
   /-- The object that will take the damage. -/
@@ -170,6 +159,8 @@ inductive Effect where
   /-- Apply one selected replacement and continue with the rest. -/
   | chooseDamageReplacement (batch : EffectDamageBatch) (hit : EffectDamageHit)
       (replacement : DamageReplacement)
+  /-- Choose which replacements apply first to a combat assignment. `chosen` is in reverse order. -/
+  | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)
