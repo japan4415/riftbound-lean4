@@ -652,6 +652,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hsafe := completePrediction_safe s p n top bottom
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
       (new := []) rfl (by simp)
+  · rename_i p src env first more es rest card hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.run p src env (.cons (.rememberNamedCard card) es)]) rfl
+      (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while

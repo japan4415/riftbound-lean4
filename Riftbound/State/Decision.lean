@@ -81,6 +81,8 @@ inductive ActionKind where
   | decide (yes : Bool)
   /-- Choose this object, when an effect says to choose one while it resolves (CR 355). -/
   | choose (obj : ObjId)
+  /-- Name the card uniquely identified by its logical ID (CR 759-762). -/
+  | nameCard (card : CardId)
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
   | burnOutTarget (opponent : PlayerId)
   /-- Pass priority. In the Main Phase with an empty Chain, the turn player passing ends the
@@ -240,6 +242,10 @@ inductive Frame where
   (CR 355). -/
   | pickDo (p : PlayerId) (src : ObjId) (env : Env) (c : ObjId) (more : List ObjId) (e : Effect)
       (rest : EffectList)
+  /-- Choice: name one of the format-legal cards offered while an ability resolves (CR 759-762).
+  These are card definitions, independent of any copies on the board or in private zones. -/
+  | nameCard (p : PlayerId) (src : ObjId) (env : Env) (first : CardId) (more : List CardId)
+      (rest : EffectList)
   /-- Choice: which card to keep next on top or Recycle during Predict (CR 437). The first
   remaining card makes the choice nonempty. -/
   | predict (p : PlayerId) (n : Nat) (first : ObjId) (more top bottom : List ObjId)
@@ -275,6 +281,7 @@ def Frame.isPlay : Frame → Bool
   | .mayDo .. => true
   | .eitherDo .. => true
   | .pickDo .. => true
+  | .nameCard .. => true
   | .predict .. | .chancePredict .. => true
   | _ => false
 

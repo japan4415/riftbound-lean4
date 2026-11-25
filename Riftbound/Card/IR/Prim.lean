@@ -391,6 +391,8 @@ inductive StaticMod where
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/
   | oppsPlayToBaseOnly
+  /-- Opponents cannot play a card with the name this source chose (CR 054, 759-762). -/
+  | oppsCantPlayNamed
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear

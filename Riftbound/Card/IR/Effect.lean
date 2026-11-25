@@ -53,6 +53,10 @@ inductive Effect where
   | eachPlayer (who : PlayerSel) (body : Effect)
   /-- Reveal the specified hands for the following instructions (CR 425). -/
   | revealHand (who : PlayerSel) (body : Effect)
+  /-- Name a format-legal card of this type and remember it on the source (CR 759-762). -/
+  | nameCard (kind : CardType)
+  /-- Record the answer to a naming choice on the original source. -/
+  | rememberNamedCard (card : CardId)
   /-- Look at up to `n` cards from the top of the Main Deck for the following instructions. -/
   | lookAtTop (n : Nat) (body : Effect)
   /-- The player may banish a matching looked-at card and play it with an Energy reduction.

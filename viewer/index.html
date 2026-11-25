@@ -160,6 +160,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices button { text-align: left; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
 .choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.choices .name-cards { display: grid; gap: 6px; min-width: 0; width: min(100%, 26rem); }
+.name-cards input { width: 100%; min-height: 2.75rem; font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.name-cards .name-results { display: grid; gap: 4px; max-height: 10rem; overflow: auto; }
+.name-cards button { min-height: 2.75rem; }
 </style>
 </head>
 <body>
@@ -235,6 +240,10 @@ const poolBox = [], pointsBox = [], seatBox = [];
 const bfGroup = new Map();    // Battlefield id -> its column
 
 function cardName(id) { const o = objs[id]; return o ? (cards[o.card] ? cards[o.card].name : o.card) : '#' + id; }
+function logicalCardName(code) {
+  const card = cards[code];
+  return card ? [card.name, card.subtitle].filter(Boolean).join(', ') : code;
+}
 function dur() { return reduce ? 0 : 480 / speed; }
 
 function load(t) {
@@ -297,6 +306,7 @@ function describeA(a, prev) {
     case 'arrange': return [who + ': 並び替え', 'シャッフル、または Recycle の順番'];
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
+    case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
@@ -620,6 +630,7 @@ function renderStatic(i, st, prev, animate) {
     else if (e.t === 'discarded') txt = 'P' + e.player + ' が ' + cardName(e.obj) + ' を捨てた';
     else if (e.t === 'hand_revealed') txt = 'P' + e.player + ' の手札を公開' +
       (e.cards.length ? '（' + e.cards.map(cardName).join('、') + '）' : '（手札なし）');
+    else if (e.t === 'named_card') txt = cardName(e.source) + ' が指定したカードは ' + logicalCardName(e.cardCode);
     else if (e.t === 'combat') txt = 'Combat が始まる（Attacker: P' + e.attacker + '）';
     else if (e.t === 'combat_won') txt = 'P' + e.winner + ' が Combat に勝つ';
     else if (e.t === 'activated') txt = 'P' + e.player + ' が ' + cardName(e.source) + ' の能力を起動（Chain に載る）';
@@ -728,6 +739,7 @@ function showCardInfo(id, x, y) {
   const at = st.attached.find((a) => a[0] === nid); if (at) row('Attach 先', cardName(at[1]));
   const eq = st.attached.filter((a) => a[1] === nid).map((a) => cardName(a[0])); if (eq.length) row('Attach 中', eq.join('、'));
   const loc = st.at.find((a) => a[0] === nid); if (loc) row('いる所', cardName(loc[1]));
+  if (st.namedCards?.[nid]) row('指定した名前', logicalCardName(st.namedCards[nid]));
   box.append(dl);
   if (def.ir) { const d = el('details'); d.append(el('summary', '', 'Lean の定義（能力・効果）'), el('pre', '', def.ir)); d.open = true; box.append(d); }
   else box.append(el('div', 'note', '能力・効果の定義はありません（キーワードと数値だけのカード）。'));
@@ -899,6 +911,28 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+function renderNameCards(box, options, btn) {
+  const section = document.createElement('div'); section.className = 'name-cards';
+  const input = document.createElement('input'); input.type = 'search'; input.id = 'name-card-filter';
+  const label = document.createElement('label'); label.htmlFor = input.id; label.textContent = 'カード名を検索';
+  const results = document.createElement('div'); results.className = 'name-results';
+  const status = document.createElement('small'); status.setAttribute('role', 'status');
+  const entries = options.map((l) => ({ ...l, name: logicalCardName(l.a.cardCode) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const update = () => {
+    const query = input.value.trim().toLocaleLowerCase();
+    const matches = entries.filter(({ name, a }) =>
+      name.toLocaleLowerCase().includes(query) || a.cardCode.toLowerCase().includes(query));
+    results.replaceChildren(...matches.map(({ k, a, name }) =>
+      btn(name, a.cardCode, () => liveAct(k))));
+    results.scrollTop = 0;
+    status.textContent = matches.length ? matches.length + ' 件' : '該当するカードはありません';
+  };
+  input.addEventListener('input', update);
+  section.append(label, input, status, results); box.append(section);
+  update();
+}
+
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
@@ -935,21 +969,24 @@ function renderLegal(i) {
   markActCards(liveLegal);
   const bound = (l) => { const id = actCard(l.a); return id !== null && id !== undefined && cardActs.has(String(id)); };
   const nBound = liveLegal.filter(bound).length;
+  const naming = liveLegal.filter(({ a }) => a.kind === 'nameCard');
   const by = new Map();
   for (const l of liveLegal) {
-    if (bound(l) && !showAllMoves) continue;
+    if (l.a.kind === 'nameCard' || (bound(l) && !showAllMoves)) continue;
     if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l);
   }
   const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
-  const prompt = choiceContext === 'own' ? '自分のカードから選ぶ'
+  const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
+    : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
-  $('livemsg').textContent = liveLegal.length ? prompt + '（' + liveLegal.length + ' 個）' +
+  $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + liveLegal.length + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
+  if (naming.length) renderNameCards(box, naming, btn);
   for (const [actor, list] of by) {
     group('P' + actor.slice(1) + ' の合法手', list.map((l) => {
       const [title, detail] = describeA(l.a, last.pending);

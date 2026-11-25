@@ -77,6 +77,8 @@ inductive Event where
   | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/
   | lookedAt (p : PlayerId) (card : ObjId)
+  /-- A player publicly named a card while an effect resolved (CR 759-762). -/
+  | namedCard (p : PlayerId) (source : ObjId) (card : CardId)
   /-- The player chose the object with a spell they played. -/
   | chosenBySpell (p : PlayerId) (target : ObjId)
   /-- The player chose the object with an ability of theirs. -/

@@ -368,6 +368,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chancePredict p n top _ :: rest, .arrange bottom =>
     some ({ completePrediction s p n top bottom with pending := rest },
       if bottom.isEmpty then [] else [.recycled p])
+  | .nameCard p src env _ _ es :: rest, .nameCard card =>
+    some ({ s with pending := .run p src env (.cons (.rememberNamedCard card) es) :: rest }, [])
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

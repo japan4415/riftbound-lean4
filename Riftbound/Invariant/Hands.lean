@@ -684,6 +684,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
     rw [hp]
     exact List.mem_cons_of_mem _ hf
+  · rename_i p src env first more es rest card hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup :=
+      hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put

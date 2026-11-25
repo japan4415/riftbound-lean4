@@ -4,6 +4,7 @@ public import Riftbound.Rules.Play
 public import Riftbound.Rules.Remove
 public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Actions.BurnOut
+public import Riftbound.Tournament.DeckLegality
 
 /-!
 # Running an effect
@@ -444,6 +445,15 @@ def tokenId (name : String) : CardId := ⟨"TKN-" ++ name⟩
 /-- The card is a token the rules print: its number has a T, as SFD-T03 (Gold) has. -/
 def CardDef.isTokenCard (c : CardDef) : Bool := (c.id.code.splitOn "-T").length > 1
 
+/-- Cards that can be named for this type, whether or not a copy exists in the game (CR 759-762). -/
+def GameState.nameableCards (s : GameState) (kind : CardType) : List CardId :=
+  (s.cards.cards.filter (fun d =>
+    d.hasType kind && !d.isTokenCard && !d.id.code.startsWith "TKN-" &&
+      (match s.config.ruleSet, s.config.formatLegality with
+        | .tournament .constructed, some env => decide (CardLegal env d)
+        | .tournament _, some env => decide (NotBanned env d)
+        | _, _ => true))).map (·.id)
+
 /-- The card of the token with the name: one the model defines, or one of the printed tokens. -/
 def GameState.tokenCard (s : GameState) (name : String) : Option CardDef :=
   match s.cards.find? (tokenId name) with
@@ -799,7 +809,7 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
   match s.cardDef? id with
   | some d =>
     -- only a Unit or a Gear enters the Base; a Spell is played by `playSpellStep`
-    if !(d.hasType .unit || d.hasType .gear) || s.blocksOwnPlay p id d then (s, []) else
+    if !(d.hasType .unit || d.hasType .gear) || s.blocksPlay p id d then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
       (enterBase p d (s.freeMark p id) (s.readyNow p id d) r.1 r.2,
@@ -1112,7 +1122,7 @@ theorem payPlayOption_safe {s : GameState} {p : PlayerId} {id : ObjId} {costs : 
 done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
 def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
   if !((s.cardDef? id).any (fun d =>
-      (d.hasType .unit || d.hasType .gear) && !s.blocksOwnPlay p id d)) then (s, []) else
+      (d.hasType .unit || d.hasType .gear) && !s.blocksPlay p id d)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
     match (s.targetCostOptions p id [] ⟨0, s.adjustPower id c.power⟩).findSome? (payByRunes s p id) with
@@ -1449,9 +1459,7 @@ def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Na
   let some d := s.cardDef? id | return []
   if !(d.hasType .unit || d.hasType .gear) || d.hasType .spell then return []
   let some base := s.effCost p id d | return []
-  let onlyBattlefield := d.abilities.any (fun ab =>
-    match ab with | .passive _ mods => mods.contains .noPlayToBase | _ => false)
-  let destinations := (if onlyBattlefield then [] else [none]) ++ (s.playBfOptions p id).map some
+  let destinations := (if d.playsOnlyToBattlefield then [] else [none]) ++ (s.playBfOptions p id).map some
   let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
     s.extraCandidates p k)).map some)
   let discardOptions := s.playDiscards p id
@@ -1537,7 +1545,7 @@ def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef
 If the cost cannot be paid or the choice is unavailable, it is not cast. -/
 def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+  match ((s.cardDef? id).filter (fun d => !s.blocksPlay p id d)).bind
       (fun d => d.spellEffect.map (fun e => (d, e))) with
   | some (d, e) =>
     match (reducedSpellChoices s p id d e k)[idx]? with
@@ -3386,7 +3394,7 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match sel.eval s p src env with
   | some (id :: _) =>
-    match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+    match ((s.cardDef? id).filter (fun d => !s.blocksPlay p id d)).bind
         (fun d =>
           let branch := d.spellEffect.bind (·.forPick .plain)
           (branch.filter (·.playerTarget.isNone)).map (fun e => (d, e))) with
@@ -3407,7 +3415,7 @@ def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (se
     Option (GameState × List Frame × List Event) :=
   match dest, sel.eval s p src env with
   | _, some (id :: _) =>
-    match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+    match ((s.cardDef? id).filter (fun d => !s.blocksPlay p id d)).bind
         (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (d, e) =>
       let n := (reducedSpellChoices s p id d e ((less.evalS s p src env).getD 0)).length
@@ -3471,7 +3479,7 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
   | some (id :: _) =>
     match (s.cardDef? id).bind (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
-      if d.hasType .spell && e.choices.isEmpty && e.playerTarget.isNone && !s.blocksOwnPlay p id d then
+      if d.hasType .spell && e.choices.isEmpty && e.playerTarget.isNone && !s.blocksPlay p id d then
         (moveObj s id .chain).map (fun r =>
           ((r.1.modObj r.2 (fun o =>
               { Object.withPlay [] (s.freeMark p id) o with controller := p })),
@@ -3791,6 +3799,13 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       (s, [.run p src known (.cons body .nil), .run p src env es],
         hands.map (fun (q, cards) => .handRevealed q cards))
     | none => skip
+  | .nameCard kind =>
+    match s.nameableCards kind with
+    | first :: more => (s, [.nameCard p src env first more es], [])
+    | [] => skip
+  | .rememberNamedCard card =>
+    (s.modObj src (fun o => { o with namedCard := some card }), [.run p src env es],
+      [.namedCard p src card])
   | .lookAtTop n body =>
     let cards := (s.zone (.player p .mainDeck)).take n
     (s, [.run p src { env with lookedCards := cards } (.cons body .nil), .run p src env es],
@@ -3904,6 +3919,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   unfold runEffect1
   split <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
+    | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact castInlineStep_safe s p src env _ es
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _

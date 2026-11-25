@@ -262,7 +262,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .movesHereFromAnywhere => true
   | .grantRepeat _ => true
   | .entersExhausted => true
-  | .oppsPlayToBaseOnly => true
+  | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
@@ -351,6 +351,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .retainTargetSet _ => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
+  | .nameCard _ | .rememberNamedCard _ => true
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked => true

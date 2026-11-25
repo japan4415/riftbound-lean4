@@ -92,6 +92,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,
                  moves := 0, movesTurn := none,
                  prevLoc := none, used := [],
+                 namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,
                  stunned := false, flowed := false, spellPick := .plain, empowerCount := 0,

@@ -3729,8 +3729,14 @@ def VEN_132.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Fallen Feline: the effect is not written yet. -/
-def VEN_132 : CardDef := VEN_132.meta
+/-- Fallen Feline names a spell on resolution and prohibits opponents from playing it while
+Fallen Feline is at a Battlefield (CR 054, 759-762). -/
+def VEN_132 : CardDef :=
+  { VEN_132.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.nameCard .spell)) .unlimited,
+      .passive (.matches .self .onBattlefield) [.oppsCantPlayNamed]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-133
 /--

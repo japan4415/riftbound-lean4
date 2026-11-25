@@ -19,14 +19,6 @@ Chosen Champion.
 
 namespace Riftbound
 
-/-- Which cards a format allows: the legal sets and the banned cards (TR 601.2-3, 602.1). -/
-structure LegalityEnv where
-  /-- The sets whose cards are legal. -/
-  legalSets : List SetCode
-  /-- Banned cards. -/
-  banned : List CardId
-deriving DecidableEq, Repr
-
 /-- A card is legal in Constructed: not banned, and printed in a legal set (TR 601.2-3). -/
 def CardLegal (env : LegalityEnv) (c : CardDef) : Prop :=
   c.id ∉ env.banned ∧ ∃ s ∈ c.sets, s ∈ env.legalSets

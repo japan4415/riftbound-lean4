@@ -398,6 +398,7 @@ def Effect.understood : Effect → Bool
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e => w.understood && Effect.understood e
   | .lookAtTop _ body => Effect.understood body
+  | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
   | .recycleLooked => true
   | .chooseObject _ place fs e =>
@@ -471,7 +472,7 @@ def StaticMod.runs : StaticMod → Bool
   | .movesHereFromAnywhere => true
   | .grantRepeat _ => true
   | .entersExhausted => true
-  | .oppsPlayToBaseOnly => true
+  | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true

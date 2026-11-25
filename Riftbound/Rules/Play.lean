@@ -229,6 +229,15 @@ def GameState.adjustCost (s : GameState) (p : PlayerId) (c : ObjId) (base : Cost
     (base.energy + s.costRaise c)
   { energy, power := s.adjustPower c base.power }
 
+/-- A spell with a prohibited name cannot be played by an opponent of the source (CR 054, 759-762).
+The prohibition is checked at play time, including plays instructed by a resolving effect. -/
+def GameState.blocksNamedPlay (s : GameState) (p : PlayerId) (d : CardDef) : Bool :=
+  s.passiveSources.any (fun src =>
+    (s.obj? src).any (fun o =>
+      o.controller != p &&
+        (o.namedCard.bind s.cards.find?).any (fun named => named.nameKey == d.nameKey)) &&
+    (s.activeMods src).contains .oppsCantPlayNamed)
+
 /-- A card's own play restriction applies in every zone it could be played from (CR 002, 349). -/
 def GameState.blocksOwnPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Bool :=
   d.fullAbilities.any (fun
@@ -236,9 +245,13 @@ def GameState.blocksOwnPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : Card
       mods.contains (.cant .self .play) && cond.eval s p c {} == some true
     | _ => false)
 
+/-- Play restrictions apply in every zone the card could be played from (CR 002, 054, 349). -/
+def GameState.blocksPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Bool :=
+  s.blocksOwnPlay p c d || s.blocksNamedPlay p d
+
 /-- The cost of playing an eligible card for its base cost (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
-  if s.blocksOwnPlay p c d then none else d.cost.map (s.adjustCost p c)
+  if s.blocksPlay p c d then none else d.cost.map (s.adjustCost p c)
 
 /-- The distinct resource costs granted by the printed and temporary instances of Flow (CR 829). -/
 def GameState.flowCosts (s : GameState) (c : ObjId) (d : CardDef) : List Cost :=
@@ -261,7 +274,7 @@ When several raw Flow costs are available, the action names one even if the paym
 def GameState.directOptions (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List (Option Cost × Cost) :=
   if s.flowPlaying p c then
-    if s.blocksOwnPlay p c d then []
+    if s.blocksPlay p c d then []
     else
       match s.flowCosts c d with
       | [base] => [(none, s.adjustCost p c base)]
@@ -607,9 +620,14 @@ def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       (s.extrasFor p c d).any (·.total == 0)
   | none => false
 
-/-- The Battlefields the Unit `c` of the player may be played to instead of the Base: those its
-own ability names (Rengar, Perched Grimwyrm, Dauntless Vanguard), and the open ones, while an object
-of the player says so (Origins: units can be played to open Battlefields). -/
+/-- A card that must be played to a Battlefield it specifically permits, such as Perched Grimwyrm. -/
+def CardDef.playsOnlyToBattlefield (d : CardDef) : Bool :=
+  d.abilities.any (fun
+    | .passive _ mods => mods.contains .noPlayToBase
+    | _ => false)
+
+/-- The Battlefields the Unit can enter when played (CR 355.2): those its player controls by
+default, plus locations permitted by a game effect, subject to location and play restrictions. -/
 def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List ObjId :=
   match s.cardDef? c with
   | some d =>
@@ -637,12 +655,14 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
       -- Ambush: to a Battlefield where the player has Units
       let ambush : List FilterList :=
         if d.hasKeyword .ambush then [FilterList.ofList [.myUnitsHere]] else []
+      let anywhereAllowed := own ++ open_ ++ ambush ++ granted
       (s.zone .battlefieldZone).filter (fun b =>
         (s.cardDef? b).any (·.hasType .battlefield) &&
           !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
           FilterList.holds s c Env.empty b
             (FilterList.ofList [.ofType .battlefield, .unitsPlayable]) == some true &&
-          (own ++ open_ ++ ambush ++ granted).any (fun fs => FilterList.holds s c Env.empty b fs == some true))
+          ((!d.playsOnlyToBattlefield && (s.obj? b).any (·.control == some p)) ||
+            anywhereAllowed.any (fun fs => FilterList.holds s c Env.empty b fs == some true)))
     else []
   | none => []
 
@@ -683,10 +703,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | none => false) &&
         (s.spendFor p (d.hasType .gear) pay).isSome &&
         (match dest with
-          | none =>
-            -- a card that is played only to a Battlefield is not played to the Base
-            !(d.abilities.any (fun ab =>
-              match ab with | Ability.passive _ mods => mods.contains .noPlayToBase | _ => false))
+          | none => !d.playsOnlyToBattlefield
           | some b => (s.playBfOptions p c).contains b)
     | _, _ => false
 

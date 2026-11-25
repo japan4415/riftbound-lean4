@@ -330,6 +330,12 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next (completePrediction_safe s p n top bottom).same.result (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
+  · rename_i p src env first more es rest card hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.run p src env (.cons (.rememberNamedCard card) es)]
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -811,6 +817,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | nameCard p src env card more es =>
+    left
+    refine ⟨⟨.player p, .nameCard card⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | predict p n c cs top bottom =>
     left
     refine ⟨⟨.player p, .predictPick c false⟩, ?_, by simp⟩
@@ -925,6 +937,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | mayDo p src env e es => exact absurd hc (by simp [Frame.isChance])
   | eitherDo p src env a b es => exact absurd hc (by simp [Frame.isChance])
   | pickDo p src env c more e es => exact absurd hc (by simp [Frame.isChance])
+  | nameCard p src env card more es => exact absurd hc (by simp [Frame.isChance])
   | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])

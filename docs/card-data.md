@@ -184,7 +184,7 @@ def fallingStar : CardDef :=
 | 隠れ情報 | Hidden 関連、相手の手札を公開させる効果、Main Deck の一番上を参照する効果 | Facedown Zone、Reveal（425）、Privacy（128） |
 | 可変コスト | Rhasa the Sunderer（Trash の枚数だけ安くなる）、Atakhan（追加コストで kill した Unit のコストだけ安くなる） | コスト計算（356）、支払いの順序（357） |
 | 構築とゲーム外への参照 | Neeko, Blending In（構築時に Legend を追加で選ぶ） | 103.1、Legend Zone |
-| 名前の指定 | Fallen Feline（Spell の名前を指定し、それを禁止する） | 名前を値として持つ |
+| 名前の指定 | Fallen Feline（Spell の名前を指定し、それを禁止する） | 解決時に論理カード ID を選び、発生源のオブジェクトに記録する（759-762） |
 | 導出値への誘発 | Renekton, Brute（Might が 10 以上になったとき）、Grand Duelist（Mighty になったとき） | 状態変化の検出（709）。処理の 1 歩の前後で実効特性を比べる（design.md §5.4） |
 | 回数つきの遅延誘発 | Fanfare（このターン、次の 3 回の Unit のプレイで引く） | Delayed 能力（390-393）と回数 |
 | 多人数向けの文 | Whirlwind（次のプレイヤーから順に）、2v2 の "you or an ally" | 手番順の走査、味方（740.1） |

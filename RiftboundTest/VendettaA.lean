@@ -2817,4 +2817,78 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     energy done third == energy s third && alone.zone .chain == [] &&
     !noCombat.contains (.combatStarted bf p)
 
+-- Fallen Feline leaves a window to react before a name is known. The named
+-- spell can be cast by its controller, and a recall to Base lifts the restriction.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, feline) ← put s p "VEN-132" .hand
+  let (s, enemySpell) ← put s q "OGN-058" .hand
+  let (s, ownSpell) ← put s p "OGN-058" .hand
+  let (s, spare) ← put s q "OGN-047" .hand
+  let s := ((s.control p field).rich p).rich q
+  let (onChain, _) ← (step 100 s ⟨.player p, .playCard feline ⟨2, [.order]⟩ [field]⟩).toOption
+  let cat ← (onChain.zone .battlefieldZone).find? (fun u => (onChain.cardDef? u).any (·.id == cid "VEN-132"))
+  let .chainPass a _ :: _ := onChain.pending | none
+  let (beforeName, _) ← (step 100 onChain ⟨.player a, .pass⟩).toOption
+  let .chainPass b _ :: _ := beforeName.pending | none
+  let (choice, _) ← (step 100 beforeName ⟨.player b, .pass⟩).toOption
+  let .nameCard owner source .. :: _ := choice.pending | none
+  let cast (player : PlayerId) (card : ObjId) : Action :=
+    ⟨.player player, .playCard card ⟨2, []⟩ [cat]⟩
+  let named : Action := ⟨.player p, .nameCard (cid "OGN-058")⟩
+  let (blocked, es) ← (step 100 choice named).toOption
+  let opponent (t : GameState) := { t with active := some q, pending := [.priority q] }
+  let mine := { blocked with active := some p, pending := [.priority p] }
+  let returned := (recallFx false blocked cat).1
+  let (gone, newCat) ← moveObj blocked cat (.player p .trash)
+  return b == q && owner == p && source == cat &&
+    (legalActions beforeName).contains (cast q enemySpell) &&
+    !(legalActions beforeName).contains named &&
+    (legalActions choice).contains named &&
+    !(legalActions choice).contains ⟨.player q, named.kind⟩ &&
+    !(legalActions choice).contains ⟨.player p, .nameCard (cid "VEN-132")⟩ &&
+    !(legalActions choice).contains ⟨.player p, .nameCard (cid "UNKNOWN")⟩ &&
+    es.contains (.namedCard p cat (cid "OGN-058")) &&
+    (blocked.obj? cat).any (·.namedCard == some (cid "OGN-058")) &&
+    !(legalActions (opponent blocked)).contains (cast q enemySpell) &&
+    (legalActions (opponent blocked)).any (fun a => match a.kind with
+      | .playCard c .. => c == spare
+      | _ => false) &&
+    (legalActions mine).contains (cast p ownSpell) &&
+    (returned.obj? cat).any (·.namedCard == some (cid "OGN-058")) &&
+    (legalActions (opponent returned)).contains (cast q enemySpell) &&
+    (gone.obj? newCat).any (·.namedCard.isNone)
+
+-- An existing spell on the Chain still resolves once its name is prohibited.
+-- The card's restriction also prevents playing a named spell from Hidden.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, cat) ← putAt s p "VEN-132" s.bf0
+  let (s, spell) ← onChain s q "OGN-058"
+  let (s, hidden) ← put s q "VEN-066" .hidden
+  let s := (s.modObj spell (fun o => { o with targets := [cat] })).modObj hidden
+    (fun o => { o with hiddenAt := some s.bf0, hiddenTurn := some 0 })
+  let pending : List Frame := [.run p cat {} (.ofList [.nameCard .spell]), .chainPass q 0, .priority q]
+  let s := { (s.control p s.bf0).rich q with pending }
+  let (choice, _) ← (advance 100 s []).toOption
+  let (named, _) ← (step 100 choice ⟨.player p, .nameCard (cid "OGN-058")⟩).toOption
+  let finished := settleChain {} 12 named
+  let hiddenName := named.modObj cat (fun o => { o with namedCard := some (cid "VEN-066") })
+  return (named.zone .chain).contains spell && named.mightNow cat == some 3 &&
+    finished.mightNow cat == some 5 && !(finished.zone .chain).contains spell &&
+    named.abilityZoneOk q hidden 1 && !hiddenName.abilityZoneOk q hidden 1
+
+-- A format's eligible releases and bans constrain naming in Constructed.
+#guard vendettaCase fun s => do
+  let fakeToken := { RiftboundCards.Vendetta.VEN_132 with id := cid "VEN-T99", types := [.spell] }
+  let restricted : LegalityEnv := ⟨[⟨"OGN"⟩], [cid "OGN-047"]⟩
+  let config := { s.config with ruleSet := .tournament .constructed, formatLegality := some restricted }
+  let s := { s with cards := ⟨fakeToken :: s.cards.cards⟩, config }
+  let options := s.nameableCards .spell
+  return options.contains (cid "OGN-058") && !options.contains (cid "OGN-047") &&
+    !options.contains (cid "VEN-066") && !options.contains (cid "VEN-T99")
+
 end RiftboundTest

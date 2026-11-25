@@ -44,6 +44,8 @@ structure GameConfig where
   ruleSet : RuleSet
   /-- The game mode (CR 483-491). -/
   mode : Mode
+  /-- Tournament card eligibility, when provided with the game (CR 762) (TR 601.2-3, 602.1). -/
+  formatLegality : Option LegalityEnv := none
 deriving DecidableEq, Repr
 
 /-- A configuration that can be played. For now: at least two players, and a deck holds at least

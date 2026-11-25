@@ -194,7 +194,8 @@ def LiveGame.undoReply (g : LiveGame) : String :=
 def LiveKind.initial (decks : List Deck) : LiveKind → Option GameState
   | .core => GameState.initial demoDB demoConfig decks
   | .constructed =>
-    GameState.initial demoDB { ruleSet := .tournament .constructed, mode := Mode.duel } decks
+    GameState.initial demoDB
+      { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv } decks
   | .sealed =>
     GameState.initialLimited demoDB { legalSets := [], banned := [] }
       { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]

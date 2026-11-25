@@ -60,7 +60,8 @@ def playUntilEnd (cap : Nat) (order : List PlayerId) :
         | .error e => .error e
 
 /-- The rules of the matches: a Duel under the Tournament Rules, Constructed. -/
-def matchConfig : GameConfig := { ruleSet := .tournament .constructed, mode := Mode.duel }
+def matchConfig : GameConfig :=
+  { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
 
 /-- One demo game from the seed, with the turn order the match decided (TR 407). The clock calls
 time when `cap` turns have begun. -/

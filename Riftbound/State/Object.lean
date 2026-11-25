@@ -138,6 +138,9 @@ structure Object where
   prevLoc : Option ObjId := none
   /-- The names of the tags the object gained, or was told to name (Ivern, The List). -/
   tagsGained : List String := []
+  /-- The card named by this object's ability (CR 759-762). The new object after a non-board
+  zone change has no name chosen (CR 124). -/
+  namedCard : Option CardId := none
   /-- For a Battlefield token that replaced a Battlefield (Brush): the Battlefield it replaced, set
   aside in its owner's Banishment. -/
   replaces : Option ObjId := none

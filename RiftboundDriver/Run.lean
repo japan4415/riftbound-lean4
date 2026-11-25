@@ -78,7 +78,8 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .discard .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .mayDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .eitherDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
-  | .pickDo .. :: _ | .predict .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
+  | .pickDo .. :: _ | .nameCard .. :: _ | .predict .. :: _ =>
+    (legalFrameActions s).head?.map (fun a => (a, r))
   | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)

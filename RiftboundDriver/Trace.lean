@@ -181,6 +181,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _ => [])
     | .predictPick card recycle =>
       [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
+    | .nameCard card => [("cardCode", jstr card.code)]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
     | _ => []
@@ -218,6 +219,9 @@ def eventJson : Event → String
     jobj [("t", jstr "empowered"), ("player", toString p.n), ("target", toString o.n)]
   | .conquerActivated u => jobj [("t", jstr "conquer_activated"), ("unit", toString u.n)]
   | .lookedAt p c => jobj [("t", jstr "looked_at"), ("player", toString p.n), ("card", toString c.n)]
+  | .namedCard p source card =>
+    jobj [("t", jstr "named_card"), ("player", toString p.n), ("source", toString source.n),
+      ("cardCode", jstr card.code)]
   | .chosenBySpell p t => jobj [("t", jstr "chosen_by_spell"), ("player", toString p.n), ("target", toString t.n)]
   | .chosenByAbility p t => jobj [("t", jstr "chosen_by_ability"), ("player", toString p.n), ("target", toString t.n)]
   | .killedBySpell p => jobj [("t", jstr "killed_by_spell"), ("player", toString p.n)]
@@ -324,6 +328,8 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     match (s.obj? id).bind (·.attached) with
     | some u => some (jarr [toString id.n, toString u.n])
     | none => none)
+  let named := s.inPlay.filterMap (fun id =>
+    ((s.obj? id).bind (·.namedCard)).map (fun card => (toString id.n, jstr card.code)))
   let players := allPlayers s.playerCount
   let bfs := s.battlefields.map (fun b =>
     jobj [("id", toString b.n),
@@ -349,7 +355,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
-    ("attached", jarr attached),
+    ("attached", jarr attached), ("namedCards", jobj named),
     ("stunned", jarr (stunned.map (fun id => toString id.n)))]
   (json, seen')
 
@@ -501,8 +507,9 @@ def demoTrace (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
         { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
     else
       GameState.initial demoDB
-        (if timed || judge then { ruleSet := .tournament .constructed, mode := Mode.duel }
-          else demoConfig)
+        (if timed || judge then
+          { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
+        else demoConfig)
         [demoDeck, demoDeck]) with
   | none => .error "the demo game cannot be set up"
   | some s0 =>

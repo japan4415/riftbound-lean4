@@ -1,5 +1,7 @@
 module
 
+public import Riftbound.Core.Ids
+
 /-!
 # Formats
 
@@ -11,6 +13,14 @@ milestone M5b.
 @[expose] public section
 
 namespace Riftbound
+
+/-- Which sets and banned cards a tournament format uses (TR 601.2-3, 602.1). -/
+structure LegalityEnv where
+  /-- The sets whose cards are legal. -/
+  legalSets : List SetCode
+  /-- Banned cards. -/
+  banned : List CardId
+deriving DecidableEq, Repr
 
 /-- A tournament format (TR 402, 601, 602). -/
 inductive Format where

@@ -338,7 +338,8 @@ def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : 
               | _ => false) && s.cantPlay p)
       else if costs.contains .fromHidden then
         (s.zone (.player p .hidden)).contains src &&
-          ((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn))
+          (((s.obj? src).bind (·.hiddenTurn)).any (fun t => decide (t < s.turn)) &&
+            !(s.cardDef? src).any (s.blocksNamedPlay p))
       else if costs.contains .fromTrash then
         (s.zone (.player p .trash)).contains src && !s.cantPlay p
       else if costs.contains .fromChampionZone then
