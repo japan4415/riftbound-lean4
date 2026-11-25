@@ -147,6 +147,10 @@ inductive TurnEffect where
   | nextSpellRepeat
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
   | damagePrevented
+  /-- Prevent this much of the next damage to the marked Unit this turn (CR 438). -/
+  | preventDamage (remaining : Nat)
+  /-- For the current combat assignment, apply finite prevention before damage doubling (CR 467.2.c.5). -/
+  | preventBeforeDouble
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/

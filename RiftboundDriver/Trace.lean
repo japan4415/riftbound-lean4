@@ -75,6 +75,13 @@ def moveLocationFields (frame : Option Frame) (yes : Bool) : List (String × Str
     [("moveLocation", jstr (if yes then "base" else "battlefield"))] ++ moveSubjectFields env i
   | _ => []
 
+/-- The order the affected Unit's controller chooses for damage replacement. -/
+def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ unit _ (.prim (.markOn _ .preventBeforeDouble)) .nop _) =>
+    [("unit", toString unit.n), ("damageOrder", jstr (if yes then "preventFirst" else "doubleFirst"))]
+  | _ => []
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) : String :=
@@ -128,7 +135,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
-        tokenLocationFields frame yes ++ moveLocationFields frame yes
+        tokenLocationFields frame yes ++ moveLocationFields frame yes ++ damageOrderFields frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with

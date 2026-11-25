@@ -1612,40 +1612,108 @@ theorem useShield_safe (s : GameState) (id : ObjId) : Safe s (s.useShield id) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- The remaining finite Prevent Value on this Unit in the current turn (CR 438.3). -/
+def GameState.preventValue (s : GameState) (id : ObjId) : Nat :=
+  s.turnFx.foldl (fun sum f =>
+    match f.kind with
+    | .preventDamage k => if f.turn == s.turn && f.target == some id then sum + k else sum
+    | _ => sum) 0
+
+/-- Spend the Prevent Values on the Unit, in the order their effects were created (CR 438.3). -/
+def spendPrevent (turn : Nat) (id : ObjId) : Nat → List TurnFx → List TurnFx
+  | 0, notes => notes
+  | _ + 1, [] => []
+  | amount + 1, note :: rest =>
+    match note.kind with
+    | .preventDamage n =>
+      if note.turn == turn && note.target == some id then
+        if amount + 1 < n then { note with kind := .preventDamage (n - (amount + 1)) } :: rest
+        else spendPrevent turn id (amount + 1 - n) rest
+      else note :: spendPrevent turn id (amount + 1) rest
+    | _ => note :: spendPrevent turn id (amount + 1) rest
+termination_by _ notes => notes.length
+
+/-- Spending a Prevent Value changes only the turn effects. -/
+theorem spendPrevent_safe (s : GameState) (id : ObjId) (n : Nat) :
+    Safe s { s with turnFx := spendPrevent s.turn id n s.turnFx } :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Record positive damage even if a subsequent game effect heals the object (CR 418-419). -/
 def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
   { o with damage := o.damage + n, damagedTurn := if n = 0 then o.damagedTurn else some turn }
 
-/-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
-the next Cleanup (CR 323.4), not here. -/
-def dealObj (n0 : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none) :
+/-- In the current Combat, this Unit's controller chose to apply Prevent before doubling. -/
+def GameState.preventFirst (s : GameState) (id : ObjId) : Bool :=
+  s.turnFx.any (fun note =>
+    note.turn == s.turn && note.target == some id && note.kind == .preventBeforeDouble)
+
+/-- Record applied damage, then process effects that react directly to it (CR 418). -/
+def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let damagingUnit := decide (0 < n) && (s.cardDef? id).any (·.hasType .unit)
+  let lethal := (s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n
+  let saver := if damagingUnit && decide lethal then s.deathSaver id else none
+  let damaged := s.modObj id (fun o => o.takeDamage s.turn n)
+  let event := Event.damaged id n
+  match saver with
+  | some g =>
+    let saved := saveUnit damaged id g
+    (saved.1, event :: saved.2)
+  | none =>
+    if damagingUnit && s.killOnHit id then
+      let killed := killOrSave damaged id
+      (killed.1, event :: killed.2)
+    else (damaged, [event])
+
+/-- Recording damage and applying direct reactions preserve the structural invariants. -/
+theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId) :
+    Safe s (dealRemaining n s id).1 := by
+  have damaged := Safe.modObj s id (f := fun o => o.takeDamage s.turn n) (fun _ => rfl) (fun _ => rfl)
+  unfold dealRemaining
+  dsimp only
+  split
+  · exact damaged.trans (saveUnit_safe _ id _)
+  · split
+    · exact damaged.trans (killOrSave_safe _ id)
+    · exact damaged
+
+/-- Preview how much finite prevention is spent and how much damage remains, in the chosen order
+(CR 438.2-438.4, 467.2.c.5). -/
+def GameState.previewPrevent (s : GameState) (id : ObjId) (n : Nat) : Nat × Nat :=
+  let scale := if s.doubleDmg id then 2 else 1
+  let early := s.preventFirst id
+  let incoming := if early then n else n * scale
+  let prevented := min incoming (s.preventValue id)
+  (prevented, (incoming - prevented) * (if early then scale else 1))
+
+/-- Spend finite prevention, then apply any damage left (CR 438.2-438.4). -/
+def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let (prevented, damage) := s.previewPrevent id n
+  let after := { s with turnFx := spendPrevent s.turn id prevented s.turnFx }
+  if 0 < n ∧ damage = 0 then (after, [])
+  else dealRemaining damage after id
+
+/-- Applying finite prevention preserves the structural invariants. -/
+theorem dealThroughPrevent_safe (n : Nat) (s : GameState) (id : ObjId) :
+    Safe s (dealThroughPrevent n s id).1 := by
+  unfold dealThroughPrevent
+  split
+  split
+  · exact spendPrevent_safe s id _
+  · exact (spendPrevent_safe s id _).trans (dealRemaining_safe _ _ _)
+
+/-- Apply damage after accounting for immunity, doubling and prevention (CR 418, 438). An object
+whose damage reaches its Might is killed by the next Cleanup (CR 323.4), not here. -/
+def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none) :
     GameState × List Event :=
-  -- an effect of the turn doubles the damage
-  let n := if s.doubleDmg id then n0 * 2 else n0
   match s.obj? id with
   | some o =>
     let mods := s.activeMods id
     if mods.contains .noDamage ||
         (effectController.any (· != o.controller) && mods.contains .noEnemyEffectDamage) then
       (s, [])
-    -- the next damage to it this turn is prevented (once, and only damage there would be)
     else if decide (0 < n) && s.shielded id then (s.useShield id, [])
-    -- damage that would be lethal, to a Unit that something saves: it is saved instead
-    else if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) &&
-        decide ((s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n) &&
-        (s.deathSaver id).isSome then
-      match s.deathSaver id with
-      | some g =>
-        let saved := saveUnit (s.modObj id (fun o => o.takeDamage s.turn n)) id g
-        (saved.1, Event.damaged id n :: saved.2)
-      | none => (s, [])
-    else
-      let s1 := s.modObj id (fun o => o.takeDamage s.turn n)
-      -- a unit that takes damage while an effect of the turn says so is killed
-      if decide (0 < n) && (s.cardDef? id).any (·.hasType .unit) && s.killOnHit id then
-        let k := killOrSave s1 id
-        (k.1, Event.damaged id n :: k.2)
-      else (s1, [Event.damaged id n])
+    else dealThroughPrevent n s id
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
@@ -1653,24 +1721,12 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
     (effectController : Option PlayerId := none) : Safe s (dealObj n s id effectController).1 := by
   unfold dealObj
   dsimp only
-  generalize (if s.doubleDmg id = true then n * 2 else n) = m
   split
   · split
     · exact Safe.refl s
     · split
       · exact useShield_safe s id
-      · split
-        · cases s.deathSaver id with
-          | some g =>
-            have hs := Safe.modObj s id (f := fun o => o.takeDamage s.turn m)
-              (fun _ => rfl) (fun _ => rfl)
-            exact hs.trans (saveUnit_safe _ id g)
-          | none => exact Safe.refl s
-        · have h1 : Safe s (s.modObj id (fun o => o.takeDamage s.turn m)) :=
-            Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-          split
-          · exact h1.trans (killOrSave_safe _ id)
-          · exact h1
+      · exact dealThroughPrevent_safe n s id
   · exact Safe.refl s
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
@@ -3423,6 +3479,11 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match env.lookup pickVar with
     | some v => (s, [.run p src { env with slots := env.slots.set i v } es], [])
     | none => skip
+  | .preventNext sel amount .thisTurn =>
+    match amount.evalS s p src env with
+    | some (k + 1) =>
+      (s, [.run p src env (.cons (.prim (.markOn sel (.preventDamage (k + 1)))) es)], [])
+    | _ => (s, [.run p src env es], [])
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
   | .moveChoosing unit home fs afterMove =>
     (s, [moveChoiceFrame s p src env unit home fs afterMove es], [])

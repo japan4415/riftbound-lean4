@@ -156,6 +156,102 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Dune Surfer ignores an enemy's Tank only for its controller at that Battlefield.
+-- It neither removes Tank from the card nor changes the other side's assignment.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, surfer) ← putAt s p "VEN-004" field
+  let (s, theirTank) ← putAt s q "VEN-118" field
+  let (s, theirOther) ← putAt s q "VEN-014" field
+  let (s, ourTank) ← putAt s p "VEN-118" field
+  let (s, ourOther) ← putAt s p "VEN-014" field
+  let choices (t : GameState) (side : PlayerId) :=
+    legalFrameActions { t with pending := [.assign field p side [] []] }
+  let pick (side : PlayerId) (u : ObjId) : Action := ⟨.player side, .assignPick u⟩
+  return (choices s p).contains (pick p theirOther) &&
+    (choices s p).contains (pick p theirTank) && s.hasKw theirTank .tank && s.hasKw ourTank .tank &&
+    (choices s q).contains (pick q ourTank) && !(choices s q).contains (pick q ourOther) &&
+    !(choices (moveHome s surfer).1 p).contains (pick p theirOther)
+
+-- Ki Barrier spends only the amount of damage prevented, follows a Unit that
+-- stays on the Board, accumulates with another Barrier, and expires at turn end.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, first) ← put s p "VEN-126" .hand
+  let (s, second) ← put s p "VEN-126" .hand
+  let (s, unit) ← putAt s p "VEN-091" field
+  let s := s.control p field
+  let shielded ← play s p first [unit]
+  let (afterThree, events) := dealObj 3 shielded unit
+  let moved := (moveHome afterThree unit).1
+  let (hit, incoming) := dealObj 6 moved unit
+  let stacked ← play shielded p second [unit]
+  let (spent, _) := dealObj 9 stacked unit
+  let (later, _) := dealObj 2 { shielded with turn := shielded.turn + 1 } unit
+  return shielded.preventValue unit == 7 && afterThree.preventValue unit == 4 && events.isEmpty &&
+    moved.preventValue unit == 4 && hit.preventValue unit == 0 && incoming == [.damaged unit 2] &&
+    (hit.obj? unit).any (·.damage == 2) && stacked.preventValue unit == 14 &&
+    spent.preventValue unit == 5 && (spent.obj? unit).any (fun o => o.damage == 0) &&
+    later.preventValue unit == 0 && (later.obj? unit).any (·.damage == 2)
+
+-- Assigning lethal damage to a shielded 3-Might Unit takes 10 of 12 raw damage.
+-- The next Unit receives only the remaining 2 damage.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put s p "VEN-126" .hand
+  let (s, attacker) ← putAt s p "VEN-091" field
+  let (s, shield) ← putAt s q "VEN-004" field
+  let (s, spare) ← putAt s q "VEN-004" field
+  let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 12 })
+  let shielded ← play s p spell [shield]
+  let (first, _) ← (advance 100 { shielded with pending := [.combatDamage field p] } []).toOption
+  let (second, _) ← (step 100 first ⟨.player p, .assignPick shield⟩).toOption
+  let (third, _) ← (step 100 second ⟨.player p, .assignPick spare⟩).toOption
+  let (fourth, _) ← (step 100 third ⟨.player p, .assignDone⟩).toOption
+  let (fifth, _) ← (step 100 fourth ⟨.player q, .assignPick attacker⟩).toOption
+  let (_, events) ← (step 100 fifth ⟨.player q, .assignDone⟩).toOption
+  return shielded.combatNeed shield == some 10 &&
+    events.contains (.damaged shield 3) && events.contains (.damaged spare 2)
+
+-- The Vendetta FAQ example with Ki Barrier and Lotus Trap. The affected
+-- Unit's controller, rather than the assigning player, orders the replacements.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, barrier) ← put s p "VEN-126" .hand
+  let (s, trap) ← put s p "UNL-013" .hand
+  let (s, attacker) ← putAt s p "VEN-091" field
+  let (s, defender) ← putAt s q "VEN-091" field
+  let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 4 })
+  let s := s.modObj defender (fun o => { o with baseMightThisTurn := some 4 })
+  let prepared ← play s p barrier [defender]
+  let prepared ← play prepared p trap [defender]
+  let (question, _) ← (advance 100 { prepared with pending := [.combatDamage field p] } []).toOption
+  let order (before : Bool) : Action := ⟨.player q, .decide before⟩
+  let (preventionFirst, _) ← (step 100 question (order true)).toOption
+  let (doublingFirst, _) ← (step 100 question (order false)).toOption
+  let finish (s : GameState) := do
+    let (s, _) ← (step 100 s ⟨.player p, .assignPick defender⟩).toOption
+    let (s, _) ← (step 100 s ⟨.player p, .assignDone⟩).toOption
+    let (s, _) ← (step 100 s ⟨.player q, .assignPick attacker⟩).toOption
+    (step 100 s ⟨.player q, .assignDone⟩).toOption
+  let (held, firstEvents) ← finish preventionFirst
+  let (spent, secondEvents) ← finish doublingFirst
+  return !(legalActions question).contains ⟨.player p, .decide true⟩ &&
+    preventionFirst.combatNeed defender == some 9 && doublingFirst.combatNeed defender == some 6 &&
+    excessOf preventionFirst p [(defender, 8)] == 0 &&
+    excessOf doublingFirst p [(defender, 8)] == 5 &&
+    held.preventValue defender == 3 && spent.preventValue defender == 0 &&
+    !held.preventFirst defender &&
+    !(firstEvents.any (fun | .damaged u n => u == defender && n > 0 | _ => false)) &&
+    secondEvents.contains (.damaged defender 1)
+
 -- Twilight Step can move an enemy to its own Base or another Battlefield,
 -- with the latter selected during Flow resolution too. No destination is a target.
 #guard vendettaCase fun s => do

@@ -393,6 +393,7 @@ def Effect.understood : Effect → Bool
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
+  | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e => FilterList.understood fs && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
@@ -474,7 +475,7 @@ def StaticMod.runs : StaticMod → Bool
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .noPlayToBase => true
   | .noReadyOfOpps => true
-  | .ignoreKeyword .temporary .here => true
+  | .ignoreKeyword .temporary .here | .ignoreKeyword .tank .here => true
   | .noHiddenReveal => true
   | .triggersExtra .die .anywhere => true
   | .triggersExtra .conquer .here => true

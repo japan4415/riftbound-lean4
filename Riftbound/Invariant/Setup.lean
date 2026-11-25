@@ -835,7 +835,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       (new := s.startCombat bf att ++ combatSteps bf) (by simp [List.append_assoc])
       (fun g hg => by
         rcases List.mem_append.mp hg with h1 | h1
-        · rcases startCombat_mem s bf att g h1 with ⟨b, a, q, e⟩ | e | e <;> subst e <;> rfl
+        · have play := startCombat_play s bf att h1
+          cases g <;> simp_all [Frame.isPlay, Frame.isSetup]
         · simp [combatSteps] at h1
           rcases h1 with rfl | rfl | rfl <;> rfl)
   · rename_i bf att rest hp

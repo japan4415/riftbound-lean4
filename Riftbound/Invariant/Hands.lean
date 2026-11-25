@@ -1160,7 +1160,7 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hm2 : Frame.setupHands ∈ s.startCombat bf att ++ combatSteps bf ++ rest := hmem
     rw [List.append_assoc] at hm2
     rcases List.mem_append.mp hm2 with h1 | h1
-    · rcases startCombat_mem s bf att _ h1 with ⟨b, a, q, e⟩ | e | e <;> cases e
+    · simpa [Frame.isPlay] using startCombat_play s bf att h1
     · rw [hp]
       exact List.mem_cons_of_mem _ (by simpa [combatSteps] using h1)
   · rename_i bf att rest hp

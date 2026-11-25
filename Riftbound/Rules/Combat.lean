@@ -75,6 +75,18 @@ def need (s : GameState) (u : ObjId) : Nat :=
     (if d = 0 then 1 else 0)
   else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
+/-- The raw assignment that becomes lethal after accounting for damage replacement effects
+(CR 438.5, 467.2.c.5). Full prevention has no finite lethal assignment. -/
+def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
+  let base := s.need u
+  if base == 0 then some 0
+  else if s.shielded u || (s.activeMods u).contains .noDamage then none
+  else
+    let prevent := s.preventValue u
+    some (if !s.doubleDmg u then base + prevent
+      else if s.preventFirst u then (base + 1) / 2 + prevent
+      else (base + prevent + 1) / 2)
+
 /-- Whether Combat began at the Battlefield, or two sides are present in a constructed state. -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=
   (s.combat.any (·.battlefield == bf)) ||
@@ -209,20 +221,25 @@ theorem greedy_spec (need : ObjId → Nat) (us : List ObjId) (total : Nat) :
 
 namespace GameState
 
-/-- Whether a Unit has Tank (CR 815). -/
-def isTank (s : GameState) (u : ObjId) : Bool := s.hasKw u .tank
+/-- This side ignores Tank while assigning damage here (CR 467.2.c.2, 815). -/
+def ignoresTank (s : GameState) (bf : ObjId) (side : PlayerId) : Bool :=
+  (s.unitsOf side bf).any (fun unit => (s.activeMods unit).contains (.ignoreKeyword .tank .here))
 
-/-- Whether a Unit must be assigned damage last: a passive ability says so, and it has no Tank. -/
-def isLast (s : GameState) (u : ObjId) : Bool :=
-  !s.isTank u && (s.activeMods u).contains .assignedLast
+/-- Whether Tank sets this Unit's assignment order against the specified side (CR 815). -/
+def isTank (s : GameState) (bf : ObjId) (side : PlayerId) (u : ObjId) : Bool :=
+  !s.ignoresTank bf side && s.hasKw u .tank
+
+/-- Whether a Unit must be assigned damage last. Tank takes precedence when it applies. -/
+def isLast (s : GameState) (bf : ObjId) (side : PlayerId) (u : ObjId) : Bool :=
+  !s.isTank bf side u && (s.activeMods u).contains .assignedLast
 
 /-- A Unit that can be named next in the order of the assignment: a Unit of the other side not
-named yet, a Tank Unit before any Unit without Tank (CR 815, 467.2.c), and a Unit that must be
-assigned damage last after the others. -/
+named yet, an applicable Tank Unit first, and a Unit that must be assigned damage last after the
+others (CR 815, 467.2.c). -/
 def pickOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) (u : ObjId) : Bool :=
   decide (u ∈ s.foes bf side) && decide (u ∉ acc) &&
-    ((s.isTank u || (s.foes bf side).all (fun v => !s.isTank v || decide (v ∈ acc))) &&
-      (!s.isLast u || (s.foes bf side).all (fun v => s.isLast v || decide (v ∈ acc))))
+    ((s.isTank bf side u || (s.foes bf side).all (fun v => !s.isTank bf side v || decide (v ∈ acc))) &&
+      (!s.isLast bf side u || (s.foes bf side).all (fun v => s.isLast bf side v || decide (v ∈ acc))))
 
 /-- Every Unit of the other side has been named. -/
 def doneOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) : Bool :=
@@ -275,22 +292,22 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
       simp only [List.all_eq_true, decide_eq_true_eq]
       intro v hv
       exact Classical.byContradiction (fun hv2 => hn ⟨v, hv, hv2⟩)
-    by_cases ht : ∃ t ∈ s.foes bf side, t ∉ acc ∧ s.isTank t = true
+    by_cases ht : ∃ t ∈ s.foes bf side, t ∉ acc ∧ s.isTank bf side t = true
     · obtain ⟨t, htm, hta, htt⟩ := ht
       refine ⟨⟨.player side, .assignPick t⟩,
         mem_legalAssigns.mpr (Or.inl ⟨t, rfl, ?_⟩), by simp⟩
-      have hl : s.isLast t = false := by simp [GameState.isLast, htt]
+      have hl : s.isLast bf side t = false := by simp [GameState.isLast, htt]
       unfold GameState.pickOk
       simp [htm, hta, htt, hl]
     · -- no Tank is left: a Unit that is not last if there is one, any Unit otherwise
       have htank (w : ObjId) (hw : w ∈ s.foes bf side) :
-          (!s.isTank w || decide (w ∈ acc)) = true := by
-        by_cases hwt : s.isTank w = true
+          (!s.isTank bf side w || decide (w ∈ acc)) = true := by
+        by_cases hwt : s.isTank bf side w = true
         · have hwa : w ∈ acc := Classical.byContradiction (fun hwa => ht ⟨w, hw, hwa, hwt⟩)
           simp [hwa]
-        · have : s.isTank w = false := by simpa using hwt
+        · have : s.isTank bf side w = false := by simpa using hwt
           simp [this]
-      by_cases hn : ∃ v ∈ s.foes bf side, v ∉ acc ∧ s.isLast v = false
+      by_cases hn : ∃ v ∈ s.foes bf side, v ∉ acc ∧ s.isLast bf side v = false
       · obtain ⟨v, hvm, hva, hvl⟩ := hn
         refine ⟨⟨.player side, .assignPick v⟩,
           mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
@@ -309,7 +326,7 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
         by_cases hwa : w ∈ acc
         · right; exact hwa
         · left
-          by_cases hwl : s.isLast w = false
+          by_cases hwl : s.isLast bf side w = false
           · exact absurd ⟨w, hw, hwa, hwl⟩ hn
           · simpa using hwl
 
@@ -430,52 +447,92 @@ def GameState.assignFrame (s : GameState) (bf : ObjId) (att side : PlayerId)
     some (.assign bf att side [] done)
   else none
 
-/-- The frames of the Combat Damage. -/
+/-- Before a side assigns damage, each affected Unit's controller orders its Prevent and doubling
+effects (CR 372, 467.2.c.5). Choices for different Units do not change one another. -/
+def damageOrderFrames (s : GameState) (bf : ObjId) (att side : PlayerId) : List Frame :=
+  if s.combatTotal bf att side == 0 then []
+  else (s.foes bf side).filterMap (fun u =>
+    (s.obj? u).bind (fun unit =>
+      if s.doubleDmg u && decide (0 < s.preventValue u) && !s.shielded u &&
+          !(s.activeMods u).contains .noDamage then
+        some (.eitherDo unit.controller u { slots := [.obj u] }
+          (.prim (.markOn (.slot 0) .preventBeforeDouble)) .nop .nil)
+      else none))
+
+/-- The frames that ask for ordering damage replacements are play frames. -/
+theorem damageOrderFrames_play (s : GameState) (bf : ObjId) (att side : PlayerId)
+    {f : Frame} (hf : f ∈ damageOrderFrames s bf att side) : f.isPlay = true := by
+  unfold damageOrderFrames at hf
+  split at hf
+  · simp at hf
+  · obtain ⟨u, -, h⟩ := List.mem_filterMap.mp hf
+    cases ho : s.obj? u with
+    | none => simp [ho] at h
+    | some unit =>
+      simp only [ho, Option.bind_some] at h
+      split at h
+      · cases h
+        rfl
+      · simp at h
+
+/-- The frames of Combat Damage, starting with any decisions about damage replacement. -/
 def GameState.startCombat (s : GameState) (bf : ObjId) (att : PlayerId) : List Frame :=
-  match s.assignFrame bf att att [] with
-  | some f => [f]
-  | none =>
-    match s.assignFrame bf att (s.defenderAt bf att) [] with
+  let defn := s.defenderAt bf att
+  damageOrderFrames s bf att att ++ damageOrderFrames s bf att defn ++
+    match s.assignFrame bf att att [] <|> s.assignFrame bf att defn [] with
     | some f => [f]
     | none => [.cleanup, .combatResolve bf att]
 
-/-- The frames of the Combat Damage are `assign` frames, or the end of the Combat. -/
-theorem startCombat_mem (s : GameState) (bf : ObjId) (att : PlayerId) :
-    ∀ f ∈ s.startCombat bf att,
-      (∃ b a q, f = Frame.assign b a q [] []) ∨ f = Frame.cleanup ∨
-      f = Frame.combatResolve bf att := by
-  intro f hf
-  unfold GameState.startCombat at hf
+/-- Damage assignment is a play frame. -/
+theorem assignFrame_play {s : GameState} {bf : ObjId} {att side : PlayerId}
+    {done : List (ObjId × Nat)} {f : Frame} (hf : s.assignFrame bf att side done = some f) :
+    f.isPlay = true := by
+  unfold GameState.assignFrame at hf
   split at hf
-  · rename_i g hg
-    unfold GameState.assignFrame at hg
-    split at hg
-    · simp only [Option.some.injEq] at hg
-      subst hg
-      simp only [List.mem_singleton] at hf
-      subst hf
-      exact Or.inl ⟨_, _, _, rfl⟩
-    · simp at hg
-  · split at hf
-    · rename_i g hg
-      unfold GameState.assignFrame at hg
-      split at hg
-      · simp only [Option.some.injEq] at hg
-        subst hg
-        simp only [List.mem_singleton] at hf
-        subst hf
-        exact Or.inl ⟨_, _, _, rfl⟩
-      · simp at hg
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
-      rcases hf with rfl | rfl
-      · exact Or.inr (Or.inl rfl)
-      · exact Or.inr (Or.inr rfl)
+  · cases hf
+    rfl
+  · simp at hf
+
+/-- Every frame made at the start of Combat Damage is a play frame. -/
+theorem startCombat_play (s : GameState) (bf : ObjId) (att : PlayerId) {f : Frame}
+    (hf : f ∈ s.startCombat bf att) : f.isPlay = true := by
+  unfold GameState.startCombat at hf
+  dsimp only at hf
+  rw [List.mem_append, List.mem_append] at hf
+  rcases hf with (ha | hd) | hf
+  · exact damageOrderFrames_play s bf att att ha
+  · exact damageOrderFrames_play s bf att (s.defenderAt bf att) hd
+  · cases ha : s.assignFrame bf att att [] with
+    | some a =>
+      simp [ha] at hf
+      subst f
+      exact assignFrame_play ha
+    | none =>
+      cases hd : s.assignFrame bf att (s.defenderAt bf att) [] with
+      | some a =>
+        simp [ha, hd] at hf
+        subst f
+        exact assignFrame_play hd
+      | none =>
+        simp [ha, hd] at hf
+        rcases hf with rfl | rfl <;> rfl
+
+/-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
+def clearDamageOrder (s : GameState) : GameState :=
+  { s with turnFx := s.turnFx.filter (·.kind != .preventBeforeDouble) }
+
+/-- Forgetting the order of damage replacements changes no structural properties. -/
+theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- The damage assigned to Units of other players than `att` beyond what is lethal to them (the
 last Unit of an order gets what is left). -/
 def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
   (done.filter (fun e => (s.obj? e.1).any (fun o => o.controller != att))).foldl
-    (fun acc e => acc + (e.2 - s.need e.1)) 0
+    (fun acc (unit, raw) =>
+      if s.shielded unit || (s.activeMods unit).contains .noDamage then acc
+      else acc + ((s.previewPrevent unit raw).2 - s.need unit)) 0
 
 /-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
 def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
@@ -492,13 +549,14 @@ theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (not
 asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -/
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) : GameState × List Event :=
-  let done' := done ++ greedy s.need (s.combatTotal bf att side) acc
+  let total := s.combatTotal bf att side
+  let done' := done ++ greedy (fun u => (s.combatNeed u).getD (total + 1)) total acc
   match (if side = att then s.assignFrame bf att (s.defenderAt bf att) done' else none) with
   | some f => ({ s with pending := f :: rest }, [])
   | none =>
     let r := dealAll s done'
     -- the excess damage the attacker assigned is noted (the last Combat of the turn counts)
-    let r2 := noteExcess r.1 att (excessOf s att done')
+    let r2 := noteExcess (clearDamageOrder r.1) att (excessOf s att done')
     ({ r2 with pending := .cleanup :: .combatResolve bf att :: rest }, r.2)
 
 /-- What `assignDoneStep` does, in the cases the invariants look at. -/
@@ -522,7 +580,7 @@ theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) 
       · simp at hf
     · simp at hf
   · right
-    exact ⟨_, (dealAll_safe _ s).trans (noteExcess_safe _ _ _), rfl⟩
+    exact ⟨_, (dealAll_safe _ s).trans ((clearDamageOrder_safe _).trans (noteExcess_safe _ _ _)), rfl⟩
 
 /-- The end of the Showdown at `bf`: a Combat if the Units of two players are there, otherwise the
 Control of the Battlefield goes to the player whose Units are alone there (CR 348). -/
