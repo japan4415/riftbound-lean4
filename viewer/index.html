@@ -239,7 +239,12 @@ const zoneBox = new Map();    // zone name -> container element
 const poolBox = [], pointsBox = [], seatBox = [];
 const bfGroup = new Map();    // Battlefield id -> its column
 
-function cardName(id) { const o = objs[id]; return o ? (cards[o.card] ? cards[o.card].name : o.card) : '#' + id; }
+function cardCode(id, state) { return state?.copies?.[id] || objs[id]?.card; }
+function cardNameAt(id, state) {
+  const code = cardCode(id, state);
+  return cards[code]?.name || code || '#' + id;
+}
+function cardName(id) { return cardNameAt(id, steps[cur]?.state); }
 function logicalCardName(code) {
   const card = cards[code];
   return card ? [card.name, card.subtitle].filter(Boolean).join(', ') : code;
@@ -296,11 +301,13 @@ function buildBoard() {
 function describe(i) {
   const a = steps[i].action;
   if (!a) return ['ゲーム開始前', '山札・Rune Deck・Battlefield の準備ができた状態'];
-  return describeA(a, i > 0 ? steps[i - 1].state.pending : null);
+  const before = steps[i - 1]?.state;
+  return describeA(a, before?.pending, before);
 }
 
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
-function describeA(a, prev) {
+function describeA(a, prev, state = steps[cur]?.state) {
+  const cardName = (id) => cardNameAt(id, state);
   const who = a.actor === 'chance' ? '乱数' : a.actor === 'clock' ? '時計' : a.actor === 'judge' ? 'ジャッジ' : 'P' + a.actor.slice(1);
   switch (a.kind) {
     case 'arrange': return [who + ': 並び替え', 'シャッフル、または Recycle の順番'];
@@ -346,6 +353,8 @@ function describeA(a, prev) {
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
       if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
       if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
+      if (a.choiceContext === 'attachmentCopy') return [who + ': ' + card + ' をコピー元に選ぶ',
+        a.unit == null ? '' : cardName(a.unit) + ' が装着中にコピーする'];
       return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
     }
     case 'predictPick': {
@@ -471,16 +480,24 @@ function visibleZones() {
 }
 
 function makeCard(id) {
-  const o = objs[id] || { card: '?', rune: null }, def = cards[o.card] || { name: o.card, types: [] };
   const el = document.createElement('div'); el.className = 'card'; el.dataset.id = id;
+  return el;
+}
+
+function updateCardTraits(el, id, state) {
+  const code = cardCode(id, state) || '?';
+  if (el.dataset.card === code) return;
+  el.dataset.card = code;
+  const o = objs[id] || {}, def = cards[code] || { name: code, types: [], domains: [] };
   const inn = document.createElement('div'); inn.className = 'card-in';
   const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = def.name;
   inn.append(nm);
-  if (o.ability !== undefined) {
+  if (o.ability !== undefined && !el.querySelector('.ab')) {
     el.classList.add('ability');
     const ab = document.createElement('span'); ab.className = 'ab'; ab.textContent = '能力'; el.append(ab);
   }
-  if (def.types.includes('rune')) { el.classList.add('rune'); if (o.rune) inn.classList.add('d-' + o.rune); }
+  el.classList.toggle('rune', def.types.includes('rune'));
+  if (def.types.includes('rune')) { if (o.rune) inn.classList.add('d-' + o.rune); }
   else {
     const st = document.createElement('div'); st.className = 'st';
     const c = document.createElement('span'); c.textContent = def.cost != null ? def.cost : '';
@@ -488,10 +505,13 @@ function makeCard(id) {
     st.append(c, m); inn.append(st);
     if (def.domains[0]) inn.classList.add('d-' + def.domains[0]);
   }
-  el.append(inn); applyArt(el); return el;
+  const old = el.querySelector('.card-in');
+  if (old) old.replaceWith(inn); else el.prepend(inn);
+  applyArt(el);
 }
 
 function decorate(e, st, id) {
+  updateCardTraits(e, id, st);
   e.firstChild.classList.toggle('exh', st.exhausted.includes(+id));
   let d = e.querySelector('.dmg'); const dm = st.damaged.find((x) => x[0] === +id);
   if (dm) { if (!d) { d = document.createElement('span'); d.className = 'dmg'; e.append(d); } d.textContent = dm[1]; } else if (d) d.remove();
@@ -499,7 +519,7 @@ function decorate(e, st, id) {
   if (bo) { if (!b) { b = document.createElement('span'); b.className = 'bst'; e.append(b); } b.textContent = (bo[1] > 0 ? '+' : '') + bo[1]; } else if (b) b.remove();
   let z = e.querySelector('.stn'); const sn = (st.stunned || []).includes(+id);
   if (sn) { if (!z) { z = document.createElement('span'); z.className = 'stn'; e.append(z); } z.textContent = 'Stun'; } else if (z) z.remove();
-  let q = e.querySelector('.eqp'); const eq = (st.attached || []).filter((x) => x[1] === +id).map((x) => cardName(x[0]));
+  let q = e.querySelector('.eqp'); const eq = (st.attached || []).filter((x) => x[1] === +id).map((x) => cardNameAt(x[0], st));
   if (eq.length) { if (!q) { q = document.createElement('span'); q.className = 'eqp'; e.append(q); } q.textContent = '装備'; q.title = eq.join('、'); } else if (q) q.remove();
 }
 
@@ -572,7 +592,8 @@ function show(i, animate) {
     const grp = baseGroups.get(z);
     for (const id of (st.zones[z] || [])) {
       let e = els.get(id); if (!e) { e = makeCard(id); els.set(id, e); }
-      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e); decorate(e, st, id);
+      decorate(e, st, id);
+      (grp ? (e.classList.contains('rune') ? grp.runes : grp.others) : box).append(e);
     }
   }
   // animate what moved
@@ -604,6 +625,7 @@ function fly(src, from, to) {
 }
 
 function renderStatic(i, st, prev, animate) {
+  const cardName = (id) => cardNameAt(id, st);
   $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}`
     + (st.active !== null ? ` ・ P${st.active} の番` : '') + ` ・ seed ${trace.seed}`;
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
@@ -712,12 +734,15 @@ function costText(c) {
 let artFile = {};
 function artUrl(cid) { const u = artFile[cid]; return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null; }
 function applyArt(el) {
-  const o = objs[el.dataset.id], u = o && artUrl(o.card), inn = el.firstChild;
+  const u = artUrl(el.dataset.card), inn = el.firstChild;
   let img = inn.querySelector(':scope > .art');
   if (!u) { if (img) img.remove(); el.classList.remove('hasart'); return; }
   if (!img) {
     img = document.createElement('img'); img.className = 'art'; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
-    img.addEventListener('error', () => { img.remove(); el.classList.remove('hasart'); });
+    img.addEventListener('error', () => {
+      img.remove();
+      if (inn.parentElement === el) el.classList.remove('hasart');
+    });
     inn.prepend(img);
   }
   if (img.getAttribute('src') !== u) img.src = u;
@@ -738,16 +763,17 @@ function artBox(el, cid) {
 
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
-  const o = objs[id], def = o && cards[o.card]; if (!def) return;
   const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
+  const o = objs[id], code = cardCode(id, st), def = o && cards[code]; if (!def) return;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
   box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
   const sub = [def.subtitle, [...(def.supertypes || []), ...def.types].join(' · '), def.domains.map((d) => DOMAIN_JA[d] || d).join(' / ')].filter(Boolean).join(' ・ ');
   box.append(el('div', 'sub', sub));
-  box.append(artBox(el, o.card));
+  box.append(artBox(el, code));
   const dl = el('dl'); const row = (k, v) => { if (v === null || v === undefined || v === '') return; dl.append(el('dt', '', k), el('dd', '', v)); };
   if (def.costFull) row('コスト', costText(def.costFull));
+  if (st.copies?.[nid]) row('元のカード', logicalCardName(o.card));
   if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
   if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
   if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
@@ -880,9 +906,10 @@ function clearPickMarks() {
 }
 function showMenu(list, title, x, y) {
   const m = $('actmenu'); m.textContent = '';
+  const state = steps[steps.length - 1].state;
   const h = document.createElement('h3'); h.textContent = title + '（' + list.length + ' 個）'; m.append(h);
   for (const l of list) {
-    const [t, detail] = describeA(l.a, steps[steps.length - 1].state.pending);
+    const [t, detail] = describeA(l.a, state.pending, state);
     const b = document.createElement('button'); b.textContent = t.replace(/^P\d: /, ''); b.title = detail || '';
     b.addEventListener('click', (e) => { e.stopPropagation(); hideActMenu(); liveAct(l.k); });
     m.append(b);
@@ -1018,15 +1045,18 @@ function renderLegal(i) {
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
+    : choiceContext === 'attachmentCopy' ? 'コピー元の味方 Unit を選ぶ'
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
-  $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + liveLegal.length + ' 個）') +
+  const answerCount = choiceContext === 'attachmentCopy'
+    ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length;
+  $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + answerCount + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
   if (naming.length) renderNameCards(box, naming, btn);
   for (const [actor, list] of by) {
     group('P' + actor.slice(1) + ' の合法手', list.map((l) => {
-      const [title, detail] = describeA(l.a, last.pending);
+      const [title, detail] = describeA(l.a, last.pending, last);
       return btn(title.replace(/^P\d: /, ''), detail, () => liveAct(l.k), l.a.kind === 'concede' ? 'danger' : null);
     }));
   }

@@ -81,6 +81,8 @@ inductive Prim where
   /-- Banish the units, then their owners play them, ignoring their cost (a token that is banished
   ceases to exist). -/
   | banishReplay (s : Selector) (sameLocation : Bool := false)
+  /-- The Unit attached to this Equipment snapshots the chosen Unit's copyable traits (CR 479.1). -/
+  | copyAttachedFrom (s : Selector)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
   | playPaying (s : Selector)
   /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield
@@ -369,6 +371,8 @@ inductive ReplaceEvent where
   | channel
   /-- The object would enter play exhausted. -/
   | enterExhausted
+  /-- This Equipment attaches, then runs an instruction with its new Unit in slot 0 (CR 370.1.b.1). -/
+  | attach
 deriving DecidableEq, Repr, Hashable
 
 /-- What a static ability changes in the game (design.md §7.3). -/

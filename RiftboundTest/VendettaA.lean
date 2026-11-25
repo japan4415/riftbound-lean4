@@ -17,6 +17,161 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+/-- Pass the Equip through the Chain, stopping before the model is chosen. -/
+meta def awaitCopyChoice : Nat → GameState → Option GameState
+  | 0, _ => none
+  | n + 1, s =>
+    match s.pending with
+    | .pickDo _ _ _ _ _ (.prim (.copyAttachedFrom _)) _ :: _ => some s
+    | .chainPass p _ :: _ => do
+      let (next, _) ← (step 100 s ⟨.player p, .pass⟩).toOption
+      awaitCopyChoice n next
+    | _ => none
+
+-- Equip first, then choose another friendly Unit. Only copyable traits are transferred.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "VEN-137" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let (s, model) ← put s p "SFD-050" .base
+  let (s, other) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s s.you "SFD-049" .base
+  let s := s.modObj model (fun o => { o with
+    empowerCount := 1, buffed := true, tempKws := [(⟨.shield, .amount 3⟩, .turn)] })
+  let s := s.modObj unit (fun o => { o with
+    damage := 1, exhausted := true, buffed := true, tempKws := [(⟨.ganking, .none⟩, .turn)] })
+  let funded := s.fund p 1 (order := 1)
+  let (chain, _) ← (step 100 funded ⟨.player p, .activate gear 1 ⟨1, [.order]⟩ [unit]⟩).toOption
+  let waiting ← awaitCopyChoice 6 chain
+  let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let legal := legalActions waiting
+  let (copied, _) ← (step 100 waiting (choose model)).toOption
+  let detached := (detachObj copied gear).1
+  let o ← copied.obj? unit
+  let traits ← copied.cardDef? unit
+  return (waiting.obj? gear).any (·.attached == some unit) && waiting.copyStamp? unit == none &&
+    legal.contains (choose model) && legal.contains (choose other) &&
+    !(legal.contains (choose unit)) && !(legal.contains (choose enemy)) &&
+    traits.id.code == "SFD-050" && traits.cost == some ⟨6, [.domain .calm]⟩ &&
+    traits.tags.contains ⟨"Azir"⟩ && traits.domains == [.calm] && copied.mightNow unit == some 7 &&
+    o.kind.phys? == ((s.obj? unit).bind (·.kind.phys?)) && o.damage == 1 && o.exhausted &&
+    o.buffed && o.empowerCount == 0 && copied.hasKw unit .ganking && !(copied.hasKw unit .shield) &&
+    (copied.poolOf p).energy == 0 && (copied.poolOf p).order == 0 &&
+    (detached.cardDef? unit).any (·.id.code == "VEN-074") && detached.mightNow unit == some 3
+
+-- A newer copy can cover an older one, and copying a copy snapshots that definition.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, lower) ← put s p "VEN-137" .base
+  let (s, upper) ← put s p "VEN-137" .base
+  let (s, another) ← put s p "VEN-137" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let (s, first) ← put s p "SFD-050" .base
+  let (s, second) ← put s p "SFD-049" .base
+  let (s, recipient) ← put s p "VEN-014" .base
+  let firstCopy ← activate s p lower 1 [unit] ⟨1, [.order]⟩ { obj := (· == first) }
+  let topCopy ← activate firstCopy p upper 1 [unit] ⟨1, [.order]⟩ { obj := (· == second) }
+  let copied ← activate topCopy p another 1 [recipient] ⟨1, [.order]⟩ { obj := (· == unit) }
+  let exposed := (detachObj copied upper).1
+  let printed := (banishObj p exposed lower).1
+  return (copied.cardDef? unit).any (·.id.code == "SFD-049") &&
+    (exposed.cardDef? unit).any (·.id.code == "SFD-050") &&
+    (printed.cardDef? unit).any (·.id.code == "VEN-074") &&
+    (printed.cardDef? recipient).any (·.id.code == "SFD-049") &&
+    (attachTo unit copied upper).2.isEmpty
+
+-- Reattaching to make a new copy grants a fresh instance of Azir's once-per-turn ability.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "VEN-137" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let (s, azir) ← put s p "SFD-050" .base
+  let s := s.modObj unit (fun o => { o with used := [0], empowerCount := 1 })
+  let source : Says := { obj := (· == azir) }
+  let copied ← activate s p gear 1 [unit] ⟨1, [.order]⟩ source
+  let first ← copied.copyStamp? unit
+  let useAzir : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm]⟩ [azir]⟩
+  let (usingAbility, _) ← (step 100 copied useAzir).toOption
+  let used := settleChain {} 12 usingAbility
+  let detached := (detachObj used gear).1
+  let copiedAgain ← activate detached p gear 1 [unit] ⟨1, [.order]⟩ source
+  let second ← copiedAgain.copyStamp? unit
+  return !(legalActions used).contains useAzir && (legalActions copiedAgain).contains useAzir &&
+    first != second && (copiedAgain.obj? unit).any (fun o =>
+      o.abilityUses 0 (some first) == 1 && o.abilityUses 0 (some second) == 0 &&
+      o.abilityUses 0 none == 1 && o.empowerCount == 1)
+
+-- Modes already chosen by a copied Aphelios do not count against a newly copied instance.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spectacles) ← put s p "VEN-137" .base
+  let (s, angel) ← put s p "SFD-051" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let (s, aphelios) ← put s p "SFD-049" .base
+  let source : Says := { obj := (· == aphelios) }
+  let first ← activate s p spectacles 1 [unit] ⟨1, [.order]⟩ source
+  let firstStamp ← first.copyStamp? unit
+  let mode : Says := { fromEnd := some 2 }
+  let used ← activate first p angel 0 [unit] ⟨0, [.calm]⟩ mode
+  let detached := (detachObj (detachObj used angel).1 spectacles).1
+  let second ← activate detached p spectacles 1 [unit] ⟨1, [.order]⟩ source
+  let secondStamp ← second.copyStamp? unit
+  let usedAgain ← activate second p angel 0 [unit] ⟨0, [.calm]⟩ mode
+  let noted (s : GameState) (stamp : Timestamp) := s.turnFx.any (fun f =>
+    f.target == some unit && f.kind == .copiedModeUsed stamp 0)
+  return firstStamp != secondStamp && noted used firstStamp &&
+    noted usedAgain firstStamp && noted usedAgain secondStamp
+
+-- Akshan steals the attached Equipment. Aphelios's newly copied text missed the attachment.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s q "VEN-137" .base
+  let (s, old) ← put s q "VEN-074" .base
+  let (s, oldModel) ← put s q "SFD-050" .base
+  let (s, model) ← put s p "SFD-049" .base
+  let (s, akshan) ← put s p "SFD-109" .hand
+  let oldCopy := (copyAttachedUnit gear (attachTo old s gear).1 oldModel).1
+  let answer : Says := { pick := (· == [gear]), obj := (· == model) }
+  let final ← cast (oldCopy.fund p 4 (body := 2)) p akshan ⟨4, [.body, .body]⟩ [] answer
+  let thief ← (final.zone (.player p .base)).find? (fun id =>
+    (final.printedCardDef? id).any (·.id.code == "SFD-109"))
+  return (oldCopy.cardDef? old).any (·.id.code == "SFD-050") &&
+    (final.cardDef? old).any (·.id.code == "VEN-074") &&
+    (final.obj? gear).any (fun o => o.controller == p && o.owner == q && o.attached == some thief) &&
+    (final.cardDef? thief).any (·.id.code == "SFD-049") && (final.zone .chain).isEmpty &&
+    !(final.turnFx.any (fun f => f.target == some thief &&
+      (match f.kind with | .modeUsed _ | .copiedModeUsed _ _ => true | _ => false)))
+
+-- Deathknell sees the last copied text. With no model, the ordinary attachment still completes.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "VEN-137" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let noModel ← activate s p gear 1 [unit] ⟨1, [.order]⟩
+  let (s, model) ← put s p "OGN-178" .base
+  let copied ← activate s p gear 1 [unit] ⟨1, [.order]⟩ { obj := (· == model) }
+  let killed := killObj copied unit
+  let body ← killed.1.firstOf p .trash "VEN-074"
+  return (noModel.obj? gear).any (·.attached == some unit) && noModel.copyStamp? unit == none &&
+    (killed.1.cardDef? body).any (·.id.code == "VEN-074") &&
+    (killed.1.detect killed.2).any (fun t => t.source == body && t.card.code == "OGN-178")
+
+-- A copied leave trigger keeps the old rules text and controller when the Unit changes zones.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s q "VEN-137" .base
+  let (s, unit) ← put s p "VEN-074" .base
+  let (s, akshan) ← put s q "SFD-109" .base
+  let s := s.modObj unit (fun o => { o with controller := q })
+  let copied := (copyAttachedUnit gear (attachTo unit s gear).1 akshan).1
+  let banished := banishObj p copied unit
+  let printed ← banished.1.firstOf p .banishment "VEN-074"
+  return (banished.1.cardDef? printed).any (·.id.code == "VEN-074") &&
+    (banished.1.detect banished.2).any (fun t =>
+      t.source == printed && t.card.code == "SFD-109" && t.controller == q)
+
 -- On play, the old hand and Trash are banished before the top seven fill the Trash.
 #guard vendettaCase fun s => do
   let p := s.me

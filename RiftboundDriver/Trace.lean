@@ -202,6 +202,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.banishLookedForPlay _) _) => [("choiceContext", jstr "lookedDeck")]
+        | some (.pickDo _ _ env _ _ (.prim (.copyAttachedFrom _)) _) =>
+          [("choiceContext", jstr "attachmentCopy")] ++ (match env.slots.head? with
+            | some (.obj unit) => [("unit", toString unit.n)]
+            | _ => [])
         | some (.pickDo _ _ env _ _ _ _) =>
           if env.revealedCards.contains o then [("choiceContext", jstr "revealedHand")] else []
         | _ => [])
@@ -357,6 +361,10 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     | none => none)
   let named := s.inPlay.filterMap (fun id =>
     ((s.obj? id).bind (·.namedCard)).map (fun card => (toString id.n, jstr card.code)))
+  let copies := s.inPlay.filterMap (fun id => do
+    let o ← s.obj? id
+    let copy ← s.attachmentCopyOf id o
+    return (toString id.n, jstr copy.card.code))
   let players := allPlayers s.playerCount
   let bfs := s.battlefields.map (fun b =>
     jobj [("id", toString b.n),
@@ -382,7 +390,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
-    ("attached", jarr attached), ("namedCards", jobj named),
+    ("attached", jarr attached), ("namedCards", jobj named), ("copies", jobj copies),
     ("stunned", jarr (stunned.map (fun id => toString id.n)))]
   (json, seen')
 

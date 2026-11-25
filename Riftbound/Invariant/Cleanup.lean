@@ -91,26 +91,26 @@ theorem obj?_modObj_cases (x : ObjId) :
   · rw [if_neg h]
     exact Or.inl rfl
 
-theorem cardDef?_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
-    (s.modObj b f).cardDef? x = s.cardDef? x := by
+theorem printedCardDef?_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
+    (s.modObj b f).printedCardDef? x = s.printedCardDef? x := by
   rcases obj?_modObj_cases s b f x with h | ⟨o, h1, h2⟩
-  · unfold GameState.cardDef?
+  · unfold GameState.printedCardDef?
     rw [h]
     rfl
-  · unfold GameState.cardDef?
+  · unfold GameState.printedCardDef?
     rw [h1, h2]
-    simp only [hf]
-    rfl
+    change (f o).kind.cardId?.bind s.cards.find? = o.kind.cardId?.bind s.cards.find?
+    rw [hf]
 
 theorem isUnit_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
     (s.modObj b f).isUnit x = s.isUnit x := by
-  unfold GameState.isUnit GameState.hasType
-  rw [cardDef?_modObj s b f hf]
+  unfold GameState.isUnit
+  rw [printedCardDef?_modObj s b f hf]
 
 theorem isBattlefield_modObj (hf : ∀ o, (f o).kind = o.kind) (x : ObjId) :
     (s.modObj b f).isBattlefield x = s.isBattlefield x := by
-  unfold GameState.isBattlefield GameState.hasType
-  rw [cardDef?_modObj s b f hf]
+  unfold GameState.isBattlefield
+  rw [printedCardDef?_modObj s b f hf]
 
 theorem battlefields_modObj (hf : ∀ o, (f o).kind = o.kind) :
     (s.modObj b f).battlefields = s.battlefields := by
@@ -478,7 +478,7 @@ theorem obj?_of_mem_battlefields {s : GameState} {b : ObjId} (hb : b ∈ s.battl
     ∃ o, s.obj? b = some o := by
   unfold GameState.battlefields at hb
   have h := (List.mem_filter.mp hb).2
-  unfold GameState.isBattlefield GameState.hasType GameState.cardDef? at h
+  unfold GameState.isBattlefield GameState.printedCardDef? at h
   cases ho : s.obj? b with
   | none => simp [ho] at h
   | some o => exact ⟨o, rfl⟩

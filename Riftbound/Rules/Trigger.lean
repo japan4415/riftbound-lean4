@@ -58,20 +58,21 @@ def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body :
   t.subject == .self && condOk s src who t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
-def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
+def limitOk (s : GameState) (src : ObjId) (idx : Nat) (limit : Limit)
+    (copy : Option Timestamp := none) : Bool := match limit with
   | .unlimited => true
-  | .perTurn n => (s.obj? src).any (fun o => decide (o.used.count idx < n))
+  | .perTurn n => (s.obj? src).any (fun o => decide (o.abilityUses idx copy < n))
 
 /-- The triggered abilities at the places `lo` up to `hi` of the card `d`, as abilities of the
 object `src` controlled by `p`, that fire on the event. -/
 def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
     (eventMatches : TriggerEvent → Bool) (d : CardDef)
-    (lo hi : Nat) : List PendTrigger :=
+    (lo hi : Nat) (copy : Option Timestamp := none) : List PendTrigger :=
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim then
-        some { source := src, card := d.id, idx := lo + j, controller := p }
+      if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim copy then
+        some { source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy }
       else none
     | _ => none)
 
@@ -82,10 +83,12 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
 
 /-- The object's abilities whose event matches, including abilities it gains (CR 137, 479.3). -/
 def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
-    (eventMatches : TriggerEvent → Bool) :
+    (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none) :
     List PendTrigger :=
-  (match s.cardDef? src with
-    | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length
+  let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? src
+  let stamp := (lastCopy.map (·.stamp)) <|> s.copyStamp? src
+  (match definition with
+    | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length stamp
     | none => []) ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
@@ -142,6 +145,7 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
     | some o, some d =>
       -- a Battlefield works for the player whose object it is about (Valley of Idols)
       let c := if d.hasType .battlefield then who else o.controller
+      let copy := (s.attachmentCopyOf src o).map (·.stamp)
       (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
         match d.allAbilities[j]? with
         | some (Ability.triggered t _ lim) =>
@@ -149,9 +153,9 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
               subjectHolds s src c subj who t.subject &&
               condOkEnv s src c { slots := [.obj subj] } t.condition &&
                 t.occurrence == .every &&
-                limitOk s src j lim then
+                limitOk s src j lim copy then
             some { source := src, card := d.id, idx := j, controller := c,
-                   subject := some subj }
+                   subject := some subj, copyStamp := copy }
           else none
         | _ => none)
     | _, _ => [])
@@ -193,13 +197,14 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
       let who := if d.hasType .battlefield then p else o.controller
+      let copy := (s.attachmentCopyOf src o).map (·.stamp)
       if who == p then
         (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
           match d.allAbilities[j]? with
           | some (Ability.triggered t _ lim) =>
             if t.event == .at_ tm && t.subject == .self && condOk s src who t.condition &&
-                t.occurrence == .every && limitOk s src j lim then
-              some { source := src, card := d.id, idx := j, controller := who }
+                t.occurrence == .every && limitOk s src j lim copy then
+              some { source := src, card := d.id, idx := j, controller := who, copyStamp := copy }
             else none
           | _ => none) ++
         -- what the Equipment attached to the object gives it
@@ -371,10 +376,12 @@ def detectOne (s : GameState) : Event → List PendTrigger
       (fun t => { t with eventAmount := some might })
     | none => []
   | .died obj p =>
-    let own := triggersOf s obj p .die
+    let lastCopy := ((s.obj? obj).bind (·.lastAttachmentCopy)).map Prod.fst
+    let own := triggersOfMatching s obj p (· == .die) lastCopy
     -- the Deathknell abilities of a unit fire one more time while a passive ability says so
     let again :=
-      if (s.cardDef? obj).any (·.hasKeyword .deathknell) && s.dieExtra p then own else []
+      let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? obj
+      if definition.any (·.hasKeyword .deathknell) && s.dieExtra p then own else []
     own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with
@@ -432,7 +439,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
     (if !dst.isBoard then
       match s.obj? n with
       | some o =>
-        if o.leftBoard then triggersOf s n o.owner .leave ++ watchersOf s n o.owner .leave else []
+        if o.leftBoard then
+          let controller := o.lastAttachmentCopy.elim o.owner Prod.snd
+          triggersOfMatching s n controller (· == .leave) (o.lastAttachmentCopy.map Prod.fst) ++
+            watchersOf s n controller .leave
+        else []
       | none => []
     else [])
   | .drew p =>
@@ -543,11 +554,12 @@ off the same ability more than once, and the limit counts the times it fired bef
 fires now (CR 371). -/
 def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigger :=
   l.foldl (fun kept t =>
-    let taken := (kept.filter (fun k => k.source == t.source && k.idx == t.idx)).length
+    let taken := (kept.filter (fun k =>
+      k.source == t.source && k.idx == t.idx && k.copyStamp == t.copyStamp)).length
     match (s.cards.find? t.card).bind (fun d => d.allAbilities[t.idx]?),
-        (s.obj? t.source).map (·.used) with
-    | some (Ability.triggered _ _ (.perTurn n)), some used =>
-      if used.count t.idx + taken < n then kept ++ [t] else kept
+        s.obj? t.source with
+    | some (Ability.triggered _ _ (.perTurn n)), some o =>
+      if o.abilityUses t.idx t.copyStamp + taken < n then kept ++ [t] else kept
     | _, _ => kept ++ [t]) []
 
 /-- The abilities that fire because of the events of a step, the turn player's first (CR 383.3). -/
@@ -892,12 +904,13 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) :
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none)
     (player : Option PlayerId := none) : GameState :=
-  let s1 := s.modObj t.source (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)
+  let s1 := s.modObj t.source (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)
   let item : Object :=
     { abilityItem t.card t.idx t.source t.controller
         (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
       spellPick := mode.elim .plain SpellPick.mode
       triggerSubject := t.subject
+      abilityCopyStamp := t.copyStamp
       targetPlayer := player }
   match addObject s1 item .chain with
   | some r => r.1
@@ -965,7 +978,7 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
     (mode : Option Nat := none) (player : Option PlayerId := none) :
     Safe s (putTrigger s t ts mode player) := by
   have h1 : Safe s (s.modObj t.source
-      (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)) :=
+      (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)) :=
     Safe.modObj s t.source (fun _ => rfl) (fun _ => rfl)
   unfold putTrigger
   dsimp only

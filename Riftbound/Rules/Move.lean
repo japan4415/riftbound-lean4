@@ -91,12 +91,16 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
-                 attached := none, attachedTurn := none,
+                 attached := none, attachedTurn := none, attachmentCopyStamp := none,
+                 attachmentCopies := [],
+                 lastAttachmentCopy := if src.isBoard
+                   then (s.attachmentCopyOf id o).map (·, o.controller) else none,
                  buffed := false,
                  extraBuffs := 0,
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,
                  moves := 0, movesTurn := none,
-                 prevLoc := none, used := [],
+                 prevLoc := none, used := [], copiedUses :=
+                   if src.isBoard then o.copiedUses else [],
                  namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,

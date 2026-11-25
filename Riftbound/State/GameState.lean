@@ -192,6 +192,19 @@ def setZone (s : GameState) (z : Zone) (l : List ObjId) : GameState :=
 /-- The attributes of an object. -/
 def obj? (s : GameState) (id : ObjId) : Option Object := s.objects[id.n]?
 
+/-- A copy effect applies for the same occurrence of the attachment that created it. -/
+def attachmentCopyActive (s : GameState) (unit : ObjId) (copy : AttachmentCopy) : Bool :=
+  (s.obj? copy.gear).any (fun o =>
+    o.attached == some unit && o.attachmentCopyStamp == some copy.stamp)
+
+/-- The last applied copy whose Equipment is still attached (CR 479.1, 482). -/
+def attachmentCopyOf (s : GameState) (unit : ObjId) (o : Object) : Option AttachmentCopy :=
+  o.attachmentCopies.find? (s.attachmentCopyActive unit)
+
+/-- The instance of the object's current copied rules text, if any. -/
+def copyStamp? (s : GameState) (unit : ObjId) : Option Timestamp :=
+  (s.obj? unit).bind (fun o => (s.attachmentCopyOf unit o).map (·.stamp))
+
 /-- The Rune Pool of a player (CR 166). -/
 def poolOf (s : GameState) (p : PlayerId) : RunePool := s.pools.getD p.n RunePool.empty
 

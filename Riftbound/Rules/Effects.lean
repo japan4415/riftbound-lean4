@@ -1682,22 +1682,21 @@ theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
 
 /-- The object after it becomes a copy of an object of the kind: a token has the card of it. A card
 stays what it is. -/
-def copyKind (ok : ObjKind) (x : Object) : Object :=
-  match x.kind, ok with
-  | .token _, .card _ c => { x with kind := .token c }
-  | .token _, .token c => { x with kind := .token c }
-  | _, _ => x
+def copyKind (card : CardId) (x : Object) : Object :=
+  match x.kind with
+  | .token _ => { x with kind := .token card }
+  | _ => x
 
 /-- Becoming a copy keeps the physical card and the owner. -/
-theorem copyKind_phys (ok : ObjKind) (x : Object) :
-    (copyKind ok x).kind.phys? = x.kind.phys? ∧ (copyKind ok x).owner = x.owner := by
+theorem copyKind_phys (card : CardId) (x : Object) :
+    (copyKind card x).kind.phys? = x.kind.phys? ∧ (copyKind card x).owner = x.owner := by
   unfold copyKind
   split <;> simp_all [ObjKind.phys?]
 
 /-- A token becomes a copy of another object: it has its card. A card stays what it is. -/
 def becomeCopyOf (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  match s.obj? src with
-  | some o => (s.modObj id (copyKind o.kind), [])
+  match s.cardDef? src with
+  | some d => (s.modObj id (copyKind d.id), [])
   | none => (s, [])
 
 /-- A change of one object that keeps its owner and the physical card it has (a token that
@@ -2030,12 +2029,53 @@ theorem exchangeDamage_safe (s : GameState) (a b : ObjId) :
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
-  (s.modObj g (fun o => { o with attached := some u, attachedTurn := some s.turn }),
-    [Event.attached g u])
+  if (s.obj? g).any (·.attached != some u) && !((s.cardDef? g).any (·.hasType .unit)) then
+    let attach (o : Object) := { o with
+      attached := some u, attachedTurn := some s.turn, attachmentCopyStamp := none }
+    (s.modObj g attach, [Event.attached g u])
+  else (s, [])
 
 /-- Attaching is a safe change. -/
-theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 :=
-  Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 := by
+  unfold attachTo
+  split
+  · exact Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
+/-- Capture the copyable traits of `model` for the current attachment (CR 479.1). -/
+def copyAttachedUnit (g : ObjId) (s : GameState) (model : ObjId) : GameState × List Event :=
+  match (s.obj? g).bind (·.attached), s.cardDef? model with
+  | some unit, some d =>
+    if model != unit && d.hasType .unit && (s.printedCardDef? unit).any (·.hasType .unit) &&
+        s.inPlay.contains model && s.inPlay.contains unit then
+      let stamp : Timestamp := ⟨s.nextTimestamp⟩
+      let copy : AttachmentCopy := ⟨g, d.id, stamp⟩
+      let source := s.modObj g (fun o => { o with attachmentCopyStamp := some stamp })
+      let copied := source.modObj unit (fun o =>
+        { o with attachmentCopies := copy :: o.attachmentCopies.filter (source.attachmentCopyActive unit) })
+      ({ copied with nextTimestamp := s.nextTimestamp + 1 }, [])
+    else (s, [])
+  | _, _ => (s, [])
+
+/-- Installing a copy preserves the object's physical identity and ownership. -/
+theorem copyAttachedUnit_safe (g : ObjId) (s : GameState) (model : ObjId) :
+    Safe s (copyAttachedUnit g s model).1 := by
+  unfold copyAttachedUnit
+  split
+  · rename_i unit d _ _
+    split
+    · let stamp : Timestamp := ⟨s.nextTimestamp⟩
+      let copy : AttachmentCopy := ⟨g, d.id, stamp⟩
+      let setStamp (o : Object) := { o with attachmentCopyStamp := some stamp }
+      let stamped := s.modObj g setStamp
+      let setCopy (o : Object) := { o with
+        attachmentCopies := copy :: o.attachmentCopies.filter (stamped.attachmentCopyActive unit) }
+      have h := (Safe.modObj s g (f := setStamp) (fun _ => rfl) (fun _ => rfl)).trans
+        (Safe.modObj stamped unit (f := setCopy) (fun _ => rfl) (fun _ => rfl))
+      exact ⟨fun hwf => (h.wf hwf).congr rfl rfl rfl rfl, h.phys,
+        fun hwf hown => (h.own hwf hown).congr rfl rfl, h.same⟩
+    · exact Safe.refl s
+  · exact Safe.refl s
 
 /-- Double Might this turn by adding its current amount, with a minimum increase of zero
 (CR 433.1, 479.4.c). -/
@@ -2399,7 +2439,9 @@ def cloneTok (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
     match o.kind with
-    | .token c => (createOne c o.controller o.loc (!o.exhausted) s, [])
+    | .token c =>
+      let card := (s.attachmentCopyOf id o).elim c (·.card)
+      (createOne card o.controller o.loc (!o.exhausted) s, [])
     | _ => (s, [])
   | none => (s, [])
 
@@ -2689,6 +2731,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .create name n place ready => applyCreate s p src env name n place ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
   | .attach gears to => applyAttach s p src env gears to
+  | .copyAttachedFrom model => onSelected s p src env model (copyAttachedUnit src)
   | .detach sel => onSelected s p src env sel detachObj
   | .double sel => onSelected s p src env sel doubleObj
   | .grantActivation sel grant => onSelected s p src env sel (grantActivationObj grant)
@@ -2827,7 +2870,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         [Event.played p src] else [])
       else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
-  | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
+  | .markOn sel e => onSelected s p src env sel
+      (fun t id => (t.addTurnFxOn p id (e.forCopy env.abilityCopyStamp), []))
   | .delayUntilDeath sel idx =>
     (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
       onSelected s p src env sel (fun t id =>
@@ -2912,6 +2956,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     cases h
     exact playUnitTokenAt_safe s p name dest
   | attach gears to => exact applyAttach_safe h
+  | copyAttachedFrom model => exact onSelected_safe (copyAttachedUnit_safe src) h
   | attachPaying gears to less => exact applyAttachPaying_safe h
   | move sel dest =>
     cases dest with
@@ -3201,7 +3246,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact onSelected_safe (fun t id => Safe.refl t) h
   | markOn sel e =>
     simp only [applyPrim] at h
-    exact onSelected_safe (fun t id => addTurnFxOn_safe t p id e) h
+    exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (e.forCopy env.abilityCopyStamp)) h
   | delayUntilDeath sel idx =>
     simp only [applyPrim, Option.bind_eq_some_iff] at h
     obtain ⟨card, -, h⟩ := h
@@ -3397,6 +3442,7 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/
 def Prim.pickSel? : Prim → Option Selector
   | .detach s => some s
+  | .copyAttachedFrom s => some s
   | .double s => some s
   | .topdeck s => some s
   | .deal s _ => some s
@@ -3439,6 +3485,7 @@ def Prim.pickSel? : Prim → Option Selector
 /-- The primitive with its selector replaced. -/
 def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   match p with
+  | .copyAttachedFrom _ => .copyAttachedFrom sel
   | .deal _ n => .deal sel n
   | .setBaseMight _ n => .setBaseMight sel n
   | .heal _ n => .heal sel n
@@ -3953,6 +4000,32 @@ theorem replayFrames_mem {s : GameState} {p : PlayerId} {src id : ObjId} {env : 
   · subst f
     rfl
 
+/-- "As this is attached" instructions run after the attachment event has been observed
+(CR 370.1.b.1, 725.1). Each receives the newly equipped Unit in slot 0. -/
+def attachmentReplacementFrames (s : GameState) (events : List Event) : List Frame :=
+  events.flatMap (fun
+    | .attached gear unit =>
+      match s.obj? gear, s.cardDef? gear with
+      | some o, some d =>
+        let env : Env := { slots := [.obj unit] }
+        let effects := d.fullAbilities.filterMap (fun
+          | .replacement .attach cond body =>
+            if cond.eval s o.controller gear env == some true then some body.body else none
+          | _ => none)
+        effects.map (fun body => .run o.controller gear env (.cons body .nil))
+      | _, _ => []
+    | _ => [])
+
+/-- An attachment replacement only adds effect-resolution work. -/
+theorem attachmentReplacementFrames_play {s : GameState} {events : List Event} {f : Frame}
+    (h : f ∈ attachmentReplacementFrames s events) : f.isPlay = true := by
+  obtain ⟨ev, _, h⟩ := List.mem_flatMap.mp h
+  cases ev <;> simp only [List.not_mem_nil] at h
+  split at h
+  · obtain ⟨_, _, rfl⟩ := List.mem_map.mp h
+    rfl
+  · contradiction
+
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
@@ -4150,7 +4223,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
     | none =>
       match applyPrim s p src env pr with
-      | some r => (r.1, [.run p src env es], r.2)
+      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
       | none => skip
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
@@ -4314,6 +4387,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       playerTargets := o.targetPlayer.toList
       hiddenPlayLocation
       sourceCard := some card
+      abilityCopyStamp := o.abilityCopyStamp
       eventAmount := o.eventAmount }
     let body := match definition with
       | some e => e.recheckTargetGroup s o.controller src o.targets (.cons e.body .nil)

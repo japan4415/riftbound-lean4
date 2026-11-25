@@ -2085,6 +2085,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Main Deck 以外からコントローラーの Trash に入るカードは追放する。Spell が解決したときは、その時点の効果を適用する。Thermo Beam のように複数の Gear を同時に破壊する場合は、同時に場を離れる Endless Riches の置換も適用する（CR 052, 367–370, 428）。
 - 167 枚中 165 枚が `drafted` で `CardDef.runs` を通り、2 枚が `todo`。
 
+### M8c Vendetta 52 — Equipment の装着中に Unit をコピーする
+
+- Shady Spectacles の装着で誘発する能力は、コピー効果を適用する前に判定する。その後、Equipment のコントローラーが装着先とは別の味方 Unit を選ぶ（CR 370.1.b.1, 435, 725.1）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- コピー元の印刷・コピー済みの特性を記録し、装着先の状態と物理カードを保持する。複数のコピーは適用順に重なり、装着が解けると下のコピーか元の特性に戻る。付け直すと起動回数とモードの選択履歴は新しい能力で数え直す。場を離れる直前のコピーで Deathknell や退場時の能力を判定する（CR 371, 429.1.a.1.b, 479.1, 482）。
+- 167 枚中 166 枚が `drafted` で `CardDef.runs` を通り、1 枚が `todo`。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

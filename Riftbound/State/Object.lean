@@ -34,6 +34,21 @@ def ObjKind.phys? : ObjKind → Option PhysId
   | .card p _ => some p
   | _ => none
 
+/-- The printed card or token definition, independent of continuous copy effects. -/
+def ObjKind.cardId? : ObjKind → Option CardId
+  | .card _ c | .token c => some c
+  | .chainAbility .. => none
+
+/-- The layer-one traits captured by an Equipment as it attaches (CR 479.1, 482). -/
+structure AttachmentCopy where
+  /-- The Equipment that keeps these traits in effect. -/
+  gear : ObjId
+  /-- The captured definition, including any copy effect on the model at that moment. -/
+  card : CardId
+  /-- The instance and order of this copy effect. -/
+  stamp : Timestamp
+deriving DecidableEq, Repr
+
 /-- When a lasting change of Might ends (CR 475-478). -/
 inductive EndPoint where
   /-- At the end of the turn. -/
@@ -90,6 +105,8 @@ structure Object where
   /-- The abilities of this object that have been used this turn, by their place among the card's
   abilities: once for each use (CR 371, 386). Cleared when a turn begins. -/
   used : List Nat := []
+  /-- Uses of the distinct instances of copied abilities (CR 371, 479.1). -/
+  copiedUses : List (Timestamp × Nat) := []
   /-- The base Might set by an effect for this turn, before arithmetic changes (CR 143.2.a, 479.2). -/
   baseMightThisTurn : Option Nat := none
   /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
@@ -103,11 +120,20 @@ structure Object where
   /-- For an activated ability on the Chain, the grant it was copied from, if any.
   The ability remains on the Chain after the source loses the grant (CR 337). -/
   activationGrant : Option AbilityGrant := none
+  /-- For an ability on the Chain, its copied rules text remains the same through resolution. -/
+  abilityCopyStamp : Option Timestamp := none
   /-- For an Equipment in play: the Unit it is attached to (CR 137, 825). Leaving the Board clears
   it; a Cleanup step clears it when the Unit is gone. -/
   attached : Option ObjId := none
   /-- For an Equipment in play: the turn it was attached (Brutalizer). -/
   attachedTurn : Option Nat := none
+  /-- The Equipment's current copy effect, cleared by a change of attachment. -/
+  attachmentCopyStamp : Option Timestamp := none
+  /-- Copy effects on this Unit, in most recent first order. -/
+  attachmentCopies : List AttachmentCopy := []
+  /-- The copy and its controller just before leaving the board, for its leave and death abilities
+  (CR 429.1.a.1.b). -/
+  lastAttachmentCopy : Option (AttachmentCopy × PlayerId) := none
   /-- The players who scored this Battlefield by holding it this turn. -/
   held : List PlayerId := []
   /-- Whether the Unit has a buff: +1 Might (CR 701). Leaving the Board clears it. -/
@@ -191,6 +217,18 @@ deriving DecidableEq, Repr
 /-- The object has the mark that it can't be readied (Maduli): the effects that ready, and the
 Awaken Phase, leave it exhausted. -/
 def Object.cantReady (o : Object) : Bool := o.tagsGained.contains "!cantReady"
+
+/-- The number of times the printed or copied instance was used this turn. -/
+def Object.abilityUses (o : Object) (idx : Nat) (copy : Option Timestamp) : Nat :=
+  match copy with
+  | some stamp => o.copiedUses.count (stamp, idx)
+  | none => o.used.count idx
+
+/-- Record a use against the instance that was active. -/
+def Object.noteAbilityUse (o : Object) (idx : Nat) (copy : Option Timestamp) : Object :=
+  { o with
+    used := if copy.isNone then o.used ++ [idx] else o.used
+    copiedUses := copy.elim o.copiedUses (fun stamp => o.copiedUses ++ [(stamp, idx)]) }
 
 
 /-- The object after it used an ability in the turn `turn` that chose the objects `ts`. -/

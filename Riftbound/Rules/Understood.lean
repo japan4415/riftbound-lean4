@@ -316,6 +316,7 @@ def Prim.understood : Prim → Bool
   | .swapTop p => p.understood
   | .play s => s.understoodPickAny
   | .banishReplay s _ => s.understoodPickAny
+  | .copyAttachedFrom s => s.understoodPick
   | .playPaying s => s.understoodPickAny
   | .castPicked s a _ => s.understoodPickAny && a.understood
   | .giveKeywords t f => t.understood && f.understood
@@ -603,6 +604,9 @@ def Ability.runs : Ability → Bool
     ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body))
   | .triggered t body _ =>
     t.runs && body.moveChoice.isNone && body.choicesRun
+  | .replacement .attach c body =>
+    c.understood && body.choices.isEmpty && body.playerTarget.isNone && body.moveChoice.isNone &&
+      body.modes.isEmpty && body.choicesRun
   | .replacement .. => false
 
 /-- A keyword the engine knows. -/

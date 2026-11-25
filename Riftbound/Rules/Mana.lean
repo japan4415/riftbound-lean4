@@ -74,7 +74,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
           match manaPlan costs with
           | some plan =>
             timing && (!plan.exhaust || !o.exhausted) && (manaKind body).isSome &&
-              limitOk s src idx lim && guardOk s p src body
+              limitOk s src idx lim (s.copyStamp? src) && guardOk s p src body
           | none => false
         | _ => false
     | _, _ => false
@@ -145,7 +145,7 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : Ru
       | some plan, some k =>
         match s.payMana p d k plan.cost pay with
         | some pool' =>
-          let s1 := s.modObj src (useOf idx plan.exhaust)
+          let s1 := s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))
           let s2 := if plan.kill then killNow s1 src else s1
           -- Update the notes with the Power remaining after payment.
           let s2' := (s2.setPool p pool').trimGear p
@@ -183,11 +183,11 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
             | none => simp [hp, hk, hap] at h
             | some pool' =>
               simp only [hp, hk, hap, Option.some.injEq, Prod.mk.injEq] at h
-              have h1 : Safe s (s.modObj src (useOf idx plan.exhaust)) :=
+              have h1 : Safe s (s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) :=
                 Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
               refine ⟨_, _, Safe.trans ?_ (GameState.noteGearAbility_safe _ p d costs), h.1.symm⟩
-              have h2 : Safe s (if plan.kill then killNow (s.modObj src (useOf idx plan.exhaust)) src
-                  else s.modObj src (useOf idx plan.exhaust)) := by
+              have h2 : Safe s (if plan.kill then killNow (s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) src
+                  else s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) := by
                 cases plan.kill
                 · exact h1
                 · exact h1.trans (killNow_safe _ src)

@@ -33,11 +33,13 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
   | some d => d.types.contains t
   | none => false
 
-/-- Whether an object is a Unit. -/
-def isUnit (s : GameState) (id : ObjId) : Bool := s.hasType id .unit
+/-- Whether an object occupies a Unit's place on the board. An attachment copies Unit to Unit. -/
+def isUnit (s : GameState) (id : ObjId) : Bool :=
+  (s.printedCardDef? id).any (·.hasType .unit)
 
-/-- Whether an object is a Battlefield. -/
-def isBattlefield (s : GameState) (id : ObjId) : Bool := s.hasType id .battlefield
+/-- Whether an object is a Battlefield. Attachment copies apply only to Units. -/
+def isBattlefield (s : GameState) (id : ObjId) : Bool :=
+  (s.printedCardDef? id).any (·.hasType .battlefield)
 
 /-- The Battlefields of the game, in the order of the Battlefield Zone. -/
 def battlefields (s : GameState) : List ObjId :=
@@ -254,7 +256,8 @@ def markScored (tp : PlayerId) (pt : Bool) (o : Object) : Object :=
   { o with scored := tp :: o.scored, held := if pt then tp :: o.held else o.held }
 
 /-- A new turn: nothing has been scored yet (CR 472). -/
-def clearScored (o : Object) : Object := { o with scored := [], held := [], used := [] }
+def clearScored (o : Object) : Object :=
+  { o with scored := [], held := [], used := [], copiedUses := [] }
 
 /-- Score by Hold: the turn player gets one point for each Battlefield they hold
 (CR 315.2.b, 471, 472). -/

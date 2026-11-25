@@ -44,6 +44,8 @@ structure Env where
   lookedCards : List ObjId := []
   /-- The card that defines the resolving ability, even if its source has left play. -/
   sourceCard : Option CardId := none
+  /-- The copied rules text that defines the resolving ability. -/
+  abilityCopyStamp : Option Timestamp := none
   /-- The controller of the original effect when an instruction is run for another player. -/
   effectController : Option PlayerId := none
   /-- The location required for Units played by this resolving Hidden effect (CR 811.1.d.5). -/

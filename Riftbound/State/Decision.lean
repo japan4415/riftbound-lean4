@@ -147,6 +147,8 @@ structure PendTrigger where
   card : CardId
   /-- The place of the ability among the abilities of the card. -/
   idx : Nat
+  /-- The copied rules text that fired this ability, if any. -/
+  copyStamp : Option Timestamp := none
   /-- The player who controls the ability. -/
   controller : PlayerId
   /-- The object the ability watches, for an ability that is not about its own object: it is

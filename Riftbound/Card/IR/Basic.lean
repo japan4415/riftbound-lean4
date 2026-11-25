@@ -227,6 +227,8 @@ inductive TurnEffect where
   | excessDamage (n : Nat)
   /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
   | modeUsed (n : Nat)
+  /-- A copied ability has chosen mode `n` in this instance of its rules text (CR 479.1). -/
+  | copiedModeUsed (copy : Timestamp) (n : Nat)
   /-- A card is played from Hidden: the event it makes is what matters. -/
   | hiddenPlayed
   /-- A buffed unit died: the note is about the dead card. -/
@@ -271,6 +273,12 @@ inductive TurnEffect where
   next Main Phase, ..."); `n` tells the notes apart. -/
   | armed (n : Nat)
 deriving DecidableEq, Repr, Hashable
+
+/-- Choices limited by an ability's rules text belong to that instance. -/
+def TurnEffect.forCopy (effect : TurnEffect) (copy : Option Timestamp) : TurnEffect :=
+  match effect, copy with
+  | .modeUsed mode, some stamp => .copiedModeUsed stamp mode
+  | _, _ => effect
 
 /-- The kind of card whose plays a turn effect watches: "the next spell", "the next unit". -/
 def TurnEffect.playType : TurnEffect → CardType

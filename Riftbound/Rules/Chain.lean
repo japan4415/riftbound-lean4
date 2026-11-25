@@ -408,8 +408,13 @@ theorem GameState.abilityZoneOk_mem {s : GameState} {p : PlayerId} {src : ObjId}
 
 /-- The change an object goes through when an ability is used: it is exhausted if the cost says
 so, and the use is noted (CR 371, 386). -/
-def useOf (idx : Nat) (ex : Bool) (o : Object) : Object :=
-  { o with exhausted := o.exhausted || ex, used := o.used ++ [idx] }
+def useOf (idx : Nat) (ex : Bool) (copy : Option Timestamp) (o : Object) : Object :=
+  { o.noteAbilityUse idx copy with exhausted := o.exhausted || ex }
+
+/-- A granted activation keeps its identity even while the Unit's printed rules text is copied. -/
+def GameState.activationCopyStamp (s : GameState) (src : ObjId) (grant : Option AbilityGrant) :
+    Option Timestamp :=
+  if grant.isNone then s.copyStamp? src else none
 
 /-- The object an ability becomes on the Chain: it belongs to the player who used it (CR 337). -/
 def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : List ObjId)
@@ -492,7 +497,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
       (if d.hasType .battlefield then o.control == some p else o.controller == p) &&
         s.abilityZoneOk p src idx &&
         match (s.activationList src d)[idx]? with
-        | some (_, .activated costs speed body limit) =>
+        | some (grant, .activated costs speed body limit) =>
           match s.activationPlan p src d idx costs ts with
           | some (ex, pc) =>
             if (manaKind body).isSome then false
@@ -504,7 +509,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                     s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true
-                  | .perTurn n => decide (o.used.count idx < n)) &&
+                  | .perTurn n => decide (o.abilityUses idx (s.activationCopyStamp src grant) < n)) &&
                 targetsOk s p src s.mightTable body.choices ts &&
                 (s.discardCostOk p src costs discards &&
                   (s.playerTargetOptions p body.playerTarget).contains targetPlayer)
@@ -514,8 +519,8 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
 
 /-- Record the use and pay costs that change the source before putting the ability on the Chain. -/
 def useAtCost (s : GameState) (idx : Nat) (costs : List AbilityCost) (ts : List ObjId)
-    (o : Object) : Object :=
-  let used := (useOf idx (costExhausts costs) o).noteChose s.turn ts
+    (copy : Option Timestamp) (o : Object) : Object :=
+  let used := (useOf idx (costExhausts costs) copy o).noteChose s.turn ts
   { used with empowerCount := o.empowerCount - if costs.contains .disempowerSelf then 1 else 0 }
 
 /-- Use an activated ability (CR 361, 363): pay, exhaust the object if the cost says so, and put
@@ -529,8 +534,11 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     | some (grant, .activated costs _ _ _) =>
       let paid := preCost s p costs ts (d.hasType .gear) pool discards
       let noted := paid.1.noteGearAbility p d costs
-      (addObject ((noted.modObj src (useAtCost s idx costs ts)).setPool p pool)
-        { abilityItem d.id idx src p ts with activationGrant := grant, targetPlayer } .chain).map
+      let copy := s.activationCopyStamp src grant
+      let used := useAtCost s idx costs ts copy
+      (addObject ((noted.modObj src used).setPool p pool)
+        { abilityItem d.id idx src p ts with
+          activationGrant := grant, abilityCopyStamp := copy, targetPlayer } .chain).map
         (fun r => (r.1, paid.2 ++ [Event.activated p src idx (baseActivationEnergy costs)]))
     | _ => none
   | _, _ => none
@@ -565,8 +573,11 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
           let paid := (preCost s p costs ts (d.hasType .gear) pool discards).1
-          exact ⟨paid.noteGearAbility p d costs, d, costs, useAtCost s idx costs ts,
-            pool, { abilityItem d.id idx src p ts with activationGrant := grant, targetPlayer }, id', rfl,
+          let item : Object := { abilityItem d.id idx src p ts with
+            activationGrant := grant, abilityCopyStamp := s.activationCopyStamp src grant, targetPlayer }
+          exact ⟨paid.noteGearAbility p d costs, d, costs,
+            useAtCost s idx costs ts (s.activationCopyStamp src grant),
+            pool, item, id', rfl,
             (preCost_safe s p costs ts _ pool discards).trans (paid.noteGearAbility_safe p d costs),
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h

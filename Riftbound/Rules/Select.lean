@@ -26,15 +26,14 @@ namespace Riftbound
 
 namespace GameState
 
-/-- The definition of the card an object is. -/
+/-- The definition before applying copy effects from attached Equipment. -/
+def printedCardDef? (s : GameState) (id : ObjId) : Option CardDef :=
+  ((s.obj? id).bind (·.kind.cardId?)).bind s.cards.find?
+
+/-- The definition of the card an object has in the Copy Effects layer (CR 479.1). -/
 def cardDef? (s : GameState) (c : ObjId) : Option CardDef :=
-  match s.obj? c with
-  | some o =>
-    match o.kind with
-    | .card _ id => s.cards.find? id
-    | .token id => s.cards.find? id
-    | .chainAbility .. => none
-  | none => none
+  (s.obj? c).bind (fun o =>
+    (((s.attachmentCopyOf c o).map (·.card)) <|> o.kind.cardId?).bind s.cards.find?)
 
 /-- The players of the game, in seat order. -/
 def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (fun i => ⟨i⟩)
@@ -1161,7 +1160,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p &&
       (match f.kind with | .excessDamage k => decide (n ≤ k) | _ => false)))
   | .marked e =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e && f.who == p &&
+    let kind := e.forCopy env.abilityCopyStamp
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == kind && f.who == p &&
       f.target == some self))
   | .enemyUnitDied =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))

@@ -3905,8 +3905,12 @@ def VEN_137.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shady Spectacles: the effect is not written yet. -/
-def VEN_137 : CardDef := VEN_137.meta
+/-- Shady Spectacles. The attachment happens before its copy instruction (CR 370.1.b.1). -/
+def VEN_137 : CardDef :=
+  { VEN_137.meta with
+    abilities := [.replacement .attach .always (.of [] (.prim (.copyAttachedFrom
+      (.one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]))))],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-138
 /--
