@@ -2056,4 +2056,4 @@ Showdown の中で、Focus を持つプレイヤーは、pass だけでなく、
 - **資源**: Rune の能力と、Add の能力（Chain の上の項目への応答と同じ）。
 - **仕組み**: `applyFrame0` に、`.showdown` の `playCard`、`activate`、`runeAbility`、`manaAbility` を足した。唱えたり、使ったりすると、`chainPass q 0 :: showdown bf q 0 :: rest` になる（Chain が解決すると、Showdown に戻り、pass の数は 0 から数え直す）。`legalFrameActions` と `LegalFrame` は、`legalShowdownPlays`、`legalShowdownActivates` を使う。証明は、`Sound`、`Step`、`Hands`、`Progress`、`Setup`、`ClockRun` に、`chainPass` の場合と同じ形で、4 つずつの場合を足した。`Clock.legal_timeCalled` と `Draw.legal_declareDraw` は、`LegalFrame` の場合が増え、`split` が重くなったので、`maxHeartbeats` を上げた。
 - **直したカード**: Shadow（Action の能力が、防御側の Showdown の中で、攻撃している敵を Stun する）。ほかのセットで、これまで Showdown の中で使えなかった Action と Reaction のカードも、使えるようになった。
-- **近似として残したこと**: Showdown の中の Reaction は、Chain の項目が無くても使える（規則では、Showdown のあいだ、Reaction は、いつでも使える）。Showdown の Focus は、Chain が解決したあと、使った人に戻る（規則では、Focus を持つのは、ほかの人かもしれない）。通常の速さの能力は、Showdown の中では使えない。
+- **近似として残したこと**: Chain が解決したあと、Focus は、使ったプレイヤーに戻り、pass の数は 0 から数え直す（規則の Focus の移り方は、確かめていない）。通常の速さの呪文と能力は、Showdown の中では使えない（Action と Reaction だけ）。Showdown の中のプレイは、Chain の上の項目への応答と同じく、カードの `reactable` の判定をそのまま使う。
