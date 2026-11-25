@@ -3274,13 +3274,12 @@ def SFD_111.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Here to Help. -/
+/-- Here to Help chooses the Unit's destination when it plays the Unit (CR 355.17, 420.3). -/
 def SFD_111 : CardDef :=
+  let unit := Selector.one .friendly .inHand [.ofType .unit]
+  let fields := Selector.all .any .anywhere [.ofType .battlefield, .controlled]
   { SFD_111.meta with
-
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .controlled, .unitsPlayable]]
-      (.may (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit]) (.const 3)
-        (some (.slot 0)))))),
+    spellEffect := some (.of [] (.may (.prim (.playReduced unit (.const 3) (some fields))))),
     status := .drafted }
 
 -- BEGIN GENERATED SFD-112

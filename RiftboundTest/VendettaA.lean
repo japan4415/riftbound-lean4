@@ -233,6 +233,137 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+/-- Choose the first matching finalization, including one on a later page of the decision. -/
+meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → Bool) :
+    Nat → GameState → Option (GameState × List Event)
+  | 0, _ => none
+  | fuel + 1, s =>
+    let answer (yes : Bool) := (step 100 s ⟨.player p, .decide yes⟩).toOption
+    match s.pending with
+    | .eitherDo player _ _ (.finishReducedPermanent _ _ plan) other _ :: _ =>
+      if p != player then none
+      else if accept plan then answer true
+      else match other with
+        | .finishReducedPermanent _ _ alternative => if accept alternative then answer false else none
+        | .eitherOf _ => (answer false).bind (choosePermanentPlan p accept fuel ∘ Prod.fst)
+        | _ => none
+    | _ => none
+
+-- Temporal Breach: its owner can decline the fee, pay and return to Base,
+-- or pay and go to the Roost (Vendetta FAQ, CR 355.17.a).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, roost) ← putBf s s.you "VEN-157"
+  let (s, breach) ← put s p "VEN-066" .hand
+  let (s, elder) ← put s p "UNL-118" .base
+  let s := s.fund p 2 (mind := 1) (fury := 2)
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard breach ⟨2, [.mind]⟩ [elder]⟩).toOption
+  let waiting ← passToChoice 8 casting
+  let accepts (dest : Option ObjId) (fees : List ObjId) (plan : ReducedPermanentPlay) :=
+    plan.battlefield == dest && plan.battlefieldFees == fees
+  let (plain, plainEvents) ← choosePermanentPlan p (accepts none []) 32 waiting
+  let (same, sameEvents) ← choosePermanentPlan p (accepts none [roost]) 32 waiting
+  let (there, thereEvents) ← choosePermanentPlan p (accepts (some roost) [roost]) 32 waiting
+  let plainCard ← plain.firstOf p .base "UNL-118"
+  let sameCard ← same.firstOf p .base "UNL-118"
+  let roostCard ← (there.unitsAtOf roost p).find? (fun id => (there.cardDef? id).any (·.id.code == "UNL-118"))
+  return waiting.countIn p .banishment "UNL-118" == 1 &&
+    plainCard != elder && sameCard != elder && roostCard != elder &&
+    (plain.poolOf p).fury == 2 && (same.poolOf p).total == 0 && (there.poolOf p).total == 0 &&
+    plainEvents.contains (.played p plainCard) && sameEvents.contains (.played p sameCard) &&
+    thereEvents.contains (.played p roostCard) &&
+    !(thereEvents.any (fun | .standardMoved id _ => id == roostCard | _ => false))
+
+-- Temporal Breach offers the fee and destination to the Unit's owner when cast by an opponent.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, roost) ← putBf s p "VEN-157"
+  let (s, breach) ← put s p "VEN-066" .hand
+  let (s, elder) ← put s q "UNL-118" .base
+  let s := (s.fund p 2 (mind := 1)).fund q 0 (body := 2)
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard breach ⟨2, [.mind]⟩ [elder]⟩).toOption
+  let waiting ← passToChoice 8 casting
+  let .eitherDo player _ _ _ _ _ :: _ := waiting.pending | none
+  let (there, events) ← choosePermanentPlan q (fun plan =>
+    plan.battlefield == some roost && plan.battlefieldFees == [roost]) 32 waiting
+  let dragon ← (there.unitsAtOf roost q).find? (fun id => (there.cardDef? id).any (·.id.code == "UNL-118"))
+  return player == q && ((step 100 waiting ⟨.player p, .decide true⟩).toOption).isNone &&
+    (there.poolOf q).total == 0 && events.contains (.played q dragon)
+
+-- Here to Help has no Battlefield target. After choosing the Dragon, paying for
+-- a controlled Roost meets both requirements and makes that location mandatory.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let site := s.bf0
+  let (s, roost) ← putBf s s.you "VEN-157"
+  let (s, _) ← putAt s p "VEN-014" site
+  let (s, _) ← putAt s p "VEN-014" roost
+  let (s, spell) ← put s p "SFD-111" .hand
+  let (s, drake) ← put s p "OGN-131" .hand
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let s := ((s.control p site).control p roost).fund p 4 (body := 3)
+  let act (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption.map Prod.fst
+  let casting ← act s (.playCard spell ⟨2, [.body]⟩ [])
+  let incoming ← passToChoice 8 casting
+  let taking ← act incoming (.decide true)
+  let paying ← match taking.pending with
+    | .pickDo .. :: _ => act taking (.choose drake)
+    | _ => some taking
+  let forSite (plan : ReducedPermanentPlay) := plan.battlefield == some site
+  let (plain, _) ← choosePermanentPlan p (fun plan => forSite plan && plan.battlefieldFees.isEmpty) 32 paying
+  let (there, _) ← choosePermanentPlan p (fun plan =>
+    plan.battlefield == some roost && plan.battlefieldFees == [roost]) 32 paying
+  return (plain.unitsAtOf site p).any (fun id => (plain.cardDef? id).any (·.id.code == "OGN-131")) &&
+    (there.unitsAtOf roost p).any (fun id => (there.cardDef? id).any (·.id.code == "OGN-131")) &&
+    !(legalActions taking).contains ⟨.player p, .choose grimwyrm⟩ &&
+    (plain.poolOf p).body == 2 && (there.poolOf p).total == 0 &&
+    (choosePermanentPlan p (fun plan => forSite plan && plan.battlefieldFees == [roost]) 32 paying).isNone &&
+    ((step 100 s ⟨.player p, .playCard spell ⟨2, [.body]⟩ [site]⟩).toOption).isNone
+
+-- When Here to Help is played from Hidden, the Hidden Battlefield and another
+-- controlled Roost compete. Either can be chosen after paying (CR 355.17.a, 811.1.d.5).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let site := s.bf0
+  let (s, roost) ← putBf s s.you "VEN-157"
+  let (s, _) ← putAt s p "VEN-014" site
+  let (s, _) ← putAt s p "VEN-014" roost
+  let (s, spell) ← put s p "SFD-111" .hidden
+  let (s, drake) ← put s p "OGN-131" .hand
+  let s := (((s.control p site).control p roost).fund p 2 (body := 2)).modObj spell (fun o =>
+    { o with hiddenAt := some site, hiddenTurn := some (s.turn - 1) })
+  let act (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption.map Prod.fst
+  let cast ← act s (.activate spell 1 ⟨0, []⟩ [])
+  let incoming ← passToChoice 8 cast
+  let taking ← act incoming (.decide true)
+  let paying ← match taking.pending with
+    | .pickDo .. :: _ => act taking (.choose drake)
+    | _ => some taking
+  let choose (bf : ObjId) (fees : List ObjId) := choosePermanentPlan p
+    (fun plan => plan.battlefield == some bf && plan.battlefieldFees == fees) 32 paying
+  let (hidden, _) ← choose site [roost]
+  let (there, _) ← choose roost [roost]
+  return (hidden.unitsAtOf site p).any (fun id => (hidden.cardDef? id).any (·.id.code == "OGN-131")) &&
+    (there.unitsAtOf roost p).any (fun id => (there.cardDef? id).any (·.id.code == "OGN-131")) &&
+    (choose roost []).isNone && (hidden.poolOf p).total == 0 && (there.poolOf p).total == 0
+
+-- Location restrictions use the player playing a Dragon from an opponent's zone.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, roost) ← putBf s q "VEN-157"
+  let (s, grimwyrm) ← put s q "SFD-015" .trash
+  let s := s.fund p 0 (fury := 2)
+  let earned := s.modObj roost (fun o => { o with scored := [p] })
+  let other := s.modObj roost (fun o => { o with scored := [q] })
+  let terms : EffectPlayTerms := { price := .ignoreBase }
+  let chosen ← (permanentPlayPlans earned p grimwyrm terms).find? (fun plan =>
+    plan.battlefield == some roost && plan.battlefieldFees == [roost])
+  let (done, unit, _) ← applyReducedPermanent earned p grimwyrm chosen
+  return (permanentPlayPlans other p grimwyrm terms).isEmpty && (done.poolOf p).total == 0 &&
+    (done.obj? unit).any (fun o => o.loc == some roost && o.controller == p && o.owner == q)
+
 -- Mel draws on play and empowers for 3 Energy. Moonfall chooses the Unit
 -- before responses and pays Deflect. Only that Unit loses the extra Might.
 #guard vendettaCase fun s => do

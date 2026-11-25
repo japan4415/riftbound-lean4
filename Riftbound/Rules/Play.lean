@@ -661,14 +661,22 @@ def CardDef.playBattlefieldFilters (d : CardDef) : List FilterList :=
         | _ => none)
     | _ => [])
 
+/-- Read a play-location filter for the player playing the card, including a card owned by
+someone else (CR 188, 355.2, 355.17.b). -/
+def GameState.matchesPlayLocation (s : GameState) (p : PlayerId) (c b : ObjId)
+    (filters : FilterList) : Bool :=
+  let context := if (s.obj? c).any (·.controller != p) then
+    s.modObj c (fun o => { o with controller := p })
+  else s
+  FilterList.holds context c Env.empty b filters == some true
+
 /-- Whether a Battlefield passes the restrictions on playing a Unit there. A permission
 from another effect cannot override a restriction (CR 054.2, 355.17.b). -/
 def GameState.playBfLocationAllowed (s : GameState) (p : PlayerId) (c : ObjId)
     (d : CardDef) (b : ObjId) : Bool :=
   (s.zone .battlefieldZone).contains b && (s.cardDef? b).any (·.hasType .battlefield) &&
     !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
-    (!d.playsOnlyToBattlefield || d.playBattlefieldFilters.any
-      (FilterList.holds s c Env.empty b · == some true))
+    (!d.playsOnlyToBattlefield || d.playBattlefieldFilters.any (s.matchesPlayLocation p c b))
 
 /-- The Battlefields the Unit can enter when played (CR 355.2): those its player controls by
 default, plus locations permitted by a game effect, subject to location and play restrictions. -/
@@ -697,7 +705,7 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
       (s.zone .battlefieldZone).filter (fun b =>
         s.playBfLocationAllowed p c d b &&
           ((s.obj? b).any (·.control == some p) ||
-            anywhereAllowed.any (FilterList.holds s c Env.empty b · == some true)))
+            anywhereAllowed.any (s.matchesPlayLocation p c b)))
     else []
   | none => []
 

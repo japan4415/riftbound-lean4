@@ -46,6 +46,8 @@ structure Env where
   sourceCard : Option CardId := none
   /-- The controller of the original effect when an instruction is run for another player. -/
   effectController : Option PlayerId := none
+  /-- The location required for Units played by this resolving Hidden effect (CR 811.1.d.5). -/
+  hiddenPlayLocation : Option ObjId := none
   /-- A value saved by the event that triggered the resolving ability (CR 388-389). -/
   eventAmount : Option Nat := none
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/

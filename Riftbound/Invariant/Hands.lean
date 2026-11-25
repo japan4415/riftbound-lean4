@@ -835,6 +835,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
     | exact Or.inl (recycleLookedStep_mem h)
+    | exact Or.inl (replayFrames_mem h)
     | (rcases burnEffect_mem h with hp | hb
        · exact Or.inl hp
        · exact Or.inr (Or.inr hb))

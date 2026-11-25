@@ -2066,6 +2066,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Battlefield の追加コストと Unit 自身の追加コストを別々に確定する。軽減後の支払額が同じでも、支払うと決めたコストを記録し、Accelerate を選んだときに Unit が Ready で入る（CR 356.4, 805）。
 - Dragon Roost は `partial`。Temporal Breach や Here to Help からのプレイにも追加コストの選択を出し、効果から受けた配置指定と競合する場合を扱う必要がある。167 枚中 162 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
 
+### M8c Vendetta 49 — 効果で Dragon をプレイする場合の配置先
+
+- 効果による Unit のプレイでも、Roost の追加コストを選べる。必須の配置指定が複数あるときは、同時に満たせる指定をまとめ、互いに両立しない組み合わせからプレイヤーが選ぶ。Unit 自身や場の効果による配置制限を先に適用する（CR 355.16–355.17, 420.3）。
+- Temporal Breach で元が Base の Elder Dragon を再プレイする場合、所有者は追加コストを見送って Base に戻すか、支払って Base または Roost に出せる。Here to Help は解決中に Unit と配置先を決める。手札から使い、支配する Roost に払ったときは Roost に出す。Hidden から使った場合は Hidden の場所の指定も加わる（CR 811.1.d.5）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- 167 枚中 163 枚が `drafted` で `CardDef.runs` を通り、4 枚が `todo`。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

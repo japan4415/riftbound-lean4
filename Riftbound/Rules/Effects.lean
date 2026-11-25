@@ -1458,34 +1458,80 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
     | some bf => playFreeAt p bf s id
     | none => playFree p s id
 
-/-- Legal payments, additional costs, and destinations for a reduced Unit or Gear play
-(CR 355-357, 420.3). -/
-def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Nat) :
+/-- The legal locations satisfying maximal compatible sets of requirements (CR 355.17).
+A requirement can be met alongside all others matched by a location only when a legal
+location matches the larger set. -/
+def effectPlayLocations (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
+    (requirements : List (List (Option ObjId))) : List (Option ObjId) :=
+  if requirements.isEmpty then
+    (if d.playsOnlyToBattlefield then [] else [none]) ++ (s.playBfOptions p id).map some
+  else
+    let legal := requirements.flatten.eraseDups.filter (s.permanentPlayAllowed p id d)
+    let satisfied (loc : Option ObjId) := requirements.map (·.contains loc)
+    legal.filter (fun loc =>
+      let kept := satisfied loc
+      !legal.any (fun other =>
+        let more := satisfied other
+        kept != more && (kept.zip more).all (fun (wanted, present) => !wanted || present)))
+
+/-- The adjusted base cost when an effect lets a card be played (CR 356.1). -/
+def EffectPlayPrice.baseCost (price : EffectPlayPrice) (s : GameState) (p : PlayerId)
+    (id : ObjId) (d : CardDef) : Option Cost :=
+  match price with
+  | .reduceEnergy _ => s.effCost p id d
+  | .ignoreEnergy => d.cost.map (fun c => s.adjustCost p id { c with energy := 0 })
+  | .ignoreBase => some (s.adjustCost p id Cost.zero)
+
+/-- Any further reduction of optional and base Energy combined. -/
+def EffectPlayPrice.energyCut : EffectPlayPrice → Nat
+  | .reduceEnergy k => k
+  | _ => 0
+
+/-- Legal payments, additional costs, and destinations for a Unit or Gear played by an effect
+(CR 355-357, 420.3). Destination restrictions are checked before any payment is offered. -/
+def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : EffectPlayTerms) :
     List ReducedPermanentPlay := Id.run do
-  if s.cantPlay p then return []
   let some d := s.cardDef? id | return []
-  if !(d.hasType .unit || d.hasType .gear) || d.hasType .spell then return []
-  let some base := s.effCost p id d | return []
-  let destinations := (if d.playsOnlyToBattlefield then [] else [none]) ++ (s.playBfOptions p id).map some
+  if s.cantPlay p || s.blocksPlay p id d || !(d.hasType .unit || d.hasType .gear) ||
+      d.hasType .spell then return []
+  let some base := terms.price.baseCost s p id d | return []
   let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
     s.extraCandidates p k)).map some)
   let discardOptions := s.playDiscards p id
-  let plans := destinations.flatMap (fun battlefield =>
-    extraObjects.flatMap (fun extraObject =>
-      let extra := extraObject.toList
-      if !s.extraOk p id extra then [] else
-      (s.cutOptionsOf p id base extra).flatMap (fun cost =>
-        (s.playCostPlans p id d cost).flatMap (fun (total, picked) =>
-          let additionalPaid := d.additionalCost.isSome && picked.contains 0
-          let accelerated := d.hasType .unit && d.hasKeyword .accelerate &&
-            picked.contains (if d.additionalCost.isSome then 1 else 0)
-          (s.targetCostOptions p id (battlefield.toList ++ extra) (total.lessEnergy less)).flatMap (fun adjusted =>
-            ((adjusted.payments d.domains).map (fun pay =>
-              (⟨pay.energy, pay.power.map PowerSym.domain⟩ : Cost))).flatMap (fun fixed =>
-              if (payByRunes s p id fixed).isNone then []
-              else discardOptions.map (fun discard =>
-                { cost := fixed, battlefield, extraObject, discard, additionalPaid, accelerated })))))))
-  return plans.eraseDups
+  let mut plans := []
+  for battlefieldFees in [] :: s.battlefieldFeeChoices p id d do
+    let requirements := terms.requirements ++ battlefieldFees.map (fun b => [some b])
+    for battlefield in effectPlayLocations s p id d requirements do
+      for extraObject in extraObjects do
+        let extra := extraObject.toList
+        if !s.extraOk p id extra then continue
+        for cost in s.cutOptionsOf p id base extra do
+          for (total, picked) in s.playCostPlans p id d cost do
+            let additionalPaid := d.additionalCost.isSome && picked.contains 0
+            let accelerated := d.hasType .unit && d.hasKeyword .accelerate &&
+              picked.contains (if d.additionalCost.isSome then 1 else 0)
+            for fee in s.battlefieldFeeTotals p d battlefieldFees do
+              let combined := (total.plus fee).lessEnergy terms.price.energyCut
+              for adjusted in s.targetCostOptions p id (battlefield.toList ++ extra) combined do
+                for pay in adjusted.payments d.domains do
+                  let fixed : Cost := ⟨pay.energy, pay.power.map PowerSym.domain⟩
+                  if (payByRunes s p id fixed).isNone then continue
+                  for discard in discardOptions do
+                    let plan : ReducedPermanentPlay := {
+                      cost := fixed
+                      battlefield
+                      extraObject
+                      discard
+                      additionalPaid
+                      accelerated
+                      battlefieldFees }
+                    plans := plan :: plans
+  return plans.reverse.eraseDups
+
+/-- The possible reduced plays when the effect leaves the destination to the Unit's player. -/
+def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Nat) :
+    List ReducedPermanentPlay :=
+  permanentPlayPlans s p id { price := .reduceEnergy less }
 
 /-- Play a Unit or Gear with a chosen reduced-cost finalization. Emit the play after its costs
 have been paid and return the identifier it acquired when it entered play. -/
@@ -1495,9 +1541,12 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
   let paid ← payByRunes s p id plan.cost
   let zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
   let (onBoard, new) ← moveObj paid.1 id zone
+  let ownCosts := (if plan.additionalPaid then [0] else []) ++
+    (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
   let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
-    paid := plan.additionalPaid || plan.accelerated
-    extraPaid := (if plan.additionalPaid then 1 else 0) + (if plan.accelerated then 1 else 0) }
+    paid := !ownCosts.isEmpty, extraPaid := ownCosts.length
+    spellPick := if plan.battlefieldFees.isEmpty then .plain
+      else .payForBattlefield plan.battlefieldFees ownCosts }
   let ready := s.readyNow p id d || plan.accelerated
   let moved := (enterBase p d mark ready onBoard new, [Event.moved id new zone])
   let placed := placeAtBf s plan.battlefield.toList moved
@@ -3777,6 +3826,87 @@ theorem recycleLookedStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
     subst f
     rfl
 
+/-- Mandatory locations imposed by resolving a Hidden spell or the play effect of a Unit
+that was played from hiding (CR 811.1.d.5). -/
+def Env.hiddenPlayRequirements (env : Env) : List (List (Option ObjId)) :=
+  env.hiddenPlayLocation.toList.map (fun b => [some b])
+
+/-- Build an effect play's requirements from its own location instruction and the Hidden effect. -/
+def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Option (List ObjId)) :
+    EffectPlayTerms :=
+  { price, requirements := env.hiddenPlayRequirements ++ places.toList.map (·.map some) }
+
+/-- When an effect offers to play a card to a required location, its resolution picks must have a
+legal finalization (CR 355.16, 355.17). -/
+def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (e : Effect) : Option (List ObjId) :=
+  match e with
+  | .prim (.playReduced sel less (some dest)) => do
+    let some amount := less.evalS s p src env | return []
+    let candidates := match sel with
+      | .pick .one side place fs => s.pickCandidates p src env side place fs false
+      | _ => sel.eval s p src env
+    let terms := env.permanentPlayTerms (.reduceEnergy amount)
+      (some ((dest.eval s p src env).getD []))
+    return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
+  | _ => none
+
+/-- Use the shared finalization choices when a Unit can elect a fee or an effect specifies a
+set of mandatory locations. For other plays the existing immediate instructions apply. -/
+def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (pr : Prim) : Option (Env × EffectList) :=
+  let needsChoices (id : ObjId) := (s.cardDef? id).any (fun d =>
+    d.hasType .unit && (env.hiddenPlayLocation.isSome ||
+      !(s.battlefieldFeeChoices p id d).isEmpty))
+  let schedule (ids : List ObjId) (price : EffectPlayPrice)
+      (places : Option (List ObjId)) (mandatory : Bool := false) :=
+    if mandatory || ids.any needsChoices then
+      let terms := env.permanentPlayTerms price places
+      some (env, EffectList.ofList (ids.map (fun card => .planPermanentPlay card terms)))
+    else none
+  let locations (sel : Selector) := (sel.eval s p src env).getD []
+  match pr with
+  | .play sel => schedule (locations sel) .ignoreBase none
+  | .playPaying sel => schedule (locations sel) .ignoreEnergy none
+  | .playTo sel dest => schedule (locations sel) .ignoreBase (some (locations dest))
+  | .playReduced sel less dest => do
+    let amount ← less.evalS s p src env
+    schedule (locations sel) (.reduceEnergy amount) (dest.map locations) dest.isSome
+  | .playBanishedWith =>
+    let ids := (s.zone (.player p .banishment)).filter (fun id =>
+      (s.obj? id).any (·.banishedWith == some src) && (s.cardDef? id).any (·.hasType .unit))
+    schedule ids .ignoreBase none
+  | .playFirst fs => do
+    let deck := s.zone (.player p .mainDeck)
+    let card ← deck.find? (fun id => fs.holds s src env id == some true)
+    let (ctx, play) ← schedule [card] .ignoreBase none
+    let previous := deck.takeWhile (· != card)
+    some ({ ctx with slots := previous.map Value.obj },
+      play.append (.cons (.prim (.recycle (.slotsFrom 0))) .nil))
+  | _ => none
+
+/-- After Banish, the owner chooses how to play the new object. The rest of the effect belongs to
+its original controller (CR 355.17, 428). -/
+def replayFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (id : ObjId)
+    (sameLocation : Bool) (events : List Event) (es : EffectList) : List Frame :=
+  match s.obj? id, banishedPlayId events with
+  | some original, some card =>
+    let previous := if sameLocation then [[original.loc]] else []
+    let hidden := if original.owner == p then env.hiddenPlayRequirements else []
+    let terms : EffectPlayTerms := { price := .ignoreBase, requirements := previous ++ hidden }
+    [.run original.owner src env (.cons (.planPermanentPlay card terms) .nil), .run p src env es]
+  | _, _ => [.run p src env es]
+
+/-- The continuation of replay contains only frames of play. -/
+theorem replayFrames_mem {s : GameState} {p : PlayerId} {src id : ObjId} {env : Env}
+    {sameLocation : Bool} {events : List Event} {es : EffectList} {f : Frame}
+    (h : f ∈ replayFrames s p src env id sameLocation events es) : f.isPlay = true := by
+  unfold replayFrames at h
+  split at h <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+  · rcases h with rfl | rfl <;> rfl
+  · subst f
+    rfl
+
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
@@ -3866,19 +3996,31 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       if env.lookedCards.contains id && (s.zone (.player p .mainDeck)).contains id then
         let r := banishObj p s id
         let options := (banishedPlayId r.2).toList.flatMap (fun card =>
-          (reducedPermanentPlays r.1 p card less).map (.finishReducedPermanent card less))
+          (reducedPermanentPlays r.1 p card less).map (.finishReducedPermanent card { price := .reduceEnergy less }))
         (r.1, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], r.2)
       else skip
     | _ => skip
-  | .finishReducedPermanent card less plan =>
-    if (reducedPermanentPlays s p card less).contains plan then
+  | .planPermanentPlay card terms =>
+    match permanentPlayPlans s p card terms with
+    | [] => skip
+    | plans =>
+      let options := plans.map (.finishReducedPermanent card terms)
+      let decline := if plans.all (fun plan => !plan.battlefieldFees.isEmpty) then [.nop] else []
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList (options ++ decline))) es)], [])
+  | .banishForReplay id sameLocation =>
+    let banished := banishObj p s id
+    (banished.1, replayFrames s p src env id sameLocation banished.2 es, banished.2)
+  | .finishReducedPermanent card terms plan =>
+    if (permanentPlayPlans s p card terms).contains plan then
       match applyReducedPermanent s p card plan with
       | some (t, entered, events) =>
         (t, [.run p src (env.bind pickVar (.obj entered)) es], events)
       | none => skip
     else skip
   | .recycleLooked => recycleLookedStep s p src env es
-  | .may e' => (s, [.mayDo p src env e' es], [])
+  | .may e' =>
+    if (requiredPlayCandidates s p src env e').any List.isEmpty then skip
+    else (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
   | .doThen (.prim (.move sel dest)) body => linked (.move sel dest) body
@@ -3929,28 +4071,41 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
   | .prim (.castInline sel) => castInlineStep s p src env sel es
+  | .prim (.banishReplay sel sameLocation) =>
+    let units := (sel.eval s p src env).getD []
+    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
+    (s, [.run p src env (replays.append es)], [])
   | .prim (.playReduced sel less dest) =>
     match castReducedStep s p src env sel less dest es with
     | some r => r
     | none =>
-      match applyPrim s p src env (.playReduced sel less dest) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
+      match permanentPlayEffects s p src env (.playReduced sel less dest) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.playReduced sel less dest) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
   | .prim (.play sel) =>
     match playSpellStep s p src env sel es with
     | some r => r
     | none =>
-      match applyPrim s p src env (.play sel) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
+      match permanentPlayEffects s p src env (.play sel) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.play sel) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
   | .prim (.discard sel n) =>
     match sel.resolve s p env, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim pr =>
-    match applyPrim s p src env pr with
-    | some r => (r.1, [.run p src env es], r.2)
-    | none => skip
+    match permanentPlayEffects s p src env pr with
+    | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+    | none =>
+      match applyPrim s p src env pr with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)
@@ -3961,7 +4116,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
 theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : Safe s (runEffect1 s p src env e es).1 := by
   unfold runEffect1
-  split <;> (try split) <;> (try split) <;> first
+  split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact castInlineStep_safe s p src env _ es
@@ -3970,10 +4125,10 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact banishObj_safe p s _
     | exact recycleLookedStep_safe s p src env es
     | (exact applyReducedPermanent_safe (by assumption))
-    | (rename_i r hr; exact playSpellStep_safe hr)
-    | (rename_i r hr; exact castReducedStep_safe hr)
-    | (rename_i r hr; exact applyPrim_safe hr)
-    | (rename_i r hr; exact applyGrant_safe hr)
+    | exact playSpellStep_safe (by assumption)
+    | exact castReducedStep_safe (by assumption)
+    | exact applyPrim_safe (by assumption)
+    | exact applyGrant_safe (by assumption)
 
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
 the events. An instruction that cannot be done is skipped (design.md §7.1). An effect that names an
@@ -3984,7 +4139,8 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
   match e.pickSel? with
   | some (.pick _ side place fs) =>
     -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
-    match s.pickCandidates p src env side place fs (!e.isLinkedCost) with
+    match requiredPlayCandidates s p src env e <|>
+        s.pickCandidates p src env side place fs (!e.isLinkedCost) with
     | some [o] =>
       match e with
       | .chooseObject .. => (s, [.pickDo p src env o [] e.withPick es], [])
@@ -4099,10 +4255,18 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
         if costs.any (fun | .killFriendly .. => true | _ => false) then targets.dropLast
         else targets
       | _ => targets
+    let hiddenPlayLocation := match ability, s.obj? src with
+      | some (.activated costs _ _ _), some source =>
+        if costs.contains .fromHidden then source.hiddenAt else none
+      | some (.triggered trigger _ _), some source =>
+        if trigger.event == .play && trigger.subject == .self && source.fromHidden then source.loc
+        else none
+      | _, _ => none
     let env : Env := {
       slots
       targetObjs
       playerTargets := o.targetPlayer.toList
+      hiddenPlayLocation
       sourceCard := some card
       eventAmount := o.eventAmount }
     let body := match definition with

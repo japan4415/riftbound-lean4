@@ -16,6 +16,25 @@ types of the IR are `Effect` and the list of effects, in one `mutual` block, so 
 
 namespace Riftbound
 
+/-- How an effect changes the cost of a card it lets its player play (CR 356.1). -/
+inductive EffectPlayPrice where
+  /-- Reduce Energy by the specified amount, including optional costs. -/
+  | reduceEnergy (amount : Nat)
+  /-- Ignore the base Energy cost. -/
+  | ignoreEnergy
+  /-- Ignore the entire base cost. -/
+  | ignoreBase
+deriving DecidableEq, Repr, Hashable
+
+/-- An effect play's cost and mandatory destination requirements (CR 355.17). Each requirement
+lists all the locations satisfying it, with `none` meaning the player's Base. -/
+structure EffectPlayTerms where
+  /-- The effect's adjustment to the price of playing the card. -/
+  price : EffectPlayPrice
+  /-- The sets of locations required by the effects already in force. -/
+  requirements : List (List (Option ObjId)) := []
+deriving DecidableEq, Repr, Hashable
+
 /-- A finalization choice for a Unit or Gear played by an effect (CR 355-357, 420.3). -/
 structure ReducedPermanentPlay where
   /-- The adjusted price, with the Power domains chosen. -/
@@ -30,6 +49,8 @@ structure ReducedPermanentPlay where
   additionalPaid : Bool
   /-- Whether the Unit is played with Accelerate. -/
   accelerated : Bool
+  /-- The Battlefields whose additional costs the player elected to pay. -/
+  battlefieldFees : List ObjId := []
 deriving DecidableEq, Repr, Hashable
 
 mutual
@@ -68,8 +89,12 @@ inductive Effect where
   | chooseLookedToPlay (less : Nat) (first : ObjId) (more : List ObjId)
   /-- Banish the card picked from the looked-at cards and finalize the play. -/
   | banishLookedForPlay (less : Nat)
-  /-- Apply the selected finalization of a banished card. -/
-  | finishReducedPermanent (card : ObjId) (less : Nat) (plan : ReducedPermanentPlay)
+  /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/
+  | planPermanentPlay (card : ObjId) (terms : EffectPlayTerms)
+  /-- Banish one Unit before its owner finalizes the new play. -/
+  | banishForReplay (card : ObjId) (sameLocation : Bool)
+  /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
+  | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

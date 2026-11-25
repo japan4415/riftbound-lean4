@@ -1648,12 +1648,13 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let (s1, c) ← put s s.me "SFD-111" .hand
   let (s2, _) ← put s1 s.me "OGN-001" .hand
   let s3 := s2.control s.me s.bf0
-  let r ← play s3 s.me c [s.bf0]
-  let n ← play s3 s.me c [s.bf0] { yes := false }
+  let r ← play s3 s.me c []
+  let n ← play s3 s.me c [] { yes := false }
+  let nowhere ← play s2 s.me c []
   let there := (r.zone .battlefieldZone).any (fun o => r.isCard "OGN-001" o &&
     (r.obj? o).any (·.loc == some s.bf0))
   return there && (r.poolOf s.me).energy == 12 - 2 - 2 && n.countIn s.me .hand "OGN-001" == 1 &&
-    (play s2 s.me c [s.bf0]).isNone
+    nowhere.countIn s.me .hand "OGN-001" == 1 && (play s3 s.me c [s.bf0]).isNone
 
 -- Rumble, Hotheaded (SFD-026): when it conquers, may recycle another friendly unit to play a Mech
 -- from the Trash, its Energy cost reduced by the Might of the recycled unit; Mechs have Assault
@@ -3739,8 +3740,8 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s, help) ← put (s.control p field) p "SFD-111" .hand
   let (s, grimwyrm) ← put s p "SFD-015" .hand
   let scored := s.modObj field (fun o => { o with scored := [p] })
-  let blocked ← play s p help [field] { obj := (· == grimwyrm) }
-  let allowed ← play scored p help [field] { obj := (· == grimwyrm) }
+  let blocked ← play s p help [] { obj := (· == grimwyrm) }
+  let allowed ← play scored p help [] { obj := (· == grimwyrm) }
   return blocked.locate grimwyrm == some (.player p .hand) &&
     (blocked.poolOf p).energy == 10 && unitAt allowed "SFD-015" field &&
     (allowed.poolOf p).energy == 9

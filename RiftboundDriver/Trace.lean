@@ -62,7 +62,7 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
-/-- The looked-at cards may be played with a selected payment and destination. -/
+/-- Choices of payment and destination when a Unit or Gear is played by an effect. -/
 def reducedPermanentFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
   | some (.mayDo _ _ _ (.chooseLookedToPlay ..) _) => [("lookedPlay", "true")]
@@ -74,9 +74,12 @@ def reducedPermanentFields (frame : Option Frame) (yes : Bool) : List (String ×
           ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
           ("additionalPaid", if plan.additionalPaid then "true" else "false"),
           ("accelerated", if plan.accelerated then "true" else "false")] ++
+          (if plan.battlefieldFees.isEmpty then [] else
+            [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
           plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
           plan.discard.toList.map (fun id => ("discard", toString id.n))))]
     | .eitherOf _ => [("morePlayOptions", "true")]
+    | .nop => [("declinePlay", "true")]
     | _ => []
   | _ => []
 
