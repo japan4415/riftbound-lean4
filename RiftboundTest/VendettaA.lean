@@ -83,6 +83,27 @@ meta def rebuttalChoice (s : GameState) (power : Nat) :
     done.mightNow friendly == (waiting.mightNow friendly).map (· + 2) &&
     done.mightNow enemy == waiting.mightNow enemy
 
+-- Vendetta FAQ: Ravenbloom Student triggers twice for Rebuttal's controller after taking En Garde,
+-- and once if Rebuttal counters it. The original player still finalized the countered Spell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, ours) ← put s p "OGN-103" .base
+  let (s, theirs) ← put s q "OGN-103" .base
+  let (waiting, original, _, _) ← rebuttalChoice s 2
+  let (refused, _) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let (kept, _) ← (step 100 taken ⟨.player p, .decide false⟩).toOption
+  let countered := settleChain {} 16 refused
+  let captured := settleChain {} 16 kept
+  return waiting.mightNow ours == some 2 && waiting.mightNow theirs == some 2 &&
+    countered.mightNow ours == some 3 && countered.mightNow theirs == some 2 &&
+    captured.mightNow ours == some 4 && captured.mightNow theirs == some 2 &&
+    (countered.playsOfType .finalized .spell).any (fun play => play.object == original && play.who == q) &&
+    (captured.playsOfType .finalized .spell).any (fun play => play.object == original && play.who == q) &&
+    !(captured.playsOfType .resolved .spell).any (·.who == q) &&
+    (captured.playsOfType .resolved .spell).countP (·.who == p) == 2
+
 /-- Pass the Equip through the Chain, stopping before the model is chosen. -/
 meta def awaitCopyChoice : Nat → GameState → Option GameState
   | 0, _ => none

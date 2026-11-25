@@ -440,9 +440,9 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, _) ← put s s.me "SFD-100" .base
   let (s2, hi) ← put s1 s.me "OGN-029" .trash
   let (s3, lo) ← put s2 s.me "OGN-051" .trash
-  let a ← fire s3 [.played s.me hi]
+  let a ← fire s3 [.spellResolved s.me hi]
   let b ← fire s3 [.played s.me lo]
-  let c ← fire s3 [.played s.you hi]
+  let c ← fire s3 [.spellResolved s.you hi]
   return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == s3.handN s.me &&
     c.handN s.me == s3.handN s.me
 
@@ -842,11 +842,11 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, k) ← put s s.me "SFD-063" .base
   let (s2, sp) ← put s1 s.me "OGN-004" .trash
   let theirs := { s2 with active := some s.you }
-  let a ← fire theirs [.played s.me sp]
-  let b ← fire s2 [.played s.me sp]
-  let c ← fire theirs [.played s.me sp] { yes := false }
-  let d ← fire (theirs.tire k) [.played s.me sp]
-  let e ← fire theirs [.played s.you sp]
+  let a ← fire theirs [.spellResolved s.me sp]
+  let b ← fire s2 [.spellResolved s.me sp]
+  let c ← fire theirs [.spellResolved s.me sp] { yes := false }
+  let d ← fire (theirs.tire k) [.spellResolved s.me sp]
+  let e ← fire theirs [.spellResolved s.you sp]
   let gold (x : GameState) := x.countIn s.me .base "SFD-T03"
   return gold a == 1 && a.tired k == some true &&
     (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
@@ -1015,7 +1015,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, h) ← put s1 s.me "SFD-017" .hidden
   let (s3, u) ← put s2 s.me "OGN-051" .base
   let theirs := { s3 with active := some s.you }
-  let a ← fire theirs [.played s.me h]
+  let a ← fire theirs [.spellResolved s.me h]
   let b ← fire theirs [.played s.me u]
   return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0 && k != u
 -- (review) the effect of playing a Hidden spell announces that it was played

@@ -363,13 +363,16 @@ def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Na
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj =>
-    let highEnergy := match s.cardDef? obj with
-      | some d =>
-        if d.hasType .unit || d.hasType .gear then
+    match s.cardDef? obj with
+    | some d =>
+      -- A Spell completes its play when it resolves (CR 420.4.a).
+      if d.hasType .spell then [] else
+        triggersOf s obj p .play ++ watchersOf s obj p .play ++
+        (if d.hasType .unit || d.hasType .gear then
           s.baseEnergyPlayTriggers p ((d.cost.map Cost.energy).getD 0)
-        else []
-      | none => []
-    triggersOf s obj p .play ++ watchersOf s obj p .play ++ highEnergy
+        else [])
+    | none => []
+  | .spellResolved p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
   | .burnedUnitFor p src card idx _ might =>
     match s.cards.find? card with
     | some d => (triggersAmong s src p .linkedBurnUnit d idx (idx + 1)).map
