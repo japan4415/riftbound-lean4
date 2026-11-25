@@ -586,6 +586,36 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     !(legalActions { ending with pending := [.priority q] }).contains answer &&
     done.countIn p .trash "OGN-046" == 1 && done.mightNow target == s.mightNow target
 
+-- A Spell from Hidden uses Reaction timing during Ending and can be answered by Rebuttal.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, spell) ← put s p "OGN-046" .hand
+  let (s, target) ← put s p "VEN-074" .base
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let (s, block) ← put s q "OGN-057" .hidden
+  let (s, defender) ← putAt s q "VEN-074" bf
+  let s := (s.control q bf).modObj block (fun o =>
+    { o with hiddenAt := some bf, hiddenTurn := some 0 })
+  let s := (s.fund p 2 (chaos := 1)).fund q 0
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [target]⟩).toOption
+  let (passed, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let ending := { passed with phase := .ending }
+  let reveal : Action := ⟨.player q, .activate block 1 ⟨0, []⟩ [defender]⟩
+  let (revealed, _) ← (step 100 ending reveal).toOption
+  let hiddenItem ← (revealed.zone .chain).head?
+  let (respond, _) ← (step 100 revealed ⟨.player q, .pass⟩).toOption
+  let answer : Action := ⟨.player p, .playCard rebuttal ⟨1, [.chaos]⟩ [hiddenItem]⟩
+  let (counter, _) ← (step 100 respond answer).toOption
+  let done := settleChain { yes := false } 12 counter
+  return (legalActions ending).contains reveal &&
+    !(legalActions { ending with pending := [.priority q] }).contains reveal &&
+    !(legalActions { ending with phase := .setup }).contains reveal &&
+    (revealed.obj? hiddenItem).any (·.fromHidden) &&
+    (legalActions respond).contains answer && done.countIn q .trash "OGN-057" == 1 &&
+    done.kwAmount defender .shield == 0
+
 -- Any player may pay for Dragon Roost, even when the opponent controls it (CR 355.17).
 #guard vendettaCase fun s => do
   let p := s.me

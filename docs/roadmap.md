@@ -2093,6 +2093,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Spell のプレイを監視する誘発は、Spell が解決したときに、その時点のコントローラーに対して判定する。Ravenbloom Student は、Rebuttal で奪った Spell と Rebuttal 自体の解決でそれぞれ誘発する。打ち消された Spell の確定履歴は Legion などで引き続き参照する（CR 420.4.a–b）。
 - Hidden の Spell はプレイ確定時にカード本体が Chain に載る。伏せていた Battlefield は、対象の確定・再選択、Spell の効果による Unit の配置に適用する。別の場所を明示する対象にはその指定を適用する（CR 753.3, 811.1.d）。
 - Rebuttal の解決中に基本 Rune と Reaction の Add 能力を使える。支払えるリソースが複数あれば選択でき、Add で発生した誘発は支払いと Spell の解決が終わるまで待つ（CR 334, 430.2, 445.2.c）。
+- Main Phase 以外でも、Chain の優先権を持つプレイヤーは Reaction の起動型能力を使える。Hidden からのプレイと、それに対する Rebuttal もこのタイミングで行う（CR 337.4, 811.6, 813.1.c）。
 - 167 枚すべてが `drafted`。
 
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）

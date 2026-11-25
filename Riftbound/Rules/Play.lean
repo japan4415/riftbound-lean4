@@ -1238,11 +1238,16 @@ theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId}
     {r r' : GameState × List Event} (h : payExtra s c ts r = some r') : Safe r.1 r'.1 :=
   ((gearSpent_safe s c r).trans (placeAtBf_safe s ts _)).trans (payExtra0_safe h)
 
-/-- A Spell can be cast during Main, or as a Reaction when the player has priority on a Chain
-during another phase of the turn (CR 337.4, 813.1.c). -/
+/-- The Chain is giving a player priority to react (CR 337.4). -/
+def GameState.reactionWindow (s : GameState) : Bool :=
+  match s.pending with
+  | .chainPass .. :: _ => true
+  | _ => false
+
+/-- A Spell can be cast during Main, or as a Reaction in a closed state during another
+phase of the turn (CR 337.4, 813.1.c). -/
 def GameState.castTiming (s : GameState) (c : ObjId) : Bool :=
-  s.phase == .main || (s.phase != .setup && s.cardHasReaction c &&
-    (match s.pending with | .chainPass .. :: _ => true | _ => false))
+  s.phase == .main || (s.phase != .setup && s.cardHasReaction c && s.reactionWindow)
 
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers

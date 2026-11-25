@@ -486,12 +486,16 @@ def GameState.unitActivationPayment (s : GameState) (src : ObjId) (idx : Nat) : 
           | _ => false)
       | _ => false))
 
-/-- The player can use the activated ability at place `idx` of the object `src`, with the payment
-and the targets, in the Main Phase (CR 361, 363, 355-357). `open_` is whether the Chain is empty:
-an ability that is not a Reaction can be used only then (CR 312, 813). -/
+/-- Whether the ability can be used at this decision point. Outside Main, only a player with
+Chain priority can use a Reaction (CR 337.4, 813.1.c). -/
+def GameState.activationTiming (s : GameState) (open_ : Bool) (speed : Speed) : Bool :=
+  (open_ || speed == .reaction) && (s.phase == .main || (s.reactionWindow && speed == .reaction))
+
+/-- The player can use an ability of the object `src` with the payment and targets. `open_`
+indicates whether the Chain is empty (CR 312, 355-357, 361, 813). -/
 def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
     (ts : List ObjId) (open_ : Bool) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) : Bool :=
-  s.phase == .main &&
+  s.phase != .setup &&
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
       -- a Battlefield is used by the player who controls it
@@ -503,7 +507,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
           | some (ex, pc) =>
             if (manaKind body).isSome then false
             else
-              (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
+              s.activationTiming open_ speed && (!ex || !o.exhausted) &&
                 pc.any (fun c => c.paidBy d.domains pay) &&
                 (s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx)).any (fun pool =>
                   (costs.contains .fromHidden && s.playPowerCut p src ts != 0) ||
@@ -776,12 +780,12 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
 
-/-- What a usable ability is: an activated ability of an object the player controls, in the Main
-Phase, with a payment that pays the cost and the Pool covers, and a legal pick of targets. -/
+/-- A usable ability belongs to an object the player controls. Its costs and targets are legal,
+and setup has finished. -/
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards targetPlayer = true) :
-    ∃ d costs sp body lim pc grant, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
+    ∃ d costs sp body lim pc grant, s.phase ≠ .setup ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         (s.activationList src d)[idx]? = some (grant, .activated costs sp body lim) ∧
         s.activationPlan p src d idx costs ts = some (costExhausts costs, pc) ∧
@@ -791,8 +795,11 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
             targetPlayer ∈ s.playerTargetOptions p body.playerTarget ∧ ∃ o, s.obj? src = some o ∧
               (o.controller = p ∨ o.control = some p) := by
   unfold activatable at h
-  simp only [Bool.and_eq_true, beq_iff_eq] at h
+  simp only [Bool.and_eq_true] at h
   obtain ⟨hph, h⟩ := h
+  have hturn : s.phase ≠ .setup := by
+    intro hs
+    simp [hs] at hph
   cases ho : s.obj? src with
   | none => simp [ho] at h
   | some o =>
@@ -829,7 +836,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
               | some base =>
                 have he := congrArg (Option.map Prod.fst) hp
                 simpa [GameState.activationPlan, costExhausts, hc] using he
-            exact ⟨d, costs, sp, body, lim, pc, grant, hph, huse, rfl, ha, by rw [hex]; exact hp,
+            exact ⟨d, costs, sp, body, lim, pc, grant, hturn, huse, rfl, ha, by rw [hex]; exact hp,
               h.1.1.1.1.2, h.1.2, h.2.1, List.contains_iff_mem.mp h.2.2, o, rfl, hctl⟩
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
