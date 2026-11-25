@@ -327,6 +327,9 @@ inductive TriggerEvent where
   /-- The player plays a Unit, Gear, or activated ability whose base Energy cost is at least this
   much (CR 206-206.1). -/
   | playAtBaseEnergy (minimum : Nat)
+  /-- While in this player's Trash, wait for them to finish playing a card of this Energy cost
+  or higher (CR 206, 385.2, 420.4.a). -/
+  | playCardFromTrashAtEnergy (minimum : Nat)
   /-- An Equipment is attached to the unit (the unit itself waits for it). -/
   | attachedTo
   /-- The player defends at a Battlefield (their units elsewhere wait for it; the ability reaches

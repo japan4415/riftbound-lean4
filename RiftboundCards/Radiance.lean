@@ -270,8 +270,14 @@ def RAD_010.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Forbidden Technique: the effect is not written yet. -/
-def RAD_010 : CardDef := RAD_010.meta
+/-- Forbidden Technique. -/
+def RAD_010 : CardDef :=
+  { RAD_010.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.ready (.slot 0)))),
+    abilities := [.triggered { event := .playCardFromTrashAtEnergy 7, optional := true }
+      (.of [] (.playSelfFromTrash ⟨1, [.domain .fury, .domain .fury]⟩ .banish)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-011
 /--
@@ -3183,15 +3189,19 @@ def RAD_120.meta : CardDef :=
   { id := ⟨"RAD-120"⟩,
     name := "Meticulous Restorationist",
     types := [.unit],
-    tags := [⟨"Device"⟩],
+    tags := [⟨"Piltover"⟩],
     domains := [.order],
     cost := some ⟨2, []⟩,
     might := some 2,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Meticulous Restorationist: the effect is not written yet. -/
-def RAD_120 : CardDef := RAD_120.meta
+/-- Meticulous Restorationist. -/
+def RAD_120 : CardDef :=
+  { RAD_120.meta with
+    abilities := [.triggered { event := .playCardFromTrashAtEnergy 7, optional := true }
+      (.of [] (.playSelfFromTrash ⟨0, [.domain .order]⟩ .normal)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-121
 /--

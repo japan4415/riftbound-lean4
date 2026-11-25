@@ -112,7 +112,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,
-                 stunned := false, flowed := false, recycleAfterPlay := false, pendingSpellPlay := none,
+                 stunned := false, flowed := false, limitedSpellExit := .normal, pendingSpellPlay := none,
                  spellPick := .plain, empowerCount := 0,
                  leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }

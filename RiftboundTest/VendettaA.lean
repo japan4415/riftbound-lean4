@@ -1640,7 +1640,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     none none (.withCosts (.thenRepeat .plain 2 .plain) true 1)⟩
   let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat) twice).toOption
   let rep ← (repeating.zone .chain).head?
-  let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) false
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) .normal
   let plan ← (limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 0)).find? (fun plan =>
     plan.targets == [ally, enemy] && plan.cost == ⟨1, []⟩ && plan.pick == .withCosts .plain true 0)
   let (reduced, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy
@@ -1872,7 +1872,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let recycled ← (resolved.zone (.player third .mainDeck)).getLast?
   let (countered, canceled) ← settle 12 (counterObj waiting item).1 []
   let (stolen, stolenEvents) ← settle 12 (setController third waiting item).1 []
-  let (queuedReduced, reducedItem) ← queueLimitedSpell s p decree (.reduceEnergy 1) false
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s p decree (.reduceEnergy 1) .normal
   let reduced := limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 1)
   let plan ← reduced.find? (fun plan => plan.pick.playerTarget == some third)
   let (castByEffect, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy

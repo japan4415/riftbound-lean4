@@ -409,7 +409,7 @@ def Effect.understood : Effect → Bool
   | .lookAtTop _ body => Effect.understood body
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
-  | .recycleLooked | .recycleRunes => true
+  | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
   | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
@@ -578,7 +578,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .youDefend => t.subject == .self
       | .spendBuff => t.subject == .self
       | .playHidden => t.subject == .self
-      | .conquerFromTrash => t.subject == .self
+      | .conquerFromTrash | .playCardFromTrashAtEnergy _ => t.subject == .self
       | .killBySpell => t.subject == .self
       | .chosenHere => t.subject == .self
       | .seenOnTop => t.subject == .self

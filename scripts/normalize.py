@@ -138,6 +138,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-116": {"tags": []},
     "RAD-118": {"tags": ["Shurima"]},
     "RAD-119": {"tags": ["Demacia", "Dog"]},
+    "RAD-120": {"tags": ["Piltover"]},
     "RAD-121": {"domains": ["order"]},
     "RAD-122": {"tags": ["Zaun"]},
     "RAD-123": {"domains": ["order"], "tags": ["Equipment"]},

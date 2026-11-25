@@ -402,6 +402,18 @@ def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Na
         | _ => false)
     else [])
 
+/-- Watch completed plays of physical cards from the player's own Trash (CR 385.2, 420.4.a). -/
+def GameState.trashEnergyPlayTriggers (s : GameState) (p : PlayerId) (played : ObjId) :
+    List PendTrigger := Id.run do
+  let some obj := s.obj? played | return []
+  let .card _ id := obj.kind | return []
+  let some cost := (s.cards.find? id).bind (·.cost) | return []
+  return (s.zone (.player p .trash)).flatMap (fun src =>
+    (s.printedCardDef? src).toList.flatMap (fun d =>
+      triggersAmongMatching s src p (fun
+        | .playCardFromTrashAtEnergy minimum => decide (minimum ≤ cost.energy)
+        | _ => false) d 0 d.fullAbilities.length))
+
 /-- Disarm fires once for the total of the attacker's instances of the keyword (CR 831). -/
 def GameState.disarmTriggers (s : GameState) (unit : ObjId) (attacker : PlayerId) : List PendTrigger :=
   match s.cardDef? unit with
@@ -482,9 +494,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
         (if d.hasType .unit || d.hasType .gear then
           s.baseEnergyPlayTriggers p ((d.cost.map Cost.energy).getD 0) ++
             s.firstPermanentHereTriggers p obj
-        else [])
+        else []) ++ s.trashEnergyPlayTriggers p obj
     | none => []
-  | .spellResolved p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
+  | .spellResolved p obj =>
+    triggersOf s obj p .play ++ watchersOf s obj p .play ++ s.trashEnergyPlayTriggers p obj
   | .burnedUnitFor p src card idx _ might =>
     match s.cards.find? card with
     | some d => (triggersAmong s src p .linkedBurnUnit d idx (idx + 1)).map

@@ -96,7 +96,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (waiting, _) ← (step 100 s action).toOption
   let resolved := settleChain {} 12 waiting
   let price : EffectPlayPrice := .reduceEnergy 1
-  let (queued, item) ← queueLimitedSpell s p spell price false
+  let (queued, item) ← queueLimitedSpell s p spell price .normal
   let plan ← (limitedSpellOptions queued p item price).find? (fun plan =>
     plan.targets == [target] && plan.pick == pick)
   let (paid, events) ← commitLimitedSpell queued p item plan [] effectAddPolicy

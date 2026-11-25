@@ -24,6 +24,18 @@ inductive EffectPlayPrice where
   | ignoreEnergy
   /-- Ignore the entire base cost. -/
   | ignoreBase
+  /-- Replace the base cost before modifiers and additional costs (CR 356.1). -/
+  | alternateBase (cost : Cost)
+deriving DecidableEq, Repr, Hashable
+
+/-- A limited play can change where the finalized Spell goes when it leaves the Chain (CR 391.3.a). -/
+inductive LimitedSpellExit where
+  /-- Use the normal Chain destination. -/
+  | normal
+  /-- Recycle the Spell after it resolves. -/
+  | recycle
+  /-- Banish it in place of the regular exit from the Chain. -/
+  | banish
 deriving DecidableEq, Repr, Hashable
 
 /-- An effect play's cost and mandatory destination requirements (CR 355.17). Each requirement
@@ -149,6 +161,8 @@ inductive Effect where
   | banishLookedForPlay (less : Nat)
   /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
   | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Play the source card if it is still in this player's Trash. -/
+  | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
   /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/
   | mayPlayPermanents (selector : Selector) (maximum : Nat) (price : EffectPlayPrice)
   /-- Offer another play from the candidates identified when the instruction began. -/
