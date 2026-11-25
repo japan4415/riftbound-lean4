@@ -54,8 +54,9 @@ inductive Event where
   | recalled (unit : ObjId)
   /-- A player won the game (CR 323.1). -/
   | won (p : PlayerId)
-  /-- A player used an ability (CR 361): the ability at place `idx` of the card of `source`. -/
-  | activated (p : PlayerId) (source : ObjId) (idx : Nat)
+  /-- A player used the ability at place `idx` of `source` (CR 361). An actual activation
+  records its base Energy before any adjustments (CR 206.1). -/
+  | activated (p : PlayerId) (source : ObjId) (idx : Nat) (baseEnergy : Option Nat := none)
   /-- A player played a card: the object it has become on the Base or on the Chain (CR 349-359). -/
   | played (p : PlayerId) (obj : ObjId)
   /-- A Spell completed its resolution, with its new identifier after leaving (CR 420.4.a). -/

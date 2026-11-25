@@ -550,7 +550,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .combatEnd => t.subject == .self
       | .chosen => true
       | .chosenAny => true
-      | .useGearAbility => t.subject == .self
+      | .useGearAbility | .playAtBaseEnergy _ => t.subject == .self
       | .attachedTo => t.subject == .self
       | .youDefend => t.subject == .self
       | .spendBuff => t.subject == .self

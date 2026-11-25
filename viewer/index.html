@@ -391,9 +391,10 @@ function describeA(a, prev) {
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const sacrifices = (a.sacrifices || []).map(cardName).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
+      const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
-      return [who + ': ' + ability + 'を確定' + mode + energy + burn +
+      return [who + ': ' + ability + 'を確定' + mode + energy + exhaust + burn +
         (sacrifices ? '（コストとして ' + sacrifices + ' を Kill）' : '') +
         (targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）'),
         sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' :

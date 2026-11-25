@@ -4119,8 +4119,16 @@ def VEN_145.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Curator of the Sands: the effect is not written yet. -/
-def VEN_145 : CardDef := VEN_145.meta
+/-- Curator of the Sands watches base Energy costs, and pays Exhaust when its trigger is finalized
+(CR 206-206.1, 355.9, 383.3, 415.4). -/
+def VEN_145 : CardDef :=
+  { VEN_145.meta with
+    abilities := [
+      .triggered { event := .playAtBaseEnergy 7, optional := true, cost := .exhaustSelf }
+        { choices := [.targetOf (.upTo 2) .any .atBase [.ofType .rune]]
+          body := .prim (.ready (.slotsFrom 0))
+          recheckTargets := true } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-146
 /--

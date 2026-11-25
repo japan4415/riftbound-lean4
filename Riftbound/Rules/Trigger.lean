@@ -64,28 +64,34 @@ def limitOk (s : GameState) (src : ObjId) (idx : Nat) : Limit → Bool
 
 /-- The triggered abilities at the places `lo` up to `hi` of the card `d`, as abilities of the
 object `src` controlled by `p`, that fire on the event. -/
-def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) (d : CardDef)
+def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
+    (eventMatches : TriggerEvent → Bool) (d : CardDef)
     (lo hi : Nat) : List PendTrigger :=
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if t.event == ev && trigOk s src p t body && limitOk s src (lo + j) lim then
+      if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim then
         some { source := src, card := d.id, idx := lo + j, controller := p }
       else none
     | _ => none)
 
-/-- The triggered abilities of the object `src`, controlled by `p`, that fire on the event: those
-of its card, and those the Equipment attached to it gives it (CR 137). -/
-def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) :
+/-- The triggered abilities in the given range that fire on exactly this event. -/
+def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) (d : CardDef)
+    (lo hi : Nat) : List PendTrigger :=
+  triggersAmongMatching s src p (· == ev) d lo hi
+
+/-- The object's abilities whose event matches, including abilities it gains (CR 137, 479.3). -/
+def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
+    (eventMatches : TriggerEvent → Bool) :
     List PendTrigger :=
   (match s.cardDef? src with
-    | some d => triggersAmong s src p ev d 0 d.fullAbilities.length
+    | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length
     | none => []) ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
       if o.attached == some src then
-        triggersAmong s src p ev d d.fullAbilities.length d.allAbilities.length
+        triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
       else []
     | _, _ => []) ++
   -- the text of the Unit, copied by an Equipment attached to it (Svellsongur)
@@ -96,7 +102,7 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
             match ab with
             | Ability.passive .always mods => mods.contains .copiesUnitText
             | _ => false)))
-      then triggersAmong s src p ev d 0 d.fullAbilities.length else []
+      then triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length else []
     | none => []) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
@@ -106,10 +112,15 @@ def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) 
       if (u == src || (s.obj? src).any (fun o => o.leftBoard && o.formerId == some u)) &&
           f.turn == s.turn then
         match s.cards.find? ⟨c⟩ with
-        | some d => triggersAmong s src (if u == src then p else f.who) ev d i (i + 1)
+        | some d =>
+          triggersAmongMatching s src (if u == src then p else f.who) eventMatches d i (i + 1)
         | none => []
       else []
     | _, _ => [])
+
+/-- The triggered abilities of the object that fire on exactly this event. -/
+def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) : List PendTrigger :=
+  triggersOfMatching s src p (· == ev)
 
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
 a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
@@ -335,9 +346,25 @@ def GameState.firstCardTriggers (s before : GameState) : List PendTrigger :=
     players.flatMap (fun p => s.inPlay.flatMap (fun src =>
       if (s.obj? src).any (·.controller == p) then triggersOf s src p .firstCardResolved else []))
 
+/-- The player's watchers of a qualifying Unit, Gear, or activated ability (CR 206-206.1). -/
+def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Nat) : List PendTrigger :=
+  s.passiveSources.flatMap (fun src =>
+    if (s.obj? src).any (·.controller == p) then
+      triggersOfMatching s src p (fun
+        | .playAtBaseEnergy minimum => decide (minimum ≤ energy)
+        | _ => false)
+    else [])
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
-  | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
+  | .played p obj =>
+    let highEnergy := match s.cardDef? obj with
+      | some d =>
+        if d.hasType .unit || d.hasType .gear then
+          s.baseEnergyPlayTriggers p ((d.cost.map Cost.energy).getD 0)
+        else []
+      | none => []
+    triggersOf s obj p .play ++ watchersOf s obj p .play ++ highEnergy
   | .burnedUnitFor p src card idx _ might =>
     match s.cards.find? card with
     | some d => (triggersAmong s src p .linkedBurnUnit d idx (idx + 1)).map
@@ -475,12 +502,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .buffSpent p =>
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .spendBuff else [])
-  | .activated p src _ =>
+  | .activated p src _ baseEnergy =>
     -- an ability of a gear on the Board (not Hide, not the play of a hidden gear)
-    if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
-      s.inPlay.flatMap (fun u =>
-        if (s.obj? u).any (·.controller == p) then triggersOf s u p .useGearAbility else [])
-    else []
+    let gearUse := if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
+        s.inPlay.flatMap (fun u =>
+          if (s.obj? u).any (·.controller == p) then triggersOf s u p .useGearAbility else [])
+      else []
+    gearUse ++ baseEnergy.toList.flatMap (s.baseEnergyPlayTriggers p)
   | .combatWon bf w =>
     (s.trigUnitsAt bf w).flatMap (fun u => triggersOf s u w .winCombat) ++
     (s.zone (.player w .legendZone)).flatMap (fun l => triggersOf s l w .winCombat)
@@ -651,7 +679,7 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
     match s.cardDef? id with
     | some d => addCardPlay s.turn plays p id d .resolved
     | none => plays
-  | .activated p id idx =>
+  | .activated p id idx _ =>
     match s.obj? id, s.cardDef? id with
     | some o, some d =>
       match d.fullAbilities[idx]? with
@@ -718,12 +746,17 @@ in effects (CR 383.3.b.1, 441.4). -/
 def canPayBurn (s : GameState) (p : PlayerId) (count : Nat) : Bool :=
   count ≤ (s.zone (.player p .mainDeck)).length
 
+/-- The original source is still on the board and can be exhausted (CR 415.4). -/
+def canExhaustTriggerSource (s : GameState) (t : PendTrigger) : Bool :=
+  (s.locate t.source).any Zone.isBoard && (s.obj? t.source).any (fun o => !o.exhausted)
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) : List (List ObjId) :=
   match trigCost s t with
   | .free => [[]]
   | .energy n =>
     if (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
+  | .exhaustSelf => if canExhaustTriggerSource s t then [[]] else []
   | .burn n => if canPayBurn s t.controller n then [[]] else []
   | .killFriendly n fs =>
     let env : Env := { passMight := s.mightTable }
@@ -876,6 +909,8 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId) :
   match trigCost s t with
   | .free => some (s, [])
   | .energy n => payByRunes s t.controller t.source ⟨n, []⟩
+  | .exhaustSelf =>
+    if canExhaustTriggerSource s t then some (setExhausted true s t.source) else none
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
   | .killFriendly n _ => if ids.length == n then some (applyEach killOrSave s ids) else none
 
@@ -947,6 +982,9 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
   split at h
   · cases h; exact Safe.refl s
   · exact payByRunes_safe h
+  · split at h
+    · cases h; exact setExhausted_safe true s t.source
+    · simp at h
   · split at h
     · cases h; exact applyEach_safe (sendObj_safe .trash) _ _
     · simp at h

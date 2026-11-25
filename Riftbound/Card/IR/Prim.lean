@@ -293,6 +293,9 @@ inductive TriggerEvent where
   | chosenHere
   /-- The player uses an activated ability of a gear of theirs (a unit of theirs watches). -/
   | useGearAbility
+  /-- The player plays a Unit, Gear, or activated ability whose base Energy cost is at least this
+  much (CR 206-206.1). -/
+  | playAtBaseEnergy (minimum : Nat)
   /-- An Equipment is attached to the unit (the unit itself waits for it). -/
   | attachedTo
   /-- The player defends at a Battlefield (their units elsewhere wait for it; the ability reaches
@@ -586,6 +589,8 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
+  | exhaustSelf
   /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
   | burn (count : Nat)
   /-- Kill exactly this many friendly permanents that match the filters. -/

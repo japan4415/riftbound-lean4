@@ -3943,7 +3943,7 @@ meta def effLen : EffectList → Nat
 #guard tsf fun s => do
   let (s1, l) ← put s s.me "SFD-189" .legendZone
   let r ← applyMana s1 s.me l 0 ⟨0, []⟩
-  return r.2 == [Event.activated s.me l 0]
+  return r.2 == [Event.activated s.me l 0 (some 0)]
 
 -- (audit) A Temporary unit that is saved (Guardian Angel) is not killed at the start of the turn
 #guard tsf fun s => do

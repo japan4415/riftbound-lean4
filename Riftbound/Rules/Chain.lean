@@ -85,6 +85,14 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .energyDiscount _ _ :: cs => costPlan cs
   | _ :: _ => none
 
+/-- The Energy in the declared cost of an activation (CR 204.1.b, 206.1).
+The engine also uses this path to implement other actions such as Hide or playing the
+Chosen Champion. Those actions do not play activated abilities. -/
+def baseActivationEnergy (costs : List AbilityCost) : Option Nat :=
+  if costs.contains .fromHand || costs.contains .fromHidden || costs.contains .fromChampionZone then
+    none
+  else some ((((costPlan costs).bind Prod.snd).map Cost.energy).getD 0)
+
 /-- Gear activations exclude the internal abilities used to implement hiding and card plays. -/
 def isGearActivation (d : CardDef) (costs : List AbilityCost) : Bool :=
   d.hasType .gear && !costs.contains .fromHand && !costs.contains .fromHidden &&
@@ -504,7 +512,7 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       let noted := paid.1.noteGearAbility p d costs
       (addObject ((noted.modObj src (useAtCost s idx costs ts)).setPool p pool)
         { abilityItem d.id idx src p ts with activationGrant := grant, targetPlayer } .chain).map
-        (fun r => (r.1, paid.2 ++ [Event.activated p src idx]))
+        (fun r => (r.1, paid.2 ++ [Event.activated p src idx (baseActivationEnergy costs)]))
     | _ => none
   | _, _ => none
 
@@ -518,7 +526,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
       (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
       (s.poolOf p).spend pay = some pool ∧ item.kind.phys? = none ∧ item.owner = p ∧
         addObject ((s0.modObj src f).setPool p pool) item .chain = some (s', id') ∧
-          ∃ ke, es = ke ++ [Event.activated p src idx] := by
+          ∃ ke, es = ke ++ [Event.activated p src idx (baseActivationEnergy costs)] := by
   unfold applyActivate at h
   cases hd : s.cardDef? src with
   | none => simp [hd] at h

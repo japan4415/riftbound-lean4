@@ -125,7 +125,8 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : Ru
           -- the Power that only pays for Gear is noted for the turn
           let s3 := match k with | .gear _ => s2'.addTurnFx p .gearMana | _ => s2'
           let noted := s3.noteGearAbility p d costs
-          some (noted.setPool p (pool'.addEnergy (s.manaBonus p src)), [Event.activated p src idx])
+          some (noted.setPool p (pool'.addEnergy (s.manaBonus p src)),
+            [Event.activated p src idx (baseActivationEnergy costs)])
         | none => none
       | _, _ => none
     | _ => none

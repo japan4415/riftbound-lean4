@@ -2926,7 +2926,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     !activatable boosted p unit idx payment [] false &&
     !activatableSD boosted p unit idx payment [] &&
     (queued.poolOf p).fury == 0 && (queued.poolOf p).order == 0 &&
-    es.contains (.activated p unit idx) && queued.tired unit == some true &&
+    es.contains (.activated p unit idx (some 0)) && queued.tired unit == some true &&
     (queued.obj? item).any (fun o =>
       o.kind == .chainAbility d.id idx unit && o.activationGrant == some grant) &&
     activated.tired unit == some false && (settleChain {} 10 pendingWithoutGrant).tired unit == some false &&
@@ -3028,5 +3028,85 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     done.countIn q .trash "VEN-133" == 0 && (done.obj? ownerUnit).isSome &&
     stillDamage.contains (.damaged baseUnit 5) && stillDamage.contains (.damaged fieldUnit 5) &&
     afterBanish.countIn p .banishment "VEN-133" == 1
+
+-- The discounted Plaza Guardian still triggers Curator. Exhausting the
+-- Legend and choosing distinct targets are both part of finalization.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, curator) ← put s p "VEN-145" .legendZone
+  let (s, guardian) ← put s p "VEN-064" .hand
+  let (s, third) ← put s q "R1" .base
+  let putGear (t : GameState) := (put t p "VEN-073" .base).map Prod.fst
+  let s ← putGear s >>= putGear >>= putGear >>= putGear
+  let runes (t : GameState) (who : PlayerId) :=
+    (t.zone (.player who .base)).filter (fun id => (t.cardDef? id).any (·.hasType .rune))
+  let first :: other :: _ := runes s p | none
+  let s := (((s.tire first).tire other).tire third).fund p 6
+  let playGuardian : Action := ⟨.player p, .playCard guardian ⟨6, []⟩ []⟩
+  let (waiting, _) ← (step 100 s playGuardian).toOption
+  let answer (ids : List ObjId) : Action := ⟨.player p, .putTrigger 0 ids⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (queued, payEvents) ← (step 100 waiting (answer [first, third])).toOption
+  let done := settleChain {} 12 queued
+  let (declined, _) ← (step 100 waiting skip).toOption
+  let (alreadyTired, _) ← (step 100 (s.tire curator) playGuardian).toOption
+  let (bounced, _) ← moveObj queued first (.player p .runeDeck)
+  let afterBouncing := settleChain {} 12 bounced
+  return (s.energyCost? p guardian == some 6) &&
+    (legalActions waiting).contains (answer []) &&
+    (legalActions waiting).contains (answer [first]) &&
+    (legalActions waiting).contains (answer [first, third]) &&
+    !(legalActions waiting).contains (answer [first, first]) &&
+    !(legalActions waiting).contains (answer [first, other, third]) &&
+    !(legalActions waiting).contains (answer [curator]) &&
+    (legalActions alreadyTired).contains skip &&
+    !(legalActions alreadyTired).contains (answer []) &&
+    payEvents.contains (.exhausted curator) && queued.tired curator == some true &&
+    queued.tired first == some true && queued.tired third == some true &&
+    done.tired first == some false && done.tired third == some false &&
+    done.tired other == some true && declined.tired curator == some false &&
+    afterBouncing.tired third == some false
+
+-- A qualifying Gear triggers Curator; a Spell with the same base Energy,
+-- a cheap permanent, and an opponent's qualifying play do not.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, curator) ← put s p "VEN-145" .legendZone
+  let (s, gear) ← put s p "VEN-067" .hand
+  let (s, spell) ← put s p "VEN-056" .hand
+  let (s, cheap) ← put s p "VEN-014" .hand
+  let (s, enemyGear) ← put s q "VEN-067" .hand
+  let s := (s.rich p).rich q
+  let caused (t : GameState) : Bool := match t.pending with
+    | .triggerOrder _ first _ _ :: _ => first.source == curator
+    | _ => false
+  let (fromGear, _) ← (step 100 s ⟨.player p, .playCard gear ⟨10, [.mind, .mind]⟩ []⟩).toOption
+  let (fromSpell, _) ← (step 100 s ⟨.player p, .playCard spell (payOf s spell) []⟩).toOption
+  let (fromCheap, _) ← (step 100 s ⟨.player p, .playCard cheap ⟨2, []⟩ []⟩).toOption
+  let other := { s with active := some q, pending := [.priority q] }
+  let (fromOpponent, _) ←
+    (step 100 other ⟨.player q, .playCard enemyGear ⟨10, [.mind, .mind]⟩ []⟩).toOption
+  return caused fromGear && !caused fromSpell && !caused fromCheap && !caused fromOpponent
+
+-- Core Rules 206.1 uses the activated ability's unadjusted base cost.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, curator) ← put s p "VEN-145" .legendZone
+  let (s, gear) ← put s p "VEN-073" .base
+  let d ← s.cardDef? gear
+  let body := EffectDef.of [] (.prim (.draw .you (.const 1)))
+  let abilities := [
+    Ability.activated [.pay ⟨12, []⟩, .energyDiscount .always (.const 6)] .normal body .unlimited,
+    Ability.activated [.pay ⟨6, []⟩] .normal body .unlimited]
+  let d := { d with abilities }
+  let s := { s.fund p 6 with cards := ⟨d :: s.cards.cards⟩ }
+  let (high, es) ← (step 100 s ⟨.player p, .activate gear 0 ⟨6, []⟩ []⟩).toOption
+  let (low, _) ← (step 100 s ⟨.player p, .activate gear 1 ⟨6, []⟩ []⟩).toOption
+  let .triggerOrder _ t _ _ :: _ := high.pending | none
+  let .chainPass .. :: _ := low.pending | none
+  return t.source == curator && (high.poolOf p).energy == 0 &&
+    es.contains (.activated p gear 0 (some 12))
 
 end RiftboundTest

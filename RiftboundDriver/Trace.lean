@@ -152,6 +152,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
              else match trigCost s t with
                | .energy n => [("energy", toString n)]
                | .burn n => [("burn", toString n)]
+               | .exhaustSelf => [("exhaustSource", "true")]
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
@@ -275,9 +276,9 @@ def eventJson : Event → String
       ("cards", jarr (ids.map (fun id => toString id.n)))]
   | .combatWon bf w =>
     jobj [("t", jstr "combat_won"), ("battlefield", toString bf.n), ("winner", toString w.n)]
-  | .activated p src idx =>
-    jobj [("t", jstr "activated"), ("player", toString p.n), ("source", toString src.n),
-      ("index", toString idx)]
+  | .activated p src idx baseEnergy =>
+    jobj ([("t", jstr "activated"), ("player", toString p.n), ("source", toString src.n),
+      ("index", toString idx)] ++ baseEnergy.toList.map (fun n => ("baseEnergy", toString n)))
 
 /-- All the zones to show, with the player count. -/
 def shownZones (n : Nat) : List Zone :=

@@ -4018,16 +4018,20 @@ def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
   let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
   ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
 
-/-- Recheck independently declared target slots (CR 359.3.e.2).
+/-- Recheck independent target slots or a single bounded group (CR 359.3.e.2).
 Invalid targets leave an empty value in their original slot. -/
 def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
     (definition : Option EffectDef) : List Value :=
   match definition with
   | some e =>
     let choices := e.choices.filter Choice.isTarget
-    if choices.isEmpty then []
-    else
-      let might := s.mightTable
+    let might := s.mightTable
+    match choices with
+    | [choice@(.target (.upTo n) ..)] =>
+      let valid := choice.candidatesAfter s p src might []
+      (ts.take n).map (fun id => if valid.contains id then .obj id else .int 0) ++
+        List.replicate (n - ts.length) (.int 0)
+    | _ =>
       choices.zipIdx.map (fun (choice, i) =>
         match ts[i]? with
         | some id =>

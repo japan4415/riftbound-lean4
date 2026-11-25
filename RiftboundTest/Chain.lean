@@ -121,7 +121,7 @@ meta def afterUse : Option (GameState × List Event) :=
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with
   | some (_, p, _, a, e, _), some (s1, es) =>
-    es.contains (.activated p a 0) &&
+    es.contains (.activated p a 0 (some 0)) &&
     (s1.obj? a).any (fun o => o.exhausted && o.used == [0]) &&
     (s1.zone .chain).length == 1 &&
     (match (s1.zone .chain).head?.bind s1.obj? with
