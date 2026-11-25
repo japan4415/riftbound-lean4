@@ -542,7 +542,7 @@ def Keyword.runs : Keyword → Bool
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
-    c.keywords.all (·.keyword.runs) &&
+    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.canFlow)) &&
     (match c.spellEffect with
       | some e => e.choices.all Choice.simple && e.body.understood
       | none => !c.types.contains .spell)

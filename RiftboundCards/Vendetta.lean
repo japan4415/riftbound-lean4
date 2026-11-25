@@ -83,8 +83,11 @@ def VEN_003.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Brittle Steel: the effect is not written yet. -/
-def VEN_003 : CardDef := VEN_003.meta
+/-- Brittle Steel. -/
+def VEN_003 : CardDef :=
+  { VEN_003.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]] (.prim (.kill (.slot 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-004
 /--
@@ -314,8 +317,13 @@ def VEN_012.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Perfect Execution: the effect is not written yet. -/
-def VEN_012 : CardDef := VEN_012.meta
+/-- Perfect Execution. -/
+def VEN_012 : CardDef :=
+  { VEN_012.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.ready (.slot 0)),
+        .grant (.slot 0) (.keyword .it ⟨.assault, .amount 3⟩) .thisTurn])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-013
 /--

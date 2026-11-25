@@ -130,6 +130,8 @@ structure Object where
   replaces : Option ObjId := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
+  /-- This Spell was played for its Flow cost and is banished when it leaves the Chain (CR 829). -/
+  flowed : Bool := false
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
   chose : List ObjId := []
   /-- The turn the objects in `chose` were chosen in. -/

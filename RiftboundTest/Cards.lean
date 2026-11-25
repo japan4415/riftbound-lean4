@@ -67,8 +67,8 @@ open Riftbound RiftboundCards
 #guard (allCards.filter (fun c => c.id.code.startsWith "UNL-")).length == 225
 
 -- the cards written down as IR values (docs/coverage.md)
-#guard (Vendetta.cards.filter (·.status == .drafted)).length == 36
-#guard (allCards.filter (·.status == .drafted)).length == 820
+#guard (Vendetta.cards.filter (·.status == .drafted)).length == 38
+#guard (allCards.filter (·.status == .drafted)).length == 822
 -- an Equipment's effect text is kept apart: the abilities it gives the Unit it is attached to are
 -- `grants`, not the abilities of the card
 #guard match db.find? ⟨"UNL-019"⟩ with
@@ -95,7 +95,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 199
-#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 196
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellEffect.isSome)).length == 201
+#guard (allCards.filter (fun c => c.status == .drafted && c.spellRuns)).length == 198
 
 end RiftboundTest

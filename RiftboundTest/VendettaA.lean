@@ -85,4 +85,27 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (d.zone deck).length == (c.zone deck).length - 1 && (d.zone trash).length == 1 &&
     d.pointsOf s.you == s.pointsOf s.you + 1 && d.handN player == s.handN player
 
+-- Brittle Steel uses its printed cost from hand and is sent to the Trash. It uses its Flow
+-- cost from the Trash, keeps its normal timing, and is banished when it leaves the Chain.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "VEN-003" .hand
+  let (s, gear1) ← put s s.you "VEN-058" .base
+  let (s, gear2) ← put s s.you "VEN-058" .base
+  let fromHand ← cast (s.rich s.me) s.me spell ⟨2, [.fury]⟩ [gear1]
+  let inTrash ← fromHand.firstOf s.me .trash "VEN-003"
+  let funded := fromHand.rich s.me
+  let flow : Action := ⟨.player s.me, .playCard inTrash ⟨4, [.fury]⟩ [gear2]⟩
+  let (onChain, _) ← (step 100 funded flow).toOption
+  let item ← (onChain.zone .chain).head?
+  let (countered, _) := counterObjTo .hand onChain item
+  let resolved := settleChain {} 12 onChain
+  let closed := { funded with pending := [.chainPass s.me 0] }
+  return (legalActions funded).contains flow &&
+    !(legalActions closed).contains flow &&
+    (cast funded s.me inTrash ⟨2, [.fury]⟩ [gear2]).isNone &&
+    (fromHand.obj? gear1).isNone && (resolved.obj? gear2).isNone &&
+    resolved.countIn s.me .banishment "VEN-003" == 1 &&
+    countered.countIn s.me .banishment "VEN-003" == 1 &&
+    (countered.obj? gear2).isSome
+
 end RiftboundTest

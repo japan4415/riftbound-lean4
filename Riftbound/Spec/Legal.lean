@@ -69,10 +69,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)
   | .priority p :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
-  -- a Unit or a Gear of the player's hand, or a Spell with its targets, paid for from the Rune
-  -- Pool, in the Main Phase (CR 349-359)
+  -- a Unit or Gear from hand, or a Spell with targets from hand or via Flow, in the Main Phase
+  -- (CR 349-359, 829)
   | .priority p :: _, .playCard c pay ts =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ PlayOk s p c pay ts
+    a.actor = .player p ∧ c ∈ s.playSources p ∧ PlayOk s p c pay ts
   -- a Standard Move of a Unit of the player's, in the Main Phase (CR 144)
   | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
   -- an activated ability of an object the player controls, paid for from the Rune Pool, when the
@@ -81,9 +81,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ activatable s p src idx pay ts true = true
   -- the player with priority passes while the Chain holds an item (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
-  -- in answer to the Chain: a Spell with Reaction from the hand (CR 813)
+  -- in answer to the Chain: a play with Reaction from a permitted zone (CR 813, 829)
   | .chainPass p _ :: _, .playCard c pay ts =>
-    a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ reactable s p c pay ts = true
+    a.actor = .player p ∧ c ∈ s.playSources p ∧ reactable s p c pay ts = true
   -- in answer to the Chain: an activated ability with Reaction (CR 813)
   | .chainPass p _ :: _, .activate src idx pay ts =>
     a.actor = .player p ∧ activatable s p src idx pay ts false = true
@@ -100,9 +100,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ manaOk s p src idx pay = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
-  -- in a Showdown: a Spell with Action, or a card with Reaction, from the hand (CR 806, 813)
+  -- in a Showdown: a Spell with Action, or a card with Reaction (CR 806, 813, 829)
   | .showdown _ q _ :: _, .playCard c pay ts =>
-    a.actor = .player q ∧ c ∈ s.zone (.player q .hand) ∧ showdownable s q c pay ts = true
+    a.actor = .player q ∧ c ∈ s.playSources q ∧ showdownable s q c pay ts = true
   -- in a Showdown: an activated ability with Action or Reaction (CR 806, 813)
   | .showdown _ q _ :: _, .activate src idx pay ts =>
     a.actor = .player q ∧ activatableSD s q src idx pay ts = true

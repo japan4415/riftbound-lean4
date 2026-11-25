@@ -108,7 +108,7 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
     (hp : castable s p c pay targets = true)
     (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
+    ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d = some cost ∧
       b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.playCostsOf p c d b ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
@@ -145,15 +145,15 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
   obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
   simpa [extraEvents, withTriggers_nil, h3.pending_eq] using hpend
 
-/-- **A Spell that has resolved goes to its owner's Trash** (CR 359.3.d). -/
-theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
+/-- A resolved Spell goes to the Trash or, with Flow, to Banishment (CR 359.3.d, 829.1.b.1). -/
+theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
-    (hm : ∃ r, moveObj s item (.player o.owner .trash) = some r) :
-    ∃ id', (finishItem s item).2 = [Event.moved item id' (.player o.owner .trash)] ∧
-      id' ∈ (finishItem s item).1.zone (.player o.owner .trash) := by
+    (hm : ∃ r, moveObj s item (o.chainDestination .trash) = some r) :
+    ∃ id', (finishItem s item).2 = [Event.moved item id' (o.chainDestination .trash)] ∧
+      id' ∈ (finishItem s item).1.zone (o.chainDestination .trash) := by
   obtain ⟨⟨s2, id'⟩, hm⟩ := hm
-  have hf : finishItem s item = (s2, [Event.moved item id' (.player o.owner .trash)]) := by
+  have hf : finishItem s item = (s2, [Event.moved item id' (o.chainDestination .trash)]) := by
     unfold finishItem
     simp only [ho, hc, ite_true]
     cases hkd : o.kind with
@@ -165,8 +165,9 @@ theorem finishItem_trash {s : GameState} {item : ObjId} {o : Object}
   obtain ⟨src, d, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hoo : o' = o := Option.some.inj (ho'.symm.trans ho)
   have h2 := hs.id'_mem
-  have hd2 : d = .player o.owner .trash := by
-    rw [hdd, hoo]; simp [Zone.normalize, Zone.isBoard]
+  have hd2 : d = o.chainDestination .trash := by
+    rw [hdd, hoo]
+    cases hf : o.flowed <;> simp [Object.chainDestination, hf, Zone.normalize, Zone.isBoard]
   rw [hd2] at h2
   exact h2
 

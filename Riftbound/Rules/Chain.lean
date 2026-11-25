@@ -586,7 +586,7 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
           | _ => [])
       | none => [])
 
-/-- Every way the player can cast a Spell with Reaction from the hand. -/
+/-- Every way the player can answer the Chain with a Reaction. -/
 def legalReactions (s : GameState) (p : PlayerId) : List Action :=
   (legalPlays s p).filter (fun a =>
     match a.kind with
@@ -597,7 +597,7 @@ def legalReactions (s : GameState) (p : PlayerId) : List Action :=
 def actionSpell (s : GameState) (c : ObjId) : Bool :=
   (s.cardDef? c).any (fun d => d.hasKeyword .action)
 
-/-- The card of the hand can be played in a Showdown (CR 347-348, 806, 813): a Spell with Action, or
+/-- The card can be played in a Showdown (CR 347-348, 806, 813): a Spell with Action, or
 a card that can answer the Chain (Reaction). -/
 def showdownable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) : Bool :=
@@ -692,7 +692,7 @@ theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/
 theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     a ∈ legalReactions s p ↔ ∃ c pay ts, a = ⟨.player p, .playCard c pay ts⟩ ∧
-      c ∈ s.zone (.player p .hand) ∧ reactable s p c pay ts = true := by
+      c ∈ s.playSources p ∧ reactable s p c pay ts = true := by
   unfold legalReactions
   simp only [List.mem_filter, mem_legalPlays]
   constructor
@@ -725,7 +725,7 @@ theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
 /-- The plays listed are exactly the cards that can be played in a Showdown. -/
 theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
     a ∈ legalShowdownPlays s p ↔ ∃ c pay ts, a = ⟨.player p, .playCard c pay ts⟩ ∧
-      c ∈ s.zone (.player p .hand) ∧ showdownable s p c pay ts = true := by
+      c ∈ s.playSources p ∧ showdownable s p c pay ts = true := by
   unfold legalShowdownPlays
   simp only [List.mem_filter, mem_legalPlays]
   constructor
@@ -879,9 +879,9 @@ theorem castStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
     (congrArg GameState.cards hs).trans h6, rfl⟩
 
-/-- A castable Spell of the hand can be cast, with any new stack. -/
+/-- A castable Spell from a permitted zone can be cast, with any new stack. -/
 theorem castStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.zone (.player p .hand))
+    {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
     (h : castable s p c pay ts = true) :
     ∃ r, castStep s p c pay ts new = some r := by
   obtain ⟨r, hr⟩ := applyCast_isSome hwf hc h
@@ -957,9 +957,9 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, rfl⟩
 
-/-- A card of the hand that can be cast, or played, can answer the Chain, with any new stack. -/
+/-- A card from a permitted zone can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.zone (.player p .hand))
+    {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
     (h : castable s p c pay ts = true ∨ ∃ dest ts', playable s p c pay dest ts' = true) :
     ∃ r, reactStep s p c pay ts new = some r := by
   unfold reactStep
@@ -969,7 +969,7 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   · rename_i hk
     rcases h with h | ⟨dest, ts', h⟩
     · exact absurd h hk
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf hc h
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc h) h
       obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
       refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
       simp [hr, hr']

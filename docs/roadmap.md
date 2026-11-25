@@ -1761,6 +1761,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - `Prim.burn` は CR 441 に従い、Main Deck の上から指定枚数を Trash に置く。残りが足りない場合は、置ける分を置いて Burn Out を処理し、山札を補充して残りを置く。移動には `sendObj` を使い、`burnEffect_safe` で物理カードの保存などを示した。Burn 専用の誘発は後続のカードで扱う。
 - Shadow Temple、Oasis Raider、Fretful Feline、Decree of Unity、Acceleration Gate など、21 枚の効果を追加した。Vendetta の `drafted` は 167 枚中 36 枚になった。これら 5 枚は `RiftboundTest/VendettaA.lean` で、誘発条件、対象の選択、山札の残り枚数などを検査する。
 
+### M8c Vendetta — 印刷された Flow コスト
+
+- 呪文は通常のタイミングで、Trash からは Flow の代替コストでプレイできる（CR 829）。Flow でプレイした呪文は、解決または打ち消しで Chain を離れるとき Banishment へ置く。
+- Brittle Steel と Perfect Execution の効果を追加した。Brittle Steel は手札と Trash でコストが異なること、Reaction の許可が増えないこと、解決と打ち消しの両方で Banishment へ置かれることをテストした。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

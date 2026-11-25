@@ -800,6 +800,10 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
   · exact (playFree_safe p s _).trans (recycleList_safe _ _)
   · exact recycleList_safe _ _
 
+/-- Where a finalized Spell goes when it is removed from the Chain (CR 829.1.b.1). -/
+def Object.chainDestination (o : Object) (otherwise : ZoneKind) : Zone :=
+  .player o.owner (if o.flowed then .banishment else otherwise)
+
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
 def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -813,8 +817,8 @@ def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s id (.player o.owner k) with
-        | some r => (r.1, [Event.moved id r.2 (.player o.owner k)])
+        match moveObj s id (o.chainDestination k) with
+        | some r => (r.1, [Event.moved id r.2 (o.chainDestination k)])
         | none => (s, [])
     else (s, [])
   | none => (s, [])
@@ -3217,8 +3221,8 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
     | none, _ => .finishSpell item :: rest
   | [] => rest
 
-/-- An item has resolved: a Spell goes from the Chain to its owner's Trash (CR 359.3.d), an ability
-ceases to exist. Nothing happens if it is no longer on the Chain. -/
+/-- Finish a Chain item: a Spell moves to its destination and an ability ceases to exist
+(CR 359.3.d, 829.1.b.1). Nothing happens if it has already left the Chain. -/
 def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
   match s.obj? item with
   | some o =>
@@ -3229,8 +3233,8 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s item (.player o.owner .trash) with
-        | some r => (r.1, [Event.moved item r.2 (.player o.owner .trash)])
+        match moveObj s item (o.chainDestination .trash) with
+        | some r => (r.1, [Event.moved item r.2 (o.chainDestination .trash)])
         | none => (s, [])
     else (s, [])
   | none => (s, [])
@@ -3249,12 +3253,11 @@ theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) :
   · simp only [List.mem_singleton] at h
     exact ⟨_, h⟩
 
-/-- Finishing an item either changes nothing, or moves a Spell from the Chain to its owner's Trash,
-or removes an ability. -/
+/-- Finishing an item either changes nothing, moves a Spell, or removes an ability. -/
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
       (∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-        moveObj s item (.player o.owner .trash) = some (s2, id') ∧
+        moveObj s item (o.chainDestination .trash) = some (s2, id') ∧
           (finishItem s item).1 = s2) ∨
       (∃ o s2, s.obj? item = some o ∧ item ∈ s.zone .chain ∧ o.kind.phys? = none ∧
           removeObj s item = some s2 ∧ (finishItem s item).1 = s2) := by

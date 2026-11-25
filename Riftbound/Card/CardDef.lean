@@ -164,6 +164,13 @@ def equipCost (c : CardDef) : Option Cost :=
     | .equip, .cost cost => some cost
     | _, _ => none)
 
+/-- The printed Flow cost of a Spell (CR 829). -/
+def flowCost (c : CardDef) : Option Cost :=
+  c.keywords.findSome? (fun k =>
+    match k.keyword, k.arg with
+    | .flow, .cost cost => some cost
+    | _, _ => none)
+
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
