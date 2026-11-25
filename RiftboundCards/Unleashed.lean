@@ -4926,6 +4926,9 @@ def UNL_170 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [] (.eachPlayer .eachOpponent
         (.prim (.kill (Selector.one .friendly .here [.ofType .unit]))))) .unlimited],
+    -- the additional cost: kill a friendly unit; the card costs as much less as that unit costs
+    playExtra := some (.killUnit, false),
+    paidCut := some .killed,
     status := .drafted }
 
 -- BEGIN GENERATED UNL-171
@@ -5165,11 +5168,9 @@ def UNL_178.meta : CardDef :=
 /-- Poppy. -/
 def UNL_178 : CardDef :=
   { UNL_178.meta with
-    abilities := [
-      .passive (.cmp .ge .xp (.const 3)) [.costMinus .self (.const 3)],
-      .triggered (.onSelf .play)
-        (.of [] (.ifThen (.cmp .ge .xp (.const 3)) (.prim (.spendXP .you (.const 3))) .nop))
-        .unlimited],
+    -- the additional cost: spend 3 XP, and the card costs 3 Energy less
+    playExtra := some (.spendXP 3, false),
+    paidCut := some (.energy 3),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-179

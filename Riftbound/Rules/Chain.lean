@@ -562,7 +562,7 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 (CR 813). A Unit or a Gear is played at once. -/
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) : Bool :=
-  ((castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay) ||
+  ((castable s p c pay ts || (ts.isEmpty && s.extraOk p c ts && playable s p c pay none ts) ||
       bfPlayOk s p c pay ts) &&
     reactSpell s c) || (bfPlayOk s p c pay ts && ambushPick s c ts)
 
@@ -647,7 +647,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} : reactable s p c pay ts = true ↔
       (((castable s p c pay ts = true ∨
-        (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay = true)) ∨
+        (ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay none ts = true)) ∨
         bfPlayOk s p c pay ts = true) ∧
         reactSpell s c = true) ∨ (bfPlayOk s p c pay ts = true ∧ ambushPick s c ts = true) := by
   simp [reactable, List.isEmpty_iff, and_assoc]
@@ -874,14 +874,14 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
 /-- A card of the hand that can be cast, or played, can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.zone (.player p .hand))
-    (h : castable s p c pay ts = true ∨ ∃ dest, playable s p c pay dest = true) :
+    (h : castable s p c pay ts = true ∨ ∃ dest ts', playable s p c pay dest ts' = true) :
     ∃ r, reactStep s p c pay ts new = some r := by
   unfold reactStep
   split
   · rename_i hk
     exact castStep_isSome hwf hc hk
   · rename_i hk
-    rcases h with h | ⟨dest, h⟩
+    rcases h with h | ⟨dest, ts', h⟩
     · exact absurd h hk
     · obtain ⟨r, hr⟩ := applyPlay_isSome hwf hc h
       obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r

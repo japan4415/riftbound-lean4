@@ -51,6 +51,16 @@ inductive PlayExtra where
   | spendXP (n : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
+done as the card is played. -/
+inductive PaidCut where
+  /-- The card costs this much less Energy (Poppy). -/
+  | energy (n : Nat)
+  /-- The card costs as much less Energy as the object the cost is done to costs, and as many Power
+  symbols less as it has (Atakhan). -/
+  | killed
+deriving DecidableEq, Repr, Hashable
+
 /-- The definition of one logical card. -/
 structure CardDef where
   /-- The logical card's identifier. -/
@@ -90,6 +100,8 @@ structure CardDef where
   it is, and whether it must be done ("as an additional cost to play me, ..." or "you may ...").
   The object it is done to is chosen as the card is played. -/
   playExtra : Option (PlayExtra × Bool) := none
+  /-- What the additional cost `playExtra` takes off the cost of the card, if it is done. -/
+  paidCut : Option PaidCut := none
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/

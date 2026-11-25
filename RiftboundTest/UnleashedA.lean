@@ -485,4 +485,38 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     (free.obj? e).isNone && free.xpOf s.me == 3
 
 
+-- Poppy, Defender of the Meek (UNL-178): the additional cost is 3 XP; paid, she costs 3 Energy less
+-- (and only then); not paid, the full cost, and no XP is spent
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-178" .hand
+  let s2 ← withXPOf s1 s.me 3
+  let leg ← (s2.zone (.player s.me .legendZone)).head?
+  let less : RunePool.Payment := ⟨3, [.order]⟩
+  let full : RunePool.Payment := ⟨6, [.order]⟩
+  let paid ← cast (s2.rich s.me) s.me c less [leg]
+  let free ← cast (s2.rich s.me) s.me c full []
+  let pu ← paid.firstOf s.me .base "UNL-178"
+  let fu ← free.firstOf s.me .base "UNL-178"
+  return paid.xpOf s.me == 0 && free.xpOf s.me == 3 &&
+    (cast (s2.rich s.me) s.me c less []).isNone &&
+    (cast ((withXPOf s1 s.me 2).getD s1 |>.rich s.me) s.me c less [leg]).isNone &&
+    paid.tired pu == some true && free.tired fu == some true
+
+-- Atakhan (UNL-170): killing a friendly unit as the additional cost makes it cost that unit's Energy
+-- and Power less
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-170" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let some d := s2.cardDef? u | none
+  let some k := d.cost | none
+  let some ca := (s2.cardDef? c).bind (·.cost) | none
+  let less : RunePool.Payment :=
+    ⟨ca.energy - k.energy, (ca.power.drop k.power.length).map (fun x => match x with | .domain d => d | _ => .fury)⟩
+  let full : RunePool.Payment := ⟨ca.energy, ca.power.map (fun x => match x with | .domain d => d | _ => .fury)⟩
+  let paid ← cast (s2.rich s.me) s.me c less [u]
+  let free ← cast (s2.rich s.me) s.me c full []
+  return paid.countIn s.me .trash "UNL-111" == 1 && paid.countIn s.me .base "UNL-170" == 1 &&
+    free.countIn s.me .base "UNL-111" == 1 && free.countIn s.me .base "UNL-170" == 1 &&
+    (cast (s2.rich s.me) s.me c less []).isNone
+
 end RiftboundTest
