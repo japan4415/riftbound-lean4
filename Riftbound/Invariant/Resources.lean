@@ -189,13 +189,12 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
     subst ho
     rfl
 
-/-- **The targets of a Spell are objects in play** (CR 355), or Spells on the Chain: a Spell that
-can be cast with some targets has all of them there. -/
-theorem castable_targets_inPlay {s : GameState} {p : PlayerId} {c : ObjId}
+/-- **The targets of a Spell are in supported target zones** (CR 355). -/
+theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {targets : List ObjId} (h : castable s p c pay targets = true) :
-    ∀ t ∈ targets, t ∈ s.inPlay ∨ t ∈ s.zone .chain := by
+    ∀ t ∈ targets, s.targetPresent t = true := by
   obtain ⟨d, e, -, -, hok⟩ := castable_targets h
-  exact targetsOk_mem_inPlay hok
+  exact targetsOk_mem_targetPresent hok
 
 /-- **A Spell resolves with the targets it was cast with** (CR 340, 355): the effect is run with
 the chosen objects as its slots, and the Spell goes to the Trash when the effect is done. -/

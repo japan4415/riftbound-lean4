@@ -103,7 +103,7 @@ def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
   if spell.any (fun c => (s.activeMods c).contains .ignoreDeflectSpell) then 0
   else
     (ts.map (fun t =>
-      if (s.obj? t).any (·.controller != p) &&
+      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) &&
           !((s.obj? t).bind (·.loc)).any
             (fun bf => (s.activeMods bf).contains .ignoreDeflectHere) then
         s.deflectOf t

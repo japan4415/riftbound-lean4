@@ -279,4 +279,74 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return s.blocksChoice s.you akali && !(s.blocksChoice s.me akali) &&
     !(combat.blocksChoice s.you akali)
 
+-- Shadows chooses units across Trashes, and the printed Deflect of a card in Trash is inactive.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "VEN-103" .hand
+  let (s, ally) ← put s s.me "VEN-014" .trash
+  let (s, enemy) ← put s s.you "VEN-043" .trash
+  let (s, other) ← put s s.you "VEN-006" .trash
+  let (s, nonUnit) ← put s s.you "VEN-003" .trash
+  let (s, inHand) ← put s s.you "VEN-014" .hand
+  let (s, onBoard) ← put s s.me "VEN-014" .base
+  let s := s.fund s.me 3 0 0 0 0 1
+  let pay : RunePool.Payment := ⟨3, [.chaos]⟩
+  let targets := [ally, enemy]
+  let action : Action := ⟨.player s.me, .playCard spell pay targets⟩
+  let (onChain, _) ← (step 100 s action).toOption
+  let both := settleChain {} 12 onChain
+  let one := settleChain {} 12 (sendObj .banishment onChain ally).1
+  let none ← cast s s.me spell pay []
+  return (legalActions s).contains action &&
+    both.countIn s.me .hand "VEN-014" == 1 && both.countIn s.you .hand "VEN-043" == 1 &&
+    one.countIn s.me .hand "VEN-014" == 0 && one.countIn s.you .hand "VEN-043" == 1 &&
+    none.countIn s.me .trash "VEN-014" == 1 &&
+    [[nonUnit], [inHand], [onBoard], [ally, enemy, other]].all (fun ts =>
+      !(legalActions s).contains ⟨.player s.me, .playCard spell pay ts⟩ &&
+        (cast s s.me spell pay ts).isNone)
+
+-- The Matriarch chooses her own affordable Trash unit when the Empower trigger is put on Chain.
+#guard vendettaCase fun s => do
+  let (s, matriarch) ← put s s.me "VEN-104" .base
+  let (s, eligible) ← put s s.me "VEN-014" .trash
+  let (s, _) ← put s s.me "VEN-006" .trash
+  let (s, _) ← put s s.me "OGN-150" .trash
+  let (s, _) ← put s s.me "VEN-003" .trash
+  let (s, _) ← put s s.you "VEN-014" .trash
+  let (empowered, events) := empowerObj s.me s matriarch
+  let targets ← firePicks empowered events
+  let chosen ← fire empowered events { pick := (· == [eligible]) }
+  let declined ← fire empowered events { pick := List.isEmpty }
+  let unit ← chosen.firstOf s.me .base "VEN-014"
+  return targets == [eligible] && (chosen.obj? eligible).isNone &&
+    chosen.tired unit == some true && chosen.countIn s.you .trash "VEN-014" == 1 &&
+    (declined.obj? eligible).isSome && declined.countIn s.me .base "VEN-014" == 0
+
+-- The Monk targets a Unit and picks the Trash card while resolving, only if the extra cost was paid.
+#guard vendettaCase fun s => do
+  let (s, monk) ← put s s.me "VEN-101" .hand
+  let (s, unit) ← put s s.me "VEN-006" .base
+  let (s, card) ← put s s.you "VEN-003" .trash
+  let s := s.rich s.me
+  let says : Says := { pick := (· == [unit]), obj := (· == card) }
+  let paid ← cast s s.me monk ⟨3, []⟩ [] says
+  let unpaid ← cast s s.me monk ⟨2, []⟩ [] says
+  let played ← paid.firstOf s.me .base "VEN-101"
+  return paid.tired played == some true && paid.countIn s.you .banishment "VEN-003" == 1 &&
+    (paid.keywordsNow unit).contains ⟨.assault, .amount 2⟩ &&
+    unpaid.countIn s.you .trash "VEN-003" == 1 &&
+    !(unpaid.keywordsNow unit).contains ⟨.assault, .amount 2⟩
+
+-- The Prefect may banish itself to banish the opposing Gear that caused the trigger.
+#guard vendettaCase fun s => do
+  let (s, prefect) ← put s s.me "VEN-102" .base
+  let (s, gear) ← put s s.you "VEN-058" .base
+  let (s, friendly) ← put s s.me "VEN-058" .base
+  let chosen ← fire s [.played s.you gear]
+  let declined ← fire s [.played s.you gear] { yes := false }
+  let ownPlay ← fire s [.played s.me friendly]
+  return chosen.countIn s.me .banishment "VEN-102" == 1 &&
+    chosen.countIn s.you .banishment "VEN-058" == 1 &&
+    (declined.obj? prefect).isSome && (declined.obj? gear).isSome &&
+    (ownPlay.obj? prefect).isSome && (ownPlay.obj? friendly).isSome
+
 end RiftboundTest

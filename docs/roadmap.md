@@ -366,7 +366,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **Chain 上の Spell が対象を持つ**: `Object.targets`。解決のとき、`Env.slots` に入り、`Selector.slot i` が読む。選ばれた物が盤面から消えていたら、その Selector は何も指さない（CR 340。効果は何もしない）。
 - **プリミティブ**: `deal`・`heal`・`kill`・`ready`・`exhaust`。Selector は `self`・`slot`・`var`・`pick .all`。ダメージが Might に届いた物は、その場で Trash に行く（CR 417 の Cleanup を前倒ししたもの。Cleanup は戦闘（M5）で足す）。
 - **状態を変える部品**（`Safe`）: 効果が盤面を変える操作は、`WF`・I1・`OwnerOk` を保ち、物・ゾーン・カウンタだけを変える。この `Safe s s'` を `modObj`（1 つの物の属性を変える。kind と owner を変えない）と `moveObj` から組み、`runEffect_safe` で解釈器全体が `Safe` だと示した。そのため、既存の不変条件の証明は、`run` の腕に `Safe` を 1 つ使うだけで済んだ。
-- **証明**: `applyCast_targets`（Chain の Spell は、選んだ対象を持つ）、`castable_targets_inPlay`（Spell の対象は盤面の物）、`resolveFrames_slots`（解決は、持った対象を slot にして効果を走らせる）、`mem_legalPlays`（列挙は、カード・支払い・対象の合法な組だけ）、`runEffect_safe`。**不変条件**は引き続き証明済み。
+- **証明**: `applyCast_targets`（Chain の Spell は、選んだ対象を持つ）、`castable_targets_present`（Spell の対象は合法なゾーンにある）、`resolveFrames_slots`（解決は、持った対象を slot にして効果を走らせる）、`mem_legalPlays`（列挙は、カード・支払い・対象の合法な組だけ）、`runEffect_safe`。**不変条件**は引き続き証明済み。
 - **ビューア**: デモのデッキに「敵の Unit に 2 ダメージ」の Spell（Spark）が入り、対象つきでプレイされ、Unit が Trash に行く。ログに「（対象: …）」が出る。
 - **まだ無いもの**: 複数の対象・`upTo`・`exactly`・モード・X・追加コスト（選択のフレーム）、`here`・`inHand` などの place、条件（`ifThen`）、`forEach`、`pick .one`、Reaction と複数項目の Chain（I9）、Spell の速さ、Cleanup（ダメージによる死を Cleanup で行う）、Layers（現在の Might は印刷値のまま）。
 
@@ -1169,7 +1169,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### M7 の実装の記録（2026-11-23）: 打ち消し（Chain の上のスペルを選ぶ）、3 枚
 
-- **エンジン**: `Place.onChain`（Chain の上のスペル。自分自身と、能力は含まない）。選ぶ対象が、盤面か Chain の上のスペルになった（`mem_candidates`・`targetsOk_mem_inPlay`・`castable_targets_inPlay` の主張を、「盤面、または Chain の上のスペル」に広げた。`.slot` も同じ）。`Prim.counter`（スペルを、解決せずに、持ち主の Trash へ送る）。
+- **エンジン**: `Place.onChain`（Chain の上のスペル。自分自身と、能力は含まない）。選ぶ対象が、盤面か Chain の上のスペルになった（`mem_candidates`・当時の `targetsOk_mem_inPlay`・`castable_targets_inPlay` の主張を、「盤面、または Chain の上のスペル」に広げた。`.slot` も同じ）。`Prim.counter`（スペルを、解決せずに、持ち主の Trash へ送る）。
 - **動くようになったカード**: Defy（045。費用の上限は、Energy 4 と Power 1）、Wind Wall（064）、Stormbringer, Volibear（250）。
 - **動くカード**: 213 → **216 枚**。
 - **レビューで足したこと**: 負のテスト（Chain が空、自分自身は対象にできない、Stormbringer の第 1 対象は、基地の味方ユニット）。
@@ -1801,6 +1801,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Twilight Shroud の保護はターン中だけ働き、Akali, Silent の保護は同じ Battlefield で戦闘をしている間だけ外れる。どちらも味方の選択は許す。
 - 167 枚中 94 枚が `drafted`、90 枚が `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 10 — Trash のカードを対象にする
+
+- CR 355 に従い、明示された Trash・Legend Zone・Champion Zone のカードを Chain に置く段階で選べる。解決前に対象が別のゾーンへ移ると、その対象の ObjId は無効になる。Trash にあるカードの Deflect は働かない。
+- Shadows of the Past と Tail-Cloaked Matriarch に加え、Gust Monk と Ravenbloom Prefect を追加した。Gust Monk の追加コストは Assault の誘発条件であり、ユニットを Ready で出す Accelerate の支払いとは区別する。
+- 167 枚中 98 枚が `drafted`、94 枚が `CardDef.runs` の検査を通る。
 
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 

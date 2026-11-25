@@ -2652,8 +2652,17 @@ def VEN_101.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Gust Monk: the effect is not written yet. -/
-def VEN_101 : CardDef := VEN_101.meta
+/-- Gust Monk. -/
+def VEN_101 : CardDef :=
+  { VEN_101.meta with
+    additionalCost := some ⟨1, []⟩,
+    abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.ifThen (.cmp .gt (.count (.all .any .inTrash [])) (.const 0))
+          (.seqOf [.prim (.banish (.one .any .inTrash [])),
+            .grant (.slot 0) (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn]) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-102
 /--
@@ -2673,8 +2682,13 @@ def VEN_102.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ravenbloom Prefect: the effect is not written yet. -/
-def VEN_102 : CardDef := VEN_102.meta
+/-- Ravenbloom Prefect. -/
+def VEN_102 : CardDef :=
+  { VEN_102.meta with
+    abilities := [.triggered { event := .play, subject := .all .enemy .anywhere [.ofType .gear] }
+      (.of [] (.ifThen (.exists (.all .any .anywhere [.sameAs .self]))
+        (.may (.seqOf [.prim (.banish .self), .prim (.banish (.slot 0))])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-103
 /--
@@ -2696,8 +2710,12 @@ def VEN_103.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadows of the Past: the effect is not written yet. -/
-def VEN_103 : CardDef := VEN_103.meta
+/-- Shadows of the Past. -/
+def VEN_103 : CardDef :=
+  { VEN_103.meta with
+    spellEffect := some (.of [.targetOf (.upTo 2) .any .inTrash [.ofType .unit]]
+      (.prim (.returnToHand (.slotsFrom 0)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-104
 /--
@@ -2722,8 +2740,14 @@ def VEN_104.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tail-Cloaked Matriarch: the effect is not written yet. -/
-def VEN_104 : CardDef := VEN_104.meta
+/-- Tail-Cloaked Matriarch. -/
+def VEN_104 : CardDef :=
+  { VEN_104.meta with
+    abilities := [.triggered (Trigger.onSelf .becomeEmpowered)
+      (.of [.targetOf (.upTo 1) .friendly .inTrash
+        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
+        (.prim (.play (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-105
 /--

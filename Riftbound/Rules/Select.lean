@@ -7,8 +7,8 @@ public import Riftbound.Rules.Pay
 # Choosing objects
 
 What a Spell can choose when it is played, and which objects a selector of an effect stands for
-when it resolves (CR 355, 340) (design.md §7.2). A target is chosen among the objects in play that
-match the declaration of the choice. The selector of an effect names objects by the slot of a
+when it resolves (CR 355, 340) (design.md §7.2). A target must match the declaration of the choice.
+A declaration can explicitly name cards in a public off-board zone (CR 355.9.a, 355.10.a). The selector of an effect names objects by the slot of a
 choice, by a variable, or as all that match.
 
 Only what can be read from the printed card and the attributes of the object is understood:
@@ -719,15 +719,60 @@ theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {
     simp only [hp] at h
     exact fun x hx => GameState.mem_placeObjs hp x (GameState.mem_keepMatching h x hx)
 
+/-- Player zones whose cards may be named explicitly as targets. Facedown cards remain private
+(CR 107.3.f, 355.10.a). -/
+def targetZoneKinds : List ZoneKind := [.trash, .legendZone, .championZone]
+
+/-- A selected object still exists in a zone supported by object targeting. A zone change from
+or to one of the off-board zones creates a fresh object ID, so it cannot renew a stale target
+(CR 124, 340, 355.9). -/
+def GameState.targetPresent (s : GameState) (id : ObjId) : Bool :=
+  s.inPlay.contains id || (s.zone .chain).contains id ||
+    targetZoneKinds.any (fun z => s.players.any (fun p => (s.zone (.player p z)).contains id))
+
+/-- The matching targets for a declaration. An explicit player zone uses the side relative to
+the player whose zone it is. Other declarations keep their board and Chain semantics. -/
+def GameState.targetCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
+    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
+  match place.zoneKind? with
+  | none => s.candidates p self env side place fs
+  | some z =>
+    if targetZoneKinds.contains z then
+      let objs := (s.players.filter (side.admitsPlayer p)).flatMap (fun q => s.zone (.player q z))
+      s.keepMatching p self env .any fs objs
+    else some []
+
+/-- Every candidate is in a supported target zone. -/
+theorem GameState.mem_targetCandidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
+    {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
+    (h : s.targetCandidates p self env side place fs = some r) :
+    ∀ x ∈ r, s.targetPresent x = true := by
+  intro x hx
+  unfold targetCandidates at h
+  cases hz : place.zoneKind? with
+  | none =>
+    rw [hz] at h
+    rcases mem_candidates h x hx with hb | hc
+    · simp [targetPresent, hb]
+    · simp [targetPresent, hc]
+  | some z =>
+    by_cases hp : z ∈ targetZoneKinds
+    · simp only [hz, List.contains_iff_mem, hp, ite_true] at h
+      obtain ⟨q, hq, hxq⟩ := List.mem_flatMap.mp (mem_keepMatching h x hx)
+      have hq' := (List.mem_filter.mp hq).1
+      simp only [targetPresent, Bool.or_eq_true, List.any_eq_true, List.contains_iff_mem]
+      exact Or.inr ⟨z, hp, q, hq', hxq⟩
+    · simp_all
+
 /-- The objects a selector stands for when an effect resolves, seen by `p`, for the object `self`.
-A chosen object that has left play is nothing (CR 340): the selector stands for no object.
+A target whose object no longer exists stands for no object (CR 340).
 `none` if the selector cannot be answered yet. -/
 def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     Selector → Option (List ObjId)
   | .self => some [self]
   | .slot i =>
     match env.slots[i]? with
-    | some (.obj o) => some (if o ∈ s.inPlay ∨ o ∈ s.zone .chain then [o] else [])
+    | some (.obj o) => some (if s.targetPresent o then [o] else [])
     | some (.int _) => some []  -- a target of up to one, that was left out (`slotValues`)
     | _ => none
   | .var v =>
@@ -742,7 +787,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .slotsFrom i =>
     some ((env.slots.drop i).filterMap (fun v =>
       match v with
-      | .obj o => if o ∈ s.inPlay ∨ o ∈ s.zone .chain then some o else none
+      | .obj o => if s.targetPresent o then some o else none
       | _ => none))
   | .locationOf sel =>
     (sel.eval s p self env).map (fun ids =>
@@ -1059,11 +1104,12 @@ def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
   | some o => o.controller != p &&
     (s.turnFx.any (fun f =>
         f.turn == s.turn && f.target == some id && f.kind == .unchoosableEnemy) ||
-      (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
-        match ab with
-        | .passive cond mods =>
-          mods.contains (.cant .self .beChosen) && cond.eval s o.controller id {} == some true
-        | _ => false)) ||
+      ((s.inPlay.contains id || (s.zone (.player o.owner .legendZone)).contains id) &&
+        (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+          match ab with
+          | .passive cond mods =>
+            mods.contains (.cant .self .beChosen) && cond.eval s o.controller id {} == some true
+          | _ => false))) ||
       s.inPlay.any (fun src =>
         (s.obj? src).any (·.controller == o.controller) &&
           (s.cardDef? src).any (fun d => d.fullAbilities.any (fun ab =>
@@ -1077,8 +1123,8 @@ def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
             | _ => false))))
 
 /-- The objects of a side at a place that have the properties, for a choice made while an effect
-resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
-target cannot be. -/
+resolves: also the cards of a player's zone off the board, including private zones such as
+the hand or a deck when the effect allows it. -/
 def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
     (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
   match place.zoneKind? with
@@ -1096,13 +1142,14 @@ def Quantity.pickable : Quantity → Bool
 
 /-- The objects a choice of a Spell can pick, when the choices before it picked `acc` (a later
 choice may name an earlier pick as `slot i`): for a target of one object, up to one, or any number up
-to a bound, the matching objects in play. Nothing for a choice that is not understood yet. -/
+to a bound, the matching objects in an eligible zone. Nothing for a choice that is not understood
+yet. -/
 def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) :
     Choice → List ObjId
   | .target q side place fs =>
     if q.pickable then
-      ((s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
+      ((s.targetCandidates p self { slots := acc.map Value.obj, passMight := pm } side place
         fs).getD []).filter (fun id => !s.blocksChoice p id)
     else []
   | _ => []
@@ -1296,30 +1343,30 @@ theorem mem_targetTuples (s : GameState) (p : PlayerId) (self : ObjId) (pm : Lis
     ts ∈ targetTuples s p self pm cs ↔ targetsOk s p self pm cs ts = true :=
   mem_targetTuplesAfter s p self pm cs [] ts
 
-/-- What a choice can pick is in play, or a spell on the Chain. -/
+/-- What a choice can pick is in a supported target zone. -/
 theorem Choice.candidatesAfter_mem {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} {acc : List ObjId} {c : Choice} {x : ObjId}
-    (h : x ∈ c.candidatesAfter s p self pm acc) : x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    (h : x ∈ c.candidatesAfter s p self pm acc) : s.targetPresent x = true := by
   cases c with
   | target q side place fs =>
     simp only [Choice.candidatesAfter] at h
     split at h
-    · cases hc : s.candidates p self { slots := acc.map Value.obj, passMight := pm } side place
+    · cases hc : s.targetCandidates p self { slots := acc.map Value.obj, passMight := pm } side place
         fs with
       | none => simp [hc] at h
       | some r =>
         simp only [hc, Option.getD_some] at h
-        exact GameState.mem_candidates hc x (List.mem_filter.mp h).1
+        exact GameState.mem_targetCandidates hc x (List.mem_filter.mp h).1
     · simp at h
   | mode _ => simp [Choice.candidatesAfter] at h
   | xValue => simp [Choice.candidatesAfter] at h
   | extraCost _ _ => simp [Choice.candidatesAfter] at h
 
-/-- Every object chosen is in play, or a spell on the Chain. -/
-theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
+/-- Every object chosen is in a supported target zone. -/
+theorem targetsOkAfter_mem_targetPresent {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} :
     ∀ {cs : List Choice} {acc ts : List ObjId}, targetsOkAfter s p self pm acc cs ts = true →
-      ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain
+      ∀ t ∈ ts, s.targetPresent t = true
   | [], _, [], _ => by simp
   | [], _, _ :: _, h => by simp [targetsOkAfter] at h
   | c :: cs, acc, ts, h => by
@@ -1339,14 +1386,14 @@ theorem targetsOkAfter_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
         obtain ⟨⟨hs, ht⟩, hrest⟩ := h
         rcases List.mem_cons.mp hx with rfl | hx
         · exact Choice.candidatesAfter_mem ht
-        · exact targetsOkAfter_mem_inPlay hrest x hx
+        · exact targetsOkAfter_mem_targetPresent hrest x hx
 
-/-- Every object chosen is in play, or a spell on the Chain. -/
-theorem targetsOk_mem_inPlay {s : GameState} {p : PlayerId} {self : ObjId}
+/-- Every object chosen is in a supported target zone. -/
+theorem targetsOk_mem_targetPresent {s : GameState} {p : PlayerId} {self : ObjId}
     {pm : List (ObjId × Int)} {cs : List Choice}
     {ts : List ObjId} (h : targetsOk s p self pm cs ts = true) :
-    ∀ t ∈ ts, t ∈ s.inPlay ∨ t ∈ s.zone .chain :=
-  targetsOkAfter_mem_inPlay h
+    ∀ t ∈ ts, s.targetPresent t = true :=
+  targetsOkAfter_mem_targetPresent h
 
 /-- A change of the board that the invariants survive: it keeps the game well formed, the physical
 cards, and `OwnerOk`, and changes only objects, zones and counters. -/
