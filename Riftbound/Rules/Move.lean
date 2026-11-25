@@ -113,7 +113,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  leftBoard := src.isBoard,
                  formerId := some id,
                  stunned := false, flowed := false, limitedSpellExit := .normal, pendingSpellPlay := none,
-                 spellPick := .plain, empowerCount := 0,
+                 spellPick := .plain, playUntilEnding := none, empowerCount := 0,
                  leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

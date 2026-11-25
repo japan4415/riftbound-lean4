@@ -369,7 +369,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .nameCard _ | .rememberNamedCard _ => true
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
+  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true
   | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
   | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |

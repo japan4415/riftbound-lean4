@@ -325,8 +325,15 @@ def RAD_012.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Runeblade Anvil: the effect is not written yet. -/
-def RAD_012 : CardDef := RAD_012.meta
+/-- Runeblade Anvil. -/
+def RAD_012 : CardDef :=
+  let allow := EffectDef.of [] .banishTopForPlay
+  { RAD_012.meta with
+    abilities := [.triggered (.onSelf .play) allow .unlimited,
+      .triggered (.onSelf .leave) allow .unlimited,
+      .activated [.pay ⟨2, [.domain .chaos]⟩, .exhaustSelf] .normal
+        (.of [] (.prim (.kill .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-013
 /--
@@ -2908,7 +2915,7 @@ def RAD_107 : CardDef :=
 
 -- BEGIN GENERATED RAD-108
 /--
-**Bushwhack Trap** — Gear · Fury · Energy 1
+**Bushwhack Trap** — Gear · Chaos · Energy 1
 Printings: RAD-108/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -2918,15 +2925,17 @@ def RAD_108.meta : CardDef :=
   { id := ⟨"RAD-108"⟩,
     name := "Bushwhack Trap",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.fury],
+    domains := [.chaos],
     cost := some ⟨1, []⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Bushwhack Trap: the effect is not written yet. -/
-def RAD_108 : CardDef := RAD_108.meta
+/-- Bushwhack Trap. -/
+def RAD_108 : CardDef :=
+  { RAD_108.meta with
+    abilities := [.passive .always [.extraHide]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-110
 /--

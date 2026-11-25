@@ -292,13 +292,21 @@ def GameState.flowCosts (s : GameState) (c : ObjId) (d : CardDef) : List Cost :=
     ((d.keywords ++ temporary).filterMap KeywordInst.flowCost?).eraseDups
   else []
 
+/-- Whether the card's permission from Banishment still covers the current turn and phase.
+The deadline counts the owner's Ending Phases, including the Ending Phases of extra turns. -/
+def GameState.banishPlayAllowed (s : GameState) (p : PlayerId) (card : ObjId) : Bool :=
+  ((s.obj? card).bind (·.playUntilEnding)).any (fun deadline =>
+    let current := s.turnsTaken p
+    current < deadline || (current == deadline && s.active == some p && s.phase != .ending))
+
 /-- All cards in a zone that permits a direct play (CR 420.1, 811.1.b, 829.1). -/
 def GameState.playSources (s : GameState) (p : PlayerId) : List ObjId :=
   let trash := s.zone (.player p .trash)
   s.zone (.player p .hand) ++
     (if !trash.isEmpty && s.hasControlledMod p .playFromTrash then trash
     else trash.filter (fun c => (s.cardDef? c).any (fun d => !(s.flowCosts c d).isEmpty))) ++
-    ((s.zone (.player p .hidden)).filter (s.hiddenSpellReady p))
+    ((s.zone (.player p .hidden)).filter (s.hiddenSpellReady p)) ++
+    ((s.zone (.player p .banishment)).filter (s.banishPlayAllowed p))
 
 /-- Whether the direct play is from the player's Trash. -/
 def GameState.playingFromTrash (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
@@ -306,7 +314,7 @@ def GameState.playingFromTrash (s : GameState) (p : PlayerId) (c : ObjId) : Bool
 
 /-- Whether the regular cost is available, including through a play permission from the Trash. -/
 def GameState.canPlayNormally (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
-  !s.playingFromTrash p c || s.hasControlledMod p .playFromTrash
+  !s.playingFromTrash p c || s.hasControlledMod p .playFromTrash || s.banishPlayAllowed p c
 
 /-- Cost choices and the resulting costs after play-time adjustments (CR 356, 811.1.b, 829).
 Name the chosen Flow cost whenever there is a choice, including a regular cost from the Trash. -/
@@ -1985,17 +1993,19 @@ theorem applyPlay_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
 
-/-- A playable card in the hand or Trash can be put on the Base. -/
+/-- A playable card from a legal permanent-play zone can be put on the Base. -/
 theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {dest : Option ObjId} (hwf : s.WF)
-    (hc : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash))
+    (hc : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) ∨
+      c ∈ s.zone (.player p .banishment))
     {ts : List ObjId} {pick : SpellPick} (hp : playable s p c pay dest ts pick = true)
     (applied : SpellPick := pick) : ∃ r, applyPlay s p c pay applied = some r := by
   obtain ⟨o, d, cost, pool, -, ho, hd, howner, -, -, -, hpool⟩ := playable_spec hp
   obtain ⟨k, hck, hkb⟩ : ∃ k, c ∈ s.zone (.player p k) ∧ k ≠ .base := by
-    rcases hc with h | h
+    rcases hc with h | h | h
     · exact ⟨.hand, h, by simp⟩
     · exact ⟨.trash, h, by simp⟩
+    · exact ⟨.banishment, h, by simp⟩
   have hpn : p.n < s.playerCount :=
     Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hck)
   obtain ⟨r, hr⟩ := moveObj_isSome hwf hck (.player p .base) .top (fun o' ho' => by
@@ -2202,27 +2212,30 @@ theorem applyCast_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   exact ⟨hs.other.config, hs.other.turnOrder, hs.other.phase, hs.other.result, hs.other.pending,
     hcd⟩
 
-/-- A direct play starts in the player's hand, Trash or facedown zone. -/
+/-- A direct play starts from a zone that can provide the card (CR 420.1, 420.3). -/
 theorem GameState.playSource_zone {s : GameState} {p : PlayerId} {c : ObjId}
     (h : c ∈ s.playSources p) : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) ∨
-      c ∈ s.zone (.player p .hidden) := by
+      c ∈ s.zone (.player p .hidden) ∨ c ∈ s.zone (.player p .banishment) := by
   simp only [GameState.playSources, List.mem_append] at h
-  rcases h with (hh | ht) | hhidden
+  rcases h with ((hh | ht) | hhidden) | hbanished
   · exact .inl hh
   · right; left
     split at ht
     · exact ht
     · exact (List.mem_filter.mp ht).1
-  · exact .inr (.inr (List.mem_filter.mp hhidden).1)
+  · exact .inr (.inr (.inl (List.mem_filter.mp hhidden).1))
+  · exact .inr (.inr (.inr (List.mem_filter.mp hbanished).1))
 
-/-- The ordinary permanent play action starts in the player's hand or Trash. -/
+/-- The ordinary permanent play action leaves facedown permanents to their reveal action. -/
 theorem GameState.permanentPlaySource_zone {s : GameState} {p : PlayerId} {c : ObjId}
     (h : c ∈ s.playSources p) (notHidden : s.playingFromHidden p c = false) :
-    c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) := by
-  rcases GameState.playSource_zone h with hh | ht | hf
+    c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) ∨
+      c ∈ s.zone (.player p .banishment) := by
+  rcases GameState.playSource_zone h with hh | ht | hf | hb
   · exact .inl hh
-  · exact .inr ht
+  · exact .inr (.inl ht)
   · simp [GameState.playingFromHidden, hf] at notHidden
+  · exact .inr (.inr hb)
 
 /-- A playable permanent has a normal play option for its adjusted cost (CR 420.1). -/
 theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -2233,7 +2246,7 @@ theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay 
   have notHidden := playable_not_hidden hp
   have normal : s.canPlayNormally p c = true := by
     simp only [GameState.playSources, List.mem_append] at hc
-    rcases hc with (hh | ht) | hhidden
+    rcases hc with ((hh | ht) | hhidden) | hbanished
     · simp [GameState.canPlayNormally, GameState.playingFromTrash, hh]
     · split at ht
       · rename_i h
@@ -2249,6 +2262,8 @@ theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay 
         · simp [GameState.flowCosts, hspell] at hflow
     · have present := (List.mem_filter.mp hhidden).1
       simp [GameState.playingFromHidden, present] at notHidden
+    · have grant := (List.mem_filter.mp hbanished).2
+      simp [GameState.canPlayNormally, grant]
   simp only [GameState.directOptions, notHidden, Bool.false_eq_true, ↓reduceIte, normal, he,
     Option.toList_some, List.map_cons, List.map_nil]
   split <;> simp
@@ -2269,10 +2284,11 @@ theorem applyCast_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     ∃ r, applyCast s p c pay targets flow pick = some r := by
   obtain ⟨_, _, _, pool, _, _, _, _, _, _, _, hpool⟩ := castable_spec hp
   have hz : ∃ z, c ∈ s.zone z ∧ z ≠ .chain := by
-    rcases GameState.playSource_zone hc with hm | hm | hm
+    rcases GameState.playSource_zone hc with hm | hm | hm | hm
     · exact ⟨.player p .hand, hm, by simp⟩
     · exact ⟨.player p .trash, hm, by simp⟩
     · exact ⟨.player p .hidden, hm, by simp⟩
+    · exact ⟨.player p .banishment, hm, by simp⟩
   obtain ⟨z, hm, hn⟩ := hz
   obtain ⟨r, hr⟩ := moveObj_isSome hwf hm .chain .top (fun _ _ =>
     ⟨Zone.valid_chain _, hn⟩)

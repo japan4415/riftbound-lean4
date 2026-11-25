@@ -1325,6 +1325,30 @@ def banishedPlayId (es : List Event) : Option ObjId :=
     | .moved _ id (.player _ .banishment) => some id
     | _ => none)
 
+/-- Banish the player's top card and give its new object permission until their next Ending Phase. -/
+def banishTopForPlay (s : GameState) (p : PlayerId) : GameState × List Event :=
+  match (s.zone (.player p .mainDeck)).head? with
+  | none => (s, [])
+  | some card =>
+    let banished := banishObj p s card
+    let deadline := s.turnsTaken p + if s.active == some p && s.phase != .ending then 0 else 1
+    match banishedPlayId banished.2 with
+    | some next => (banished.1.modObj next (fun o => { o with playUntilEnding := some deadline }),
+        banished.2)
+    | none => banished
+
+/-- Banishing a card and recording its play permission preserves the game invariants. -/
+theorem banishTopForPlay_safe (s : GameState) (p : PlayerId) :
+    Safe s (banishTopForPlay s p).1 := by
+  unfold banishTopForPlay
+  split
+  · exact Safe.refl s
+  · rename_i card h
+    dsimp only
+    split
+    · exact (banishObj_safe p s card).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+    · exact banishObj_safe p s card
+
 /-- Discover and project resource abilities for a card played by an effect. -/
 structure EffectAddPolicy where
   /-- The next Adds that leave a way to reach a state satisfying the supplied funding check. -/
@@ -4808,6 +4832,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src env (.cons (.offerNextCardPlay cards 1 price) es)], [])
   | .playCard sel price =>
     (s, [requiredCardPlayFrame s p src env sel price funding es], [])
+  | .banishTopForPlay =>
+    let result := banishTopForPlay s p
+    (result.1, [.run p src env es], result.2)
   | .banishAndPlayCard sel price =>
     match sel.eval s p src env with
     | some [id] =>
@@ -5068,6 +5095,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _
+    | exact banishTopForPlay_safe s p
     | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
     | exact recycleList_safe _ s

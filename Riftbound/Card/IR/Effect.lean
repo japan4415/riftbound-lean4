@@ -167,6 +167,8 @@ inductive Effect where
   | playCard (selector : Selector) (price : EffectPlayPrice)
   /-- Banish the selected card and play that physical card from Banishment (CR 420.3). -/
   | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Banish the top Main Deck card and permit its play until the player's next Ending Phase. -/
+  | banishTopForPlay
   /-- Play the source card if it is still in this player's Trash. -/
   | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
   /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/

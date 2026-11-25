@@ -409,7 +409,7 @@ def Effect.understood : Effect → Bool
   | .lookAtTop _ body => Effect.understood body
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
-  | .recycleLooked | .recycleRunes | .playSelfFromTrash .. => true
+  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true
   | .banishAndPlayCard sel _ => sel.understood
   | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>

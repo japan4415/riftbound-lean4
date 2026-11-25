@@ -131,6 +131,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-105": {"tags": ["Piltover"]},
     "RAD-106": {"domains": ["chaos"], "tags": []},
     "RAD-107": {"tags": ["Shadow Isles", "Demon"]},
+    "RAD-108": {"domains": ["chaos"], "tags": []},
     "RAD-110": {"supertypes": ["champion"], "tags": ["Lulu", "Bandle City", "Yordle"]},
     "RAD-111": {"domains": ["chaos"], "tags": []},
     "RAD-112": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},

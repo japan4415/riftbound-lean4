@@ -203,6 +203,8 @@ structure Object where
   /-- For a Battlefield token that replaced a Battlefield (Brush): the Battlefield it replaced, set
   aside in its owner's Banishment. -/
   replaces : Option ObjId := none
+  /-- This banished card can be played by its owner until the start of this numbered Ending Phase. -/
+  playUntilEnding : Option Nat := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
   /-- This Spell was played for its Flow cost and is banished when it leaves the Chain (CR 829). -/

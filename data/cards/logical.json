@@ -30961,7 +30961,7 @@
   {
    "cardId": "RAD-108",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 1,
@@ -30976,9 +30976,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "While you or an ally control this battlefield, that player may hide an additional card here."

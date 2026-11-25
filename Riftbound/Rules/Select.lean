@@ -344,11 +344,18 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (((s.cardDef? id).map (·.fullAbilities)).getD [] |>.any (fun ab =>
       match ab with | .passive _ mods => mods.contains .playToOpenBf | _ => false))
   | .hideRoom =>
-    some (decide ((s.players.flatMap (fun q => s.zone (.player q .hidden))).countP
-      (fun h => (s.obj? h).any (·.hiddenAt == some id)) <
-        if ((s.cardDef? id).map (·.fullAbilities)).getD [] |>.any (fun ab =>
-            match ab with | .passive _ mods => mods.contains .extraHide | _ => false)
-        then 2 else 1))
+    let extraSlots (source : ObjId) := ((s.cardDef? source).map (·.fullAbilities)).getD [] |>.foldl
+      (fun total ab => match ab with
+        | .passive .always mods => total + mods.countP (· == .extraHide)
+        | _ => total) 0
+    let supporting := ((s.obj? id).bind (·.control)).elim 0 (fun controller =>
+      (s.zone .battlefieldZone).foldl (fun count source =>
+        if (s.obj? source).any (fun o => o.loc == some id && o.controller == controller) then
+          count + extraSlots source
+        else count) 0)
+    let occupied := (s.players.flatMap (fun q => s.zone (.player q .hidden))).countP
+      (fun h => (s.obj? h).any (·.hiddenAt == some id))
+    some (decide (occupied < 1 + extraSlots id + supporting))
   | .costBelowPoints => do
     let o ← s.obj? self
     let d ← s.cardDef? id
