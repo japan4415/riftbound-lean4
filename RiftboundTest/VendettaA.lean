@@ -17,6 +17,72 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+/-- Put Rebuttal above an En Garde finalized by the opponent, and reach its payment decision. -/
+meta def rebuttalChoice (s : GameState) (power : Nat) :
+    Option (GameState × ObjId × ObjId × ObjId) := do
+  let p := s.me
+  let q := s.you
+  let (s, friendly) ← put s p "VEN-074" .base
+  let (s, enemy) ← put s q "VEN-074" .base
+  let (s, spell) ← put s q "OGN-046" .hand
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let s := ((s.fund q 1).fund p 1 (chaos := power))
+  let s := { s with pending := [.priority q] }
+  let (casting, _) ← (step 100 s ⟨.player q, .playCard spell ⟨1, []⟩ [enemy]⟩).toOption
+  let original ← (casting.zone .chain).head?
+  let (answer, _) ← (step 100 casting ⟨.player q, .pass⟩).toOption
+  let (casting, _) ← (step 100 answer
+    ⟨.player p, .playCard rebuttal ⟨1, [.chaos]⟩ [original]⟩).toOption
+  let (waiting, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (waiting, _) ← (step 100 waiting ⟨.player q, .pass⟩).toOption
+  return (waiting, original, friendly, enemy)
+
+-- Declining or being unable to pay counters the Spell, with the original finalization preserved.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (waiting, original, _, enemy) ← rebuttalChoice s 2
+  let (declined, events) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
+  let (unfunded, _, _, _) ← rebuttalChoice s 1
+  return (declined.poolOf p).get .chaos == 1 && (declined.zone .chain).isEmpty &&
+    declined.countIn q .trash "OGN-046" == 1 && unfunded.countIn q .trash "OGN-046" == 1 &&
+    !(events.any (fun | .spellResolved who _ => who == q | _ => false)) &&
+    declined.playLog.any (fun play =>
+      play.object == original && play.who == q && play.moment == .finalized) &&
+    declined.mightNow enemy == waiting.mightNow enemy
+
+-- Taking control leaves the old target in place if the player declines new choices. En Garde
+-- checks it under the new controller and does nothing to a Unit that is now an enemy.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (waiting, original, _, enemy) ← rebuttalChoice s 2
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let (kept, events) ← (step 100 taken ⟨.player p, .decide false⟩).toOption
+  let done := settleChain {} 4 kept
+  return (taken.obj? original).any (fun o => o.controller == p && o.owner == q &&
+      o.targets == [enemy]) && (taken.poolOf p).get .chaos == 0 &&
+    !(events.any (fun | .chosenBySpell _ _ => true | _ => false)) &&
+    done.mightNow enemy == waiting.mightNow enemy && done.countIn q .trash "OGN-046" == 1
+
+-- Remaking the choice emits a new target event, does not finalize another Spell, and resolves
+-- En Garde under Rebuttal's controller. The original owner still receives it in their Trash.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (waiting, original, friendly, enemy) ← rebuttalChoice s 2
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let (remade, changes) ← (step 100 taken ⟨.player p, .decide true⟩).toOption
+  let done := settleChain {} 4 remade
+  let finished ← (done.zone (.player q .trash)).find? (fun id =>
+    (done.cardDef? id).any (·.id.code == "OGN-046"))
+  return (remade.obj? original).any (·.targets == [friendly]) &&
+    changes.contains (.chosenBySpell p friendly) && !(changes.contains (.chosenBySpell p enemy)) &&
+    done.playLog.any (fun play => play.object == original && play.who == q && play.moment == .finalized) &&
+    done.playLog.any (fun play => play.object == finished && play.who == p && play.moment == .resolved) &&
+    done.mightNow friendly == (waiting.mightNow friendly).map (· + 2) &&
+    done.mightNow enemy == waiting.mightNow enemy
+
 /-- Pass the Equip through the Chain, stopping before the model is chosen. -/
 meta def awaitCopyChoice : Nat → GameState → Option GameState
   | 0, _ => none

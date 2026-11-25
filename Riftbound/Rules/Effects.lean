@@ -1601,19 +1601,26 @@ def lookedPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
      (banishedPlayId banished.2).any (fun new =>
        !(reducedPermanentPlays banished.1 p new less).isEmpty)))
 
+/-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
+def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :
+    List (SpellPick × List ObjId) :=
+  (s.spellPicks p d).flatMap (fun pick =>
+    (e.forPick pick).toList.flatMap (fun branch =>
+      if s.spellPlayerTargetOk p branch pick then
+        ((targetTuples s p id s.mightTable branch.choices).filter
+          (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
+      else []))
+
 /-- Targets, finalization choices and costs for a Spell played by another effect (CR 420.3). -/
 def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
   let hasCosts := !(s.extrasRaw p id d).isEmpty
   let choices := (s.effCost p id d).toList.flatMap (fun base =>
-    (s.spellPicks p d).flatMap (fun pick =>
-      (e.forPick pick).toList.flatMap (fun branch =>
-        ((targetTuples s p id s.mightTable branch.choices).filter
-          (fun ts => s.moveTargetOk id branch ts pick && s.spellPlayerTargetOk p branch pick)).flatMap (fun ts =>
-            let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
-            (s.spellCostPlans p id d (base.lessEnergy less) ts).map (fun (cost, paid) =>
-              let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
-              (ts, { cost with power := cost.power ++ List.replicate surcharge .any }, choice))))))
+    (spellChoices s p id d e).flatMap (fun (pick, ts) =>
+      let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
+      (s.spellCostPlans p id d (base.lessEnergy less) ts).map (fun (cost, paid) =>
+        let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
+        (ts, { cost with power := cost.power ++ List.replicate surcharge .any }, choice))))
   choices.eraseDups.filter (fun (_, cost, _) => (payByRunes s p id cost).isSome)
 
 /-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
@@ -2685,18 +2692,17 @@ theorem disempowerObj_safe (s : GameState) (id : ObjId) :
     Safe s (disempowerObj s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
-/-- A spell that completed its instructions and left its zone was played for triggered
-abilities. Keep the player who finalized it even if another player controlled it when it resolved
-(CR 420.4.a). -/
+/-- A finalized Spell resolves for its current controller (CR 420.4.a, 750). -/
 def spellCompletion (s : GameState) (id : ObjId) (events : List Event) (inPlace : Bool := false) :
     List Event :=
   if (s.cardDef? id).any (·.hasType .spell) then
     let moved := events.findSome? (fun
       | .moved old next _ => if old == id then some next else none
       | _ => none)
-    match s.playLog.find? (fun play => play.object == id && play.moment == .finalized),
+    match (s.obj? id).filter (fun _ =>
+        s.playLog.any (fun play => play.object == id && play.moment == .finalized)),
         moved <|> (if inPlace then some id else none) with
-    | some play, some next => [.spellResolved play.who next]
+    | some o, some next => [.spellResolved o.controller next]
     | _, _ => []
   else []
 
@@ -4026,7 +4032,19 @@ theorem attachmentReplacementFrames_play {s : GameState} {events : List Event} {
     rfl
   · contradiction
 
-/-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
+/-- Offer complete new finalization choices, or let the Spell keep the original ones. -/
+def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (spell : Selector) (es : EffectList) : Frame :=
+  let options := ((spell.eval s p src env).getD []).flatMap (fun id =>
+    ((s.cardDef? id).filter (·.hasType .spell)).toList.flatMap (fun d =>
+      d.spellEffect.toList.flatMap (fun effect =>
+        (spellChoices s p id d effect).filterMap (fun (pick, targets) =>
+          if pick == .plain && effect.choices.isEmpty then none
+          else some (.setSpellChoices id pick targets)))))
+  if options.isEmpty then .run p src env es
+  else .mayDo p src env (.eitherOf (EffectList.ofList options)) es
+
+/-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
@@ -4055,6 +4073,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       (s, [.run p src env (.cons (.prim (.markOn sel (.preventDamage (k + 1)))) es)], [])
     | _ => (s, [.run p src env es], [])
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
+  | .remakeSpellChoices spell =>
+    (s, [remakeSpellChoicesFrame s p src env spell es], [])
+  | .setSpellChoices spell pick targets =>
+    let updated := s.modObj spell fun o =>
+      let newPick := match o.spellPick.optionalCosts with
+        | some (printed, repeats) => .withCosts pick printed repeats
+        | none => pick
+      { o with targets, spellPick := newPick, targetPlayer := pick.playerTarget }
+    (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
   | .moveChoosing unit home fs afterMove =>
     let chosen := chosenMove s p src env unit home fs afterMove
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
@@ -4238,6 +4265,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
+    | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
     | exact castInlineStep_safe s p src env _ es
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
@@ -4322,10 +4350,12 @@ def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
         | none => .int 0)
   | none => []
 
-/-- Recheck targets for a recorded mode or destination, or when the effect opts in. -/
+/-- Recheck targets for a recorded choice, when the effect opts in, or after a change of control. -/
 def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
     (definition : Option EffectDef) (pick : SpellPick) : List Value :=
-  if pick != .plain || definition.any (·.recheckTargets) then
+  let changedController := s.playLog.any (fun play =>
+    play.object == src && play.moment == .finalized && play.who != p)
+  if pick != .plain || definition.any (·.recheckTargets) || changedController then
     recheckedSlots s p src ts definition
   else slotValues ts definition
 

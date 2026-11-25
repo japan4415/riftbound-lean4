@@ -852,6 +852,11 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        split <;> rfl)
     | (rcases h with rfl
        left
+       unfold remakeSpellChoicesFrame
+       dsimp only
+       split <;> rfl)
+    | (rcases h with rfl
+       left
        unfold collectOwnPicksFrame
        dsimp only
        split

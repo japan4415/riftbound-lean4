@@ -388,6 +388,7 @@ def Effect.understood : Effect → Bool
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e
   | .forEach s body => s.understood && Effect.understood body
   | .fillSlot _ s => s.understoodPickAny
+  | .remakeSpellChoices spell => spell.understood
   | .fillFromPick _ => true
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e

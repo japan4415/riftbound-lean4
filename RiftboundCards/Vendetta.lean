@@ -4341,8 +4341,19 @@ def VEN_152.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Rebuttal: the effect is not written yet. -/
-def VEN_152 : CardDef := VEN_152.meta
+/-- Rebuttal counters a low-Energy Spell unless its controller pays to take it. -/
+def VEN_152 : CardDef :=
+  let power : Cost := ⟨0, [.any]⟩
+  let counter := Effect.prim (.counter (.slot 0))
+  { VEN_152.meta with
+    spellEffect := some { EffectDef.of [.targetOf .one .any .onChain [.ofType .spell, .cost .le (.const 4)]]
+      (.ifThen (.exists (.slot 0))
+        (.ifThen (.canPay power)
+          (.eitherOf (.ofList [
+            .seqOf [.prim (.pay power), .prim (.takeControl (.slot 0)), .remakeSpellChoices (.slot 0)],
+            counter])) counter)
+        .nop) with recheckTargets := true },
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-153
 /--

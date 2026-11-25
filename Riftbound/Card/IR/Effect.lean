@@ -133,6 +133,10 @@ inductive Effect where
   | fillFromPick (i : Nat)
   /-- At resolution, keep one of the remaining legal groups of original targets (CR 355.11.b). -/
   | retainTargetSet (groups : List (List ObjId))
+  /-- The controller may remake all the Spell's finalization choices (CR 750-755). -/
+  | remakeSpellChoices (spell : Selector)
+  /-- Record the answer to a Spell's choice-remaking decision. -/
+  | setSpellChoices (spell : ObjId) (pick : SpellPick) (targets : List ObjId)
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
 deriving DecidableEq, Repr, Hashable

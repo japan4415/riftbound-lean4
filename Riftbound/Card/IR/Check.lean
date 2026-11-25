@@ -352,6 +352,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .fillSlot _ s => Selector.ok c s
   | .fillFromPick _ => true
   | .retainTargetSet _ => false
+  | .remakeSpellChoices spell => Selector.ok c spell
+  | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
   | .nameCard _ | .rememberNamedCard _ => true
