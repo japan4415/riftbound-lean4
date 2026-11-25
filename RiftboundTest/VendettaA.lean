@@ -3641,7 +3641,7 @@ meta def chooseLookedPayment (p : PlayerId) (accept : Effect → Bool) :
 
 /-- Select the next activation of the specified Rune. -/
 meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
-  | .fundLookedPermanent _ _ _ adds => adds.getLast? == some (.rune id recycle)
+  | .fundPermanentFromEffect _ _ _ adds => adds.getLast? == some (.rune id recycle)
   | _ => false
 
 -- The player chooses which Chaos Rune to Exhaust and Recycle. Gear-only
@@ -3706,7 +3706,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let looking ← passToChoice 8 casting
   let (choosing, _) ← act looking (.decide true)
   let (funding, opened) ← act choosing (.choose unit)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.ability source 0 0 []]) .nop _ :: _ :=
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [.ability source 0 0 []]) .nop _ :: _ :=
     funding.pending | none
   let (prepared, selected) ← act funding (.decide true)
   let (declined, discarded) ← act prepared (.decide false)
@@ -3735,9 +3735,9 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let looking ← passToChoice 8 casting
   let (choosing, _) ← act looking (.decide true)
   let (funding, _) ← act choosing (.choose unit)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.rune rune false]) _ _ :: _ := funding.pending | none
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [.rune rune false]) _ _ :: _ := funding.pending | none
   let (funded, _) ← act funding (.decide true)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
     funded.pending | none
   let (prepared, _) ← act funded (.decide true)
   let other := if rune == first then second else first

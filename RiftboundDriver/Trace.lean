@@ -94,7 +94,7 @@ def reducedPlayDecision (effect : Effect) (funding : Bool) : List (String × Str
   | .finishFundedPermanent card _ plan adds =>
     [("reducedPlay", jobj (reducedPlayFields card plan)),
       ("preparedAdds", jarr (adds.map effectAddJson))]
-  | .fundLookedPermanent card _ plan adds =>
+  | .fundPermanentFromEffect card _ plan adds =>
     match adds.getLast? with
     | none => [("reducedPlay", jobj (reducedPlayFields card plan)), ("choosePlayPayment", "true")]
     | some add => nextEffectAddFields plan.cost adds add
@@ -110,7 +110,7 @@ def reducedPermanentFields (frame : Option Frame) (yes : Bool) : List (String ×
     reducedPlayDecision (if yes then a else b) false
   | some (.eitherDo _ _ _ a@(.finishFundedPermanent ..) b _) =>
     reducedPlayDecision (if yes then a else b) true
-  | some (.eitherDo _ _ _ a@(.fundLookedPermanent _ _ _ adds) b _) =>
+  | some (.eitherDo _ _ _ a@(.fundPermanentFromEffect _ _ _ adds) b _) =>
     reducedPlayDecision (if yes then a else b) (!adds.isEmpty)
   | _ => []
 

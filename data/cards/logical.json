@@ -28264,7 +28264,7 @@
   {
    "cardId": "RAD-016",
    "domains": [
-    "mind"
+    "fury"
    ],
    "effectText": [],
    "energy": 4,
@@ -28279,7 +28279,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "At the end of your turn, recycle all your runes, then channel 4 runes exhausted."
    ],
@@ -29731,7 +29733,7 @@
   {
    "cardId": "RAD-067",
    "domains": [
-    "fury"
+    "mind"
    ],
    "effectText": [],
    "energy": 8,
@@ -29747,7 +29749,7 @@
    ],
    "subtitle": null,
    "tags": [
-    "Mech"
+    "Shurima"
    ],
    "text": [
     "When you play me or when I hold, [Predict 3].",
@@ -31167,7 +31169,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     ":rb_rune_chaos:, :rb_exhaust:: Return a friendly unit to its owner's hand. You may play a unit with less Might than that unit had, ignoring its cost."
    ],

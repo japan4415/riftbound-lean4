@@ -33,6 +33,8 @@ structure EffectPlayTerms where
   price : EffectPlayPrice
   /-- The sets of locations required by the effects already in force. -/
   requirements : List (List (Option ObjId)) := []
+  /-- Banish a card from the look as part of finalizing its play (CR 420.3.c). -/
+  banishBeforeFunding : Bool := false
 deriving DecidableEq, Repr, Hashable
 
 /-- A finalization choice for a Unit or Gear played by an effect (CR 355-357, 420.3). -/
@@ -134,10 +136,30 @@ inductive Effect where
   | banishAndPlayLooked (less : Nat) (filters : FilterList)
   /-- Recycle the looked-at cards still in the Main Deck in a random order (CR 417.5). -/
   | recycleLooked
+  /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/
+  | recycleRunes
+  /-- Continue collecting the order of each owner's Runes before any are Recycled. -/
+  | orderRuneRecycle (groups : List (PlayerId × List ObjId)) (picked : List ObjId)
+  /-- Record the Rune chosen next in an owner's order. -/
+  | recordRuneRecycle (remaining : List ObjId) (later : List (PlayerId × List ObjId))
+      (picked : List ObjId)
   /-- Continue after offering a choice of eligible cards from a look. -/
   | chooseLookedToPlay (less : Nat) (first : ObjId) (more : List ObjId)
   /-- Banish the card picked from the looked-at cards and finalize the play. -/
   | banishLookedForPlay (less : Nat)
+  /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
+  | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/
+  | mayPlayPermanents (selector : Selector) (maximum : Nat) (price : EffectPlayPrice)
+  /-- Offer another play from the candidates identified when the instruction began. -/
+  | offerNextCardPlay (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+  /-- Ask which of the available cards to play. -/
+  | chooseOfferedPlay (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+      (first : ObjId) (others : List ObjId)
+  /-- Continue to the selected card's finalization. -/
+  | playOfferedCard (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+  /-- Count a successful finalization before offering another play. -/
+  | afterOfferedPlay (card : ObjId) (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
   /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/
   | planPermanentPlay (card : ObjId) (terms : EffectPlayTerms)
   /-- Banish one Unit before its owner finalizes the new play. -/
@@ -145,7 +167,7 @@ inductive Effect where
   /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
   | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
   /-- Continue choosing resource activations for the selected finalization. -/
-  | fundLookedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
+  | fundPermanentFromEffect (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
       (adds : List EffectAdd)
   /-- Use the chosen Add abilities and pay for the effect's permanent as one finalization. -/
   | finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)

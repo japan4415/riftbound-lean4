@@ -368,9 +368,12 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .nameCard _ | .rememberNamedCard _ => true
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked => true
+  | .recycleLooked | .recycleRunes => true
+  | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => Selector.ok c sel
+  | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
+      .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
-      .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
+      .banishForReplay .. | .finishReducedPermanent .. | .fundPermanentFromEffect .. |
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |

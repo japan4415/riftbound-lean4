@@ -378,7 +378,7 @@ def RAD_014 : CardDef :=
 
 -- BEGIN GENERATED RAD-016
 /--
-**Coalesced Energy** — Unit · Mind · Energy 4 + Power 2 · Might 4
+**Coalesced Energy** — Unit · Fury · Energy 4 + Power 2 · Might 4
 Printings: RAD-016/167
 
 > At the end of your turn, recycle all your runes, then channel 4 runes exhausted.
@@ -387,14 +387,19 @@ def RAD_016.meta : CardDef :=
   { id := ⟨"RAD-016"⟩,
     name := "Coalesced Energy",
     types := [.unit],
-    domains := [.mind],
-    cost := some ⟨4, [.domain .mind, .domain .mind]⟩,
+    tags := [⟨"Shurima"⟩],
+    domains := [.fury],
+    cost := some ⟨4, [.domain .fury, .domain .fury]⟩,
     might := some 4,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Coalesced Energy: the effect is not written yet. -/
-def RAD_016 : CardDef := RAD_016.meta
+/-- Coalesced Energy. -/
+def RAD_016 : CardDef :=
+  { RAD_016.meta with
+    abilities := [.triggered { event := .at_ .endOfTurn, condition := .yourTurn }
+      (.of [] (.seqOf [.recycleRunes, .prim (.channel .you (.const 0) (.const 4))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-017
 /--
@@ -1729,7 +1734,7 @@ def RAD_066 : CardDef :=
 
 -- BEGIN GENERATED RAD-067
 /--
-**Clocktower Guardian** — Unit · Fury · Energy 8 + Power 2 · Might 8
+**Clocktower Guardian** — Unit · Mind · Energy 8 + Power 2 · Might 8
 Printings: RAD-067/167
 
 > When you play me or when I hold, [Predict 3].
@@ -1740,16 +1745,26 @@ def RAD_067.meta : CardDef :=
   { id := ⟨"RAD-067"⟩,
     name := "Clocktower Guardian",
     types := [.unit],
-    tags := [⟨"Mech"⟩],
-    domains := [.fury],
-    cost := some ⟨8, [.domain .fury, .domain .fury]⟩,
+    tags := [⟨"Shurima"⟩],
+    domains := [.mind],
+    cost := some ⟨8, [.domain .mind, .domain .mind]⟩,
     might := some 8,
     keywords := [{ keyword := .deathknell }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Clocktower Guardian: the effect is not written yet. -/
-def RAD_067 : CardDef := RAD_067.meta
+/-- Clocktower Guardian. -/
+def RAD_067 : CardDef :=
+  let predict := EffectDef.of [] (.prim (.predict (.const 3)))
+  { RAD_067.meta with
+    abilities := [.triggered (.onSelf .play) predict .unlimited,
+      .triggered (.onSelf .hold) predict .unlimited,
+      .triggered (.onSelf .deathknell)
+        (.of [] (.seqOf [
+          .prim (.banishWith (.one .friendly .inMainDeck [.top 1])),
+          .mayPlayCard (.one .friendly .inBanishment [.banishedWithMe]) .ignoreEnergy]))
+        .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-068
 /--
@@ -3027,14 +3042,24 @@ def RAD_115.meta : CardDef :=
   { id := ⟨"RAD-115"⟩,
     name := "Transpositionist",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩],
     domains := [.chaos],
     cost := some ⟨6, []⟩,
     might := some 4,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Transpositionist: the effect is not written yet. -/
-def RAD_115 : CardDef := RAD_115.meta
+/-- Transpositionist. -/
+def RAD_115 : CardDef :=
+  let previousMight : VarId := ⟨"previousMight"⟩
+  { RAD_115.meta with
+    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩, .exhaustSelf] .normal
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.bind previousMight (.mightOf (.slot 0)) (.seqOf [
+          .prim (.returnToHand (.slot 0)),
+          .mayPlayPermanents (.one .friendly .inHand [.ofType .unit, .might .lt (.var previousMight)])
+            1 .ignoreBase]))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-116
 /--
@@ -3588,8 +3613,13 @@ def RAD_135.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Remember the Fallen: the effect is not written yet. -/
-def RAD_135 : CardDef := RAD_135.meta
+/-- Remember the Fallen. -/
+def RAD_135 : CardDef :=
+  { RAD_135.meta with
+    spellEffect := some (.of [] (.mayPlayPermanents
+      (.one .friendly .inTrash [.either (.ofType .unit) (.ofType .gear),
+        .cost .le (.const 3), .powerCost .le (.const 1)]) 3 .ignoreBase)),
+    status := .full }
 
 -- BEGIN GENERATED RAD-136
 /--
