@@ -2164,10 +2164,6 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .castPicked sel less idx =>
     (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
-  | .burn ps n => (ps.resolve s p).bind (fun players =>
-      (n.evalS s p src env).map (fun count =>
-        let cards := players.flatMap (fun q => (s.zone (.player q .mainDeck)).take count)
-        applyEach (sendObj .trash) s cards))
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
   | .counterToHand sel => onSelected s p src env sel counterObjHand
@@ -2401,17 +2397,6 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hk, Option.bind_some] at h
       exact onSelected_safe (castPickedOne_safe p k idx) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
-  | burn ps n =>
-    simp only [applyPrim] at h
-    cases hp : ps.resolve s p with
-    | none => simp [hp] at h
-    | some players =>
-      cases hn : n.evalS s p src env with
-      | none => simp [hp, hn] at h
-      | some count =>
-        simp only [hp, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
-        rw [← h]
-        exact applyEach_safe (sendObj_safe .trash) _ _
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
   | counterToHand sel => exact onSelected_safe counterObjHand_safe h
@@ -2981,6 +2966,35 @@ def eitherOk (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a b : Eff
   let vb := b.viable s p src env
   (if yes then va else vb) || (!va && !vb)
 
+/-- Burn cards for the first player and schedule the others with the same count. An exhausted
+deck is refilled through the ordinary Burn Out decisions before the remainder is burned
+(CR 432.1.b, 441.4). -/
+def burnEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (who : PlayerSel)
+    (n : Amount) (es : EffectList) : GameState × List Frame × List Event :=
+  match who.resolve s p, n.evalS s p src env with
+  | some (q :: qs), some count =>
+    let cards := (s.zone (.player q .mainDeck)).take count
+    let r := applyEach (sendObj .trash) s cards
+    let burnFor (pl : PlayerId) (k : Nat) :=
+      Frame.run pl src env (.cons (.prim (.burn .you (.const k))) .nil)
+    let rest := qs.map (fun pl => burnFor pl count) ++ [.run p src env es]
+    let next :=
+      if cards.length < count then
+        .chanceBurnOut q :: burnFor q (count - cards.length) :: rest
+      else rest
+    (r.1, next, r.2)
+  | some [], some _ => (s, [.run p src env es], [])
+  | _, _ => (s, [.run p src env es], [.skipped src])
+
+/-- Burning cards and scheduling Burn Out preserves the structural invariants. -/
+theorem burnEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (who : PlayerSel) (n : Amount) (es : EffectList) : Safe s (burnEffect s p src env who n es).1 := by
+  unfold burnEffect
+  split
+  · exact applyEach_safe (sendObj_safe .trash) _ _
+  · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -3031,6 +3045,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | .nil => (s, [.run p src env (.cons a es)], [])
     | .cons b .nil => (s, [.eitherDo p src env a b es], [])
     | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
+  | .prim (.burn who n) => burnEffect s p src env who n es
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
@@ -3090,6 +3105,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   split <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
     | exact castInlineStep_safe s p src env _ es
+    | exact burnEffect_safe s p src env _ _ es
     | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact castReducedStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)

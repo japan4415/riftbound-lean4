@@ -61,8 +61,8 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return [unit, gear, rune].all (fun id => chosen.tired id == some false) &&
     [unit, gear, rune].all (fun id => unchosen.tired id == some true)
 
--- Shadow Temple burns the top three in order, or all remaining cards when fewer than three
--- are available. It neither recycles the Trash nor awards Burn Out points.
+-- Shadow Temple burns three cards. A short deck burns what is available, then processes Burn
+-- Out and finishes burning from the refilled deck.
 #guard vendettaCase fun s => do
   let (s, temple) ← putBf s s.me "VEN-165"
   let player := s.me
@@ -75,10 +75,14 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let a ← fire s [.scored player temple false]
   let short := (applyEach (sendObj .banishment) s (before.drop 2)).1
   let b ← fire short [.scored player temple false]
+  let (c, events) ← (step 100 b ⟨.chance, .arrange (b.zone trash)⟩).toOption
+  let (d, _) ← (step 100 c ⟨.player player, .burnOutTarget s.you⟩).toOption
   let aTrash := a.zone trash
   return a.zone deck == before.drop 3 && (aTrash.take 3).map (fun id =>
       (a.obj? id).bind (·.formerId)) == [some third, some second, some top] &&
     (b.zone deck).isEmpty && (b.zone trash).length == (short.zone trash).length + 2 &&
-    b.pointsOf s.you == s.pointsOf s.you && b.handN player == s.handN player
+    events.contains (.burnedOut player) &&
+    (d.zone deck).length == (c.zone deck).length - 1 && (d.zone trash).length == 1 &&
+    d.pointsOf s.you == s.pointsOf s.you + 1 && d.handN player == s.handN player
 
 end RiftboundTest

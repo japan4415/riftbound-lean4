@@ -769,16 +769,43 @@ theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
       · exact Or.inl h
   · exact Or.inl h
 
-/-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
+/-- Burning schedules only effect frames and Burn Out decisions. -/
+theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {who : PlayerSel} {n : Amount} {es : EffectList} {f : Frame}
+    (h : f ∈ (burnEffect s p src env who n es).2.1) :
+    f.isPlay = true ∨ ∃ q, f = .chanceBurnOut q := by
+  unfold burnEffect at h
+  split at h
+  · dsimp only at h
+    split at h
+    · simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil, or_false] at h
+      rcases h with rfl | rfl | ⟨_, _, rfl⟩ | rfl
+      · exact Or.inr ⟨_, rfl⟩
+      · exact Or.inl rfl
+      · exact Or.inl rfl
+      · exact Or.inl rfl
+    · simp only [List.mem_append, List.mem_map, List.mem_singleton] at h
+      rcases h with ⟨_, _, rfl⟩ | rfl <;> exact Or.inl rfl
+  · simp only [List.mem_singleton] at h
+    subst f
+    exact Or.inl rfl
+  · simp only [List.mem_singleton] at h
+    subst f
+    exact Or.inl rfl
+
+/-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {f : Frame} (h : f ∈ (runEffect1 s p src env e es).2.1) :
-    f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
+    f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
   unfold runEffect1 castInlineStep at h
   split at h <;> (try split at h) <;> (try split at h) <;> (try split at h) <;>
     (try split at h) <;>
     first
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
+    | (rcases burnEffect_mem h with hp | hb
+       · exact Or.inl hp
+       · exact Or.inr (Or.inr hb))
     | skip <;>
     simp only [List.mem_cons, List.mem_append, List.mem_map,
       List.not_mem_nil, or_false] at h <;>
@@ -786,16 +813,16 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (subst h; exact Or.inl rfl)
     | (rcases h with rfl | rfl <;> exact Or.inl rfl)
     | (rcases h with ⟨q, -, rfl⟩ | rfl
-       · exact Or.inr ⟨q, _, rfl⟩
+       · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
        · exact Or.inl rfl)
     | (rcases h with ⟨q, -, rfl⟩ | rfl
        · exact Or.inl rfl
        · exact Or.inl rfl)
 
-/-- The frames that doing one effect leaves are frames of the Spell, or draws. -/
+/-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {f : Frame} (h : f ∈ (runEffect s p src env e es).2.1) :
-    f.isPlay = true ∨ ∃ q k, f = Frame.draw q k := by
+    f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
   unfold runEffect at h
   split at h
   · split at h
@@ -1031,8 +1058,9 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hmeta.config, hmeta.turnOrder, hmeta.phase, hmeta.result⟩ (fun hm => ?_)
     rcases List.mem_append.mp hm with h1 | h1
-    · rcases runEffect_mem h1 with h2 | ⟨q, k, h2⟩
+    · rcases runEffect_mem h1 with h2 | ⟨q, k, h2⟩ | ⟨q, h2⟩
       · simp [Frame.isPlay] at h2
+      · cases h2
       · cases h2
     · rw [hp]; exact List.mem_cons_of_mem _ h1
   · rename_i item rest hp
