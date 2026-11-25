@@ -755,9 +755,9 @@ def RAD_031.meta : CardDef :=
 /-- Stoic Ferryman can move another friendly Unit from its entry Battlefield to Base. -/
 def RAD_031 : CardDef :=
   { RAD_031.meta with
-    abilities := [.triggered { event := .play, condition := .matches .self .onBattlefield }
+    abilities := [.triggered { event := .play, condition := .matches .self .onBattlefield, optional := true }
       { choices := [.targetOf .one .friendly .here [.ofType .unit, .notSelf]]
-        body := .may (.prim (.move (.slot 0) .base))
+        body := .prim (.move (.slot 0) .base)
         recheckTargets := true } .unlimited],
     status := .full }
 
@@ -1088,8 +1088,16 @@ def RAD_046.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Resplendent Rostrum: the effect is not written yet. -/
-def RAD_046 : CardDef := RAD_046.meta
+/-- Resplendent Rostrum draws and channels when activated and boosts a Unit when exhausted. -/
+def RAD_046 : CardDef :=
+  { RAD_046.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+        (.of [] (.seqOf [.prim (.draw .you (.const 1)),
+          .prim (.channel .you (.const 0) (.const 1))])) .unlimited,
+      .triggered (.onSelf .exhaust)
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+          (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-047
 /--
@@ -1257,14 +1265,19 @@ def RAD_053.meta : CardDef :=
   { id := ⟨"RAD-053"⟩,
     name := "Strigian Oracle",
     types := [.unit],
+    tags := [⟨"Freljord"⟩, ⟨"Bird"⟩],
     domains := [.mind],
     cost := some ⟨2, []⟩,
     might := some 2,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Strigian Oracle: the effect is not written yet. -/
-def RAD_053 : CardDef := RAD_053.meta
+/-- Strigian Oracle Predicts when it becomes exhausted on the Board. -/
+def RAD_053 : CardDef :=
+  { RAD_053.meta with
+    abilities := [.triggered (.onSelf .exhaust)
+      (.of [] (.prim (.predict (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-054
 /--
@@ -1526,7 +1539,8 @@ def RAD_065.meta : CardDef :=
     name := "Seraphine",
     subtitle := some "Inspiring",
     types := [.unit],
-    tags := [⟨"Piltover"⟩, ⟨"Seraphine"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Seraphine"⟩, ⟨"Piltover"⟩],
     domains := [.mind],
     cost := some ⟨4, [.domain .mind]⟩,
     might := some 3,
@@ -1534,8 +1548,12 @@ def RAD_065.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Seraphine, Inspiring: the effect is not written yet. -/
-def RAD_065 : CardDef := RAD_065.meta
+/-- Seraphine, Inspiring can draw once a turn when her controller exhausts three friendly Units together. -/
+def RAD_065 : CardDef :=
+  { RAD_065.meta with
+    abilities := [.triggered { event := .youExhaustUnits 3, optional := true }
+      (.of [] (.prim (.draw .you (.const 1)))) (.perTurn 1)],
+    status := .full }
 
 -- BEGIN GENERATED RAD-066
 /--
@@ -1971,9 +1989,9 @@ def RAD_083.meta : CardDef :=
 /-- Stalwart Goatherd can kill a chosen Gear with Energy cost 4 or less. -/
 def RAD_083 : CardDef :=
   { RAD_083.meta with
-    abilities := [.triggered (.onSelf .play)
+    abilities := [.triggered { event := .play, optional := true }
       { choices := [.targetOf .one .any .anywhere [.ofType .gear, .cost .le (.const 4)]]
-        body := .may (.prim (.kill (.slot 0)))
+        body := .prim (.kill (.slot 0))
         recheckTargets := true } .unlimited],
     status := .full }
 
@@ -2507,6 +2525,7 @@ def RAD_105.meta : CardDef :=
   { id := ⟨"RAD-105"⟩,
     name := "Reckless Innovator",
     types := [.unit],
+    tags := [⟨"Piltover"⟩],
     domains := [.chaos],
     cost := some ⟨3, []⟩,
     might := some 3,
@@ -2514,8 +2533,15 @@ def RAD_105.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Reckless Innovator: the effect is not written yet. -/
-def RAD_105 : CardDef := RAD_105.meta
+/-- Reckless Innovator can make Gold or pay Chaos Power to draw when exhausted. -/
+def RAD_105 : CardDef :=
+  { RAD_105.meta with
+    abilities := [.triggered (.onSelf .exhaust)
+      { body := .nop, modes := [
+        ⟨"Play an exhausted Gold", [], .prim (.create "Gold" (.const 1) .atBase false)⟩,
+        ⟨"Pay Chaos Power to draw", [], .payThen ⟨0, [.domain .chaos]⟩ (.prim (.draw .you (.const 1)))⟩] }
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-106
 /--
@@ -2612,9 +2638,9 @@ def RAD_110.meta : CardDef :=
 /-- Lulu, Whimsical can set another Unit's base Might to 4 this turn when she moves. -/
 def RAD_110 : CardDef :=
   { RAD_110.meta with
-    abilities := [.triggered (.onSelf .move)
+    abilities := [.triggered { event := .move, optional := true }
       (.of [.targetOf .one .any .anywhere [.ofType .unit, .notSelf]]
-        (.may (.prim (.setBaseMight (.slot 0) (.const 4))))) .unlimited],
+        (.prim (.setBaseMight (.slot 0) (.const 4)))) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED RAD-111
@@ -3862,9 +3888,9 @@ def RAD_166.meta : CardDef :=
 /-- Ruined Monastery can discard one card and channel one exhausted Rune on conquer. -/
 def RAD_166 : CardDef :=
   { RAD_166.meta with
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.may (.seqOf [.prim (.discard .you (.const 1)),
-        .prim (.channel .you (.const 0) (.const 1))]))) .unlimited],
+    abilities := [.triggered { event := .youConquer, optional := true }
+      (.of [] (.seqOf [.prim (.discard .you (.const 1)),
+        .prim (.channel .you (.const 0) (.const 1))])) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED RAD-167
@@ -4002,15 +4028,22 @@ def RAD_SP5.meta : CardDef :=
     name := "Seraphine",
     subtitle := some "Not Alone",
     types := [.unit],
-    tags := [⟨"Piltover"⟩, ⟨"Seraphine"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Seraphine"⟩, ⟨"Piltover"⟩],
     domains := [.order],
     cost := some ⟨5, [.domain .order]⟩,
     might := some 1,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Seraphine, Not Alone: the effect is not written yet. -/
-def RAD_SP5 : CardDef := RAD_SP5.meta
+/-- Seraphine, Not Alone recruits on play and exhaustion and counts other exhausted allies. -/
+def RAD_SP5 : CardDef :=
+  let recruit := EffectDef.of [] (.prim (.create "Recruit" (.const 1) .atBase false))
+  { RAD_SP5.meta with
+    abilities := [.triggered (.onSelf .play) recruit .unlimited,
+      .triggered (.onSelf .exhaust) recruit .unlimited,
+      .passive .always [.mightPlus .self (.count (.all .friendly .anywhere [.ofType .unit, .notSelf, .exhausted]))]],
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Radiance. -/

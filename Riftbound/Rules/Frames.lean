@@ -270,7 +270,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
 /-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
 it set off wait on the stack (CR 382-385). `none` if the top frame is not work. -/
 def microStep (s : GameState) : Option (GameState × List Event) :=
-  (microStep0 s).map (fun r => (r.1.withTriggers (r.2 ++ s.mightyEvents r.1), r.2))
+  (microStep0 s).map (fun r => (r.1.withTriggers (r.2 ++ s.workTransitionEvents r.1), r.2))
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
 def otherPlayer (p : PlayerId) : PlayerId := ⟨1 - p.n⟩
@@ -389,7 +389,7 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
   (applyFrame0 s a).map (fun r =>
     let next := s.paySurcharge a r.1
     let es := r.2 ++ extraEvents a r.2
-    (next.withTriggers (es ++ s.actionMightEvents next a), es))
+    (next.withTriggers (es ++ s.actionTransitionEvents next a), es))
 
 /-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
 the decision frame on top of the stack. -/
@@ -619,7 +619,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
 /-- What a step of work does: the step, and the triggers it set off. -/
 theorem microStep_cases {s s' : GameState} {es : List Event}
     (h : microStep s = some (s', es)) :
-    ∃ s2, microStep0 s = some (s2, es) ∧ s' = s2.withTriggers (es ++ s.mightyEvents s2) := by
+    ∃ s2, microStep0 s = some (s2, es) ∧ s' = s2.withTriggers (es ++ s.workTransitionEvents s2) := by
   unfold microStep at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h
@@ -632,7 +632,7 @@ theorem applyFrame_cases {s s' : GameState} {a : Action} {es : List Event}
     (h : applyFrame s a = some (s', es)) :
     ∃ s2 es2 s3, applyFrame0 s a = some (s2, es2) ∧
       GameState.PoolStep s2 s3 ∧
-      s' = s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a) ∧
+      s' = s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionTransitionEvents s3 a) ∧
       es = es2 ++ extraEvents a es2 := by
   unfold applyFrame at h
   simp only [Option.map_eq_some_iff] at h

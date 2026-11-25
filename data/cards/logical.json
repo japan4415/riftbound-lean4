@@ -29329,7 +29329,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Bird"
+   ],
    "text": [
     "When I become exhausted, [Predict]. (Look at the top card of your Main Deck. You may recycle it.)"
    ],
@@ -29650,9 +29653,12 @@
     "RAD"
    ],
    "subtitle": "Inspiring",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Seraphine"
+    "Seraphine",
+    "Piltover"
    ],
    "text": [
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)",
@@ -30824,7 +30830,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_chaos: as an additional cost to have me enter ready.)",
     "When I become exhausted, choose one —Play a Gold gear token exhausted. (It has \"[Reaction][>] Kill this, :rb_exhaust:: [Add] :rb_rune_rainbow:.\")Pay :rb_rune_chaos: to draw 1."
@@ -32756,9 +32764,12 @@
     "RAD"
    ],
    "subtitle": "Not Alone",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Seraphine"
+    "Seraphine",
+    "Piltover"
    ],
    "text": [
     "When you play me or when I become exhausted, play a 1 :rb_might: Recruit unit token to your base.",

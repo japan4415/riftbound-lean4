@@ -550,7 +550,8 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .deathknell => t.subject == .self
       | .firstCardResolved => t.subject == .self
-      | .stun => true | .discard => true | .ready => true
+      | .stun => true | .discard => true | .ready => true | .exhaust => true
+      | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
       | .linkedBurnUnit | .linkedDiscardType => t.subject == .self

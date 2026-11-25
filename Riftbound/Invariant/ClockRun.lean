@@ -555,7 +555,7 @@ theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionTransitionEvents s3 a)) :=
     tc_withTriggers _ _
   obtain ⟨actor, kind⟩ := a
   simp only at hk
@@ -573,7 +573,7 @@ theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionTransitionEvents s3 a)) :=
     tc_withTriggers _ _
   rcases applyFrame0_tc h0 with h1 | ⟨hk, ht, hcl⟩
   · exact Or.inl ((h1.trans h2).trans h4)
@@ -606,7 +606,7 @@ theorem microStep_tick {s s' : GameState} {es : List Event}
     (h : microStep s = some (s', es)) : Tick s s' := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   have h1 := microStep0_tick h0
-  have h2 := tc_withTriggers s2 (es ++ s.mightyEvents s2)
+  have h2 := tc_withTriggers s2 (es ++ s.workTransitionEvents s2)
   refine ⟨h2.2.trans h1.1, ?_⟩
   rcases h1.2 with h | h
   · exact Or.inl (h2.1.trans h)

@@ -164,6 +164,8 @@ structure PendTrigger where
   eventAmount : Option Nat := none
   /-- Characteristics recorded for Show Off by the play that fired this ability. -/
   shownOff : Option ShownOff := none
+  /-- The ability triggered during the cost of a Standard Move, before the move itself (CR 203). -/
+  beforeStandardMove : Bool := false
   /-- A keyword trigger assembled from the source's effective keywords. -/
   triggerKeyword : Option Keyword := none
   /-- The Battlefields recorded by the triggering event (CR 477.3.b). -/

@@ -407,7 +407,8 @@ def setExhausted (b : Bool) (s : GameState) (id : ObjId) : GameState × List Eve
   | some o =>
     -- only an object that was exhausted is readied, and only a ready one is exhausted (CR 416)
     (s.modObj id (fun o => { o with exhausted := b }),
-      if b then [Event.exhausted id] else if o.exhausted then [Event.readied id] else [])
+      if b then (if o.exhausted then [] else [Event.exhausted id])
+      else if o.exhausted then [Event.readied id] else [])
   | none => (s, [])
 
 /-- Readying or exhausting is a safe change. -/

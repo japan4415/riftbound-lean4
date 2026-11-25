@@ -79,11 +79,13 @@ RADIANCE_PRINT_METADATA = {
     "RAD-049": {"domains": ["mind"], "tags": ["Zaun"]},
     "RAD-050": {"tags": ["Shurima"]},
     "RAD-052": {"tags": []},
+    "RAD-053": {"tags": ["Freljord", "Bird"]},
     "RAD-054": {"tags": ["Bandle City", "Yordle"]},
     "RAD-055": {"tags": ["Piltover", "Mech"]},
     "RAD-058": {"tags": ["Bilgewater"]},
     "RAD-059": {"domains": ["mind"]},
     "RAD-060": {"tags": ["Ionia", "Dragon"]},
+    "RAD-065": {"supertypes": ["champion"], "tags": ["Seraphine", "Piltover"]},
     "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
     "RAD-072": {"tags": ["Bandle City", "Yordle"]},
     "RAD-073": {"domains": ["body"], "tags": []},
@@ -97,6 +99,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-097": {"tags": ["Bilgewater"]},
     "RAD-103": {"tags": ["Zaun"]},
     "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
+    "RAD-105": {"tags": ["Piltover"]},
     "RAD-106": {"domains": ["chaos"], "tags": []},
     "RAD-110": {"supertypes": ["champion"], "tags": ["Lulu", "Bandle City", "Yordle"]},
     "RAD-112": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
@@ -110,6 +113,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-128": {"tags": ["Demacia"]},
     "RAD-134": {"domains": ["order"]},
     "RAD-141": {"tags": ["Ziggs"]},
+    "RAD-SP5": {"supertypes": ["champion"], "tags": ["Seraphine", "Piltover"]},
 }
 
 

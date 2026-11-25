@@ -462,6 +462,10 @@ def eventJson : Event → String
   | .discarded p o _ =>
     jobj [("t", jstr "discarded"), ("player", toString p.n), ("obj", toString o.n)]
   | .exhausted o => jobj [("t", jstr "exhausted"), ("target", toString o.n)]
+  | .exhaustBatch who objects beforeMove =>
+    jobj [("t", jstr "exhaustBatch"), ("player", who.elim "null" (fun p => toString p.n)),
+      ("objects", jarr (objects.map (fun o => toString o.n))),
+      ("beforeMove", if beforeMove then "true" else "false")]
   | .standardMoved u d =>
     jobj [("t", jstr "moved_unit"), ("unit", toString u.n),
       ("dest", match d with | some bf => toString bf.n | none => "null")]

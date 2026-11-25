@@ -315,12 +315,30 @@ def GameState.mightyEvents (s s' : GameState) : List Event :=
         | _, _ => []
       else [])
 
-/-- A Chain pass changes only who can respond or schedules resolution. Other decisions may
-change Might directly, including a pass that ends a Showdown. -/
-def GameState.actionMightEvents (s s' : GameState) (a : Action) : List Event :=
+/-- Detect exhaustion of objects that were already on the Board. Entering exhausted and
+exhausting an already exhausted object do not change it from ready to exhausted (CR 415). -/
+def GameState.exhaustionEvents (s s' : GameState) (who : Option PlayerId)
+    (beforeMove : Bool := false) : List Event :=
+  let oldBoard := s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
+  let exhausted := oldBoard.filter (fun id =>
+    (s.obj? id).any (fun o => !o.exhausted) && (s'.obj? id).any (·.exhausted))
+  if exhausted.isEmpty then [] else [.exhaustBatch who exhausted beforeMove]
+
+/-- State changes during a work frame, with the player instructed by a resolving effect. -/
+def GameState.workTransitionEvents (s s' : GameState) : List Event :=
+  let who := match s.pending with
+    | .run p .. :: _ => some p
+    | _ => none
+  s.exhaustionEvents s' who ++ s.mightyEvents s'
+
+/-- State changes during an answer. Passing Chain priority cannot change Board objects. -/
+def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Event :=
   match s.pending, a.kind with
   | .chainPass .. :: _, .pass => []
-  | _, _ => s.mightyEvents s'
+  | _, kind =>
+    let who := match a.actor with | .player p => some p | _ => none
+    let beforeMove := match kind with | .standardMove .. => true | _ => false
+    s.exhaustionEvents s' who beforeMove ++ s.mightyEvents s'
 
 /-- The marked Unit's death sets off the effects that were created by a spell or ability.
 They retain their original source and controller and are independent of Deathknell (CR 391-393). -/
@@ -379,8 +397,28 @@ def GameState.combatantTriggers (s : GameState) (att : PlayerId) (u : ObjId) : L
       (if o.controller == att then s.disarmTriggers u att else [])
   | none => []
 
+/-- Exhaustion abilities of individual objects and of a player who exhausted several Units. -/
+def GameState.exhaustionTriggers (s : GameState) (who : Option PlayerId) (objects : List ObjId)
+    (beforeMove : Bool) : List PendTrigger :=
+  let individual := objects.flatMap (fun id =>
+    match s.obj? id with
+    | some o => triggersOf s id o.controller .exhaust ++ watchersOf s id o.controller .exhaust
+    | none => [])
+  let combined := who.toList.flatMap (fun p =>
+    let count := objects.countP (fun id =>
+      (s.cardDef? id).any (·.hasType .unit) && (s.obj? id).any (·.controller == p))
+    if count == 0 then [] else
+      s.passiveSources.flatMap (fun id =>
+        if (s.obj? id).any (·.controller == p) then
+          triggersOfMatching s id p (fun
+            | .youExhaustUnits minimum => decide (minimum ≤ count)
+            | _ => false)
+        else []))
+  (individual ++ combined).map (fun t => { t with beforeStandardMove := beforeMove })
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
+  | .exhaustBatch who objects beforeMove => s.exhaustionTriggers who objects beforeMove
   | .played p obj =>
     match s.cardDef? obj with
     | some d =>
@@ -600,8 +638,11 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
 def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
     List PendTrigger :=
   let all := s.trimLimits (es.flatMap (detectOne s) ++ extra)
-  let a := s.active.getD ⟨0⟩
-  all.filter (fun t => t.controller == a) ++ all.filter (fun t => t.controller != a)
+  let active := s.active.getD ⟨0⟩
+  let seatOrder (group : List PendTrigger) :=
+    group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
+  let (beforeMove, later) := all.partition (·.beforeStandardMove)
+  seatOrder beforeMove ++ seatOrder later
 
 /-- The frames that complete outstanding work before triggered abilities are finalized (CR 334).
 This includes draws still owed by the current task or instruction. -/
@@ -1051,8 +1092,10 @@ def triggersStep (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
   match pend with
   | [] => (s, triggerFrames s rest)
   | t :: ts =>
-    let grp := ts.filter (fun u => u.controller == t.controller)
-    let others := ts.filter (fun u => u.controller != t.controller)
+    let sameGroup (u : PendTrigger) :=
+      u.controller == t.controller && u.beforeStandardMove == t.beforeStandardMove
+    let grp := ts.filter sameGroup
+    let others := ts.filter (fun u => !sameGroup u)
     if grp.isEmpty && trigModes s t == [none] && trigPlayerOptions s t == [none] &&
         (trigChoices s t).isEmpty && !trigOptional s t && trigCost s t == .free then
       (putTrigger s t [], [.triggers others])

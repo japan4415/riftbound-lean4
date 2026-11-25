@@ -43,6 +43,8 @@ inductive Event where
   | readied (target : ObjId)
   /-- An object became exhausted (CR 415). -/
   | exhausted (target : ObjId)
+  /-- A completed action or instruction exhausted these Board objects together (CR 415). -/
+  | exhaustBatch (who : Option PlayerId) (objects : List ObjId) (beforeMove : Bool)
   /-- A Unit made a Standard Move (CR 144) to a Battlefield (`some`) or to its Base (`none`). -/
   | standardMoved (unit : ObjId) (dest : Option ObjId)
   /-- A player took control of a Battlefield (`some`), or the Battlefield lost its controller

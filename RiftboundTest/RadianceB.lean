@@ -214,4 +214,114 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     skipped.zone (.player p .base) == s.zone (.player p .base) &&
     held.zone (.player p .base) == s.zone (.player p .base)
 
+-- Exhausting the Rostrum as a cost queues its boost above the draw and exhausted Rune.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "RAD-046" .base
+  let (s, ally) ← put s p "RAD-011" .base
+  let (s, enemy) ← put s s.you "RAD-011" .base
+  let (waiting, _) ← (step 100 s ⟨.player p, .activate gear 0 ⟨0, []⟩ []⟩).toOption
+  let (stacked, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [ally]⟩).toOption
+  let done := settleChain {} 12 stacked
+  let fresh ← (done.zone (.player p .base)).find? (fun id => !(s.zone (.player p .base)).contains id)
+  return waiting.trigPicks == [ally] && (waiting.zone .chain).length == 1 &&
+    (stacked.zone .chain).length == 2 && done.tired gear == some true &&
+    done.handN p == s.handN p + 1 && done.tired fresh == some true &&
+    done.mightNow ally == some 7 && done.mightNow enemy == some 4
+
+-- A Standard Move exhausts an already-present Oracle, while entering exhausted does not Predict.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, card) ← put s p "RAD-053" .hand
+  let (s, _) ← putAt s p "RAD-011" field
+  let entering ← play (s.control p field) p card
+  let oracle ← entering.firstOf p .base "RAD-053"
+  let ready := entering.modObj oracle (fun o => { o with exhausted := false })
+  let (exhausted, _) ← (step 100 ready ⟨.player p, .standardMove oracle (.battlefield field)⟩).toOption
+  let predicting := settleChain {} 8 exhausted
+  let top ← (s.zone (.player p .mainDeck)).head?
+  let (done, _) ← (step 100 predicting ⟨.player p, .predictPick top false⟩).toOption
+  return entering.tired oracle == some true && (entering.zone .chain).isEmpty &&
+    done.tired oracle == some true && done.where? oracle == some .battlefieldZone &&
+    (setExhausted true done oracle).2.isEmpty
+
+-- The Standard Move's exhaustion triggers are put on the Chain before its movement triggers.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, oracle) ← put s p "RAD-053" .base
+  let (s, lulu) ← putAt s p "RAD-110" s.bf0
+  let exhausted := s.tire oracle
+  let events := [.standardMoved lulu (some s.bf0)] ++ s.exhaustionEvents exhausted (some p) true
+  let triggers := exhausted.detect events
+  let (stacked, frames) := triggersStep exhausted triggers []
+  let first ← (stacked.zone .chain).head?
+  return (stacked.obj? first).any (fun o => match o.kind with
+    | .chainAbility _ _ source => source == oracle | _ => false) &&
+    (match frames with | [.triggers [next]] => next.source == lulu | _ => false)
+
+-- Inspiring Seraphine needs three friendly Units exhausted by her controller in one instruction.
+-- Declining at finalization saves the once-per-turn use.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, seraphine) ← put s p "RAD-065" .base
+  let (s, a) ← put s p "RAD-011" .base
+  let (s, b) ← put s p "RAD-011" .base
+  let (s, c) ← put s p "RAD-011" .base
+  let (s, enemy) ← put s q "RAD-011" .base
+  let exhaust (g : GameState) (who : PlayerId) (ids : List ObjId) :=
+    (advance 100 { g with pending := [.run who seraphine { slots := ids.map Value.obj }
+      (.cons (.prim (.exhaust (.slotsFrom 0))) .nil), .priority p] } []).toOption.map Prod.fst
+  let group := [a, b, c]
+  let ready (g : GameState) := group.foldl
+    (fun t id => t.modObj id (fun o => { o with exhausted := false })) g
+  let mixed ← exhaust s p [a, b, enemy]
+  let wrongPlayer ← exhaust s q group
+  let waiting ← exhaust s p group
+  let declined := settleChain { yes := false } 8 waiting
+  let retried ← exhaust (ready declined) p group
+  let drawn := settleChain {} 8 retried
+  let again ← exhaust (ready drawn) p group
+  return mixed.handN p == s.handN p && wrongPlayer.handN p == s.handN p &&
+    (mixed.zone .chain).isEmpty && (wrongPlayer.zone .chain).isEmpty &&
+    declined.handN p == s.handN p && drawn.handN p == s.handN p + 1 &&
+    (settleChain {} 8 again).handN p == drawn.handN p
+
+-- Accelerate leaves the Innovator ready; exhausting it locks either the Gold or the draw mode.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, card) ← put s p "RAD-105" .hand
+  let (s, _) ← putAt s p "RAD-011" field
+  let normal ← play (s.control p field) p card
+  let (s, _) ← put s p "RAD-105" .hand
+  let fast ← cast ((s.control p field).fund p 4 (chaos := 2)) p card ⟨4, [.chaos]⟩
+  let unit ← fast.firstOf p .base "RAD-105"
+  let (waiting, _) ← (step 100 fast ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+  let (goldChain, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [] (.pay [] (some 0))⟩).toOption
+  let (drawChain, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [] (.pay [] (some 1))⟩).toOption
+  let gold := settleChain {} 8 goldChain
+  let drawn := settleChain {} 8 drawChain
+  let token ← (gold.zone (.player p .base)).find? (fun id => (gold.cardDef? id).any (·.name == "Gold"))
+  return normal.countNamed p .base "Gold" == 0 && fast.tired unit == some false &&
+    gold.tired token == some true && gold.handN p == fast.handN p &&
+    drawn.handN p == fast.handN p + 1 && drawn.countNamed p .base "Gold" == 0 &&
+    (drawn.poolOf p).chaos == 0 && (gold.poolOf p).chaos == 1
+
+-- Not Alone recruits on her play and on a later exhaustion and counts only other exhausted allies.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, card) ← put s p "RAD-SP5" .hand
+  let (s, ally) ← putAt s p "RAD-011" field
+  let (s, enemy) ← put s s.you "RAD-011" .base
+  let played ← play (((s.control p field).tire ally).tire enemy) p card
+  let champion ← played.firstOf p .base "RAD-SP5"
+  let ready := played.modObj champion (fun o => { o with exhausted := false })
+  let (moved, _) ← (step 100 ready ⟨.player p, .standardMove champion (.battlefield field)⟩).toOption
+  let done := settleChain {} 8 moved
+  return played.countNamed p .base "Recruit" == 1 && played.mightNow champion == some 3 &&
+    done.countNamed p .base "Recruit" == 2 && done.mightNow champion == some 4
+
 end RiftboundTest
