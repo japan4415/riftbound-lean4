@@ -362,8 +362,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.run p src env (.cons (match guess with
-      | .unit => unit | .gear => gear | .spell => spell) es)]
+    cases guess <;> exact hb.swap rfl [Frame.run p src env (.cons _ es)]
   · have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h
