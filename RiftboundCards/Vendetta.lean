@@ -255,9 +255,9 @@ def VEN_009.meta : CardDef :=
 def VEN_009 : CardDef :=
   { VEN_009.meta with
     abilities := [.triggered (.onSelf .attack)
-      (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-        (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
-          .grant .self (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn])) .nop)) .unlimited],
+      (.of [] (.eitherOf (.ofList [
+        .payThen ⟨0, [.domain .fury]⟩ (.grant .self (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn),
+        .nop]))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED VEN-010
@@ -2672,9 +2672,10 @@ def VEN_094 : CardDef :=
   { VEN_094.meta with
     abilities := [.triggered (.onSelf .discard)
       (.of [.targetOf (.upTo 1) .friendly .anywhere [.ofType .unit]]
-        (.ifThen (.and (.exists (.slot 0)) (.canPay ⟨1, []⟩))
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-            .grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited],
+        (.ifThen (.exists (.slot 0))
+          (.eitherOf (.ofList [
+            .payThen ⟨1, []⟩ (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn),
+            .nop])) .nop)) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED VEN-095

@@ -49,6 +49,46 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     t.mightNow baccai == some 3 && t.mightNow raider == some 6 && t.hasKw raider .ganking
   return unchanged tied && unchanged onOpponentTurn && granted lower && granted twoOpponents
 
+-- Baccai Reaper can Exhaust Seal of Rage to pay for its attack trigger.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, reaper) ← putAt s p "VEN-009" bf
+  let (s, _) ← putAt s q "VEN-074" bf
+  let (s, battery) ← put s p "OGN-040" .base
+  let s := (s.fund p 0).modObj battery (fun o => { o with exhausted := false })
+  let offer ← fire s [.combatStarted bf p]
+  let add : Action := ⟨.player p, .manaAbility battery 0 ⟨0, []⟩⟩
+  let accept : Action := ⟨.player p, .decide true⟩
+  let (skipped, _) ← (step 100 offer ⟨.player p, .decide false⟩).toOption
+  let (funded, _) ← (step 100 offer add).toOption
+  let (paid, _) ← (step 100 funded accept).toOption
+  return !(legalActions offer).contains accept && (legalActions offer).contains add &&
+    skipped.kwAmount reaper .assault == 0 && skipped.tired battery == some false &&
+    funded.kwAmount reaper .assault == 0 && (funded.poolOf p).fury == 1 &&
+    paid.kwAmount reaper .assault == 2 && paid.tired battery == some true && (paid.poolOf p).total == 0
+
+-- When Mask Mother is discarded, its controller can pay with a Reaction Add.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, mother) ← put s p "VEN-094" .hand
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, sage) ← put s p "UNL-093" .base
+  let s := (s.fund p 0).modObj sage (fun o => { o with exhausted := false })
+  let waiting := { s with pending := [.discard p 1] }
+  let (discarded, _) ← (step 100 waiting ⟨.player p, .discardPick mother⟩).toOption
+  let offer := settleChain { pick := (· == [ally]) } 12 discarded
+  let add : Action := ⟨.player p, .manaAbility sage 0 ⟨0, []⟩⟩
+  let accept : Action := ⟨.player p, .decide true⟩
+  let (skipped, _) ← (step 100 offer ⟨.player p, .decide false⟩).toOption
+  let (funded, _) ← (step 100 offer add).toOption
+  let (paid, _) ← (step 100 funded accept).toOption
+  return !(legalActions offer).contains accept && (legalActions offer).contains add &&
+    skipped.mightNow ally == some 2 && skipped.tired sage == some false &&
+    funded.mightNow ally == some 2 && (funded.poolOf p).energy == 1 &&
+    paid.mightNow ally == some 4 && paid.tired sage == some true && (paid.poolOf p).total == 0
+
 /-- Put Rebuttal above an En Garde finalized by the opponent, and reach its payment decision. -/
 meta def rebuttalChoice (s : GameState) (power : Nat) :
     Option (GameState × ObjId × ObjId × ObjId) := do
