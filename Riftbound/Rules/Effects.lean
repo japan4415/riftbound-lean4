@@ -2777,26 +2777,30 @@ def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef) : Bool :=
         | .entersReady (.pick .all .friendly .anywhere fs) => fs == FilterList.ofList [.token]
         | _ => false)))
 
-/-- The Units played as tokens between two states: they were played, as the abilities that wait for
-a Unit to be played see it (the tokens made are the objects with the new identifiers). -/
+/-- The tokens played between two states are the new token objects (CR 184.2). -/
 def tokenPlays (s s' : GameState) (p : PlayerId) : List Event :=
   (List.range (s'.nextId - s.nextId)).filterMap (fun i =>
-    if (s.obj? ⟨s.nextId + i⟩).isNone &&
-        (s'.cardDef? ⟨s.nextId + i⟩).any (·.hasType .unit) then
-      some (Event.tokenPlayed p ⟨s.nextId + i⟩)
-    else none)
+    let id : ObjId := ⟨s.nextId + i⟩
+    match s.obj? id, (s'.obj? id).map Object.kind with
+    | none, some (ObjKind.token _) => some (.tokenPlayed p id)
+    | _, _ => none)
 
 /-- A Unit played as a token is buffed. -/
 def buffTokenEv (t : GameState) (e : Event) : GameState :=
   match e with
-  | .tokenPlayed _ id => t.modObj id (fun o => { o with buffed := true })
+  | .tokenPlayed _ id =>
+    if (t.cardDef? id).any (·.hasType .unit) then
+      t.modObj id (fun o => { o with buffed := true })
+    else t
   | _ => t
 
 /-- Buffing a token is a safe change. -/
 theorem buffTokenEv_safe (t : GameState) (e : Event) : Safe t (buffTokenEv t e) := by
   unfold buffTokenEv
   split
-  · exact Safe.modObj t _ (fun _ => rfl) (fun _ => rfl)
+  · split
+    · exact Safe.modObj t _ (fun _ => rfl) (fun _ => rfl)
+    · exact Safe.refl t
   · exact Safe.refl t
 
 /-- Buffing the tokens that were played is a safe change. -/

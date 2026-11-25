@@ -580,6 +580,247 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     banished.countIn q .banishment "VEN-014" == 1 &&
     returned.countIn q .hand "VEN-014" == 1 && returned.countIn q .banishment "VEN-014" == 0
 
+-- Ravenbloom Prefect can banish an opponent's Gold token when the token is played.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, prefect) ← put s p "VEN-102" .base
+  let (s, broker) ← put s q "SFD-155" .base
+  let (killed, events) := killObj (s.addTurnFx q .unitsBuffed) broker
+  let accepted ← fire killed events
+  let declined ← fire killed events { yes := false }
+  let gold ← (declined.zone (.player q .base)).find? (fun id => (declined.cardDef? id).any (·.name == "Gold"))
+  return accepted.countIn p .banishment "VEN-102" == 1 && accepted.countNamed q .base "Gold" == 0 &&
+    (declined.obj? prefect).isSome && (declined.obj? gold).any (! ·.buffed) &&
+    declined.playLog == killed.playLog && accepted.playLog == killed.playLog
+
+-- Ocean Drake can enter an open Battlefield and return a non-Dragon Unit from either side.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let occupied ← s.battlefields[1]?
+  let (s, drake) ← put s p "VEN-115" .hand
+  let (s, friendly) ← put s p "VEN-014" .base
+  let (s, opposing) ← put s q "VEN-014" .base
+  let (s, dragon) ← putAt s q "VEN-091" occupied
+  let s := (s.control q occupied).fund p 8 (chaos := 2)
+  let playAt (bf : ObjId) : Action := ⟨.player p, .playCard drake ⟨8, [.chaos, .chaos]⟩ [bf]⟩
+  let (waiting, _) ← (step 100 s (playAt field)).toOption
+  let chosen := settleChain { pick := (· == [opposing]) } 10 waiting
+  let back := settleChain { pick := (· == [friendly]) } 10 waiting
+  let stayed := settleChain { pick := List.isEmpty } 10 waiting
+  return !(legalActions s).contains (playAt occupied) && !(waiting.trigPicks.contains dragon) &&
+    (waiting.unitsAtOf field p).any (fun id => (waiting.cardDef? id).any (·.id == cid "VEN-115")) &&
+    chosen.countIn q .hand "VEN-014" == 1 && back.countIn p .hand "VEN-014" == 1 &&
+    (stayed.obj? friendly).isSome && (stayed.obj? opposing).isSome
+
+-- Disciple of Shen can reveal at a Battlefield and has Shield 3 only with one other friendly Unit.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, hidden) ← put s p "VEN-117" .hidden
+  let (s, ally) ← putAt s p "VEN-014" field
+  let s := (s.control p field).modObj hidden
+    (fun o => { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
+  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, []⟩ []⟩).toOption
+  let done := settleChain {} 8 queued
+  let unit ← (done.unitsAtOf field p).find? (fun id => (done.cardDef? id).any (·.id == cid "VEN-117"))
+  let (extra, _) ← putAt done p "VEN-014" field
+  let alone := (moveHome done ally).1
+  let offField := (moveHome done unit).1
+  return (done.obj? unit).any (·.fromHidden) && done.kwAmount unit .shield == 3 &&
+    done.combatMight unit false == 4 && done.combatMight unit true == 1 &&
+    extra.kwAmount unit .shield == 0 && alone.kwAmount unit .shield == 0 &&
+    offField.kwAmount unit .shield == 0
+
+-- Masa stuns an enemy at a Battlefield only if its additional Order Power was paid.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, masa) ← put s p "VEN-120" .hand
+  let (s, target) ← putAt s q "VEN-014" s.bf0
+  let (s, baseUnit) ← put s q "VEN-014" .base
+  let (s, ally) ← putAt s p "VEN-014" (s.battlefields[1]?.getD s.bf0)
+  let s := (s.control q s.bf0).fund p 4 (order := 1)
+  let (paid, _) ← (step 100 s
+    ⟨.player p, .playCard masa ⟨4, [.order]⟩ []⟩).toOption
+  let ordinary ← cast s p masa ⟨4, []⟩
+  let chosen := settleChain { pick := (· == [target]) } 10 paid
+  return paid.trigPicks == [target] && (paid.poolOf p).total == 0 &&
+    (chosen.obj? target).any (·.stunned) && (chosen.obj? baseUnit).any (! ·.stunned) &&
+    (chosen.obj? ally).any (! ·.stunned) && (ordinary.obj? target).any (! ·.stunned)
+
+-- Reluctant Leader grows for a friendly Unit card and a friendly Unit token.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, leader) ← put s p "VEN-121" .hand
+  let (s, unit) ← put s p "VEN-014" .hand
+  let (s, maker) ← put s p "VEN-051" .hand
+  let (s, foeMaker) ← put s q "VEN-051" .hand
+  let entered ← play s p leader
+  let source ← entered.firstOf p .base "VEN-121"
+  let ally ← play entered p unit
+  let mech ← play ally p maker
+  let opponent ← play { mech with active := some q, pending := [.priority q] } q foeMaker
+  let (expired, _) ← (advance 100 { opponent with pending := [.expireTurn] } []).toOption
+  return entered.mightNow source == some 3 && ally.mightNow source == some 5 &&
+    mech.mightNow source == some 7 && opponent.mightNow source == some 7 &&
+    expired.mightNow source == some 3 && mech.countNamed p .base "Mech" == 1
+
+-- Solari Sunhawk gains one Might and Deflect 2 when its two-Energy Empower resolves.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, sunhawk) ← put s p "VEN-122" .base
+  let strengthened ← activate s p sunhawk 1 [] ⟨2, []⟩
+  let stripped := (disempowerObj strengthened sunhawk).1
+  return (activate s p sunhawk 1 [] ⟨1, []⟩).isNone &&
+    s.mightNow sunhawk == some 3 && s.deflectOf sunhawk == 0 &&
+    strengthened.mightNow sunhawk == some 4 && strengthened.deflectOf sunhawk == 2 &&
+    stripped.mightNow sunhawk == some 3 && stripped.deflectOf sunhawk == 0
+
+-- Soulspinner can use Ambush in response only at a Battlefield with a friendly Unit.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, spinner) ← put s p "VEN-123" .hand
+  let (s, ally) ← putAt s p "VEN-014" field
+  let (s, item) ← onChain s s.you "OGN-095"
+  let s := { s.fund p 3 with pending := [.chainPass p 0, .priority p] }
+  let act (destination : List ObjId) : Action := ⟨.player p, .playCard spinner ⟨3, []⟩ destination⟩
+  let (played, _) ← (step 100 s (act [field])).toOption
+  return !(legalActions s).contains (act []) &&
+    !(legalActions (moveHome s ally).1).contains (act [field]) &&
+    (played.zone .chain).contains item &&
+    (played.unitsAtOf field p).any (fun id => (played.cardDef? id).any (·.id == cid "VEN-123"))
+
+-- Sacred Protector contributes its combat damage only with exactly one other friendly Unit there.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, protector) ← putAt s p "VEN-129" field
+  let (s, _) ← putAt s s.you "VEN-014" field
+  let (paired, _) ← putAt s p "VEN-014" field
+  let (crowded, _) ← putAt paired p "VEN-014" field
+  let damage (t : GameState) (attacker : Bool) := t.combatMight protector attacker
+  return damage s true == 0 && damage paired false == 6 && damage paired true == 6 &&
+    damage crowded true == 0 && damage (moveHome paired protector).1 true == 0
+
+-- Aurok General grants two Might to its controller's Empowered Units, including itself.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, general) ← put s p "VEN-130" .base
+  let (s, ally) ← put s p "VEN-071" .base
+  let (s, ordinary) ← put s p "VEN-071" .base
+  let (s, enemy) ← put s q "VEN-071" .base
+  let s := (empowerObj q (empowerObj p s ally).1 enemy).1
+  let strengthened ← activate s p general 1 [] ⟨3, [.order]⟩
+  let stripped := (disempowerObj strengthened general).1
+  return s.mightNow general == some 5 && strengthened.mightNow general == some 7 &&
+    strengthened.mightNow ally == some 7 && strengthened.mightNow ordinary == some 5 &&
+    strengthened.mightNow enemy == some 5 && stripped.mightNow ally == some 5
+
+-- A Sand Soldier remains a token and gains a fresh copied Azir ability on each attachment.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, spectacles) ← put s p "VEN-137" .base
+  let (s, azir) ← put s p "SFD-050" .base
+  let soldier := tokenId "Sand Soldier"
+  let s := createOne soldier p none false s
+  let unit ← s.firstOf p .base soldier.code
+  let model : Says := { obj := (· == azir) }
+  let equip (t : GameState) := activate t p spectacles 1 [unit] ⟨1, [.order]⟩ model
+  let use : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm]⟩ [azir]⟩
+  let first ← equip s
+  let stamp ← first.copyStamp? unit
+  let (queued, _) ← (step 100 (first.rich p) use).toOption
+  let used := settleChain {} 10 queued
+  let detached := (detachObj used spectacles).1
+  let again ← equip detached
+  return (first.obj? unit).any (·.kind == .token soldier) &&
+    (detached.cardDef? unit).any (·.id == soldier) &&
+    (again.cardDef? unit).any (·.id == cid "SFD-050") && again.copyStamp? unit != some stamp &&
+    !(legalActions (used.rich p)).contains use && (legalActions (again.rich p)).contains use
+
+-- Shen gains the extra Hold point only with exactly one other friendly Unit at his Battlefield.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, shen) ← putAt s p "VEN-138" field
+  let (s, _) ← put s p "VEN-014" .base
+  let (withOne, _) ← putAt s p "VEN-014" field
+  let (withTwo, _) ← putAt withOne p "VEN-014" field
+  let held ← fire withOne [.scored p field false]
+  let alone ← fire s [.scored p field false]
+  let crowded ← fire withTwo [.scored p field false]
+  let conquered ← fire withOne [.scored p field true]
+  return s.kwAmount shen .shield == 1 && held.pointsOf p == s.pointsOf p + 1 &&
+    alone.pointsOf p == s.pointsOf p && crowded.pointsOf p == s.pointsOf p &&
+    conquered.pointsOf p == s.pointsOf p
+
+-- Decree of Unity also kills opposing Chaos Gear and leaves friendly Chaos Gear alone.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-131" .hand
+  let (s, enemy) ← put s q "VEN-108" .base
+  let (s, ally) ← put s p "VEN-108" .base
+  let (s, otherDomain) ← put s q "VEN-054" .base
+  let result ← play s p spell [enemy]
+  return result.countIn q .trash "VEN-108" == 1 && (result.obj? ally).isSome &&
+    (play s p spell [ally]).isNone && (play s p spell [otherDomain]).isNone
+
+-- Rogue Assassin leaves a Unit exhausted on its own turn unless the Legend is Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let other ← s.battlefields[1]?
+  let (s, legend) ← put s p "VEN-139" .legendZone
+  let (s, ally) ← putAt s p "VEN-014" field
+  let (s, foe) ← putAt s q "VEN-014" field
+  let (s, outside) ← putAt s p "VEN-014" other
+  let s := ((s.control q field).control p other).tire ally
+  let empowered ← activate (moveHome s foe).1 p legend 1 [] ⟨3, [.fury]⟩
+  let (empowered, _) ← putAt empowered q "VEN-014" field
+  let showdown (t : GameState) := t.inShowdownAt field p
+  let ordinary ← activate (showdown s) p legend 0 [ally]
+  let ready ← activate (showdown empowered) p legend 0 [ally]
+  let onOtherTurn ← activate { (showdown s) with active := some q } p legend 0 [ally]
+  return ordinary.locate ally == some (.player p .base) && ordinary.tired ally == some true &&
+    ready.locate ally == some (.player p .base) && ready.tired ally == some false &&
+    onOtherTurn.locate ally == some .battlefieldZone && onOtherTurn.tired legend == some true &&
+    (activate (showdown s) p legend 0 [foe]).isNone &&
+    (activate (showdown s) p legend 0 [outside]).isNone
+
+-- Death Mark can Flow from Trash, burns three cards, and plays the Shadow Clone into the Base.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "VEN-144" .trash
+  let deck := Zone.player p .mainDeck
+  let before := s.zone deck
+  let done ← cast (s.fund p 1 (fury := 1) (chaos := 1)) p spell ⟨1, [.fury, .chaos]⟩
+  let clone ← done.firstOf p .base "TKN-Shadow Clone"
+  return done.zone deck == before.drop 3 && done.countIn p .banishment "VEN-144" == 1 &&
+    done.mightNow clone == some 0 && done.tired clone == some true
+
+-- With Flow, Shadow Dash locks a friendly destination and increases both friendly Units there.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put s p "VEN-148" .trash
+  let (s, first) ← putAt s p "VEN-014" field
+  let (s, second) ← putAt s p "VEN-014" field
+  let (s, enemy) ← put s q "VEN-091" .base
+  let funded := (s.control p field).fund p 5 (mind := 1) (body := 1)
+  let done ← cast funded p spell ⟨5, [.mind, .body]⟩ [enemy] {} (.destination (some field))
+  return done.countIn p .banishment "VEN-148" == 1 &&
+    (done.obj? enemy).any (·.loc == some field) &&
+    done.mightNow first == some 3 && done.mightNow second == some 3
+
 -- Baccai Sandspinner gains Deflect and Assault 2 only after its discounted Empower resolves.
 #guard verifiedCase fun s => do
   let p := s.me

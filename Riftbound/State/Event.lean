@@ -108,7 +108,7 @@ inductive Event where
   | revealed (p : PlayerId) (card : ObjId)
   /-- The player revealed the cards currently in their hand (CR 425.3.a). -/
   | handRevealed (p : PlayerId) (cards : List ObjId)
-  /-- A Unit token was played (the player, the token). A token is not a card: what waits for a
+  /-- A token was played (the player, the token). A token is not a card: what waits for a
   card to be played does not see it. -/
   | tokenPlayed (p : PlayerId) (token : ObjId)
   /-- A player spent a buff of a unit of theirs (CR 704). -/

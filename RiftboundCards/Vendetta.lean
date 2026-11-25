@@ -2893,11 +2893,13 @@ def VEN_102.meta : CardDef :=
 
 /-- Ravenbloom Prefect. -/
 def VEN_102 : CardDef :=
-  { VEN_102.meta with
-    abilities := [.triggered { event := .play, subject := .all .enemy .anywhere [.ofType .gear] }
+  let watch (event : TriggerEvent) : Ability :=
+    .triggered { event, subject := .all .enemy .anywhere [.ofType .gear] }
       (.of [] (.ifThen (.exists (.all .any .anywhere [.sameAs .self]))
-        (.may (.seqOf [.prim (.banish .self), .prim (.banish (.slot 0))])) .nop)) .unlimited],
-    status := .drafted }
+        (.may (.seqOf [.prim (.banish .self), .prim (.banish (.slot 0))])) .nop)) .unlimited
+  { VEN_102.meta with
+    abilities := [watch .play, watch .playToken],
+    status := .full }
 
 -- BEGIN GENERATED VEN-103
 /--
@@ -3153,7 +3155,7 @@ def VEN_111 : CardDef :=
       { body := .nop, modes := [
         ⟨"全員が手札を1枚捨てる", [], .prim (.discard .eachPlayer (.const 1))⟩,
         ⟨"全員がカードを1枚引く", [], .prim (.draw .eachPlayer (.const 1))⟩] } .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-112
 /--
@@ -3189,7 +3191,7 @@ def VEN_112 : CardDef :=
           (.ifThen (.and (.exists (.all .any .anywhere [.sameAs .self]))
             (.exists (.all .friendly .anywhere [.ofType .unit, clone, .sameAs (.slot 0)])))
             (.prim (.swapPlaces .self (.slot 0))) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-113
 /--
@@ -3220,7 +3222,7 @@ def VEN_113 : CardDef :=
       .triggered (.onSelf .conquer)
         (.of [.targetOf .one .friendly .inTrash [.ofType .spell]]
           (.grant (.slot 0) .flowAtBaseCost .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-114
 /--
@@ -3254,7 +3256,7 @@ def VEN_114 : CardDef :=
         body := .seqOf [.prim (.burn (.chosen 0) (.const 3)),
           .ifThen (.cmp .gt (.count (Selector.all .any .inTrash units)) (.const 0))
             (.may (.prim (.play (Selector.one .any .inTrash units)))) .nop] } .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-115
 /--
@@ -3282,7 +3284,7 @@ def VEN_115 : CardDef :=
       .triggered (.onSelf .play)
         (.of [.targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.tag ⟨"Dragon"⟩)]]
           (.prim (.returnToHand (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-116
 /--
@@ -3307,7 +3309,7 @@ def VEN_116 : CardDef :=
   { VEN_116.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.prim (.setBaseMight (.slot 0) (.const 5)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-117
 /--
@@ -3337,7 +3339,7 @@ def VEN_117 : CardDef :=
       (.and (.matches .self .onBattlefield)
         (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1)))
       [.keyword .self ⟨.shield, .amount 3⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-118
 /--
@@ -3361,7 +3363,7 @@ def VEN_118.meta : CardDef :=
 /-- Horns of the Dragon. -/
 def VEN_118 : CardDef :=
   { VEN_118.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-119
 /--
@@ -3387,7 +3389,7 @@ def VEN_119 : CardDef :=
   { VEN_119.meta with
     abilities := [.passive (.exists (.all .any .atBattlefield [.controlled, .unitsHere .eq 2]))
       [.costMinus .self (.const 2), .costPower .self (.const 1) (some .order) false]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-120
 /--
@@ -3416,7 +3418,7 @@ def VEN_120 : CardDef :=
     abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
         (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
         (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-121
 /--
@@ -3438,10 +3440,12 @@ def VEN_121.meta : CardDef :=
 
 /-- Reluctant Leader. -/
 def VEN_121 : CardDef :=
+  let watch (event : TriggerEvent) : Ability :=
+    .triggered { event, subject := .all .friendly .anywhere [.ofType .unit, .notSelf] }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
   { VEN_121.meta with
-    abilities := [.triggered { event := .play, subject := .all .friendly .anywhere [.ofType .unit, .notSelf] }
-      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    abilities := [watch .play, watch .playToken],
+    status := .full }
 
 -- BEGIN GENERATED VEN-122
 /--
@@ -3469,7 +3473,7 @@ def VEN_122 : CardDef :=
   { VEN_122.meta with
     abilities := [.passive (.empowered .self)
       [.mightPlus .self (.const 1), .keyword .self ⟨.deflect, .amount 2⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-123
 /--
@@ -3493,7 +3497,7 @@ def VEN_123.meta : CardDef :=
 /-- Soulspinner. -/
 def VEN_123 : CardDef :=
   { VEN_123.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-124
 /--
@@ -3521,7 +3525,7 @@ def VEN_124 : CardDef :=
     abilities := [.empower [.killFriendly .one (.ofList [.ofType .unit])] 1
         [.targetOf .one .friendly .anywhere [.ofType .unit]],
       .passive (.empowered .self) [.mightPlus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-125
 /--
@@ -3549,7 +3553,7 @@ def VEN_125 : CardDef :=
       (.of [] (.ifThen (.noted .choseEnemyUnit) (.seqOf [.prim (.ready .self),
         .grant .self (.mightPlus .it (.const 1)) .thisTurn]) .nop))
       (.perTurn 1)],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-126
 /--
@@ -3575,7 +3579,7 @@ def VEN_126 : CardDef :=
   { VEN_126.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
     (.preventNext (.slot 0) (.const 7) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-127
 /--
@@ -3603,7 +3607,7 @@ def VEN_127 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.prim (.disempower (.slot 0)),
         .ifThen (.matches (.slot 0) (.might .le (.const 3))) (.prim (.kill (.slot 0))) .nop])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-128
 /--
@@ -3660,7 +3664,7 @@ def VEN_129 : CardDef :=
       (.not (.and (.matches .self .onBattlefield)
         (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1))))
       [.noCombatDamage]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-130
 /--
@@ -3688,7 +3692,7 @@ def VEN_130 : CardDef :=
   { VEN_130.meta with
     abilities := [.passive (.empowered .self)
       [.mightPlus (.all .friendly .anywhere [.ofType .unit, .empowered]) (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-131
 /--
@@ -3712,7 +3716,7 @@ def VEN_131 : CardDef :=
     spellEffect := some (.of
       [.targetOf .one .enemy .anywhere [.domain .chaos, .either (.ofType .unit) (.ofType .gear)]]
       (.prim (.kill (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-132
 /--
@@ -3740,7 +3744,7 @@ def VEN_132 : CardDef :=
     abilities := [
       .triggered (.onSelf .play) (.of [] (.nameCard .spell)) .unlimited,
       .passive (.matches .self .onBattlefield) [.oppsCantPlayNamed]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-133
 /--
@@ -3775,7 +3779,7 @@ def VEN_133 : CardDef :=
       .triggered { event := .at_ .endOfTurn }
         (.of [] (.seqOf [.prim (.kill .self),
           .prim (.deal (.all .friendly .anywhere [.ofType .unit]) (.const 5))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-134
 /--
@@ -3843,7 +3847,7 @@ def VEN_135 : CardDef :=
       .triggered { event := .attack, optional := true, cost := .energy 2 } stun .unlimited,
       .passive (.exists (.all .enemy .here [.ofType .unit, .stunned]))
         [.mightPlus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-136
 /--
@@ -3909,7 +3913,7 @@ def VEN_137 : CardDef :=
   { VEN_137.meta with
     abilities := [.replacement .attach .always (.of [] (.prim (.copyAttachedFrom
       (.one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]))))],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-138
 /--
@@ -3939,7 +3943,7 @@ def VEN_138 : CardDef :=
       { event := .hold,
         condition := .cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1) }
       (.of [] (.prim (.score .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-139
 /--
@@ -3970,7 +3974,7 @@ def VEN_139 : CardDef :=
         (.seqOf [.ifThen .yourTurn
           (.seqOf [.prim (.move (.slot 0) .base),
             .ifThen (.empowered .self) (.prim (.ready (.slot 0))) .nop]) .nop])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-140
 /--
@@ -4000,7 +4004,7 @@ def VEN_140 : CardDef :=
         .targetOf (.upTo 1) .enemy .atBattlefield [.ofType .unit]]
       moveChoice := some ⟨0, true, .nil⟩
       body := .seqOf [.prim (.deal (.slot 1) (.const 2)), .moveChoosing 0 true .nil .nop] },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-141
 /--
@@ -4026,7 +4030,7 @@ def VEN_141 : CardDef :=
   { VEN_141.meta with
     abilities := [.activated [.pay ⟨0, [.any, .any]⟩, .exhaustSelf] .reaction
       (.of [] (.prim (.addUnitEnergy .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-142
 /--
@@ -4058,7 +4062,7 @@ def VEN_142 : CardDef :=
       recheckTargets := true }
     grants := [.activated [.pay ⟨0, [.any, .any]⟩] .normal
       (.of [] (.prim (.ready .self))) .unlimited]
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-143
 /--
@@ -4086,7 +4090,7 @@ def VEN_143 : CardDef :=
       .activated [.disempowerSelf, .exhaustSelf] .action
         (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 1))]))
         .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-144
 /--
@@ -4115,7 +4119,7 @@ def VEN_144 : CardDef :=
   { VEN_144.meta with
     spellEffect := some (.of [] (.seqOf
       [.prim (.burn .you (.const 3)), .prim (.playUnitToken "Shadow Clone")])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-145
 /--
@@ -4143,7 +4147,7 @@ def VEN_145 : CardDef :=
         { choices := [.targetOf (.upTo 2) .any .atBase [.ofType .rune]]
           body := .prim (.ready (.slotsFrom 0))
           recheckTargets := true } .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-146
 /--
@@ -4174,7 +4178,7 @@ def VEN_146 : CardDef :=
         (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
           .ifThen (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7))
             (.prim (.deal (.slot 0) (.const 7))) (.prim (.deal (.slot 0) (.const 4)))]) .nop)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-147
 /--
@@ -4200,7 +4204,7 @@ def VEN_147 : CardDef :=
     abilities := [.activated [.exhaustSelf] .action
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.keyword .it ⟨.tank, .none⟩) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-148
 /--
@@ -4233,7 +4237,7 @@ def VEN_148 : CardDef :=
       choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
       moveChoice := some ⟨0, false, .ofList [.myUnitsHere]⟩
       body := .moveChoosing 0 false (.ofList [.myUnitsHere]) bump },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-149
 /--
@@ -4290,7 +4294,7 @@ def VEN_150 : CardDef :=
     spellEffect := some (.of [.targetOf (.upTo 4) .any .anywhere
       [.either (.ofType .unit) (.either (.ofType .gear) (.ofType .rune))]]
       (.prim (.ready (.slotsFrom 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-151
 /--
