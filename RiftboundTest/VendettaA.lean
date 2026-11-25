@@ -2109,7 +2109,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let pay (ids : List ObjId) : Action := ⟨.player p, .putTrigger 0 [] (.pay ids)⟩
   let picks := legalFrameActions picking
   let payment ← picks.find? (fun a => match a.kind with | .putTrigger _ _ (.pay ..) => true | _ => false)
-  let .putTrigger _ _ (.pay paidIds _ _) := payment.kind | none
+  let .putTrigger _ _ (.pay paidIds _ _ _) := payment.kind | none
   let (declined, _) ← (step 100 picking skip).toOption
   let (waiting, events) ← (step 100 picking payment).toOption
   let ability ← (waiting.zone .chain).head?
@@ -2129,6 +2129,44 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
     waiting.pointsOf p == s.pointsOf p && resolved.pointsOf p == s.pointsOf p + 1 &&
     countered.pointsOf p == s.pointsOf p && countered.countIn p .trash "VEN-014" == 2 &&
     countered.countIn p .trash "VEN-058" == 1
+
+-- Bottled Constellation pays simultaneously. Both Units choose independently even when
+-- Endless Riches is the first cost removed, and the ability only scores when it resolves.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "VEN-067" .base
+  let (s, first) ← put s p "VEN-014" .base
+  let (s, second) ← put s p "VEN-128" .base
+  let (s, riches) ← put s p "VEN-022" .base
+  let s := (s.addTurnFxOn q first .banishInstead).addTurnFxOn q second .banishInstead
+  let (picking, _) ← (advance 100 (s.withTriggers [.phaseStarted p .main]) []).toOption
+  let pays := (legalFrameActions picking).filterMap (fun a => match a.kind with
+    | .putTrigger 0 [] (.pay ids none none banishers) => some (a, ids, banishers)
+    | _ => none)
+  let actorOf (choices : List (ObjId × PlayerId)) (unit : ObjId) :=
+    choices.findSome? (fun (id, who) => if id == unit then some who else none)
+  let choose (a b : PlayerId) := pays.find? (fun (_, _, choices) =>
+    actorOf choices first == some a && actorOf choices second == some b)
+  let (chosen, ids, _) ← choose p q
+  let (flipped, _, _) ← choose q p
+  let (paid, events) ← (step 100 picking chosen).toOption
+  let (other, otherEvents) ← (step 100 picking flipped).toOption
+  let correct (t : GameState) (es : List Event) (a b : PlayerId) : Option Bool := do
+    let first ← t.firstOf p .banishment "VEN-014"
+    let second ← t.firstOf p .banishment "VEN-128"
+    let rich ← t.firstOf p .banishment "VEN-022"
+    return (t.zone .chain).length == 1 && t.pointsOf p == s.pointsOf p &&
+      es.contains (.banished a p first) && es.contains (.banished b p second) &&
+      es.contains (.banished p p rich) &&
+      !(es.any (fun | .died .. | .chosenByAbility .. => true | _ => false))
+  let a ← correct paid events p q
+  let b ← correct other otherEvents q p
+  let withoutChoices : Action := ⟨.player p, .putTrigger 0 [] (.pay ids)⟩
+  return pays.length == 4 && (choose p p).isSome && (choose q q).isSome &&
+    ids.head? == some riches && !(legalFrameActions picking).contains withoutChoices &&
+    (step 100 picking withoutChoices).toOption.isNone &&
+    a && b && (settleChain {} 8 paid).pointsOf p == s.pointsOf p + 1
 
 -- Kennen pays at finalization both on play and on attack. The Stun and the
 -- resulting Might bonus apply on resolution, and a payment can use ready Basic Runes.

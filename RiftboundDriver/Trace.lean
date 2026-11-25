@@ -239,9 +239,29 @@ def effectSpellFields (state : Option GameState) (frame : Option Frame)
     effectSpellDecision state (if yes then first else other)
   | _ => []
 
+/-- A payment's Banish replacement, naming the affected card and the player whose effect applies. -/
+def costBanishJson (unit : ObjId) (player : PlayerId) : String :=
+  jobj [("player", toString player.n), ("unit", toString unit.n)]
+
+/-- The Banish replacements shown for the objects committed as a trigger's cost. -/
+def triggerCostBanishes (state : Option GameState) (ids : List ObjId)
+    (chosen : List (ObjId × PlayerId)) (events : List Event) : List String :=
+  ids.filterMap (fun id =>
+    let recorded := events.findSome? (fun
+      | .moved from_ next (.player _ .banishment) => if from_ == id then some next else none
+      | _ => none)
+    let applied := recorded.bind (fun next => events.findSome? (fun
+      | .banished player _ card => if card == next then some player else none
+      | _ => none))
+    let declared := chosen.findSome? (fun (card, player) => if card == id then some player else none)
+    let automatic := state.bind (fun s =>
+      if (s.deathSaver id).isSome then none else
+        s.banishOnDeathBy id <|> ((s.obj? id).filter (s.replacesTrash id)).map (·.owner))
+    (applied <|> declared <|> automatic).map (costBanishJson id))
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
-    (state : Option GameState := none) : String :=
+    (state : Option GameState := none) (events : List Event := []) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
     | .chance => "chance"
@@ -279,7 +299,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (source.toList.map (fun id => ("source", toString id.n))) ++
       (match payment with
        | .skip => [("decline", "true")]
-       | .pay ids mode player =>
+       | .pay ids mode player banishers =>
          let costs := match state, trigger with
            | some s, some t =>
              if mode.isNone && player.isNone && ts.isEmpty && !trigOptional s t &&
@@ -293,8 +313,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
+         let replacements := triggerCostBanishes state ids banishers events
          mode.toList.flatMap (modeFields definition) ++ costs ++
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
+           (if replacements.isEmpty then [] else [("costBanishes", jarr replacements)]) ++
            (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
     | .activate src idx pay ts discards targetPlayer costBanisher =>
       [("source", toString src.n), ("index", toString idx),
@@ -304,7 +326,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
       targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
       (costBanisher.toList.flatMap (fun who => ts.getLast?.toList.map (fun unit =>
-        ("costBanish", jobj [("player", toString who.n), ("unit", toString unit.n)])))) ++
+        ("costBanish", costBanishJson unit who)))) ++
       (match state.bind (fun s => s.activationAt src idx) with
       | some (grant, .activated costs _ e _) =>
         (if grant.isSome && e.body == .prim (.ready .self) then
@@ -527,7 +549,7 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (seen : Std.HashSet Nat) (frame : Option Frame := none) : String × Std.HashSet Nat :=
   let (st, seen') := stateJson s seen
   (jobj [("i", toString i),
-    ("action", match a with | some a => actionJson a frame (some s) | none => "null"),
+    ("action", match a with | some a => actionJson a frame (some s) es | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)], seen')
 
 /-- The parameter of a keyword as JSON. -/

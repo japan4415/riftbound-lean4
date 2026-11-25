@@ -57,6 +57,7 @@ deriving DecidableEq, Repr
 inductive TriggerPayment where
   /-- Accept with the selected mode, a player target, and any objects used as costs. -/
   | pay (sacrifices : List ObjId) (mode : Option Nat := none) (player : Option PlayerId := none)
+      (costBanishers : List (ObjId × PlayerId) := [])
   /-- Decline an optional trigger. -/
   | skip
 deriving DecidableEq, Repr

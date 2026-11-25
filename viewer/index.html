@@ -467,15 +467,20 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.unavailable) return [who + ': ' + ability + 'を取り除く', '選べる対象がないため、能力は Chain に残らない'];
       const targets = (a.targets || []).map(cardName);
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
-      const sacrifices = (a.sacrifices || []).map(cardName).join('、');
+      const replacements = new Map((a.costBanishes || []).map(({unit, player}) => [unit, player]));
+      const sacrifices = (a.sacrifices || []).map((id) => {
+        const card = cardName(id);
+        return replacements.has(id) ? 'P' + replacements.get(id) + ' の効果で ' + card + ' を Banish' :
+          card + ' を Kill';
+      }).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
       const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
       return [who + ': ' + ability + 'を確定' + mode + energy + exhaust + burn +
-        (sacrifices ? '（コストとして ' + sacrifices + ' を Kill）' : '') +
+        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') +
         (targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）'),
-        sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' :
+        sacrifices ? 'コストを払ってから能力を Chain に載せる' :
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
     }
