@@ -36,8 +36,8 @@ theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List F
   exact h2
 
 /-- **The Rune Pool is empty at the end of the turn** (CR 167, 317.2). -/
-theorem microStep_ending_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
-    (hp : s.pending = .phase .ending :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
+theorem microStep_expiration_pools0 {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .expireTurn :: rest) (h : microStep0 s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   unfold microStep0 at h
   rw [hp] at h
@@ -46,12 +46,12 @@ theorem microStep_ending_pools0 {s s' : GameState} {es : List Event} {rest : Lis
   simp [GameState.poolOf, RunePool.empty]
 
 /-- **The Rune Pool is empty at the end of the turn** (CR 167, 317.2). -/
-theorem microStep_ending_pools {s s' : GameState} {es : List Event} {rest : List Frame}
-    (hp : s.pending = .phase .ending :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
+theorem microStep_expiration_pools {s s' : GameState} {es : List Event} {rest : List Frame}
+    (hp : s.pending = .expireTurn :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.mightyEvents s2)
-  have h2 := microStep_ending_pools0 hp h0 p
+  have h2 := microStep_expiration_pools0 hp h0 p
   rw [hq]
   exact h2
 

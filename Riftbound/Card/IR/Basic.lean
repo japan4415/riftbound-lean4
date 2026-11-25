@@ -131,6 +131,9 @@ inductive TurnEffect where
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
+  /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
+  (CR 391-393). -/
+  | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)

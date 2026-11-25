@@ -89,6 +89,8 @@ structure Object where
   /-- The abilities of this object that have been used this turn, by their place among the card's
   abilities: once for each use (CR 371, 386). Cleared when a turn begins. -/
   used : List Nat := []
+  /-- The base Might set by an effect for this turn, before arithmetic changes (CR 143.2.a, 479.2). -/
+  baseMightThisTurn : Option Nat := none
   /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
   Board clears them. -/
   mightMods : List MightMod := []

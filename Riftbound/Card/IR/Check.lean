@@ -137,6 +137,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .draw p n => p.ok c && Amount.ok c n
   | .discard p n => p.ok c && Amount.ok c n
   | .deal s n => Selector.ok c s && Amount.ok c n
+  | .setBaseMight s n => Selector.ok c s && Amount.ok c n
   | .heal s n => Selector.ok c s && Amount.ok c n
   | .kill s => Selector.ok c s
   | .banish s => Selector.ok c s
@@ -207,6 +208,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .turnEffect _ => true
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
+  | .delayUntilDeath s _ => Selector.ok c s
   | .activateConquer s => Selector.ok c s
   | .choose s => Selector.ok c s
   | .lookTop _ => true

@@ -972,6 +972,17 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have : Frame.setupHands ∈ rest := by simpa using hmem
     have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
     exact h1
+  · -- Expiration
+    rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play .expireTurn (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hf => ?_)
+    rcases List.mem_append.mp hf with hnew | hrest
+    · unfold expirationFrames at hnew
+      split at hnew <;> simp at hnew
+    · rw [hp]
+      exact List.mem_cons_of_mem _ hrest
   · -- a phase frame for the setup: nothing to do
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h

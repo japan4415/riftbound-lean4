@@ -291,6 +291,7 @@ def Prim.understood : Prim → Bool
   | .turnEffect _ => true
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
+  | .delayUntilDeath s _ => s.understood
   | .activateConquer s => s.understood
   | .choose s => s.understood
   | .lookTop _ => true
@@ -333,6 +334,7 @@ def Prim.understood : Prim → Bool
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood
+  | .setBaseMight s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
   | .kill s => s.understoodPick
   | .banish s => s.understoodPickAny

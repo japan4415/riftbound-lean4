@@ -47,14 +47,15 @@ def inPlay (s : GameState) : List ObjId :=
 def xpOf (s : GameState) (p : PlayerId) : Nat :=
   ((s.zone (.player p .legendZone)).map (fun l => ((s.obj? l).map (·.xp)).getD 0)).sum
 
-/-- The Might an object has: the printed Might and the lasting changes effects made to it
-(CR 475-478). The abilities that change Might as long as a condition holds come with the full
-Layers (roadmap.md, M6). -/
+/-- Might before the passive, buff and Equipment adjustments. Trait changes set the base
+before lasting increases and decreases are added (CR 143.2.a, 479.2, 479.4). -/
 def mightOf (s : GameState) (id : ObjId) : Option Int :=
-  ((s.cardDef? id).bind (·.might)).map (fun m =>
-    m + match s.obj? id with
-      | some o => (o.mightMods.map (·.amount)).sum
-      | none => 0)
+  let printed := (s.cardDef? id).bind (·.might)
+  match s.obj? id with
+  | some o =>
+    ((o.baseMightThisTurn.map Int.ofNat) <|> printed).map (fun base =>
+      base + (o.mightMods.map (·.amount)).sum)
+  | none => printed
 
 end GameState
 

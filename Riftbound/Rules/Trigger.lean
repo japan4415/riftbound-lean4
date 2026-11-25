@@ -311,6 +311,18 @@ def GameState.actionMightEvents (s s' : GameState) (a : Action) : List Event :=
   | .chainPass .. :: _, .pass => []
   | _, _ => s.mightyEvents s'
 
+/-- The marked Unit's death sets off the effects that were created by a spell or ability.
+They retain their original source and controller and are independent of Deathknell (CR 391-393). -/
+def GameState.delayedDeathTriggers (s : GameState) (dead : ObjId) : List PendTrigger :=
+  let former := (s.obj? dead).bind (·.formerId)
+  s.turnFx.flatMap (fun f =>
+    match f.kind with
+    | .triggerOnDeath src card idx =>
+      if f.turn == s.turn && f.target.any (fun id => id == dead || some id == former) then
+        (s.cards.find? card).toList.flatMap (triggersAmong s src f.who .die · idx (idx + 1))
+      else []
+    | _ => [])
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
@@ -324,7 +336,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- the Deathknell abilities of a unit fire one more time while a passive ability says so
     let again :=
       if (s.cardDef? obj).any (·.hasKeyword .deathknell) && s.dieExtra p then own else []
-    own ++ again ++ watchersOf s obj p .die
+    own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .move ++ watchersOf s u o.controller .move

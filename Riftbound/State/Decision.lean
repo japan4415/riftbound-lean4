@@ -176,6 +176,8 @@ inductive Frame where
   | phase (ph : Phase)
   /-- Work: the turn player Holds their Battlefields after Beginning Step effects (CR 315.2). -/
   | scoreHolds
+  /-- Work: after Ending Step effects, heal Units and expire turn effects (CR 317.2). -/
+  | expireTurn
   /-- Choice: the turn player has priority in the Main Phase (CR 311-312, 316). -/
   | priority (p : PlayerId)
   /-- Choice: player `p` has priority while the Chain holds a Spell (CR 311-313); `passes` players
@@ -246,6 +248,7 @@ def Frame.isSetup : Frame → Bool
 
 /-- The frames of a Spell on the Chain: they exist only in the Main Phase. -/
 def Frame.isPlay : Frame → Bool
+  | .expireTurn => true
   | .chainPass .. => true
   | .resolveChain => true
   | .run .. => true
@@ -273,6 +276,7 @@ def Frame.isWork : Frame → Bool
   | .beginTurn => true
   | .phase _ => true
   | .scoreHolds => true
+  | .expireTurn => true
   | .resolveChain => true
   | .run .. => true
   | .finishSpell _ => true

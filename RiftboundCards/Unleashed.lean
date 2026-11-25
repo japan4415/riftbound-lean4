@@ -2181,7 +2181,7 @@ def UNL_073 : CardDef :=
     abilities := [.triggered (.onSelf .die) (.of [] (.prim (.create "Gold" (.const 1) .atBase false)))
       .unlimited],
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.markOn (.slot 0) (.grantsAbility "UNL-073" 0)),
+      (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
         .prim (.deal (.slot 0) (.const 3))])),
     status := .drafted }
 

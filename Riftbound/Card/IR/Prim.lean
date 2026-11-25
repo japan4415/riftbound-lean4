@@ -31,6 +31,8 @@ inductive Prim where
   | discard (p : PlayerSel) (n : Amount)
   /-- Deal damage to objects. -/
   | deal (s : Selector) (n : Amount)
+  /-- Set a Unit's base Might for the rest of the turn (CR 143.2.a, 479.2). -/
+  | setBaseMight (s : Selector) (n : Amount)
   /-- Heal damage from objects. -/
   | heal (s : Selector) (n : Amount)
   /-- Kill objects. -/
@@ -197,6 +199,8 @@ inductive Prim where
   | activateConquer (s : Selector)
   /-- Make something true for the rest of the turn about the objects. -/
   | markOn (s : Selector) (e : TurnEffect)
+  /-- Create the source's delayed trigger for when a selected Unit dies this turn (CR 391-393). -/
+  | delayUntilDeath (s : Selector) (idx : Nat)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
   /-- Put cards on the top of their owners' Main Decks. -/

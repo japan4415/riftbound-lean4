@@ -345,6 +345,9 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     have h1 : TC s (s.mapObjects endTurnObj) :=
       TC.of_sameMeta (GameState.sameMeta_mapObjects s _)
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)

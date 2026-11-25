@@ -1874,6 +1874,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 回帰テストで、残す順序、Recycle の乱数回答、指定枚数より短い山札、先頭に戻したカードのドローを確認した。
 - 167 枚中 115 枚が `drafted`、113 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 21 — 基礎 Might と死亡時の遅延誘発
+
+- Dragon Form は指定した Unit の基礎 Might を 5 にする。バフ、装備、加減算はその基礎値に適用する。基礎 Might の変更はターンの終了時または Unit が盤面を離れると失効する。手札からのプレイと Trash からの Flow の両方を確認した（CR 143.2.a, 479.2, 479.4）。
+- Ending Step の誘発を解決したあと、Expiration Step で回復、ターン効果の失効、Rune Pool の消去を行う。Blighted Battleaxe の終了時ダメージが Dragon Form の失効より先に解決することをテストした（CR 317.1-317.2）。
+- Siphoning Strike は Rune が 7 枚以上なら 7 ダメージ、それ以外なら 4 ダメージを与える。対象の Unit がそのターン中に倒れたとき、呪文を使ったプレイヤーが Rune を 1 枚 Exhausted で Channel する。対象自身の Deathknell と別に誘発する（CR 391-393）。Deadly Flourish も同じ遅延誘発の処理を使う。
+- 167 枚中 117 枚が `drafted`、115 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

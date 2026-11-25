@@ -3100,8 +3100,12 @@ def VEN_116.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Dragon Form: the effect is not written yet. -/
-def VEN_116 : CardDef := VEN_116.meta
+/-- Dragon Form sets the chosen Unit's base Might to 5 for the turn. -/
+def VEN_116 : CardDef :=
+  { VEN_116.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.setBaseMight (.slot 0) (.const 5)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-117
 /--
@@ -3879,8 +3883,18 @@ def VEN_146.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Siphoning Strike: the effect is not written yet. -/
-def VEN_146 : CardDef := VEN_146.meta
+/-- Siphoning Strike deals 4 or 7 damage and channels an exhausted Rune if that Unit dies
+this turn. -/
+def VEN_146 : CardDef :=
+  { VEN_146.meta with
+    abilities := [.triggered (.onSelf .die)
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen (.matches (.slot 0) (.both (.ofType .unit) .onBattlefield))
+        (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
+          .ifThen (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7))
+            (.prim (.deal (.slot 0) (.const 7))) (.prim (.deal (.slot 0) (.const 4)))]) .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-147
 /--

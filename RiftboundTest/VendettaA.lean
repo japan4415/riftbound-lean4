@@ -85,6 +85,103 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return es == [.lookedAt p top] && recycled.zone z == [top] &&
     recycled.pending.isEmpty && rs.isEmpty && done.pending.isEmpty && noneSeen.isEmpty
 
+-- Dragon Form changes the base, including through Flow. Equipment, buffs and other arithmetic
+-- effects still apply, and the base change expires with other turn effects.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, form) ← put s p "VEN-116" .hand
+  let (s, mage) ← put s p "VEN-047" .base
+  let (s, giant) ← put s q "VEN-091" .base
+  let (s, gear) ← put s p "SFD-033" .base
+  let s := (attachTo mage (s.buff mage) gear).1
+  let s := (addMightMod ⟨2, .turn⟩ s mage).1
+  let changed ← play s p form [mage]
+  let trashForm ← changed.firstOf p .trash "VEN-116"
+  let (onChain, _) ← (step 100 changed ⟨.player p, .playCard trashForm ⟨3, []⟩ [giant]⟩).toOption
+  let flowed := settleChain {} 12 onChain
+  let (expired, _) ← (advance 100 { flowed with pending := [.phase .ending] } []).toOption
+  let (left, card) ← moveObj flowed mage (.player p .hand)
+  let (returned, fresh) ← moveObj left card (.player p .base)
+  return s.mightNow mage == some 7 && changed.mightNow mage == some 9 &&
+    changed.mightNow giant == some 10 && flowed.mightNow giant == some 5 &&
+    flowed.countIn p .banishment "VEN-116" == 1 &&
+    expired.mightNow mage == some 5 && expired.mightNow giant == some 10 &&
+    returned.mightNow fresh == some 3 && (play s p form [gear]).isNone &&
+    (flowed.cardDef? mage).bind (·.might) == some 3
+
+-- Blighted Battleaxe's end-of-turn damage happens while Dragon Form is still active.
+-- The mage survives the four damage, then heals and returns to printed Might in Expiration.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, form) ← put s p "VEN-116" .hand
+  let (s, mage) ← put s p "VEN-047" .base
+  let (s, axe) ← put s p "UNL-019" .base
+  let s := (attachTo mage s axe).1
+  let transformed ← play s p form [mage]
+  let finish (t : GameState) : Option (GameState × GameState) := do
+    let (ending, _) ← (advance 100 { t with pending := [.phase .ending] } []).toOption
+    return (ending, settleChain {} 16 ending)
+  let (ending, expired) ← finish transformed
+  let (_, ordinary) ← finish s
+  return ending.mightNow mage == some 9 && !(ending.zone .chain).isEmpty &&
+    expired.mightNow mage == some 3 && (expired.obj? mage).any (·.damage == 0) &&
+    (expired.obj? axe).any (·.attached.isNone) && (expired.poolOf p) == RunePool.empty &&
+    expired.pending.isEmpty && ordinary.countIn p .trash "VEN-047" == 1
+
+-- Siphoning Strike has a seven-rune threshold. Its delayed ability belongs to its caster,
+-- whether the Unit dies immediately or after the spell has left the Chain.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-146" .hand
+  let (s, bf) ← putBf s q "VEN-158"
+  let (s, giant) ← putAt s q "VEN-091" bf
+  let s := s.control q bf
+  let runes (t : GameState) (r : PlayerId) :=
+    (t.zone (.player r .base)).filter (fun id => (t.cardDef? id).any (·.hasType .rune))
+  let six := (channel p (6 - (runes s p).length) s).1
+  let seven := (channel p 1 six).1
+  let low ← play six p spell [giant]
+  let high ← play seven p spell [giant]
+  let (dead, death) := killOrSave low giant
+  let late ← fire dead death
+  let expired := { low with turn := low.turn + 1 }
+  let (old, oldDeath) := killOrSave expired giant
+  let nextTurn ← fire old oldDeath
+  let (left, card) ← moveObj low giant (.player q .hand)
+  let (returned, fresh) ← moveObj left card .battlefieldZone
+  let (gone, freshDeath) := killOrSave returned fresh
+  let newUnit ← fire gone freshDeath
+  let (waiting, _) ← (step 100 (six.rich p) ⟨.player p, .playCard spell ⟨4, []⟩ [giant]⟩).toOption
+  let moved := settleChain {} 12 (recallObj waiting giant).1
+  let (later, laterDeath) := killOrSave moved giant
+  let missed ← fire later laterDeath
+  let channeled ← ((runes late p).filter (fun id => !(runes low p).contains id)).head?
+  return (runes low p).length == 6 && (runes high p).length == 7 &&
+    (low.obj? giant).any (·.damage == 4) && (high.obj? giant).any (·.damage == 7) &&
+    (runes late p).length == 7 && late.tired channeled == some true && runes late q == runes low q &&
+    runes nextTurn p == runes low p && runes newUnit p == runes low p &&
+    moved.locate giant == some (.player q .base) && (moved.obj? giant).any (·.damage == 0) &&
+    runes missed p == runes six p
+
+-- The delayed ability is separate from the target's Deathknell. Karthus repeats the latter
+-- while the caster of Siphoning Strike channels exactly one Rune.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-146" .hand
+  let (s, _) ← put s q "OGN-236" .base
+  let (s, bf) ← putBf s q "VEN-158"
+  let (s, kog) ← putAt s q "OGN-190" bf
+  let (s, giant) ← putAt s q "VEN-091" bf
+  let s := s.control q bf
+  let after ← play s p spell [kog]
+  let zone := Zone.player p .runeDeck
+  return after.countIn q .trash "OGN-190" == 1 &&
+    (after.obj? giant).any (·.damage == 8) &&
+    (after.zone zone).length + 1 == (s.zone zone).length
+
 -- Oasis Raider checks the controller's Beginning Phase and the relative rune count.
 #guard vendettaCase fun s => do
   let runes := s.zone (.player s.me .base) ++ s.zone (.player s.you .base)

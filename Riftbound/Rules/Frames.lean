@@ -167,6 +167,15 @@ theorem continuePrediction_frames (s : GameState) (p : PlayerId) (n : Nat)
       rfl
     · simp at hf
 
+/-- Check whether Expiration has work to do. If post-expiration triggers create new effects,
+damage or resources, a further Expiration Step removes them before the next turn (CR 317.2.f). -/
+def expirationFrames (s : GameState) : List Frame :=
+  if !s.turnFx.isEmpty || !s.pools.isEmpty || s.objects.toList.any (fun (_, o) =>
+      o.damage != 0 || o.stunned || o.baseMightThisTurn.isSome ||
+        o.mightMods.any (·.ends != .never) || o.tempKws.any (·.2 != .never)) then
+    [.cleanup, .expireTurn]
+  else []
+
 /-- Advance one work frame by one step, before the triggered abilities that the step set off are
 found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
@@ -190,8 +199,11 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .draw :: rest =>
     some ({ s with phase := .draw, pending := .draw (s.active.getD ⟨0⟩) 1 :: rest }, [])
   | .phase .ending :: rest =>
-    some ({ s.mapObjects endTurnObj with phase := .ending, pending := rest, pools := {} },
+    some ({ s with phase := .ending, pending := .cleanup :: .expireTurn :: rest },
       [Event.phaseStarted (s.active.getD ⟨0⟩) .ending])
+  | .expireTurn :: rest =>
+    some ({ s.mapObjects endTurnObj with
+      pending := expirationFrames s ++ rest, pools := {}, turnFx := [] }, [])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     let p := s.active.getD ⟨0⟩
@@ -415,6 +427,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     exact (GameState.wf_mapObjects hwf _).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -505,6 +520,9 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     obtain ⟨rfl, -⟩ := h
     have hp := channel_physIds (s.active.getD ⟨0⟩) s.channelCount hwf
     exact hp
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _

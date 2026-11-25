@@ -733,7 +733,14 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.cleanup, Frame.expireTurn]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i rest hp
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_nonsetup hp rfl rfl (new := expirationFrames s) rfl ?_
+    unfold expirationFrames
+    split <;> simp [Frame.isSetup]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

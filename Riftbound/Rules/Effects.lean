@@ -1623,6 +1623,19 @@ theorem doubleObj_safe (s : GameState) (id : ObjId) : Safe s (doubleObj s id).1 
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
+/-- Set the Unit's base Might without changing other effects on its Might (CR 479.2). -/
+def setBaseMight (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if (s.cardDef? id).any (·.hasType .unit) then
+    (s.modObj id (fun o => { o with baseMightThisTurn := some n }), [])
+  else (s, [])
+
+/-- Changing the base Might preserves the structural invariants. -/
+theorem setBaseMight_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (setBaseMight n s id).1 := by
+  unfold setBaseMight
+  split
+  · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
 /-- Detach an Equipment: it is attached to nothing. -/
 def detachObj (s : GameState) (g : ObjId) : GameState × List Event :=
   (s.modObj g (fun o => { o with attached := none }), [])
@@ -2132,6 +2145,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     if s.damageOff then some (s, []) else
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel
       (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id))
+  | .setBaseMight sel n =>
+    (n.evalS s p src env).bind (fun k => onSelected s p src env sel (setBaseMight k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
@@ -2279,6 +2294,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       else [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id e, []))
+  | .delayUntilDeath sel idx =>
+    (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
+      onSelected s p src env sel (fun t id =>
+        (t.addTurnFxOn p id (.triggerOnDeath src card idx), [])))
   | .returnChampion => some (returnChampion p s)
   | .extraTurn ps =>
     (ps.resolve s p).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
@@ -2318,6 +2337,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | some k =>
         simp only [hn, Option.bind_some] at h
         exact onSelected_safe (fun t id => dealObj_safe _ t id) h
+  | setBaseMight sel n =>
+    simp only [applyPrim] at h
+    cases hn : n.evalS s p src env with
+    | none => simp [hn] at h
+    | some k => exact onSelected_safe (setBaseMight_safe k) (by simpa [hn] using h)
   | heal sel n =>
     simp only [applyPrim] at h
     cases hn : n.evalS s p src env with
@@ -2625,6 +2649,10 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | markOn sel e =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => addTurnFxOn_safe t p id e) h
+  | delayUntilDeath sel idx =>
+    simp only [applyPrim, Option.bind_eq_some_iff] at h
+    obtain ⟨card, -, h⟩ := h
+    exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (.triggerOnDeath src card idx)) h
   | turnEffect e =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
@@ -2795,6 +2823,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .double s => some s
   | .topdeck s => some s
   | .deal s _ => some s
+  | .setBaseMight s _ => some s
   | .heal s _ => some s
   | .kill s => some s
   | .ready s => some s
@@ -2816,6 +2845,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .castPicked s _ _ => some s
   | .castInline s => some s
   | .markOn s _ => some s
+  | .delayUntilDeath s _ => some s
   | .playTo s _ => some s
   | .banishWith s => some s
   | .counterToHand s => some s
@@ -2833,6 +2863,7 @@ def Prim.pickSel? : Prim → Option Selector
 def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   match p with
   | .deal _ n => .deal sel n
+  | .setBaseMight _ n => .setBaseMight sel n
   | .heal _ n => .heal sel n
   | .detach _ => .detach sel
   | .double _ => .double sel
@@ -2857,6 +2888,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .castPicked _ l i => .castPicked sel l i
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
+  | .delayUntilDeath _ idx => .delayUntilDeath sel idx
   | .playTo _ bf => .playTo sel bf
   | .banishWith _ => .banishWith sel
   | .counterToHand _ => .counterToHand sel
