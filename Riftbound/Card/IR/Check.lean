@@ -151,6 +151,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .addEnergy p n _ => p.ok c && Amount.ok c n
   | .addPower p n _ _ => p.ok c && Amount.ok c n
   | .counter s => Selector.ok c s
+  | .counterToHand s => Selector.ok c s
   | .play s => Selector.ok c s
   | .banishReplay s => Selector.ok c s
   | .playPaying s => Selector.ok c s

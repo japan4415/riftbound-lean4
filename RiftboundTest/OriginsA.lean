@@ -1601,7 +1601,8 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let played ← activate next s.me h 1 [] ⟨0, []⟩
   return (hide.zone (.player s.me .hand)).length + 1 == (mine.zone (.player s.me .hand)).length &&
     (hide.obj? h).bind (·.hiddenAt) == some s.bf0 && same.isNone &&
-    played.countIn s.me .base "OGN-135" == 1 && played.countIn s.me .hidden "OGN-135" == 0
+    (played.zone .battlefieldZone).any (fun u => (played.cardDef? u).any (·.id == cid "OGN-135")) &&
+    played.countIn s.me .hidden "OGN-135" == 0
 -- ... only at a Battlefield I control, and only with one Power
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-135" .hand
@@ -1631,7 +1632,8 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let h ← (hide.zone (.player s.me .hidden)).head?
   let next := { hide with turn := hide.turn + 1 }
   let played ← activate next s.me h 2 [] ⟨0, []⟩ { pick := fun ts => ts.contains e }
-  return played.mightNow e == some 3 && played.countIn s.me .base "OGN-097" == 1
+  return played.mightNow e == some 3 &&
+    (played.zone .battlefieldZone).any (fun u => (played.cardDef? u).any (·.id == cid "OGN-097"))
 
 -- Sprite Call (OGN-094) and Facebreaker (OGN-220), Hidden spells
 #guard t fun s => do
@@ -3553,7 +3555,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let h ← (hide.zone (.player s.me .hidden)).head?
   let next := { hide with turn := hide.turn + 1 }
   let played ← activate next s.me h 3 [] ⟨0, []⟩
-  let teemo ← played.firstOf s.me .base "OGN-121"
+  let teemo ← (played.zone .battlefieldZone).find? (fun u => (played.cardDef? u).any (·.id == cid "OGN-121"))
   let (t1, d) ← put s s.me "OGN-121" .hand
   let handed ← play t1 s.me d
   let hteemo ← handed.firstOf s.me .base "OGN-121"

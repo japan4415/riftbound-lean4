@@ -120,6 +120,11 @@ def anyActive (s : GameState) (m : StaticMod) : Bool :=
 def homeForbidden (s : GameState) (bf : ObjId) : Bool :=
   (s.activeMods bf).contains .noMoveToBase || s.anyActive .noMoveToBaseAny
 
+/-- The Unit `u`, at the Battlefield `bf`, cannot move to the Base: for the Battlefield, or because the
+Unit itself says it cannot (Determined Sentry). -/
+def homeForbiddenFor (s : GameState) (u bf : ObjId) : Bool :=
+  s.homeForbidden bf || (s.activeMods u).contains .noMoveToBase
+
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
   ((s.obj? src).map (·.controller)).getD ⟨0⟩

@@ -186,8 +186,8 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
 -- Tricksy Tentacles (UNL-054): enemy units of total Might 8 or less are moved to one place
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-054" .hand
-  let (s2, a) ← putAt s1 s.you "UNL-111" s.bf0
-  let (s3, b) ← putAt s2 s.you "UNL-111" s.bf0
+  let (s2, a) ← putAt s1 s.you "OGN-135" s.bf0
+  let (s3, b) ← putAt s2 s.you "OGN-135" s.bf0
   let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
   return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
 
@@ -385,5 +385,19 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let r ← fire s3 [Event.scored s.me bf true]
   return (r.zone .battlefieldZone).any (fun b => (r.cardDef? b).any (·.name == "Brush")) &&
     !((r.zone .battlefieldZone).contains bf) && r.tired g == some true
+
+-- Determined Sentry (UNL-111): it cannot move to the Base; an ordinary unit can
+#guard tun fun s => do
+  let (s1, u) ← putAt s s.me "UNL-111" s.bf0
+  let (s2, v) ← putAt s1 s.me "OGN-088" s.bf0
+  return !moveOk s2 s.me u .base && moveOk s2 s.me v .base
+
+-- Abandon (UNL-131): the countered spell returns to its owner's hand, not the Trash
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-131" .hand
+  let (s2, sp) ← onChain s1 s.you "OGN-004"
+  let before := s2.handN s.you
+  let r ← cast (s2.rich s.me) s.me c (payOf s2 c) [sp]
+  return r.handN s.you == before + 1 && r.countIn s.you .trash "OGN-004" == 0
 
 end RiftboundTest

@@ -3797,7 +3797,7 @@ def UNL_131.meta : CardDef :=
 def UNL_131 : CardDef :=
   { UNL_131.meta with
     spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
-      (.seqOf [.prim (.counter (.slot 0)), predict1])),
+      (.seqOf [.prim (.counterToHand (.slot 0)), predict1])),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-132

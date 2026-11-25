@@ -68,6 +68,8 @@ inductive Prim where
   | addPower (p : PlayerSel) (n : Amount) (d : Option Domain) (only : Option Act)
   /-- Counter a spell. -/
   | counter (s : Selector)
+  /-- Counter a spell: it returns to its owner's hand, not the Trash (Abandon). -/
+  | counterToHand (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
   /-- Banish the units, then their owners play them, ignoring their cost (a token that is banished

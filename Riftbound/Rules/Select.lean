@@ -734,7 +734,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       | _ => none))
   | .locationOf sel =>
     (sel.eval s p self env).map (fun ids =>
-      ids.filterMap (fun u => (s.obj? u).bind (·.loc)))
+      ids.filterMap (fun u => (s.obj? u).bind (fun o => o.loc <|> o.hiddenAt)))
   | _ => none
 
 /-- The Runes of the player that can be used: on their Base, with a domain. -/

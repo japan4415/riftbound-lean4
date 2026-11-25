@@ -103,7 +103,7 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
       match d with
       | .base =>
         decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
-          !(o.loc.any (fun bf => s.homeForbidden bf))
+          !(o.loc.any (fun bf => s.homeForbiddenFor u bf))
       | .battlefield bf =>
         decide (bf ∈ s.battlefields) &&
           (decide (u ∈ s.zone (.player p .base)) ||
