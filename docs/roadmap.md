@@ -2063,3 +2063,9 @@ Showdown の中で、Focus を持つプレイヤーは、pass だけでなく、
 - **仕組み**: `TurnEffect.saveOnce`（そのユニットに付ける印）と `saveUsed`（救ったことの印）を足した。`deathSaver` は、`saveOnce` があって、まだ `saveUsed` が無いユニットを、Soraka と同じ形（`some none`）で救う。救うと、ユニットは、ダメージが消え、exhausted になり、Base に戻る。`saveUnit` は、救ったあとに `saveUsed` を残す（`saveUnitCore` に、印を足した）。Cleanup の Base で治す枝にも、同じ印を足した。終了性の証明は、`pot` を `saveUnitCore` について示し、`saveUnit` の `pot` は、印を足しても変わらない、で通した。
 - **直したカード**: Tactical Retreat（ユニットは、死なない。Deathknell は働かず、トークンも消えず、同じユニットのまま。2 回目に死ぬときは、死ぬ）。
 - **まだのもの**: Altar of Blood（「3 Power を払って、治して、exhaust して、Recall する」。払うかを選ぶので、死ぬ瞬間の純粋な関数（`deathSaver`）では扱えない）。いまは、死んでから、3 Power を払って戻る近似のまま。
+
+### M9 の小さな直し（2026-11-25）: Thrill of the Hunt と Ripper's Bay
+
+- **Thrill of the Hunt**: 出す先の Battlefield を、呪文が選ぶ（2 つ目の対象）。味方のユニットを追放し（`banishWith`）、そのユニットを、選んだ Battlefield へ出す（`playTo`）。トークンは、追放されると消えるので、出し直せない。ユニットの持ち主が、唱えた人と違う場合（支配を得たユニット）は、唱えた人が出す（近似）。
+- **Ripper's Bay**: `Object.leftFrom`（盤から離れたときの Battlefield）を、`moveObj` が残す。`Filter.leftFromHere` が、それを読む。手札へ離れるときに、元の Battlefield の情報が無く、誘発しなかった。
+- **まだのもの**: Undying Loyalty は、選ぶ対象が Trash にある。「呪文の対象は、場かChain の上にある」という不変条件（`targetsOk_mem_inPlay`、`castable_targets_inPlay`、`mem_candidates`）を、Trash へ広げる必要がある。Bone Skewer（相手の手札から選ぶ）、Alpha Strike（ダメージの分配）、Mageseeker Investigator（同時の移動）も、まだ。
