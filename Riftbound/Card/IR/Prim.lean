@@ -126,7 +126,7 @@ inductive Prim where
   | spendXP (p : PlayerSel) (n : Amount)
   /-- The players score points. -/
   | score (p : PlayerSel) (n : Amount)
-  /-- The players Burn Out `n` times in a row (CR 432). -/
+  /-- Put the top `n` cards of the players' Main Decks into their Trash (CR 441). -/
   | burn (p : PlayerSel) (n : Amount)
   /-- Look at the top cards of the Main Deck and recycle some. -/
   | predict (n : Amount)

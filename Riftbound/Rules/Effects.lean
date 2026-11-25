@@ -2164,6 +2164,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .castPicked sel less idx =>
     (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
   | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
+  | .burn ps n => (ps.resolve s p).bind (fun players =>
+      (n.evalS s p src env).map (fun count =>
+        let cards := players.flatMap (fun q => (s.zone (.player q .mainDeck)).take count)
+        applyEach (sendObj .trash) s cards))
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
   | .counterToHand sel => onSelected s p src env sel counterObjHand
@@ -2397,6 +2401,17 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hk, Option.bind_some] at h
       exact onSelected_safe (castPickedOne_safe p k idx) h
   | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
+  | burn ps n =>
+    simp only [applyPrim] at h
+    cases hp : ps.resolve s p with
+    | none => simp [hp] at h
+    | some players =>
+      cases hn : n.evalS s p src env with
+      | none => simp [hp, hn] at h
+      | some count =>
+        simp only [hp, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
+        rw [← h]
+        exact applyEach_safe (sendObj_safe .trash) _ _
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
   | counterToHand sel => exact onSelected_safe counterObjHand_safe h

@@ -266,6 +266,7 @@ def Selector.understoodPick : Selector → Bool
 /-- A game action that is understood. -/
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
+  | .burn p n => p.understood && n.understood
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
