@@ -954,10 +954,10 @@ theorem sendHome_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
 
 /-- Killing the Equipment of a unit that is saved, and healing, exhausting and recalling the unit,
 takes something out of play. -/
-theorem saveUnit_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u ≠ g)
+theorem saveUnitCore_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u ≠ g)
     (hu : u ∈ s.inPlay) (hg : g ∈ s.inPlay)
     (hov : ∀ o, s.obj? g = some o → o.owner.n < s.playerCount) :
-    (saveUnit s u (some g)).1.pot < s.pot := by
+    (saveUnitCore s u (some g)).1.pot < s.pot := by
   have h1 := killObj_pot_lt hwf hov hg
   have hwf1 : (killObj s g).1.WF := (killObj_safe s g).wf hwf
   have hu1 : u ∈ (killObj s g).1.inPlay := killObj_mem_inPlay_ne hwf hug hu hov hg
@@ -968,17 +968,17 @@ theorem saveUnit_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u ≠ 
   have hwf2 : ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).WF :=
     GameState.wf_modObj hwf1 _ _
   have h3 := sendHome_pot_le hwf2 hu2
-  unfold saveUnit recallFx
+  unfold saveUnitCore recallFx
   dsimp only
   simp only [if_true, setExhausted_pot]
   omega
 
 /-- Saving a unit with no Equipment to die instead (Soraka), healing, exhausting and recalling it
 from the Battlefield Zone, lowers what goes down. -/
-theorem saveUnit_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+theorem saveUnitCore_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     (hb : u ∈ s.zone Zone.battlefieldZone)
     (hc : ∀ o, s.obj? u = some o → o.controller.n < s.playerCount) :
-    (saveUnit s u none).1.pot < s.pot := by
+    (saveUnitCore s u none).1.pot < s.pot := by
   have hwf2 : (s.modObj u (fun o => { o with damage := 0 })).WF := GameState.wf_modObj hwf _ _
   have hb2 : u ∈ (s.modObj u (fun o => { o with damage := 0 })).zone Zone.battlefieldZone := by
     rw [GameState.zone_modObj]; exact hb
@@ -991,11 +991,29 @@ theorem saveUnit_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       cases ho
       exact hc o' h1
   have h3 := sendHome_pot_lt hwf2 hb2 hc2
-  unfold saveUnit recallFx
+  unfold saveUnitCore recallFx
   dsimp only
   simp only [if_true, setExhausted_pot]
   rw [pot_modObj] at h3
   exact h3
+
+/-- Saving a unit, with the note that it was saved, takes something out of play, too. -/
+theorem saveUnit_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u ≠ g)
+    (hu : u ∈ s.inPlay) (hg : g ∈ s.inPlay)
+    (hov : ∀ o, s.obj? g = some o → o.owner.n < s.playerCount) :
+    (saveUnit s u (some g)).1.pot < s.pot := by
+  have h := saveUnitCore_pot_lt hwf hug hu hg hov
+  unfold saveUnit
+  exact h
+
+/-- The same for a unit that is saved with no Equipment to die instead. -/
+theorem saveUnit_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
+    (hb : u ∈ s.zone Zone.battlefieldZone)
+    (hc : ∀ o, s.obj? u = some o → o.controller.n < s.playerCount) :
+    (saveUnit s u none).1.pot < s.pot := by
+  have h := saveUnitCore_none_pot_lt hwf hb hc
+  unfold saveUnit
+  exact h
 
 /-- A zone of a well-formed game holds each object once. -/
 theorem zone_nodup {s : GameState} (hwf : s.WF) {z : Zone} (hz : z ∈ allZones s.playerCount) :
@@ -1181,7 +1199,7 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
           rename_i hc
           simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq, Option.any_eq_true] at hc
           obtain ⟨-, o, ho, hpos⟩ := hc
-          refine MeasLt.at2 (by rw [pot_modObj]) ?_
+          refine MeasLt.at2 (pot_modObj s u (fun o => { o with damage := 0, exhausted := true })) ?_
           have h1 : (s.modObj u (fun o => { o with damage := 0, exhausted := true })).tokC = s.tokC :=
             tokC_modObj s u _ (fun _ => rfl)
           have h2 := dmgC_heal s u (fun o => { o with damage := 0, exhausted := true })

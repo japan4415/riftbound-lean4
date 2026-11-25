@@ -5070,10 +5070,9 @@ def UNL_175.meta : CardDef :=
 /-- Tactical Retreat. -/
 def UNL_175 : CardDef :=
   { UNL_175.meta with
-    abilities := [.triggered (.onSelf .die)
-      (.of [] (.prim (.play (Selector.one .friendly .inTrash [.sameAs .self])))) .unlimited],
+    -- the next time the unit would die this turn, it is healed, exhausted and recalled instead
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.prim (.markOn (.slot 0) (.grantsAbility "UNL-175" 0)))),
+      (.prim (.markOn (.slot 0) .saveOnce))),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-176

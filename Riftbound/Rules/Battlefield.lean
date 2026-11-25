@@ -334,7 +334,8 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     -- (its Might fell to 0), it dies
     else if !decide (u ∈ s.zone Zone.battlefieldZone) &&
         (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
-      (s.modObj u (fun o => { o with damage := 0, exhausted := true }), [])
+      ((s.modObj u (fun o => { o with damage := 0, exhausted := true })).addTurnFxOn
+        (match s.obj? u with | some o => o.controller | none => ⟨0⟩) u .saveUsed, [])
     else killObj s u
   | none => killObj s u
 
@@ -349,7 +350,8 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
   · split
     · exact saveUnit_safe s u none
     · split
-      · exact Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
+      · exact (Safe.modObj s u (f := fun o => { o with damage := 0, exhausted := true })
+        (fun _ => rfl) (fun _ => rfl)).trans (addTurnFxOn_safe _ _ _ _)
       · exact killObj_safe s u
   · exact killObj_safe s u
 

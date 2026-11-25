@@ -2057,3 +2057,9 @@ Showdown の中で、Focus を持つプレイヤーは、pass だけでなく、
 - **仕組み**: `applyFrame0` に、`.showdown` の `playCard`、`activate`、`runeAbility`、`manaAbility` を足した。唱えたり、使ったりすると、`chainPass q 0 :: showdown bf q 0 :: rest` になる（Chain が解決すると、Showdown に戻り、pass の数は 0 から数え直す）。`legalFrameActions` と `LegalFrame` は、`legalShowdownPlays`、`legalShowdownActivates` を使う。証明は、`Sound`、`Step`、`Hands`、`Progress`、`Setup`、`ClockRun` に、`chainPass` の場合と同じ形で、4 つずつの場合を足した。`Clock.legal_timeCalled` と `Draw.legal_declareDraw` は、`LegalFrame` の場合が増え、`split` が重くなったので、`maxHeartbeats` を上げた。
 - **直したカード**: Shadow（Action の能力が、防御側の Showdown の中で、攻撃している敵を Stun する）。ほかのセットで、これまで Showdown の中で使えなかった Action と Reaction のカードも、使えるようになった。
 - **近似として残したこと**: Chain が解決したあと、Focus は、使ったプレイヤーに戻り、pass の数は 0 から数え直す（規則の Focus の移り方は、確かめていない）。通常の速さの呪文と能力は、Showdown の中では使えない（Action と Reaction だけ）。Showdown の中のプレイは、Chain の上の項目への応答と同じく、カードの `reactable` の判定をそのまま使う。
+
+### M9 の「死ぬ代わりに」（2026-11-25）: Tactical Retreat
+
+- **仕組み**: `TurnEffect.saveOnce`（そのユニットに付ける印）と `saveUsed`（救ったことの印）を足した。`deathSaver` は、`saveOnce` があって、まだ `saveUsed` が無いユニットを、Soraka と同じ形（`some none`）で救う。救うと、ユニットは、ダメージが消え、exhausted になり、Base に戻る。`saveUnit` は、救ったあとに `saveUsed` を残す（`saveUnitCore` に、印を足した）。Cleanup の Base で治す枝にも、同じ印を足した。終了性の証明は、`pot` を `saveUnitCore` について示し、`saveUnit` の `pot` は、印を足しても変わらない、で通した。
+- **直したカード**: Tactical Retreat（ユニットは、死なない。Deathknell は働かず、トークンも消えず、同じユニットのまま。2 回目に死ぬときは、死ぬ）。
+- **まだのもの**: Altar of Blood（「3 Power を払って、治して、exhaust して、Recall する」。払うかを選ぶので、死ぬ瞬間の純粋な関数（`deathSaver`）では扱えない）。いまは、死んでから、3 Power を払って戻る近似のまま。
