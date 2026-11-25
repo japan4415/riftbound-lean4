@@ -90,7 +90,7 @@ def reducedPlayDecision (effect : Effect) (funding : Bool) : List (String × Str
   | .fundLookedPermanent card _ plan adds =>
     match adds.getLast? with
     | none => [("reducedPlay", jobj (reducedPlayFields card plan)), ("choosePlayPayment", "true")]
-    | some add => [("playAdd", effectAddJson add),
+    | some add => [("playAdd", effectAddJson add), ("playPaymentCost", costJson plan.cost),
         ("preparedAdds", jarr (adds.dropLast.map effectAddJson))]
   | .eitherOf _ => [(if funding then "morePlayPayments" else "morePlayOptions", "true")]
   | .nop => [("declinePlay", "true")]

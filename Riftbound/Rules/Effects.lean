@@ -1599,21 +1599,30 @@ def banishedPlayId (es : List Event) : Option ObjId :=
 /-- The resource abilities that can be used before an effect's permanent enters play. -/
 structure EffectAddPolicy where
   /-- The next Adds that leave at least one way to finish paying for the permanent. -/
-  choices : GameState → PlayerId → ObjId → EffectPlayTerms → ReducedPermanentPlay →
-    (includeBasic : Bool) → List EffectAdd
+  choices : GameState → PlayerId → ObjId → EffectPlayTerms → ReducedPermanentPlay → List EffectAdd
   /-- Project the chosen activations or commit them as part of the successful play. -/
   applyAll : GameState → PlayerId → List EffectAdd → Option (GameState × List Event)
   /-- A complete sequence of activations preserves the game invariants. -/
   safe : ∀ {s p adds r}, applyAll s p adds = some r → Safe s r.1
 
-/-- Plan one's payment after Banishment. A plan fundable by the Pool or Basic Runes is offered
-alongside any choices that require activating other resource abilities. -/
+/-- Check a permanent's resource cost against the current Pool (CR 357.1). -/
+def permanentPriceInPool (s : GameState) (p : PlayerId) (card : ObjId) (plan : ReducedPermanentPlay) :
+    Bool :=
+  let unit := (s.cardDef? card).any (·.hasType .unit)
+  (s.payNow p card plan.cost unit).isSome
+
+/-- A previously selected finalization is still legal and its payment is in the Pool. -/
+def permanentPlayReady (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) : Bool :=
+  permanentPriceInPool s p card plan && (permanentPlayOptions s p card terms).contains plan
+
+/-- After simulating Banishment, retain the finalizations that can be paid, and record which
+offer a choice of Add activations. -/
 def lookedPermanentChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
     (funding : EffectAddPolicy) : List (ReducedPermanentPlay × Bool) :=
-  let unit := (s.cardDef? card).any (·.hasType .unit)
   (permanentPlayOptions s p card terms).filterMap (fun plan =>
-    let hasAdds := !(funding.choices s p card terms plan false).isEmpty
-    if hasAdds || (payByRunes s p card plan.cost unit).isSome then some (plan, hasAdds) else none)
+    let hasAdds := !(funding.choices s p card terms plan).isEmpty
+    if hasAdds || permanentPriceInPool s p card plan then some (plan, hasAdds) else none)
 
 /-- A looked-at card may be offered only if it meets the filter, is still in the same deck,
 and will have a legal finalization after leaving it for Banishment (CR 355.16, 420.3.c). -/
@@ -1635,7 +1644,7 @@ def finishLookedPermanent (s : GameState) (p : PlayerId) (card : ObjId) (terms :
     let banished := banishObj p s card
     let candidate ← banishedPlayId banished.2
     let (funded, events) ← funding.applyAll banished.1 p adds
-    if !(permanentPlayPlans funded p candidate terms).contains plan then none else
+    if !permanentPlayReady funded p candidate terms plan then none else
       let (played, entered, finalEvents) ← applyReducedPermanent funded p candidate plan
       some (played, entered, banished.2 ++ events ++ finalEvents)
 
@@ -1666,14 +1675,14 @@ def fundLookedOptions (s : GameState) (p : PlayerId) (card : ObjId) (terms : Eff
   let banished := banishObj p s card
   let some candidate := banishedPlayId banished.2 | return [.nop]
   let some (t, _) := funding.applyAll banished.1 p adds | return [.nop]
-  let pay := if (permanentPlayPlans t p candidate terms).contains plan then
+  let pay := if permanentPlayReady t p candidate terms plan then
       [.finishFundedPermanent card terms plan adds] else []
-  let activate := (funding.choices t p candidate terms plan true).map (fun a =>
+  let activate := (funding.choices t p candidate terms plan).map (fun a =>
     Effect.fundLookedPermanent card terms plan (adds ++ [a]))
   return pay ++ activate ++ [.nop]
 
-/-- Offer the finalization choices of a selected card. When an Add is available, keep the card
-in the deck until the player has chosen and confirmed the complete payment. -/
+/-- Offer the finalization choices of a selected card. Banishment and Add activations commit
+with the completed play. -/
 def banishLookedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (less : Nat)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
   let skip := (s, [.run p src env es], [Event.skipped src])
@@ -1684,13 +1693,10 @@ def banishLookedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (l
       let terms : EffectPlayTerms := { price := .reduceEnergy less }
       let options := (banishedPlayId r.2).toList.flatMap (fun card =>
         lookedPermanentChoices r.1 p card terms funding)
-      if options.any Prod.snd then
-        let choices := options.map (fun (plan, _) => Effect.fundLookedPermanent id terms plan [])
-        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
-      else
-        let choices := (banishedPlayId r.2).toList.flatMap (fun card =>
-          options.map (fun (plan, _) => Effect.finishReducedPermanent card terms plan))
-        (r.1, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], r.2)
+      let choices := if options.any Prod.snd then
+        options.map (fun (plan, _) => Effect.fundLookedPermanent id terms plan [])
+      else options.map (fun (plan, _) => Effect.finishFundedPermanent id terms plan [])
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
     else skip
   | _ => skip
 
@@ -1699,14 +1705,7 @@ theorem banishLookedStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env 
     (es : EffectList) (funding : EffectAddPolicy) :
     Safe s (banishLookedStep s p src env less es funding).1 := by
   unfold banishLookedStep
-  split
-  · split
-    · dsimp only
-      split
-      · exact Safe.refl s
-      · exact banishObj_safe p s _
-    · exact Safe.refl s
-  · exact Safe.refl s
+  split <;> (try split) <;> exact Safe.refl s
 
 /-- The effect choices that are legal for the Spell's controller, before considering any costs. -/
 def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef) :

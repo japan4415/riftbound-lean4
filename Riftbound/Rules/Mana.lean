@@ -398,32 +398,24 @@ def effectAddUses (s : GameState) (p : PlayerId) (includeBasic : Bool := false) 
       if manaPayOk view p src idx pay then some (.ability src idx pay.energy pay.power) else none)) ++
     (if includeBasic || paidAdd then effectAddRuneUses s p includeBasic else [])
 
-/-- An available continuation is sought only until the configuration can be paid.
-Every activation consumes one modeled Add slot, a Rune's ready state, or the Rune itself. -/
-def effectAddSuffix (p : PlayerId) (paid : GameState → Bool) :
-    Nat → GameState → Option (List EffectAdd)
-  | 0, s => if paid s then some [] else none
+/-- Check whether the remaining Add activations can fund the play. The search may use automatic
+Rune coverage to witness that the price is reachable. -/
+def effectAddReachable (p : PlayerId) (paid : GameState → Bool) : Nat → GameState → Bool
+  | 0, s => paid s
   | n + 1, s =>
-    if paid s then some [] else
-      (effectAddUses s p).findSome? (fun a => do
-        let (t, _) ← a.apply s p
-        let later ← effectAddSuffix p paid n t
-        some (a :: later))
+    paid s || (effectAddUses s p).any (fun a =>
+      (a.apply s p).any (fun (t, _) => effectAddReachable p paid n t))
 
-/-- The activations that leave a way to fund the chosen finalization. Ordinary Rune coverage
-handles the rest of the price once no other card's Add ability is needed. -/
+/-- The individual activations after which the chosen finalization can still be paid. -/
 def effectAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
-    (plan : ReducedPermanentPlay) (includeBasic : Bool) : List EffectAdd :=
+    (plan : ReducedPermanentPlay) : List EffectAdd :=
   if plan.cost.total == 0 then [] else
   let units := (s.cardDef? card).any (·.hasType .unit)
   let paid := fun t => (payByRunes t p card plan.cost units).isSome &&
     (permanentPlayOptions t p card terms).contains plan
   let fuel := (effectAddSlots s p).length + 2 * (s.runesOf p).length
-  (effectAddUses s p includeBasic).filterMap (fun a => do
-    let (t, _) ← a.apply s p
-    let later ← effectAddSuffix p paid fuel t
-    let path := a :: later
-    if includeBasic || path.any (fun | .ability .. => true | _ => false) then some a else none)
+  (effectAddUses s p true).filter (fun a =>
+    (a.apply s p).any (fun (t, _) => effectAddReachable p paid fuel t))
 
 /-- Allow effect plays to discover and use the same Add abilities as player actions. -/
 def effectAddPolicy : EffectAddPolicy :=

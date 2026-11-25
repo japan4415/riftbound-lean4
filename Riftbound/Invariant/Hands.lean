@@ -832,13 +832,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (finalizeTrashStep_mem h)
     | (unfold banishLookedStep at h
        split at h
-       · split at h
-         · dsimp only at h
-           split at h <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl
-         · obtain rfl := List.mem_singleton.mp h
-           exact Or.inl rfl
-       · obtain rfl := List.mem_singleton.mp h
-         exact Or.inl rfl)
+       all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)
     | (rcases List.mem_append.mp h with ha | hb
        · exact Or.inl (attachmentReplacementFrames_play ha)
        · obtain rfl := List.mem_singleton.mp hb

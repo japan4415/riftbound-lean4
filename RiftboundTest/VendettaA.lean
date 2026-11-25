@@ -2568,14 +2568,36 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     (gearPlayed.obj? gearInPlay).any (fun o => o.exhausted && o.empowerCount == 1) &&
     (gearPlayed.poolOf p).energy == 1 && (gearPlayed.poolOf p).chaos == 1
 
--- A player can Exhaust and then Recycle the same Chaos Rune to pay for Wild Claw's
--- Minah. The Pool's Power reserved for Gear cannot pay for the Unit.
+/-- Select a specific payment branch for Wild Claw, advancing past other offers. -/
+meta def chooseLookedPayment (p : PlayerId) (accept : Effect → Bool) :
+    Nat → GameState → Option (GameState × List Event)
+  | 0, _ => none
+  | fuel + 1, s =>
+    let answer (yes : Bool) := (step 100 s ⟨.player p, .decide yes⟩).toOption
+    match s.pending with
+    | .eitherDo who _ _ first other _ :: _ =>
+      if who != p then none
+      else if accept first then answer true
+      else if accept other then answer false
+      else match other with
+        | .eitherOf _ => (answer false).bind (chooseLookedPayment p accept fuel ∘ Prod.fst)
+        | _ => none
+    | _ => none
+
+/-- Select the next activation of the specified Rune. -/
+meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
+  | .fundLookedPermanent _ _ _ adds => adds.getLast? == some (.rune id recycle)
+  | _ => false
+
+-- The player chooses which Chaos Rune to Exhaust and Recycle. Gear-only
+-- Power is unavailable, and no Rune is automatically consumed upon confirmation.
 #guard vendettaCase fun s => do
   let p := s.me
   let (s, spell) ← put (s.fund p 7 (body := 1)) p "VEN-089" .hand
   let (s, unit) ← put s p "VEN-111" .mainDeck
+  let (s, spare) ← put s p "OGN-166" .base
   let (s, rune) ← put s p "OGN-166" .base
-  let s := s.modObj rune (fun o => { o with exhausted := false })
+  let s := [spare, rune].foldl (fun t id => t.modObj id (fun o => { o with exhausted := false })) s
   let z := Zone.player p .mainDeck
   let s := s.reorder z (unit :: (s.zone z).erase unit)
   let s := (s.setPool p ((s.poolOf p).addAny 1)).addTurnFx p .gearMana
@@ -2583,10 +2605,21 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (casting, _) ← act s (.playCard spell ⟨7, [.body]⟩ [])
   let looking ← passToChoice 8 casting
   let (choosing, _) ← act looking (.decide true)
-  let (played, events) ← act choosing (.choose unit)
+  let (payment, opened) ← act choosing (.choose unit)
+  let (raisedEnergy, exhausted) ← chooseLookedPayment p (choosesRune rune false) 8 payment
+  let (declined, _) ← chooseLookedPayment p (fun | .nop => true | _ => false) 8 raisedEnergy
+  let (raisedPower, recycled) ← chooseLookedPayment p (choosesRune rune true) 8 raisedEnergy
+  let .eitherDo _ _ _ (.finishFundedPermanent _ _ _ adds) _ _ :: _ := raisedPower.pending | none
+  let (played, events) ← act raisedPower (.decide true)
   let entered ← played.firstOf p .base "VEN-111"
   let pool := played.poolOf p
+  let canConfirm (t : GameState) := match t.pending with
+    | .eitherDo _ _ _ (.finishFundedPermanent ..) _ _ :: _ => true
+    | _ => false
   return (legalFrameActions choosing).contains ⟨.player p, .choose unit⟩ &&
+    !canConfirm payment && !canConfirm raisedEnergy && adds == [.rune rune false, .rune rune true] &&
+    opened.isEmpty && exhausted.isEmpty && recycled.isEmpty && (declined.zone z).contains unit &&
+    (declined.obj? rune).any (fun o => !o.exhausted) && (played.obj? spare).any (fun o => !o.exhausted) &&
     events.any (fun | .moved old _ (.player who .runeDeck) => old == rune && who == p | _ => false) &&
     events.contains (.played p entered) && pool.energy == 0 && pool.get .chaos == 0 &&
     pool.any == 1 && played.restrictedNow p == 1
@@ -2652,7 +2685,9 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
     funded.pending | none
   let (prepared, _) ← act funded (.decide true)
-  let (played, events) ← act prepared (.decide true)
+  let other := if rune == first then second else first
+  let (fundedFully, _) ← chooseLookedPayment p (choosesRune other false) 8 prepared
+  let (played, events) ← act fundedFully (.decide true)
   let entered ← played.firstOf p .base "VEN-111"
   return [first, second].contains rune && source == henge &&
     (prepared.obj? henge).any (fun o => !o.exhausted) &&
@@ -2673,7 +2708,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let looking ← passToChoice 8 casting
   let choosing ← act looking (.decide true)
   let paying ← act choosing (.choose rearguard)
-  let .eitherDo _ _ _ (.finishReducedPermanent _ _ regular) (.finishReducedPermanent _ _ fast) _ :: _ :=
+  let .eitherDo _ _ _ (.finishFundedPermanent _ _ regular []) (.finishFundedPermanent _ _ fast []) _ :: _ :=
     paying.pending | none
   let normal ← act paying (.decide true)
   let accelerated ← act paying (.decide false)
