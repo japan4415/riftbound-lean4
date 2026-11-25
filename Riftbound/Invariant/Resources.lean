@@ -204,7 +204,7 @@ theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
 rechecked before the effect, and the Spell leaves the Chain after the effect. -/
 theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {more : List ObjId}
     {o : Object} {d : CardDef} (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
-    (hd : s.cardDef? item = some d) :
+    (hd : s.cardDef? item = some d) (single : o.spellPick.hasExecutionChoices = false) :
     resolveFrames s rest =
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets
@@ -222,8 +222,22 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]
-  simp only [ho, hd]
+  simp only [ho, hd, single, Bool.false_eq_true, ↓reduceIte]
   rfl
+
+/-- Each recorded execution receives its own original targets and rechecks them when it starts
+(CR 359.3.e.2, 820.2). The Spell leaves the Chain once the last execution is finished. -/
+theorem resolveFrames_execution_slots {s : GameState} {rest : List Frame} {item : ObjId}
+    {more : List ObjId} {o : Object} {d : CardDef}
+    (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
+    (hd : s.cardDef? item = some d) (repeated : o.spellPick.hasExecutionChoices = true) :
+    resolveFrames s rest =
+      (o.spellPick.executions o.targets).map (fun (pick, targets) =>
+        .run o.controller item { hiddenPlayLocation := o.hiddenAt }
+          (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest) := by
+  unfold resolveFrames
+  rw [hc]
+  simp [ho, hd, repeated]
 
 end Riftbound
 

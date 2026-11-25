@@ -44,6 +44,8 @@ inductive SpellPick where
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
+  /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
+  | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
 deriving DecidableEq, Repr, Hashable
 
 /-- The choices of costs, when declared explicitly. -/
@@ -60,14 +62,26 @@ def SpellPick.permanentCosts : SpellPick → Option (List Nat)
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
-  | .withCosts pick _ _ => pick.playerTarget
+  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
   | .withPlayer pick _ => pick.effectChoice
-  | .withCosts pick _ _ => pick.effectChoice
+  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.effectChoice
   | pick => pick
+
+/-- Whether this play has distinct recorded choices for each execution. -/
+def SpellPick.hasExecutionChoices : SpellPick → Bool
+  | .thenRepeat .. => true
+  | .withCosts pick _ _ => pick.hasExecutionChoices
+  | _ => false
+
+/-- Read the ordered finalization choices with the targets belonging to each execution. -/
+def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick × List ObjId)
+  | .withCosts pick _ _ => pick.executions targets
+  | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
+  | pick => [(pick, targets)]
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where

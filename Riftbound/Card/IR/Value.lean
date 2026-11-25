@@ -36,6 +36,8 @@ structure Env where
   slots : List Value := []
   /-- The objects this spell or ability chose as targets (CR 355.7, 355.10). -/
   targetObjs : List ObjId := []
+  /-- The mode and destination for the current execution of a repeated Spell. -/
+  executionPick : Option SpellPick := none
   /-- The players chosen during finalization, indexed separately from object slots. -/
   playerTargets : List PlayerId := []
   /-- The cards revealed for the instructions currently resolving (CR 425.3.a). -/

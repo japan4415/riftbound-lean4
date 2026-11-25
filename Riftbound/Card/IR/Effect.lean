@@ -156,6 +156,8 @@ inductive Effect where
   | finishLimitedSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
   /-- Return the queued Spell to its original zone without finalizing it. -/
   | cancelLimitedSpell (card : ObjId)
+  /-- Resolve one of a Spell's independently finalized executions (CR 820.2). -/
+  | resolveSpellExecution (pick : SpellPick) (targets : List ObjId)
   /-- Continue working through the events of a single damage instruction. -/
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
   /-- Apply one selected replacement and continue with the rest. -/

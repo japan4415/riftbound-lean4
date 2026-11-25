@@ -1739,16 +1739,34 @@ def spellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : 
           (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
       else []))
 
-/-- Finalization choices and costs from the base price set by an effect (CR 420.3). -/
+/-- Assemble a fixed number of executions. Each may choose a different mode and targets, or
+choose the same ones again. Keep their targets in order for additional costs (CR 820.2). -/
+def repeatSpellChoices (options : List (SpellPick × List ObjId)) :
+    Nat → List (SpellPick × List ObjId)
+  | 0 => options
+  | n + 1 =>
+    let later := repeatSpellChoices options n
+    options.flatMap (fun (pick, targets) =>
+      later.map (fun (next, remaining) =>
+        (.thenRepeat pick targets.length next, targets ++ remaining)))
+
+/-- Finalization choices and costs from the base price set by an effect (CR 420.3, 820.2). -/
 def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (base : Cost) (energyCut : Nat) : List (List ObjId × Cost × SpellPick) :=
-  let hasCosts := !(s.extrasRaw p id d).isEmpty
-  let choices := (spellChoices s p id d e).flatMap (fun (pick, ts) =>
-    let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
-    (s.spellCostPlans p id d base ts).map (fun (cost, paid) =>
-      let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
-      (ts, { cost.lessEnergy energyCut with power := cost.power ++ List.replicate surcharge .any }, choice)))
-  choices.eraseDups
+  let costs := s.extrasRaw p id d
+  let options := spellChoices s p id d e
+  let maximum := costs.countP Prod.snd
+  let priced := (List.range (maximum + 1)).flatMap (fun count =>
+    let selections := if e.hasFinalizationChoice && !d.repeatChooses then repeatSpellChoices options count
+      else options
+    selections.flatMap (fun (pick, ts) =>
+      let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
+      (s.spellCostPlans p id d base ts).filterMap (fun (cost, (printed, repeats)) =>
+        if repeats != count then none else
+          let choice := if costs.isEmpty then pick else .withCosts pick printed repeats
+          some (ts, { cost.lessEnergy energyCut with power := cost.power ++ List.replicate surcharge .any },
+            choice))))
+  priced.eraseDups
 
 /-- A Spell on the Chain whose limited play has yet to finalize (CR 354.2, 354.3). -/
 def GameState.pendingSpell (s : GameState) (card : ObjId) : Option PendingSpellPlay :=
@@ -4511,7 +4529,8 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (slot : Nat) (allowBase : Bool) (fs : FilterList) (afterMove : Effect) : Env × Effect :=
   let unit := Selector.slot slot
   let resume := (env, Effect.nop)
-  match (s.obj? src).map (fun (o : Object) => SpellPick.effectChoice o.spellPick), env.slots[slot]? with
+  let effectPick := env.executionPick <|> (s.obj? src).map (·.spellPick)
+  match effectPick.map SpellPick.effectChoice, env.slots[slot]? with
   | some (.destination dest), some (.obj id) =>
     if s.blocksEnemyMove (env.effectController.getD p) id then resume
     else match s.obj? id, dest with
@@ -4698,6 +4717,83 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   if options.isEmpty then .run p src env es
   else .mayDo p src env (.eitherOf (EffectList.ofList options)) es
 
+/-- The slots of a Spell or an ability: the objects chosen, and a filler for each target of up to one that was
+left out (it selects nothing). -/
+def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
+  let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
+  ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
+
+/-- Recheck independent target slots or a single bounded group (CR 359.3.e.2).
+Invalid targets leave an empty value in their original slot. -/
+def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
+    (definition : Option EffectDef) : List Value :=
+  match definition with
+  | some e =>
+    let choices := e.choices.filter Choice.isTarget
+    let might := s.mightTable
+    let check (choice : Choice) (i : Nat) : Value :=
+      match ts[i]? with
+      | some id =>
+        if (choice.candidatesAfter s p src might (ts.take i)).contains id then .obj id
+        else .int 0
+      | none => .int 0
+    match choices.getLast? with
+    | some (choice@(.target (.upTo n) ..)) =>
+      let fixed := choices.dropLast
+      let group := ts.drop fixed.length
+      let valid := choice.candidatesAfter s p src might (ts.take fixed.length)
+      fixed.zipIdx.map (fun (c, i) => check c i) ++
+        (group.take n).map (fun id => if valid.contains id then .obj id else .int 0) ++
+        List.replicate (n - group.length) (.int 0)
+    | _ => choices.zipIdx.map (fun (c, i) => check c i)
+  | none => []
+
+/-- Recheck targets for a recorded choice, when the effect opts in, or after a change of control. -/
+def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
+    (definition : Option EffectDef) (pick : SpellPick) : List Value :=
+  let changedController := s.playLog.any (fun play =>
+    play.object == src && play.moment == .finalized && play.who != p)
+  if pick != .plain || definition.any (·.recheckTargets) || changedController ||
+      (s.obj? src).any (·.hiddenAt.isSome) then
+    recheckedSlots s p src ts definition
+  else slotValues ts definition
+
+/-- Before an open-ended group resolves, filter invalid original targets and ask its controller
+to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
+def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
+    (src : ObjId) (targets : List ObjId) (body : EffectList) : EffectList :=
+  match e.choices.getLast? with
+  | some c =>
+    match c with
+    | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let pm := s.mightTable
+      let legal := c.candidatesAfter s p src pm fixed
+      let original := (targets.drop fixed.length).filter legal.contains
+      let weight := c.groupWeight s pm
+      let limit := c.groupLimit
+      let total (ids : List ObjId) := (ids.map weight).sum
+      let groups := if total original ≤ limit then [original] else
+        (subseqsWithin weight limit original).filter (fun group =>
+          original.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      .cons (.retainTargetSet (groups.map (fixed ++ ·))) body
+    | _ => body
+  | none => body
+
+/-- Recheck this execution's locked targets against the current state (CR 359.3.e.2, 820.2).
+A previous execution may already have changed those targets. -/
+def spellExecutionFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (pick : SpellPick) (targets : List ObjId) : List Frame := Id.run do
+  let definition := (s.cardDef? src).bind (·.spellEffect) |>.bind (·.forPick pick)
+  let some body := definition | return []
+  let ctx := { env with
+    slots := recheckedSlots s p src targets definition
+    targetObjs := targets
+    executionPick := some pick
+    playerTargets := if s.spellPlayerTargetOk p body pick then pick.playerTarget.toList else [] }
+  let effects := body.recheckTargetGroup s p src targets (.cons body.body .nil)
+  return [.run p src ctx effects]
+
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
@@ -4729,6 +4825,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
   | .remakeSpellChoices spell =>
     (s, [remakeSpellChoicesFrame s p src env spell es], [])
+  | .resolveSpellExecution pick targets =>
+    (s, spellExecutionFrames s p src env pick targets ++ [.run p src env es], [])
   | .setSpellChoices spell pick targets =>
     let updated := s.modObj spell fun o =>
       let newPick := match o.spellPick.optionalCosts with
@@ -5025,69 +5123,6 @@ def Ability.effectDef : Ability → Option EffectDef
 def abilityDef (s : GameState) (card : CardId) (idx : Nat) : Option EffectDef :=
   (abilityAt s card idx).bind Ability.effectDef
 
-/-- The slots of a Spell or an ability: the objects chosen, and a filler for each target of up to one that was
-left out (it selects nothing). -/
-def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
-  let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
-  ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
-
-/-- Recheck independent target slots or a single bounded group (CR 359.3.e.2).
-Invalid targets leave an empty value in their original slot. -/
-def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
-    (definition : Option EffectDef) : List Value :=
-  match definition with
-  | some e =>
-    let choices := e.choices.filter Choice.isTarget
-    let might := s.mightTable
-    let check (choice : Choice) (i : Nat) : Value :=
-      match ts[i]? with
-      | some id =>
-        if (choice.candidatesAfter s p src might (ts.take i)).contains id then .obj id
-        else .int 0
-      | none => .int 0
-    match choices.getLast? with
-    | some (choice@(.target (.upTo n) ..)) =>
-      let fixed := choices.dropLast
-      let group := ts.drop fixed.length
-      let valid := choice.candidatesAfter s p src might (ts.take fixed.length)
-      fixed.zipIdx.map (fun (c, i) => check c i) ++
-        (group.take n).map (fun id => if valid.contains id then .obj id else .int 0) ++
-        List.replicate (n - group.length) (.int 0)
-    | _ => choices.zipIdx.map (fun (c, i) => check c i)
-  | none => []
-
-/-- Recheck targets for a recorded choice, when the effect opts in, or after a change of control. -/
-def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
-    (definition : Option EffectDef) (pick : SpellPick) : List Value :=
-  let changedController := s.playLog.any (fun play =>
-    play.object == src && play.moment == .finalized && play.who != p)
-  if pick != .plain || definition.any (·.recheckTargets) || changedController ||
-      (s.obj? src).any (·.hiddenAt.isSome) then
-    recheckedSlots s p src ts definition
-  else slotValues ts definition
-
-/-- Before an open-ended group resolves, filter invalid original targets and ask its controller
-to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
-def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
-    (src : ObjId) (targets : List ObjId) (body : EffectList) : EffectList :=
-  match e.choices.getLast? with
-  | some c =>
-    match c with
-    | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ =>
-      let fixed := targets.take (e.choices.length - 1)
-      let pm := s.mightTable
-      let legal := c.candidatesAfter s p src pm fixed
-      let original := (targets.drop fixed.length).filter legal.contains
-      let weight := c.groupWeight s pm
-      let limit := c.groupLimit
-      let total (ids : List ObjId) := (ids.map weight).sum
-      let groups := if total original ≤ limit then [original] else
-        (subseqsWithin weight limit original).filter (fun group =>
-          original.all (fun id => group.contains id || decide (limit < total group + weight id)))
-      .cons (.retainTargetSet (groups.map (fixed ++ ·))) body
-    | _ => body
-  | none => body
-
 /-- The frames that resolve an item of the Chain that is not a card: an ability runs its effect for
 its controller, with the objects chosen as the slots, and then it leaves the Chain (CR 340). -/
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
@@ -5164,19 +5199,24 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
   | item :: _ =>
     match s.obj? item, s.cardDef? item with
     | some o, some d =>
-      let definition := d.spellEffect.bind (·.forPick o.spellPick)
-      .run o.controller item {
-        slots := finalizedSlots s o.controller item o.targets definition o.spellPick
-        targetObjs := o.targets
-        hiddenPlayLocation := o.hiddenAt
-        playerTargets := if definition.any (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
-          then o.targetPlayer.toList else [] }
-        (match definition with
-          | some e =>
-            -- once, and once more for each Repeat that was paid (CR 820)
-            e.recheckTargetGroup s o.controller item o.targets
-              (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
-          | none => .nil) :: .finishSpell item :: rest
+      if o.spellPick.hasExecutionChoices then
+        (o.spellPick.executions o.targets).map (fun (pick, targets) =>
+          .run o.controller item { hiddenPlayLocation := o.hiddenAt }
+            (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest)
+      else
+        let definition := d.spellEffect.bind (·.forPick o.spellPick)
+        .run o.controller item {
+          slots := finalizedSlots s o.controller item o.targets definition o.spellPick
+          targetObjs := o.targets
+          hiddenPlayLocation := o.hiddenAt
+          playerTargets := if definition.any (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
+            then o.targetPlayer.toList else [] }
+          (match definition with
+            | some e =>
+              -- once, and once more for each Repeat that was paid (CR 820)
+              e.recheckTargetGroup s o.controller item o.targets
+                (e.executions (if !d.repeatChooses then 1 + o.extraPaid else 1))
+            | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest
   | [] => rest
@@ -5292,7 +5332,19 @@ theorem resolveFrames_eq (s : GameState) (rest : List Frame) :
   unfold resolveFrames
   split
   · split
-    · exact ⟨[.run _ _ _ _, .finishSpell _], rfl, by simp [Frame.isPlay]⟩
+    · rename_i _ item _ _ _ _ o _ _ _
+      split
+      · let steps := (o.spellPick.executions o.targets).map fun (pick, targets) =>
+          Frame.run o.controller item { hiddenPlayLocation := o.hiddenAt }
+            (.cons (.resolveSpellExecution pick targets) .nil)
+        refine ⟨steps ++ [.finishSpell item], by simp [steps, List.append_assoc], ?_⟩
+        intro g hg
+        rcases List.mem_append.mp hg with hm | hf
+        · obtain ⟨⟨pick, targets⟩, _, rfl⟩ := List.mem_map.mp hm
+          rfl
+        · obtain rfl := List.mem_singleton.mp hf
+          rfl
+      · exact ⟨[.run _ _ _ _, .finishSpell _], rfl, by simp [Frame.isPlay]⟩
     · unfold itemFrames
       split
       · exact ⟨[.run _ _ _ _, .finishSpell _], rfl, by simp [Frame.isPlay]⟩

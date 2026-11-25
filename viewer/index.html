@@ -346,15 +346,21 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.revealedPlayOffer) return [who + ': ' + (a.yes ? '公開したカードからプレイする' : 'プレイを見送る'), ''];
       if (a.moreSpellChoices != null || a.moreTrashSpellChoices) return [who + ': ほかの選択肢を見る', ''];
       if (a.remadeSpell != null || a.queuedSpell != null) {
-        const choices = [];
-        if (typeof a.mode === 'number') choices.push(a.modeLabel || 'モード ' + (a.mode + 1));
-        if (a.moveDest !== undefined) choices.push(a.moveDest === null ? 'Base' : cardName(a.moveDest));
-        const targets = (a.targets || []).map((id, i) => {
-          const controller = a.targetControllers?.[i];
-          return (controller == null ? '' : 'P' + controller + ' の ') + cardName(id);
-        });
-        if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
-        choices.push(targets.length ? '対象 ' + targets.join('、') : '対象なし');
+        const spellChoices = (execution) => {
+          const choices = [];
+          if (typeof execution.mode === 'number') choices.push(execution.modeLabel || 'モード ' + (execution.mode + 1));
+          if (execution.moveDest !== undefined) choices.push(execution.moveDest === null ? 'Base' : cardName(execution.moveDest));
+          const targets = (execution.targets || []).map((id, i) => {
+            const controller = execution.targetControllers?.[i];
+            return (controller == null ? '' : 'P' + controller + ' の ') + cardName(id);
+          });
+          if (typeof execution.targetPlayer === 'number') targets.unshift('P' + execution.targetPlayer);
+          choices.push(targets.length ? '対象 ' + targets.join('、') : '対象なし');
+          return choices.join('、');
+        };
+        const choices = a.repeatExecutions
+          ? a.repeatExecutions.map((execution, i) => (i + 1) + '回目 ' + spellChoices(execution)).join(' ／ ')
+          : spellChoices(a);
         if (a.queuedSpell != null) {
           const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
           const payment = [costText(a.queuedCost)];
@@ -362,9 +368,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
             payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
           }
           if (a.preparedAdds?.length) payment.push('選択済み ' + a.preparedAdds.map(addLabel).join('、'));
-          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices.join('、') + '）', payment.join(' ・ ')];
+          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices + '）', payment.join(' ・ ')];
         }
-        return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices.join('、') + '）', ''];
+        return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices + '）', ''];
       }
       if (a.lookedPlay) return [who + ': ' + (a.yes ? '見たカードからプレイする' : 'プレイを見送る'), ''];
       if (a.empowerOffer) return [who + ': ' + (a.yes ? 'Empower する' : 'Empower を見送る'), ''];

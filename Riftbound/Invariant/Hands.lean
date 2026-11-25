@@ -798,29 +798,10 @@ theorem allPlayers_nodup (n : Nat) : (allPlayers n).Nodup := by
 /-- Where the frames that resolve the Chain come from: the stack below, or the frames of a Spell. -/
 theorem resolveFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
     (h : f ∈ resolveFrames s rest) : f ∈ rest ∨ f.isPlay = true := by
-  unfold resolveFrames at h
-  split at h
-  · split at h
-    · simp only [List.mem_cons] at h
-      rcases h with rfl | rfl | h
-      · exact Or.inr rfl
-      · exact Or.inr rfl
-      · exact Or.inl h
-    · unfold itemFrames at h
-      split at h
-      · simp only [List.mem_cons] at h
-        rcases h with rfl | rfl | h
-        · exact Or.inr rfl
-        · exact Or.inr rfl
-        · exact Or.inl h
-      · simp only [List.mem_cons] at h
-        rcases h with rfl | h
-        · exact Or.inr rfl
-        · exact Or.inl h
-    · simp only [List.mem_cons] at h
-      rcases h with rfl | h
-      · exact Or.inr rfl
-      · exact Or.inl h
+  obtain ⟨pre, eq, play⟩ := resolveFrames_eq s rest
+  rw [eq] at h
+  rcases List.mem_append.mp h with h | h
+  · exact Or.inr (play f h)
   · exact Or.inl h
 
 /-- Burning schedules only effect frames and Burn Out decisions. -/
@@ -884,6 +865,15 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        | (rcases h with ⟨q, -, rfl⟩ | rfl
           · exact Or.inl rfl
           · exact Or.inl rfl))
+    | (rcases List.mem_append.mp h with ha | hb
+       · unfold spellExecutionFrames at ha
+         dsimp only at ha
+         split at ha
+         · obtain rfl := List.mem_singleton.mp ha
+           exact Or.inl rfl
+         · simp at ha
+       · obtain rfl := List.mem_singleton.mp hb
+         exact Or.inl rfl)
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
     | exact Or.inl (recycleLookedStep_mem h)

@@ -364,7 +364,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
       .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
-      .finishLimitedSpell .. | .cancelLimitedSpell .. |
+      .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. |
       .endCombatDamage .. => false

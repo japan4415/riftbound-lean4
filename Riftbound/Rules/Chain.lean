@@ -1402,7 +1402,9 @@ theorem resolveFrames_top {s : GameState} {item : ObjId} {more : List ObjId}
   | none => simp [ho]
   | some o =>
     cases hd : s.cardDef? item with
-    | some d => simp [ho, hd]
+    | some d =>
+      simp only [ho, hd]
+      split <;> simp
     | none =>
       simp only [ho, hd, itemFrames]
       split <;> simp

@@ -2712,6 +2712,63 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
     let (t, events) ← (step 100 s ⟨.player p, .decide (accept first)⟩).toOption
     if chosen then some (t, events) else chooseEffectPlay accept fuel t
 
+-- A Repeat paid while Fizz plays Mesmerize locks a separate mode and target for each execution.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, spell) ← put s p "VEN-052" .trash
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s s.you "VEN-091" .base
+  let s := (s.fund p 4 (mind := 2) (chaos := 1)).addTurnFx p .nextSpellRepeat
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let offer ← passToChoice 8 played
+  let (choice, queued) ← act offer (.decide true)
+  let item ← (choice.zone .chain).head?
+  let expected : List (SpellPick × List ObjId) := [(.mode 0, [ally]), (.mode 1, [enemy])]
+  let (casting, events) ← chooseEffectPlay (fun
+    | .finishLimitedSpell card plan [] =>
+      card == item && plan.pick.executions plan.targets == expected &&
+        plan.cost == ⟨1, [.domain .mind, .domain .mind]⟩
+    | _ => false) 40 choice
+  let done := settleChain {} 12 casting
+  return queued.contains (.moved spell item .chain) &&
+    events == [.played p item, .chosenBySpell p ally, .chosenBySpell p enemy] &&
+    (casting.obj? item).any (fun o => o.extraPaid == 1 && o.spellPick.executions o.targets == expected) &&
+    (casting.poolOf p).total == 0 &&
+    done.countIn p .hand "VEN-014" == 1 && done.mightNow enemy == some 8 &&
+    ((done.zone (.player p .mainDeck)).getLast?).any (fun id =>
+      (done.cardDef? id).any (·.id.code == "VEN-052"))
+
+-- Each Repeat can move a different Unit to its own recorded destination.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let origin := s.bf0
+  let away ← s.battlefields.find? (· != origin)
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, _) ← put s p "VEN-105" .trash
+  let (s, first) ← putAt s q "VEN-014" origin
+  let (s, second) ← put s q "VEN-014" .base
+  let s := ((s.control q origin).fund p 5 (chaos := 3)).addTurnFx p .nextSpellRepeat
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let offer ← passToChoice 8 played
+  let (choice, _) ← act offer (.decide true)
+  let item ← (choice.zone .chain).head?
+  let expected : List (SpellPick × List ObjId) :=
+    [(.destination none, [first]), (.destination (some away), [second])]
+  let (casting, events) ← chooseEffectPlay (fun
+    | .finishLimitedSpell card plan [] =>
+      card == item && plan.pick.executions plan.targets == expected &&
+        plan.cost == ⟨2, [.domain .chaos, .domain .chaos]⟩
+    | _ => false) 80 choice
+  let done := settleChain {} 12 casting
+  return events == [.played p item, .chosenBySpell p first, .chosenBySpell p second] &&
+    (casting.obj? item).any (fun o => o.spellPick.executions o.targets == expected) &&
+    (casting.poolOf p).total == 0 &&
+    (done.obj? first).any (·.loc.isNone) && (done.obj? second).any (·.loc == some away)
+
 -- Fizz offers the optional hand cost when he plays Ruthless Strike from the Trash.
 #guard vendettaCase fun s => do
   let p := s.me

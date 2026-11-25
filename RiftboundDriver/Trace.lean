@@ -143,6 +143,7 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPlayer pick player =>
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
+  | .thenRepeat pick _ _ => spellPickFields state c pick
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
@@ -211,14 +212,27 @@ def remakeSpellFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreSpellChoices", toString spell.n)]
   | _ => []
 
+/-- Encode the targets together with their controllers for the viewer. -/
+def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (String × String) :=
+  let controllers := targets.map (fun id =>
+    (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
+  [("targets", jarr (targets.map (fun id => toString id.n))),
+    ("targetControllers", jarr controllers)]
+
+/-- Record targets beside the mode and destination for each execution of a repeated Spell. -/
+def spellExecutionFields (state : Option GameState) (card : ObjId) (pick : SpellPick)
+    (targets : List ObjId) : List (String × String) :=
+  if pick.hasExecutionChoices then
+    [("repeatExecutions", jarr ((pick.executions targets).map (fun (choice, ts) =>
+      jobj (spellTargetFields state ts ++ spellPickFields state card choice))))]
+  else []
+
 /-- Describe the play and cost of the chosen Spell. -/
 def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : EffectSpellPlay) :
     List (String × String) :=
-  let controllers := plan.targets.map (fun id =>
-    (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
-  [("queuedSpell", toString card.n), ("targets", jarr (plan.targets.map (fun id => toString id.n))),
-    ("targetControllers", jarr controllers), ("queuedCost", costJson plan.cost)] ++
-    spellPickFields state card plan.pick ++
+  [("queuedSpell", toString card.n), ("queuedCost", costJson plan.cost)] ++
+    spellTargetFields state plan.targets ++ spellPickFields state card plan.pick ++
+    spellExecutionFields state card plan.pick plan.targets ++
     (if plan.discard.isSome || (state.bind (·.cardDef? card)).any (·.discardToPlay) then
       [("playDiscard", plan.discard.elim "null" (fun id => toString id.n))]
     else [])
