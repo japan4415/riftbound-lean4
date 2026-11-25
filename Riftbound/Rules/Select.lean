@@ -260,22 +260,20 @@ def TurnEffect.spellBonusOf : TurnEffect → Nat
   | .nextSpellBonus n => n
   | _ => 0
 
-/-- The Bonus Damage the spell `src` of the player deals with each instance of damage: that of an
-effect of the turn for the next spell the player plays (the first spell they played since it was
-made). -/
+/-- The unused bonus for the spell that receives the given play timestamp. -/
+def GameState.spellBonusAt (s : GameState) (p : PlayerId) (stamp : Nat) : Nat :=
+  (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.stamp ≤ stamp &&
+    -- No spell of the player was played between the effect and this one.
+    !(s.objects.toList.any (fun (k, x) =>
+      x.owner == p && (s.cardDef? ⟨k⟩).any (·.hasType .spell) &&
+        x.playedStamp.any (fun y => f.stamp ≤ y && y < stamp))))).foldl
+    (fun acc f => acc + f.kind.spellBonusOf) 0
+
+/-- The Bonus Damage reserved for this spell by a "next spell" effect. -/
 def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
-  match s.obj? src, (s.cardDef? src).any (·.hasType .spell) with
-  | some o, true =>
-    (match o.playedStamp with
-      | some st =>
-        (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.stamp ≤ st &&
-          -- no spell of the player was played between the effect and this one
-          !(s.objects.toList.any (fun (k, x) =>
-            x.owner == p && (s.cardDef? ⟨k⟩).any (·.hasType .spell) &&
-              x.playedStamp.any (fun y => f.stamp ≤ y && y < st))))).foldl
-          (fun acc f => acc + f.kind.spellBonusOf) 0
-      | none => 0)
-  | _, _ => 0
+  if (s.cardDef? src).any (·.hasType .spell) then
+    ((s.obj? src).bind (·.playedStamp)).elim 0 (s.spellBonusAt p)
+  else 0
 
 /-- The player cannot play cards now, by an effect of this turn that is an opponent's. -/
 def GameState.cantPlay (s : GameState) (p : PlayerId) : Bool :=
@@ -1286,7 +1284,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
 /-- Whether the engine can enumerate target choices of this quantity. -/
 def Quantity.pickable : Quantity → Bool
   | .one => true
-  | .upTo n => decide (1 ≤ n)
+  | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
   | .anyNumber | .combinedMightAtMost _ => true
   | _ => false
 
@@ -1329,6 +1327,72 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     else []
   | _ => []
 
+namespace GameState
+
+/-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/
+def passiveSources (s : GameState) : List ObjId :=
+  s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
+
+/-- The changes the passive abilities of `src` make now: those of the abilities whose condition
+holds. -/
+def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
+  match s.obj? src, s.cardDef? src with
+  | some o, some d =>
+    (s.appendedAbilities src d).flatMap (fun ab =>
+      match ab with
+      | Ability.passive cond mods =>
+        if cond.eval s o.controller src {} == some true then mods else []
+      | _ => [])
+  | _, _ => []
+
+/-- The Bonus Damage the passive abilities of the player give to each instance of damage of their
+spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
+is attached to (Rabadon's Deathcrown). -/
+def passiveBonus (s : GameState) (p : PlayerId) (source : Option CardDef := none) : Nat :=
+  let amount (src : ObjId) (m : StaticMod) : Option Nat :=
+    match m with
+    | .bonusDamage a => a.evalS0 s p src {}
+    | .bonusAbilityDamage type a =>
+      if source.any (fun d => d.hasType type && !d.hasType .spell) then a.evalS0 s p src {}
+      else none
+    | _ => none
+  (s.passiveSources.flatMap (fun g =>
+    if (s.obj? g).any (·.controller == p) then (s.activeMods g).filterMap (amount g)
+    else [])).sum +
+  (s.inPlay.flatMap (fun g =>
+    match s.obj? g, s.cardDef? g with
+    | some o, some d =>
+      match o.attached with
+      | some u =>
+        if (s.obj? u).any (·.controller == p) then
+          d.grants.flatMap (fun ab =>
+            match ab with
+            | Ability.passive .always mods => mods.filterMap (amount g)
+            | _ => [])
+        else []
+      | none => []
+    | _, _ => [])).sum
+
+/-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
+deals to the object `id`: that of the effect of the turn for the next spell, and that of the
+Battlefield the object is at (CR 142). -/
+def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId)
+    (originalCard : Option CardId := none) (finalizing : Bool := false) : Nat :=
+  let definition := s.cardDef? src <|> originalCard.bind s.cards.find?
+  let spell := if finalizing && definition.any (·.hasType .spell) &&
+      ((s.obj? src).bind (·.playedStamp)).isNone then
+    s.spellBonusAt p s.nextTimestamp
+  else s.spellBonus p src
+  spell + s.passiveBonus p definition +
+    (match (s.obj? id).bind (·.loc) with
+      | some bf =>
+        (s.activeMods bf).foldl
+          (fun acc m => match m with | .bonusDamageHere n => acc + n | _ => acc) 0
+      | none => 0)
+
+
+end GameState
+
 /-- The objects a choice can pick when nothing was picked before. -/
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
@@ -1357,23 +1421,27 @@ def Choice.simple : Choice → Bool
 
 /-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
+  | .target (.atOneBattlefield _) _ _ _ => false
   | .target q _ _ _ => q.pickable && q != .one
   | _ => false
 
 /-- An optional choice is one that can be made. -/
 theorem Choice.simple_of_optional {c : Choice} (h : c.optional = true) : c.simple = true := by
-  cases c <;> simp_all [Choice.optional, Choice.simple]
+  cases c with
+  | target q side place fs => cases q <;> simp_all [Choice.optional, Choice.simple]
+  | _ => simp [Choice.optional] at h
 
 /-- Whether a choice is of several objects: up to two or more. It is the last choice of its Spell,
 and the objects are chosen in the order of the objects, so that a set is chosen once. -/
 def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
-  | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ => true
+  | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
+  | .target (.atOneBattlefield _) _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
 def Choice.groupLimit : Choice → Nat
-  | .target (.upTo n) _ _ _ => n
+  | .target (.upTo n) _ _ _ | .target (.atOneBattlefield n) _ _ _ => n
   | .target .anyNumber _ _ _ => 0
   | .target (.combinedMightAtMost limit) _ _ _ => limit
   | _ => 1
@@ -1460,6 +1528,82 @@ def Choice.sortedCands (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List ObjId :=
   (c.candidatesAfter s p self pm acc).mergeSort (fun a b => decide (a.n ≤ b.n))
 
+namespace GameState
+
+/-- Whether an object is a Battlefield. Attachment copies apply only to Units. -/
+def isBattlefield (s : GameState) (id : ObjId) : Bool :=
+  (s.printedCardDef? id).any (·.hasType .battlefield)
+
+/-- The Battlefields of the game, in the order of the Battlefield Zone. -/
+def battlefields (s : GameState) : List ObjId :=
+  (s.zone .battlefieldZone).filter (fun b => s.isBattlefield b)
+
+end GameState
+
+/-- Split candidates by their current Battlefield without changing each group's order. -/
+def GameState.targetsByBattlefield (s : GameState) (ids : List ObjId) : List (List ObjId) :=
+  s.battlefields.map (fun bf => ids.filter (fun id => s.hereOf id == some bf))
+
+/-- The eligible sets of candidates for a multi-target choice. -/
+def Choice.sortedTargetGroups (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List (List ObjId) :=
+  let candidates := c.sortedCands s p self pm acc
+  match c with
+  | .target (.atOneBattlefield _) _ _ _ => s.targetsByBattlefield candidates
+  | _ => [candidates]
+
+/-- Grouping restricts the sorted candidates but does not add eligible targets. -/
+theorem Choice.mem_sortedTargetGroups {s : GameState} {p : PlayerId} {self : ObjId}
+    {pm : List (ObjId × Int)} {acc group : List ObjId} {c : Choice} {id : ObjId}
+    (hg : group ∈ c.sortedTargetGroups s p self pm acc) (hi : id ∈ group) :
+    id ∈ c.sortedCands s p self pm acc := by
+  unfold Choice.sortedTargetGroups at hg
+  split at hg
+  · simp only [GameState.targetsByBattlefield, List.mem_map] at hg
+    obtain ⟨_, _, rfl⟩ := hg
+    exact (List.mem_filter.mp hi).1
+  · obtain rfl := List.mem_singleton.mp hg
+    exact hi
+
+/-- The budget may include Bonus Damage available at the chosen Battlefield (CR 355.14). -/
+def Choice.targetGroupLimit (s : GameState) (p : PlayerId) (self : ObjId)
+    (c : Choice) (group : List ObjId) : Nat :=
+  match c, group with
+  | .target (.atOneBattlefield n) _ _ _, first :: _ => n + s.bonusOn p self first none true
+  | _, _ => c.groupLimit
+
+/-- A group of targets restricted to a Battlefield must identify at least one target. -/
+def Choice.groupNonemptyOk (c : Choice) (ids : List ObjId) : Bool :=
+  match c with
+  | .target (.atOneBattlefield _) _ _ _ => !ids.isEmpty
+  | _ => true
+
+/-- All chosen targets must fit one candidate group and satisfy its limit. -/
+def Choice.groupTargetsOk (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (ids : List ObjId) : Bool :=
+  c.groupNonemptyOk ids && (c.sortedTargetGroups s p self pm acc).any (fun group =>
+    decide (ids.Sublist group) &&
+      decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self group))
+
+/-- Enumerate legal target groups. -/
+def Choice.groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List (List ObjId) :=
+  ((c.sortedTargetGroups s p self pm acc).flatMap (fun group =>
+    subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self group) group)).filter
+      c.groupNonemptyOk
+
+/-- Enumerating grouped targets agrees with checking the selected targets. -/
+theorem Choice.mem_groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (ids : List ObjId) :
+    ids ∈ c.groupTuples s p self pm acc ↔ c.groupTargetsOk s p self pm acc ids = true := by
+  simp only [Choice.groupTuples, Choice.groupTargetsOk, List.mem_filter, List.mem_flatMap,
+    mem_subseqsWithin, Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq]
+  constructor
+  · rintro ⟨⟨group, hg, hsub, hsum⟩, hcount⟩
+    exact ⟨hcount, group, hg, hsub, hsum⟩
+  · rintro ⟨hcount, group, hg, hsub, hsum⟩
+    exact ⟨⟨group, hg, hsub, hsum⟩, hcount⟩
+
 /-- The choices after one can all be left out. A choice of several is the last one. -/
 def skipOk : List Choice → Bool
   | [] => true
@@ -1474,8 +1618,7 @@ def targetsOkAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (Obj
   | [], _ :: _ => false
   | c :: cs, ts =>
     if c.multi then
-      cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
-        decide (ts.Sublist (c.sortedCands s p self pm acc))
+      cs.isEmpty && c.groupTargetsOk s p self pm acc ts
     else
       match ts with
       | [] => c.optional && skipOk cs
@@ -1489,8 +1632,7 @@ theorem targetsOkAfter_cons (s : GameState) (p : PlayerId) (self : ObjId)
     (ts : List ObjId) :
     targetsOkAfter s p self pm acc (c :: cs) ts =
       (if c.multi then
-        cs.isEmpty && decide ((ts.map (c.groupWeight s pm)).sum ≤ c.groupLimit) &&
-          decide (ts.Sublist (c.sortedCands s p self pm acc))
+        cs.isEmpty && c.groupTargetsOk s p self pm acc ts
       else
         match ts with
         | [] => c.optional && skipOk cs
@@ -1521,9 +1663,7 @@ def targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId) (pm : List (
   | [] => [[]]
   | c :: cs =>
     if c.multi then
-      (if cs.isEmpty then
-        subseqsWithin (c.groupWeight s pm) c.groupLimit (c.sortedCands s p self pm acc)
-      else [])
+      (if cs.isEmpty then c.groupTuples s p self pm acc else [])
     else if c.simple then
       (c.candidatesAfter s p self pm acc).flatMap (fun t =>
         (targetTuplesAfter s p self pm (acc ++ [t]) cs).map (t :: ·)) ++
@@ -1544,10 +1684,9 @@ theorem mem_targetTuplesAfter (s : GameState) (p : PlayerId) (self : ObjId)
     cases ts <;> simp [targetTuplesAfter, targetsOkAfter]
   | c :: cs, acc, ts => by
     by_cases hm : c.multi = true
-    · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true,
-        decide_eq_true_eq]
+    · simp only [targetTuplesAfter, targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true]
       by_cases hc : cs.isEmpty = true
-      · simp [hc, mem_subseqsWithin, and_comm]
+      · simp [hc, Choice.mem_groupTuples]
       · simp [hc]
     · have hm' : c.multi = false := by simpa using hm
       cases ts with
@@ -1608,11 +1747,11 @@ theorem targetsOkAfter_mem_targetPresent {s : GameState} {p : PlayerId} {self : 
   | c :: cs, acc, ts, h => by
     intro x hx
     by_cases hm : c.multi = true
-    · simp only [targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true, decide_eq_true_eq] at h
-      have hsub := h.2
-      have hx' : x ∈ c.sortedCands s p self pm acc := hsub.subset hx
-      exact Choice.candidatesAfter_mem
-        ((List.mem_mergeSort).mp hx')
+    · simp only [targetsOkAfter_cons, hm, ite_true, Choice.groupTargetsOk, Bool.and_eq_true,
+        List.any_eq_true, decide_eq_true_eq] at h
+      obtain ⟨group, hg, hsub, _⟩ := h.2.2
+      have hx' := Choice.mem_sortedTargetGroups hg (hsub.subset hx)
+      exact Choice.candidatesAfter_mem ((List.mem_mergeSort).mp hx')
     · have hm' : c.multi = false := by simpa using hm
       cases ts with
       | nil => cases hx

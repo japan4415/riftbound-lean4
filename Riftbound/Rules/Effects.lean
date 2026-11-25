@@ -4679,13 +4679,26 @@ def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
     recheckedSlots s p src ts definition
   else slotValues ts definition
 
-/-- Before an open-ended group resolves, filter invalid original targets and ask its controller
-to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
+/-- Before a group resolves, keep only legal original targets. When a shared restriction no
+longer holds, retain a maximal legal subset (CR 355.11.b, 359.3.e.2). -/
 def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
     (src : ObjId) (targets : List ObjId) (body : EffectList) : EffectList :=
   match e.choices.getLast? with
   | some c =>
     match c with
+    | .target (.atOneBattlefield n) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let legal := c.candidatesAfter s p src s.mightTable fixed
+      let original := (targets.drop fixed.length).filter legal.contains
+      let groups := (s.targetsByBattlefield original).flatMap (fun group =>
+        match group with
+        | [] => []
+        | first :: _ =>
+          let total := n + s.bonusOn p src first
+          if group.length ≤ total then [group] else
+            (subseqsUpTo total group).filter (fun subset => subset.length == total))
+      let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
+      .cons (.retainTargetSet remaining) body
     | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
       let pm := s.mightTable
@@ -4714,6 +4727,46 @@ def spellExecutionFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
     playerTargets := if s.spellPlayerTargetOk p body pick then pick.playerTarget.toList else [] }
   let effects := body.recheckTargetGroup s p src targets (.cons body.body .nil)
   return [.run p src ctx effects]
+
+/-- Every way to give each target at least one damage while assigning the entire amount. -/
+def damageDivisions : List ObjId → Nat → List (List (ObjId × Nat))
+  | [], total => if total == 0 then [[]] else []
+  | [target], total => if total == 0 then [] else [[(target, total)]]
+  | target :: next :: more, total =>
+    (List.range (total - (next :: more).length)).flatMap (fun i =>
+      (damageDivisions (next :: more) (total - (i + 1))).map ((target, i + 1) :: ·))
+
+/-- Every offered division accounts for the whole amount and gives each target positive damage. -/
+theorem damageDivisions_valid :
+    ∀ {targets : List ObjId} {total : Nat} {hits : List (ObjId × Nat)},
+      hits ∈ damageDivisions targets total →
+        hits.map Prod.fst = targets ∧ (hits.map Prod.snd).sum = total ∧
+          ∀ hit ∈ hits, 0 < hit.2
+  | [], total, hits, h => by
+    by_cases hz : total = 0
+    · subst total
+      simp only [damageDivisions, beq_self_eq_true, ite_true, List.mem_singleton] at h
+      subst hits
+      simp
+    · simp [damageDivisions, hz] at h
+  | [target], total, hits, h => by
+    by_cases hz : total = 0
+    · simp [damageDivisions, hz] at h
+    · simp only [damageDivisions, beq_iff_eq, hz, ite_false, List.mem_singleton] at h
+      subst hits
+      simp [Nat.pos_of_ne_zero hz]
+  | target :: next :: more, total, hits, h => by
+    obtain ⟨i, hi, hh⟩ := List.mem_flatMap.mp h
+    obtain ⟨suffix, hs, rfl⟩ := List.mem_map.mp hh
+    obtain ⟨ht, hd, hp⟩ := damageDivisions_valid hs
+    have hbound := List.mem_range.mp hi
+    refine ⟨by simp [ht], ?_, ?_⟩
+    · simp only [List.map_cons, List.sum_cons, hd]
+      omega
+    · intro hit hm
+      rcases List.mem_cons.mp hm with rfl | hn
+      · simp
+      · exact hp _ hn
 
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -5018,6 +5071,19 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match commitLimitedSpell s p card plan adds funding with
     | some (t, events) => (t, [.chainPass p 0, .run p src env es], events)
     | none => cancelLimitedStep s p src env card es
+  | .splitDamage targets total =>
+    match targets.eval s p src env with
+    | some (first :: others) =>
+      let available := total + s.bonusOn p src first env.sourceCard
+      let choices := (damageDivisions (first :: others) available).map Effect.applySplitDamage
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+    | _ => skip
+  | .applySplitDamage hits =>
+    if s.damageOff then (s, [.run p src env es], []) else
+      let batch : EffectDamageBatch := {
+        controller := some (env.effectController.getD p)
+        incoming := hits }
+      (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
   | .resolveEffectDamage batch hit => resolveEffectDamageStep s p src env batch hit es
   | .chooseDamageReplacement batch hit replacement =>
     let (next, damage) := chooseEffectDamage batch hit replacement

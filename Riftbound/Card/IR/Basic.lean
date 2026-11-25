@@ -189,6 +189,8 @@ inductive Quantity where
   | anyNumber
   /-- Any subset whose total Might is at most the limit (CR 355.11). -/
   | combinedMightAtMost (limit : Nat)
+  /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
+  | atOneBattlefield (limit : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/

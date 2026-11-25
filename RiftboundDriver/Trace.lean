@@ -177,6 +177,17 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
     | _ => [("moreDamageReplacements", "true")]
   | _ => []
 
+/-- Describe the allocation selected for split damage (CR 355.14). -/
+def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ first@(.applySplitDamage _) other _) =>
+    match if yes then first else other with
+    | .applySplitDamage hits =>
+      [("damageDivision", jarr (hits.map (fun (unit, amount) =>
+        jobj [("unit", toString unit.n), ("amount", toString amount)])))]
+    | _ => [("moreDamageDivisions", "true")]
+  | _ => []
+
 /-- Describe whose effect can replace this Unit's pending death (CR 372). -/
 def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
@@ -395,7 +406,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (match frame with
         | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
         | _ => []) ++
-        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ deathBanishFields frame yes ++
+        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ damageDivisionFields frame yes ++
+        deathBanishFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes

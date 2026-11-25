@@ -210,6 +210,10 @@ inductive Effect where
   | resolveSpellExecution (pick : SpellPick) (targets : List ObjId)
   /-- Continue working through the events of a single damage instruction. -/
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
+  /-- Divide damage among the remaining targets at resolution (CR 355.14). -/
+  | splitDamage (targets : Selector) (total : Nat)
+  /-- Deal the chosen damage simultaneously after replacements have been applied. -/
+  | applySplitDamage (hits : List (ObjId × Nat))
   /-- Apply one selected replacement and continue with the rest. -/
   | chooseDamageReplacement (batch : EffectDamageBatch) (hit : EffectDamageHit)
       (replacement : DamageReplacement)

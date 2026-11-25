@@ -41,22 +41,6 @@ def Object.ownerMoveEvents (o : Object) (id new : ObjId) (dest : ZoneKind)
 
 namespace GameState
 
-/-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/
-def passiveSources (s : GameState) : List ObjId :=
-  s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
-
-/-- The changes the passive abilities of `src` make now: those of the abilities whose condition
-holds. -/
-def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
-  match s.obj? src, s.cardDef? src with
-  | some o, some d =>
-    (s.appendedAbilities src d).flatMap (fun ab =>
-      match ab with
-      | Ability.passive cond mods =>
-        if cond.eval s o.controller src {} == some true then mods else []
-      | _ => [])
-  | _, _ => []
-
 /-- The active passive changes from sources controlled by this player (CR 363). -/
 def controlledMods (s : GameState) (p : PlayerId) : List StaticMod :=
   (s.passiveSources.filter (fun src => (s.obj? src).any (·.controller == p))).flatMap s.activeMods
@@ -185,47 +169,6 @@ def victoryScore (s : GameState) : Nat :=
       | .victoryScoreMinus a => -((a.evalS0 s (s.controllerOf src) src {}).getD 0 : Int)
       | _ => 0))).sum
   (s.config.mode.victoryScore + delta).toNat
-
-/-- The Bonus Damage the passive abilities of the player give to each instance of damage of their
-spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
-is attached to (Rabadon's Deathcrown). -/
-def passiveBonus (s : GameState) (p : PlayerId) (source : Option CardDef := none) : Nat :=
-  let amount (src : ObjId) (m : StaticMod) : Option Nat :=
-    match m with
-    | .bonusDamage a => a.evalS0 s p src {}
-    | .bonusAbilityDamage type a =>
-      if source.any (fun d => d.hasType type && !d.hasType .spell) then a.evalS0 s p src {}
-      else none
-    | _ => none
-  (s.passiveSources.flatMap (fun g =>
-    if (s.obj? g).any (·.controller == p) then (s.activeMods g).filterMap (amount g)
-    else [])).sum +
-  (s.inPlay.flatMap (fun g =>
-    match s.obj? g, s.cardDef? g with
-    | some o, some d =>
-      match o.attached with
-      | some u =>
-        if (s.obj? u).any (·.controller == p) then
-          d.grants.flatMap (fun ab =>
-            match ab with
-            | Ability.passive .always mods => mods.filterMap (amount g)
-            | _ => [])
-        else []
-      | none => []
-    | _, _ => [])).sum
-
-/-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
-deals to the object `id`: that of the effect of the turn for the next spell, and that of the
-Battlefield the object is at (CR 142). -/
-def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId)
-    (originalCard : Option CardId := none) : Nat :=
-  let definition := s.cardDef? src <|> originalCard.bind s.cards.find?
-  s.spellBonus p src + s.passiveBonus p definition +
-    (match (s.obj? id).bind (·.loc) with
-      | some bf =>
-        (s.activeMods bf).foldl
-          (fun acc m => match m with | .bonusDamageHere n => acc + n | _ => acc) 0
-      | none => 0)
 
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/

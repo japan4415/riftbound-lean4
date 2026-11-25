@@ -394,6 +394,7 @@ def Effect.understood : Effect → Bool
   | .forEach s body => s.understood && Effect.understood body
   | .fillSlot _ s => s.understoodPickAny
   | .remakeSpellChoices spell => spell.understood
+  | .splitDamage targets _ => targets.understood
   | .fillFromPick _ => true
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e

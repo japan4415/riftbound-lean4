@@ -362,7 +362,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s
   | .fillFromPick _ => true
-  | .retainTargetSet _ => false
+  | .retainTargetSet _ | .applySplitDamage _ => false
+  | .splitDamage targets _ => Selector.ok c targets
   | .remakeSpellChoices spell => Selector.ok c spell
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e

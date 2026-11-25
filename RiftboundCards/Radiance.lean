@@ -168,8 +168,13 @@ def RAD_006.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Scorched Earth: the effect is not written yet. -/
-def RAD_006 : CardDef := RAD_006.meta
+/-- Scorched Earth divides five damage among its remaining targets at one Battlefield. -/
+def RAD_006 : CardDef :=
+  { RAD_006.meta with
+    spellEffect := some (.of
+      [.targetOf (.atOneBattlefield 5) .any .atBattlefield [.ofType .unit]]
+      (.splitDamage (.slotsFrom 0) 5)),
+    status := .full }
 
 -- BEGIN GENERATED RAD-007
 /--

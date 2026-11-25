@@ -37,14 +37,6 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
 def isUnit (s : GameState) (id : ObjId) : Bool :=
   (s.printedCardDef? id).any (·.hasType .unit)
 
-/-- Whether an object is a Battlefield. Attachment copies apply only to Units. -/
-def isBattlefield (s : GameState) (id : ObjId) : Bool :=
-  (s.printedCardDef? id).any (·.hasType .battlefield)
-
-/-- The Battlefields of the game, in the order of the Battlefield Zone. -/
-def battlefields (s : GameState) : List ObjId :=
-  (s.zone .battlefieldZone).filter (fun b => s.isBattlefield b)
-
 /-- Whether the Unit `u` is at the Battlefield `bf`. -/
 def isAt (s : GameState) (bf u : ObjId) : Bool :=
   s.isUnit u && decide ((s.obj? u).bind (·.loc) = some bf)
