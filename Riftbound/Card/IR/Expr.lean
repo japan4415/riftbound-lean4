@@ -182,6 +182,8 @@ inductive Filter where
   | sameController (s : Selector)
   /-- The object is owned by the player targeted in this slot (CR 127, 355.7). -/
   | ownedByPlayerTarget (i : Nat)
+  /-- The current effect revealed this card (CR 425.3.a.1). -/
+  | revealedByEffect
   /-- Gives Legends the ability to attach Equipment (it has the passive `legendsAttach`). -/
   | givesLegendsAttach
   /-- The card copies the text of the Unit it is attached to (it has `copiesUnitText`). -/

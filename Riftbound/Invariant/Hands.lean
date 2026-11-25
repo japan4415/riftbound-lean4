@@ -859,8 +859,7 @@ theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {
   unfold runEffect at h
   split at h
   · split at h
-    · simp only [List.mem_singleton] at h
-      subst h; exact Or.inl rfl
+    · split at h <;> simp only [List.mem_singleton] at h <;> subst h <;> exact Or.inl rfl
     · simp only [List.mem_singleton] at h
       subst h; exact Or.inl rfl
     · simp only [List.mem_singleton] at h

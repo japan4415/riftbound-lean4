@@ -207,7 +207,10 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets
           (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
-        targetObjs := o.targets }
+        targetObjs := o.targets
+        playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
+            (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
+          then o.targetPlayer.toList else [] }
         (match d.spellEffect.bind (·.forPick o.spellPick) with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)

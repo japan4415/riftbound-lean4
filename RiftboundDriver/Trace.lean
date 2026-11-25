@@ -72,6 +72,8 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .plain => []
   | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
+  | .withPlayer pick player =>
+    spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
@@ -148,6 +150,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (match frame with
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
+        | some (.pickDo _ _ env _ _ _ _) =>
+          if env.revealedCards.contains o then [("choiceContext", jstr "revealedHand")] else []
         | _ => [])
     | .predictPick card recycle =>
       [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
@@ -228,6 +232,9 @@ def eventJson : Event → String
     jobj [("t", jstr "token_played"), ("player", toString p.n), ("token", toString t.n)]
   | .revealed p c =>
     jobj [("t", jstr "revealed"), ("player", toString p.n), ("card", toString c.n)]
+  | .handRevealed p ids =>
+    jobj [("t", jstr "hand_revealed"), ("player", toString p.n),
+      ("cards", jarr (ids.map (fun id => toString id.n)))]
   | .combatWon bf w =>
     jobj [("t", jstr "combat_won"), ("battlefield", toString bf.n), ("winner", toString w.n)]
   | .activated p src idx =>

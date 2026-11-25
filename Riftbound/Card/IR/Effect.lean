@@ -35,6 +35,11 @@ inductive Effect where
   /-- Each of the players does the effect: the effect is done for them, so that what they choose
   is theirs ("each player kills one of their units"). -/
   | eachPlayer (who : PlayerSel) (body : Effect)
+  /-- Reveal the specified hands for the following instructions (CR 425). -/
+  | revealHand (who : PlayerSel) (body : Effect)
+  /-- Choose one object during resolution and bind it to `pickVar` for the following
+  instructions (CR 355.18). -/
+  | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)
   /-- Each player chooses one of their own objects. Append the picks to the slots, then run the
   body for the original controller. The picks are not targets (CR 355.10.e). -/
   | pickOwn (place : Place) (filters : FilterList) (body : Effect)

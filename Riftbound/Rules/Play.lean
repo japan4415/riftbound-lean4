@@ -707,19 +707,31 @@ def GameState.effectMoveBattlefieldOk (s : GameState) (u : Object) (bf : ObjId) 
     (!decide (s.playerCount > 2) || !(staged || running) || occupying.contains u.controller)
 
 /-- The candidates to try for finalization. Ordinary plays, including permanents, use `.plain`. -/
-def GameState.spellPicks (s : GameState) (d : CardDef) : List SpellPick :=
-  .plain :: (match d.spellEffect with
+def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List SpellPick :=
+  let base := .plain :: (match d.spellEffect with
     | some e =>
         (List.range e.modes.length).map SpellPick.mode ++
         (if e.moveChoice.isSome then .destination none ::
           ((s.zone .battlefieldZone).filter (fun bf => (s.cardDef? bf).any (·.hasType .battlefield))).map
             (fun bf => .destination (some bf)) else [])
     | none => [])
+  base ++ (match d.spellEffect.bind EffectDef.playerTarget with
+    | some side =>
+      (s.players.filter (side.admitsPlayer p)).flatMap (fun q => base.map (·.withPlayer q))
+    | none => [])
+
+/-- Check the required player choice independently of any object targets (CR 355.7, 355.9). -/
+def GameState.spellPlayerTargetOk (s : GameState) (p : PlayerId) (e : EffectDef)
+    (pick : SpellPick) : Bool :=
+  match e.playerTarget, pick.playerTarget with
+  | none, none => true
+  | some side, some q => s.players.contains q && side.admitsPlayer p q
+  | _, _ => false
 
 /-- Possible combinations of effect choices, the printed additional cost, and Repeat.
 Payment legality determines which of these combinations are offered. -/
 def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List SpellPick :=
-  let base := s.spellPicks d
+  let base := s.spellPicks p d
   let extra := if d.hasType .spell then
     let n := (s.extrasRaw p c d).countP Prod.snd
     if d.additionalCost.isSome || n != 0 then
@@ -746,7 +758,7 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
             (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false
       | none => false
     | none => false
-  | .withCosts pick _ _ => s.moveTargetOk c e ts pick
+  | .withPlayer pick _ | .withCosts pick _ _ => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
 
 /-- What is true when a card is played: whether an additional cost was paid, whether another card
@@ -777,7 +789,8 @@ structure PlayMark where
 the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
   let o1 : Object :=
-    { o with targets := ts, paid := m.paid, discardPaid := false, extraPaid := m.extraPaid,
+    { o with targets := ts, targetPlayer := m.spellPick.playerTarget,
+             paid := m.paid, discardPaid := false, extraPaid := m.extraPaid,
              legion := m.legion, playedTurn := some m.turn,
              buffed := o.buffed || m.buff, playedFromHand := m.fromHand, flowed := m.flowed, spellPick := m.spellPick }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
@@ -1131,7 +1144,8 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
       o.owner == p && d.hasType .spell &&
         (match d.spellEffect.bind (·.forPick pick) with
           | some e => targetsOk s p c s.mightTable e.choices targets &&
-              (s.castPicks p c d).contains pick && s.moveTargetOk c e targets pick
+              (s.castPicks p c d).contains pick &&
+                (s.moveTargetOk c e targets pick && s.spellPlayerTargetOk p e pick)
           | none => false) &&
         (match s.directCost p c d flow with
           | some cost => s.paysForXT p c d cost targets pay && s.spellCostsOk p c d cost targets pay pick &&

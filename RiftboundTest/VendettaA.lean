@@ -467,6 +467,72 @@ meta def passToChoice : Nat → GameState → Option GameState
       o.owner == third && o.controller == p && o.exhausted && o.formerId == some chosen) &&
     (finished.poolOf p).total == 0 && refused.countIn third .trash "VEN-064" == 1
 
+-- Decree of Strength targets a player before replies. Its caster picks
+-- from the Mind cards that the opponent actually reveals during resolution.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode := mode }, turnOrder := [p, q, third] }
+  let (s, decree) ← put s p "VEN-085" .hand
+  let (s, wrongHand) ← put s q "VEN-069" .hand
+  let (s, mel) ← put s third "VEN-069" .hand
+  let (s, nonMind) ← put s third "VEN-014" .hand
+  let (s, draw) ← put s third "OGN-095" .hand
+  let (s, _) ← put s third "VEN-064" .mainDeck
+  let (s, unit) ← put s third "VEN-070" .base
+  let s := (s.rich p).rich third
+  let playAgainst (r : PlayerId) : Action :=
+    ⟨.player p, .playCard decree ⟨1, []⟩ [] none none (.withPlayer .plain r)⟩
+  let (waiting, _) ← (step 100 s (playAgainst third)).toOption
+  let item ← (waiting.zone .chain).head?
+  let pass (t : GameState) : Option (GameState × List Event) := do
+    let .chainPass actor _ :: _ := t.pending | none
+    (step 100 t ⟨.player actor, .pass⟩).toOption
+  let rec settle (n : Nat) (t : GameState) (events : List Event) :
+      Option (GameState × List Event) := do
+    match n, t.pending with
+    | n + 1, .chainPass .. :: _ =>
+      let (next, es) ← pass t
+      settle n next (events ++ es)
+    | _, _ => some (t, events)
+  let priority ← pass waiting >>= (fun (t, _) => (pass t).map Prod.fst)
+  let (reply, _) ← (step 100 priority ⟨.player third, .playCard draw ⟨1, []⟩ [unit]⟩).toOption
+  let (choosing, revealed) ← settle 12 reply []
+  let fromDraw ← choosing.firstOf third .hand "VEN-064"
+  let answer (a : PlayerId) (id : ObjId) : Action := ⟨.player a, .choose id⟩
+  let (resolved, es) ← (step 100 choosing (answer p fromDraw)).toOption
+  let recycled ← (resolved.zone (.player third .mainDeck)).getLast?
+  let (countered, canceled) ← settle 12 (counterObj waiting item).1 []
+  let (stolen, stolenEvents) ← settle 12 (setController third waiting item).1 []
+  let definition ← s.cardDef? decree
+  let effect ← definition.spellEffect
+  let reduced := reducedSpellChoices s p decree definition effect 1
+  let castByEffect := (castPickedOne p 1 1 s decree).1
+  let reducedItem ← (castByEffect.zone .chain).head?
+  let paid := (legalActions s).filter (fun a => match a.kind with
+    | .playCard card _ _ _ _ _ => card == decree
+    | _ => false)
+  return paid.length == 2 && paid.contains (playAgainst q) && !(paid.contains (playAgainst p)) &&
+    !(paid.contains (playAgainst ⟨3⟩)) &&
+    (waiting.obj? item).any (fun o => o.targetPlayer == some third && o.targets.isEmpty) &&
+    revealed.contains (.handRevealed third (choosing.zone (.player third .hand))) &&
+    (legalActions choosing).contains (answer p mel) &&
+    !(legalActions choosing).contains (answer p nonMind) &&
+    !(legalActions choosing).contains (answer p wrongHand) &&
+    !(legalActions choosing).contains (answer third fromDraw) &&
+    (resolved.obj? recycled).any (fun o => o.formerId == some fromDraw && o.owner == third) &&
+    es.contains (.recycled third) && !(es.any (fun
+      | .chosenBySpell .. | .chosenByAbility .. => true
+      | _ => false)) &&
+    canceled.isEmpty && countered.zone (.player third .hand) == waiting.zone (.player third .hand) &&
+    !(stolenEvents.any (fun | .handRevealed .. => true | _ => false)) &&
+    stolen.countIn p .trash "VEN-085" == 1 &&
+    reduced.map (fun (_, cost, pick) => (cost.energy, pick.playerTarget)) ==
+      [(0, some q), (0, some third)] &&
+    (castByEffect.obj? reducedItem).any (·.targetPlayer == some third)
+
 -- Jayce's controller fixes which keyword he gets before players can respond to the ability.
 #guard vendettaCase fun s => do
   let p := s.me

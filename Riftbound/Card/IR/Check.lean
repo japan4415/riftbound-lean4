@@ -350,6 +350,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .fillFromPick _ => true
   | .retainTargetSet _ => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
+  | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
+  | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
   | .collectOwnPicks .. => false

@@ -336,7 +336,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     let d ← s.cardDef? id
     pure (match d.cost with | some k => decide (k.energy < s.pointsOf o.controller) | none => false)
   | .noChoices =>
-    some (((s.cardDef? id).bind (·.spellEffect)).any (fun e => e.choices.isEmpty))
+    some (((s.cardDef? id).bind (·.spellEffect)).any
+      (fun e => e.choices.isEmpty && e.playerTarget.isNone))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
   | .atSourceMoveBattlefield =>
@@ -432,6 +433,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .ownedByPlayerTarget i => do
     let player ← env.playerTargets[i]?
     (s.obj? id).map (·.owner == player)
+  | .revealedByEffect => some (env.revealedCards.contains id)
   | .scoredByMine =>
     let me := ((s.obj? self).map (·.controller)).getD ⟨0⟩
     some (((s.obj? id).map (·.scored.contains me)).getD false)

@@ -1398,10 +1398,10 @@ def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef
     (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
   let hasCosts := !(s.extrasRaw p id d).isEmpty
   let choices := (s.effCost p id d).toList.flatMap (fun base =>
-    (s.spellPicks d).flatMap (fun pick =>
+    (s.spellPicks p d).flatMap (fun pick =>
       (e.forPick pick).toList.flatMap (fun branch =>
         ((targetTuples s p id s.mightTable branch.choices).filter
-          (fun ts => s.moveTargetOk id branch ts pick)).flatMap (fun ts =>
+          (fun ts => s.moveTargetOk id branch ts pick && s.spellPlayerTargetOk p branch pick)).flatMap (fun ts =>
             let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
             (s.spellCostPlans p id d (base.lessEnergy less) ts).map (fun (cost, paid) =>
               let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
@@ -3219,6 +3219,7 @@ def Effect.pickSel? : Effect → Option Selector
     | _ => none
   | .grant (.pick .one side place fs) _ _ => some (.pick .one side place fs)
   | .fillSlot _ (.pick .one side place fs) => some (.pick .one side place fs)
+  | .chooseObject side place fs _ => some (.pick .one side place fs)
   | _ => none
 
 /-- The effect with the chosen object, named by `pickVar`, in place of the selector. -/
@@ -3227,6 +3228,7 @@ def Effect.withPick : Effect → Effect
   | .prim p => .prim (p.withSel (.var pickVar))
   | .grant (.pick .one _ _ _) m d => .grant (.var pickVar) m d
   | .fillSlot i _ => .fillFromPick i
+  | .chooseObject _ _ _ body => .seq (.cons body .nil)
   | e => e
 
 /-- Whether the object is picked for the cost of a linked instruction (CR 355.10.c.1). -/
@@ -3242,9 +3244,15 @@ def Effect.pickTargets (e : Effect) : Bool :=
   | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ => false
   | _ => !e.isLinkedCost
 
+/-- A resolution pick in a private or secret zone is not a target (CR 355.10.a). -/
+def Effect.pickIsTarget (e : Effect) (s : GameState) (id : ObjId) : Bool :=
+  e.pickTargets && match s.locate id with
+    | some (.player _ .hand) | some (.player _ .mainDeck) | some (.player _ .runeDeck) => false
+    | _ => true
+
 /-- Emit the choice event for a new target picked during resolution. -/
 def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
-  if e.pickTargets then chosenAt s p src id else []
+  if e.pickIsTarget s id then chosenAt s p src id else []
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
 recycled after; if the Power cannot be paid, the instruction is skipped. -/
@@ -3254,7 +3262,9 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
   match sel.eval s p src env with
   | some (id :: _) =>
     match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
-        (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
+        (fun d =>
+          let branch := d.spellEffect.bind (·.forPick .plain)
+          (branch.filter (·.playerTarget.isNone)).map (fun e => (d, e))) with
     | some (d, e) =>
       match (s.targetCostOptions p id [] ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩).findSome?
           (payByRunes s p id) with
@@ -3336,7 +3346,7 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
   | some (id :: _) =>
     match (s.cardDef? id).bind (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
-      if d.hasType .spell && e.choices.isEmpty && !s.blocksOwnPlay p id d then
+      if d.hasType .spell && e.choices.isEmpty && e.playerTarget.isNone && !s.blocksOwnPlay p id d then
         (moveObj s id .chain).map (fun r =>
           ((r.1.modObj r.2 (fun o =>
               { Object.withPlay [] (s.freeMark p id) o with controller := p })),
@@ -3613,6 +3623,14 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       let playerEnv := { env with effectController := env.effectController <|> some p }
       (s, ps.map (fun q => Frame.run q src playerEnv (.cons body .nil)) ++ [.run p src env es], [])
     | none => skip
+  | .revealHand who body =>
+    match who.resolve s p env with
+    | some ps =>
+      let hands := ps.map (fun q => (q, s.zone (.player q .hand)))
+      let known := { env with revealedCards := hands.flatMap Prod.snd ++ env.revealedCards }
+      (s, [.run p src known (.cons body .nil), .run p src env es],
+        hands.map (fun (q, cards) => .handRevealed q cards))
+    | none => skip
   | .may e' => (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
@@ -3717,7 +3735,11 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
     match s.pickCandidates p src env side place fs (!e.isLinkedCost) with
     | some [o] =>
-      (s, [.run p src (env.bindPick o e.pickTargets) (.cons e.withPick es)], e.pickEvents s p src o)
+      match e with
+      | .chooseObject .. => (s, [.pickDo p src env o [] e.withPick es], [])
+      | _ =>
+        (s, [.run p src (env.bindPick o (e.pickIsTarget s o)) (.cons e.withPick es)],
+          e.pickEvents s p src o)
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])
   | _ => runEffect1 s p src env e es
@@ -3728,7 +3750,7 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
   unfold runEffect
   split
   · split
-    · exact Safe.refl s
+    · split <;> exact Safe.refl s
     · exact Safe.refl s
     · exact Safe.refl s
   · exact runEffect1_safe s p src env e es
@@ -3861,7 +3883,9 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
       let definition := d.spellEffect.bind (·.forPick o.spellPick)
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets definition o.spellPick
-        targetObjs := o.targets }
+        targetObjs := o.targets
+        playerTargets := if definition.any (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
+          then o.targetPlayer.toList else [] }
         (match definition with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)

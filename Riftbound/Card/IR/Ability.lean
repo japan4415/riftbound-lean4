@@ -58,7 +58,7 @@ structure EffectDef where
   modes : List SpellMode := []
   /-- The declared destination choice, if any. -/
   moveChoice : Option MoveChoice := none
-  /-- The side from which this ability chooses a player during finalization (CR 355.7). -/
+  /-- The side from which this spell or ability chooses a player during finalization (CR 355.7). -/
   playerTarget : Option Side := none
 deriving DecidableEq, Repr, Hashable
 
@@ -68,6 +68,7 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
     { choices := mode.choices, body := mode.body, playerTarget := e.playerTarget })
   | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
+  | .withPlayer pick _ => e.forPick pick
   | .withCosts pick _ _ => e.forPick pick
 
 /-- How often an ability can be used. -/

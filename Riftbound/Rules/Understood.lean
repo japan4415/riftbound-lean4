@@ -160,6 +160,7 @@ def Filter.understood : Filter → Bool
   | .sameController (.slot _) => true
   | .sameController (.var _) => true
   | .ownedByPlayerTarget _ => true
+  | .revealedByEffect => true
   | .givesLegendsAttach => true
   | .copiesText => true
   | .takenByMyCard => true
@@ -395,6 +396,9 @@ def Effect.understood : Effect → Bool
     s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
+  | .revealHand w e => w.understood && Effect.understood e
+  | .chooseObject _ place fs e =>
+    (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e => FilterList.understood fs && Effect.understood e
@@ -425,7 +429,7 @@ def EffectDef.choicesRun (e : EffectDef) : Bool :=
 /-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
-  | some e => e.playerTarget.isNone && e.choicesRun
+  | some e => e.choicesRun
   | none => false
 
 /-! ### What a card does when it is played

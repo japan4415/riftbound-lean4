@@ -2402,8 +2402,16 @@ def VEN_085.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Strength: the effect is not written yet. -/
-def VEN_085 : CardDef := VEN_085.meta
+/-- Decree of Strength. The caster picks a revealed Mind card; the opponent recycles it. -/
+def VEN_085 : CardDef :=
+  { VEN_085.meta with
+    spellEffect := some {
+      playerTarget := some .enemy
+      body := .revealHand (.chosen 0)
+        (.chooseObject .any .inHand
+          (.ofList [.ownedByPlayerTarget 0, .revealedByEffect, .domain .mind])
+          (.eachPlayer (.chosen 0) (.prim (.recycle (.var pickVar))))) },
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-086
 /--
