@@ -4123,15 +4123,23 @@ def RAD_156.meta : CardDef :=
   { id := ⟨"RAD-156"⟩,
     name := "Demacian Standard",
     types := [.gear],
-    tags := [⟨"Device"⟩, ⟨"Jarvan IV"⟩],
+    supertypes := [.signature],
+    tags := [⟨"Jarvan IV"⟩],
     domains := [.body, .order],
-    cost := some ⟨2, [.any]⟩,
+    cost := some ⟨2, [.own]⟩,
     keywords := [{ keyword := .deploy }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Demacian Standard: the effect is not written yet. -/
-def RAD_156 : CardDef := RAD_156.meta
+/-- Demacian Standard. -/
+def RAD_156 : CardDef :=
+  { RAD_156.meta with
+    abilities := [.triggered (.onSelf .friendlyAttackGroupHere)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .inTriggerGroup []]]
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited,
+      .triggered { event := .hold, optional := true }
+        (.of [] (.prim (.returnToHand .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-157
 /--

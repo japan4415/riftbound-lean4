@@ -137,6 +137,8 @@ inductive Filter where
   | onBattlefield
   /-- The object is at a Battlefield recorded by the triggering event (CR 477.3.b). -/
   | atEventBattlefield (recorded : Option (List ObjId) := none)
+  /-- Is one of the objects recorded when a group triggered this ability. -/
+  | inTriggerGroup (recorded : List ObjId := [])
   /-- The unit is at a Battlefield with an active Showdown (CR 341). -/
   | atShowdown
   /-- The unit is in combat with an enemy unit of the given domain. -/

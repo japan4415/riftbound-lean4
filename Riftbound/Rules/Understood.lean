@@ -205,7 +205,7 @@ def Filter.understood : Filter → Bool
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
   | .onBattlefield => true
-  | .atEventBattlefield _ => true
+  | .atEventBattlefield _ | .inTriggerGroup _ => true
   | .atShowdown => true
   | .combatsEnemyOfDomain _ | .chosenByEnemySpellOfDomain _ => true
   | .noChoices => true
@@ -559,6 +559,7 @@ def Trigger.runs (t : Trigger) : Bool :=
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .friendlyAttackGroupHere => t.subject == .self
       | .firstUnitDeathHere => t.subject != .self
       | .deathknell => t.subject == .self
       | .firstCardResolved | .firstPermanentHere | .delayedPlay => t.subject == .self

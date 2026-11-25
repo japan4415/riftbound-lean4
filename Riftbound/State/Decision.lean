@@ -171,6 +171,8 @@ structure PendTrigger where
   triggerKeyword : Option Keyword := none
   /-- The Battlefields recorded by the triggering event (CR 477.3.b). -/
   eventBattlefields : Option (List ObjId) := none
+  /-- The members of the group that triggered this ability. -/
+  eventObjects : List ObjId := []
 deriving DecidableEq, Repr
 
 /-- A trigger's declared finalization choices and its tentative resource activations. -/

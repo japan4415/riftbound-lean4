@@ -414,6 +414,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         (decide ((s.zone (.player o.owner .runeDeck)).idxOf id < n) &&
           (s.zone (.player o.owner .runeDeck)).contains id)
       | none => false)
+  | .inTriggerGroup recorded => some (recorded.contains id)
   | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
   | .unitsPlayable =>
     some (!((s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
@@ -1322,13 +1323,15 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
 def Choice.candidates (s : GameState) (p : PlayerId) (self : ObjId) (c : Choice) : List ObjId :=
   c.candidatesAfter s p self [] []
 
-/-- Fix a trigger's location requirements to the event that produced it (CR 477.3.b). -/
-def Choice.withEventBattlefields (fields : List ObjId) : Choice → Choice
+/-- Fix a trigger's references to the groups and locations from the event that produced it
+(CR 383, 477.3.b). -/
+def Choice.withTriggerEvent (fields : Option (List ObjId)) (objects : List ObjId) : Choice → Choice
   | .target q side place fs => .target q side place (replaceAll fs)
   | choice => choice
 where
   replace : Filter → Filter
-    | .atEventBattlefield _ => .atEventBattlefield (some fields)
+    | .atEventBattlefield previous => .atEventBattlefield (fields <|> previous)
+    | .inTriggerGroup _ => .inTriggerGroup objects
     | .not f => .not (replace f)
     | .either a b => .either (replace a) (replace b)
     | f => f

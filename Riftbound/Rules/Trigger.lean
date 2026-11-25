@@ -440,6 +440,15 @@ def GameState.combatantTriggers (s : GameState) (att : PlayerId) (u : ObjId) : L
       (fun t => { t with eventBattlefields := fields })
   | none => []
 
+/-- Abilities watching the group of Units that become attackers together at this Battlefield. -/
+def GameState.friendlyAttackGroupTriggers (s : GameState) (field : ObjId) (attacker : PlayerId)
+    (units : List ObjId) : List PendTrigger :=
+  let attackers := units.filter (fun id => (s.obj? id).any (·.controller == attacker))
+  if attackers.isEmpty then [] else
+    (s.trigUnitsAt field attacker).flatMap (fun src =>
+      (triggersOf s src attacker .friendlyAttackGroupHere).map
+        (fun t => { t with eventObjects := attackers }))
+
 /-- Exhaustion abilities of individual objects and of a player who exhausted several Units. -/
 def GameState.exhaustionTriggers (s : GameState) (who : Option PlayerId) (objects : List ObjId)
     (beforeMove : Bool) : List PendTrigger :=
@@ -682,6 +691,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     let controller := ((s.obj? bf).bind (·.control)).getD (s.active.getD att)
     triggersOf s bf controller .combatStart ++
     (s.trigAllUnitsAt bf).flatMap (s.combatantTriggers att) ++
+    s.friendlyAttackGroupTriggers bf att (s.unitsAtOf bf att) ++
     -- the abilities of the Battlefield: for the players who attack and defend there
     (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       triggersOf s bf q (if q == att then TriggerEvent.attack else .defend)) ++
@@ -692,7 +702,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
             (s.cardDef? u).any (·.hasType .unit) then
           (triggersOf s u q .youDefend).map (fun t => { t with subject := some bf })
         else []))
-  | .combatJoined _ att units => units.flatMap (s.combatantTriggers att)
+  | .combatJoined bf att units =>
+    units.flatMap (s.combatantTriggers att) ++ s.friendlyAttackGroupTriggers bf att units
   | _ => []
 
 /-- Keep the abilities that a limit of times per turn lets fire: the events of one step may set
@@ -948,7 +959,7 @@ def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
 def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
   let effect := (triggerAbility s t).bind Ability.effectDef
   let choices := ((effect.bind (·.forPick (mode.elim .plain SpellPick.mode))).map (·.choices)).getD []
-  t.eventBattlefields.elim choices (fun fields => choices.map (Choice.withEventBattlefields fields))
+  choices.map (Choice.withTriggerEvent t.eventBattlefields t.eventObjects)
 
 /-- The trigger declaration on the queued ability, even if its source left the Board. -/
 def trigDeclaration (s : GameState) (t : PendTrigger) : Option Trigger :=
@@ -1184,6 +1195,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       triggerSubject := t.subject
       triggerKeyword := t.triggerKeyword
       eventBattlefields := t.eventBattlefields
+      eventObjects := t.eventObjects
       shownOff := t.shownOff
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }

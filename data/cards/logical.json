@@ -32387,6 +32387,7 @@
    "mightBonus": null,
    "name": "Demacian Standard",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-156/167"
    ],
@@ -32394,8 +32395,10 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
-    "Device",
     "Jarvan IV"
    ],
    "text": [

@@ -156,6 +156,7 @@ RADIANCE_PRINT_METADATA = {
     "RAD-144": {"supertypes": ["signature"], "powerOwn": True},
     "RAD-146": {"supertypes": ["signature"], "tags": ["Orianna"], "powerOwn": True},
     "RAD-148": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-156": {"supertypes": ["signature"], "tags": ["Jarvan IV"], "powerOwn": True},
     "RAD-SP3": {"supertypes": ["champion"], "tags": ["Evelynn", "Demon"]},
     "RAD-SP4": {"supertypes": ["champion"], "tags": ["Kai'Sa", "The Void"]},
     "RAD-SP5": {"supertypes": ["champion"], "tags": ["Seraphine", "Piltover"]},

@@ -5092,8 +5092,8 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
         | some grant => s.grantedActivation grant
         | none => abilityAt s card idx)
     let definition := (ability.bind Ability.effectDef).bind (·.forPick o.spellPick)
-    let definition := o.eventBattlefields.elim definition (fun fields =>
-      definition.map (fun e => { e with choices := e.choices.map (Choice.withEventBattlefields fields) }))
+    let definition := definition.map (fun e =>
+      { e with choices := e.choices.map (Choice.withTriggerEvent o.eventBattlefields o.eventObjects) })
     let recheck := o.spellPick != .plain || definition.any (fun e =>
       e.recheckTargets || (!e.choices.isEmpty && e.choices.all (fun
         | .target .one .. | .target (.upTo 1) .. => true

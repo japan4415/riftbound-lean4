@@ -283,6 +283,8 @@ inductive TriggerEvent where
   | enter
   /-- The object attacks. -/
   | attack
+  /-- One or more friendly Units become attackers at the source's Battlefield together. -/
+  | friendlyAttackGroupHere
   /-- The object defends. -/
   | defend
   /-- The object conquers a Battlefield. -/
