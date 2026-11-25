@@ -2379,12 +2379,15 @@ def UNL_080 : CardDef :=
     abilities := [.triggered (.onSelf .move)
       (.of [] (.seqOf [.prim (.draw .you (.const 1)),
         .eitherOf (EffectList.ofList
-          [.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .spell])),
-             .prim (.draw .you (.const 1))],
-           .seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .gear])),
-             readyTwoRunes],
-           .seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .unit])),
-             .grant .self (.mightPlus .it (.const 3)) .thisTurn]])])) .unlimited],
+          [.ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .spell])) (.const 1))
+            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .spell])),
+              .prim (.draw .you (.const 1))]) .nop,
+           .ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .gear])) (.const 1))
+            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .gear])),
+              readyTwoRunes]) .nop,
+           .ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [.ofType .unit])) (.const 1))
+            (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [.ofType .unit])),
+              .grant .self (.mightPlus .it (.const 3)) .thisTurn]) .nop])])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-081
