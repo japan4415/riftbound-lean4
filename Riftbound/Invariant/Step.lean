@@ -146,6 +146,14 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
+  · rename_i bf q rest c pay ts hp hk
+    exact reactStep_wf hwf h
+  · rename_i bf q rest src idx pay ts hp hk
+    exact activateStep_wf hwf h
+  · rename_i q c ab hp hk
+    exact applyRune_wf hwf h
+  · rename_i q src idx pay hp hk
+    exact applyMana_wf hwf h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
@@ -406,6 +414,14 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · rename_i bf q rest c pay ts hp hk
+    exact reactStep_physIds hwf h
+  · rename_i bf q rest src idx pay ts hp hk
+    exact activateStep_physIds hwf h
+  · rename_i q c ab hp hk
+    exact applyRune_physIds hwf h
+  · rename_i q src idx pay hp hk
+    exact applyMana_physIds hwf h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
@@ -489,7 +505,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   · cases kind <;> cases actor <;> simp [Actor.isPlayer]
   · cases f <;> cases kind <;> cases actor <;>
       simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
-        mem_legalActivates, mem_legalReactions, mem_legalPuts, mem_legalManas]
+        mem_legalActivates, mem_legalReactions, mem_legalPuts, mem_legalManas,
+        mem_legalShowdownPlays, mem_legalShowdownActivates]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

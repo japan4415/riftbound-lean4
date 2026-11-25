@@ -31,6 +31,7 @@ theorem declareDraw_draws {s s' : GameState} {es : List Event} {actor : Actor}
   obtain ⟨rfl, -⟩ := h
   exact ⟨rfl, rfl⟩
 
+set_option maxHeartbeats 800000 in
 /-- A legal declaration of a draw is the judge's, under the Tournament Rules. -/
 theorem legal_declareDraw {s : GameState} {a : Action} (hk : a.kind = .declareDraw)
     (h : LegalFrame s a) : a.actor = .judge ∧ s.config.ruleSet.isTournament = true := by

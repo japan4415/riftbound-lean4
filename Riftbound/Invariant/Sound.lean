@@ -178,6 +178,19 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     simp only [hs2]
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
+  · rename_i bf q rest c pay ts hp hk
+    rw [hp, hk] at hl
+    exact reactStep_isSome hwf hl.2.1 (showdownable_spec hl.2.2)
+  · rename_i bf q rest src idx pay ts hp hk
+    rw [hp, hk] at hl
+    simp only [activatableSD, Bool.and_eq_true] at hl
+    exact activateStep_isSome hl.2.1
+  · rename_i q c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2
+  · rename_i q src idx pay hp hk
+    rw [hp, hk] at hl
+    exact applyMana_isSome hl.2
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · exact absurd hl (by simp)
@@ -328,6 +341,14 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
+  · rename_i bf q rest c pay ts hp hk
+    exact reactStep_ownerOk hwf hown h
+  · rename_i bf q rest src idx pay ts hp hk
+    exact activateStep_ownerOk hwf hown h
+  · rename_i q c ab hp hk
+    exact applyRune_ownerOk hwf hown h
+  · rename_i q src idx pay hp hk
+    exact applyMana_ownerOk hwf hown h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl

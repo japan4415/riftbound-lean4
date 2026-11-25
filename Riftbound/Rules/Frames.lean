@@ -235,6 +235,14 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       (fun s' => ({ s' with pending := .chooseBurnOut p :: rest }, [Event.burnedOut p]))
   | .chooseBurnOut _ :: rest, .burnOutTarget opp =>
     some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
+  -- in a Showdown, the player with Focus plays a Spell with Action or a card with Reaction, or uses an
+  -- ability: it goes on the Chain, and the Showdown goes on when the Chain is empty (CR 347-348)
+  | .showdown bf q _ :: rest, .playCard c pay ts =>
+    reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest)
+  | .showdown bf q _ :: rest, .activate src idx pay ts =>
+    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest)
+  | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
+  | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
   | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
   | _, _ => none

@@ -37,6 +37,7 @@ theorem timeCalled_sets_clock {s s' : GameState} {es : List Event} {actor : Acto
   obtain ⟨rfl, -⟩ := h
   exact ⟨rfl, rfl, rfl, rfl⟩
 
+set_option maxHeartbeats 800000 in
 /-- A legal call of time is the clock's, once, in a 1v1 game under the Tournament Rules, after the
 first turn has begun (TR 408.2). -/
 theorem legal_timeCalled {s : GameState} {a : Action} (hk : a.kind = .timeCalled)

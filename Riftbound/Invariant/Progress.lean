@@ -290,6 +290,24 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
+  · rename_i bf q n rest c pay ts hp hk
+    obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
+  · rename_i bf q n rest src idx pay ts hp hk
+    obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
+  · rename_i q c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i q src idx pay hp hk
+    have hmeta := applyMana_meta h
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_next rfl (fun hb => hb)

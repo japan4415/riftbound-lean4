@@ -593,6 +593,43 @@ def legalReactions (s : GameState) (p : PlayerId) : List Action :=
     | .playCard c pay ts => reactable s p c pay ts
     | _ => false)
 
+/-- The card is a Spell with Action (CR 806): it can be played in a Showdown. -/
+def actionSpell (s : GameState) (c : ObjId) : Bool :=
+  (s.cardDef? c).any (fun d => d.hasKeyword .action)
+
+/-- The card of the hand can be played in a Showdown (CR 347-348, 806, 813): a Spell with Action, or
+a card that can answer the Chain (Reaction). -/
+def showdownable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
+    (ts : List ObjId) : Bool :=
+  reactable s p c pay ts || (castable s p c pay ts && actionSpell s c)
+
+/-- Every way the player can play a card in a Showdown. -/
+def legalShowdownPlays (s : GameState) (p : PlayerId) : List Action :=
+  (legalPlays s p).filter (fun a =>
+    match a.kind with
+    | .playCard c pay ts => showdownable s p c pay ts
+    | _ => false)
+
+/-- The ability at place `idx` of the object has Action or Reaction speed (CR 806, 813): it can be
+used in a Showdown. -/
+def showdownSpeed (s : GameState) (src : ObjId) (idx : Nat) : Bool :=
+  match (s.cardDef? src).bind (fun d => d.fullAbilities[idx]?) with
+  | some (.activated _ sp _ _) => decide (sp ≠ Speed.normal)
+  | _ => false
+
+/-- The player can use the activated ability in a Showdown (CR 347-348): the Chain is empty, and the
+ability has Action or Reaction speed. -/
+def activatableSD (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (pay : RunePool.Payment) (ts : List ObjId) : Bool :=
+  activatable s p src idx pay ts true && showdownSpeed s src idx
+
+/-- Every way the player can use an activated ability in a Showdown. -/
+def legalShowdownActivates (s : GameState) (p : PlayerId) : List Action :=
+  (legalActivates s p true).filter (fun a =>
+    match a.kind with
+    | .activate src idx _ _ => showdownSpeed s src idx
+    | _ => false)
+
 /-- The abilities listed are exactly the ones that can be used. -/
 theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Action) :
     a ∈ legalActivates s p open_ ↔ ∃ src idx pay ts,
@@ -668,6 +705,55 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     · exact Or.inl ⟨h.2.1, h.2.2⟩
     · exact Or.inr (Or.inr h)
     · exact Or.inr (Or.inr h)
+
+/-- A card that can be played in a Showdown is a Spell that can be cast, or can be played as a card
+of the hand. -/
+theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {ts : List ObjId} (h : showdownable s p c pay ts = true) :
+    castable s p c pay ts = true ∨ ∃ dest ts', playable s p c pay dest ts' = true := by
+  simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with h | h
+  · rcases reactable_spec.mp h with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
+    · exact Or.inl h
+    · exact Or.inr ⟨none, ts, h.2.2⟩
+    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
+      exact Or.inr ⟨some b, ts, hb⟩
+    · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
+      exact Or.inr ⟨some b, ts, hb⟩
+  · exact Or.inl h.1
+
+/-- The plays listed are exactly the cards that can be played in a Showdown. -/
+theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
+    a ∈ legalShowdownPlays s p ↔ ∃ c pay ts, a = ⟨.player p, .playCard c pay ts⟩ ∧
+      c ∈ s.zone (.player p .hand) ∧ showdownable s p c pay ts = true := by
+  unfold legalShowdownPlays
+  simp only [List.mem_filter, mem_legalPlays]
+  constructor
+  · rintro ⟨⟨c, pay, ts, rfl, hc, hok⟩, hr⟩
+    exact ⟨c, pay, ts, rfl, hc, hr⟩
+  · rintro ⟨c, pay, ts, rfl, hc, hr⟩
+    refine ⟨⟨c, pay, ts, rfl, hc, ?_⟩, hr⟩
+    simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at hr
+    rcases hr with hr | hr
+    · rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
+      · exact Or.inr (Or.inl h)
+      · exact Or.inl ⟨h.2.1, h.2.2⟩
+      · exact Or.inr (Or.inr h)
+      · exact Or.inr (Or.inr h)
+    · exact Or.inr (Or.inl hr.1)
+
+/-- The abilities listed are exactly the ones that can be used in a Showdown. -/
+theorem mem_legalShowdownActivates (s : GameState) (p : PlayerId) (a : Action) :
+    a ∈ legalShowdownActivates s p ↔ ∃ src idx pay ts,
+      a = ⟨.player p, .activate src idx pay ts⟩ ∧ activatableSD s p src idx pay ts = true := by
+  unfold legalShowdownActivates
+  simp only [List.mem_filter, mem_legalActivates]
+  constructor
+  · rintro ⟨⟨src, idx, pay, ts, rfl, hact⟩, hsp⟩
+    exact ⟨src, idx, pay, ts, rfl, by simpa [activatableSD, hact] using hsp⟩
+  · rintro ⟨src, idx, pay, ts, rfl, hact⟩
+    simp only [activatableSD, Bool.and_eq_true] at hact
+    exact ⟨⟨src, idx, pay, ts, rfl, hact.1⟩, hact.2⟩
 
 /-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/
 def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
