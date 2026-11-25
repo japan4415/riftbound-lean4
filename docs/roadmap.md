@@ -1814,6 +1814,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 同じ場所にいる自分のほかの同名 Unit の枚数だけ Might が増える。敵の同名 Unit や別の場所にいる同名 Unit は枚数に含めない。
 - 167 枚中 99 枚が `drafted`、95 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 12 — 付与された Flow と複数の代替コスト
+
+- Kennen, Storm of Shuriken はプレイ時に Burn 2 を行い、Conquer 時には自分の Trash の呪文に、そのカードの基本コストを Flow としてターン終了まで与える。
+- CR 829 に従い、異なる Flow コストが複数あれば、プレイ時に使うコストを指定できる。割引後に支払いが一致しても区別し、Repeat の計算には選んだコストを使う。合法手の列挙と `Legal` の一致は `mem_legalPlays` と `legalActions_iff`、支払いの保存則は `applyCast_pays_cost` で検査する。
+- Lightning Rush は見たカードのうち 1 枚を引くか見送り、残りを Trash に置く。山札が 3 枚未満の場合も、見たカードの範囲で処理する。
+- 167 枚中 101 枚が `drafted`、97 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

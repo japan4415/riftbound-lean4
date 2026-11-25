@@ -332,9 +332,13 @@ function describeA(a, prev) {
       return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
     case 'playCard': {
       const o = objs[a.card], def = o && cards[o.card];
-      const more = (def && typeof def.cost === 'number' && a.pay > def.cost
-        ? '（追加コスト +' + (a.pay - def.cost) + '）' : '')
-        + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '');
+      const base = a.flowCost;
+      const cost = base
+        ? '（Flow ' + base.energy + ' Energy' +
+          (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）'
+        : (def && typeof def.cost === 'number' && a.pay > def.cost
+          ? '（追加コスト +' + (a.pay - def.cost) + '）' : '');
+      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '');
       if (def && def.types.includes('spell')) {
         const tg = (a.targets || []).map((t) => cardName(t)).join('、');
         const react = prev === 'chainPass';

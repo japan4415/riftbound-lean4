@@ -379,6 +379,7 @@ def Effect.understood : Effect → Bool
   | .grant s (.mightMinusMin .it a _) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.keyword .it _) d => s.understoodPick && d.endPoint?.isSome
+  | .grant s .flowAtBaseCost d => s.understoodPick && d.endPoint?.isSome
   | _ => false
 
 /-- Every effect of a list is understood. -/
@@ -564,7 +565,7 @@ def CardDef.hasEmpowerAbility (c : CardDef) : Bool :=
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
-    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.canFlow) ||
+    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
       | some e => e.choices.all Choice.simple && e.body.understood

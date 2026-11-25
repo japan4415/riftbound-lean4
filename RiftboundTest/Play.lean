@@ -99,16 +99,16 @@ meta def cnt (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.pl
 #guard match mainPhaseP 1 >>= withEnergy with
   | some (s, p) =>
     let plays := (legalActions s).filter fun a =>
-      match a.kind with | .playCard _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ => true | _ => false
     let vanillas := (s.zone (.player p .hand)).filter fun c =>
       (s.cardDef? c).any (fun d => d.name.startsWith "Vanilla")
     plays.length == vanillas.length && !plays.isEmpty &&
-      plays.all (fun a => match a.kind with | .playCard _ pay _ => pay == ⟨1, []⟩ | _ => false)
+      plays.all (fun a => match a.kind with | .playCard _ pay _ _ => pay == ⟨1, []⟩ | _ => false)
   | none => false
 -- and nothing is listed without Energy
 #guard match mainPhaseP 1 with
   | some s => ((legalActions s).filter fun a =>
-      match a.kind with | .playCard _ _ _ => true | _ => false).isEmpty
+      match a.kind with | .playCard _ _ _ _ => true | _ => false).isEmpty
   | none => false
 
 -- ---- Spells and the Chain (CR 311-313, 340, 354) ----
@@ -255,9 +255,9 @@ meta def other (p : PlayerId) : PlayerId := if p == ⟨0⟩ then ⟨1⟩ else �
 #guard match sparkReady with
   | some (s, _, c, v) =>
     let plays := (legalActions s).filter fun a =>
-      match a.kind with | .playCard c' _ _ => c' == c | _ => false
+      match a.kind with | .playCard c' _ _ _ => c' == c | _ => false
     plays.length == 1 &&
-    plays.all (fun a => match a.kind with | .playCard _ _ ts => ts == [v] | _ => false)
+    plays.all (fun a => match a.kind with | .playCard _ _ ts _ => ts == [v] | _ => false)
   | none => false
 
 -- Spark with no target, with a target of the wrong side, or with an object that is not in play is

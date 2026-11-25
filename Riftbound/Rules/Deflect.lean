@@ -74,7 +74,7 @@ end RunePool
 /-- The objects an answer chooses. -/
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
-  | .playCard _ _ ts => ts
+  | .playCard _ _ ts _ => ts
   | .activate _ _ _ ts => ts
   | .putTrigger _ ts => ts
   | _ => []
@@ -82,7 +82,7 @@ def Action.targetsOf (a : Action) : List ObjId :=
 /-- An answer that plays a card can have a printed exception to the Deflect cost. -/
 def Action.spellSource (a : Action) : Option ObjId :=
   match a.kind with
-  | .playCard c _ _ => some c
+  | .playCard c _ _ _ => some c
   | _ => none
 
 namespace GameState

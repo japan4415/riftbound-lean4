@@ -2694,7 +2694,21 @@ theorem addMightFloor_safe (k floor : Nat) (ends : EndPoint) (s : GameState) (id
     Safe s (addMightFloor k floor ends s id).1 :=
   addMightMod_safe _ s id
 
-/-- Change the Might of objects for a while: `sign` is 1 for more, -1 for less. -/
+/-- Grant Flow for a Spell's base cost before any play-time adjustments (CR 356.1, 829). -/
+def addFlowAtBaseCost (ends : EndPoint) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match (s.cardDef? id).bind (fun d => if d.hasType .spell then d.cost else none) with
+  | some cost => addTempKw ⟨.flow, .cost cost⟩ ends s id
+  | none => (s, [])
+
+/-- Granting Flow at the base cost preserves the structural and ownership invariants. -/
+theorem addFlowAtBaseCost_safe (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (addFlowAtBaseCost ends s id).1 := by
+  unfold addFlowAtBaseCost
+  split
+  · exact addTempKw_safe _ _ _ _
+  · exact Safe.refl s
+
+/-- Grant a temporary change to the selected objects. -/
 def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
     (m : StaticMod) (d : Duration) : Option (GameState × List Event) :=
   let go (a : Amount) (sign : Int) : Option (GameState × List Event) :=
@@ -2707,6 +2721,7 @@ def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : S
     d.endPoint?.bind (fun ends => (a.evalS s p src env).bind (fun k =>
       onSelected s p src env sel (addMightFloor k fl ends)))
   | .keyword .it k => d.endPoint?.bind (fun ends => onSelected s p src env sel (addTempKw k ends))
+  | .flowAtBaseCost => d.endPoint?.bind (fun ends => onSelected s p src env sel (addFlowAtBaseCost ends))
   | _ => none
 
 /-- A lasting change that is made is a safe change. -/
@@ -2746,6 +2761,11 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     | some ends =>
       simp only [hd, Option.bind_some] at h
       exact onSelected_safe (addTempKw_safe _ _) h
+  · cases hd : d.endPoint? with
+    | none => simp [hd] at h
+    | some ends =>
+      simp only [hd, Option.bind_some] at h
+      exact onSelected_safe (addFlowAtBaseCost_safe _) h
   · simp at h
 
 /-- The selector of a primitive that is chosen while the effect resolves, if it has one. -/

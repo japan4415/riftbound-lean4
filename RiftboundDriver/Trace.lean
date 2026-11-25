@@ -44,6 +44,13 @@ def zoneName : Zone → String
   | .battlefieldZone => "battlefield"
   | .chain => "chain"
 
+/-- A cost as JSON: the Energy, and the Power symbols (a domain, `any`, or `own` for the domain of
+the card). -/
+def costJson (k : Cost) : String :=
+  jobj [("energy", toString k.energy),
+    ("power", jarr (k.power.map (fun s => match s with
+      | .domain d => jstr (ctorName d) | .any => jstr "any" | .own => jstr "own")))]
+
 /-- An action as JSON. -/
 def actionJson (a : Action) : String :=
   let who := match a.actor with
@@ -54,10 +61,11 @@ def actionJson (a : Action) : String :=
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c pay ts =>
+    | .playCard c pay ts flow =>
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
-        ("targets", jarr (ts.map (fun t => toString t.n)))]
+        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+        (flow.toList.map (fun k => ("flowCost", costJson k)))
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
@@ -238,13 +246,6 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     ("action", match a with | some a => actionJson a | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)], seen')
 
-/-- A cost as JSON: the Energy, and the Power symbols (a domain, `any`, or `own` for the domain of
-the card). -/
-def costJson (k : Cost) : String :=
-  jobj [("energy", toString k.energy),
-    ("power", jarr (k.power.map (fun s => match s with
-      | .domain d => jstr (ctorName d) | .any => jstr "any" | .own => jstr "own")))]
-
 /-- The parameter of a keyword as JSON. -/
 def kwArgJson : KeywordArg → String
   | .none => "null"
@@ -289,7 +290,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let isAb (ab : RuneAbility) (a : Action) : Bool :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ => true | _ => false
     let isGo (a : Action) : Bool :=
       match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
     let isUse (a : Action) : Bool :=
@@ -310,10 +311,10 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     | some a0 =>
       -- the same card and targets: pay the additional cost when there is one
       let payOf (a : Action) : Nat :=
-        match a.kind with | .playCard _ pay _ => pay.energy + pay.power.length | _ => 0
+        match a.kind with | .playCard _ pay _ _ => pay.energy + pay.power.length | _ => 0
       let same (a : Action) : Bool :=
         match a.kind, a0.kind with
-        | .playCard c _ _, .playCard c0 _ _ => c == c0 && a.targetsOf == a0.targetsOf
+        | .playCard c _ _ _, .playCard c0 _ _ _ => c == c0 && a.targetsOf == a0.targetsOf
         | _, _ => false
       let best := (legal.filter same).foldl (fun acc a => if payOf a > payOf acc then a else acc) a0
       some (best, r)
@@ -334,7 +335,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     -- when one is in the hand
     let legal := legalActions s
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ => true | _ => false
     let isExhaust (a : Action) : Bool :=
       match a.kind with | .runeAbility _ .exhaust => true | _ => false
     let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)

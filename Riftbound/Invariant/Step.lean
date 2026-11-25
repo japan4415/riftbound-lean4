@@ -62,7 +62,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
-  · rename_i p rest c pay ts hp hk
+  · rename_i p rest c pay ts flow hp hk
     exact reactStep_wf hwf h
   · rename_i p rest src idx pay ts hp hk
     exact activateStep_wf hwf h
@@ -146,7 +146,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
-  · rename_i bf q rest c pay ts hp hk
+  · rename_i bf q rest c pay ts flow hp hk
     exact reactStep_wf hwf h
   · rename_i bf q rest src idx pay ts hp hk
     exact activateStep_wf hwf h
@@ -326,7 +326,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact List.Perm.refl _)
-  · rename_i p n rest c pay ts hp hk
+  · rename_i p n rest c pay ts flow hp hk
     exact reactStep_physIds hwf h
   · rename_i p n rest src idx pay ts hp hk
     exact activateStep_physIds hwf h
@@ -414,7 +414,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i bf q rest c pay ts hp hk
+  · rename_i bf q rest c pay ts flow hp hk
     exact reactStep_physIds hwf h
   · rename_i bf q rest src idx pay ts hp hk
     exact activateStep_physIds hwf h
@@ -495,6 +495,7 @@ theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+set_option maxHeartbeats 400000 in
 /-- The answers of the players to the open question that `legalFrameActions` lists are exactly
 the legal ones by a player. -/
 theorem legalFrameActions_iff (s : GameState) (a : Action) :

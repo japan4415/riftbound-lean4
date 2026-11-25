@@ -2960,8 +2960,15 @@ def VEN_113.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kennen, Storm of Shuriken: the effect is not written yet. -/
-def VEN_113 : CardDef := VEN_113.meta
+/-- Kennen, Storm of Shuriken. -/
+def VEN_113 : CardDef :=
+  { VEN_113.meta with
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.prim (.burn .you (.const 2)))) .unlimited,
+      .triggered (.onSelf .conquer)
+        (.of [.targetOf .one .friendly .inTrash [.ofType .spell]]
+          (.grant (.slot 0) .flowAtBaseCost .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-114
 /--
@@ -4078,8 +4085,17 @@ def VEN_156.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Lightning Rush: the effect is not written yet. -/
-def VEN_156 : CardDef := VEN_156.meta
+/-- Lightning Rush. -/
+def VEN_156 : CardDef :=
+  let size := Amount.count (.all .friendly .inMainDeck [])
+  let top := Selector.one .friendly .inMainDeck [.top 3]
+  { VEN_156.meta with
+    spellEffect := some (.of []
+      (.bind ⟨"deck"⟩ size (.seqOf [.prim (.lookTop 3),
+        .ifThen (.cmp .gt (.var ⟨"deck"⟩) (.const 0)) (.may (.prim (.returnToHand top))) .nop,
+        .repeatN (.sub (.min (.const 3) (.var ⟨"deck"⟩)) (.sub (.var ⟨"deck"⟩) size))
+          (.prim (.bin (.one .friendly .inMainDeck [.top 1])))]))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-157
 /--

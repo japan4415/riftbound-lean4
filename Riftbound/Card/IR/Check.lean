@@ -233,6 +233,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .mightMinus s a => Selector.ok c s && Amount.ok c a
   | .mightMinusMin s a _ => Selector.ok c s && Amount.ok c a
   | .keyword s _ => Selector.ok c s
+  | .flowAtBaseCost => c.itOk
   | .costPlus s a => Selector.ok c s && Amount.ok c a
   | .costMinus s a => Selector.ok c s && Amount.ok c a
   | .costPower s a _ _ => Selector.ok c s && Amount.ok c a

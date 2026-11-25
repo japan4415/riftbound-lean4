@@ -74,7 +74,7 @@ meta def putDf (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
 meta def canPlay (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
   (legalFrameActions s).any (fun a =>
     match a.kind with
-    | .playCard c' _ ts' => c' == c && ts' == ts
+    | .playCard c' _ ts' _ => c' == c && ts' == ts
     | _ => false)
 
 /-- The player can use the ability at place 0 of the object with these targets. -/

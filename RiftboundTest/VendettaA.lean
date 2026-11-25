@@ -359,4 +359,90 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return s.mightNow spiderling == some 2 && s.mightNow sibling == some 2 &&
     s.mightNow otherPlace == some 1 && s.mightNow enemy == some 1
 
+-- Kennen burns two cards on play and grants Flow on conquering only to a spell in his own Trash.
+#guard vendettaCase fun s => do
+  let (s, kennen) ← putAt s s.me "VEN-113" s.bf0
+  let (s, spell) ← put s s.me "SFD-003" .trash
+  let (s, _) ← put s s.me "VEN-014" .trash
+  let (s, _) ← put s s.you "SFD-003" .trash
+  let (s, _) ← put s s.me "SFD-003" .hand
+  let s := s.rich s.me
+  let played ← fire s [.played s.me kennen]
+  let ev := Event.scored s.me s.bf0 true
+  let targets ← firePicks s [ev]
+  let granted ← fire s [ev] { pick := (· == [spell]) }
+  let granted := { granted with pending := [.priority s.me] }
+  let flowed : Action := ⟨.player s.me, .playCard spell ⟨1, []⟩ [kennen]⟩
+  let (casting, _) ← (step 100 granted flowed).toOption
+  let final := settleChain {} 12 casting
+  let expired := (advance 100 { granted with pending := [.phase .ending] } []).toOption
+  return (played.zone (.player s.me .mainDeck)).length + 2 ==
+      (s.zone (.player s.me .mainDeck)).length && targets == [spell] &&
+    !(legalActions s).contains flowed && (legalActions granted).contains flowed &&
+    final.countIn s.me .banishment "SFD-003" == 1 &&
+    expired.any (fun r => !(r.1.playSources s.me).contains spell)
+
+-- Printed Flow and Kennen's grant coexist; Stargazer discounts both of the adjusted costs.
+#guard vendettaCase fun s => do
+  let (s, kennen) ← putAt s s.me "VEN-113" s.bf0
+  let (s, spell) ← put s s.me "VEN-003" .trash
+  let (s, _) ← put s s.me "VEN-098" .base
+  let (s, gear) ← put s s.you "VEN-058" .base
+  let s := s.rich s.me
+  let granted ← fire s [.scored s.me s.bf0 true] { pick := (· == [spell]) }
+  let granted := { granted with pending := [.priority s.me] }
+  let printed : Action := ⟨.player s.me, .playCard spell ⟨2, [.fury]⟩ [gear]
+    (some ⟨4, [.domain .fury]⟩)⟩
+  let grantedCost : Action := ⟨.player s.me, .playCard spell ⟨1, [.fury]⟩ [gear]
+    (some ⟨2, [.domain .fury]⟩)⟩
+  return (legalActions granted).contains printed && (legalActions granted).contains grantedCost &&
+    (step 100 granted printed).isOk && (step 100 granted grantedCost).isOk &&
+    (granted.obj? kennen).isSome
+
+-- A payment can match two Flow costs with different Repeat outcomes. The action distinguishes them.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "SFD-003" .trash
+  let (s, unit) ← put s s.me "VEN-014" .base
+  let low : Cost := ⟨1, []⟩
+  let high : Cost := ⟨2, []⟩
+  let s := (addTempKw ⟨.flow, .cost high⟩ .turn (s.rich s.me) spell).1
+  let s := (addTempKw ⟨.flow, .cost low⟩ .turn s spell).1
+  let action (flow : Option Cost) : Action := ⟨.player s.me, .playCard spell ⟨2, []⟩ [unit] flow⟩
+  let (a, _) ← (step 100 s (action (some low))).toOption
+  let (b, _) ← (step 100 s (action (some high))).toOption
+  let aSpell ← (a.zone .chain).head?
+  let bSpell ← (b.zone .chain).head?
+  let nA := (a.obj? aSpell).map (·.extraPaid)
+  let nB := (b.obj? bSpell).map (·.extraPaid)
+  let showdown := { s with pending := [.showdown s.bf0 s.me 0] }
+  let reaction := { s with pending := [.chainPass s.me 0] }
+  return (legalActions s).contains (action (some low)) &&
+    (legalActions s).contains (action (some high)) &&
+    (legalActions showdown).contains (action (some low)) &&
+    (step 100 showdown (action (some low))).isOk &&
+    !(legalActions reaction).contains (action (some low)) &&
+    !(step 100 reaction (action (some low))).isOk &&
+    !(step 100 s (action none)).isOk && nA == some 1 && nB == some 0
+
+-- Lightning Rush draws any of the looked-at cards or none, and puts only the others in Trash.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "VEN-156" .hand
+  let deck := Zone.player s.me .mainDeck
+  let before := s.zone deck
+  let picked ← before[1]?
+  let withDraw ← play s s.me spell [] { obj := (· == picked) }
+  let skipped ← play s s.me spell [] { yes := false }
+  let short := (applyEach (sendObj .banishment) s (before.drop 2)).1
+  let short := (sendObj .trash short spell).1
+  let trashSpell ← short.firstOf s.me .trash "VEN-156"
+  let flowed ← cast (short.rich s.me) s.me trashSpell ⟨2, [.chaos]⟩ [] { obj := (· == picked) }
+  let former (t : GameState) (z : ZoneKind) :=
+    (t.zone (.player s.me z)).filterMap (fun id => (t.obj? id).bind (·.formerId))
+  return withDraw.zone deck == before.drop 3 && skipped.zone deck == before.drop 3 &&
+    (former withDraw .hand).contains picked && !(former withDraw .trash).contains picked &&
+    (before.take 3).all ((former skipped .trash).contains ·) &&
+    (flowed.zone deck).isEmpty && (former flowed .hand).contains picked &&
+    (former flowed .trash).countP (fun id => before.contains id) == 1 &&
+    flowed.countIn s.me .banishment "VEN-156" == 1
+
 end RiftboundTest

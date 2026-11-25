@@ -110,6 +110,12 @@ structure KeywordInst where
   arg : KeywordArg := .none
 deriving DecidableEq, Repr, Hashable
 
+/-- Read the resource cost of one instance of Flow (CR 829). -/
+def KeywordInst.flowCost? (k : KeywordInst) : Option Cost :=
+  match k.keyword, k.arg with
+  | .flow, .cost cost => some cost
+  | _, _ => none
+
 end Riftbound
 
 end

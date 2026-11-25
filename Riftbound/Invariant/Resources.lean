@@ -105,10 +105,10 @@ theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
 smaller by the total of the card's cost, or of its cost with an additional cost (Repeat), and no
 other player's Pool changes. -/
 theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {targets : List ObjId} {es : List Event}
-    (hp : castable s p c pay targets = true)
-    (h : applyCast s p c pay targets = some (s', es)) :
-    ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d = some cost ∧
+    {pay : RunePool.Payment} {flow : Option Cost} {targets : List ObjId} {es : List Event}
+    (hp : castable s p c pay targets flow = true)
+    (h : applyCast s p c pay targets flow = some (s', es)) :
+    ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
       b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.playCostsOf p c d b ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
@@ -174,7 +174,7 @@ theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
 /-- **A Spell on the Chain carries the objects chosen when it was cast** (CR 355): the object that
 `applyCast` puts on the Chain has exactly the targets of the action. -/
 theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets = some (s', es)) :
+    {flow : Option Cost} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow = some (s', es)) :
     ∃ id', es = [Event.moved c id' .chain] ∧
       ∀ o, s'.obj? id' = some o → o.targets = targets := by
   obtain ⟨pool, s2, id', rep, -, -, rfl, hes⟩ := applyCast_cases h
@@ -191,7 +191,7 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 
 /-- **The targets of a Spell are in supported target zones** (CR 355). -/
 theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {targets : List ObjId} (h : castable s p c pay targets = true) :
+    {pay : RunePool.Payment} {flow : Option Cost} {targets : List ObjId} (h : castable s p c pay targets flow = true) :
     ∀ t ∈ targets, s.targetPresent t = true := by
   obtain ⟨d, e, -, -, hok⟩ := castable_targets h
   exact targetsOk_mem_targetPresent hok

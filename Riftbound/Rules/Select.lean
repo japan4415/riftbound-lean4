@@ -259,7 +259,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .named n => (s.cardDef? id).map (fun d => d.name == n)
   | .sameNameAsSource =>
     pure ((s.cardDef? self).any (fun src => (s.cardDef? id).any (·.nameKey == src.nameKey)))
-  | .hasKeyword k => (s.cardDef? id).map (·.hasKeyword k)
+  | .hasKeyword k => (s.cardDef? id).map (fun d =>
+    d.hasKeyword k || (s.obj? id).any (fun o => o.tempKws.any (fun a => a.1.keyword == k)))
   | .domain d => (s.cardDef? id).map (·.domains.contains d)
   | .might op a => do
     let n ← a.eval env

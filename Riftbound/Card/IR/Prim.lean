@@ -353,6 +353,8 @@ inductive StaticMod where
   | mightMinusMin (s : Selector) (a : Amount) (floor : Nat)
   /-- Objects get a keyword (CR 479.3). -/
   | keyword (s : Selector) (k : KeywordInst)
+  /-- A granted Flow instance whose cost is the affected Spell's base cost (CR 829). -/
+  | flowAtBaseCost
   /-- Each Equipment of the player gives the Unit it is attached to the keyword (Purifier: one more
   time for each Equipment). -/
   | equipEach (k : KeywordInst)
