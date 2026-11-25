@@ -302,6 +302,12 @@ function describeA(a, prev) {
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
     case 'choose': return [who + ': ' + cardName(a.obj) + ' を選ぶ', '効果の対象に ' + cardName(a.obj) + ' を選ぶ'];
+    case 'predictPick': {
+      const card = cardName(a.card);
+      return a.recycle
+        ? [who + ': ' + card + ' を Recycle', '山札の下へ送る。複数枚なら順番はランダム']
+        : [who + ': ' + card + ' を山札の上に残す', '残すカードは選んだ順に上から並ぶ'];
+    }
     case 'mulliganPick': return [who + ': ' + cardName(a.card) + ' をマリガン', cardName(a.card) + ' を脇に置く'];
     case 'burnOutTarget': return [who + ': Burn Out の相手を選ぶ', 'P' + a.opponent + ' が 1 点を得る'];
     case 'assignPick':

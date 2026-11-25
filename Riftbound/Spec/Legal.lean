@@ -126,6 +126,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- the judge declares a draw, whatever question is open, under the Tournament Rules: the players
   -- agree to it (TR 410.1), or a loop has no end (TR 505.6)
   | _, .declareDraw => a.actor = .judge ∧ s.config.ruleSet.isTournament = true
+  -- Predict: choose a remaining inspected card to keep next on top or Recycle (CR 437).
+  | .predict p _ c cs _ _ :: _, .predictPick id _ => a.actor = .player p ∧ id ∈ c :: cs
+  -- The simultaneous Recycle goes to the bottom in random order (CR 417.5).
+  | .chancePredict _ _ _ bottom :: _, .arrange l => a.actor = .chance ∧ l.Perm bottom
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

@@ -290,6 +290,17 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom))
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (completePrediction_safe s p n top bottom)
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the

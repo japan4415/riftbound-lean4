@@ -1289,8 +1289,13 @@ def VEN_047.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Apprentice Mage: the effect is not written yet. -/
-def VEN_047 : CardDef := VEN_047.meta
+/-- Apprentice Mage Predicts when it becomes Empowered and gains Might while Empowered. -/
+def VEN_047 : CardDef :=
+  { VEN_047.meta with
+    abilities := [.empower [.pay ⟨2, []⟩],
+      .triggered (.onSelf .becomeEmpowered) (.of [] (.prim (.predict (.const 2)))) .unlimited,
+      .passive (.empowered .self) [.mightPlus .self (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-048
 /--
@@ -1522,8 +1527,12 @@ def VEN_056.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Clairvoyance: the effect is not written yet. -/
-def VEN_056 : CardDef := VEN_056.meta
+/-- Clairvoyance Predicts five cards and then draws two from the resulting deck. -/
+def VEN_056 : CardDef :=
+  { VEN_056.meta with
+    spellEffect := some (.of []
+      (.seqOf [.prim (.predict (.const 5)), .prim (.draw .you (.const 2))])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-057
 /--

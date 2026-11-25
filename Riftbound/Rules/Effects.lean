@@ -3160,6 +3160,14 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
   | .prim (.burn who n) => burnEffect s p src env who n es
   | .prim (.burnWithUnitTrigger n idx) => burnEffect s p src env .you n es (some idx)
+  | .prim (.predict n) =>
+    match n.evalS s p src env with
+    | some count =>
+      match (s.zone (.player p .mainDeck)).take count with
+      | [] => (s, [.run p src env es], [])
+      | c :: cs =>
+        (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
+    | none => skip
   | .prim (.draw sel n) =>
     match sel.resolve s p, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])

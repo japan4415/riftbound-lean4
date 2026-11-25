@@ -122,6 +122,8 @@ def legalFrameActions (s : GameState) : List Action :=
     ⟨.player q, .pass⟩ :: (legalRunes s q ++ legalManas s q ++ legalShowdownPlays s q ++
       legalShowdownActivates s q)
   | .assign bf _ side acc _ :: _ => legalAssigns s bf side acc
+  | .predict p _ c cs _ _ :: _ =>
+    (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
 /-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/

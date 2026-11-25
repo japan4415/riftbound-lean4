@@ -17,6 +17,74 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Apprentice Mage can order the two cards it Predicts after paying to Empower.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mage) ← put s p "VEN-047" .base
+  let z := Zone.player p .mainDeck
+  let deck := s.zone z
+  let first ← deck[0]?
+  let second ← deck[1]?
+  let drawnLater ← deck[2]?
+  let waiting ← activate s p mage 0 [] ⟨2, []⟩
+  let (choice, _) ← (step 100 waiting ⟨.player p, .predictPick second false⟩).toOption
+  let (done, _) ← (step 100 choice ⟨.player p, .predictPick first false⟩).toOption
+  return waiting.mightNow mage == some 4 && done.mightNow mage == some 4 &&
+    (waiting.poolOf p).energy + 2 == ((s.rich p).poolOf p).energy &&
+    (waiting.zone z) == deck && (legalFrameActions waiting).length == 4 &&
+    (step 100 waiting ⟨.player q, .predictPick first false⟩).toOption.isNone &&
+    (step 100 waiting ⟨.player p, .predictPick drawnLater true⟩).toOption.isNone &&
+    (step 100 choice ⟨.player p, .predictPick second true⟩).toOption.isNone &&
+    done.zone z == second :: first :: deck.drop 2 &&
+    (activate done p mage 0 [] ⟨2, []⟩).isNone
+
+-- Clairvoyance looks at five, recycles the chosen cards in a random order, and draws the
+-- top two in the order the player chose. No card is drawn while the random order is pending.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "VEN-056" .hand
+  let z := Zone.player p .mainDeck
+  let deck := s.zone z
+  let a ← deck[0]?
+  let b ← deck[1]?
+  let c ← deck[2]?
+  let d ← deck[3]?
+  let e ← deck[4]?
+  let started ← castStop s p spell
+  let (passed, _) ← (step 100 started ⟨.player p, .pass⟩).toOption
+  let (waiting, lookEvents) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let picks := [(d, false), (a, true), (b, false), (e, true), (c, true)]
+  let shuffled ← picks.foldlM (fun t (id, recycle) =>
+    (step 100 t ⟨.player p, .predictPick id recycle⟩).toOption.map Prod.fst) waiting
+  let order := [a, c, e]
+  let (done, events) ← (step 100 shuffled ⟨.chance, .arrange order⟩).toOption
+  let drawn := events.filterMap (fun
+    | .moved old _ (.player player .hand) => if player == p then some old else none
+    | _ => none)
+  return lookEvents == (deck.take 5).map (Event.lookedAt p) &&
+    shuffled.zone z == deck && shuffled.handN p + 1 == s.handN p &&
+    (step 100 shuffled ⟨.player p, .arrange order⟩).toOption.isNone &&
+    (step 100 shuffled ⟨.chance, .arrange [a, a, e]⟩).toOption.isNone &&
+    drawn == [d, b] && done.zone z == deck.drop 5 ++ order &&
+    done.handN p == s.handN p + 1
+
+-- Predict looks at a short deck as it is, including an empty one, without Burn Out.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let z := Zone.player p .mainDeck
+  let deck := s.zone z
+  let top ← deck[0]?
+  let short := (applyEach (sendObj .trash) s (deck.drop 1)).1
+  let task := Frame.run p s.bf0 {} (.cons (.prim (.predict (.const 5))) .nil)
+  let (waiting, es) ← (advance 100 { short with pending := [task] } []).toOption
+  let (recycled, rs) ← (step 100 waiting ⟨.player p, .predictPick top true⟩).toOption
+  let empty := (sendObj .trash short top).1
+  let (done, noneSeen) ← (advance 100 { empty with pending := [task] } []).toOption
+  return es == [.lookedAt p top] && recycled.zone z == [top] &&
+    recycled.pending.isEmpty && rs.isEmpty && done.pending.isEmpty && noneSeen.isEmpty
+
 -- Oasis Raider checks the controller's Beginning Phase and the relative rune count.
 #guard vendettaCase fun s => do
   let runes := s.zone (.player s.me .base) ++ s.zone (.player s.you .base)

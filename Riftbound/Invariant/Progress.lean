@@ -314,6 +314,22 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact fun hres => by simp at hres
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    let r := continuePrediction s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)
+    have hm := (continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)).same
+    refine hinv.of_next hm.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl r.2
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (completePrediction_safe s p n top bottom).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -698,6 +714,7 @@ def Frame.isChance : Frame → Bool
   | .chanceTurnOrder => true
   | .chanceRecycle _ => true
   | .chanceBurnOut _ => true
+  | .chancePredict .. => true
   | _ => false
 
 /-- In a game of at least two players, there is a player other than `p`. -/
@@ -788,6 +805,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | predict p n c cs top bottom =>
+    left
+    refine ⟨⟨.player p, .predictPick c false⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | chooseBurnOut p =>
     left
     obtain ⟨o, ho⟩ := exists_other_player hv p
@@ -801,6 +824,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | chanceTurnOrder => right; exact ⟨_, rest, hp, rfl⟩
   | chanceRecycle p => right; exact ⟨_, rest, hp, rfl⟩
   | chanceBurnOut p => right; exact ⟨_, rest, hp, rfl⟩
+  | chancePredict p n top bottom => right; exact ⟨_, rest, hp, rfl⟩
   | setupHands => exact absurd hw (by simp [Frame.isWork])
   | draw p n => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
@@ -884,11 +908,17 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     unfold LegalFrame
     rw [hp]
     exact ⟨rfl, List.Perm.refl _⟩
+  | chancePredict p n top bottom =>
+    refine ⟨⟨.chance, .arrange bottom⟩, rfl, hres, Or.inl ?_⟩
+    unfold LegalFrame
+    rw [hp]
+    exact ⟨rfl, List.Perm.refl _⟩
   | mulligan p n => exact absurd hc (by simp [Frame.isChance])
   | discard p n => exact absurd hc (by simp [Frame.isChance])
   | mayDo p src env e es => exact absurd hc (by simp [Frame.isChance])
   | eitherDo p src env a b es => exact absurd hc (by simp [Frame.isChance])
   | pickDo p src env c more e es => exact absurd hc (by simp [Frame.isChance])
+  | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
   | draw p n => exact absurd hc (by simp [Frame.isChance])

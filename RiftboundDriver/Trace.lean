@@ -85,6 +85,8 @@ def actionJson (a : Action) : String :=
     | .discardPick c => [("card", toString c.n)]
     | .decide yes => [("yes", if yes then "true" else "false")]
     | .choose o => [("obj", toString o.n)]
+    | .predictPick card recycle =>
+      [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
     | _ => []

@@ -102,6 +102,71 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
 def combatSteps (bf : ObjId) : List Frame :=
   [.combatResult bf, .combatControl bf, .combatFinish bf]
 
+/-- Return the kept cards above the uninspected deck and the Recycled cards below it (CR 437).
+Only the inspected prefix can be rearranged. -/
+def completePrediction (s : GameState) (p : PlayerId) (n : Nat) (top bottom : List ObjId) :
+    GameState :=
+  let z := Zone.player p .mainDeck
+  let deck := s.zone z
+  if z.Valid s.playerCount ∧ (top ++ bottom).Perm (deck.take n) then
+    s.reorder z (top ++ deck.drop n ++ bottom)
+  else s
+
+/-- Predicting preserves the same cards, their ownership and the structure of the game. -/
+theorem completePrediction_safe (s : GameState) (p : PlayerId) (n : Nat) (top bottom : List ObjId) :
+    Safe s (completePrediction s p n top bottom) := by
+  unfold completePrediction
+  dsimp only
+  split
+  · rename_i h
+    let deck := s.zone (.player p .mainDeck)
+    change (Zone.player p .mainDeck).Valid s.playerCount ∧
+      (top ++ bottom).Perm (deck.take n) at h
+    have shift : (top ++ deck.drop n ++ bottom).Perm (top ++ bottom ++ deck.drop n) := by
+      simpa only [List.append_assoc] using
+        (List.perm_append_comm (l₁ := deck.drop n) (l₂ := bottom)).append_left top
+    have perm : (top ++ deck.drop n ++ bottom).Perm deck := by
+      simpa only [List.take_append_drop] using shift.trans (h.2.append_right (deck.drop n))
+    exact ⟨fun wf => GameState.wf_reorder wf h.1 perm,
+      fun _ => GameState.physIds_reorder h.1 perm,
+      fun _ own => GameState.ownerOk_reorder own perm, rfl⟩
+  · exact Safe.refl s
+
+/-- Continue with the remaining Predict choices, randomize a group of Recycled cards, or finish
+immediately when no randomization is needed (CR 417.5, 437). -/
+def continuePrediction (s : GameState) (p : PlayerId) (n : Nat)
+    (left top bottom : List ObjId) : GameState × List Frame :=
+  match left with
+  | c :: cs => (s, [.predict p n c cs top bottom])
+  | [] =>
+    if 2 ≤ bottom.length then (s, [.chancePredict p n top bottom])
+    else (completePrediction s p n top bottom, [])
+
+/-- Predict choices preserve the structural invariants. -/
+theorem continuePrediction_safe (s : GameState) (p : PlayerId) (n : Nat)
+    (left top bottom : List ObjId) : Safe s (continuePrediction s p n left top bottom).1 := by
+  unfold continuePrediction
+  split
+  · exact Safe.refl s
+  · split
+    · exact Safe.refl s
+    · exact completePrediction_safe s p n top bottom
+
+/-- The only new frames that Predict choices can add are Predict's own decisions. -/
+theorem continuePrediction_frames (s : GameState) (p : PlayerId) (n : Nat)
+    (left top bottom : List ObjId) {f : Frame}
+    (hf : f ∈ (continuePrediction s p n left top bottom).2) : f.isPlay = true := by
+  unfold continuePrediction at hf
+  split at hf
+  · simp only [List.mem_singleton] at hf
+    cases hf
+    rfl
+  · split at hf
+    · simp only [List.mem_singleton] at hf
+      cases hf
+      rfl
+    · simp at hf
+
 /-- Advance one work frame by one step, before the triggered abilities that the step set off are
 found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
@@ -282,6 +347,12 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
   | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
+  | .predict p n c cs top bottom :: rest, .predictPick id recycle =>
+    let r := continuePrediction s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)
+    some ({ r.1 with pending := r.2 ++ rest }, [])
+  | .chancePredict p n top _ :: rest, .arrange bottom =>
+    some ({ completePrediction s p n top bottom with pending := rest }, [])
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

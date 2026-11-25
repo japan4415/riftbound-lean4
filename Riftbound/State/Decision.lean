@@ -113,6 +113,9 @@ inductive ActionKind where
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
   | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)
+  /-- Place the next looked-at card on top in the chosen order, or mark it for Recycle
+  (CR 437). -/
+  | predictPick (card : ObjId) (recycle : Bool)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -227,6 +230,11 @@ inductive Frame where
   (CR 355). -/
   | pickDo (p : PlayerId) (src : ObjId) (env : Env) (c : ObjId) (more : List ObjId) (e : Effect)
       (rest : EffectList)
+  /-- Choice: which card to keep next on top or Recycle during Predict (CR 437). The first
+  remaining card makes the choice nonempty. -/
+  | predict (p : PlayerId) (n : Nat) (first : ObjId) (more top bottom : List ObjId)
+  /-- Chance: Recycle multiple cards from Predict in a random order (CR 417.5, 437). -/
+  | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
 deriving DecidableEq, Repr
 
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
@@ -255,6 +263,7 @@ def Frame.isPlay : Frame → Bool
   | .mayDo .. => true
   | .eitherDo .. => true
   | .pickDo .. => true
+  | .predict .. | .chancePredict .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/

@@ -67,6 +67,9 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .chanceBurnOut p :: _ =>
     let (l, r) := shuffle r (s.zone (.player p .trash))
     some (⟨.chance, .arrange l⟩, r)
+  | .chancePredict _ _ _ bottom :: _ =>
+    let (order, r) := shuffle r bottom
+    some (⟨.chance, .arrange order⟩, r)
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
   | .chainPass p _ :: _ => some (⟨.player p, .pass⟩, r)
   | .showdown _ q _ :: _ => some (⟨.player q, .pass⟩, r)
@@ -75,7 +78,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .discard .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .mayDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .eitherDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
-  | .pickDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
+  | .pickDo .. :: _ | .predict .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .chooseBurnOut p :: _ =>
     match (allPlayers s.playerCount).filter (· ≠ p) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)

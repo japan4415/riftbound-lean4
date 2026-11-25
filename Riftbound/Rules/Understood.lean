@@ -294,6 +294,7 @@ def Prim.understood : Prim → Bool
   | .activateConquer s => s.understood
   | .choose s => s.understood
   | .lookTop _ => true
+  | .predict n => n.understood
   | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
   | .returnChampion => true

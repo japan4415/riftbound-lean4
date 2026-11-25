@@ -637,6 +637,21 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)
+    refine hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config]) rfl ?_
+    intro f hf
+    have hplay := continuePrediction_frames _ _ _ _ _ _ hf
+    cases f <;> simp_all [Frame.isSetup, Frame.isPlay]
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := completePrediction_safe s p n top bottom
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
+      (new := []) rfl (by simp)
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
@@ -1028,6 +1043,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceTurnOrder => trivial
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
+    | chancePredict p n top bottom => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
   · have := hn f (by rw [hp]; exact List.mem_cons_self)
     cases f with
@@ -1036,6 +1052,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceTurnOrder => exact absurd this (by simp [Frame.isSetup])
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
+    | chancePredict p n top bottom => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
 
 /-- **I5, in full.** A reachable game that is not over always has a legal answer other than a

@@ -664,6 +664,26 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ⟨fun hm => by simp at hm, fun _ hres => by simp at hres, fun f hf _ => by simp at hf⟩
+  · rename_i p n c cs top bottom rest id recycle hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play (.predict p n c cs top bottom) (by rw [hp]; exact List.mem_cons_self) rfl
+    have hm := (continuePrediction_safe s p n ((c :: cs).erase id)
+      (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)).same
+    refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
+    rcases List.mem_append.mp hf with hnew | hrest
+    · have : Frame.setupHands.isPlay = true := continuePrediction_frames _ _ _ _ _ _ hnew
+      contradiction
+    · rw [hp]
+      exact List.mem_cons_of_mem _ hrest
+  · rename_i p n top old rest bottom hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play (.chancePredict p n top old) (by rw [hp]; exact List.mem_cons_self) rfl
+    have hm := (completePrediction_safe s p n top bottom).same
+    refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hf
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put

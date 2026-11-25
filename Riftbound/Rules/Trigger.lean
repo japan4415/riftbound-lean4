@@ -508,6 +508,7 @@ def Frame.isResolution : Frame → Bool
   | .resolveChain => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .predict .. | .chancePredict .. => true
   | _ => false
 
 /-- Put the triggers on the stack beneath the work that is still to do: just before the first frame
