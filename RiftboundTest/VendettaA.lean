@@ -17,6 +17,81 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- The Legend watches its controller's action on their own card, even when that card
+-- was controlled by someone else. The Action spends Empowered and exhausts it up front.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, zed) ← put s p "VEN-143" .legendZone
+  let (s, enemyZed) ← put s q "VEN-143" .legendZone
+  let (s, spell) ← put s p "VEN-106" .hand
+  let (s, smite) ← put s p "UNL-007" .hand
+  let (s, discard) ← put s p "VEN-014" .hand
+  let (s, otherField) ← putBf s q "VEN-159"
+  let (s, own) ← putAt s p "VEN-014" s.bf0
+  let (s, enemy) ← putAt s q "VEN-014" otherField
+  let s := (s.modObj own (fun o => { o with controller := q })).control q s.bf0
+  let s := s.control q otherField
+  let no ← play s p spell [enemy]
+  let yes ← play s p spell [own]
+  let smited ← play s p smite [own]
+  let showdown := { yes with pending := [.showdown s.bf0 p 0] }
+  let use : Action := ⟨.player p, .activate zed 1 ⟨0, []⟩ []⟩
+  let (used, _) ← (step 100 showdown use).toOption
+  let after := settleChain {} 12 used
+  return (no.obj? zed).any (·.empowerCount == 0) && (no.obj? enemyZed).any (·.empowerCount == 0) &&
+    (yes.obj? zed).any (·.empowerCount == 1) && yes.countIn p .banishment "VEN-014" == 1 &&
+    (smited.obj? zed).any (·.empowerCount == 1) &&
+    (used.obj? zed).any (fun o => o.exhausted && o.empowerCount == 0) &&
+    (used.zone (.player p .hand)).contains discard &&
+    !(after.zone (.player p .hand)).contains discard &&
+    (after.zone (.player p .mainDeck)).length + 1 == (yes.zone (.player p .mainDeck)).length
+
+-- A Flow card goes to Banishment even if countered. Credit goes to the player who
+-- played it from Trash. A token moved to Banishment cannot trigger Master of Shadows.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, zed) ← put s p "VEN-143" .legendZone
+  let (s, flow) ← put s p "VEN-003" .trash
+  let (s, gear) ← put s p "VEN-054" .base
+  let token := createOne (tokenId "Tentacle") p none true s
+  let (tokenGone, tokenEvents) := banishObj p token ⟨s.nextId⟩
+  let no ← fire tokenGone tokenEvents
+  let action : Action := ⟨.player p, .playCard flow ⟨4, [.fury]⟩ [gear]⟩
+  let (casting, _) ← (step 100 (s.rich p) action).toOption
+  let item ← (casting.zone .chain).head?
+  let delivered := settleChain {} 12 casting
+  let (countered, events) := counterObjHand casting item
+  let (queued, _) ← (advance 100 (countered.withTriggers events) []).toOption
+  let fromCounter := settleChain {} 12 queued
+  return (no.obj? zed).any (·.empowerCount == 0) &&
+    (delivered.obj? zed).any (·.empowerCount == 1) &&
+    (fromCounter.obj? zed).any (·.empowerCount == 1) &&
+    fromCounter.countIn p .banishment "VEN-003" == 1
+
+-- At seven runes, enemy effects cannot damage Esteemed Hierophant; its owner's
+-- effects and Combat Damage still can. Spending a Rune disables the prevention.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← putAt s q "VEN-025" s.bf0
+  let (s, enemySpell) ← put s p "OGN-009" .hand
+  let (s, ownSpell) ← put s q "OGN-009" .hand
+  let s := s.control q s.bf0
+  let six := (channel q (6 - (s.runesOf q).length) s).1
+  let seven := (channel q 1 six).1
+  let low ← play six p enemySpell [unit]
+  let high ← play seven p enemySpell [unit]
+  let rune ← (seven.runesOf q).head?
+  let (spent, _) ← applyRune seven q rune .recycle
+  let dropped ← play spent p enemySpell [unit]
+  let own ← play { seven with active := some q, pending := [.priority q] } q ownSpell [unit]
+  let (combat, _) := dealAll seven [(unit, 2)]
+  let dmg (t : GameState) := (t.obj? unit).map (·.damage)
+  return (six.runesOf q).length == 6 && (seven.runesOf q).length == 7 &&
+    dmg low == some 3 && dmg high == some 0 && dmg dropped == some 3 &&
+    dmg own == some 3 && dmg combat == some 2
+
 -- Piltovan Forge discounts the first Gear ability even when it is countered. The
 -- next activation costs full price, and a new turn resets the history.
 #guard vendettaCase fun s => do

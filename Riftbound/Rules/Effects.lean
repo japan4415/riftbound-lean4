@@ -76,6 +76,24 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Attribute a successful move into Banishment to the player performing Banish (CR 428). -/
+def banishCardEvents (actor : PlayerId) (s : GameState) (id : ObjId)
+    (moves : List Event) : List Event :=
+  if (s.obj? id).any (·.kind.phys?.isSome) then
+    moves.filterMap (fun
+      | .moved _ new (.player owner .banishment) => some (.banished actor owner new)
+      | _ => none)
+  else []
+
+/-- Banish an object and, for a card, record who performed the action. -/
+def banishObj (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .banishment s id
+  (r.1, r.2 ++ banishCardEvents p s id r.2)
+
+/-- Banish has the same state invariants as the zone move it records. -/
+theorem banishObj_safe (p : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (banishObj p s id).1 := sendObj_safe .banishment s id
+
 /-- The Chosen Champion of the player: a Unit of the Champion the Legend of the player is about
 (they share a tag). The card data does not tell Champions from other Units, nor the Chosen
 Champion from its copies. -/
@@ -199,11 +217,15 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
       (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
         (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
 
-/-- A unit goes to the Trash when it dies, unless an effect of this turn says it is banished instead
-(Smite). What banishes it afterwards (the Deathknell of The Zero Drive) is an ability that fires
-after, and is not this. -/
+/-- The player whose effect banishes the Unit instead of sending it to the Trash on death
+(Smite). A later Deathknell banishes separately. -/
+def GameState.banishOnDeathBy (s : GameState) (id : ObjId) : Option PlayerId :=
+  (s.turnFx.find? (fun f =>
+    f.kind == .banishInstead && f.target == some id && f.turn == s.turn)).map (·.who)
+
+/-- A replacement banishes the object instead of sending it to the Trash on death. -/
 def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
-  s.turnFx.any (fun f => f.kind == .banishInstead && f.target == some id && f.turn == s.turn)
+  (s.banishOnDeathBy id).isSome
 
 /-- The Equipment attached to the object that banishes it when it dies. -/
 def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
@@ -247,7 +269,8 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
             (s.obj? u).any (fun x => x.controller == o.controller && x.loc == o.loc)))),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
-      | _ => none))
+      | _ => none) ++ (s.banishOnDeathBy id).toList.flatMap
+        (fun p => banishCardEvents p s id r.2))
   | none => r
 
 /-- Killing an object is a safe change. -/
@@ -804,6 +827,12 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
 def Object.chainDestination (o : Object) (otherwise : ZoneKind) : Zone :=
   .player o.owner (if o.flowed then .banishment else otherwise)
 
+/-- Flow's delayed replacement is owed by the player who played it from their Trash
+(CR 391.3.a, 829.1.b.1). -/
+def Object.chainExitEvents (o : Object) (id new : ObjId) (otherwise : ZoneKind) : List Event :=
+  .moved id new (o.chainDestination otherwise) ::
+    (if o.flowed && o.kind.phys?.isSome then [.banished o.owner o.owner new] else [])
+
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
 def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -818,7 +847,7 @@ def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List
         | none => (s, [])
       | _ =>
         match moveObj s id (o.chainDestination k) with
-        | some r => (r.1, [Event.moved id r.2 (o.chainDestination k)])
+        | some r => (r.1, o.chainExitEvents id r.2 k)
         | none => (s, [])
     else (s, [])
   | none => (s, [])
@@ -1226,9 +1255,9 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
 /-- Banish a unit, then its owner plays it, ignoring its cost: it comes back as a new object, with
 nothing of what it had. Replay to the previous Battlefield when the effect says the location
 stays the same. A token ceases to exist when banished (CR 187, 428). -/
-def banishReplay (s : GameState) (id : ObjId) (sameLocation : Bool := false) :
+def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (sameLocation : Bool := false) :
     GameState × List Event :=
-  let r := sendObj .banishment s id
+  let r := banishObj p s id
   match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none),
       (s.obj? id) with
   | some n, some o =>
@@ -1242,8 +1271,8 @@ def banishReplay (s : GameState) (id : ObjId) (sameLocation : Bool := false) :
   | _, _ => r
 
 /-- Banishing a unit and playing it again is a safe change. -/
-theorem banishReplay_safe (s : GameState) (id : ObjId) (sameLocation : Bool) :
-    Safe s (banishReplay s id sameLocation).1 := by
+theorem banishReplay_safe (p : PlayerId) (s : GameState) (id : ObjId) (sameLocation : Bool) :
+    Safe s (banishReplay p s id sameLocation).1 := by
   unfold banishReplay
   dsimp only
   split
@@ -1557,13 +1586,16 @@ def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
 
 /-- Deal `n` damage to an object (CR 142). An object whose damage reaches its Might is killed by
 the next Cleanup (CR 323.4), not here. -/
-def dealObj (n0 : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealObj (n0 : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none) :
+    GameState × List Event :=
   -- an effect of the turn doubles the damage
   let n := if s.doubleDmg id then n0 * 2 else n0
   match s.obj? id with
-  | some _ =>
-    -- an object whose passive ability says it takes no damage takes none
-    if (s.activeMods id).contains .noDamage then (s, [])
+  | some o =>
+    let mods := s.activeMods id
+    if mods.contains .noDamage ||
+        (effectController.any (· != o.controller) && mods.contains .noEnemyEffectDamage) then
+      (s, [])
     -- the next damage to it this turn is prevented (once, and only damage there would be)
     else if decide (0 < n) && s.shielded id then (s.useShield id, [])
     -- damage that would be lethal, to a Unit that something saves: it is saved instead
@@ -1585,7 +1617,8 @@ def dealObj (n0 : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
-theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (dealObj n s id).1 := by
+theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
+    (effectController : Option PlayerId := none) : Safe s (dealObj n s id effectController).1 := by
   unfold dealObj
   dsimp only
   generalize (if s.doubleDmg id = true then n * 2 else n) = m
@@ -1958,15 +1991,15 @@ theorem cloneTok_safe (s : GameState) (id : ObjId) : Safe s (cloneTok s id).1 :=
   · exact Safe.refl s
 
 /-- Banish an object, and note on the banished card that `src` banished it. -/
-def banishMarked (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .banishment s id
+def banishMarked (p : PlayerId) (src : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := banishObj p s id
   match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none) with
   | some n => (r.1.modObj n (fun x => { x with banishedWith := some src }), r.2)
   | none => r
 
 /-- Banishing an object, noting who did it, is a safe change. -/
-theorem banishMarked_safe (src : ObjId) (s : GameState) (id : ObjId) :
-    Safe s (banishMarked src s id).1 := by
+theorem banishMarked_safe (p : PlayerId) (src : ObjId) (s : GameState) (id : ObjId) :
+    Safe s (banishMarked p src s id).1 := by
   unfold banishMarked
   dsimp only
   split
@@ -1975,17 +2008,21 @@ theorem banishMarked_safe (src : ObjId) (s : GameState) (id : ObjId) :
   · exact sendObj_safe .banishment s id
 
 /-- Move the card to the zone of its owner, noting that `src` did it if asked. -/
-def sendMarked (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
+def sendMarked (p : PlayerId) (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  if mark then banishMarked src s id else sendObj k s id
+  if mark then banishMarked p src s id
+  else if k == .banishment then banishObj p s id
+  else sendObj k s id
 
 /-- Moving a card, noting who did it, is a safe change. -/
-theorem sendMarked_safe (src : ObjId) (mark : Bool) (k : ZoneKind) (s : GameState) (id : ObjId) :
-    Safe s (sendMarked src mark k s id).1 := by
+theorem sendMarked_safe (p : PlayerId) (src : ObjId) (mark : Bool) (k : ZoneKind)
+    (s : GameState) (id : ObjId) : Safe s (sendMarked p src mark k s id).1 := by
   unfold sendMarked
   split
-  · exact banishMarked_safe src s id
-  · exact sendObj_safe k s id
+  · exact banishMarked_safe p src s id
+  · split
+    · exact sendObj_safe .banishment s id
+    · exact sendObj_safe k s id
 
 /-- Move every card of the sides in a zone of theirs that has the properties to another zone. -/
 def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side : Side)
@@ -1995,7 +2032,7 @@ def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side 
   | some z, some k =>
     let ids := (s.players.filter (fun q => side.admitsPlayer p q)).flatMap (fun q =>
       (s.zone (.player q z)).filter (fun u => FilterList.holds s src env u fs == some true))
-    some (applyEach (sendMarked src mark k) s ids)
+    some (applyEach (sendMarked p src mark k) s ids)
   | _, _ => none
 
 /-- The object gains a tag. -/
@@ -2191,7 +2228,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .deal sel n =>
     if s.damageOff then some (s, []) else
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel
-      (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id))
+      (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id
+        (some (env.effectController.getD p))))
   | .setBaseMight sel n =>
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel (setBaseMight k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
@@ -2205,7 +2243,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         then [Event.killedBySpell p] else [])))
   | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
-  | .banish sel => onSelected s p src env sel (sendObj .banishment)
+  | .banish sel => onSelected s p src env sel (banishObj p)
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
@@ -2270,7 +2308,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel => onSelected s p src env sel (playFree p)
   | .banishReplay sel keep =>
-    onSelected s p src env sel (fun t id => banishReplay t id keep)
+    onSelected s p src env sel (fun t id => banishReplay p t id keep)
   | .playPaying sel => onSelected s p src env sel (playPaying p)
   | .playTo sel bfs =>
     match bfs.eval s p src env with
@@ -2308,7 +2346,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
   | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
   | .cloneToken sel => onSelected s p src env sel cloneTok
-  | .banishWith sel => onSelected s p src env sel (banishMarked src)
+  | .banishWith sel => onSelected s p src env sel (banishMarked p src)
   | .gainTag sel name => onSelected s p src env sel (gainTagObj name)
   | .replaceBattlefield sel name =>
     (s.tokenCard name).bind (fun c => onSelected s p src env sel (replaceBf c p))
@@ -2384,7 +2422,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | none => simp [hn] at h
       | some k =>
         simp only [hn, Option.bind_some] at h
-        exact onSelected_safe (fun t id => dealObj_safe _ t id) h
+        exact onSelected_safe (fun t id => dealObj_safe _ t id (some (env.effectController.getD p))) h
   | setBaseMight sel n =>
     simp only [applyPrim] at h
     cases hn : n.evalS s p src env with
@@ -2408,7 +2446,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       exact h0
   | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
-  | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
+  | banish sel => exact onSelected_safe (banishObj_safe p) h
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
   | playUnitTokenAt name dest =>
@@ -2492,7 +2530,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact Safe.refl s
   | spendBuff sel => exact onSelected_safe unbuffObj_safe h
   | play sel => exact onSelected_safe (playFree_safe p) h
-  | banishReplay sel keep => exact onSelected_safe (fun t id => banishReplay_safe t id keep) h
+  | banishReplay sel keep => exact onSelected_safe (fun t id => banishReplay_safe p t id keep) h
   | playPaying sel => exact onSelected_safe (playPaying_safe p) h
   | playTo sel bfs =>
     simp only [applyPrim] at h
@@ -2582,7 +2620,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim] at h
     exact applyCreateAtPrev_safe h
   | cloneToken sel => exact onSelected_safe cloneTok_safe h
-  | banishWith sel => exact onSelected_safe (banishMarked_safe src) h
+  | banishWith sel => exact onSelected_safe (banishMarked_safe p src) h
   | gainTag sel name => exact onSelected_safe (gainTagObj_safe name) h
   | replaceBattlefield sel name =>
     simp only [applyPrim] at h
@@ -2597,7 +2635,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     split at h
     · simp only [Option.some.injEq] at h
       rw [← h]
-      exact applyEach_safe (fun t id => sendMarked_safe src mark _ t id) _ _
+      exact applyEach_safe (fun t id => sendMarked_safe p src mark _ t id) _ _
     · simp at h
   | addBattlefield name =>
     simp only [applyPrim] at h
@@ -3272,8 +3310,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         | some (.obj o) => (s.obj? o).map (fun (x : Object) => [x.controller])
         | _ => none
       | _ => who.resolve s p : Option (List PlayerId)) with
-    | some ps => (s, ps.map (fun q => Frame.run q src env (.cons body .nil)) ++
-        [.run p src env es], [])
+    | some ps =>
+      let playerEnv := { env with effectController := env.effectController <|> some p }
+      (s, ps.map (fun q => Frame.run q src playerEnv (.cons body .nil)) ++ [.run p src env es], [])
     | none => skip
   | .may e' => (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
@@ -3489,7 +3528,7 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | none => (s, [])
       | _ =>
         match moveObj s item (o.chainDestination .trash) with
-        | some r => (r.1, [Event.moved item r.2 (o.chainDestination .trash)])
+        | some r => (r.1, o.chainExitEvents item r.2 .trash)
         | none => (s, [])
     else (s, [])
   | none => (s, [])

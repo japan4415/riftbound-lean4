@@ -109,6 +109,9 @@ def eventJson : Event → String
   | .moved o n dst =>
     jobj [("t", jstr "moved"), ("old", toString o.n), ("new", toString n.n),
       ("dst", jstr (zoneName dst))]
+  | .banished p owner c =>
+    jobj [("t", jstr "banished"), ("player", toString p.n), ("owner", toString owner.n),
+      ("card", toString c.n)]
   | .pointsGained p n =>
     jobj [("t", jstr "points"), ("player", toString p.n), ("n", toString n)]
   | .burnedOut p => jobj [("t", jstr "burnout"), ("player", toString p.n)]

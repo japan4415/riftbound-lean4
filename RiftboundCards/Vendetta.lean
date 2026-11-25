@@ -699,8 +699,13 @@ def VEN_025.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Esteemed Hierophant: the effect is not written yet. -/
-def VEN_025 : CardDef := VEN_025.meta
+/-- Esteemed Hierophant. -/
+def VEN_025 : CardDef :=
+  { VEN_025.meta with
+    abilities := [.passive
+      (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7))
+      [.noEnemyEffectDamage]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-026
 /--
@@ -3883,8 +3888,15 @@ def VEN_143.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Master of Shadows: the effect is not written yet. -/
-def VEN_143 : CardDef := VEN_143.meta
+/-- Master of Shadows. -/
+def VEN_143 : CardDef :=
+  { VEN_143.meta with
+    abilities := [.triggered (.onSelf .banishOwn)
+      (.of [] (.prim (.empower .self))) .unlimited,
+      .activated [.disempowerSelf, .exhaustSelf] .action
+        (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 1))]))
+        .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-144
 /--

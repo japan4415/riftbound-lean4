@@ -267,6 +267,8 @@ inductive TriggerEvent where
   | leave
   /-- A card is drawn. -/
   | draw
+  /-- The player banishes a card they own. -/
+  | banishOwn
   /-- A card is discarded. -/
   | discard
   /-- The object is stunned. -/
@@ -377,6 +379,8 @@ inductive StaticMod where
   | equipEach (k : KeywordInst)
   /-- The object takes no damage from anything (CR 142). -/
   | noDamage
+  /-- Prevent damage from enemy spells and abilities. -/
+  | noEnemyEffectDamage
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/

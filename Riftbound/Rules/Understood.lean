@@ -437,7 +437,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .costPlus s a => costSel s && a.understoodK
   | .costPower s a _ _ => costSel s && a.understoodK
-  | .noDamage => true
+  | .noDamage | .noEnemyEffectDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true
@@ -538,6 +538,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .opponentHolds => t.subject == .self
       | .movedByYou => true
       | .draw => true
+      | .banishOwn => t.subject == .self
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true

@@ -19,6 +19,9 @@ namespace Riftbound
 inductive Event where
   /-- An object moved to a zone. It has the new identifier `new`. -/
   | moved (old new : ObjId) (dst : Zone)
+  /-- A player banished a physical card. The owner and new identifier are recorded at the move
+  (CR 428). -/
+  | banished (actor owner : PlayerId) (card : ObjId)
   /-- A player gained points (CR 194). -/
   | pointsGained (p : PlayerId) (n : Nat)
   /-- A player burned out (CR 432). -/

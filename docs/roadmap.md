@@ -1918,6 +1918,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Risen Altar の支配者は、その戦場にいる自分の Unit の Empower コストから 1 Energy または任意の 1 Power を軽減できる（CR 190.6.d, 356.4.c, 827）。
 - 167 枚中 132 枚が `drafted`、130 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 27 — Banish の実行者とダメージの発生元
+
+- Master of Shadows は、支配者が所有するカードを自分で Banish したときに Empower される。Flow の Spell は打ち消されても Banish される。Disempower と Exhaust を起動時に支払い、解決時に手札を 1 枚捨ててから 1 枚引く（CR 383, 428, 829.1.b.1）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Esteemed Hierophant は支配者が Rune を 7 枚以上持つ間、敵の Spell と能力からのダメージを防ぐ。味方の効果と Combat Damage は通常どおり受ける（CR 142, 438）。
+- 同じ Unit に複数の Banish 置換が重なる場合は、先に作られた置換を適用する。支配者による適用順の選択は未実装（CR 372）。
+- 167 枚中 134 枚が `drafted`、132 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

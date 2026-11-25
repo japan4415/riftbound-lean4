@@ -246,7 +246,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .costMinus s a => Selector.ok c s && Amount.ok c a
   | .costPower s a _ _ => Selector.ok c s && Amount.ok c a
   | .costMinusMin s a _ => Selector.ok c s && Amount.ok c a
-  | .noDamage => true
+  | .noDamage | .noEnemyEffectDamage => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true

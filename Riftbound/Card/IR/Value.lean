@@ -36,6 +36,8 @@ structure Env where
   slots : List Value := []
   /-- The card that defines the resolving ability, even if its source has left play. -/
   sourceCard : Option CardId := none
+  /-- The controller of the original effect when an instruction is run for another player. -/
+  effectController : Option PlayerId := none
   /-- A value saved by the event that triggered the resolving ability (CR 388-389). -/
   eventAmount : Option Nat := none
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/

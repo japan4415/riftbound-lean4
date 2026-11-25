@@ -150,10 +150,10 @@ theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
     (hm : ∃ r, moveObj s item (o.chainDestination .trash) = some r) :
-    ∃ id', (finishItem s item).2 = [Event.moved item id' (o.chainDestination .trash)] ∧
+    ∃ id', (finishItem s item).2 = o.chainExitEvents item id' .trash ∧
       id' ∈ (finishItem s item).1.zone (o.chainDestination .trash) := by
   obtain ⟨⟨s2, id'⟩, hm⟩ := hm
-  have hf : finishItem s item = (s2, [Event.moved item id' (o.chainDestination .trash)]) := by
+  have hf : finishItem s item = (s2, o.chainExitEvents item id' .trash) := by
     unfold finishItem
     simp only [ho, hc, ite_true]
     cases hkd : o.kind with
