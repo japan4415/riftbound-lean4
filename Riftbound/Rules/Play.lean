@@ -692,7 +692,8 @@ structure PlayMark where
 the play. -/
 def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
   let o1 : Object :=
-    { o with targets := ts, paid := m.paid, extraPaid := m.extraPaid, legion := m.legion, playedTurn := some m.turn,
+    { o with targets := ts, paid := m.paid, discardPaid := false, extraPaid := m.extraPaid,
+             legion := m.legion, playedTurn := some m.turn,
              buffed := o.buffed || m.buff, playedFromHand := m.fromHand, flowed := m.flowed }
   { o1 with playedStamp := some m.stamp, energyPaid := m.energy }
 
@@ -768,12 +769,14 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
       (r.1, [Event.moved t r.2 (.player o.owner .trash)])))
 
 /-- The card that was played remembers that its additional cost was paid. -/
-def markPaid (s : GameState) : Option ObjId → GameState
+def markPaid (s : GameState) (id : Option ObjId) (discarded : Bool := false) : GameState :=
+  match id with
   | none => s
-  | some n => s.modObj n (fun o => { o with paid := true })
+  | some n => s.modObj n (fun o => { o with paid := true, discardPaid := o.discardPaid || discarded })
 
 /-- Remembering that the additional cost was paid is a safe change. -/
-theorem markPaid_safe (s : GameState) (o : Option ObjId) : Safe s (markPaid s o) := by
+theorem markPaid_safe (s : GameState) (o : Option ObjId) (discarded : Bool := false) :
+    Safe s (markPaid s o discarded) := by
   cases o with
   | none => exact Safe.refl s
   | some n => exact Safe.modObj s n (fun _ => rfl) (fun _ => rfl)
@@ -1641,6 +1644,28 @@ theorem extraOk_mem_playTargets {s : GameState} {p : PlayerId} {c : ObjId} {d : 
         exact Or.inr (Or.inr (Or.inl ⟨k, b, t, rfl, rfl, h.1⟩))
       | cons _ _ => simp at h
 
+/-- A card can be discarded as a play cost only from the player's hand. The card being played
+has already left its previous zone for the Chain (CR 353, 357.2, 423.1). -/
+def GameState.playDiscardOk (s : GameState) (p : PlayerId) (c : ObjId) : Option ObjId → Bool
+  | none => true
+  | some id =>
+    (s.cardDef? c).any (·.discardToPlay) && id != c && (s.zone (.player p .hand)).contains id
+
+/-- Leave the optional discard unpaid, or select one of the hand cards that can pay it. -/
+def GameState.playDiscards (s : GameState) (p : PlayerId) (c : ObjId) : List (Option ObjId) :=
+  none :: (if (s.cardDef? c).any (·.discardToPlay) then
+    ((s.zone (.player p .hand)).filter (· != c)).map some else [])
+
+/-- All and only the legal discard choices are listed. -/
+theorem GameState.mem_playDiscards (s : GameState) (p : PlayerId) (c : ObjId) (o : Option ObjId) :
+    o ∈ s.playDiscards p c ↔ s.playDiscardOk p c o = true := by
+  cases o with
+  | none => simp [playDiscards, playDiscardOk]
+  | some id =>
+    by_cases h : (s.cardDef? c).any (·.discardToPlay) = true
+    · simp [playDiscards, playDiscardOk, h, and_comm]
+    · simp [playDiscards, playDiscardOk, h]
+
 /-- Every way the player can play a card from a permitted zone: each card with each payment that pays its
 cost, and each pick of targets, that the Pool covers. -/
 def legalPlays (s : GameState) (p : PlayerId) : List Action :=
@@ -1650,14 +1675,16 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
       (s.directOptions p c d).flatMap (fun (flow, cost) =>
         (playTargets s p c d).flatMap (fun ts =>
           ((s.playPaymentsOfT p c d cost ts).filter
-            (fun pay => decide (PlayOk s p c pay ts flow))).map
-            (fun pay => ⟨.player p, .playCard c pay ts flow⟩)))
+            (fun pay => decide (PlayOk s p c pay ts flow))).flatMap
+            (fun pay => (s.playDiscards p c).map
+              (fun discard => ⟨.player p, .playCard c pay ts flow discard⟩))))
     | none => [])
 
 /-- The plays listed are exactly the card, payment, targets and base-cost choice that can be played. -/
 theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
-    a ∈ legalPlays s p ↔ ∃ c pay ts flow, a = ⟨.player p, .playCard c pay ts flow⟩ ∧
-      c ∈ s.playSources p ∧ PlayOk s p c pay ts flow := by
+    a ∈ legalPlays s p ↔ ∃ c pay ts flow discard,
+      a = ⟨.player p, .playCard c pay ts flow discard⟩ ∧
+      c ∈ s.playSources p ∧ PlayOk s p c pay ts flow ∧ s.playDiscardOk p c discard = true := by
   unfold legalPlays
   simp only [List.mem_flatMap]
   constructor
@@ -1666,9 +1693,9 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     | none => simp [hd] at ha
     | some d =>
       simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq] at ha
-      obtain ⟨⟨flow, cost⟩, -, ts, -, pay, ⟨-, hok⟩, rfl⟩ := ha
-      exact ⟨c, pay, ts, flow, rfl, hc, hok⟩
-  · rintro ⟨c, pay, ts, flow, rfl, hc, hok⟩
+      obtain ⟨⟨flow, cost⟩, -, ts, -, pay, ⟨-, hok⟩, discard, hdiscard, rfl⟩ := ha
+      exact ⟨c, pay, ts, flow, discard, rfl, hc, hok, (s.mem_playDiscards p c discard).mp hdiscard⟩
+  · rintro ⟨c, pay, ts, flow, discard, rfl, hc, hok, hdiscard⟩
     have hdc : ∃ d cost, s.cardDef? c = some d ∧ (flow, cost) ∈ s.directOptions p c d ∧
         s.paysForXT p c d cost ts pay = true ∧ ts ∈ playTargets s p c d := by
       rcases hok with ⟨hts, h, rfl⟩ | h | ⟨hb, rfl⟩
@@ -1690,7 +1717,8 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
     refine ⟨c, hc, ?_⟩
     simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq]
     exact ⟨(flow, cost), hcost, ts, hts, pay,
-      ⟨(GameState.mem_playPaymentsOfT _ _ _ _ _ _ _).mpr hpaid, hok⟩, rfl⟩
+      ⟨(GameState.mem_playPaymentsOfT _ _ _ _ _ _ _).mpr hpaid, hok⟩,
+      discard, (s.mem_playDiscards p c discard).mpr hdiscard, rfl⟩
 
 /-- Play a card with the payment and the targets: a Spell is cast, and goes to the
 Chain with the players to pass (CR 354, 311-313); a Unit or a Gear is played at once. `rest` is the

@@ -353,7 +353,9 @@ function describeA(a, prev) {
           (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）'
         : (def && typeof def.cost === 'number' && a.pay > def.cost
           ? '（追加コスト +' + (a.pay - def.cost) + '）' : '');
-      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '');
+      const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
+        : def?.discardToPlay ? '（捨てない）' : '';
+      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') + discard;
       if (def && def.types.includes('spell')) {
         const tg = (a.targets || []).map((t) => cardName(t)).join('、');
         const react = prev === 'chainPass';
@@ -361,8 +363,7 @@ function describeA(a, prev) {
           react ? 'Chain の項目に応答する: 上に積まれ、先に解決する' : 'コストを払って Chain に載せる'];
       }
       return [who + ': ' + cardName(a.card) + ' をプレイ' + more,
-        more ? 'コストと追加コストを払って Base に出す（Accelerate で払えば ready で入る）'
-          : 'コストを払って Base に出す（Unit は Exhaust で入る）'];
+        'コストを払って場に出す（通常、Unit は Exhaust で入る）'];
     }
     case 'concede': return [who + ': 投了する', 'ゲームを投了する。相手の勝ちになる（CR 651）'];
     case 'timeCalled': return [who + ': 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
@@ -747,11 +748,13 @@ function markActCards(list) {
 }
 function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
 // 手が「対象」や「移動先」だけ違うときは、カードを選んだあと、盤面の光っている所をクリックして選ぶ。
-// 選ぶ順は、手の targets（プレイ・起動）か、移動先（Base か Battlefield）。ほかに違いが残れば、メニューで選ぶ。
+// プレイ・起動では対象、次に捨てるカードを選ぶ。移動では Base か Battlefield を選ぶ。
+// 捨てない手も選べる場合など、ほかの違いが残ればメニューを開く。
 function selSeq(a) {
   if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
-  if (a.kind === 'activate') return [...(a.targets || []), ...(a.discards || [])].map(String);
-  if (a.kind === 'playCard') return (a.targets || []).map(String);
+  if (a.kind === 'activate' || a.kind === 'playCard') {
+    return [...(a.targets || []), ...(a.discards || [])].map(String);
+  }
   return [];
 }
 let pick = null;
@@ -783,7 +786,7 @@ function stepPick(x, y) {
   const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
   const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
   const done = rem.filter((l) => selSeq(l.a).length === d);
-  const discarding = rem.filter(({a}) => a.kind === 'activate' && a.discards?.length &&
+  const discarding = rem.filter(({a}) => a.discards?.length &&
     d >= (a.targets || []).length && d < selSeq(a).length);
   if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
     pick = null; clearPickMarks();

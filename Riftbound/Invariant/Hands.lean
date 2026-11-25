@@ -214,10 +214,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i p _ c pay ts flow hp hk
+  · rename_i p _ c pay ts flow discard hp hk
     rw [hp, hk] at hl
-    have hmain := playOk_main hl.2.2
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_meta h
+    have hmain := playOk_main hl.2.2.1
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_discard_meta h
     have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
     refine ⟨fun hm => ?_, fun hph => ?_, fun f hf hpf => ?_⟩
     · show s'.turnOrder.Perm (allPlayers s'.playerCount)
@@ -329,11 +329,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · have : Frame.setupHands ∈ rest := by simpa using hmem
         rw [hp]; exact List.mem_cons_of_mem _ this
       · exact ⟨Frame.chainPass p n, by rw [hp]; exact List.mem_cons_self, rfl⟩
-  · rename_i p n rest c pay ts flow hp hk
+  · rename_i p n rest c pay ts flow discard hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
     have hmain : s.phase = .main := by
-      rcases reactable_spec.mp hl.2.2 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
+      rcases reactable_spec.mp hl.2.2.1 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2.2
@@ -604,11 +604,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
-  · rename_i bf q rest c pay ts flow hp hk
+  · rename_i bf q n rest c pay ts flow discard hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
     have hmain : s.phase = .main := by
-      rcases showdownable_spec hl.2.2 with h0 | ⟨dest, ts', h0⟩
+      rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', h0⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0

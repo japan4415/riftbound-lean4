@@ -3470,7 +3470,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.executions
-              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1)
+              (if !d.repeatChooses then 1 + o.extraPaid else 1)
           | none => .nil) :: .finishSpell item :: rest
     | some o, none => itemFrames s item o rest
     | none, _ => .finishSpell item :: rest

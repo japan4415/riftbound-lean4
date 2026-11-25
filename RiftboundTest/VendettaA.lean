@@ -17,6 +17,71 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Ruthless Strike can discard a different hand card at Action speed. The discard
+-- is paid before reactions and is neither a target nor a second play.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, target) ← putAt s q "VEN-091" field
+  let (s, spell) ← put s p "VEN-008" .hand
+  let (s, hand) ← put s p "VEN-047" .hand
+  let (s, other) ← put s p "VEN-071" .hand
+  let (s, enemy) ← put s q "VEN-047" .hand
+  let (s, trash) ← put s p "VEN-047" .trash
+  let s := s.rich p
+  let action (d : Option ObjId) : Action := ⟨.player p, .playCard spell ⟨3, []⟩ [target] none d⟩
+  let showdown := { s with pending := [.showdown field p 0] }
+  let (casting, events) ← (step 100 showdown (action (some hand))).toOption
+  let top ← (casting.zone .chain).head?
+  let done := settleChain {} 12 casting
+  let (unpaid, _) ← (step 100 s (action none)).toOption
+  let unpaid := settleChain {} 12 unpaid
+  let paidEvents := events.filter (fun e => match e with | .played .. => true | _ => false)
+  let discarded := events.any (fun e =>
+    match e with
+    | .discarded who id true => who == p && (casting.obj? id).any (·.formerId == some hand)
+    | _ => false)
+  return (legalActions showdown).contains (action none) &&
+    (legalActions showdown).contains (action (some other)) &&
+    !([spell, enemy, trash].any (fun u => (legalActions showdown).contains (action (some u)))) &&
+    (casting.obj? top).any (fun o => o.targets == [target] && o.discardPaid && o.extraPaid == 0) &&
+    paidEvents == [.played p top] && discarded &&
+    (done.obj? target).any (·.damage == 5) && (unpaid.obj? target).any (·.damage == 3)
+
+-- A Repeat granted from outside the card repeats three damage if the discard was declined.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, target) ← putAt s s.you "VEN-091" s.bf0
+  let (s, spell) ← put s p "VEN-008" .hand
+  let (s, payment) ← put s p "VEN-047" .hand
+  let s := (s.rich p).addTurnFx p .nextSpellRepeat
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨6, []⟩ [target]⟩).toOption
+  let (withDiscard, _) ← (step 100 s
+    ⟨.player p, .playCard spell ⟨6, []⟩ [target] none (some payment)⟩).toOption
+  let top ← (casting.zone .chain).head?
+  let paidTop ← (withDiscard.zone .chain).head?
+  let done := settleChain {} 12 casting
+  let paid := settleChain {} 12 withDiscard
+  return (casting.obj? top).any (fun o => o.extraPaid == 1 && !o.discardPaid) &&
+    (withDiscard.obj? paidTop).any (fun o => o.extraPaid == 1 && o.discardPaid) &&
+    (done.obj? target).any (·.damage == 6) &&
+    paid.countIn s.you .trash "VEN-091" == 1
+
+-- A declined discard does not trigger Zed, while paying it plays a Shadow Clone.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, zed) ← put s p "VEN-023" .hand
+  let (s, card) ← put s p "VEN-047" .hand
+  let s := s.rich p
+  let playZed (d : Option ObjId) : Action := ⟨.player p, .playCard zed ⟨4, [.fury]⟩ [] none d⟩
+  let (paid, _) ← (step 100 s (playZed (some card))).toOption
+  let (unpaid, _) ← (step 100 s (playZed none)).toOption
+  let paid := settleChain {} 12 paid
+  let unpaid := settleChain {} 12 unpaid
+  return paid.countNamed p .base "Shadow Clone" == 1 && unpaid.countNamed p .base "Shadow Clone" == 0 &&
+    paid.locate card == none && unpaid.locate card == some (.player p .hand)
+
 -- The two Tentacles can be played at different locations. Playing the spell for Flow
 -- still offers the location of each token and banishes the spell.
 #guard vendettaCase fun s => do

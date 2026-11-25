@@ -119,6 +119,8 @@ structure Object where
   Spell twice (CR 820), Accelerate lets a Unit enter ready (CR 805), and a card can ask "if you
   paid the additional cost". -/
   paid : Bool := false
+  /-- Whether a hand card was discarded as an additional cost for the current play. -/
+  discardPaid : Bool := false
   /-- How many of the optional additional costs were paid when the card was played: a Spell does
   its effect once more for each Repeat that was paid (CR 820.3). -/
   extraPaid : Nat := 0

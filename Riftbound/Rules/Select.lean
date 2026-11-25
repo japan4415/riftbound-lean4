@@ -1082,6 +1082,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       f.target == s.hereOf self))
   | .legion => some ((s.obj? self).any (·.legion))
   | .paid => some ((s.obj? self).any (·.paid))
+  | .discardPaid => some ((s.obj? self).any (·.discardPaid))
   | .playedAnother => some (s.playedOther p self)
   | .canPay c => some ((s.payNow p self c).isSome || (s.runePlan p self c).isSome)
   | .diedWith e =>

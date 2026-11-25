@@ -294,6 +294,8 @@ inductive Condition where
   | legion
   /-- An additional cost was paid when the object was played (CR 357.2). -/
   | paid
+  /-- The optional discard cost of playing this card was paid (CR 357.2). -/
+  | discardPaid
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
   /-- The player's Rune Pool can pay the cost. -/

@@ -183,6 +183,30 @@ theorem payDiscards_safe (p : PlayerId) :
     · exact (discardObj_safe s id).trans (payDiscards_safe p ids _)
     · exact payDiscards_safe p ids s
 
+/-- Pay the optional discard after the mana payment, recording it on the card before the
+play and discard triggers are processed (CR 357.1-357.2, 423.3). -/
+def payPlayDiscard (p : PlayerId) (c : ObjId) (discard : Option ObjId)
+    (r : GameState × List Event) : GameState × List Event :=
+  match discard with
+  | none => r
+  | some id =>
+    let paid := payDiscards p r.1 [id]
+    let played := r.2.findSome? (fun
+      | .moved old new _ => if old == c then some new else none
+      | _ => none)
+    (if paid.2.isEmpty then paid.1 else markPaid paid.1 played true, r.2 ++ paid.2)
+
+/-- Paying the optional discard of a play preserves the structural invariants. -/
+theorem payPlayDiscard_safe (p : PlayerId) (c : ObjId) (discard : Option ObjId)
+    (r : GameState × List Event) : Safe r.1 (payPlayDiscard p c discard r).1 := by
+  unfold payPlayDiscard
+  split
+  · exact Safe.refl _
+  · dsimp only
+    split
+    · exact payDiscards_safe _ _ _
+    · exact (payDiscards_safe _ _ _).trans (markPaid_safe _ _ true)
+
 /-- A direct discard from hand leaves the Chain unchanged. -/
 theorem discardObj_chain {s : GameState} (hwf : s.WF) {p : PlayerId} {id : ObjId}
     (hc : id ∈ s.zone (.player p .hand)) : (discardObj s id).1.zone .chain = s.zone .chain := by
@@ -738,7 +762,7 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
 def legalReactions (s : GameState) (p : PlayerId) : List Action :=
   (legalPlays s p).filter (fun a =>
     match a.kind with
-    | .playCard c pay ts flow => reactable s p c pay ts flow
+    | .playCard c pay ts flow _ => reactable s p c pay ts flow
     | _ => false)
 
 /-- The card is a Spell with Action (CR 806): it can be played in a Showdown. -/
@@ -755,7 +779,7 @@ def showdownable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Paym
 def legalShowdownPlays (s : GameState) (p : PlayerId) : List Action :=
   (legalPlays s p).filter (fun a =>
     match a.kind with
-    | .playCard c pay ts flow => showdownable s p c pay ts flow
+    | .playCard c pay ts flow _ => showdownable s p c pay ts flow
     | _ => false)
 
 /-- The ability at place `idx` of the object has Action or Reaction speed (CR 806, 813): it can be
@@ -840,15 +864,17 @@ theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
 
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/
 theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
-    a ∈ legalReactions s p ↔ ∃ c pay ts flow, a = ⟨.player p, .playCard c pay ts flow⟩ ∧
-      c ∈ s.playSources p ∧ reactable s p c pay ts flow = true := by
+    a ∈ legalReactions s p ↔ ∃ c pay ts flow discard,
+      a = ⟨.player p, .playCard c pay ts flow discard⟩ ∧
+      c ∈ s.playSources p ∧ reactable s p c pay ts flow = true ∧
+        s.playDiscardOk p c discard = true := by
   unfold legalReactions
   simp only [List.mem_filter, mem_legalPlays]
   constructor
-  · rintro ⟨⟨c, pay, ts, flow, rfl, hc, hok⟩, hr⟩
-    exact ⟨c, pay, ts, flow, rfl, hc, hr⟩
-  · rintro ⟨c, pay, ts, flow, rfl, hc, hr⟩
-    refine ⟨⟨c, pay, ts, flow, rfl, hc, ?_⟩, hr⟩
+  · rintro ⟨⟨c, pay, ts, flow, discard, rfl, hc, -, hd⟩, hr⟩
+    exact ⟨c, pay, ts, flow, discard, rfl, hc, hr, hd⟩
+  · rintro ⟨c, pay, ts, flow, discard, rfl, hc, hr, hd⟩
+    refine ⟨⟨c, pay, ts, flow, discard, rfl, hc, ?_, hd⟩, hr⟩
     rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inr (Or.inl h)
     · exact Or.inl ⟨h.2.2.1, h.2.2.2, h.1⟩
@@ -873,15 +899,17 @@ theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
 
 /-- The plays listed are exactly the cards that can be played in a Showdown. -/
 theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
-    a ∈ legalShowdownPlays s p ↔ ∃ c pay ts flow, a = ⟨.player p, .playCard c pay ts flow⟩ ∧
-      c ∈ s.playSources p ∧ showdownable s p c pay ts flow = true := by
+    a ∈ legalShowdownPlays s p ↔ ∃ c pay ts flow discard,
+      a = ⟨.player p, .playCard c pay ts flow discard⟩ ∧
+      c ∈ s.playSources p ∧ showdownable s p c pay ts flow = true ∧
+        s.playDiscardOk p c discard = true := by
   unfold legalShowdownPlays
   simp only [List.mem_filter, mem_legalPlays]
   constructor
-  · rintro ⟨⟨c, pay, ts, flow, rfl, hc, hok⟩, hr⟩
-    exact ⟨c, pay, ts, flow, rfl, hc, hr⟩
-  · rintro ⟨c, pay, ts, flow, rfl, hc, hr⟩
-    refine ⟨⟨c, pay, ts, flow, rfl, hc, ?_⟩, hr⟩
+  · rintro ⟨⟨c, pay, ts, flow, discard, rfl, hc, -, hd⟩, hr⟩
+    exact ⟨c, pay, ts, flow, discard, rfl, hc, hr, hd⟩
+  · rintro ⟨c, pay, ts, flow, discard, rfl, hc, hr, hd⟩
+    refine ⟨⟨c, pay, ts, flow, discard, rfl, hc, ?_, hd⟩, hr⟩
     simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at hr
     rcases hr with hr | hr
     · rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
@@ -1106,6 +1134,37 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     have hs := (payExtra_safe hx).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, rfl⟩
+
+/-- An optional discard preserves the rules and the stack produced by a Main Phase play. -/
+theorem applyPlayCard_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {flow : Option Cost} {ts : List ObjId} {rest : List Frame}
+    {discard : Option ObjId} {es : List Event}
+    (h : (applyPlayCard s p c pay ts rest flow).map (payPlayDiscard p c discard) = some (s', es)) :
+    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
+      s'.result = s.result ∧ s'.cards = s.cards ∧
+      (s'.pending = s.pending ∨ s'.pending = .chainPass p 0 :: .priority p :: rest) := by
+  obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+  obtain ⟨hcfg, hto, hph, hres, hcards, hp⟩ := applyPlayCard_meta hr
+  have hf := (payPlayDiscard_safe p c discard r).same
+  rw [he] at hf
+  change SameMeta r.1 s' at hf
+  exact ⟨hf.config.trans hcfg, hf.turnOrder.trans hto, hf.phase.trans hph, hf.result.trans hres,
+    (congrArg GameState.cards hf).trans hcards, hp.imp (hf.pending.trans) (hf.pending.trans)⟩
+
+/-- An optional discard preserves the rules and the stack produced by answering the Chain. -/
+theorem reactStep_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {flow : Option Cost} {ts : List ObjId} {new : List Frame}
+    {discard : Option ObjId} {es : List Event}
+    (h : (reactStep s p c pay ts new flow).map (payPlayDiscard p c discard) = some (s', es)) :
+    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
+      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
+  obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+  obtain ⟨hcfg, hto, hph, hres, hcards, hp⟩ := reactStep_meta hr
+  have hf := (payPlayDiscard_safe p c discard r).same
+  rw [he] at hf
+  change SameMeta r.1 s' at hf
+  exact ⟨hf.config.trans hcfg, hf.turnOrder.trans hto, hf.phase.trans hph, hf.result.trans hres,
+    (congrArg GameState.cards hf).trans hcards, hf.pending.trans hp⟩
 
 /-- A card from a permitted zone can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}

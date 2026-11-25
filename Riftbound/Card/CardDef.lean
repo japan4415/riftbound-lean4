@@ -99,6 +99,8 @@ structure CardDef where
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- The player may discard a card as an additional cost to play this card (CR 357.2). -/
+  discardToPlay : Bool := false
   /-- What else the player does as an additional cost to play the card (not Energy or Power): what
   it is, and whether it must be done ("as an additional cost to play me, ..." or "you may ...").
   The object it is done to is chosen as the card is played. -/

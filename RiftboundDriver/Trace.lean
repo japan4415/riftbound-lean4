@@ -72,11 +72,12 @@ def actionJson (a : Action) (frame : Option Frame := none) : String :=
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c pay ts flow =>
+    | .playCard c pay ts flow discard =>
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))] ++
-        (flow.toList.map (fun k => ("flowCost", costJson k)))
+        (flow.toList.map (fun k => ("flowCost", costJson k))) ++
+        (discard.toList.map (fun o => ("discards", jarr [toString o.n])))
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
@@ -290,7 +291,7 @@ def irText (c : CardDef) : String :=
 /-- A card of the database as JSON: what the printed card shows, and the Lean definition of what it
 does (for the details the viewer shows on a right click). -/
 def cardJson (c : CardDef) : String :=
-  jobj [("name", jstr c.name), ("types", jarr (c.types.map (fun t => jstr (ctorName t)))),
+  jobj ([("name", jstr c.name), ("types", jarr (c.types.map (fun t => jstr (ctorName t)))),
     ("domains", jarr (c.domains.map (fun d => jstr (ctorName d)))),
     ("cost", match c.cost with | some k => toString k.energy | none => "null"),
     ("might", match c.might with | some m => toString m | none => "null"),
@@ -301,7 +302,8 @@ def cardJson (c : CardDef) : String :=
     ("keywords", jarr (c.keywords.map (fun k =>
       jobj [("k", jstr (ctorName k.keyword)), ("arg", kwArgJson k.arg)]))),
     ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
-    ("ir", jstr (irText c))]
+    ("ir", jstr (irText c))] ++
+    (if c.discardToPlay then [("discardToPlay", "true")] else []))
 
 /-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise
 send a Unit to a Battlefield, exhaust the Runes that are ready, recycle one Rune on even turns
@@ -314,7 +316,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let isAb (ab : RuneAbility) (a : Action) : Bool :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ _ => true | _ => false
     let isGo (a : Action) : Bool :=
       match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
     let isUse (a : Action) : Bool :=
@@ -335,10 +337,11 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     | some a0 =>
       -- the same card and targets: pay the additional cost when there is one
       let payOf (a : Action) : Nat :=
-        match a.kind with | .playCard _ pay _ _ => pay.energy + pay.power.length | _ => 0
+        match a.kind with | .playCard _ pay _ _ _ => pay.energy + pay.power.length | _ => 0
       let same (a : Action) : Bool :=
         match a.kind, a0.kind with
-        | .playCard c _ _ _, .playCard c0 _ _ _ => c == c0 && a.targetsOf == a0.targetsOf
+        | .playCard c _ _ _ discard, .playCard c0 _ _ _ discard0 =>
+          c == c0 && a.targetsOf == a0.targetsOf && discard == discard0
         | _, _ => false
       let best := (legal.filter same).foldl (fun acc a => if payOf a > payOf acc then a else acc) a0
       some (best, r)
@@ -359,7 +362,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     -- when one is in the hand
     let legal := legalActions s
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ _ => true | _ => false
     let isExhaust (a : Action) : Bool :=
       match a.kind with | .runeAbility _ .exhaust => true | _ => false
     let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)

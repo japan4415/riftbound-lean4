@@ -1897,6 +1897,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - ビューアにトークンの行き先を Base または Battlefield の名前で表示する。
 - 167 枚中 124 枚が `drafted`、122 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 24 — プレイ時に手札を捨てる追加コスト
+
+- 追加コストを払うプレイでは、対象や Flow コストと別に、捨てる手札を指定する。プレイするカード自身は候補に入らない。Energy と Power の支払い後に捨て、相手が Reaction を選べる前に処理する。捨てたカードについても Discard の誘発を発生させる（CR 353, 355.10.c, 357.1–357.2, 423.3）。[Radiance 公式 FAQ](https://playriftbound.com/en-us/news/organizedplay/radiance-rules-faq-and-clarifications/)
+- Ruthless Strike は 3 ダメージを与え、手札を捨てた場合は 5 ダメージを与える。Repeat だけを払った場合は 3 ダメージを繰り返す。Zed, From the Shadows は手札を捨ててプレイしたときに Shadow Clone を出す。
+- ビューアでは対象を選んだ後に、捨てない手と捨てられるカードを表示する。効果によるプレイで物品や手札を任意の追加コストとして使う選択は別途必要。
+- 167 枚中 126 枚が `drafted`、124 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

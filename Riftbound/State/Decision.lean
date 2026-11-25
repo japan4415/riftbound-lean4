@@ -88,9 +88,10 @@ inductive ActionKind where
   /-- Use an ability of a Basic Rune on the Base (CR 164.2). -/
   | runeAbility (card : ObjId) (ability : RuneAbility)
   /-- Play a card, paying from the Rune Pool and naming the Spell's targets in order (CR 355, 357).
-  For Flow from the Trash, name the unadjusted cost when several costs are available (CR 829). -/
+  For Flow from the Trash, name the unadjusted cost when several costs are available (CR 829).
+  The card chosen for an optional discard cost is a separate choice (CR 355.10.c, 357.2). -/
   | playCard (card : ObjId) (pay : RunePool.Payment) (targets : List ObjId)
-      (flowCost : Option Cost := none)
+      (flowCost : Option Cost := none) (discard : Option ObjId := none)
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
   back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
   | standardMove (unit : ObjId) (dest : MoveDest)

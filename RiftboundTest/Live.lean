@@ -33,6 +33,11 @@ meta def h0 : List PlayerId := [⟨0⟩]
   let json := actionJson a
   json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
 
+#guard
+  let a : Action := ⟨.player ⟨0⟩, .playCard ⟨1⟩ ⟨3, []⟩ [⟨2⟩] none (some ⟨3⟩)⟩
+  let json := actionJson a
+  json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
+
 -- A token's Base choice and its Battlefield choice have distinct labels in live play.
 #guard
   let p : PlayerId := ⟨0⟩

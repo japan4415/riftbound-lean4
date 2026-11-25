@@ -24,15 +24,15 @@ Triggers at a point of the turn are later.
 namespace Riftbound
 
 /-- The events that say a card was played: for the object it became (CR 349). -/
-def playedOf (p : PlayerId) (es : List Event) : List Event :=
+def playedOf (p : PlayerId) (c : ObjId) (es : List Event) : List Event :=
   es.filterMap (fun e => match e with
-    | .moved _ n _ => some (Event.played p n)
+    | .moved old n _ => if old == c then some (Event.played p n) else none
     | _ => none)
 
 /-- The events a step has besides those of the rules it ran: playing a card (CR 349). -/
 def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
-  | .playCard _ _ ts _, .player p => playedOf p es ++ ts.map (Event.chosenBySpell p)
+  | .playCard c _ ts _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
   | .activate _ _ _ ts _, .player p => ts.map (Event.chosenByAbility p)
   | .putTrigger _ ts, .player p => ts.map (Event.chosenByAbility p)

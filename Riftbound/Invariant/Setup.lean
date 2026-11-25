@@ -437,8 +437,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p rest c pay ts flow hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
+  · rename_i p rest c pay ts flow discard hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_discard_meta h
     rcases hpend with e | e
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
         (new := [Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
@@ -498,8 +498,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
         (by simp [Frame.isSetup])
-  · rename_i p n rest c pay ts flow hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+  · rename_i p n rest c pay ts flow discard hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
   · rename_i p n rest src idx pay ts discards hp hk
@@ -615,8 +615,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
-  · rename_i bf q n rest c pay ts flow hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+  · rename_i bf q n rest c pay ts flow discard hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
   · rename_i bf q n rest src idx pay ts discards hp hk

@@ -245,6 +245,7 @@ def Condition.understood : Condition → Bool
   | .openConquered => true
   | .legion => true
   | .paid => true
+  | .discardPaid => true
   | .playedAnother => true
   | .empowered s => s.understood
   | .leftEmpowered => true

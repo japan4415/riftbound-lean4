@@ -207,7 +207,7 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.executions
-              (if o.paid && !d.repeatChooses then 1 + Nat.max 1 o.extraPaid else 1)
+              (if !d.repeatChooses then 1 + o.extraPaid else 1)
           | none => .nil) :: .finishSpell item :: rest := by
   unfold resolveFrames
   rw [hc]

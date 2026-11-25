@@ -224,8 +224,13 @@ def VEN_008.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ruthless Strike: the effect is not written yet. -/
-def VEN_008 : CardDef := VEN_008.meta
+/-- Ruthless Strike deals three damage, or five if a hand card paid its extra cost. -/
+def VEN_008 : CardDef :=
+  { VEN_008.meta with
+    discardToPlay := true,
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen .discardPaid (.prim (.deal (.slot 0) (.const 5))) (.prim (.deal (.slot 0) (.const 3))))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-009
 /--
@@ -641,8 +646,13 @@ def VEN_023.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Zed, From the Shadows: the effect is not written yet. -/
-def VEN_023 : CardDef := VEN_023.meta
+/-- Zed plays a Shadow Clone if a hand card paid his extra cost. -/
+def VEN_023 : CardDef :=
+  { VEN_023.meta with
+    discardToPlay := true,
+    abilities := [.triggered { event := .play, condition := .discardPaid }
+      (.of [] (.prim (.playUnitToken "Shadow Clone"))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-024
 /--
