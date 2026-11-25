@@ -23,6 +23,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
+# https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
+TEXT_ERRATA = {
+    "VEN-034": {
+        "[Reaction] (Play on your turn or in showdowns.)":
+            "[Reaction] (Play any time, even before spells and abilities resolve.)",
+    },
+}
+
 
 def latest_snapshot() -> Path:
     files = sorted((ROOT / "data" / "snapshots").glob("gallery-*.json"))
@@ -92,11 +100,13 @@ def normalize(snap: dict) -> dict:
         if why:
             fixes.append({"code": first["code"], "name": name, "reason": why,
                           "given": first["types"], "used": types})
-        text = plain(first["text"])
+        ident = card_id(first["code"])
+        errata = TEXT_ERRATA.get(ident, {})
+        text = [errata.get(line, line) for line in plain(first["text"])]
         effect_text = plain(first["effect"])
         variants = sorted({rules_text(p) for p in ps} - {()})
         cards.append({
-            "cardId": card_id(first["code"]),
+            "cardId": ident,
             "name": name,
             "subtitle": subtitle,
             "types": types,

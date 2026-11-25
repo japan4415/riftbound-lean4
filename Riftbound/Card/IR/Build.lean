@@ -63,7 +63,7 @@ def Ability.isEmpower : Ability → Bool
   | _ => false
 where
   isEmpowerBody : Effect → Bool
-    | .ifThen (.cmp .lt .empowerCount (.const _)) (.prim (.empower .self)) .nop => true
+    | .prim (.empower .self) => true
     | .ifThen _ body .nop => isEmpowerBody body
     | _ => false
 

@@ -3897,6 +3897,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let c ← activate b s.me paws idx [] ⟨7, []⟩
   let (left, moved) ← moveObj c paws (.player s.me .hand)
   return a.mightNow paws == (s.mightNow paws).map (· + 7) &&
+    s.deflectOf paws == 1 && a.deflectOf paws == 1 &&
     (activate s s.me paws idx [] ⟨6, []⟩).isNone &&
     (activate a s.me paws idx [] ⟨7, []⟩).isNone &&
     b.mightNow paws == s.mightNow paws && c.mightNow paws == a.mightNow paws &&
@@ -3933,20 +3934,24 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let v ← b.firstOf s.me .base "VEN-013"
   return a.tired u == some true && b.tired v == some false
 
--- Kayle can resolve Empower three times. Disempower removes one instance and its third-stack
--- keywords, and makes the activated ability available again.
+-- Kayle can pay for Empower at three stacks. Disempower removes one stack and the third-stack
+-- keywords. Empower restores them on the next successful activation.
 #guard vendettaCase fun s => do
   let (s, kayle) ← put s s.me "VEN-134" .base
   let a ← activate s s.me kayle 2 [] ⟨3, []⟩
   let b ← activate a s.me kayle 2 [] ⟨3, []⟩
   let c ← activate b s.me kayle 2 [] ⟨3, []⟩
-  let d := (disempowerObj c kayle).1
+  let atCap : Action := ⟨.player s.me, .activate kayle 2 ⟨3, []⟩ []⟩
+  let (paid, _) ← (step 100 (c.fund s.me 3) atCap).toOption
+  let unchanged := settleChain {} 8 paid
+  let d := (disempowerObj unchanged kayle).1
   let e ← activate d s.me kayle 2 [] ⟨3, []⟩
   return a.mightNow kayle == some 5 && b.mightNow kayle == some 7 &&
-    c.mightNow kayle == some 9 && (c.keywordsNow kayle).any (·.keyword == .ganking) &&
-    (activate c s.me kayle 2 [] ⟨3, []⟩).isNone &&
-    d.mightNow kayle == some 7 && !(d.keywordsNow kayle).any (·.keyword == .ganking) &&
-    e.mightNow kayle == some 9
+    c.mightNow kayle == some 9 && c.hasKw kayle .ganking && c.deflectOf kayle == 3 &&
+    (paid.poolOf s.me).total == 0 && unchanged.mightNow kayle == some 9 &&
+    (unchanged.obj? kayle).any (·.empowerCount == 3) &&
+    d.mightNow kayle == some 7 && !d.hasKw kayle .ganking && d.deflectOf kayle == 0 &&
+    e.mightNow kayle == some 9 && e.hasKw kayle .ganking && e.deflectOf kayle == 3
 
 -- Questionable Tome Disempowers as a cost, before its draw goes on the Chain.
 #guard vendettaCase fun s => do
@@ -3965,7 +3970,8 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
 #guard vendettaCase fun s => do
   let (s, emissary) ← put s s.me "VEN-128" .base
   let ordinary := killObj s emissary
-  let empowered := killObj (empowerObj s.me s emissary).1 emissary
+  let charged ← activate s s.me emissary 1 [] ⟨1, [.order]⟩
+  let empowered := killObj charged emissary
   let a ← fire ordinary.1 ordinary.2
   let b ← fire empowered.1 empowered.2
   let dead ← b.firstOf s.me .trash "VEN-128"

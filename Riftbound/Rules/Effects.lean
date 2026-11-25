@@ -4732,13 +4732,13 @@ def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
     | _ => choices.zipIdx.map (fun (c, i) => check c i)
   | none => []
 
-/-- Recheck targets for a recorded choice, when the effect opts in, or after a change of control. -/
+/-- Recheck recorded choices, including targets newly protected from enemy effects (CR 758.1). -/
 def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
     (definition : Option EffectDef) (pick : SpellPick) : List Value :=
   let changedController := s.playLog.any (fun play =>
     play.object == src && play.moment == .finalized && play.who != p)
   if pick != .plain || definition.any (·.recheckTargets) || changedController ||
-      (s.obj? src).any (·.hiddenAt.isSome) then
+      (s.obj? src).any (·.hiddenAt.isSome) || ts.any (s.blocksChoice p) then
     recheckedSlots s p src ts definition
   else slotValues ts definition
 
