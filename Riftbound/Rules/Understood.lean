@@ -513,6 +513,9 @@ def Timing.runs : Timing → Bool
 /-- A trigger the engine detects: the event, whose subject it is about, and the condition. -/
 def Trigger.runs (t : Trigger) : Bool :=
   t.occurrence == .every && t.condition.understood &&
+    (match t.cost with
+     | .killFriendly _ fs => FilterList.understood fs
+     | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .stun => true | .discard => true | .ready => true

@@ -93,8 +93,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .chainPass p _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
   -- one of the abilities that wait goes on the Chain, with its targets (CR 383.3.d, 355)
-  | .triggerOrder p t more _ :: _, .putTrigger i ts =>
-    a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => trigLegal s g ts)) = true
+  | .triggerOrder p t more _ :: _, .putTrigger i ts payment =>
+    a.actor = .player p ∧ ((t :: more)[i]?.any (fun g => trigLegal s g ts payment)) = true
   -- an Add ability resolves at once, with the Chain empty or not (CR 430)
   | .priority p :: _, .manaAbility src idx pay =>
     a.actor = .player p ∧ manaOk s p src idx pay = true

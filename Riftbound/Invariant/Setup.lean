@@ -514,11 +514,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp rfl
-      (by simp [GameState.playerCount, (putPick_safe s (t :: more) i ts).same.config])
+      (by simp [GameState.playerCount, (finalizePick_safe s (t :: more) i ts payment).same.config])
       (new := [Frame.triggers ((t :: more).eraseIdx i ++ others)]) rfl (by simp [Frame.isSetup])
   · rename_i p tail src idx pay hp hk
     have hmeta := applyMana_meta h

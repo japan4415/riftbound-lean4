@@ -321,7 +321,10 @@ def Trigger.watched (t : Trigger) : Nat :=
 def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
   -- the condition may use the object the ability watches (slot 0); the subject may not
   Selector.ok c t.subject &&
-    Condition.ok { c with slots := t.watched } t.condition
+    Condition.ok { c with slots := t.watched } t.condition &&
+    (match t.cost with
+     | .killFriendly _ fs => FilterList.ok c fs
+     | _ => true)
 
 /-- How many effects a list holds. -/
 def EffectList.length : EffectList → Nat

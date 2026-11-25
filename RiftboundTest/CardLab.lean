@@ -132,10 +132,12 @@ meta def settleChain (says : Says := {}) : Nat → GameState → GameState
       | none => s
     | .triggerOrder .. :: _ =>
       let puts := (legalFrameActions s).filter (fun a => match a.kind with
-        | .putTrigger _ _ => true | _ => false)
-      let good := puts.filter (fun a =>
-        match a.kind with | .putTrigger _ ts => says.pick ts | _ => false)
-      match (good.head? <|> puts.head?) with
+        | .putTrigger _ _ _ => true | _ => false)
+      let skipped := if says.yes then none else puts.find? (fun a =>
+        match a.kind with | .putTrigger _ _ .skip => true | _ => false)
+      let picked := puts.find? (fun a =>
+        match a.kind with | .putTrigger _ ts (.pay _) => says.pick ts | _ => false)
+      match (skipped <|> picked <|> puts.head?) with
       | some a => go a
       | none => s
     | _ => s
@@ -219,7 +221,7 @@ meta def castStop (s : GameState) (p : PlayerId) (c : ObjId) : Option GameState 
 
 /-- The objects a player can pick as the targets of a triggered ability, now. -/
 meta def GameState.trigPicks (s : GameState) : List ObjId :=
-  (legalFrameActions s).flatMap (fun a => match a.kind with | .putTrigger _ ts => ts | _ => [])
+  (legalFrameActions s).flatMap (fun a => match a.kind with | .putTrigger _ ts (.pay _) => ts | _ => [])
 
 /-- The targets a player could pick for the abilities the events set off, now. -/
 meta def firePicks (s : GameState) (es : List Event) : Option (List ObjId) :=

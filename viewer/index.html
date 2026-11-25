@@ -344,9 +344,16 @@ function describeA(a, prev) {
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
     case 'putTrigger': {
-      const tg = (a.targets || []).map((t) => cardName(t)).join('、');
-      return [who + ': 誘発能力を Chain に載せる' + (tg ? '（対象: ' + tg + '）' : '（対象なし: 対象が無ければ取り除かれる）'),
-        '待っている誘発能力から 1 つを選んで載せる。最後に載せたものが先に解決する'];
+      const ability = a.source == null ? '誘発能力' : cardName(a.source) + ' の誘発能力';
+      if (a.decline) return [who + ': ' + ability + 'を見送る', 'コストは支払わず、能力は Chain に載らない'];
+      if (a.unavailable) return [who + ': ' + ability + 'を取り除く', '選べる対象がないため、能力は Chain に残らない'];
+      const targets = (a.targets || []).map(cardName).join('、');
+      const sacrifices = (a.sacrifices || []).map(cardName).join('、');
+      const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
+      return [who + ': ' + ability + 'を確定' + energy +
+        (sacrifices ? '（コストとして ' + sacrifices + ' を Kill）' : '') +
+        (targets ? '（対象 ' + targets + '）' : '（対象なし）'),
+        sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' : '確定した能力は最後に Chain に載ったものから解決する'];
     }
     case 'manaAbility':
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];

@@ -1852,8 +1852,15 @@ def VEN_067.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Bottled Constellation: the effect is not written yet. -/
-def VEN_067 : CardDef := VEN_067.meta
+/-- Bottled Constellation. -/
+def VEN_067 : CardDef :=
+  { VEN_067.meta with
+    abilities := [.triggered
+      { event := .at_ .startOfMain
+        optional := true
+        cost := .killFriendly 3 (.ofList [.notSelf, .either (.ofType .unit) (.ofType .gear)]) }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-068
 /--
@@ -2505,7 +2512,7 @@ def VEN_091 : CardDef :=
   { VEN_091.meta with
     abilities := [.passive (.cmp .lt (.add (.points .you) (.const 3)) .victoryScore)
       [.entersReady .self],
-      .triggered (.onSelf .attack)
+      .triggered { event := .attack, optional := true }
         (.of [.targetOf .anyNumber .enemy .here [.ofType .unit, .might .le (.const 5)]]
           (.prim (.move (.slotsFrom 0) .base))) .unlimited],
     status := .drafted }
@@ -3705,8 +3712,16 @@ def VEN_135.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kennen, Keeper of Balance: the effect is not written yet. -/
-def VEN_135 : CardDef := VEN_135.meta
+/-- Kennen, Keeper of Balance. -/
+def VEN_135 : CardDef :=
+  let stun := EffectDef.of [.targetOf .one .any .anywhere [.ofType .unit]] (.prim (.stun (.slot 0)))
+  { VEN_135.meta with
+    abilities := [
+      .triggered { event := .play, optional := true, cost := .energy 2 } stun .unlimited,
+      .triggered { event := .attack, optional := true, cost := .energy 2 } stun .unlimited,
+      .passive (.exists (.all .enemy .here [.ofType .unit, .stunned]))
+        [.mightPlus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-136
 /--

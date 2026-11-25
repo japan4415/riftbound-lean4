@@ -128,7 +128,7 @@ def LiveGame.autoRun : Nat → LiveGame → List String → Except String (LiveG
 /-- The answers a person can give, as JSON: the number to send back, and the answer. -/
 def LiveGame.legalJson (g : LiveGame) : String :=
   jarr ((g.legal.zipIdx).map (fun (a, k) =>
-    jobj [("k", toString k), ("a", actionJson a g.s.pending.head?)]))
+    jobj [("k", toString k), ("a", actionJson a g.s.pending.head? (some g.s))]))
 
 /-- The match as JSON: the wins, the games, the winner, how the next game's order is decided, and
 whether the sideboard may be used (TR 403.5, 403.10, 404, 407). -/

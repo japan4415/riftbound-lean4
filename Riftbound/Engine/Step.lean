@@ -58,17 +58,17 @@ def legalRunes (s : GameState) (p : PlayerId) : List Action :=
       (fun ab => ⟨.player p, .runeAbility c ab⟩))
 
 /-- Every way the player can put one of the abilities of the group on the Chain: each ability with
-each legal pick of targets (CR 383.3.d, 355). -/
+each legal pick of targets and costs, or a decision to pass it over (CR 383.3, 355). -/
 def legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) : List Action :=
   (List.range grp.length).flatMap (fun (i : Nat) =>
     match grp[i]? with
-    | some g => (trigOptions s g).map (fun ts => ⟨.player p, .putTrigger i ts⟩)
+    | some g => (trigOptions s g).map (fun (ts, payment) => ⟨.player p, .putTrigger i ts payment⟩)
     | none => [])
 
 /-- The puts listed are exactly the legal ones. -/
 theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a : Action) :
-    a ∈ legalPuts s p grp ↔ ∃ i ts, a = ⟨.player p, .putTrigger i ts⟩ ∧
-      (grp[i]?.any (fun g => trigLegal s g ts)) = true := by
+    a ∈ legalPuts s p grp ↔ ∃ i ts payment, a = ⟨.player p, .putTrigger i ts payment⟩ ∧
+      (grp[i]?.any (fun g => trigLegal s g ts payment)) = true := by
   unfold legalPuts
   simp only [List.mem_flatMap, List.mem_range]
   constructor
@@ -78,9 +78,9 @@ theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a
       simp at ha
     · rw [hg] at ha
       simp only [List.mem_map] at ha
-      obtain ⟨ts, hts, rfl⟩ := ha
-      exact ⟨i, ts, rfl, by rw [hg]; simp [(mem_trigOptions s g ts).mp hts]⟩
-  · rintro ⟨i, ts, rfl, h⟩
+      obtain ⟨⟨ts, payment⟩, hts, rfl⟩ := ha
+      exact ⟨i, ts, payment, rfl, by rw [hg]; simp [(mem_trigOptions s g ts payment).mp hts]⟩
+  · rintro ⟨i, ts, payment, rfl, h⟩
     rcases hg : grp[i]? with _ | g
     · rw [hg] at h
       simp at h
@@ -89,7 +89,7 @@ theorem mem_legalPuts (s : GameState) (p : PlayerId) (grp : List PendTrigger) (a
       rw [hg]
       simp only [Option.any_some] at h
       simp only [List.mem_map]
-      exact ⟨ts, (mem_trigOptions s g ts).mpr h, rfl⟩
+      exact ⟨(ts, payment), (mem_trigOptions s g ts payment).mpr h, rfl⟩
 
 /-- The answers of the players to the open question. Chance answers are not listed. -/
 def legalFrameActions (s : GameState) : List Action :=

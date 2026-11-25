@@ -2189,7 +2189,7 @@ meta def playOut : Nat → GameState → GameState
     let pick := acts.find? (fun a => match a.kind with | .assignPick _ => true | _ => false)
     let done := acts.find? (fun a => match a.kind with | .assignDone => true | _ => false)
     let other := acts.find? (fun a => match a.kind with
-      | .pass | .decide _ | .choose _ | .putTrigger _ _ => true | _ => false)
+      | .pass | .decide _ | .choose _ | .putTrigger _ _ _ => true | _ => false)
     match pick <|> done <|> other with
     | some a =>
       match step 100 s a with

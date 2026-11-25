@@ -53,7 +53,15 @@ inductive MoveDest where
   | battlefield (bf : ObjId)
 deriving DecidableEq, Repr
 
-/-- What an action says. -/
+/-- Accept the trigger with the objects offered as costs, or let it go without finalizing it. -/
+inductive TriggerPayment where
+  /-- Accept with these objects as costs, leaving the list empty for other payments. -/
+  | pay (sacrifices : List ObjId)
+  /-- Decline an optional trigger. -/
+  | skip
+deriving DecidableEq, Repr
+
+/-- An answer the engine can receive from a player, chance, clock or judge. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
   | arrange (order : List ObjId)
@@ -107,10 +115,9 @@ inductive ActionKind where
   before the ability goes on the Chain (CR 423.3). -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
       (discards : List ObjId := [])
-  /-- Put the `idx`-th of the triggered abilities that wait on the Chain, with the objects chosen
-  for its choices (CR 383.3.d, 355). An ability with no legal pick is removed with no objects
-  (CR 355). -/
-  | putTrigger (idx : Nat) (targets : List ObjId)
+  /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
+  if it is declined or cannot be finalized (CR 383.3, 355). -/
+  | putTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment := .pay [])
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
   | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)

@@ -563,6 +563,16 @@ inductive AbilityCost where
   | killSelf
 deriving DecidableEq, Repr, Hashable
 
+/-- A cost paid before a triggered ability becomes a finalized Chain item (CR 383.3.b). -/
+inductive TriggerCost where
+  /-- The ability requires no payment. -/
+  | free
+  /-- Spend the specified amount of Energy. -/
+  | energy (amount : Nat)
+  /-- Kill exactly this many friendly permanents that match the filters. -/
+  | killFriendly (count : Nat) (filters : FilterList)
+deriving DecidableEq, Repr, Hashable
+
 /-- When a triggered ability or a delayed effect fires. -/
 structure Trigger where
   /-- What happens. -/
@@ -573,6 +583,10 @@ structure Trigger where
   condition : Condition := .always
   /-- How many times it fires. -/
   occurrence : Occurrence := .every
+  /-- A leading "you may" is a choice whether to finalize the ability (CR 383.3.a). -/
+  optional : Bool := false
+  /-- The cost in an instruction that precedes its effect. -/
+  cost : TriggerCost := .free
 deriving DecidableEq, Repr, Hashable
 
 end Riftbound

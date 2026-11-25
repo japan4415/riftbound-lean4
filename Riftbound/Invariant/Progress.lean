@@ -178,10 +178,10 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hpend]
     exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
       (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (putPick_safe s (t :: more) i ts).same.result (fun hb => ?_)
+    refine hinv.of_next (finalizePick_safe s (t :: more) i ts payment).same.result (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
   · rename_i p tail src idx pay hp hk
@@ -869,12 +869,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     simp [legalFrameActions, hp]
   | triggerOrder p t more others =>
     left
-    obtain ⟨ts, hts⟩ := trigLegal_exists s t
-    refine ⟨⟨.player p, .putTrigger 0 ts⟩, ?_, by simp⟩
+    obtain ⟨ts, payment, hts⟩ := trigLegal_exists s t
+    refine ⟨⟨.player p, .putTrigger 0 ts payment⟩, ?_, by simp⟩
     rw [hla]
     apply List.mem_append_left
     simp only [legalFrameActions, hp, mem_legalPuts]
-    exact ⟨0, ts, rfl, by simpa using hts⟩
+    exact ⟨0, ts, payment, rfl, by simpa using hts⟩
 
 /-- What a chance frame needs for a chance answer to exist: the zone to shuffle is a zone of the
 game, and a player has a Battlefield to pick. The other chance frames need nothing. -/

@@ -147,6 +147,86 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
       | .chosenBySpell _ _ | .chosenByAbility _ _ => true
       | _ => false))
 
+-- Bottled Constellation's three other friendly cards are paid before responses.
+-- The payment does not target those cards, and survives countering the ability.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bottle) ← put s p "VEN-067" .base
+  let (s, first) ← put s p "VEN-014" .base
+  let (s, second) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s q "VEN-014" .base
+  let wait (t : GameState) (turnPlayer : PlayerId) := (advance 100
+    (t.withTriggers [.phaseStarted turnPlayer .main]) []).toOption.map Prod.fst
+  let short ← wait s p
+  let (s, gear) ← put s p "VEN-058" .base
+  let picking ← wait s p
+  let opponent ← wait s q
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let pay (ids : List ObjId) : Action := ⟨.player p, .putTrigger 0 [] (.pay ids)⟩
+  let picks := legalFrameActions picking
+  let payment ← picks.find? (fun a => match a.kind with | .putTrigger _ _ (.pay _) => true | _ => false)
+  let .putTrigger _ _ (.pay paidIds) := payment.kind | none
+  let (declined, _) ← (step 100 picking skip).toOption
+  let (waiting, events) ← (step 100 picking payment).toOption
+  let ability ← (waiting.zone .chain).head?
+  let resolved := settleChain {} 8 waiting
+  let countered := settleChain {} 8 (counterObj waiting ability).1
+  return (legalFrameActions short) == [skip] && (opponent.zone .chain).isEmpty &&
+    (legalFrameActions opponent).all (fun a => a.kind != .putTrigger 0 [] .skip) &&
+    picks.length == 2 && paidIds.length == 3 && [first, second, gear].all paidIds.contains &&
+    !(picks.contains (pay [bottle, first, second])) &&
+    !(picks.contains (pay [enemy, first, second])) &&
+    !(picks.contains (pay [gear, first, first])) &&
+    declined.pointsOf p == s.pointsOf p && (declined.zone .chain).isEmpty &&
+    paidIds.all (fun id => (declined.obj? id).isSome && (waiting.obj? id).isNone) &&
+    (waiting.obj? bottle).isSome && (waiting.obj? enemy).isSome &&
+    !(events.any (fun | .chosenByAbility _ _ => true | _ => false)) &&
+    (events.filter (fun | .died _ _ => true | _ => false)).length == 3 &&
+    waiting.pointsOf p == s.pointsOf p && resolved.pointsOf p == s.pointsOf p + 1 &&
+    countered.pointsOf p == s.pointsOf p && countered.countIn p .trash "VEN-014" == 2 &&
+    countered.countIn p .trash "VEN-058" == 1
+
+-- Kennen pays at finalization both on play and on attack. The Stun and the
+-- resulting Might bonus apply on resolution, and a payment can use ready Basic Runes.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, enemy) ← putAt s q "VEN-014" field
+  let (s, homeTarget) ← put s q "VEN-014" .base
+  let (s, kennen) ← putAt s p "VEN-135" field
+  let (s, inHand) ← put s p "VEN-135" .hand
+  let s := s.control q field
+  let attack (t : GameState) := (advance 100
+    (t.withTriggers [.combatStarted field p]) []).toOption.map Prod.fst
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let target (u : ObjId) : Action := ⟨.player p, .putTrigger 0 [u]⟩
+  let picking ← attack (s.fund p 2)
+  let short ← attack (s.fund p 1)
+  let (declined, _) ← (step 100 picking skip).toOption
+  let (waiting, _) ← (step 100 picking (target enemy)).toOption
+  let spell ← (waiting.zone .chain).head?
+  let resolved := settleChain {} 8 waiting
+  let countered := settleChain {} 8 (counterObj waiting spell).1
+  let fromRunes ← attack (channel p 2 (s.setPool p {})).1
+  let (runed, _) ← (step 100 fromRunes (target enemy)).toOption
+  let tiredRunes (t : GameState) := (t.zone (.player p .base)).filter (fun id =>
+    (t.obj? id).any (fun o => o.runeDomain.isSome && o.exhausted))
+  let (played, _) ← (step 100 (s.fund p 5) ⟨.player p, .playCard inHand ⟨3, []⟩ []⟩).toOption
+  let (stunning, _) ← (step 100 played (target homeTarget)).toOption
+  let playedResolved := settleChain {} 8 stunning
+  return (legalFrameActions short) == [skip] &&
+    (legalActions picking).contains (target homeTarget) &&
+    (declined.poolOf p).energy == 2 && (declined.zone .chain).isEmpty &&
+    (waiting.poolOf p).energy == 0 && (countered.poolOf p).energy == 0 &&
+    (waiting.obj? enemy).any (fun o => !o.stunned) && waiting.mightNow kennen == some 2 &&
+    (countered.obj? enemy).any (fun o => !o.stunned) &&
+    (resolved.obj? enemy).any (·.stunned) && resolved.mightNow kennen == some 4 &&
+    (tiredRunes runed).length == (tiredRunes fromRunes).length + 2 &&
+    (played.poolOf p).energy == 2 && (stunning.poolOf p).energy == 0 &&
+    (playedResolved.obj? homeTarget).any (·.stunned)
+
 -- Corrupted Dragon's attack selects a subset at its Battlefield. Each selected
 -- Unit is rechecked after Reactions, and declining leaves all defenders in place.
 #guard vendettaCase fun s => do
@@ -161,7 +241,8 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let s := (s.modObj first (fun o => { o with baseMightThisTurn := some 5 })).control q field
   let (picking, _) ← (advance 100 (s.withTriggers [.combatStarted field p]) []).toOption
   let target (ts : List ObjId) : Action := ⟨.player p, .putTrigger 0 ts⟩
-  let (declined, _) ← (step 100 picking (target [])).toOption
+  let (declined, _) ← (step 100 picking ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let (empty, _) ← (step 100 picking (target [])).toOption
   let (chosen, _) ← (step 100 picking (target [first, second])).toOption
   let stronger := chosen.modObj first (fun o => { o with baseMightThisTurn := some 6 })
   let resolved := settleChain {} 8 stronger
@@ -169,6 +250,7 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     !(legalActions picking).contains (target [large]) &&
     !(legalActions picking).contains (target [elsewhere]) &&
     (declined.obj? second).any (·.loc == some field) &&
+    (declined.zone .chain).isEmpty && (empty.zone .chain).length == 1 &&
     (resolved.obj? dragon).isSome && (resolved.obj? first).any (·.loc == some field) &&
     resolved.locate second == some (.player q .base) &&
     (resolved.obj? large).any (·.loc == some field)

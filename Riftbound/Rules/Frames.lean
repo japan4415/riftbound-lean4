@@ -304,9 +304,9 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .activate src idx pay ts discards =>
     activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards
-  | .triggerOrder _ t more others :: rest, .putTrigger i ts =>
-    some ({ putPick s (t :: more) i ts with
-              pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
+  | .triggerOrder _ t more others :: rest, .putTrigger i ts payment =>
+    let r := finalizePick s (t :: more) i ts payment
+    some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
   | .priority p :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .chainPass p _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .discard p n :: rest, .discardPick c =>

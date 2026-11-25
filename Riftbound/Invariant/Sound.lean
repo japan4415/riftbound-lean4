@@ -284,10 +284,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_ownerOk hwf hown h
   · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_ownerOk hwf hown h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putPick_safe s _ i ts).own hwf hown).congr rfl rfl
+    exact ((finalizePick_safe s _ i ts payment).own hwf hown).congr rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n tail src idx pay hp hk

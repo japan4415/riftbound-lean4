@@ -76,10 +76,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_wf hwf h
   · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_wf hwf h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((putPick_safe s _ i ts).wf hwf).congr rfl rfl rfl rfl
+    exact ((finalizePick_safe s _ i ts payment).wf hwf).congr rfl rfl rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n tail src idx pay hp hk
@@ -356,10 +356,10 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_physIds hwf h
   · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_physIds hwf h
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (putPick_safe s _ i ts).phys hwf
+    exact (finalizePick_safe s _ i ts payment).phys hwf
   · rename_i p tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n tail src idx pay hp hk

@@ -63,7 +63,8 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
   | _ => []
 
 /-- An action as JSON, with any context needed to describe the choice. -/
-def actionJson (a : Action) (frame : Option Frame := none) : String :=
+def actionJson (a : Action) (frame : Option Frame := none)
+    (state : Option GameState := none) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
     | .chance => "chance"
@@ -85,8 +86,25 @@ def actionJson (a : Action) (frame : Option Frame := none) : String :=
     | .manaAbility src idx pay =>
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
        ("power", jarr (pay.power.map (fun d => jstr (toString (repr d)))))]
-    | .putTrigger i ts =>
-      [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))]
+    | .putTrigger i ts payment =>
+      let trigger : Option PendTrigger := match frame with
+        | some (.triggerOrder _ t more _) => (t :: more)[i]?
+        | _ => none
+      let source := trigger.map PendTrigger.source
+      let costs := match state, trigger with
+        | some s, some t =>
+          if ts.isEmpty && !(trigChoices s t).isEmpty && !trigOptional s t then
+            [("unavailable", "true")]
+          else match trigCost s t with
+            | .energy n => [("energy", toString n)]
+            | _ => []
+        | _, _ => []
+      [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+      (source.toList.map (fun id => ("source", toString id.n))) ++
+      (match payment with
+       | .skip => [("decline", "true")]
+       | .pay [] => costs
+       | .pay ids => costs ++ [("sacrifices", jarr (ids.map (fun id => toString id.n)))])
     | .activate src idx pay ts discards =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
@@ -276,7 +294,7 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (seen : Std.HashSet Nat) (frame : Option Frame := none) : String × Std.HashSet Nat :=
   let (st, seen') := stateJson s seen
   (jobj [("i", toString i),
-    ("action", match a with | some a => actionJson a frame | none => "null"),
+    ("action", match a with | some a => actionJson a frame (some s) | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)], seen')
 
 /-- The parameter of a keyword as JSON. -/

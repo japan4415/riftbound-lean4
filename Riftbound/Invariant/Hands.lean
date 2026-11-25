@@ -391,11 +391,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i p t more others rest i ts hp hk
+  · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hm := (putPick_safe s (t :: more) i ts).same
-    have hph : (putPick s (t :: more) i ts).phase ≠ .setup := by
+    have hm := (finalizePick_safe s (t :: more) i ts payment).same
+    have hph : ((finalizePick s (t :: more) i ts payment).1).phase ≠ .setup := by
       rw [hm.phase]
       exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)

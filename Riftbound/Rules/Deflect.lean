@@ -76,7 +76,7 @@ def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
   | .playCard _ _ ts _ _ => ts
   | .activate _ _ _ ts _ => ts
-  | .putTrigger _ ts => ts
+  | .putTrigger _ ts _ => ts
   | _ => []
 
 /-- An answer that plays a card can have a printed exception to the Deflect cost. -/
