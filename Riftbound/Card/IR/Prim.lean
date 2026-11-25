@@ -31,6 +31,8 @@ inductive Prim where
   | discard (p : PlayerSel) (n : Amount)
   /-- Deal damage to objects. -/
   | deal (s : Selector) (n : Amount)
+  /-- Two units deal damage equal to their current Mights to each other (CR 418.6.b.3). -/
+  | exchangeDamage (a b : Selector)
   /-- Set a Unit's base Might for the rest of the turn (CR 143.2.a, 479.2). -/
   | setBaseMight (s : Selector) (n : Amount)
   /-- Heal damage from objects. -/

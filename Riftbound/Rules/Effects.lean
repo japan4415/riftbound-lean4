@@ -1363,12 +1363,17 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
 /-- Targets, finalization choices and costs for a Spell played by another effect (CR 420.3). -/
 def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
     (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
-  (s.effCost p id d).toList.flatMap (fun base =>
+  let hasCosts := !(s.extrasRaw p id d).isEmpty
+  let choices := (s.effCost p id d).toList.flatMap (fun base =>
     (s.spellPicks d).flatMap (fun pick =>
       (e.forPick pick).toList.flatMap (fun branch =>
         ((targetTuples s p id s.mightTable branch.choices).filter
           (fun ts => s.moveTargetOk id branch ts pick)).flatMap (fun ts =>
-            (s.targetCostOptions p id ts (base.lessEnergy less)).map (fun cost => (ts, cost, pick))))))
+            let surcharge := if s.playPowerCut p id ts == 0 then s.deflectCost p ts (some id) else 0
+            (s.spellCostPlans p id d (base.lessEnergy less) ts).map (fun (cost, paid) =>
+              let choice := if hasCosts then .withCosts pick paid.1 paid.2 else pick
+              (ts, { cost with power := cost.power ++ List.replicate surcharge .any }, choice))))))
+  choices.eraseDups.filter (fun (_, cost, _) => (payByRunes s p id cost).isSome)
 
 /-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
 If the cost cannot be paid or the choice is unavailable, it is not cast. -/
@@ -1383,7 +1388,10 @@ def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
       | some r =>
         match moveObj r.1 id .chain with
         | some m =>
-          (m.1.modObj m.2 (Object.withPlay ts { r.1.freeMark p id with spellPick := pick }),
+          let chosen := pick.optionalCosts.getD (false, 0)
+          let mark := { r.1.freeMark p id with
+            spellPick := pick, paid := chosen.1, extraPaid := chosen.2 }
+          (m.1.modObj m.2 (Object.withPlay ts mark),
             r.2 ++ [Event.moved id m.2 .chain, Event.played p m.2] ++ ts.map (Event.chosenBySpell p))
         | none => (s, [])
       | none => (s, [])
@@ -1739,6 +1747,24 @@ theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
     · split
       · exact useShield_safe s id
       · exact dealThroughPrevent_safe n s id
+  · exact Safe.refl s
+
+/-- Read both Mights before marking damage. The Units themselves are the sources, so
+modifiers for damage from a Spell do not apply (CR 418.6.b.3). -/
+def exchangeDamage (s : GameState) (a b : ObjId) : GameState × List Event :=
+  match s.mightNow a, s.mightNow b with
+  | some am, some bm =>
+    let hit := dealObj am.toNat s b
+    let reply := dealObj bm.toNat hit.1 a
+    (reply.1, hit.2 ++ reply.2)
+  | _, _ => (s, [])
+
+/-- The exchange keeps the structural invariants. -/
+theorem exchangeDamage_safe (s : GameState) (a b : ObjId) :
+    Safe s (exchangeDamage s a b).1 := by
+  unfold exchangeDamage
+  split
+  · exact (dealObj_safe _ s b).trans (dealObj_safe _ _ a)
   · exact Safe.refl s
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
@@ -2345,6 +2371,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel
       (fun t id => dealObj (if 0 < k then k + s.bonusOn p src id else k) t id
         (some (env.effectController.getD p))))
+  | .exchangeDamage a b =>
+    match a.eval s p src env, b.eval s p src env with
+    | some (x :: _), some (y :: _) => some (exchangeDamage s x y)
+    | _, _ => some (s, [])
   | .setBaseMight sel n =>
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel (setBaseMight k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
@@ -2544,6 +2574,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | some k =>
         simp only [hn, Option.bind_some] at h
         exact onSelected_safe (fun t id => dealObj_safe _ t id (some (env.effectController.getD p))) h
+  | exchangeDamage a b =>
+    simp only [applyPrim] at h
+    split at h
+    · rename_i x xs y ys _ _
+      cases h
+      exact exchangeDamage_safe s x y
+    · cases h
+      exact Safe.refl s
   | setBaseMight sel n =>
     simp only [applyPrim] at h
     cases hn : n.evalS s p src env with
@@ -3441,7 +3479,7 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (slot : Nat) (allowBase : Bool) (fs : FilterList) (afterMove : Effect) : Env × Effect :=
   let unit := Selector.slot slot
   let resume := (env, Effect.nop)
-  match (s.obj? src).map Object.spellPick, env.slots[slot]? with
+  match (s.obj? src).map (fun (o : Object) => SpellPick.effectChoice o.spellPick), env.slots[slot]? with
   | some (.destination dest), some (.obj id) =>
     if s.blocksEnemyMove (env.effectController.getD p) id then resume
     else match s.obj? id, dest with

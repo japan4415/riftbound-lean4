@@ -341,6 +341,7 @@ def Prim.understood : Prim → Bool
   | .discard p n => p.understood && n.understood
   | .channel p n m => p.understood && n.understood && m.understood
   | .deal s n => s.understoodPick && n.understood
+  | .exchangeDamage a b => a.understood && b.understood
   | .setBaseMight s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
   | .kill s => s.understoodPick

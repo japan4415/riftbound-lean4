@@ -2340,8 +2340,17 @@ def VEN_083.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rampage: the effect is not written yet. -/
-def VEN_083 : CardDef := VEN_083.meta
+/-- Rampage. The Might bonus depends on the explicitly selected additional cost. -/
+def VEN_083 : CardDef :=
+  { VEN_083.meta with
+    additionalCost := some ⟨0, [.domain .body]⟩,
+    spellEffect := some (.of [
+      .targetOf .one .friendly .anywhere [.ofType .unit],
+      .targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.seqOf [
+        .ifThen .paid (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn) .nop,
+        .prim (.exchangeDamage (.slot 0) (.slot 1))])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-084
 /--

@@ -357,13 +357,18 @@ def waysToPay : List (List Cost) → List (List Cost)
   | [] => [[]]
   | a :: rest => a.flatMap (fun x => (waysToPay rest).map (x :: ·))
 
-/-- The costs the card may be played for now, with how many additional costs each pays: its cost,
-with any of its additional costs paid (each one is optional, and paid at most once) (CR 820). -/
+/-- All cost totals, retaining which optional costs the player agreed to pay (CR 355.1, 820). -/
+def GameState.playCostPlans (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) : List (Cost × List Nat) :=
+  let es := (s.extraAlts p c d).zipIdx
+  (subseqsUpTo es.length es).flatMap (fun t =>
+    (waysToPay (t.map Prod.fst)).map (fun cs =>
+      (cs.foldl (fun k e => k.plus e) cost, t.map Prod.snd)))
+
+/-- The costs the card may be played for now, with how many additional costs each pays. -/
 def GameState.playCostsOfK (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) : List (Cost × Nat) :=
-  let es := s.extraAlts p c d
-  (subseqsUpTo es.length es).flatMap (fun t =>
-    (waysToPay t).map (fun cs => (cs.foldl (fun k e => k.plus e) cost, cs.length)))
+  (s.playCostPlans p c d cost).map (fun (total, picked) => (total, picked.length))
 
 /-- The costs the card may be played for now: its cost, with any of its additional costs paid. -/
 def GameState.playCostsOf (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost) :
@@ -526,6 +531,28 @@ def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
   (s.playCostsOfK p c d cost).flatMap (fun (total, extras) =>
     (s.targetCostOptions p c ts total).map (·, extras))
 
+/-- A Spell's printed optional cost is distinct from the Repeat costs it paid. -/
+def CardDef.spellCostPicks (d : CardDef) (picked : List Nat) : Bool × Nat :=
+  let printed := d.additionalCost.isSome && picked.contains 0
+  (printed, picked.length - (if printed then 1 else 0))
+
+/-- The possible Spell payments, each with its explicit optional-cost choices. -/
+def GameState.spellCostPlans (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) (ts : List ObjId) : List (Cost × (Bool × Nat)) :=
+  (s.cutOptionsOf p c cost ts).flatMap (fun base =>
+    (s.playCostPlans p c d base).flatMap (fun (total, picked) =>
+      (s.targetCostOptions p c ts total).map (·, d.spellCostPicks picked)))
+
+/-- The play must identify which optional costs were paid if the payment alone cannot
+identify them. Printed optional costs always have a separate choice (CR 356.4.f.1). -/
+def GameState.spellCostsOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) (ts : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) : Bool :=
+  let choices := ((s.spellCostPlans p c d cost ts).filterMap (fun (cost, paid) =>
+    if cost.paidBy d.domains pay then some paid else none)).eraseDups
+  match pick.optionalCosts with
+  | some paid => choices.contains paid && (d.additionalCost.isSome || 1 < choices.length)
+  | none => d.additionalCost.isNone && choices.length == 1
+
 /-- The payment pays the cost of the card, less what the objects it chooses take off, or the cost
 with an additional cost. -/
 def GameState.paysForXT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
@@ -536,14 +563,15 @@ def GameState.paysForXT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
 /-- The payments that pay the cost of the card, with what the objects it chooses take off. -/
 def GameState.playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) : List RunePool.Payment :=
-  (s.cutOptionsOf p c cost ts).flatMap (fun b =>
-    (s.targetCosts p c d b ts).flatMap (fun x => x.1.payments d.domains))
+  ((s.cutOptionsOf p c cost ts).flatMap (fun b =>
+    (s.targetCosts p c d b ts).flatMap (fun x => x.1.payments d.domains))).eraseDups
 
 /-- The payments listed are exactly the payments that pay. -/
 theorem GameState.mem_playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) (pay : RunePool.Payment) :
     pay ∈ s.playPaymentsOfT p c d cost ts ↔ s.paysForXT p c d cost ts pay = true := by
-  simp only [playPaymentsOfT, paysForXT, List.mem_flatMap, List.any_eq_true, Cost.mem_payments]
+  simp only [playPaymentsOfT, paysForXT, List.mem_eraseDups, List.mem_flatMap, List.any_eq_true,
+    Cost.mem_payments]
 
 /-- A payment that pays takes out as much as one of the costs it can pay. -/
 theorem GameState.paysForXT_total {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
@@ -688,6 +716,21 @@ def GameState.spellPicks (s : GameState) (d : CardDef) : List SpellPick :=
             (fun bf => .destination (some bf)) else [])
     | none => [])
 
+/-- Possible combinations of effect choices, the printed additional cost, and Repeat.
+Payment legality determines which of these combinations are offered. -/
+def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : List SpellPick :=
+  let base := s.spellPicks d
+  let extra := if d.hasType .spell then
+    let n := (s.extrasRaw p c d).countP Prod.snd
+    if d.additionalCost.isSome || n != 0 then
+      base.flatMap (fun pick =>
+        (List.range (n + 1)).flatMap (fun k =>
+          (.withCosts pick false k) ::
+            (if d.additionalCost.isSome then [.withCosts pick true k] else [])))
+    else []
+  else []
+  base ++ extra
+
 /-- Check the chosen destination relative to the moved target (CR 355.4).
 Effects that prevent the move are checked at resolution (CR 358.3.a). -/
 def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : List ObjId) :
@@ -703,6 +746,7 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
             (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false
       | none => false
     | none => false
+  | .withCosts pick _ _ => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
 
 /-- What is true when a card is played: whether an additional cost was paid, whether another card
@@ -747,19 +791,20 @@ def GameState.extraPaidAt (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
 
 /-- The facts of playing the card now with the payment. -/
 def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
-    (ts : List ObjId := []) (directCast : Bool := false) (flow : Option Cost := none) : PlayMark :=
+    (ts : List ObjId := []) (directCast : Bool := false) (flow : Option Cost := none)
+    (pick : SpellPick := .plain) : PlayMark :=
   let costOf := if directCast then (fun d => s.directCost p c d flow) else s.effCost p c
-  { paid := (s.cardDef? c).any (fun d =>
+  { paid := pick.optionalCosts.elim ((s.cardDef? c).any (fun d =>
       match costOf d with
       | some cost =>
         (s.cutOptionsOf p c cost ts).all (fun b =>
           (s.targetCostOptions p c ts b).all (fun x => !x.paidBy d.domains pay)) ||
           (s.extrasFor p c d).any (·.total == 0)
-      | none => false),
-    extraPaid := (s.cardDef? c).elim 0 (fun d =>
+      | none => false)) Prod.fst,
+    extraPaid := pick.optionalCosts.elim ((s.cardDef? c).elim 0 (fun d =>
       match costOf d with
       | some cost => s.extraPaidAt p c d cost ts pay
-      | none => 0),
+      | none => 0)) Prod.snd,
     legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
     buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (fun k => k == .unitsBuffed || k == .nextUnitBuffed),
@@ -1086,12 +1131,12 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
       o.owner == p && d.hasType .spell &&
         (match d.spellEffect.bind (·.forPick pick) with
           | some e => targetsOk s p c s.mightTable e.choices targets &&
-              (s.spellPicks d).contains pick && s.moveTargetOk c e targets pick
+              (s.castPicks p c d).contains pick && s.moveTargetOk c e targets pick
           | none => false) &&
         (match s.directCost p c d flow with
-          | some cost => s.paysForXT p c d cost targets pay &&
+          | some cost => s.paysForXT p c d cost targets pay && s.spellCostsOk p c d cost targets pay pick &&
               (!d.repeatChooses || decide (targets.length ≤ 1) ||
-                decide (0 < s.extraPaidAt p c d cost targets pay))
+                decide (0 < pick.optionalCosts.elim (s.extraPaidAt p c d cost targets pay) Prod.snd))
           | none => false) &&
         (s.spendFor p false pay).any (fun pool =>
           s.playPowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
@@ -1104,7 +1149,8 @@ def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   match (s.poolOf p).spend pay with
   | some pool =>
     (moveObj s c .chain).map (fun r =>
-      (((r.1.setPool p pool).modObj r.2 (Object.withPlay targets { s.playMark p c pay targets true flow with spellPick := pick })),
+      (((r.1.setPool p pool).modObj r.2
+          (Object.withPlay targets { s.playMark p c pay targets true flow pick with spellPick := pick })),
         [Event.moved c r.2 .chain]))
   | none => none
 
@@ -1382,13 +1428,13 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
           cases hs : s.spendFor p false pay with
           | none => rw [hs] at hspend; simp at hspend
           | some pool => exact ⟨pool, GameState.spendFor_eq_some hs⟩
-        exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost.1, hpool⟩
+        exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost.1.1, hpool⟩
 
 /-- A castable card is a Spell whose effect the targets are a legal pick for. -/
 theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
     ∃ d e, s.cardDef? c = some d ∧ d.spellEffect.bind (·.forPick pick) = some e ∧
-      targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.spellPicks d := by
+      targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.castPicks p c d := by
   unfold castable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨-, hrest⟩ := h
@@ -1718,7 +1764,7 @@ def legalPlays (s : GameState) (p : PlayerId) : List Action :=
   (s.playSources p).flatMap (fun c =>
     match s.cardDef? c with
     | some d =>
-      (s.spellPicks d).flatMap (fun pick =>
+      (s.castPicks p c d).flatMap (fun pick =>
         (s.directOptions p c d).flatMap (fun (flow, cost) =>
           (playTargets s p c d pick).flatMap (fun ts =>
             ((s.playPaymentsOfT p c d cost ts).filter
@@ -1745,10 +1791,11 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
   · rintro ⟨c, pay, ts, flow, discard, pick, rfl, hc, hok, hdiscard⟩
     have hdc : ∃ d cost, s.cardDef? c = some d ∧ (flow, cost) ∈ s.directOptions p c d ∧
         s.paysForXT p c d cost ts pay = true ∧ ts ∈ playTargets s p c d pick ∧
-        pick ∈ s.spellPicks d := by
+        pick ∈ s.castPicks p c d := by
       rcases hok with ⟨hts, h, rfl, rfl⟩ | h | ⟨hb, rfl, rfl⟩
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h
-        refine ⟨d, cost, hd, ?_, hpaid, extraOk_mem_playTargets hd hts, by simp [GameState.spellPicks]⟩
+        refine ⟨d, cost, hd, ?_, hpaid, extraOk_mem_playTargets hd hts,
+          by simp [GameState.castPicks, GameState.spellPicks]⟩
         simp [GameState.directOptions_of_hand (playable_mem_hand hc h), hcost]
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := castable_spec h
         obtain ⟨d', e, hd', he, hok, hpick⟩ := castable_targets h
@@ -1759,7 +1806,8 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
       · obtain ⟨b, hts, hb'⟩ := bfPlayOk_spec hb
         obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec hb'
         refine ⟨d, cost, hd, ?_, hpaid, (mem_playTargets s p c d ts).mpr
-          (Or.inr (Or.inr (Or.inr ⟨b, hts, playable_dest hb'⟩))), by simp [GameState.spellPicks]⟩
+          (Or.inr (Or.inr (Or.inr ⟨b, hts, playable_dest hb'⟩))),
+          by simp [GameState.castPicks, GameState.spellPicks]⟩
         simp [GameState.directOptions_of_hand (playable_mem_hand hc hb'), hcost]
     obtain ⟨d, cost, hd, hcost, hpaid, hts, hpick⟩ := hdc
     refine ⟨c, hc, ?_⟩

@@ -140,6 +140,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .draw p n => p.ok c && Amount.ok c n
   | .discard p n => p.ok c && Amount.ok c n
   | .deal s n => Selector.ok c s && Amount.ok c n
+  | .exchangeDamage a b => Selector.ok c a && Selector.ok c b
   | .setBaseMight s n => Selector.ok c s && Amount.ok c n
   | .heal s n => Selector.ok c s && Amount.ok c n
   | .kill s => Selector.ok c s

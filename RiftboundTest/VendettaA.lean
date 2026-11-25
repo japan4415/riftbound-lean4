@@ -156,6 +156,66 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Rampage makes both decisions available even when the total payments are equal.
+-- The bonus follows the original decision, including if the Spell changes controllers.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s q "VEN-014" .base
+  let (s, card) ← put s p "VEN-083" .hand
+  let s := s.rich p
+  let cast (pay : RunePool.Payment) (paid : Bool) (repeats : Nat := 0) : Action :=
+    ⟨.player p, .playCard card pay [ally, enemy] none none (.withCosts .plain paid repeats)⟩
+  let s0 := ((s.fund p 1).addTurnFx p (.nextCardCostMinus 2 2)).addTurnFx q .preventEffectDamage
+  let accept := cast ⟨1, []⟩ true
+  let decline := cast ⟨1, []⟩ false
+  let (accepted, _) ← (step 100 s0 accept).toOption
+  let (declined, _) ← (step 100 s0 decline).toOption
+  let paidItem ← (accepted.zone .chain).head?
+  let declinedItem ← (declined.zone .chain).head?
+  let paid ← passToChoice 8 accepted
+  let unpaid ← passToChoice 8 declined
+  let retargeted := accepted.modObj paidItem (fun o =>
+    { o with controller := q, targets := [enemy, ally] })
+  let taken ← passToChoice 8 retargeted
+  let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat)
+    (cast ⟨6, [.body]⟩ true 1)).toOption
+  let rep ← (repeating.zone .chain).head?
+  let defn ← s0.cardDef? card
+  let effect ← defn.spellEffect
+  let reducedIndex ← (reducedSpellChoices s0 p card defn effect 0).findIdx? (· ==
+    ([ally, enemy], ⟨1, []⟩, .withCosts .plain true 0))
+  let (reduced, _) := castPickedOne p 0 reducedIndex s0 card
+  let reducedItem ← (reduced.zone .chain).head?
+  return (legalFrameActions s).contains (cast ⟨3, [.body]⟩ true) &&
+    (legalFrameActions s).contains (cast ⟨3, []⟩ false) &&
+    !(legalFrameActions s).contains (cast ⟨3, []⟩ true) &&
+    !(legalFrameActions s0).contains ⟨.player p, .playCard card ⟨1, []⟩ [ally, enemy]⟩ &&
+    (accepted.obj? paidItem).any (fun o => o.paid && o.extraPaid == 0) &&
+    (declined.obj? declinedItem).any (fun o => !o.paid && o.extraPaid == 0) &&
+    (repeating.obj? rep).any (fun o => o.paid && o.extraPaid == 1) &&
+    (reduced.obj? reducedItem).any (fun o => o.paid && o.extraPaid == 0) &&
+    (paid.obj? ally).any (fun o => o.damage == 2) && paid.mightNow ally == some 4 &&
+    (paid.obj? enemy).isNone && (unpaid.obj? ally).isNone && (unpaid.obj? enemy).isNone &&
+    taken.mightNow enemy == some 4 && (taken.obj? ally).isNone
+
+-- A Repeat reduced to zero is still a separate choice from casting the Spell once.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, target) ← putAt s p "VEN-064" s.bf0
+  let (s, spell) ← put s p "OGN-009" .hand
+  let s := ((s.fund p 0).addTurnFx p .nextSpellRepeat).addTurnFx p (.nextCardCostMinus 2 2)
+  let cast (copies : Nat) : Action :=
+    ⟨.player p, .playCard spell ⟨0, []⟩ [target] none none (.withCosts .plain false copies)⟩
+  let (once, _) ← (step 100 s (cast 0)).toOption
+  let (twice, _) ← (step 100 s (cast 1)).toOption
+  let count (t : GameState) := (t.zone .chain).head?.bind (fun item =>
+    (t.obj? item).map (·.extraPaid))
+  return count once == some 0 && count twice == some 1 &&
+    !(legalFrameActions s).contains ⟨.player p, .playCard spell ⟨0, []⟩ [target]⟩ &&
+    !(legalFrameActions s).contains (cast 2)
+
 -- Astral Heron waits for the first successful card resolution and must be at
 -- a Battlefield when it happens. Its discount lasts through one finalized play.
 #guard vendettaCase fun s => do

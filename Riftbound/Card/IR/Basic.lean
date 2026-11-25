@@ -25,8 +25,20 @@ inductive SpellPick where
   | mode (index : Nat)
   /-- The chosen Battlefield, or the moved Unit's Base. -/
   | destination (battlefield : Option ObjId)
+  /-- The choices before resolution, with the printed optional cost and the number of Repeats
+  chosen for this play (CR 355.1, 356.4.f.1). -/
+  | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- The choices of costs, when declared explicitly. -/
+def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
+  | .withCosts _ printed repeats => some (printed, repeats)
+  | _ => none
+
+/-- The mode or destination selected for the effect, independently of its optional costs. -/
+def SpellPick.effectChoice : SpellPick → SpellPick
+  | .withCosts pick _ _ => pick.effectChoice
+  | pick => pick
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where

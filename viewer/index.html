@@ -382,9 +382,14 @@ function describeA(a, prev) {
         : (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
       const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
         : def?.discardToPlay ? '（捨てない）' : '';
+      const extra = def?.optionalCost && typeof a.additionalCostPaid === 'boolean'
+        ? (a.additionalCostPaid ? '（追加コストを払う）' : '（追加コストを見送る）') : '';
+      const repeat = typeof a.repeatsPaid === 'number' && (a.repeatsPaid || !def?.optionalCost)
+        ? '（Repeat ' + a.repeatsPaid + ' 回）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
       const dest = 'moveDest' in a ? '（移動先 ' + (a.moveDest === null ? 'Base' : cardName(a.moveDest)) + '）' : '';
-      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') + discard + mode + dest;
+      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
+        discard + extra + repeat + mode + dest;
       if (def && def.types.includes('spell')) {
         const tg = (a.targets || []).map((t) => cardName(t)).join('、');
         const react = prev === 'chainPass';

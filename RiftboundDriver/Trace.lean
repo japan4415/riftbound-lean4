@@ -72,6 +72,9 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .plain => []
   | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
+  | .withCosts pick printed repeats =>
+    spellPickFields state c pick ++
+      [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
 
 /-- The order the affected Unit's controller chooses for damage replacement. -/
 def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
@@ -357,6 +360,7 @@ def cardJson (c : CardDef) : String :=
       jobj [("k", jstr (ctorName k.keyword)), ("arg", kwArgJson k.arg)]))),
     ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
     ("ir", jstr (irText c))] ++
+    c.additionalCost.toList.map (fun cost => ("optionalCost", costJson cost)) ++
     (if c.discardToPlay then [("discardToPlay", "true")] else []))
 
 /-- The answer of the demo player in the Main Phase: play a card if one can be paid for, otherwise
