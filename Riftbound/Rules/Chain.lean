@@ -85,9 +85,61 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .energyDiscount _ _ :: cs => costPlan cs
   | _ :: _ => none
 
-/-- The cost plan after applying any Energy discounts for this activated ability. -/
+/-- Gear activations exclude the internal abilities used to implement hiding and card plays. -/
+def isGearActivation (d : CardDef) (costs : List AbilityCost) : Bool :=
+  d.hasType .gear && !costs.contains .fromHand && !costs.contains .fromHidden &&
+    !costs.contains .fromChampionZone && !costs.contains .fromTrash
+
+/-- Each player's first Gear activation counts even if it is free or will be countered. -/
+def GameState.noteGearAbility (s : GameState) (p : PlayerId) (d : CardDef)
+    (costs : List AbilityCost) : GameState :=
+  if isGearActivation d costs && !(s.fxOf p).contains .usedGearAbility then
+    s.addTurnFx p .usedGearAbility
+  else s
+
+theorem GameState.noteGearAbility_safe (s : GameState) (p : PlayerId) (d : CardDef)
+    (costs : List AbilityCost) : Safe s (s.noteGearAbility p d costs) := by
+  unfold noteGearAbility
+  split
+  · exact addTurnFx_safe _ _ _
+  · exact Safe.refl _
+
+theorem GameState.noteGearAbility_zone (s : GameState) (p : PlayerId) (d : CardDef)
+    (costs : List AbilityCost) (z : Zone) : (s.noteGearAbility p d costs).zone z = s.zone z := by
+  unfold noteGearAbility
+  split <;> rfl
+
+/-- Energy reductions for the player's first Gear activation at Battlefields they control. -/
+def GameState.firstGearAbilityCut (s : GameState) (p : PlayerId) (d : CardDef)
+    (costs : List AbilityCost) : Nat :=
+  if isGearActivation d costs && !(s.fxOf p).contains .usedGearAbility then
+    ((s.zone .battlefieldZone).flatMap (fun bf =>
+      if (s.obj? bf).any (·.control == some p) then
+        (s.activeMods bf).filterMap (fun
+          | .firstGearAbilityLess n => some n
+          | _ => none)
+      else [])).sum
+  else 0
+
+/-- Flexible reductions to the Empower cost of a Unit at a Battlefield its player controls
+(CR 190.6.d, 356.4.c, 827). -/
+def GameState.empowerHereCut (s : GameState) (p : PlayerId) (src : ObjId) (d : CardDef)
+    (idx : Nat) : Nat :=
+  if d.hasType .unit && (d.fullAbilities[idx]?).any Ability.isEmpower then
+    match (s.obj? src).bind (·.loc) with
+    | some bf =>
+      if (s.obj? bf).any (·.control == some p) then
+        ((s.activeMods bf).filterMap (fun
+          | .empowerHereLess n => some n
+          | _ => none)).sum
+      else 0
+    | none => 0
+  else 0
+
+/-- The costs after applying the discounts for this activated ability (CR 356, 357). -/
 def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
-    (costs : List AbilityCost) (targets : List ObjId) : Option (Bool × Option Cost) :=
+    (d : CardDef) (idx : Nat) (costs : List AbilityCost) (targets : List ObjId) :
+    Option (Bool × List Cost) :=
   (costPlan costs).map (fun (ex, base) =>
     let discount := costs.foldl (fun total c =>
       match c with
@@ -101,10 +153,10 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
       let deflect := if cut != 0 then s.deflectCost p targets (some src) else 0
       s.showdownReactionTax + deflect - cut
       else 0
-    let pay := if tax = 0 then base.map (·.lessEnergy discount) else
-      let cost := (base.getD Cost.zero).lessEnergy discount
-      some { cost with power := cost.power ++ List.replicate tax .any }
-    (ex, pay))
+    let gearCut := s.firstGearAbilityCut p d costs
+    let options := (base.getD Cost.zero).cutOptions (s.empowerHereCut p src d idx)
+    (ex, options.map (fun c =>
+      { c.lessEnergy (discount + gearCut) with power := c.power ++ List.replicate tax .any })))
 
 /-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
 def costKills (costs : List AbilityCost) : Bool :=
@@ -461,14 +513,12 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
         s.abilityZoneOk p src idx &&
         match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
-          match s.activationPlan p src costs ts with
+          match s.activationPlan p src d idx costs ts with
           | some (ex, pc) =>
             if (manaKind body).isSome then false
             else
               (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
-                (match pc with
-                  | some c => c.paidBy d.domains pay
-                  | none => pay == ⟨0, []⟩) &&
+                pc.any (fun c => c.paidBy d.domains pay) &&
                 (s.spendFor p (d.hasType .gear) pay).any (fun pool =>
                   (costs.contains .fromHidden && s.choosePowerCut p src ts != 0) ||
                     s.deflectOk p pool ts) &&
@@ -497,7 +547,8 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     match d.fullAbilities[idx]? with
     | some (.activated costs _ _ _) =>
       let paid := preCost s p costs ts (d.hasType .gear) pool discards
-      (addObject ((paid.1.modObj src (useAtCost s idx costs ts)).setPool p pool)
+      let noted := paid.1.noteGearAbility p d costs
+      (addObject ((noted.modObj src (useAtCost s idx costs ts)).setPool p pool)
         (abilityItem d.id idx src p ts) .chain).map
         (fun r => (r.1, paid.2 ++ [Event.activated p src idx]))
     | _ => none
@@ -507,7 +558,9 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
 theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event}
     (h : applyActivate s p src idx pay ts discards = some (s', es)) :
-    ∃ s0 costs gear f pool item id', s0 = (preCost s p costs ts gear pool discards).1 ∧ Safe s s0 ∧
+    ∃ s0 d costs f pool item id',
+      s0 = (preCost s p costs ts (d.hasType .gear) pool discards).1.noteGearAbility p d costs ∧
+        Safe s s0 ∧
       (∀ o, (f o).kind = o.kind ∧ (f o).owner = o.owner) ∧
       (s.poolOf p).spend pay = some pool ∧ item.kind.phys? = none ∧ item.owner = p ∧
         addObject ((s0.modObj src f).setPool p pool) item .chain = some (s', id') ∧
@@ -528,9 +581,10 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
           simp only [Prod.mk.injEq] at hr
           obtain ⟨rfl, rfl⟩ := hr
-          exact ⟨(preCost s p costs ts (d.hasType .gear) pool discards).1, costs, d.hasType .gear,
-            useAtCost s idx costs ts,
-            pool, abilityItem d.id idx src p ts, id', rfl, preCost_safe s p costs ts _ pool discards,
+          let paid := (preCost s p costs ts (d.hasType .gear) pool discards).1
+          exact ⟨paid.noteGearAbility p d costs, d, costs, useAtCost s idx costs ts,
+            pool, abilityItem d.id idx src p ts, id', rfl,
+            (preCost_safe s p costs ts _ pool discards).trans (paid.noteGearAbility_safe p d costs),
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
         | replacement _ _ _ => simp [hd, hs, ha] at h
@@ -599,11 +653,11 @@ theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
     {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
-  obtain ⟨s0, costs, gear, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, d, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   rw [addObject_zone_other hm (by simp)]
   show (s0.modObj src f).zone _ = _
-  rw [GameState.zone_modObj s0 src f _, hs0]
-  exact (preCost_zones hwf p costs ts gear pool).1 q
+  rw [GameState.zone_modObj s0 src f _, hs0, GameState.noteGearAbility_zone]
+  exact (preCost_zones hwf p costs ts (d.hasType .gear) pool).1 q
 
 /-- A usable ability can be used. -/
 theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -627,7 +681,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : s.activationPlan p src costs ts with
+          cases hp : s.activationPlan p src d idx costs ts with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -660,10 +714,8 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     ∃ d costs sp body lim pc, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
-        s.activationPlan p src costs ts = some (costExhausts costs, pc) ∧
-          (match pc with
-            | some c => c.paidBy d.domains pay = true
-            | none => pay = ⟨0, []⟩) ∧
+        s.activationPlan p src d idx costs ts = some (costExhausts costs, pc) ∧
+          pc.any (fun c => c.paidBy d.domains pay) = true ∧
             targetsOk s p src s.mightTable body.choices ts = true ∧
             s.discardCostOk p src costs discards = true ∧ ∃ o, s.obj? src = some o ∧
               (o.controller = p ∨ o.control = some p) := by
@@ -691,7 +743,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : s.activationPlan p src costs ts with
+          cases hp : s.activationPlan p src d idx costs ts with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -705,13 +757,8 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
               | some base =>
                 have he := congrArg (Option.map Prod.fst) hp
                 simpa [GameState.activationPlan, costExhausts, hc] using he
-            refine ⟨d, costs, sp, body, lim, pc, hph, huse, rfl, ha, by rw [hex]; exact hp, ?_,
-              h.1.2, h.2, o, rfl, hctl⟩
-            cases pc with
-            | none =>
-              have := h.1.1.1.1.2
-              simpa using this
-            | some c => exact h.1.1.1.1.2
+            exact ⟨d, costs, sp, body, lim, pc, hph, huse, rfl, ha, by rw [hex]; exact hp,
+              h.1.1.1.1.2, h.1.2, h.2, o, rfl, hctl⟩
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
@@ -749,9 +796,9 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
           | some (Ability.activated costs _ body _) =>
             ([] :: (targetTuples s p src s.mightTable body.choices).filter
                 (fun ts => decide (ts ≠ []))).flatMap (fun ts =>
-              (match s.activationPlan p src costs ts with
-                | some (_, some c) => c.payments d.domains
-                | _ => [⟨0, []⟩]).flatMap (fun pay =>
+              (match s.activationPlan p src d idx costs ts with
+                | some (_, cs) => (cs.flatMap (Cost.payments d.domains)).eraseDups
+                | none => []).flatMap (fun pay =>
                   ((s.discardPayments p src costs).filter
                     (fun ds => activatable s p src idx pay ts open_ ds)).map
                     (fun ds => ⟨.player p, .activate src idx pay ts ds⟩)))
@@ -846,11 +893,8 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
           simp only [List.mem_filter, decide_eq_true_eq]
           exact ⟨(mem_targetTuples s p src s.mightTable body.choices ts).mpr hts, hn⟩
       · rw [hplan]
-        cases pc with
-        | none =>
-          have : pay = ⟨0, []⟩ := hpay
-          simp [this]
-        | some c => exact (Cost.mem_payments _ _ _).mpr hpay
+        simpa only [List.mem_eraseDups, List.mem_flatMap, Cost.mem_payments, List.any_eq_true]
+          using hpay
 
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1191,7 +1235,7 @@ theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
     {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event} (hwf : s.WF)
     (h : applyActivate s p src idx pay ts discards = some (s', es)) :
     ∃ id', s'.zone .chain = id' :: s.zone .chain := by
-  obtain ⟨s0, costs, gear, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
+  obtain ⟨s0, d, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   obtain ⟨hz, hid, hs'⟩ := addObject_spec hm
   refine ⟨id', ?_⟩
   rw [hs', hid]
@@ -1200,8 +1244,8 @@ theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
   rw [GameState.zone_setZone_self]
   have : ((s0.modObj src f).setPool p pool).zone .chain = s.zone .chain := by
     rw [show ((s0.modObj src f).setPool p pool).zone .chain = (s0.modObj src f).zone .chain from rfl,
-      GameState.zone_modObj s0 src f _, hs0]
-    exact preCost_chain hwf p costs ts gear pool discards
+      GameState.zone_modObj s0 src f _, hs0, GameState.noteGearAbility_zone]
+    exact preCost_chain hwf p costs ts (d.hasType .gear) pool discards
   rw [this]
   rfl
 

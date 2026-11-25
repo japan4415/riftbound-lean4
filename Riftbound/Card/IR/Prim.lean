@@ -393,6 +393,10 @@ inductive StaticMod where
   | extraCostLess (n : Nat)
   /-- The Repeat costs the player pays cost this much less (Marai Spire). -/
   | repeatCostLess (n : Nat)
+  /-- The first activated ability of a Gear its controller plays each turn costs less Energy. -/
+  | firstGearAbilityLess (n : Nat)
+  /-- The controller's Units here pay less for Empower, in Energy or Power per reduction. -/
+  | empowerHereLess (n : Nat)
   /-- The Spell's Repeat lets its player make different choices: the effect is not run twice with the
   same ones (it asks for the choices of the repeat itself). -/
   | repeatChooses

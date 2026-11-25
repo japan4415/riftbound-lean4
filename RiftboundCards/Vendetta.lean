@@ -4336,8 +4336,9 @@ def VEN_161.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Piltovan Forge: the effect is not written yet. -/
-def VEN_161 : CardDef := VEN_161.meta
+/-- Piltovan Forge discounts the controller's first Gear ability each turn. -/
+def VEN_161 : CardDef :=
+  { VEN_161.meta with abilities := [.passive .always [.firstGearAbilityLess 1]], status := .drafted }
 
 -- BEGIN GENERATED VEN-162
 /--
@@ -4378,8 +4379,12 @@ def VEN_163.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Risen Altar: the effect is not written yet. -/
-def VEN_163 : CardDef := VEN_163.meta
+/-- Risen Altar discounts Empower abilities of the controller's Units here. -/
+def VEN_163 : CardDef :=
+  { VEN_163.meta with
+    keywords := [],
+    abilities := [.passive .always [.empowerHereLess 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-164
 /--

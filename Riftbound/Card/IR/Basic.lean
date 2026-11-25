@@ -201,6 +201,8 @@ inductive TurnEffect where
   | cardDiscarded
   /-- The player chose an enemy Unit this turn (CR 355.7). -/
   | choseEnemyUnit
+  /-- The player already played an activated ability of a Gear this turn. -/
+  | usedGearAbility
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana

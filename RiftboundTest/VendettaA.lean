@@ -17,6 +17,76 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Piltovan Forge discounts the first Gear ability even when it is countered. The
+-- next activation costs full price, and a new turn resets the history.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "VEN-161"
+  let (s, _) ← putAt s p "VEN-014" field
+  let (s, first) ← put s p "UNL-136" .base
+  let (s, second) ← put s p "UNL-136" .base
+  let s := ((s.control p field).rich p).modObj first (fun o => { o with exhausted := false })
+  let s := s.modObj second (fun o => { o with exhausted := false })
+  let free : Action := ⟨.player p, .activate first 1 ⟨0, []⟩ []⟩
+  let nextFree : Action := ⟨.player p, .activate second 1 ⟨0, []⟩ []⟩
+  let nextPaid : Action := ⟨.player p, .activate second 1 ⟨1, []⟩ []⟩
+  let (used, _) ← (step 100 s free).toOption
+  let item ← (used.zone .chain).head?
+  let countered := (counterObj used item).1
+  let after := { countered with pending := [.priority p] }
+  let nextTurn := { after with turn := after.turn + 1 }
+  return !(legalActions s).contains nextPaid && (legalActions s).contains nextFree &&
+    !(legalActions after).contains nextFree && (legalActions after).contains nextPaid &&
+    (legalActions nextTurn).contains nextFree
+
+-- Hiding a Gear is not a Gear activation. Gold's Add is one, even though its
+-- source disappears and the player takes control of the Forge only later.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "VEN-161"
+  let (s, otherField) ← putBf s p "VEN-163"
+  let (s, _) ← putAt s p "VEN-014" otherField
+  let (s, hourglass) ← put s p "OGN-077" .hand
+  let (s, gear) ← put s p "UNL-136" .base
+  let s := ((s.control p otherField).rich p).modObj gear (fun o => { o with exhausted := false })
+  let hid ← activate s p hourglass 1 [otherField] ⟨0, [.calm]⟩
+  let gold ← hid.tokenCard "Gold"
+  let ready := createOne gold.id p none true hid
+  let free : Action := ⟨.player p, .activate gear 1 ⟨0, []⟩ []⟩
+  let paid : Action := ⟨.player p, .activate gear 1 ⟨1, []⟩ []⟩
+  let id : ObjId := ⟨hid.nextId⟩
+  let (spent, _) ← (step 100 ready ⟨.player p, .manaAbility id 0 ⟨0, []⟩⟩).toOption
+  let claimed := spent.control p field
+  return hid.countIn p .hidden "OGN-077" == 1 &&
+    (legalActions (ready.control p field)).contains free && (spent.obj? id).isNone &&
+    (legalActions claimed).contains paid && !(legalActions claimed).contains free
+
+-- Risen Altar offers either resource reduction to the controller's Units at the
+-- Battlefield. The same keyword still costs full price in Base or under enemy control.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "VEN-163"
+  let (s, fiend) ← putAt s p "VEN-014" field
+  let (s, base) ← put s p "VEN-014" .base
+  let (s, renekton) ← putAt s p "VEN-092" field
+  let s := s.fund p 3 1
+  let controlled := s.control p field
+  let reducedEnergy : Action := ⟨.player p, .activate fiend 1 ⟨1, [.fury]⟩ []⟩
+  let reducedPower : Action := ⟨.player p, .activate fiend 1 ⟨2, []⟩ []⟩
+  let full : Action := ⟨.player p, .activate fiend 1 ⟨2, [.fury]⟩ []⟩
+  let (energy, _) ← (step 100 controlled reducedEnergy).toOption
+  let (power, _) ← (step 100 controlled reducedPower).toOption
+  let e := settleChain {} 3 energy
+  let w := settleChain {} 3 power
+  return (legalActions controlled).contains reducedEnergy &&
+    (legalActions controlled).contains reducedPower && !(legalActions controlled).contains full &&
+    (legalActions (s.control s.you field)).contains full && (legalActions s).contains full &&
+    !(legalActions controlled).contains ⟨.player p, .activate base 1 ⟨2, []⟩ []⟩ &&
+    !(legalActions controlled).contains ⟨.player p, .activate renekton 0 ⟨0, []⟩ []⟩ &&
+    (e.obj? fiend).any (·.empowerCount == 1) && (w.obj? fiend).any (·.empowerCount == 1) &&
+    (e.poolOf p).energy == 2 && (e.poolOf p).get .fury == 0 &&
+    (w.poolOf p).energy == 1 && (w.poolOf p).get .fury == 1
+
 -- The second opponent's Spell still counts for Crumbling Sands after Defy has
 -- countered it. The same target remains on the Chain if it is the only enemy Spell.
 #guard vendettaCase fun s => do

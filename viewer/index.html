@@ -331,7 +331,10 @@ function describeA(a, prev) {
     case 'activate': {
       const tg = (a.targets || []).map((t) => cardName(t)).join('、');
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
+      const power = a.power || [];
+      const cost = typeof a.pay === 'number' ? costText({ energy: a.pay - power.length, power }) : '';
       return [who + ': ' + cardName(a.source) + ' の能力を起動' +
+        (cost ? '（' + cost + '）' : '') +
         (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
