@@ -412,4 +412,21 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s3 ← play s2 s.me c
   return s3.hasKw u .assault
 
+-- Deadly Flourish (UNL-073): when the unit it damaged dies this turn, its caster plays a Gold
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-073" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-135" s.bf0
+  let s3 ← play s2 s.me c [e]
+  return s3.countNamed s.me .base "Gold" == 1 && s3.countNamed s.you .base "Gold" == 0
+
+-- Tactical Retreat (UNL-175): the unit that dies this turn comes back (approximately: from the Trash)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-175" .hand
+  let (s2, u) ← putAt s1 s.me "OGN-135" s.bf0
+  let s3 ← play s2 s.me c [u]
+  let (s4, evs) := killObj s3 u
+  let s5 ← fire s4 evs
+  return s5.countIn s.me .base "OGN-135" == 1 || (s5.zone .battlefieldZone).any (fun x =>
+    (s5.cardDef? x).any (·.id == cid "OGN-135"))
+
 end RiftboundTest

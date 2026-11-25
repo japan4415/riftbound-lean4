@@ -54,7 +54,7 @@ meta def sendTo (s : GameState) (u bf : ObjId) : Option (GameState × ObjId) :=
   | none => none
 
 -- "here" for a Unit at a Battlefield: the Units there, of both players, and the Battlefield; not
--- the Units at another place; for a Unit at a Base, there is no answer (CR 106)
+-- the Units at another place; for a Unit at a Base, "here" is that Base (CR 106)
 #guard match mainH with
   | some s0 =>
     let p := s0.active.getD ⟨0⟩
@@ -70,7 +70,7 @@ meta def sendTo (s : GameState) (u bf : ObjId) : Option (GameState × ObjId) :=
             (s4.candidates p a' {} .friendly .here (FilterList.ofList [.ofType .unit])) ==
               some [a'] &&
             s4.hereOf a' == some b1 && s4.hereOf b1 == some b1 &&
-            (s2.candidates p a {} .enemy .here (FilterList.ofList [.ofType .unit])) == none &&
+            (s2.candidates p a {} .enemy .here (FilterList.ofList [.ofType .unit])) == some [] &&
             (s4.candidates p b2 {} .any .here (FilterList.ofList [.ofType .unit])) == some []
           | none => false
         | _, _ => false

@@ -95,7 +95,7 @@ meta def tokensOn (s : GameState) (z : Zone) : List ObjId :=
   | none => false
 
 -- "here": the token is made at the Battlefield the object is at, with its place; for an object at a
--- Base there is no "here", and a token that is unknown or a place that is not understood gives
+-- Base "here" is the Base, and a token that is unknown or a place that is not understood gives
 -- nothing (CR 183)
 #guard match mainTk with
   | some s0 =>
@@ -114,7 +114,7 @@ meta def tokensOn (s : GameState) (z : Zone) : List ObjId :=
               (match o.kind with | .token _ => true | _ => false)))
             ts.length == 2
           | none => false) &&
-        (applyCreate s1 p u {} "Mech" (.const 1) .here true).isNone &&
+        (applyCreate s1 p u {} "Mech" (.const 1) .here true).isSome &&
         (applyCreate s3 p u' {} "Nonesuch" (.const 1) .here true).isNone &&
         (applyCreate s3 p u' {} "Mech" (.const 1) .atBattlefield true).isNone
       | none => false
