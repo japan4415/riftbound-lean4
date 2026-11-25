@@ -58,6 +58,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
+  | .mightIncreaseTo unit reference => Selector.ok c unit && Selector.ok c reference
   | .damageOn s => Selector.ok c s
   | .costOf s => Selector.ok c s
   | .powerCostOf s => Selector.ok c s

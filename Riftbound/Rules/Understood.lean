@@ -78,6 +78,7 @@ def Amount.understood : Amount → Bool
   | .min a b => Amount.understood a && Amount.understood b
   | .max a b => Amount.understood a && Amount.understood b
   | .mightOf s => Selector.understood s
+  | .mightIncreaseTo unit reference => unit.understood && reference.understood
   | .damageOn s => Selector.understood s
   | .kwAmount s _ => Selector.understood s
   | _ => false

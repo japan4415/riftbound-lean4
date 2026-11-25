@@ -37,6 +37,8 @@ inductive Amount where
   | count (s : Selector)
   /-- The Might of an object. -/
   | mightOf (s : Selector)
+  /-- An increase that raises the first Unit's actual Might to the second's (CR 143.2.c.1, 479.4.c). -/
+  | mightIncreaseTo (unit reference : Selector)
   /-- The damage currently marked on the selected objects (CR 142.4). -/
   | damageOn (s : Selector)
   /-- The Energy cost of an object. -/

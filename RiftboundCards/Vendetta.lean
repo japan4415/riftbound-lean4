@@ -2241,8 +2241,9 @@ def VEN_079 : CardDef :=
   { VEN_079.meta with
     abilities :=
       let effect := EffectDef.of [.targetOf .one .any .here [.ofType .unit]]
-        (.grant .self (.mightPlus .it (.add
-          (.sub (.mightOf (.slot 0)) (.mightOf .self)) (.const 1))) .thisTurn)
+        (.seqOf [
+          .grant .self (.mightPlus .it (.mightIncreaseTo .self (.slot 0))) .thisTurn,
+          .grant .self (.mightPlus .it (.const 1)) .thisTurn])
       [.triggered { event := .attack, condition := .empowered .self } effect .unlimited,
         .triggered { event := .defend, condition := .empowered .self } effect .unlimited],
     status := .drafted }

@@ -89,6 +89,30 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     funded.mightNow ally == some 2 && (funded.poolOf p).energy == 1 &&
     paid.mightNow ally == some 4 && paid.tired sage == some true && (paid.poolOf p).total == 0
 
+-- Dame snapshots the signed difference on attack or defense, then adds one Might.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, dame) ← putAt s p "VEN-079" bf
+  let (s, witness) ← putAt s q "VEN-014" bf
+  let (s, dragon) ← putAt s q "VEN-091" bf
+  let empowered := (empowerObj p s dame).1
+  let belowZero := (addMightMod ⟨-7, .turn⟩ empowered dame).1
+  let negativeModel := (addMightMod ⟨-3, .turn⟩ belowZero witness).1
+  let attack (t : GameState) (target : ObjId) :=
+    fire t [.combatStarted bf p] { pick := (· == [target]) }
+  let defend ← fire empowered [.combatStarted bf q] { pick := (· == [dragon]) }
+  let fromNegative ← attack belowZero witness
+  let bothNegative ← attack negativeModel witness
+  let lowerTarget ← attack empowered witness
+  let notEmpowered ← attack s dragon
+  let changedModel := (addMightMod ⟨3, .turn⟩ fromNegative witness).1
+  return belowZero.mightNow dame == some (-2) && negativeModel.mightNow witness == some (-1) &&
+    fromNegative.mightNow dame == some 3 && changedModel.mightNow dame == some 3 &&
+    bothNegative.mightNow dame == some 0 && lowerTarget.mightNow dame == some 6 &&
+    defend.mightNow dame == some 11 && notEmpowered.mightNow dame == some 5
+
 /-- Put Rebuttal above an En Garde finalized by the opponent, and reach its payment decision. -/
 meta def rebuttalChoice (s : GameState) (power : Nat) :
     Option (GameState × ObjId × ObjId × ObjId) := do

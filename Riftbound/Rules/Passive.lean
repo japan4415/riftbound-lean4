@@ -342,6 +342,12 @@ def Amount.evalS (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Amo
   | .mightOf sel =>
     (sel.eval s p self env).map (fun ids =>
       (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).sum)
+  | .mightIncreaseTo unit reference => do
+    let chosen ← (unit.eval s p self env).bind List.head?
+    let model ← (reference.eval s p self env).bind List.head?
+    let current ← s.mightNow chosen
+    let higher ← s.mightNow model
+    pure (higher - current).toNat
   | .highestMight sel =>
     (sel.eval s p self env).map (fun ids =>
       (ids.map (fun id => ((s.mightNow id).getD 0).toNat)).foldl Nat.max 0)
