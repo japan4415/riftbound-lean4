@@ -1502,7 +1502,8 @@ theorem playToOrBase_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjI
 def GameState.permanentPlayAllowed (s : GameState) (p : PlayerId) (id : ObjId)
     (d : CardDef) (dest : Option ObjId) : Bool :=
   (d.hasType .unit || d.hasType .gear) && !s.blocksPlay p id d &&
-    dest.elim (!d.playsOnlyToBattlefield) (fun bf => d.hasType .unit && s.playBfLocationAllowed p id d bf)
+    dest.elim (!d.playsOnlyToBattlefield)
+      (fun bf => d.canPlayAtBattlefield && s.playBfLocationAllowed p id d bf)
 
 /-- Play a Unit or Gear with its Energy cost reduced by `k`. Check that the required destination
 is legal before paying (CR 355.17.b, 358.5). -/

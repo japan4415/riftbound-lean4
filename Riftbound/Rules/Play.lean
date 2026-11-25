@@ -704,11 +704,19 @@ def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       (s.extrasFor p c d).any (·.total == 0)
   | none => false
 
-/-- A card whose own Battlefield filters restrict its play location (CR 355.17.b). -/
-def CardDef.playsOnlyToBattlefield (d : CardDef) : Bool :=
+/-- A card that restricts its own play to Battlefields matching its filters (CR 355.17.b). -/
+def CardDef.requiresMatchingBattlefield (d : CardDef) : Bool :=
   d.abilities.any (fun
     | .passive _ mods => mods.contains .noPlayToBase
     | _ => false)
+
+/-- Deploy Gear and cards with a Battlefield restriction cannot be played to the Base. -/
+def CardDef.playsOnlyToBattlefield (d : CardDef) : Bool :=
+  d.hasKeyword .deploy || d.requiresMatchingBattlefield
+
+/-- Units and Deploy Gear can be played to a Battlefield, subject to other restrictions. -/
+def CardDef.canPlayAtBattlefield (d : CardDef) : Bool :=
+  !d.hasType .spell && (d.hasType .unit || (d.hasType .gear && d.hasKeyword .deploy))
 
 /-- The Battlefields a Unit's own abilities allow it to be played to (CR 355.2). -/
 def CardDef.playBattlefieldFilters (d : CardDef) : List FilterList :=
@@ -733,15 +741,15 @@ from another effect cannot override a restriction (CR 054.2, 355.17.b). -/
 def GameState.playBfLocationAllowed (s : GameState) (p : PlayerId) (c : ObjId)
     (d : CardDef) (b : ObjId) : Bool :=
   (s.zone .battlefieldZone).contains b && (s.cardDef? b).any (·.hasType .battlefield) &&
-    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
-    (!d.playsOnlyToBattlefield || d.playBattlefieldFilters.any (s.matchesPlayLocation p c b))
+    (!d.hasType .unit || !s.oppHas p .oppsPlayToBaseOnly) && !s.cantActHere p .play b &&
+    (!d.requiresMatchingBattlefield || d.playBattlefieldFilters.any (s.matchesPlayLocation p c b))
 
 /-- The Battlefields the Unit can enter when played (CR 355.2): those its player controls by
 default, plus locations permitted by a game effect, subject to location and play restrictions. -/
 def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List ObjId :=
   match s.cardDef? c with
   | some d =>
-    if d.hasType .unit && !d.hasType .spell then
+    if d.canPlayAtBattlefield then
       -- the units of the player can be played to the Battlefields another object of theirs names
       let granted : List FilterList := s.inPlay.flatMap (fun g =>
         if (s.obj? g).any (·.controller == p) then
@@ -762,12 +770,12 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
       let anywhereAllowed := d.playBattlefieldFilters ++ open_ ++ ambush ++ granted
       (s.zone .battlefieldZone).filter (fun b =>
         s.playBfLocationAllowed p c d b &&
-          ((s.obj? b).any (·.control == some p) ||
+          (d.hasKeyword .deploy || (s.obj? b).any (·.control == some p) ||
             anywhereAllowed.any (s.matchesPlayLocation p c b)))
     else []
   | none => []
 
-/-- A Battlefield a card can be played to means the card is a Unit and no Spell. -/
+/-- A card playable to a Battlefield is a permanent. -/
 theorem playBfOptions_unit {s : GameState} {p : PlayerId} {c b : ObjId}
     (h : b ∈ s.playBfOptions p c) :
     ∃ d, s.cardDef? c = some d ∧ d.hasType .spell = false := by
@@ -777,9 +785,9 @@ theorem playBfOptions_unit {s : GameState} {p : PlayerId} {c b : ObjId}
   | some d =>
     rw [hd] at h
     refine ⟨d, rfl, ?_⟩
-    by_cases hc : (d.hasType .unit && !d.hasType .spell) = true
-    · simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
-      exact hc.2
+    by_cases hc : d.canPlayAtBattlefield = true
+    · simp only [CardDef.canPlayAtBattlefield, Bool.and_eq_true, Bool.not_eq_true'] at hc
+      exact hc.1
     · simp only [hc] at h
       simp at h
 
@@ -1242,21 +1250,34 @@ theorem contestFor_safe (p : PlayerId) (bf : ObjId) (s : GameState) :
   · exact Safe.refl s
   · exact Safe.modObj s bf (fun _ => rfl) (fun _ => rfl)
 
-/-- Move a Unit to a Battlefield by an effect (CR 447): it is not exhausted, and it stays where it
-is if it is there already. Its controller contests the Battlefield. -/
+/-- Only a Unit entering a Battlefield contests it (CR 190.3, 830). -/
+def contestForUnit (s : GameState) (id : ObjId) (p : PlayerId) (bf : ObjId) : GameState :=
+  if (s.cardDef? id).any (·.hasType .unit) then contestFor p bf s else s
+
+/-- Contesting a Battlefield when a Unit arrives preserves the invariants. -/
+theorem contestForUnit_safe (s : GameState) (id : ObjId) (p : PlayerId) (bf : ObjId) :
+    Safe s (contestForUnit s id p bf) := by
+  unfold contestForUnit
+  split
+  · exact contestFor_safe p bf s
+  · exact Safe.refl s
+
+/-- Move an object to a Battlefield by an effect (CR 447). It keeps its exhaustion status.
+Only a Unit contests the Battlefield. -/
 def sendToBf (bf : ObjId) (s : GameState) (u : ObjId) : GameState × List Event :=
   match s.obj? u with
   | some o =>
     if o.loc = some bf then (s, [])
     else if u ∈ s.zone .battlefieldZone then
-      (contestFor o.controller bf
-        (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
+      (contestForUnit (s.modObj u (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc))
+          u o.controller bf,
         [Event.standardMoved u (some bf)])
     else
       match moveObj s u .battlefieldZone with
       | some r =>
-        (contestFor o.controller bf
-          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)),
+        (contestForUnit
+          (r.1.modObj r.2 (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc))
+          r.2 o.controller bf,
           [Event.standardMoved r.2 (some bf)])
       | none => (s, [])
   | none => (s, [])
@@ -1273,14 +1294,14 @@ theorem sendToBf_safe (bf : ObjId) (s : GameState) (u : ObjId) : Safe s (sendToB
             (s.modObj u
               (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
           Safe.modObj s u (fun _ => rfl) (fun _ => rfl)
-        exact h1.trans (contestFor_safe _ _ _)
+        exact h1.trans (contestForUnit_safe _ _ _ _)
       · split
         · rename_i o ho hl hz r hm
           have h1 : Safe r.1
               (r.1.modObj r.2
                 (fun x => ({ x with loc := some bf } : Object).countMove s.turn x.loc)) :=
             Safe.modObj r.1 r.2 (fun _ => rfl) (fun _ => rfl)
-          exact ((Safe.moveObj hm).trans h1).trans (contestFor_safe _ _ _)
+          exact ((Safe.moveObj hm).trans h1).trans (contestForUnit_safe _ _ _ _)
         · exact Safe.refl s
   · exact Safe.refl s
 

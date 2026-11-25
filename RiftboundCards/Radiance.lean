@@ -57,8 +57,12 @@ def RAD_002.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Banner of Conquest: the effect is not written yet. -/
-def RAD_002 : CardDef := RAD_002.meta
+/-- Banner of Conquest. -/
+def RAD_002 : CardDef :=
+  { RAD_002.meta with
+    abilities := [.passive .always
+      [.keyword (.all .friendly .here [.ofType .unit]) ⟨.assault, .amount 1⟩]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-003
 /--
@@ -77,8 +81,13 @@ def RAD_003.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Bilgewater Tracker: the effect is not written yet. -/
-def RAD_003 : CardDef := RAD_003.meta
+/-- Bilgewater Tracker. -/
+def RAD_003 : CardDef :=
+  { RAD_003.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf (.upTo 2) .any .anywhere [.ofType .unit]]
+        (.prim (.deal (.slotsFrom 0) (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-004
 /--
@@ -124,7 +133,7 @@ def RAD_005 : CardDef := RAD_005.meta
 
 -- BEGIN GENERATED RAD-006
 /--
-**Scorched Earth** — Spell · Energy 4 + Power 1
+**Scorched Earth** — Spell · Fury · Energy 4 + Power 1
 Printings: RAD-006/167
 
 > [Action] (Play on your turn or in showdowns.)
@@ -134,9 +143,10 @@ def RAD_006.meta : CardDef :=
   { id := ⟨"RAD-006"⟩,
     name := "Scorched Earth",
     types := [.spell],
-    cost := some ⟨4, [.any]⟩,
+    domains := [.fury],
+    cost := some ⟨4, [.domain .fury]⟩,
     keywords := [{ keyword := .action }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
 /-- Scorched Earth: the effect is not written yet. -/
@@ -187,11 +197,11 @@ def RAD_008 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-009
 /--
-**Antagonistic Apparatus** — Unit · Energy 6 + Power 1 · Might 3
+**Antagonistic Apparatus** — Unit · Fury · Energy 6 + Power 1 · Might 3
 Printings: RAD-009/167
 
 > I enter ready.
@@ -201,9 +211,11 @@ def RAD_009.meta : CardDef :=
   { id := ⟨"RAD-009"⟩,
     name := "Antagonistic Apparatus",
     types := [.unit],
-    cost := some ⟨6, [.any]⟩,
+    tags := [⟨"Bandle City"⟩, ⟨"Yordle"⟩, ⟨"Mech"⟩],
+    domains := [.fury],
+    cost := some ⟨6, [.domain .fury]⟩,
     might := some 3,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
 /-- Antagonistic Apparatus. -/
@@ -222,7 +234,7 @@ Printings: RAD-010/167
 
 > Ready a unit.
 > When you play a card with Energy cost :rb_energy_7: or more, you may play this from your trash
-> for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Banish this.
+> for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Then banish this.
 -/
 def RAD_010.meta : CardDef :=
   { id := ⟨"RAD-010"⟩,
@@ -466,7 +478,7 @@ def RAD_021 : CardDef := RAD_021.meta
 
 -- BEGIN GENERATED RAD-022
 /--
-**Whirling Twirligig** — Gear · Energy 4 + Power 1
+**Whirling Twirligig** — Gear · Fury · Energy 4 + Power 1
 Printings: RAD-022/167
 
 > :rb_exhaust:: Play a Gold gear token exhausted. (It has "[Reaction][>] Kill this,
@@ -478,8 +490,9 @@ def RAD_022.meta : CardDef :=
   { id := ⟨"RAD-022"⟩,
     name := "Whirling Twirligig",
     types := [.gear],
-    cost := some ⟨4, [.any]⟩,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    domains := [.fury],
+    cost := some ⟨4, [.domain .fury]⟩,
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
 /-- Whirling Twirligig: the effect is not written yet. -/
@@ -550,12 +563,17 @@ def RAD_025.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Consult the Heavens: the effect is not written yet. -/
-def RAD_025 : CardDef := RAD_025.meta
+/-- Consult the Heavens. -/
+def RAD_025 : CardDef :=
+  { RAD_025.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.keyword .it ⟨.shield, .amount 2⟩) .thisTurn,
+        .prim (.predict (.const 1))])),
+    status := .full }
 
 -- BEGIN GENERATED RAD-026
 /--
-**Entrenched Boar** — Unit · Energy 2 · Might 2
+**Entrenched Boar** — Unit · Calm · Energy 2 · Might 2
 Printings: RAD-026/167
 
 > You may have me enter ready. If you do, I can't move this turn.
@@ -564,6 +582,8 @@ def RAD_026.meta : CardDef :=
   { id := ⟨"RAD-026"⟩,
     name := "Entrenched Boar",
     types := [.unit],
+    tags := [⟨"Freljord"⟩],
+    domains := [.calm],
     cost := some ⟨2, []⟩,
     might := some 2,
     sets := [⟨"RAD"⟩] }
@@ -851,7 +871,7 @@ def RAD_040 : CardDef := RAD_040.meta
 
 -- BEGIN GENERATED RAD-041
 /--
-**Hush** — Spell · Energy 1 + Power 2
+**Hush** — Spell · Calm · Energy 1 + Power 2
 Printings: RAD-041/167
 
 > [Reaction] (Play any time, even before spells and abilities resolve.)
@@ -861,13 +881,19 @@ def RAD_041.meta : CardDef :=
   { id := ⟨"RAD-041"⟩,
     name := "Hush",
     types := [.spell],
-    cost := some ⟨1, [.any, .any]⟩,
+    domains := [.calm],
+    cost := some ⟨1, [.domain .calm, .domain .calm]⟩,
     keywords := [{ keyword := .reaction }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hush: the effect is not written yet. -/
-def RAD_041 : CardDef := RAD_041.meta
+/-- Hush. -/
+def RAD_041 : CardDef :=
+  { RAD_041.meta with
+    spellEffect := some (.of
+      [.targetOf .one .any .onChain [.ofType .spell, .powerCost .ge (.const 2)]]
+      (.prim (.counter (.slot 0)))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-042
 /--
@@ -986,7 +1012,7 @@ def RAD_046 : CardDef := RAD_046.meta
 
 -- BEGIN GENERATED RAD-047
 /--
-**Fanfare** — Spell · Energy 3
+**Fanfare** — Spell · Mind · Energy 3
 Printings: RAD-047/167
 
 > The next three times you play a unit this turn, draw 1.
@@ -995,6 +1021,7 @@ def RAD_047.meta : CardDef :=
   { id := ⟨"RAD-047"⟩,
     name := "Fanfare",
     types := [.spell],
+    domains := [.mind],
     cost := some ⟨3, []⟩,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
@@ -1026,12 +1053,18 @@ def RAD_048.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- High Note: the effect is not written yet. -/
-def RAD_048 : CardDef := RAD_048.meta
+/-- High Note. -/
+def RAD_048 : CardDef :=
+  { RAD_048.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.grant (.slot 0)
+        (.mightMinus .it (.count (.all .friendly .anywhere [.ofType .unit, .exhausted])))
+        .thisTurn)),
+    status := .full }
 
 -- BEGIN GENERATED RAD-049
 /--
-**Industrious Mechsmith** — Unit · Energy 4 · Might 1
+**Industrious Mechsmith** — Unit · Mind · Energy 4 · Might 1
 Printings: RAD-049/167
 
 > When you play me, play a 3 :rb_might: Mech unit token here.
@@ -1040,6 +1073,8 @@ def RAD_049.meta : CardDef :=
   { id := ⟨"RAD-049"⟩,
     name := "Industrious Mechsmith",
     types := [.unit],
+    tags := [⟨"Zaun"⟩],
+    domains := [.mind],
     cost := some ⟨4, []⟩,
     might := some 1,
     sets := [⟨"RAD"⟩] }
@@ -1513,10 +1548,10 @@ def RAD_070 : CardDef := RAD_070.meta
 
 -- BEGIN GENERATED RAD-071
 /--
-**Nazuman Ntofo** — Gear · Order · Energy 1 · Might 0
+**Nazuman Ntofo** — Gear · Body · Energy 1 · Might 0
 Printings: RAD-071/167
 
-> Equip :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)
+> [Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)
 
 Effect (given to the unit it is attached to):
 
@@ -1526,15 +1561,20 @@ def RAD_071.meta : CardDef :=
   { id := ⟨"RAD-071"⟩,
     name := "Nazuman Ntofo",
     types := [.gear],
-    domains := [.order],
+    tags := [⟨"Equipment"⟩],
+    domains := [.body],
     cost := some ⟨1, []⟩,
     might := some 0,
     mightBonus := some 0,
+    keywords := [{ keyword := .equip, arg := .cost ⟨1, []⟩ }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Nazuman Ntofo: the effect is not written yet. -/
-def RAD_071 : CardDef := RAD_071.meta
+/-- Nazuman Ntofo. -/
+def RAD_071 : CardDef :=
+  { RAD_071.meta with
+    grants := [.passive .always [.keyword .self ⟨.shield, .amount 2⟩]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-072
 /--
@@ -1671,7 +1711,7 @@ def RAD_077.meta : CardDef :=
 def RAD_077 : CardDef :=
   { RAD_077.meta with
     abilities := [.passive .always [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-078
 /--
@@ -1713,8 +1753,12 @@ def RAD_079.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Avalanche: the effect is not written yet. -/
-def RAD_079 : CardDef := RAD_079.meta
+/-- Avalanche. -/
+def RAD_079 : CardDef :=
+  { RAD_079.meta with
+    spellEffect := some (.of []
+      (.prim (.deal (.all .any .atBase [.ofType .unit]) (.const 3)))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-080
 /--
@@ -1742,7 +1786,7 @@ def RAD_080 : CardDef := RAD_080.meta
 Printings: RAD-081/167
 
 > [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)
-> When you play me, give another friendly unit +3 :rb_might: this turn, then recycle me if I was
+> When you play me, give a friendly unit +3 :rb_might: this turn, then recycle me if I was
 > played from face down.
 -/
 def RAD_081.meta : CardDef :=
@@ -1923,7 +1967,7 @@ def RAD_088.meta : CardDef :=
 /-- Staunch Survivor. -/
 def RAD_088 : CardDef :=
   { RAD_088.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-089
 /--
@@ -2266,7 +2310,7 @@ def RAD_103 : CardDef := RAD_103.meta
 
 -- BEGIN GENERATED RAD-104
 /--
-**Pitiless Stalker** — Unit · Energy 5 + Power 1 · Might 5
+**Pitiless Stalker** — Unit · Chaos · Energy 5 + Power 1 · Might 5
 Printings: RAD-104/167
 
 > :rb_exhaust:: [Stun] an enemy unit. (It doesn't deal combat damage this turn.)
@@ -2275,9 +2319,11 @@ def RAD_104.meta : CardDef :=
   { id := ⟨"RAD-104"⟩,
     name := "Pitiless Stalker",
     types := [.unit],
-    cost := some ⟨5, [.any]⟩,
+    tags := [⟨"Shadow Isles"⟩, ⟨"Cat"⟩],
+    domains := [.chaos],
+    cost := some ⟨5, [.domain .chaos]⟩,
     might := some 5,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
 /-- Pitiless Stalker. -/
@@ -2286,7 +2332,7 @@ def RAD_104 : CardDef :=
     abilities := [.activated [.exhaustSelf] .normal
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
         (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-105
 /--
@@ -2555,8 +2601,13 @@ def RAD_117.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- For Demacia!: the effect is not written yet. -/
-def RAD_117 : CardDef := RAD_117.meta
+/-- For Demacia! -/
+def RAD_117 : CardDef :=
+  { RAD_117.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .battlefield]]
+      (.grant (.all .friendly .atBattlefield [.ofType .unit, .at_ (.slot 0)])
+        (.keyword .it ⟨.shield, .amount 2⟩) .thisTurn)),
+    status := .full }
 
 -- BEGIN GENERATED RAD-118
 /--
@@ -2575,8 +2626,13 @@ def RAD_118.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Herald of the Emperor: the effect is not written yet. -/
-def RAD_118 : CardDef := RAD_118.meta
+/-- Herald of the Emperor. -/
+def RAD_118 : CardDef :=
+  { RAD_118.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.setBaseMight (.slot 0) (.const 5)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-119
 /--
@@ -2630,7 +2686,7 @@ def RAD_120 : CardDef := RAD_120.meta
 
 -- BEGIN GENERATED RAD-121
 /--
-**One-Two Punch** — Spell · Energy 3
+**One-Two Punch** — Spell · Order · Energy 3
 Printings: RAD-121/167
 
 > [Action] (Play on your turn or in showdowns.)
@@ -2641,13 +2697,19 @@ def RAD_121.meta : CardDef :=
   { id := ⟨"RAD-121"⟩,
     name := "One-Two Punch",
     types := [.spell],
+    domains := [.order],
     cost := some ⟨3, []⟩,
     keywords := [{ keyword := .action }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- One-Two Punch: the effect is not written yet. -/
-def RAD_121 : CardDef := RAD_121.meta
+/-- One-Two Punch. -/
+def RAD_121 : CardDef :=
+  { RAD_121.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.buff (.slot 0)), .prim (.stun (.slot 1))])),
+    status := .full }
 
 -- BEGIN GENERATED RAD-122
 /--
@@ -2673,7 +2735,7 @@ def RAD_122 : CardDef := RAD_122.meta
 
 -- BEGIN GENERATED RAD-123
 /--
-**Protector's Shield** — Gear · Energy 2 + Power 1 · Might 1
+**Protector's Shield** — Gear · Order · Energy 2 + Power 1 · Might 1
 Printings: RAD-123/167
 
 > [Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)
@@ -2687,19 +2749,21 @@ def RAD_123.meta : CardDef :=
   { id := ⟨"RAD-123"⟩,
     name := "Protector's Shield",
     types := [.gear],
-    cost := some ⟨2, [.any]⟩,
+    tags := [⟨"Equipment"⟩],
+    domains := [.order],
+    cost := some ⟨2, [.domain .order]⟩,
     might := some 1,
     mightBonus := some 1,
     keywords := [{ keyword := .quickDraw },
       { keyword := .equip, arg := .cost ⟨1, []⟩ }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
 /-- Protector's Shield. -/
 def RAD_123 : CardDef :=
   { RAD_123.meta with
     grants := [.passive .always [.keyword .self { keyword := .tank }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-124
 /--
@@ -2810,8 +2874,14 @@ def RAD_128.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Steadfast Outrider: the effect is not written yet. -/
-def RAD_128 : CardDef := RAD_128.meta
+/-- Steadfast Outrider. -/
+def RAD_128 : CardDef :=
+  { RAD_128.meta with
+    abilities := [.passive (.and (.matches .self .onBattlefield)
+      (.cmp .ge (.count (.all .friendly .here
+        [.notSelf, .either (.ofType .unit) (.ofType .gear)])) (.const 2)))
+      [.mightPlus .self (.const 2)]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-129
 /--
@@ -2928,7 +2998,7 @@ def RAD_133 : CardDef := RAD_133.meta
 
 -- BEGIN GENERATED RAD-134
 /--
-**Raucous Anthem** — Spell · Energy 7 + Power 1
+**Raucous Anthem** — Spell · Order · Energy 7 + Power 1
 Printings: RAD-134/167
 
 > Ready your units and give them +3 :rb_might: this turn.
@@ -2937,12 +3007,18 @@ def RAD_134.meta : CardDef :=
   { id := ⟨"RAD-134"⟩,
     name := "Raucous Anthem",
     types := [.spell],
-    cost := some ⟨7, [.any]⟩,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    domains := [.order],
+    cost := some ⟨7, [.domain .order]⟩,
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Raucous Anthem: the effect is not written yet. -/
-def RAD_134 : CardDef := RAD_134.meta
+/-- Raucous Anthem. -/
+def RAD_134 : CardDef :=
+  { RAD_134.meta with
+    spellEffect := some (.of []
+      (let units := Selector.all .friendly .anywhere [.ofType .unit]
+       .seqOf [.prim (.ready units), .grant units (.mightPlus .it (.const 3)) .thisTurn])),
+    status := .full }
 
 -- BEGIN GENERATED RAD-135
 /--
@@ -3343,7 +3419,7 @@ def RAD_153 : CardDef := RAD_153.meta
 Printings: RAD-154/167
 
 > [Reaction] (Play any time, even before spells and abilities resolve.)
-> The next unit you play this turn (even from face down) can be played to any battlefield. When
+> The next unit you play this turn, even from face down, can be played to any battlefield. When
 > you play it, [Buff] it. (Give it a +1 :rb_might: buff if it doesn't have one.)
 -/
 def RAD_154.meta : CardDef :=
@@ -3585,9 +3661,9 @@ def RAD_166 : CardDef := RAD_166.meta
 Printings: RAD-167/167
 
 > (Neutral cards can go in decks of any Domain.)
-> If Neeko is in your deck, choose 3 different legends in addition to your starting legend.
-> (Different means none match names.)
-> When you play me, choose one of those legends and add it to your Legend Zone while I'm on the
+> If Neeko is in your deck, choose up to 3 different legends in addition to your starting
+> legend. (Different means none match names.)
+> When you play me, choose one of those Legends and add it to your Legend Zone while I'm on the
 > board.
 -/
 def RAD_167.meta : CardDef :=

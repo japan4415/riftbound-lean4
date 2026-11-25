@@ -27994,7 +27994,9 @@
   },
   {
    "cardId": "RAD-006",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 4,
    "might": null,
@@ -28075,7 +28077,9 @@
   },
   {
    "cardId": "RAD-009",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 6,
    "might": 3,
@@ -28089,7 +28093,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle",
+    "Mech"
+   ],
    "text": [
     "I enter ready.",
     "When you play me, play a ready 3 :rb_might: Mech unit token here."
@@ -28120,7 +28128,7 @@
    "tags": [],
    "text": [
     "Ready a unit.",
-    "When you play a card with Energy cost :rb_energy_7: or more, you may play this from your trash for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Banish this."
+    "When you play a card with Energy cost :rb_energy_7: or more, you may play this from your trash for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Then banish this."
    ],
    "textVariants": 1,
    "types": [
@@ -28423,7 +28431,9 @@
   },
   {
    "cardId": "RAD-022",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 4,
    "might": null,
@@ -28541,7 +28551,9 @@
   },
   {
    "cardId": "RAD-026",
-   "domains": [],
+   "domains": [
+    "calm"
+   ],
    "effectText": [],
    "energy": 2,
    "might": 2,
@@ -28555,7 +28567,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "You may have me enter ready. If you do, I can't move this turn."
    ],
@@ -28929,7 +28943,9 @@
   },
   {
    "cardId": "RAD-041",
-   "domains": [],
+   "domains": [
+    "calm"
+   ],
    "effectText": [],
    "energy": 1,
    "might": null,
@@ -29108,7 +29124,9 @@
   },
   {
    "cardId": "RAD-047",
-   "domains": [],
+   "domains": [
+    "mind"
+   ],
    "effectText": [],
    "energy": 3,
    "might": null,
@@ -29161,7 +29179,9 @@
   },
   {
    "cardId": "RAD-049",
-   "domains": [],
+   "domains": [
+    "mind"
+   ],
    "effectText": [],
    "energy": 4,
    "might": 1,
@@ -29175,7 +29195,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "When you play me, play a 3 :rb_might: Mech unit token here."
    ],
@@ -29762,7 +29784,7 @@
   {
    "cardId": "RAD-071",
    "domains": [
-    "order"
+    "body"
    ],
    "effectText": [
     "[Shield 2] (+2 :rb_might: while I'm a defender.)"
@@ -29779,9 +29801,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Equipment"
+   ],
    "text": [
-    "Equip :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
+    "[Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
    ],
    "textVariants": 1,
    "types": [
@@ -30059,7 +30083,7 @@
    "tags": [],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
-    "When you play me, give another friendly unit +3 :rb_might: this turn, then recycle me if I was played from face down."
+    "When you play me, give a friendly unit +3 :rb_might: this turn, then recycle me if I was played from face down."
    ],
    "textVariants": 1,
    "types": [
@@ -30703,7 +30727,9 @@
   },
   {
    "cardId": "RAD-104",
-   "domains": [],
+   "domains": [
+    "chaos"
+   ],
    "effectText": [],
    "energy": 5,
    "might": 5,
@@ -30717,7 +30743,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Cat"
+   ],
    "text": [
     ":rb_exhaust:: [Stun] an enemy unit. (It doesn't deal combat damage this turn.)"
    ],
@@ -31164,7 +31193,9 @@
   },
   {
    "cardId": "RAD-121",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [],
    "energy": 3,
    "might": null,
@@ -31218,7 +31249,9 @@
   },
   {
    "cardId": "RAD-123",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [
     "[Tank] (I must be assigned combat damage first.)"
    ],
@@ -31234,7 +31267,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Equipment"
+   ],
    "text": [
     "[Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)",
     "[Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
@@ -31531,7 +31566,9 @@
   },
   {
    "cardId": "RAD-134",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [],
    "energy": 7,
    "might": null,
@@ -32136,7 +32173,7 @@
    ],
    "text": [
     "[Reaction] (Play any time, even before spells and abilities resolve.)",
-    "The next unit you play this turn (even from face down) can be played to any battlefield. When you play it, [Buff] it. (Give it a +1 :rb_might: buff if it doesn't have one.)"
+    "The next unit you play this turn, even from face down, can be played to any battlefield. When you play it, [Buff] it. (Give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
    "textVariants": 1,
    "types": [
@@ -32502,8 +32539,8 @@
    ],
    "text": [
     "(Neutral cards can go in decks of any Domain.)",
-    "If Neeko is in your deck, choose 3 different legends in addition to your starting legend. (Different means none match names.)",
-    "When you play me, choose one of those legends and add it to your Legend Zone while I'm on the board."
+    "If Neeko is in your deck, choose up to 3 different legends in addition to your starting legend. (Different means none match names.)",
+    "When you play me, choose one of those Legends and add it to your Legend Zone while I'm on the board."
    ],
    "textVariants": 1,
    "types": [

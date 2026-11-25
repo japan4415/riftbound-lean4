@@ -24,6 +24,7 @@ SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
+# https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
 TEXT_ERRATA = {
     "VEN-034": {
         "[Reaction] (Play on your turn or in showdowns.)":
@@ -36,6 +37,36 @@ TEXT_ERRATA = {
         "return me to hand, give me +3 :rb_might: instead.":
             "return me to hand, give me +3 :rb_might: this turn instead.",
     },
+    "RAD-010": {
+        "Banish this.": "Then banish this.",
+    },
+    "RAD-081": {
+        "give another friendly unit": "give a friendly unit",
+    },
+    "RAD-154": {
+        "play this turn (even from face down) can":
+            "play this turn, even from face down, can",
+    },
+    "RAD-167": {
+        "choose 3 different legends": "choose up to 3 different legends",
+        "one of those legends": "one of those Legends",
+    },
+}
+
+# The gallery omits or mislabels these fields. Checked against its card images.
+RADIANCE_PRINT_METADATA = {
+    "RAD-006": {"domains": ["fury"]},
+    "RAD-009": {"domains": ["fury"], "tags": ["Bandle City", "Yordle", "Mech"]},
+    "RAD-022": {"domains": ["fury"]},
+    "RAD-026": {"domains": ["calm"], "tags": ["Freljord"]},
+    "RAD-041": {"domains": ["calm"]},
+    "RAD-047": {"domains": ["mind"]},
+    "RAD-049": {"domains": ["mind"], "tags": ["Zaun"]},
+    "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
+    "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
+    "RAD-121": {"domains": ["order"]},
+    "RAD-123": {"domains": ["order"], "tags": ["Equipment"]},
+    "RAD-134": {"domains": ["order"]},
 }
 
 
@@ -111,6 +142,8 @@ def normalize(snap: dict) -> dict:
         text = plain(first["text"])
         for printed, corrected in TEXT_ERRATA.get(ident, {}).items():
             text = [line.replace(printed, corrected) for line in text]
+        if ident == "RAD-071":
+            text = [line.replace("Equip :rb_energy_1:", "[Equip] :rb_energy_1:", 1) for line in text]
         effect_text = plain(first["effect"])
         variants = sorted({rules_text(p) for p in ps} - {()})
         cards.append({
@@ -129,6 +162,7 @@ def normalize(snap: dict) -> dict:
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
+            **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
     cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))
     ids = [c["cardId"] for c in cards]

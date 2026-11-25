@@ -486,7 +486,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
       | some o =>
         if o.controller != p then
           triggersOf s u o.controller .opponentScores ++
-            (if conquer then [] else triggersOf s u o.controller .opponentHolds)
+            (if conquer then [] else
+              triggersOf s u o.controller .opponentHolds ++
+                (if o.loc == some bf then triggersOf s u o.controller .opponentHoldsHere else []))
         else []
       | none => []) ++
     -- the cards in the Trash that wait for a conquer of their player

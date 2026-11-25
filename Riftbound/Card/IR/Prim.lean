@@ -339,6 +339,8 @@ inductive TriggerEvent where
   | opponentScores
   /-- An opponent of the player holds a Battlefield. -/
   | opponentHolds
+  /-- An opponent holds the Battlefield where the source is located (CR 830). -/
+  | opponentHoldsHere
   /-- The player moves a unit with an effect (Blast Cone). -/
   | movedByYou
   /-- The card is revealed from its owner's deck. -/

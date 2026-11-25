@@ -178,6 +178,10 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     match k.keyword, k.arg with
     -- Backline: the Unit must be assigned combat damage last (CR 826)
     | .backline, _ => [.passive .always [.assignedLast]]
+    -- Deploy: the Gear is killed when an opponent holds its Battlefield (CR 830).
+    | .deploy, _ =>
+      [.triggered (Trigger.onSelf .opponentHoldsHere)
+        (EffectDef.of [] (.prim (.kill .self))) .unlimited]
     -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)

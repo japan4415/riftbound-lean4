@@ -568,7 +568,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .recycleRune => t.subject == .self
       | .hide => t.subject == .self
       | .opponentScores => t.subject == .self
-      | .opponentHolds => t.subject == .self
+      | .opponentHolds | .opponentHoldsHere => t.subject == .self
       | .movedByYou => true
       | .draw => true
       | .banishOwn => t.subject == .self
@@ -618,7 +618,7 @@ def Keyword.runs : Keyword → Bool
   | .deathknell => true | .hunt => true | .level => true | .equip => true
   | .accelerate => true | .vision => true | .hidden => true
   | .repeat_ => true | .unique => true | .quickDraw => true | .weaponmaster => true
-  | .backline => true | .ambush => true
+  | .backline => true | .ambush => true | .deploy => true
   | _ => false
 
 /-- A card can model the printed Empower cost with an explicit activated ability (CR 827). -/

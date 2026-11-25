@@ -69,7 +69,8 @@ open Riftbound RiftboundCards
 -- The set is present as IR throughout scenario verification (docs/coverage.md).
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
-#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 951
+#guard (Radiance.cards.filter (fun c => c.status == .full)).all CardDef.runs
+#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 963
 -- an Equipment's effect text is kept apart: the abilities it gives the Unit it is attached to are
 -- `grants`, not the abilities of the card
 #guard match db.find? ⟨"UNL-019"⟩ with
@@ -96,7 +97,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 234
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 232
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 241
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 239
 
 end RiftboundTest
