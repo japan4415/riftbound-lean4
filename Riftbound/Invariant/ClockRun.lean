@@ -134,7 +134,8 @@ theorem tc_assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (ac
     (done : List (ObjId × Nat)) (rest : List Frame) :
     TC s (assignDoneStep s bf att side acc done rest).1 := by
   rcases assignDoneStep_cases s bf att side acc done rest with
-    ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;> rw [e]
+    ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;> rw [e]
+  · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
 

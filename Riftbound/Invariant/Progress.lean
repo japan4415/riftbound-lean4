@@ -136,11 +136,14 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨damage, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.assign b a q [] d]
+    · refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]
     · refine hinv.of_next hr.same.result (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.cleanup, Frame.combatResolve bf att]

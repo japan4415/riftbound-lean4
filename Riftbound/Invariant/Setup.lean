@@ -481,10 +481,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨damage, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.assign b a q [] d]) rfl (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
         (by simp [GameState.playerCount, hr.same.config])
         (new := [Frame.cleanup, Frame.combatResolve bf att]) rfl (by simp [Frame.isSetup])

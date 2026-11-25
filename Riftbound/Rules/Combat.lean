@@ -362,11 +362,11 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
 
 /-! ### Dealing the damage and ending the Combat -/
 
-/-- Apply the assigned damage and its ordered replacements as one simultaneous instruction
+/-- The damage from both sides after applying the chosen assignment replacements
 (CR 467.2.c.1, 467.2.c.5). -/
-def dealAll (s : GameState) (hits : List (ObjId × Nat)) : GameState × List Event :=
+def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat)) : EffectDamageBatch :=
   let batch : EffectDamageBatch := { controller := none, incoming := [] }
-  let finished := hits.foldl (fun now (u, raw) =>
+  hits.foldl (fun now (u, raw) =>
     match s.obj? u with
     | none => now
     | some o =>
@@ -374,12 +374,14 @@ def dealAll (s : GameState) (hits : List (ObjId × Nat)) : GameState × List Eve
       let (next, amount) := s.combatDamagePreview u raw now
       if amount == 0 && raw != 0 then next
       else { next with resolved := (u, amount) :: next.resolved }) batch
-  commitEffectDamage s finished
 
-/-- Dealing the damages is a safe change. -/
-theorem dealAll_safe (hits : List (ObjId × Nat)) (s : GameState) : Safe s (dealAll s hits).1 := by
-  unfold dealAll
-  exact commitEffectDamage_safe s _
+/-- Apply all assigned hits after any decisions have been made. -/
+def dealAll (s : GameState) (hits : List (ObjId × Nat)) : GameState × List Event :=
+  commitEffectDamage s (combatDamageBatch s hits)
+
+/-- Dealing the damage preserves the game invariants. -/
+theorem dealAll_safe (hits : List (ObjId × Nat)) (s : GameState) : Safe s (dealAll s hits).1 :=
+  commitEffectDamage_safe s _
 
 /-- Recall a Unit to its controller's Base (CR 456): its damage and status stay. -/
 def recallObj (s : GameState) (u : ObjId) : GameState × List Event :=
@@ -552,17 +554,6 @@ theorem startCombat_play (s : GameState) (bf : ObjId) (att : PlayerId) {f : Fram
         simp [ha, hd] at hf
         rcases hf with rfl | rfl <;> rfl
 
-/-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
-def clearDamageOrder (s : GameState) : GameState :=
-  { s with turnFx := s.turnFx.filter (fun note => match note.kind with
-    | .combatDamageOrder _ => false
-    | _ => true) }
-
-/-- Forgetting the order of damage replacements changes no structural properties. -/
-theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
-
 /-- The damage assigned to Units of other players than `att` beyond what is lethal to them (the
 last Unit of an order gets what is left). -/
 def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
@@ -573,17 +564,6 @@ def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat
         let damage := (s.combatDamagePreview unit raw { controller := none, incoming := [] }).2
         acc + (damage - s.need unit)) 0
 
-/-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
-def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
-  { s with turnFx := s.turnFx.filter (fun f =>
-      !(f.who == att && (match f.kind with | .excessDamage _ => true | _ => false))) ++
-    [{ who := att, turn := s.turn, stamp := s.nextTimestamp, kind := .excessDamage k }] }
-
-/-- Noting the excess damage is a safe change. -/
-theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (noteExcess s att k) :=
-  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-    fun _ hown => hown.congr rfl rfl, rfl⟩
-
 /-- The answer `assignDone`: the damage of this side is assigned down the order, and the next side
 asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -/
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
@@ -593,16 +573,23 @@ def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : Lis
   match (if side = att then s.assignFrame bf att (s.defenderAt bf att) done' else none) with
   | some f => ({ s with pending := f :: rest }, [])
   | none =>
-    let r := dealAll s done'
-    -- the excess damage the attacker assigned is noted (the last Combat of the turn counts)
-    let r2 := noteExcess (clearDamageOrder r.1) att (excessOf s att done')
-    ({ r2 with pending := .cleanup :: .combatResolve bf att :: rest }, r.2)
+    let batch := combatDamageBatch s done'
+    let excess := excessOf s att done'
+    let next := Frame.cleanup :: .combatResolve bf att :: rest
+    if batch.resolved.any (fun hit => (damageDeathChoice s hit).isSome) then
+      let damage := EffectList.ofList [.resolveEffectDamage batch none, .endCombatDamage excess]
+      ({ s with pending := .run att bf {} damage :: next }, [])
+    else
+      let r := commitEffectDamage s batch
+      ({ recordCombatDamage r.1 att excess with pending := next }, r.2)
 
 /-- What `assignDoneStep` does, in the cases the invariants look at. -/
 theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) :
     (∃ b a q d, (assignDoneStep s bf att side acc done rest).1 =
       { s with pending := Frame.assign b a q [] d :: rest }) ∨
+    (∃ damage, (assignDoneStep s bf att side acc done rest).1 =
+      { s with pending := .run att bf {} damage :: .cleanup :: .combatResolve bf att :: rest }) ∨
     (∃ r, Safe s r ∧ (assignDoneStep s bf att side acc done rest).1 =
       { r with pending := .cleanup :: .combatResolve bf att :: rest }) := by
   unfold assignDoneStep
@@ -619,7 +606,9 @@ theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) 
       · simp at hf
     · simp at hf
   · right
-    exact ⟨_, (dealAll_safe _ s).trans ((clearDamageOrder_safe _).trans (noteExcess_safe _ _ _)), rfl⟩
+    split
+    · exact Or.inl ⟨_, rfl⟩
+    · exact Or.inr ⟨_, (commitEffectDamage_safe s _).trans (recordCombatDamage_safe _ _ _), rfl⟩
 
 /-- The end of the Showdown at `bf`: a Combat if the Units of two players are there, otherwise the
 Control of the Battlefield goes to the player whose Units are alone there (CR 348). -/

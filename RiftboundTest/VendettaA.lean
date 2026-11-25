@@ -880,6 +880,61 @@ meta def passToChoice : Nat → GameState → Option GameState
   return controller == q && proposed.isEmpty && (deciding.obj? unit).isSome &&
     events.contains (.banished q q banished) && !(events.any (fun | .died .. => true | _ => false))
 
+-- Imperial Decree makes Smite's otherwise nonlethal hit a Kill. With a full shield,
+-- no damage is dealt and no Banish decision is offered.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s q "VEN-022" .base
+  let (s, unit) ← putAt s q "VEN-128" s.bf0
+  let (s, smite) ← put s p "UNL-007" .hand
+  let s := (s.control q s.bf0).modObj unit (fun o => { o with baseMightThisTurn := some 8 })
+  let initial := (s.fund p 2 (fury := 1)).addTurnFx p .killOnDamage
+  let start (t : GameState) : Option GameState := do
+    let (playing, _) ← (step 100 t ⟨.player p, .playCard smite ⟨2, [.fury]⟩ [unit]⟩).toOption
+    passToChoice 8 playing
+  let choosing ← start (initial.addTurnFxOn q unit (.preventDamage 1))
+  let .eitherDo controller _ _ (.chooseDeathBanisher _ first)
+    (.chooseDeathBanisher _ second) _ :: .run .. :: _ := choosing.pending | none
+  let (done, events) ← (step 100 choosing ⟨.player q, .decide true⟩).toOption
+  let banished ← done.firstOf q .banishment "VEN-128"
+  let shielded ← start (initial.addTurnFxOn q unit .damagePrevented)
+  return controller == q && first == p && second == q &&
+    events.contains (.damaged unit 2) && events.contains (.banished p q banished) &&
+    !(events.any (fun | .died .. => true | _ => false)) &&
+    (shielded.obj? unit).any (·.damage == 0) && !shielded.shielded unit &&
+    !shielded.pending.any (fun | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true | _ => false)
+
+-- Combat still spends its finite shield and records excess when the damage instruction
+-- pauses to choose the Banish replacement for a Kill-on-damage effect.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, _) ← put s q "VEN-022" .base
+  let (s, attacker) ← putAt s p "VEN-128" field
+  let (s, defender) ← putAt s q "VEN-128" field
+  let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 4 })
+  let s := s.modObj defender (fun o => { o with baseMightThisTurn := some 8 })
+  let s := (noteExcess s p 9).addTurnFxOn p defender .killOnDamage
+  let s := (s.addTurnFxOn p defender .banishInstead).addTurnFxOn q defender (.preventDamage 1)
+  let s := s.addTurnFxOn p attacker .damagePrevented
+  let act (t : GameState) (who : PlayerId) (kind : ActionKind) :=
+    (step 100 t ⟨.player who, kind⟩).toOption
+  let (first, _) ← (advance 100 { s with pending := [.combatDamage field p] } []).toOption
+  let (picked, _) ← act first p (.assignPick defender)
+  let (second, _) ← act picked p .assignDone
+  let (counter, _) ← act second q (.assignPick attacker)
+  let (choosing, before) ← act counter q .assignDone
+  let .eitherDo controller _ _ (.chooseDeathBanisher unit _) _ _ :: .run .. :: _ := choosing.pending | none
+  let (done, events) ← act choosing q (.decide false)
+  let banished ← done.firstOf q .banishment "VEN-128"
+  let excess := (done.fxOf p).filterMap (fun | .excessDamage n => some n | _ => none)
+  return controller == q && unit == defender && before.isEmpty &&
+    events.contains (.damaged defender 3) && events.contains (.banished q q banished) &&
+    !(events.any (fun | .died .. => true | _ => false)) && done.preventValue defender == 0 &&
+    !done.shielded attacker && (done.obj? attacker).isSome && excess == [0]
+
 -- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
 -- is finalized after the trigger leaves the Chain, and the opponent can respond.
 #guard vendettaCase fun s => do

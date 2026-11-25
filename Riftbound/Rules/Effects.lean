@@ -2318,6 +2318,43 @@ theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
   exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- A positive hit can trigger an immediate Kill. Any Banish choice is made before applying
+the resulting death, after the damage replacements have determined the final hit. -/
+def damageDeathChoice (s : GameState) (hit : ObjId × Nat) :
+    Option (ObjId × PlayerId × Effect × Effect) :=
+  if hit.2 != 0 && s.killOnHit hit.1 then s.deathBanishChoice hit.1 else none
+
+/-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
+def clearDamageOrder (s : GameState) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun note => match note.kind with
+    | .combatDamageOrder _ => false
+    | _ => true) }
+
+/-- Forgetting the order of damage replacements changes no structural properties. -/
+theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
+def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun f =>
+      !(f.who == att && (match f.kind with | .excessDamage _ => true | _ => false))) ++
+    [{ who := att, turn := s.turn, stamp := s.nextTimestamp, kind := .excessDamage k }] }
+
+/-- Noting the excess damage is a safe change. -/
+theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (noteExcess s att k) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Finish recording a Combat's damage once it has been applied. -/
+def recordCombatDamage (s : GameState) (att : PlayerId) (excess : Nat) : GameState :=
+  noteExcess (clearDamageOrder s) att excess
+
+/-- Finishing the damage bookkeeping preserves the game invariants. -/
+theorem recordCombatDamage_safe (s : GameState) (p : PlayerId) (excess : Nat) :
+    Safe s (recordCombatDamage s p excess) :=
+  (clearDamageOrder_safe s).trans (noteExcess_safe _ p excess)
+
 /-- Continue the damage instruction without applying its events until replacement ordering is
 complete. A nonpositive result after prevention does not emit a damage event (CR 438.4). -/
 def resolveEffectDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -2338,8 +2375,13 @@ def resolveEffectDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   | none =>
     match batch.incoming with
     | [] =>
-      let r := commitEffectDamage s batch
-      (r.1, [.run p src env es], r.2)
+      match batch.resolved.reverse.findSome? (damageDeathChoice s) with
+      | some (u, controller, first, other) =>
+        (s, [.eitherDo controller u {} first other .nil,
+          .run p src env (.cons (.resolveEffectDamage batch none) es)], [])
+      | none =>
+        let r := commitEffectDamage s batch
+        (r.1, [.run p src env es], r.2)
     | (id, amount) :: rest =>
       let next := { batch with incoming := rest }
       match s.obj? id with
@@ -2360,7 +2402,9 @@ theorem resolveEffectDamageStep_safe (s : GameState) (p : PlayerId) (src : ObjId
     · exact Safe.refl s
     · split <;> exact Safe.refl s
   · split
-    · exact commitEffectDamage_safe s batch
+    · split
+      · exact Safe.refl s
+      · exact commitEffectDamage_safe s batch
     · split
       · exact Safe.refl s
       · split
@@ -2382,8 +2426,11 @@ theorem resolveEffectDamageStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
       · simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
         rcases hf with rfl | rfl <;> rfl
   · split at hf
-    · obtain rfl := List.mem_singleton.mp hf
-      rfl
+    · split at hf
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+        rcases hf with rfl | rfl <;> rfl
+      · obtain rfl := List.mem_singleton.mp hf
+        rfl
     · split at hf
       · obtain rfl := List.mem_singleton.mp hf
         rfl
@@ -2413,7 +2460,8 @@ def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
     | _ => none
   if batch.incoming.any (fun (id, amount) => amount != 0 &&
       (s.obj? id).any (fun target => !damageImmune s id target batch.controller) &&
-      1 < (damageReplacements s batch id).length) then some batch else none
+      (1 < (damageReplacements s batch id).length ||
+        (damageDeathChoice s (id, amount)).isSome)) then some batch else none
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
@@ -4793,6 +4841,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     orderCombatDamageStep s p src env target chosen remaining es
   | .chooseDeathBanisher unit banisher =>
     (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
+  | .endCombatDamage excess =>
+    (recordCombatDamage s p excess, [.run p src env es], [])
   | .prim (.kill sel) =>
     match ((sel.eval s p src env).getD []).findSome? s.deathBanishChoice with
     | some (u, controller, first, other) =>
@@ -4858,6 +4908,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
+    | exact recordCombatDamage_safe s p _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _

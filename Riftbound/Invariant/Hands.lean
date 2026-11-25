@@ -292,8 +292,12 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      rw [hp]
+      exact List.mem_cons_of_mem _ this
     · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
       have : Frame.setupHands ∈ rest := by simpa using hmem
       rw [hp]

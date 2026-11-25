@@ -271,8 +271,9 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact (hr.own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk

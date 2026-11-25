@@ -56,8 +56,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact (hr.wf hwf).congr rfl rfl rfl rfl
   · rename_i p n rest hp hk
@@ -341,8 +342,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
       rw [Option.some.inj h]
     subst hs'
     rcases assignDoneStep_cases s bf att side acc done rest with
-        ⟨b, a, q, d, e⟩ | ⟨r, hr, e⟩ <;>
+        ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
+    · exact List.Perm.refl _
     · exact List.Perm.refl _
     · exact hr.phys hwf
   · rename_i p n rest hp hk
