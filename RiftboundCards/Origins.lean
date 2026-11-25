@@ -8002,8 +8002,8 @@ def heimerdingerOf (d : CardDef) : List Ability :=
         some (.activated costs sp
           (match body.body with
             | .ifThen c e .nop =>
-              EffectDef.mk body.choices (.ifThen (.and (.hasFriendlyCard d.id) c) e .nop)
-            | e => EffectDef.mk body.choices (.ifThen (.hasFriendlyCard d.id) e .nop)) lim)
+              EffectDef.of body.choices (.ifThen (.and (.hasFriendlyCard d.id) c) e .nop)
+            | e => EffectDef.of body.choices (.ifThen (.hasFriendlyCard d.id) e .nop)) lim)
       else none
     | _ => none)
 

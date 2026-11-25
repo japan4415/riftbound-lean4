@@ -233,7 +233,7 @@ meta def sceneSpell : Option (GameState × PlayerId × PlayerId × ObjId × ObjI
   | some (s, _, q, a, c, d) =>
     (legalFrameActions s).contains ⟨.player q, .playCard c ⟨1, []⟩ [a]⟩ &&
     !(legalFrameActions s).any (fun x => match x.kind with
-      | .playCard c' _ _ _ _ => c' == d | _ => false) &&
+      | .playCard c' _ _ _ _ _ => c' == d | _ => false) &&
     reactable s q c ⟨1, []⟩ [a] && !reactable s q d ⟨1, []⟩ []
   | none => false
 

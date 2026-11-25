@@ -105,9 +105,9 @@ theorem applyPlay_unit_exhausted {s s' : GameState} {p : PlayerId} {c : ObjId}
 smaller by the total of the card's cost, or of its cost with an additional cost (Repeat), and no
 other player's Pool changes. -/
 theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {targets : List ObjId} {es : List Event}
-    (hp : castable s p c pay targets flow = true)
-    (h : applyCast s p c pay targets flow = some (s', es)) :
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event}
+    (hp : castable s p c pay targets flow pick = true)
+    (h : applyCast s p c pay targets flow pick = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
       b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.targetCosts p c d b targets ∧
       (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
@@ -174,7 +174,7 @@ theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
 /-- **A Spell on the Chain carries the objects chosen when it was cast** (CR 355): the object that
 `applyCast` puts on the Chain has exactly the targets of the action. -/
 theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
     ∃ id', es = [Event.moved c id' .chain] ∧
       ∀ o, s'.obj? id' = some o → o.targets = targets := by
   obtain ⟨pool, s2, id', rep, -, -, rfl, hes⟩ := applyCast_cases h
@@ -191,9 +191,9 @@ theorem applyCast_targets {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 
 /-- **The targets of a Spell are in supported target zones** (CR 355). -/
 theorem castable_targets_present {s : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {targets : List ObjId} (h : castable s p c pay targets flow = true) :
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
     ∀ t ∈ targets, s.targetPresent t = true := by
-  obtain ⟨d, e, -, -, hok⟩ := castable_targets h
+  obtain ⟨d, e, -, -, hok, -⟩ := castable_targets h
   exact targetsOk_mem_targetPresent hok
 
 /-- A Spell starts from the targets it was cast with (CR 340, 355). An open-ended group is
@@ -202,8 +202,10 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
     {o : Object} {d : CardDef} (hc : s.zone .chain = item :: more) (ho : s.obj? item = some o)
     (hd : s.cardDef? item = some d) :
     resolveFrames s rest =
-      .run o.controller item { slots := slotValues o.targets d.spellEffect }
-        (match d.spellEffect with
+      .run o.controller item {
+        slots := finalizedSlots s o.controller item o.targets
+          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick }
+        (match d.spellEffect.bind (·.forPick o.spellPick) with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.recheckTargetGroup s o.controller item o.targets

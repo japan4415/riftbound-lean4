@@ -370,14 +370,16 @@ function describeA(a, prev) {
     case 'playCard': {
       const o = objs[a.card], def = o && cards[o.card];
       const base = a.flowCost;
+      const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
       const cost = base
         ? '（Flow ' + base.energy + ' Energy' +
           (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）'
-        : (def && typeof def.cost === 'number' && a.pay > def.cost
-          ? '（追加コスト +' + (a.pay - def.cost) + '）' : '');
+        : (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
       const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
         : def?.discardToPlay ? '（捨てない）' : '';
-      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') + discard;
+      const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
+      const dest = 'moveDest' in a ? '（移動先 ' + (a.moveDest === null ? 'Base' : cardName(a.moveDest)) + '）' : '';
+      const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') + discard + mode + dest;
       if (def && def.types.includes('spell')) {
         const tg = (a.targets || []).map((t) => cardName(t)).join('、');
         const react = prev === 'chainPass';

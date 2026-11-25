@@ -555,7 +555,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let rich := sd.rich s.me
   let acts := legalFrameActions rich
   let inList (card : ObjId) := acts.any (fun a => match a.kind with
-    | .playCard x _ _ _ _ => x == card | _ => false)
+    | .playCard x _ _ _ _ _ => x == card | _ => false)
   return (r.obj? e).any (·.stunned) && back && inList c && !inList d &&
     (cast rich s.me d (payOf rich d) [e]).isNone
 

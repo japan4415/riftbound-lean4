@@ -17,6 +17,17 @@ custom handlers. Nothing here is recursive.
 
 namespace Riftbound
 
+/-- An additional selection recorded when a Spell is finalized (CR 355.3-355.4). -/
+inductive SpellPick where
+  /-- The Spell only has its ordinary target and payment choices. -/
+  | plain
+  /-- The index of the chosen mode. -/
+  | mode (index : Nat)
+  /-- The chosen Battlefield, or the moved Unit's Base. -/
+  | destination (battlefield : Option ObjId)
+deriving DecidableEq, Repr, Hashable
+
+
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where
   /-- Friendly: controlled by the player. -/

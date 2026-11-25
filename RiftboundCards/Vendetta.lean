@@ -985,8 +985,19 @@ def VEN_035.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sanction: the effect is not written yet. -/
-def VEN_035 : CardDef := VEN_035.meta
+/-- Sanction. Its two end-of-turn effects refer to the originally chosen Unit. -/
+def VEN_035 : CardDef :=
+  let delayed : Trigger := { event := .at_ .endOfTurn, condition := .not .always }
+  { VEN_035.meta with
+    abilities := [
+      .triggered delayed (.of [] (.prim (.disempower .self))) .unlimited,
+      .triggered delayed (.of [] (.prim (.empower .self))) .unlimited],
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Empower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit]],
+        .seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 0))]⟩,
+      ⟨"Disempower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit, .empowered]],
+        .seqOf [.prim (.disempower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 1))]⟩] },
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-036
 /--
@@ -1450,8 +1461,15 @@ def VEN_052.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mesmerize: the effect is not written yet. -/
-def VEN_052 : CardDef := VEN_052.meta
+/-- Mesmerize. -/
+def VEN_052 : CardDef :=
+  { VEN_052.meta with
+    spellEffect := some { body := .nop, modes := [
+      ⟨"味方を手札に戻す", [.targetOf .one .friendly .anywhere [.ofType .unit]],
+        .prim (.returnToHand (.slot 0))⟩,
+      ⟨"敵に Might −2", [.targetOf .one .enemy .anywhere [.ofType .unit]],
+        .grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn⟩] },
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-053
 /--
@@ -2897,8 +2915,10 @@ def VEN_105.meta : CardDef :=
 /-- Twilight Step. -/
 def VEN_105 : CardDef :=
   { VEN_105.meta with
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit, .might .le (.const 3)]]
-      (.moveChoosing 0 true .nil .nop)),
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit, .might .le (.const 3)]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil .nop },
     status := .drafted }
 
 -- BEGIN GENERATED VEN-106
@@ -3873,9 +3893,11 @@ def VEN_140.meta : CardDef :=
 /-- Shuriken Flip. The required friendly target fills the first slot so the other can be omitted. -/
 def VEN_140 : CardDef :=
   { VEN_140.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
-      .targetOf (.upTo 1) .enemy .atBattlefield [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 1) (.const 2)), .moveChoosing 0 true .nil .nop])),
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf (.upTo 1) .enemy .atBattlefield [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .seqOf [.prim (.deal (.slot 1) (.const 2)), .moveChoosing 0 true .nil .nop] },
     status := .drafted }
 
 -- BEGIN GENERATED VEN-141
@@ -4082,8 +4104,10 @@ def VEN_148 : CardDef :=
   let bump := Effect.ifThen (.cmp .eq (.count allies) (.const 2))
     (.grant allies (.mightPlus .it (.const 1)) .thisTurn) .nop
   { VEN_148.meta with
-    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.moveChoosing 0 false (.ofList [.myUnitsHere]) bump)),
+    spellEffect := some {
+      choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, false, .ofList [.myUnitsHere]⟩
+      body := .moveChoosing 0 false (.ofList [.myUnitsHere]) bump },
     status := .drafted }
 
 -- BEGIN GENERATED VEN-149

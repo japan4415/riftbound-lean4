@@ -62,18 +62,14 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
-/-- The Unit whose destination is being chosen. -/
-def moveSubjectFields (env : Env) (i : Nat) : List (String × String) :=
-  match env.slots[i]? with
-  | some (.obj unit) => [("unit", toString unit.n)]
-  | _ => []
-
-/-- The Base option or the list of Battlefield destinations for an effect move. -/
-def moveLocationFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
-  match frame with
-  | some (.eitherDo _ _ env (.doThen (.prim (.move (.slot i) .base)) _) (.moveChoosing ..) _) =>
-    [("moveLocation", jstr (if yes then "base" else "battlefield"))] ++ moveSubjectFields env i
-  | _ => []
+/-- Encode the finalization choice separately from the targeted objects. -/
+def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List (String × String)
+  | .plain => []
+  | .mode i =>
+    let label := state.bind (fun s => (s.cardDef? c).bind (fun d =>
+      d.spellEffect.bind (fun e => (e.modes[i]?).map SpellMode.label)))
+    [("mode", toString i)] ++ label.toList.map (fun name => ("modeLabel", jstr name))
+  | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
 
 /-- The order the affected Unit's controller chooses for damage replacement. -/
 def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
@@ -93,12 +89,12 @@ def actionJson (a : Action) (frame : Option Frame := none)
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c pay ts flow discard =>
+    | .playCard c pay ts flow discard pick =>
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
-        (discard.toList.map (fun o => ("discards", jarr [toString o.n])))
+        (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++ spellPickFields state c pick
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
@@ -135,12 +131,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
-        tokenLocationFields frame yes ++ moveLocationFields frame yes ++ damageOrderFields frame yes
+        tokenLocationFields frame yes ++ damageOrderFields frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
-        | some (.pickDo _ _ env _ _ (.doThen (.prim (.move (.slot i) (.at_ _))) _) _) =>
-          [("choiceContext", jstr "move")] ++ moveSubjectFields env i
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | _ => [])
@@ -366,7 +360,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let isAb (ab : RuneAbility) (a : Action) : Bool :=
       match a.kind with | .runeAbility _ ab' => ab' == ab | _ => false
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ _ _ => true | _ => false
     let isGo (a : Action) : Bool :=
       match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
     let isUse (a : Action) : Bool :=
@@ -387,10 +381,10 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     | some a0 =>
       -- the same card and targets: pay the additional cost when there is one
       let payOf (a : Action) : Nat :=
-        match a.kind with | .playCard _ pay _ _ _ => pay.energy + pay.power.length | _ => 0
+        match a.kind with | .playCard _ pay _ _ _ _ => pay.energy + pay.power.length | _ => 0
       let same (a : Action) : Bool :=
         match a.kind, a0.kind with
-        | .playCard c _ _ _ discard, .playCard c0 _ _ _ discard0 =>
+        | .playCard c _ _ _ discard _, .playCard c0 _ _ _ discard0 _ =>
           c == c0 && a.targetsOf == a0.targetsOf && discard == discard0
         | _, _ => false
       let best := (legal.filter same).foldl (fun acc a => if payOf a > payOf acc then a else acc) a0
@@ -412,7 +406,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     -- when one is in the hand
     let legal := legalActions s
     let isPlay (a : Action) : Bool :=
-      match a.kind with | .playCard _ _ _ _ _ => true | _ => false
+      match a.kind with | .playCard _ _ _ _ _ _ => true | _ => false
     let isExhaust (a : Action) : Bool :=
       match a.kind with | .runeAbility _ .exhaust => true | _ => false
     let holdsReaction := (s.zone (.player p .hand)).any (reactSpell s)

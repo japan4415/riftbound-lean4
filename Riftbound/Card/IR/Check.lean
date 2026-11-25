@@ -401,7 +401,12 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
 
 /-- An effect with its choices refers only to what is there. -/
 def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
-  Choice.allOk 0 d.choices && Effect.ok (d.ctx base) d.body
+  let ctx := d.ctx base
+  Choice.allOk 0 d.choices && Effect.ok ctx d.body &&
+    (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
+    d.modes.all (fun mode =>
+      let branch : EffectDef := { choices := mode.choices, body := mode.body }
+      Choice.allOk 0 branch.choices && Effect.ok (branch.ctx base) branch.body)
 
 /-- An ability refers only to what is there. -/
 def Ability.ok : Ability → Bool

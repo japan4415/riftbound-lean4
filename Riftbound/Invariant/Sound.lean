@@ -85,7 +85,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i p _ c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
-  · rename_i p rest c pay ts flow discard hp hk
+  · rename_i p rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     obtain ⟨r, hr⟩ := applyPlayCard_isSome (rest := rest) hwf hl.2.1 hl.2.2.1
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
@@ -100,15 +100,15 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · rename_i p n rest hp hk
     split <;> exact ⟨_, rfl⟩
-  · rename_i p n rest c pay ts flow discard hp hk
+  · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    have hplay : castable s p c pay ts flow = true ∨ ∃ d xs, playable s p c pay d xs = true := by
+    have hplay : castable s p c pay ts flow pick = true ∨ ∃ d xs, playable s p c pay d xs = true := by
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inl h
-      · exact Or.inr ⟨none, ts, h.2.2.2⟩
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+      · exact Or.inr ⟨none, ts, h.2.2.2.2⟩
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
         exact Or.inr ⟨some b, ts, hb⟩
-      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
+      · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2.2
         exact Or.inr ⟨some b, ts, hb⟩
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) hwf hl.2.1 hplay
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
@@ -186,7 +186,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     simp only [hs2]
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
-  · rename_i bf q n rest c pay ts flow discard hp hk
+  · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass q 0 :: .showdown bf q 0 :: rest)
       hwf hl.2.1 (showdownable_spec hl.2.2.1)

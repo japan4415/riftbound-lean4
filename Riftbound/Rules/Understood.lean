@@ -412,10 +412,17 @@ def EffectList.understood : EffectList → Bool
 
 end
 
-/-- A Spell that can be played and run: every choice is one target, and the effect is understood. -/
+/-- All modes or the single effect of a Spell can be played and interpreted. -/
+def EffectDef.spellRuns (e : EffectDef) : Bool :=
+  if e.modes.isEmpty then
+    e.choices.all Choice.simple && e.body.understood &&
+      e.moveChoice.all (fun move => FilterList.understood move.filters)
+  else e.modes.all (fun mode => mode.choices.all Choice.simple && mode.body.understood)
+
+/-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
-  | some e => e.choices.all Choice.simple && e.body.understood
+  | some e => e.spellRuns
   | none => false
 
 /-! ### What a card does when it is played
@@ -604,7 +611,7 @@ def CardDef.runs (c : CardDef) : Bool :=
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
-      | some e => e.choices.all Choice.simple && e.body.understood
+      | some e => e.spellRuns
       | none => !c.types.contains .spell)
 
 end Riftbound

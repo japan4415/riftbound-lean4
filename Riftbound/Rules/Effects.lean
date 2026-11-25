@@ -1350,13 +1350,15 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
     | some bf => playToOrBase p bf s id
     | none => playFree p s id
 
-/-- Possible targets and adjusted costs for a Spell played by another effect (CR 420.3).
-Different ways to apply a Power discount remain choices for the player. -/
+/-- Targets, finalization choices and costs for a Spell played by another effect (CR 420.3). -/
 def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
-    (e : EffectDef) (less : Nat) : List (List ObjId × Cost) :=
+    (e : EffectDef) (less : Nat) : List (List ObjId × Cost × SpellPick) :=
   (s.effCost p id d).toList.flatMap (fun base =>
-    (targetTuples s p id s.mightTable e.choices).flatMap (fun targets =>
-      (s.targetPowerOptions p id targets (base.lessEnergy less)).map (targets, ·)))
+    (s.spellPicks d).flatMap (fun pick =>
+      (e.forPick pick).toList.flatMap (fun branch =>
+        ((targetTuples s p id s.mightTable branch.choices).filter
+          (fun ts => s.moveTargetOk id branch ts pick)).flatMap (fun ts =>
+            (s.targetPowerOptions p id ts (base.lessEnergy less)).map (fun cost => (ts, cost, pick))))))
 
 /-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
 If the cost cannot be paid or the choice is unavailable, it is not cast. -/
@@ -1366,12 +1368,12 @@ def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
       (fun d => d.spellEffect.map (fun e => (d, e))) with
   | some (d, e) =>
     match (reducedSpellChoices s p id d e k)[idx]? with
-    | some (ts, cost) =>
+    | some (ts, cost, pick) =>
       match payByRunes s p id cost with
       | some r =>
         match moveObj r.1 id .chain with
         | some m =>
-          (m.1.modObj m.2 (Object.withPlay ts (r.1.freeMark p id)),
+          (m.1.modObj m.2 (Object.withPlay ts { r.1.freeMark p id with spellPick := pick }),
             r.2 ++ [Event.moved id m.2 .chain, Event.played p m.2] ++ ts.map (Event.chosenBySpell p))
         | none => (s, [])
       | none => (s, [])
@@ -3126,7 +3128,7 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
   match sel.eval s p src env with
   | some (id :: _) =>
     match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
-        (fun d => d.spellEffect.map (fun e => (d, e))) with
+        (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
       match payByRunes s p id ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩ with
       | some r =>
@@ -3205,7 +3207,7 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
     (es : EffectList) : Option (GameState × List Frame × List Event) :=
   match sel.eval s p src env with
   | some (id :: _) =>
-    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    match (s.cardDef? id).bind (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
       if d.hasType .spell && e.choices.isEmpty && !s.blocksOwnPlay p id d then
         (moveObj s id .chain).map (fun r =>
@@ -3403,58 +3405,26 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
     | id :: other :: more =>
       .pickDo q src env id (other :: more) (.collectOwnPicks p qs place fs body true) es
 
-/-- A Battlefield can receive an effect move when it is a new location and the Unit can be there
-(CR 449.2.a, 451.2). A Battlefield with two sides can have a staged Combat (CR 463). -/
-def GameState.effectMoveBattlefieldOk (s : GameState) (u : Object) (bf : ObjId) : Bool :=
-  let occupying := s.players.filter (fun q => !(s.unitsAtOf bf q).isEmpty)
-  let staged := decide (occupying.length ≥ 2)
-  let running := s.combatNow.any (fun combat => combat.1 == bf)
-  u.loc != some bf && decide ((occupying.erase u.controller).length < 2) &&
-    (!decide (s.playerCount > 2) || !(staged || running) || occupying.contains u.controller)
-
-/-- Offer only legal new destinations. Battlefield answers name a location, so the move's follow-up
-may use that location without making it a target (CR 355.18, 451.1). -/
-def moveChoiceFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (slot : Nat) (allowBase : Bool) (filters : FilterList) (afterMove : Effect) (es : EffectList) :
-    Frame :=
-  let resume := Frame.run p src env es
+/-- Use the destination chosen when the Spell was finalized (CR 355.4, 359.3.e).
+A destination forbidden by the global movement rules requires a Recall (CR 449.2.c). -/
+def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (slot : Nat) (allowBase : Bool) (fs : FilterList) (afterMove : Effect) : Env × Effect :=
   let unit := Selector.slot slot
-  match env.slots[slot]? with
-  | some (.obj id) =>
-    match s.obj? id with
-    | some u =>
-      if !s.inPlay.contains id || !(s.cardDef? id).any (·.hasType .unit) ||
-          s.blocksEnemyMove (env.effectController.getD p) id then resume
-      else
-        let home := allowBase && u.loc.any (fun bf => !s.homeForbiddenFor id bf)
-        let fields := (s.zone .battlefieldZone).filter (fun bf =>
-          (s.cardDef? bf).any (·.hasType .battlefield) && s.effectMoveBattlefieldOk u bf &&
-          (FilterList.holds s src (env.withMight s.mightTable) bf filters).getD false)
-        let toBase := Effect.doThen (.prim (.move unit .base)) afterMove
-        match home, fields with
-        | false, [] => resume
-        | true, [] => .run p src env (.cons toBase es)
-        | true, _ :: _ =>
-          .eitherDo p src env toBase (.moveChoosing slot false filters afterMove) es
-        | false, bf :: more =>
-          .pickDo p src env bf more
-            (.doThen (.prim (.move unit (.at_ (.var pickVar)))) afterMove) es
-    | none => resume
-  | _ => resume
-
-/-- A destination choice is a play frame. -/
-theorem moveChoiceFrame_isPlay (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (slot : Nat) (home : Bool) (fs : FilterList) (afterMove : Effect) (es : EffectList) :
-    (moveChoiceFrame s p src env slot home fs afterMove es).isPlay = true := by
-  unfold moveChoiceFrame
-  split
-  · split
-    · split
-      · rfl
-      · dsimp only
-        split <;> rfl
-    · rfl
-  · rfl
+  let resume := (env, Effect.nop)
+  match (s.obj? src).map Object.spellPick, env.slots[slot]? with
+  | some (.destination dest), some (.obj id) =>
+    if s.blocksEnemyMove (env.effectController.getD p) id then resume
+    else match s.obj? id, dest with
+      | some o, none =>
+        if allowBase && o.loc.isSome then (env, .doThen (.prim (.move unit .base)) afterMove)
+        else resume
+      | some o, some bf =>
+        if o.loc == some bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
+            !(FilterList.holds s src env bf fs).getD false then resume
+        else if !s.effectMoveBattlefieldOk o bf then (env, .prim (.recall unit false))
+        else (env.bind pickVar (.obj bf), .doThen (.prim (.move unit (.at_ (.var pickVar)))) afterMove)
+      | none, _ => resume
+  | _, _ => resume
 
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -3486,7 +3456,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | _ => (s, [.run p src env es], [])
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
   | .moveChoosing unit home fs afterMove =>
-    (s, [moveChoiceFrame s p src env unit home fs afterMove es], [])
+    let chosen := chosenMove s p src env unit home fs afterMove
+    (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
@@ -3649,6 +3620,21 @@ def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
   let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
   ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
 
+/-- Recheck the separate target slots of a Spell with a recorded mode or destination (CR 359.3.e.2).
+Invalid targets leave an empty value in their original slot. -/
+def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
+    (definition : Option EffectDef) (pick : SpellPick) : List Value :=
+  if pick == .plain then slotValues ts definition
+  else match definition with
+    | some e =>
+      (e.choices.filter Choice.isTarget).zipIdx.map (fun (choice, i) =>
+        match ts[i]? with
+        | some id =>
+          if (choice.candidatesAfter s p src s.mightTable (ts.take i)).contains id then .obj id
+          else .int 0
+        | none => .int 0)
+    | none => []
+
 /-- Before an open-ended group resolves, filter invalid original targets and ask its controller
 to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
 def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
@@ -3719,8 +3705,9 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
   | item :: _ =>
     match s.obj? item, s.cardDef? item with
     | some o, some d =>
-      .run o.controller item { slots := slotValues o.targets d.spellEffect }
-        (match d.spellEffect with
+      let definition := d.spellEffect.bind (·.forPick o.spellPick)
+      .run o.controller item { slots := finalizedSlots s o.controller item o.targets definition o.spellPick }
+        (match definition with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.recheckTargetGroup s o.controller item o.targets

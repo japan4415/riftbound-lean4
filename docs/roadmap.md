@@ -1949,12 +1949,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 現状は Pool と Basic Rune で誘発コストの Energy を支払える。確定中に任意の Add 能力を起動する選択と、Rune から Deflect の Power を捻出する選択は残っている（CR 357.1.a, 809）。
 - 167 枚中 141 枚が `drafted`、139 枚が `CardDef.runs` の検査を通る。
 
-### M8c Vendetta 31 — 解決時に選ぶ移動先
+### M8c Vendetta 31 — 移動の効果
 
-- Twilight Step は Might 3 以下の Unit を対象に取り、解決時にその Unit の Base または別の Battlefield へ移動する。Trash からの Flow でも行き先を選べる（CR 355.18, 421, 451, 829）。
-- Shuriken Flip は味方 Unit を必ず対象に取り、Battlefield にいる敵 Unit を 1 体まで追加で対象に取る。敵にダメージを与えてから味方の移動先を選ぶ。敵の対象を省いた場合や失った場合も、有効な味方の対象は移動できる（CR 355.13, 355.18, 359.3.e）。
+- Twilight Step は Might 3 以下の Unit を対象に取り、その Unit の Base または別の Battlefield へ移動する。行き先を選ぶ時点は Vendetta 33 で確定時に修正した（CR 355.4, 421, 451, 829）。
+- Shuriken Flip は味方 Unit を必ず対象に取り、Battlefield にいる敵 Unit を 1 体まで追加で対象に取る。敵にダメージを与えてから味方を移動する。敵の対象を省いた場合や失った場合も、有効な味方の対象は移動できる（CR 355.13, 355.18, 359.3.e）。
 - Shadow Dash は自分の Unit がいる Battlefield に敵 Unit を移動し、そこに自分の Unit がちょうど 2 体いれば、その 2 体にターン終了まで Might を 1 ずつ与える。移動前の場所や、第三者が入れない戦場は候補から除く（CR 359.3.e.14, 449.2.a, 451.2, 464）。
-- ビューアは、解決時に Base へ移動する選択と Battlefield を選ぶ操作を示す。移動先を選んでも対象指定の誘発は起きない（CR 355.6, 355.18）。
+- 移動先を選んでも対象指定の誘発は起きない（CR 355.4, 355.6）。
 - 167 枚中 144 枚が `drafted`、142 枚が `CardDef.runs` の検査を通る。
 
 ### M8c Vendetta 32 — Tank の優先順と有限のダメージ軽減
@@ -1963,6 +1963,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Ki Barrier はそのターン中の受けるダメージを合計 7 まで軽減する。残量は次のダメージに持ち越し、場に留まる移動でも維持する。戦闘では残量を含めて致死ダメージに必要な割り振り量を計算する（CR 438.2, 438.3, 438.5, 467.2.c.5）。
 - 戦闘で Ki Barrier と Lotus Trap が重なる場合は、影響を受ける Unit の支配者が軽減と倍増の適用順を選ぶ。戦闘外のダメージで複数の置換が重なったときの選択と、複数の軽減・倍増を交互に適用する選択は未実装（CR 372, 467.2.c.5）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
 - 167 枚中 144 枚が `drafted`。転記済みの 144 枚すべてが `CardDef.runs` の検査を通る。
+
+### M8c Vendetta 33 — 呪文を確定するときのモードと移動先
+
+- Sanction と Mesmerize は、呪文を確定するときにモードとそのモードの対象を選ぶ。選択は応答中も保持する。Sanction は対象の Empowered をターン終了時に切り替える遅延誘発を作る（CR 355.3, 355.5, 390-393, 442, 443）。
+- Twilight Step、Shuriken Flip、Shadow Dash の移動先は、通常プレイでも Flow でも、相手が応答する前に選ぶ。有効な対象の効果だけを解決する。Shadow Dash で選んだ Battlefield から味方 Unit がいなくなっても、別の Battlefield は選び直さない（CR 355.4, 358.3.a, 359.3.e, 451.1）。
+- ビューアは、モード名または移動先と、対象を選択前に表示する。
+- Repeat を別の効果で得た場合に、追加実行ごとのモードや移動先を確定時に選ぶ処理が残っている（CR 820.2）。
+- 167 枚中 146 枚が `drafted`。転記済みの 146 枚が `CardDef.runs` を通る。
 
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 

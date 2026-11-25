@@ -77,7 +77,7 @@ theorem tc_applyPlay {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
   · exact h1.trans ⟨rfl, rfl⟩
 
 theorem tc_applyCast {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
     TC s s' := by
   obtain ⟨pool, s2, id', rep, -, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm
@@ -85,8 +85,8 @@ theorem tc_applyCast {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
   exact h1.trans ⟨rfl, rfl⟩
 
 theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {targets : List ObjId} {rest : List Frame} {es : List Event}
-    (h : applyPlayCard s p c pay targets rest flow = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {rest : List Frame} {es : List Event}
+    (h : applyPlayCard s p c pay targets rest flow pick = some (s', es)) : TC s s' := by
   unfold applyPlayCard at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
@@ -114,15 +114,15 @@ theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
   exact (tc_applyActivate hm).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : castStep s p c pay ts new flow = some (s', es)) : TC s s' := by
+    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : castStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
     ⟨rfl, rfl⟩
 
 theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : reactStep s p c pay ts new flow = some (s', es)) : TC s s' := by
+    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
   · exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
       ⟨rfl, rfl⟩

@@ -2797,7 +2797,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return !castable rich s.you ray (payOf rich ray) [u] &&
     castable free s.you ray (payOf free ray) [u] &&
     !(legalPlays rich s.you).any
-      (fun a => match a.kind with | .playCard c _ _ _ _ => c == ray | _ => false)
+      (fun a => match a.kind with | .playCard c _ _ _ _ _ => c == ray | _ => false)
 
 -- The ability that watches an object gets it as its last slot. Pirate's Haven (OGN-143): when I
 -- ready a friendly unit, it gets +1 Might this turn

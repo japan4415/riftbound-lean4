@@ -74,7 +74,7 @@ end RunePool
 /-- The objects an answer chooses. -/
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
-  | .playCard _ _ ts _ _ => ts
+  | .playCard _ _ ts _ _ _ => ts
   | .activate _ _ _ ts _ => ts
   | .putTrigger _ ts _ => ts
   | _ => []
@@ -82,7 +82,7 @@ def Action.targetsOf (a : Action) : List ObjId :=
 /-- An answer that plays a card can have a printed exception to the Deflect cost. -/
 def Action.spellSource (a : Action) : Option ObjId :=
   match a.kind with
-  | .playCard c _ _ _ _ => some c
+  | .playCard c _ _ _ _ _ => some c
   | _ => none
 
 namespace GameState
@@ -131,7 +131,7 @@ def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) 
 to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). -/
 def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
   match a.kind with
-  | .playCard c _ ts _ _ => s.choosePowerCut p c ts != 0
+  | .playCard c _ ts _ _ _ => s.choosePowerCut p c ts != 0
   | .activate c idx _ ts _ =>
     s.choosePowerCut p c ts != 0 &&
       (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with

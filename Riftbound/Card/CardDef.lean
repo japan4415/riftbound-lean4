@@ -128,7 +128,7 @@ def hiddenPlay (c : CardDef) : EffectDef :=
       (.seq (.cons (.prim (.turnEffect .hiddenPlayed)) (.cons e .nil))) .nop
   if c.types.contains .spell then
     let e := c.spellEffect.getD (EffectDef.of [] .nop)
-    EffectDef.mk e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
+    EffectDef.of e.choices (gate (.seq (.cons e.body (.cons (.prim (.bin .self)) .nil))))
   else if c.types.contains .unit then
     -- a Unit played from hiding enters the Battlefield where it was hidden (CR 811)
     EffectDef.of [] (gate (.prim (.playTo .self (.locationOf .self))))
@@ -154,7 +154,7 @@ def hideEffect : EffectDef := hideEffectWith (.addPower .you (.const 1) none non
 /-- Hide for one Energy (with Swift Scout): the Energy comes back, if hiding is free. -/
 def hideEnergyEffect : EffectDef :=
   let e := hideEffectWith (.addEnergy .you (.const 1) none)
-  EffectDef.mk e.choices (.ifThen .hidesWithEnergy e.body .nop)
+  EffectDef.of e.choices (.ifThen .hidesWithEnergy e.body .nop)
 
 /-- The Spell lets its player make different choices when it is repeated (Rocket Barrage). -/
 def repeatChooses (d : CardDef) : Bool :=
@@ -252,7 +252,7 @@ def copiedAbilities (c : CardDef) : List Ability :=
       match ab with
       | .activated costs sp body lim =>
         some (.activated costs sp
-          (EffectDef.mk body.choices
+          (EffectDef.of body.choices
             (.ifThen (.exists (Selector.all .friendly .anywhere [.attachedTo .self, .copiesText]))
               body.body .nop)) lim)
       | _ => none)
