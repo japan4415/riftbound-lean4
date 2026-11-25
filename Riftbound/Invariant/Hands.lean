@@ -216,8 +216,9 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
   · rename_i p _ c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    have hmain := playOk_main hl.2.2.1
+    have hturn := playOk_not_setup hl.2.2.1
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_discard_meta h
+    have hturn' : s'.phase ≠ .setup := by simpa only [hphase] using hturn
     have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
     refine ⟨fun hm => ?_, fun hph => ?_, fun f hf hpf => ?_⟩
     · show s'.turnOrder.Perm (allPlayers s'.playerCount)
@@ -232,12 +233,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         · cases h
         · cases h
         · exact List.mem_cons_of_mem _ h
-    · exfalso
-      rw [hphase, hmain] at hph
-      cases hph
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+    · exact (hturn' hph).elim
+    · exact fun hh => (hturn' hh).elim
   · rename_i p rest u d hp hk
     rw [hp, hk] at hl
     simp only [Option.map_eq_some_iff] at h
@@ -332,22 +329,19 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
-    have hmain : s.phase = .main := by
+    have hturn : s.phase ≠ .setup := by
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2.2.2
-        exact hm
+        simp [hm]
       · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
-        exact hm
+        simp [hm]
       · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
-        exact hm
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+        simp [hm]
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]
@@ -605,16 +599,13 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
-    have hmain : s.phase = .main := by
+    have hturn : s.phase ≠ .setup := by
       rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', choice, h0⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0
-        exact hm
-    refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase, hmain]
-      intro hh
-      cases hh
+        simp [hm]
+    refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
       simp only [List.mem_cons] at hm
       rw [hp]

@@ -462,6 +462,28 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     paid.pending == ending.pending && paid.zone .chain == ending.zone .chain &&
     paid.tired legend == some true && (paid.poolOf q).unitEnergy == 2
 
+-- Rebuttal can answer a finalized Spell during Ending while holding Chain priority.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "OGN-046" .hand
+  let (s, target) ← put s p "VEN-074" .base
+  let (s, rebuttal) ← put s q "VEN-152" .hand
+  let (s, actionCard) ← put s q "OGN-004" .hand
+  let s := (s.fund p 1).fund q 1 (chaos := 1)
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [target]⟩).toOption
+  let item ← (casting.zone .chain).head?
+  let (passed, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let ending := { passed with phase := .ending }
+  let answer : Action := ⟨.player q, .playCard rebuttal ⟨1, [.chaos]⟩ [item]⟩
+  let ordinary : Action := ⟨.player q, .playCard actionCard ⟨1, []⟩ [target]⟩
+  let (answered, _) ← (step 100 ending answer).toOption
+  let done := settleChain {} 6 answered
+  return (legalActions ending).contains answer && !(legalActions ending).contains ordinary &&
+    !(legalActions { ending with phase := .setup }).contains answer &&
+    !(legalActions { ending with pending := [.priority q] }).contains answer &&
+    done.countIn p .trash "OGN-046" == 1 && done.mightNow target == s.mightNow target
+
 -- Any player may pay for Dragon Roost, even when the opponent controls it (CR 355.17).
 #guard vendettaCase fun s => do
   let p := s.me

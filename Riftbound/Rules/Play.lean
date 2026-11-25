@@ -1238,13 +1238,19 @@ theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId}
     {r r' : GameState × List Event} (h : payExtra s c ts r = some r') : Safe r.1 r'.1 :=
   ((gearSpent_safe s c r).trans (placeAtBf_safe s ts _)).trans (payExtra0_safe h)
 
+/-- A Spell can be cast during Main, or as a Reaction when the player has priority on a Chain
+during another phase of the turn (CR 337.4, 813.1.c). -/
+def GameState.castTiming (s : GameState) (c : ObjId) : Bool :=
+  s.phase == .main || (s.phase != .setup && s.cardHasReaction c &&
+    (match s.pending with | .chainPass .. :: _ => true | _ => false))
+
 /-- The player can cast the object with the payment and the targets: it is the player's Spell, the
 objects chosen are a legal pick for its choices, and the payment pays its cost and the Pool covers
-it, in the Main Phase (CR 349, 355, 356, 357). The card must also be in a zone in
+it (CR 349, 355, 356, 357). The card must also be in a zone in
 `playSources`, which `Legal` states separately. -/
 def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) : Bool :=
-  s.phase == .main && !s.cantPlay p && !s.noSpells p &&
+  s.castTiming c && !s.cantPlay p && !s.noSpells p &&
     match s.obj? c, s.cardDef? c with
     | some o, some d =>
       o.owner == p && d.hasType .spell &&
@@ -1525,16 +1531,18 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
         subst ho
         rfl
 
-/-- What a castable Spell is: the game is in the Main Phase, and the card is the player's Spell,
-with an effect that asks for no choice, and a cost that the payment pays and the Pool covers. -/
+/-- A castable Spell belongs to the player, the game is past setup, and the payment covers the cost. -/
 theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
-    ∃ o d cost pool, s.phase = .main ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
+    ∃ o d cost pool, s.phase ≠ .setup ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ d.hasType .spell = true ∧ s.directCost p c d flow = some cost ∧
       s.paysForXT p c d cost targets pay pick = true ∧ (s.poolOf p).spend pay = some pool := by
   unfold castable at h
-  simp only [Bool.and_eq_true, beq_iff_eq] at h
+  simp only [Bool.and_eq_true] at h
   obtain ⟨⟨⟨hph, -⟩, -⟩, hrest⟩ := h
+  have hturn : s.phase ≠ .setup := by
+    intro hs
+    simp [GameState.castTiming, hs] at hph
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
   | some o =>
@@ -1552,7 +1560,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
           cases hs : s.spendFor p false pay with
           | none => rw [hs] at hspend; simp at hspend
           | some pool => exact ⟨pool, GameState.spendFor_eq_some hs⟩
-        exact ⟨o, d, cost, pool, hph, rfl, rfl, howner, hty, hc, hcost.1.1, hpool⟩
+        exact ⟨o, d, cost, pool, hturn, rfl, rfl, howner, hty, hc, hcost.1.1, hpool⟩
 
 /-- A castable card is a Spell whose effect the targets are a legal pick for. -/
 theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1560,7 +1568,7 @@ theorem castable_targets {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     ∃ d e, s.cardDef? c = some d ∧ d.spellEffect.bind (·.forPick pick) = some e ∧
       targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.castPicks p c d := by
   unfold castable at h
-  simp only [Bool.and_eq_true, beq_iff_eq] at h
+  simp only [Bool.and_eq_true] at h
   obtain ⟨-, hrest⟩ := h
   cases ho : s.obj? c with
   | none => rw [ho] at hrest; simp at hrest
@@ -2036,17 +2044,17 @@ theorem applyPlayCard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2', hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, Or.inl (hs.pending.trans h5)⟩
 
-/-- A card that can be played or cast is played in the Main Phase. -/
-theorem playOk_main {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : PlayOk s p c pay targets flow pick) : s.phase = .main := by
+/-- A card that can be played or cast is played after setup. -/
+theorem playOk_not_setup {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : PlayOk s p c pay targets flow pick) : s.phase ≠ .setup := by
   rcases h with ⟨-, h, -⟩ | h | ⟨h, -⟩
   · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h
-    exact hm
+    simp [hm]
   · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h
     exact hm
   · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
     obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
-    exact hm
+    simp [hm]
 
 /-- A playable or castable card from a permitted zone can be played. -/
 theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
