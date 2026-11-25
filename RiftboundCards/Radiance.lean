@@ -330,8 +330,13 @@ def RAD_013.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Lost to the Sands: the effect is not written yet. -/
-def RAD_013 : CardDef := RAD_013.meta
+/-- Lost to the Sands damages a Unit at a Battlefield or kills Gear. -/
+def RAD_013 : CardDef :=
+  { RAD_013.meta with
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Deal 4", [.targetOf .one .any .atBattlefield [.ofType .unit]], .prim (.deal (.slot 0) (.const 4))⟩,
+      ⟨"Kill a gear", [.targetOf .one .any .anywhere [.ofType .gear]], .prim (.kill (.slot 0))⟩] },
+    status := .full }
 
 -- BEGIN GENERATED RAD-014
 /--
@@ -639,14 +644,22 @@ def RAD_027.meta : CardDef :=
   { id := ⟨"RAD-027"⟩,
     name := "Iridescent Avian",
     types := [.unit],
+    tags := [⟨"Ixtal"⟩, ⟨"Bird"⟩],
     domains := [.calm],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Iridescent Avian: the effect is not written yet. -/
-def RAD_027 : CardDef := RAD_027.meta
+/-- Iridescent Avian buffs a Unit or gives a buffed Unit +2 Might this turn. -/
+def RAD_027 : CardDef :=
+  { RAD_027.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.ifThen (.matches (.slot 0) .buffed)
+          (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)
+          (.prim (.buff (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-028
 /--
@@ -703,14 +716,21 @@ def RAD_030.meta : CardDef :=
   { id := ⟨"RAD-030"⟩,
     name := "Sanctum Conservator",
     types := [.unit],
+    tags := [⟨"Shurima"⟩],
     domains := [.calm],
     cost := some ⟨5, []⟩,
     might := some 5,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Sanctum Conservator: the effect is not written yet. -/
-def RAD_030 : CardDef := RAD_030.meta
+/-- Sanctum Conservator readies when its controller plays a card with Energy cost 7 or more. -/
+def RAD_030 : CardDef :=
+  { RAD_030.meta with
+    abilities := [.triggered {
+        event := .play
+        subject := .all .friendly .anywhere [.cost .ge (.const 7)] }
+      (.of [] (.prim (.ready .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-031
 /--
@@ -724,6 +744,7 @@ def RAD_031.meta : CardDef :=
   { id := ⟨"RAD-031"⟩,
     name := "Stoic Ferryman",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩, ⟨"Sentinel"⟩],
     domains := [.calm],
     cost := some ⟨4, []⟩,
     might := some 2,
@@ -731,8 +752,14 @@ def RAD_031.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Stoic Ferryman: the effect is not written yet. -/
-def RAD_031 : CardDef := RAD_031.meta
+/-- Stoic Ferryman can move another friendly Unit from its entry Battlefield to Base. -/
+def RAD_031 : CardDef :=
+  { RAD_031.meta with
+    abilities := [.triggered { event := .play, condition := .matches .self .onBattlefield }
+      { choices := [.targetOf .one .friendly .here [.ofType .unit, .notSelf]]
+        body := .may (.prim (.move (.slot 0) .base))
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-032
 /--
@@ -863,14 +890,19 @@ def RAD_037.meta : CardDef :=
   { id := ⟨"RAD-037"⟩,
     name := "Watchful Curator",
     types := [.unit],
+    tags := [⟨"Piltover"⟩],
     domains := [.calm],
     cost := some ⟨3, [.domain .calm]⟩,
     might := some 4,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Watchful Curator: the effect is not written yet. -/
-def RAD_037 : CardDef := RAD_037.meta
+/-- Watchful Curator gives its controller's Gear Deflect. -/
+def RAD_037 : CardDef :=
+  { RAD_037.meta with
+    abilities := [.passive .always
+      [.keyword (.all .friendly .anywhere [.ofType .gear]) ⟨.deflect, .none⟩]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-039
 /--
@@ -889,8 +921,13 @@ def RAD_039.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ephemeral Ward: the effect is not written yet. -/
-def RAD_039 : CardDef := RAD_039.meta
+/-- Ephemeral Ward boosts friendly Units until its controller plays a Unit. -/
+def RAD_039 : CardDef :=
+  { RAD_039.meta with
+    abilities := [.passive .always [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 2)],
+      .triggered { event := .play, subject := .all .friendly .anywhere [.ofType .unit] }
+        (.of [] (.prim (.kill .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-040
 /--
@@ -1923,6 +1960,7 @@ def RAD_083.meta : CardDef :=
   { id := ⟨"RAD-083"⟩,
     name := "Stalwart Goatherd",
     types := [.unit],
+    tags := [⟨"Mount Targon"⟩],
     domains := [.body],
     cost := some ⟨4, []⟩,
     might := some 2,
@@ -1930,8 +1968,14 @@ def RAD_083.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Stalwart Goatherd: the effect is not written yet. -/
-def RAD_083 : CardDef := RAD_083.meta
+/-- Stalwart Goatherd can kill a chosen Gear with Energy cost 4 or less. -/
+def RAD_083 : CardDef :=
+  { RAD_083.meta with
+    abilities := [.triggered (.onSelf .play)
+      { choices := [.targetOf .one .any .anywhere [.ofType .gear, .cost .le (.const 4)]]
+        body := .may (.prim (.kill (.slot 0)))
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-084
 /--
@@ -1991,7 +2035,8 @@ def RAD_086.meta : CardDef :=
     name := "K'Sante",
     subtitle := some "Courageous",
     types := [.unit],
-    tags := [⟨"Shurima"⟩, ⟨"K'Sante"⟩],
+    supertypes := [.champion],
+    tags := [⟨"K'Sante"⟩, ⟨"Shurima"⟩],
     domains := [.body],
     cost := some ⟨5, []⟩,
     might := some 4,
@@ -2006,7 +2051,7 @@ def RAD_086 : CardDef :=
     abilities := [.triggered (.onSelf .hold)
         (.of []
         (.prim (.channel .you (.const 1) (.const 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-087
 /--
@@ -2214,6 +2259,7 @@ def RAD_095.meta : CardDef :=
   { id := ⟨"RAD-095"⟩,
     name := "Momentary Companion",
     types := [.unit],
+    tags := [⟨"Shadow Isles"⟩, ⟨"Demon"⟩],
     domains := [.chaos],
     cost := some ⟨4, []⟩,
     might := some 4,
@@ -2221,8 +2267,12 @@ def RAD_095.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Momentary Companion: the effect is not written yet. -/
-def RAD_095 : CardDef := RAD_095.meta
+/-- Momentary Companion gains Temporary when played outside its controller's turn. -/
+def RAD_095 : CardDef :=
+  { RAD_095.meta with
+    abilities := [.triggered { event := .play, condition := .not .yourTurn }
+      (.of [] (.grant .self (.keyword .it ⟨.temporary, .none⟩) .permanent)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-096
 /--
@@ -2551,15 +2601,21 @@ def RAD_110.meta : CardDef :=
     name := "Lulu",
     subtitle := some "Whimsical",
     types := [.unit],
-    tags := [⟨"Yordle"⟩, ⟨"Bandle City"⟩, ⟨"Lulu"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Lulu"⟩, ⟨"Bandle City"⟩, ⟨"Yordle"⟩],
     domains := [.chaos],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Lulu, Whimsical: the effect is not written yet. -/
-def RAD_110 : CardDef := RAD_110.meta
+/-- Lulu, Whimsical can set another Unit's base Might to 4 this turn when she moves. -/
+def RAD_110 : CardDef :=
+  { RAD_110.meta with
+    abilities := [.triggered (.onSelf .move)
+      (.of [.targetOf .one .any .anywhere [.ofType .unit, .notSelf]]
+        (.may (.prim (.setBaseMight (.slot 0) (.const 4))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-111
 /--
@@ -2894,7 +2950,7 @@ def RAD_123 : CardDef :=
 
 -- BEGIN GENERATED RAD-124
 /--
-**Burn Away** — Spell · Body · Energy 3 + Power 1
+**Burn Away** — Spell · Order · Energy 3 + Power 1
 Printings: RAD-124/167
 
 > Banish a unit with 3 :rb_might: or less or a gear. [Burn 2]. (Put the top 2 cards of your Main
@@ -2904,13 +2960,20 @@ def RAD_124.meta : CardDef :=
   { id := ⟨"RAD-124"⟩,
     name := "Burn Away",
     types := [.spell],
-    domains := [.body],
-    cost := some ⟨3, [.domain .body]⟩,
+    domains := [.order],
+    cost := some ⟨3, [.domain .order]⟩,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Burn Away: the effect is not written yet. -/
-def RAD_124 : CardDef := RAD_124.meta
+/-- Burn Away banishes a small Unit or Gear, then burns two cards. -/
+def RAD_124 : CardDef :=
+  { RAD_124.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere
+        [.either (.both (.ofType .unit) (.might .le (.const 3))) (.ofType .gear)]]
+      body := .seqOf [.prim (.banish (.slot 0)), .prim (.burn .you (.const 2))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-125
 /--
@@ -2946,7 +3009,7 @@ def RAD_126.meta : CardDef :=
   { id := ⟨"RAD-126"⟩,
     name := "Mournful Spirit",
     types := [.unit],
-    tags := [⟨"Spirit"⟩],
+    tags := [⟨"Shadow Isles"⟩, ⟨"Spirit"⟩],
     domains := [.order],
     cost := some ⟨4, []⟩,
     might := some 1,
@@ -3685,8 +3748,14 @@ def RAD_160.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Cosmic Vista: the effect is not written yet. -/
-def RAD_160 : CardDef := RAD_160.meta
+/-- Cosmic Vista awards an extra point for holding while the Rune Deck is empty. -/
+def RAD_160 : CardDef :=
+  { RAD_160.meta with
+    abilities := [.triggered {
+        event := .youHold
+        condition := .cmp .eq (.count (.all .friendly .inRuneDeck [])) (.const 0) }
+        (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-161
 /--
@@ -3790,8 +3859,13 @@ def RAD_166.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ruined Monastery: the effect is not written yet. -/
-def RAD_166 : CardDef := RAD_166.meta
+/-- Ruined Monastery can discard one card and channel one exhausted Rune on conquer. -/
+def RAD_166 : CardDef :=
+  { RAD_166.meta with
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.may (.seqOf [.prim (.discard .you (.const 1)),
+        .prim (.channel .you (.const 0) (.const 1))]))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-167
 /--

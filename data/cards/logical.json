@@ -28605,7 +28605,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Ixtal",
+    "Bird"
+   ],
    "text": [
     ":rb_exhaust:: [Buff] a unit. If it's already buffed, give it +2 :rb_might: this turn instead. (To buff a unit, give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
@@ -28690,7 +28693,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play a card with Energy cost :rb_energy_7: or more, ready me."
    ],
@@ -28717,7 +28722,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Sentinel"
+   ],
    "text": [
     "[Shield 3] (+3 :rb_might: while I'm a defender.)",
     "When you play me to a battlefield, you may move another unit you control here to your base."
@@ -28885,7 +28893,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover"
+   ],
    "text": [
     "Your gear have [Deflect]. (Opponents must pay :rb_rune_rainbow: to choose each with a spell or ability.)"
    ],
@@ -30158,7 +30168,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Mount Targon"
+   ],
    "text": [
     "[Shield 2] (+2 :rb_might: while I'm a defender.)",
     "When you play me, you may kill a gear with Energy cost :rb_energy_4: or less."
@@ -30247,9 +30259,12 @@
     "RAD"
    ],
    "subtitle": "Courageous",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Shurima",
-    "K'Sante"
+    "K'Sante",
+    "Shurima"
    ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_body: as an additional cost to have me enter ready.)",
@@ -30520,7 +30535,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Demon"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "When you play me, if it's not your turn, give me [Temporary]. (Kill me at the start of my controller's Beginning Phase, before scoring.)"
@@ -30921,10 +30939,13 @@
     "RAD"
    ],
    "subtitle": "Whimsical",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Yordle",
+    "Lulu",
     "Bandle City",
-    "Lulu"
+    "Yordle"
    ],
    "text": [
     "When I move, you may have another unit's base Might become 4 this turn."
@@ -31320,7 +31341,7 @@
   {
    "cardId": "RAD-124",
    "domains": [
-    "body"
+    "order"
    ],
    "effectText": [],
    "energy": 3,
@@ -31391,6 +31412,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Shadow Isles",
     "Spirit"
    ],
    "text": [
