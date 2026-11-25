@@ -696,12 +696,18 @@ def trigOptional (s : GameState) (t : PendTrigger) : Bool :=
 def trigCost (s : GameState) (t : PendTrigger) : TriggerCost :=
   ((trigDeclaration s t).map (·.cost)).getD .free
 
+/-- A Burn cost must be payable in full. Burn Out on a short deck is for instructions
+in effects (CR 383.3.b.1, 441.4). -/
+def canPayBurn (s : GameState) (p : PlayerId) (count : Nat) : Bool :=
+  count ≤ (s.zone (.player p .mainDeck)).length
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) : List (List ObjId) :=
   match trigCost s t with
   | .free => [[]]
   | .energy n =>
     if (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
+  | .burn n => if canPayBurn s t.controller n then [[]] else []
   | .killFriendly n fs =>
     let env : Env := { passMight := s.mightTable }
     let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
@@ -815,7 +821,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
     { abilityItem t.card t.idx t.source t.controller
         (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
       spellPick := mode.elim .plain SpellPick.mode
-      triggerSubject := if mode.isSome then t.subject else none }
+      triggerSubject := t.subject }
   match addObject s1 item .chain with
   | some r => r.1
   | none => s1
@@ -826,6 +832,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId) :
   match trigCost s t with
   | .free => some (s, [])
   | .energy n => payByRunes s t.controller t.source ⟨n, []⟩
+  | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
   | .killFriendly n _ => if ids.length == n then some (applyEach killOrSave s ids) else none
 
 /-- Dismiss a declined or unpayable trigger, or pay for it and finalize it (CR 355, 383.3). -/
@@ -894,6 +901,9 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
   split at h
   · cases h; exact Safe.refl s
   · exact payByRunes_safe h
+  · split at h
+    · cases h; exact applyEach_safe (sendObj_safe .trash) _ _
+    · simp at h
   · split at h
     · cases h; exact applyEach_safe killOrSave_safe ids s
     · simp at h

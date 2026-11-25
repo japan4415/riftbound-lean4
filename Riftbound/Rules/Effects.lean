@@ -2286,7 +2286,7 @@ def empowerObj (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List E
   match s.obj? id, s.cardDef? id with
   | some o, some c =>
     if o.empowerCount < c.empowerLimit &&
-        (((c.hasType .unit || c.hasType .gear) && s.inPlay.contains id) ||
+        (s.inPlay.contains id ||
           (c.hasType .legend && (s.zone (.player o.owner .legendZone)).contains id)) then
       (s.modObj id (fun x => { x with empowerCount := x.empowerCount + 1 }), [.empowered p id])
     else (s, [])
@@ -3305,6 +3305,10 @@ def linkedBurnEvents (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (i
       else none
     | _ => none)
 
+/-- Move the available top cards to the Trash for a Burn instruction or cost (CR 441). -/
+def burnTop (s : GameState) (p : PlayerId) (count : Nat) : GameState × List Event :=
+  applyEach (sendObj .trash) s ((s.zone (.player p .mainDeck)).take count)
+
 /-- Burn cards for the first player and schedule the others with the same count. An exhausted
 deck is refilled through the ordinary Burn Out decisions before the remainder is burned
 (CR 432.1.b, 441.4). -/
@@ -3313,8 +3317,8 @@ def burnEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (who : P
     GameState × List Frame × List Event :=
   match who.resolve s p, n.evalS s p src env with
   | some (q :: qs), some count =>
-    let cards := (s.zone (.player q .mainDeck)).take count
-    let r := applyEach (sendObj .trash) s cards
+    let available := (s.zone (.player q .mainDeck)).length
+    let r := burnTop s q count
     let burnFor (pl : PlayerId) (k : Nat) :=
       let burn := match unitTrigger with
         | some idx => Prim.burnWithUnitTrigger (.const k) idx
@@ -3322,8 +3326,8 @@ def burnEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (who : P
       Frame.run pl src env (.cons (.prim burn) .nil)
     let rest := qs.map (fun pl => burnFor pl count) ++ [.run p src env es]
     let next :=
-      if cards.length < count then
-        .chanceBurnOut q :: burnFor q (count - cards.length) :: rest
+      if available < count then
+        .chanceBurnOut q :: burnFor q (count - available) :: rest
       else rest
     let triggers := unitTrigger.toList.flatMap (fun idx => linkedBurnEvents r.1 q src env idx r.2)
     (r.1, next, r.2 ++ triggers)
@@ -3614,20 +3618,28 @@ def slotValues (ts : List ObjId) (e : Option EffectDef) : List Value :=
   let n := (e.map (fun d => (d.choices.filter Choice.isTarget).length)).getD 0
   ts.map Value.obj ++ List.replicate (n - ts.length) (Value.int 0)
 
-/-- Recheck the separate target slots of a Spell with a recorded mode or destination (CR 359.3.e.2).
+/-- Recheck independently declared target slots (CR 359.3.e.2).
 Invalid targets leave an empty value in their original slot. -/
-def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
-    (definition : Option EffectDef) (pick : SpellPick) : List Value :=
-  if pick == .plain then slotValues ts definition
-  else match definition with
-    | some e =>
-      (e.choices.filter Choice.isTarget).zipIdx.map (fun (choice, i) =>
+def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
+    (definition : Option EffectDef) : List Value :=
+  match definition with
+  | some e =>
+    let choices := e.choices.filter Choice.isTarget
+    if choices.isEmpty then []
+    else
+      let might := s.mightTable
+      choices.zipIdx.map (fun (choice, i) =>
         match ts[i]? with
         | some id =>
-          if (choice.candidatesAfter s p src s.mightTable (ts.take i)).contains id then .obj id
+          if (choice.candidatesAfter s p src might (ts.take i)).contains id then .obj id
           else .int 0
         | none => .int 0)
-    | none => []
+  | none => []
+
+/-- The separate targets of a Spell with a recorded mode or destination are rechecked. -/
+def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId)
+    (definition : Option EffectDef) (pick : SpellPick) : List Value :=
+  if pick == .plain then slotValues ts definition else recheckedSlots s p src ts definition
 
 /-- Before an open-ended group resolves, filter invalid original targets and ask its controller
 to keep a legal subset if the remaining group is over budget (CR 355.11.b, 359.3.e.2). -/
@@ -3657,9 +3669,17 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
   match o.kind with
   | .chainAbility card idx src =>
     let definition := (abilityDef s card idx).bind (·.forPick o.spellPick)
-    let slots := finalizedSlots s o.controller src o.targets definition o.spellPick
+    let recheck := o.spellPick != .plain || definition.any (fun e =>
+      !e.choices.isEmpty && e.choices.all (fun
+        | .target .one .. | .target (.upTo 1) .. => true
+        | _ => false))
+    let subject := o.triggerSubject.toList
+    let targets := if o.spellPick == .plain then o.targets.take (o.targets.length - subject.length)
+      else o.targets
+    let slots := if recheck then recheckedSlots s o.controller src targets definition ++
+      subject.map Value.obj else slotValues o.targets definition
     let env : Env := {
-      slots := slots ++ o.triggerSubject.toList.map Value.obj
+      slots
       sourceCard := some card
       eventAmount := o.eventAmount }
     let body := match definition with

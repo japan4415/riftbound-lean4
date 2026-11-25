@@ -180,6 +180,40 @@ meta def passToChoice : Nat → GameState → Option GameState
     ((step 100 choosing ⟨.player p, .putTrigger 0 []⟩).toOption).isNone &&
     ((step 100 choosing (pick 3)).toOption).isNone
 
+-- The Disciple burns the top card before anyone can respond. Countering the
+-- ability keeps the Burn paid. An empty deck only allows declining.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let deck := Zone.player p .mainDeck
+  let (s, disciple) ← put s p "VEN-095" .base
+  let (s, top) ← put s p "VEN-014" .mainDeck
+  let s := (s.control p bf).reorder deck (top :: (s.zone deck).erase top)
+  let move : Action := ⟨.player p, .standardMove disciple (.battlefield bf)⟩
+  let accept : Action := ⟨.player p, .putTrigger 0 []⟩
+  let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (choosing, _) ← (step 100 s move).toOption
+  let (paid, events) ← (step 100 choosing accept).toOption
+  let (declined, _) ← (step 100 choosing decline).toOption
+  let .chainPass .. :: _ := paid.pending | none
+  let item ← (paid.zone .chain).head?
+  let granted ← passToChoice 5 paid
+  let canceled ← passToChoice 5 (counterObj paid item).1
+  let (expired, _) ← (advance 100 { granted with pending := [.expireTurn] } []).toOption
+  let (empty, _) := applyEach (sendObj .trash) s (s.zone deck)
+  let (noPayment, _) ← (step 100 empty move).toOption
+  let (passed, _) ← (step 100 noPayment decline).toOption
+  let burned := events.any (fun
+    | .moved id _ (.player who .trash) => id == top && who == p
+    | _ => false)
+  return legalFrameActions choosing == [accept, decline] &&
+    legalFrameActions noPayment == [decline] && passed.pointsOf q == empty.pointsOf q &&
+    burned && (paid.zone deck).length + 1 == (s.zone deck).length &&
+    canceled.zone deck == paid.zone deck && declined.zone deck == s.zone deck &&
+    paid.mightNow disciple == some 2 && granted.mightNow disciple == some 3 &&
+    canceled.mightNow disciple == some 2 && expired.mightNow disciple == some 2
+
 -- Minah's controller chooses the mode even on another player's turn. When the
 -- ability resolves, the turn player draws or discards first.
 #guard vendettaCase fun s => do
@@ -213,6 +247,46 @@ meta def passToChoice : Nat → GameState → Option GameState
     hand discarded p + 1 == hand s p && hand discarded q + 1 == hand s q &&
     hand drawn p == hand s p + 1 && hand drawn q == hand s q + 1 &&
     draws.filter (fun | .drew _ => true | _ => false) == [.drew q, .drew p]
+
+-- Tornado Warrior chooses an object here while its optional play trigger is
+-- finalized. That choice is rechecked at resolution and survives the source
+-- leaving once the delayed Disempower has been created.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, hidden) ← put s p "VEN-099" .hidden
+  let (s, ordinary) ← put s p "VEN-099" .hand
+  let (s, target) ← putAt s p "VEN-014" field
+  let (s, elsewhere) ← put s q "VEN-014" .base
+  let s := ((s.control p field).rich p).modObj hidden (fun o =>
+    { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
+  let reveal : Action := ⟨.player p, .activate hidden 3 ⟨0, []⟩ []⟩
+  let choose (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id]⟩
+  let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (revealing, _) ← (step 100 s reveal).toOption
+  let selecting ← passToChoice 10 revealing
+  let inPlay ← (selecting.zone .battlefieldZone).find? (fun id =>
+    (selecting.cardDef? id).any (·.id == cid "VEN-099"))
+  let (waiting, _) ← (step 100 selecting (choose target)).toOption
+  let (place, _) ← (step 100 selecting (choose field)).toOption
+  let (refused, _) ← (step 100 selecting decline).toOption
+  let (plain, _) ← (step 100 s ⟨.player p, .playCard ordinary ⟨3, []⟩ []⟩).toOption
+  let granted ← passToChoice 10 waiting
+  let empoweredField ← passToChoice 10 place
+  let invalid ← passToChoice 10 (moveHome waiting target).1
+  let already ← passToChoice 10 (empowerObj p waiting target).1
+  let ended ← fire (sendObj .trash granted inPlay).1 [.phaseStarted p .ending]
+  let alreadyEnded ← fire already [.phaseStarted p .ending]
+  let count (t : GameState) (id : ObjId) := (t.obj? id).map (·.empowerCount)
+  let marked (t : GameState) := t.turnFx.any (fun f => f.kind == .endTrigger "VEN-099" 1)
+  return (legalFrameActions selecting).contains (choose inPlay) &&
+    !(legalFrameActions selecting).contains (choose elsewhere) &&
+    (legalFrameActions plain).all (fun a => match a.kind with | .putTrigger .. => false | _ => true) &&
+    count waiting target == some 0 && count refused target == some 0 && !marked refused &&
+    count granted target == some 1 && count empoweredField field == some 1 &&
+    count invalid target == some 0 && !marked invalid &&
+    count ended target == some 0 && count already target == some 1 && count alreadyEnded target == some 0
 
 -- Dune Surfer ignores an enemy's Tank only for its controller at that Battlefield.
 -- It neither removes Tank from the card nor changes the other side's assignment.

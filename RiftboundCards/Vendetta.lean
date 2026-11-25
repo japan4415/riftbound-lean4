@@ -2652,8 +2652,12 @@ def VEN_095.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Order Disciple: the effect is not written yet. -/
-def VEN_095 : CardDef := VEN_095.meta
+/-- Shadow Order Disciple. -/
+def VEN_095 : CardDef :=
+  { VEN_095.meta with
+    abilities := [.triggered { event := .move, optional := true, cost := .burn 1 }
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-096
 /--
@@ -2756,8 +2760,17 @@ def VEN_099.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tornado Warrior: the effect is not written yet. -/
-def VEN_099 : CardDef := VEN_099.meta
+/-- Tornado Warrior. -/
+def VEN_099 : CardDef :=
+  let delayed : Trigger := { event := .at_ .endOfTurn, condition := .not .always }
+  { VEN_099.meta with
+    abilities := [
+      .triggered { event := .play, condition := .fromHidden, optional := true }
+        (.of [.targetOf .one .any .here []]
+          (.seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-099" 1))]))
+        .unlimited,
+      .triggered delayed (.of [] (.prim (.disempower .self))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-100
 /--

@@ -357,11 +357,14 @@ function describeA(a, prev) {
       const targets = (a.targets || []).map(cardName).join('、');
       const sacrifices = (a.sacrifices || []).map(cardName).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
+      const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
-      return [who + ': ' + ability + 'を確定' + mode + energy +
+      return [who + ': ' + ability + 'を確定' + mode + energy + burn +
         (sacrifices ? '（コストとして ' + sacrifices + ' を Kill）' : '') +
         (targets ? '（対象 ' + targets + '）' : '（対象なし）'),
-        sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' : '確定した能力は最後に Chain に載ったものから解決する'];
+        sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' :
+          (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
+            '確定した能力は最後に Chain に載ったものから解決する')];
     }
     case 'manaAbility':
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];

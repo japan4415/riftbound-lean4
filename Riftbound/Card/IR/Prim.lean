@@ -569,6 +569,8 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
+  | burn (count : Nat)
   /-- Kill exactly this many friendly permanents that match the filters. -/
   | killFriendly (count : Nat) (filters : FilterList)
 deriving DecidableEq, Repr, Hashable

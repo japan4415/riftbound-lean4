@@ -121,6 +121,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
                [("unavailable", "true")]
              else match trigCost s t with
                | .energy n => [("energy", toString n)]
+               | .burn n => [("burn", toString n)]
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
