@@ -317,7 +317,9 @@ function describeA(a, prev) {
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
       const tg = (a.targets || []).map((t) => cardName(t)).join('、');
-      return [who + ': ' + cardName(a.source) + ' の能力を起動' + (tg ? '（対象: ' + tg + '）' : ''),
+      const dc = (a.discards || []).map((t) => cardName(t)).join('、');
+      return [who + ': ' + cardName(a.source) + ' の能力を起動' +
+        (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
     case 'putTrigger': {
@@ -735,7 +737,8 @@ function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
 // 選ぶ順は、手の targets（プレイ・起動）か、移動先（Base か Battlefield）。ほかに違いが残れば、メニューで選ぶ。
 function selSeq(a) {
   if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
-  if ((a.kind === 'playCard' || a.kind === 'activate') && a.targets && a.targets.length) return a.targets.map(String);
+  if (a.kind === 'activate') return [...(a.targets || []), ...(a.discards || [])].map(String);
+  if (a.kind === 'playCard') return (a.targets || []).map(String);
   return [];
 }
 let pick = null;
@@ -767,7 +770,9 @@ function stepPick(x, y) {
   const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
   const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
   const done = rem.filter((l) => selSeq(l.a).length === d);
-  if (!cands.length || done.length) {
+  const discarding = rem.filter(({a}) => a.kind === 'activate' && a.discards?.length &&
+    d >= (a.targets || []).length && d < selSeq(a).length);
+  if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
     pick = null; clearPickMarks();
     if (rem.length === 1) { liveAct(rem[0].k); return; }
     showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
@@ -779,8 +784,9 @@ function stepPick(x, y) {
   clearPickMarks(); pick.cands = cands; pick.actor = actor;
   document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
   cands.forEach((k, i) => elems[i].forEach((e) => { e.classList.add('tgt'); if (e.classList.contains('card')) e.tabIndex = 0; }));
-  $('livemsg').textContent = cardName(card) + ': ' + (cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'))
-    ? '移動先' : '対象') + 'を選ぶ（光っている所をクリック。Escape でやめる）';
+  const destination = cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'));
+  const next = discarding.length ? '捨てるカード' : destination ? '移動先' : '対象';
+  $('livemsg').textContent = cardName(card) + ': ' + next + 'を選ぶ（光っている所をクリック。Escape でやめる）';
 }
 function pickClick(el, x, y) {
   const key = el.classList.contains('lane') ? 'base' : el.dataset.bf !== undefined ? el.dataset.bf : el.dataset.id;

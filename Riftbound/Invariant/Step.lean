@@ -64,11 +64,11 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
   · rename_i p rest c pay ts flow hp hk
     exact reactStep_wf hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_wf hwf h
   · rename_i p n rest c ab hp hk
     exact applyRune_wf hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_wf hwf h
   · rename_i p t more others rest i ts hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -148,7 +148,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
   · rename_i bf q rest c pay ts flow hp hk
     exact reactStep_wf hwf h
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest src idx pay ts discards hp hk
     exact activateStep_wf hwf h
   · rename_i q c ab hp hk
     exact applyRune_wf hwf h
@@ -328,11 +328,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
        exact List.Perm.refl _)
   · rename_i p n rest c pay ts flow hp hk
     exact reactStep_physIds hwf h
-  · rename_i p n rest src idx pay ts hp hk
+  · rename_i p n rest src idx pay ts discards hp hk
     exact activateStep_physIds hwf h
   · rename_i p n tail c ab hp hk
     exact applyRune_physIds hwf h
-  · rename_i p rest src idx pay ts hp hk
+  · rename_i p rest src idx pay ts discards hp hk
     exact activateStep_physIds hwf h
   · rename_i p t more others rest i ts hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -416,7 +416,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact List.Perm.refl _
   · rename_i bf q rest c pay ts flow hp hk
     exact reactStep_physIds hwf h
-  · rename_i bf q rest src idx pay ts hp hk
+  · rename_i bf q rest src idx pay ts discards hp hk
     exact activateStep_physIds hwf h
   · rename_i q c ab hp hk
     exact applyRune_physIds hwf h

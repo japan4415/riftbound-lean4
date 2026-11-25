@@ -75,7 +75,7 @@ end RunePool
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
   | .playCard _ _ ts _ => ts
-  | .activate _ _ _ ts => ts
+  | .activate _ _ _ ts _ => ts
   | .putTrigger _ ts => ts
   | _ => []
 

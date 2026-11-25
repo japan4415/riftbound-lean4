@@ -508,4 +508,57 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     cost (three.control s.me camp) == some full &&
     (legalActions funded).contains playKeeper && (step 100 funded playKeeper).isOk
 
+-- Punching Poro pays with a hand card before Empower resolves on the Chain.
+#guard vendettaCase fun s => do
+  let (s, poro) ← put s s.me "VEN-007" .base
+  let (s, card) ← put s s.me "VEN-014" .hand
+  let (s, foe) ← put s s.you "VEN-014" .hand
+  let action (ds : List ObjId) : Action := ⟨.player s.me, .activate poro 0 ⟨0, []⟩ [] ds⟩
+  let (onChain, es) ← (step 100 s (action [card])).toOption
+  let discarded ← onChain.firstOf s.me .trash "VEN-014"
+  let done := settleChain {} 12 onChain
+  return (legalActions s).contains (action [card]) &&
+    !(step 100 s (action [])).isOk && !(step 100 s (action [foe])).isOk &&
+    es.contains (.discarded s.me discarded true) &&
+    !es.contains (.chosenByAbility s.me card) &&
+    (onChain.obj? card).isNone && onChain.mightNow poro == some 2 &&
+    done.mightNow poro == some 3 && !(step 100 done (action [card])).isOk
+
+-- Sky Cruiser requires a Gear in its own hand and a Unit on a Battlefield.
+#guard vendettaCase fun s => do
+  let (s, cruiser) ← put s s.me "VEN-060" .base
+  let (s, gear) ← put s s.me "VEN-058" .hand
+  let (s, wrong) ← put s s.me "VEN-014" .hand
+  let (s, victim) ← putAt s s.you "OGN-088" s.bf0
+  let (s, baseUnit) ← put s s.you "OGN-088" .base
+  let s := s.fund s.me 1
+  let action (target discard : ObjId) : Action :=
+    ⟨.player s.me, .activate cruiser 0 ⟨1, []⟩ [target] [discard]⟩
+  let (onChain, _) ← (step 100 s (action victim gear)).toOption
+  let item ← (onChain.zone .chain).head?
+  let done := settleChain {} 12 onChain
+  return (legalActions s).contains (action victim gear) &&
+    !(legalActions s).contains (action victim wrong) &&
+    !(step 100 s (action victim wrong)).isOk && !(step 100 s (action baseUnit gear)).isOk &&
+    onChain.countIn s.me .trash "VEN-058" == 1 && onChain.tired cruiser == some true &&
+    (onChain.poolOf s.me).energy == 0 && (onChain.obj? item).any (·.targets == [victim]) &&
+    (done.obj? victim).any (·.damage == 4)
+
+-- Mel needs a Spell as payment. Her Empower trigger banishes only a small enemy on a Battlefield.
+#guard vendettaCase fun s => do
+  let (s, mel) ← put s s.me "VEN-110" .base
+  let (s, spell) ← put s s.me "VEN-003" .hand
+  let (s, gear) ← put s s.me "VEN-058" .hand
+  let (s, enemy) ← putAt s s.you "VEN-014" s.bf0
+  let (s, big) ← putAt s s.you "OGN-088" s.bf0
+  let (s, friendly) ← putAt s s.me "VEN-014" s.bf0
+  let action (d : ObjId) : Action := ⟨.player s.me, .activate mel 0 ⟨0, []⟩ [] [d]⟩
+  let (onChain, _) ← (step 100 s (action spell)).toOption
+  let opts ← firePicks s [.empowered s.me mel]
+  let done := settleChain { pick := (· == [enemy]) } 14 onChain
+  return opts == [enemy] && !(step 100 s (action gear)).isOk &&
+    onChain.countIn s.me .trash "VEN-003" == 1 && done.countIn s.you .banishment "VEN-014" == 1 &&
+    (done.obj? big).isSome && (done.obj? friendly).isSome &&
+    (done.obj? mel).any (·.empowerCount == 1)
+
 end RiftboundTest

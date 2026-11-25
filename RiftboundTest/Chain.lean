@@ -289,7 +289,7 @@ meta def afterSpell : Option (GameState × GameState) :=
     | none => false
   | none => false
 
--- an ability with a cost the model cannot pay yet is never usable (CR 361)
+-- Discard is a supported cost, and activation requires the selected hand cards (CR 423.3).
 #guard match mainC 1 with
   | some s0 =>
     let p := s0.active.getD ⟨0⟩
@@ -297,7 +297,8 @@ meta def afterSpell : Option (GameState × GameState) :=
     | some (s1, a) =>
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
-        costPlan [.discard 1] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
+        costPlan [.discard 1] == some (false, none) &&
+      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
         costPlan [.exhaustSelf, .pay ⟨1, []⟩] == some (true, some ⟨1, []⟩) &&
         costPlan [.exhaustSelf, .exhaustSelf] == none
       | none => false

@@ -199,8 +199,11 @@ def VEN_007.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Punching Poro: the effect is not written yet. -/
-def VEN_007 : CardDef := VEN_007.meta
+/-- Punching Poro. -/
+def VEN_007 : CardDef :=
+  { VEN_007.meta with
+    abilities := [.empower [.discard 1], .passive (.empowered .self) [.mightPlus .self (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-008
 /--
@@ -1605,8 +1608,13 @@ def VEN_060.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sky Cruiser: the effect is not written yet. -/
-def VEN_060 : CardDef := VEN_060.meta
+/-- Sky Cruiser. -/
+def VEN_060 : CardDef :=
+  { VEN_060.meta with
+    abilities := [.activated [.discardMatching 1 (.ofList [.ofType .gear]), .pay ⟨1, []⟩, .exhaustSelf]
+      .normal (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.const 4)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-061
 /--
@@ -2894,8 +2902,14 @@ def VEN_110.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Mel, Defiant Soul: the effect is not written yet. -/
-def VEN_110 : CardDef := VEN_110.meta
+/-- Mel, Defiant Soul. -/
+def VEN_110 : CardDef :=
+  { VEN_110.meta with
+    abilities := [.empower [.discardMatching 1 (.ofList [.ofType .spell])],
+      .triggered (.onSelf .becomeEmpowered)
+        (.of [.targetOf .one .enemy .atBattlefield [.ofType .unit, .might .le (.const 3)]]
+          (.prim (.banish (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-111
 /--

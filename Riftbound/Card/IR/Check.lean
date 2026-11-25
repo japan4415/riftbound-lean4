@@ -296,7 +296,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
 
 /-- A cost of an ability refers only to what is there. -/
 def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
-  | .killFriendly _ fs => FilterList.ok c fs
+  | .killFriendly _ fs | .discardMatching _ fs => FilterList.ok c fs
   | .energyDiscount cond amount => Condition.ok c cond && Amount.ok c amount
   | _ => true
 

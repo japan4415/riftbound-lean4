@@ -503,6 +503,8 @@ inductive AbilityCost where
   | recycleFromTrash (n : Nat)
   /-- Discard cards. -/
   | discard (n : Nat)
+  /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/
+  | discardMatching (n : Nat) (fs : FilterList)
   /-- Kill friendly objects that match. -/
   | killFriendly (q : Quantity) (fs : FilterList)
   /-- Spend XP. -/

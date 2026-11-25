@@ -27,6 +27,12 @@ meta def h0 : List PlayerId := [⟨0⟩]
     g.s.turnOrder.length == 2 && (j.splitOn "\"legal\"").length == 2
   | .error _ => false
 
+-- The viewer receives the two roles as separate lists.
+#guard
+  let a : Action := ⟨.player ⟨0⟩, .activate ⟨1⟩ 0 ⟨1, []⟩ [⟨2⟩] [⟨3⟩]⟩
+  let json := actionJson a
+  json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
+
 -- an answer number that is not in the list is refused, and a good one goes on
 #guard match liveStart 1 h0 with
   | .ok (g, _) => (liveAct g 1000).toOption.isNone && (liveAct g 0).toOption.isSome

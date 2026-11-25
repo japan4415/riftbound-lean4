@@ -542,6 +542,7 @@ def Ability.runs : Ability → Bool
     (costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
       | _ => true) && (costPlan costs).isSome &&
+      ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
         (body.choices.all Choice.simple && body.body.understood))) ||
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)

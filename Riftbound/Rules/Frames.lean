@@ -189,11 +189,11 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow =>
     reactStep s p c pay ts (.chainPass p 0 :: rest) flow
-  | .chainPass p _ :: rest, .activate src idx pay ts =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: rest)
+  | .chainPass p _ :: rest, .activate src idx pay ts discards =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
-  | .priority p :: rest, .activate src idx pay ts =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest)
+  | .priority p :: rest, .activate src idx pay ts discards =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards
   | .triggerOrder _ t more others :: rest, .putTrigger i ts =>
     some ({ putPick s (t :: more) i ts with
               pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, [])
@@ -244,8 +244,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   -- ability: it goes on the Chain, and the Showdown goes on when the Chain is empty (CR 347-348)
   | .showdown bf q _ :: rest, .playCard c pay ts flow =>
     reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow
-  | .showdown bf q _ :: rest, .activate src idx pay ts =>
-    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest)
+  | .showdown bf q _ :: rest, .activate src idx pay ts discards =>
+    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])

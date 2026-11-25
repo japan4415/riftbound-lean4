@@ -75,11 +75,12 @@ def actionJson (a : Action) : String :=
        ("power", jarr (pay.power.map (fun d => jstr (toString (repr d)))))]
     | .putTrigger i ts =>
       [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))]
-    | .activate src idx pay ts =>
+    | .activate src idx pay ts discards =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
-       ("targets", jarr (ts.map (fun t => toString t.n)))]
+       ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+      (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
     | .decide yes => [("yes", if yes then "true" else "false")]

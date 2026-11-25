@@ -1827,6 +1827,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Morgana, Vindictive は解決時に対象に記録されているダメージと同じ量のダメージを与える。Keeper of Law は、Unit がちょうど 2 体いる Battlefield を支配している場合に 2 Energy と 1 Order Power が軽減される。
 - 167 枚中 103 枚が `drafted`、100 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 14 — 起動コストとして手札を捨てる
+
+- CR 423.3 に従い、必要な枚数をすべて選べる場合にだけ起動できる。手札から選んだカードを対象と区別し、能力を Chain に置く前に捨てる。列挙と合法性の一致を `mem_discardPayments` と `mem_legalActivates` で検査する。
+- Punching Poro は任意のカード、Sky Cruiser は Gear、Mel, Defiant Soul は Spell を捨てる。Sky Cruiser の Energy と Exhaust は同時に支払い、Mel は Empower 後に Battlefield の条件を満たす敵 Unit を追放する。
+- 167 枚中 106 枚が `drafted`、103 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

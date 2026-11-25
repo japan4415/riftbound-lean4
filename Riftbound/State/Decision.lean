@@ -102,8 +102,10 @@ inductive ActionKind where
   | assignDone
   /-- Use an activated ability of an object, paying its costs (CR 361, 363, 356-357): the ability at
   place `idx` of the card of `source`, with the Power of the domains listed, and the objects
-  chosen for the choices of the ability (CR 355). The ability goes on the Chain. -/
+  chosen for the choices of the ability (CR 355). The hand cards in `discards` pay the cost
+  before the ability goes on the Chain (CR 423.3). -/
   | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
+      (discards : List ObjId := [])
   /-- Put the `idx`-th of the triggered abilities that wait on the Chain, with the objects chosen
   for its choices (CR 383.3.d, 355). An ability with no legal pick is removed with no objects
   (CR 355). -/
