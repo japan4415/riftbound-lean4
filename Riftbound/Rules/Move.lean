@@ -93,6 +93,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  prevLoc := none, used := [],
                  leftBoard := src.isBoard,
                  formerId := some id,
+                 leftFrom := if src.isBoard && !dst.isBoard then o.loc else none,
                  stunned := false,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))

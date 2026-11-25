@@ -570,4 +570,26 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let back := match r.pending with | .showdown _ q 0 :: _ => q == s.you | _ => false
   return (r.obj? a).any (·.stunned) && back && (r.obj? sh).any (·.exhausted)
 
+-- Thrill of the Hunt (UNL-184): the unit is banished and played to the Battlefield the spell chose
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-184" .hand
+  let (s2, u) ← put s1 s.me "OGN-135" .base
+  let r ← play s2 s.me c [u, s.bf0]
+  let u' ← (r.zone .battlefieldZone).find? (fun x => (r.cardDef? x).any (·.id == cid "OGN-135"))
+  return (r.obj? u').any (·.loc == some s.bf0) && r.countIn s.me .banishment "OGN-135" == 0 &&
+    (r.obj? u).isNone
+
+-- Ripper's Bay (UNL-214): when a unit here returns to a hand, its player may pay 1 to channel a rune
+-- exhausted; not for a unit that was at another Battlefield
+#guard tun fun s => do
+  let (s1, bay) ← putBf s s.me "UNL-214"
+  let (s2, u) ← putAt s1 s.me "OGN-135" bay
+  let (s3, v) ← putAt s2 s.me "OGN-135" s.bf0
+  let deck (st : GameState) : Nat := (st.zone (.player s.me .runeDeck)).length
+  let (a1, n1) ← moveObj s3 u (.player s.me .hand)
+  let (b1, n2) ← moveObj s3 v (.player s.me .hand)
+  let a ← fire (a1.rich s.me) [Event.moved u n1 (.player s.me .hand)]
+  let b ← fire (b1.rich s.me) [Event.moved v n2 (.player s.me .hand)]
+  return deck a + 1 == deck a1 && deck b == deck b1
+
 end RiftboundTest
