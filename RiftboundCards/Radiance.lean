@@ -100,7 +100,7 @@ def RAD_003 : CardDef :=
 
 -- BEGIN GENERATED RAD-004
 /--
-**Brawl** — Spell · Chaos · Energy 3 + Power 1
+**Brawl** — Spell · Fury · Energy 3 + Power 1
 Printings: RAD-004/167
 
 > [Action] (Play on your turn or in showdowns.)
@@ -111,14 +111,20 @@ def RAD_004.meta : CardDef :=
   { id := ⟨"RAD-004"⟩,
     name := "Brawl",
     types := [.spell],
-    domains := [.chaos],
-    cost := some ⟨3, [.domain .chaos]⟩,
+    domains := [.fury],
+    cost := some ⟨3, [.domain .fury]⟩,
     keywords := [{ keyword := .action }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Brawl: the effect is not written yet. -/
-def RAD_004 : CardDef := RAD_004.meta
+/-- Brawl grants Assault based on the chosen Unit's Might during resolution. -/
+def RAD_004 : CardDef :=
+  { RAD_004.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+      body := .grantNumericKeyword (.slot 0) .assault (.mightOf (.slot 0)) .thisTurn
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-005
 /--
@@ -1062,15 +1068,21 @@ def RAD_044.meta : CardDef :=
   { id := ⟨"RAD-044"⟩,
     name := "Hunting Blind",
     types := [.gear],
-    tags := [⟨"Device"⟩],
     domains := [.calm],
     cost := some ⟨4, [.domain .calm, .domain .calm]⟩,
     keywords := [{ keyword := .deploy }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hunting Blind: the effect is not written yet. -/
-def RAD_044 : CardDef := RAD_044.meta
+/-- Hunting Blind can move an enemy Unit to its Battlefield and gives friendly Units Shield 2. -/
+def RAD_044 : CardDef :=
+  { RAD_044.meta with
+    abilities := [.triggered { event := .play, optional := true }
+      (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .not (.at_ .self)]]
+        (.prim (.move (.slot 0) (.at_ (.locationOf .self))))) .unlimited,
+      .passive .always
+        [.keyword (.all .friendly .here [.ofType .unit]) ⟨.shield, .amount 2⟩]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-045
 /--
@@ -1394,14 +1406,19 @@ def RAD_057.meta : CardDef :=
   { id := ⟨"RAD-057"⟩,
     name := "Piltovan Guidebot",
     types := [.unit],
+    tags := [⟨"Piltover"⟩, ⟨"Mech"⟩],
     domains := [.mind],
     cost := some ⟨4, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Piltovan Guidebot: the effect is not written yet. -/
-def RAD_057 : CardDef := RAD_057.meta
+/-- Piltovan Guidebot may take the Energy cost of a card its controller played as base Might. -/
+def RAD_057 : CardDef :=
+  { RAD_057.meta with
+    abilities := [.triggered { event := .play, subject := .all .friendly .anywhere [], optional := true }
+      (.of [] (.prim (.setBaseMight .self (.costOf (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-058
 /--
@@ -1513,7 +1530,7 @@ def RAD_061 : CardDef := RAD_061.meta
 
 -- BEGIN GENERATED RAD-062
 /--
-**Gravity Field** — Gear · Calm · Energy 5 + Power 1
+**Gravity Field** — Gear · Mind · Energy 5 + Power 1
 Printings: RAD-062/167
 
 > [Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)
@@ -1525,16 +1542,20 @@ def RAD_062.meta : CardDef :=
   { id := ⟨"RAD-062"⟩,
     name := "Gravity Field",
     types := [.gear],
-    tags := [⟨"Device"⟩],
-    domains := [.calm],
-    cost := some ⟨5, [.domain .calm]⟩,
+    domains := [.mind],
+    cost := some ⟨5, [.domain .mind]⟩,
     keywords := [{ keyword := .deploy },
       { keyword := .deathknell }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Gravity Field: the effect is not written yet. -/
-def RAD_062 : CardDef := RAD_062.meta
+/-- Gravity Field charges opponents when they move Units here and draws on Deathknell. -/
+def RAD_062 : CardDef :=
+  { RAD_062.meta with
+    abilities := [.passive .always [.moveFeeHere ⟨1, [.any]⟩],
+      .triggered (.onSelf .deathknell)
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-064
 /--
@@ -1796,14 +1817,22 @@ def RAD_074.meta : CardDef :=
   { id := ⟨"RAD-074"⟩,
     name := "Raving Witness",
     types := [.unit],
+    tags := [⟨"Freljord"⟩],
     domains := [.body],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Raving Witness: the effect is not written yet. -/
-def RAD_074 : CardDef := RAD_074.meta
+/-- Raving Witness reveals the top card after a Move, drawing it if Mighty and recycling it otherwise. -/
+def RAD_074 : CardDef :=
+  let mighty := Amount.count (.all .friendly .inMainDeck [.top 1, .mighty])
+  { RAD_074.meta with
+    abilities := [.triggered (.onSelf .move)
+      (.of [] (.seqOf [.prim (.revealTop 1),
+        .ifThen (.cmp .gt mighty (.const 0)) (.prim (.draw .you (.const 1)))
+          (.prim (.recycle (.one .friendly .inMainDeck [.top 1])))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-075
 /--
@@ -1818,6 +1847,7 @@ def RAD_075.meta : CardDef :=
   { id := ⟨"RAD-075"⟩,
     name := "Skystrike Squadron",
     types := [.unit],
+    tags := [⟨"Demacia"⟩, ⟨"Elite"⟩, ⟨"Bird"⟩],
     domains := [.body],
     cost := some ⟨5, []⟩,
     might := some 4,
@@ -1825,8 +1855,12 @@ def RAD_075.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Skystrike Squadron: the effect is not written yet. -/
-def RAD_075 : CardDef := RAD_075.meta
+/-- Skystrike Squadron can return friendly Gear to reduce its Energy cost by 2. -/
+def RAD_075 : CardDef :=
+  { RAD_075.meta with
+    playExtra := some (.returnGear, false)
+    paidCut := some (.energy 2)
+    status := .full }
 
 -- BEGIN GENERATED RAD-076
 /--
@@ -1892,6 +1926,7 @@ def RAD_078.meta : CardDef :=
   { id := ⟨"RAD-078"⟩,
     name := "Armored Tusker",
     types := [.unit],
+    tags := [⟨"Noxus"⟩],
     domains := [.body],
     cost := some ⟨6, [.domain .body]⟩,
     might := some 4,
@@ -1900,8 +1935,13 @@ def RAD_078.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Armored Tusker: the effect is not written yet. -/
-def RAD_078 : CardDef := RAD_078.meta
+/-- Armored Tusker may deal damage equal to its current Shield after moving. -/
+def RAD_078 : CardDef :=
+  { RAD_078.meta with
+    abilities := [.triggered { event := .move, optional := true }
+      (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.kwAmount .self .shield)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-079
 /--
@@ -2057,8 +2097,16 @@ def RAD_084.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Cataclysm: the effect is not written yet. -/
-def RAD_084 : CardDef := RAD_084.meta
+/-- Cataclysm prevents opponents' Spell plays and moves a friendly Unit to an enemy position. -/
+def RAD_084 : CardDef :=
+  { RAD_084.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, false, .ofList [.enemyOccupied]⟩
+      body := .seqOf [.prim (.turnEffect .opponentsNoSpells),
+        .moveChoosing 0 false (.ofList [.enemyOccupied]) .nop false]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-085
 /--
@@ -2794,7 +2842,7 @@ def RAD_113 : CardDef :=
     abilities := [.activated [.exhaustSelf] .normal
       { playerTarget := some .enemy
         body := .forceMoveToBattlefield (.chosen 0) (.locationOf .self) } .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-114
 /--
@@ -3760,8 +3808,13 @@ def RAD_153.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Agony's Embrace: the effect is not written yet. -/
-def RAD_153 : CardDef := RAD_153.meta
+/-- Agony's Embrace draws once per turn when playing from Hidden and discards on another turn. -/
+def RAD_153 : CardDef :=
+  { RAD_153.meta with
+    abilities := [.triggered (.onSelf .playHidden)
+      (.of [] (.seqOf [.prim (.draw .you (.const 1)),
+        .ifThen .yourTurn .nop (.prim (.discard .you (.const 1)))])) (.perTurn 1)],
+    status := .full }
 
 -- BEGIN GENERATED RAD-154
 /--
@@ -3844,8 +3897,12 @@ def RAD_157.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Bandle Scouts' Academy: the effect is not written yet. -/
-def RAD_157 : CardDef := RAD_157.meta
+/-- Bandle Scouts' Academy rewards the player who hides at this Battlefield with exhausted Gold. -/
+def RAD_157 : CardDef :=
+  { RAD_157.meta with
+    abilities := [.triggered (.onSelf .hide)
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-158
 /--
@@ -4111,7 +4168,8 @@ def RAD_SP3.meta : CardDef :=
     name := "Evelynn",
     subtitle := some "In Control",
     types := [.unit],
-    tags := [⟨"Evelynn"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Evelynn"⟩, ⟨"Demon"⟩],
     domains := [.chaos],
     cost := some ⟨4, [.domain .chaos]⟩,
     might := some 4,
@@ -4119,8 +4177,12 @@ def RAD_SP3.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Evelynn, In Control: the effect is not written yet. -/
-def RAD_SP3 : CardDef := RAD_SP3.meta
+/-- Evelynn, In Control scores an extra point when she holds where the player hid a card. -/
+def RAD_SP3 : CardDef :=
+  { RAD_SP3.meta with
+    abilities := [.triggered { event := .hold, condition := .hasHiddenHere }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-SP4
 /--

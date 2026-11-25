@@ -197,7 +197,7 @@ def effectPaymentFields (state : Option GameState) (frame : Option Frame)
       target.toList.map (fun id => ("spellPaymentTarget", toString id.n))
   | some (.eitherDo _ _ _ first@(.paySelected ..) other _) =>
     match if yes then first else other with
-    | .paySelected cost _ => [("effectPaymentPlan", costJson cost)]
+    | .paySelected cost _ _ => [("effectPaymentPlan", costJson cost)]
     | _ => [("moreEffectPayments", "true")]
   | _ => []
 
@@ -311,9 +311,11 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
         spellPickFields state played pick ++ spellExecutionFields state played pick ts
-    | .standardMove u d =>
+    | .standardMove u d pay =>
       [("unit", toString u.n),
-       ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
+       ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)] ++
+      (if pay.energy == 0 && pay.power.isEmpty then [] else
+        [("movePayment", costJson pay)])
     | .assignPick u => [("unit", toString u.n)]
     | .manaAbility src idx pay =>
       let restricted := match state.bind (fun s => s.manaOffer src idx) with
@@ -656,7 +658,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let isPlay (a : Action) : Bool :=
       match a.kind with | .playCard _ _ _ _ _ _ => true | _ => false
     let isGo (a : Action) : Bool :=
-      match a.kind with | .standardMove _ (.battlefield _) => true | _ => false
+      match a.kind with | .standardMove _ (.battlefield _) _ => true | _ => false
     let isUse (a : Action) : Bool :=
       match a.kind with | .activate .. => true | _ => false
     let isMana (a : Action) : Bool :=

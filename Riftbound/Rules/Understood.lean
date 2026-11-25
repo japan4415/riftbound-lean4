@@ -270,7 +270,7 @@ def Condition.understood : Condition → Bool
   | .hasFriendlyCard _ => true
   | .diedWith _ => true
   | .discardedThisTurn => true
-  | .hasHidden => true
+  | .hasHidden | .hasHiddenHere => true
   | .spentOnSpell _ => true
   | .beginningPhase => true
   | .inShowdown => true
@@ -402,7 +402,7 @@ def Effect.understood : Effect → Bool
   | .doThen (.prim (.spendBuff s)) e =>
     s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
-  | .payThen _ body => Effect.understood body
+  | .payThen _ body _ => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e => w.understood && Effect.understood e
   | .lookAtTop _ body => Effect.understood body
@@ -415,6 +415,8 @@ def Effect.understood : Effect → Bool
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e _ => FilterList.understood fs && Effect.understood e
   | .forceMoveToBattlefield who destination => who.understood && destination.understood
+  | .grantNumericKeyword objects _ amount duration =>
+    objects.understoodPick && amount.understood && duration.endPoint?.isSome
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
@@ -498,6 +500,7 @@ def StaticMod.runs : StaticMod → Bool
   | .diesInsteadGear => true
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
+  | .moveFeeHere _ => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .playHereFor _ _ => true

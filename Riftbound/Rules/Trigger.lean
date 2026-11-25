@@ -492,7 +492,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     s.inPlay.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .recycle else [])
   | .hiddenPlayed p =>
-    s.inPlay.flatMap (fun u =>
+    s.passiveSources.flatMap (fun u =>
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .playHidden else [])
   | .tokenPlayed p t => triggersOf s t p .playToken ++ watchersOf s t p .playToken
   | .revealed p c => triggersOf s c p .revealedFromDeck ++ watchersOf s c p .revealedFromDeck
@@ -506,8 +506,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
         else []
       -- a card hidden: what waits for the player to hide a card fires
       | .player p .hidden =>
+        let hiddenAt := (s.obj? n).bind (·.hiddenAt)
         s.passiveSources.flatMap (fun u =>
-          if (s.obj? u).any (·.controller == p) then triggersOf s u p .hide else [])
+          let watches := if (s.cardDef? u).any (·.hasType .battlefield) then hiddenAt == some u
+            else (s.obj? u).any (·.controller == p)
+          if watches then triggersOf s u p .hide else [])
       | _ => []) ++
     -- a card that is put where it is not on the board: what waits for it to leave fires
     (if !dst.isBoard then

@@ -285,7 +285,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .playCard c pay ts flow discard pick =>
     (applyPlayCard s p c pay ts rest flow pick).map (payPlayDiscard p c discard)
-  | .priority p :: rest, .standardMove u d =>
+  | .priority p :: rest, .standardMove u d _ =>
     (applyMove s p u d).map
       (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
   | .showdown bf q n :: rest, .pass =>

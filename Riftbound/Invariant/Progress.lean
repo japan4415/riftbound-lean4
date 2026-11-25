@@ -99,7 +99,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     · rw [e]
       exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
         (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr

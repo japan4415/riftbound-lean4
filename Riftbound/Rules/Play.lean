@@ -277,7 +277,7 @@ def GameState.blocksOwnPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : Card
 
 /-- Play restrictions apply in every zone the card could be played from (CR 002, 054, 349). -/
 def GameState.blocksPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Bool :=
-  s.blocksOwnPlay p c d || s.blocksNamedPlay p d
+  s.blocksOwnPlay p c d || s.blocksNamedPlay p d || (d.hasType .spell && s.noSpells p)
 
 /-- The cost of playing an eligible card for its base cost (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=

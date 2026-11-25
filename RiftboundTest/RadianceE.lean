@@ -12,6 +12,21 @@ open Riftbound
 private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Brawl counts the target's Might, including its existing buff, for the rest of the turn.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put s p "RAD-004" .hand
+  let (s, unit) ← putAt s q "RAD-011" field
+  let s := (s.buff unit).fund p 3 (fury := 1) (chaos := 1)
+  let done ← cast s p spell ⟨3, [.fury]⟩ [unit]
+  let (expired, _) ← (advance 100 { done with pending := [.expireTurn] } []).toOption
+  return (cast s p spell ⟨3, [.chaos]⟩ [unit]).isNone && done.kwAmount unit .assault == 5 &&
+    (done.inCombatAt field q).mightNow unit == some 10 &&
+    (done.inCombatAt field p).mightNow unit == some 5 &&
+    expired.kwAmount unit .assault == 0
+
 -- Bloodscent Swarm's discount counts own Conquers, leaving its Power and Hold unchanged.
 #guard radianceCase fun s => do
   let p := s.me
@@ -31,6 +46,35 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     cost first == some ⟨6, [.domain .body, .domain .body]⟩ &&
     cost second == some ⟨4, [.domain .body, .domain .body]⟩ &&
     cost after == cost first && played.countIn p .base "RAD-080" == 1
+
+-- Cataclysm stops only opposing Spells for the turn, including plays from face down.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field ← s.battlefields[0]?
+  let empty ← s.battlefields[1]?
+  let (s, card) ← put s p "RAD-084" .hand
+  let (s, unit) ← put s p "RAD-011" .base
+  let (s, foe) ← putAt s q "RAD-011" field
+  let (s, hand) ← put s q "RAD-100" .hand
+  let (s, hidden) ← put s q "RAD-100" .hidden
+  let (s, gear) ← put s q "RAD-039" .hand
+  let s := (s.control q field).modObj hidden
+    (fun o => { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
+  let playAt (dest : ObjId) := cast (s.fund p 4 (body := 1)) p card ⟨4, [.body]⟩
+    [unit] {} (.destination (some dest))
+  let done ← playAt field
+  let open_ := { done with active := some q, pending := [.priority q] }.fund q 4 (calm := 2)
+  let handPlay : Action := ⟨.player q, .playCard hand ⟨1, []⟩ []⟩
+  let reveal : Action := ⟨.player q, .activate hidden 1 ⟨0, []⟩ []⟩
+  let playGear : Action := ⟨.player q, .playCard gear ⟨4, [.calm, .calm]⟩ []⟩
+  let (expired, _) ← (advance 100 { open_ with pending := [.expireTurn, .priority q] } []).toOption
+  let expired := expired.fund q 4 (calm := 2)
+  return (playAt empty).isNone && (done.obj? unit).any (·.loc == some field) &&
+    (done.obj? foe).any (·.loc == some field) && done.noSpells q && !done.noSpells p &&
+    !(legalFrameActions open_).contains handPlay && !(legalFrameActions open_).contains reveal &&
+    (legalFrameActions open_).contains playGear && !expired.noSpells q &&
+    (legalFrameActions expired).contains handPlay && (legalFrameActions expired).contains reveal
 
 -- Graves' triggered damage uses his current Might. He contributes no assigned combat damage.
 #guard radianceCase fun s => do

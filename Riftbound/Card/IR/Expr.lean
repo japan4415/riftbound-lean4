@@ -360,6 +360,8 @@ inductive Condition where
   | openConquered
   /-- The player controls a card face down (Hidden). -/
   | hasHidden
+  /-- The player controls a facedown card at the source's Battlefield (CR 811). -/
+  | hasHiddenHere
   /-- The player spent at least `n` Energy to play a Spell this turn. -/
   | spentOnSpell (n : Nat)
   /-- A showdown is going on. -/

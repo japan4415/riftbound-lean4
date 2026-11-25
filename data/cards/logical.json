@@ -27943,7 +27943,7 @@
   {
    "cardId": "RAD-004",
    "domains": [
-    "chaos"
+    "fury"
    ],
    "effectText": [],
    "energy": 3,
@@ -29075,9 +29075,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, you may move an enemy unit to this battlefield.",
@@ -29454,7 +29452,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "When you play a card, you may have my base Might become equal to that card's Energy cost this turn."
    ],
@@ -29586,7 +29587,7 @@
   {
    "cardId": "RAD-062",
    "domains": [
-    "calm"
+    "mind"
    ],
    "effectText": [],
    "energy": 5,
@@ -29601,9 +29602,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "Opponents must pay :rb_energy_1::rb_rune_rainbow: to move one or more units to this battlefield.",
@@ -29929,7 +29928,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "When I move, reveal the top card of your Main Deck. If it's [Mighty], draw it. Otherwise, recycle it. (A unit is Mighty while it has 5+ :rb_might:.)"
    ],
@@ -29956,7 +29957,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia",
+    "Elite",
+    "Bird"
+   ],
    "text": [
     "You may return a friendly gear to its owner's hand as an additional cost to play me. If you do, I cost :rb_energy_2: less.",
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)"
@@ -30042,7 +30047,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus"
+   ],
    "text": [
     "[Shield 3] (+3 :rb_might: while I'm a defender.)",
     "[Tank] (I must be assigned combat damage first.)",
@@ -32734,8 +32741,12 @@
     "RAD"
    ],
    "subtitle": "In Control",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Evelynn"
+    "Evelynn",
+    "Demon"
    ],
    "text": [
     "[Disarm]",

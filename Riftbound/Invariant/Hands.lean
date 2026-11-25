@@ -235,14 +235,14 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         · exact List.mem_cons_of_mem _ h
     · exact (hturn' hph).elim
     · exact fun hh => (hturn' hh).elim
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     rw [hp, hk] at hl
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     have hsafe := applyMove_safe (es := es2) hm
-    have hmain := moveOk_main hl.2
+    have hmain := moveOk_main hl.2.1
     refine hinv.of_play ?_ hsafe.same.turnOrder hsafe.same.config (fun hmem => ?_)
     · show s2.phase ≠ .setup
       rw [hsafe.same.phase, hmain]
@@ -828,6 +828,16 @@ theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     subst f
     exact Or.inl rfl
 
+private theorem moveEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {a : Prim} {body : Effect} {es : EffectList} {paid : Bool} {f : Frame}
+    (h : f ∈ (moveEffectStep s p src env a body es paid).2.1) : f.isPlay = true := by
+  unfold moveEffectStep at h
+  split at h
+  · obtain rfl := List.mem_singleton.mp h
+    rfl
+  · dsimp only at h
+    split at h <;> obtain rfl := List.mem_singleton.mp h <;> rfl
+
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
@@ -888,6 +898,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (cancelLimitedStep_mem h)
     | exact Or.inl (resolveEffectDamageStep_mem h)
     | exact Or.inl (orderCombatDamageStep_mem h)
+    | exact Or.inl (moveEffectStep_mem h)
     | (unfold banishLookedStep at h
        split at h
        all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)

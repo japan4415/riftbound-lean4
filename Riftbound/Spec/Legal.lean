@@ -76,7 +76,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ c ∈ s.playSources p ∧
       PlayOk s p c pay ts flow pick ∧ s.playDiscardOk p c discard = true
   -- a Standard Move of a Unit of the player's, in the Main Phase (CR 144)
-  | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
+  | .priority p :: _, .standardMove u d pay =>
+    a.actor = .player p ∧ moveOk s p u d = true ∧ pay ∈ s.standardMovePayments p d
   -- an activated ability of an object the player controls, paid for from the Rune Pool, when the
   -- Chain is empty (CR 361, 363, 356-357)
   | .priority p :: _, .activate src idx pay ts discards targetPlayer costBanisher =>

@@ -445,7 +445,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
         (new := [Frame.chainPass p 0, Frame.priority p]) (by rw [e]; rfl)
         (by simp [Frame.isSetup])
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr

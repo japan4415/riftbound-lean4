@@ -4469,35 +4469,18 @@ def GameState.lookFirst (s : GameState) (p : PlayerId) (env : Env) (sel : Select
     s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
       (s.activeMods g).contains .lookBeforeReveal)
 
-/-- The kinds of Power in the Pool that can pay each symbol, including flexible Power. -/
-def resolutionPowerChoices (own : List Domain) : List PowerSym → List (List PowerSym)
-  | [] => [[]]
-  | symbol :: rest =>
-    let domains := symbol.choices own
-    let eligible := if domains.isEmpty then [] else (domains.map PowerSym.domain) ++ [.any]
-    let tails := resolutionPowerChoices own rest
-    eligible.flatMap (fun power => tails.map (power :: ·))
-
 /-- Spend exactly the resources selected for an instruction (CR 445.1). -/
-def spendResolutionPayment (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost) :
-    Option RunePool := do
-  let pool ← (s.poolOf p).spend ⟨cost.energy, []⟩
-  let paid ← cost.power.foldlM (fun (balance : RunePool) symbol =>
-    match symbol with
-    | .domain d => if 0 < balance.get d then balance.takePower d else none
-    | .any => if 0 < balance.any then some { balance with any := balance.any - 1 } else none
-    | .own => none) pool
-  if !(s.cardDef? src).any (·.hasType .gear) && paid.any < s.restrictedNow p then none
-  else some { paid with spent := paid.spent + cost.power.length }
+def spendResolutionPayment (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost)
+    (gearPower : Bool := true) :
+    Option RunePool :=
+  s.spendSymbols p cost (gearPower && (s.cardDef? src).any (·.hasType .gear))
 
 /-- Distinct ways of paying a resource instruction from the Pool (CR 445.1). -/
-def resolutionPayments (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost) :
+def resolutionPayments (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost)
+    (gearPower : Bool := true) :
     List (Cost × RunePool) :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
-  let paid := (resolutionPowerChoices own cost.power).filterMap (fun power =>
-    let resources : Cost := ⟨cost.energy, power⟩
-    (spendResolutionPayment s p src resources).map (fun pool => (resources, pool)))
-  paid.eraseDupsBy (fun a b => a.2 == b.2)
+  s.symbolPayments p cost own (gearPower && (s.cardDef? src).any (·.hasType .gear))
 
 mutual
 
@@ -4506,7 +4489,7 @@ chosen only while the condition holds ("choose one that hasn't been chosen"). -/
 def Effect.viable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) : Effect → Bool
   | .ifThen c _ .nop => c.eval s p src env == some true
   | .eitherOf es => EffectList.anyViable s p src env es
-  | .payThen cost _ => !(resolutionPayments s p src cost).isEmpty
+  | .payThen cost _ gearPower => !(resolutionPayments s p src cost gearPower).isEmpty
   | _ => true
 
 /-- Whether some branch of a choice can be chosen. -/
@@ -4605,6 +4588,40 @@ theorem linkedAction_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : En
   · exact Safe.refl s
   · rename_i r h
     exact applyPrim_safe h
+
+/-- Prepare an effect Move and inspect its actual arrivals before committing.
+Each Battlefield charges once, and the mover can decline the fee (CR 204.4, 412, 447).
+Prevented moves and corrective Recalls create no charge. -/
+def moveEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim)
+    (afterMove : Effect) (es : EffectList) (feePaid : Bool := false) :
+    GameState × List Frame × List Event :=
+  match applyPrim s p src env a with
+  | none => (s, [Frame.run p src env es], if afterMove == .nop then [.skipped src] else [])
+  | some (next, events) =>
+    let fields := events.filterMap (fun
+      | .standardMoved id field => if (next.cardDef? id).any (·.hasType .unit) then field else none
+      | _ => none)
+    let fee := s.movementFee p fields
+    if !feePaid && fee.total != 0 then
+      let accept := Effect.payThen fee (.moveAfterFee a afterMove) false
+      (s, [.eitherDo p src env accept .nop es], [])
+    else
+      let follow := if afterMove != .nop && events.any (fun | .standardMoved .. => true | _ => false)
+        then .cons afterMove es else es
+      (next, [.run p src env follow], events)
+
+/-- The Move or the payment question preserves the game invariants. -/
+theorem moveEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (a : Prim) (afterMove : Effect) (es : EffectList) (paid : Bool) :
+    Safe s (moveEffectStep s p src env a afterMove es paid).1 := by
+  unfold moveEffectStep
+  split
+  · exact Safe.refl s
+  · rename_i next events h
+    dsimp only
+    split
+    · exact Safe.refl s
+    · exact applyPrim_safe h
 
 /-- Each answer keeps the remaining groups containing that unit. Only units that distinguish
 groups are offered, so an answer always reduces the number of alternatives (CR 355.11.b). -/
@@ -5005,6 +5022,11 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
   | .forceMoveToBattlefield who destination =>
     (s, [forceMoveToBattlefieldFrame s p src env who destination es], [])
+  | .grantNumericKeyword objects keyword amount duration =>
+    match amount.evalS s p src env with
+    | some n => (s, [.run p src env
+        (.cons (.grant objects (.keyword .it ⟨keyword, .amount n⟩) duration) es)], [])
+    | none => skip
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
@@ -5088,24 +5110,31 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
   | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
-  | .doThen (.prim (.move sel dest)) body => linked (.move sel dest) body
+  | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es
+  | .prim (move@(.move ..)) | .prim (move@(.swapPlaces ..)) =>
+    moveEffectStep s p src env move .nop es
+  | .moveAfterFee move body => moveEffectStep s p src env move body es true
   | .prim (.playUnitToken name) =>
     match s.tokenCard name with
     | some c =>
       let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
     | none => skip
-  | .payThen cost body =>
-    match resolutionPayments s p src cost with
+  | .payThen cost body gearPower =>
+    match resolutionPayments s p src cost gearPower with
     | [] => skip
-    | [(_, pool)] => (s.setPoolFor p src pool, [.run p src env (.cons body es)], [])
+    | [(_, pool)] =>
+      (if gearPower then s.setPoolFor p src pool else s.setPool p pool,
+        [.run p src env (.cons body es)], [])
     | first :: second :: more =>
-      let choices := (first :: second :: more).map (fun plan => Effect.paySelected plan.1 body)
+      let choices := (first :: second :: more).map (fun plan => Effect.paySelected plan.1 body gearPower)
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
-  | .paySelected cost body =>
-    match spendResolutionPayment s p src cost with
+  | .paySelected cost body gearPower =>
+    match spendResolutionPayment s p src cost gearPower with
     | none => skip
-    | some pool => (s.setPoolFor p src pool, [.run p src env (.cons body es)], [])
+    | some pool =>
+      (if gearPower then s.setPoolFor p src pool else s.setPool p pool,
+        [.run p src env (.cons body es)], [])
   | .eitherOf .nil => skip
   | .eitherOf (.cons a rest) =>
     -- the player chooses between the first effect ("yes") and the others ("no"), and so on
@@ -5231,6 +5260,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
+    | exact moveEffectStep_safe s p src env _ _ es _
     | exact recordCombatDamage_safe s p _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
@@ -5240,6 +5270,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
     | exact setPoolFor_safe s p src _
+    | exact setPool_safe s p _
     | (exact applyReducedPermanent_safe (by assumption))
     | (exact finishLookedPermanent_safe (by assumption))
     | exact playSpellStep_safe (by assumption)

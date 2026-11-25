@@ -460,9 +460,14 @@ function describeA(a, prev, state = steps[cur]?.state) {
       return [who + ': ' + cardName(a.unit) + ' に先にダメージを割り当てる', 'Combat Damage: 致死ダメージを与える順に、相手の Unit を選ぶ（Tank が先）'];
     case 'assignDone':
       return [who + ': 割り当てを確定', '選んだ順に致死ダメージを割り当て、残りは最後の Unit へ。両陣営が終えると同時に与える'];
-    case 'standardMove':
-      return [who + ': ' + cardName(a.unit) + ' を Standard Move',
-        (a.dest === null ? 'Base へ戻る' : cardName(a.dest) + ' へ移動する') + '（Unit は Exhaust する）'];
+    case 'standardMove': {
+      const destination = a.dest === null ? 'Base' : cardName(a.dest);
+      const move = a.movePayment
+        ? destination + ' へ Standard Move（' + costText(a.movePayment) + ' を支払う）'
+        : 'Standard Move';
+      return [who + ': ' + cardName(a.unit) + ' を ' + move,
+        destination + (a.dest === null ? ' へ戻る' : ' へ移動する') + '（Unit は Exhaust する）'];
+    }
     case 'pass':
       if (prev === 'showdown') return [who + ': パス', 'Showdown でパス（全員がパスすると、Unit が 1 人だけなら Control と Conquer、2 人いれば Combat Damage）'];
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
@@ -1058,7 +1063,7 @@ function stepPick(x, y) {
     d >= (a.targets || []).length && d < selSeq(a).length);
   if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
     pick = null; clearPickMarks();
-    if (rem.length === 1) { liveAct(rem[0].k); return; }
+    if (rem.length === 1 && !rem[0].a.movePayment) { liveAct(rem[0].k); return; }
     showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
   }
   const actor = rem[0].a.actor;
@@ -1080,7 +1085,7 @@ function pickClick(el, x, y) {
 function cancelPick() { if (!pick) return; pick = null; renderLegal(steps.length - 1); }
 function chooseCard(c, x, y) {
   const list = cardActs.get(c.dataset.id); if (!list || !live) return;
-  if (list.length === 1) { hideActMenu(); liveAct(list[0].k); return; }
+  if (list.length === 1 && !list[0].a.movePayment) { hideActMenu(); liveAct(list[0].k); return; }
   hideActMenu();
   if (list.every((l) => selSeq(l.a).length)) { pick = { card: c.dataset.id, list, chosen: [], cands: [] }; stepPick(x, y); return; }
   showMenu(list, cardName(c.dataset.id) + ' で選べる手', x, y);

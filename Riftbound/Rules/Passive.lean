@@ -146,6 +146,26 @@ Unit itself says it cannot (Determined Sentry). -/
 def homeForbiddenFor (s : GameState) (u bf : ObjId) : Bool :=
   s.homeForbidden bf || (s.activeMods u).contains .noMoveToBase
 
+/-- The total fee for one Move to these Battlefields, paid by the player instructed to move.
+Several Units moving to the same Battlefield in one instruction incur each fee once. -/
+def movementFee (s : GameState) (p : PlayerId) (fields : List ObjId) : Cost :=
+  if fields.isEmpty then Cost.zero else
+    (s.zone .battlefieldZone).foldl (fun total id =>
+      if (s.obj? id).any (fun o => o.controller != p && o.loc.any fields.contains) then
+        (s.activeMods id).foldl (fun c mod => match mod with
+          | .moveFeeHere fee => c.plus fee
+          | _ => c) total
+      else total) Cost.zero
+
+/-- The resource payments available for a Standard Move, independent of the Unit's Exhaust cost. -/
+def standardMovePayments (s : GameState) (p : PlayerId) (dest : MoveDest) :
+    List Cost :=
+  let fee := match dest with
+    | .base => Cost.zero
+    | .battlefield bf => s.movementFee p [bf]
+  if fee == Cost.zero then [Cost.zero]
+  else (s.symbolPayments p fee [] false).map Prod.fst
+
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
   ((s.obj? src).map (·.controller)).getD ⟨0⟩

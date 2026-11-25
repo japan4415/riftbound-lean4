@@ -30,7 +30,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).wf (applyPlayCard_wf hwf hr)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -328,7 +328,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     rw [← hout]
     exact ((payPlayDiscard_safe _ _ _ _).phys (applyPlayCard_wf hwf hr)).trans
       (applyPlayCard_physIds hwf hr)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr

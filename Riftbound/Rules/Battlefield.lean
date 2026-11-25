@@ -103,7 +103,7 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
         decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
           !(o.loc.any (fun bf => s.homeForbiddenFor u bf))
       | .battlefield bf =>
-        decide (bf ∈ s.battlefields) &&
+        (decide (bf ∈ s.battlefields) && s.effectMoveBattlefieldOk o bf) &&
           (decide (u ∈ s.zone (.player p .base)) ||
             ((s.hasKw u .ganking ||
                 -- a Battlefield units can move to from anywhere (Baron Pit)
@@ -150,9 +150,10 @@ def GameState.destinations (s : GameState) : List MoveDest :=
 
 /-- The Standard Moves a player can make. -/
 def legalMoves (s : GameState) (p : PlayerId) : List Action :=
+  let priced := s.destinations.map (fun d => (d, s.standardMovePayments p d))
   (s.movable p).flatMap (fun u =>
-    (s.destinations.filter (fun d => moveOk s p u d)).map
-      (fun d => ⟨.player p, .standardMove u d⟩))
+    (priced.filter (fun (d, _) => moveOk s p u d)).flatMap (fun (d, pays) =>
+      pays.map (fun pay => ⟨.player p, .standardMove u d pay⟩)))
 
 /-- A Standard Move that can be made starts from a Unit a player might move, and goes to a
 destination there is. -/
@@ -175,7 +176,7 @@ theorem moveOk_mem {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
         · exact Or.inl h1
         · exact Or.inr h1.1.1.2
       · simp only [GameState.destinations, List.mem_cons, List.mem_map]
-        exact Or.inr ⟨bf, h.2.1, rfl⟩
+        exact Or.inr ⟨bf, h.2.1.1, rfl⟩
 
 /-- A Standard Move that can be made can be done. -/
 theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
@@ -212,15 +213,17 @@ theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDes
 /-- The Standard Moves listed are those a player can make. -/
 theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
     a ∈ legalMoves s p ↔
-      ∃ u d, a = ⟨.player p, .standardMove u d⟩ ∧ moveOk s p u d = true := by
+      ∃ u d pay, a = ⟨.player p, .standardMove u d pay⟩ ∧
+        moveOk s p u d = true ∧ pay ∈ s.standardMovePayments p d := by
   unfold legalMoves
   simp only [List.mem_flatMap, List.mem_map, List.mem_filter]
   constructor
-  · rintro ⟨u, -, d, ⟨-, hd⟩, rfl⟩
-    exact ⟨u, d, rfl, hd⟩
-  · rintro ⟨u, d, rfl, hd⟩
+  · rintro ⟨u, -, ⟨d, pays⟩, ⟨⟨d', _, hp⟩, hm⟩, pay, hf, rfl⟩
+    cases hp
+    exact ⟨u, d, pay, rfl, hm, hf⟩
+  · rintro ⟨u, d, pay, rfl, hd, hpay⟩
     obtain ⟨hu, hdm⟩ := moveOk_mem hd
-    exact ⟨u, hu, d, ⟨hdm, hd⟩, rfl⟩
+    exact ⟨u, hu, (d, _), ⟨⟨d, hdm, rfl⟩, hd⟩, pay, hpay, rfl⟩
 
 /-! ### Scoring -/
 

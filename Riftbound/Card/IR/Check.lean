@@ -282,6 +282,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .diesInsteadGear => true
   | .rescueWeakerHere => true
   | .noMoveToBaseAny => true
+  | .moveFeeHere _ => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .playHereFor _ _ => true
@@ -348,8 +349,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .eitherOf modes => EffectList.ok c modes
-  | .payThen _ body => Effect.ok c body
-  | .paySelected .. => false
+  | .payThen _ body _ => Effect.ok c body
+  | .paySelected .. | .moveAfterFee .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s
@@ -374,6 +375,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
   | .forceMoveToBattlefield who destination => PlayerSel.ok c who && Selector.ok c destination
+  | .grantNumericKeyword objects _ amount duration =>
+    Selector.ok c objects && Amount.ok c amount && Duration.ok c duration
   | .collectOwnPicks .. => false
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b

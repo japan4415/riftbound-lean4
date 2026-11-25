@@ -940,6 +940,35 @@ def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RuneP
     Option RunePool :=
   ((s.poolOf p).spend pay unit).filter (fun q => gear || decide (s.restrictedNow p ≤ q.any))
 
+/-- The kinds of Power in the Pool that can pay each symbol, including flexible Power. -/
+def resolutionPowerChoices (own : List Domain) : List PowerSym → List (List PowerSym)
+  | [] => [[]]
+  | symbol :: rest =>
+    let domains := symbol.choices own
+    let eligible := if domains.isEmpty then [] else (domains.map PowerSym.domain) ++ [.any]
+    let tails := resolutionPowerChoices own rest
+    eligible.flatMap (fun power => tails.map (power :: ·))
+
+/-- Spend exactly the selected resources, leaving restricted Power for the uses it permits. -/
+def GameState.spendSymbols (s : GameState) (p : PlayerId) (cost : Cost) (gearPower : Bool) :
+    Option RunePool := do
+  let pool ← (s.poolOf p).spend ⟨cost.energy, []⟩
+  let paid ← cost.power.foldlM (fun (balance : RunePool) symbol =>
+    match symbol with
+    | .domain d => if 0 < balance.get d then balance.takePower d else none
+    | .any => if 0 < balance.any then some { balance with any := balance.any - 1 } else none
+    | .own => none) pool
+  if !gearPower && paid.any < s.restrictedNow p then none
+  else some { paid with spent := paid.spent + cost.power.length }
+
+/-- Resource payments that produce different Rune Pools (CR 445.1). -/
+def GameState.symbolPayments (s : GameState) (p : PlayerId) (cost : Cost)
+    (own : List Domain) (gearPower : Bool) : List (Cost × RunePool) :=
+  let paid := (resolutionPowerChoices own cost.power).filterMap (fun power =>
+    let resources : Cost := ⟨cost.energy, power⟩
+    (s.spendSymbols p resources gearPower).map (fun pool => (resources, pool)))
+  paid.eraseDupsBy (fun a b => a.2 == b.2)
+
 /-- A payment that the Pool allows is a payment the Pool makes. -/
 theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
     {pay : RunePool.Payment} {unit : Bool} {q : RunePool} (h : s.spendFor p g pay unit = some q) :
@@ -1190,6 +1219,8 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .discardedThisTurn =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
+  | .hasHiddenHere => some ((s.hereOf self).any (fun bf =>
+      (s.zone (.player p .hidden)).any (fun id => (s.obj? id).any (·.hiddenAt == some bf))))
   | .beginningPhase => some (s.phase == .beginning)
   | .iControlHere =>
     some ((s.hereOf self).any (fun b => (s.obj? b).any (fun o => o.control == some p)))

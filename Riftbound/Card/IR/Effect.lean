@@ -111,9 +111,9 @@ inductive Effect where
   /-- The player chooses one of the effects while the effect resolves, and does it. -/
   | eitherOf (modes : EffectList)
   /-- Pay a resource cost from the Rune Pool, then continue with the effect (CR 445.2). -/
-  | payThen (cost : Cost) (body : Effect)
+  | payThen (cost : Cost) (body : Effect) (gearPower : Bool := true)
   /-- Spend the specific resources selected from the Pool for this payment. -/
-  | paySelected (resources : Cost) (body : Effect)
+  | paySelected (resources : Cost) (body : Effect) (gearPower : Bool := true)
   /-- Do the first effect if the condition holds, the second otherwise. -/
   | ifThen (c : Condition) (t e : Effect)
   /-- Do the effect for each of the objects, with `it` the object. -/
@@ -184,6 +184,11 @@ inductive Effect where
   /-- During resolution the named player chooses and moves one of their Units to the Battlefield
   when the move is possible. The choice is not a target (CR 355.10.e). -/
   | forceMoveToBattlefield (who : PlayerSel) (destination : Selector)
+  /-- Carry out the Move after its fee was paid. Its follow-up runs only if a Unit moved. -/
+  | moveAfterFee (move : Prim) (afterMove : Effect)
+  /-- Grant a numbered keyword whose amount is determined as the effect resolves. -/
+  | grantNumericKeyword (objects : Selector) (keyword : Keyword) (amount : Amount)
+      (duration : Duration)
   /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
   | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
       (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)

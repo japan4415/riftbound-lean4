@@ -89,9 +89,9 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     rw [hp, hk] at hl
     obtain ⟨r, hr⟩ := applyPlayCard_isSome (rest := rest) hwf hl.2.1 hl.2.2.1
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     rw [hp, hk] at hl
-    obtain ⟨r, hr⟩ := applyMove_isSome hwf hl.2
+    obtain ⟨r, hr⟩ := applyMove_isSome hwf hl.2.1
     rw [hr]
     exact ⟨_, rfl⟩
   · rename_i bf q n rest hp hk
@@ -248,7 +248,7 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).own (applyPlayCard_wf hwf hr)
       (applyPlayCard_ownerOk hwf hown hr)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr

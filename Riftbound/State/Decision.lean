@@ -105,7 +105,7 @@ inductive ActionKind where
       (flowCost : Option Cost := none) (discard : Option ObjId := none) (spellPick : SpellPick := .plain)
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
   back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
-  | standardMove (unit : ObjId) (dest : MoveDest)
+  | standardMove (unit : ObjId) (dest : MoveDest) (pay : Cost := Cost.zero)
   /-- In Combat Damage: the next Unit, among those of the other side, to be given lethal damage
   (CR 467.2.c). Tank Units come first (CR 815). -/
   | assignPick (unit : ObjId)
