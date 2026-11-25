@@ -211,7 +211,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
          hideEnergyEffect .unlimited]
     | .empower, .cost cost =>
       -- Untranscribed cards may qualify the printed cost, so they are not playable from metadata.
-      if c.status == .todo then [] else
+      if c.status == .todo || c.abilities.any Ability.isEmpower then [] else
         [.empower [.pay cost] c.empowerLimit]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)

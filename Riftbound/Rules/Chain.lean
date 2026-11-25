@@ -37,7 +37,21 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .fromTrash :: cs => costPlan cs
   | .killFriendly _ _ :: cs => costPlan cs
   | .disempowerSelf :: cs => costPlan cs
+  | .energyDiscount _ _ :: cs => costPlan cs
   | _ :: _ => none
+
+/-- The cost plan after applying any Energy discounts for this activated ability. -/
+def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
+    (costs : List AbilityCost) : Option (Bool × Option Cost) :=
+  (costPlan costs).map (fun (ex, base) => (ex, base.map (fun cost =>
+    let discount := costs.foldl (fun total c =>
+      match c with
+      | .energyDiscount cond amount =>
+        if cond.eval s p src {} == some true then
+          total + (amount.evalS s p src {}).getD 0
+        else total
+      | _ => total) 0
+    cost.lessEnergy discount)))
 
 /-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
 def costKills (costs : List AbilityCost) : Bool :=
@@ -308,7 +322,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
         s.abilityZoneOk p src idx &&
         match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
-          match costPlan costs with
+          match s.activationPlan p src costs with
           | some (ex, pc) =>
             if (manaKind body).isSome then false
             else
@@ -471,7 +485,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : costPlan costs with
+          cases hp : s.activationPlan p src costs with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -504,7 +518,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     ∃ d costs sp body lim pc, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
-        costPlan costs = some (costExhausts costs, pc) ∧
+        s.activationPlan p src costs = some (costExhausts costs, pc) ∧
           (match pc with
             | some c => c.paidBy d.domains pay = true
             | none => pay = ⟨0, []⟩) ∧
@@ -534,7 +548,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : costPlan costs with
+          cases hp : s.activationPlan p src costs with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -542,7 +556,12 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
             by_cases hm : (manaKind body).isSome = true
             · simp [hm] at h
             simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
-            have hex : costExhausts costs = ex := by simp [costExhausts, hp]
+            have hex : costExhausts costs = ex := by
+              cases hc : costPlan costs with
+              | none => simp [GameState.activationPlan, hc] at hp
+              | some base =>
+                have he := congrArg (Option.map Prod.fst) hp
+                simpa [GameState.activationPlan, costExhausts, hc] using he
             refine ⟨d, costs, sp, body, lim, pc, hph, huse, rfl, ha, by rw [hex]; exact hp, ?_,
               h.2, o, rfl, hctl⟩
             cases pc with
@@ -584,7 +603,7 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
         (List.range d.fullAbilities.length).flatMap (fun (idx : Nat) =>
           match d.fullAbilities[idx]? with
           | some (Ability.activated costs _ body _) =>
-            (match costPlan costs with
+            (match s.activationPlan p src costs with
               | some (_, some c) => c.payments d.domains
               | _ => [⟨0, []⟩]).flatMap (fun pay =>
               (([] :: (targetTuples s p src s.mightTable body.choices).filter

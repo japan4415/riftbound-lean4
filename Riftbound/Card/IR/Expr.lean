@@ -181,6 +181,10 @@ inductive Filter where
   | playedLast
   /-- The card is in its owner's hand. -/
   | inHandZone
+  /-- The card is in its owner's Trash. -/
+  | inTrashZone
+  /-- The object is Empowered (CR 442). -/
+  | empowered
   /-- Units can be played to this Battlefield (it says no units can be played here: no). -/
   | unitsPlayable
   /-- The Battlefield where the player of `self` is attacking. -/

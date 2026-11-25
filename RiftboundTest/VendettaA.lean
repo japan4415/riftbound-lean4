@@ -196,4 +196,30 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     b.countNamed s.me .base "Recruit" == 2 &&
     (b.obj? dead).any (fun o => o.empowerCount == 0 && o.leftEmpowered)
 
+-- Baccai Sandspinner pays two Energy with exactly four runes, and five with five runes.
+-- Each state lists only the applicable Empower activation.
+#guard vendettaCase fun s => do
+  let currentRunes := s.zone (.player s.me .base)
+  let clean := (applyEach (sendObj .runeDeck) s currentRunes).1
+  let (s, unit) ← put clean s.me "VEN-001" .base
+  let low ← (List.range 4).foldlM (fun st _ => (put st s.me "OGN-007" .base).map Prod.fst) s
+  let (high, _) ← put low s.me "OGN-007" .base
+  let low := low.rich s.me
+  let high := high.rich s.me
+  let cheap : Action := ⟨.player s.me, .activate unit 0 ⟨2, []⟩ []⟩
+  let printed : Action := ⟨.player s.me, .activate unit 0 ⟨5, []⟩ []⟩
+  return (legalActions low).contains cheap && !(legalActions low).contains printed &&
+    !(legalActions high).contains cheap && (legalActions high).contains printed
+
+-- Stargazer applies the minimum only to its controller's Flow spell from the Trash.
+#guard vendettaCase fun s => do
+  let (s, _) ← put s s.me "VEN-098" .base
+  let (s, ownHand) ← put s s.me "VEN-049" .hand
+  let (s, ownTrash) ← put s s.me "VEN-049" .trash
+  let (s, enemyTrash) ← put s s.you "VEN-049" .trash
+  let d ← s.cardDef? ownTrash
+  return (s.directCost s.me ownTrash d).map (·.energy) == some 1 &&
+    (s.directCost s.me ownHand d).map (·.energy) == some 2 &&
+    (s.directCost s.you enemyTrash d).map (·.energy) == some 2
+
 end RiftboundTest

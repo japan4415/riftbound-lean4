@@ -1781,6 +1781,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Disempower を起動コストとして支払い、効果を Chain に置く前に状態を更新する。Kayle の重ね掛けと、死亡直前の Empowered を参照する Deathknell に対応した。
 - Questionable Tome、Kayle、Noxian Emissary など 15 枚の効果を追加した。167 枚中 73 枚が `drafted`、69 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 6 — 起動コストの軽減と対象条件
+
+- 起動コストの Energy 軽減を合法手の列挙と受理に反映した。Baccai Sandspinner は Rune 4 枚と 5 枚で費用が変わる。Stargazer は自分の Trash から唱える Flow 呪文にだけ適用し、最低 1 Energy を保つ。
+- Platewyrm Egg、Public Execution など 10 枚の効果を追加した。167 枚中 83 枚が `drafted`、79 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

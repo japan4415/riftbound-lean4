@@ -39,8 +39,15 @@ def VEN_001.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Baccai Sandspinner: the effect is not written yet. -/
-def VEN_001 : CardDef := VEN_001.meta
+/-- Baccai Sandspinner. -/
+def VEN_001 : CardDef :=
+  { VEN_001.meta with
+    abilities := [.empower [.pay ⟨5, []⟩,
+        .energyDiscount (.cmp .le (.count (.all .friendly .anywhere [.ofType .rune])) (.const 4))
+          (.const 3)],
+      .passive (.empowered .self)
+        [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.assault, .amount 2⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-002
 /--
@@ -710,8 +717,14 @@ def VEN_027.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Hand Hammer: the effect is not written yet. -/
-def VEN_027 : CardDef := VEN_027.meta
+/-- Hand Hammer. -/
+def VEN_027 : CardDef :=
+  { VEN_027.meta with
+    grants := [.passive
+      (.and (.matches .self .onBattlefield)
+        (.cmp .eq (.count (.all .friendly .here [.ofType .unit, .notSelf])) (.const 1)))
+      [.mightPlus .self (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-028
 /--
@@ -827,8 +840,13 @@ def VEN_032.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Frostcoat Mother: the effect is not written yet. -/
-def VEN_032 : CardDef := VEN_032.meta
+/-- Frostcoat Mother. -/
+def VEN_032 : CardDef :=
+  { VEN_032.meta with
+    abilities := [.empower [.pay ⟨12, []⟩, .energyDiscount .always
+        (.count (.all .friendly .anywhere [.ofType .rune]))],
+      .passive (.empowered .self) [.mightPlus .self (.const 3)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-033
 /--
@@ -1289,8 +1307,14 @@ def VEN_050.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Grumpy Rockbear: the effect is not written yet. -/
-def VEN_050 : CardDef := VEN_050.meta
+/-- Grumpy Rockbear. -/
+def VEN_050 : CardDef :=
+  { VEN_050.meta with
+    abilities := [.empower [.pay ⟨12, []⟩, .energyDiscount .always
+        (.count (.all .friendly .anywhere [.ofType .rune]))],
+      .passive (.empowered .self)
+        [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.shield, .amount 3⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-051
 /--
@@ -1522,8 +1546,16 @@ def VEN_059.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shock Blast: the effect is not written yet. -/
-def VEN_059 : CardDef := VEN_059.meta
+/-- Shock Blast. -/
+def VEN_059 : CardDef :=
+  { VEN_059.meta with
+    abilities := [.passive
+      (.or (.exists (.all .friendly .anywhere [.empowered]))
+        (.cmp .gt (.count (.all .friendly .inLegendZone [.empowered])) (.const 0)))
+      [.costMinus .self (.const 2)]],
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.const 4)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-060
 /--
@@ -1920,8 +1952,18 @@ def VEN_075.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Platewyrm Egg: the effect is not written yet. -/
-def VEN_075 : CardDef := VEN_075.meta
+/-- Platewyrm Egg. -/
+def VEN_075 : CardDef :=
+  { VEN_075.meta with
+    abilities := [.passive .always [.entersExhausted],
+      .empower [.pay ⟨1, []⟩, .exhaustSelf],
+      .activated [.exhaustSelf] .reaction
+        (.of [] (.ifThen (.not (.empowered .self))
+          (.prim (.addEnergy .you (.const 1) none)) .nop)) .unlimited,
+      .activated [.exhaustSelf] .reaction
+        (.of [] (.ifThen (.empowered .self)
+          (.prim (.addEnergy .you (.const 2) none)) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-076
 /--
@@ -2497,8 +2539,13 @@ def VEN_098.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Stargazer: the effect is not written yet. -/
-def VEN_098 : CardDef := VEN_098.meta
+/-- Stargazer. -/
+def VEN_098 : CardDef :=
+  { VEN_098.meta with
+    abilities := [.passive .always
+      [.costMinusMin (.all .friendly .anywhere [.ofType .spell, .hasKeyword .flow, .inTrashZone])
+        (.const 2) 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-099
 /--
@@ -2891,8 +2938,14 @@ def VEN_115.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ocean Drake: the effect is not written yet. -/
-def VEN_115 : CardDef := VEN_115.meta
+/-- Ocean Drake. -/
+def VEN_115 : CardDef :=
+  { VEN_115.meta with
+    abilities := [.passive .always [.playToBf [.openBf], .playToOpenBf],
+      .triggered (.onSelf .play)
+        (.of [.targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.tag ⟨"Dragon"⟩)]]
+          (.prim (.returnToHand (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-116
 /--
@@ -3273,8 +3326,12 @@ def VEN_130.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Aurok General: the effect is not written yet. -/
-def VEN_130 : CardDef := VEN_130.meta
+/-- Aurok General. -/
+def VEN_130 : CardDef :=
+  { VEN_130.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus (.all .friendly .anywhere [.ofType .unit, .empowered]) (.const 2)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-131
 /--
@@ -3879,8 +3936,13 @@ def VEN_154.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Public Execution: the effect is not written yet. -/
-def VEN_154 : CardDef := VEN_154.meta
+/-- Public Execution. -/
+def VEN_154 : CardDef :=
+  { VEN_154.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+      .targetOf .one .enemy .anywhere [.ofType .unit, .mightLtOf (.slot 0)]]
+      (.prim (.kill (.slot 1)))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-155
 /--

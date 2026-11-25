@@ -353,6 +353,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         mods.any (fun m => match m with | .cantPlayer _ .play .here _ => true | _ => false)
       | _ => false))))
   | .inHandZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .hand))))
+  | .inTrashZone => some ((s.obj? id).any (fun o => decide (id ∈ s.zone (.player o.owner .trash))))
+  | .empowered => some ((s.obj? id).any (fun o => 0 < o.empowerCount))
   | .playedThisTurn => some ((s.obj? id).any (·.playedTurn == some s.turn))
   | .playedLast =>
     let latest := s.objects.toList.foldl (fun m (_, o) => max m (o.playedStamp.getD 0)) 0

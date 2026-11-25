@@ -510,6 +510,8 @@ inductive AbilityCost where
   | fromTrash
   /-- Disempower the unit. -/
   | disempowerSelf
+  /-- Reduce the activated ability's Energy cost when the condition holds (CR 827.1.c.3). -/
+  | energyDiscount (cond : Condition) (amount : Amount)
   /-- Recycle the object itself. -/
   | recycleSelf
   /-- Kill the object the ability belongs to ("Kill this"). -/

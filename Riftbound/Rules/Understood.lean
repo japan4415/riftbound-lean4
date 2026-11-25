@@ -158,6 +158,8 @@ def Filter.understood : Filter → Bool
   | .playedThisTurn => true
   | .playedLast => true
   | .inHandZone => true
+  | .inTrashZone => true
+  | .empowered => true
   | .unitsPlayable => true
   | .attackedByMine => true
   | .myUnitsHere => true
@@ -526,7 +528,9 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
-    ((costPlan costs).isSome &&
+    (costs.all (fun
+      | .energyDiscount c a => c.understood && a.understoodK
+      | _ => true) && (costPlan costs).isSome &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
         (body.choices.all Choice.simple && body.body.understood))) ||
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
@@ -547,9 +551,7 @@ def Keyword.runs : Keyword → Bool
 
 /-- A card can model the printed Empower cost with an explicit activated ability (CR 827). -/
 def CardDef.hasEmpowerAbility (c : CardDef) : Bool :=
-  c.fullAbilities.any (fun a => match a with
-    | .activated _ _ { body := .ifThen _ (.prim (.empower .self)) .nop, .. } _ => a.runs
-    | _ => false)
+  c.fullAbilities.any (fun a => a.isEmpower && a.runs)
 
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
 carried out, and its keywords are known. -/

@@ -57,6 +57,11 @@ def Ability.empower (costs : List AbilityCost) (limit : Nat := 1)
     (.of choices (.ifThen (.cmp .lt .empowerCount (.const limit)) (.prim (.empower .self)) .nop))
     .unlimited
 
+/-- Whether the ability is an explicit implementation of Empower. -/
+def Ability.isEmpower : Ability → Bool
+  | .activated _ _ { body := .ifThen _ (.prim (.empower .self)) .nop, .. } _ => true
+  | _ => false
+
 /-- A trigger on the card itself. -/
 def Trigger.onSelf (event : TriggerEvent) : Trigger := { event }
 
