@@ -620,11 +620,29 @@ def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       (s.extrasFor p c d).any (·.total == 0)
   | none => false
 
-/-- A card that must be played to a Battlefield it specifically permits, such as Perched Grimwyrm. -/
+/-- A card whose own Battlefield filters restrict its play location (CR 355.17.b). -/
 def CardDef.playsOnlyToBattlefield (d : CardDef) : Bool :=
   d.abilities.any (fun
     | .passive _ mods => mods.contains .noPlayToBase
     | _ => false)
+
+/-- The Battlefields a Unit's own abilities allow it to be played to (CR 355.2). -/
+def CardDef.playBattlefieldFilters (d : CardDef) : List FilterList :=
+  d.abilities.flatMap (fun ab =>
+    match ab with
+    | .passive _ mods => mods.filterMap (fun
+        | .playToBf fs => some (FilterList.ofList fs)
+        | _ => none)
+    | _ => [])
+
+/-- Whether a Battlefield passes the restrictions on playing a Unit there. A permission
+from another effect cannot override a restriction (CR 054.2, 355.17.b). -/
+def GameState.playBfLocationAllowed (s : GameState) (p : PlayerId) (c : ObjId)
+    (d : CardDef) (b : ObjId) : Bool :=
+  (s.zone .battlefieldZone).contains b && (s.cardDef? b).any (·.hasType .battlefield) &&
+    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
+    (!d.playsOnlyToBattlefield || d.playBattlefieldFilters.any
+      (FilterList.holds s c Env.empty b · == some true))
 
 /-- The Battlefields the Unit can enter when played (CR 355.2): those its player controls by
 default, plus locations permitted by a game effect, subject to location and play restrictions. -/
@@ -632,12 +650,6 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
   match s.cardDef? c with
   | some d =>
     if d.hasType .unit && !d.hasType .spell then
-      let own : List FilterList := d.abilities.flatMap (fun ab =>
-        match ab with
-        | Ability.passive _ mods =>
-          mods.filterMap (fun m =>
-            match m with | .playToBf fs => some (FilterList.ofList fs) | _ => none)
-        | _ => [])
       -- the units of the player can be played to the Battlefields another object of theirs names
       let granted : List FilterList := s.inPlay.flatMap (fun g =>
         if (s.obj? g).any (·.controller == p) then
@@ -655,14 +667,11 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
       -- Ambush: to a Battlefield where the player has Units
       let ambush : List FilterList :=
         if d.hasKeyword .ambush then [FilterList.ofList [.myUnitsHere]] else []
-      let anywhereAllowed := own ++ open_ ++ ambush ++ granted
+      let anywhereAllowed := d.playBattlefieldFilters ++ open_ ++ ambush ++ granted
       (s.zone .battlefieldZone).filter (fun b =>
-        (s.cardDef? b).any (·.hasType .battlefield) &&
-          !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
-          FilterList.holds s c Env.empty b
-            (FilterList.ofList [.ofType .battlefield, .unitsPlayable]) == some true &&
-          ((!d.playsOnlyToBattlefield && (s.obj? b).any (·.control == some p)) ||
-            anywhereAllowed.any (fun fs => FilterList.holds s c Env.empty b fs == some true)))
+        s.playBfLocationAllowed p c d b &&
+          ((s.obj? b).any (·.control == some p) ||
+            anywhereAllowed.any (FilterList.holds s c Env.empty b · == some true)))
     else []
   | none => []
 

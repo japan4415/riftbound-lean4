@@ -3712,6 +3712,39 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let a ← play conquered s.me g [bf]
   return unitAt a "SFD-015" bf && (play held s.me g [bf]).isNone
 
+-- Another object's permission cannot bypass Perched Grimwyrm's location restriction.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, other) ← putBf s p "OGN-275"
+  let (s, _) ← putAt (s.control q field) q "OGN-051" field
+  let (s, _) ← put s p "UNL-117" .base
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let (s, ordinary) ← put s p "VEN-014" .hand
+  let scored := s.modObj other (fun o => { o with scored := [p] })
+  let scoredBoth := scored.modObj field (fun o => { o with scored := [p] })
+  let paid := scored.rich p
+  let invalid : Action := ⟨.player p, .playCard grimwyrm ⟨4, []⟩ [field]⟩
+  let allowed ← play scored p grimwyrm [other]
+  let atEnemyField ← play scoredBoth p grimwyrm [field]
+  return (scored.playBfOptions p ordinary).contains field &&
+    !(legalActions paid).contains invalid && ((step 100 paid invalid).toOption).isNone &&
+    unitAt allowed "SFD-015" other && unitAt atEnemyField "SFD-015" field
+
+-- Here to Help's mandatory destination must also satisfy the Unit's restriction (CR 355.17.b).
+#guard tsf fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, help) ← put (s.control p field) p "SFD-111" .hand
+  let (s, grimwyrm) ← put s p "SFD-015" .hand
+  let scored := s.modObj field (fun o => { o with scored := [p] })
+  let blocked ← play s p help [field] { obj := (· == grimwyrm) }
+  let allowed ← play scored p help [field] { obj := (· == grimwyrm) }
+  return blocked.locate grimwyrm == some (.player p .hand) &&
+    (blocked.poolOf p).energy == 10 && unitAt allowed "SFD-015" field &&
+    (allowed.poolOf p).energy == 9
+
 -- Tianna Crownguard also stops the points an effect gives the opponent ("you score 1 point")
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"

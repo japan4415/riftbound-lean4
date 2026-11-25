@@ -1432,23 +1432,30 @@ theorem playToOrBase_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjI
   · exact playFree_safe p s id
   · exact playFreeAt_safe p bf s id
 
-/-- Play a Unit or a Gear paying its cost less `k` Energy (and all its Power), to a Battlefield if
-one is given; if the cost cannot be paid, nothing is paid and the card is not played. -/
+/-- A Unit or Gear can be played by an effect to the location it specifies (CR 355.17.b). -/
+def GameState.permanentPlayAllowed (s : GameState) (p : PlayerId) (id : ObjId)
+    (d : CardDef) (dest : Option ObjId) : Bool :=
+  (d.hasType .unit || d.hasType .gear) && !s.blocksPlay p id d &&
+    dest.elim (!d.playsOnlyToBattlefield) (fun bf => d.hasType .unit && s.playBfLocationAllowed p id d bf)
+
+/-- Play a Unit or Gear with its Energy cost reduced by `k`. Check that the required destination
+is legal before paying (CR 355.17.b, 358.5). -/
 def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
+  if !(s.cardDef? id).any (fun d => s.permanentPlayAllowed p id d dest) then (s, []) else
   -- the cost the card is played for now (the other reductions count too), less `k` Energy
   match (s.cardDef? id).bind (fun d => s.effCost p id d) with
   | some c =>
     match (s.targetCostOptions p id [] (c.lessEnergy k)).findSome? (payByRunes s p id) with
     | some r =>
-      match dest with
-      | some bf => ((playToOrBase p bf r.1 id).1, r.2 ++ (playToOrBase p bf r.1 id).2)
-      | none => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
+      let played := match dest with
+        | some bf => playFreeAt p bf r.1 id
+        | none => playFree p r.1 id
+      (played.1, r.2 ++ played.2)
     | none => (s, [])
   | none =>
     match dest with
-    | some bf => playToOrBase p bf s id
+    | some bf => playFreeAt p bf s id
     | none => playFree p s id
 
 /-- Legal payments, additional costs, and destinations for a reduced Unit or Gear play
@@ -1592,11 +1599,11 @@ theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : 
       · rename_i r hr
         cases dest with
         | none => exact (payPlayOption_safe hr).trans (playFree_safe p _ id)
-        | some bf => exact (payPlayOption_safe hr).trans (playToOrBase_safe p bf _ id)
+        | some bf => exact (payPlayOption_safe hr).trans (playFreeAt_safe p bf _ id)
       · exact Safe.refl s
     · cases dest with
       | none => exact playFree_safe p s id
-      | some bf => exact playToOrBase_safe p bf s id
+      | some bf => exact playFreeAt_safe p bf s id
 /-- The owner of an object has control of it again (CR 740). -/
 def giveBack (s : GameState) (id : ObjId) : GameState × List Event :=
   (s.modObj id (fun o => { o with controller := o.owner }), [])

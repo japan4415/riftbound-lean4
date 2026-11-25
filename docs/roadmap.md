@@ -2055,6 +2055,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 誘発を確定するとき、Rune を最大 2 枚指定し、Curator 自身を Exhaust する。見送る選択や 0 枚を指定する選択があり、すでに Exhausted なら支払えない。解決時には残っている合法な対象を Ready にする（CR 355.7, 355.11, 383.3, 415.4, 416）。
 - 167 枚中 162 枚が `drafted`。転記済みの 162 枚が `CardDef.runs` を通り、5 枚が未転記。
 
+### M8c Vendetta 47 — Battlefield の配置許可と制限
+
+- Battlefield への通常プレイと、Here to Help のように配置先を指定する軽減プレイで、プレイ制限を共通に検査する（CR 054.2, 355.17.b）。Perched Grimwyrm は、Arachnoid Horror が配置を許可していても、そのターンに Conquer した Battlefield にしか出せない。効果が禁止された場所を指定した場合は、その Unit のコストを支払わない。
+- Dragon Roost の任意コストと、Temporal Breach などの効果と配置先が競合した場合の選択を、続けて実装する（CR 355.17.a）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**
