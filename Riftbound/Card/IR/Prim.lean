@@ -404,6 +404,10 @@ inductive StaticMod where
   /-- Spells of the player that choose this object cost this much less (1 Energy or 1 Power of
   any domain: the player's choice) (Irelia). -/
   | chosenSpellsCostLess (n : Nat)
+  /-- Spells that choose a friendly Unit here cost less Power (CR 355-356). -/
+  | friendlyTargetPowerCut (n : Nat)
+  /-- Cards with Reaction cost more Power during the Showdown here (CR 341, 356, 813). -/
+  | showdownReactionTax (n : Nat)
   /-- Legends of the controller of this Battlefield can: Exhaust, attach an Equipment they control to
   a unit they control (Forge of the Fluft). -/
   | legendsAttach

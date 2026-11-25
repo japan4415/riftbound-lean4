@@ -995,7 +995,7 @@ def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List E
       (d.hasType .unit || d.hasType .gear) && !s.blocksOwnPlay p id d)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
-    match payByRunes s p id ⟨0, c.power⟩ with
+    match payByRunes s p id ⟨0, s.adjustPower id c.power⟩ with
     | some r => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
     | none => (s, [])
   | none => playFree p s id
@@ -1289,25 +1289,32 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
     | some bf => playToOrBase p bf s id
     | none => playFree p s id
 
-/-- Cast a Spell from where it is, paying its cost less `k` Energy (and all its Power), with the
-`idx`-th legal pick of its targets: it goes on the Chain. If the cost cannot be paid, or there is no
-such pick, nothing is paid and it is not cast. -/
+/-- Possible targets and adjusted costs for a Spell played by another effect (CR 420.3).
+Different ways to apply a Power discount remain choices for the player. -/
+def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
+    (e : EffectDef) (less : Nat) : List (List ObjId × Cost) :=
+  (s.effCost p id d).toList.flatMap (fun base =>
+    (targetTuples s p id s.mightTable e.choices).flatMap (fun targets =>
+      (s.targetPowerOptions p id targets (base.lessEnergy less)).map (targets, ·)))
+
+/-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
+If the cost cannot be paid or the choice is unavailable, it is not cast. -/
 def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
     GameState × List Event :=
   match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
       (fun d => d.spellEffect.map (fun e => (d, e))) with
   | some (d, e) =>
-    match (targetTuples s p id s.mightTable e.choices)[idx]?, s.effCost p id d with
-    | some ts, some c =>
-      match payByRunes s p id ⟨c.energy - k, c.power⟩ with
+    match (reducedSpellChoices s p id d e k)[idx]? with
+    | some (ts, cost) =>
+      match payByRunes s p id cost with
       | some r =>
         match moveObj r.1 id .chain with
         | some m =>
-          (m.1.modObj m.2 (Object.withPlay ts (r.1.playMark p id ⟨0, []⟩ ts)),
+          (m.1.modObj m.2 (Object.withPlay ts (r.1.freeMark p id)),
             r.2 ++ [Event.moved id m.2 .chain])
         | none => (s, [])
       | none => (s, [])
-    | _, _ => (s, [])
+    | none => (s, [])
   | none => (s, [])
 
 /-- Casting a Spell for a reduced cost is a safe change. -/
@@ -2930,7 +2937,7 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
     match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
         (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (d, e) =>
-      match payByRunes s p id ⟨0, ((d.cost.map (·.power)).getD [])⟩ with
+      match payByRunes s p id ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩ with
       | some r =>
         (r.1, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
           .run p src env es], r.2)
@@ -2947,8 +2954,8 @@ def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (se
   | _, some (id :: _) =>
     match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
         (fun d => d.spellEffect.map (fun e => (d, e))) with
-    | some (_, e) =>
-      let n := (targetTuples s p id s.mightTable e.choices).length
+    | some (d, e) =>
+      let n := (reducedSpellChoices s p id d e ((less.evalS s p src env).getD 0)).length
       some (s, [.run p src env (.cons (.eitherOf (EffectList.ofList
         ((List.range n).map (fun i => Effect.prim (.castPicked sel less i))))) es)], [])
     | none => none

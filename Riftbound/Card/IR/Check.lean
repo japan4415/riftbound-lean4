@@ -260,6 +260,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
+  | .friendlyTargetPowerCut _ | .showdownReactionTax _ => true
   | .lookBeforeReveal => true
   | .banishOnDeath => true
   | .copiesUnitText => true

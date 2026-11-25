@@ -446,6 +446,7 @@ def StaticMod.runs : StaticMod → Bool
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
+  | .friendlyTargetPowerCut _ | .showdownReactionTax _ => true
   | .lookBeforeReveal => true
   | .banishOnDeath => true
   | .copiesUnitText => true

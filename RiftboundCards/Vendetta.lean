@@ -4247,8 +4247,9 @@ def VEN_160.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mystic Vortex: the effect is not written yet. -/
-def VEN_160 : CardDef := VEN_160.meta
+/-- Mystic Vortex increases the Power cost of Reaction cards during its Showdown. -/
+def VEN_160 : CardDef :=
+  { VEN_160.meta with abilities := [.passive .always [.showdownReactionTax 1]], status := .drafted }
 
 -- BEGIN GENERATED VEN-161
 /--
@@ -4325,8 +4326,9 @@ def VEN_164.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Sandswept Tomb: the effect is not written yet. -/
-def VEN_164 : CardDef := VEN_164.meta
+/-- Sandswept Tomb reduces the Power cost of Spells that choose a friendly Unit there. -/
+def VEN_164 : CardDef :=
+  { VEN_164.meta with abilities := [.passive .always [.friendlyTargetPowerCut 1]], status := .drafted }
 
 -- BEGIN GENERATED VEN-165
 /--

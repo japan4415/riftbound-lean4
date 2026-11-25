@@ -87,8 +87,8 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
 
 /-- The cost plan after applying any Energy discounts for this activated ability. -/
 def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
-    (costs : List AbilityCost) : Option (Bool × Option Cost) :=
-  (costPlan costs).map (fun (ex, base) => (ex, base.map (fun cost =>
+    (costs : List AbilityCost) (targets : List ObjId) : Option (Bool × Option Cost) :=
+  (costPlan costs).map (fun (ex, base) =>
     let discount := costs.foldl (fun total c =>
       match c with
       | .energyDiscount cond amount =>
@@ -96,7 +96,15 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
           total + (amount.evalS s p src {}).getD 0
         else total
       | _ => total) 0
-    cost.lessEnergy discount)))
+    let tax := if costs.contains .fromHidden then
+      let cut := s.choosePowerCut p src targets
+      let deflect := if cut != 0 then s.deflectCost p targets (some src) else 0
+      s.showdownReactionTax + deflect - cut
+      else 0
+    let pay := if tax = 0 then base.map (·.lessEnergy discount) else
+      let cost := (base.getD Cost.zero).lessEnergy discount
+      some { cost with power := cost.power ++ List.replicate tax .any }
+    (ex, pay))
 
 /-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
 def costKills (costs : List AbilityCost) : Bool :=
@@ -429,7 +437,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
         s.abilityZoneOk p src idx &&
         match d.fullAbilities[idx]? with
         | some (.activated costs speed body limit) =>
-          match s.activationPlan p src costs with
+          match s.activationPlan p src costs ts with
           | some (ex, pc) =>
             if (manaKind body).isSome then false
             else
@@ -437,7 +445,9 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                 (match pc with
                   | some c => c.paidBy d.domains pay
                   | none => pay == ⟨0, []⟩) &&
-                (s.spendFor p (d.hasType .gear) pay).any (fun pool => s.deflectOk p pool ts) &&
+                (s.spendFor p (d.hasType .gear) pay).any (fun pool =>
+                  (costs.contains .fromHidden && s.choosePowerCut p src ts != 0) ||
+                    s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true
                   | .perTurn n => decide (o.used.count idx < n)) &&
@@ -593,7 +603,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : s.activationPlan p src costs with
+          cases hp : s.activationPlan p src costs ts with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -626,7 +636,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
     ∃ d costs sp body lim pc, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         d.fullAbilities[idx]? = some (Ability.activated costs sp body lim) ∧
-        s.activationPlan p src costs = some (costExhausts costs, pc) ∧
+        s.activationPlan p src costs ts = some (costExhausts costs, pc) ∧
           (match pc with
             | some c => c.paidBy d.domains pay = true
             | none => pay = ⟨0, []⟩) ∧
@@ -657,7 +667,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         cases ab with
         | activated costs sp body lim =>
           simp only [ha] at h
-          cases hp : s.activationPlan p src costs with
+          cases hp : s.activationPlan p src costs ts with
           | none => simp [hp] at h
           | some pe =>
             obtain ⟨ex, pc⟩ := pe
@@ -692,7 +702,7 @@ def ambushPick (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
 
 /-- The card is a Reaction (CR 813): a Gear with Quick-Draw has Reaction (CR 819). -/
 def reactSpell (s : GameState) (c : ObjId) : Bool :=
-  (s.cardDef? c).any (fun d => d.hasKeyword .reaction || d.hasKeyword .quickDraw)
+  s.cardHasReaction c
 
 /-- The card of the hand can answer an item of the Chain: a Spell, a Unit or a Gear with Reaction
 (CR 813). A Unit or a Gear is played at once. -/
@@ -713,14 +723,14 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
         (List.range d.fullAbilities.length).flatMap (fun (idx : Nat) =>
           match d.fullAbilities[idx]? with
           | some (Ability.activated costs _ body _) =>
-            (match s.activationPlan p src costs with
-              | some (_, some c) => c.payments d.domains
-              | _ => [⟨0, []⟩]).flatMap (fun pay =>
-              (s.discardPayments p src costs).flatMap (fun ds =>
-                (([] :: (targetTuples s p src s.mightTable body.choices).filter
-                    (fun ts => decide (ts ≠ []))).filter
-                  (fun ts => activatable s p src idx pay ts open_ ds)).map
-                  (fun ts => ⟨.player p, .activate src idx pay ts ds⟩)))
+            ([] :: (targetTuples s p src s.mightTable body.choices).filter
+                (fun ts => decide (ts ≠ []))).flatMap (fun ts =>
+              (match s.activationPlan p src costs ts with
+                | some (_, some c) => c.payments d.domains
+                | _ => [⟨0, []⟩]).flatMap (fun pay =>
+                  ((s.discardPayments p src costs).filter
+                    (fun ds => activatable s p src idx pay ts open_ ds)).map
+                    (fun ds => ⟨.player p, .activate src idx pay ts ds⟩)))
           | _ => [])
       | none => [])
 
@@ -789,7 +799,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
         cases ab with
         | activated costs sp body lim =>
           simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter] at ha
-          obtain ⟨pay, -, ds, -, ts, ⟨-, hact⟩, rfl⟩ := ha
+          obtain ⟨ts, -, pay, -, ds, ⟨-, hact⟩, rfl⟩ := ha
           exact ⟨src, idx, pay, ts, ds, rfl, hact⟩
         | passive _ _ => simp [hab] at ha
         | replacement _ _ _ => simp [hab] at ha
@@ -804,19 +814,19 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
     · simp only [hd, List.mem_flatMap, List.mem_range]
       refine ⟨idx, (List.getElem?_eq_some_iff.mp hab).1, ?_⟩
       simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter]
-      refine ⟨pay, ?_, discards, (s.mem_discardPayments p src costs discards).mpr hds, ts, ⟨?_, hact⟩, rfl⟩
-      · rw [hplan]
-        cases pc with
-        | none =>
-          have : pay = ⟨0, []⟩ := hpay
-          simp [this]
-        | some c => exact (Cost.mem_payments _ _ _).mpr hpay
+      refine ⟨ts, ?_, pay, ?_, discards, ⟨(s.mem_discardPayments p src costs discards).mpr hds, hact⟩, rfl⟩
       · by_cases hn : ts = []
         · subst hn
           exact List.mem_cons_self
         · refine List.mem_cons_of_mem _ ?_
           simp only [List.mem_filter, decide_eq_true_eq]
           exact ⟨(mem_targetTuples s p src s.mightTable body.choices ts).mpr hts, hn⟩
+      · rw [hplan]
+        cases pc with
+        | none =>
+          have : pay = ⟨0, []⟩ := hpay
+          simp [this]
+        | some c => exact (Cost.mem_payments _ _ _).mpr hpay
 
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}

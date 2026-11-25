@@ -114,11 +114,38 @@ def deflectOk (s : GameState) (p : PlayerId) (pool : RunePool) (ts : List ObjId)
     (spell : Option ObjId := none) : Bool :=
   decide (s.deflectCost p ts spell ≤ pool.totalPower)
 
+/-- A qualifying spell gets each Battlefield's Power discount once, even when it chooses
+several friendly Units there (CR 355-356). -/
+def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  if (s.cardDef? c).any (·.hasType .spell) then
+    let fields := ts.filterMap (fun t =>
+      if (s.cardDef? t).any (·.hasType .unit) then
+        ((s.obj? t).filter (·.controller == p)).bind (·.loc)
+      else none)
+    (fields.eraseDups.flatMap (fun bf => (s.activeMods bf).filterMap (fun
+      | .friendlyTargetPowerCut n => some n
+      | _ => none))).sum
+  else 0
+
+/-- Deflect is part of the combined payment when a target-based Power discount applies
+to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). -/
+def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
+  match a.kind with
+  | .playCard c _ ts _ => s.choosePowerCut p c ts != 0
+  | .activate c idx _ ts _ =>
+    s.choosePowerCut p c ts != 0 &&
+      (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with
+      | some (.activated costs _ _ _) => costs.contains .fromHidden
+      | _ => false)
+  | _ => false
+
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
   match a.actor with
-  | .player p => s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
+  | .player p =>
+    if s.deflectInPayment p a then s2
+    else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/
@@ -126,7 +153,9 @@ theorem paySurcharge_cases (s : GameState) (a : Action) (s2 : GameState) :
     paySurcharge s a s2 = s2 ∨ ∃ p pool, paySurcharge s a s2 = s2.setPool p pool := by
   unfold paySurcharge
   split
-  · exact Or.inr ⟨_, _, rfl⟩
+  · split
+    · exact Or.inl rfl
+    · exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inl rfl
 
 /-- `s3` is `s2`, or `s2` with the Pool of a player replaced: the change that paying a surcharge

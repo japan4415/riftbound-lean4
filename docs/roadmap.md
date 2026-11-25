@@ -1881,6 +1881,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Siphoning Strike は Rune が 7 枚以上なら 7 ダメージ、それ以外なら 4 ダメージを与える。対象の Unit がそのターン中に倒れたとき、呪文を使ったプレイヤーが Rune を 1 枚 Exhausted で Channel する。対象自身の Deathknell と別に誘発する（CR 391-393）。Deadly Flourish も同じ遅延誘発の処理を使う。
 - 167 枚中 117 枚が `drafted`、115 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 22 — Battlefield による Power の増減
+
+- Mystic Vortex の Showdown 中、Reaction を持つカードのプレイに Power を 1 加える。Quick-Draw、Ambush、Hidden から Reaction を得る場合にも適用する（CR 341, 356.3, 811.6, 813, 819.1.b, 822.1.b）。
+- Sandswept Tomb は、そこにいる味方 Unit を選ぶ Spell の総 Power コストを Battlefield ごとに 1 減らす。複数のドメインの Power がある場合は、どの記号を減らすか選べる。Repeat や Deflect を含む支払いと、効果でコストを払ってプレイする Spell も検査した（CR 355-356, 420.3, 809）。
+- Temporal Portal が付ける Repeat は Spell の印刷コストを参照する。Mystic Vortex の追加 Power を Repeat のコストにも足してしまうことを防ぐ。[Spiritforged 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 軽減で任意の追加コストが 0 になり、支払い額が一致する場合は、追加コストを払うかどうかを明示的に選ぶ処理が残っている。
+- 167 枚中 119 枚が `drafted`、117 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

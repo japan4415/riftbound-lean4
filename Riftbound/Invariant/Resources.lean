@@ -77,8 +77,8 @@ theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : playable s p c pay none ts = true)
     (h : applyPlay s p c pay = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      b ∈ s.cutOptionsOf p c cost ts ∧ c' ∈ s.playCostsOf p c d b ∧
-      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
+      b ∈ s.cutOptionsOf p c cost ts ∧ c' ∈ s.targetCosts p c d b ts ∧
+      (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
@@ -109,8 +109,8 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : castable s p c pay targets flow = true)
     (h : applyCast s p c pay targets flow = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
-      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.playCostsOf p c d b ∧
-      (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
+      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.targetCosts p c d b targets ∧
+      (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyCast_pool h

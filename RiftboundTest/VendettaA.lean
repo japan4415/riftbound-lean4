@@ -17,6 +17,151 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Mystic Vortex adds one Power to Reaction, including Quick-Draw and destination-granted
+-- Ambush, for both players. Action by itself costs the printed amount.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let ordinaryField := s.bf0
+  let (s, vortex) ← putBf s p "VEN-160"
+  let (s, spell) ← put s p "VEN-056" .hand
+  let (s, other) ← put s q "VEN-056" .hand
+  let (s, action) ← put s p "SFD-184" .hand
+  let (s, inferna) ← put s p "UNL-002" .hand
+  let (s, gear) ← put s p "SFD-022" .hand
+  let (s, ally) ← putAt s p "VEN-047" vortex
+  let s := (s.rich p).rich q
+  let sd (bf : ObjId) (focus : PlayerId) := { s with pending := [.showdown bf focus 0, .priority p] }
+  let nested : GameState := { s with pending := [.chainPass p 0, .showdown vortex p 0, .priority p] }
+  let free : Action := ⟨.player p, .playCard spell ⟨7, []⟩ []⟩
+  let pay : Action := ⟨.player p, .playCard spell ⟨7, [.body]⟩ []⟩
+  let tax (st : GameState) (c : ObjId) :=
+    ((st.cardDef? c).bind (st.effCost p c)).map (fun k => k.power.length)
+  let ambush : Action := ⟨.player p, .playCard inferna ⟨2, [.mind]⟩ [vortex]⟩
+  let (answered, _) ← (step 100 nested pay).toOption
+  return (legalActions s).contains free && (legalActions (sd ordinaryField p)).contains free &&
+    !(legalActions (sd vortex p)).contains free && (legalActions (sd vortex p)).contains pay &&
+    (legalActions (sd vortex q)).contains ⟨.player q, .playCard other ⟨7, [.order]⟩ []⟩ &&
+    (answered.poolOf p).body + 1 == (s.poolOf p).body &&
+    (legalActions (sd vortex p)).contains ⟨.player p, .playCard action ⟨2, [.body]⟩ [ally]⟩ &&
+    (legalActions (sd vortex p)).contains ambush &&
+    !(legalActions (sd vortex p)).contains ⟨.player p, .playCard inferna ⟨2, []⟩ [vortex]⟩ &&
+    (legalActions (sd vortex p)).contains ⟨.player p, .playCard gear ⟨2, [.fury, .calm]⟩ []⟩ &&
+    tax (sd vortex p) gear == (tax s gear).map (· + 1)
+
+-- A card being played from Hidden gains Reaction, even with no printed Reaction keyword.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, vortex) ← putBf s p "VEN-160"
+  let (s, hidden) ← put s p "OGN-168" .hidden
+  let (s, ally) ← putAt s p "VEN-047" vortex
+  let s := (s.control p vortex).modObj hidden (fun o =>
+    { o with hiddenAt := some vortex, hiddenTurn := some (s.turn - 1) })
+  let s := s.rich p
+  let showdown : GameState := { s with pending := [.showdown vortex p 0, .priority p] }
+  let action (power : List Domain) : Action := ⟨.player p, .activate hidden 1 ⟨0, power⟩ [ally]⟩
+  let (waiting, _) ← (step 100 showdown (action [.calm])).toOption
+  let done := settleChain {} 12 waiting
+  return (legalActions s).contains (action []) &&
+    !(legalActions showdown).contains (action []) &&
+    (legalActions showdown).contains (action [.calm]) &&
+    (waiting.poolOf p).calm + 1 == (s.poolOf p).calm &&
+    done.locate ally == some (.player p .base) && done.countIn p .trash "OGN-168" == 1
+
+-- Sandswept Tomb removes one symbol of the caster's choice per qualifying Battlefield,
+-- regardless of who controls it or how many friendly Units the Spell chooses there.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, first) ← putBf s q "VEN-164"
+  let (s, second) ← putBf s p "VEN-164"
+  let (s, a) ← putAt s p "VEN-047" first
+  let (s, b) ← putAt s p "VEN-047" first
+  let (s, c) ← putAt s p "VEN-047" second
+  let (s, e) ← putAt s q "VEN-047" first
+  let (s, f) ← put s q "VEN-047" .base
+  let (s, spell) ← put s p "UNL-110" .hand
+  let d ← s.cardDef? spell
+  let d := { d with cost := some ⟨6, [.domain .mind, .domain .body]⟩ }
+  let s := { s with cards := { s.cards with cards := d :: s.cards.cards } }
+  let s := (s.control q first).rich p
+  let act (power : List Domain) (ts : List ObjId) : Action :=
+    ⟨.player p, .playCard spell ⟨6, power⟩ ts⟩
+  let (casting, _) ← (step 100 s (act [.body] [a, b])).toOption
+  let actions := legalActions s
+  return actions.contains (act [.mind] [a, b]) && actions.contains (act [.body] [a, b]) &&
+    !(actions.contains (act [] [a, b])) && !(actions.contains (act [.mind, .body] [a, b])) &&
+    actions.contains (act [] [a, c]) && actions.contains (act [.body] [a, e]) &&
+    actions.contains (act [.mind, .body] [e, f]) && !(actions.contains (act [.body] [e, f])) &&
+    (casting.poolOf p).body + 1 == (s.poolOf p).body && (casting.poolOf p).mind == (s.poolOf p).mind
+
+-- Deflect adds Power to the total, so Tomb can cover it both for a normal cast and from Hidden.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, tomb) ← putBf s p "VEN-164"
+  let (s, ally) ← putAt s p "VEN-047" tomb
+  let (s, enemy) ← putAt s q "VEN-064" tomb
+  let (s, spell) ← put s p "UNL-110" .hand
+  let (s, hidden) ← put s p "SFD-145" .hidden
+  let d ← s.cardDef? spell
+  let s := { s with cards := { s.cards with cards := { d with cost := some ⟨6, []⟩ } :: s.cards.cards } }
+  let s := (s.control p tomb).modObj hidden (fun o =>
+    { o with hiddenAt := some tomb, hiddenTurn := some (s.turn - 1) })
+  let s := s.fund p 6
+  let targets := [ally, enemy]
+  let cast : Action := ⟨.player p, .playCard spell ⟨6, []⟩ targets⟩
+  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ targets⟩
+  let (ordinary, _) ← (step 100 s cast).toOption
+  let (fromHidden, _) ← (step 100 s reveal).toOption
+  return s.deflectCost p targets (some spell) == 1 &&
+    (ordinary.poolOf p).total == 0 && (fromHidden.poolOf p).total == 6
+
+-- Two Tomb discounts can cover the Power in both the base and the additional Repeat cost.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, first) ← putBf s p "VEN-164"
+  let (s, second) ← putBf s p "VEN-164"
+  let (s, a) ← putAt s p "VEN-047" first
+  let (s, b) ← putAt s p "VEN-047" second
+  let (s, spell) ← put s p "SFD-023" .hand
+  let s := s.fund p 4
+  let ordinary : Action := ⟨.player p, .playCard spell ⟨2, []⟩ [a, b]⟩
+  let repeat_ : Action := ⟨.player p, .playCard spell ⟨4, []⟩ [a, b]⟩
+  let (one, _) ← (step 100 s ordinary).toOption
+  let (two, _) ← (step 100 s repeat_).toOption
+  let paidRepeats (t : GameState) :=
+    (t.zone .chain).head?.bind (fun id => (t.obj? id).map (·.extraPaid))
+  return paidRepeats one == some 0 && paidRepeats two == some 1 &&
+    (one.poolOf p).energy == 2 && (two.poolOf p).energy == 0
+
+-- Temporal Portal uses the Spell's printed cost for Repeat. The Vortex raises the total once.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, vortex) ← putBf s p "VEN-160"
+  let (s, spell) ← put s p "VEN-056" .hand
+  let s := (s.fund p 14 (body := 2)).addTurnFx p .nextSpellRepeat
+  let s := { s with pending := [.showdown vortex p 0, .priority p] }
+  let pay (power : List Domain) : Action := ⟨.player p, .playCard spell ⟨14, power⟩ []⟩
+  let (casting, _) ← (step 100 s (pay [.body])).toOption
+  let entry ← (casting.zone .chain).head?
+  return (casting.obj? entry).any (·.extraPaid == 1) &&
+    (casting.poolOf p).body == 1 && !(legalActions s).contains (pay [.body, .body])
+
+-- A Spell played for a reduced cost by another effect still gets the Tomb discount.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, tomb) ← putBf s p "VEN-164"
+  let (s, unit) ← putAt s p "VEN-047" tomb
+  let (s, _) ← put s p "SFD-023" .banishment
+  let e := Effect.prim (.playReduced (.one .friendly .inBanishment [.ofType .spell]) (.const 2) none)
+  let s := (s.control p tomb).fund p 0
+  let task := Frame.run p tomb {} (.cons e .nil)
+  let (casting, _) ← (advance 100 { s with pending := [task] } []).toOption
+  let entry ← (casting.zone .chain).head?
+  return (casting.cardDef? entry).any (·.id == cid "SFD-023") &&
+    (casting.obj? entry).any (fun o => o.extraPaid == 0 && o.targets == [unit])
+
 -- Apprentice Mage can order the two cards it Predicts after paying to Empower.
 #guard vendettaCase fun s => do
   let p := s.me

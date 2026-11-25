@@ -180,6 +180,20 @@ def removeSym (dom : Option Domain) : List PowerSym → List PowerSym
     | none => xs
     | some d => if x == .domain d then xs else x :: removeSym dom xs
 
+/-- A card has Reaction by printing, grant or the Quick-Draw keyword (CR 813, 819.1.b).
+Ambush and Hidden grant it only for particular plays (CR 811, 822). -/
+def GameState.cardHasReaction (s : GameState) (c : ObjId) : Bool :=
+  s.hasKw c .reaction || s.hasKw c .quickDraw
+
+/-- Additional Power due from Reaction cards at the ongoing Showdown (CR 341, 356.3). -/
+def GameState.showdownReactionTax (s : GameState) : Nat :=
+  let battlefield := s.pending.findSome? (fun
+    | .showdown bf _ _ => some bf
+    | _ => none)
+  (battlefield.toList.flatMap (fun bf => (s.activeMods bf).filterMap (fun
+    | .showdownReactionTax n => some n
+    | _ => none))).sum
+
 /-- The Power symbols of the cost of the card `c`, more or less by the passive abilities (Vex,
 Needlessly Large Yordle): more first, then less. -/
 def GameState.adjustPower (s : GameState) (c : ObjId) (power : List PowerSym) : List PowerSym :=
@@ -202,7 +216,9 @@ def GameState.adjustPower (s : GameState) (c : ObjId) (power : List PowerSym) : 
             else []
           | _ => [])
       | _, _ => [])
-  let up := changes.foldl (fun l ch => if ch.2.2 then l ++ List.replicate ch.1 .any else l) power
+  let tax := s.showdownReactionTax
+  let taxed := if tax != 0 && s.cardHasReaction c then power ++ List.replicate tax .any else power
+  let up := changes.foldl (fun l ch => if ch.2.2 then l ++ List.replicate ch.1 .any else l) taxed
   changes.foldl (fun l ch =>
     if ch.2.2 then l else (List.range ch.1).foldl (fun l _ => removeSym ch.2.1 l) l) up
 
@@ -286,7 +302,7 @@ def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop
 printed: those it prints (Accelerate, Repeat, an extra cost), and the Repeat that an effect of the
 turn gives the next Spell, for its cost (Temporal Portal). A Repeat is marked: it can be cut in
 Energy by a passive ability (Marai Spire). -/
-def GameState.extrasRaw (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
+def GameState.extrasRaw (s : GameState) (p : PlayerId) (_c : ObjId) (d : CardDef) :
     List (Cost × Bool) :=
   d.additionalCost.toList.map (fun k => (k, false)) ++ d.keywords.filterMap (fun i =>
     match i.keyword, i.arg with
@@ -312,7 +328,7 @@ def GameState.extrasRaw (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
   -- each effect of the turn that gives Repeat gives one more Repeat
   (if d.hasType .spell then
     ((s.fxOf p).filter (· == .nextSpellRepeat)).map (fun _ =>
-      (((s.effCost p c d).getD ⟨0, []⟩), true))
+      (d.cost.getD Cost.zero, true))
   else [])
 
 /-- The ways to pay each optional additional cost of the card, less what the passive abilities cut
@@ -450,6 +466,16 @@ def GameState.chooseCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List Ob
       else acc) 0
   else 0
 
+/-- Ambush grants Reaction when a Unit is played to a Battlefield where its player has a Unit
+(CR 822.1.b). -/
+def GameState.ambushAt (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Bool :=
+  s.hasKw c .ambush && (match ts with
+    | [bf] => (s.cardDef? bf).any (·.hasType .battlefield) &&
+        (s.zone .battlefieldZone).any (fun u =>
+          (s.cardDef? u).any (·.hasType .unit) &&
+            (s.obj? u).any (fun o => o.controller == p && o.loc == some bf))
+    | _ => false)
+
 /-- The lowest Energy the cost of the card `c` can be cut to: the greatest floor of the cuts. -/
 def GameState.cutFloor (s : GameState) (p : PlayerId) (c : ObjId) : Nat :=
   (s.costCuts p c).foldl (fun m cut => Nat.max m cut.2) 0
@@ -478,35 +504,55 @@ def GameState.cutOptionsOf (s : GameState) (p : PlayerId) (c : ObjId) (cost : Co
   | some (e, w) => [(cost.lessEnergy e).lessPower w]
   | none => cost.cutOptions (s.chooseCut p c ts) (s.cutFloor p c)
 
+/-- The possible Power adjustments that depend on targets or the Ambush destination (CR 356).
+Target discounts apply to the total, including optional costs (CR 356.4.c-356.4.f). -/
+def GameState.targetPowerOptions (s : GameState) (p : PlayerId) (c : ObjId)
+    (ts : List ObjId) (cost : Cost) : List Cost :=
+  let tax := s.showdownReactionTax
+  let power := if tax != 0 && s.ambushAt p c ts && !s.cardHasReaction c then
+    cost.power ++ List.replicate tax .any else cost.power
+  let cut := s.choosePowerCut p c ts
+  if cut = 0 then [{ cost with power := power }]
+  else
+    let total := power ++ List.replicate (s.deflectCost p ts (some c)) .any
+    ((dropPowers cut total).eraseDups).map (fun adjusted => { cost with power := adjusted })
+
+/-- The totals for a base cost and a set of targets, with the number of optional costs paid. -/
+def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
+    (cost : Cost) (ts : List ObjId) : List (Cost × Nat) :=
+  (s.playCostsOfK p c d cost).flatMap (fun (total, extras) =>
+    (s.targetPowerOptions p c ts total).map (·, extras))
+
 /-- The payment pays the cost of the card, less what the objects it chooses take off, or the cost
 with an additional cost. -/
 def GameState.paysForXT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
     (ts : List ObjId) (pay : RunePool.Payment) : Bool :=
-  (s.cutOptionsOf p c cost ts).any (fun b => s.paysForX p c d b pay)
+  (s.cutOptionsOf p c cost ts).any (fun b =>
+    (s.targetCosts p c d b ts).any (fun x => x.1.paidBy d.domains pay))
 
 /-- The payments that pay the cost of the card, with what the objects it chooses take off. -/
 def GameState.playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) : List RunePool.Payment :=
-  (s.cutOptionsOf p c cost ts).flatMap (fun b => s.playPaymentsOf p c d b)
+  (s.cutOptionsOf p c cost ts).flatMap (fun b =>
+    (s.targetCosts p c d b ts).flatMap (fun x => x.1.payments d.domains))
 
 /-- The payments listed are exactly the payments that pay. -/
 theorem GameState.mem_playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) (pay : RunePool.Payment) :
     pay ∈ s.playPaymentsOfT p c d cost ts ↔ s.paysForXT p c d cost ts pay = true := by
-  simp only [playPaymentsOfT, paysForXT, List.mem_flatMap, List.any_eq_true,
-    GameState.mem_playPaymentsOf]
+  simp only [playPaymentsOfT, paysForXT, List.mem_flatMap, List.any_eq_true, Cost.mem_payments]
 
 /-- A payment that pays takes out as much as one of the costs it can pay. -/
 theorem GameState.paysForXT_total {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
     {cost : Cost} {ts : List ObjId} {pay : RunePool.Payment}
     (h : s.paysForXT p c d cost ts pay = true) :
-    ∃ b ∈ s.cutOptionsOf p c cost ts, ∃ k ∈ s.playCostsOf p c d b,
-      pay.energy + pay.power.length = k.total := by
+    ∃ b ∈ s.cutOptionsOf p c cost ts, ∃ k ∈ s.targetCosts p c d b ts,
+      pay.energy + pay.power.length = k.1.total := by
   unfold paysForXT at h
   rw [List.any_eq_true] at h
   obtain ⟨b, hb, hp⟩ := h
-  obtain ⟨k, hk, ht⟩ := GameState.paysForX_total hp
-  exact ⟨b, hb, k, hk, ht⟩
+  obtain ⟨k, hk, ht⟩ := List.any_eq_true.mp hp
+  exact ⟨b, hb, k, hk, Cost.total_of_paidBy ht⟩
 
 /-- The costs the card may be played for when its additional cost takes something off the cost
 (Poppy, Atakhan), one for each object the additional cost can be done to. -/
@@ -654,7 +700,7 @@ def Object.withPlay (ts : List ObjId) (m : PlayMark) (o : Object) : Object :=
 def GameState.extraPaidAt (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) (cost : Cost)
     (ts : List ObjId) (pay : RunePool.Payment) : Nat :=
   ((s.cutOptionsOf p c cost ts).flatMap (fun b =>
-    ((s.playCostsOfK p c d b).filter (fun x => x.1.paidBy d.domains pay)).map (·.2))).foldl
+    ((s.targetCosts p c d b ts).filter (fun x => x.1.paidBy d.domains pay)).map (·.2))).foldl
     Nat.max 0
 
 /-- The facts of playing the card now with the payment. -/
@@ -664,7 +710,8 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
   { paid := (s.cardDef? c).any (fun d =>
       match costOf d with
       | some cost =>
-        (s.cutOptionsOf p c cost ts).all (fun b => !(b.paidBy d.domains pay)) ||
+        (s.cutOptionsOf p c cost ts).all (fun b =>
+          (s.targetPowerOptions p c ts b).all (fun x => !x.paidBy d.domains pay)) ||
           (s.extrasFor p c d).any (·.total == 0)
       | none => false),
     extraPaid := (s.cardDef? c).elim 0 (fun d =>
@@ -1001,7 +1048,8 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
               (!d.repeatChooses || decide (targets.length ≤ 1) ||
                 decide (0 < s.extraPaidAt p c d cost targets pay))
           | none => false) &&
-        (s.spendFor p false pay).any (fun pool => s.deflectOk p pool targets (some c))
+        (s.spendFor p false pay).any (fun pool =>
+          s.choosePowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
     | _, _ => false
 
 /-- Cast a Spell (CR 354, 357): pay, and put it on the Chain with the objects chosen. -/
