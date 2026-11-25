@@ -381,8 +381,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
         const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
         const parts = [costText(plan.cost)];
         if (plan.battlefieldFees?.length) parts.push(plan.battlefieldFees.map(cardName).join('、') + ' の追加コストを払う');
-        if (plan.additionalPaid) parts.push('追加コストを払う');
-        if (plan.accelerated) parts.push('Accelerate');
+        const def = cards[cardCode(plan.card, state)];
+        if (plan.additionalPaid || def?.optionalCost) parts.push(plan.additionalPaid ? '追加コストを払う' : '追加コストを見送る');
+        if (plan.accelerated || def?.keywords?.some(({ k }) => k === 'accelerate')) {
+          parts.push(plan.accelerated ? 'Accelerate を使う' : 'Accelerate を見送る');
+        }
         if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
         if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
         const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
@@ -503,7 +506,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const base = a.flowCost;
       const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
       const fees = a.battlefieldFees || [];
-      const cost = fees.length ? '（' + (a.pay - (a.power?.length || 0)) + ' Energy）' : base
+      const permanentChoice = def && !def.types.includes('spell') &&
+        (typeof a.additionalCostPaid === 'boolean' || typeof a.accelerated === 'boolean');
+      const cost = fees.length || permanentChoice
+        ? '（' + (a.pay - (a.power?.length || 0)) + ' Energy）' : base
         ? '（Flow ' + base.energy + ' Energy' +
           (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）'
         : (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
@@ -516,7 +522,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
       const dest = 'moveDest' in a ? '（移動先 ' + (a.moveDest === null ? 'Base' : cardName(a.moveDest)) + '）' : '';
       const fee = fees.length ? '（' + fees.map(cardName).join('、') + ' の追加コストを払う）' : '';
-      const accelerate = a.accelerated ? '（Accelerate）' : '';
+      const accelerate = typeof a.accelerated === 'boolean'
+        ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
         discard + extra + repeat + mode + dest + fee + accelerate;
       if (def && def.types.includes('spell')) {

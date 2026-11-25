@@ -899,7 +899,7 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) : Bool :=
   ((castable s p c pay ts flow pick ||
-      (flow.isNone && pick == .plain && ts.isEmpty && s.extraOk p c ts && playable s p c pay none ts) ||
+      (flow.isNone && ts.isEmpty && s.extraOk p c ts && playable s p c pay none ts pick) ||
       (flow.isNone && bfPlayOk s p c pay ts pick)) &&
     reactSpell s c) || ((flow.isNone && bfPlayOk s p c pay ts pick) && ambushPick s c ts)
 
@@ -1024,7 +1024,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {flow : Option Cost} {pick : SpellPick} : reactable s p c pay ts flow pick = true ↔
       (((castable s p c pay ts flow pick = true ∨
-        (flow = none ∧ pick = .plain ∧ ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay none ts = true)) ∨
+        (flow = none ∧ ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay none ts pick = true)) ∨
         (flow = none ∧ bfPlayOk s p c pay ts pick = true)) ∧
         reactSpell s c = true) ∨
         ((flow = none ∧ bfPlayOk s p c pay ts pick = true) ∧ ambushPick s c ts = true) := by
@@ -1045,7 +1045,7 @@ theorem mem_legalReactions (s : GameState) (p : PlayerId) (a : Action) :
     refine ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, ?_, hd⟩, hr⟩
     rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inr (Or.inl h)
-    · exact Or.inl ⟨h.2.2.2.1, h.2.2.2.2, h.1, h.2.1⟩
+    · exact Or.inl ⟨h.2.2.1, h.2.2.2, h.1⟩
     · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
     · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
 
@@ -1058,7 +1058,7 @@ theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   rcases h with h | h
   · rcases reactable_spec.mp h with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inl h
-    · exact Or.inr ⟨none, ts, .plain, h.2.2.2.2⟩
+    · exact Or.inr ⟨none, ts, pick, h.2.2.2⟩
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
       exact Or.inr ⟨some b, ts, pick, hb⟩
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
@@ -1082,7 +1082,7 @@ theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
     rcases hr with hr | hr
     · rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inr (Or.inl h)
-      · exact Or.inl ⟨h.2.2.2.1, h.2.2.2.2, h.1, h.2.1⟩
+      · exact Or.inl ⟨h.2.2.1, h.2.2.2, h.1⟩
       · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
       · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
     · exact Or.inr (Or.inl hr.1)

@@ -105,7 +105,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     have hplay : castable s p c pay ts flow pick = true ∨ ∃ d xs choice, playable s p c pay d xs choice = true := by
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inl h
-      · exact Or.inr ⟨none, ts, .plain, h.2.2.2.2⟩
+      · exact Or.inr ⟨none, ts, pick, h.2.2.2⟩
       · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
         exact Or.inr ⟨some b, ts, pick, hb⟩
       · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2

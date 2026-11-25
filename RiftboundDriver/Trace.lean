@@ -124,18 +124,23 @@ def modeFields (definition : Option EffectDef) (i : Nat) : List (String × Strin
   let label := definition.bind (fun e => (e.modes[i]?).map SpellMode.label)
   [("mode", toString i)] ++ label.toList.map (fun name => ("modeLabel", jstr name))
 
+/-- Label the portions of a Unit or Gear's optional payment that the player elected. -/
+def permanentCostFields (definition : Option CardDef) (own : List Nat) : List (String × String) :=
+  let printed := definition.any (·.additionalCost.isSome)
+  (if printed then [("additionalCostPaid", if own.contains 0 then "true" else "false")] else []) ++
+    (if definition.any (·.hasKeyword .accelerate) then
+      [("accelerated", if own.contains (if printed then 1 else 0) then "true" else "false")]
+    else [])
+
 /-- Encode the finalization choice separately from the targeted objects. -/
 def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List (String × String)
   | .plain => []
   | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
   | .payForBattlefield sources own =>
-    let definition := state.bind (fun s => s.cardDef? c)
-    let printed := definition.any (·.additionalCost.isSome)
     [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
-      (if printed then [("additionalCostPaid", if own.contains 0 then "true" else "false")] else []) ++
-      (if definition.any (·.hasKeyword .accelerate) &&
-          own.contains (if printed then 1 else 0) then [("accelerated", "true")] else [])
+      permanentCostFields (state.bind (·.cardDef? c)) own
+  | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPlayer pick player =>
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
   | .withCosts pick printed repeats =>
@@ -274,15 +279,18 @@ def actionJson (a : Action) (frame : Option Frame := none)
   let extra : List (String × String) := match a.kind with
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
     | .playCard c pay ts flow discard pick =>
+      let played := (events.findSome? (fun
+        | .moved before after _ => if before == c then some after else none
+        | _ => none)).getD c
       let battlefield := state.bind (fun s =>
-        if (s.cardDef? c).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
+        if (s.cardDef? played).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
         ("targets", jarr (ts.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
-        spellPickFields state c pick
+        spellPickFields state played pick
     | .standardMove u d =>
       [("unit", toString u.n),
        ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)]
@@ -628,7 +636,12 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
         | .playCard c _ _ _ discard _, .playCard c0 _ _ _ discard0 _ =>
           c == c0 && a.targetsOf == a0.targetsOf && discard == discard0
         | _, _ => false
-      let best := (legal.filter same).foldl (fun acc a => if payOf a > payOf acc then a else acc) a0
+      let extrasOf (a : Action) : Nat :=
+        match a.kind with
+        | .playCard _ _ _ _ _ pick => (pick.permanentCosts.map List.length).getD 0
+        | _ => 0
+      let best := (legal.filter same).foldl (fun acc a =>
+        if payOf a > payOf acc || (payOf a == payOf acc && extrasOf a > extrasOf acc) then a else acc) a0
       some (best, r)
     | none =>
     match legal.find? isUse with

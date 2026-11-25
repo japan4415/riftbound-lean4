@@ -71,7 +71,7 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
       recheckTargets := e.recheckTargets })
   | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
-  | .payForBattlefield .. => none
+  | .payForBattlefield .. | .withPermanentCosts .. => none
   | .withPlayer pick _ => e.forPick pick
   | .withCosts pick _ _ => e.forPick pick
 

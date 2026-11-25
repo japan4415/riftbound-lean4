@@ -3677,6 +3677,92 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
     unpaid.countIn s.you .trash "VEN-003" == 1 &&
     !(unpaid.keywordsNow unit).contains ⟨.assault, .amount 2⟩
 
+-- Ezreal reduces Gust Monk's optional cost to zero. The same payment can elect or
+-- decline his effect, from hand or while Void Rush plays him from the deck.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "SFD-149" .base
+  let (s, unit) ← put s p "VEN-006" .base
+  let (s, card) ← put s q "VEN-003" .trash
+  let (s, monk) ← put s p "VEN-101" .hand
+  let (s, rush) ← put s p "SFD-188" .hand
+  let (s, _) ← put s p "VEN-071" .mainDeck
+  let (s, revealed) ← put s p "VEN-101" .mainDeck
+  let s := s.fund p 2 (fury := 1)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let direct (pick : SpellPick) := ActionKind.playCard monk ⟨2, []⟩ [] none none pick
+  let (directPaid, _) ← act s (direct (.withPermanentCosts [0]))
+  let (directDeclined, _) ← act s (direct (.withPermanentCosts []))
+  let (rushPlayed, _) ← act s (.playCard rush ⟨2, [.fury]⟩ [])
+  let offer ← passToChoice 8 rushPlayed
+  let (selection, _) ← act offer (.decide true)
+  let choice ← match selection.pending with
+    | .pickDo .. :: _ => (act selection (.choose revealed)).map Prod.fst
+    | _ => some selection
+  let cast (paid : Bool) := chooseEffectPlay (fun
+    | .finishReducedPermanent id _ plan =>
+      id == revealed && plan.cost == Cost.zero && plan.battlefield.isNone && plan.additionalPaid == paid
+    | _ => false) 8 choice
+  let (effectPaid, _) ← cast true
+  let (effectDeclined, _) ← cast false
+  let says : Says := { pick := (· == [unit]), obj := (· == card) }
+  let verify (t : GameState) (elected : Bool) := Id.run do
+    let done := settleChain says 16 t
+    let some played := done.firstOf p .base "VEN-101" | return false
+    return (done.obj? played).any (fun o => o.paid == elected && o.extraPaid == elected.toNat) &&
+      ((done.keywordsNow unit).contains ⟨.assault, .amount 2⟩) == elected &&
+      (done.countIn q .banishment "VEN-003" == elected.toNat) && (done.poolOf p).energy == 0
+  return (act s (direct .plain)).isNone && (act s (direct (.withPermanentCosts [1]))).isNone &&
+    verify directPaid true && verify directDeclined false &&
+    verify effectPaid true && verify effectDeclined false
+
+-- Both decisions remain legal at the same price when Accelerate goes to zero,
+-- including while playing the Unit to a controlled Battlefield.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← put s p "SFD-149" .base
+  let (s, _) ← put s p "SFD-149" .base
+  let (s, dragon) ← put s p "VEN-016" .hand
+  let s := (s.control p field).fund p 8
+  let play (pick : SpellPick) (dest : List ObjId) : Action :=
+    ⟨.player p, .playCard dragon ⟨8, []⟩ dest none none pick⟩
+  let verify (dest : List ObjId) (accelerate : Bool) : Option Bool := do
+    let choice := play (.withPermanentCosts (if accelerate then [0] else [])) dest
+    let (done, events) ← (step 100 s choice).toOption
+    let played ← events.findSome? (fun | .played _ id => some id | _ => none)
+    return (legalActions s).contains choice && (done.poolOf p).total == 0 &&
+      (done.obj? played).any (fun o => o.exhausted == !accelerate && o.loc == dest.head?)
+  let readyBase ← verify [] true
+  let tiredBase ← verify [] false
+  let readyField ← verify [field] true
+  let tiredField ← verify [field] false
+  return readyBase && tiredBase && readyField && tiredField &&
+    ((step 100 s (play .plain [field])).toOption).isNone
+
+-- A test Gear with both Quick-Draw and an optional cost can make either decision as a Reaction.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, _) ← put s p "SFD-149" .base
+  let (s, gear) ← put s p "SFD-022" .hand
+  let (s, _) ← onChain s s.you "VEN-056"
+  let defn ← s.cardDef? gear
+  let defn := { defn with additionalCost := some ⟨1, []⟩ }
+  let s := { s.fund p 2 (fury := 1) with
+    cards := { s.cards with cards := defn :: s.cards.cards },
+    pending := [.chainPass p 0] }
+  let play (pick : SpellPick) : Action := ⟨.player p, .playCard gear ⟨2, [.fury]⟩ [] none none pick⟩
+  let verify (elected : Bool) : Option Bool := do
+    let a := play (.withPermanentCosts (if elected then [0] else []))
+    let (done, _) ← (step 100 s a).toOption
+    let item ← done.firstOf p .base "SFD-022"
+    return (legalActions s).contains a && (done.poolOf p).total == 0 &&
+      (done.obj? item).any (fun o => o.paid == elected && o.extraPaid == elected.toNat)
+  let take ← verify true
+  let decline ← verify false
+  return take && decline && ((step 100 s (play .plain)).toOption).isNone
+
 -- The Prefect may banish itself to banish the opposing Gear that caused the trigger.
 #guard vendettaCase fun s => do
   let (s, prefect) ← put s s.me "VEN-102" .base

@@ -35,6 +35,8 @@ inductive SpellPick where
   | destination (battlefield : Option ObjId)
   /-- Pay the elected Battlefields' fees and the listed optional costs of the Unit itself. -/
   | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
+  /-- A Unit or Gear's elected optional costs without any Battlefield fees. -/
+  | withPermanentCosts (ownCosts : List Nat)
   /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
   | withPlayer (pick : SpellPick) (player : PlayerId)
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
@@ -48,9 +50,9 @@ def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withPlayer pick _ => pick.optionalCosts
   | _ => none
 
-/-- The Unit's optional costs when the Battlefield's fee was elected. -/
-def SpellPick.battlefieldCosts : SpellPick → Option (List Nat)
-  | .payForBattlefield _ costs => some costs
+/-- The explicitly elected optional costs of a Unit or Gear. -/
+def SpellPick.permanentCosts : SpellPick → Option (List Nat)
+  | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
   | _ => none
 
 /-- The player targeted during finalization. -/

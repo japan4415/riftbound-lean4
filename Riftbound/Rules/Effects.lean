@@ -1582,7 +1582,8 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
   let ownCosts := (if plan.additionalPaid then [0] else []) ++
     (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
   let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
-    paid := !ownCosts.isEmpty, extraPaid := ownCosts.length
+    paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
+    extraPaid := ownCosts.length
     spellPick := if plan.battlefieldFees.isEmpty then .plain
       else .payForBattlefield plan.battlefieldFees ownCosts }
   let ready := s.readyNow p id d || plan.accelerated
@@ -4558,12 +4559,12 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
   | _ => none
 
-/-- Use the shared finalization choices for optional discards, battlefield fees, and mandatory
+/-- Use the shared finalization choices for optional costs, battlefield fees, and mandatory
 locations (CR 355.1.a, 355.17). -/
 def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) : Option (Env × EffectList) :=
   let needsChoices (id : ObjId) := (s.cardDef? id).any (fun d =>
-    (d.discardToPlay && (d.hasType .unit || d.hasType .gear)) ||
+    ((d.discardToPlay || !(s.extrasRaw p id d).isEmpty) && (d.hasType .unit || d.hasType .gear)) ||
       (d.hasType .unit && (env.hiddenPlayLocation.isSome ||
         !(s.battlefieldFeeChoices p id d).isEmpty)))
   let schedule (ids : List ObjId) (price : EffectPlayPrice)
