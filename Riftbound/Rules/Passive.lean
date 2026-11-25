@@ -287,7 +287,9 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
   (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k) ||
     (k == .reaction && (s.cardDef? id).any (·.hasType .spell) &&
-      (s.obj? id).any (fun o => s.hasControlledMod o.controller .spellsHaveReaction))
+      (s.obj? id).any (fun o => s.hasControlledMod o.controller .spellsHaveReaction)) ||
+    (k == .action && (s.cardDef? id).any (fun d => d.hasType .gear && d.hasKeyword .deploy) &&
+      (s.obj? id).any (fun o => s.hasControlledMod o.controller .deployGearHaveAction))
 
 /-- How much the passive change `m` of `src` changes the Might of `id` (CR 479.4). -/
 def modMight (s : GameState) (src id : ObjId) (m : StaticMod) : Int :=

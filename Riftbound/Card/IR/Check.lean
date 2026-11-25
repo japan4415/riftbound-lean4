@@ -265,7 +265,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .anyDamageKills => true
   | .movesHereFromAnywhere => true
-  | .grantRepeat _ | .spellsHaveReaction => true
+  | .grantRepeat _ | .spellsHaveReaction | .deployGearHaveAction => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true

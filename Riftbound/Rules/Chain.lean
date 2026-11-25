@@ -1083,11 +1083,12 @@ def legalReactions (s : GameState) (p : PlayerId) : List Action :=
 def actionSpell (s : GameState) (c : ObjId) : Bool :=
   (s.cardDef? c).any (fun d => d.hasKeyword .action)
 
-/-- The card can be played in a Showdown (CR 347-348, 806, 813): a Spell with Action, or
-a card that can answer the Chain (Reaction). -/
+/-- The card can be played in a Showdown (CR 347-348, 806, 813). Action permits new
+plays by the player with Focus, while the Chain remains restricted to Reactions. -/
 def showdownable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) : Bool :=
-  reactable s p c pay ts flow pick || (castable s p c pay ts flow pick && actionSpell s c)
+  reactable s p c pay ts flow pick || (castable s p c pay ts flow pick && actionSpell s c) ||
+    ((flow.isNone && bfPlayOk s p c pay ts pick) && s.hasKw c .action)
 
 /-- Every way the player can play a card in a Showdown. -/
 def legalShowdownPlays (s : GameState) (p : PlayerId) : List Action :=
@@ -1202,7 +1203,7 @@ theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     {ts : List ObjId} {flow : Option Cost} {pick : SpellPick} (h : showdownable s p c pay ts flow pick = true) :
     castable s p c pay ts flow pick = true ∨ ∃ dest ts' pick', playable s p c pay dest ts' pick' = true := by
   simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at h
-  rcases h with h | h
+  rcases h with (h | h) | h
   · rcases reactable_spec.mp h with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
     · exact Or.inl h
     · exact Or.inr ⟨none, ts, pick, h.2.2.2⟩
@@ -1211,6 +1212,8 @@ theorem showdownable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
       exact Or.inr ⟨some b, ts, pick, hb⟩
   · exact Or.inl h.1
+  · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.1.2
+    exact Or.inr ⟨some b, ts, pick, hb⟩
 
 /-- The plays listed are exactly the cards that can be played in a Showdown. -/
 theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
@@ -1226,13 +1229,14 @@ theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
   · rintro ⟨c, pay, ts, flow, discard, pick, rfl, hc, hr, hd⟩
     refine ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, ?_, hd⟩, hr⟩
     simp only [showdownable, Bool.or_eq_true, Bool.and_eq_true] at hr
-    rcases hr with hr | hr
+    rcases hr with (hr | hr) | hr
     · rcases reactable_spec.mp hr with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
       · exact Or.inr (Or.inl h)
       · exact Or.inl ⟨h.2.2.1, h.2.2.2, h.1⟩
       · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
       · exact Or.inr (Or.inr ⟨h.2, h.1⟩)
     · exact Or.inr (Or.inl hr.1)
+    · exact Or.inr (Or.inr ⟨hr.1.2, by simpa using hr.1.1⟩)
 
 /-- The abilities listed are exactly the ones that can be used in a Showdown. -/
 theorem mem_legalShowdownActivates (s : GameState) (p : PlayerId) (a : Action) :

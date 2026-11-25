@@ -2460,8 +2460,14 @@ def RAD_091.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Jarvan IV, Martial Paragon: the effect is not written yet. -/
-def RAD_091 : CardDef := RAD_091.meta
+/-- Jarvan IV, Martial Paragon. -/
+def RAD_091 : CardDef :=
+  let friendlyDeploy := Selector.all .friendly .here [.ofType .gear, .hasKeyword .deploy]
+  { RAD_091.meta with
+    abilities := [.passive .always [.deployGearHaveAction],
+      .triggered { event := .conquer, condition := .exists friendlyDeploy }
+        (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-092
 /--

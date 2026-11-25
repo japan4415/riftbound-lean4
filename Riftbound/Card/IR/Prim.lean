@@ -516,6 +516,8 @@ inductive StaticMod where
   | grantRepeat (k : Cost)
   /-- The Spells of the player have Reaction. -/
   | spellsHaveReaction
+  /-- The controller's Gear with Deploy have Action, including before they are played. -/
+  | deployGearHaveAction
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
