@@ -5346,8 +5346,12 @@ def UNL_184.meta : CardDef :=
 /-- Thrill of the Hunt. -/
 def UNL_184 : CardDef :=
   { UNL_184.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.prim (.banishReplay (.slot 0)))),
+    -- banish a friendly unit, then play it to the Battlefield chosen with the spell
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .any .atBattlefield [.ofType .battlefield]]
+      (.seqOf [.prim (.banishWith (.slot 0)),
+        .prim (.playTo (Selector.one .friendly .inBanishment [.ofType .unit, .banishedWithMe])
+          (.slot 1))])),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-185
@@ -6189,7 +6193,7 @@ def UNL_214.meta : CardDef :=
 def UNL_214 : CardDef :=
   { UNL_214.meta with
     abilities := [.triggered
-      { subject := Selector.all .any .anywhere [.movedFromHere, .inHandZone], event := .leave }
+      { subject := Selector.all .any .anywhere [.leftFromHere, .inHandZone], event := .leave }
       (.of [] (.ifThen (.canPay ⟨1, []⟩)
         (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.channel .you (.const 0) (.const 1))])) .nop))
       .unlimited],

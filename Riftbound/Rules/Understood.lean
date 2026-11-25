@@ -139,6 +139,7 @@ def Filter.understood : Filter → Bool
   | .controlled => true
   | .controlledByOpponent => true
   | .movedFromHere => true
+  | .leftFromHere => true
   | .hidden => true
   | .top _ => true
   | .openBf => true

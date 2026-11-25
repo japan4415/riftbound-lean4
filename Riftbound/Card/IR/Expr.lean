@@ -110,6 +110,9 @@ inductive Filter where
   | controlledByOpponent
   /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
   | movedFromHere
+  /-- It left the board from the Battlefield the object is at (or is): a unit returned to a hand or
+  killed from here (Ripper's Bay). -/
+  | leftFromHere
   /-- Is exhausted. -/
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/

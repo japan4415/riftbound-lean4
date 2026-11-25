@@ -410,6 +410,13 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (match s.obj? id with
       | some o => (s.zone (.player o.owner .hidden)).contains id
       | none => false)
+  | .leftFromHere =>
+    some (match s.obj? id with
+      | some o =>
+        o.leftFrom.isSome &&
+          o.leftFrom == (if (s.cardDef? self).any (·.hasType .battlefield) then some self
+            else (s.obj? self).bind (·.loc))
+      | none => false)
   | .movedFromHere =>
     some (match s.obj? id with
       | some o =>

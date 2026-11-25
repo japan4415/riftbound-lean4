@@ -141,6 +141,9 @@ structure Object where
   takenBy : Option ObjId := none
   /-- The identifier the card had on the board before it left it (it has a new one afterwards). -/
   formerId : Option ObjId := none
+  /-- The Battlefield the card was at when it left the board (Ripper's Bay: a unit returned to a hand
+  from here). -/
+  leftFrom : Option ObjId := none
   /-- The Equipment this card was banished by, when its Unit died (The Zero Drive). -/
   banishedWith : Option ObjId := none
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/
