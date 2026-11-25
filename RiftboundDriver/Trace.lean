@@ -139,6 +139,8 @@ def eventJson : Event → String
   | .scored p bf conquer =>
     jobj [("t", jstr "scored"), ("player", toString p.n), ("battlefield", toString bf.n),
       ("conquer", if conquer then "true" else "false")]
+  | .scoreDraw p bf =>
+    jobj [("t", jstr "score_draw"), ("player", toString p.n), ("battlefield", toString bf.n)]
   | .recalled u => jobj [("t", jstr "recalled"), ("unit", toString u.n)]
   | .won p => jobj [("t", jstr "won"), ("player", toString p.n)]
   | .played p o => jobj [("t", jstr "played"), ("player", toString p.n), ("obj", toString o.n)]

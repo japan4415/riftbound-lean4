@@ -45,6 +45,8 @@ inductive Event where
   | controlChanged (battlefield : ObjId) (controller : Option PlayerId)
   /-- A player scored a Battlefield (CR 471): by Conquer (`true`) or by Hold (`false`). -/
   | scored (p : PlayerId) (battlefield : ObjId) (conquer : Bool)
+  /-- A draw replaces the point that scoring this Battlefield would award (CR 367, 471). -/
+  | scoreDraw (p : PlayerId) (battlefield : ObjId)
   /-- A Unit was Recalled to its controller's Base (CR 456). -/
   | recalled (unit : ObjId)
   /-- A player won the game (CR 323.1). -/

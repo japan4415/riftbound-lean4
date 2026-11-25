@@ -59,6 +59,12 @@ def GameState.extraDraws (s : GameState) (p : PlayerId) : Nat :=
       ((s.zone (.player p .legendZone)).isEmpty || (s.zone (.player p .championZone)).isEmpty)
   then 1 else 0
 
+/-- The extra draws at the Beginning Phase, including draws that replaced Hold points. -/
+def GameState.beginningDraws (s : GameState) (p : PlayerId) (es : List Event) : Nat :=
+  s.extraDraws p + es.countP (fun
+    | .scoreDraw who _ => who == p
+    | _ => false)
+
 /-- The clock has run out: time was called, and the last of the turns that may be played has
 begun (TR 408.2). -/
 def GameState.clockDue (s : GameState) : Bool :=
@@ -75,7 +81,8 @@ def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
         active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
-        turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1) }
+        turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+        extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken }
 
 /-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
 theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
@@ -83,7 +90,8 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
         { s.mapObjects clearScored with
             pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
             active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
-            turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1) } ∨
+            turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+            extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
   by_cases hc : s.clockDue = true
@@ -117,12 +125,12 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
       [Event.phaseStarted (s.active.getD ⟨0⟩) .ending])
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
-    some ({ (beginStep s (s.active.getD ⟨0⟩)).1 with
+    let p := s.active.getD ⟨0⟩
+    let r := beginStep s p
+    some ({ r.1 with
               phase := .beginning,
-              pending := .draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)) ::
-                .cleanup :: rest },
-      (Event.phaseStarted (s.active.getD ⟨0⟩) .beginning ::
-        (beginStep s (s.active.getD ⟨0⟩)).2))
+              pending := .draw p (s.beginningDraws p r.2) :: .cleanup :: rest },
+      Event.phaseStarted p .beginning :: r.2)
   | .phase .main :: rest =>
     some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
       [Event.phaseStarted (s.active.getD ⟨0⟩) .main])

@@ -103,13 +103,19 @@ def cantActHere (s : GameState) (p : PlayerId) (a : Act) (bf : ObjId) : Bool :=
             | .here => s.hereOf g == some bf
             | .anywhere => true
             | _ => false) &&
-          (untilTurn == 0 ||
-            decide (((List.range (s.turn - s.turnShift)).filter
-              (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)).length < untilTurn))
+          (untilTurn == 0 || decide (s.turnsTaken p < untilTurn))
       | _ => false))
 
 /-- The player `p` cannot score the Battlefield `bf` now. -/
 def cantScoreHere (s : GameState) (p : PlayerId) (bf : ObjId) : Bool := s.cantActHere p .score bf
+
+/-- A Battlefield point the turn player would score is replaced by one draw (CR 367, 471). -/
+def drawForBattlefieldPoint (s : GameState) (p : PlayerId) : Bool :=
+  s.active == some p &&
+    s.passiveSources.any (fun src =>
+      (s.activeMods src).any (fun
+        | .earlyScoreDraw turns => let taken := s.turnsTaken p; taken > 0 && taken ≤ turns
+        | _ => false))
 
 /-- Some passive ability in play has the change `m`, whoever controls it. -/
 def anyActive (s : GameState) (m : StaticMod) : Bool :=

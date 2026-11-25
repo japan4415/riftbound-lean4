@@ -786,8 +786,12 @@ def VEN_029.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ol' Poro: the effect is not written yet. -/
-def VEN_029 : CardDef := VEN_029.meta
+/-- Ol' Poro. -/
+def VEN_029 : CardDef :=
+  { VEN_029.meta with
+    abilities := [.passive (.and .yourTurn (.cmp .le (.turnsTaken .you) (.const 3)))
+      [.cant .self .play]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-030
 /--
@@ -1430,11 +1434,7 @@ def VEN_053.meta : CardDef :=
 /-- Otterpus. -/
 def VEN_053 : CardDef :=
   { VEN_053.meta with
-    abilities := [.replacement .score
-      (.and (.or (.scoreFrom .conquer) (.scoreFrom .hold))
-        (.and (.cmp .le (.turnsTaken .eventPlayer) (.const 2))
-          (.cmp .eq .eventAmount (.const 1))))
-      (.of [] (.prim (.draw .eventPlayer (.const 1))))],
+    abilities := [.passive .always [.earlyScoreDraw 2]],
     status := .drafted }
 
 -- BEGIN GENERATED VEN-054

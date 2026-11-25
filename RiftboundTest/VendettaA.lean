@@ -672,4 +672,74 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (afterEmpty.zone .chain).isEmpty && (afterEmpty.zone (.player p .mainDeck)).isEmpty &&
     afterEmpty.mightNow pakaa == s.mightNow pakaa && afterEmpty.pointsOf s.you == s.pointsOf s.you
 
+-- Ol' Poro is restricted on its player's first three turns, including extra turns.
+-- Playing for free or for a reduced cost cannot bypass the restriction.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, poro) ← put (s.fund p 2) p "VEN-029" .hand
+  let action : Action := ⟨.player p, .playCard poro ⟨2, []⟩ []⟩
+  let next (t : GameState) :=
+    { beginTurnStep t [] with phase := .main, pending := [.priority t.nextTurnPlayer] }
+  let second := next { s with extraTurns := [p, p, p] }
+  let third := next second
+  let fourth := next third
+  let opposing := next { third with extraTurns := [] }
+  let (done, _) ← (step 100 fourth action).toOption
+  let blocked := playReducedOne p 1 none third poro
+  let offTurn := playFree p opposing poro
+  return [s, second, third, fourth].map (·.turnsTaken p) == [1, 2, 3, 4] &&
+    [s, second, third].all (fun t =>
+      !(legalActions t).contains action && !(step 100 t action).isOk) &&
+    (legalActions fourth).contains action && done.countIn p .base "VEN-029" == 1 &&
+    ((playFree p third poro).1.zone (.player p .hand)).contains poro &&
+    (blocked.1.zone (.player p .hand)).contains poro && blocked.2.isEmpty &&
+    blocked.1.poolOf p == third.poolOf p &&
+    opposing.active == some q && offTurn.1.countIn p .base "VEN-029" == 1
+
+-- Otterpus replaces each Hold point with one draw, even when both players control it.
+-- Both Battlefields remain scored, and the replacement expires after each player's second turn.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "VEN-053" .base
+  let (s, _) ← put s q "VEN-053" .base
+  let (s, a) ← putBf s p "VEN-162"
+  let (s, b) ← putBf s p "VEN-160"
+  let held := (s.control p a).control p b
+  let queued := { held with extraTurns := [p, p] }
+  let second := beginTurnStep queued []
+  let third := beginTurnStep second []
+  let beginning (t : GameState) :=
+    (advance 100 { t with pending := [.phase .beginning] } []).toOption
+  let (early, es) ← beginning second
+  let (late, laterEvents) ← beginning third
+  return early.handN p == second.handN p + 2 && early.pointsOf p == second.pointsOf p &&
+    es.contains (.scoreDraw p a) && es.contains (.scoreDraw p b) &&
+    [a, b].all (fun bf => (early.obj? bf).any (fun o => o.scored.contains p && !o.held.contains p)) &&
+    late.handN p == third.handN p && late.pointsOf p == third.pointsOf p + 2 &&
+    laterEvents.contains (.pointsGained p 2)
+
+-- The Conquer replacement applies only on the scorer's turn and does not duplicate the
+-- normal Final Point draw.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s q "VEN-053" .base
+  let (s, bf) ← putBf s p "VEN-158"
+  let (s, _) ← putAt s p "OGN-088" bf
+  let pass (who : PlayerId) : Action := ⟨.player who, .pass⟩
+  let contested := s.modObj bf (fun o => { o with contested := some p })
+  let focused := { contested with pending := [.showdown bf p 0] }
+  let (passed, _) ← (step 100 focused (pass p)).toOption
+  let (done, es) ← (step 100 passed (pass q)).toOption
+  let effectPoint ← applyPrim s p bf {} (.score .you (.const 1))
+  let offTurn := scoreBf { s with active := some q } p bf true
+  let final := scoreBf (s.gainPoints p (s.victoryScore - 1)) p bf true
+  return done.controlOf bf == some p && done.pointsOf p == s.pointsOf p &&
+    done.handN p == s.handN p + 1 && es.contains (.scoreDraw p bf) &&
+    offTurn.1.pointsOf p == s.pointsOf p + 1 && offTurn.2.1.isEmpty &&
+    effectPoint.1.pointsOf p == s.pointsOf p + 1 &&
+    final.2.1 == [.draw p 1]
+
 end RiftboundTest

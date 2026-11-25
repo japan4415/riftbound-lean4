@@ -295,6 +295,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .holdIsConquer => true
   | .triggersExtra _ _ => true
   | .cantPlayer p _ _ _ => p.ok c
+  | .earlyScoreDraw _ => true
   | .custom _ args => args.ok c
 
 /-- A cost of an ability refers only to what is there. -/

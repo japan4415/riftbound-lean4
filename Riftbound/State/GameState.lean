@@ -80,6 +80,8 @@ structure GameState where
   extraTurns : List PlayerId := []
   /-- How many of the turns taken were extra turns: the turn order goes on as if they were not. -/
   turnShift : Nat := 0
+  /-- Who took each extra turn already begun, newest first (CR 301). -/
+  extraTurnsTaken : List PlayerId := []
 deriving DecidableEq, Repr
 
 /-- Every zone of a game with `n` players. -/

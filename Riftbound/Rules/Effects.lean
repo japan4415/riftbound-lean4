@@ -741,7 +741,7 @@ def playFree (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Eve
   match s.cardDef? id with
   | some d =>
     -- only a Unit or a Gear enters the Base; a Spell is played by `playSpellStep`
-    if !(d.hasType .unit || d.hasType .gear) then (s, []) else
+    if !(d.hasType .unit || d.hasType .gear) || s.blocksOwnPlay p id d then (s, []) else
     match moveObj s id (.player p .base) with
     | some r =>
       (enterBase p d (s.freeMark p id) (s.readyNow p id d) r.1 r.2,
@@ -991,7 +991,8 @@ theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
 /-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool; if that cannot be
 done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
 def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  if !((s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear)) then (s, []) else
+  if !((s.cardDef? id).any (fun d =>
+      (d.hasType .unit || d.hasType .gear) && !s.blocksOwnPlay p id d)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
     match payByRunes s p id ⟨0, c.power⟩ with
@@ -1293,7 +1294,8 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
 such pick, nothing is paid and it is not cast. -/
 def castPickedOne (p : PlayerId) (k idx : Nat) (s : GameState) (id : ObjId) :
     GameState × List Event :=
-  match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+  match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+      (fun d => d.spellEffect.map (fun e => (d, e))) with
   | some (d, e) =>
     match (targetTuples s p id s.mightTable e.choices)[idx]?, s.effCost p id d with
     | some ts, some c =>
@@ -2882,7 +2884,8 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match sel.eval s p src env with
   | some (id :: _) =>
-    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+        (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (d, e) =>
       match payByRunes s p id ⟨0, ((d.cost.map (·.power)).getD [])⟩ with
       | some r =>
@@ -2899,7 +2902,8 @@ def castReducedStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (se
     Option (GameState × List Frame × List Event) :=
   match dest, sel.eval s p src env with
   | _, some (id :: _) =>
-    match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
+    match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
+        (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (_, e) =>
       let n := (targetTuples s p id s.mightTable e.choices).length
       some (s, [.run p src env (.cons (.eitherOf (EffectList.ofList
@@ -2962,7 +2966,7 @@ def playSpellStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel 
   | some (id :: _) =>
     match (s.cardDef? id).bind (fun d => d.spellEffect.map (fun e => (d, e))) with
     | some (d, e) =>
-      if d.hasType .spell && e.choices.isEmpty then
+      if d.hasType .spell && e.choices.isEmpty && !s.blocksOwnPlay p id d then
         (moveObj s id .chain).map (fun r =>
           ((r.1.modObj r.2 (fun o =>
               { Object.withPlay [] (s.freeMark p id) o with controller := p })),

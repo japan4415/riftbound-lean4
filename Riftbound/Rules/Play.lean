@@ -213,9 +213,16 @@ def GameState.adjustCost (s : GameState) (p : PlayerId) (c : ObjId) (base : Cost
     (base.energy + s.costRaise c)
   { energy, power := s.adjustPower c base.power }
 
-/-- The cost of playing a card for its base cost (CR 356). -/
+/-- A card's own play restriction applies in every zone it could be played from (CR 002, 349). -/
+def GameState.blocksOwnPlay (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Bool :=
+  d.fullAbilities.any (fun
+    | .passive cond mods =>
+      mods.contains (.cant .self .play) && cond.eval s p c {} == some true
+    | _ => false)
+
+/-- The cost of playing an eligible card for its base cost (CR 356). -/
 def GameState.effCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) : Option Cost :=
-  d.cost.map (s.adjustCost p c)
+  if s.blocksOwnPlay p c d then none else d.cost.map (s.adjustCost p c)
 
 /-- The distinct resource costs granted by the printed and temporary instances of Flow (CR 829). -/
 def GameState.flowCosts (s : GameState) (c : ObjId) (d : CardDef) : List Cost :=
@@ -238,9 +245,11 @@ When several raw Flow costs are available, the action names one even if the paym
 def GameState.directOptions (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List (Option Cost × Cost) :=
   if s.flowPlaying p c then
-    match s.flowCosts c d with
-    | [base] => [(none, s.adjustCost p c base)]
-    | costs => costs.map (fun base => (some base, s.adjustCost p c base))
+    if s.blocksOwnPlay p c d then []
+    else
+      match s.flowCosts c d with
+      | [base] => [(none, s.adjustCost p c base)]
+      | costs => costs.map (fun base => (some base, s.adjustCost p c base))
   else (s.effCost p c d).toList.map (none, ·)
 
 /-- The cost selected for this play, after applying the normal adjustments. -/

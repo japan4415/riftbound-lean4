@@ -150,6 +150,11 @@ def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId
   (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf &&
     o.controller == p) && (s.cardDef? u).any (·.hasType .unit))
 
+/-- The turns of this player that have begun, including extra turns and the current turn (CR 301). -/
+def GameState.turnsTaken (s : GameState) (p : PlayerId) : Nat :=
+  ((List.range (s.turn - s.turnShift)).countP
+    (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)) + s.extraTurnsTaken.count p
+
 /-- The Combat that is going on: its Battlefield and its Attacker. It goes on from the moment it
 starts (CR 466) to its end (CR 468): the frames of the Combat are on the stack. -/
 def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
@@ -996,11 +1001,8 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     let l ← ps.resolve s p
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
   | .turnsTaken ps => do
-    -- the turns the players have taken, this one included (CR 301), not counting the extra turns
     let l ← ps.resolve s p
-    pure (l.foldl (fun acc q =>
-      acc + ((List.range (s.turn - s.turnShift)).filter
-        (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == q)).length) 0)
+    pure ((l.map s.turnsTaken).sum)
   | .handSize ps => do
     let l ← ps.resolve s p
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)

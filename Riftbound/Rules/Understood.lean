@@ -462,11 +462,13 @@ def StaticMod.runs : StaticMod → Bool
   | .triggersExtra .conquer .here => true
   | .triggersExtra .hold .here => true
   | .cant .self .beChosen => true
+  | .cant .self .play => true
   | .cant (.pick .all _ place fs) .beChosen => place.understood && FilterList.understood fs
   | .noCombatDamageFor (.pick .all _ place fs) => place.understood && FilterList.understood fs
   | .cantPlayer _ .score .here _ => true
   | .cantPlayer _ .score .anywhere _ => true
   | .cantPlayer _ .play .here _ => true
+  | .earlyScoreDraw _ => true
   | .bonusDamageHere _ => true
   | .victoryScorePlus a => a.understoodC
   | .victoryScoreMinus a => a.understoodC

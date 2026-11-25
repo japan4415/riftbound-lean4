@@ -468,6 +468,8 @@ inductive StaticMod where
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/
   | cantPlayer (p : PlayerSel) (act : Act) (where_ : Place) (untilTurn : Nat)
+  /-- Replace a point from scoring a Battlefield on one's first `turns` turns with a draw. -/
+  | earlyScoreDraw (turns : Nat)
   /-- The Unit deals no combat damage (Ezreal, Dashing). -/
   | noCombatDamage
   /-- Limit the number of runes normally channeled at the start of the Channel Phase. -/
