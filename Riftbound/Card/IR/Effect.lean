@@ -71,6 +71,40 @@ structure EffectSpellPlay where
   pick : SpellPick
 deriving DecidableEq, Repr, Hashable
 
+/-- A replacement still available for one damage event. Turn notes use their positions in
+the original damage batch, so individual effects can be spent independently. -/
+inductive DamageReplacement where
+  /-- One instance of doubling the incoming damage. -/
+  | double
+  /-- A remaining finite Prevent Value. -/
+  | prevent (note remaining : Nat)
+  /-- One effect that prevents the next hit in full. -/
+  | shield (note : Nat)
+deriving DecidableEq, Repr, Hashable
+
+/-- A damage event while its controller is ordering the applicable replacements. -/
+structure EffectDamageHit where
+  /-- The object that will take the damage. -/
+  target : ObjId
+  /-- The damage after the replacements chosen so far. -/
+  amount : Nat
+  /-- The replacements that have not yet applied to this event. -/
+  replacements : List DamageReplacement
+deriving DecidableEq, Repr, Hashable
+
+/-- Damage from one instruction. Keep replacements and damage tentative until the whole
+instruction is ready, so simultaneous events are still observed together. -/
+structure EffectDamageBatch where
+  /-- Who controls damage from a Spell or Ability, or none for an exchange between Units. -/
+  controller : Option PlayerId
+  /-- Events waiting to have their replacements ordered. -/
+  incoming : List (ObjId × Nat)
+  /-- Final damage events, in reverse input order. -/
+  resolved : List (ObjId × Nat) := []
+  /-- The amount consumed from each numbered turn note. -/
+  spent : List (Nat × Nat) := []
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
@@ -131,6 +165,11 @@ inductive Effect where
   | finishTrashSpell (card : ObjId) (plan : EffectSpellPlay) (adds : List EffectAdd)
   /-- Put the queued Spell back in its owner's Trash without finalizing it. -/
   | cancelTrashSpell (card : ObjId)
+  /-- Continue working through the events of a single damage instruction. -/
+  | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
+  /-- Apply one selected replacement and continue with the rest. -/
+  | chooseDamageReplacement (batch : EffectDamageBatch) (hit : EffectDamageHit)
+      (replacement : DamageReplacement)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

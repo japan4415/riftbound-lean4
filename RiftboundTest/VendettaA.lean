@@ -1696,6 +1696,83 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     !(firstEvents.any (fun | .damaged u n => u == defender && n > 0 | _ => false)) &&
     secondEvents.contains (.damaged defender 1)
 
+/-- Select an available replacement, advancing past the other options if necessary. -/
+meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → Bool) :
+    Nat → GameState → Option (GameState × List Event)
+  | 0, _ => none
+  | fuel + 1, s =>
+    let answer (yes : Bool) := (step 100 s ⟨.player p, .decide yes⟩).toOption
+    let selected : Effect → Bool
+      | .chooseDamageReplacement _ _ kind => accept kind
+      | _ => false
+    match s.pending with
+    | .eitherDo who _ _ first other _ :: _ =>
+      if who != p then none
+      else if selected first then answer true
+      else if selected other then answer false
+      else match other with
+        | .eitherOf _ => (answer false).bind (selectDamageReplacement p accept fuel ∘ Prod.fst)
+        | _ => none
+    | _ => none
+
+-- Shock Blast is outside Combat. Its target's controller may order Ki Barrier
+-- and Lotus Trap, or keep either a finite prevention or a full shield for later.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, barrier) ← put s p "VEN-126" .hand
+  let (s, trap) ← put s p "UNL-013" .hand
+  let (s, blast) ← put s p "VEN-059" .hand
+  let (s, target) ← putAt s q "VEN-091" s.bf0
+  let s := s.control q s.bf0
+  let shielded ← play s p barrier [target]
+  let trapped ← play shielded p trap [target]
+  let ask (t : GameState) := do
+    let cast : Action := ⟨.player p, .playCard blast ⟨3, [.mind]⟩ [target]⟩
+    let (chain, _) ← (step 100 (t.fund p 3 (mind := 1)) cast).toOption
+    passToChoice 8 chain
+  let question ← ask trapped
+  let prevent : DamageReplacement → Bool | .prevent _ 7 => true | _ => false
+  let (prevented, firstEvents) ← selectDamageReplacement q prevent 4 question
+  let (doubled, secondEvents) ← selectDamageReplacement q (· == .double) 4 question
+  let fullShield ← ask (shielded.addTurnFxOn q target .damagePrevented)
+  let (kept, _) ← selectDamageReplacement q prevent 4 fullShield
+  let (used, _) ← selectDamageReplacement q (fun | .shield _ => true | _ => false) 4 fullShield
+  return !(legalActions question).contains ⟨.player p, .decide true⟩ &&
+    prevented.preventValue target == 3 && doubled.preventValue target == 0 &&
+    !(firstEvents.any (fun | .damaged id _ => id == target | _ => false)) &&
+    secondEvents.contains (.damaged target 1) && !prevented.preventFirst target &&
+    kept.shielded target && kept.preventValue target == 3 &&
+    !used.shielded target && used.preventValue target == 7
+
+-- Rampage's two simultaneous hits commit only after replacement choices. Two
+-- Lotus Traps can be interleaved with two separate Prevent Values on one Unit.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, rampage) ← put s p "VEN-083" .hand
+  let (s, friendly) ← put s p "VEN-091" .base
+  let (s, target) ← put s q "VEN-091" .base
+  let s := (s.fund p 3).modObj friendly (fun o => { o with baseMightThisTurn := some 4 })
+  let s := (s.addTurnFxOn p target .doubleDamage).addTurnFxOn p target (.preventDamage 7)
+  let s := (s.addTurnFxOn p target .doubleDamage).addTurnFxOn q target (.preventDamage 3)
+  let cast : Action := ⟨.player p, .playCard rampage ⟨3, []⟩ [friendly, target]
+    none none (.withCosts .plain false 0)⟩
+  let (chain, _) ← (step 100 s cast).toOption
+  let question ← passToChoice 8 chain
+  let choose := selectDamageReplacement q
+  let (firstDouble, early) ← choose (· == .double) 4 question
+  let (interleaved, middle) ← choose (fun | .prevent _ 7 => true | _ => false) 4 firstDouble
+  let (finished, interleavedEvents) ← choose (· == .double) 4 interleaved
+  let (bothDoubled, _) ← choose (· == .double) 4 firstDouble
+  let (otherwise, doubledEvents) ← choose (fun | .prevent _ 7 => true | _ => false) 4 bothDoubled
+  return early.isEmpty && middle.isEmpty && interleaved.preventValue target == 10 &&
+    (interleaved.obj? friendly).any (·.damage == 0) &&
+    finished.preventValue target == 1 && otherwise.preventValue target == 0 &&
+    !(interleavedEvents.any (fun | .damaged id _ => id == target | _ => false)) &&
+    interleavedEvents.contains (.damaged friendly 10) &&
+    doubledEvents.contains (.damaged target 6) && doubledEvents.contains (.damaged friendly 10)
+
 -- Mesmerize records the mode before responses and uses only that mode's target.
 #guard vendettaCase fun s => do
   let p := s.me

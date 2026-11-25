@@ -2103,6 +2103,12 @@ def GameState.preventFirst (s : GameState) (id : ObjId) : Bool :=
   s.turnFx.any (fun note =>
     note.turn == s.turn && note.target == some id && note.kind == .preventBeforeDouble)
 
+/-- Damage is excluded by the Unit's immunity, with enemy-effect immunity scoped to its source. -/
+def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option PlayerId) : Bool :=
+  let mods := s.activeMods id
+  mods.contains .noDamage ||
+    (controller.any (· != o.controller) && mods.contains .noEnemyEffectDamage)
+
 /-- Record applied damage, then process effects that react directly to it (CR 418). -/
 def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
   let damagingUnit := decide (0 < n) && (s.cardDef? id).any (·.hasType .unit)
@@ -2163,10 +2169,7 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option Pl
     GameState × List Event :=
   match s.obj? id with
   | some o =>
-    let mods := s.activeMods id
-    if mods.contains .noDamage ||
-        (effectController.any (· != o.controller) && mods.contains .noEnemyEffectDamage) then
-      (s, [])
+    if damageImmune s id o effectController then (s, [])
     else if decide (0 < n) && s.shielded id then (s.useShield id, [])
     else dealThroughPrevent n s id
   | none => (s, [])
@@ -2175,7 +2178,6 @@ def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option Pl
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
     (effectController : Option PlayerId := none) : Safe s (dealObj n s id effectController).1 := by
   unfold dealObj
-  dsimp only
   split
   · split
     · exact Safe.refl s
@@ -2201,6 +2203,179 @@ theorem exchangeDamage_safe (s : GameState) (a b : ObjId) :
   split
   · exact (dealObj_safe _ s b).trans (dealObj_safe _ _ a)
   · exact Safe.refl s
+
+/-- How much has already been consumed from this turn note in the current damage instruction. -/
+def EffectDamageBatch.spentOn (batch : EffectDamageBatch) (note : Nat) : Nat :=
+  batch.spent.foldl (fun total (idx, amount) => if idx == note then total + amount else total) 0
+
+/-- Find the still applicable replacements for one object, even when several copies of an
+effect apply (CR 370.2, 372). -/
+def damageReplacements (s : GameState) (batch : EffectDamageBatch) (target : ObjId) :
+    List DamageReplacement :=
+  s.turnFx.zipIdx.filterMap (fun (note, idx) =>
+    if note.turn != s.turn || note.target != some target then none else
+      match note.kind with
+      | .doubleDamage => some .double
+      | .preventDamage amount =>
+        let remaining := amount - batch.spentOn idx
+        if remaining == 0 then none else some (.prevent idx remaining)
+      | .damagePrevented => if batch.spentOn idx == 0 then some (.shield idx) else none
+      | _ => none)
+
+/-- Apply one replacement to the tentative damage event (CR 370.2, 438.2). -/
+def chooseEffectDamage (batch : EffectDamageBatch) (hit : EffectDamageHit)
+    (replacement : DamageReplacement) : EffectDamageBatch × EffectDamageHit :=
+  let hit := { hit with replacements := hit.replacements.erase replacement }
+  match replacement with
+  | .double => (batch, { hit with amount := 2 * hit.amount })
+  | .prevent note remaining =>
+    let spent := min hit.amount remaining
+    ({ batch with spent := (note, spent) :: batch.spent }, { hit with amount := hit.amount - spent })
+  | .shield note => ({ batch with spent := (note, 1) :: batch.spent }, { hit with amount := 0 })
+
+/-- Effects with the same remaining value are interchangeable for this choice. -/
+def DamageReplacement.sameChoice : DamageReplacement → DamageReplacement → Bool
+  | .double, .double | .shield _, .shield _ => true
+  | .prevent _ a, .prevent _ b => a == b
+  | _, _ => false
+
+/-- Record the damage dealt by one instruction and collect all its damage events together. -/
+def applyEffectDamageAmounts (s : GameState) : List (ObjId × Nat) → GameState × List Event
+  | [] => (s, [])
+  | (id, amount) :: rest =>
+    let r := if (s.obj? id).isSome then dealRemaining amount s id else (s, [])
+    let later := applyEffectDamageAmounts r.1 rest
+    (later.1, r.2 ++ later.2)
+
+/-- Recording a batch of damage preserves the game invariants. -/
+theorem applyEffectDamageAmounts_safe (s : GameState) (hits : List (ObjId × Nat)) :
+    Safe s (applyEffectDamageAmounts s hits).1 := by
+  induction hits generalizing s with
+  | nil => exact Safe.refl s
+  | cons hit rest ih =>
+    obtain ⟨id, amount⟩ := hit
+    simp only [applyEffectDamageAmounts]
+    split
+    · exact (dealRemaining_safe amount s id).trans (ih _)
+    · exact ih s
+
+/-- Commit the spent effects and the damage in one step, after all replacement decisions. -/
+def commitEffectDamage (s : GameState) (batch : EffectDamageBatch) : GameState × List Event :=
+  let notes := s.turnFx.zipIdx.filterMap (fun (note, idx) =>
+    let spent := batch.spentOn idx
+    if spent == 0 then some note else
+    match note.kind with
+    | .preventDamage n =>
+      if spent < n then some { note with kind := .preventDamage (n - spent) } else none
+    | .damagePrevented => none
+    | _ => some note)
+  applyEffectDamageAmounts { s with turnFx := notes } batch.resolved.reverse
+
+/-- Committing the ordered damage and its replacements preserves the game invariants. -/
+theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
+    Safe s (commitEffectDamage s batch).1 := by
+  unfold commitEffectDamage
+  dsimp only
+  apply Safe.trans _ (applyEffectDamageAmounts_safe _ _)
+  exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Continue the damage instruction without applying its events until replacement ordering is
+complete. A nonpositive result after prevention does not emit a damage event (CR 438.4). -/
+def resolveEffectDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (batch : EffectDamageBatch) (hit : Option EffectDamageHit) (es : EffectList) :
+    GameState × List Frame × List Event :=
+  let run (next : Effect) := (s, [Frame.run p src env (.cons next es)], [])
+  match hit with
+  | some damage =>
+    if damage.amount == 0 then run (.resolveEffectDamage batch none)
+    else if damage.replacements.isEmpty then
+      run (.resolveEffectDamage { batch with resolved := (damage.target, damage.amount) :: batch.resolved } none)
+    else
+      let controller := ((s.obj? damage.target).map (·.controller)).getD p
+      let options := (damage.replacements.eraseDupsBy DamageReplacement.sameChoice).map
+        (Effect.chooseDamageReplacement batch damage)
+      (s, [.run controller src env (.cons (.eitherOf (EffectList.ofList options)) .nil),
+        .run p src env es], [])
+  | none =>
+    match batch.incoming with
+    | [] =>
+      let r := commitEffectDamage s batch
+      (r.1, [.run p src env es], r.2)
+    | (id, amount) :: rest =>
+      let next := { batch with incoming := rest }
+      match s.obj? id with
+      | none => run (.resolveEffectDamage next none)
+      | some target =>
+        if damageImmune s id target batch.controller then run (.resolveEffectDamage next none)
+        else if amount == 0 then
+          run (.resolveEffectDamage { next with resolved := (id, 0) :: batch.resolved } none)
+        else run (.resolveEffectDamage next (some ⟨id, amount, damageReplacements s batch id⟩))
+
+/-- Ordering or committing an effect's damage preserves the game invariants. -/
+theorem resolveEffectDamageStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (batch : EffectDamageBatch) (hit : Option EffectDamageHit) (es : EffectList) :
+    Safe s (resolveEffectDamageStep s p src env batch hit es).1 := by
+  unfold resolveEffectDamageStep
+  split
+  · split
+    · exact Safe.refl s
+    · split <;> exact Safe.refl s
+  · split
+    · exact commitEffectDamage_safe s batch
+    · split
+      · exact Safe.refl s
+      · split
+        · exact Safe.refl s
+        · split <;> exact Safe.refl s
+
+/-- The continuation of a damage instruction consists of play frames. -/
+theorem resolveEffectDamageStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {batch : EffectDamageBatch} {hit : Option EffectDamageHit} {es : EffectList} {f : Frame}
+    (hf : f ∈ (resolveEffectDamageStep s p src env batch hit es).2.1) : f.isPlay = true := by
+  unfold resolveEffectDamageStep at hf
+  split at hf
+  · split at hf
+    · obtain rfl := List.mem_singleton.mp hf
+      rfl
+    · split at hf
+      · obtain rfl := List.mem_singleton.mp hf
+        rfl
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+        rcases hf with rfl | rfl <;> rfl
+  · split at hf
+    · obtain rfl := List.mem_singleton.mp hf
+      rfl
+    · split at hf
+      · obtain rfl := List.mem_singleton.mp hf
+        rfl
+      · split at hf
+        · obtain rfl := List.mem_singleton.mp hf
+          rfl
+        · split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
+
+/-- Use the ordered path when replacements interact. Otherwise keep the immediate path used by
+ordinary damage and snapshot bonus damage and both Mights before any replacement choices. -/
+def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim) :
+    Option EffectDamageBatch := do
+  if s.turnFx.length < 2 then none else
+  let batch ← match pr with
+    | .deal sel n => do
+      if s.damageOff then none else
+      let amount ← n.evalS s p src env
+      let ids ← sel.eval s p src env
+      let hits := ids.map (fun id => (id, if amount == 0 then 0 else amount + s.bonusOn p src id))
+      some { controller := some (env.effectController.getD p), incoming := hits }
+    | .exchangeDamage a b => do
+      let x ← (← a.eval s p src env).head?
+      let y ← (← b.eval s p src env).head?
+      let xm ← s.mightNow x
+      let ym ← s.mightNow y
+      some { controller := none, incoming := [(y, xm.toNat), (x, ym.toNat)] }
+    | _ => none
+  if batch.incoming.any (fun (id, amount) => amount != 0 &&
+      (s.obj? id).any (fun target => !damageImmune s id target batch.controller) &&
+      1 < (damageReplacements s batch id).length) then some batch else none
 
 /-- Attach an Equipment to a Unit (CR 137, 825). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
@@ -4566,6 +4741,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match commitTrashSpell s p card plan adds funding with
     | some (t, events) => (t, [.chainPass p 0, .run p src env es], events)
     | none => cancelTrashStep s p src env card es
+  | .resolveEffectDamage batch hit => resolveEffectDamageStep s p src env batch hit es
+  | .chooseDamageReplacement batch hit replacement =>
+    let (next, damage) := chooseEffectDamage batch hit replacement
+    (s, [.run p src env (.cons (.resolveEffectDamage next (some damage)) es)], [])
   | .prim (.banishReplay sel sameLocation) =>
     let units := (sel.eval s p src env).getD []
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
@@ -4595,12 +4774,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim pr =>
-    match permanentPlayEffects s p src env pr with
-    | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+    match effectDamageBatch? s p src env pr with
+    | some batch => (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
     | none =>
-      match applyPrim s p src env pr with
-      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
-      | none => skip
+      match permanentPlayEffects s p src env pr with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env pr with
+        | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
+        | none => skip
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)
@@ -4618,6 +4800,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact castInlineStep_safe s p src env _ es funding
     | exact finalizeTrashStep_safe s p src env _ es funding
     | exact cancelTrashStep_safe s p src env _ es
+    | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact commitTrashSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _

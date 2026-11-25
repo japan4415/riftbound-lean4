@@ -147,6 +147,16 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
   match frame with
   | some (.eitherDo _ unit _ (.prim (.markOn _ .preventBeforeDouble)) .nop _) =>
     [("unit", toString unit.n), ("damageOrder", jstr (if yes then "preventFirst" else "doubleFirst"))]
+  | some (.eitherDo _ _ _ first@(.chooseDamageReplacement ..) other _) =>
+    match if yes then first else other with
+    | .chooseDamageReplacement _ hit replacement =>
+      let (kind, extra) := match replacement with
+        | .double => ("double", [])
+        | .prevent _ value => ("prevent", [("preventValue", toString value)])
+        | .shield _ => ("shield", [])
+      [("unit", toString hit.target.n), ("incomingDamage", toString hit.amount),
+        ("damageReplacement", jstr kind)] ++ extra
+    | _ => [("moreDamageReplacements", "true")]
   | _ => []
 
 /-- Describe a decision about paying during resolution, including individual payments. -/
