@@ -625,8 +625,15 @@ def VEN_022.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Endless Riches: the effect is not written yet. -/
-def VEN_022 : CardDef := VEN_022.meta
+/-- Endless Riches: exchange the hand and Trash for Burn 7 and play cards from the Trash. -/
+def VEN_022 : CardDef :=
+  { VEN_022.meta with
+    abilities := [.triggered { event := .play } (.of [] (.seqOf [
+      .prim (.moveAll .friendly .inHand .nil .inBanishment false),
+      .prim (.moveAll .friendly .inTrash .nil .inBanishment false),
+      .prim (.burn .you (.const 7))])) .unlimited,
+      .passive .always [.skipDrawPhase, .playFromTrash, .banishInsteadOfTrash]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-023
 /--

@@ -193,7 +193,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (sendObj_safe .trash s c).same.result (fun hb => ?_)
+    refine hinv.of_next (discardObj_safe s c).same.result (fun hb => ?_)
     rw [hp] at hb
     dsimp only
     split
@@ -419,7 +419,10 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.draw (s.active.getD ⟨0⟩) 1]
+    dsimp only
+    split
+    · exact hb.pop rfl
+    · exact hb.swap rfl [Frame.draw (s.active.getD ⟨0⟩) 1]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

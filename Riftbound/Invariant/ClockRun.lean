@@ -230,7 +230,7 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (sendObj .trash s c).1 := TC.of_safe (sendObj_safe .trash s c)
+    have h1 : TC s (discardObj s c).1 := TC.of_safe (discardObj_safe s c)
     exact Or.inl (h1.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

@@ -33,6 +33,12 @@ def CardDef.entersExhausted (d : CardDef) : Bool :=
     | Ability.passive .always mods => mods.contains .entersExhausted
     | _ => false)
 
+/-- Record a move into the owner's zone, including a Banish performed by that owner. -/
+def Object.ownerMoveEvents (o : Object) (id new : ObjId) (dest : ZoneKind)
+    (banishedByOwner : Bool := false) : List Event :=
+  .moved id new (.player o.owner dest) ::
+    (if banishedByOwner && o.kind.phys?.isSome then [.banished o.owner o.owner new] else [])
+
 namespace GameState
 
 /-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/
@@ -60,6 +66,34 @@ def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
 /-- The active passive changes from sources controlled by this player (CR 363). -/
 def controlledMods (s : GameState) (p : PlayerId) : List StaticMod :=
   (s.passiveSources.filter (fun src => (s.obj? src).any (·.controller == p))).flatMap s.activeMods
+
+/-- The player has a source of this passive change. Check only conditions of abilities that
+make the requested change. Repeating a source's text does not affect this yes/no test. -/
+def hasControlledMod (s : GameState) (p : PlayerId) (mod : StaticMod) : Bool :=
+  s.passiveSources.any (fun src => (s.obj? src).any (·.controller == p) &&
+    (s.cardDef? src).any (fun d => d.fullAbilities.any (fun
+      | .passive cond mods => mods.contains mod && cond.eval s p src {} == some true
+      | _ => false)))
+
+/-- An active replacement banishes a card that would go to its owner's Trash from outside the
+Main Deck (CR 367-370). Tokens are never affected by this replacement. -/
+def replacesTrash (s : GameState) (id : ObjId) (o : Object) : Bool :=
+  o.kind.phys?.isSome && !(s.zone (.player o.owner .mainDeck)).contains id &&
+    s.hasControlledMod o.owner .banishInsteadOfTrash &&
+    (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear || d.hasType .spell)
+
+/-- Apply any replacement for a proposed destination in the owner's zones. -/
+def ownerDestination (s : GameState) (id : ObjId) (o : Object) (k : ZoneKind) : ZoneKind :=
+  if k == .trash && s.replacesTrash id o then .banishment else k
+
+/-- A Trash or Banishment destination remains in one of those two zones. -/
+theorem ownerDestination_trash_or_banishment (s : GameState) (id : ObjId) (o : Object)
+    {k : ZoneKind} (hk : k = .trash ∨ k = .banishment) :
+    s.ownerDestination id o k = .trash ∨ s.ownerDestination id o k = .banishment := by
+  unfold ownerDestination
+  split
+  · exact Or.inr rfl
+  · exact hk
 
 /-- A passive ability of an object that the opponents of the player control, with the change. -/
 def oppHas (s : GameState) (p : PlayerId) (m : StaticMod) : Bool :=

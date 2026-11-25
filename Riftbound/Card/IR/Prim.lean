@@ -401,6 +401,13 @@ inductive StaticMod where
   | oppsPlayToBaseOnly
   /-- Opponents cannot play a card with the name this source chose (CR 054, 759-762). -/
   | oppsCantPlayNamed
+  /-- The controller skips their Draw Phase (CR 315.4). -/
+  | skipDrawPhase
+  /-- The controller can play cards from their Trash at their regular costs (CR 420.1). -/
+  | playFromTrash
+  /-- A card entering the controller's Trash from outside their Main Deck is banished instead
+  (CR 367-370). -/
+  | banishInsteadOfTrash
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear

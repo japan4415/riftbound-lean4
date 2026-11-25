@@ -263,6 +263,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
+  | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true

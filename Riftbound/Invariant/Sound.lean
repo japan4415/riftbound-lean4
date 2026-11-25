@@ -296,7 +296,7 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((sendObj_safe .trash s c).own hwf hown).congr rfl rfl
+    exact ((discardObj_safe s c).own hwf hown).congr rfl rfl
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

@@ -531,8 +531,8 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hc : (sendObj .trash s c).1.playerCount = s.playerCount := by
-      simp [GameState.playerCount, (sendObj_safe .trash s c).same.config]
+    have hc : (discardObj s c).1.playerCount = s.playerCount := by
+      simp [GameState.playerCount, (discardObj_safe s c).same.config]
     by_cases hn : n ≤ 1
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) hc (new := []) (by simp [hn])
         (by simp)
@@ -734,8 +734,10 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-      (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) rfl (by simp [Frame.isSetup])
+    by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) (by simp [hs]) (by simp)
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) (by simp [hs]) (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

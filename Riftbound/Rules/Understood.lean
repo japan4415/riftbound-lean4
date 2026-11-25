@@ -473,6 +473,7 @@ def StaticMod.runs : StaticMod → Bool
   | .grantRepeat _ => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
+  | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
   | .assaultCount s => s.understood
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true

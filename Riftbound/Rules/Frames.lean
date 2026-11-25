@@ -197,7 +197,11 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     let r := channel (s.active.getD ⟨0⟩) s.channelCount s
     some ({ r.1 with phase := .channel, pending := rest }, r.2)
   | .phase .draw :: rest =>
-    some ({ s with phase := .draw, pending := .draw (s.active.getD ⟨0⟩) 1 :: rest }, [])
+    let p := s.active.getD ⟨0⟩
+    let skip := s.hasControlledMod p .skipDrawPhase
+    let phase := if skip then s.phase else .draw
+    let pending := if skip then rest else .draw p 1 :: rest
+    some ({ s with phase, pending }, [])
   | .phase .ending :: rest =>
     some ({ s with phase := .ending, pending := .cleanup :: .expireTurn :: rest },
       [Event.phaseStarted (s.active.getD ⟨0⟩) .ending])
@@ -310,14 +314,12 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .priority p :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .chainPass p _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .discard p n :: rest, .discardPick c =>
-    let r := sendObj .trash s c
-    some ({ r.1.addTurnFx p .cardDiscarded with
+    let r := discardObj s c
+    some ({ r.1 with
         pending := (if n ≤ 1 then rest else .discard p (n - 1) :: rest) },
-      r.2 ++ r.2.filterMap (fun e =>
-        match e with
-        | .moved _ nid _ =>
-          some (Event.discarded p nid (decide (n ≤ 1) || (r.1.zone (.player p .hand)).isEmpty))
-        | _ => none))
+      r.2.map (fun
+        | .discarded q id _ => .discarded q id (decide (n ≤ 1) || (r.1.zone (.player p .hand)).isEmpty)
+        | e => e))
   | .discard _ _ :: rest, .discardDone => some ({ s with pending := rest }, [])
   | .mayDo p src env e es :: rest, .decide yes =>
     some ({ s with pending := .run p src env (if yes then .cons e es else es) :: rest }, [])

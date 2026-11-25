@@ -87,7 +87,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((sendObj_safe .trash s c).wf hwf).congr rfl rfl rfl rfl
+    exact ((discardObj_safe s c).wf hwf).congr rfl rfl rfl rfl
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -370,7 +370,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (sendObj_safe .trash s c).phys hwf
+    exact (discardObj_safe s c).phys hwf
   · rename_i p n rest hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

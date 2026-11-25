@@ -55,6 +55,11 @@ def Zone.normalize (owner : PlayerId) : Zone → Zone
   | .player q k => if (Zone.player q k).isBoard then .player q k else .player owner k
   | z => z
 
+/-- A destination already in the owner's zones is unchanged. -/
+theorem Zone.normalize_owner (owner : PlayerId) (k : ZoneKind) :
+    Zone.normalize owner (.player owner k) = .player owner k := by
+  cases k <;> rfl
+
 namespace GameState
 
 /-- The zone an object is on. -/

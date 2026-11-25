@@ -422,8 +422,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hm := (sendObj_safe .trash s c).same
-    have hph : (sendObj .trash s c).1.phase ≠ .setup := by
+    have hm := (discardObj_safe s c).same
+    have hph : (discardObj s c).1.phase ≠ .setup := by
       rw [hm.phase]
       exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
@@ -981,10 +981,14 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
-    have : Frame.setupHands ∈ rest := by simpa using hmem
-    have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-    exact h1
+    by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
+    · simpa only [hs, ite_true] using
+        (hinv.of_pop (s2 := { s with pending := rest }) hp (by simp [Frame.contrib])
+          ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl)
+    · simp only [hs]
+      refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      exact hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
   · -- Ending
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h

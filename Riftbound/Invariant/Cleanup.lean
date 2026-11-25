@@ -683,11 +683,12 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
-  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
-  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
-      else ZoneKind.trash) := ⟨_, rfl⟩
+  -- The destination of a kill accounts for the replacements that banish the card.
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = s.ownerDestination u o
+      (if s.banishedOnDeath u then .banishment else .trash) := ⟨_, rfl⟩
   have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
-    rw [hdk]; split <;> simp
+    rw [hdk]
+    exact s.ownerDestination_trash_or_banishment u o (by split <;> simp)
   -- the destination: a zone of the owner that is not a zone in play
   have hdst : ∀ o', s.obj? u = some o' →
       (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
@@ -714,15 +715,27 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
   subst hsrc
   have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   have hkillz : ∀ z, (killObj s u).1.zone z = s'.zone z := by
     intro z
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
   unfold GameState.pot
   rw [hkillz, hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
@@ -763,11 +776,12 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
   rw [GameState.inPlay_eq_flatMap] at hu
   obtain ⟨z0, hz0, huz⟩ := List.mem_flatMap.mp hu
   obtain ⟨o, ho⟩ := GameState.obj_of_mem hwf huz
-  -- where it goes: the Trash of the owner, or (if an Equipment says so) the Banishment
-  obtain ⟨dk, hdk⟩ : ∃ dk, dk = (if s.banishedOnDeath u = true then ZoneKind.banishment
-      else ZoneKind.trash) := ⟨_, rfl⟩
+  -- The destination of a kill accounts for the replacements that banish the card.
+  obtain ⟨dk, hdk⟩ : ∃ dk, dk = s.ownerDestination u o
+      (if s.banishedOnDeath u then .banishment else .trash) := ⟨_, rfl⟩
   have hk : dk = ZoneKind.trash ∨ dk = ZoneKind.banishment := by
-    rw [hdk]; split <;> simp
+    rw [hdk]
+    exact s.ownerDestination_trash_or_banishment u o (by split <;> simp)
   -- the destination: a zone of the owner that is not a zone in play
   have hdst : ∀ o', s.obj? u = some o' →
       (Zone.normalize o'.owner (.player o'.owner dk)).Valid s.playerCount ∧
@@ -794,9 +808,15 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
   subst hsrc
   have hkill : (killObj s u).1.inPlay = s'.inPlay := by
     unfold killObj sendObj
-    rw [← hdk, ho]
-    simp only [hr]
-    exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    rw [ho]
+    dsimp only
+    rw [← hdk, hr]
+    simp only
+    generalize o.ownerMoveEvents u id' dk
+      ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
+    split
+    · rfl
+    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   rw [hkill, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

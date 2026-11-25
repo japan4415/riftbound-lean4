@@ -61,8 +61,9 @@ theorem applyEach_safe {g : GameState → ObjId → GameState × List Event}
 def sendObj (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    match moveObj s id (.player o.owner k) with
-    | some r => (r.1, [Event.moved id r.2 (.player o.owner k)])
+    let dest := s.ownerDestination id o k
+    match moveObj s id (.player o.owner dest) with
+    | some r => (r.1, o.ownerMoveEvents id r.2 dest (k != dest))
     | none => (s, [])
   | none => (s, [])
 
@@ -71,7 +72,8 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
     Safe s (sendObj k s id).1 := by
   unfold sendObj
   split
-  · split
+  · dsimp only
+    split
     · rename_i r hm
       exact Safe.moveObj hm
     · exact Safe.refl s
@@ -259,6 +261,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj (if s.banishedOnDeath id then ZoneKind.banishment else .trash) s id
   match s.obj? id with
   | some o =>
+    if r.2.any (fun | .banished .. => true | _ => false) then r else
     -- the death of a unit is noted for the turn (its controller, as it died)
     (noteAlone
         (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
@@ -282,8 +285,11 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
   unfold killObj
   generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else ZoneKind.trash) = dest
   split
-  · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
-      (noteAlone_safe _ _ _ _)
+  · dsimp only
+    split
+    · exact sendObj_safe dest s id
+    · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
+        (noteAlone_safe _ _ _ _)
   · exact sendObj_safe dest s id
 
 /-- What the zone of an object in a well-formed game says: no other zone holds it. -/
@@ -347,25 +353,27 @@ theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone
   unfold killObj sendObj
   rw [← hdk, ho]
   simp only
-  cases hm : moveObj s u (.player o.owner dk) with
+  let dest := s.ownerDestination u o dk
+  have hdest := s.ownerDestination_trash_or_banishment u o hk
+  cases hm : moveObj s u (.player o.owner dest) with
   | none =>
-    simp only
-    exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+    simp only [List.any_nil, Bool.false_eq_true, ite_false, noteAlone_zone, noteDeath_zone]
   | some r =>
     obtain ⟨s', id'⟩ := r
-    simp only
-    refine (noteAlone_zone _ _ _ _ _).trans ((noteDeath_zone _ _ _ _ _ _ _ _).trans ?_)
     obtain ⟨src, d, hs, o2, ho2, hdd⟩ := moveObj_spec_dst hm
     have hloc : s.locate u = some z0 :=
       GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hu) hu
     have hsrc : src = z0 := Option.some.inj (hs.locate.symm.trans hloc)
     subst hsrc
-    have hdn : d = .player o.owner dk := by
+    have hdn : d = .player o.owner dest := by
       have : o2 = o := Option.some.inj (ho2.symm.trans ho)
       subst this
-      rw [hdd]
-      rcases hk with rfl | rfl <;> simp [Zone.normalize, Zone.isBoard]
-    exact hs.zone_other hne (by rw [hdn]; exact hd _ _ hk)
+      exact hdd.trans (Zone.normalize_owner _ _)
+    have hzone := hs.zone_other hne (by rw [hdn]; exact hd _ _ hdest)
+    simp only
+    split
+    · exact hzone
+    · simpa only [noteAlone_zone, noteDeath_zone] using hzone
 
 /-- Heal `n` damage from an object (CR 419). -/
 def healOne (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -868,15 +876,22 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
   · exact (playFree_safe p s _).trans (recycleList_safe _ _)
   · exact recycleList_safe _ _
 
-/-- Where a finalized Spell goes when it is removed from the Chain (CR 829.1.b.1). -/
-def Object.chainDestination (o : Object) (otherwise : ZoneKind) : Zone :=
-  .player o.owner (if o.flowed then .banishment else otherwise)
+/-- The destination of a card removed from the Chain, after applying Flow and Trash replacements
+(CR 367-370, 829.1.b.1). -/
+def GameState.chainDestinationKind (s : GameState) (id : ObjId) (o : Object)
+    (otherwise : ZoneKind) : ZoneKind :=
+  if o.flowed then .banishment else s.ownerDestination id o otherwise
 
-/-- Flow's delayed replacement is owed by the player who played it from their Trash
-(CR 391.3.a, 829.1.b.1). -/
-def Object.chainExitEvents (o : Object) (id new : ObjId) (otherwise : ZoneKind) : List Event :=
-  .moved id new (o.chainDestination otherwise) ::
-    (if o.flowed && o.kind.phys?.isSome then [.banished o.owner o.owner new] else [])
+/-- A card leaving the Chain always goes to an owner's zone. -/
+def GameState.chainDestination (s : GameState) (id : ObjId) (o : Object)
+    (otherwise : ZoneKind) : Zone :=
+  .player o.owner (s.chainDestinationKind id o otherwise)
+
+/-- Attribute a banishing replacement to its controller, the card's owner (CR 391.3.a). -/
+def GameState.chainExitEvents (s : GameState) (o : Object) (id new : ObjId)
+    (otherwise : ZoneKind) : List Event :=
+  let dest := s.chainDestinationKind id o otherwise
+  o.ownerMoveEvents id new dest (o.flowed || otherwise != dest)
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
@@ -892,8 +907,8 @@ def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s id (o.chainDestination k) with
-        | some r => (r.1, o.chainExitEvents id r.2 k)
+        match moveObj s id (s.chainDestination id o k) with
+        | some r => (r.1, s.chainExitEvents o id r.2 k)
         | none => (s, [])
     else (s, [])
   | none => (s, [])
@@ -939,11 +954,11 @@ def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj .trash s id
   match s.obj? id with
   | some o =>
-    ((if r.2.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded),
-      r.2 ++ r.2.filterMap (fun e =>
+    let discards := r.2.filterMap (fun e =>
       match e with
-      | .moved _ n _ => some (Event.discarded o.owner n true)
-      | _ => none))
+      | .moved _ n (.player _ .trash) => some (Event.discarded o.owner n true)
+      | _ => none)
+    ((if discards.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded), r.2 ++ discards)
   | none => r
 
 /-- Discarding a card is a safe change. -/
@@ -1840,6 +1855,26 @@ theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).
     · exact killObj_safe s id
   · exact killObj_safe s id
 
+/-- A Trash replacement can still apply to a simultaneous kill after its own source was removed
+by the same instruction (CR 370.1.a.2, 370.4). -/
+def killOrSaveInGroup (before s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id with
+  | some o =>
+    if before.replacesTrash id o && !s.banishedOnDeath id &&
+        (s.deathSaver id).isNone then banishObj o.owner s id
+    else killOrSave s id
+  | none => killOrSave s id
+
+/-- A simultaneous kill with a surviving replacement is a safe change. -/
+theorem killOrSaveInGroup_safe (before s : GameState) (id : ObjId) :
+    Safe s (killOrSaveInGroup before s id).1 := by
+  unfold killOrSaveInGroup
+  split
+  · split
+    · exact banishObj_safe _ _ _
+    · exact killOrSave_safe _ _
+  · exact killOrSave_safe _ _
+
 /-- An effect of this turn prevents the next damage to the object. -/
 def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.kind == .damagePrevented && f.target == some id)
@@ -2641,7 +2676,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
-    (onSelected s p src env sel killOrSave).map (fun r =>
+    (onSelected s p src env sel (killOrSaveInGroup s)).map (fun r =>
       (r.1, r.2 ++ (if (s.cardDef? src).any (·.hasType .spell) &&
           r.2.any (fun e => match e with
             | .died n _ => (r.1.cardDef? n).any (·.hasType .unit)
@@ -2861,11 +2896,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       exact onSelected_safe (healOne_safe k) h
   | kill sel =>
     simp only [applyPrim] at h
-    cases hs : onSelected s p src env sel killOrSave with
+    cases hs : onSelected s p src env sel (killOrSaveInGroup s) with
     | none => simp [hs] at h
     | some r0 =>
       simp only [hs, Option.map_some, Option.some.injEq] at h
-      have h0 := onSelected_safe killOrSave_safe hs
+      have h0 := onSelected_safe (killOrSaveInGroup_safe s) hs
       rw [← h]
       exact h0
   | ready sel => exact onSelected_safe readyEffect_safe h
@@ -4346,9 +4381,9 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s item (o.chainDestination .trash) with
+        match moveObj s item (s.chainDestination item o .trash) with
         | some r =>
-          let es := o.chainExitEvents item r.2 .trash
+          let es := s.chainExitEvents o item r.2 .trash
           (r.1, es ++ spellCompletion s item es)
         | none => (s, [])
     else (s, [])
@@ -4372,7 +4407,7 @@ theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) :
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
       (∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-        moveObj s item (o.chainDestination .trash) = some (s2, id') ∧
+        moveObj s item (s.chainDestination item o .trash) = some (s2, id') ∧
           (finishItem s item).1 = s2) ∨
       (∃ o s2, s.obj? item = some o ∧ item ∈ s.zone .chain ∧ o.kind.phys? = none ∧
           removeObj s item = some s2 ∧ (finishItem s item).1 = s2) := by

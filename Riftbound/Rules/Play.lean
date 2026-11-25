@@ -260,26 +260,32 @@ def GameState.flowCosts (s : GameState) (c : ObjId) (d : CardDef) : List Cost :=
     ((d.keywords ++ temporary).filterMap KeywordInst.flowCost?).eraseDups
   else []
 
-/-- All cards in a zone that permits a direct play: hand cards and Flow Spells in the Trash. -/
+/-- All cards in a zone that permits a direct play (CR 420.1, 829.1). -/
 def GameState.playSources (s : GameState) (p : PlayerId) : List ObjId :=
-  s.zone (.player p .hand) ++ (s.zone (.player p .trash)).filter (fun c =>
-    (s.cardDef? c).any (fun d => !(s.flowCosts c d).isEmpty))
+  let trash := s.zone (.player p .trash)
+  s.zone (.player p .hand) ++
+    (if !trash.isEmpty && s.hasControlledMod p .playFromTrash then trash
+    else trash.filter (fun c => (s.cardDef? c).any (fun d => !(s.flowCosts c d).isEmpty)))
 
-/-- Whether a direct play of the card uses Flow in the player's Trash. -/
-def GameState.flowPlaying (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
+/-- Whether the direct play is from the player's Trash. -/
+def GameState.playingFromTrash (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
   !(s.zone (.player p .hand)).contains c && (s.zone (.player p .trash)).contains c
 
-/-- Base-cost choices and the resulting costs after play-time adjustments (CR 356, 829).
-When several raw Flow costs are available, the action names one even if the payments coincide. -/
+/-- Whether the regular cost is available, including through a play permission from the Trash. -/
+def GameState.canPlayNormally (s : GameState) (p : PlayerId) (c : ObjId) : Bool :=
+  !s.playingFromTrash p c || s.hasControlledMod p .playFromTrash
+
+/-- Cost choices and the resulting costs after play-time adjustments (CR 356, 829).
+Name the chosen Flow cost whenever there is a choice, including a regular cost from the Trash. -/
 def GameState.directOptions (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List (Option Cost × Cost) :=
-  if s.flowPlaying p c then
-    if s.blocksPlay p c d then []
-    else
-      match s.flowCosts c d with
-      | [base] => [(none, s.adjustCost p c base)]
-      | costs => costs.map (fun base => (some base, s.adjustCost p c base))
-  else (s.effCost p c d).toList.map (none, ·)
+  let canPlayNormally := s.canPlayNormally p c
+  let regular := if canPlayNormally then (s.effCost p c d).toList.map (none, ·) else []
+  if s.playingFromTrash p c && !s.blocksPlay p c d then
+    regular ++ (match s.flowCosts c d with
+      | [base] => [(if canPlayNormally then some base else none, s.adjustCost p c base)]
+      | costs => costs.map (fun base => (some base, s.adjustCost p c base)))
+  else regular
 
 /-- The cost selected for this play, after applying the normal adjustments. -/
 def GameState.directCost (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
@@ -911,7 +917,7 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
     buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (fun k => k == .unitsBuffed || k == .nextUnitBuffed),
     fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c),
-    flowed := directCast && s.flowPlaying p c }
+    flowed := directCast && s.playingFromTrash p c && (flow.isSome || !s.canPlayNormally p c) }
 
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/
@@ -951,16 +957,21 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
   match k with
   | .exhaustLegend => some (s.exhaustObj t, [])
   | .killPet | .killUnit =>
-    (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
-      (r.1, [Event.moved t r.2 (.player o.owner .trash), Event.died r.2 o.controller])))
+    (s.obj? t).bind (fun o =>
+      let dest := s.ownerDestination t o .trash
+      (moveObj s t (.player o.owner dest)).map (fun r =>
+        (r.1, o.ownerMoveEvents t r.2 dest (dest == .banishment) ++
+          (if dest == .trash then [.died r.2 o.controller] else []))))
   | .spendXP n => some (s.modObj t (fun o => { o with xp := o.xp - n }), [])
   | .spendXPOver _ _ => some (s, [])
   | .returnGear =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .hand)])))
   | .killGear =>
-    (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
-      (r.1, [Event.moved t r.2 (.player o.owner .trash)])))
+    (s.obj? t).bind (fun o =>
+      let dest := s.ownerDestination t o .trash
+      (moveObj s t (.player o.owner dest)).map (fun r =>
+        (r.1, o.ownerMoveEvents t r.2 dest (dest == .banishment))))
 
 /-- The card that was played remembers that its additional cost was paid. -/
 def markPaid (s : GameState) (id : Option ObjId) (discarded : Bool := false) : GameState :=
@@ -1405,20 +1416,25 @@ theorem applyPlay_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
 
-/-- A playable card of the hand can be played. -/
+/-- A playable card in the hand or Trash can be put on the Base. -/
 theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {dest : Option ObjId} (hwf : s.WF) (hc : c ∈ s.zone (.player p .hand))
+    {dest : Option ObjId} (hwf : s.WF)
+    (hc : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash))
     {ts : List ObjId} {pick : SpellPick} (hp : playable s p c pay dest ts pick = true)
     (applied : SpellPick := pick) : ∃ r, applyPlay s p c pay applied = some r := by
   obtain ⟨o, d, cost, pool, -, ho, hd, howner, -, -, -, hpool⟩ := playable_spec hp
+  obtain ⟨k, hck, hkb⟩ : ∃ k, c ∈ s.zone (.player p k) ∧ k ≠ .base := by
+    rcases hc with h | h
+    · exact ⟨.hand, h, by simp⟩
+    · exact ⟨.trash, h, by simp⟩
   have hpn : p.n < s.playerCount :=
-    Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hc)
-  obtain ⟨r, hr⟩ := moveObj_isSome hwf hc (.player p .base) .top (fun o' ho' => by
+    Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hck)
+  obtain ⟨r, hr⟩ := moveObj_isSome hwf hck (.player p .base) .top (fun o' ho' => by
     have : o' = o := Option.some.inj (ho'.symm.trans ho)
     subst this
     rw [howner]
     simp only [Zone.normalize, Zone.isBoard, ite_true]
-    exact ⟨Zone.valid_player hpn _, by simp⟩)
+    exact ⟨Zone.valid_player hpn _, by simp [hkb]⟩)
   unfold applyPlay
   simp only [hd, Option.any_some, hpool]
   simp only [hr, Option.map_some]
@@ -1623,27 +1639,37 @@ theorem applyCast_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
 /-- A direct play starts in the player's hand or Trash. -/
 theorem GameState.playSource_zone {s : GameState} {p : PlayerId} {c : ObjId}
     (h : c ∈ s.playSources p) : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) := by
-  simp only [GameState.playSources, List.mem_append, List.mem_filter] at h
-  exact h.imp id And.left
+  simp only [GameState.playSources, List.mem_append] at h
+  refine h.imp id fun ht => ?_
+  split at ht
+  · exact ht
+  · exact (List.mem_filter.mp ht).1
 
-/-- A card played as a permanent from one of the direct-play zones comes from the hand. -/
-theorem playable_mem_hand {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {dest : Option ObjId} {ts : List ObjId} {pick : SpellPick} (hc : c ∈ s.playSources p)
-    (hp : playable s p c pay dest ts pick = true) : c ∈ s.zone (.player p .hand) := by
-  simp only [GameState.playSources, List.mem_append, List.mem_filter] at hc
-  rcases hc with hc | ⟨_, hflow⟩
-  · exact hc
-  · obtain ⟨_, d, _, _, _, _, hd, _, hty, _, _, _⟩ := playable_spec hp
-    rw [hd] at hflow
-    by_cases ht : d.types = [.spell]
-    · simp [CardDef.hasType, ht] at hty
-    · simp [GameState.flowCosts, ht] at hflow
-
-/-- Flow never replaces the base cost for a card in the hand. -/
-theorem GameState.directOptions_of_hand {s : GameState} {p : PlayerId} {c : ObjId}
-    (h : c ∈ s.zone (.player p .hand)) (d : CardDef) :
-    s.directOptions p c d = (s.effCost p c d).toList.map (none, ·) := by
-  simp [GameState.directOptions, GameState.flowPlaying, h]
+/-- A playable permanent has a normal play option for its adjusted cost (CR 420.1). -/
+theorem playable_directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {dest : Option ObjId} {ts : List ObjId} {pick : SpellPick} {d : CardDef} {cost : Cost}
+    (hc : c ∈ s.playSources p) (hp : playable s p c pay dest ts pick = true)
+    (hd : s.cardDef? c = some d) (he : s.effCost p c d = some cost) :
+    (none, cost) ∈ s.directOptions p c d := by
+  have normal : s.canPlayNormally p c = true := by
+    simp only [GameState.playSources, List.mem_append] at hc
+    rcases hc with hh | ht
+    · simp [GameState.canPlayNormally, GameState.playingFromTrash, hh]
+    · split at ht
+      · rename_i h
+        have mod := (Bool.and_eq_true_iff.mp h).2
+        simp [GameState.canPlayNormally, mod]
+      · have hflow := (List.mem_filter.mp ht).2
+        obtain ⟨_, d', _, _, _, _, hd', _, hty, _, _, _⟩ := playable_spec hp
+        have same := Option.some.inj (hd'.symm.trans hd)
+        subst d'
+        rw [hd] at hflow
+        by_cases hspell : d.types = [.spell]
+        · simp [CardDef.hasType, hspell] at hty
+        · simp [GameState.flowCosts, hspell] at hflow
+  simp only [GameState.directOptions, normal, he, ite_true, Option.toList_some, List.map_cons,
+    List.map_nil]
+  split <;> simp
 
 /-- A cost returned by direct-cost lookup corresponds to an actual choice in the list. -/
 theorem GameState.directCost_mem {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
@@ -1904,7 +1930,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := playable_spec h
         refine ⟨d, cost, hd, ?_, hpaid, extraOk_mem_playTargets hd hts,
           by simp [GameState.castPicks, GameState.spellPicks]⟩
-        simp [GameState.directOptions_of_hand (playable_mem_hand hc h), hcost]
+        exact playable_directCost_mem hc h hd hcost
       · obtain ⟨o, d, cost, pool, -, -, hd, -, -, hcost, hpaid, -⟩ := castable_spec h
         obtain ⟨d', e, hd', he, hok, hpick⟩ := castable_targets h
         have : d' = d := Option.some.inj (hd'.symm.trans hd)
@@ -1916,7 +1942,7 @@ theorem mem_legalPlays (s : GameState) (p : PlayerId) (a : Action) :
         obtain ⟨hbf, hpick⟩ := playable_dest hd hb'
         refine ⟨d, cost, hd, ?_, hpaid, (mem_playTargets s p c d ts pick).mpr
           (Or.inr (Or.inr (Or.inr ⟨b, hts, hbf⟩))), ?_⟩
-        · simp [GameState.directOptions_of_hand (playable_mem_hand hc hb'), hcost]
+        · exact playable_directCost_mem hc hb' hd hcost
         · rcases hpick with rfl | hpick
           · simp [GameState.castPicks, GameState.spellPicks]
           · exact List.mem_append_right _ hpick
@@ -2034,12 +2060,12 @@ theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : R
     exact ⟨_, rfl⟩
   · simp only [hcast]
     rcases hp with ⟨-, h, -, rfl⟩ | h | ⟨h, -⟩
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc h) h
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) h
       obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r
       exact ⟨r', by simp [hr, hr']⟩
     · exact absurd h hcast
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc hb) hb
+      obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) hb
       obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r
       exact ⟨r', by simp [hr, hr']⟩
 

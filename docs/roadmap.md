@@ -2078,6 +2078,13 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Unit 用 Energy は Unit のプレイとその起動型能力の支払いに使う。Spell、Gear、Hide、能力の解決中に単独で要求される支払いには通常の Energy が必要になる。混在時は使える Unit 用 Energy から先に消費し、Main Phase 開始時とターン終了時に Rune Pool とともに消える（CR 166–167, 445, 811.1.c）。
 - 167 枚中 164 枚が `drafted` で `CardDef.runs` を通り、3 枚が `todo`。
 
+### M8c Vendetta 51 — Trash からの通常プレイ
+
+- Endless Riches をプレイすると、その誘発能力が手札と Trash を追放してから Burn 7 を行う。場にある間はコントローラーの Draw Phase を省き、効果によるドローは通常どおり行う（CR 315.4, 428, 441）。
+- コントローラーは Trash の Unit・Gear・Spell を通常コストでプレイできる。Flow を持つ Spell は Flow コストも選べる。Chain に入れた時点で Flow の使用を記録する（CR 356, 420.1, 829.1）。
+- Main Deck 以外からコントローラーの Trash に入るカードは追放する。Spell が解決したときは、その時点の効果を適用する。Thermo Beam のように複数の Gear を同時に破壊する場合は、同時に場を離れる Endless Riches の置換も適用する（CR 052, 367–370, 428）。
+- 167 枚中 165 枚が `drafted` で `CardDef.runs` を通り、2 枚が `todo`。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

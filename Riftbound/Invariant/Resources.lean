@@ -147,17 +147,17 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
   obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
   simpa [extraEvents, GameState.actionMightEvents, hp, withTriggers_nil, h3.pending_eq] using hpend
 
-/-- A resolved Spell goes to the Trash or, with Flow, to Banishment (CR 359.3.d, 829.1.b.1). -/
+/-- A resolved Spell goes to the Trash, subject to replacements (CR 359.3.d, 367-370, 829.1.b.1). -/
 theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
-    (hm : ∃ r, moveObj s item (o.chainDestination .trash) = some r) :
-    ∃ id', (finishItem s item).2 = o.chainExitEvents item id' .trash ++
-        spellCompletion s item (o.chainExitEvents item id' .trash) ∧
-      id' ∈ (finishItem s item).1.zone (o.chainDestination .trash) := by
+    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) = some r) :
+    ∃ id', (finishItem s item).2 = s.chainExitEvents o item id' .trash ++
+        spellCompletion s item (s.chainExitEvents o item id' .trash) ∧
+      id' ∈ (finishItem s item).1.zone (s.chainDestination item o .trash) := by
   obtain ⟨⟨s2, id'⟩, hm⟩ := hm
-  have hf : finishItem s item = (s2, o.chainExitEvents item id' .trash ++
-      spellCompletion s item (o.chainExitEvents item id' .trash)) := by
+  have hf : finishItem s item = (s2, s.chainExitEvents o item id' .trash ++
+      spellCompletion s item (s.chainExitEvents o item id' .trash)) := by
     unfold finishItem
     simp only [ho, hc, ite_true]
     cases hkd : o.kind with
@@ -169,9 +169,9 @@ theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
   obtain ⟨src, d, hs, o', ho', hdd⟩ := moveObj_spec_dst hm
   have hoo : o' = o := Option.some.inj (ho'.symm.trans ho)
   have h2 := hs.id'_mem
-  have hd2 : d = o.chainDestination .trash := by
+  have hd2 : d = s.chainDestination item o .trash := by
     rw [hdd, hoo]
-    cases hf : o.flowed <;> simp [Object.chainDestination, hf, Zone.normalize, Zone.isBoard]
+    exact Zone.normalize_owner _ _
   rw [hd2] at h2
   exact h2
 

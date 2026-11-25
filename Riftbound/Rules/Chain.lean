@@ -226,9 +226,12 @@ theorem discardObj_chain {s : GameState} (hwf : s.WF) {p : PlayerId} {id : ObjId
     unfold sendObj
     split
     · rename_i o _
+      dsimp only
       split
       · rename_i r hm
-        exact moveObj_zone_unchanged hwf hc hm (by simp) (fun _ _ => by simp [Zone.normalize, Zone.isBoard])
+        exact moveObj_zone_unchanged hwf hc hm (by simp) (fun _ _ => by
+          simp only [Zone.normalize]
+          split <;> simp)
       · rfl
     · rfl
   unfold discardObj
@@ -1210,7 +1213,7 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   · rename_i hk
     rcases h with h | ⟨dest, ts', _, h⟩
     · exact absurd h hk
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (playable_mem_hand hc h) h (applied := pick)
+    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.playSource_zone hc) h (applied := pick)
       obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
       refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
       simp [hr, hr']

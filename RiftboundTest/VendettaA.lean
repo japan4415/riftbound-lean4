@@ -17,6 +17,119 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- On play, the old hand and Trash are banished before the top seven fill the Trash.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, riches) ← put s p "VEN-022" .hand
+  let (s, _) ← put s p "VEN-014" .hand
+  let (s, _) ← put s p "VEN-031" .trash
+  let (s, _) ← put s q "VEN-031" .trash
+  let (s, _) ← put s p "VEN-014" .mainDeck
+  let (s, _) ← put s p "SFD-117" .mainDeck
+  let (s, _) ← put s p "VEN-003" .mainDeck
+  let original := (s.zone (.player p .hand)).erase riches ++ s.zone (.player p .trash)
+  let deck := s.zone (.player p .mainDeck)
+  let fired ← cast (s.fund p 5 (fury := 1)) p riches ⟨5, [.fury]⟩
+  let trash := fired.zone (.player p .trash)
+  let banished := fired.zone (.player p .banishment)
+  let oldIds (ids : List ObjId) := ids.filterMap (fun id => (fired.obj? id).bind (·.formerId))
+  let funded := (fired.control p s.bf0).rich p
+  let unit ← funded.firstOf p .trash "VEN-014"
+  let gear ← funded.firstOf p .trash "SFD-117"
+  let spell ← funded.firstOf p .trash "VEN-003"
+  let d ← funded.cardDef? spell
+  let (unitPlayed, _) ← (step 100 funded ⟨.player p, .playCard unit (payOf funded unit) [s.bf0]⟩).toOption
+  let (gearPlayed, _) ← (step 100 funded ⟨.player p, .playCard gear (payOf funded gear) []⟩).toOption
+  return fired.countIn p .base "VEN-022" == 1 && (fired.zone (.player p .hand)).isEmpty &&
+    (oldIds banished).length == original.length && original.all (oldIds banished).contains &&
+    (oldIds trash) == (deck.take 7).reverse && fired.zone (.player p .mainDeck) == deck.drop 7 &&
+    fired.zone (.player q .trash) == s.zone (.player q .trash) &&
+    (unitPlayed.unitsAtOf s.bf0 p).any (fun id => (unitPlayed.cardDef? id).any (·.id.code == "VEN-014")) &&
+    gearPlayed.countIn p .base "SFD-117" == 1 &&
+    (funded.directOptions p spell d).map Prod.fst == [none, some ⟨4, [.domain .fury]⟩]
+
+-- A regular play and a Flow play from the same Trash are distinct, even in the Chain.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, riches) ← put s p "VEN-022" .base
+  let (s, target) ← put s q "SFD-117" .base
+  let (s, spell) ← put s p "VEN-003" .trash
+  let s := s.fund p 4 (fury := 1)
+  let pay : RunePool.Payment := ⟨4, [.fury]⟩
+  let normal : Action := ⟨.player p, .playCard spell ⟨2, [.fury]⟩ [target]⟩
+  let flow : Action := ⟨.player p, .playCard spell pay [target] (some ⟨4, [.domain .fury]⟩)⟩
+  let (regular, _) ← (step 100 s normal).toOption
+  let (flowed, _) ← (step 100 s flow).toOption
+  let regularId ← (regular.zone .chain).head?
+  let flowedId ← (flowed.zone .chain).head?
+  let ongoing := settleChain {} 12 regular
+  let regularDone := settleChain {} 12 (banishObj q regular riches).1
+  let flowedDone := settleChain {} 12 (banishObj q flowed riches).1
+  return (legalActions s).contains normal && (legalActions s).contains flow &&
+    (regular.obj? regularId).any (fun o => !o.flowed && !o.playedFromHand) &&
+    (flowed.obj? flowedId).any (·.flowed) && ongoing.countIn p .banishment "VEN-003" == 1 &&
+    regularDone.countIn p .trash "VEN-003" == 1 && flowedDone.countIn p .banishment "VEN-003" == 1
+
+-- Only the controller's Draw Phase is skipped. Explicit draw instructions still work.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, riches) ← put s p "VEN-022" .base
+  let (s, card) ← put s p "VEN-014" .trash
+  let draw := { s with phase := .channel, pending := [.phase .draw, .phase .main] }
+  let (skipped, _) ← microStep0 draw
+  let (explicitDraw, events) ← microStep0 { skipped with pending := [.draw p 1] }
+  let (opponentDraw, _) ← microStep0 { draw with active := some q }
+  let removed := (banishObj q draw riches).1
+  let (normal, _) ← microStep0 removed
+  return skipped.pending == [.phase .main] && skipped.phase == .channel &&
+    skipped.zone (.player p .mainDeck) == draw.zone (.player p .mainDeck) &&
+    events.contains (.drew p) && (explicitDraw.zone (.player p .hand)).length ==
+      (skipped.zone (.player p .hand)).length + 1 &&
+    opponentDraw.pending == [.draw q 1, .phase .main] &&
+    normal.pending == [.draw p 1, .phase .main] && (draw.playSources p).contains card &&
+    !(removed.playSources p).contains card
+
+-- Replacement applies to the owner's cards, preserves Main Deck moves, and does not discard or kill.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "VEN-022" .base
+  let (s, hand) ← put s p "VEN-014" .hand
+  let (s, mine) ← put s p "VEN-014" .base
+  let (s, theirs) ← put s q "VEN-014" .base
+  let (s, deck) ← put s p "VEN-014" .mainDeck
+  let (s, spell) ← onChain s p "VEN-003"
+  let s := s.modObj mine (fun o => { o with controller := q })
+  let discarded ← applyFrame { s with pending := .discard p 1 :: s.pending }
+    ⟨.player p, .discardPick hand⟩
+  let killed := killObj discarded.1 mine
+  let enemyKilled := killObj killed.1 theirs
+  let binned := sendObj .trash enemyKilled.1 deck
+  let countered := counterObj binned.1 spell
+  let returned := counterObjHand binned.1 spell
+  let banished (events : List Event) := events.any (fun
+    | .banished actor owner _ => actor == p && owner == p | _ => false)
+  return banished discarded.2 && banished killed.2 && banished countered.2 &&
+    !(discarded.2.any (fun | .discarded .. => true | _ => false)) &&
+    !(killed.2.any (fun | .died .. => true | _ => false)) &&
+    enemyKilled.1.countIn q .trash "VEN-014" == 1 && binned.1.countIn p .trash "VEN-014" == 1 &&
+    countered.1.countIn p .banishment "VEN-003" == 1 && returned.1.countIn p .hand "VEN-003" == 1
+
+-- Thermo Beam destroys all Gear simultaneously, including the replacement's source (CR 370.4).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "SFD-117" .base
+  let (s, _) ← put s p "VEN-022" .base
+  let (s, _) ← put s q "SFD-117" .base
+  let (s, beam) ← put s p "OGN-022" .hand
+  let final ← cast (s.fund p 5 (fury := 2)) p beam ⟨5, [.fury, .fury]⟩
+  return final.countIn p .banishment "VEN-022" == 1 && final.countIn p .banishment "SFD-117" == 1 &&
+    final.countIn q .trash "SFD-117" == 1 && final.countIn p .trash "OGN-022" == 1
+
 -- Butcher pays two Power and Exhausts immediately. Its Energy pays for a
 -- Unit or its activation, and stays separate from other payments (CR 166, 430, 445).
 #guard vendettaCase fun s => do
