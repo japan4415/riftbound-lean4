@@ -49,6 +49,9 @@ inductive PlayExtra where
   | killUnit
   /-- The player spends this much XP (the object it is done to is their Legend). -/
   | spendXP (n : Nat)
+  /-- For a Spell: the player spends this much XP if the first object it chooses has more Might than
+  the cap (Conscription: with the XP it can choose any unit). Nothing is chosen for the cost. -/
+  | spendXPOver (n : Nat) (cap : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is

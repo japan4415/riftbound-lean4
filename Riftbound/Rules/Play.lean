@@ -393,6 +393,7 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
       (s.cardDef? t).any (·.hasType .unit)
   | .spendXP n =>
     decide (t ∈ s.zone (.player p .legendZone)) && decide (n ≤ s.xpOf p)
+  | .spendXPOver _ _ => false
 
 /-- The objects an additional cost of the kind can be done to. -/
 def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : List ObjId :=
@@ -661,6 +662,7 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .trash)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .trash), Event.died r.2 o.controller])))
   | .spendXP n => some (s.modObj t (fun o => { o with xp := o.xp - n }), [])
+  | .spendXPOver _ _ => some (s, [])
   | .returnGear =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
       (r.1, [Event.moved t r.2 (.player o.owner .hand)])))
@@ -799,6 +801,10 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Safe.modObj s t (fun _ => rfl) (fun _ => rfl)
+  | spendXPOver n cap =>
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Safe.refl s
 
 /-- Paying the additional cost of a card that was played is a safe change. -/
 theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
@@ -819,6 +825,20 @@ theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
     subst h
     exact Safe.refl _
 
+/-- The player spends XP: it goes down, to 0 at the least. -/
+def spendLegendXP (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
+  match s.zone (.player p .legendZone) with
+  | l :: _ => s.modObj l (fun o => { o with xp := o.xp - n })
+  | [] => s
+
+/-- Spending XP is a safe change. -/
+theorem spendLegendXP_safe (n : Nat) (s : GameState) (p : PlayerId) :
+    Safe s (spendLegendXP n s p) := by
+  unfold spendLegendXP
+  split
+  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+  · exact Safe.refl s
+
 /-- A Spell has been cast (`r`, from `s`): the additional cost is done, as it is cast. The object it
 is done to is the first object the Spell chooses (the card's first choice names it); the Spell on
 the Chain then has the object the cost made of it (a killed Unit is in the Trash) in its place. -/
@@ -826,6 +846,13 @@ def castPay (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameState × List
     GameState × List Event :=
   match (s.cardDef? c).bind (·.playExtra), ts,
       r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none) with
+  | some (.spendXPOver n cap, _), t :: _, some _ =>
+    -- the XP is spent only for an object with more Might than the cap
+    match s.obj? c with
+    | some o =>
+      if decide (((cap : Nat) : Int) < (s.mightNow t).getD 0) then (spendLegendXP n r.1 o.owner, r.2)
+      else r
+    | none => r
   | some (k, _), t :: rest, some n =>
     match applyExtra r.1 k t with
     | some x =>
@@ -839,6 +866,11 @@ theorem castPay_safe (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameStat
     Safe r.1 (castPay s c ts r).1 := by
   unfold castPay
   split
+  · split
+    · split
+      · exact spendLegendXP_safe _ _ _
+      · exact Safe.refl _
+    · exact Safe.refl _
   · split
     · rename_i x hx
       exact (applyExtra_safe hx).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
@@ -1423,6 +1455,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inl ht.1.1)
       · exact List.mem_append.mpr (Or.inr ht.1)
+      · simp at ht
     · right; right; right
       exact List.mem_map.mpr ⟨b, hb, rfl⟩
 

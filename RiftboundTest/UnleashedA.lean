@@ -519,4 +519,22 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     free.countIn s.me .base "UNL-111" == 1 && free.countIn s.me .base "UNL-170" == 1 &&
     (cast (s2.rich s.me) s.me c less []).isNone
 
+-- Conscription (UNL-140): a unit with 3 Might or less is chosen for free; a bigger one only with 5 XP,
+-- which is spent as the spell is cast
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-140" .hand
+  let (s2, small) ← putAt s1 s.you "OGN-135" s.bf0
+  let (s3, big) ← putAt s2 s.you "UNL-170" s.bf0
+  let rich ← withXPOf s3 s.me 5
+  let poor ← withXPOf s3 s.me 4
+  let a ← play rich s.me c [small]
+  let b ← play rich s.me c [big]
+  let bigMightIsOver := (s3.mightNow big).getD 0 > 3
+  let afterCast ← match step 100 (rich.rich s.me) ⟨.player s.me, .playCard c (payOf rich c) [big]⟩ with
+    | .ok (x, _) => some x
+    | .error _ => none
+  return bigMightIsOver && (a.obj? small).any (·.controller == s.me) && a.xpOf s.me == 5 &&
+    (b.obj? big).any (·.controller == s.me) && b.xpOf s.me == 0 && afterCast.xpOf s.me == 0 &&
+    (play poor s.me c [big]).isNone && (play poor s.me c [small]).isSome
+
 end RiftboundTest
