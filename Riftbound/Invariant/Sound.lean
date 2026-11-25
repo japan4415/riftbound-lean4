@@ -206,6 +206,12 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
+  · rename_i c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2.1
+  · rename_i src idx pay hp hk
+    rw [hp, hk] at hl
+    exact applyMana_isSome hl.2.1
   · exact absurd hl (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
@@ -387,6 +393,8 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
+  · exact applyRune_ownerOk hwf hown h
+  · exact applyMana_ownerOk hwf hown h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer to the open question keeps `OwnerOk`. -/

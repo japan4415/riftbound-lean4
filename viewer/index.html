@@ -318,6 +318,30 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
+      if (a.effectCost) {
+        const cost = costText(a.effectCost);
+        if (a.spellPaymentTarget != null) {
+          const spell = cardName(a.spellPaymentTarget);
+          return [who + ': ' + (a.yes ? cost + ' を払って ' + spell + ' を奪う' : spell + ' を打ち消す'), ''];
+        }
+        return [who + ': ' + (a.yes ? cost + ' を支払う' : '支払いを見送る'), ''];
+      }
+      if (a.effectPaymentPlan) return [who + ': ' + costText(a.effectPaymentPlan) + ' を支払う', ''];
+      if (a.moreEffectPayments) return [who + ': ほかの支払い方を見る', ''];
+      if (a.remakeSpell != null) {
+        const spell = cardName(a.remakeSpell);
+        return [who + ': ' + spell + ' の選択を' + (a.yes ? 'やり直す' : '維持する'), ''];
+      }
+      if (a.moreSpellChoices != null) return [who + ': ほかの選択肢を見る', ''];
+      if (a.remadeSpell != null) {
+        const choices = [];
+        if (typeof a.mode === 'number') choices.push(a.modeLabel || 'モード ' + (a.mode + 1));
+        if (a.moveDest !== undefined) choices.push(a.moveDest === null ? 'Base' : cardName(a.moveDest));
+        const targets = (a.targets || []).map(cardName);
+        if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
+        choices.push(targets.length ? '対象 ' + targets.join('、') : '対象なし');
+        return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices.join('、') + '）', ''];
+      }
       if (a.lookedPlay) return [who + ': ' + (a.yes ? '見たカードからプレイする' : 'プレイを見送る'), ''];
       if (a.empowerOffer) return [who + ': ' + (a.yes ? 'Empower する' : 'Empower を見送る'), ''];
       if (a.morePlayOptions) return [who + ': ほかのプレイ方法を見る', ''];
@@ -1046,6 +1070,10 @@ function renderLegal(i) {
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
     : choiceContext === 'attachmentCopy' ? 'コピー元の味方 Unit を選ぶ'
+    : liveLegal.some(({ a }) => a.effectCost) ? '効果の支払いを選ぶ'
+    : liveLegal.some(({ a }) => a.effectPaymentPlan) ? '支払うリソースを選ぶ'
+    : liveLegal.some(({ a }) => a.remakeSpell != null) ? 'Spell の選択をやり直すか決める'
+    : liveLegal.some(({ a }) => a.remadeSpell != null) ? 'Spell の新しい選択を確定する'
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';

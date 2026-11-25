@@ -397,6 +397,7 @@ def Effect.understood : Effect → Bool
   | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e =>
     s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
+  | .payThen _ body => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e => w.understood && Effect.understood e
   | .lookAtTop _ body => Effect.understood body

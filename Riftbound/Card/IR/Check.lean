@@ -347,6 +347,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .eitherOf modes => EffectList.ok c modes
+  | .payThen _ body => Effect.ok c body
+  | .paySelected .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s

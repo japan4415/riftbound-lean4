@@ -44,12 +44,74 @@ meta def rebuttalChoice (s : GameState) (power : Nat) :
   let (waiting, original, _, enemy) ← rebuttalChoice s 2
   let (declined, events) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
   let (unfunded, _, _, _) ← rebuttalChoice s 1
+  let pay : Action := ⟨.player p, .decide true⟩
+  let (noPower, _) ← (step 100 unfunded ⟨.player p, .decide false⟩).toOption
   return (declined.poolOf p).get .chaos == 1 && (declined.zone .chain).isEmpty &&
-    declined.countIn q .trash "OGN-046" == 1 && unfunded.countIn q .trash "OGN-046" == 1 &&
+    declined.countIn q .trash "OGN-046" == 1 && noPower.countIn q .trash "OGN-046" == 1 &&
+    !(legalActions unfunded).contains pay && (step 100 unfunded pay).toOption.isNone &&
     !(events.any (fun | .spellResolved who _ => who == q | _ => false)) &&
     declined.playLog.any (fun play =>
       play.object == original && play.who == q && play.moment == .finalized) &&
     declined.mightNow enemy == waiting.mightNow enemy
+
+-- The payer can use Gold during Rebuttal's resolution and immediately spend the result.
+-- No responses or other players' resource abilities are offered during that instruction.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let gold ← s.tokenCard "Gold"
+  let ownGold : ObjId := ⟨s.nextId⟩
+  let s := createOne gold.id p none true s
+  let otherGold : ObjId := ⟨s.nextId⟩
+  let s := createOne gold.id q none true s
+  let (waiting, original, _, _) ← rebuttalChoice s 1
+  let add : Action := ⟨.player p, .manaAbility ownGold 0 ⟨0, []⟩⟩
+  let steal : Action := ⟨.player p, .decide true⟩
+  let (funded, events) ← (step 100 waiting add).toOption
+  let (taken, _) ← (step 100 funded steal).toOption
+  return (legalActions waiting).contains add &&
+    !(legalActions waiting).contains steal &&
+    !(legalActions waiting).contains ⟨.player q, .manaAbility otherGold 0 ⟨0, []⟩⟩ &&
+    !(legalActions waiting).contains ⟨.player p, .pass⟩ &&
+    funded.pending == waiting.pending && funded.zone .chain == waiting.zone .chain &&
+    (funded.obj? ownGold).isNone && (funded.obj? otherGold).isSome &&
+    (funded.poolOf p).any == 1 && events.contains (.activated p ownGold 0 (some 0)) &&
+    (taken.poolOf p).any == 0 && (taken.obj? original).any (·.controller == p) &&
+    !(legalActions taken).contains add
+
+-- A Basic Rune can supply Power during the instruction. When more than one domain is
+-- present in the Pool, the payer chooses which one to spend.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, watcher) ← put s p "SFD-203" .base
+  let (waiting, original, _, _) ← rebuttalChoice s 2
+  let (waiting, rune) ← put waiting p "OGN-007" .base
+  let add : Action := ⟨.player p, .runeAbility rune .recycle⟩
+  let (funded, _) ← (step 100 waiting add).toOption
+  let (choosing, _) ← (step 100 funded ⟨.player p, .decide true⟩).toOption
+  let .eitherDo _ _ _ (.paySelected first _) (.paySelected second _) _ :: _ := choosing.pending | none
+  let (spent, _) ← (step 100 choosing ⟨.player p, .decide (first.power == [.domain .fury])⟩).toOption
+  let (alternate, _) ← (step 100 choosing ⟨.player p, .decide (first.power == [.domain .chaos])⟩).toOption
+  let triggerWaiting := funded.pending.any (fun
+    | .triggers ts => ts.any (·.source == watcher)
+    | _ => false)
+  return (legalActions waiting).contains add && (funded.obj? rune).isNone &&
+    triggerWaiting && funded.pending.head? == waiting.pending.head? &&
+    funded.zone .chain == waiting.zone .chain && (funded.poolOf p).get .fury == 1 &&
+    (funded.poolOf p).get .chaos == 1 && first != second &&
+    (spent.poolOf p).get .fury == 0 && (spent.poolOf p).get .chaos == 1 &&
+    (alternate.poolOf p).get .fury == 1 && (alternate.poolOf p).get .chaos == 0 &&
+    (spent.obj? original).any (·.controller == p) &&
+    (alternate.obj? original).any (·.controller == p)
+
+-- Flexible Power can pay the instruction even if every named domain is also available.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let s := s.setPool p { fury := 1, calm := 1, mind := 1, body := 1, chaos := 1, order := 1, any := 1 }
+  let ways := resolutionPayments s p rebuttal ⟨0, [.any]⟩
+  return ways.length == 7 && ways.any (fun (resources, pool) =>
+    resources.power == [.any] && pool.any == 0 && pool.spent == 1 && pool.totalPower == 6)
 
 -- Taking control leaves the old target in place if the player declines new choices. En Garde
 -- checks it under the new controller and does nothing to a Unit that is now an enemy.
@@ -103,6 +165,46 @@ meta def rebuttalChoice (s : GameState) (power : Nat) :
     (captured.playsOfType .finalized .spell).any (fun play => play.object == original && play.who == q) &&
     !(captured.playsOfType .resolved .spell).any (·.who == q) &&
     (captured.playsOfType .resolved .spell).countP (·.who == p) == 2
+
+-- Mel's protection prevents the counter, while the paid instruction can still take the Spell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mel) ← put s q "VEN-069" .base
+  let s := s.modObj mel (fun o => { o with empowerCount := 1 })
+  let (waiting, spell, _, target) ← rebuttalChoice s 2
+  let (resisted, _) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let done := settleChain {} 6 resisted
+  return (resisted.zone .chain).contains spell &&
+    (resisted.obj? spell).any (·.controller == q) &&
+    (taken.obj? spell).any (·.controller == p) &&
+    done.mightNow target == (resisted.mightNow target).map (· + 1)
+
+-- Remaking Mesmerize can replace its mode. Reusing the same legal target emits the event again.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "VEN-074" .base
+  let (s, target) ← put s q "VEN-074" .base
+  let (s, spell) ← put s q "VEN-052" .hand
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let s := { ((s.fund q 1 (mind := 1)).fund p 1 (chaos := 2)) with pending := [.priority q] }
+  let (casting, _) ← (step 100 s
+    ⟨.player q, .playCard spell ⟨1, [.mind]⟩ [target] none none (.mode 0)⟩).toOption
+  let item ← (casting.zone .chain).head?
+  let (answer, _) ← (step 100 casting ⟨.player q, .pass⟩).toOption
+  let (casting, _) ← (step 100 answer
+    ⟨.player p, .playCard rebuttal ⟨1, [.chaos]⟩ [item]⟩).toOption
+  let (passed, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (waiting, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let (choice, _) ← (step 100 taken ⟨.player p, .decide true⟩).toOption
+  let (chosen, events) ← (step 100 choice ⟨.player p, .decide false⟩).toOption
+  let done := settleChain {} 5 chosen
+  return (chosen.obj? item).any (fun o => o.spellPick.effectChoice == .mode 1 && o.targets == [target]) &&
+    events.contains (.chosenBySpell p target) && done.locate target == some (.player q .base) &&
+    done.mightNow target == (s.mightNow target).map (· - 2)
 
 /-- Pass the Equip through the Chain, stopping before the model is chosen. -/
 meta def awaitCopyChoice : Nat → GameState → Option GameState
@@ -478,7 +580,7 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let answer : Action := ⟨.player q, .playCard rebuttal ⟨1, [.chaos]⟩ [item]⟩
   let ordinary : Action := ⟨.player q, .playCard actionCard ⟨1, []⟩ [target]⟩
   let (answered, _) ← (step 100 ending answer).toOption
-  let done := settleChain {} 6 answered
+  let done := settleChain { yes := false } 6 answered
   return (legalActions ending).contains answer && !(legalActions ending).contains ordinary &&
     !(legalActions { ending with phase := .setup }).contains answer &&
     !(legalActions { ending with pending := [.priority q] }).contains answer &&

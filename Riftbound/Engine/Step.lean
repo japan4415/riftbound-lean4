@@ -106,7 +106,8 @@ def legalFrameActions (s : GameState) : List Action :=
     ([⟨.player p, .decide true⟩, ⟨.player p, .decide false⟩] : List Action).filter (fun a =>
       match a.kind with
       | .decide yes => eitherOk s p src env x y yes
-      | _ => true)
+      | _ => true) ++
+    (if x.isPayment then legalRunes s p ++ legalManas s p else [])
   | .pickDo p _ _ c more _ _ :: _ => (c :: more).map (fun o => ⟨.player p, .choose o⟩)
   | .nameCard p _ _ c more _ :: _ => (c :: more).map (fun id => ⟨.player p, .nameCard id⟩)
   | .chooseBurnOut p :: _ =>

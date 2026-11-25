@@ -682,6 +682,19 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases List.mem_cons.mp hm' with h1 | h1
     · cases h1
     · exact List.mem_cons_of_mem _ h1
+  · rename_i c ab hp hk
+    rw [hp, hk] at hl
+    have hmeta := applyRune_meta h
+    have hhand := applyRune_hand hwf hl.2.1 hl.2.2.1 h
+    exact hinv.of_same ⟨hmeta.1, hmeta.2.1, hmeta.2.2.1, hmeta.2.2.2.1⟩
+      (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
+      (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
+      (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
+  · rename_i src idx pay hp hk
+    rw [hp, hk] at hl
+    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
+    refine hinv.of_play (by rw [hphase]; exact manaOk_not_setup hl.2.1) hto hcfg (fun hm => ?_)
+    rwa [hpend] at hm
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put

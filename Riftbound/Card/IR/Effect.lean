@@ -65,6 +65,10 @@ inductive Effect where
   | chooseOne (modes : EffectList)
   /-- The player chooses one of the effects while the effect resolves, and does it. -/
   | eitherOf (modes : EffectList)
+  /-- Pay a resource cost from the Rune Pool, then continue with the effect (CR 445.2). -/
+  | payThen (cost : Cost) (body : Effect)
+  /-- Spend the specific resources selected from the Pool for this payment. -/
+  | paySelected (resources : Cost) (body : Effect)
   /-- Do the first effect if the condition holds, the second otherwise. -/
   | ifThen (c : Condition) (t e : Effect)
   /-- Do the effect for each of the objects, with `it` the object. -/

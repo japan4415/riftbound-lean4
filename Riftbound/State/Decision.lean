@@ -257,6 +257,11 @@ inductive Frame where
   | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
 deriving DecidableEq, Repr
 
+/-- Whether this branch asks the player to pay resources during resolution. -/
+def Effect.isPayment : Effect → Bool
+  | .payThen .. => true
+  | _ => false
+
 /-- The frames of the setup: the shuffles, the Battlefield picks and the turn order. -/
 def Frame.isSetup : Frame → Bool
   | .chanceShuffle _ => true

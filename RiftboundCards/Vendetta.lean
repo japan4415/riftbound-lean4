@@ -4348,10 +4348,9 @@ def VEN_152 : CardDef :=
   { VEN_152.meta with
     spellEffect := some { EffectDef.of [.targetOf .one .any .onChain [.ofType .spell, .cost .le (.const 4)]]
       (.ifThen (.exists (.slot 0))
-        (.ifThen (.canPay power)
-          (.eitherOf (.ofList [
-            .seqOf [.prim (.pay power), .prim (.takeControl (.slot 0)), .remakeSpellChoices (.slot 0)],
-            counter])) counter)
+        (.eitherOf (.ofList [
+          .payThen power (.seqOf [.prim (.takeControl (.slot 0)), .remakeSpellChoices (.slot 0)]),
+          counter]))
         .nop) with recheckTargets := true },
     status := .drafted }
 

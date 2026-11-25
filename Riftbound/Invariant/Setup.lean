@@ -658,6 +658,14 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
       (new := [Frame.run p src env (.cons (.rememberNamedCard card) es)]) rfl
       (by simp [Frame.isSetup])
+  · rename_i p source env first other es rest c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p source env first other es rest src idx pay hp hk
+    have hmeta := applyMana_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while

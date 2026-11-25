@@ -119,6 +119,39 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
     [("unit", toString unit.n), ("damageOrder", jstr (if yes then "preventFirst" else "doubleFirst"))]
   | _ => []
 
+/-- Describe a decision about paying during resolution, including individual payments. -/
+def effectPaymentFields (state : Option GameState) (frame : Option Frame)
+    (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo p src env (.payThen cost _) other _) =>
+    let target := match other with
+      | .prim (.counter (.slot i)) => env.slots[i]?.bind (fun
+        | .obj id => some id
+        | _ => none)
+      | .prim (.counter sel) => state.bind (fun s => (sel.eval s p src env).bind List.head?)
+      | _ => none
+    [("effectCost", costJson cost)] ++
+      target.toList.map (fun id => ("spellPaymentTarget", toString id.n))
+  | some (.eitherDo _ _ _ first@(.paySelected ..) other _) =>
+    match if yes then first else other with
+    | .paySelected cost _ => [("effectPaymentPlan", costJson cost)]
+    | _ => [("moreEffectPayments", "true")]
+  | _ => []
+
+/-- Describe whether to choose again, and the new finalization choices on offer (CR 750-755). -/
+def remakeSpellFields (state : Option GameState) (frame : Option Frame)
+    (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.mayDo _ _ _ (.eitherOf (.cons (.setSpellChoices spell _ _) _)) _) =>
+    [("remakeSpell", toString spell.n)]
+  | some (.eitherDo _ _ _ first@(.setSpellChoices spell _ _) other _) =>
+    match if yes then first else other with
+    | .setSpellChoices item pick targets =>
+      [("remadeSpell", toString item.n), ("targets", jarr (targets.map (fun id => toString id.n)))] ++
+        spellPickFields state item pick
+    | _ => [("moreSpellChoices", toString spell.n)]
+  | _ => []
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) : String :=
@@ -195,7 +228,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ reducedPermanentFields frame yes ++
-        empowerChoiceFields frame
+        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++ remakeSpellFields state frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with

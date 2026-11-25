@@ -178,6 +178,8 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · exact applyRune_wf hwf h
+  · exact applyMana_wf hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -465,6 +467,8 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · exact applyRune_physIds hwf h
+  · exact applyMana_physIds hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/

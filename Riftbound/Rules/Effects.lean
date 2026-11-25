@@ -3729,6 +3729,36 @@ def GameState.lookFirst (s : GameState) (p : PlayerId) (env : Env) (sel : Select
     s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
       (s.activeMods g).contains .lookBeforeReveal)
 
+/-- The kinds of Power in the Pool that can pay each symbol, including flexible Power. -/
+def resolutionPowerChoices (own : List Domain) : List PowerSym → List (List PowerSym)
+  | [] => [[]]
+  | symbol :: rest =>
+    let domains := symbol.choices own
+    let eligible := if domains.isEmpty then [] else (domains.map PowerSym.domain) ++ [.any]
+    let tails := resolutionPowerChoices own rest
+    eligible.flatMap (fun power => tails.map (power :: ·))
+
+/-- Spend exactly the resources selected for an instruction (CR 445.1). -/
+def spendResolutionPayment (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost) :
+    Option RunePool := do
+  let pool ← (s.poolOf p).spend ⟨cost.energy, []⟩
+  let paid ← cost.power.foldlM (fun (balance : RunePool) symbol =>
+    match symbol with
+    | .domain d => if 0 < balance.get d then balance.takePower d else none
+    | .any => if 0 < balance.any then some { balance with any := balance.any - 1 } else none
+    | .own => none) pool
+  if !(s.cardDef? src).any (·.hasType .gear) && paid.any < s.restrictedNow p then none
+  else some { paid with spent := paid.spent + cost.power.length }
+
+/-- Distinct ways of paying a resource instruction from the Pool (CR 445.1). -/
+def resolutionPayments (s : GameState) (p : PlayerId) (src : ObjId) (cost : Cost) :
+    List (Cost × RunePool) :=
+  let own := ((s.cardDef? src).map (·.domains)).getD []
+  let paid := (resolutionPowerChoices own cost.power).filterMap (fun power =>
+    let resources : Cost := ⟨cost.energy, power⟩
+    (spendResolutionPayment s p src resources).map (fun pool => (resources, pool)))
+  paid.eraseDupsBy (fun a b => a.2 == b.2)
+
 mutual
 
 /-- Whether a branch of a choice can be chosen: a branch that is a condition and nothing else is
@@ -3736,6 +3766,7 @@ chosen only while the condition holds ("choose one that hasn't been chosen"). -/
 def Effect.viable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) : Effect → Bool
   | .ifThen c _ .nop => c.eval s p src env == some true
   | .eitherOf es => EffectList.anyViable s p src env es
+  | .payThen cost _ => !(resolutionPayments s p src cost).isEmpty
   | _ => true
 
 /-- Whether some branch of a choice can be chosen. -/
@@ -4177,6 +4208,17 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
     | none => skip
+  | .payThen cost body =>
+    match resolutionPayments s p src cost with
+    | [] => skip
+    | [(_, pool)] => (s.setPoolFor p src pool, [.run p src env (.cons body es)], [])
+    | first :: second :: more =>
+      let choices := (first :: second :: more).map (fun plan => Effect.paySelected plan.1 body)
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+  | .paySelected cost body =>
+    match spendResolutionPayment s p src cost with
+    | none => skip
+    | some pool => (s.setPoolFor p src pool, [.run p src env (.cons body es)], [])
   | .eitherOf .nil => skip
   | .eitherOf (.cons a rest) =>
     -- the player chooses between the first effect ("yes") and the others ("no"), and so on
@@ -4272,6 +4314,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _
     | exact recycleLookedStep_safe s p src env es
+    | exact setPoolFor_safe s p src _
     | (exact applyReducedPermanent_safe (by assumption))
     | exact playSpellStep_safe (by assumption)
     | exact castReducedStep_safe (by assumption)

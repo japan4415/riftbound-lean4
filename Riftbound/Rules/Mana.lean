@@ -69,6 +69,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
         | some (Ability.activated costs speed body lim) =>
           let timing := match s.pending with
             | .chainPass .. :: _ => speed == .reaction
+            | .eitherDo _ _ _ first _ _ :: _ => first.isPayment && speed == .reaction
             | .showdown .. :: _ => speed != .normal
             | _ => s.phase == .main
           match manaPlan costs with

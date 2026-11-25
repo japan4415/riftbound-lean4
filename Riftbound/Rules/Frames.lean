@@ -372,6 +372,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       if bottom.isEmpty then [] else [.recycled p])
   | .nameCard p src env _ _ es :: rest, .nameCard card =>
     some ({ s with pending := .run p src env (.cons (.rememberNamedCard card) es) :: rest }, [])
+  | .eitherDo p _ _ _ _ _ :: _, .runeAbility c ab => applyRune s p c ab
+  | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set
