@@ -1945,8 +1945,12 @@ def VEN_069.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mel, Newly Awakened: the effect is not written yet. -/
-def VEN_069 : CardDef := VEN_069.meta
+/-- Mel, Newly Awakened. -/
+def VEN_069 : CardDef :=
+  { VEN_069.meta with
+    abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
+      .passive (.empowered .self) [.controlledItemsUncounterable, .targetMightPenalty 1]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-070
 /--
@@ -2424,8 +2428,11 @@ def VEN_086.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Gangplank, Naval: the effect is not written yet. -/
-def VEN_086 : CardDef := VEN_086.meta
+/-- Gangplank, Naval. -/
+def VEN_086 : CardDef :=
+  { VEN_086.meta with
+    abilities := [.passive (.empowered .self) [.chosenHarmToMight 3]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-087
 /--

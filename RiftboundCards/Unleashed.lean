@@ -5770,9 +5770,13 @@ def UNL_198.meta : CardDef :=
 
 /-- Moonfall. -/
 def UNL_198 : CardDef :=
+  let toMove := Selector.all .enemy .anywhere
+    [.ofType .unit, .sameAs (.slot 1), .not (.at_ (.slot 0))]
   { UNL_198.meta with
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield, .myUnitsHere]]
-      (.seqOf [.may (.prim (.move (Selector.one .enemy .anywhere [.ofType .unit]) (.at_ (.slot 0)))),
+    spellEffect := some (.of
+      [.targetOf .one .any .anywhere [.ofType .battlefield, .myUnitsHere],
+        .targetOf (.upTo 1) .enemy .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
+      (.seqOf [.ifThen (.exists toMove) (.may (.prim (.move toMove (.at_ (.slot 0))))) .nop,
         .grant (Selector.all .enemy .anywhere [.ofType .unit, .at_ (.slot 0)])
           (.mightMinus .it (.const 2)) .thisTurn])),
     status := .drafted }

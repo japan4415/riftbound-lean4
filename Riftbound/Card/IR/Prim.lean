@@ -506,6 +506,14 @@ inductive StaticMod where
   | channelLimit (n : Nat)
   /-- This spell can't be countered (CR 426). -/
   | uncounterable
+  /-- Spells and abilities controlled by this object's controller can't be countered (CR 426). -/
+  | controlledItemsUncounterable
+  /-- The controller's spells and abilities give this much extra negative Might to Units
+  they choose (CR 370). -/
+  | targetMightPenalty (n : Nat)
+  /-- If a spell or ability that chooses this Unit would stun, reduce its Might, or return it
+  to hand, give it this much Might this turn instead (CR 370). -/
+  | chosenHarmToMight (n : Nat)
   /-- Ignore Deflect when paying the cost of this spell (CR 809). -/
   | ignoreDeflectSpell
   /-- Ignore Deflect on objects chosen at this Battlefield (CR 809). -/

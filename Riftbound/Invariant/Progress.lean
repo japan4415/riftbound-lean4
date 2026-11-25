@@ -222,7 +222,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.run p src (env.bind pickVar (Value.obj o)) (EffectList.cons e es)]
+    exact hb.swap rfl [Frame.run p src (env.bindPick o e.pickTargets) (EffectList.cons e es)]
   · rename_i z rest l hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

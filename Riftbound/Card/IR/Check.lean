@@ -293,7 +293,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .bonusDamage a => Amount.ok c a
   | .noCombatDamage => true
   | .channelLimit _ => true
-  | .uncounterable => true
+  | .uncounterable | .controlledItemsUncounterable
+  | .targetMightPenalty _ | .chosenHarmToMight _ => true
   | .ignoreDeflectSpell => true
   | .ignoreDeflectHere => true
   | .noCombatDamageFor _ => true

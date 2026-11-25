@@ -2005,6 +2005,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 呪文の印刷された追加コストと Repeat の回数を別々に記録し、両方の選択をビューアに表示する。Unit や Gear の一部では、同額の任意コストを個別に選ぶ処理が残る。
 - 167 枚中 153 枚が `drafted`。転記済みの 153 枚が `CardDef.runs` を通り、14 枚が未転記。
 
+### M8c Vendetta 39 — 対象を選ぶ効果と Might の置換
+
+- Empowered の Mel がいる間、そのプレイヤーが支配する呪文と能力は打ち消せない。選ばれた Unit の Might 減少量は 1 増え、元の効果の下限も適用する。Moonfall は移動させる Unit を確定時に最大 1 体選んで Deflect を払い、解決時に移動するか決める（CR 355.5, 355.12, 370, 426, 809）。
+- Empowered の Gangplank が選ばれた場合、Stun、Might 減少、手札に戻す処理をターン終了時までの +3 Might に置き換える。Switcheroo では Gangplank 側の減少だけを置き換え、もう一方の増加量を保つ（CR 370）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- 167 枚中 155 枚が `drafted`。転記済みの 155 枚が `CardDef.runs` を通り、12 枚が未転記。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

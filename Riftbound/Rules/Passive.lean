@@ -57,6 +57,10 @@ def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
       | _ => [])
   | _, _ => []
 
+/-- The active passive changes from sources controlled by this player (CR 363). -/
+def controlledMods (s : GameState) (p : PlayerId) : List StaticMod :=
+  (s.passiveSources.filter (fun src => (s.obj? src).any (·.controller == p))).flatMap s.activeMods
+
 /-- A passive ability of an object that the opponents of the player control, with the change. -/
 def oppHas (s : GameState) (p : PlayerId) (m : StaticMod) : Bool :=
   s.passiveSources.any (fun g => (s.obj? g).any (fun o => o.controller != p) &&

@@ -503,7 +503,8 @@ def StaticMod.runs : StaticMod → Bool
   | .bonusDamage a => a.understoodC
   | .noCombatDamage => true
   | .channelLimit _ => true
-  | .uncounterable => true
+  | .uncounterable | .controlledItemsUncounterable
+  | .targetMightPenalty _ | .chosenHarmToMight _ => true
   | .ignoreDeflectSpell => true
   | .ignoreDeflectHere => true
   | .doubleEquip => true

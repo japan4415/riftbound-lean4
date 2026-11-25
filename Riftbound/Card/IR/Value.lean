@@ -34,6 +34,8 @@ structure Env where
   bindings : List (VarId × Value) := []
   /-- The values chosen when the card was played: slot `i` is `slots[i]` (CR 355). -/
   slots : List Value := []
+  /-- The objects this spell or ability chose as targets (CR 355.7, 355.10). -/
+  targetObjs : List ObjId := []
   /-- The players chosen during finalization, indexed separately from object slots. -/
   playerTargets : List PlayerId := []
   /-- The card that defines the resolving ability, even if its source has left play. -/
@@ -67,6 +69,11 @@ def withMight (e : Env) (t : List (ObjId × Int)) : Env := { e with passMight :=
 
 /-- Bind a variable. It shadows an older binding of the same name. -/
 def bind (e : Env) (v : VarId) (x : Value) : Env := { e with bindings := (v, x) :: e.bindings }
+
+/-- Bind the current pick and record it as a target when the effect chooses it (CR 355.10). -/
+def bindPick (e : Env) (id : ObjId) (targeted : Bool) : Env :=
+  let picked := e.bind pickVar (.obj id)
+  if targeted then { picked with targetObjs := id :: e.targetObjs } else picked
 
 /-- The value of a variable, if it is bound. -/
 def lookup (e : Env) (v : VarId) : Option Value :=

@@ -156,6 +156,98 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Mel draws on play and empowers for 3 Energy. Moonfall chooses the Unit
+-- before responses and pays Deflect. Only that Unit loses the extra Might.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, melCard) ← put s p "VEN-069" .hand
+  let (s, moonfall) ← put s p "UNL-198" .hand
+  let deckSize := (s.zone (.player p .mainDeck)).length
+  let entered ← play s p melCard
+  let mel ← entered.firstOf p .base "VEN-069"
+  let empowered ← activate entered p mel 2 [] ⟨3, []⟩
+  let (s, _) ← putAt empowered p "VEN-070" field
+  let (s, bystander) ← putAt s q "VEN-086" field
+  let (s, target) ← put s q "VEN-064" .base
+  let s := (empowerObj q (s.control p field |>.fund p 3 0 0 0 2) bystander).1
+  let poor := s.fund p 3 0 0 0 1
+  let action : Action := ⟨.player p, .playCard moonfall ⟨3, [.mind]⟩ [field, target]⟩
+  let (waiting, _) ← (step 100 s action).toOption
+  let item ← (waiting.zone .chain).head?
+  let moved := settleChain {} 8 waiting
+  let stayed := settleChain { yes := false } 8 waiting
+  let noTarget ← cast s p moonfall ⟨3, [.mind]⟩ [field]
+  return (entered.zone (.player p .mainDeck)).length + 1 == deckSize &&
+    (empowered.obj? mel).any (·.empowerCount == 1) &&
+    !(legalActions poor).contains action && (waiting.poolOf p).total == 0 &&
+    (waiting.obj? item).any (·.targets == [field, target]) &&
+    (moved.obj? target).any (·.loc == some field) && moved.mightNow target == some 5 &&
+    moved.mightNow bystander == some 4 && stayed.locate target == some (.player q .base) &&
+    stayed.mightNow target == some 8 && stayed.mightNow bystander == some 4 &&
+    noTarget.mightNow bystander == some 4
+
+-- Not So Fast can legally target either protected Chain item, but cannot
+-- counter it. Stupefy still observes its minimum of 1 Might.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mel) ← put s p "VEN-069" .base
+  let (s, stupefy) ← put s p "OGN-095" .hand
+  let (s, shieldbearer) ← put s p "OGN-051" .hand
+  let (s, answer) ← put s q "SFD-045" .hand
+  let (s, target) ← put s q "VEN-070" .base
+  let (s, small) ← put s q "VEN-014" .base
+  let s := (s.rich p).rich q
+  let empowered := (empowerObj p s mel).1
+  let reply (t : GameState) : Option GameState := do
+    let item ← (t.zone .chain).head?
+    let (priority, _) ← (step 100 t ⟨.player p, .pass⟩).toOption
+    cast priority q answer ⟨2, [.calm]⟩ [item]
+  let castStupefy (t : GameState) : Option GameState :=
+    (step 100 t ⟨.player p, .playCard stupefy ⟨1, []⟩ [target]⟩).toOption.map Prod.fst
+  let stronger ← castStupefy empowered >>= reply
+  let countered ← castStupefy s >>= reply
+  let floor ← cast empowered p stupefy ⟨1, []⟩ [small]
+  let (trigger, _) ←
+    (step 100 empowered ⟨.player p, .playCard shieldbearer ⟨3, []⟩ []⟩).toOption
+  let putOnChain ← (legalActions trigger).find? (fun a => match a.kind with
+    | .putTrigger _ ts _ => ts == [target]
+    | _ => false)
+  let (ability, _) ← (step 100 trigger putOnChain).toOption
+  let stunned ← reply ability
+  return stronger.mightNow target == some 2 && floor.mightNow small == some 1 &&
+    countered.mightNow target == some 4 && (stunned.obj? target).any (·.stunned)
+
+-- Gangplank replaces only his half of Switcheroo. He replaces targeted stuns
+-- and returns as well, including when his own controller chooses him.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, gangplank) ← putAt s q "VEN-086" field
+  let (s, switcheroo) ← put s p "SFD-145" .hand
+  let (s, rebuke) ← put s p "OGN-172" .hand
+  let (s, prison) ← put s q "OGN-050" .hand
+  let s := (s.control q field |>.rich p).rich q
+  let forPlayer (t : GameState) (actor : PlayerId) :=
+    { t with active := some actor, pending := [.priority actor] }
+  let empowered ← activate (forPlayer s q) q gangplank 1 [] ⟨0, [.body, .body]⟩
+  let noStun ← play empowered q prison [gangplank]
+  let (opposing, small) ← putAt (forPlayer empowered p) p "VEN-014" field
+  let swapped ← play opposing p switcheroo [small, gangplank]
+  let sameMight ← play (opposing.modObj small (fun o => { o with baseMightThisTurn := some 6 }))
+    p switcheroo [small, gangplank]
+  let stayed ← play opposing p rebuke [gangplank]
+  let returned ← play (disempowerObj opposing gangplank).1 p rebuke [gangplank]
+  return (empowered.obj? gangplank).any (·.empowerCount == 1) &&
+    (noStun.obj? gangplank).any (! ·.stunned) && noStun.mightNow gangplank == some 9 &&
+    swapped.mightNow gangplank == some 9 && swapped.mightNow small == some 6 &&
+    sameMight.mightNow gangplank == some 6 &&
+    (stayed.obj? gangplank).any (·.loc == some field) && stayed.mightNow gangplank == some 9 &&
+    returned.countIn q .hand "VEN-086" == 1
+
 -- Rampage makes both decisions available even when the total payments are equal.
 -- The bonus follows the original decision, including if the Spell changes controllers.
 #guard vendettaCase fun s => do

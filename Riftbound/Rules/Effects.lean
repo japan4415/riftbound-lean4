@@ -501,6 +501,38 @@ def stunObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem stunObj_safe (s : GameState) (id : ObjId) : Safe s (stunObj s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- Add a lasting change of Might to an object (CR 475-478). -/
+def addMightMod (m : MightMod) (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [m] }), [])
+
+/-- Adding a change of Might is a safe change. -/
+theorem addMightMod_safe (m : MightMod) (s : GameState) (id : ObjId) :
+    Safe s (addMightMod m s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
+/-- Replace a stun, a Might reduction or a return to hand on a chosen Unit with a
+Might bonus if its active abilities say so (CR 370). -/
+def replaceChosenHarm (env : Env) (apply : GameState → ObjId → GameState × List Event)
+    (s : GameState) (id : ObjId) : GameState × List Event :=
+  if env.targetObjs.contains id && s.inPlay.contains id then
+    match (s.activeMods id).findSome? (fun
+      | .chosenHarmToMight n => some n
+      | _ => none) with
+    | some n => addMightMod ⟨(n : Int), .turn⟩ s id
+    | none => apply s id
+  else apply s id
+
+/-- Replacing chosen harm preserves safety when the original instruction does. -/
+theorem replaceChosenHarm_safe (env : Env) {apply : GameState → ObjId → GameState × List Event}
+    (h : ∀ s id, Safe s (apply s id).1) (s : GameState) (id : ObjId) :
+    Safe s (replaceChosenHarm env apply s id).1 := by
+  unfold replaceChosenHarm
+  split
+  · split
+    · exact addMightMod_safe _ s id
+    · exact h s id
+  · exact h s id
+
 /-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
 def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
@@ -841,7 +873,8 @@ Nothing happens to what is not a spell on the Chain. -/
 def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
   | some o =>
-    if id ∈ s.zone .chain ∧ !(s.activeMods id).contains .uncounterable then
+    if id ∈ s.zone .chain ∧ !(s.activeMods id).contains .uncounterable ∧
+      !(s.controlledMods o.controller).contains .controlledItemsUncounterable then
       match o.kind with
       | .chainAbility .. =>
         -- a countered ability ceases to exist
@@ -2389,7 +2422,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (banishObj p)
-  | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
+  | .returnToHand sel => onSelected s p src env sel (replaceChosenHarm env (sendObj .hand))
   | .create name n place ready => applyCreate s p src env name n place ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
   | .attach gears to => applyAttach s p src env gears to
@@ -2416,7 +2449,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some (x :: _), some (y :: _) =>
       some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p))))
     | _, _ => none
-  | .stun sel => onSelected s p src env sel stunObj
+  | .stun sel => onSelected s p src env sel (replaceChosenHarm env stunObj)
   | .buff sel => onSelected s p src env sel buffObj
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
@@ -2606,7 +2639,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (banishObj_safe p) h
-  | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
+  | returnToHand sel => exact onSelected_safe (replaceChosenHarm_safe env (sendObj_safe .hand)) h
   | create name n place ready => exact applyCreate_safe h
   | playUnitTokenAt name dest =>
     cases h
@@ -2634,7 +2667,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
             show Safe s r0.1
             exact onSelected_safe (moveByEffect_safe _ _) hr0
           · simp at h
-  | stun sel => exact onSelected_safe stunObj_safe h
+  | stun sel => exact onSelected_safe (replaceChosenHarm_safe env stunObj_safe) h
   | detach sel => exact onSelected_safe detachObj_safe h
   | double sel => exact onSelected_safe doubleObj_safe h
   | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
@@ -2970,15 +3003,6 @@ def Duration.endPoint? : Duration → Option EndPoint
   | .permanent => some .never
   | _ => none
 
-/-- Add a lasting change of Might to an object (CR 475-478). -/
-def addMightMod (m : MightMod) (s : GameState) (id : ObjId) : GameState × List Event :=
-  (s.modObj id (fun o => { o with mightMods := o.mightMods ++ [m] }), [])
-
-/-- Adding a change of Might is a safe change. -/
-theorem addMightMod_safe (m : MightMod) (s : GameState) (id : ObjId) :
-    Safe s (addMightMod m s id).1 :=
-  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
-
 /-- The Might an object has for the choice of "to a minimum": the Might the rules read now, with
 the lasting changes, the buff, the Equipment and the passive abilities (CR 479.4). -/
 def GameState.mightBase (s : GameState) (id : ObjId) : Int :=
@@ -2994,6 +3018,34 @@ def addMightFloor (k floor : Nat) (ends : EndPoint) (s : GameState) (id : ObjId)
 theorem addMightFloor_safe (k floor : Nat) (ends : EndPoint) (s : GameState) (id : ObjId) :
     Safe s (addMightFloor k floor ends s id).1 :=
   addMightMod_safe _ s id
+
+/-- Give negative Might, applying replacements from the chosen Unit and the effect's controller
+while keeping any minimum on the reduction (CR 370). -/
+def reduceMight (p : PlayerId) (env : Env) (n : Nat) (floor : Option Nat) (ends : EndPoint)
+    (s : GameState) (id : ObjId) : GameState × List Event :=
+  if n == 0 then (s, [])
+  else replaceChosenHarm env (fun t target =>
+    let extra := if env.targetObjs.contains target && (t.cardDef? target).any (·.hasType .unit) then
+      ((t.controlledMods (env.effectController.getD p)).filterMap (fun
+        | .targetMightPenalty k => some k
+        | _ => none)).sum
+      else 0
+    match floor with
+    | some fl => addMightFloor (n + extra) fl ends t target
+    | none => addMightMod ⟨-((n + extra : Nat) : Int), ends⟩ t target) s id
+
+/-- Giving negative Might, including replacement effects, preserves safety. -/
+theorem reduceMight_safe (p : PlayerId) (env : Env) (n : Nat) (floor : Option Nat)
+    (ends : EndPoint) (s : GameState) (id : ObjId) :
+    Safe s (reduceMight p env n floor ends s id).1 := by
+  unfold reduceMight
+  split
+  · exact Safe.refl s
+  · apply replaceChosenHarm_safe
+    intro t target
+    cases floor
+    · exact addMightMod_safe _ t target
+    · exact addMightFloor_safe _ _ _ t target
 
 /-- Grant Flow for a Spell's base cost before any play-time adjustments (CR 356.1, 829). -/
 def addFlowAtBaseCost (ends : EndPoint) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -3012,15 +3064,15 @@ theorem addFlowAtBaseCost_safe (ends : EndPoint) (s : GameState) (id : ObjId) :
 /-- Grant a temporary change to the selected objects. -/
 def applyGrant (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel : Selector)
     (m : StaticMod) (d : Duration) : Option (GameState × List Event) :=
-  let go (a : Amount) (sign : Int) : Option (GameState × List Event) :=
+  let minus (a : Amount) (floor : Option Nat) : Option (GameState × List Event) :=
     d.endPoint?.bind (fun ends => (a.evalS s p src env).bind (fun k =>
-      onSelected s p src env sel (addMightMod ⟨sign * (k : Int), ends⟩)))
+      onSelected s p src env sel (reduceMight p env k floor ends)))
   match m with
-  | .mightPlus .it a => go a 1
-  | .mightMinus .it a => go a (-1)
-  | .mightMinusMin .it a fl =>
+  | .mightPlus .it a =>
     d.endPoint?.bind (fun ends => (a.evalS s p src env).bind (fun k =>
-      onSelected s p src env sel (addMightFloor k fl ends)))
+      onSelected s p src env sel (addMightMod ⟨(k : Int), ends⟩)))
+  | .mightMinus .it a => minus a none
+  | .mightMinusMin .it a fl => minus a (some fl)
   | .keyword .it k => d.endPoint?.bind (fun ends => onSelected s p src env sel (addTempKw k ends))
   | .flowAtBaseCost => d.endPoint?.bind (fun ends => onSelected s p src env sel (addFlowAtBaseCost ends))
   | _ => none
@@ -3048,15 +3100,16 @@ theorem applyGrant_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
       | none => simp [hd, hk] at h
       | some k =>
         simp only [hd, hk, Option.bind_some] at h
-        exact onSelected_safe (addMightMod_safe _) h
-  · cases hd : d.endPoint? with
+        exact onSelected_safe (reduceMight_safe p env k none ends) h
+  · simp only at h
+    cases hd : d.endPoint? with
     | none => simp [hd] at h
     | some ends =>
       cases hk : (‹Amount›).evalS s p src env with
       | none => simp [hd, hk] at h
       | some k =>
         simp only [hd, hk, Option.bind_some] at h
-        exact onSelected_safe (addMightFloor_safe _ _ _) h
+        exact onSelected_safe (reduceMight_safe p env k (some _) ends) h
   · cases hd : d.endPoint? with
     | none => simp [hd] at h
     | some ends =>
@@ -3184,10 +3237,14 @@ def Effect.isLinkedCost : Effect → Bool
 /-- Picks for costs or by multiple players do not fire target effects (CR 355.10.c.1, 355.10.e).
 Keeping original targets does not choose them again (CR 355.11.b). Movement destinations only
 name the location (CR 355.18). -/
-def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
+def Effect.pickTargets (e : Effect) : Bool :=
   match e with
-  | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ => []
-  | _ => if e.isLinkedCost then [] else chosenAt s p src id
+  | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ => false
+  | _ => !e.isLinkedCost
+
+/-- Emit the choice event for a new target picked during resolution. -/
+def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
+  if e.pickTargets then chosenAt s p src id else []
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
 recycled after; if the Power cannot be paid, the instruction is skipped. -/
@@ -3452,7 +3509,11 @@ def retainTargetSetFrame (p : PlayerId) (src : ObjId) (env : Env)
     (fun id => remaining.any (fun group => !group.contains id))
   match candidates with
   | id :: more => .pickDo p src env id more (.retainTargetSet remaining) es
-  | [] => .run p src { env with slots := (remaining.headD []).map Value.obj } es
+  | [] =>
+    let retained := remaining.headD []
+    .run p src { env with
+      slots := retained.map Value.obj
+      targetObjs := env.targetObjs.filter retained.contains } es
 
 /-- Ask the next player with more than one candidate, or record their sole pick and move on.
 The original effect resumes after every player has picked (CR 355.10.e). -/
@@ -3656,7 +3717,7 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
     match s.pickCandidates p src env side place fs (!e.isLinkedCost) with
     | some [o] =>
-      (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], e.pickEvents s p src o)
+      (s, [.run p src (env.bindPick o e.pickTargets) (.cons e.withPick es)], e.pickEvents s p src o)
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])
   | _ => runEffect1 s p src env e es
@@ -3672,15 +3733,15 @@ theorem runEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
     · exact Safe.refl s
   · exact runEffect1_safe s p src env e es
 
+/-- The ability of the card identified by an item on the Chain (CR 337). -/
+def abilityAt (s : GameState) (card : CardId) (idx : Nat) : Option Ability :=
+  (s.cards.find? card).bind (fun d => d.allAbilities[idx]?)
+
 /-- The effect of the ability of a card: its choices and its body. -/
 def abilityDef (s : GameState) (card : CardId) (idx : Nat) : Option EffectDef :=
-  match s.cards.find? card with
-  | some d =>
-    match d.allAbilities[idx]? with
-    | some (.activated _ _ b _) => some b
-    | some (.triggered _ b _) => some b
-    | _ => none
-  | none => none
+  match abilityAt s card idx with
+  | some (.activated _ _ b _) | some (.triggered _ b _) => some b
+  | _ => none
 
 /-- The slots of a Spell or an ability: the objects chosen, and a filler for each target of up to one that was
 left out (it selects nothing). -/
@@ -3748,8 +3809,14 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       else o.targets
     let slots := if recheck then recheckedSlots s o.controller src targets definition ++
       subject.map Value.obj else slotValues o.targets definition
+    let targetObjs := match abilityAt s card idx with
+      | some (.activated costs _ _ _) =>
+        if costs.any (fun | .killFriendly .. => true | _ => false) then targets.dropLast
+        else targets
+      | _ => targets
     let env : Env := {
       slots
+      targetObjs
       playerTargets := o.targetPlayer.toList
       sourceCard := some card
       eventAmount := o.eventAmount }
@@ -3792,7 +3859,9 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
     match s.obj? item, s.cardDef? item with
     | some o, some d =>
       let definition := d.spellEffect.bind (·.forPick o.spellPick)
-      .run o.controller item { slots := finalizedSlots s o.controller item o.targets definition o.spellPick }
+      .run o.controller item {
+        slots := finalizedSlots s o.controller item o.targets definition o.spellPick
+        targetObjs := o.targets }
         (match definition with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)

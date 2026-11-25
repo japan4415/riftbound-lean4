@@ -206,7 +206,8 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
     resolveFrames s rest =
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets
-          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick }
+          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
+        targetObjs := o.targets }
         (match d.spellEffect.bind (·.forPick o.spellPick) with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)

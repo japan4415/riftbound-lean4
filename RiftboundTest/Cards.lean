@@ -67,9 +67,9 @@ open Riftbound RiftboundCards
 #guard (allCards.filter (fun c => c.id.code.startsWith "UNL-")).length == 225
 
 -- the cards written down as IR values (docs/coverage.md)
-#guard (Vendetta.cards.filter (·.status == .drafted)).length == 153
-#guard (Vendetta.cards.filter CardDef.runs).length == 153
-#guard (allCards.filter (·.status == .drafted)).length == 937
+#guard (Vendetta.cards.filter (·.status == .drafted)).length == 155
+#guard (Vendetta.cards.filter CardDef.runs).length == 155
+#guard (allCards.filter (·.status == .drafted)).length == 939
 -- an Equipment's effect text is kept apart: the abilities it gives the Unit it is attached to are
 -- `grants`, not the abilities of the card
 #guard match db.find? ⟨"UNL-019"⟩ with
