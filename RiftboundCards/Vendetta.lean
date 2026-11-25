@@ -149,7 +149,7 @@ def VEN_005 : CardDef :=
     abilities := [.triggered
       { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-006
 /--
@@ -177,7 +177,7 @@ def VEN_006 : CardDef :=
       { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
       (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn,
         .grant .self (.keyword .it ⟨.ganking, .none⟩) .thisTurn])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-007
 /--
@@ -258,7 +258,7 @@ def VEN_009 : CardDef :=
       (.of [] (.eitherOf (.ofList [
         .payThen ⟨0, [.domain .fury]⟩ (.grant .self (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn),
         .nop]))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-010
 /--
@@ -285,7 +285,7 @@ def VEN_010 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.prim (.deal (.slot 0) (.add (.const 2)
         (.count (.all .friendly .inTrash [.named "Consuming Curse"])))))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-011
 /--
@@ -343,7 +343,7 @@ def VEN_012 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.prim (.ready (.slot 0)),
         .grant (.slot 0) (.keyword .it ⟨.assault, .amount 3⟩) .thisTurn])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-013
 /--
@@ -738,7 +738,7 @@ def VEN_026 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-027
 /--
@@ -1369,7 +1369,7 @@ def VEN_048 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-049
 /--
@@ -2034,7 +2034,7 @@ def VEN_072 : CardDef :=
       (.ifThen (.empowered (.slot 0))
         (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn)
         (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-073
 /--
@@ -2246,7 +2246,7 @@ def VEN_079 : CardDef :=
           .grant .self (.mightPlus .it (.const 1)) .thisTurn])
       [.triggered { event := .attack, condition := .empowered .self } effect .unlimited,
         .triggered { event := .defend, condition := .empowered .self } effect .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-080
 /--
@@ -2677,7 +2677,7 @@ def VEN_094 : CardDef :=
           (.eitherOf (.ofList [
             .payThen ⟨1, []⟩ (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn),
             .nop])) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-095
 /--
@@ -2728,7 +2728,7 @@ def VEN_096 : CardDef :=
   { VEN_096.meta with
     abilities := [.passive .always [.costMinus .self (.mul (.const 2)
       (.count (.all .friendly .inTrash [.named "Shadowblade Lurker"])))]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED VEN-097
 /--

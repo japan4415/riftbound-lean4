@@ -43,6 +43,7 @@ public import RiftboundTest.OriginsA
 public import RiftboundTest.SpiritforgedA
 public import RiftboundTest.UnleashedA
 public import RiftboundTest.VendettaA
+public import RiftboundTest.VendettaVerified
 
 /-!
 # RiftboundTest

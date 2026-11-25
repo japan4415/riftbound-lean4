@@ -627,7 +627,8 @@ def CardDef.hasEmpowerAbility (c : CardDef) : Bool :=
 /-- The card does everything its text says: it is written down, its abilities and its Spell are
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
-  c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
+  (c.status == .drafted || c.status == .full) &&
+    c.abilities.all Ability.runs && c.grants.all Ability.runs &&
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
