@@ -213,7 +213,10 @@ def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : Effe
     (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
   [("queuedSpell", toString card.n), ("targets", jarr (plan.targets.map (fun id => toString id.n))),
     ("targetControllers", jarr controllers), ("queuedCost", costJson plan.cost)] ++
-    spellPickFields state card plan.pick
+    spellPickFields state card plan.pick ++
+    (if plan.discard.isSome || (state.bind (·.cardDef? card)).any (·.discardToPlay) then
+      [("playDiscard", plan.discard.elim "null" (fun id => toString id.n))]
+    else [])
 
 /-- A Spell played by an effect: its targets, payment or cancellation. -/
 def effectSpellDecision (state : Option GameState) : Effect → List (String × String)

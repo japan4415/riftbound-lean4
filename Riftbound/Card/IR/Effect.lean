@@ -69,6 +69,8 @@ structure EffectSpellPlay where
   cost : Cost
   /-- Its mode, player target, destination or optional cost choices. -/
   pick : SpellPick
+  /-- The hand card selected to pay an optional additional cost. -/
+  discard : Option ObjId := none
 deriving DecidableEq, Repr, Hashable
 
 /-- A damage event while its controller is ordering the applicable replacements. -/

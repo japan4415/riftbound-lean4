@@ -2574,6 +2574,89 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   return paid.countNamed p .base "Shadow Clone" == 1 && unpaid.countNamed p .base "Shadow Clone" == 0 &&
     paid.locate card == none && unpaid.locate card == some (.player p .hand)
 
+/-- Find a finalization through the effect's ordered choices, then take it. -/
+meta def chooseEffectPlay (accept : Effect → Bool) :
+    Nat → GameState → Option (GameState × List Event)
+  | 0, _ => none
+  | fuel + 1, s => do
+    let .eitherDo p _ _ first other _ :: _ := s.pending | none
+    let chosen := accept first || accept other
+    let (t, events) ← (step 100 s ⟨.player p, .decide (accept first)⟩).toOption
+    if chosen then some (t, events) else chooseEffectPlay accept fuel t
+
+-- Fizz offers the optional hand cost when he plays Ruthless Strike from the Trash.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, target) ← putAt s s.you "VEN-091" s.bf0
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, spell) ← put s p "VEN-008" .trash
+  let (s, first) ← put s p "VEN-047" .hand
+  let (s, second) ← put s p "VEN-071" .hand
+  let (s, _) ← put s s.you "VEN-047" .hand
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act (s.fund p 3 (chaos := 1)) (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let offer ← passToChoice 8 played
+  let (choice, queued) ← act offer (.decide true)
+  let item ← (choice.zone .chain).head?
+  let cast (t : GameState) (discard : Option ObjId) := chooseEffectPlay (fun
+    | .finishLimitedSpell card plan [] =>
+      card == item && plan.targets == [target] && plan.cost == Cost.zero && plan.discard == discard
+    | _ => false) 15 t
+  let (paid, paidEvents) ← cast choice (some first)
+  let (alternate, _) ← cast choice (some second)
+  let (unpaid, unpaidEvents) ← cast choice none
+  let (riches, _) ← put choice p "VEN-022" .base
+  let (replaced, replacementEvents) ← cast riches (some first)
+  let banished ← replaced.firstOf p .banishment "VEN-047"
+  let resolves (t : GameState) (amount : Nat) :=
+    let done := settleChain {} 12 t
+    (done.obj? target).any (·.damage == amount) &&
+      ((done.zone (.player p .mainDeck)).getLast?).any (fun id =>
+        (done.cardDef? id).any (·.id.code == "VEN-008"))
+  let discarded ← paid.firstOf p .trash "VEN-047"
+  return queued.contains (.moved spell item .chain) && (choice.pendingSpell item).isSome &&
+    (choice.locate first).isSome && (choice.locate second).isSome &&
+    paidEvents == [.moved first discarded (.player p .trash), .discarded p discarded true,
+      .played p item, .chosenBySpell p target] &&
+    unpaidEvents == [.played p item, .chosenBySpell p target] &&
+    (paid.obj? item).any (·.discardPaid) && (unpaid.obj? item).any (fun o => !o.discardPaid) &&
+    (paid.locate first).isNone && (paid.locate second).isSome &&
+    (alternate.locate first).isSome && (alternate.locate second).isNone &&
+    (unpaid.locate first).isSome && (unpaid.locate second).isSome &&
+    replacementEvents.contains (.banished p p banished) &&
+    !(replacementEvents.any (fun | .discarded .. => true | _ => false)) &&
+    (replaced.obj? item).any (·.discardPaid) &&
+    resolves paid 5 && resolves alternate 5 && resolves unpaid 3 && resolves replaced 5
+
+-- Void Rush offers Zed's optional hand cost even though he is played from the deck.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, rush) ← put s p "SFD-188" .hand
+  let (s, hand) ← put s p "VEN-047" .hand
+  let (s, _) ← put s p "VEN-071" .mainDeck
+  let (s, zed) ← put s p "VEN-023" .mainDeck
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act (s.fund p 4 (fury := 2)) (.playCard rush ⟨2, [.fury]⟩ [])
+  let offer ← passToChoice 8 played
+  let (selection, _) ← act offer (.decide true)
+  let choice ← match selection.pending with
+    | .pickDo .. :: _ => (act selection (.choose zed)).map Prod.fst
+    | _ => some selection
+  let cast (discard : Option ObjId) := chooseEffectPlay (fun
+    | .finishReducedPermanent card _ plan =>
+      card == zed && plan.battlefield.isNone && plan.discard == discard
+    | _ => false) 15 choice
+  let (paid, paidEvents) ← cast (some hand)
+  let (unpaid, _) ← cast none
+  let item ← paid.firstOf p .base "VEN-023"
+  let discarded ← paid.firstOf p .trash "VEN-047"
+  let paidDone := settleChain {} 12 paid
+  let unpaidDone := settleChain {} 12 unpaid
+  return paidEvents.contains (.discarded p discarded true) && paidEvents.contains (.played p item) &&
+    (paid.obj? item).any (·.discardPaid) && (paid.locate hand).isNone && (unpaid.locate hand).isSome &&
+    paidDone.countNamed p .base "Shadow Clone" == 1 && unpaidDone.countNamed p .base "Shadow Clone" == 0 &&
+    paidDone.countIn p .hand "VEN-071" == 1 && unpaidDone.countIn p .hand "VEN-071" == 1
+
 -- The two Tentacles can be played at different locations. Playing the spell for Flow
 -- still offers the location of each token and banishes the spell.
 #guard vendettaCase fun s => do

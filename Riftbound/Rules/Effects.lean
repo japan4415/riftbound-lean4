@@ -1779,9 +1779,10 @@ def limitedSpellOptions (s : GameState) (p : PlayerId) (card : ObjId)
   let some effect := d.spellEffect | return []
   let some base := price.baseCost s p card d | return []
   let resolving := s.pending.findSome? (fun | .finishSpell id => some id | _ => none)
-  return (effectSpellOptions s p card d effect base price.energyCut).filterMap (fun (targets, cost, pick) =>
+  let discards := s.playDiscards p card
+  return (effectSpellOptions s p card d effect base price.energyCut).flatMap (fun (targets, cost, pick) =>
     if targets.all (fun id => resolving != some id && (s.pendingSpell id).isNone) then
-      some { targets, cost, pick } else none)
+      discards.map (fun discard => { targets, cost, pick, discard }) else [])
 
 /-- Find individual Add activations that can pay for the Spell's chosen targets and mode. -/
 def effectSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
@@ -4161,12 +4162,15 @@ def commitLimitedSpell (s : GameState) (p : PlayerId) (card : ObjId) (plan : Eff
   let play ← funded.pendingSpell card
   let pool ← effectSpellPoolPayment funded p card play.price plan
   let paid := funded.setPoolFor p card pool
+  let discarded := payDiscards p paid plan.discard.toList
+  let discardPaid := !discarded.2.isEmpty
   let chosen := plan.pick.optionalCosts.getD (false, 0)
   let mark := { paid.playMark p card ⟨plan.cost.energy, []⟩ with
-    spellPick := plan.pick, paid := chosen.1, extraPaid := chosen.2,
+    spellPick := plan.pick, paid := chosen.1 || discardPaid, extraPaid := chosen.2,
     fromHand := match play.origin with | .player _ .hand => true | _ => false }
-  some (paid.modObj card (fun o => { o.withPlay plan.targets mark with pendingSpellPlay := none }),
-    events ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
+  let final := discarded.1.modObj card (fun o =>
+    { o.withPlay plan.targets mark with pendingSpellPlay := none, discardPaid })
+  some (final, events ++ discarded.2 ++ [.played p card] ++ plan.targets.map (.chosenBySpell p))
 
 /-- Committing a queued Spell preserves the game invariants. -/
 theorem commitLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {plan : EffectSpellPlay}
@@ -4177,7 +4181,7 @@ theorem commitLimitedSpell_safe {s : GameState} {p : PlayerId} {card : ObjId} {p
   obtain ⟨⟨t, events⟩, ht, play, -, pool, -, hr⟩ := h
   rw [← hr]
   exact (funding.safe (r := (t, events)) ht).trans ((setPoolFor_safe t p card pool).trans
-    (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl)))
+    ((payDiscards_safe p plan.discard.toList _).trans (Safe.modObj _ card (fun _ => rfl) (fun _ => rfl))))
 
 /-- A Spell played for a reduced cost (Void Rush). If the choice is a Unit or Gear, it
 continues its own play process. -/
@@ -4554,13 +4558,14 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
   | _ => none
 
-/-- Use the shared finalization choices when a Unit can elect a fee or an effect specifies a
-set of mandatory locations. For other plays the existing immediate instructions apply. -/
+/-- Use the shared finalization choices for optional discards, battlefield fees, and mandatory
+locations (CR 355.1.a, 355.17). -/
 def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) : Option (Env × EffectList) :=
   let needsChoices (id : ObjId) := (s.cardDef? id).any (fun d =>
-    d.hasType .unit && (env.hiddenPlayLocation.isSome ||
-      !(s.battlefieldFeeChoices p id d).isEmpty))
+    (d.discardToPlay && (d.hasType .unit || d.hasType .gear)) ||
+      (d.hasType .unit && (env.hiddenPlayLocation.isSome ||
+        !(s.battlefieldFeeChoices p id d).isEmpty)))
   let schedule (ids : List ObjId) (price : EffectPlayPrice)
       (places : Option (List ObjId)) (mandatory : Bool := false) :=
     if mandatory || ids.any needsChoices then

@@ -356,9 +356,12 @@ function describeA(a, prev, state = steps[cur]?.state) {
         choices.push(targets.length ? '対象 ' + targets.join('、') : '対象なし');
         if (a.queuedSpell != null) {
           const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
-          const payment = costText(a.queuedCost);
-          const prepared = a.preparedAdds?.length ? ' ・ 選択済み ' + a.preparedAdds.map(addLabel).join('、') : '';
-          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices.join('、') + '）', payment + prepared];
+          const payment = [costText(a.queuedCost)];
+          if (a.playDiscard !== undefined) {
+            payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
+          }
+          if (a.preparedAdds?.length) payment.push('選択済み ' + a.preparedAdds.map(addLabel).join('、'));
+          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices.join('、') + '）', payment.join(' ・ ')];
         }
         return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices.join('、') + '）', ''];
       }
