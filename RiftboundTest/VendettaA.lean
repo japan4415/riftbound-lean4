@@ -17,6 +17,120 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- The two Tentacles can be played at different locations. Playing the spell for Flow
+-- still offers the location of each token and banishes the spell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s p "VEN-158"
+  let (s, enemyField) ← putBf s q "VEN-158"
+  let (s, _) ← putAt s p "VEN-047" field
+  let (s, _) ← putAt s q "VEN-047" enemyField
+  let (s, spell) ← put s p "VEN-100" .trash
+  let s := ((s.control p field).control q enemyField).rich p
+  let tentacle ← s.tokenCard "Tentacle"
+  let (waiting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨3, []⟩ []⟩).toOption
+  let waiting := settleChain {} 2 waiting
+  let (placed, _) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
+  let (done, _) ← (step 100 placed ⟨.player p, .decide true⟩).toOption
+  let tokenAt (t : GameState) (bf : ObjId) :=
+    (t.zone .battlefieldZone).filter (fun u => (t.cardDef? u).any (·.id == tentacle.id) &&
+      (t.obj? u).any (fun o => o.loc == some bf && o.exhausted))
+  return s.unitTokenDestinations p tentacle == [none, some field] &&
+    tentacle.tags == [⟨"Bilgewater"⟩] &&
+    (tokenAt placed field).length == 1 && placed.countNamed p .base "Tentacle" == 0 &&
+    tokenAt done field == tokenAt placed field && done.countNamed p .base "Tentacle" == 1 &&
+    done.countIn p .banishment "VEN-100" == 1
+
+-- Illaoi makes a token on play and on each kind of score at her location. Skipping over an
+-- enemy token or a friendly Gear token, her Might counts only the controller's Unit tokens.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let ordinaryField := s.bf0
+  let (s, field) ← putBf s p "VEN-158"
+  let (s, _) ← putAt s p "VEN-047" field
+  let (s, hand) ← put s p "VEN-109" .hand
+  let gold ← s.tokenCard "Gold"
+  let s := createOne gold.id p none true (createOne (tokenId "Tentacle") q none false s)
+  let s := s.control p field
+  let after ← play s p hand
+  let illaoi ← after.firstOf p .base "VEN-109"
+  let r ← moveObj after illaoi .battlefieldZone
+  let s := r.1.modObj r.2 (fun o => { o with loc := some field })
+  let elsewhere ← fire s [.scored p ordinaryField true]
+  let conquered ← fire s [.scored p field true]
+  let held ← fire s [.scored p field false]
+  return after.mightNow illaoi == some 5 && after.countNamed p .base "Tentacle" == 1 &&
+    elsewhere.countNamed p .base "Tentacle" == 1 &&
+    conquered.countNamed p .base "Tentacle" == 2 && held.countNamed p .base "Tentacle" == 2 &&
+    held.mightNow r.2 == some 6
+
+-- Profiteer targets the recipient when the ability is put on the Chain. It can pay with
+-- an Empowered Legend, and leaves both objects alone when the cost is declined.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, legend) ← put s p "VEN-153" .legendZone
+  let (s, target) ← put s p "VEN-155" .legendZone
+  let (s, gear) ← put s p "VEN-147" .base
+  let (s, card) ← put s p "VEN-082" .hand
+  let marked (t : GameState) (id : ObjId) := (t.obj? id).map (·.empowerCount)
+  let s := (s.modObj legend (fun o => { o with empowerCount := 1 })).modObj gear
+    (fun o => { o with empowerCount := 1 })
+  let targets ← castStop s p card
+  let paid ← play s p card [] { pick := (· == [target]), obj := (· == legend) }
+  let declined ← play s p card [] { pick := (· == [target]), yes := false }
+  return targets.trigPicks.contains target && targets.trigPicks.contains gear &&
+    marked paid target == some 1 && marked paid gear == some 1 && marked paid legend == some 1 &&
+    marked declined target == some 0 && marked declined legend == some 1
+
+-- Death Mark burns before playing a Shadow Clone. The 0 Might clone survives with zero
+-- damage. On attack, it can banish a newly burned Unit, choose between Units, or decline.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "VEN-158"
+  let (s, _) ← putAt s p "VEN-047" field
+  let (s, spell) ← put s p "VEN-144" .hand
+  let (s, unit) ← put s p "VEN-047" .mainDeck
+  let (s, otherUnit) ← put s p "VEN-071" .mainDeck
+  let (s, gear) ← put s p "VEN-147" .mainDeck
+  let zone := Zone.player p .mainDeck
+  let s := (s.control p field).reorder zone ([unit, otherUnit, gear] ++
+    (s.zone zone).filter (fun u => !([unit, otherUnit, gear].contains u)))
+  let made ← play s p spell [] { yes := false }
+  let clone ← (made.zone .battlefieldZone).find? (fun o =>
+    (made.cardDef? o).any (·.name == "Shadow Clone"))
+  let fodder ← (made.zone (.player p .trash)).find? (fun o =>
+    (made.obj? o).any (·.formerId == some unit))
+  let paid ← fire made [.combatStarted field p] { obj := (· == fodder) }
+  let declined ← fire made [.combatStarted field p] { yes := false }
+  let (expired, _) ← (advance 100 { paid with pending := [.expireTurn] } []).toOption
+  let assault (t : GameState) := (t.keywordsNow clone).contains ⟨.assault, .amount 4⟩
+  return made.mightNow clone == some 0 && made.tired clone == some true &&
+    made.countIn p .trash "VEN-147" == 1 && assault paid && !assault declined && !assault expired &&
+    (paid.zone (.player p .banishment)).any (fun o => (paid.obj? o).any (·.formerId == some fodder)) &&
+    declined.locate fodder == some (.player p .trash)
+
+-- Zed's Conquer specifies the Base even when a Battlefield is available. His action
+-- chooses a friendly Shadow Clone and swaps the two Units' locations.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s p "VEN-158"
+  let (s, zed) ← putAt s p "VEN-112" field
+  let s := s.control p field
+  let scored ← fire s [.scored p field true] { yes := false }
+  let clone ← scored.firstOf p .base "TKN-Shadow Clone"
+  let withEnemy := createOne (tokenId "Shadow Clone") q none false scored
+  let enemy ← withEnemy.firstOf q .base "TKN-Shadow Clone"
+  let ready := { withEnemy.rich p with pending := [.priority p] }
+  let action (target : ObjId) : Action := ⟨.player p, .activate zed 1 ⟨1, [.chaos]⟩ [target]⟩
+  let (waiting, _) ← (step 100 ready (action clone)).toOption
+  let swapped := settleChain {} 12 waiting
+  return !(legalActions ready).contains (action enemy) &&
+    swapped.locate zed == some (.player p .base) &&
+    (swapped.obj? clone).bind (·.loc) == some field
+
 -- Mystic Vortex adds one Power to Reaction, including Quick-Draw and destination-granted
 -- Ambush, for both players. Action by itself costs the printed amount.
 #guard vendettaCase fun s => do

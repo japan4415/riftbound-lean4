@@ -1889,6 +1889,14 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 軽減で任意の追加コストが 0 になり、支払い額が一致する場合は、追加コストを払うかどうかを明示的に選ぶ処理が残っている。
 - 167 枚中 119 枚が `drafted`、117 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 23 — Unit トークンと効果内のコスト
+
+- Up from the Deep は Tentacle 2 体を出す。Flow でも 1 体ずつ行き先を選ぶ。Illaoi, Prophet of the Great Kraken はプレイ時と自身のいる Battlefield の Conquer・Hold 時に Tentacle を 1 体出し、自分が支配する Unit トークン 1 体につき Might が 1 増える。Tentacle は Bilgewater タグを持つ（CR 185.2.a, 187.10, 355.2, 473.2）。
+- Death Mark は Burn 3 の後に Shadow Clone を出す。Zed, Without a Sound の Conquer は Shadow Clone を Base に出す。起動型能力で味方の Shadow Clone と位置を入れ替える。Shadow Clone は 0 Might で場に残り、自身が攻撃するとき、Trash の Unit を Banish して Assault 4 をそのターン中得られる（CR 142.4.b, 187.11, 359.3.e.14.b, 807）。
+- Profiteer は能力を Chain に置くときに対象を選び、解決時に自分の Legend などから Empowered を 1 つ取り除いて、その対象を Empower できる。Shadow Clone の Banish と同じく、先の処理が成立したときだけ後続の指示を実行する（CR 355.10.c.1, 359.3.e.14.b, 443）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- ビューアにトークンの行き先を Base または Battlefield の名前で表示する。
+- 167 枚中 124 枚が `drafted`、122 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

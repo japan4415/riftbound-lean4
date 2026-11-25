@@ -300,7 +300,14 @@ function describeA(a, prev) {
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
-    case 'decide': return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
+    case 'decide': {
+      if (a.moreLocations) return [who + ': ' + a.token + ' を Battlefield に出す', '行き先を選ぶ'];
+      if (a.token) {
+        const dest = a.dest === null ? 'Base' : cardName(a.dest);
+        return [who + ': ' + a.token + ' を ' + dest + ' に出す', ''];
+      }
+      return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
+    }
     case 'choose': return [who + ': ' + cardName(a.obj) + ' を選ぶ', '効果の対象に ' + cardName(a.obj) + ' を選ぶ'];
     case 'predictPick': {
       const card = cardName(a.card);

@@ -422,6 +422,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     let eff :=
       (s.trigUnitsAt bf p).flatMap
         (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
+          triggersOf s u p .scored ++
           -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
           (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
            else [])) ++

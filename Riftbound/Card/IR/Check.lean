@@ -176,6 +176,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .revealTop _ => true
   | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
+  | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s

@@ -51,8 +51,19 @@ def costJson (k : Cost) : String :=
     ("power", jarr (k.power.map (fun s => match s with
       | .domain d => jstr (ctorName d) | .any => jstr "any" | .own => jstr "own")))]
 
-/-- An action as JSON. -/
-def actionJson (a : Action) : String :=
+/-- The chosen token placement, or the decision to see the remaining locations. -/
+def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ a@(.prim (.playUnitTokenAt name _)) b _) =>
+    match if yes then a else b with
+    | .prim (.playUnitTokenAt _ dest) =>
+      [("token", jstr name), ("dest", dest.elim "null" (fun bf => toString bf.n))]
+    | .eitherOf _ => [("token", jstr name), ("moreLocations", "true")]
+    | _ => []
+  | _ => []
+
+/-- An action as JSON, with the destination of a token placement decision. -/
+def actionJson (a : Action) (frame : Option Frame := none) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
     | .chance => "chance"
@@ -83,7 +94,7 @@ def actionJson (a : Action) : String :=
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
-    | .decide yes => [("yes", if yes then "true" else "false")]
+    | .decide yes => [("yes", if yes then "true" else "false")] ++ tokenLocationFields frame yes
     | .choose o => [("obj", toString o.n)]
     | .predictPick card recycle =>
       [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
@@ -253,10 +264,10 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
-    (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=
+    (seen : Std.HashSet Nat) (frame : Option Frame := none) : String × Std.HashSet Nat :=
   let (st, seen') := stateJson s seen
   (jobj [("i", toString i),
-    ("action", match a with | some a => actionJson a | none => "null"),
+    ("action", match a with | some a => actionJson a frame | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)], seen')
 
 /-- The parameter of a keyword as JSON. -/
@@ -379,7 +390,7 @@ def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
       match step 100 s a with
       | .error e => .error e
       | .ok (s', es) =>
-        let (j, seen') := stepJson i (some a) es s' seen
+        let (j, seen') := stepJson i (some a) es s' seen s.pending.head?
         let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
         if a.kind == .pass && atPriority && turns ≤ s.turn then .ok (j :: acc)
         else playTrace turns cap judge n (i + 1) r' s' seen' (j :: acc)

@@ -31,6 +31,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Place where
   /-- Anywhere in play. -/
   | anywhere
+  /-- On the Board or in a Legend Zone. -/
+  | boardOrLegend
   /-- At the Battlefield the effect is about: "here" (a Battlefield's own text, or a Unit's). -/
   | here
   /-- At a Battlefield (any). -/

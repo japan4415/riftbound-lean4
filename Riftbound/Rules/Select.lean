@@ -574,6 +574,7 @@ def GameState.baseHere (s : GameState) (self : ObjId) : Bool :=
 belongs to: "here" is the Battlefield it is at. -/
 def GameState.placeObjs (s : GameState) (self : ObjId) : Place → Option (List ObjId)
   | .anywhere => some s.inPlay
+  | .boardOrLegend => some (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone)))
   | .here =>
     match s.hereOf self with
     | some bf =>
@@ -667,14 +668,20 @@ theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId}
           · exact List.mem_cons_self
           · exact List.mem_cons_of_mem _ (ih htl x hx)
 
-/-- A candidate is in play when the place is a place of the board, or a spell on the Chain. -/
+/-- An object at a supported place is on the Board, on the Chain, or in a Legend Zone. -/
 theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l : List ObjId}
-    (h : s.placeObjs self pl = some l) : ∀ x ∈ l, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    (h : s.placeObjs self pl = some l) :
+    ∀ x ∈ l, x ∈ s.inPlay ∨ x ∈ s.zone .chain ∨
+      ∃ p ∈ s.players, x ∈ s.zone (.player p .legendZone) := by
   intro x hx
   cases pl with
   | anywhere =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h; exact Or.inl hx
+  | boardOrLegend =>
+    simp only [placeObjs, Option.some.injEq] at h
+    subst h
+    exact (List.mem_append.mp hx).elim Or.inl (fun h => Or.inr (Or.inr (List.mem_flatMap.mp h)))
   | here =>
     simp only [placeObjs] at h
     split at h
@@ -704,11 +711,11 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
   | onChain =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
-    exact Or.inr (List.mem_filter.mp hx).1
+    exact Or.inr (Or.inl (List.mem_filter.mp hx).1)
   | onChainAll =>
     simp only [placeObjs, Option.some.injEq] at h
     subst h
-    exact Or.inr (List.mem_filter.mp hx).1
+    exact Or.inr (Or.inl (List.mem_filter.mp hx).1)
   | inHand => simp [placeObjs] at h
   | inTrash => simp [placeObjs] at h
   | inMainDeck => simp [placeObjs] at h
@@ -723,11 +730,12 @@ theorem GameState.mem_placeObjs {s : GameState} {self : ObjId} {pl : Place} {l :
     unfold inPlay
     exact Or.inl (List.mem_append_right _ (List.mem_filter.mp hx).1)
 
-/-- The objects a candidate list can hold are objects in play, or spells on the Chain. -/
+/-- A candidate at a supported place is on the Board, on the Chain, or in a Legend Zone. -/
 theorem GameState.mem_candidates {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {place : Place} {fs : FilterList} {r : List ObjId}
     (h : s.candidates p self env side place fs = some r) :
-    ∀ x ∈ r, x ∈ s.inPlay ∨ x ∈ s.zone .chain := by
+    ∀ x ∈ r, x ∈ s.inPlay ∨ x ∈ s.zone .chain ∨
+      ∃ q ∈ s.players, x ∈ s.zone (.player q .legendZone) := by
   unfold candidates at h
   cases hp : s.placeObjs self place with
   | none => simp [hp] at h
@@ -768,9 +776,11 @@ theorem GameState.mem_targetCandidates {s : GameState} {p : PlayerId} {self : Ob
   cases hz : place.zoneKind? with
   | none =>
     rw [hz] at h
-    rcases mem_candidates h x hx with hb | hc
+    rcases mem_candidates h x hx with hb | hc | ⟨q, hq, hl⟩
     · simp [targetPresent, hb]
     · simp [targetPresent, hc]
+    · simp only [targetPresent, Bool.or_eq_true, List.any_eq_true, List.contains_iff_mem]
+      exact Or.inr ⟨.legendZone, by decide, q, hq, hl⟩
   | some z =>
     by_cases hp : z ∈ targetZoneKinds
     · simp only [hz, List.contains_iff_mem, hp, ite_true] at h
@@ -1141,13 +1151,14 @@ def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
 resolves: also the cards of a player's zone off the board, including private zones such as
 the hand or a deck when the effect allows it. -/
 def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
-    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
+    (side : Side) (place : Place) (fs : FilterList) (target : Bool := true) : Option (List ObjId) :=
   match place.zoneKind? with
   | some z =>
     (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
       acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
         FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
-  | none => (s.candidates p self env side place fs).map (·.filter (fun id => !s.blocksChoice p id))
+  | none => (s.candidates p self env side place fs).map
+    (·.filter (fun id => !target || !s.blocksChoice p id))
 
 /-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
 def Quantity.pickable : Quantity → Bool

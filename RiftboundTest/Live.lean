@@ -33,6 +33,17 @@ meta def h0 : List PlayerId := [⟨0⟩]
   let json := actionJson a
   json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
 
+-- A token's Base choice and its Battlefield choice have distinct labels in live play.
+#guard
+  let p : PlayerId := ⟨0⟩
+  let base := Effect.prim (.playUnitTokenAt "Tentacle" none)
+  let field := Effect.prim (.playUnitTokenAt "Tentacle" (some ⟨9⟩))
+  let question := some (.eitherDo p ⟨1⟩ {} base field .nil)
+  let yes := actionJson ⟨.player p, .decide true⟩ question
+  let no := actionJson ⟨.player p, .decide false⟩ question
+  yes.contains "\"token\":\"Tentacle\",\"dest\":null" &&
+    no.contains "\"token\":\"Tentacle\",\"dest\":9"
+
 -- an answer number that is not in the list is refused, and a good one goes on
 #guard match liveStart 1 h0 with
   | .ok (g, _) => (liveAct g 1000).toOption.isNone && (liveAct g 0).toOption.isSome

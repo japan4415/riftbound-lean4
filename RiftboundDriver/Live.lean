@@ -94,7 +94,7 @@ def LiveGame.apply (g : LiveGame) (a : Action) : Except String (LiveGame × Stri
   match step 100 g.s a with
   | .error e => .error s!"the engine refused the answer: {repr e}"
   | .ok (s', es) =>
-    let (j, seen') := stepJson g.i (some a) es s' g.seen
+    let (j, seen') := stepJson g.i (some a) es s' g.seen g.s.pending.head?
     .ok ({ g with s := s', seen := seen', i := g.i + 1 }, j)
 
 /-- When the game is over, its result goes to the match, once (TR 404). -/
@@ -127,7 +127,8 @@ def LiveGame.autoRun : Nat → LiveGame → List String → Except String (LiveG
 
 /-- The answers a person can give, as JSON: the number to send back, and the answer. -/
 def LiveGame.legalJson (g : LiveGame) : String :=
-  jarr ((g.legal.zipIdx).map (fun (a, k) => jobj [("k", toString k), ("a", actionJson a)]))
+  jarr ((g.legal.zipIdx).map (fun (a, k) =>
+    jobj [("k", toString k), ("a", actionJson a g.s.pending.head?)]))
 
 /-- The match as JSON: the wins, the games, the winner, how the next game's order is decided, and
 whether the sideboard may be used (TR 403.5, 403.10, 404, 407). -/

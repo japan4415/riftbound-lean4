@@ -24,6 +24,7 @@ namespace Riftbound
 /-- The places that are understood. -/
 def Place.understood : Place → Bool
   | .anywhere => true
+  | .boardOrLegend => true
   | .atBase => true
   | .atBattlefield => true
   | .here => true
@@ -342,6 +343,7 @@ def Prim.understood : Prim → Bool
   | .ready s => s.understoodPickAny
   | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
+  | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
@@ -381,6 +383,8 @@ def Effect.understood : Effect → Bool
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
   | .may e => Effect.understood e
+  | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e =>
+    s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
@@ -533,6 +537,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
+      | .scored => t.subject == .self
       | .conquer => t.subject == .self | .hold => t.subject == .self
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self

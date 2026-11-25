@@ -2229,8 +2229,18 @@ def VEN_082.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Profiteer: the effect is not written yet. -/
-def VEN_082 : CardDef := VEN_082.meta
+/-- Profiteer can disempower an object it controls to empower a chosen object. -/
+def VEN_082 : CardDef :=
+  let empowered := Selector.all .friendly .boardOrLegend [.empowered]
+  let cost := Selector.one .friendly .boardOrLegend [.empowered]
+  { VEN_082.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .boardOrLegend [.either (.ofType .legend)
+        (.either (.ofType .unit) (.ofType .gear))]]
+        (.ifThen (.and (.exists empowered) (.exists (.slot 0)))
+          (.may (.doThen (.prim (.disempower cost)) (.prim (.empower (.slot 0))))) .nop))
+      .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-083
 /--
@@ -2677,8 +2687,11 @@ def VEN_100.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Up from the Deep: the effect is not written yet. -/
-def VEN_100 : CardDef := VEN_100.meta
+/-- Up from the Deep plays two Tentacle tokens, including when played with Flow. -/
+def VEN_100 : CardDef :=
+  { VEN_100.meta with
+    spellEffect := some (.of [] (.repeatN (.const 2) (.prim (.playUnitToken "Tentacle")))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-101
 /--
@@ -2917,8 +2930,14 @@ def VEN_109.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Illaoi, Prophet of the Great Kraken: the effect is not written yet. -/
-def VEN_109 : CardDef := VEN_109.meta
+/-- Illaoi makes a Tentacle on play, Conquer or Hold and gains Might for friendly Unit tokens. -/
+def VEN_109 : CardDef :=
+  let make := EffectDef.of [] (.prim (.playUnitToken "Tentacle"))
+  { VEN_109.meta with
+    abilities := [.triggered (.onSelf .play) make .unlimited,
+      .triggered (.onSelf .scored) make .unlimited,
+      .passive .always [.mightPlus .self (.count (.all .friendly .anywhere [.ofType .unit, .token]))]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-110
 /--
@@ -2994,8 +3013,18 @@ def VEN_112.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Zed, Without a Sound: the effect is not written yet. -/
-def VEN_112 : CardDef := VEN_112.meta
+/-- Zed makes a Shadow Clone at his Base on Conquer and can swap locations with a friendly clone. -/
+def VEN_112 : CardDef :=
+  let clone := Filter.named "Shadow Clone"
+  { VEN_112.meta with
+    abilities := [.triggered (.onSelf .conquer)
+      (.of [] (.prim (.playUnitTokenAt "Shadow Clone" none))) .unlimited,
+      .activated [.pay ⟨1, [.domain .chaos]⟩] .action
+        (.of [.targetOf .one .friendly .anywhere [.ofType .unit, clone]]
+          (.ifThen (.and (.exists (.all .any .anywhere [.sameAs .self]))
+            (.exists (.all .friendly .anywhere [.ofType .unit, clone, .sameAs (.slot 0)])))
+            (.prim (.swapPlaces .self (.slot 0))) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-113
 /--
@@ -3842,8 +3871,12 @@ def VEN_144.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Death Mark: the effect is not written yet. -/
-def VEN_144 : CardDef := VEN_144.meta
+/-- Death Mark burns three cards before playing a Shadow Clone. -/
+def VEN_144 : CardDef :=
+  { VEN_144.meta with
+    spellEffect := some (.of [] (.seqOf
+      [.prim (.burn .you (.const 3)), .prim (.playUnitToken "Shadow Clone")])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-145
 /--

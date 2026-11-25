@@ -25,13 +25,23 @@ def unitToken (name : String) (might : Int) (keywords : List KeywordInst := []) 
   { id := ⟨"TKN-" ++ name⟩, name := name, types := [.unit], tags := [⟨name⟩], might := some might,
     keywords := keywords, status := .full }
 
+/-- Shadow Clone can banish a Unit card to gain Assault when it attacks (CR 187.11). -/
+def shadowClone : CardDef :=
+  let fodder := Selector.one .friendly .inTrash [.ofType .unit]
+  { unitToken "Shadow Clone" 0 with
+    tags := [],
+    abilities := [.triggered (.onSelf .attack)
+      (.of [] (.ifThen (.cmp .gt (.count (.all .friendly .inTrash [.ofType .unit])) (.const 0))
+        (.may (.doThen (.prim (.banish fodder))
+          (.grant .self (.keyword .it ⟨.assault, .amount 4⟩) .thisTurn))) .nop)) .unlimited] }
+
 /-- The Unit tokens. -/
 def cards : List CardDef :=
   [ unitToken "Mech" 3,
     unitToken "Sprite" 3 [{ keyword := .temporary }],
     unitToken "Sand Soldier" 2,
-    unitToken "Shadow Clone" 0,
-    unitToken "Tentacle" 1 ]
+    shadowClone,
+    { unitToken "Tentacle" 1 with tags := [⟨"Bilgewater"⟩] } ]
 
 end RiftboundCards.Tokens
 

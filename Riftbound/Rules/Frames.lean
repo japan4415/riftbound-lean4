@@ -324,7 +324,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .run p src env (.cons (if yes then a else b) es) :: rest }, [])
   | .pickDo p src env _ _ e es :: rest, .choose o =>
     some ({ s with pending := .run p src (env.bind pickVar (.obj o)) (.cons e es) :: rest },
-      chosenAt s p src o)
+      e.pickEvents s p src o)
   | .chanceShuffle z :: rest, .arrange l => some ({ s.reorder z l with pending := rest }, [])
   | .chanceBattlefield p :: rest, .pick i =>
     match (s.zone (.player p .outOfGame))[i]? with

@@ -1805,6 +1805,45 @@ theorem buffNewTokens_safe (s r : GameState) (p : PlayerId) : Safe r (buffNewTok
   · exact foldl_buffTokenEv_safe _ r
   · exact Safe.refl r
 
+/-- The locations a Unit token can be played to. Its controller may use their Base or a Battlefield
+they control, and effects can grant or restrict Battlefield permissions (CR 184.2, 355.2). -/
+def GameState.unitTokenDestinations (s : GameState) (p : PlayerId) (c : CardDef) :
+    List (Option ObjId) :=
+  let preview := createOne c.id p none false s
+  let extra := preview.playBfOptions p ⟨s.nextId⟩
+  let fields := (s.zone .battlefieldZone).filter (fun bf =>
+    (s.cardDef? bf).any (·.hasType .battlefield) &&
+    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play bf &&
+    FilterList.holds s bf {} bf (.cons .unitsPlayable .nil) == some true &&
+    ((s.obj? bf).any (·.control == some p) || extra.contains bf))
+  none :: fields.map some
+
+/-- Play a Unit token at a valid destination. -/
+def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
+    GameState × List Event :=
+  match s.tokenCard name with
+  | some c =>
+    if c.hasType .unit && (s.unitTokenDestinations p c).contains dest then
+      let r := createOne c.id p dest (s.tokenReady p c) s
+      let next := dest.elim r (fun bf => contestFor p bf r)
+      (buffNewTokens s next p, tokenPlays s next p)
+    else (s, [])
+  | none => (s, [])
+
+/-- Playing a Unit token at its destination is a safe change. -/
+theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
+    Safe s (playUnitTokenAt s p name dest).1 := by
+  unfold playUnitTokenAt
+  split
+  · rename_i c _
+    split
+    · have place := createOne_safe c.id p dest (s.tokenReady p c) s
+      cases dest with
+      | none => exact place.trans (buffNewTokens_safe _ _ _)
+      | some bf => exact place.trans ((contestFor_safe p bf _).trans (buffNewTokens_safe _ _ _))
+    · exact Safe.refl s
+  · exact Safe.refl s
+
 /-- Play tokens: `n` of them on the player's Base or here, if the token is in the game's cards
 (CR 183). `none` if it cannot be done yet. -/
 def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
@@ -1862,6 +1901,7 @@ theorem applyCreate_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
           rw [← h]
           exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
       | anywhere => simp at h
+      | boardOrLegend => simp at h
       | atBattlefield => simp at h
       | inHand => simp at h
       | inTrash => simp at h
@@ -2168,6 +2208,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .banish sel => onSelected s p src env sel (sendObj .banishment)
   | .returnToHand sel => onSelected s p src env sel (sendObj .hand)
   | .create name n place ready => applyCreate s p src env name n place ready
+  | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
   | .attach gears to => applyAttach s p src env gears to
   | .detach sel => onSelected s p src env sel detachObj
   | .double sel => onSelected s p src env sel doubleObj
@@ -2370,6 +2411,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | banish sel => exact onSelected_safe (sendObj_safe .banishment) h
   | returnToHand sel => exact onSelected_safe (sendObj_safe .hand) h
   | create name n place ready => exact applyCreate_safe h
+  | playUnitTokenAt name dest =>
+    cases h
+    exact playUnitTokenAt_safe s p name dest
   | attach gears to => exact applyAttach_safe h
   | attachPaying gears to less => exact applyAttachPaying_safe h
   | move sel dest =>
@@ -2912,6 +2956,9 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
 /-- The effect names one object to choose while it resolves ("kill a gear", "stun a unit"): the
 selector that does it. -/
 def Effect.pickSel? : Effect → Option Selector
+  | .doThen (.prim (.banish (.pick .one side place fs))) _
+  | .doThen (.prim (.disempower (.pick .one side place fs))) _ =>
+    some (.pick .one side place fs)
   | .prim p =>
     match p.pickSel? with
     | some (.pick .one side place fs) => some (.pick .one side place fs)
@@ -2922,10 +2969,20 @@ def Effect.pickSel? : Effect → Option Selector
 
 /-- The effect with the chosen object, named by `pickVar`, in place of the selector. -/
 def Effect.withPick : Effect → Effect
+  | .doThen (.prim a) b => .doThen (.prim (a.withSel (.var pickVar))) b
   | .prim p => .prim (p.withSel (.var pickVar))
   | .grant (.pick .one _ _ _) m d => .grant (.var pickVar) m d
   | .fillSlot i _ => .fillFromPick i
   | e => e
+
+/-- Whether the object is picked for the cost of a linked instruction (CR 355.10.c.1). -/
+def Effect.isLinkedCost : Effect → Bool
+  | .doThen .. => true
+  | _ => false
+
+/-- Picks for costs do not count as targets of the resolving instruction (CR 355.10.c.1). -/
+def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
+  if e.isLinkedCost then [] else chosenAt s p src id
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
 recycled after; if the Power cannot be paid, the instruction is skipped. -/
@@ -3147,11 +3204,40 @@ theorem burnEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Execute a linked banish or disempower instruction. Only a completed action enables the
+follow-up (CR 359.3.e.14.b). -/
+def linkedAction (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim) :
+    GameState × Bool × List Event :=
+  match applyPrim s p src env a with
+  | none => (s, false, [])
+  | some r =>
+    let done := match a with
+      | .banish _ => r.2.any (fun
+        | .moved _ _ (.player _ .banishment) => true
+        | _ => false)
+      | .disempower sel => ((sel.eval s p src env).getD []).any (fun id =>
+        ((r.1.obj? id).map (·.empowerCount)).getD 0 <
+          ((s.obj? id).map (·.empowerCount)).getD 0)
+      | _ => false
+    (r.1, done, r.2)
+
+/-- A linked action preserves the structural invariants. -/
+theorem linkedAction_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim) :
+    Safe s (linkedAction s p src env a).1 := by
+  unfold linkedAction
+  split
+  · exact Safe.refl s
+  · rename_i r h
+    exact applyPrim_safe h
+
 /-- Do the first effect of `e :: es`, but not a choice: the new state, the frames that replace the
 `run` frame, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
+  let linked (a : Prim) (body : Effect) :=
+    let r := linkedAction s p src env a
+    (r.1, [.run p src env (if r.2.1 then .cons body es else es)], r.2.2)
   match e with
   | .nop => (s, [.run p src env es], [])
   | .seq l => (s, [.run p src env (l.append es)], [])
@@ -3190,6 +3276,14 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         [.run p src env es], [])
     | none => skip
   | .may e' => (s, [.mayDo p src env e' es], [])
+  | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
+  | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
+  | .prim (.playUnitToken name) =>
+    match s.tokenCard name with
+    | some c =>
+      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
+    | none => skip
   | .eitherOf .nil => skip
   | .eitherOf (.cons a rest) =>
     -- the player chooses between the first effect ("yes") and the others ("no"), and so on
@@ -3267,6 +3361,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact Safe.refl s
     | exact castInlineStep_safe s p src env _ es
     | exact burnEffect_safe s p src env _ _ es _
+    | exact linkedAction_safe s p src env _
     | (rename_i r hr; exact playSpellStep_safe hr)
     | (rename_i r hr; exact castReducedStep_safe hr)
     | (rename_i r hr; exact applyPrim_safe hr)
@@ -3280,9 +3375,10 @@ def runEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effe
     (es : EffectList) : GameState × List Frame × List Event :=
   match e.pickSel? with
   | some (.pick _ side place fs) =>
-    match s.pickCandidates p src env side place fs with
+    -- A linked first action is a cost. Its pick is not a target (CR 355.10.c.1).
+    match s.pickCandidates p src env side place fs (!e.isLinkedCost) with
     | some [o] =>
-      (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], chosenAt s p src o)
+      (s, [.run p src (env.bind pickVar (.obj o)) (.cons e.withPick es)], e.pickEvents s p src o)
     | some (o :: o2 :: more) => (s, [.pickDo p src env o (o2 :: more) e.withPick es], [])
     | _ => (s, [.run p src env es], [Event.skipped src])
   | _ => runEffect1 s p src env e es

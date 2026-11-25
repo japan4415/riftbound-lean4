@@ -115,6 +115,10 @@ inductive Prim where
   | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
+  /-- Play a Unit token, choosing its location as it is played (CR 185.2.a, 355.2). -/
+  | playUnitToken (token : String)
+  /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
+  | playUnitTokenAt (token : String) (dest : Option ObjId)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
   /-- Attach Equipment to an object, paying the Equip cost of each, less `less` Power
