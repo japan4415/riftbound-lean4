@@ -264,8 +264,13 @@ def VEN_010.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Consuming Curse: the effect is not written yet. -/
-def VEN_010 : CardDef := VEN_010.meta
+/-- Consuming Curse. -/
+def VEN_010 : CardDef :=
+  { VEN_010.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.deal (.slot 0) (.add (.const 2)
+        (.count (.all .friendly .inTrash [.named "Consuming Curse"])))))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-011
 /--
@@ -343,8 +348,13 @@ def VEN_013.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Assassin: the effect is not written yet. -/
-def VEN_013 : CardDef := VEN_013.meta
+/-- Shadow Assassin. -/
+def VEN_013 : CardDef :=
+  { VEN_013.meta with
+    abilities := [.passive (.cmp .ge
+        (.count (.all .friendly .inTrash [.named "Shadow Assassin"])) (.const 1))
+      [.entersReady .self]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-014
 /--
@@ -863,8 +873,15 @@ def VEN_034.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Resonating Strike: the effect is not written yet. -/
-def VEN_034 : CardDef := VEN_034.meta
+/-- Resonating Strike. -/
+def VEN_034 : CardDef :=
+  { VEN_034.meta with
+    spellEffect := some (.of
+      [.targetOf .one .any .atBattlefield [.ofType .battlefield, .controlled],
+        .targetOf .one .friendly .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
+      (.seqOf [.prim (.move (.slot 1) (.at_ (.slot 0))),
+        .grant (.slot 1) (.mightPlus .it (.const 2)) .thisTurn])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-035
 /--
@@ -928,8 +945,16 @@ def VEN_037.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tomb-Raider Barbara: the effect is not written yet. -/
-def VEN_037 : CardDef := VEN_037.meta
+/-- Tomb-Raider Barbara. -/
+def VEN_037 : CardDef :=
+  { VEN_037.meta with
+    abilities := [.triggered
+      { event := .play,
+        condition := .cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 7) }
+      (.of [.targetOf .one .enemy .anywhere [.ofType .gear]]
+        (.ifThen (.empowered (.slot 0))
+          (.prim (.disempower (.slot 0))) (.prim (.kill (.slot 0))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-038
 /--
@@ -1019,8 +1044,14 @@ def VEN_041.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Riven, Shattered: the effect is not written yet. -/
-def VEN_041 : CardDef := VEN_041.meta
+/-- Riven, Shattered. -/
+def VEN_041 : CardDef :=
+  { VEN_041.meta with
+    abilities := [.triggered (.onSelf .attack)
+      (.of [.targetOf .one .enemy .here [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.mul (.const 2)
+          (.count (.all .any .anywhere [.attachedTo .self, .tag ⟨"Equipment"⟩])))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-042
 /--
@@ -1147,8 +1178,12 @@ def VEN_046.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Nasus, Ascended: the effect is not written yet. -/
-def VEN_046 : CardDef := VEN_046.meta
+/-- Nasus, Ascended. -/
+def VEN_046 : CardDef :=
+  { VEN_046.meta with
+    abilities := [.triggered { event := .conquer, condition := .empowered .self }
+      (.of [] (.prim (.score .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-047
 /--
@@ -2082,8 +2117,12 @@ def VEN_084.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ambessa, The Wolf: the effect is not written yet. -/
-def VEN_084 : CardDef := VEN_084.meta
+/-- Ambessa, The Wolf. -/
+def VEN_084 : CardDef :=
+  { VEN_084.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 3)],
+      .passive (.and (.empowered .self) (.not .inCombatHere)) [.noDamage]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-085
 /--
@@ -2364,8 +2403,12 @@ def VEN_096.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadowblade Lurker: the effect is not written yet. -/
-def VEN_096 : CardDef := VEN_096.meta
+/-- Shadowblade Lurker. -/
+def VEN_096 : CardDef :=
+  { VEN_096.meta with
+    abilities := [.passive .always [.costMinus .self (.mul (.const 2)
+      (.count (.all .friendly .inTrash [.named "Shadowblade Lurker"])))]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-097
 /--
@@ -2591,8 +2634,13 @@ def VEN_106.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Wind and Ghosts: the effect is not written yet. -/
-def VEN_106 : CardDef := VEN_106.meta
+/-- Wind and Ghosts. -/
+def VEN_106 : CardDef :=
+  { VEN_106.meta with
+    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.ifThen (.matches (.slot 0) (.might .le (.const 3)))
+        (.prim (.banish (.slot 0))) (.prim (.returnToHand (.slot 0))))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-107
 /--
@@ -3096,8 +3144,13 @@ def VEN_127.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Lacerate: the effect is not written yet. -/
-def VEN_127 : CardDef := VEN_127.meta
+/-- Lacerate. -/
+def VEN_127 : CardDef :=
+  { VEN_127.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.seqOf [.prim (.disempower (.slot 0)),
+        .ifThen (.matches (.slot 0) (.might .le (.const 3))) (.prim (.kill (.slot 0))) .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-128
 /--
@@ -3315,8 +3368,14 @@ def VEN_136.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Ambessa, Respected and Feared: the effect is not written yet. -/
-def VEN_136 : CardDef := VEN_136.meta
+/-- Ambessa, Respected and Feared. -/
+def VEN_136 : CardDef :=
+  { VEN_136.meta with
+    abilities := [.passive (.empowered .self) [.keyword .self ⟨.assault, .amount 2⟩],
+      .triggered { event := .attack, condition := .empowered .self }
+        (.of [.targetOf .one .enemy .here [.ofType .unit, .mightLtOf .self]]
+          (.prim (.kill (.slot 0)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-137
 /--

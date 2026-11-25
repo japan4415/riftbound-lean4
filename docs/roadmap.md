@@ -1771,6 +1771,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - CR 442–443 に対応し、Unit・Gear・Legend の Empowered を記録する。盤外へ出ると状態は消え、Disempower すると 1 回分を失う。CR 827 のマナコストを持つカードは、Empowered でない間に起動できる。
 - Steel Paws の既存定義が動くようになり、Rage Amplifier、Guttural Roar など 9 枚の効果を追加した。割引、マナ以外の Empower コスト、Empowered の複数回起動を許すカードは後続で扱う。
 
+### M8c Vendetta 4 — Flow と Empower を使うカード
+
+- Lacerate、Tomb-Raider Barbara、Ambessa 2 種など、11 枚の効果を追加した。Lacerate のテストでは Disempower の後の Might で撃破を判定することを確かめた。Shadow Assassin は自分の Trash に同名カードがあるときだけ Ready で出る。
+- Vendetta の 167 枚中、58 枚が `drafted`、54 枚が `CardDef.runs` を満たす。いずれの件数も `RiftboundTest/Cards.lean` で検査する。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

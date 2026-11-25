@@ -134,4 +134,26 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return s.mightNow friendly == some 9 && a.mightNow friendly == some 10 &&
     s.mightNow enemy == some 8 && a.mightNow enemy == some 8
 
+-- Lacerate checks Might after stripping Empowered. A Solari Sunhawk drops from 4 to 3 Might.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "VEN-127" .trash
+  let (s, hawk) ← put s s.you "VEN-122" .base
+  let (s, hunter) ← put s s.you "VEN-070" .base
+  let s := (empowerObj s.you (empowerObj s.you s hawk).1 hunter).1
+  let a ← cast (s.rich s.me) s.me spell ⟨4, [.order, .order]⟩ [hawk]
+  let b ← cast (s.rich s.me) s.me spell ⟨4, [.order, .order]⟩ [hunter]
+  return s.mightNow hawk == some 4 && a.countIn s.you .trash "VEN-122" == 1 &&
+    b.mightNow hunter == some 4 && (b.obj? hunter).any (·.empowerCount == 0)
+
+-- Shadow Assassin cares about the controller's Trash, and enters ready only if it has a copy.
+#guard vendettaCase fun s => do
+  let (s, card) ← put s s.me "VEN-013" .hand
+  let (s, _) ← put s s.you "VEN-013" .trash
+  let (copy, _) ← put s s.me "VEN-013" .trash
+  let a ← play s s.me card
+  let b ← play copy s.me card
+  let u ← a.firstOf s.me .base "VEN-013"
+  let v ← b.firstOf s.me .base "VEN-013"
+  return a.tired u == some true && b.tired v == some false
+
 end RiftboundTest
