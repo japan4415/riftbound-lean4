@@ -116,6 +116,10 @@ inductive Filter where
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/
   | onBattlefield
+  /-- The unit is at a Battlefield the source just moved from or to. -/
+  | atSourceMoveBattlefield
+  /-- The unit is at a Battlefield with an active Showdown (CR 341). -/
+  | atShowdown
   /-- A Spell whose effect has no choice to make when it is played. -/
   | noChoices
   /-- The Energy cost is less than the points of the player the effect belongs to. -/

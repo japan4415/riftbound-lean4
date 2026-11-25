@@ -251,4 +251,16 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   return s.channelCount == 2 && t.channelCount == 1 &&
     ({ t with turn := 2 } : GameState).channelCount == 1
 
+-- Temporal Breach replays a non-token for its owner at its original Battlefield.
+#guard vendettaCase fun s => do
+  let (s, spell) ← put s s.me "VEN-066" .hand
+  let (s, unit) ← putAt s s.you "OGN-088" s.bf0
+  let s := s.modObj unit (fun o => { o with controller := s.me, damage := 2 })
+  let result ← play s s.me spell [unit]
+  let newId ← (result.unitsAtOf s.bf0 s.you).find? (fun u =>
+    u != unit && (result.cardDef? u).any (·.id.code == "OGN-088"))
+  return (result.obj? unit).isNone &&
+    (result.obj? newId).any (fun o =>
+      o.owner == s.you && o.controller == s.you && o.damage == 0 && o.loc == some s.bf0)
+
 end RiftboundTest

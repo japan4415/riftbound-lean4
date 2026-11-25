@@ -154,7 +154,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .counter s => Selector.ok c s
   | .counterToHand s => Selector.ok c s
   | .play s => Selector.ok c s
-  | .banishReplay s => Selector.ok c s
+  | .banishReplay s _ => Selector.ok c s
   | .playPaying s => Selector.ok c s
   | .castPicked s a _ => Selector.ok c s && Amount.ok c a
   | .giveKeywords t f => Selector.ok c t && Selector.ok c f

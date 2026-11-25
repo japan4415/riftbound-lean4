@@ -300,6 +300,13 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (((s.cardDef? id).bind (·.spellEffect)).any (fun e => e.choices.isEmpty))
   | .onBattlefield =>
     (s.obj? id).map (fun o => o.loc.isSome && (s.zone .battlefieldZone).contains id)
+  | .atSourceMoveBattlefield =>
+    some (match (s.obj? id).bind (·.loc), s.obj? self with
+      | some bf, some src => src.loc == some bf || src.prevLoc == some bf
+      | _, _ => false)
+  | .atShowdown =>
+    some ((s.obj? id).any (fun o => s.pending.any (fun f =>
+      match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
   | .at_ sel => do

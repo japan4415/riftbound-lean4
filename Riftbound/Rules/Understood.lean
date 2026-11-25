@@ -189,6 +189,8 @@ def Filter.understood : Filter → Bool
   | .attachedTo (.slot _) => true
   | .attachedTo (.var _) => true
   | .onBattlefield => true
+  | .atSourceMoveBattlefield => true
+  | .atShowdown => true
   | .noChoices => true
   | .costBelowPoints => true
   | .hideRoom => true
@@ -293,7 +295,7 @@ def Prim.understood : Prim → Bool
   | .recycleTop p => p.understood
   | .swapTop p => p.understood
   | .play s => s.understoodPickAny
-  | .banishReplay s => s.understoodPickAny
+  | .banishReplay s _ => s.understoodPickAny
   | .playPaying s => s.understoodPickAny
   | .castPicked s a _ => s.understoodPickAny && a.understood
   | .giveKeywords t f => t.understood && f.understood

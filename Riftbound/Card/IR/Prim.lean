@@ -74,7 +74,7 @@ inductive Prim where
   | play (s : Selector)
   /-- Banish the units, then their owners play them, ignoring their cost (a token that is banished
   ceases to exist). -/
-  | banishReplay (s : Selector)
+  | banishReplay (s : Selector) (sameLocation : Bool := false)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/
   | playPaying (s : Selector)
   /-- Play the cards, paying their cost less `less` Energy (and all their Power), to a Battlefield

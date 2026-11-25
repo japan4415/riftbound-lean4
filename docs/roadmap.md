@@ -1791,6 +1791,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Decree of Rage は打ち消しても Chain に残る。Decree of Insight と Heisho は合法性の判定と実際の支払いの両方で Deflect を無視する。Heisho の効果は、その Battlefield にいる対象に限る。
 - Sandstone Chimera の Channel 枚数制限と、Sacred Protector の戦闘ダメージ条件を追加した。167 枚中 88 枚が `drafted`、84 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 8 — 移動前後の対象と再プレイ
+
+- Akali は移動元か移動先の Battlefield の Unit を選び、Rogue Assassin は Showdown 中の Battlefield にいる味方 Unit を選ぶ。Mask Mother の捨てたときの効果も追加した。
+- Temporal Breach では、追放した Unit を持ち主が元の Battlefield へプレイする。相手に支配されていた Unit も、新しいオブジェクトとして持ち主の側に戻ることをテストした。
+- 167 枚中 92 枚が `drafted`、88 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

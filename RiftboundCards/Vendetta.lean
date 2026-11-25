@@ -579,8 +579,15 @@ def VEN_021.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Akali, Deadly Weapon: the effect is not written yet. -/
-def VEN_021 : CardDef := VEN_021.meta
+/-- Akali, Deadly Weapon. -/
+def VEN_021 : CardDef :=
+  { VEN_021.meta with
+    abilities := [.passive (.empowered .self) [.mightPlus .self (.const 1)],
+      .triggered (.onSelf .move)
+        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atSourceMoveBattlefield]]
+          (.ifThen (.empowered .self)
+            (.prim (.deal (.slot 0) (.const 2))) (.prim (.deal (.slot 0) (.const 1))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-022
 /--
@@ -1736,8 +1743,12 @@ def VEN_066.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Temporal Breach: the effect is not written yet. -/
-def VEN_066 : CardDef := VEN_066.meta
+/-- Temporal Breach. -/
+def VEN_066 : CardDef :=
+  { VEN_066.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.prim (.banishReplay (.slot 0) true))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-067
 /--
@@ -2459,8 +2470,15 @@ def VEN_094.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Mask Mother: the effect is not written yet. -/
-def VEN_094 : CardDef := VEN_094.meta
+/-- Mask Mother. -/
+def VEN_094 : CardDef :=
+  { VEN_094.meta with
+    abilities := [.triggered (.onSelf .discard)
+      (.of [.targetOf (.upTo 1) .friendly .anywhere [.ofType .unit]]
+        (.ifThen (.and (.exists (.slot 0)) (.canPay ⟨1, []⟩))
+          (.may (.seqOf [.prim (.pay ⟨1, []⟩),
+            .grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-095
 /--
@@ -3593,8 +3611,15 @@ def VEN_139.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rogue Assassin: the effect is not written yet. -/
-def VEN_139 : CardDef := VEN_139.meta
+/-- Rogue Assassin. -/
+def VEN_139 : CardDef :=
+  { VEN_139.meta with
+    abilities := [.activated [.exhaustSelf] .action
+      (.of [.targetOf .one .friendly .atBattlefield [.ofType .unit, .atShowdown]]
+        (.seqOf [.ifThen .yourTurn
+          (.seqOf [.prim (.move (.slot 0) .base),
+            .ifThen (.empowered .self) (.prim (.ready (.slot 0))) .nop]) .nop])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-140
 /--
