@@ -537,4 +537,32 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     (b.obj? big).any (·.controller == s.me) && b.xpOf s.me == 0 && afterCast.xpOf s.me == 0 &&
     (play poor s.me c [big]).isNone && (play poor s.me c [small]).isSome
 
+-- Showdown (CR 347-348): the player with Focus can play a Spell with Action, but not one without a
+-- speed; the Chain resolves above the Showdown, and the Showdown goes on
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-155" .hand
+  let (s2, d) ← put s1 s.me "UNL-054" .hand
+  let (s3, u) ← putAt s2 s.me "UNL-111" s.bf0
+  let (s4, e) ← putAt s3 s.you "OGN-088" s.bf0
+  let sd := { s4 with pending := .showdown s.bf0 s.me 0 :: s4.pending }
+  let r ← play sd s.me c [u, e]
+  let back := match r.pending with | .showdown _ q 0 :: _ => q == s.me | _ => false
+  let rich := sd.rich s.me
+  let acts := legalFrameActions rich
+  let inList (card : ObjId) := acts.any (fun a => match a.kind with
+    | .playCard x _ _ => x == card | _ => false)
+  return (r.obj? e).any (·.stunned) && back && inList c && !inList d &&
+    (cast rich s.me d (payOf rich d) [e]).isNone
+
+-- Shadow (UNL-194): in a Showdown, the defender stuns an attacking enemy unit with its Action ability
+#guard tun fun s => do
+  let (s1, sh) ← putAt s s.you "UNL-194" s.bf0
+  let (s2, a) ← putAt s1 s.me "OGN-088" s.bf0
+  let s3 := s2.modObj s.bf0 (fun o => { o with contested := some s.me })
+  let sd := { s3 with pending := .showdown s.bf0 s.you 0 :: s3.pending }
+  let idx := firstAct sd sh
+  let r ← activate sd s.you sh idx [a] ⟨1, [.fury]⟩
+  let back := match r.pending with | .showdown _ q 0 :: _ => q == s.you | _ => false
+  return (r.obj? a).any (·.stunned) && back && (r.obj? sh).any (·.exhausted)
+
 end RiftboundTest
