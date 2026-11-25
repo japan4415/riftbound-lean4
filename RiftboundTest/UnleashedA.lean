@@ -313,4 +313,77 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let r ← fire s8 [Event.played s.me sp']
   return r.countIn s.me .trash "UNL-159" == 4 && r.countIn s.me .banishment "UNL-159" == 0
 
+-- Audit fixes: Loyal Poro (UNL-156) draws when it did NOT die alone (the opposite of Lonely Poro)
+#guard tun fun s => do
+  let (s1, x) ← putAt s s.me "UNL-156" s.bf0
+  let (s3, _) ← putAt s1 s.me "OGN-051" s.bf0
+  let die (st : GameState) (u : ObjId) : Option GameState :=
+    let (st1, evs) := killObj st u
+    fire st1 evs
+  let alone ← die s1 x
+  let company ← die s3 x
+  return alone.handN s.me == s1.handN s.me && company.handN s.me == s3.handN s.me + 1
+
+-- Heroic Charge (UNL-155): +1 Might to a friendly unit and stun an enemy at its location
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-155" .hand
+  let (s2, u) ← putAt s1 s.me "UNL-111" s.bf0
+  let (s3, e) ← putAt s2 s.you "OGN-088" s.bf0
+  let s4 ← play s3 s.me c [u, e]
+  return (s4.obj? e).any (·.stunned) && s4.mightNow u == (s3.mightNow u).map (· + 1)
+
+-- Flurry of Feathers (UNL-044): the Bird mode needs no spell on the Chain
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-044" .hand
+  let s2 ← play s1 s.me c [] { fromEnd := some 0 }
+  return s2.countNamed s.me .base "Bird" == 4
+
+-- Back Off (UNL-042): played from the hand, it draws 1
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-042" .hand
+  let (s2, e) ← putAt s1 s.you "OGN-088" s.bf0
+  let s3 ← play s2 s.me c [e]
+  return (s3.obj? e).any (·.stunned) && s3.handN s.me == s2.handN s.me
+
+-- Sacrifice (UNL-173): draw 2 and channel one rune (not two)
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  return s3.countIn s.me .trash "UNL-111" == 1
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  let deck (st : GameState) : Nat := (st.zone (.player s.me .runeDeck)).length
+  return deck s3 + 1 == deck big
+
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-173" .hand
+  let (s2, u) ← put s1 s.me "UNL-111" .base
+  let big := s2.modObj u (fun o => { o with mightMods := [{ amount := 9, ends := .never }] })
+  let s3 ← play big s.me c [u]
+  return s3.handN s.me == big.handN s.me + 1
+
+-- Ashe, Focused (UNL-169): when played, a card from the opponent's hand is banished with it
+#guard tun fun s => do
+  let (s1, c) ← put s s.me "UNL-169" .hand
+  let (s2, _) ← put s1 s.you "OGN-007" .hand
+  let s3 ← play s2 s.me c
+  return s3.countIn s.you .banishment "OGN-007" == 1 && s3.countIn s.you .hand "OGN-007" == 0
+
+
+-- Green Father (UNL-195): when its player conquers, it may exhaust to replace that Battlefield by
+-- Brush (the Battlefield is picked while the effect resolves)
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, g) ← put s1 s.me "UNL-195" .legendZone
+  let s3 := s2.modObj bf (fun o => { o with scored := [s.me] })
+  let r ← fire s3 [Event.scored s.me bf true]
+  return (r.zone .battlefieldZone).any (fun b => (r.cardDef? b).any (·.name == "Brush")) &&
+    !((r.zone .battlefieldZone).contains bf) && r.tired g == some true
+
 end RiftboundTest

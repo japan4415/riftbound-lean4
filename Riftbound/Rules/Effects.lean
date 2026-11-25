@@ -2681,6 +2681,8 @@ def Prim.pickSel? : Prim → Option Selector
   | .castInline s => some s
   | .markOn s _ => some s
   | .playTo s _ => some s
+  | .banishWith s => some s
+  | .replaceBattlefield s _ => some s
   | .reveal s => some s
   | .revealNow s => some s
   | .move s d =>
@@ -2717,6 +2719,8 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .playTo _ bf => .playTo sel bf
+  | .banishWith _ => .banishWith sel
+  | .replaceBattlefield _ n => .replaceBattlefield sel n
   | .reveal _ => .reveal sel
   | .revealNow _ => .revealNow sel
   | .move s d =>
