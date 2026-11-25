@@ -504,24 +504,27 @@ def GameState.cutOptionsOf (s : GameState) (p : PlayerId) (c : ObjId) (cost : Co
   | some (e, w) => [(cost.lessEnergy e).lessPower w]
   | none => cost.cutOptions (s.chooseCut p c ts) (s.cutFloor p c)
 
-/-- The possible Power adjustments that depend on targets or the Ambush destination (CR 356).
-Target discounts apply to the total, including optional costs (CR 356.4.c-356.4.f). -/
-def GameState.targetPowerOptions (s : GameState) (p : PlayerId) (c : ObjId)
+/-- Adjust the total cost for the targets, the Ambush destination, and next-card effects.
+The discounts may reduce optional costs or the cost of Deflect (CR 356.4.c-356.4.f). -/
+def GameState.targetCostOptions (s : GameState) (p : PlayerId) (c : ObjId)
     (ts : List ObjId) (cost : Cost) : List Cost :=
+  let reduction := s.nextCardDiscount p
+  let cost := cost.lessEnergy reduction.1
   let tax := s.showdownReactionTax
   let power := if tax != 0 && s.ambushAt p c ts && !s.cardHasReaction c then
     cost.power ++ List.replicate tax .any else cost.power
-  let cut := s.choosePowerCut p c ts
+  let cut := s.choosePowerCut p c ts + reduction.2
   if cut = 0 then [{ cost with power := power }]
   else
-    let total := power ++ List.replicate (s.deflectCost p ts (some c)) .any
+    let deflect := if (s.cardDef? c).any (·.hasType .spell) then s.deflectCost p ts (some c) else 0
+    let total := power ++ List.replicate deflect .any
     ((dropPowers cut total).eraseDups).map (fun adjusted => { cost with power := adjusted })
 
 /-- The totals for a base cost and a set of targets, with the number of optional costs paid. -/
 def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) : List (Cost × Nat) :=
   (s.playCostsOfK p c d cost).flatMap (fun (total, extras) =>
-    (s.targetPowerOptions p c ts total).map (·, extras))
+    (s.targetCostOptions p c ts total).map (·, extras))
 
 /-- The payment pays the cost of the card, less what the objects it chooses take off, or the cost
 with an additional cost. -/
@@ -571,8 +574,8 @@ def GameState.paidExtra (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
   match s.effCost p c d with
   -- an additional cost that costs nothing is always paid
   | some cost =>
-    (!(cost.paidBy d.domains pay) &&
-      !((s.extraAltCosts p c d cost).any (fun b => b.paidBy d.domains pay))) ||
+    !((cost :: s.extraAltCosts p c d cost).any (fun b =>
+      (s.targetCostOptions p c [] b).any (fun x => x.paidBy d.domains pay))) ||
       (s.extrasFor p c d).any (·.total == 0)
   | none => false
 
@@ -750,7 +753,7 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
       match costOf d with
       | some cost =>
         (s.cutOptionsOf p c cost ts).all (fun b =>
-          (s.targetPowerOptions p c ts b).all (fun x => !x.paidBy d.domains pay)) ||
+          (s.targetCostOptions p c ts b).all (fun x => !x.paidBy d.domains pay)) ||
           (s.extrasFor p c d).any (·.total == 0)
       | none => false),
     extraPaid := (s.cardDef? c).elim 0 (fun d =>
@@ -1091,7 +1094,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
                 decide (0 < s.extraPaidAt p c d cost targets pay))
           | none => false) &&
         (s.spendFor p false pay).any (fun pool =>
-          s.choosePowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
+          s.playPowerCut p c targets != 0 || s.deflectOk p pool targets (some c))
     | _, _ => false
 
 /-- Cast a Spell (CR 354, 357): pay, and put it on the Chain with the objects chosen. -/

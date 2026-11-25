@@ -149,7 +149,7 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
         else total
       | _ => total) 0
     let tax := if costs.contains .fromHidden then
-      let cut := s.choosePowerCut p src targets
+      let cut := s.playPowerCut p src targets
       let deflect := if cut != 0 then s.deflectCost p targets (some src) else 0
       s.showdownReactionTax + deflect - cut
       else 0
@@ -520,7 +520,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
               (open_ || speed == .reaction) && (!ex || !o.exhausted) &&
                 pc.any (fun c => c.paidBy d.domains pay) &&
                 (s.spendFor p (d.hasType .gear) pay).any (fun pool =>
-                  (costs.contains .fromHidden && s.choosePowerCut p src ts != 0) ||
+                  (costs.contains .fromHidden && s.playPowerCut p src ts != 0) ||
                     s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true

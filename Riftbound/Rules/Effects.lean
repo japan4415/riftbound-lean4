@@ -123,8 +123,11 @@ theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChamp
 
 /-- Make an effect true for the rest of the turn, for the player. -/
 def GameState.addTurnFx (s : GameState) (p : PlayerId) (e : TurnEffect) : GameState :=
+  let playCount := match e with
+    | .nextCardCostMinus .. => s.finalizedCount p
+    | _ => 0
   { s with turnFx := s.turnFx ++
-      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e }] }
+      [{ who := p, turn := s.turn, stamp := s.nextTimestamp, kind := e, playCount }] }
 
 /-- The same, about an object. -/
 def GameState.addTurnFxOn (s : GameState) (p : PlayerId) (id : ObjId) (e : TurnEffect) :
@@ -1017,6 +1020,13 @@ theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
         rw [← hr]
         exact (applyRunes_safe plan hx).trans (setPoolFor_safe _ _ _ _)
 
+/-- Paying the first affordable cost option preserves the same invariants as the payment itself. -/
+theorem payPlayOption_safe {s : GameState} {p : PlayerId} {id : ObjId} {costs : List Cost}
+    {r : GameState × List Event} (h : costs.findSome? (payByRunes s p id) = some r) :
+    Safe s r.1 := by
+  obtain ⟨_, _, _, _, paid, _⟩ := List.findSome?_eq_some_iff.mp h
+  exact payByRunes_safe paid
+
 /-- Play a card ignoring its Energy cost: its Power cost is paid from the Pool; if that cannot be
 done, or the card is not a Unit or a Gear, nothing is paid and the card is not played. -/
 def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -1024,7 +1034,7 @@ def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List E
       (d.hasType .unit || d.hasType .gear) && !s.blocksOwnPlay p id d)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
-    match payByRunes s p id ⟨0, s.adjustPower id c.power⟩ with
+    match (s.targetCostOptions p id [] ⟨0, s.adjustPower id c.power⟩).findSome? (payByRunes s p id) with
     | some r => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
     | none => (s, [])
   | none => playFree p s id
@@ -1038,7 +1048,7 @@ theorem playPaying_safe (p : PlayerId) (s : GameState) (id : ObjId) :
   · split
     · split
       · rename_i r hr
-        exact (payByRunes_safe hr).trans (playFree_safe p _ id)
+        exact (payPlayOption_safe hr).trans (playFree_safe p _ id)
       · exact Safe.refl s
     · exact playFree_safe p s id
 
@@ -1339,7 +1349,7 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
   -- the cost the card is played for now (the other reductions count too), less `k` Energy
   match (s.cardDef? id).bind (fun d => s.effCost p id d) with
   | some c =>
-    match payByRunes s p id ⟨c.energy - k, c.power⟩ with
+    match (s.targetCostOptions p id [] (c.lessEnergy k)).findSome? (payByRunes s p id) with
     | some r =>
       match dest with
       | some bf => ((playToOrBase p bf r.1 id).1, r.2 ++ (playToOrBase p bf r.1 id).2)
@@ -1358,7 +1368,7 @@ def reducedSpellChoices (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef
       (e.forPick pick).toList.flatMap (fun branch =>
         ((targetTuples s p id s.mightTable branch.choices).filter
           (fun ts => s.moveTargetOk id branch ts pick)).flatMap (fun ts =>
-            (s.targetPowerOptions p id ts (base.lessEnergy less)).map (fun cost => (ts, cost, pick))))))
+            (s.targetCostOptions p id ts (base.lessEnergy less)).map (fun cost => (ts, cost, pick))))))
 
 /-- Cast a Spell at the chosen reduced cost, with the targets of that choice (CR 420.3).
 If the cost cannot be paid or the choice is unavailable, it is not cast. -/
@@ -1407,8 +1417,8 @@ theorem playReducedOne_safe (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : 
     · split
       · rename_i r hr
         cases dest with
-        | none => exact (payByRunes_safe hr).trans (playFree_safe p _ id)
-        | some bf => exact (payByRunes_safe hr).trans (playToOrBase_safe p bf _ id)
+        | none => exact (payPlayOption_safe hr).trans (playFree_safe p _ id)
+        | some bf => exact (payPlayOption_safe hr).trans (playToOrBase_safe p bf _ id)
       · exact Safe.refl s
     · cases dest with
       | none => exact playFree_safe p s id
@@ -2311,6 +2321,21 @@ theorem disempowerObj_safe (s : GameState) (id : ObjId) :
     Safe s (disempowerObj s id).1 :=
   Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
 
+/-- A spell that completed its instructions and left its zone was played for triggered
+abilities. Keep the player who finalized it even if another player controlled it when it resolved
+(CR 420.4.a). -/
+def spellCompletion (s : GameState) (id : ObjId) (events : List Event) (inPlace : Bool := false) :
+    List Event :=
+  if (s.cardDef? id).any (·.hasType .spell) then
+    let moved := events.findSome? (fun
+      | .moved old next _ => if old == id then some next else none
+      | _ => none)
+    match s.playLog.find? (fun play => play.object == id && play.moment == .finalized),
+        moved <|> (if inPlace then some id else none) with
+    | some play, some next => [.spellResolved play.who next]
+    | _, _ => []
+  else []
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -2378,7 +2403,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (sel.eval s p src env).map (fun ids =>
       let r := applyEach recycleOne s ids
       (r.1, r.2 ++ (if ids.any (fun id => (s.obj? id).isSome && recycleKind s id == .mainDeck)
-        then [Event.recycled p] else [])))
+        then [Event.recycled p] else []) ++
+        (if sel == .self then spellCompletion s src r.2 true else [])))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal sel =>
     -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
@@ -2423,7 +2449,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       | [] => none)
   | .castPicked sel less idx =>
     (less.evalS s p src env).bind (fun k => onSelected s p src env sel (castPickedOne p k idx))
-  | .bin sel => onSelected s p src env sel (fun t id => sendObj .trash t id)
+  | .bin sel => (onSelected s p src env sel (sendObj .trash)).map
+    (fun r => (r.1, r.2 ++ spellCompletion s src r.2))
   | .discardCard sel => onSelected s p src env sel discardObj
   | .counter sel => onSelected s p src env sel counterObj
   | .counterToHand sel => onSelected s p src env sel counterObjHand
@@ -2670,7 +2697,11 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some k =>
       simp only [hk, Option.bind_some] at h
       exact onSelected_safe (castPickedOne_safe p k idx) h
-  | bin sel => exact onSelected_safe (fun t id => sendObj_safe .trash t id) h
+  | bin sel =>
+    simp only [applyPrim, Option.map_eq_some_iff] at h
+    obtain ⟨r, hr, rfl⟩ := h
+    have hs : Safe s r.1 := onSelected_safe (sendObj_safe .trash) hr
+    exact hs
   | discardCard sel => exact onSelected_safe discardObj_safe h
   | counter sel => exact onSelected_safe counterObj_safe h
   | counterToHand sel => exact onSelected_safe counterObjHand_safe h
@@ -3130,7 +3161,8 @@ def castInlineStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (sel
     match ((s.cardDef? id).filter (fun d => !s.blocksOwnPlay p id d)).bind
         (fun d => (d.spellEffect.bind (·.forPick .plain)).map (fun e => (d, e))) with
     | some (d, e) =>
-      match payByRunes s p id ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩ with
+      match (s.targetCostOptions p id [] ⟨0, s.adjustPower id ((d.cost.map (·.power)).getD [])⟩).findSome?
+          (payByRunes s p id) with
       | some r =>
         (r.1, [.run p id {} (.cons e.body (.cons (.prim (.recycle .self)) .nil)),
           .run p src env es], r.2 ++ [Event.played p id])
@@ -3193,7 +3225,7 @@ theorem castInlineStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   · split
     · split
       · rename_i r hr
-        exact payByRunes_safe hr
+        exact payPlayOption_safe hr
       · exact Safe.refl s
     · exact Safe.refl s
   · exact Safe.refl s
@@ -3746,7 +3778,9 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | none => (s, [])
       | _ =>
         match moveObj s item (o.chainDestination .trash) with
-        | some r => (r.1, o.chainExitEvents item r.2 .trash)
+        | some r =>
+          let es := o.chainExitEvents item r.2 .trash
+          (r.1, es ++ spellCompletion s item es)
         | none => (s, [])
     else (s, [])
   | none => (s, [])

@@ -176,8 +176,11 @@ meta def spellReady : Option (GameState × PlayerId × ObjId) :=
               cnt p .hand s3 == cnt p .hand s && cnt p .mainDeck s3 + 1 == cnt p .mainDeck s &&
               cnt p .trash s3 == cnt p .trash s + 1 && (s3.zone .chain).isEmpty &&
               (match s3.pending with | [.priority r] => r == p | _ => false) &&
-              -- the card drawn, the draw (`Event.drew`), and the Spell going to the Trash
-              es.length == 3
+              (match es with
+                | [.moved .., .drew who, .moved _ discarded (.player owner .trash),
+                    .spellResolved whoResolved resolved] =>
+                  who == p && owner == p && whoResolved == p && discarded == resolved
+                | _ => false)
             | .error _ => false)
         | .error _ => false)
     | .error _ => false

@@ -1245,8 +1245,12 @@ def VEN_044.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Astral Heron: the effect is not written yet. -/
-def VEN_044 : CardDef := VEN_044.meta
+/-- Astral Heron. -/
+def VEN_044 : CardDef :=
+  { VEN_044.meta with
+    abilities := [.triggered { event := .firstCardResolved, condition := .matches .self .onBattlefield }
+      (.of [] (.prim (.turnEffect (.nextCardCostMinus 2 2)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-045
 /--

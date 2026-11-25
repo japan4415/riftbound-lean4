@@ -323,6 +323,18 @@ def GameState.delayedDeathTriggers (s : GameState) (dead : ObjId) : List PendTri
       else []
     | _ => [])
 
+/-- The abilities that watch the first card the player successfully played this turn
+(CR 420.4.a). -/
+def GameState.firstCardTriggers (s before : GameState) : List PendTrigger :=
+  if s.playLog == before.playLog then []
+  else
+    let completed (state : GameState) (p : PlayerId) :=
+      state.playLog.any (fun play =>
+        play.turn == s.turn && play.who == p && play.moment == .resolved)
+    let players := s.players.filter (fun p => !completed before p && completed s p)
+    players.flatMap (fun p => s.inPlay.flatMap (fun src =>
+      if (s.obj? src).any (·.controller == p) then triggersOf s src p .firstCardResolved else []))
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .played p obj => triggersOf s obj p .play ++ watchersOf s obj p .play
@@ -511,8 +523,9 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
     | _, _ => kept ++ [t]) []
 
 /-- The abilities that fire because of the events of a step, the turn player's first (CR 383.3). -/
-def GameState.detect (s : GameState) (es : List Event) : List PendTrigger :=
-  let all := s.trimLimits (es.flatMap (detectOne s))
+def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
+    List PendTrigger :=
+  let all := s.trimLimits (es.flatMap (detectOne s) ++ extra)
   let a := s.active.getD ⟨0⟩
   all.filter (fun t => t.controller == a) ++ all.filter (fun t => t.controller != a)
 
@@ -634,6 +647,10 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
         if d.hasType .spell then noted else addCardPlay s.turn noted p id d .resolved
       else plays
     | _, _ => plays
+  | .spellResolved p id =>
+    match s.cardDef? id with
+    | some d => addCardPlay s.turn plays p id d .resolved
+    | none => plays
   | .activated p id idx =>
     match s.obj? id, s.cardDef? id with
     | some o, some d =>
@@ -667,7 +684,7 @@ def GameState.recordTurnEvents (s : GameState) (es : List Event) : GameState :=
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   let next := s.recordTurnEvents es
   if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-    match next.detect es with
+    match next.detect es (next.firstCardTriggers s) with
     | [] => next
     | pend => { next with pending := insertTriggers pend s.pending }
   else next
@@ -979,7 +996,7 @@ theorem withTriggers_cases (s : GameState) (es : List Event) :
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
   by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
-  · cases hd : (s.recordTurnEvents es).detect es with
+  · cases hd : (s.recordTurnEvents es).detect es ((s.recordTurnEvents es).firstCardTriggers s) with
     | nil => simp [hg, hd]
     | cons x xs =>
       right
@@ -1022,7 +1039,7 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   unfold GameState.withTriggers
   split
-  · simp [GameState.recordTurnEvents, GameState.detect, GameState.trimLimits]
+  · simp [GameState.recordTurnEvents, GameState.detect, GameState.trimLimits, GameState.firstCardTriggers]
   · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/

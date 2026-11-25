@@ -156,6 +156,86 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Astral Heron waits for the first successful card resolution and must be at
+-- a Battlefield when it happens. Its discount lasts through one finalized play.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let away ← s.battlefields.find? (· != bf)
+  let (s, heron) ← putAt s p "VEN-044" bf
+  let (s, enemy) ← putAt s q "VEN-064" away
+  let (s, first) ← put s p "OGN-009" .hand
+  let (s, second) ← put s p "OGN-009" .hand
+  let (s, reaction) ← put s p "VEN-035" .hand
+  let (s, unit) ← put s p "VEN-047" .hand
+  let (s, free) ← put s p "VEN-014" .trash
+  let d ← s.cardDef? unit
+  let d := { d with cost := some ⟨5, [.domain .body, .domain .calm, .domain .fury]⟩ }
+  let s := { s with cards := { s.cards with cards := d :: s.cards.cards } }
+  let s := ((s.control p bf).control q away).rich p
+  let cast (src : ObjId) (pay : RunePool.Payment) : Action :=
+    ⟨.player p, .playCard src pay [enemy]⟩
+  let playUnit (energy : Nat) (power : List Domain) : Action :=
+    ⟨.player p, .playCard unit ⟨energy, power⟩ []⟩
+  let (casting, _) ← (step 100 s (cast first ⟨1, [.fury]⟩)).toOption
+  let firstItem ← (casting.zone .chain).head?
+  let .chainPass a _ :: _ := casting.pending | none
+  let (priority, _) ← (step 100 casting ⟨.player a, .pass⟩).toOption
+  let .chainPass b _ :: _ := priority.pending | none
+  let (triggered, events) ← (step 100 priority ⟨.player b, .pass⟩).toOption
+  let triggerItem ← (triggered.zone .chain).head?
+  let discounted ← passToChoice 8 triggered
+  let (responded, _) ← (step 100 triggered
+    ⟨.player p, .playCard reaction ⟨3, [.calm]⟩ [heron] none none (.mode 0)⟩).toOption
+  let afterResponse ← passToChoice 8 responded
+  let awayDuringResponse ← passToChoice 8 (moveHome casting heron).1
+  let firstCountered ← passToChoice 8 (counterObj casting firstItem).1
+  let (unitFirst, _) ← (step 100 firstCountered (playUnit 5 [.body, .calm, .fury])).toOption
+  let unitAfterTrigger ← passToChoice 8 unitFirst
+  let (played, _) ← (step 100 discounted (playUnit 3 [.body])).toOption
+  let (nextOnChain, _) ← (step 100 (discounted.fund p 0) (cast second ⟨0, []⟩)).toOption
+  let nextItem ← (nextOnChain.zone .chain).head?
+  let nextCountered ← passToChoice 8 (counterObj nextOnChain nextItem).1
+  let (freePlay, freeEvents) ← applyPrim discounted p heron { slots := [.obj free] } (.play (.slot 0))
+  let (afterFree, _) ← (advance 100 (freePlay.withTriggers freeEvents) []).toOption
+  let (expired, _) ← (advance 100 { discounted with pending := [.expireTurn] } []).toOption
+  return (casting.zone .chain).length == 1 && casting.nextCardDiscount p == (0, 0) &&
+    events.any (fun | .spellResolved who _ => who == p | _ => false) &&
+    (triggered.obj? triggerItem).any (fun o => o.kind == .chainAbility (cid "VEN-044") 0 heron) &&
+    triggered.nextCardDiscount p == (0, 0) && discounted.nextCardDiscount p == (2, 2) &&
+    responded.nextCardDiscount p == (0, 0) && afterResponse.nextCardDiscount p == (2, 2) &&
+    awayDuringResponse.nextCardDiscount p == (0, 0) && firstCountered.nextCardDiscount p == (0, 0) &&
+    unitAfterTrigger.nextCardDiscount p == (2, 2) &&
+    ([.body, .calm, .fury] : List Domain).all (fun d =>
+      (legalActions discounted).contains (playUnit 3 [d])) &&
+    !(legalActions discounted).contains (playUnit 3 []) &&
+    !(legalActions discounted).contains (playUnit 5 [.body, .calm, .fury]) &&
+    played.nextCardDiscount p == (0, 0) && nextCountered.nextCardDiscount p == (0, 0) &&
+    afterFree.nextCardDiscount p == (0, 0) && expired.nextCardDiscount p == (0, 0)
+
+-- Flow and Hidden are card plays for the discount even though neither starts in the Hand.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, ally) ← putAt s p "VEN-014" bf
+  let (s, enemy) ← putAt s q "VEN-064" bf
+  let (s, flow) ← put s p "VEN-105" .trash
+  let (s, hidden) ← put s p "SFD-145" .hidden
+  let s := ((s.control p bf).fund p 2).modObj hidden (fun o =>
+    { o with hiddenAt := some bf, hiddenTurn := some (s.turn - 1) })
+  let discounted := s.addTurnFx p (.nextCardCostMinus 2 2)
+  let fromTrash : Action := ⟨.player p, .playCard flow ⟨2, []⟩ [ally] none none (.destination none)⟩
+  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ [ally, enemy]⟩
+  let (flowing, _) ← (step 100 discounted fromTrash).toOption
+  let (revealing, _) ← (step 100 discounted reveal).toOption
+  let revealed ← passToChoice 8 revealing
+  return !(legalActions s).contains fromTrash && !(legalActions s).contains reveal &&
+    (flowing.poolOf p).total == 0 && (revealing.poolOf p).total == 2 &&
+    flowing.nextCardDiscount p == (0, 0) && revealing.nextCardDiscount p == (0, 0) &&
+    revealed.finalizedCount p == s.finalizedCount p + 1
+
 -- Blade Twirler can target any player, including its controller. Resolution
 -- respects the recorded target, and a countered trigger still used the first move.
 #guard vendettaCase fun s => do

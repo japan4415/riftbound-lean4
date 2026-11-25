@@ -196,12 +196,17 @@ def GameState.playsOfType (s : GameState) (moment : PlayMoment) (kind : CardType
   s.playLog.filter (fun play => play.turn == s.turn && play.moment == moment &&
     play.types.contains kind)
 
+/-- The number of card plays the player has finalized this turn (CR 420.4-420.5). -/
+def GameState.finalizedCount (s : GameState) (p : PlayerId) : Nat :=
+  s.playLog.countP (fun play => play.turn == s.turn && play.who == p && play.moment == .finalized)
+
 /-- The lasting effects of the turn that are the player's and still wait: for "the next" card of
 a kind, no card of the kind has been played since. -/
 def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
   (s.turnFx.filter (fun f =>
     f.turn == s.turn && f.who == p &&
       (match f.kind with
+        | .nextCardCostMinus .. => f.playCount == s.finalizedCount p
         | .nextSpellCostMinus _ | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
         | .nextGearFree _ =>
           !s.playedSince p f.kind.playType f.stamp
@@ -214,6 +219,16 @@ def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
 /-- The Energy less the next spell of the player costs, by the effects of the turn. -/
 def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
   (s.fxOf p).filterMap (fun k => match k with | .nextSpellCostMinus n => some n | _ => none)
+
+/-- Total discounts that apply to the player's next play of any card (CR 356.4, 420.5). -/
+def GameState.nextCardDiscount (s : GameState) (p : PlayerId) : Nat × Nat :=
+  s.turnFx.foldl (fun a f =>
+    match f.kind with
+    | .nextCardCostMinus e w =>
+      if f.turn == s.turn && f.who == p && f.playCount == s.finalizedCount p then
+        (a.1 + e, a.2 + w)
+      else a
+    | _ => a) (0, 0)
 
 /-- The Energy cost of a Gear in the hand of the player that an effect of the turn drops: the
 limits of the Gear the player may play for free now. -/

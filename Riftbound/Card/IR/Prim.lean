@@ -249,6 +249,8 @@ deriving DecidableEq, Repr, Hashable
 inductive TriggerEvent where
   /-- The object is played. -/
   | play
+  /-- The player completes their first play of a card this turn (CR 420.4.a). -/
+  | firstCardResolved
   /-- The object enters play. -/
   | enter
   /-- The object attacks. -/

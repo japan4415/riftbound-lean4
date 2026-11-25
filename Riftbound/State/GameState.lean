@@ -34,6 +34,8 @@ structure TurnFx where
   kind : TurnEffect
   /-- The object it is about, if it is about one. -/
   target : Option ObjId := none
+  /-- The number of cards the player had finalized when a next-card discount was created. -/
+  playCount : Nat := 0
 deriving DecidableEq, Repr
 
 /-- The sides and all Unit objects that participated in the current Combat (CR 466, 468). -/
@@ -54,7 +56,7 @@ deriving DecidableEq, Repr
 inductive PlayMoment where
   /-- Choices and costs have been finalized, even if the card is later countered. -/
   | finalized
-  /-- A permanent has entered the Board when its play resolved. -/
+  /-- The permanent or Spell has resolved. -/
   | resolved
 deriving DecidableEq, Repr
 
@@ -68,7 +70,7 @@ structure CardPlay where
   types : List CardType
   /-- The turn in which it happened. -/
   turn : Nat
-  /-- Whether this is a finalization or a resolved permanent play. -/
+  /-- Whether this is a finalization or a resolved play. -/
   moment : PlayMoment
 deriving DecidableEq, Repr
 

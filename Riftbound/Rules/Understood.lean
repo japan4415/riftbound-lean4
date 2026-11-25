@@ -528,6 +528,7 @@ def Trigger.runs (t : Trigger) : Bool :=
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
+      | .firstCardResolved => t.subject == .self
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true

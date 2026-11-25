@@ -127,13 +127,17 @@ def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) 
       | _ => none))).sum
   else 0
 
+/-- The Power reductions for a card play, from its targets and effects of the turn (CR 356.4). -/
+def playPowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  s.choosePowerCut p c ts + (s.nextCardDiscount p).2
+
 /-- Deflect is part of the combined payment when a target-based Power discount applies
 to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). -/
 def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
   match a.kind with
-  | .playCard c _ ts _ _ _ => s.choosePowerCut p c ts != 0
+  | .playCard c _ ts _ _ _ => s.playPowerCut p c ts != 0
   | .activate c idx _ ts _ =>
-    s.choosePowerCut p c ts != 0 &&
+    s.playPowerCut p c ts != 0 &&
       (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with
       | some (.activated costs _ _ _) => costs.contains .fromHidden
       | _ => false)

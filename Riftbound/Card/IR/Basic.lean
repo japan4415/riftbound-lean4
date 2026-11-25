@@ -130,6 +130,8 @@ inductive TurnEffect where
   | unchoosableEnemy
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
+  /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
+  | nextCardCostMinus (energy power : Nat)
   /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of
   damage it deals (CR 142). -/
   | nextSpellBonus (n : Nat)
