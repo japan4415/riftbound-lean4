@@ -2702,7 +2702,8 @@ def spellCompletion (s : GameState) (id : ObjId) (events : List Event) (inPlace 
     match (s.obj? id).filter (fun _ =>
         s.playLog.any (fun play => play.object == id && play.moment == .finalized)),
         moved <|> (if inPlace then some id else none) with
-    | some o, some next => [.spellResolved o.controller next]
+    | some o, some next => [.spellResolved o.controller next] ++
+      (if o.fromHidden && o.hiddenAt.isSome then [.hiddenPlayed o.controller] else [])
     | _, _ => []
   else []
 
@@ -4336,18 +4337,21 @@ def recheckedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
   | some e =>
     let choices := e.choices.filter Choice.isTarget
     let might := s.mightTable
-    match choices with
-    | [choice@(.target (.upTo n) ..)] =>
-      let valid := choice.candidatesAfter s p src might []
-      (ts.take n).map (fun id => if valid.contains id then .obj id else .int 0) ++
-        List.replicate (n - ts.length) (.int 0)
-    | _ =>
-      choices.zipIdx.map (fun (choice, i) =>
-        match ts[i]? with
-        | some id =>
-          if (choice.candidatesAfter s p src might (ts.take i)).contains id then .obj id
-          else .int 0
-        | none => .int 0)
+    let check (choice : Choice) (i : Nat) : Value :=
+      match ts[i]? with
+      | some id =>
+        if (choice.candidatesAfter s p src might (ts.take i)).contains id then .obj id
+        else .int 0
+      | none => .int 0
+    match choices.getLast? with
+    | some (choice@(.target (.upTo n) ..)) =>
+      let fixed := choices.dropLast
+      let group := ts.drop fixed.length
+      let valid := choice.candidatesAfter s p src might (ts.take fixed.length)
+      fixed.zipIdx.map (fun (c, i) => check c i) ++
+        (group.take n).map (fun id => if valid.contains id then .obj id else .int 0) ++
+        List.replicate (n - group.length) (.int 0)
+    | _ => choices.zipIdx.map (fun (c, i) => check c i)
   | none => []
 
 /-- Recheck targets for a recorded choice, when the effect opts in, or after a change of control. -/
@@ -4355,7 +4359,8 @@ def finalizedSlots (s : GameState) (p : PlayerId) (src : ObjId) (ts : List ObjId
     (definition : Option EffectDef) (pick : SpellPick) : List Value :=
   let changedController := s.playLog.any (fun play =>
     play.object == src && play.moment == .finalized && play.who != p)
-  if pick != .plain || definition.any (·.recheckTargets) || changedController then
+  if pick != .plain || definition.any (·.recheckTargets) || changedController ||
+      (s.obj? src).any (·.hiddenAt.isSome) then
     recheckedSlots s p src ts definition
   else slotValues ts definition
 
@@ -4461,6 +4466,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets definition o.spellPick
         targetObjs := o.targets
+        hiddenPlayLocation := o.hiddenAt
         playerTargets := if definition.any (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
           then o.targetPlayer.toList else [] }
         (match definition with

@@ -34,7 +34,9 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
   | .playCard c _ ts _ _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
-  | .activate _ _ _ ts _ _, .player p => ts.map (Event.chosenByAbility p)
+  | .activate src _ _ ts _ _, .player p =>
+    if es.any (fun | .moved old _ .chain => old == src | _ => false) then []
+    else ts.map (Event.chosenByAbility p)
   | .putTrigger _ ts (.pay ..), .player p => ts.map (Event.chosenByAbility p)
   | _, _ => []
 

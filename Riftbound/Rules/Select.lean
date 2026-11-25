@@ -1223,6 +1223,30 @@ def Quantity.pickable : Quantity → Bool
   | .anyNumber | .combinedMightAtMost _ => true
   | _ => false
 
+/-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
+def Filter.requiresOtherLocation (s : GameState) (bf : ObjId) (acc : List ObjId) : Filter → Bool
+  | .at_ (.slot i) => acc[i]?.any (fun id => s.hereOf id != some bf)
+  | .not (.at_ (.slot i)) => acc[i]?.any (fun id => s.hereOf id == some bf)
+  | .either a b => a.requiresOtherLocation s bf acc && b.requiresOtherLocation s bf acc
+  | _ => false
+
+/-- Whether a conjunction of target filters rules out the hiding Battlefield. -/
+def FilterList.requiresOtherLocation (s : GameState) (bf : ObjId) (acc : List ObjId) :
+    FilterList → Bool
+  | .nil => false
+  | .cons f rest => f.requiresOtherLocation s bf acc || rest.requiresOtherLocation s bf acc
+
+/-- Object targets of a hidden Spell are at its Battlefield unless the choice specifies a
+different location (CR 811.1.d.2, 811.1.d.4, 753.3). -/
+def GameState.hiddenSpellTargetOk (s : GameState) (self : ObjId) (acc : List ObjId)
+    (place : Place) (fs : FilterList) (id : ObjId) : Bool :=
+  if (s.cardDef? self).any (·.hasType .spell) then
+    match (s.obj? self).bind (·.hiddenAt), place with
+    | some bf, .anywhere | some bf, .atBattlefield | some bf, .here | some bf, .boardOrLegend =>
+      fs.requiresOtherLocation s bf acc || s.hereOf id == some bf
+    | _, _ => true
+  else true
+
 /-- The objects a choice of a Spell can pick, when the choices before it picked `acc` (a later
 choice may name an earlier pick as `slot i`): for a target of one object, up to one, or any number up
 to a bound, the matching objects in an eligible zone. Nothing for a choice that is not understood
@@ -1233,7 +1257,8 @@ def Choice.candidatesAfter (s : GameState) (p : PlayerId) (self : ObjId)
   | .target q side place fs =>
     if q.pickable then
       ((s.targetCandidates p self { slots := acc.map Value.obj, passMight := pm } side place
-        fs).getD []).filter (fun id => !s.blocksChoice p id)
+        fs).getD []).filter (fun id => !s.blocksChoice p id &&
+          s.hiddenSpellTargetOk self acc place fs id)
     else []
   | _ => []
 

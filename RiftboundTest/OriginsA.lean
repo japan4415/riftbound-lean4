@@ -1614,7 +1614,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 -- Block (OGN-057), a spell: hidden, then played from hiding: Shield 3 and Tank, and into my Trash
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand
-  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
   let mine := s2.control s.me s.bf0
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
@@ -1665,10 +1665,10 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, c) ← put s2 s.me "OGN-135" .hand
   return (activate s3 s.me g 1 [e]).isNone && (activate s3 s.me c 1 [] ⟨0, []⟩).isNone
 
--- A hidden spell used twice while its first use is still on the Chain has its effect once
+-- A Hidden Spell leaves its facedown zone during finalization, so it can only be played once.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand
-  let (s2, u) ← put s1 s.me "OGN-136" .base
+  let (s2, u) ← putAt s1 s.me "OGN-136" s.bf0
   let mine := s2.control s.me s.bf0
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
@@ -3204,7 +3204,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let unitIn ← activate next s.me h 1 [] ⟨0, []⟩
   let (t1, m2) ← put s s.me "OGN-167" .base
   let (t2, sp) ← put t1 s.me "OGN-057" .hand
-  let (t3, u) ← put t2 s.me "OGN-136" .base
+  let (t3, u) ← putAt t2 s.me "OGN-136" s.bf0
   let mine2 := t3.control s.me s.bf0
   let hide2 ← activate mine2 s.me sp 0 [s.bf0] ⟨0, [.fury]⟩
   let h2 ← (hide2.zone (.player s.me .hidden)).head?

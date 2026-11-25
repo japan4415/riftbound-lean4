@@ -210,6 +210,7 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
         slots := finalizedSlots s o.controller item o.targets
           (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
         targetObjs := o.targets
+        hiddenPlayLocation := o.hiddenAt
         playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
             (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
           then o.targetPlayer.toList else [] }

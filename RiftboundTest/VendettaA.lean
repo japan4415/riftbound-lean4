@@ -2171,13 +2171,16 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let showdown : GameState := { s with pending := [.showdown vortex p 0, .priority p] }
   let action (power : List Domain) : Action := ⟨.player p, .activate hidden 1 ⟨0, power⟩ [ally]⟩
   let (waiting, _) ← (step 100 showdown (action [.calm])).toOption
+  let item ← (waiting.zone .chain).head?
   let done := settleChain {} 12 waiting
   let finalized (t : GameState) := (t.playsOfType .finalized .spell).map (·.object)
   return (legalActions s).contains (action []) &&
     !(legalActions showdown).contains (action []) &&
     (legalActions showdown).contains (action [.calm]) &&
     (waiting.poolOf p).calm + 1 == (s.poolOf p).calm &&
-    (finalized waiting).count hidden == 1 && finalized done == finalized waiting &&
+    (waiting.obj? item).any (·.formerId == some hidden) &&
+    (finalized waiting).count item == 1 && !(finalized waiting).contains hidden &&
+    finalized done == finalized waiting &&
     done.locate ally == some (.player p .base) && done.countIn p .trash "OGN-168" == 1
 
 -- Sandswept Tomb removes one symbol of the caster's choice per qualifying Battlefield,
@@ -3491,6 +3494,60 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     energy done p == energy s p + 1 && energy done q == energy s q + 1 &&
     energy done third == energy s third && alone.zone .chain == [] &&
     !noCombat.contains (.combatStarted bf p)
+
+-- Rebuttal can take or counter a Spell played from Hidden. The original Battlefield restricts
+-- both finalization and the new targets, and remaking choices ignores Deflect.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, block) ← put s q "OGN-057" .hidden
+  let (s, rebuttal) ← put s p "VEN-152" .hand
+  let (s, original) ← putAt s q "VEN-074" bf
+  let (s, target) ← putAt s q "VEN-074" bf
+  let (s, outside) ← put s q "VEN-074" .base
+  let s := s.modObj target (fun o => { o with tempKws := [({ keyword := .deflect, arg := .amount 1 }, .turn)] })
+  let s := s.modObj block (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 })
+  let s := { (s.fund p 1 (chaos := 2)) with turn := max s.turn 1, pending := [.priority q] }
+  let hidden (id : ObjId) : Action := ⟨.player q, .activate block 1 ⟨0, []⟩ [id]⟩
+  let (onChain, played) ← (step 100 s (hidden original)).toOption
+  let item ← (onChain.zone .chain).head?
+  let (open_, _) ← (step 100 onChain ⟨.player q, .pass⟩).toOption
+  let rebut : Action := ⟨.player p, .playCard rebuttal ⟨1, [.chaos]⟩ [item]⟩
+  let (answered, _) ← (step 100 open_ rebut).toOption
+  let (passed, _) ← (step 100 answered ⟨.player p, .pass⟩).toOption
+  let (waiting, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (denied, _) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
+  let (taken, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
+  let (choice, _) ← (step 100 taken ⟨.player p, .decide true⟩).toOption
+  let .eitherDo _ _ _ (.setSpellChoices _ _ [a]) (.setSpellChoices _ _ [b]) _ :: _ := choice.pending | none
+  let (picked, retargeted) ← (step 100 choice ⟨.player p, .decide (a == target)⟩).toOption
+  let (_, choseAgain) ← (step 100 choice ⟨.player p, .decide (a == original)⟩).toOption
+  let done := settleChain {} 10 picked
+  return !(legalActions s).contains (hidden outside) && (onChain.obj? block).isNone &&
+    (onChain.obj? item).any (fun o => o.fromHidden && o.hiddenAt == some bf) &&
+    played.contains (.played q item) && played.contains (.chosenBySpell q original) &&
+    !(played.any (fun | .chosenByAbility .. => true | _ => false)) &&
+    denied.countIn q .trash "OGN-057" == 1 && (legalActions open_).contains rebut &&
+    ((a == target && b == original) || (a == original && b == target)) &&
+    (picked.poolOf p).get .chaos == 0 && retargeted.contains (.chosenBySpell p target) &&
+    choseAgain.contains (.chosenBySpell p original) &&
+    done.kwAmount target .shield == 3 && done.kwAmount outside .shield == 0 &&
+    done.kwAmount original .shield == 0 && done.countIn q .trash "OGN-057" == 1
+
+-- A target required at a different location can be outside the hiding Battlefield.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, spell) ← put s p "UNL-083" .hidden
+  let (s, here) ← putAt s p "VEN-074" bf
+  let (s, alsoHere) ← putAt s p "VEN-074" bf
+  let (s, away) ← put s p "VEN-074" .base
+  let s := s.modObj spell (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 })
+  let effect ← (s.cardDef? spell).bind CardDef.spellEffect
+  let choices := targetTuples s p spell s.mightTable effect.choices
+  return choices.contains [here, away] && choices.contains [alsoHere, away] &&
+    !choices.contains [here, alsoHere] && !choices.contains [away, here]
 
 -- Fallen Feline leaves a window to react before a name is known. The named
 -- spell can be cast by its controller, and a recall to Base lifts the restriction.
