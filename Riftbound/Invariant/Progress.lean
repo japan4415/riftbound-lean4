@@ -514,10 +514,13 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
     · intro hres
       exact absurd hres (by simp)
+    · refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [.eitherDo p u {} a b .nil, .cleanup]
     · refine hinv.of_next hr.same.result (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.cleanup]

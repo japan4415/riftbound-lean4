@@ -161,6 +161,8 @@ inductive Effect where
       (replacement : DamageReplacement)
   /-- Choose which replacements apply first to a combat assignment. `chosen` is in reverse order. -/
   | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
+  /-- Record which player's Banish replaces the pending death (CR 372). -/
+  | chooseDeathBanisher (unit : ObjId) (banisher : PlayerId)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

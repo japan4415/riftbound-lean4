@@ -832,6 +832,54 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Smite and Endless Riches compete on lethal damage. The Unit's controller chooses whose
+-- Banish occurs; neither replacement triggers the Empowered Emissary's Deathknell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, riches) ← put s q "VEN-022" .base
+  let (s, unit) ← putAt s q "VEN-128" s.bf0
+  let (s, smite) ← put s p "UNL-007" .hand
+  let s := (s.modObj unit (fun o => { o with empowerCount := 1 })).control q s.bf0
+  let initial := s.fund p 2 (fury := 1)
+  let (played, _) ← (step 100 initial ⟨.player p, .playCard smite ⟨2, [.fury]⟩ [unit]⟩).toOption
+  let deciding ← passToChoice 8 played
+  let .eitherDo controller _ _ (.chooseDeathBanisher u first)
+    (.chooseDeathBanisher v second) _ :: .cleanup :: _ := deciding.pending | none
+  let answer (who : PlayerId) (first : Bool) : Action := ⟨.player who, .decide first⟩
+  let (fromSmite, smiteEvents) ← (step 100 deciding (answer q true)).toOption
+  let (fromRiches, richesEvents) ← (step 100 deciding (answer q false)).toOption
+  let verify (t : GameState) (events : List Event) (actor : PlayerId) := do
+    let card ← t.firstOf q .banishment "VEN-128"
+    let banished := events.filter (fun | .banished .. => true | _ => false)
+    return banished == [.banished actor q card] && t.countNamed q .base "Recruit" == 0 &&
+      !(events.any (fun | .died .. => true | _ => false))
+  let a ← verify fromSmite smiteEvents p
+  let b ← verify fromRiches richesEvents q
+  let byDeath := (banishObj p s riches).1
+  let byDeath := byDeath.modObj unit (fun o => { o with damage := 3 })
+  let (dead, deathEvents) ← (advance 100 { byDeath with pending := [.cleanup] } []).toOption
+  let deadUnit ← dead.firstOf q .trash "VEN-128"
+  return controller == q && u == unit && v == unit && first == p && second == q &&
+    (deciding.obj? unit).any (fun o => o.damage == 3) &&
+    !(legalFrameActions deciding).contains (answer p true) &&
+    deathEvents.contains (.died deadUnit q) && a && b
+
+-- An explicit Kill asks before removing the Unit, even when no damage would make it lethal.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s q "VEN-022" .base
+  let (s, unit) ← put s q "VEN-128" .base
+  let s := s.addTurnFxOn p unit .banishInstead
+  let kill := Frame.run p unit { slots := [.obj unit] } (.cons (.prim (.kill (.slot 0))) .nil)
+  let (deciding, proposed) ← (advance 100 { s with pending := [kill, .cleanup] } []).toOption
+  let .eitherDo controller _ _ (.chooseDeathBanisher _ _) _ _ :: .run .. :: _ := deciding.pending | none
+  let (finished, events) ← (step 100 deciding ⟨.player q, .decide false⟩).toOption
+  let banished ← finished.firstOf q .banishment "VEN-128"
+  return controller == q && proposed.isEmpty && (deciding.obj? unit).isSome &&
+    events.contains (.banished q q banished) && !(events.any (fun | .died .. => true | _ => false))
+
 -- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
 -- is finalized after the trigger leaves the Chain, and the opponent can respond.
 #guard vendettaCase fun s => do

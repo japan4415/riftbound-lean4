@@ -151,7 +151,8 @@ theorem tc_paySurcharge (s : GameState) (a : Action) (s2 : GameState) :
 
 theorem tc_cleanupFrame (s : GameState) (rest : List Frame) :
     TC s (cleanupFrame s rest).1 := by
-  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩

@@ -259,6 +259,8 @@ inductive TurnEffect where
   | gainedXP
   /-- The unit is banished instead of dying this turn (Smite): a note on the unit. -/
   | banishInstead
+  /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
+  | chosenDeathBanisher
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce

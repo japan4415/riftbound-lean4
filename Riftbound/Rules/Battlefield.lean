@@ -482,19 +482,29 @@ def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × L
   let r := s.observeCombat pending
   ({ s with pending := pending, combat := r.1 }, r.2)
 
+/-- A pending lethal death can require a replacement choice before the automatic kill.
+Off-board tokens and unattached Equipment are still handled first (CR 323, 372). -/
+def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
+  if s.offBoardToken.isSome || s.looseGear.isSome then none else
+    (s.inPlay.find? (fun u => s.isUnit u && s.lethal u)).bind s.deathBanishChoice
+
 /-- The step of the `cleanup` frame (CR 322-323): declare a winner, or do a step, or start a
 Showdown, or finish. -/
 def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :=
   match s.winner with
   | some w => ({ s with result := some (.won [w]), pending := [] }, [Event.won w])
   | none =>
-    match cleanupStep s with
-    | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
+    match cleanupDeathBanishChoice s with
+    | some (u, controller, first, other) =>
+      ({ s with pending := .eitherDo controller u {} first other .nil :: .cleanup :: rest }, [])
     | none =>
-      match s.startShowdown rest with
-      | some (bf, q) =>
-        continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
-      | none => continueAfterCleanup s rest
+      match cleanupStep s with
+      | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
+      | none =>
+        match s.startShowdown rest with
+        | some (bf, q) =>
+          continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+        | none => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -805,6 +815,8 @@ theorem endShowdown_frames (s : GameState) (bf : ObjId) (expire : Bool := true) 
 /-- What the `cleanup` frame does, in the cases the invariants look at. -/
 theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
     (∃ w, (cleanupFrame s rest).1 = { s with result := some (.won [w]), pending := [] }) ∨
+    (∃ u p a b, (cleanupFrame s rest).1 =
+      { s with pending := .eitherDo p u {} a b .nil :: .cleanup :: rest }) ∨
     (∃ r, Safe s r ∧ (cleanupFrame s rest).1 = { r with pending := .cleanup :: rest }) ∨
     (∃ bf q, (cleanupFrame s rest).1 =
       { s with
@@ -816,12 +828,14 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
   · rename_i w hw
     exact Or.inl ⟨w, rfl⟩
   · split
-    · rename_i r hr
-      exact Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩)
+    · exact Or.inr (Or.inl ⟨_, _, _, _, rfl⟩)
     · split
-      · rename_i bf q hq
-        exact Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩))
-      · exact Or.inr (Or.inr (Or.inr rfl))
+      · rename_i r hr
+        exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
+      · split
+        · rename_i bf q hq
+          exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
+        · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
 
 /-- What the winner has: the Victory Score and more points than every other player. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
@@ -935,8 +949,18 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
     (h : s.Settled) (hn : s.startShowdown rest = none) :
     cleanupFrame s rest = continueAfterCleanup s rest := by
   obtain ⟨hw, hs⟩ := h
+  have hchoice : cleanupDeathBanishChoice s = none := by
+    cases ht : s.offBoardToken <;> cases hg : s.looseGear <;>
+      simp [cleanupDeathBanishChoice, ht, hg]
+    have hs0 : cleanupStep0 s = none := by
+      simpa [cleanupStep, tokenStep, detachStep, ht, hg] using hs
+    unfold cleanupStep0 at hs0
+    split at hs0
+    · contradiction
+    · rename_i hfind
+      simp [hfind]
   unfold cleanupFrame
-  rw [hw, hs, hn]
+  rw [hw, hchoice, hs, hn]
 
 end Riftbound
 

@@ -833,9 +833,11 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
     · exact ⟨hinv.1, Or.inr (fun g hg => by cases hg)⟩
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := [.eitherDo p u {} a b .nil, .cleanup]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
         (by simp [GameState.playerCount, hr.same.config]) (new := [Frame.cleanup]) rfl
         (by simp [Frame.isSetup])

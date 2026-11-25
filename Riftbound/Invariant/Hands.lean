@@ -1165,9 +1165,10 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hsub : Frame.setupHands ∈ rest → Frame.setupHands ∈ s.pending := fun hm => by
       rw [hp]
       exact List.mem_cons_of_mem _ hm
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
     · exact hinv.of_play hph0 rfl rfl (fun hm => absurd hm (by simp))
+    · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play (by show r.phase ≠ .setup; rw [hr.same.phase]; exact hph0)
         hr.same.turnOrder hr.same.config (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))

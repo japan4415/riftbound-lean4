@@ -480,8 +480,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
+    · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact (hr.wf hwf).congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
@@ -580,8 +581,9 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
+    · exact List.Perm.refl _
     · exact List.Perm.refl _
     · exact hr.phys hwf
     · exact List.Perm.refl _

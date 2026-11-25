@@ -487,8 +487,9 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
       rw [e]
+    · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact (hr.own hwf hown).congr rfl rfl
     · exact hown.congr rfl rfl

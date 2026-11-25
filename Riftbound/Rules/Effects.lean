@@ -223,11 +223,19 @@ theorem noteDeath_safe (s : GameState) (o : Object) (isUnit marked mighty : Bool
       (noteIf_safe _ (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
         (fun t => Safe.modObj t n (fun _ => rfl) (fun _ => rfl)) _)
 
-/-- The player whose effect banishes the Unit instead of sending it to the Trash on death
-(Smite). A later Deathknell banishes separately. -/
+/-- Whether this turn note has the given kind and applies to the object. -/
+def TurnFx.appliesTo (note : TurnFx) (turn : Nat) (id : ObjId) (kind : TurnEffect) : Bool :=
+  note.kind == kind && note.target == some id && note.turn == turn
+
+/-- The controller's chosen replacement for this Unit's pending death. -/
+def GameState.chosenDeathBanisher (s : GameState) (id : ObjId) : Option PlayerId :=
+  (s.turnFx.find? (·.appliesTo s.turn id .chosenDeathBanisher)).map (·.who)
+
+/-- The player whose effect replaces the kill with a Banish (Smite). A later Deathknell
+banishes separately. -/
 def GameState.banishOnDeathBy (s : GameState) (id : ObjId) : Option PlayerId :=
-  (s.turnFx.find? (fun f =>
-    f.kind == .banishInstead && f.target == some id && f.turn == s.turn)).map (·.who)
+  s.chosenDeathBanisher id <|>
+    (s.turnFx.find? (·.appliesTo s.turn id .banishInstead)).map (·.who)
 
 /-- A replacement banishes the object instead of sending it to the Trash on death. -/
 def GameState.banishedOnDeath (s : GameState) (id : ObjId) : Bool :=
@@ -256,12 +264,15 @@ theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (alon
   | none => exact Safe.refl s
   | some n => exact noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) s
 
-/-- Kill an object: it goes to its owner's Trash (or is banished, if an Equipment says so). -/
+/-- A kill sends a Permanent to its owner's Trash. Replacing it with Banish suppresses the
+death event and attributes the Banish to the selected effect (CR 370.1.a.1, 428.2.a, 429.1). -/
 def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := sendObj (if s.banishedOnDeath id then ZoneKind.banishment else .trash) s id
   match s.obj? id with
   | some o =>
-    if r.2.any (fun | .banished .. => true | _ => false) then r else
+    if s.banishedOnDeath id || r.2.any (fun | .banished .. => true | _ => false) then
+      (r.1, r.2 ++ (s.banishOnDeathBy id).toList.flatMap (fun p => banishCardEvents p s id r.2))
+    else
     -- the death of a unit is noted for the turn (its controller, as it died)
     (noteAlone
         (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
@@ -276,8 +287,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
             (s.obj? u).any (fun x => x.controller == o.controller && x.loc == o.loc)))),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
-      | _ => none) ++ (s.banishOnDeathBy id).toList.flatMap
-        (fun p => banishCardEvents p s id r.2))
+      | _ => none))
   | none => r
 
 /-- Killing an object is a safe change. -/
@@ -357,7 +367,10 @@ theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone
   have hdest := s.ownerDestination_trash_or_banishment u o hk
   cases hm : moveObj s u (.player o.owner dest) with
   | none =>
-    simp only [List.any_nil, Bool.false_eq_true, ite_false, noteAlone_zone, noteDeath_zone]
+    dsimp only
+    split
+    · rfl
+    · rw [noteAlone_zone, noteDeath_zone]
   | some r =>
     obtain ⟨s', id'⟩ := r
     obtain ⟨src, d, hs, o2, ho2, hdd⟩ := moveObj_spec_dst hm
@@ -2006,6 +2019,23 @@ theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).
     · exact saveUnit_safe s id _
     · exact killObj_safe s id
   · exact killObj_safe s id
+
+/-- Competing Banish effects with different attribution require the Unit's controller to
+choose. After the chosen replacement applies, there is no kill or Trash move left to replace
+(CR 370.1.a.1, 372). -/
+def GameState.deathBanishChoice (s : GameState) (id : ObjId) :
+    Option (ObjId × PlayerId × Effect × Effect) := do
+  if (s.chosenDeathBanisher id).isSome || (s.deathSaver id).isSome ||
+      !(s.cardDef? id).any (·.hasType .unit) then none else
+    let unit ← s.obj? id
+    let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
+    let trash := if s.replacesTrash id unit then [unit.owner] else []
+    let choices := (marked ++ trash).eraseDups.map (Effect.chooseDeathBanisher id)
+    match choices with
+    | first :: second :: rest =>
+      let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
+      some (id, unit.controller, first, other)
+    | _ => none
 
 /-- A Trash replacement can still apply to a simultaneous kill after its own source was removed
 by the same instruction (CR 370.1.a.2, 370.4). -/
@@ -4761,6 +4791,16 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, [.run p src env (.cons (.resolveEffectDamage next (some damage)) es)], [])
   | .orderCombatDamage target chosen remaining =>
     orderCombatDamageStep s p src env target chosen remaining es
+  | .chooseDeathBanisher unit banisher =>
+    (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
+  | .prim (.kill sel) =>
+    match ((sel.eval s p src env).getD []).findSome? s.deathBanishChoice with
+    | some (u, controller, first, other) =>
+      (s, [.eitherDo controller u {} first other .nil, .run p src env (.cons e es)], [])
+    | none =>
+      match applyPrim s p src env (.kill sel) with
+      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
+      | none => skip
   | .prim (.banishReplay sel sameLocation) =>
     let units := (sel.eval s p src env).getD []
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
@@ -4818,6 +4858,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
+    | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
     | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _

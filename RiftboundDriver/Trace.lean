@@ -163,6 +163,16 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
     | _ => [("moreDamageReplacements", "true")]
   | _ => []
 
+/-- Describe whose effect can replace this Unit's pending death (CR 372). -/
+def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ unit _ first@(.chooseDeathBanisher ..) other _) =>
+    [("banishDeathUnit", toString unit.n)] ++
+      (match if yes then first else other with
+      | .chooseDeathBanisher _ player => [("banishingPlayer", toString player.n)]
+      | _ => [])
+  | _ => []
+
 /-- Describe a decision about paying during resolution, including individual payments. -/
 def effectPaymentFields (state : Option GameState) (frame : Option Frame)
     (yes : Bool) : List (String × String) :=
@@ -304,7 +314,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
-        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ reducedPermanentFields frame yes ++
+        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ deathBanishFields frame yes ++
+        reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes
     | .choose o =>

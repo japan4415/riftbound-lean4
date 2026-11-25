@@ -591,6 +591,7 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.finishLimitedSpell ..) _ _ => true
   | .eitherDo _ _ _ (.chooseDamageReplacement ..) _ _ => true
   | .eitherDo _ _ _ (.orderCombatDamage ..) _ _ => true
+  | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
   | .eitherDo _ _ _ first _ _ => first.isPayment
   | _ => false
 
