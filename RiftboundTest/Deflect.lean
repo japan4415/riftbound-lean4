@@ -81,7 +81,7 @@ meta def canPlay (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
 meta def canUse (s : GameState) (src : ObjId) (ts : List ObjId) : Bool :=
   (legalFrameActions s).any (fun a =>
     match a.kind with
-    | .activate src' 0 _ ts' _ => src' == src && ts' == ts
+    | .activate src' 0 _ ts' _ _ => src' == src && ts' == ts
     | _ => false)
 
 -- the Deflect of the Unit is paid by the opponents of its controller, for each time it is chosen

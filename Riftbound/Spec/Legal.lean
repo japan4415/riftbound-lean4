@@ -79,8 +79,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .priority p :: _, .standardMove u d => a.actor = .player p ∧ moveOk s p u d = true
   -- an activated ability of an object the player controls, paid for from the Rune Pool, when the
   -- Chain is empty (CR 361, 363, 356-357)
-  | .priority p :: _, .activate src idx pay ts discards =>
-    a.actor = .player p ∧ activatable s p src idx pay ts true discards = true
+  | .priority p :: _, .activate src idx pay ts discards targetPlayer =>
+    a.actor = .player p ∧ activatable s p src idx pay ts true discards targetPlayer = true
   -- the player with priority passes while the Chain holds an item (CR 311-313)
   | .chainPass p _ :: _, .pass => a.actor = .player p
   -- in answer to the Chain: a play with Reaction from a permitted zone (CR 813, 829)
@@ -88,8 +88,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ c ∈ s.playSources p ∧
       reactable s p c pay ts flow pick = true ∧ s.playDiscardOk p c discard = true
   -- in answer to the Chain: an activated ability with Reaction (CR 813)
-  | .chainPass p _ :: _, .activate src idx pay ts discards =>
-    a.actor = .player p ∧ activatable s p src idx pay ts false discards = true
+  | .chainPass p _ :: _, .activate src idx pay ts discards targetPlayer =>
+    a.actor = .player p ∧ activatable s p src idx pay ts false discards targetPlayer = true
   -- in answer to the Chain: a Basic Rune adds a resource (CR 164.2, 430)
   | .chainPass p _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true
@@ -108,8 +108,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player q ∧ c ∈ s.playSources q ∧
       showdownable s q c pay ts flow pick = true ∧ s.playDiscardOk q c discard = true
   -- in a Showdown: an activated ability with Action or Reaction (CR 806, 813)
-  | .showdown _ q _ :: _, .activate src idx pay ts discards =>
-    a.actor = .player q ∧ activatableSD s q src idx pay ts discards = true
+  | .showdown _ q _ :: _, .activate src idx pay ts discards targetPlayer =>
+    a.actor = .player q ∧ activatableSD s q src idx pay ts discards targetPlayer = true
   -- in a Showdown: a Basic Rune adds a resource (CR 164.2, 430)
   | .showdown _ q _ :: _, .runeAbility c ab =>
     a.actor = .player q ∧ c ∈ s.zone (.player q .base) ∧ runeUsable s q c ab = true

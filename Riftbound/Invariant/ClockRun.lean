@@ -99,8 +99,8 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
     exact (tc_applyPlay hr).trans (TC.of_sameMeta (payExtra_safe h2).same)
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event}
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : TC s s' := by
   obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have h0 : TC s s0 := TC.of_sameMeta hS.same
   have h1 : TC s0 (s0.modObj src f) := TC.of_sameMeta (GameState.sameMeta_modObj s0 src f)
@@ -108,8 +108,8 @@ theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : 
   exact ((h0.trans h1).trans h2).trans (TC.of_sameMeta (addObject_sameMeta hm))
 
 theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {targetPlayer : Option PlayerId} {es : List Event}
+    (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   exact (tc_applyActivate hm).trans ⟨rfl, rfl⟩
 

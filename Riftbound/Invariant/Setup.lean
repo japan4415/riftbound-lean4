@@ -502,7 +502,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
-  · rename_i p n rest src idx pay ts discards hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
@@ -510,7 +510,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
@@ -619,7 +619,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
-  · rename_i bf q n rest src idx pay ts discards hp hk
+  · rename_i bf q n rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
       (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])

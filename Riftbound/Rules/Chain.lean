@@ -457,7 +457,7 @@ def manaKind (body : EffectDef) : Option ManaKind :=
 and the targets, in the Main Phase (CR 361, 363, 355-357). `open_` is whether the Chain is empty:
 an ability that is not a Reaction can be used only then (CR 312, 813). -/
 def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
-    (ts : List ObjId) (open_ : Bool) (discards : List ObjId := []) : Bool :=
+    (ts : List ObjId) (open_ : Bool) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) : Bool :=
   s.phase == .main &&
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
@@ -479,7 +479,8 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                   | .unlimited => true
                   | .perTurn n => decide (o.used.count idx < n)) &&
                 targetsOk s p src s.mightTable body.choices ts &&
-                s.discardCostOk p src costs discards
+                (s.discardCostOk p src costs discards &&
+                  (s.playerTargetOptions p body.playerTarget).contains targetPlayer)
           | none => false
         | _ => false
     | _, _ => false
@@ -493,7 +494,7 @@ def useAtCost (s : GameState) (idx : Nat) (costs : List AbilityCost) (ts : List 
 /-- Use an activated ability (CR 361, 363): pay, exhaust the object if the cost says so, and put
 the ability on the Chain with the objects chosen. -/
 def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
-    (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) :
+    (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) :
     Option (GameState × List Event) :=
   match s.cardDef? src, (s.poolOf p).spend pay with
   | some d, some pool =>
@@ -502,15 +503,15 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       let paid := preCost s p costs ts (d.hasType .gear) pool discards
       let noted := paid.1.noteGearAbility p d costs
       (addObject ((noted.modObj src (useAtCost s idx costs ts)).setPool p pool)
-        { abilityItem d.id idx src p ts with activationGrant := grant } .chain).map
+        { abilityItem d.id idx src p ts with activationGrant := grant, targetPlayer } .chain).map
         (fun r => (r.1, paid.2 ++ [Event.activated p src idx]))
     | _ => none
   | _, _ => none
 
 /-- The shape of an ability being used. -/
 theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event}
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) :
     ∃ s0 d costs f pool item id',
       s0 = (preCost s p costs ts (d.hasType .gear) pool discards).1.noteGearAbility p d costs ∧
         Safe s s0 ∧
@@ -537,7 +538,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨rfl, rfl⟩ := hr
           let paid := (preCost s p costs ts (d.hasType .gear) pool discards).1
           exact ⟨paid.noteGearAbility p d costs, d, costs, useAtCost s idx costs ts,
-            pool, { abilityItem d.id idx src p ts with activationGrant := grant }, id', rfl,
+            pool, { abilityItem d.id idx src p ts with activationGrant := grant, targetPlayer }, id', rfl,
             (preCost_safe s p costs ts _ pool discards).trans (paid.noteGearAbility_safe p d costs),
             fun o => ⟨rfl, rfl⟩, rfl, rfl, rfl, hm, _, rfl⟩
         | passive _ _ => simp [hd, hs, ha] at h
@@ -546,8 +547,8 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
 
 /-- Using an ability keeps the game well formed. -/
 theorem applyActivate_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event} (hwf : s.WF)
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) : s'.WF := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event} (hwf : s.WF)
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : s'.WF := by
   obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
@@ -555,8 +556,8 @@ theorem applyActivate_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : 
 
 /-- Using an ability keeps the physical cards. -/
 theorem applyActivate_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event} (hwf : s.WF)
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) : s'.physIds.Perm s.physIds := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event} (hwf : s.WF)
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : s'.physIds.Perm s.physIds := by
   obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, hk, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
@@ -567,8 +568,8 @@ theorem applyActivate_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {i
 
 /-- Using an ability keeps `OwnerOk`. -/
 theorem applyActivate_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) : s'.OwnerOk := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : s'.OwnerOk := by
   obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   have h1 : ((s0.modObj src f).setPool p pool).WF :=
     (GameState.wf_modObj (hS.wf hwf) src f).congr rfl rfl rfl rfl
@@ -579,8 +580,8 @@ theorem applyActivate_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {i
 /-- Using an ability changes nothing of the stack, the turn order, the phase, the result, the rules
 or the cards. -/
 theorem applyActivate_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event}
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
   obtain ⟨s0, -, -, f, pool, item, id', -, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
@@ -604,8 +605,8 @@ theorem applyActivate_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
 
 /-- Activating without discards leaves the hands as they were. -/
 theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event} (hwf : s.WF)
-    (h : applyActivate s p src idx pay ts = some (s', es)) (q : PlayerId) :
+    {pay : RunePool.Payment} {ts : List ObjId} {targetPlayer : Option PlayerId} {es : List Event} (hwf : s.WF)
+    (h : applyActivate s p src idx pay ts [] targetPlayer = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
   obtain ⟨s0, d, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   rw [addObject_zone_other hm (by simp)]
@@ -615,9 +616,9 @@ theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
 
 /-- A usable ability can be used. -/
 theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {open_ : Bool}
-    (h : activatable s p src idx pay ts open_ discards = true) :
-    ∃ r, applyActivate s p src idx pay ts discards = some r := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {open_ : Bool}
+    (h : activatable s p src idx pay ts open_ discards targetPlayer = true) :
+    ∃ r, applyActivate s p src idx pay ts discards targetPlayer = some r := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨-, h⟩ := h
@@ -664,15 +665,16 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
 /-- What a usable ability is: an activated ability of an object the player controls, in the Main
 Phase, with a payment that pays the cost and the Pool covers, and a legal pick of targets. -/
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {open_ : Bool}
-    (h : activatable s p src idx pay ts open_ discards = true) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {open_ : Bool}
+    (h : activatable s p src idx pay ts open_ discards targetPlayer = true) :
     ∃ d costs sp body lim pc grant, s.phase = .main ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         (s.activationList src d)[idx]? = some (grant, .activated costs sp body lim) ∧
         s.activationPlan p src d idx costs ts = some (costExhausts costs, pc) ∧
           pc.any (fun c => c.paidBy d.domains pay) = true ∧
             targetsOk s p src s.mightTable body.choices ts = true ∧
-            s.discardCostOk p src costs discards = true ∧ ∃ o, s.obj? src = some o ∧
+            s.discardCostOk p src costs discards = true ∧
+            targetPlayer ∈ s.playerTargetOptions p body.playerTarget ∧ ∃ o, s.obj? src = some o ∧
               (o.controller = p ∨ o.control = some p) := by
   unfold activatable at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
@@ -714,7 +716,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
                 have he := congrArg (Option.map Prod.fst) hp
                 simpa [GameState.activationPlan, costExhausts, hc] using he
             exact ⟨d, costs, sp, body, lim, pc, grant, hph, huse, rfl, ha, by rw [hex]; exact hp,
-              h.1.1.1.1.2, h.1.2, h.2, o, rfl, hctl⟩
+              h.1.1.1.1.2, h.1.2, h.2.1, List.contains_iff_mem.mp h.2.2, o, rfl, hctl⟩
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
@@ -755,9 +757,10 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
               (match s.activationPlan p src d idx costs ts with
                 | some (_, cs) => (cs.flatMap (Cost.payments d.domains)).eraseDups
                 | none => []).flatMap (fun pay =>
-                  ((s.discardPayments p src costs).filter
-                    (fun ds => activatable s p src idx pay ts open_ ds)).map
-                    (fun ds => ⟨.player p, .activate src idx pay ts ds⟩)))
+                  (s.playerTargetOptions p body.playerTarget).flatMap (fun targetPlayer =>
+                    ((s.discardPayments p src costs).filter
+                      (fun ds => activatable s p src idx pay ts open_ ds targetPlayer)).map
+                      (fun ds => ⟨.player p, .activate src idx pay ts ds targetPlayer⟩))))
           | _ => [])
       | none => [])
 
@@ -795,21 +798,21 @@ def showdownSpeed (s : GameState) (src : ObjId) (idx : Nat) : Bool :=
 /-- The player can use the activated ability in a Showdown (CR 347-348): the Chain is empty, and the
 ability has Action or Reaction speed. -/
 def activatableSD (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
-    (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) : Bool :=
-  activatable s p src idx pay ts true discards && showdownSpeed s src idx
+    (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) : Bool :=
+  activatable s p src idx pay ts true discards targetPlayer && showdownSpeed s src idx
 
 /-- Every way the player can use an activated ability in a Showdown. -/
 def legalShowdownActivates (s : GameState) (p : PlayerId) : List Action :=
   (legalActivates s p true).filter (fun a =>
     match a.kind with
-    | .activate src idx _ _ _ => showdownSpeed s src idx
+    | .activate src idx _ _ _ _ => showdownSpeed s src idx
     | _ => false)
 
 /-- The abilities listed are exactly the ones that can be used. -/
 theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Action) :
-    a ∈ legalActivates s p open_ ↔ ∃ src idx pay ts discards,
-      a = ⟨.player p, .activate src idx pay ts discards⟩ ∧
-        activatable s p src idx pay ts open_ discards = true := by
+    a ∈ legalActivates s p open_ ↔ ∃ src idx pay ts discards targetPlayer,
+      a = ⟨.player p, .activate src idx pay ts discards targetPlayer⟩ ∧
+        activatable s p src idx pay ts open_ discards targetPlayer = true := by
   constructor
   · intro ha
     unfold legalActivates at ha
@@ -827,13 +830,13 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
         cases ab with
         | activated costs sp body lim =>
           simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter] at ha
-          obtain ⟨ts, -, pay, -, ds, ⟨-, hact⟩, rfl⟩ := ha
-          exact ⟨src, idx, pay, ts, ds, rfl, hact⟩
+          obtain ⟨ts, -, pay, -, targetPlayer, -, ds, ⟨-, hact⟩, rfl⟩ := ha
+          exact ⟨src, idx, pay, ts, ds, targetPlayer, rfl, hact⟩
         | passive _ _ => simp [hab] at ha
         | replacement _ _ _ => simp [hab] at ha
         | triggered _ _ _ => simp [hab] at ha
-  · rintro ⟨src, idx, pay, ts, discards, rfl, hact⟩
-    obtain ⟨d, costs, sp, body, lim, pc, grant, hph, huse, hd, hab, hplan, hpay, hts, hds, o, ho, hctl⟩ :=
+  · rintro ⟨src, idx, pay, ts, discards, targetPlayer, rfl, hact⟩
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hph, huse, hd, hab, hplan, hpay, hts, hds, hplayer, o, ho, hctl⟩ :=
       activatable_spec hact
     unfold legalActivates
     simp only [List.mem_flatMap]
@@ -842,7 +845,8 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
     · simp only [hd, List.mem_flatMap, List.mem_range]
       refine ⟨idx, (List.getElem?_eq_some_iff.mp hab).1, ?_⟩
       simp only [hab, List.mem_flatMap, List.mem_map, List.mem_filter]
-      refine ⟨ts, ?_, pay, ?_, discards, ⟨(s.mem_discardPayments p src costs discards).mpr hds, hact⟩, rfl⟩
+      refine ⟨ts, ?_, pay, ?_, targetPlayer, hplayer, discards,
+        ⟨(s.mem_discardPayments p src costs discards).mpr hds, hact⟩, rfl⟩
       · by_cases hn : ts = []
         · subst hn
           exact List.mem_cons_self
@@ -922,22 +926,22 @@ theorem mem_legalShowdownPlays (s : GameState) (p : PlayerId) (a : Action) :
 
 /-- The abilities listed are exactly the ones that can be used in a Showdown. -/
 theorem mem_legalShowdownActivates (s : GameState) (p : PlayerId) (a : Action) :
-    a ∈ legalShowdownActivates s p ↔ ∃ src idx pay ts discards,
-      a = ⟨.player p, .activate src idx pay ts discards⟩ ∧ activatableSD s p src idx pay ts discards = true := by
+    a ∈ legalShowdownActivates s p ↔ ∃ src idx pay ts discards targetPlayer,
+      a = ⟨.player p, .activate src idx pay ts discards targetPlayer⟩ ∧ activatableSD s p src idx pay ts discards targetPlayer = true := by
   unfold legalShowdownActivates
   simp only [List.mem_filter, mem_legalActivates]
   constructor
-  · rintro ⟨⟨src, idx, pay, ts, discards, rfl, hact⟩, hsp⟩
-    exact ⟨src, idx, pay, ts, discards, rfl, by simpa [activatableSD, hact] using hsp⟩
-  · rintro ⟨src, idx, pay, ts, discards, rfl, hact⟩
+  · rintro ⟨⟨src, idx, pay, ts, discards, targetPlayer, rfl, hact⟩, hsp⟩
+    exact ⟨src, idx, pay, ts, discards, targetPlayer, rfl, by simpa [activatableSD, hact] using hsp⟩
+  · rintro ⟨src, idx, pay, ts, discards, targetPlayer, rfl, hact⟩
     simp only [activatableSD, Bool.and_eq_true] at hact
-    exact ⟨⟨src, idx, pay, ts, discards, rfl, hact.1⟩, hact.2⟩
+    exact ⟨⟨src, idx, pay, ts, discards, targetPlayer, rfl, hact.1⟩, hact.2⟩
 
 /-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/
 def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
-    (ts : List ObjId) (new : List Frame) (discards : List ObjId := []) :
+    (ts : List ObjId) (new : List Frame) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none) :
     Option (GameState × List Event) :=
-  (applyActivate s p src idx pay ts discards).map (fun r => ({ r.1 with pending := new }, r.2))
+  (applyActivate s p src idx pay ts discards targetPlayer).map (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- Cast a Spell in answer to the Chain, and put `new` on the stack in place of the frame that was
 answered. -/
@@ -950,9 +954,9 @@ def castStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
 
 /-- What using an ability with a new stack does. -/
 theorem activateStep_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards = some (s', es)) :
-    ∃ s2 es2, applyActivate s p src idx pay ts discards = some (s2, es2) ∧
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) :
+    ∃ s2 es2, applyActivate s p src idx pay ts discards targetPlayer = some (s2, es2) ∧
       s' = { s2 with pending := new } := by
   unfold activateStep at h
   simp only [Option.map_eq_some_iff] at h
@@ -962,15 +966,15 @@ theorem activateStep_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
 
 /-- Using an ability keeps the game well formed. -/
 theorem activateStep_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (hwf : s.WF) (h : activateStep s p src idx pay ts new discards = some (s', es)) : s'.WF := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (hwf : s.WF) (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) : s'.WF := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   exact (applyActivate_wf hwf hm).congr rfl rfl rfl rfl
 
 /-- Using an ability keeps the physical cards. -/
 theorem activateStep_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (hwf : s.WF) (h : activateStep s p src idx pay ts new discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (hwf : s.WF) (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) :
     s'.physIds.Perm s.physIds := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   have h2 := applyActivate_physIds hwf hm
@@ -978,8 +982,8 @@ theorem activateStep_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {id
 
 /-- Using an ability keeps `OwnerOk`. -/
 theorem activateStep_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (hwf : s.WF) (hown : s.OwnerOk) (h : activateStep s p src idx pay ts new discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) :
     s'.OwnerOk := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   exact (applyActivate_ownerOk hwf hown hm).congr rfl rfl
@@ -987,8 +991,8 @@ theorem activateStep_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {id
 /-- Using an ability changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
 theorem activateStep_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (h : activateStep s p src idx pay ts new discards targetPlayer = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
@@ -997,17 +1001,17 @@ theorem activateStep_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
 
 /-- Using an ability without discards leaves the hands as they were. -/
 theorem activateStep_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (hwf : s.WF) (h : activateStep s p src idx pay ts new = some (s', es)) (q : PlayerId) :
+    {pay : RunePool.Payment} {ts : List ObjId} {targetPlayer : Option PlayerId} {new : List Frame} {es : List Event}
+    (hwf : s.WF) (h : activateStep s p src idx pay ts new [] targetPlayer = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   exact applyActivate_hand hwf hm q
 
 /-- A usable ability can be used, with any new stack. -/
 theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {open_ : Bool} {new : List Frame}
-    (h : activatable s p src idx pay ts open_ discards = true) :
-    ∃ r, activateStep s p src idx pay ts new discards = some r := by
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {open_ : Bool} {new : List Frame}
+    (h : activatable s p src idx pay ts open_ discards targetPlayer = true) :
+    ∃ r, activateStep s p src idx pay ts new discards targetPlayer = some r := by
   obtain ⟨r, hr⟩ := applyActivate_isSome h
   exact ⟨_, by unfold activateStep; rw [hr]; rfl⟩
 
@@ -1191,8 +1195,8 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 /-- **An ability goes on top of the Chain**: the new item is the head of the Chain zone, and the
 items that were there are below it, in the same order. -/
 theorem applyActivate_chain {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {es : List Event} (hwf : s.WF)
-    (h : applyActivate s p src idx pay ts discards = some (s', es)) :
+    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event} (hwf : s.WF)
+    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) :
     ∃ id', s'.zone .chain = id' :: s.zone .chain := by
   obtain ⟨s0, d, costs, f, pool, item, id', hs0, hS, hf, -, -, -, hm, -⟩ := applyActivate_cases h
   obtain ⟨hz, hid, hs'⟩ := addObject_spec hm

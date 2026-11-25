@@ -3759,8 +3759,19 @@ def VEN_133.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Glowstone: the effect is not written yet. -/
-def VEN_133 : CardDef := VEN_133.meta
+/-- Glowstone changes controller and is Recalled, then threatens the units of its current
+controller during that player's Ending Step (CR 317.1, 355.7, 456-460, 739-743). -/
+def VEN_133 : CardDef :=
+  { VEN_133.meta with
+    abilities := [
+      .activated [.disempowerSelf, .exhaustSelf] .normal
+        { playerTarget := some .any
+          body := .eachPlayer (.chosen 0) (.seqOf [
+            .prim (.takeControl .self), .prim (.recall .self false)]) } .unlimited,
+      .triggered { event := .at_ .endOfTurn }
+        (.of [] (.seqOf [.prim (.kill .self),
+          .prim (.deal (.all .friendly .anywhere [.ofType .unit]) (.const 5))])) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-134
 /--

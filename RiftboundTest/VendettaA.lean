@@ -2958,4 +2958,75 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     bounced.countIn q .hand "VEN-014" == 1 &&
     (bounced.zone (.player q .hand)).all (fun id => (bounced.obj? id).any (·.tempActivations.isEmpty))
 
+-- Glowstone is Empowered with two Power. The second ability chooses its
+-- recipient when finalized and pays Disempower and Exhaust before resolving.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s p "VEN-133" .hand
+  let (playing, _) ← (step 100 (s.rich p) ⟨.player p, .playCard gear ⟨2, []⟩ []⟩).toOption
+  let current ← playing.firstOf p .base "VEN-133"
+  let d ← playing.cardDef? current
+  let empower ← (List.range d.fullAbilities.length).find? (fun i =>
+    d.fullAbilities[i]?.any Ability.isEmpower)
+  let gift (who : Option PlayerId) : Action :=
+    ⟨.player p, .activate current 0 ⟨0, []⟩ [] [] who⟩
+  let funded := playing.fund p 0 1 0 0 0 0 1
+  let (empowering, _) ←
+    (step 100 funded ⟨.player p, .activate current empower ⟨0, [.fury, .order]⟩ []⟩).toOption
+  let empowered := settleChain {} 12 empowering
+  let (sending, _) ← (step 100 empowered (gift (some q))).toOption
+  let item ← (sending.zone .chain).head?
+  let passed := settleChain {} 12 sending
+  let (selfGift, _) ← (step 100 empowered (gift (some p))).toOption
+  let kept := settleChain {} 12 selfGift
+  return !(legalActions playing).contains (gift (some q)) &&
+    (legalActions empowered).contains (gift (some p)) &&
+    (legalActions empowered).contains (gift (some q)) &&
+    !(legalActions empowered).contains (gift none) &&
+    !(legalActions empowered).contains (gift (some ⟨2⟩)) &&
+    (sending.obj? item).any (·.targetPlayer == some q) &&
+    (sending.obj? current).any (fun o => o.controller == p && o.exhausted && o.empowerCount == 0) &&
+    passed.locate current == some (.player q .base) &&
+    (passed.obj? current).any (fun o => o.owner == p && o.controller == q && o.exhausted) &&
+    kept.locate current == some (.player p .base) && kept.tired current == some true
+
+-- The Ending Step follows the current controller. Killing the Gear and
+-- dealing damage are separate instructions, even if it already left the Base.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, gear) ← put s p "VEN-133" .base
+  let (s, ownerUnit) ← put s p "VEN-014" .base
+  let (s, baseUnit) ← put s q "VEN-014" .base
+  let (s, otherGear) ← put s q "VEN-073" .base
+  let (s, fieldUnit) ← putAt s q "VEN-014" field
+  let s := (s.control q field).modObj gear (fun o => { o with empowerCount := 1 })
+  let (queued, _) ←
+    (step 100 s ⟨.player p, .activate gear 0 ⟨0, []⟩ [] [] (some q)⟩).toOption
+  let passed := settleChain {} 12 queued
+  let ending (who : PlayerId) :=
+    (advance 100 { passed with active := some who, pending := [.phase .ending] } []).toOption
+  let (ownerEnd, _) ← ending p
+  let (recipientEnd, _) ← ending q
+  let item ← (recipientEnd.zone .chain).head?
+  let finish (t : GameState) : Option (GameState × List Event) := do
+    let .chainPass a _ :: _ := t.pending | none
+    let (s1, es1) ← (step 100 t ⟨.player a, .pass⟩).toOption
+    let .chainPass b _ :: _ := s1.pending | none
+    let (s2, es2) ← (step 100 s1 ⟨.player b, .pass⟩).toOption
+    return (s2, es1 ++ es2)
+  let (done, damage) ← finish recipientEnd
+  let (alreadyGone, _) ← moveObj recipientEnd gear (.player p .banishment)
+  let (afterBanish, stillDamage) ← finish alreadyGone
+  return (ownerEnd.zone .chain).isEmpty && ownerEnd.locate gear == some (.player q .base) &&
+    (recipientEnd.obj? item).any (fun o => o.owner == q && o.kind == .chainAbility (cid "VEN-133") 1 gear) &&
+    damage.contains (.damaged baseUnit 5) && damage.contains (.damaged fieldUnit 5) &&
+    !damage.contains (.damaged ownerUnit 5) && !damage.contains (.damaged otherGear 5) &&
+    done.countIn p .trash "VEN-133" == 1 && done.countIn q .trash "VEN-014" == 2 &&
+    done.countIn q .trash "VEN-133" == 0 && (done.obj? ownerUnit).isSome &&
+    stillDamage.contains (.damaged baseUnit 5) && stillDamage.contains (.damaged fieldUnit 5) &&
+    afterBanish.countIn p .banishment "VEN-133" == 1
+
 end RiftboundTest

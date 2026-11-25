@@ -591,7 +591,7 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
-    body.playerTarget.isNone && ((costs.all (fun
+    (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
       | _ => true) && (costPlan costs).isSome &&
       ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&

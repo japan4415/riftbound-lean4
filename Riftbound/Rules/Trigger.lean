@@ -34,7 +34,7 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
   | .playCard c _ ts _ _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
-  | .activate _ _ _ ts _, .player p => ts.map (Event.chosenByAbility p)
+  | .activate _ _ _ ts _ _, .player p => ts.map (Event.chosenByAbility p)
   | .putTrigger _ ts (.pay ..), .player p => ts.map (Event.chosenByAbility p)
   | _, _ => []
 
@@ -759,9 +759,7 @@ theorem mem_trigTargetOptions (s : GameState) (t : PendTrigger) (mode : Option N
 /-- The eligible player targets of the ability, or no player choice when it does not
 declare one (CR 355.7, 355.9). -/
 def trigPlayerOptions (s : GameState) (t : PendTrigger) : List (Option PlayerId) :=
-  match (abilityDef s t.card t.idx).bind EffectDef.playerTarget with
-  | none => [none]
-  | some side => (s.players.filter (side.admitsPlayer t.controller)).map some
+  s.playerTargetOptions t.controller ((abilityDef s t.card t.idx).bind EffectDef.playerTarget)
 
 /-- A complete set of targets and mode before costs are paid. -/
 def trigPickOptions (s : GameState) (t : PendTrigger) :

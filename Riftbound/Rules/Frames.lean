@@ -299,11 +299,11 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
     (reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick).map (payPlayDiscard p c discard)
-  | .chainPass p _ :: rest, .activate src idx pay ts discards =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards
+  | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
-  | .priority p :: rest, .activate src idx pay ts discards =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards
+  | .priority p :: rest, .activate src idx pay ts discards targetPlayer =>
+    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer
   | .triggerOrder _ t more others :: rest, .putTrigger i ts payment =>
     let r := finalizePick s (t :: more) i ts payment
     some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
@@ -355,8 +355,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .showdown bf q _ :: rest, .playCard c pay ts flow discard pick =>
     (reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick).map
       (payPlayDiscard q c discard)
-  | .showdown bf q _ :: rest, .activate src idx pay ts discards =>
-    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards
+  | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer =>
+    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])

@@ -162,7 +162,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp] at hb
     rw [hpend]
     exact hb.swap rfl [Frame.chainPass p 0]
-  · rename_i p n rest src idx pay ts discards hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -171,7 +171,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -296,7 +296,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp] at hb
     rw [hpend]
     exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
-  · rename_i bf q n rest src idx pay ts discards hp hk
+  · rename_i bf q n rest src idx pay ts discards targetPlayer hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb

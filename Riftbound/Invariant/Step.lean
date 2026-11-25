@@ -70,11 +70,11 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_wf hwf h
   · rename_i p n rest c ab hp hk
     exact applyRune_wf hwf h
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_wf hwf h
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -157,7 +157,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
-  · rename_i bf q rest src idx pay ts discards hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_wf hwf h
   · rename_i q c ab hp hk
     exact applyRune_wf hwf h
@@ -353,11 +353,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
-  · rename_i p n rest src idx pay ts discards hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_physIds hwf h
   · rename_i p n tail c ab hp hk
     exact applyRune_physIds hwf h
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_physIds hwf h
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -444,7 +444,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
-  · rename_i bf q rest src idx pay ts discards hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_physIds hwf h
   · rename_i q c ab hp hk
     exact applyRune_physIds hwf h

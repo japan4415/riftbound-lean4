@@ -366,13 +366,20 @@ function describeA(a, prev) {
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
-      const tg = (a.targets || []).map((t) => cardName(t)).join('、');
+      const targets = (a.targets || []).map((t) => cardName(t));
+      if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
+      const tg = targets.join('、');
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
       const power = a.power || [];
-      const cost = typeof a.pay === 'number' ? costText({ energy: a.pay - power.length, power }) : '';
+      const costs = [];
+      if (a.disempowerSelf) costs.push('Disempower');
+      if (a.exhaustSelf) costs.push('Exhaust');
+      if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
+        costs.push(costText({ energy: a.pay - power.length, power }));
+      }
       const action = a.abilityEffect === 'readySelf' ? ' を Ready にする能力を起動' : ' の能力を起動';
       return [who + ': ' + cardName(a.source) + action +
-        (cost ? '（' + cost + '）' : '') +
+        (costs.length ? '（' + costs.join('、') + '）' : '') +
         (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }

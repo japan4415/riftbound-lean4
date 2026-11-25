@@ -737,6 +737,13 @@ def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List Spe
       (s.players.filter (side.admitsPlayer p)).flatMap (fun q => base.map (·.withPlayer q))
     | none => [])
 
+/-- The eligible player targets of an effect, or no choice if it does not declare one
+(CR 355.7, 355.9). -/
+def GameState.playerTargetOptions (s : GameState) (p : PlayerId) :
+    Option Side → List (Option PlayerId)
+  | none => [none]
+  | some side => (s.players.filter (side.admitsPlayer p)).map some
+
 /-- Check the required player choice independently of any object targets (CR 355.7, 355.9). -/
 def GameState.spellPlayerTargetOk (s : GameState) (p : PlayerId) (e : EffectDef)
     (pick : SpellPick) : Bool :=

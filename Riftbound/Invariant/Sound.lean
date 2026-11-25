@@ -112,13 +112,13 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
         exact Or.inr ⟨some b, ts, hb⟩
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) hwf hl.2.1 hplay
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
-  · rename_i p n rest src idx pay ts discards hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2
   · rename_i p n tail c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2
   · exact ⟨_, rfl⟩
@@ -191,7 +191,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass q 0 :: .showdown bf q 0 :: rest)
       hwf hl.2.1 (showdownable_spec hl.2.2.1)
     exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
-  · rename_i bf q rest src idx pay ts discards hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer hp hk
     rw [hp, hk] at hl
     simp only [activatableSD, Bool.and_eq_true] at hl
     exact activateStep_isSome hl.2.1
@@ -279,11 +279,11 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).own (reactStep_wf hwf hr) (reactStep_ownerOk hwf hown hr)
-  · rename_i p n rest src idx pay ts discards hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_ownerOk hwf hown h
   · rename_i p n tail c ab hp hk
     exact applyRune_ownerOk hwf hown h
-  · rename_i p rest src idx pay ts discards hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_ownerOk hwf hown h
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -366,7 +366,7 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).own (reactStep_wf hwf hr) (reactStep_ownerOk hwf hown hr)
-  · rename_i bf q rest src idx pay ts discards hp hk
+  · rename_i bf q rest src idx pay ts discards targetPlayer hp hk
     exact activateStep_ownerOk hwf hown h
   · rename_i q c ab hp hk
     exact applyRune_ownerOk hwf hown h

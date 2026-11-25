@@ -158,15 +158,19 @@ def actionJson (a : Action) (frame : Option Frame := none)
          mode.toList.flatMap (modeFields definition) ++ costs ++
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
-    | .activate src idx pay ts discards =>
+    | .activate src idx pay ts discards targetPlayer =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
+      targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
       (match state.bind (fun s => s.activationAt src idx) with
-      | some (some _, .activated _ _ e _) =>
-        if e.body == .prim (.ready .self) then [("abilityEffect", jstr "readySelf")] else []
+      | some (grant, .activated costs _ e _) =>
+        (if grant.isSome && e.body == .prim (.ready .self) then
+          [("abilityEffect", jstr "readySelf")] else []) ++
+        (if costs.contains .disempowerSelf then [("disempowerSelf", "true")] else []) ++
+        (if costs.contains .exhaustSelf then [("exhaustSelf", "true")] else [])
       | _ => [])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
