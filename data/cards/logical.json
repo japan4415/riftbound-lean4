@@ -28865,7 +28865,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Bird"
+   ],
    "text": [
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)",
     "When a stunned enemy unit here dies, draw 1."
@@ -29039,8 +29042,12 @@
     "RAD"
    ],
    "subtitle": "Broken Blade",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Riven"
+    "Riven",
+    "Noxus"
    ],
    "text": [
     "When I become exhausted, choose one that hasn't been chosen this turn —[Buff] me. (Give me a +1 :rb_might: buff if I don't have one.)Spend my buff to [Stun] an enemy unit. (It doesn't deal combat damage this turn.)Spend my buff to ready me."
@@ -30091,7 +30098,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "I cost :rb_energy_2: less for each battlefield you've conquered this turn."
    ],
@@ -30234,6 +30243,9 @@
     "RAD"
    ],
    "subtitle": "Blasting Through",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Bilgewater",
     "Graves"
@@ -31051,7 +31063,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Dragon"
+   ],
    "text": [
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)",
     ":rb_exhaust:: Choose an opponent. They must move a unit they control to my battlefield."
@@ -31543,7 +31558,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "When a friendly gear at a battlefield dies, you may pay :rb_energy_1: to return it to its owner's hand."
    ],

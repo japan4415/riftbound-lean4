@@ -373,6 +373,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
+  | .forceMoveToBattlefield who destination => PlayerSel.ok c who && Selector.ok c destination
   | .collectOwnPicks .. => false
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b

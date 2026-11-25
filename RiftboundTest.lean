@@ -47,6 +47,8 @@ public import RiftboundTest.VendettaVerified
 public import RiftboundTest.RadianceA
 public import RiftboundTest.RadianceB
 public import RiftboundTest.RadianceC
+public import RiftboundTest.RadianceD
+public import RiftboundTest.RadianceE
 
 /-!
 # RiftboundTest

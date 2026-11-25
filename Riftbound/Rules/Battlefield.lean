@@ -97,7 +97,7 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
   | none => false
   | some o =>
     decide (p.n < s.playerCount) && decide (s.phase = .main) && s.isUnit u &&
-      decide (o.controller = p) && !o.exhausted &&
+      decide (o.controller = p) && (!o.exhausted && !s.moveBlocked u) &&
       match d with
       | .base =>
         decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&

@@ -153,7 +153,7 @@ def Filter.understood : Filter → Bool
   | .controlled => true
   | .controlledByOpponent => true
   | .unitsHere _ _ => true
-  | .movedFromHere => true
+  | .movedFromHere | .movedThisTurn | .notedOn _ => true
   | .hidden => true
   | .top _ => true
   | .openBf => true
@@ -398,7 +398,8 @@ def Effect.understood : Effect → Bool
   | .bind _ a e => a.understood && Effect.understood e
   | .prim p => p.understood
   | .may e => Effect.understood e
-  | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e =>
+  | .doThen (.prim (.banish s)) e | .doThen (.prim (.disempower s)) e
+  | .doThen (.prim (.spendBuff s)) e =>
     s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
   | .payThen _ body => Effect.understood body
@@ -413,6 +414,7 @@ def Effect.understood : Effect → Bool
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e _ => FilterList.understood fs && Effect.understood e
+  | .forceMoveToBattlefield who destination => who.understood && destination.understood
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>

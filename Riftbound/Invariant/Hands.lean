@@ -859,6 +859,11 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           split
           · rfl
           · split <;> rfl)
+       | (rcases h with rfl
+          left
+          unfold forceMoveToBattlefieldFrame
+          dsimp only
+          split <;> (try split) <;> (try split) <;> rfl)
        | (rcases h with ⟨q, -, rfl⟩ | rfl
           · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
           · exact Or.inl rfl)

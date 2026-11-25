@@ -222,6 +222,8 @@ deriving DecidableEq, Repr, Hashable
 inductive TurnEffect where
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
   | unchoosableEnemy
+  /-- No standard or instructed Move can move this Unit this turn (CR 447). -/
+  | cannotMove
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
   /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
@@ -244,6 +246,8 @@ inductive TurnEffect where
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
+  /-- This source chose the indicated mode of a triggered ability this turn (CR 355.3). -/
+  | chosenTriggerMode (card : CardId) (idx mode : Nat) (copy : Option Timestamp)
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)

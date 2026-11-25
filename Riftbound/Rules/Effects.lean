@@ -1384,7 +1384,7 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
 /-- Move the Unit only if the spell or ability that would move it is allowed to do so. -/
 def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
     GameState × List Event :=
-  if s.blocksEnemyMove controller u then (s, [])
+  if s.moveBlocked u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
     | none => moveHome s u
     | some bf => sendToBf bf s u
@@ -1405,7 +1405,8 @@ def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := no
     GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  if controller.any (fun p => s.blocksEnemyMove p x || s.blocksEnemyMove p y) ||
+  if s.moveBlocked x || s.moveBlocked y ||
+      controller.any (fun p => s.blocksEnemyMove p x || s.blocksEnemyMove p y) ||
       lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
       (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
   else
@@ -4159,7 +4160,8 @@ def Effect.withPick : Effect → Effect
 
 /-- Whether the object is picked for the cost of a linked instruction (CR 355.10.c.1). -/
 def Effect.isLinkedCost : Effect → Bool
-  | .doThen (.prim (.banish _)) _ | .doThen (.prim (.disempower _)) _ => true
+  | .doThen (.prim (.banish _)) _ | .doThen (.prim (.disempower _)) _
+  | .doThen (.prim (.spendBuff _)) _ => true
   | _ => false
 
 /-- Picks for costs or by multiple players do not fire target effects (CR 355.10.c.1, 355.10.e).
@@ -4590,6 +4592,7 @@ def linkedAction (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : P
       | .disempower sel => ((sel.eval s p src env).getD []).any (fun id =>
         ((r.1.obj? id).map (·.empowerCount)).getD 0 <
           ((s.obj? id).map (·.empowerCount)).getD 0)
+      | .spendBuff _ => r.2.any (fun | .buffSpent _ => true | _ => false)
       | .move .. => r.2.any (fun | .standardMoved _ _ => true | _ => false)
       | _ => false
     (r.1, done, r.2)
@@ -4639,6 +4642,29 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
     | id :: other :: more =>
       .pickDo q src env id (other :: more) (.collectOwnPicks p qs place fs body true) es
 
+/-- Offer the moving player only the Units that can reach the Battlefield. An impossible
+instruction leaves the Board as it is (CR 391, 449). -/
+def forceMoveToBattlefieldFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (who : PlayerSel) (destination : Selector) (es : EffectList) : Frame :=
+  let resume := Frame.run p src env es
+  match who.resolve s p env, destination.eval s p src env with
+  | some [actor], some [bf] =>
+    if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) then
+      resume else
+    let candidates := s.inPlay.filter (fun id => (s.cardDef? id).any (·.hasType .unit) &&
+      !s.moveBlocked id &&
+      !s.blocksEnemyMove (env.effectController.getD p) id &&
+      (s.obj? id).any (fun o => o.controller == actor && s.effectMoveBattlefieldOk o bf))
+    let slot := env.slots.length
+    let bound := { env with slots := env.slots ++ [.obj bf] }
+    let body := Effect.eachPlayer who (.prim (.move (.slot (slot + 1)) (.at_ (.slot slot))))
+    match candidates with
+    | [] => resume
+    | [id] => .run p src { bound with slots := bound.slots ++ [.obj id] } (.cons body es)
+    | id :: other :: more =>
+      .pickDo actor src bound id (other :: more) (.collectOwnPicks p [] .anywhere .nil body true) es
+  | _, _ => resume
+
 /-- Use the destination chosen when the Spell was finalized (CR 355.4, 359.3.e).
 A destination forbidden by the global movement rules requires a Recall (CR 449.2.c). -/
 def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -4655,12 +4681,13 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     match s.obj? id, dest with
     | some o, none =>
       if !allowBase then resume
-      else if o.loc.isNone || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else if o.loc.isNone || s.moveBlocked id || s.blocksEnemyMove (env.effectController.getD p) id then negated
       else (env, thenMove (.prim (.move unit .base)))
     | some o, some bf =>
       if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
           !(FilterList.holds s src env bf fs).getD false then resume
-      else if o.loc == some bf || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else if o.loc == some bf || s.moveBlocked id ||
+          s.blocksEnemyMove (env.effectController.getD p) id then negated
       else if !s.effectMoveBattlefieldOk o bf then
         let recallEffect : Effect := .prim (.recall unit false)
         (env, if afterNegatedMove then .seqOf [recallEffect, afterMove] else recallEffect)
@@ -4976,6 +5003,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .moveChoosing unit home fs afterMove afterNegatedMove =>
     let chosen := chosenMove s p src env unit home fs afterMove afterNegatedMove
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
+  | .forceMoveToBattlefield who destination =>
+    (s, [forceMoveToBattlefieldFrame s p src env who destination es], [])
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
@@ -5058,6 +5087,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     else (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
+  | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
   | .doThen (.prim (.move sel dest)) body => linked (.move sel dest) body
   | .prim (.playUnitToken name) =>
     match s.tokenCard name with

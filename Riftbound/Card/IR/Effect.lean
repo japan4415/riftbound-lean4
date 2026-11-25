@@ -181,6 +181,9 @@ inductive Effect where
   If the move happens, run the follow-up with a chosen Battlefield available as the latest pick. -/
   | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)
       (afterNegatedMove : Bool := false)
+  /-- During resolution the named player chooses and moves one of their Units to the Battlefield
+  when the move is possible. The choice is not a target (CR 355.10.e). -/
+  | forceMoveToBattlefield (who : PlayerSel) (destination : Selector)
   /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
   | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
       (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)

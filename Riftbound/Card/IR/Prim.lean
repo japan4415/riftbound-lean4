@@ -648,6 +648,8 @@ structure Trigger where
   occurrence : Occurrence := .every
   /-- A leading "you may" is a choice whether to finalize the ability (CR 383.3.a). -/
   optional : Bool := false
+  /-- Each mode may be chosen only once this turn (Riven, Broken Blade). -/
+  separateModesPerTurn : Bool := false
   /-- The cost in an instruction that precedes its effect. -/
   cost : TriggerCost := .free
 deriving DecidableEq, Repr, Hashable

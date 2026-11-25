@@ -832,8 +832,15 @@ def RAD_034.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hunker Down: the effect is not written yet. -/
-def RAD_034 : CardDef := RAD_034.meta
+/-- Hunker Down readies a friendly Unit, prevents its movement this turn, and draws. -/
+def RAD_034 : CardDef :=
+  { RAD_034.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      body := .seqOf [.prim (.ready (.slot 0)), .prim (.markOn (.slot 0) .cannotMove),
+        .prim (.draw .you (.const 1))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-035
 /--
@@ -868,6 +875,7 @@ def RAD_036.meta : CardDef :=
   { id := ⟨"RAD-036"⟩,
     name := "Storm Raptor",
     types := [.unit],
+    tags := [⟨"Freljord"⟩, ⟨"Bird"⟩],
     domains := [.calm],
     cost := some ⟨6, []⟩,
     might := some 6,
@@ -875,8 +883,14 @@ def RAD_036.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Storm Raptor: the effect is not written yet. -/
-def RAD_036 : CardDef := RAD_036.meta
+/-- Storm Raptor checks whether the enemy Unit at its location was stunned when it died. -/
+def RAD_036 : CardDef :=
+  { RAD_036.meta with
+    abilities := [.triggered
+      { event := .die
+        subject := .all .enemy .anywhere [.ofType .unit, .at_ .self, .notedOn .stunnedUnitDied] }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-037
 /--
@@ -1014,15 +1028,26 @@ def RAD_043.meta : CardDef :=
     name := "Riven",
     subtitle := some "Broken Blade",
     types := [.unit],
-    tags := [⟨"Riven"⟩],
+    supertypes := [.champion],
+    tags := [⟨"Riven"⟩, ⟨"Noxus"⟩],
     domains := [.calm],
     cost := some ⟨4, []⟩,
     might := some 4,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Riven, Broken Blade: the effect is not written yet. -/
-def RAD_043 : CardDef := RAD_043.meta
+/-- Riven, Broken Blade chooses an unused mode when exhausted and spends buffs on resolution. -/
+def RAD_043 : CardDef :=
+  { RAD_043.meta with
+    abilities := [.triggered { event := .exhaust, separateModesPerTurn := true }
+      { body := .nop, modes := [
+        ⟨"Buff Riven", [], .prim (.buff .self)⟩,
+        ⟨"Spend a buff to Stun", [.targetOf .one .enemy .anywhere [.ofType .unit]],
+          .doThen (.prim (.spendBuff .self)) (.prim (.stun (.slot 0)))⟩,
+        ⟨"Spend a buff to ready", [],
+          .doThen (.prim (.spendBuff .self)) (.prim (.ready .self))⟩] }
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-044
 /--
@@ -1912,14 +1937,19 @@ def RAD_080.meta : CardDef :=
   { id := ⟨"RAD-080"⟩,
     name := "Bloodscent Swarm",
     types := [.unit],
+    tags := [⟨"Shurima"⟩],
     domains := [.body],
     cost := some ⟨8, [.domain .body, .domain .body]⟩,
     might := some 8,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Bloodscent Swarm: the effect is not written yet. -/
-def RAD_080 : CardDef := RAD_080.meta
+/-- Bloodscent Swarm counts this player's Conquers to reduce its Energy cost. -/
+def RAD_080 : CardDef :=
+  { RAD_080.meta with
+    abilities := [.passive .always [.costMinus .self
+      (.mul (.const 2) (.count (.all .any .atBattlefield [.ofType .battlefield, .conqueredByMine])))]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-081
 /--
@@ -2043,6 +2073,7 @@ def RAD_085.meta : CardDef :=
     name := "Graves",
     subtitle := some "Blasting Through",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Bilgewater"⟩, ⟨"Graves"⟩],
     domains := [.body],
     cost := some ⟨5, [.domain .body]⟩,
@@ -2050,8 +2081,16 @@ def RAD_085.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Graves, Blasting Through: the effect is not written yet. -/
-def RAD_085 : CardDef := RAD_085.meta
+/-- Graves, Blasting Through deals his current Might to enemies on either side of a combat. -/
+def RAD_085 : CardDef :=
+  { RAD_085.meta with
+    abilities :=
+      let blast := EffectDef.of []
+        (.prim (.deal (.all .enemy .here [.ofType .unit]) (.mightOf .self)))
+      [.triggered (.onSelf .attack) blast .unlimited,
+        .triggered (.onSelf .defend) blast .unlimited,
+        .passive .always [.noCombatDamage]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-086
 /--
@@ -2379,8 +2418,14 @@ def RAD_098.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Siren's Song: the effect is not written yet. -/
-def RAD_098 : CardDef := RAD_098.meta
+/-- Siren's Song moves a chosen enemy Unit that has already moved this turn. -/
+def RAD_098 : CardDef :=
+  { RAD_098.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .enemy .anywhere [.ofType .unit, .movedThisTurn]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil .nop false },
+    status := .full }
 
 -- BEGIN GENERATED RAD-099
 /--
@@ -2429,8 +2474,13 @@ def RAD_100.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- The Waters' Wage: the effect is not written yet. -/
-def RAD_100 : CardDef := RAD_100.meta
+/-- The Waters' Wage makes three ready Gold only when revealed on its controller's turn. -/
+def RAD_100 : CardDef :=
+  { RAD_100.meta with
+    spellEffect := some (.of [] (.ifThen (.and .yourTurn .fromHidden)
+      (.prim (.create "Gold" (.const 3) .atBase true))
+      (.prim (.create "Gold" (.const 1) .atBase false)))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-101
 /--
@@ -2729,6 +2779,7 @@ def RAD_113.meta : CardDef :=
   { id := ⟨"RAD-113"⟩,
     name := "Angler Wyrm",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩, ⟨"Dragon"⟩],
     domains := [.chaos],
     cost := some ⟨8, []⟩,
     might := some 8,
@@ -2736,8 +2787,14 @@ def RAD_113.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Angler Wyrm: the effect is not written yet. -/
-def RAD_113 : CardDef := RAD_113.meta
+/-- Angler Wyrm names an opponent at activation. During resolution that player moves one of
+their eligible Units to the Wyrm's Battlefield. -/
+def RAD_113 : CardDef :=
+  { RAD_113.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      { playerTarget := some .enemy
+        body := .forceMoveToBattlefield (.chosen 0) (.locationOf .self) } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-114
 /--
@@ -3075,8 +3132,13 @@ def RAD_126.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Mournful Spirit: the effect is not written yet. -/
-def RAD_126 : CardDef := RAD_126.meta
+/-- Mournful Spirit can kill a Unit or Gear at the location where it died. -/
+def RAD_126 : CardDef :=
+  { RAD_126.meta with
+    abilities := [.triggered { event := .deathknell, optional := true }
+      (.of [.targetOf .one .any .anywhere [.at_ .self, .either (.ofType .unit) (.ofType .gear)]]
+        (.prim (.kill (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-127
 /--
@@ -3172,14 +3234,24 @@ def RAD_130.meta : CardDef :=
   { id := ⟨"RAD-130"⟩,
     name := "Battlefield Armorer",
     types := [.unit],
+    tags := [⟨"Demacia"⟩],
     domains := [.order],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Battlefield Armorer: the effect is not written yet. -/
-def RAD_130 : CardDef := RAD_130.meta
+/-- Battlefield Armorer can pay when finalizing to recover the Gear that died at a Battlefield. -/
+def RAD_130 : CardDef :=
+  { RAD_130.meta with
+    abilities := [.triggered
+      { event := .die
+        subject := .all .friendly .anywhere [.ofType .gear]
+        condition := .exists (.locationOf (.slot 0))
+        optional := true
+        cost := .energy 1 }
+      (.of [] (.prim (.returnToHand (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-131
 /--
@@ -3849,8 +3921,13 @@ def RAD_161.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Durand Memorial: the effect is not written yet. -/
-def RAD_161 : CardDef := RAD_161.meta
+/-- Durand Memorial grants Tank to a defending player's chosen Unit at this Battlefield. -/
+def RAD_161 : CardDef :=
+  { RAD_161.meta with
+    abilities := [.triggered (.onSelf .defend)
+      (.of [.targetOf .one .friendly .here [.ofType .unit]]
+        (.grant (.slot 0) (.keyword .it ⟨.tank, .none⟩) .thisCombat)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-162
 /--

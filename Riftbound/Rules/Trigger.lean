@@ -812,10 +812,19 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
     | pend => { next with pending := insertTriggers pend s.pending }
   else next
 
+/-- Whether the source already chose this mode of the triggered ability in the current turn. -/
+def PendTrigger.choseMode (t : PendTrigger) (s : GameState) (mode : Nat) : Bool :=
+  s.turnFx.any (fun fx => fx.turn == s.turn && fx.target == some t.source &&
+    fx.kind == .chosenTriggerMode t.card t.idx mode t.copyStamp)
+
 /-- The modes on the ability that waits, or no mode for an ability without alternatives. -/
 def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
-  let modes := (((triggerAbility s t).bind Ability.effectDef).map (·.modes)).getD []
-  if modes.isEmpty then [none] else (List.range modes.length).map some
+  match triggerAbility s t with
+  | some (.triggered rule body _) =>
+    if body.modes.isEmpty then [none] else
+      ((List.range body.modes.length).filter
+        (fun mode => !rule.separateModesPerTurn || !t.choseMode s mode)).map some
+  | _ => [none]
 
 /-- The choices for the selected branch of the triggered ability (CR 355). -/
 def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
@@ -1005,11 +1014,28 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) :
       obtain ⟨hm, hplayer⟩ := (mem_trigPickOptions s t mode ts player).mp hts
       exact ⟨ts, .pay ids mode player banishers, by simp [trigLegal, hm, hplayer, hids]⟩
 
+/-- Record the chosen mode when the ability says each mode can be chosen only once this turn. -/
+def recordTriggerMode (s : GameState) (t : PendTrigger) (mode : Option Nat) : GameState :=
+  if (trigDeclaration s t).any (·.separateModesPerTurn) then
+    mode.elim s (fun i => s.addTurnFxOn t.controller t.source (.chosenTriggerMode t.card t.idx i t.copyStamp))
+  else s
+
+/-- Recording the finalization decision preserves the structural invariants. -/
+theorem recordTriggerMode_safe (s : GameState) (t : PendTrigger) (mode : Option Nat) :
+    Safe s (recordTriggerMode s t mode) := by
+  unfold recordTriggerMode
+  split
+  · cases mode
+    · exact Safe.refl s
+    · exact addTurnFxOn_safe _ _ _ _
+  · exact Safe.refl s
+
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none)
     (player : Option PlayerId := none) : GameState :=
-  let s1 := s.modObj t.source (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)
+  let s1 := (recordTriggerMode s t mode).modObj t.source
+    (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)
   let item : Object :=
     { abilityItem t.card t.idx t.source t.controller
         (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
@@ -1105,9 +1131,9 @@ def triggersStep (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
 theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
     (mode : Option Nat := none) (player : Option PlayerId := none) :
     Safe s (putTrigger s t ts mode player) := by
-  have h1 : Safe s (s.modObj t.source
+  have h1 : Safe s ((recordTriggerMode s t mode).modObj t.source
       (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)) :=
-    Safe.modObj s t.source (fun _ => rfl) (fun _ => rfl)
+    (recordTriggerMode_safe s t mode).trans (Safe.modObj _ t.source (fun _ => rfl) (fun _ => rfl))
   unfold putTrigger
   dsimp only
   split

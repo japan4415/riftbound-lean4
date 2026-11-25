@@ -304,6 +304,10 @@ def GameState.buffBonus (s : GameState) (id : ObjId) : Int :=
 def GameState.mightWithCachedPassives (s : GameState) (env : Env) (id : ObjId) : Option Int :=
   (s.mightOf id).map (fun m => m + s.equipBonus id + s.buffBonus id + env.passOf id)
 
+/-- A Turn Effect can prevent all Moves of a Unit. Corrective Recalls are separate (CR 448.1). -/
+def GameState.moveBlocked (s : GameState) (unit : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.target == some unit && f.kind == .cannotMove)
+
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/
 def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filter → Option Bool
@@ -473,6 +477,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (match s.obj? id with
       | some o => (s.zone (.player o.owner .hidden)).contains id
       | none => false)
+  | .movedThisTurn => (s.obj? id).map (fun o => o.movesTurn == some s.turn)
+  | .notedOn kind =>
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.target == some id && f.kind == kind))
   | .movedFromHere =>
     some (match s.obj? id with
       | some o =>

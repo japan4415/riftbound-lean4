@@ -125,6 +125,10 @@ inductive Filter where
   | unitsHere (op : Cmp) (n : Nat)
   /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
   | movedFromHere
+  /-- The object made a Move on the current turn (CR 447). -/
+  | movedThisTurn
+  /-- The object has the specified record from this turn, including records kept on death. -/
+  | notedOn (kind : TurnEffect)
   /-- Is exhausted. -/
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/
