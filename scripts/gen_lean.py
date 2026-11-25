@@ -70,13 +70,14 @@ def power_sym(d: str | None) -> str:
     return f".domain .{d}" if d else ".any"
 
 
-def cost_expr(energy: int | None, power: int | None, domains: list[str]) -> tuple[str, bool]:
+def cost_expr(energy: int | None, power: int | None, domains: list[str], power_own: bool = False) -> tuple[str, bool]:
     """Lean の式と、Power のドメインが分からなかったか。"""
     if energy is None and power is None:
         return "none", False
     doms = [d for d in domains if d in DOMAINS]
-    unknown = bool(power) and len(doms) != 1
-    syms = [power_sym(doms[0] if len(doms) == 1 else None)] * (power or 0)
+    unknown = bool(power) and len(doms) != 1 and not power_own
+    sym = ".own" if power_own else power_sym(doms[0] if len(doms) == 1 else None)
+    syms = [sym] * (power or 0)
     return f"some ⟨{energy or 0}, [{', '.join(syms)}]⟩", unknown
 
 
@@ -136,7 +137,7 @@ def card_block(c: dict) -> str:
     cid = c["cardId"]
     types = [TYPES[t] for t in c["types"] if t in TYPES]
     doms = [d for d in c["domains"] if d in DOMAINS]
-    cost, unknown_power = cost_expr(c["energy"], c["power"], c["domains"])
+    cost, unknown_power = cost_expr(c["energy"], c["power"], c["domains"], c.get("powerOwn", False))
     kws, unparsed = keywords_of(c["text"])
     title = c["name"] + (f", {c['subtitle']}" if c["subtitle"] else "")
     kind = " ".join(t.capitalize() for t in c["types"]) or "Token"

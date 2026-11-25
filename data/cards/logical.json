@@ -30103,7 +30103,7 @@
   {
    "cardId": "RAD-081",
    "domains": [
-    "fury"
+    "body"
    ],
    "effectText": [],
    "energy": 6,
@@ -30118,7 +30118,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "When you play me, give a friendly unit +3 :rb_might: this turn, then recycle me if I was played from face down."
@@ -30658,7 +30660,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Demon"
+   ],
    "text": [
     "When you play me, choose an opponent. You and that player each draw 1."
    ],
@@ -31304,7 +31309,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "I cost :rb_energy_1: less for each exhausted unit you control.",
     "[Tank] (I must be assigned combat damage first.)"
@@ -31391,7 +31398,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "The Void"
+   ],
    "text": [
     "You may kill a friendly unit as an additional cost to play me. If you do, I cost :rb_energy_2: less.",
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)"
@@ -31918,6 +31927,7 @@
    "mightBonus": null,
    "name": "Realm of Death",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-144/167"
    ],
@@ -31925,6 +31935,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Mordekaiser"
    ],
@@ -32043,6 +32056,7 @@
    "mightBonus": null,
    "name": "Ntofo Strikes",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-148/167"
    ],
@@ -32050,6 +32064,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "K'Sante"
    ],

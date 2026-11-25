@@ -1347,8 +1347,15 @@ def RAD_056.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Improvised Projectile: the effect is not written yet. -/
-def RAD_056 : CardDef := RAD_056.meta
+/-- Improvised Projectile uses the chosen Gear's Energy cost as damage to a Unit at a Battlefield. -/
+def RAD_056 : CardDef :=
+  { RAD_056.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .gear],
+        .targetOf .one .any .atBattlefield [.ofType .unit]]
+      body := .prim (.deal (.slot 1) (.costOf (.slot 0)))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-057
 /--
@@ -1916,7 +1923,7 @@ def RAD_080 : CardDef := RAD_080.meta
 
 -- BEGIN GENERATED RAD-081
 /--
-**Elnuk Herd** — Unit · Fury · Energy 6 · Might 5
+**Elnuk Herd** — Unit · Body · Energy 6 · Might 5
 Printings: RAD-081/167
 
 > [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)
@@ -1927,15 +1934,23 @@ def RAD_081.meta : CardDef :=
   { id := ⟨"RAD-081"⟩,
     name := "Elnuk Herd",
     types := [.unit],
-    domains := [.fury],
+    tags := [⟨"Freljord"⟩],
+    domains := [.body],
     cost := some ⟨6, []⟩,
     might := some 5,
     keywords := [{ keyword := .hidden }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Elnuk Herd: the effect is not written yet. -/
-def RAD_081 : CardDef := RAD_081.meta
+/-- Elnuk Herd boosts a friendly Unit and Recycles itself if played from Hidden. -/
+def RAD_081 : CardDef :=
+  { RAD_081.meta with
+    abilities := [.triggered (.onSelf .play)
+      { choices := [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        body := .seqOf [.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn,
+          .ifThen .fromHidden (.prim (.recycle .self)) .nop]
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-082
 /--
@@ -2378,14 +2393,21 @@ def RAD_099.meta : CardDef :=
   { id := ⟨"RAD-099"⟩,
     name := "Suave Negotiator",
     types := [.unit],
+    tags := [⟨"Bilgewater"⟩, ⟨"Demon"⟩],
     domains := [.chaos],
     cost := some ⟨3, []⟩,
     might := some 3,
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Suave Negotiator: the effect is not written yet. -/
-def RAD_099 : CardDef := RAD_099.meta
+/-- Suave Negotiator draws one card for its controller and one for a chosen opponent. -/
+def RAD_099 : CardDef :=
+  { RAD_099.meta with
+    abilities := [.triggered (.onSelf .play)
+      { playerTarget := some .enemy
+        body := .seqOf [.prim (.draw .you (.const 1)), .prim (.draw (.chosen 0) (.const 1))] }
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-100
 /--
@@ -2932,6 +2954,7 @@ def RAD_122.meta : CardDef :=
   { id := ⟨"RAD-122"⟩,
     name := "Party Crasher",
     types := [.unit],
+    tags := [⟨"Zaun"⟩],
     domains := [.order],
     cost := some ⟨9, [.domain .order]⟩,
     might := some 6,
@@ -2939,8 +2962,12 @@ def RAD_122.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Party Crasher: the effect is not written yet. -/
-def RAD_122 : CardDef := RAD_122.meta
+/-- Party Crasher costs one less Energy per exhausted Unit on its controller's side. -/
+def RAD_122 : CardDef :=
+  { RAD_122.meta with
+    abilities := [.passive .always
+      [.costMinus .self (.count (.all .friendly .anywhere [.ofType .unit, .exhausted]))]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-123
 /--
@@ -3014,6 +3041,7 @@ def RAD_125.meta : CardDef :=
   { id := ⟨"RAD-125"⟩,
     name := "Dune Devourer",
     types := [.unit],
+    tags := [⟨"The Void"⟩],
     domains := [.order],
     cost := some ⟨7, [.domain .order]⟩,
     might := some 7,
@@ -3021,8 +3049,12 @@ def RAD_125.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Dune Devourer: the effect is not written yet. -/
-def RAD_125 : CardDef := RAD_125.meta
+/-- Dune Devourer may sacrifice a friendly Unit to reduce its Energy cost. -/
+def RAD_125 : CardDef :=
+  { RAD_125.meta with
+    playExtra := some (.killUnit, false),
+    paidCut := some (.energy 2),
+    status := .full }
 
 -- BEGIN GENERATED RAD-126
 /--
@@ -3434,14 +3466,24 @@ def RAD_144.meta : CardDef :=
   { id := ⟨"RAD-144"⟩,
     name := "Realm of Death",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Mordekaiser"⟩],
     domains := [.fury, .order],
-    cost := some ⟨2, [.any]⟩,
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    cost := some ⟨2, [.own]⟩,
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Realm of Death: the effect is not written yet. -/
-def RAD_144 : CardDef := RAD_144.meta
+/-- Realm of Death changes an enemy and an ally's Mights before they exchange simultaneous damage. -/
+def RAD_144 : CardDef :=
+  { RAD_144.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .enemy .anywhere [.ofType .unit],
+        .targetOf .one .friendly .anywhere [.ofType .unit]]
+      body := .seqOf [.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn,
+        .grant (.slot 1) (.mightPlus .it (.const 2)) .thisTurn,
+        .prim (.exchangeDamage (.slot 0) (.slot 1))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-145
 /--
@@ -3521,15 +3563,24 @@ def RAD_148.meta : CardDef :=
   { id := ⟨"RAD-148"⟩,
     name := "Ntofo Strikes",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"K'Sante"⟩],
     domains := [.calm, .body],
-    cost := some ⟨2, [.any]⟩,
+    cost := some ⟨2, [.own]⟩,
     keywords := [{ keyword := .action }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ntofo Strikes: the effect is not written yet. -/
-def RAD_148 : CardDef := RAD_148.meta
+/-- Ntofo Strikes grants Shield 2 and uses the resulting Shield count to damage an enemy. -/
+def RAD_148 : CardDef :=
+  { RAD_148.meta with
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf .one .enemy .anywhere [.ofType .unit]]
+      body := .seqOf [.grant (.slot 0) (.keyword .it ⟨.shield, .amount 2⟩) .thisTurn,
+        .prim (.deal (.slot 1) (.kwAmount (.slot 0) .shield))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-149
 /--
@@ -3850,8 +3901,12 @@ def RAD_164.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Packed Amphitheater: the effect is not written yet. -/
-def RAD_164 : CardDef := RAD_164.meta
+/-- Packed Amphitheater boosts every champion Unit at the Battlefield. -/
+def RAD_164 : CardDef :=
+  { RAD_164.meta with
+    abilities := [.passive .always
+      [.mightPlus (.all .any .here [.ofType .unit, .ofSupertype .champion]) (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-165
 /--
