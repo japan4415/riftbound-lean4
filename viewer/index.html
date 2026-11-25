@@ -327,6 +327,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
+      if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
       if (a.effectCost) {
         const cost = costText(a.effectCost);
         if (a.spellPaymentTarget != null) {
@@ -467,6 +468,12 @@ function describeA(a, prev, state = steps[cur]?.state) {
         (dc ? '（捨てる: ' + dc + '）' : '') + (tg ? '（対象: ' + tg + '）' : ''),
         'コストを払って、能力を Chain に載せる（能力は Chain 上のオブジェクトになる）'];
     }
+    case 'triggerAdd': {
+      const selected = a.triggerPreparedAdds || [];
+      return [who + ': ' + addLabel(a.playAdd) + ' を選ぶ',
+        selected.length ? '選択済み ' + selected.map(addLabel).join('、') : '確定時に支払う'];
+    }
+    case 'prepareTrigger':
     case 'putTrigger': {
       const ability = a.source == null ? '誘発能力' : cardName(a.source) + ' の誘発能力';
       if (a.decline) return [who + ': ' + ability + 'を見送る', 'コストは支払わず、能力は Chain に載らない'];
@@ -483,9 +490,17 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
-      return [who + ': ' + ability + 'を確定' + mode + energy + exhaust + burn +
-        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') +
-        (targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）'),
+      const deflect = a.triggerDeflect ? '（Deflect ' + a.triggerDeflect + ' Power）' : '';
+      const targetText = targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）';
+      const choices = mode + energy + deflect + exhaust + burn +
+        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') + targetText;
+      if (a.kind === 'prepareTrigger') {
+        return [who + ': ' + ability + 'の支払いを選ぶ' + choices, 'Add や Rune を選ぶ'];
+      }
+      if (a.triggerPreparedAdds?.length) {
+        return [who + ': ' + ability + 'を確定' + choices, '支払い ' + a.triggerPreparedAdds.map(addLabel).join('、')];
+      }
+      return [who + ': ' + ability + 'を確定' + choices,
         sacrifices ? 'コストを払ってから能力を Chain に載せる' :
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
@@ -1141,6 +1156,7 @@ function renderLegal(i) {
     : choiceContext === 'revealedPlay' ? '公開したカードからプレイする1枚を選ぶ'
     : choiceContext === 'trashSpell' ? 'トラッシュからプレイする呪文を選ぶ'
     : choiceContext === 'attachmentCopy' ? 'コピー元の味方 Unit を選ぶ'
+    : liveLegal.some(({ a }) => a.cancelTriggerFunding) ? '誘発能力の支払いを選ぶ'
     : liveLegal.some(({ a }) => a.effectCost) ? '効果の支払いを選ぶ'
     : liveLegal.some(({ a }) => a.effectPaymentPlan) ? '支払うリソースを選ぶ'
     : liveLegal.some(({ a }) => a.remakeSpell != null) ? 'Spell の選択をやり直すか決める'

@@ -307,9 +307,17 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .activate src idx pay ts discards targetPlayer costBanisher =>
     activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher
-  | .triggerOrder _ t more others :: rest, .putTrigger i ts payment =>
-    let r := finalizePick s (t :: more) i ts payment
+  | .triggerOrder _ t more others funding :: rest, .putTrigger i ts payment =>
+    let r := finishTrigger s (t :: more) funding i ts payment
     some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
+  | .triggerOrder p t more others none :: rest, .prepareTrigger i ts payment =>
+    let plan : TriggerFunding := { index := i, targets := ts, payment }
+    some ({ s with pending := .triggerOrder p t more others (some plan) :: rest }, [])
+  | .triggerOrder p t more others (some plan) :: rest, .triggerAdd add =>
+    let next := { plan with adds := plan.adds ++ [add] }
+    some ({ s with pending := .triggerOrder p t more others (some next) :: rest }, [])
+  | .triggerOrder p t more others (some _) :: rest, .decide _ =>
+    some ({ s with pending := .triggerOrder p t more others :: rest }, [])
   | .priority p :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .chainPass p _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | .discard p n :: rest, .discardPick c =>

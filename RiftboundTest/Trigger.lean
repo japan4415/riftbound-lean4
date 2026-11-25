@@ -289,7 +289,7 @@ meta def aimedScene (target : Bool) :
   | some (s, p, q, c, e) =>
     match stepT s ⟨.player p, .playCard c ⟨1, []⟩ []⟩ with
     | some s1 =>
-      (match s1.pending with | .triggerOrder r _ [] [] :: _ => r == p | _ => false) &&
+      (match s1.pending with | .triggerOrder r _ [] [] none :: _ => r == p | _ => false) &&
       (legalFrameActions s1) == [⟨.player p, .putTrigger 0 [e]⟩] &&
       (match stepT s1 ⟨.player p, .putTrigger 0 [e]⟩ with
         | some s2 =>
@@ -329,7 +329,7 @@ meta def aimedScene (target : Bool) :
       let tb : PendTrigger := { source := b, card := cid "T-MAR", idx := 0, controller := p }
       match advance 10 { s2 with pending := .triggers [ta, tb] :: s2.pending } [] with
       | .ok (s3, _) =>
-        (match s3.pending with | .triggerOrder _ _ [_] [] :: _ => true | _ => false) &&
+        (match s3.pending with | .triggerOrder _ _ [_] [] none :: _ => true | _ => false) &&
         (legalFrameActions s3).filter (fun x => x.kind != .concede) ==
           [⟨.player p, .putTrigger 0 []⟩, ⟨.player p, .putTrigger 1 []⟩] &&
         (match stepT s3 ⟨.player p, .putTrigger 1 []⟩ with

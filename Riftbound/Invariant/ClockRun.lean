@@ -220,11 +220,23 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_activateStep h)
+  · rename_i p t more others funding rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have h1 : TC s ((finishTrigger s (t :: more) funding i ts payment).1) := TC.of_safe (finishTrigger_safe s _ funding i ts payment)
+    exact Or.inl (h1.trans ⟨rfl, rfl⟩)
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s ((finalizePick s (t :: more) i ts payment).1) := TC.of_safe (finalizePick_safe s _ i ts payment)
-    exact Or.inl (h1.trans ⟨rfl, rfl⟩)
+    exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyMana h)
   · exact Or.inl (tc_applyMana h)
   · rename_i p n rest c hp hk

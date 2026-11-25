@@ -421,6 +421,99 @@ def effectAddChoices (s : GameState) (p : PlayerId) (paid : GameState → Bool) 
 def effectAddPolicy : EffectAddPolicy :=
   { choices := effectAddChoices, applyAll := applyEffectAdds, safe := applyEffectAdds_safe }
 
+/-- Check the selected targets, mode and non-resource costs before its resource payment. -/
+def declaredTriggerOk (s : GameState) (t : PendTrigger) (targets : List ObjId) : TriggerPayment → Bool
+  | .skip => false
+  | .pay ids mode player banishers =>
+    (trigModes s t).contains mode &&
+    targetsOk s t.controller t.source s.mightTable (trigChoices s t mode) targets &&
+    (trigPlayerOptions s t).contains player &&
+    (triggerCostOptions s t false).contains (ids, banishers)
+
+/-- The resources due for a trigger's base cost and any targets with Deflect (CR 383.3.b, 809). -/
+def triggerPrice (s : GameState) (t : PendTrigger) (targets : List ObjId) : Cost :=
+  let energy := match trigCost s t with | .energy n => n | _ => 0
+  ⟨energy, List.replicate (s.deflectCost t.controller targets) .any⟩
+
+/-- Add choices that leave the locked trigger's targets and costs payable (CR 357.1.a, 357.3).
+The Rune planner is a witness of reachability. The player selects the actual activations. -/
+def triggerAdds (s : GameState) (t : PendTrigger) (targets : List ObjId)
+    (payment : TriggerPayment) : List EffectAdd :=
+  if (triggerPrice s t targets).total == 0 then [] else
+    effectAddChoices s t.controller (fun next =>
+      declaredTriggerOk next t targets payment &&
+      (payByRunes next t.controller t.source (triggerPrice next t targets)).isSome)
+
+/-- Targets, payment and mode reach a valid finalization after the selected Adds. -/
+def triggerFundingAdds (s : GameState) (group : List PendTrigger)
+    (plan : TriggerFunding) : List EffectAdd := Id.run do
+  let some t := group[plan.index]? | return []
+  let some (funded, _) := applyEffectAdds s t.controller plan.adds | return []
+  return triggerAdds funded t plan.targets plan.payment
+
+/-- Apply a complete resource payment and the remaining costs before the trigger gains priority. -/
+def commitTriggerFunding (s : GameState) (group : List PendTrigger) (plan : TriggerFunding) :
+    Option (GameState × List Event) := do
+  let t ← group[plan.index]?
+  let .pay ids mode player banishers := plan.payment | none
+  let (funded, adds) ← applyEffectAdds s t.controller plan.adds
+  if !declaredTriggerOk funded t plan.targets plan.payment then none else
+    let pool ← funded.payNow t.controller t.source (triggerPrice funded t plan.targets)
+    let paid := funded.setPoolFor t.controller t.source pool
+    let (ready, costs) ← payTriggerCost paid t ids banishers true
+    some (putTrigger ready t plan.targets mode player, adds ++ costs)
+
+/-- Committing a trigger's costs preserves the game invariants. -/
+theorem commitTriggerFunding_safe {s : GameState} {group : List PendTrigger}
+    {plan : TriggerFunding} {r : GameState × List Event}
+    (h : commitTriggerFunding s group plan = some r) : Safe s r.1 := by
+  unfold commitTriggerFunding at h
+  simp only [bind, Option.bind_eq_some_iff] at h
+  obtain ⟨t, _, ht⟩ := h
+  cases hp : plan.payment with
+  | skip => simp [hp] at ht
+  | pay ids mode player banishers =>
+    simp only [hp, Option.bind_eq_some_iff] at ht
+    obtain ⟨⟨funded, adds⟩, hf, hr⟩ := ht
+    split at hr
+    · simp at hr
+    · simp only [Option.bind_eq_some_iff, Option.some.injEq] at hr
+      obtain ⟨pool, _, ⟨ready, costs⟩, hc, rfl⟩ := hr
+      exact (applyEffectAdds_safe hf).trans ((setPoolFor_safe funded t.controller t.source pool).trans
+        ((payTriggerCost_safe hc).trans (putTrigger_safe ready t plan.targets mode player)))
+
+/-- Handle both direct finalization and a finalization whose Add choices have been prepared. -/
+def finishTrigger (s : GameState) (group : List PendTrigger) (funding : Option TriggerFunding)
+    (index : Nat) (targets : List ObjId) (payment : TriggerPayment) : GameState × List Event :=
+  match funding with
+  | none => finalizePick s group index targets payment
+  | some plan => (commitTriggerFunding s group plan).getD (s, [])
+
+/-- Either kind of trigger finalization preserves the game invariants. -/
+theorem finishTrigger_safe (s : GameState) (group : List PendTrigger)
+    (funding : Option TriggerFunding) (index : Nat) (targets : List ObjId) (payment : TriggerPayment) :
+    Safe s (finishTrigger s group funding index targets payment).1 := by
+  cases funding with
+  | none => exact finalizePick_safe s group index targets payment
+  | some plan =>
+    cases h : commitTriggerFunding s group plan with
+    | none => simpa [finishTrigger, h] using Safe.refl s
+    | some result => simpa [finishTrigger, h] using commitTriggerFunding_safe h
+
+/-- Whether to expose the payment window for a particular target, mode and cost selection. -/
+def triggerPreparation (s : GameState) (t : PendTrigger) (targets : List ObjId)
+    (payment : TriggerPayment) : Bool :=
+  (acceptedTriggers s t false).contains (targets, payment) &&
+    !(triggerAdds s t targets payment).isEmpty
+
+/-- Check either the direct finalization or the locked finalization and its projected payment. -/
+def triggerFinishOk (s : GameState) (group : List PendTrigger) (funding : Option TriggerFunding)
+    (idx : Nat) (targets : List ObjId) (payment : TriggerPayment) : Bool :=
+  match funding with
+  | none => group[idx]?.any (fun t => trigLegal s t targets payment)
+  | some plan => plan.index == idx && plan.targets == targets && plan.payment == payment &&
+      (commitTriggerFunding s group plan).isSome
+
 /-- A legal payment of an Add is one of the payments offered. -/
 theorem mem_manaPays {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} (h : manaPayOk s p src idx pay = true) :

@@ -757,11 +757,11 @@ def canExhaustTriggerSource (s : GameState) (t : PendTrigger) : Bool :=
   (s.locate t.source).any Zone.isBoard && (s.obj? t.source).any (fun o => !o.exhausted)
 
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
-def trigPayments (s : GameState) (t : PendTrigger) : List (List ObjId) :=
+def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
   | .free => [[]]
   | .energy n =>
-    if (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
+    if !checkPool || (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
   | .exhaustSelf => if canExhaustTriggerSource s t then [[]] else []
   | .burn n => if canPayBurn s t.controller n then [[]] else []
   | .killFriendly n fs =>
@@ -781,18 +781,20 @@ def triggerBanisherOptions (s : GameState) : List ObjId → List (List (ObjId ×
       | some p => remaining.map ((id, p) :: ·))
 
 /-- The cards paying the trigger's cost and the Banish choices associated with that payment. -/
-def triggerCostOptions (s : GameState) (t : PendTrigger) :
+def triggerCostOptions (s : GameState) (t : PendTrigger) (checkPool : Bool := true) :
     List (List ObjId × List (ObjId × PlayerId)) :=
-  (trigPayments s t).flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
+  (trigPayments s t checkPool).flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
 
 /-- Every legal pick for the mode that the Pool of the controller can pay for (CR 355, 809). -/
-def trigTuples (s : GameState) (t : PendTrigger) (mode : Option Nat) : List (List ObjId) :=
+def trigTuples (s : GameState) (t : PendTrigger) (mode : Option Nat) (checkPool : Bool := true) :
+    List (List ObjId) :=
   (targetTuples s t.controller t.source s.mightTable (trigChoices s t mode)).filter
-    (fun ts => s.deflectOk t.controller (s.poolOf t.controller) ts)
+    (fun ts => !checkPool || s.deflectOk t.controller (s.poolOf t.controller) ts)
 
 /-- The mode and target combinations that can be finalized. -/
-def trigTargetOptions (s : GameState) (t : PendTrigger) : List (Option Nat × List ObjId) :=
-  (trigModes s t).flatMap (fun mode => (trigTuples s t mode).map (mode, ·))
+def trigTargetOptions (s : GameState) (t : PendTrigger) (checkPool : Bool := true) :
+    List (Option Nat × List ObjId) :=
+  (trigModes s t).flatMap (fun mode => (trigTuples s t mode checkPool).map (mode, ·))
 
 /-- Whether the mode is available and the targets are legal for that mode (CR 355.3, 355.5). -/
 def trigTargetOk (s : GameState) (t : PendTrigger) (mode : Option Nat) (ts : List ObjId) : Bool :=
@@ -804,7 +806,8 @@ def trigTargetOk (s : GameState) (t : PendTrigger) (mode : Option Nat) (ts : Lis
 theorem mem_trigTargetOptions (s : GameState) (t : PendTrigger) (mode : Option Nat)
     (ts : List ObjId) : (mode, ts) ∈ trigTargetOptions s t ↔ trigTargetOk s t mode ts = true := by
   simp only [trigTargetOptions, trigTuples, trigTargetOk, List.mem_flatMap, List.mem_map,
-    List.mem_filter, mem_targetTuples, Prod.mk.injEq, Bool.and_eq_true, List.contains_iff_mem]
+    List.mem_filter, mem_targetTuples, Prod.mk.injEq, Bool.and_eq_true, List.contains_iff_mem,
+    Bool.not_true, Bool.false_or]
   constructor
   · rintro ⟨_, hm, _, ⟨ht, hd⟩, rfl, rfl⟩
     exact ⟨⟨hm, ht⟩, hd⟩
@@ -817,10 +820,10 @@ def trigPlayerOptions (s : GameState) (t : PendTrigger) : List (Option PlayerId)
   s.playerTargetOptions t.controller ((abilityDef s t.card t.idx).bind EffectDef.playerTarget)
 
 /-- A complete set of targets and mode before costs are paid. -/
-def trigPickOptions (s : GameState) (t : PendTrigger) :
+def trigPickOptions (s : GameState) (t : PendTrigger) (checkPool : Bool := true) :
     List (Option Nat × List ObjId × Option PlayerId) :=
   let players := trigPlayerOptions s t
-  (trigTargetOptions s t).flatMap (fun (mode, ts) => players.map (mode, ts, ·))
+  (trigTargetOptions s t checkPool).flatMap (fun (mode, ts) => players.map (mode, ts, ·))
 
 /-- A listed pick meets both the object and player restrictions. -/
 theorem mem_trigPickOptions (s : GameState) (t : PendTrigger) (mode : Option Nat)
@@ -839,9 +842,10 @@ def noTriggerPick (s : GameState) (t : PendTrigger) : Bool :=
   (trigPickOptions s t).isEmpty || (triggerCostOptions s t).isEmpty
 
 /-- Combine the available modes and targets with each way to pay the cost. -/
-def acceptedTriggers (s : GameState) (t : PendTrigger) : List (List ObjId × TriggerPayment) :=
-  let payments := triggerCostOptions s t
-  (trigPickOptions s t).flatMap (fun (mode, ts, player) =>
+def acceptedTriggers (s : GameState) (t : PendTrigger) (checkPool : Bool := true) :
+    List (List ObjId × TriggerPayment) :=
+  let payments := triggerCostOptions s t checkPool
+  (trigPickOptions s t checkPool).flatMap (fun (mode, ts, player) =>
     payments.map (fun (ids, banishers) => (ts, .pay ids mode player banishers)))
 
 /-- The legal ways to finalize or pass over the ability (CR 355, 383.3, 809). -/
@@ -942,11 +946,12 @@ theorem noteTriggerBanishers_safe (s : GameState) (banishers : List (ObjId × Pl
 
 /-- Pay a trigger's cost without giving either player a chance to respond (CR 383.3.b.1). -/
 def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
-    (banishers : List (ObjId × PlayerId) := []) :
+    (banishers : List (ObjId × PlayerId) := []) (resourcesPaid : Bool := false) :
     Option (GameState × List Event) :=
   match trigCost s t with
   | .free => some (s, [])
-  | .energy n => payByRunes s t.controller t.source ⟨n, []⟩
+  | .energy n => if resourcesPaid then some (s, []) else
+      payByRunes s t.controller t.source ⟨n, []⟩
   | .exhaustSelf =>
     if canExhaustTriggerSource s t then some (setExhausted true s t.source) else none
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
@@ -1018,12 +1023,14 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
 
 /-- Paying for a trigger preserves structural invariants. -/
 theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
-    {banishers : List (ObjId × PlayerId)} {r : GameState × List Event}
-    (h : payTriggerCost s t ids banishers = some r) : Safe s r.1 := by
+    {banishers : List (ObjId × PlayerId)} {resourcesPaid : Bool} {r : GameState × List Event}
+    (h : payTriggerCost s t ids banishers resourcesPaid = some r) : Safe s r.1 := by
   unfold payTriggerCost at h
   split at h
   · cases h; exact Safe.refl s
-  · exact payByRunes_safe h
+  · split at h
+    · cases h; exact Safe.refl s
+    · exact payByRunes_safe h
   · split at h
     · cases h; exact setExhausted_safe true s t.source
     · simp at h

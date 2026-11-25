@@ -77,10 +77,22 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_wf hwf h
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
+  · rename_i p t more others funding rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((finishTrigger_safe s _ funding i ts payment).wf hwf).congr rfl rfl rfl rfl
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((finalizePick_safe s _ i ts payment).wf hwf).congr rfl rfl rfl rfl
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n tail src idx pay hp hk
@@ -363,10 +375,22 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_physIds hwf h
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
+  · rename_i p t more others funding rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (finishTrigger_safe s _ funding i ts payment).phys hwf
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact (finalizePick_safe s _ i ts payment).phys hwf
+    exact List.Perm.refl _
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · rename_i p tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n tail src idx pay hp hk
@@ -538,7 +562,7 @@ theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 1000000 in
 /-- The answers of the players to the open question that `legalFrameActions` lists are exactly
 the legal ones by a player. -/
 theorem legalFrameActions_iff (s : GameState) (a : Action) :
@@ -547,10 +571,17 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
   unfold legalFrameActions LegalFrame
   rcases hp : s.pending with _ | ⟨f, rest⟩
   · cases kind <;> cases actor <;> simp [Actor.isPlayer]
-  · cases f <;> cases kind <;> cases actor <;>
-      simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
-        mem_legalActivates, mem_legalReactions, mem_legalPuts, mem_legalManas,
-        mem_legalShowdownPlays, mem_legalShowdownActivates]
+  · cases f
+    case triggerOrder p t more others funding =>
+      cases funding <;> cases kind <;> cases actor <;>
+        simp [Actor.isPlayer, mem_legalPuts, mem_legalTriggerPreparations,
+          legalTriggerFunding, triggerFinishOk]
+      all_goals grind
+    all_goals
+      cases kind <;> cases actor <;>
+        simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
+          mem_legalActivates, mem_legalReactions, mem_legalManas,
+          mem_legalShowdownPlays, mem_legalShowdownActivates]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

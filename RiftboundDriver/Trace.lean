@@ -301,12 +301,18 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _ => []
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d))))] ++ restricted
-    | .putTrigger i ts payment =>
+    | .putTrigger i ts payment | .prepareTrigger i ts payment =>
       let trigger : Option PendTrigger := match frame with
-        | some (.triggerOrder _ t more _) => (t :: more)[i]?
+        | some (.triggerOrder _ t more _ _) => (t :: more)[i]?
+        | _ => none
+      let plan := match frame with
+        | some (.triggerOrder _ _ _ _ funding) => funding
         | _ => none
       let source := trigger.map PendTrigger.source
-      [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+      let resources := (state.bind (fun s => trigger.map (fun t => triggerPrice s t ts))).toList.flatMap
+        (fun price => if price.power.isEmpty then [] else [("triggerDeflect", toString price.power.length)])
+      [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))] ++ resources ++
+      plan.toList.map (fun p => ("triggerPreparedAdds", jarr (p.adds.map effectAddJson))) ++
       (source.toList.map (fun id => ("source", toString id.n))) ++
       (match payment with
        | .skip => [("decline", "true")]
@@ -329,6 +335,12 @@ def actionJson (a : Action) (frame : Option Frame := none)
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if replacements.isEmpty then [] else [("costBanishes", jarr replacements)]) ++
            (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
+    | .triggerAdd add =>
+      [("playAdd", effectAddJson add)] ++
+        (match frame with
+        | some (.triggerOrder _ _ _ _ (some plan)) =>
+          [("triggerPreparedAdds", jarr (plan.adds.map effectAddJson))]
+        | _ => [])
     | .activate src idx pay ts discards targetPlayer costBanisher =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
@@ -349,6 +361,9 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .discardPick c => [("card", toString c.n)]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
+        (match frame with
+        | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
+        | _ => []) ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ deathBanishFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++

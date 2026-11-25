@@ -135,6 +135,10 @@ def playPowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : 
 to the spell, including when the spell is played from Hidden (CR 356.4.d, 809). -/
 def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
   match a.kind with
+  | .putTrigger .. =>
+    match s.pending with
+    | .triggerOrder _ _ _ _ (some _) :: _ => true
+    | _ => false
   | .playCard c _ ts _ _ _ => s.playPowerCut p c ts != 0
   | .activate c idx _ ts _ _ _ =>
     s.playPowerCut p c ts != 0 &&

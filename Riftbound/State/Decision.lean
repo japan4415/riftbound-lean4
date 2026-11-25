@@ -123,6 +123,10 @@ inductive ActionKind where
   /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
   if it is declined or cannot be finalized (CR 383.3, 355). -/
   | putTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment := .pay [])
+  /-- Lock the trigger's choices before selecting resource abilities (CR 355, 357.1.a). -/
+  | prepareTrigger (idx : Nat) (targets : List ObjId) (payment : TriggerPayment)
+  /-- Select one Add during trigger finalization. It is applied with the full payment. -/
+  | triggerAdd (add : EffectAdd)
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
   | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)
@@ -158,6 +162,18 @@ structure PendTrigger where
   subject : Option ObjId := none
   /-- The amount captured by the event that fired this ability, if any (CR 388-389). -/
   eventAmount : Option Nat := none
+deriving DecidableEq, Repr
+
+/-- A trigger's declared finalization choices and its tentative resource activations. -/
+structure TriggerFunding where
+  /-- The selected ability in the group. -/
+  index : Nat
+  /-- The objects the selected ability targets. -/
+  targets : List ObjId
+  /-- The selected mode, player target and non-resource costs. -/
+  payment : TriggerPayment
+  /-- The Add abilities chosen to fund this payment, in order. -/
+  adds : List EffectAdd := []
 deriving DecidableEq, Repr
 
 /-- A frame of the stack. A frame holds no part of the board: everything a decision is about is read
@@ -234,7 +250,7 @@ inductive Frame where
   chooses its targets (CR 383.3.d); `others` are the abilities of the other players, still to come.
   The group is never empty. -/
   | triggerOrder (p : PlayerId) (first : PendTrigger) (more : List PendTrigger)
-      (others : List PendTrigger)
+      (others : List PendTrigger) (funding : Option TriggerFunding := none)
   /-- Choice: player `p` discards `n` more cards of their hand, one at a time (CR 415). -/
   | discard (p : PlayerId) (n : Nat)
   /-- Choice: player `p` may do the effect `e`; the effects `rest` of the item follow (CR 355). -/

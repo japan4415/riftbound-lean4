@@ -181,12 +181,30 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hpend]
     exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
       (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
+  · rename_i p t more others funding rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (finishTrigger_safe s (t :: more) funding i ts payment).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (finalizePick_safe s (t :: more) i ts payment).same.result (fun hb => ?_)
+    refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.triggers ((t :: more).eraseIdx i ++ others)]
+    exact hb.swap rfl [_]
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [_]
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [_]
   · rename_i p tail src idx pay hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
@@ -892,14 +910,22 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
-  | triggerOrder p t more others =>
+  | triggerOrder p t more others funding =>
     left
-    obtain ⟨ts, payment, hts⟩ := trigLegal_exists s t
-    refine ⟨⟨.player p, .putTrigger 0 ts payment⟩, ?_, by simp⟩
-    rw [hla]
-    apply List.mem_append_left
-    simp only [legalFrameActions, hp, mem_legalPuts]
-    exact ⟨0, ts, payment, rfl, by simpa using hts⟩
+    cases funding with
+    | none =>
+      obtain ⟨ts, payment, hts⟩ := trigLegal_exists s t
+      refine ⟨⟨.player p, .putTrigger 0 ts payment⟩, ?_, by simp⟩
+      rw [hla]
+      apply List.mem_append_left
+      simp only [legalFrameActions, hp]
+      exact List.mem_append_left _ ((mem_legalPuts _ _ _ _).mpr
+        ⟨0, ts, payment, rfl, by simpa using hts⟩)
+    | some plan =>
+      refine ⟨⟨.player p, .decide false⟩, ?_, by simp⟩
+      rw [hla]
+      apply List.mem_append_left
+      simp [legalFrameActions, hp, legalTriggerFunding]
 
 /-- What a chance frame needs for a chance answer to exist: the zone to shuffle is a zone of the
 game, and a player has a Battlefield to pick. The other chance frames need nothing. -/
@@ -973,7 +999,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | combatFinish bf => exact absurd hc (by simp [Frame.isChance])
   | assign bf att side acc done => exact absurd hc (by simp [Frame.isChance])
   | showdown bf q n => exact absurd hc (by simp [Frame.isChance])
-  | triggerOrder p t more others => exact absurd hc (by simp [Frame.isChance])
+  | triggerOrder p t more others funding => exact absurd hc (by simp [Frame.isChance])
 
 end Riftbound
 

@@ -122,6 +122,9 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     rw [hp, hk] at hl
     exact activateStep_isSome hl.2.1
   · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
@@ -292,10 +295,22 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     exact applyRune_ownerOk hwf hown h
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_ownerOk hwf hown h
+  · rename_i p t more others funding rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact ((finishTrigger_safe s _ funding i ts payment).own hwf hown).congr rfl rfl
   · rename_i p t more others rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ((finalizePick_safe s _ i ts payment).own hwf hown).congr rfl rfl
+    exact hown.congr rfl rfl
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · rename_i p tail src idx pay hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n tail src idx pay hp hk

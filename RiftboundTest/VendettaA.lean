@@ -1048,6 +1048,45 @@ meta def passToChoice : Nat → GameState → Option GameState
     !(legalActions s).contains (choose none) && !(legalActions s).contains (choose (some ⟨2⟩)) &&
     byRiches && bySmite
 
+-- Kennen locks an enemy Plaza Guardian as his target. Select Energy from a Unit's Add
+-- and Recycle a Rune for Deflect. Canceling releases both choices without spending them.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, kennen) ← put s p "VEN-135" .base
+  let (s, sage) ← put s p "UNL-093" .base
+  let (s, target) ← putAt s q "VEN-064" s.bf0
+  let (s, other) ← putAt s q "VEN-091" s.bf0
+  let (s, rune) ← put (s.fund p 1) p "OGN-007" .base
+  let (s, spareRune) ← put s p "OGN-007" .base
+  let (s, enemyRune) ← put s q "OGN-007" .base
+  let (choice, _) ← (advance 100 (s.withTriggers [.played p kennen]) []).toOption
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let prepare := ActionKind.prepareTrigger 0 [target] (.pay [])
+  let finish := ActionKind.putTrigger 0 [target]
+  let useSage := ActionKind.triggerAdd (.ability sage 0 0 [])
+  let useRune := ActionKind.triggerAdd (.rune rune true)
+  let (locked, startEvents) ← act choice prepare
+  let (chosen, stagedEvents) ← act locked useSage
+  let (ready, runeEvents) ← act chosen useRune
+  let (canceled, cancelEvents) ← act ready (.decide false)
+  let (paid, events) ← act ready finish
+  let (extra, _) ← act ready (.triggerAdd (.rune spareRune true))
+  let (withSurplus, _) ← act extra finish
+  let item ← (paid.zone .chain).head?
+  let done := settleChain {} 10 paid
+  return (act choice finish).isNone && (act locked (.putTrigger 0 [other])).isNone &&
+    (act locked (.triggerAdd (.rune enemyRune true))).isNone && (act chosen finish).isNone &&
+    (act ready useSage).isNone && (act ready useRune).isNone &&
+    startEvents.isEmpty && stagedEvents.isEmpty && runeEvents.isEmpty && cancelEvents.isEmpty &&
+    canceled.pending == choice.pending && canceled.poolOf p == choice.poolOf p &&
+    canceled.tired sage == some false && canceled.locate rune == some (.player p .base) &&
+    (paid.obj? item).any (·.targets == [target]) && (paid.poolOf p).total == 0 &&
+    (withSurplus.poolOf p).totalPower == 1 && (withSurplus.poolOf p).energy == 0 &&
+    paid.tired sage == some true && paid.locate rune == none &&
+    events.contains (.activated p sage 0 (some 0)) && events.contains (.chosenByAbility p target) &&
+    (done.obj? target).any (·.stunned) && (done.obj? other).any (fun o => !o.stunned)
+
 -- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
 -- is finalized after the trigger leaves the Chain, and the opponent can respond.
 #guard vendettaCase fun s => do
@@ -4845,7 +4884,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let (s, enemyGear) ← put s q "VEN-067" .hand
   let s := (s.rich p).rich q
   let caused (t : GameState) : Bool := match t.pending with
-    | .triggerOrder _ first _ _ :: _ => first.source == curator
+    | .triggerOrder _ first _ _ _ :: _ => first.source == curator
     | _ => false
   let (fromGear, _) ← (step 100 s ⟨.player p, .playCard gear ⟨10, [.mind, .mind]⟩ []⟩).toOption
   let (fromSpell, _) ← (step 100 s ⟨.player p, .playCard spell (payOf s spell) []⟩).toOption
@@ -4869,7 +4908,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let s := { s.fund p 6 with cards := ⟨d :: s.cards.cards⟩ }
   let (high, es) ← (step 100 s ⟨.player p, .activate gear 0 ⟨6, []⟩ []⟩).toOption
   let (low, _) ← (step 100 s ⟨.player p, .activate gear 1 ⟨6, []⟩ []⟩).toOption
-  let .triggerOrder _ t _ _ :: _ := high.pending | none
+  let .triggerOrder _ t _ _ _ :: _ := high.pending | none
   let .chainPass .. :: _ := low.pending | none
   return t.source == curator && (high.poolOf p).energy == 0 &&
     es.contains (.activated p gear 0 (some 12))

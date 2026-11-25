@@ -383,11 +383,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
-  · rename_i p t more others rest i ts payment hp hk
+  · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have hm := (finalizePick_safe s (t :: more) i ts payment).same
-    have hph : ((finalizePick s (t :: more) i ts payment).1).phase ≠ .setup := by
+    have hm := (finishTrigger_safe s (t :: more) funding i ts payment).same
+    have hph : ((finishTrigger s (t :: more) funding i ts payment).1).phase ≠ .setup := by
       rw [hm.phase]
       exact hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play hph hm.turnOrder hm.config (fun hm' => ?_)
@@ -395,6 +395,33 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases hm' with h1 | h1
     · cases h1
     · rw [hp]; exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others rest i ts payment hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others previous rest add hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
+  · rename_i p t more others previous rest yes hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph : s.phase ≠ .setup := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hph rfl rfl (fun hm' => ?_)
+    rw [hp]
+    rcases List.mem_cons.mp hm' with h1 | h1
+    · cases h1
+    · exact List.mem_cons_of_mem _ h1
   · rename_i p tail src idx pay hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
