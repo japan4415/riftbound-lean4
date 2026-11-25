@@ -101,6 +101,8 @@ def eventJson : Event → String
   | .stunned o => jobj [("t", jstr "stunned"), ("target", toString o.n)]
   | .buffed o => jobj [("t", jstr "buffed"), ("target", toString o.n)]
   | .becameMighty o => jobj [("t", jstr "became_mighty"), ("unit", toString o.n)]
+  | .empowered p o =>
+    jobj [("t", jstr "empowered"), ("player", toString p.n), ("target", toString o.n)]
   | .conquerActivated u => jobj [("t", jstr "conquer_activated"), ("unit", toString u.n)]
   | .lookedAt p c => jobj [("t", jstr "looked_at"), ("player", toString p.n), ("card", toString c.n)]
   | .chosenBySpell p t => jobj [("t", jstr "chosen_by_spell"), ("player", toString p.n), ("target", toString t.n)]

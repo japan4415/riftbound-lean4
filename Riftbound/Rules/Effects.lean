@@ -2066,6 +2066,36 @@ theorem addTempKws_safe (ks : List KeywordInst) (ends : EndPoint) (s : GameState
 def GameState.keywordsNow (s : GameState) (id : ObjId) : List KeywordInst :=
   ((s.cardDef? id).map (·.keywords)).getD [] ++ s.grantedKws id
 
+/-- Give an object an instance of Empowered if it is in play and below its limit (CR 442). -/
+def empowerObj (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  match s.obj? id, s.cardDef? id with
+  | some o, some c =>
+    if o.empowerCount < c.empowerLimit &&
+        (((c.hasType .unit || c.hasType .gear) && s.inPlay.contains id) ||
+          (c.hasType .legend && (s.zone (.player o.owner .legendZone)).contains id)) then
+      (s.modObj id (fun x => { x with empowerCount := x.empowerCount + 1 }), [.empowered p id])
+    else (s, [])
+  | _, _ => (s, [])
+
+/-- Empower preserves structural invariants and physical cards. -/
+theorem empowerObj_safe (p : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (empowerObj p s id).1 := by
+  unfold empowerObj
+  split
+  · split
+    · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- Remove an instance of Empowered (CR 443). -/
+def disempowerObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id (fun o => { o with empowerCount := o.empowerCount - 1 }), [])
+
+/-- Disempower preserves structural invariants and physical cards. -/
+theorem disempowerObj_safe (s : GameState) (id : ObjId) :
+    Safe s (disempowerObj s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -2110,6 +2140,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | _, _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
+  | .empower sel => onSelected s p src env sel (empowerObj p)
+  | .disempower sel => onSelected s p src env sel disempowerObj
   | .gainXP ps n =>
     (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
   | .spendXP ps n =>
@@ -2306,6 +2338,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | double sel => exact onSelected_safe doubleObj_safe h
   | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
   | buff sel => exact onSelected_safe buffObj_safe h
+  | empower sel => exact onSelected_safe (empowerObj_safe p) h
+  | disempower sel => exact onSelected_safe disempowerObj_safe h
   | gainXP ps n =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p with
@@ -2720,6 +2754,8 @@ def Prim.pickSel? : Prim → Option Selector
   | .returnToHand s => some s
   | .stun s => some s
   | .buff s => some s
+  | .empower s => some s
+  | .disempower s => some s
   | .recycle s => some s
   | .spendBuff s => some s
   | .bin s => some s
@@ -2759,6 +2795,8 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .returnToHand _ => .returnToHand sel
   | .stun _ => .stun sel
   | .buff _ => .buff sel
+  | .empower _ => .empower sel
+  | .disempower _ => .disempower sel
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel

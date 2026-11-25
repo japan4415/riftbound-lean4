@@ -136,9 +136,9 @@ inductive Prim where
   | double (s : Selector)
   /-- Swap two objects. -/
   | swap (a b : Selector)
-  /-- Empower units. -/
+  /-- Empower Units, Gear, or Legends (CR 442). -/
   | empower (s : Selector)
-  /-- Disempower units. -/
+  /-- Disempower Units, Gear, or Legends (CR 443). -/
   | disempower (s : Selector)
   /-- Take control of objects. -/
   | takeControl (s : Selector)

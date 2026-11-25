@@ -102,6 +102,8 @@ structure Object where
   buffed : Bool := false
   /-- Whether the Unit is stunned: it deals no combat damage this turn (CR 424). -/
   stunned : Bool := false
+  /-- How many times the object is Empowered (CR 442, 828). Leaving the Board clears this. -/
+  empowerCount : Nat := 0
   /-- For a Legend: the XP of its player (CR 728). XP is not an object; the model keeps it with the
   player's Legend. -/
   xp : Nat := 0

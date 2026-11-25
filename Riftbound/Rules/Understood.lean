@@ -231,6 +231,7 @@ def Condition.understood : Condition → Bool
   | .legion => true
   | .paid => true
   | .playedAnother => true
+  | .empowered s => s.understood
   | .canPay _ => true
   | .enemyUnitDied => true
   | .marked _ => true
@@ -267,6 +268,8 @@ def Selector.understoodPick : Selector → Bool
 def Prim.understood : Prim → Bool
   | .draw p n => p.understood && n.understood
   | .burn p n => p.understood && n.understood
+  | .empower s => s.understoodPickAny
+  | .disempower s => s.understoodPickAny
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
@@ -477,6 +480,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .becomeMighty => true
+      | .becomeEmpowered => t.subject == .self
       | .winCombat => t.subject == .self
       | .chosen => true
       | .chosenAny => true
@@ -542,7 +546,8 @@ def Keyword.runs : Keyword → Bool
 carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   c.status == .drafted && c.abilities.all Ability.runs && c.grants.all Ability.runs &&
-    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.canFlow)) &&
+    c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.canFlow) ||
+      (k.keyword == .empower && (match k.arg with | .cost _ => true | _ => false))) &&
     (match c.spellEffect with
       | some e => e.choices.all Choice.simple && e.body.understood
       | none => !c.types.contains .spell)

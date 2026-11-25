@@ -1012,6 +1012,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     let ids ← sel.eval s p self env
     let bs ← ids.mapM (fun id => f.holds s self env id)
     pure (!ids.isEmpty && bs.all id)
+  | .empowered sel =>
+    (sel.eval s p self env).map (fun ids =>
+      !ids.isEmpty && ids.all (fun id => (s.obj? id).any (·.empowerCount > 0)))
   | .yourTurn => some (decide (s.active = some p))
   | .inCombat => some s.combatNow.isSome
   | .drewCards n =>

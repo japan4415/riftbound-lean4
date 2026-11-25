@@ -60,6 +60,8 @@ inductive Event where
   | buffed (target : ObjId)
   /-- A Unit became Mighty: its Might was below 5 and is 5 or more now. -/
   | becameMighty (u : ObjId)
+  /-- An object gained an instance of Empowered (CR 442). -/
+  | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/
   | lookedAt (p : PlayerId) (card : ObjId)
   /-- The player chose the object with a spell they played. -/

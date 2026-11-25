@@ -367,8 +367,11 @@ def VEN_014.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Shadow Fiend: the effect is not written yet. -/
-def VEN_014 : CardDef := VEN_014.meta
+/-- Shadow Fiend. -/
+def VEN_014 : CardDef :=
+  { VEN_014.meta with
+    abilities := [.passive (.empowered .self) [.keyword .self ⟨.assault, .amount 3⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-015
 /--
@@ -465,8 +468,14 @@ def VEN_018.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Rage Amplifier: the effect is not written yet. -/
-def VEN_018 : CardDef := VEN_018.meta
+/-- Rage Amplifier. -/
+def VEN_018 : CardDef :=
+  { VEN_018.meta with
+    abilities := [.passive .always
+      [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 1)],
+      .passive (.empowered .self)
+        [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 1)]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-019
 /--
@@ -758,8 +767,12 @@ def VEN_030.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Serene Ascetic: the effect is not written yet. -/
-def VEN_030 : CardDef := VEN_030.meta
+/-- Serene Ascetic. -/
+def VEN_030 : CardDef :=
+  { VEN_030.meta with
+    abilities := [.passive (.empowered .self)
+      [.keyword .self ⟨.deflect, .none⟩, .keyword .self ⟨.shield, .amount 3⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-031
 /--
@@ -1403,8 +1416,12 @@ def VEN_057.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Covert Informant: the effect is not written yet. -/
-def VEN_057 : CardDef := VEN_057.meta
+/-- Covert Informant. -/
+def VEN_057 : CardDef :=
+  { VEN_057.meta with
+    abilities := [.triggered { event := .move, condition := .empowered .self }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-058
 /--
@@ -1710,8 +1727,12 @@ def VEN_070.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Brutal Hunter: the effect is not written yet. -/
-def VEN_070 : CardDef := VEN_070.meta
+/-- Brutal Hunter. -/
+def VEN_070 : CardDef :=
+  { VEN_070.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 2), .keyword .self ⟨.ganking, .none⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-071
 /--
@@ -1757,8 +1778,14 @@ def VEN_072.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Guttural Roar: the effect is not written yet. -/
-def VEN_072 : CardDef := VEN_072.meta
+/-- Guttural Roar. -/
+def VEN_072 : CardDef :=
+  { VEN_072.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+      (.ifThen (.empowered (.slot 0))
+        (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn)
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-073
 /--
@@ -1879,8 +1906,15 @@ def VEN_077.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Tools of Empire: the effect is not written yet. -/
-def VEN_077 : CardDef := VEN_077.meta
+/-- Tools of Empire. -/
+def VEN_077 : CardDef :=
+  { VEN_077.meta with
+    abilities := [.activated [.exhaustSelf] .normal
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.ifThen (.empowered .self)
+          (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn)
+          (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-078
 /--
@@ -2261,8 +2295,12 @@ def VEN_093.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Kinkou Lifeblade: the effect is not written yet. -/
-def VEN_093 : CardDef := VEN_093.meta
+/-- Kinkou Lifeblade. -/
+def VEN_093 : CardDef :=
+  { VEN_093.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 1), .keyword .self ⟨.ganking, .none⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-094
 /--
@@ -2936,8 +2974,12 @@ def VEN_122.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Solari Sunhawk: the effect is not written yet. -/
-def VEN_122 : CardDef := VEN_122.meta
+/-- Solari Sunhawk. -/
+def VEN_122 : CardDef :=
+  { VEN_122.meta with
+    abilities := [.passive (.empowered .self)
+      [.mightPlus .self (.const 1), .keyword .self ⟨.deflect, .amount 2⟩]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-123
 /--

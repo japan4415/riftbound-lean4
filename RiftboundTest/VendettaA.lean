@@ -108,4 +108,30 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     countered.countIn s.me .banishment "VEN-003" == 1 &&
     (countered.obj? gear2).isSome
 
+-- Steel Paws pays for the printed ability, gains Might, and cannot activate it twice while
+-- Empowered. Disempowering it permits activating the ability again.
+#guard vendettaCase fun s => do
+  let (s, paws) ← put s s.me "VEN-043" .base
+  let card ← s.cardDef? paws
+  let idx := card.fullAbilities.findIdx (fun a =>
+    match a with | .activated .. => true | _ => false)
+  let a ← activate s s.me paws idx [] ⟨7, []⟩
+  let b := (disempowerObj a paws).1
+  let c ← activate b s.me paws idx [] ⟨7, []⟩
+  let (left, moved) ← moveObj c paws (.player s.me .hand)
+  return a.mightNow paws == (s.mightNow paws).map (· + 7) &&
+    (activate s s.me paws idx [] ⟨6, []⟩).isNone &&
+    (activate a s.me paws idx [] ⟨7, []⟩).isNone &&
+    b.mightNow paws == s.mightNow paws && c.mightNow paws == a.mightNow paws &&
+    (left.obj? moved).any (·.empowerCount == 0)
+
+-- Rage Amplifier can Empower a Gear; its bonus rises from +1 to +2 only for friendly units.
+#guard vendettaCase fun s => do
+  let (s, friendly) ← put s s.me "OGN-088" .base
+  let (s, enemy) ← put s s.you "OGN-088" .base
+  let (s, amplifier) ← put s s.me "VEN-018" .base
+  let a ← activate s s.me amplifier 2 [] ⟨6, [.fury]⟩
+  return s.mightNow friendly == some 9 && a.mightNow friendly == some 10 &&
+    s.mightNow enemy == some 8 && a.mightNow enemy == some 8
+
 end RiftboundTest

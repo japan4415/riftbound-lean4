@@ -105,6 +105,8 @@ structure CardDef where
   playExtra : Option (PlayExtra × Bool) := none
   /-- What the additional cost `playExtra` takes off the cost of the card, if it is done. -/
   paidCut : Option PaidCut := none
+  /-- The maximum number of instances of Empowered this object can have (CR 442). -/
+  empowerLimit : Nat := 1
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
@@ -207,6 +209,12 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
        -- with Swift Scout: hide for one Energy instead (the passive of the Legend is asked)
        .activated [.fromHand, .pay ⟨1, []⟩] .normal
          hideEnergyEffect .unlimited]
+    | .empower, .cost cost =>
+      -- Untranscribed cards may qualify the printed cost, so they are not playable from metadata.
+      if c.status == .todo then [] else
+        [.activated [.pay cost] .normal
+          (.of [] (.ifThen (.not (.empowered .self)) (.prim (.empower .self)) .nop))
+          .unlimited]
     | .vision, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]))
