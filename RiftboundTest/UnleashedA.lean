@@ -429,4 +429,13 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return s5.countIn s.me .base "OGN-135" == 1 || (s5.zone .battlefieldZone).any (fun x =>
     (s5.cardDef? x).any (·.id == cid "OGN-135"))
 
+-- Soul Sword (UNL-039): +1 Might, and one more at Level 3
+#guard tun fun s => do
+  let (s1, u) ← put s s.me "OGN-135" .base
+  let (s2, g) ← put s1 s.me "UNL-039" .base
+  let s3 := s2.modObj g (fun o => { o with attached := some u })
+  let lo ← withXPOf s3 s.me 2
+  let hi ← withXPOf s3 s.me 3
+  return lo.mightNow u == (s2.mightNow u).map (· + 1) && hi.mightNow u == (s2.mightNow u).map (· + 2)
+
 end RiftboundTest

@@ -114,8 +114,18 @@ def GameState.equipBonus (s : GameState) (id : ObjId) : Int :=
               | .mightIfFresh n => if o.attachedTurn == some s.turn then a2 + (n : Int) else a2
               | _ => a2) acc
           | _ => acc) 0
+        -- Soul Sword: more Might at Level 3 (a Level condition on a Might bonus the Equipment gives)
+        let level : Int := d.grants.foldl (fun acc ab =>
+          match ab with
+          | Ability.passive (.cmp .ge .xp (.const k)) mods =>
+            if decide (k ≤ (s.xpOf o.controller : Int)) then
+              mods.foldl (fun a2 m => match m with
+                | .mightPlus .self (.const n) => a2 + n
+                | _ => a2) acc
+            else acc
+          | _ => acc) 0
         let b : Int := d.mightBonus.getD 0
-        some ((if doubled then 2 * b else b) + fresh)
+        some ((if doubled then 2 * b else b) + fresh + level)
       else none
     | _, _ => none)).sum
 
