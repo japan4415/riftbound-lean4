@@ -179,6 +179,8 @@ structure Object where
   playedFromHand : Bool := true
   /-- This Spell was played for its Flow cost and is banished when it leaves the Chain (CR 829). -/
   flowed : Bool := false
+  /-- This Spell was played by an effect that Recycles it after it resolves. -/
+  recycleAfterPlay : Bool := false
   /-- The mode or destination selected when this item was finalized. -/
   spellPick : SpellPick := .plain
   /-- The watched object of a triggered ability, which is not one of its declared targets. -/

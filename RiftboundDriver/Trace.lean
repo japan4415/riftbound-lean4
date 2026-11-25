@@ -177,6 +177,22 @@ def remakeSpellFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreSpellChoices", toString spell.n)]
   | _ => []
 
+/-- Describe the targets, mode, and cost of the Spell queued from the Trash. -/
+def trashSpellFields (state : Option GameState) (frame : Option Frame)
+    (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.mayDo _ _ _ (.prim (.castInline _)) _) => [("trashSpellOffer", "true")]
+  | some (.eitherDo _ _ _ first@(.finishTrashSpell ..) other _) =>
+    match if yes then first else other with
+    | .finishTrashSpell card targets cost pick =>
+      let controllers := targets.map (fun id =>
+        (state.bind (·.obj? id)).elim "null" (fun o => toString o.controller.n))
+      [("queuedSpell", toString card.n), ("targets", jarr (targets.map (fun id => toString id.n))),
+        ("targetControllers", jarr controllers), ("queuedCost", costJson cost)] ++
+        spellPickFields state card pick
+    | _ => [("moreTrashSpellChoices", "true")]
+  | _ => []
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) : String :=
@@ -253,13 +269,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ reducedPermanentFields frame yes ++
-        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++ remakeSpellFields state frame yes
+        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
+        remakeSpellFields state frame yes ++ trashSpellFields state frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.banishLookedForPlay _) _) => [("choiceContext", jstr "lookedDeck")]
+        | some (.pickDo _ _ _ _ _ (.prim (.castInline _)) _) => [("choiceContext", jstr "trashSpell")]
         | some (.pickDo _ _ env _ _ (.prim (.copyAttachedFrom _)) _) =>
           [("choiceContext", jstr "attachmentCopy")] ++ (match env.slots.head? with
             | some (.obj unit) => [("unit", toString unit.n)]

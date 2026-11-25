@@ -4136,7 +4136,7 @@ def SFD_140 : CardDef :=
 
     abilities := [.triggered (.onSelf .play)
       (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
-        [.ofType .spell, .noChoices, .cost .le (.const 3)]))))) .unlimited],
+        [.ofType .spell, .cost .le (.const 3)]))))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-141

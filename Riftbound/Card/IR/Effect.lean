@@ -113,6 +113,10 @@ inductive Effect where
   /-- Use the chosen Add abilities and pay for the effect's permanent as one finalization. -/
   | finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
       (adds : List EffectAdd)
+  /-- Finalize the Spell queued by an effect that plays and then recycles it. -/
+  | finalizeTrashSpell (card : ObjId)
+  /-- Pay for the queued Spell and make its chosen targets and other finalization choices public. -/
+  | finishTrashSpell (card : ObjId) (targets : List ObjId) (cost : Cost) (pick : SpellPick)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

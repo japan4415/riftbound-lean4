@@ -93,8 +93,8 @@ inductive Prim where
   /-- Cast the spell, paying its cost less `less` Energy, choosing the `idx`-th legal pick of its
   targets: it goes on the Chain. The player chooses between the picks (Void Rush). -/
   | castPicked (s : Selector) (less : Amount) (idx : Nat)
-  /-- Cast the spell now, in place: its effect is done at once (a spell with no choice of objects to
-  make), its Power cost is paid, and the card is recycled after (Kai'Sa, Evolutionary). -/
+  /-- Queue the Trash spell, ignoring its base Energy cost, and Recycle it after it resolves
+  (Kai'Sa, Evolutionary and Fizz, Trickster). -/
   | castInline (s : Selector)
   /-- Hide cards face down at a Battlefield (CR 811). -/
   | hideAt (s : Selector) (bf : Selector)

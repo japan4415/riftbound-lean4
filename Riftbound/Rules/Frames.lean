@@ -241,9 +241,8 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     let r := runEffect s p src (env.withMight s.mightTable) e es effectAddPolicy
     some ({ r.1 with pending := r.2.1 ++ rest }, r.2.2)
   | .finishSpell item :: rest =>
-    some ({ (finishItem s item).1 with
-              pending := .cleanup :: (afterItem (finishItem s item).1 ++ rest) },
-      (finishItem s item).2)
+    let r := finishItem s item
+    some ({ r.1 with pending := finishedItemFrames s item r ++ rest }, r.2)
   | .cleanup :: rest => some (cleanupFrame s rest)
   | .combatDamage bf att :: rest =>
     let combat := (s.observeCombat [.showdown bf att 0]).1

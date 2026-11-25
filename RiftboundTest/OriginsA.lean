@@ -4247,21 +4247,20 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     broke.countIn s.me .base "OGN-037" == 0
 
 -- Kai'Sa, Evolutionary (OGN-112): when she conquers, I may play a spell from my Trash with an
--- Energy cost less than my points, without its Energy (its Power is paid), then recycle it; only a
--- spell with no choice of objects to make (Confront) is played here
+-- Energy cost less than my points, without its Energy (its Power is paid), then recycle it.
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-294"
   let (s2, _) ← putAt s1 s.me "OGN-112" bf
-  let (s3, _) ← put s2 s.me "OGN-129" .trash
+  let (s3, confront) ← put s2 s.me "OGN-129" .trash
   let (s4, _) ← put s3 s.me "OGN-229" .trash
   let points := s4.gainPoints s.me 5
   let rich := points.rich s.me
-  let a ← fire rich [.scored s.me bf true]
+  let a ← fire rich [.scored s.me bf true] { obj := (· == confront) }
   let no ← fire rich [.scored s.me bf true] { yes := false }
   let few ← fire (s4.rich s.me) [.scored s.me bf true]
-  -- only a spell with a choice in the Trash: it stays; points equal to the cost: not enough
+  -- Vengeance requires two Order Power; points equal to the Energy cost are insufficient.
   let (v1, _) ← put s2 s.me "OGN-229" .trash
-  let only := fire ((v1.gainPoints s.me 5).rich s.me) [.scored s.me bf true]
+  let only := fire ((v1.gainPoints s.me 5).fund s.me 0) [.scored s.me bf true]
   let onlyV ← only
   let edge ← fire (((s3.gainPoints s.me 2)).rich s.me) [.scored s.me bf true]
   -- a spell with a Power cost: the Power is paid from the pool (and not when it is not there)

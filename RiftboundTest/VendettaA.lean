@@ -832,6 +832,60 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
+-- is finalized after the trigger leaves the Chain, and the opponent can respond.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, steel) ← put s p "VEN-003" .trash
+  let (s, friendly) ← put s p "VEN-075" .base
+  let (s, enemy) ← put s q "VEN-075" .base
+  let (s, rebuttal) ← put s q "VEN-152" .hand
+  let s := (s.fund p 3 (fury := 1) (chaos := 1)).fund q 1 (chaos := 1)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let offer ← passToChoice 8 played
+  let (choice, queued) ← act offer (.decide true)
+  let .eitherDo who _ _ (.finishTrashSpell card first firstCost _)
+        (.finishTrashSpell alternative second secondCost _) _ :: _ := choice.pending | none
+  let (waiting, chosen) ← act choice (.decide (first == [enemy]))
+  let (passed, _) ← act waiting .pass
+  let response : Action := ⟨.player q, .playCard rebuttal ⟨1, [.chaos]⟩ [card]⟩
+  let (reacted, _) ← (step 100 passed response).toOption
+  let resolved := settleChain {} 12 waiting
+  let countered := settleChain { yes := false } 12 reacted
+  let (banned, _) ← act (s.addTurnFx q .opponentsNoSpells) (.playCard fizz ⟨3, [.chaos]⟩ [])
+  let blocked ← passToChoice 8 banned
+  let steelAtBottom (t : GameState) := ((t.zone (.player p .mainDeck)).getLast?).any (fun id =>
+    (t.cardDef? id).any (·.id.code == "VEN-003"))
+  return who == p && card == alternative && first != second &&
+    [first, second].contains [enemy] && [first, second].contains [friendly] &&
+    firstCost == ⟨0, [.domain .fury]⟩ && firstCost == secondCost &&
+    choice.zone .chain == [card] && choice.queuedTrashSpell card &&
+    queued.contains (.moved steel card .chain) && !(queued.contains (.played p card)) &&
+    chosen.contains (.played p card) && chosen.contains (.chosenBySpell p enemy) &&
+    (waiting.obj? card).any (fun o => o.targets == [enemy] && !o.flowed && o.energyPaid == 0) &&
+    (waiting.poolOf p).total == 0 &&
+    (resolved.obj? enemy).isNone && (resolved.obj? friendly).isSome &&
+    steelAtBottom resolved && countered.countIn p .trash "VEN-003" == 1 &&
+    (countered.obj? enemy).isSome && !steelAtBottom countered &&
+    blocked.countIn p .trash "VEN-003" == 1 && (blocked.zone .chain).isEmpty
+
+-- Kai'Sa can choose Mesmerize's enemy mode even with no Energy in the Pool.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, bf) ← putBf s p "OGN-294"
+  let (s, kai) ← putAt s p "OGN-112" bf
+  let (s, enemy) ← put s s.you "OGN-051" .base
+  let (s, mesmerize) ← put s p "VEN-052" .trash
+  let s := (s.gainPoints p 2).fund p 0 (mind := 1)
+  let done ← fire s [.scored p bf true] { fromEnd := some 0 }
+  let bottom ← (done.zone (.player p .mainDeck)).getLast?
+  return (done.obj? kai).isSome && done.mightNow enemy == (s.mightNow enemy).map (· - 2) &&
+    (done.cardDef? bottom).any (·.id.code == "VEN-052") && (done.obj? mesmerize).isNone &&
+    (done.poolOf p).total == 0
+
 /-- Choose the first matching finalization, including one on a later page of the decision. -/
 meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → Bool) :
     Nat → GameState → Option (GameState × List Event)

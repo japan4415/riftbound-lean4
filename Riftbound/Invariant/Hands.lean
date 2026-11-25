@@ -829,6 +829,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
+    | exact Or.inl (finalizeTrashStep_mem h)
     | (unfold banishLookedStep at h
        split at h
        · split at h
@@ -1153,14 +1154,10 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hm := finishItem_sameMeta s item
     refine hinv.of_spell_step (hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl)
       ⟨hm.config, hm.turnOrder, hm.phase, hm.result⟩ (fun hm' => ?_)
-    have hm2 : Frame.setupHands ∈ rest := by
-      simp only [List.mem_cons, List.mem_append] at hm'
-      rcases hm' with h1 | h1 | h1
-      · cases h1
-      · obtain ⟨q, hq⟩ := afterItem_mem h1
-        cases hq
-      · exact h1
-    rw [hp]; exact List.mem_cons_of_mem _ hm2
+    rcases List.mem_append.mp hm' with h1 | h1
+    · have hplay := finishedItemFrames_mem h1
+      simp [Frame.isPlay] at hplay
+    · rw [hp]; exact List.mem_cons_of_mem _ h1
   · -- Cleanup
     rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by

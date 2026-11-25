@@ -508,7 +508,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next (finishItem_sameMeta s item).result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl (Frame.cleanup :: afterItem (finishItem s item).1)
+    exact hb.swap rfl (finishedItemFrames s item (finishItem s item))
   · rename_i rest hp
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
