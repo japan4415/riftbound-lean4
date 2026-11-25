@@ -4813,6 +4813,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match who.resolve s p env with
     | some [guesser] => (s, [.guessCardType guesser p src env unit gear spell es], [])
     | _ => skip
+  | .markTriggeredAdd idx =>
+    (s.modObj src (fun o => o.noteAbilityUse idx env.abilityCopyStamp), [.run p src env es], [])
   | .nameCard kind =>
     match s.nameableCards kind with
     | first :: more => (s, [.nameCard p src env first more es], [])

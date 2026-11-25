@@ -2039,13 +2039,12 @@ def RAD_076.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Sneaky Zeebles. -/
+/-- Sneaky Zeebles immediately adds one Power when it conquers. -/
 def RAD_076 : CardDef :=
   { RAD_076.meta with
     abilities := [.triggered (.onSelf .conquer)
-        (.of []
-        (.prim (.addPower .you (.const 1) none none))) .unlimited],
-    status := .drafted }
+      (.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-077
 /--
@@ -4501,8 +4500,16 @@ def RAD_SP2.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Akali, Brash: the effect is not written yet. -/
-def RAD_SP2 : CardDef := RAD_SP2.meta
+/-- Akali immediately adds resources on her first move and banishes the top card on her second. -/
+def RAD_SP2 : CardDef :=
+  { RAD_SP2.meta with
+    abilities := [
+      .triggered { event := .move, condition := .cmp .eq .movesThisTurn (.const 1) }
+        (.of [] (.seqOf [.prim (.addEnergy .you (.const 1) none),
+          .prim (.addPower .you (.const 1) none none)])) .unlimited,
+      .triggered { event := .move, condition := .cmp .eq .movesThisTurn (.const 2) }
+        (.of [] .banishTopForPlay) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-SP3
 /--

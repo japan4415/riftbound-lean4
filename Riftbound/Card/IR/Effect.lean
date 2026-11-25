@@ -118,6 +118,8 @@ mutual
 inductive Effect where
   /-- Nothing happens. -/
   | nop
+  /-- Record a triggered Add's use before its resource effects resolve (CR 430.2). -/
+  | markTriggeredAdd (idx : Nat)
   /-- Do the effects in order. -/
   | seq (es : EffectList)
   /-- Do the mode that was chosen when the card was played (CR 355). -/

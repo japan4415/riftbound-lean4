@@ -379,7 +379,7 @@ theorem StackInv.withTriggers {s : GameState} (hinv : StackInv s) (es : List Eve
   · rw [h]
     intro hres
     obtain ⟨g, hg, hb⟩ := hinv hres
-    refine ⟨g, insertTriggers_getLast pend _ hg ?_ ?_, hb⟩
+    refine ⟨g, insertDetectedTriggers_getLast _ pend _ hg ?_ ?_, hb⟩
     · cases g <;> simp [Frame.isBottom, Frame.isResolution] at hb ⊢
     · intro x hx
       subst hx

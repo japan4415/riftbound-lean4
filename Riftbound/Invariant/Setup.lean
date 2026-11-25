@@ -699,9 +699,10 @@ theorem SetupInv.withTriggers {s : GameState} (hinv : SetupInv s) (es : List Eve
   · rw [h]; exact hinv
   · rw [h]
     refine ⟨hinv.1, Or.inr (fun f hf => ?_)⟩
-    rcases insertTriggers_mem pend _ hf with h1 | ⟨x, h1⟩
+    rcases insertDetectedTriggers_mem hf with h1 | ⟨ts, rfl⟩ | ⟨p, src, env, todo, rfl⟩
     · exact hs f h1
-    · subst h1; rfl
+    · rfl
+    · rfl
 
 /-- Applying a legal answer to the open question keeps the setup invariant. -/
 theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}

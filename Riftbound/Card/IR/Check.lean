@@ -352,6 +352,7 @@ mutual
 /-- An effect refers only to what is there, and a mode is chosen only where modes were declared. -/
 def Effect.ok (c : Ctx) : Effect → Bool
   | .nop => true
+  | .markTriggeredAdd _ => false
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .eitherOf modes => EffectList.ok c modes

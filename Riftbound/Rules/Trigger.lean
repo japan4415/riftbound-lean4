@@ -9,6 +9,8 @@ A triggered ability fires when something it waits for happens (CR 382-385). The 
 leaves events; `detect` reads them and names the abilities that fire. They wait on the stack, in a
 `triggers` frame beneath the work that is still to do, until a player would next receive priority
 (CR 383.1); then each goes on the Chain as an object of its own, the turn player's first (CR 383.3).
+Triggered Add abilities with no finalization choices resolve before the interrupted work resumes
+(CR 430.2).
 
 The abilities that fire are those with the object itself as subject, no condition, and every time.
 A player with several abilities to put on the Chain chooses the order, and the targets of each, one
@@ -932,13 +934,96 @@ def GameState.recordTurnEvents (s : GameState) (es : List Event) : GameState :=
     playLog := if inPlay then es.foldl s.recordPlayEvent s.playLog else s.playLog
     turnFx := if inPlay then es.foldl s.recordTurnEvent s.turnFx else s.turnFx }
 
-/-- After a step: the abilities that fired wait on the stack. Not during the setup. -/
+mutual
+
+/-- Resource-only effects the engine can resolve without a further player decision. -/
+def Effect.isTriggerAdd : Effect → Bool
+  | .prim (.addEnergy .you _ none) | .prim (.addUnitEnergy .you _)
+  | .prim (.addPower .you _ _ none) => true
+  | .seq (.cons first more) => first.isTriggerAdd && more.areTriggerAdds
+  | .ifThen _ body .nop => body.isTriggerAdd
+  | _ => false
+
+/-- The remaining effects in a sequence that adds resources. -/
+def EffectList.areTriggerAdds : EffectList → Bool
+  | .nil => true
+  | .cons first more => first.isTriggerAdd && more.areTriggerAdds
+
+end
+
+/-- Finalize a mandatory, free Add without waiting for priority (CR 430.2). -/
+def PendTrigger.immediateAddFrame (s : GameState) (t : PendTrigger) : Option Frame :=
+  match triggerAbility s t with
+  | some (.triggered rule effect _) =>
+    if !rule.optional && rule.cost == .free && effect.choices.isEmpty && effect.modes.isEmpty &&
+        effect.moveChoice.isNone && effect.playerTarget.isNone && effect.body.isTriggerAdd then
+      let env : Env := {
+        slots := t.subject.toList.map Value.obj
+        sourceCard := some t.card
+        abilityCopyStamp := t.copyStamp
+        eventAmount := t.eventAmount
+        eventBattlefields := t.eventBattlefields
+        shownOff := t.shownOff }
+      some (.run t.controller t.source env (.cons (.markTriggeredAdd t.idx) (.cons effect.body .nil)))
+    else none
+  | _ => none
+
+/-- A triggered Add runs before remaining tasks. The other triggers wait for priority (CR 383.1). -/
+def insertDetectedTriggers (s : GameState) (pend : List PendTrigger) (pending : List Frame) :
+    List Frame :=
+  let arrivals := pend.map (fun t => (t, t.immediateAddFrame s))
+  let ordinary := arrivals.filterMap (fun (t, add) => if add.isNone then some t else none)
+  arrivals.filterMap Prod.snd ++
+    (if ordinary.isEmpty then pending else insertTriggers ordinary pending)
+
+/-- A triggered Add contributes only a Run frame. -/
+theorem PendTrigger.immediateAddFrame_run {s : GameState} {t : PendTrigger} {f : Frame}
+    (h : t.immediateAddFrame s = some f) :
+    ∃ p src env es, f = .run p src env es := by
+  unfold PendTrigger.immediateAddFrame at h
+  split at h
+  · dsimp only at h
+    split at h
+    · obtain rfl := Option.some.inj h.symm
+      exact ⟨_, _, _, _, rfl⟩
+    · simp at h
+  · simp at h
+
+/-- Detected abilities add only Run and trigger frames to the current stack. -/
+theorem insertDetectedTriggers_mem {s : GameState} {pend : List PendTrigger}
+    {pending : List Frame} {f : Frame} (h : f ∈ insertDetectedTriggers s pend pending) :
+    f ∈ pending ∨ (∃ ts, f = .triggers ts) ∨ ∃ p src env es, f = .run p src env es := by
+  unfold insertDetectedTriggers at h
+  rcases List.mem_append.mp h with h | h
+  · obtain ⟨⟨t, add⟩, ha, hf⟩ := List.mem_filterMap.mp h
+    obtain ⟨event, _, eq⟩ := List.mem_map.mp ha
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj eq
+    exact Or.inr (Or.inr (PendTrigger.immediateAddFrame_run hf))
+  · split at h
+    · exact Or.inl h
+    · rcases insertTriggers_mem _ _ h with old | trigger
+      · exact Or.inl old
+      · exact Or.inr (Or.inl trigger)
+
+/-- Detected abilities preserve a bottom frame that is outside resolution. -/
+theorem insertDetectedTriggers_getLast (s : GameState) (pend : List PendTrigger)
+    (pending : List Frame) {g : Frame} (hg : pending.getLast? = some g)
+    (hr : g.isResolution = false) (ht : ∀ ts, g ≠ .triggers ts) :
+    (insertDetectedTriggers s pend pending).getLast? = some g := by
+  unfold insertDetectedTriggers
+  dsimp only
+  rw [List.getLast?_append]
+  split
+  · simp [hg]
+  · simp [insertTriggers_getLast _ _ hg hr ht]
+
+/-- After a step, queue the abilities that fired outside setup. -/
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   let next := s.recordTurnEvents es
   if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
     match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) with
     | [] => next
-    | pend => { next with pending := insertTriggers pend s.pending }
+    | pend => { next with pending := insertDetectedTriggers next pend s.pending }
   else next
 
 /-- Whether the source already chose this mode of the triggered ability in the current turn. -/
@@ -1380,7 +1465,7 @@ theorem triggersStep_spec (s : GameState) (pend : List PendTrigger) (rest : List
 /-- After recording plays, triggers are inserted only outside the setup. -/
 theorem withTriggers_cases (s : GameState) (es : List Event) :
     s.withTriggers es = s.recordTurnEvents es ∨ ∃ pend, s.withTriggers es = { s.recordTurnEvents es with
-        pending := insertTriggers pend s.pending } ∧ s.phase ≠ .setup ∧
+        pending := insertDetectedTriggers (s.recordTurnEvents es) pend s.pending } ∧ s.phase ≠ .setup ∧
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
   by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true

@@ -738,8 +738,9 @@ theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event
     exact ⟨hinv.turn, hinv.hands, hinv.play⟩
   · rw [h]
     refine hinv.of_play hph rfl rfl (fun hm => ?_)
-    rcases insertTriggers_mem pend _ hm with h1 | ⟨x, h1⟩
+    rcases insertDetectedTriggers_mem hm with h1 | ⟨ts, h1⟩ | ⟨p, src, env, todo, h1⟩
     · exact h1
+    · cases h1
     · cases h1
 
 /-- Applying a legal answer to the open question keeps the hand invariant. -/
