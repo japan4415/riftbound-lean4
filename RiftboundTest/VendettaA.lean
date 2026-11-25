@@ -17,6 +17,38 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Forsaken Baccai and Oasis Raider compare Rune counts against each opponent separately.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let s := { s with
+    config := { s.config with mode := { s.config.mode with players := 3 } }
+    phase := .beginning
+    turnOrder := [p, q, third] }
+  let s := (applyEach (sendObj .banishment) s (s.runesOf p ++ s.runesOf q)).1
+  let (s, baccai) ← put s p "VEN-005" .base
+  let (s, raider) ← put s p "VEN-006" .base
+  let (s, _) ← put s p "OGN-007" .base
+  let (s, _) ← put s p "OGN-007" .base
+  let (s, _) ← put s q "OGN-007" .base
+  let (s, _) ← put s third "OGN-007" .base
+  let (s, _) ← put s third "OGN-007" .base
+  let (more, spent) ← put s third "OGN-007" .base
+  let more := more.modObj spent (fun o => { o with exhausted := true })
+  let (both, _) ← put more q "OGN-007" .base
+  let (both, _) ← put both q "OGN-007" .base
+  let event := Event.phaseStarted p .beginning
+  let tied ← fire s [event]
+  let lower ← fire more [event]
+  let twoOpponents ← fire both [event]
+  let onOpponentTurn ← fire both [.phaseStarted q .beginning]
+  let unchanged (t : GameState) :=
+    t.mightNow baccai == some 2 && t.mightNow raider == some 4 && !t.hasKw raider .ganking
+  let granted (t : GameState) :=
+    t.mightNow baccai == some 3 && t.mightNow raider == some 6 && t.hasKw raider .ganking
+  return unchanged tied && unchanged onOpponentTurn && granted lower && granted twoOpponents
+
 /-- Put Rebuttal above an En Garde finalized by the opponent, and reach its payment decision. -/
 meta def rebuttalChoice (s : GameState) (power : Nat) :
     Option (GameState × ObjId × ObjId × ObjId) := do

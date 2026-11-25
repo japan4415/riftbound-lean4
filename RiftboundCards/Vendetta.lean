@@ -147,9 +147,7 @@ def VEN_005.meta : CardDef :=
 def VEN_005 : CardDef :=
   { VEN_005.meta with
     abilities := [.triggered
-      { event := .at_ .beginning,
-        condition := .cmp .lt (.count (.all .friendly .anywhere [.ofType .rune]))
-          (.count (.all .enemy .anywhere [.ofType .rune])) }
+      { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
     status := .drafted }
 
@@ -176,9 +174,7 @@ def VEN_006.meta : CardDef :=
 def VEN_006 : CardDef :=
   { VEN_006.meta with
     abilities := [.triggered
-      { event := .at_ .beginning,
-        condition := .cmp .lt (.count (.all .friendly .anywhere [.ofType .rune]))
-          (.count (.all .enemy .anywhere [.ofType .rune])) }
+      { event := .at_ .beginning, condition := .fewerRunesThanOpponent }
       (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn,
         .grant .self (.keyword .it ⟨.ganking, .none⟩) .thisTurn])) .unlimited],
     status := .drafted }

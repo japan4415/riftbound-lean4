@@ -292,6 +292,8 @@ inductive Condition where
   | cmp (op : Cmp) (a b : Amount)
   /-- At least one object matches the selector. -/
   | exists (s : Selector)
+  /-- At least one opponent individually controls more Runes than the player. -/
+  | fewerRunesThanOpponent
   /-- The object matches the filter. -/
   | matches (s : Selector) (f : Filter)
   /-- The unit is Empowered (CR 828). -/
