@@ -366,6 +366,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
   | .revealHand w e | .revealDeckTops w e => PlayerSel.ok c w && Effect.ok c e
+  | .guessCardType who unit gear spell =>
+    PlayerSel.ok c who && Effect.ok c unit && Effect.ok c gear && Effect.ok c spell
   | .nameCard _ | .rememberNamedCard _ => true
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs

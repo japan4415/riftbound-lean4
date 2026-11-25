@@ -139,6 +139,8 @@ inductive Effect where
   | revealHand (who : PlayerSel) (body : Effect)
   /-- Reveal one top Main Deck card from each listed player and keep those cards for the body. -/
   | revealDeckTops (who : PlayerSel) (body : Effect)
+  /-- The chosen player guesses a Main Deck card type, then the controller runs that branch. -/
+  | guessCardType (who : PlayerSel) (onUnit onGear onSpell : Effect)
   /-- Name a format-legal card of this type and remember it on the source (CR 759-762). -/
   | nameCard (kind : CardType)
   /-- Record the answer to a naming choice on the original source. -/

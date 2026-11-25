@@ -357,6 +357,13 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.run p src env (.cons (.rememberNamedCard card) es)]
+  · rename_i guesser p src env unit gear spell es rest guess hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.run p src env (.cons (match guess with
+      | .unit => unit | .gear => gear | .spell => spell) es)]
   · have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h
@@ -848,6 +855,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | guessCardType p controller src env unit gear spell es =>
+    left
+    refine ⟨⟨.player p, .guessCardType .unit⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp, CardTypeGuess.choices]
   | nameCard p src env card more es =>
     left
     refine ⟨⟨.player p, .nameCard card⟩, ?_, by simp⟩
@@ -976,6 +989,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | mayDo p src env e es => exact absurd hc (by simp [Frame.isChance])
   | eitherDo p src env a b es => exact absurd hc (by simp [Frame.isChance])
   | pickDo p src env c more e es => exact absurd hc (by simp [Frame.isChance])
+  | guessCardType p controller src env unit gear spell es => exact absurd hc (by simp [Frame.isChance])
   | nameCard p src env card more es => exact absurd hc (by simp [Frame.isChance])
   | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])

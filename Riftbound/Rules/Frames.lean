@@ -396,6 +396,12 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       if bottom.isEmpty then [] else [.recycled p])
   | .nameCard p src env _ _ es :: rest, .nameCard card =>
     some ({ s with pending := .run p src env (.cons (.rememberNamedCard card) es) :: rest }, [])
+  | .guessCardType _ p src env unit gear spell es :: rest, .guessCardType guess =>
+    let branch := match guess with
+      | .unit => unit
+      | .gear => gear
+      | .spell => spell
+    some ({ s with pending := .run p src env (.cons branch es) :: rest }, [])
   | .eitherDo p _ _ _ _ _ :: _, .runeAbility c ab => applyRune s p c ab
   | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
   | _, _ => none

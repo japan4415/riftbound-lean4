@@ -355,6 +355,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
     case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
+    case 'guessCardType': {
+      const cardTypes = { unit: 'ユニット', gear: 'ギア', spell: 'スペル' };
+      return [who + ': ' + cardTypes[a.cardType] + ' と予想', ''];
+    }
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
@@ -1195,6 +1199,7 @@ function renderLegal(i) {
   const bound = (l) => { const id = actCard(l.a); return id !== null && id !== undefined && cardActs.has(String(id)); };
   const nBound = liveLegal.filter(bound).length;
   const naming = liveLegal.filter(({ a }) => a.kind === 'nameCard');
+  const guessing = liveLegal.find(({ a }) => a.kind === 'guessCardType');
   const by = new Map();
   for (const l of liveLegal) {
     if (l.a.kind === 'nameCard' || (bound(l) && !showAllMoves)) continue;
@@ -1206,6 +1211,7 @@ function renderLegal(i) {
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
   const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
   const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
+    : guessing ? 'P' + guessing.a.actor.slice(1) + ' がカードの種別を予想する'
     : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'

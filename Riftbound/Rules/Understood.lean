@@ -407,6 +407,8 @@ def Effect.understood : Effect → Bool
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e | .revealDeckTops w e => w.understood && Effect.understood e
   | .lookAtTop _ body => Effect.understood body
+  | .guessCardType who unit gear spell =>
+    who.understood && unit.understood && gear.understood && spell.understood
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
   | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true

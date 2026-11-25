@@ -70,7 +70,7 @@ open Riftbound RiftboundCards
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
 #guard (Radiance.cards.filter (fun c => c.status == .full)).all CardDef.runs
-#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 1083
+#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 1084
 
 -- The official image of Bilgewater Tracker shows Fury and the Bilgewater tag.
 #guard match db.find? ⟨"RAD-003"⟩ with

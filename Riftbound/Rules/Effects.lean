@@ -4809,6 +4809,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       (s, [.run p src known (.cons body .nil), .run p src env es],
         tops.map (fun (q, id) => .revealed q id))
     | none => skip
+  | .guessCardType who unit gear spell =>
+    match who.resolve s p env with
+    | some [guesser] => (s, [.guessCardType guesser p src env unit gear spell es], [])
+    | _ => skip
   | .nameCard kind =>
     match s.nameableCards kind with
     | first :: more => (s, [.nameCard p src env first more es], [])

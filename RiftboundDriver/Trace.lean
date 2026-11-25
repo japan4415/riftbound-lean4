@@ -419,6 +419,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .predictPick card recycle =>
       [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
     | .nameCard card => [("cardCode", jstr card.code)]
+    | .guessCardType guess => [("cardType", jstr (ctorName guess))]
     | .burnOutTarget o => [("opponent", toString o.n)]
     | .pick i => [("index", toString i)]
     | _ => []

@@ -82,6 +82,8 @@ inductive ActionKind where
   | decide (yes : Bool)
   /-- Choose this object, when an effect says to choose one while it resolves (CR 355). -/
   | choose (obj : ObjId)
+  /-- Guess a Main Deck card type in response to an effect. -/
+  | guessCardType (guess : CardTypeGuess)
   /-- Name the card uniquely identified by its logical ID (CR 759-762). -/
   | nameCard (card : CardId)
   /-- The opponent who gains a point from a Burn Out (CR 432.2.c). -/
@@ -274,6 +276,9 @@ inductive Frame where
   (CR 355). -/
   | pickDo (p : PlayerId) (src : ObjId) (env : Env) (c : ObjId) (more : List ObjId) (e : Effect)
       (rest : EffectList)
+  /-- Choice: the guesser selects the effect that the controller continues to resolve. -/
+  | guessCardType (guesser controller : PlayerId) (src : ObjId) (env : Env)
+      (onUnit onGear onSpell : Effect) (rest : EffectList)
   /-- Choice: name one of the format-legal cards offered while an ability resolves (CR 759-762).
   These are card definitions, independent of any copies on the board or in private zones. -/
   | nameCard (p : PlayerId) (src : ObjId) (env : Env) (first : CardId) (more : List CardId)
@@ -318,7 +323,7 @@ def Frame.isPlay : Frame → Bool
   | .mayDo .. => true
   | .eitherDo .. => true
   | .pickDo .. => true
-  | .nameCard .. => true
+  | .nameCard .. | .guessCardType .. => true
   | .predict .. | .chancePredict .. => true
   | _ => false
 

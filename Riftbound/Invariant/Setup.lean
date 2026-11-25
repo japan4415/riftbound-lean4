@@ -672,6 +672,15 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
       (new := [Frame.run p src env (.cons (.rememberNamedCard card) es)]) rfl
       (by simp [Frame.isSetup])
+  · rename_i guesser p src env unit gear spell es rest guess hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    let branch := match guess with
+      | .unit => unit
+      | .gear => gear
+      | .spell => spell
+    exact hinv.of_nonsetup hp rfl rfl
+      (new := [Frame.run p src env (.cons branch es)]) rfl (by simp [Frame.isSetup])
   · rename_i p source env first other es rest c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])

@@ -150,6 +150,8 @@ def legalFrameActions (s : GameState) : List Action :=
       | _ => true) ++
     (if x.isPayment then legalRunes s p ++ legalManas s p else [])
   | .pickDo p _ _ c more _ _ :: _ => (c :: more).map (fun o => ⟨.player p, .choose o⟩)
+  | .guessCardType p .. :: _ =>
+    CardTypeGuess.choices.map (fun guess => ⟨.player p, .guessCardType guess⟩)
   | .nameCard p _ _ c more _ :: _ => (c :: more).map (fun id => ⟨.player p, .nameCard id⟩)
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map

@@ -209,6 +209,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · rename_i c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2.1
@@ -406,6 +407,9 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((completePrediction_safe _ _ _ _ _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl

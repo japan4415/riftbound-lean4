@@ -55,6 +55,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player p ∧ eitherOk s p src env x y yes = true
   -- an object chosen while an effect resolves (CR 355): one of the candidates
   | .pickDo p _ _ c more _ _ :: _, .choose o => a.actor = .player p ∧ o ∈ c :: more
+  | .guessCardType p .. :: _, .guessCardType guess =>
+    a.actor = .player p ∧ guess ∈ CardTypeGuess.choices
   | .nameCard p _ _ c more _ :: _, .nameCard named => a.actor = .player p ∧ named ∈ c :: more
   -- the order of a Recycle to the Main Deck (CR 417.5): an arrangement of the cards set aside
   | .chanceRecycle p :: _, .arrange l =>

@@ -1704,8 +1704,17 @@ def RAD_064.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Scrutinizing Scope: the effect is not written yet. -/
-def RAD_064 : CardDef := RAD_064.meta
+/-- Scrutinizing Scope lets an opponent guess before the controller reveals and moves their top card. -/
+def RAD_064 : CardDef :=
+  let card := Selector.revealedDeck .friendly
+  let resolveGuess (kind : CardType) := Effect.revealDeckTops .you
+    (.ifThen (.matches card (.ofType kind)) (.prim (.recycle card)) (.prim (.drawLooked card)))
+  { RAD_064.meta with
+    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
+      { playerTarget := some .enemy
+        body := .guessCardType (.chosen 0) (resolveGuess .unit) (resolveGuess .gear) (resolveGuess .spell) }
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-065
 /--
