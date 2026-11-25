@@ -1797,6 +1797,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Temporal Breach では、追放した Unit を持ち主が元の Battlefield へプレイする。相手に支配されていた Unit も、新しいオブジェクトとして持ち主の側に戻ることをテストした。
 - 167 枚中 92 枚が `drafted`、88 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 9 — 敵から選ばれない効果
+
+- Twilight Shroud の保護はターン中だけ働き、Akali, Silent の保護は同じ Battlefield で戦闘をしている間だけ外れる。どちらも味方の選択は許す。
+- 167 枚中 94 枚が `drafted`、90 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**

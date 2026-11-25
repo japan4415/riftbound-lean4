@@ -623,42 +623,6 @@ def GameState.candidates (s : GameState) (p : PlayerId) (self : ObjId) (env : En
   let objs ← s.placeObjs self place
   s.keepMatching p self env side fs objs
 
-/-- The player `p` cannot choose the object: it is of another player, and it has the passive ability
-that says it can't be chosen by enemy spells and abilities (Ruin Runner). -/
-def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
-  (s.obj? id).any (·.controller != p) &&
-    ((s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
-      match ab with
-      | Ability.passive .always mods => mods.contains (.cant .self .beChosen)
-      | _ => false)) ||
-    -- an object of its controller says that some objects of theirs can't be chosen (Alpha Wildclaw)
-    s.inPlay.any (fun g =>
-      match s.obj? g, s.obj? id with
-      | some og, some o =>
-        og.controller == o.controller &&
-          (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
-            match ab with
-            | Ability.passive .always mods =>
-              mods.any (fun m => match m with
-                | .cant (.pick .all side place fs) .beChosen =>
-                  side.admits og.controller o && ((s.placeObjs g place).getD []).contains id &&
-                    FilterList.holds s g {} id fs == some true
-                | _ => false)
-            | _ => false))
-      | _, _ => false))
-
-/-- The objects of a side at a place that have the properties, for a choice made while an effect
-resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
-target cannot be. -/
-def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
-    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
-  match place.zoneKind? with
-  | some z =>
-    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
-      acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
-        FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
-  | none => (s.candidates p self env side place fs).map (·.filter (fun id => !s.blocksChoice p id))
-
 /-- A member of the answer is a member of the list that was filtered. -/
 theorem GameState.mem_keepMatching {s : GameState} {p : PlayerId} {self : ObjId} {env : Env}
     {side : Side} {fs : FilterList} {l r : List ObjId}
@@ -1086,6 +1050,43 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&
         (s.cardDef? ⟨k⟩).any (·.hasType .spell)))
   | _ => none
+
+/-- The player can't choose an object protected from enemy spells and abilities. Read conditions
+as well as protection granted by an effect of this turn (CR 355). -/
+def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
+  match s.obj? id with
+  | none => false
+  | some o => o.controller != p &&
+    (s.turnFx.any (fun f =>
+        f.turn == s.turn && f.target == some id && f.kind == .unchoosableEnemy) ||
+      (s.cardDef? id).any (fun d => d.fullAbilities.any (fun ab =>
+        match ab with
+        | .passive cond mods =>
+          mods.contains (.cant .self .beChosen) && cond.eval s o.controller id {} == some true
+        | _ => false)) ||
+      s.inPlay.any (fun src =>
+        (s.obj? src).any (·.controller == o.controller) &&
+          (s.cardDef? src).any (fun d => d.fullAbilities.any (fun ab =>
+            match ab with
+            | .passive cond mods =>
+              mods.any (fun m => match m with
+                | .cant (.pick .all side place fs) .beChosen =>
+                  side.admits o.controller o && ((s.placeObjs src place).getD []).contains id &&
+                    FilterList.holds s src {} id fs == some true
+                | _ => false) && cond.eval s o.controller src {} == some true
+            | _ => false))))
+
+/-- The objects of a side at a place that have the properties, for a choice made while an effect
+resolves: also the cards of a player's zone off the board (the hand, the Trash, a deck), which a
+target cannot be. -/
+def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env : Env)
+    (side : Side) (place : Place) (fs : FilterList) : Option (List ObjId) :=
+  match place.zoneKind? with
+  | some z =>
+    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+      acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
+        FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
+  | none => (s.candidates p self env side place fs).map (·.filter (fun id => !s.blocksChoice p id))
 
 /-- A target of this quantity is one a Spell can make for now: one, or up to some number. -/
 def Quantity.pickable : Quantity → Bool

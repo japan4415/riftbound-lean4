@@ -828,8 +828,13 @@ def VEN_031.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Twilight Shroud: the effect is not written yet. -/
-def VEN_031 : CardDef := VEN_031.meta
+/-- Twilight Shroud. -/
+def VEN_031 : CardDef :=
+  { VEN_031.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
+        .prim (.markOn (.slot 0) .unchoosableEnemy)])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-032
 /--
@@ -1009,8 +1014,13 @@ def VEN_038.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Akali, Silent: the effect is not written yet. -/
-def VEN_038 : CardDef := VEN_038.meta
+/-- Akali, Silent. -/
+def VEN_038 : CardDef :=
+  { VEN_038.meta with
+    abilities := [.passive (.not .inCombatHere) [.cant .self .beChosen],
+      .triggered { event := .move, condition := .matches .self .onBattlefield }
+        (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-039
 /--

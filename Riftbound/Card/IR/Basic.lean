@@ -107,6 +107,8 @@ deriving DecidableEq, Repr, Hashable
 
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
+  /-- The unit can't be chosen by enemy spells and abilities this turn. -/
+  | unchoosableEnemy
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
   /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of

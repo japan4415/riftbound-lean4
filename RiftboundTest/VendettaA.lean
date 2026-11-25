@@ -263,4 +263,20 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (result.obj? newId).any (fun o =>
       o.owner == s.you && o.controller == s.you && o.damage == 0 && o.loc == some s.bf0)
 
+-- Twilight Shroud protects from enemy choices for this turn and still allows friendly choices.
+#guard vendettaCase fun s => do
+  let (s, shroud) ← put s s.me "VEN-031" .hand
+  let (s, unit) ← put s s.me "OGN-051" .base
+  let a ← play s s.me shroud [unit]
+  let next := { a with turn := a.turn + 1 }
+  return a.blocksChoice s.you unit && !(a.blocksChoice s.me unit) &&
+    !(next.blocksChoice s.you unit) && a.mightNow unit == (s.mightNow unit).map (· + 1)
+
+-- Akali's protection applies outside combat and stops at the Battlefield where she fights.
+#guard vendettaCase fun s => do
+  let (s, akali) ← putAt s s.me "VEN-038" s.bf0
+  let combat := s.inCombatAt s.bf0 s.me
+  return s.blocksChoice s.you akali && !(s.blocksChoice s.me akali) &&
+    !(combat.blocksChoice s.you akali)
+
 end RiftboundTest
