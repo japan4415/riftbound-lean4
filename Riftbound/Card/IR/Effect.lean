@@ -139,7 +139,7 @@ inductive Effect where
   /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/
   | planPermanentPlay (card : ObjId) (terms : EffectPlayTerms)
   /-- Banish one Unit before its owner finalizes the new play. -/
-  | banishForReplay (card : ObjId) (sameLocation : Bool)
+  | banishForReplay (card : ObjId) (replay : BanishReplay)
   /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
   | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
   /-- Continue choosing resource activations for the selected finalization. -/

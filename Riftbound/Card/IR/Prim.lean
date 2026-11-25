@@ -23,6 +23,16 @@ inductive Dest where
   | at_ (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
+/-- Who replays a banished Unit and where the effect requires it to enter. -/
+inductive BanishReplay where
+  /-- Its owner plays it to a legal location. -/
+  | byOwner
+  /-- Its owner plays it to the location it left. -/
+  | sameLocation
+  /-- The effect's controller plays it to their Base. -/
+  | toBase
+deriving DecidableEq, Repr, Hashable
+
 /-- A game action: one thing an effect does (CR 408-446). -/
 inductive Prim where
   /-- The players draw cards (CR 414). -/
@@ -78,9 +88,9 @@ inductive Prim where
   | counterToHand (s : Selector)
   /-- Play a card. -/
   | play (s : Selector)
-  /-- Banish the units, then their owners play them, ignoring their cost (a token that is banished
-  ceases to exist). -/
-  | banishReplay (s : Selector) (sameLocation : Bool := false)
+  /-- Banish the Units, then play them according to the effect's instructions (CR 420.3, 428).
+  A banished token ceases to exist. -/
+  | banishReplay (s : Selector) (replay : BanishReplay := .byOwner)
   /-- The Unit attached to this Equipment snapshots the chosen Unit's copyable traits (CR 479.1). -/
   | copyAttachedFrom (s : Selector)
   /-- Play the cards, ignoring their Energy cost: their Power cost is paid (Promising Future). -/

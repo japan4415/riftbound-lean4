@@ -2117,18 +2117,18 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s1, c) ← put s s.me "OGN-102" .hand
   let (s2, u) ← putAt s1 s.me "OGN-001" s.bf0
   let hurt := (s2.modObj u (fun o => { o with damage := 2 })).buff u
-  let a ← play hurt s.me c
+  let a ← play hurt s.me c [u]
   let w ← a.firstOf s.me .base "OGN-001"
   -- a unit at the Base is played again where it is
   let (t1, v) ← put s1 s.me "OGN-001" .base
-  let b ← play ((t1.modObj v (fun o => { o with damage := 2 })).buff v) s.me c
+  let b ← play ((t1.modObj v (fun o => { o with damage := 2 })).buff v) s.me c [v]
   let x ← b.firstOf s.me .base "OGN-001"
   return a.where? w == some (.player s.me .base) && a.tired w == some true &&
     (a.obj? w).map (·.damage) == some 0 && (a.obj? w).map (·.buffed) == some false &&
     (a.obj? w).map (·.loc) == some none && s2.where? u == some .battlefieldZone &&
     a.countIn s.me .base "OGN-001" == 1 &&
     b.tired x == some true && (b.obj? x).map (·.damage) == some 0 &&
-    b.countIn s.me .base "OGN-001" == 1
+    b.countIn s.me .base "OGN-001" == 1 && a.locate u == none && b.locate v == none
 -- Soulgorger and Spectral Matron put the unit in exhausted
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-196" .hand

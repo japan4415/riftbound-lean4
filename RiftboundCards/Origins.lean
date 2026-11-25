@@ -2750,8 +2750,8 @@ def OGN_102.meta : CardDef :=
 /-- Portal Rescue. -/
 def OGN_102 : CardDef :=
   { OGN_102.meta with
-    spellEffect := some (.of []
-      (.prim (.play (Selector.one .friendly .anywhere [.ofType .unit])))),
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (.prim (.banishReplay (.slot 0) .toBase))),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-103

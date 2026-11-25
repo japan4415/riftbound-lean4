@@ -1416,10 +1416,9 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
       (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
 
-/-- Banish a unit, then its owner plays it, ignoring its cost: it comes back as a new object, with
-nothing of what it had. Replay to the previous Battlefield when the effect says the location
-stays the same. A token ceases to exist when banished (CR 187, 428). -/
-def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (sameLocation : Bool := false) :
+/-- Banish a Unit and play the resulting card as a new object, ignoring its cost. A token
+ceases to exist when banished (CR 187, 420.3, 428). -/
+def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (replay : BanishReplay := .byOwner) :
     GameState × List Event :=
   let r := banishObj p s id
   match r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none),
@@ -1428,15 +1427,16 @@ def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (sameLocation : Boo
     match o.kind with
     | .token _ => r
     | _ =>
-      let t := match if sameLocation then o.loc else none with
-        | some bf => playFreeAt o.owner bf r.1 n
-        | none => playFree o.owner r.1 n
+      let player := if replay == .toBase then p else o.owner
+      let t := match if replay == .sameLocation then o.loc else none with
+        | some bf => playFreeAt player bf r.1 n
+        | none => playFree player r.1 n
       (t.1, r.2 ++ t.2)
   | _, _ => r
 
 /-- Banishing a unit and playing it again is a safe change. -/
-theorem banishReplay_safe (p : PlayerId) (s : GameState) (id : ObjId) (sameLocation : Bool) :
-    Safe s (banishReplay p s id sameLocation).1 := by
+theorem banishReplay_safe (p : PlayerId) (s : GameState) (id : ObjId) (replay : BanishReplay) :
+    Safe s (banishReplay p s id replay).1 := by
   unfold banishReplay
   dsimp only
   split
@@ -4594,22 +4594,25 @@ def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
       play.append (.cons (.prim (.recycle (.slotsFrom 0))) .nil))
   | _ => none
 
-/-- After Banish, the owner chooses how to play the new object. The rest of the effect belongs to
-its original controller (CR 355.17, 428). -/
+/-- After Banish, finalize the new play with the player and location the effect specifies.
+The original controller resolves the rest of the effect (CR 355.17, 420.3, 428). -/
 def replayFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (id : ObjId)
-    (sameLocation : Bool) (events : List Event) (es : EffectList) : List Frame :=
+    (replay : BanishReplay) (events : List Event) (es : EffectList) : List Frame :=
   match s.obj? id, banishedPlayId events with
   | some original, some card =>
-    let previous := if sameLocation then [[original.loc]] else []
-    let hidden := if original.owner == p then env.hiddenPlayRequirements else []
-    let terms : EffectPlayTerms := { price := .ignoreBase, requirements := previous ++ hidden }
-    [.run original.owner src env (.cons (.planPermanentPlay card terms) .nil), .run p src env es]
+    let (player, locations) := match replay with
+      | .byOwner => (original.owner, [])
+      | .sameLocation => (original.owner, [[original.loc]])
+      | .toBase => (p, [[none]])
+    let hidden := if player == p then env.hiddenPlayRequirements else []
+    let terms : EffectPlayTerms := { price := .ignoreBase, requirements := locations ++ hidden }
+    [.run player src env (.cons (.planPermanentPlay card terms) .nil), .run p src env es]
   | _, _ => [.run p src env es]
 
 /-- The continuation of replay contains only frames of play. -/
 theorem replayFrames_mem {s : GameState} {p : PlayerId} {src id : ObjId} {env : Env}
-    {sameLocation : Bool} {events : List Event} {es : EffectList} {f : Frame}
-    (h : f ∈ replayFrames s p src env id sameLocation events es) : f.isPlay = true := by
+    {replay : BanishReplay} {events : List Event} {es : EffectList} {f : Frame}
+    (h : f ∈ replayFrames s p src env id replay events es) : f.isPlay = true := by
   unfold replayFrames at h
   split at h <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at h
   · rcases h with rfl | rfl <;> rfl
@@ -4754,9 +4757,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       let options := plans.map (.finishReducedPermanent card terms)
       let decline := if plans.all (fun plan => !plan.battlefieldFees.isEmpty) then [.nop] else []
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList (options ++ decline))) es)], [])
-  | .banishForReplay id sameLocation =>
+  | .banishForReplay id replay =>
     let banished := banishObj p s id
-    (banished.1, replayFrames s p src env id sameLocation banished.2 es, banished.2)
+    (banished.1, replayFrames s p src env id replay banished.2 es, banished.2)
   | .finishReducedPermanent card terms plan =>
     if (permanentPlayPlans s p card terms).contains plan then
       match applyReducedPermanent s p card plan with
@@ -4863,9 +4866,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       match applyPrim s p src env (.kill sel) with
       | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
       | none => skip
-  | .prim (.banishReplay sel sameLocation) =>
+  | .prim (.banishReplay sel replay) =>
     let units := (sel.eval s p src env).getD []
-    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit sameLocation))
+    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
     (s, [.run p src env (replays.append es)], [])
   | .prim (.playReduced sel less dest) =>
     match castReducedStep s p src env sel less dest es funding with

@@ -3741,6 +3741,39 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   return readyBase && tiredBase && readyField && tiredField &&
     ((step 100 s (play .plain [field])).toOption).isNone
 
+-- Portal Rescue banishes Eclipse Dragon before its new play. Even with a controlled
+-- Battlefield available, both Accelerate choices return it under the Spell player's control.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, dragon) ← putAt s q "VEN-016" field
+  let s := (setController p s dragon).1
+  let (s, rescue) ← put s p "OGN-102" .hand
+  let s := ((s.control p field).fund p 4 (fury := 1) (mind := 1)).modObj dragon
+    (fun o => { o with damage := 2, buffed := true })
+  let act (t : GameState) (who : PlayerId) (a : ActionKind) := (step 100 t ⟨.player who, a⟩).toOption
+  let (played, _) ← act s p (.playCard rescue ⟨3, [.mind]⟩ [dragon])
+  let (waiting, _) ← act played p .pass
+  let (choice, banished) ← act waiting q .pass
+  let card ← choice.firstOf q .banishment "VEN-016"
+  let .eitherDo _ _ _ (.finishReducedPermanent _ _ first) (.finishReducedPermanent _ _ last) _ :: _ :=
+    choice.pending | none
+  let verify (accelerated : Bool) : Option Bool := do
+    let (t, _) ← chooseEffectPlay (fun
+      | .finishReducedPermanent id _ plan =>
+        id == card && plan.battlefield.isNone && plan.accelerated == accelerated
+      | _ => false) 4 choice
+    let item ← t.firstOf p .base "VEN-016"
+    return item != dragon && item != card && (t.obj? item).any (fun o =>
+      o.owner == q && o.controller == p && o.exhausted == !accelerated &&
+        o.loc.isNone && o.damage == 0 && !o.buffed) &&
+      (t.poolOf p).energy == (if accelerated then 0 else 1)
+  let ready ← verify true
+  let tired ← verify false
+  return banished.contains (.banished p q card) && choice.locate dragon == none &&
+    first.battlefield.isNone && last.battlefield.isNone && ready && tired
+
 -- A test Gear with both Quick-Draw and an optional cost can make either decision as a Reaction.
 #guard vendettaCase fun s => do
   let p := s.me

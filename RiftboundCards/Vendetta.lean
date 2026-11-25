@@ -1865,7 +1865,7 @@ def VEN_066.meta : CardDef :=
 def VEN_066 : CardDef :=
   { VEN_066.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-      (.prim (.banishReplay (.slot 0) true))),
+      (.prim (.banishReplay (.slot 0) .sameLocation))),
     status := .drafted }
 
 -- BEGIN GENERATED VEN-067
