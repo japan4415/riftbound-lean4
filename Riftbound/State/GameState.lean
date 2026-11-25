@@ -201,6 +201,15 @@ def attachmentCopyActive (s : GameState) (unit : ObjId) (copy : AttachmentCopy) 
 def attachmentCopyOf (s : GameState) (unit : ObjId) (o : Object) : Option AttachmentCopy :=
   o.attachmentCopies.find? (s.attachmentCopyActive unit)
 
+/-- Check that the Effect Text belongs to this occurrence of the attachment (CR 436, 482). -/
+def attachmentTextActive (s : GameState) (unit : ObjId) (copy : AttachmentCopy) : Bool :=
+  (s.obj? copy.gear).any (fun o =>
+    o.attached == some unit && o.attachmentTextStamp == some copy.stamp)
+
+/-- The active Effect Text copies currently appended to a Unit's rules text (CR 719.1, 479.3.c). -/
+def activeAttachmentText (s : GameState) (unit : ObjId) : List AttachmentCopy :=
+  ((s.obj? unit).map (·.attachmentTextCopies)).getD [] |>.filter (s.attachmentTextActive unit)
+
 /-- The instance of the object's current copied rules text, if any. -/
 def copyStamp? (s : GameState) (unit : ObjId) : Option Timestamp :=
   (s.obj? unit).bind (fun o => (s.attachmentCopyOf unit o).map (·.stamp))

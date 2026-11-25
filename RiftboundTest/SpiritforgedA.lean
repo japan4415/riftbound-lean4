@@ -3621,7 +3621,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s2, g) ← put s1 s.me "SFD-059" .base
   let (s3, _) ← putAt s2 s.you "OGN-088" s.bf0
   let d ← s3.cardDef? udyr
-  let copyIdx := d.fullAbilities.length - 1
+  let copyIdx := d.fullAbilities.length
   let held := (attachTo udyr s3 g).1
   let buffed := held.buff udyr
   let loose := s3.buff udyr

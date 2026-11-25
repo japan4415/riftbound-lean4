@@ -443,7 +443,11 @@ def useOf (idx : Nat) (ex : Bool) (copy : Option Timestamp) (o : Object) : Objec
 /-- A granted activation keeps its identity even while the Unit's printed rules text is copied. -/
 def GameState.activationCopyStamp (s : GameState) (src : ObjId) (grant : Option AbilityGrant) :
     Option Timestamp :=
-  if grant.isNone then s.copyStamp? src else none
+  grant.elim (s.copyStamp? src) (·.copyStamp)
+
+/-- Copied text has a stable rules-text index independently of the menu order. -/
+def activationUseIndex (idx : Nat) (grant : Option AbilityGrant) : Nat :=
+  ((grant.filter (·.copyStamp.isSome)).map (·.index)).getD idx
 
 /-- The object an ability becomes on the Chain: it belongs to the player who used it (CR 337). -/
 def abilityItem (card : CardId) (idx : Nat) (src : ObjId) (p : PlayerId) (ts : List ObjId)
@@ -542,7 +546,8 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                     s.deflectOk p pool ts) &&
                 (match limit with
                   | .unlimited => true
-                  | .perTurn n => decide (o.abilityUses idx (s.activationCopyStamp src grant) < n)) &&
+                  | .perTurn n =>
+                    decide (o.abilityUses (activationUseIndex idx grant) (s.activationCopyStamp src grant) < n)) &&
                 targetsOk s p src s.mightTable body.choices ts &&
                 (s.discardCostOk p src costs discards &&
                   (s.playerTargetOptions p body.playerTarget).contains targetPlayer)
@@ -664,7 +669,7 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       let paid := preCost s p costs ts (d.hasType .gear) pool discards
       let noted := paid.1.noteGearAbility p d costs
       let copy := s.activationCopyStamp src grant
-      let used := useAtCost s idx costs ts copy
+      let used := useAtCost s (activationUseIndex idx grant) costs ts copy
       let paidState := (noted.modObj src used).setPool p pool
       let item := { abilityItem d.id idx src p ts with
         activationGrant := grant, abilityCopyStamp := copy, targetPlayer }
@@ -700,7 +705,7 @@ theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx
           obtain ⟨rfl, -⟩ := he
           let paid := (preCost s p costs ts (d.hasType .gear) pool discards).1
           let noted := paid.noteGearAbility p d costs
-          let use := useAtCost s idx costs ts (s.activationCopyStamp src grant)
+          let use := useAtCost s (activationUseIndex idx grant) costs ts (s.activationCopyStamp src grant)
           have paySafe : Safe s ((noted.modObj src use).setPool p pool) :=
             ((preCost_safe s p costs ts _ pool discards).trans (paid.noteGearAbility_safe p d costs)).trans
               ((Safe.modObj noted src (f := use) (fun _ => rfl) (fun _ => rfl)).trans

@@ -50,13 +50,7 @@ holds. -/
 def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
   match s.obj? src, s.cardDef? src with
   | some o, some d =>
-    -- an Equipment that copies the text of its Unit (Svellsongur): the Unit has its text once more
-    let copied : Bool := s.inPlay.any (fun g => (s.obj? g).any (·.attached == some src) &&
-      (s.cardDef? g).any (fun e => e.abilities.any (fun ab =>
-        match ab with
-        | Ability.passive .always mods => mods.contains .copiesUnitText
-        | _ => false)))
-    (d.fullAbilities ++ (if copied then d.fullAbilities else [])).flatMap (fun ab =>
+    (s.appendedAbilities src d).flatMap (fun ab =>
       match ab with
       | Ability.passive cond mods =>
         if cond.eval s o.controller src {} == some true then mods else []
@@ -71,7 +65,7 @@ def controlledMods (s : GameState) (p : PlayerId) : List StaticMod :=
 make the requested change. Repeating a source's text does not affect this yes/no test. -/
 def hasControlledMod (s : GameState) (p : PlayerId) (mod : StaticMod) : Bool :=
   s.passiveSources.any (fun src => (s.obj? src).any (·.controller == p) &&
-    (s.cardDef? src).any (fun d => d.fullAbilities.any (fun
+    (s.cardDef? src).any (fun d => (s.appendedAbilities src d).any (fun
       | .passive cond mods => mods.contains mod && cond.eval s p src {} == some true
       | _ => false)))
 
@@ -253,11 +247,11 @@ def passiveKws (s : GameState) (id : ObjId) : List KeywordInst :=
         | _ => [])
     | none => [])
 
-/-- The keywords an object has besides those printed on its card: those the Equipment attached to
-it gives it, those the passive abilities of other objects give it now, and those an effect gave it
-for a while (CR 479.3). -/
+/-- The object's keywords from attached Effect Text, passive abilities, and temporary effects
+(CR 479.3). -/
 def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
-  s.equipKws id ++ s.passiveKws id ++ (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
+  (s.attachmentTextDefs id).flatMap (·.1.keywords) ++ s.equipKws id ++ s.passiveKws id ++
+    (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
 
 /-- Whether the object has a printed or granted keyword (CR 479.3). -/
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=

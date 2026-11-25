@@ -248,6 +248,95 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     (copied.poolOf p).energy == 0 && (copied.poolOf p).order == 0 &&
     (detached.cardDef? unit).any (·.id.code == "VEN-074") && detached.mightNow unit == some 3
 
+-- Svellsongur copies Plaza Guardian during Equip. A later trait copy changes the
+-- Unit's own definition, but the attached Effect Text still contributes Deflect.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, svell) ← put s p "SFD-059" .base
+  let (s, curator) ← put s p "VEN-137" .base
+  let (s, host) ← put s p "VEN-064" .base
+  let (s, model) ← put s p "SFD-149" .base
+  let (s, _) ← put s p "VEN-014" .base
+  let s := s.fund p 2 (calm := 1) (order := 1)
+  let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
+  let (chain, _) ← act s (.activate svell 1 ⟨1, [.calm]⟩ [host])
+  let held := settleChain {} 8 chain
+  let (chain, _) ← act held (.activate curator 1 ⟨1, [.order]⟩ [host])
+  let choice ← awaitCopyChoice 6 chain
+  let (copied, _) ← act choice (.choose model)
+  let released := (detachObj copied svell).1
+  let reattached := (attachTo host released svell).1
+  let restored := (detachObj reattached curator).1
+  return held.deflectOf host == 2 && copied.deflectOf host == 1 && released.deflectOf host == 0 &&
+    copied.hasKw host .deflect && !released.hasKw host .deflect &&
+    (copied.cardDef? host).any (·.id.code == "SFD-149") &&
+    (copied.attachmentTextDefs host |>.map (·.1.id.code)) == ["VEN-064"] &&
+    (reattached.attachmentTextDefs host |>.map (·.1.id.code)) == ["SFD-149"] &&
+    (triggersOf restored host p .play).length == 1 && restored.deflectOf host == 1
+
+-- Use the captured Udyr activation through the Unit that has since changed definition.
+-- It resolves from the Chain even if Svellsongur detaches in the meantime.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, udyr) ← put s p "OGN-157" .base
+  let (s, svell) ← put s p "SFD-059" .base
+  let (s, curator) ← put s p "VEN-137" .base
+  let (s, model) ← put s p "VEN-121" .base
+  let (s, target) ← putAt s s.you "VEN-091" s.bf0
+  let held := (attachTo udyr s svell).1
+  let attached := (attachTo udyr held curator).1
+  let copied := (copyAttachedUnit curator attached model).1.buff udyr
+  let d ← copied.cardDef? udyr
+  let index := d.fullAbilities.length
+  let action : Action := ⟨.player p, .activate udyr index ⟨0, []⟩ []⟩
+  let (chain, _) ← (step 100 copied action).toOption
+  let loose := (detachObj chain svell).1
+  let resolved := settleChain {} 10 loose
+  return d.id.code == "VEN-121" && (legalActions copied).contains action &&
+    !(activatable loose p udyr index ⟨0, []⟩ [] true) &&
+    (resolved.obj? target).any (·.damage == 2) && (resolved.obj? udyr).any (fun o => !o.buffed)
+
+-- The copied Add of Dragonsoul Sage remains an immediate resource action through
+-- the new Unit, including during resource payment for an effect.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, host) ← put s p "UNL-093" .base
+  let (s, svell) ← put s p "SFD-059" .base
+  let (s, curator) ← put s p "VEN-137" .base
+  let (s, model) ← put s p "VEN-121" .base
+  let s := s.fund p 0
+  let held := (attachTo host s svell).1
+  let copied := (copyAttachedUnit curator (attachTo host held curator).1 model).1
+  let d ← copied.cardDef? host
+  let idx := d.fullAbilities.length
+  let use : Action := ⟨.player p, .manaAbility host idx ⟨0, []⟩⟩
+  let (paid, _) ← (step 100 copied use).toOption
+  let loose := (detachObj copied svell).1
+  return (legalActions copied).contains use && (effectAddSlots copied p).contains (host, idx) &&
+    (paid.poolOf p).energy == 1 && paid.tired host == some true && (paid.zone .chain).isEmpty &&
+    !(legalActions loose).contains use && !(effectAddSlots loose p).contains (host, idx)
+
+-- Each copy supplies its own eventual death trigger, even after the host's
+-- copied traits leave the Board and both pieces of Equipment detach.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, host) ← put s p "VEN-128" .base
+  let (s, first) ← put s p "SFD-059" .base
+  let (s, second) ← put s p "SFD-059" .base
+  let (s, curator) ← put s p "VEN-137" .base
+  let (s, model) ← put s p "VEN-121" .base
+  let s := s.modObj host (fun o => { o with empowerCount := 1 })
+  let firstOn := (attachTo host s first).1
+  let secondOn := (attachTo host firstOn second).1
+  let changed := (copyAttachedUnit curator (attachTo host secondOn curator).1 model).1
+  let (killed, events) := killObj changed host
+  let remains ← killed.firstOf p .trash "VEN-128"
+  let detached := (detachObj (detachObj killed first).1 second).1
+  let triggers := detectOne detached (.died remains p)
+  let done ← fire detached events
+  return triggers.length == 2 && (triggers.filterMap (·.copyStamp)).eraseDups.length == 2 &&
+    triggers.all (fun t => t.card.code == "VEN-128") && done.countNamed p .base "Recruit" == 4
+
 -- A newer copy can cover an older one, and copying a copy snapshots that definition.
 #guard vendettaCase fun s => do
   let p := s.me
@@ -4579,7 +4668,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let (casting, _) ← (step 100 s ⟨.player p, .playCard dominus ⟨4, []⟩ [unit]⟩).toOption
   let modified := casting.modObj unit (fun o => { o with buffed := true })
   let boosted := settleChain {} 10 modified
-  let grant : AbilityGrant := ⟨cid "VEN-142", 0⟩
+  let grant : AbilityGrant := { card := cid "VEN-142", index := 0 }
   let idx := d.fullAbilities.length
   let payment : RunePool.Payment := ⟨0, [.fury, .order]⟩
   let use : Action := ⟨.player p, .activate unit idx payment []⟩

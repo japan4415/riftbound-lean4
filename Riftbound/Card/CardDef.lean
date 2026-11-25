@@ -244,26 +244,18 @@ def legendAbilities (c : CardDef) : List Ability :=
           (.prim (.attach (.slot 0) (.slot 1))) .nop)) .unlimited]
   else []
 
-/-- A Unit with an Equipment attached that copies its text has its activated abilities once more
-(Svellsongur): the same abilities, usable only while such an Equipment is attached. -/
-def copiedAbilities (c : CardDef) : List Ability :=
-  if c.types.contains .unit then
-    c.abilities.filterMap (fun ab =>
-      match ab with
-      | .activated costs sp body lim =>
-        some (.activated costs sp
-          (EffectDef.of body.choices
-            (.ifThen (.exists (Selector.all .friendly .anywhere [.attachedTo .self, .copiesText]))
-              body.body .nop)) lim)
-      | _ => none)
-  else []
+/-- The abilities from the card's copyable rules text, including printed keywords (CR 479.1). -/
+def textAbilities (c : CardDef) : List Ability := c.abilities ++ c.printedKeywordAbilities
 
-/-- The abilities that the keywords of the card stand for, the one that plays a Unit from the
-Champion Zone, the ones that play a Unit to a Battlefield, the one a Legend gets from a Battlefield,
-and the copies of a Unit's activated abilities. -/
+/-- Whether this Equipment copies the Unit's text to its own Effect Text when attaching. -/
+def copiesUnitText (c : CardDef) : Bool :=
+  c.abilities.any (fun
+    | .passive .always mods => mods.contains .copiesUnitText
+    | _ => false)
+
+/-- The abilities from keywords and the implicit abilities of Champion Zone cards and Legends. -/
 def keywordAbilities (c : CardDef) : List Ability :=
-  c.printedKeywordAbilities ++ c.championPlay ++ c.legendAbilities ++
-    c.copiedAbilities
+  c.printedKeywordAbilities ++ c.championPlay ++ c.legendAbilities
 
 /-- The abilities of the card itself: the written ones, and those of its keywords. -/
 def fullAbilities (c : CardDef) : List Ability := c.abilities ++ c.keywordAbilities

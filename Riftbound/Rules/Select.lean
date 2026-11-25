@@ -35,6 +35,19 @@ def cardDef? (s : GameState) (c : ObjId) : Option CardDef :=
   (s.obj? c).bind (fun o =>
     (((s.attachmentCopyOf c o).map (·.card)) <|> o.kind.cardId?).bind s.cards.find?)
 
+/-- Card definitions captured when Equipment attached, with their distinct ability instances.
+Leave and death events use the last active copies preserved on the object that changed zones. -/
+def attachmentTextDefs (s : GameState) (id : ObjId) (last : Bool := false) :
+    List (CardDef × Timestamp) :=
+  let copies := if last && (s.obj? id).any (·.leftBoard) then
+    ((s.obj? id).map (·.attachmentTextCopies)).getD []
+    else s.activeAttachmentText id
+  copies.filterMap (fun copy => (s.cards.find? copy.card).map (·, copy.stamp))
+
+/-- The object's ordinary abilities together with the text appended by copying Equipment. -/
+def appendedAbilities (s : GameState) (id : ObjId) (d : CardDef) : List Ability :=
+  d.fullAbilities ++ (s.attachmentTextDefs id).flatMap (·.1.textAbilities)
+
 /-- The players of the game, in seat order. -/
 def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (fun i => ⟨i⟩)
 
@@ -295,7 +308,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .sameNameAsSource =>
     pure ((s.cardDef? self).any (fun src => (s.cardDef? id).any (·.nameKey == src.nameKey)))
   | .hasKeyword k => (s.cardDef? id).map (fun d =>
-    d.hasKeyword k || (s.obj? id).any (fun o => o.tempKws.any (fun a => a.1.keyword == k)))
+    d.hasKeyword k || (s.attachmentTextDefs id).any (·.1.hasKeyword k) ||
+      (s.obj? id).any (fun o => o.tempKws.any (fun a => a.1.keyword == k)))
   | .domain d => (s.cardDef? id).map (·.domains.contains d)
   | .might op a => do
     let n ← a.eval env
@@ -418,9 +432,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .givesLegendsAttach =>
     some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
       match ab with | .passive _ mods => mods.contains .legendsAttach | _ => false))
-  | .copiesText =>
-    some (((s.cardDef? id).map (·.abilities)).getD [] |>.any (fun ab =>
-      match ab with | .passive _ mods => mods.contains .copiesUnitText | _ => false))
+  | .copiesText => some ((s.cardDef? id).any CardDef.copiesUnitText)
   | .sameController sel =>
     let other : Option ObjId :=
       match sel with

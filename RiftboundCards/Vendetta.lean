@@ -4055,7 +4055,7 @@ def VEN_142 : CardDef :=
     spellEffect := some {
       choices := [.targetOf .one .any .anywhere [.ofType .unit]]
       body := .seqOf [.prim (.double (.slot 0)),
-        .prim (.grantActivation (.slot 0) ⟨⟨"VEN-142"⟩, 0⟩)]
+        .prim (.grantActivation (.slot 0) { card := ⟨"VEN-142"⟩, index := 0 })]
       recheckTargets := true }
     grants := [.activated [.pay ⟨0, [.any, .any]⟩] .normal
       (.of [] (.prim (.ready .self))) .unlimited]

@@ -99,16 +99,8 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
         triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
       else []
     | _, _ => []) ++
-  -- the text of the Unit, copied by an Equipment attached to it (Svellsongur)
-  (match s.cardDef? src with
-    | some d =>
-      if s.inPlay.any (fun g => (s.obj? g).any (·.attached == some src) &&
-          (s.cardDef? g).any (fun e => e.abilities.any (fun ab =>
-            match ab with
-            | Ability.passive .always mods => mods.contains .copiesUnitText
-            | _ => false)))
-      then triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length else []
-    | none => []) ++
+  (s.attachmentTextDefs src (eventMatches .leave || eventMatches .die)).flatMap (fun (d, stamp) =>
+    triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
@@ -148,18 +140,20 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
       -- a Battlefield works for the player whose object it is about (Valley of Idols)
       let c := if d.hasType .battlefield then who else o.controller
       let copy := (s.attachmentCopyOf src o).map (·.stamp)
-      (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
-        match d.allAbilities[j]? with
-        | some (Ability.triggered t _ lim) =>
-          if t.event == ev && t.subject != .self &&
-              subjectHolds s src c subj who t.subject &&
-              condOkEnv s src c { slots := [.obj subj] } t.condition &&
-                t.occurrence == .every &&
-                limitOk s src j lim copy then
-            some { source := src, card := d.id, idx := j, controller := c,
-                   subject := some subj, copyStamp := copy }
-          else none
-        | _ => none)
+      let definitions := (d, d.fullAbilities.length, copy) ::
+        ((s.attachmentTextDefs src).map (fun (cd, stamp) => (cd, cd.textAbilities.length, some stamp)))
+      definitions.flatMap (fun (cd, count, stamp) =>
+        (List.range count).filterMap (fun j =>
+          match cd.allAbilities[j]? with
+          | some (Ability.triggered t _ lim) =>
+            if t.event == ev && t.subject != .self &&
+                subjectHolds s src c subj who t.subject &&
+                condOkEnv s src c { slots := [.obj subj] } t.condition &&
+                t.occurrence == .every && limitOk s src j lim stamp then
+              some { source := src, card := cd.id, idx := j, controller := c,
+                     subject := some subj, copyStamp := stamp }
+            else none
+          | _ => none))
     | _, _ => [])
 
 /-- The Units of the player at the Battlefield. -/
@@ -201,30 +195,15 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
       let who := if d.hasType .battlefield then p else o.controller
       let copy := (s.attachmentCopyOf src o).map (·.stamp)
       if who == p then
-        (List.range d.fullAbilities.length).filterMap (fun (j : Nat) =>
-          match d.allAbilities[j]? with
-          | some (Ability.triggered t _ lim) =>
-            if t.event == .at_ tm && t.subject == .self && condOk s src who t.condition &&
-                t.occurrence == .every && limitOk s src j lim copy then
-              some { source := src, card := d.id, idx := j, controller := who, copyStamp := copy }
-            else none
-          | _ => none) ++
-        -- what the Equipment attached to the object gives it
+        let matching := (· == TriggerEvent.at_ tm)
+        (triggersAmongMatching s src who matching d 0 d.fullAbilities.length copy) ++
+        (s.attachmentTextDefs src).flatMap (fun (cd, stamp) =>
+          triggersAmongMatching s src who matching cd 0 cd.textAbilities.length (some stamp)) ++
         s.inPlay.flatMap (fun g =>
           match s.obj? g, s.cardDef? g with
           | some og, some dg =>
             if og.attached == some src then
-              (List.range (dg.allAbilities.length - dg.fullAbilities.length)).filterMap
-                (fun (k : Nat) =>
-                  match dg.allAbilities[dg.fullAbilities.length + k]? with
-                  | some (Ability.triggered t _ lim) =>
-                    if t.event == .at_ tm && t.subject == .self && condOk s src who t.condition &&
-                        t.occurrence == .every &&
-                        limitOk s src (dg.fullAbilities.length + k) lim then
-                      some { source := src, card := dg.id, idx := dg.fullAbilities.length + k,
-                             controller := who }
-                    else none
-                  | _ => none)
+              triggersAmongMatching s src who matching dg dg.fullAbilities.length dg.allAbilities.length
             else []
           | _, _ => [])
       else []
@@ -381,12 +360,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
       (fun t => { t with eventAmount := some might })
     | none => []
   | .died obj p =>
-    let lastCopy := ((s.obj? obj).bind (·.lastAttachmentCopy)).map Prod.fst
+    let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
     let own := triggersOfMatching s obj p (· == .die) lastCopy
     -- the Deathknell abilities of a unit fire one more time while a passive ability says so
     let again :=
       let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? obj
-      if definition.any (·.hasKeyword .deathknell) && s.dieExtra p then own else []
+      let deathknell := definition.any (·.hasKeyword .deathknell) ||
+        (s.attachmentTextDefs obj true).any (·.1.hasKeyword .deathknell)
+      if deathknell && s.dieExtra p then own else []
     own ++ again ++ watchersOf s obj p .die ++ s.delayedDeathTriggers obj
   | .standardMoved u _ =>
     match s.obj? u with
@@ -445,8 +426,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
       match s.obj? n with
       | some o =>
         if o.leftBoard then
-          let controller := o.lastAttachmentCopy.elim o.owner Prod.snd
-          triggersOfMatching s n controller (· == .leave) (o.lastAttachmentCopy.map Prod.fst) ++
+          let controller := o.leftController.getD o.owner
+          triggersOfMatching s n controller (· == .leave) o.lastAttachmentCopy ++
             watchersOf s n controller .leave
         else []
       | none => []

@@ -98,9 +98,11 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
                  attached := none, attachedTurn := none, attachmentCopyStamp := none,
+                 attachmentTextStamp := none,
+                 attachmentTextCopies := if src.isBoard then s.activeAttachmentText id else [],
                  attachmentCopies := [],
-                 lastAttachmentCopy := if src.isBoard
-                   then (s.attachmentCopyOf id o).map (·, o.controller) else none,
+                 leftController := if src.isBoard then some o.controller else none,
+                 lastAttachmentCopy := if src.isBoard then s.attachmentCopyOf id o else none,
                  buffed := false,
                  extraBuffs := 0,
                  hiddenAt := none, hiddenTurn := none, fromHidden := o.hiddenAt.isSome,

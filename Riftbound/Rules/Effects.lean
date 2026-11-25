@@ -2471,19 +2471,54 @@ def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
       (1 < (damageReplacements s batch id).length ||
         (damageDeathChoice s (id, amount)).isSome)) then some batch else none
 
-/-- Attach an Equipment to a Unit (CR 137, 825). -/
+/-- Apply the copyable text at the start of this attachment (CR 479.1.d, 719.1). -/
+def copyAttachmentText (s : GameState) (g u : ObjId) (d : CardDef) : GameState :=
+  let stamp : Timestamp := ⟨s.nextTimestamp⟩
+  let copy : AttachmentCopy := ⟨g, d.id, stamp⟩
+  let attached := s.modObj g (fun o => { o with attachmentTextStamp := some stamp })
+  let copied := attached.modObj u (fun o =>
+    { o with attachmentTextCopies := s.activeAttachmentText u ++ [copy] })
+  { copied with nextTimestamp := s.nextTimestamp + 1 }
+
+/-- Saving the copied Effect Text preserves structural invariants. -/
+theorem copyAttachmentText_safe (s : GameState) (g u : ObjId) (d : CardDef) :
+    Safe s (copyAttachmentText s g u d) := by
+  let stamp : Timestamp := ⟨s.nextTimestamp⟩
+  let copy : AttachmentCopy := ⟨g, d.id, stamp⟩
+  let setStamp (o : Object) := { o with attachmentTextStamp := some stamp }
+  let stamped := s.modObj g setStamp
+  let setCopy (o : Object) := { o with attachmentTextCopies := s.activeAttachmentText u ++ [copy] }
+  have h := (Safe.modObj s g (f := setStamp) (fun _ => rfl) (fun _ => rfl)).trans
+    (Safe.modObj stamped u (f := setCopy) (fun _ => rfl) (fun _ => rfl))
+  exact ⟨fun hwf => (h.wf hwf).congr rfl rfl rfl rfl, h.phys,
+    fun hwf hown => (h.own hwf hown).congr rfl rfl, h.same⟩
+
+/-- Attach an Equipment to a Unit (CR 137, 435). -/
 def attachTo (u : ObjId) (s : GameState) (g : ObjId) : GameState × List Event :=
   if (s.obj? g).any (·.attached != some u) && !((s.cardDef? g).any (·.hasType .unit)) then
     let attach (o : Object) := { o with
-      attached := some u, attachedTurn := some s.turn, attachmentCopyStamp := none }
-    (s.modObj g attach, [Event.attached g u])
+      attached := some u, attachedTurn := some s.turn, attachmentCopyStamp := none,
+      attachmentTextStamp := none }
+    let t := s.modObj g attach
+    let snapshot := if (s.cardDef? g).any CardDef.copiesUnitText then
+      (s.cardDef? u).filter (·.hasType .unit) else none
+    (snapshot.elim t (copyAttachmentText t g u), [Event.attached g u])
   else (s, [])
 
 /-- Attaching is a safe change. -/
 theorem attachTo_safe (u : ObjId) (s : GameState) (g : ObjId) : Safe s (attachTo u s g).1 := by
   unfold attachTo
   split
-  · exact Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
+  · let attach (o : Object) := { o with
+        attached := some u, attachedTurn := some s.turn, attachmentCopyStamp := none,
+        attachmentTextStamp := none }
+    have h := Safe.modObj s g (f := attach) (fun _ => rfl) (fun _ => rfl)
+    apply h.trans
+    dsimp only
+    cases (if (s.cardDef? g).any CardDef.copiesUnitText then
+      (s.cardDef? u).filter (·.hasType .unit) else none) with
+    | none => exact Safe.refl _
+    | some d => exact copyAttachmentText_safe _ g u d
   · exact Safe.refl s
 
 /-- Capture the copyable traits of `model` for the current attachment (CR 479.1). -/
@@ -2537,17 +2572,23 @@ theorem doubleObj_safe (s : GameState) (id : ObjId) : Safe s (doubleObj s id).1 
 
 /-- The activated ability described by a grant, when the referenced definition contains one. -/
 def GameState.grantedActivation (s : GameState) (grant : AbilityGrant) : Option Ability :=
-  match (s.cards.find? grant.card).bind (fun d => d.grants[grant.index]?) with
+  match (s.cards.find? grant.card).bind (fun d =>
+    if grant.copyStamp.isSome then d.textAbilities[grant.index]? else d.grants[grant.index]?) with
   | some (a@(.activated ..)) => some a
   | _ => none
 
-/-- The object's ordinary abilities with their original indices, followed by the temporary
-activations in the order they were granted. A grant identifies the reusable definition. -/
+/-- Own abilities keep their indices, followed by temporary grants and activations from attached
+Effect Text. Each copied activation records its definition for resolution. -/
 def GameState.activationList (s : GameState) (src : ObjId) (d : CardDef) :
     List (Option AbilityGrant × Ability) :=
   let grants := ((s.obj? src).map (·.tempActivations)).getD []
   d.fullAbilities.map (none, ·) ++ grants.filterMap
-    (fun grant => (s.grantedActivation grant).map (some grant, ·))
+    (fun grant => (s.grantedActivation grant).map (some grant, ·)) ++
+    (s.attachmentTextDefs src).flatMap (fun (cd, stamp) =>
+      cd.textAbilities.zipIdx.filterMap (fun
+        | (ability@(.activated ..), index) =>
+          some (some { card := cd.id, index, copyStamp := some stamp }, ability)
+        | _ => none))
 
 /-- The available ability at its activation-menu index. -/
 def GameState.activationAt (s : GameState) (src : ObjId) (idx : Nat) :
@@ -5082,7 +5123,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       targetObjs
       playerTargets := o.targetPlayer.toList
       hiddenPlayLocation
-      sourceCard := some card
+      sourceCard := some ((o.activationGrant.filter (·.copyStamp.isSome)).map (·.card) |>.getD card)
       abilityCopyStamp := o.abilityCopyStamp
       eventAmount := o.eventAmount }
     let body := match definition with

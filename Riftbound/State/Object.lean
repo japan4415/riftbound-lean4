@@ -141,11 +141,17 @@ structure Object where
   attachedTurn : Option Nat := none
   /-- The Equipment's current copy effect, cleared by a change of attachment. -/
   attachmentCopyStamp : Option Timestamp := none
+  /-- The Equipment's current instance of an Effect Text copy, if attached. -/
+  attachmentTextStamp : Option Timestamp := none
+  /-- Effect Text copied onto attached cards, or their last active copies just before leaving. -/
+  attachmentTextCopies : List AttachmentCopy := []
   /-- Copy effects on this Unit, in most recent first order. -/
   attachmentCopies : List AttachmentCopy := []
-  /-- The copy and its controller just before leaving the board, for its leave and death abilities
+  /-- The copied definition just before leaving the board, for leave and death abilities
   (CR 429.1.a.1.b). -/
-  lastAttachmentCopy : Option (AttachmentCopy × PlayerId) := none
+  lastAttachmentCopy : Option AttachmentCopy := none
+  /-- The object's controller just before it left the Board (CR 429.1.a.1.b). -/
+  leftController : Option PlayerId := none
   /-- The players who scored this Battlefield by holding it this turn. -/
   held : List PlayerId := []
   /-- Whether the Unit has a buff: +1 Might (CR 701). Leaving the Board clears it. -/

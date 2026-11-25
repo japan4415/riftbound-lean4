@@ -21,8 +21,10 @@ namespace Riftbound
 structure AbilityGrant where
   /-- The definition that describes the ability being granted. -/
   card : CardId
-  /-- The index within the definition's grants. -/
+  /-- The index within the definition's grants, or within the copied rules text. -/
   index : Nat
+  /-- The distinct instance of copied Effect Text for an attachment, if any. -/
+  copyStamp : Option Timestamp := none
 deriving DecidableEq, Repr, Hashable
 
 /-- An additional selection recorded when a card is finalized (CR 355). -/

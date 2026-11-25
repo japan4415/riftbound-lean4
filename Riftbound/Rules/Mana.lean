@@ -65,8 +65,8 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
     match s.obj? src, s.cardDef? src with
     | some o, some d =>
       o.controller == p && s.usesAbilitiesOf p src &&
-        match d.fullAbilities[idx]? with
-        | some (Ability.activated costs speed body lim) =>
+        match (s.activationList src d)[idx]? with
+        | some (grant, .activated costs speed body lim) =>
           let timing := match s.pending with
             | .chainPass .. :: _ => speed == .reaction
             | .eitherDo _ _ _ first _ _ :: _ => first.isPayment && speed == .reaction
@@ -75,7 +75,8 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
           match manaPlan costs with
           | some plan =>
             timing && (!plan.exhaust || !o.exhausted) && (manaKind body).isSome &&
-              limitOk s src idx lim (s.copyStamp? src) && guardOk s p src body
+              limitOk s src (activationUseIndex idx grant) lim (s.activationCopyStamp src grant) &&
+              guardOk s p src body
           | none => false
         | _ => false
     | _, _ => false
@@ -129,7 +130,7 @@ def GameState.payMana (s : GameState) (p : PlayerId) (d : CardDef) (k : ManaKind
 def GameState.manaOffer (s : GameState) (src : ObjId) (idx : Nat) :
     Option (CardDef × ManaCostPlan × ManaKind) := do
   let d ← s.cardDef? src
-  let .activated costs _ body _ ← d.fullAbilities[idx]? | none
+  let (_, .activated costs _ body _) ← (s.activationList src d)[idx]? | none
   let plan ← manaPlan costs
   let kind ← manaKind body
   return (d, plan, kind)
@@ -140,13 +141,14 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : Ru
     Option (GameState × List Event) :=
   match s.cardDef? src with
   | some d =>
-    match d.fullAbilities[idx]? with
-    | some (Ability.activated costs _ body _) =>
+    match (s.activationList src d)[idx]? with
+    | some (grant, .activated costs _ body _) =>
       match manaPlan costs, manaKind body with
       | some plan, some k =>
         match s.payMana p d k plan.cost pay with
         | some pool' =>
-          let s1 := s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))
+          let use := useOf (activationUseIndex idx grant) plan.exhaust (s.activationCopyStamp src grant)
+          let s1 := s.modObj src use
           let s2 := if plan.kill then killNow s1 src else s1
           -- Update the notes with the Power remaining after payment.
           let s2' := (s2.setPool p pool').trimGear p
@@ -168,9 +170,10 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
   cases hd : s.cardDef? src with
   | none => simp [hd] at h
   | some d =>
-    cases ha : d.fullAbilities[idx]? with
+    cases ha : (s.activationList src d)[idx]? with
     | none => simp [hd, ha] at h
-    | some ab =>
+    | some entry =>
+      obtain ⟨grant, ab⟩ := entry
       cases ab with
       | activated costs sp body lim =>
         simp only [hd, ha] at h
@@ -184,11 +187,11 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
             | none => simp [hp, hk, hap] at h
             | some pool' =>
               simp only [hp, hk, hap, Option.some.injEq, Prod.mk.injEq] at h
-              have h1 : Safe s (s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) :=
-                Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
+              let use := useOf (activationUseIndex idx grant) plan.exhaust (s.activationCopyStamp src grant)
+              let used := s.modObj src use
+              have h1 : Safe s used := Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
               refine ⟨_, _, Safe.trans ?_ (GameState.noteGearAbility_safe _ p d costs), h.1.symm⟩
-              have h2 : Safe s (if plan.kill then killNow (s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) src
-                  else s.modObj src (useOf idx plan.exhaust (s.copyStamp? src))) := by
+              have h2 : Safe s (if plan.kill then killNow used src else used) := by
                 cases plan.kill
                 · exact h1
                 · exact h1.trans (killNow_safe _ src)
@@ -245,7 +248,7 @@ theorem manaReady_not_setup {s : GameState} {p : PlayerId} {src : ObjId} {idx : 
 /-- A ready Add is an ability of the card of the object. -/
 theorem manaReady_ability {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     (h : manaReady s p src idx = true) :
-    ∃ d ab, s.cardDef? src = some d ∧ d.fullAbilities[idx]? = some ab := by
+    ∃ d grant ab, s.cardDef? src = some d ∧ (s.activationList src d)[idx]? = some (grant, ab) := by
   unfold manaReady at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨-, h⟩ := h
@@ -256,9 +259,11 @@ theorem manaReady_ability {s : GameState} {p : PlayerId} {src : ObjId} {idx : Na
     | none => simp [ho, hd] at h
     | some d =>
       simp only [ho, hd, Bool.and_eq_true] at h
-      cases ha : d.fullAbilities[idx]? with
+      cases ha : (s.activationList src d)[idx]? with
       | none => simp [ha] at h
-      | some ab => exact ⟨d, ab, rfl, ha⟩
+      | some entry =>
+        obtain ⟨grant, ab⟩ := entry
+        exact ⟨d, grant, ab, rfl, ha⟩
 
 /-- The Add has a legal payment, covered by the player's eligible resources. -/
 def manaPayOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
@@ -282,7 +287,7 @@ theorem applyMana_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
   unfold manaOk at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨hr, hp⟩ := h
-  obtain ⟨d, ab, hd, ha⟩ := manaReady_ability hr
+  obtain ⟨d, _grant, ab, hd, ha⟩ := manaReady_ability hr
   unfold manaPayOk GameState.manaOffer at hp
   cases ab with
   | activated costs speed body lim =>
@@ -313,7 +318,7 @@ def legalManas (s : GameState) (p : PlayerId) : List Action :=
     (fun src =>
       match s.cardDef? src with
       | some d =>
-        ((List.range d.fullAbilities.length).filter (fun idx => manaReady s p src idx)).flatMap
+        ((List.range (s.activationList src d).length).filter (fun idx => manaReady s p src idx)).flatMap
           (fun idx => ((manaPays s p src idx).filter (fun pay => manaPayOk s p src idx pay)).map
             (fun pay => ⟨.player p, .manaAbility src idx pay⟩))
       | none => [])
@@ -373,7 +378,7 @@ theorem applyEffectAdds_safe {s : GameState} {p : PlayerId} {adds : List EffectA
 def effectAddSlots (s : GameState) (p : PlayerId) : List (ObjId × Nat) :=
   let view := effectAddView s p
   (s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone).flatMap
-    (fun src => ((s.cardDef? src).toList.flatMap (fun d => List.range d.fullAbilities.length)).filterMap
+    (fun src => ((s.cardDef? src).toList.flatMap (fun d => List.range (s.activationList src d).length)).filterMap
       (fun idx => if manaReady view p src idx then some (src, idx) else none))
 
 /-- Rune activations for a payment. For reachability only, Runes of the same domain and readiness
@@ -469,7 +474,7 @@ theorem mem_legalManas (s : GameState) (p : PlayerId) (a : Action) :
     · simp only [GameState.usesAbilitiesOf, Bool.or_eq_true, List.contains_iff_mem] at huse
       simp only [List.mem_append]
       exact huse
-    · obtain ⟨d, ab, hd, ha⟩ := manaReady_ability hr
+    · obtain ⟨d, _grant, ab, hd, ha⟩ := manaReady_ability hr
       simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter]
       exact ⟨idx, ⟨List.mem_range.mpr (List.getElem?_eq_some_iff.mp ha).1, hr⟩, pay,
         ⟨mem_manaPays hp, hp⟩, rfl⟩
