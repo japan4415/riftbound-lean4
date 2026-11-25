@@ -115,6 +115,8 @@ inductive Prim where
   | bin (s : Selector)
   /-- Discard cards of a hand: the player of the cards discards them (CR 423). -/
   | discardCard (s : Selector)
+  /-- Discard a card, with a linked reflexive trigger for each matching type (CR 387.1.b). -/
+  | discardWithTypeTriggers (s : Selector) (links : List (CardType × Nat))
   /-- Hide a card. -/
   | hide (s : Selector)
   /-- Reveal cards. -/
@@ -360,6 +362,8 @@ inductive TriggerEvent where
   | mightAtLeast (n : Nat)
   /-- The linked Burn instruction burned a Unit card (CR 388-389). -/
   | linkedBurnUnit
+  /-- The linked Discard instruction discarded a card of the corresponding type. -/
+  | linkedDiscardType
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
 deriving DecidableEq, Repr, Hashable

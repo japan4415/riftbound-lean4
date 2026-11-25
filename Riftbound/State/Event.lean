@@ -30,6 +30,8 @@ inductive Event where
   (CR 388-389, 441). The burned card's identifier is the one it has in the Trash. -/
   | burnedUnitFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (burned : ObjId)
     (might : Nat)
+  /-- An instruction discarded a card with the type required by the linked reflexive ability. -/
+  | discardedTypeFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (discarded : ObjId)
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)

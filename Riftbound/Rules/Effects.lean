@@ -984,6 +984,24 @@ theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).
     · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
   · exact sendObj_safe .trash s id
 
+/-- Record a linked trigger for each matching type after an actual discard. -/
+def discardWithTypeEvents (p : PlayerId) (src : ObjId) (sourceCard : Option CardId)
+    (links : List (CardType × Nat)) (s : GameState) (id : ObjId) : GameState × List Event :=
+  let (next, events) := discardObj s id
+  let linked := events.flatMap (fun
+    | .discarded _ discarded _ =>
+      match sourceCard, s.cardDef? id with
+      | some card, some d => links.filterMap (fun (ty, idx) =>
+          if d.hasType ty then some (.discardedTypeFor p src card idx discarded) else none)
+      | _, _ => []
+    | _ => [])
+  (next, events ++ linked)
+
+theorem discardWithTypeEvents_safe (p : PlayerId) (src : ObjId) (sourceCard : Option CardId)
+    (links : List (CardType × Nat)) (s : GameState) (id : ObjId) :
+    Safe s (discardWithTypeEvents p src sourceCard links s id).1 :=
+  discardObj_safe s id
+
 /-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
 The last discard event closes the group for effects that watch one or more discards. -/
 def payDiscards (p : PlayerId) : GameState → List ObjId → GameState × List Event
@@ -1416,6 +1434,12 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
       (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
 
+/-- A Unit cannot be replayed by its owner to another player's Base (CR 419.4). -/
+def GameState.foreignBase (s : GameState) (id : ObjId) (owner : PlayerId) : Bool :=
+  match s.locate id with
+  | some (.player player .base) => player != owner
+  | _ => false
+
 /-- Banish a Unit and play the resulting card as a new object, ignoring its cost. A token
 ceases to exist when banished (CR 187, 420.3, 428). -/
 def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (replay : BanishReplay := .byOwner) :
@@ -1426,7 +1450,7 @@ def banishReplay (p : PlayerId) (s : GameState) (id : ObjId) (replay : BanishRep
   | some n, some o =>
     match o.kind with
     | .token _ => r
-    | _ =>
+    | _ => if replay == .sameLocation && s.foreignBase id o.owner then r else
       let player := if replay == .toBase then p else o.owner
       let t := match if replay == .sameLocation then o.loc else none with
         | some bf => playFreeAt player bf r.1 n
@@ -1444,8 +1468,10 @@ theorem banishReplay_safe (p : PlayerId) (s : GameState) (id : ObjId) (replay : 
     split
     · exact sendObj_safe .banishment s id
     · split
-      · exact (sendObj_safe .banishment s id).trans (playFreeAt_safe _ _ _ _)
-      · exact (sendObj_safe .banishment s id).trans (playFree_safe _ _ _)
+      · exact sendObj_safe .banishment s id
+      · split
+        · exact (sendObj_safe .banishment s id).trans (playFreeAt_safe _ _ _ _)
+        · exact (sendObj_safe .banishment s id).trans (playFree_safe _ _ _)
   · exact sendObj_safe .banishment s id
 
 /-- Play a card without paying, to a Battlefield: to its Base, if the opponents of the player play
@@ -3302,6 +3328,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .bin sel => (onSelected s p src env sel (sendObj .trash)).map
     (fun r => (r.1, r.2 ++ spellCompletion s src r.2))
   | .discardCard sel => onSelected s p src env sel discardObj
+  | .discardWithTypeTriggers sel links =>
+    let sourceCard := env.sourceCard <|> (s.cardDef? src).map (·.id)
+    onSelected s p src env sel (discardWithTypeEvents p src sourceCard links)
   | .counter sel => onSelected s p src env sel counterObj
   | .counterToHand sel => onSelected s p src env sel counterObjHand
   | .hideAt sel bfs =>
@@ -3560,6 +3589,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     have hs : Safe s r.1 := onSelected_safe (sendObj_safe .trash) hr
     exact hs
   | discardCard sel => exact onSelected_safe discardObj_safe h
+  | discardWithTypeTriggers sel links =>
+    exact onSelected_safe (discardWithTypeEvents_safe p src _ links) h
   | counter sel => exact onSelected_safe counterObj_safe h
   | counterToHand sel => exact onSelected_safe counterObjHand_safe h
   | hideAt sel bfs =>
@@ -3933,7 +3964,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .recycle s => some s
   | .spendBuff s => some s
   | .bin s => some s
-  | .discardCard s => some s
+  | .discardCard s | .discardWithTypeTriggers s _ => some s
   | .play s => some s
   | .banishReplay s _ => some s
   | .playPaying s => some s
@@ -3977,6 +4008,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .spendBuff _ => .spendBuff sel
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
+  | .discardWithTypeTriggers _ links => .discardWithTypeTriggers sel links
   | .play _ => .play sel
   | .banishReplay _ keep => .banishReplay sel keep
   | .playPaying _ => .playPaying sel
@@ -4641,7 +4673,8 @@ def replayFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (id : 
   | some original, some card =>
     let (player, locations) := match replay with
       | .byOwner => (original.owner, [])
-      | .sameLocation => (original.owner, [[original.loc]])
+      | .sameLocation =>
+        (original.owner, [if s.foreignBase id original.owner then [] else [original.loc]])
       | .toBase => (p, [[none]])
     let hidden := if player == p then env.hiddenPlayRequirements else []
     let terms : EffectPlayTerms := { price := .ignoreBase, requirements := locations ++ hidden }

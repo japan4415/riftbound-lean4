@@ -424,6 +424,9 @@ def eventJson : Event → String
   | .burnedUnitFor p source _ idx card might =>
     jobj [("t", jstr "burned_unit"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("card", toString card.n), ("might", toString might)]
+  | .discardedTypeFor p source _ idx card =>
+    jobj [("t", jstr "discarded_type"), ("player", toString p.n), ("source", toString source.n),
+      ("index", toString idx), ("card", toString card.n)]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]

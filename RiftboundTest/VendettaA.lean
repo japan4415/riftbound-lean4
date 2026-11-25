@@ -1369,6 +1369,25 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   return player == q && ((step 100 waiting ⟨.player p, .decide true⟩).toOption).isNone &&
     (there.poolOf q).total == 0 && events.contains (.played q dragon)
 
+-- The owner cannot replay a Unit to the opposing Base from which it was banished (Vendetta FAQ).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, takeover) ← put s p "SFD-202" .hand
+  let (s, breach) ← put s p "VEN-066" .hand
+  let (s, unit) ← putAt s q "VEN-014" s.bf0
+  let stolen ← play s p takeover [unit]
+  let pass (t : GameState) := do
+    let action ← (legalFrameActions t).find? (·.kind == .pass)
+    (step 100 t action).toOption.map Prod.fst
+  let uncontested ← pass stolen >>= pass
+  let (atBase, _) ← (step 100 uncontested ⟨.player p, .standardMove unit .base⟩).toOption
+  let home := settleChain {} 12 atBase
+  let done ← play home p breach [unit]
+  return home.locate unit == some (.player p .base) &&
+    (home.obj? unit).any (fun o => o.owner == q && o.controller == p) &&
+    done.countIn q .banishment "VEN-014" == 1 && done.countIn q .base "VEN-014" == 0
+
 -- Here to Help has no Battlefield target. After choosing the Dragon, paying for
 -- a controlled Roost meets both requirements and makes that location mandatory.
 #guard vendettaCase fun s => do
@@ -1505,6 +1524,44 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let stunned ← reply ability
   return stronger.mightNow target == some 2 && floor.mightNow small == some 1 &&
     countered.mightNow target == some 4 && (stunned.obj? target).any (·.stunned)
+
+-- An Empowered Mel protects the underlying Spell from Abandon, but Abandon still Predicts.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mel) ← put s p "VEN-069" .base
+  let (s, stupefy) ← put s p "OGN-095" .hand
+  let (s, abandon) ← put s q "UNL-131" .hand
+  let (s, target) ← put s q "VEN-071" .base
+  let s := (s.fund p 1).fund q 2
+  let deck := Zone.player q .mainDeck
+  let top ← (s.zone deck).head?
+  let answer (t : GameState) := do
+    let (casting, _) ← (step 100 t ⟨.player p, .playCard stupefy ⟨1, []⟩ [target]⟩).toOption
+    let item ← (casting.zone .chain).head?
+    let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+    let (reacting, _) ← (step 100 priority ⟨.player q, .playCard abandon ⟨2, []⟩ [item]⟩).toOption
+    let predicted ← passToChoice 8 reacting
+    let (finished, _) ← (step 100 predicted ⟨.player q, .decide true⟩).toOption
+    return settleChain {} 8 finished
+  let safeSpell ← answer (empowerObj p s mel).1
+  let ordinary ← answer s
+  return safeSpell.zone deck == (s.zone deck).drop 1 ++ [top] &&
+    safeSpell.countIn p .trash "OGN-095" == 1 &&
+    safeSpell.countIn p .hand "OGN-095" == 0 && safeSpell.mightNow target == some 3 &&
+    ordinary.countIn p .hand "OGN-095" == 1 && ordinary.mightNow target == some 5
+
+-- Switcheroo's negative half receives Mel's additional Might penalty (Vendetta FAQ).
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, mel) ← put s p "VEN-069" .base
+  let (s, swap) ← put s p "SFD-145" .hand
+  let (s, small) ← putAt s p "VEN-014" s.bf0
+  let (s, large) ← putAt s s.you "VEN-071" s.bf0
+  let ordinary ← play s p swap [small, large]
+  let boosted ← play (empowerObj p s mel).1 p swap [small, large]
+  return ordinary.mightNow small == some 5 && ordinary.mightNow large == some 2 &&
+    boosted.mightNow small == some 5 && boosted.mightNow large == some 1
 
 -- Gangplank replaces only his half of Switcheroo. He replaces targeted stuns
 -- and returns as well, including when his own controller chooses him.
@@ -2684,6 +2741,34 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
     (left.playsOfType .finalized .gear).any (·.object == robot) &&
     scored.pointsOf p == s.pointsOf p + 1 && later.pointsOf p == s.pointsOf p &&
     noBonus.pointsOf p == s.pointsOf p
+
+-- Patched Porobot and Stupefy are enough for Swain to score one extra point on Conquer.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, swain) ← put s p "VEN-065" .hand
+  let (s, robot) ← put s p "VEN-058" .hand
+  let (s, stupefy) ← put s p "OGN-095" .hand
+  let (s, enemy) ← put s q "VEN-071" .base
+  let field := s.bf0
+  let deck := Zone.player p .mainDeck
+  let top ← (s.zone deck).head?
+  let recycled ← play s p swain
+  let kept ← play s p swain [] { yes := false }
+  let card ← kept.firstOf p .base "VEN-065"
+  let (rebuilt, _) := readyEffect kept card
+  let prepared ← play rebuilt p robot
+  let prepared ← play prepared p stupefy [enemy]
+  let neutral := prepared.modObj field (fun o => { o with control := none })
+  let (moving, _) ← (step 100 neutral ⟨.player p, .standardMove card (.battlefield field)⟩).toOption
+  let pass (t : GameState) := do
+    let action ← (legalFrameActions t).find? (·.kind == .pass)
+    (step 100 t action).toOption.map Prod.fst
+  let scoring ← pass moving >>= pass
+  let done := settleChain {} 10 scoring
+  return kept.zone deck == s.zone deck &&
+    recycled.zone deck == (s.zone deck).drop 1 ++ [top] &&
+    done.controlOf field == some p && done.pointsOf p == neutral.pointsOf p + 2
 
 -- Jayce's own play can ready a Legend. The first card Gear play counts even if its
 -- trigger is declined. There is a new first Gear on the next turn.
@@ -4020,12 +4105,19 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (s, heisho) ← putBf s s.me "VEN-158"
   let (s, there) ← putAt s s.you "SFD-112" heisho
   let (s, base) ← put s s.you "SFD-112" .base
+  let (s, wrongDomain) ← put s s.you "VEN-014" .base
   let (s, spell) ← put s s.me "VEN-061" .hand
   let funded := s.fund s.me 1
   let (after, _) ← (step 100 funded ⟨.player s.me, .playCard spell ⟨1, []⟩ [base]⟩).toOption
+  let (friendly, ally) ← put funded s.me "SFD-112" .base
+  let done := settleChain {} 8 after
+  let (expired, _) ← (advance 100 { done with pending := [.expireTurn] } []).toOption
+  let attempt (state : GameState) (id : ObjId) :=
+    (legalActions state).contains ⟨.player s.me, .playCard spell ⟨1, []⟩ [id]⟩
   return s.deflectOf there > 0 && s.deflectCost s.me [there, base] == s.deflectOf base &&
     s.deflectCost s.me [there] == 0 && (after.poolOf s.me).totalPower == 0 &&
-    !(after.zone .chain).isEmpty
+    !(after.zone .chain).isEmpty && done.mightNow base == some (-2) &&
+    expired.mightNow base == some 3 && !attempt friendly ally && !attempt funded wrongDomain
 
 -- Sandstone Chimera limits the Channel Phase only while at a Battlefield.
 #guard vendettaCase fun s => do

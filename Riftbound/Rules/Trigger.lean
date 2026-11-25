@@ -359,6 +359,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | some d => (triggersAmong s src p .linkedBurnUnit d idx (idx + 1)).map
       (fun t => { t with eventAmount := some might })
     | none => []
+  | .discardedTypeFor p src card idx _ =>
+    match s.cards.find? card with
+    | some d => triggersAmong s src p .linkedDiscardType d idx (idx + 1)
+    | none => []
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
     let own := triggersOfMatching s obj p (· == .die) lastCopy

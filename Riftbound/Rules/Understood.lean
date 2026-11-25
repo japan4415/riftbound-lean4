@@ -329,7 +329,7 @@ def Prim.understood : Prim → Bool
   | .hideAt s b => s.understood && b.understood
   | .playTo s b => s.understoodPickAny && b.understood
   | .bin s => s.understoodPickAny
-  | .discardCard s => s.understoodPickAny
+  | .discardCard s | .discardWithTypeTriggers s _ => s.understoodPickAny
   | .recycle s => s.understoodPickAny
   | .reveal s => s.understoodPickAny
   | .revealTop _ => true
@@ -547,7 +547,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .stun => true | .discard => true | .ready => true
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
-      | .linkedBurnUnit => t.subject == .self
+      | .linkedBurnUnit | .linkedDiscardType => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .combatStart => t.subject == .self

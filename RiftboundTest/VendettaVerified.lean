@@ -102,6 +102,257 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     atField.countIn p .banishment "VEN-051" == 1 &&
     fallback.countNamed p .base "Mech" == 1
 
+-- Grumpy Rockbear counts even exhausted friendly Runes and gains Shield and Deflect together.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, bear) ← put s p "VEN-050" .base
+  let s := (channelEx p 0 2 s).1
+  let runes := s.runesOf p
+  let cost := 12 - runes.length
+  let activateBear (pay : Nat) : Action := ⟨.player p, .activate bear 0 ⟨pay, []⟩ []⟩
+  let (casting, _) ← (step 100 (s.fund p cost) (activateBear cost)).toOption
+  let done := settleChain {} 8 casting
+  return runes.length >= 2 && s.deflectOf bear == 0 && s.kwAmount bear .shield == 0 &&
+    !(legalActions (s.fund p (cost - 1))).contains (activateBear (cost - 1)) &&
+    done.deflectOf bear == 1 && done.kwAmount bear .shield == 3 &&
+    (done.poolOf p).total == 0 && !(legalActions (done.fund p cost)).contains (activateBear cost)
+
+-- Applied Researchers discounts its controller's Spells and preserves their Energy floor.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, researchers) ← put s p "VEN-055" .base
+  let (s, simple) ← put s p "VEN-061" .hand
+  let (s, powered) ← put s p "VEN-052" .hand
+  let (s, large) ← put s p "VEN-056" .hand
+  let (s, foreign) ← put s q "VEN-052" .hand
+  let (s, unit) ← put s p "VEN-014" .hand
+  let (s, ally) ← put s p "VEN-014" .base
+  let state ← activate s p researchers 1 [] ⟨3, []⟩
+  let pay : RunePool.Payment := ⟨1, []⟩
+  let castMode := cast (state.fund p 1) p powered pay [ally] {} (.mode 0)
+  let done ← castMode
+  return state.energyCost? p simple == some 1 && state.energyCost? p large == some 6 &&
+    state.energyCost? p unit == s.energyCost? p unit &&
+    state.energyCost? q foreign == s.energyCost? q foreign &&
+    (cast (s.fund p 1) p powered pay [ally] {} (.mode 0)).isNone &&
+    done.countIn p .hand "VEN-014" == 2 && (done.poolOf p).total == 0
+
+-- Covert Informant draws only on its own movement while Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, informant) ← put s p "VEN-057" .base
+  let (s, ally) ← put s p "VEN-014" .base
+  let s := s.control p s.bf0
+  let empowered ← activate s p informant 1 [] ⟨3, []⟩
+  let moveUnit (t : GameState) (u : ObjId) := do
+    let (next, _) ← (step 100 t ⟨.player p, .standardMove u (.battlefield s.bf0)⟩).toOption
+    return settleChain {} 10 next
+  let before ← moveUnit s informant
+  let after ← moveUnit empowered informant
+  let other ← moveUnit empowered ally
+  return before.handN p == s.handN p && after.handN p == s.handN p + 1 &&
+    other.handN p == s.handN p && (after.obj? informant).any (·.loc == some s.bf0)
+
+-- Patched Porobot enters exhausted and draws only with at least three other friendly Gear.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, porobot) ← put s p "VEN-058" .hand
+  let (s, _) ← put s p "VEN-054" .base
+  let (s, _) ← putAt s p "VEN-058" s.bf0
+  let (s, _) ← put s s.you "VEN-054" .base
+  let (three, _) ← put s p "VEN-054" .base
+  let withoutDraw ← play s p porobot
+  let withDraw ← play three p porobot
+  let robot ← withDraw.firstOf p .base "VEN-058"
+  return withoutDraw.handN p + 1 == s.handN p && withDraw.handN p == three.handN p &&
+    withDraw.tired robot == some true && withDraw.mightNow robot == some 2
+
+-- Hwei discards Patched Porobot once and puts both reflexive abilities onto the Chain.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, hwei) ← put s p "UNL-080" .base
+  let (s, porobot) ← put s p "VEN-058" .hand
+  let (s, spell) ← put s p "OGN-095" .hand
+  let runes := s.runesOf p
+  let firstRune :: secondRune :: _ := runes | none
+  let s := ((s.tire firstRune).tire secondRune).control p s.bf0
+  let (moving, _) ←
+    (step 100 s ⟨.player p, .standardMove hwei (.battlefield s.bf0)⟩).toOption
+  let moveItem ← (moving.zone .chain).head?
+  let (passed, _) ← (step 100 moving ⟨.player p, .pass⟩).toOption
+  let (discarding, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let discard (id : ObjId) (t : GameState) :=
+    (step 100 t ⟨.player p, .choose id⟩).toOption
+  let (waiting, events) ← discard porobot discarding
+  let discarded ← waiting.firstOf p .trash "VEN-058"
+  let .triggerOrder who firstTrigger otherTriggers _ _ :: _ := waiting.pending | none
+  let place (n : Nat) := (step 100 waiting ⟨.player p, .putTrigger n []⟩).toOption
+  let (first, _) ← place 0
+  let (second, _) ← place 1
+  let firstItem ← (first.zone .chain).head?
+  let secondItem ← (second.zone .chain).head?
+  let done := settleChain {} 18 first
+  let reversed := settleChain { yes := false } 18 second
+  let (spellOnly, _) ← discard spell discarding
+  let extraDraw := settleChain {} 10 spellOnly
+  let card := cid "UNL-080"
+  return (moving.obj? moveItem).any (fun o => o.kind == .chainAbility card 0 hwei) &&
+    discarding.handN p == s.handN p + 1 && who == p &&
+    ((firstTrigger :: otherTriggers).map (·.idx)).mergeSort (fun a b => decide (a ≤ b)) == [2, 3] &&
+    events.contains (.discardedTypeFor p hwei card 2 discarded) &&
+    events.contains (.discardedTypeFor p hwei card 3 discarded) &&
+    waiting.countIn p .trash "VEN-058" == 1 && waiting.mightNow hwei == some 5 &&
+    (first.obj? firstItem).map (·.kind) != (second.obj? secondItem).map (·.kind) &&
+    done.mightNow hwei == some 8 && done.tired firstRune == some false &&
+    done.tired secondRune == some false && done.handN p == s.handN p &&
+    reversed.mightNow hwei == some 8 && reversed.tired firstRune == some true &&
+    extraDraw.handN p == s.handN p + 1 && extraDraw.mightNow hwei == some 5 &&
+    extraDraw.tired firstRune == some true
+
+-- Shock Blast applies its discount to an Empowered Gear, keeps its Mind cost and hits only at a Battlefield.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "VEN-059" .hand
+  let (s, gear) ← put s p "VEN-054" .base
+  let (s, opponentGear) ← put s s.you "VEN-054" .base
+  let (s, fieldUnit) ← putAt s s.you "VEN-091" s.bf0
+  let (s, baseUnit) ← put s s.you "VEN-091" .base
+  let s := (empowerObj s.you s opponentGear).1
+  let boosted := (empowerObj p s gear).1
+  let funded := boosted.fund p 1 (mind := 1)
+  let action (target : ObjId) : Action := ⟨.player p, .playCard spell ⟨1, [.mind]⟩ [target]⟩
+  let (casting, _) ← (step 100 funded (action fieldUnit)).toOption
+  let done := settleChain {} 8 casting
+  return s.energyCost? p spell == some 3 && boosted.energyCost? p spell == some 1 &&
+    !(legalActions (boosted.fund p 1)).contains (action fieldUnit) &&
+    !(legalActions funded).contains (action baseUnit) &&
+    (done.obj? fieldUnit).any (·.damage == 4)
+
+-- Hextech Formula enters exhausted, can Empower an opponent's Gear, and cannot choose itself.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, hand) ← put s p "VEN-062" .hand
+  let (s, gear) ← put s s.you "VEN-054" .base
+  let (s, unit) ← put s p "VEN-014" .base
+  let played ← play s p hand
+  let formula ← played.firstOf p .base "VEN-062"
+  let ready := (readyEffect played formula).1
+  let done ← activate ready p formula 1 [gear]
+  let again ← activate (readyEffect done formula).1 p formula 1 [gear]
+  return played.tired formula == some true && done.tired formula == some true &&
+    (activate played p formula 1 [gear]).isNone &&
+    (activate ready p formula 1 [formula]).isNone && (activate ready p formula 1 [unit]).isNone &&
+    (done.obj? gear).any (·.empowerCount == 1) && (again.obj? gear).any (·.empowerCount == 1)
+
+-- Nasus channels an exhausted Rune for the first enemy Unit dying at his location each turn.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, nasus) ← putAt s p "VEN-063" s.bf0
+  let (s, first) ← putAt s q "VEN-014" s.bf0
+  let (s, second) ← putAt s q "VEN-014" s.bf0
+  let (s, third) ← putAt s q "VEN-014" s.bf0
+  let (s, ally) ← putAt s p "VEN-014" s.bf0
+  let (s, remote) ← put s q "VEN-014" .base
+  let (s, stolen) ← putAt s p "VEN-014" s.bf0
+  let kill (t : GameState) (id : ObjId) := do
+    let (next, events) := killObj t id
+    fire next events
+  let initial := s.runesOf p
+  let friendly ← kill s ally
+  let farAway ← kill s remote
+  let killed ← kill s first
+  let rune ← (killed.runesOf p).find? (fun r => !initial.contains r)
+  let repeated ← kill killed second
+  let nextTurn ← kill { repeated.mapObjects clearScored with turn := repeated.turn + 1 } third
+  let opposingBase := (moveHome ((moveHome s nasus).1.modObj stolen
+    (fun o => { o with controller := q })) stolen).1
+  let distantDeath ← kill opposingBase stolen
+  return friendly.runesOf p == initial && farAway.runesOf p == initial &&
+    (killed.runesOf p).length == initial.length + 1 && killed.tired rune == some true &&
+    repeated.runesOf p == killed.runesOf p && (nextTurn.runesOf p).length == initial.length + 2 &&
+    opposingBase.locate nasus == some (.player p .base) &&
+    opposingBase.locate stolen == some (.player q .base) && distantDeath.runesOf p == initial
+
+-- Brutal Hunter can Gank after paying for Empower, gaining two Might until Disempowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let other ← s.battlefields[1]?
+  let (s, hunter) ← putAt s p "VEN-070" s.bf0
+  let s := (s.control p s.bf0).control p other
+  let move : Action := ⟨.player p, .standardMove hunter (.battlefield other)⟩
+  let empowered ← activate s p hunter 1 [] ⟨3, []⟩
+  let (moved, _) ← (step 100 empowered move).toOption
+  let stripped := (disempowerObj empowered hunter).1
+  return s.mightNow hunter == some 4 && !(legalActions s).contains move &&
+    moved.mightNow hunter == some 6 && (moved.obj? hunter).any (·.loc == some other) &&
+    stripped.mightNow hunter == some 4 && !(legalActions stripped).contains move
+
+-- Legion Marauder has either Empower payment, both of which become unavailable once Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, marauder) ← put s p "VEN-074" .base
+  let energy ← activate s p marauder 0 [] ⟨1, []⟩
+  let power ← activate s p marauder 1 [] ⟨0, [.body]⟩
+  return energy.mightNow marauder == some 3 && power.mightNow marauder == some 3 &&
+    (energy.poolOf p).energy == (s.rich p |>.poolOf p).energy - 1 &&
+    (power.poolOf p).body == (s.rich p |>.poolOf p).body - 1 &&
+    (activate energy p marauder 1 [] ⟨0, [.body]⟩).isNone &&
+    (activate power p marauder 0 [] ⟨1, []⟩).isNone
+
+-- Platewyrm Egg spends one Energy to Empower and adds the correct Energy at Reaction speed.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, hand) ← put s p "VEN-075" .hand
+  let played ← play s p hand
+  let egg ← played.firstOf p .base "VEN-075"
+  let ready := (readyEffect played egg).1
+  let empower : Action := ⟨.player p, .activate egg 1 ⟨1, []⟩ []⟩
+  let (casting, _) ← (step 100 (ready.fund p 1) empower).toOption
+  let empowered := settleChain {} 8 casting
+  let (ready, otherItem) ← onChain (ready.fund p 0) q "OGN-095"
+  let (boosted, _) ← onChain (((readyEffect empowered egg).1).fund p 0) q "OGN-095"
+  let respond (t : GameState) := { t with active := some q, pending := [.chainPass p 0] }
+  let add (n : Nat) : Action := ⟨.player p, .manaAbility egg n ⟨0, []⟩⟩
+  let (plain, _) ← (step 100 (respond ready) (add 2)).toOption
+  let (extra, _) ← (step 100 (respond boosted) (add 3)).toOption
+  return played.tired egg == some true && empowered.tired egg == some true &&
+    (empowered.poolOf p).total == 0 && (empowered.obj? egg).any (·.empowerCount == 1) &&
+    (plain.poolOf p).energy == 1 && (extra.poolOf p).energy == 2 &&
+    (plain.zone .chain).contains otherItem && plain.tired egg == some true &&
+    !(legalActions (respond ready)).contains (add 3) &&
+    !(legalActions (respond boosted)).contains (add 2)
+
+-- Repair Specialist counts only friendly Gear, and its Assault applies when attacking.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, specialist) ← putAt s p "VEN-076" s.bf0
+  let (s, _) ← put s s.you "VEN-054" .base
+  let (s, _) ← put s p "VEN-054" .base
+  let (s, robot) ← putAt s p "VEN-058" s.bf0
+  let (fewer, _) := killObj s robot
+  return s.kwAmount specialist .assault == 2 && s.mightNow specialist == some 3 &&
+    s.combatMight specialist true == 5 && s.combatMight specialist false == 3 &&
+    fewer.kwAmount specialist .assault == 1 && fewer.combatMight specialist true == 4
+
+-- Tools of Empire can choose either player's Unit and doubles its temporary bonus when Empowered.
+#guard verifiedCase fun s => do
+  let p := s.me
+  let (s, tools) ← put s p "VEN-077" .base
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, enemy) ← put s s.you "VEN-014" .base
+  let plain ← activate s p tools 0 [ally]
+  let empowered ← activate s p tools 1 [] ⟨2, []⟩
+  let boosted ← activate empowered p tools 0 [enemy]
+  let (expired, _) ← (advance 100 { boosted with pending := [.expireTurn] } []).toOption
+  return plain.tired tools == some true && plain.mightNow ally == some 4 &&
+    plain.mightNow enemy == some 2 && boosted.tired tools == some true &&
+    boosted.mightNow ally == some 2 && boosted.mightNow enemy == some 6 &&
+    expired.mightNow enemy == some 2
+
 -- Guttural Roar adds two Might or four when the chosen Unit is Empowered.
 #guard verifiedCase fun s => do
   let p := s.me

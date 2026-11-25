@@ -365,7 +365,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .damagedThisTurn => (s.obj? id).map (fun o => o.damagedTurn == some s.turn)
   | .at_ sel => do
     -- the place the object named by the selector is at: a Battlefield, the Battlefield a Unit is
-    -- at, or a Base (the selector is `self`, a chosen object or a variable)
+    -- at, or a Base (the selector is `self`, a chosen object or a variable).
+    -- A card that left the board retains its last controller for Base comparisons.
     let d? : Option ObjId := match sel with
       | .self => some self
       | .it => env.it
@@ -378,7 +379,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         if (s.cardDef? d).any (·.hasType .battlefield) then o.loc == some d
         else
           match s.obj? d with
-          | some od => o.loc == od.loc && (od.loc.isSome || o.controller == od.controller)
+          | some od => o.loc == od.loc &&
+              (od.loc.isSome || o.leftController.getD o.controller == od.leftController.getD od.controller)
           | none => false
       | none => false)
   | .lethal =>
