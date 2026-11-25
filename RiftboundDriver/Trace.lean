@@ -62,6 +62,19 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
+/-- The Unit whose destination is being chosen. -/
+def moveSubjectFields (env : Env) (i : Nat) : List (String × String) :=
+  match env.slots[i]? with
+  | some (.obj unit) => [("unit", toString unit.n)]
+  | _ => []
+
+/-- The Base option or the list of Battlefield destinations for an effect move. -/
+def moveLocationFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ env (.doThen (.prim (.move (.slot i) .base)) _) (.moveChoosing ..) _) =>
+    [("moveLocation", jstr (if yes then "base" else "battlefield"))] ++ moveSubjectFields env i
+  | _ => []
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) : String :=
@@ -113,10 +126,14 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
-    | .decide yes => [("yes", if yes then "true" else "false")] ++ tokenLocationFields frame yes
+    | .decide yes =>
+      [("yes", if yes then "true" else "false")] ++
+        tokenLocationFields frame yes ++ moveLocationFields frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
+        | some (.pickDo _ _ env _ _ (.doThen (.prim (.move (.slot i) (.at_ _))) _) _) =>
+          [("choiceContext", jstr "move")] ++ moveSubjectFields env i
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | _ => [])

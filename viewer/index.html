@@ -302,6 +302,8 @@ function describeA(a, prev) {
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
       if (a.moreLocations) return [who + ': ' + a.token + ' を Battlefield に出す', '行き先を選ぶ'];
+      if (a.moveLocation === 'base') return [who + ': ' + cardName(a.unit) + ' を Base に移動する', ''];
+      if (a.moveLocation === 'battlefield') return [who + ': 移動先の Battlefield を選ぶ', ''];
       if (a.token) {
         const dest = a.dest === null ? 'Base' : cardName(a.dest);
         return [who + ': ' + a.token + ' を ' + dest + ' に出す', ''];
@@ -311,6 +313,7 @@ function describeA(a, prev) {
     case 'choose': {
       const card = cardName(a.obj);
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
+      if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
       return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
     }
@@ -894,7 +897,8 @@ function renderLegal(i) {
   }
   const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
   const prompt = choiceContext === 'own' ? '自分のカードから選ぶ'
-    : choiceContext === 'retain' ? '対象に残すカードを選ぶ' : '答えを選ぶ';
+    : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
+    : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
   $('livemsg').textContent = liveLegal.length ? prompt + '（' + liveLegal.length + ' 個）' +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
   for (const [actor, list] of by) {

@@ -832,6 +832,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       List.not_mem_nil, or_false] at h <;>
     first
     | (subst h; exact Or.inl rfl)
+    | (subst h; exact Or.inl (moveChoiceFrame_isPlay _ _ _ _ _ _ _ _ _))
     | (rcases h with rfl
        left
        unfold retainTargetSetFrame

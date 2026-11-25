@@ -38,6 +38,10 @@ inductive Effect where
   /-- Each player chooses one of their own objects. Append the picks to the slots, then run the
   body for the original controller. The picks are not targets (CR 355.10.e). -/
   | pickOwn (place : Place) (filters : FilterList) (body : Effect)
+  /-- Choose a new location for the Unit in the given slot while resolving (CR 451.1). Offer its Base
+  if allowed and the Battlefields matching the filters. After a move, run the follow-up;
+  a chosen Battlefield is available as the latest pick. -/
+  | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)
   /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
   | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
       (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)

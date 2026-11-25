@@ -3051,14 +3051,15 @@ def Effect.withPick : Effect → Effect
 
 /-- Whether the object is picked for the cost of a linked instruction (CR 355.10.c.1). -/
 def Effect.isLinkedCost : Effect → Bool
-  | .doThen .. => true
+  | .doThen (.prim (.banish _)) _ | .doThen (.prim (.disempower _)) _ => true
   | _ => false
 
-/-- Picks for costs or by multiple players do not fire target effects. Keeping original targets
-does not choose them again (CR 355.10.c.1, 355.10.e, 355.11.b). -/
+/-- Picks for costs or by multiple players do not fire target effects (CR 355.10.c.1, 355.10.e).
+Keeping original targets does not choose them again (CR 355.11.b). Movement destinations only
+name the location (CR 355.18). -/
 def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
   match e with
-  | .retainTargetSet _ | .collectOwnPicks .. => []
+  | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ => []
   | _ => if e.isLinkedCost then [] else chosenAt s p src id
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
@@ -3281,8 +3282,8 @@ theorem burnEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   · exact Safe.refl s
   · exact Safe.refl s
 
-/-- Execute a linked banish or disempower instruction. Only a completed action enables the
-follow-up (CR 359.3.e.14.b). -/
+/-- Execute an instruction whose follow-up requires that the first action happened
+(CR 359.3.e.14.b). -/
 def linkedAction (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim) :
     GameState × Bool × List Event :=
   match applyPrim s p src env a with
@@ -3295,6 +3296,7 @@ def linkedAction (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : P
       | .disempower sel => ((sel.eval s p src env).getD []).any (fun id =>
         ((r.1.obj? id).map (·.empowerCount)).getD 0 <
           ((s.obj? id).map (·.empowerCount)).getD 0)
+      | .move .. => r.2.any (fun | .standardMoved _ _ => true | _ => false)
       | _ => false
     (r.1, done, r.2)
 
@@ -3345,6 +3347,59 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
     | id :: other :: more =>
       .pickDo q src env id (other :: more) (.collectOwnPicks p qs place fs body true) es
 
+/-- A Battlefield can receive an effect move when it is a new location and the Unit can be there
+(CR 449.2.a, 451.2). A Battlefield with two sides can have a staged Combat (CR 463). -/
+def GameState.effectMoveBattlefieldOk (s : GameState) (u : Object) (bf : ObjId) : Bool :=
+  let occupying := s.players.filter (fun q => !(s.unitsAtOf bf q).isEmpty)
+  let staged := decide (occupying.length ≥ 2)
+  let running := s.combatNow.any (fun combat => combat.1 == bf)
+  u.loc != some bf && decide ((occupying.erase u.controller).length < 2) &&
+    (!decide (s.playerCount > 2) || !(staged || running) || occupying.contains u.controller)
+
+/-- Offer only legal new destinations. Battlefield answers name a location, so the move's follow-up
+may use that location without making it a target (CR 355.18, 451.1). -/
+def moveChoiceFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (slot : Nat) (allowBase : Bool) (filters : FilterList) (afterMove : Effect) (es : EffectList) :
+    Frame :=
+  let resume := Frame.run p src env es
+  let unit := Selector.slot slot
+  match env.slots[slot]? with
+  | some (.obj id) =>
+    match s.obj? id with
+    | some u =>
+      if !s.inPlay.contains id || !(s.cardDef? id).any (·.hasType .unit) ||
+          s.blocksEnemyMove (env.effectController.getD p) id then resume
+      else
+        let home := allowBase && u.loc.any (fun bf => !s.homeForbiddenFor id bf)
+        let fields := (s.zone .battlefieldZone).filter (fun bf =>
+          (s.cardDef? bf).any (·.hasType .battlefield) && s.effectMoveBattlefieldOk u bf &&
+          (FilterList.holds s src (env.withMight s.mightTable) bf filters).getD false)
+        let toBase := Effect.doThen (.prim (.move unit .base)) afterMove
+        match home, fields with
+        | false, [] => resume
+        | true, [] => .run p src env (.cons toBase es)
+        | true, _ :: _ =>
+          .eitherDo p src env toBase (.moveChoosing slot false filters afterMove) es
+        | false, bf :: more =>
+          .pickDo p src env bf more
+            (.doThen (.prim (.move unit (.at_ (.var pickVar)))) afterMove) es
+    | none => resume
+  | _ => resume
+
+/-- A destination choice is a play frame. -/
+theorem moveChoiceFrame_isPlay (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (slot : Nat) (home : Bool) (fs : FilterList) (afterMove : Effect) (es : EffectList) :
+    (moveChoiceFrame s p src env slot home fs afterMove es).isPlay = true := by
+  unfold moveChoiceFrame
+  split
+  · split
+    · split
+      · rfl
+      · dsimp only
+        split <;> rfl
+    · rfl
+  · rfl
+
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
@@ -3369,6 +3424,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some v => (s, [.run p src { env with slots := env.slots.set i v } es], [])
     | none => skip
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
+  | .moveChoosing unit home fs afterMove =>
+    (s, [moveChoiceFrame s p src env unit home fs afterMove es], [])
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
@@ -3398,6 +3455,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .may e' => (s, [.mayDo p src env e' es], [])
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
+  | .doThen (.prim (.move sel dest)) body => linked (.move sel dest) body
   | .prim (.playUnitToken name) =>
     match s.tokenCard name with
     | some c =>

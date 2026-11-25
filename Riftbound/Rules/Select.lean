@@ -415,11 +415,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .attackedByMine =>
     some (((s.obj? id).bind (·.contested)) == (s.obj? self).map (·.controller))
   | .myUnitsHere =>
-    some (match s.obj? self with
-      | some me =>
-        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          o.controller == me.controller))
-      | none => false)
+    some ((s.obj? self).any (fun me => !(s.unitsAtOf id me.controller).isEmpty))
   | .enemyAlone =>
     some (match s.obj? self with
       | some me =>

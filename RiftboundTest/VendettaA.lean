@@ -147,6 +147,105 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
       | .chosenBySpell _ _ | .chosenByAbility _ _ => true
       | _ => false))
 
+/-- Pass only Chain priority, stopping at the next question. -/
+meta def passToChoice : Nat → GameState → Option GameState
+  | 0, _ => none
+  | fuel + 1, s =>
+    match s.pending with
+    | .chainPass p _ :: _ =>
+      (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
+    | _ => some s
+
+-- Twilight Step can move an enemy to its own Base or another Battlefield,
+-- with the latter selected during Flow resolution too. No destination is a target.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let origin := s.bf0
+  let away ← s.battlefields.find? (· != origin)
+  let (s, spell) ← put s p "VEN-105" .hand
+  let (s, flow) ← put s p "VEN-105" .trash
+  let (s, unit) ← putAt s q "VEN-014" origin
+  let (s, large) ← putAt s q "VEN-091" origin
+  let s := (s.control q origin).rich p
+  let cast : Action := ⟨.player p, .playCard spell ⟨2, [.chaos]⟩ [unit]⟩
+  let (casting, _) ← (step 100 s cast).toOption
+  let question ← passToChoice 5 casting
+  let (home, _) ← (step 100 question ⟨.player p, .decide true⟩).toOption
+  let (picking, _) ← (step 100 question ⟨.player p, .decide false⟩).toOption
+  let (moved, events) ← (step 100 picking ⟨.player p, .choose away⟩).toOption
+  let (replaying, _) ← (step 100 s
+    ⟨.player p, .playCard flow ⟨4, [.chaos]⟩ [unit]⟩).toOption
+  let replayed := settleChain { yes := false, obj := (· == away) } 12 replaying
+  let invalid ← passToChoice 5 (casting.modObj unit (fun o => { o with baseMightThisTurn := some 4 }))
+  return !(legalActions s).contains ⟨.player p, .playCard spell ⟨2, [.chaos]⟩ [large]⟩ &&
+    home.countIn q .base "VEN-014" == 1 && (home.obj? large).any (·.loc == some origin) &&
+    (legalFrameActions picking) == [⟨.player p, .choose away⟩] &&
+    (moved.obj? unit).any (·.loc == some away) &&
+    (replayed.obj? unit).any (·.loc == some away) && replayed.countIn p .banishment "VEN-105" == 1 &&
+    (invalid.obj? unit).any (·.loc == some origin) &&
+    !(events.any (fun | .chosenBySpell _ _ | .chosenByAbility _ _ => true | _ => false))
+
+-- Shuriken Flip's friendly target is required. The separate damage target can be
+-- omitted or lost in response, while the friendly target can still move.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put s p "VEN-140" .hand
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, enemy) ← putAt s q "VEN-091" field
+  let (s, spare) ← put s q "VEN-014" .base
+  let s := ((s.control q field).modObj ally (fun o => { o with exhausted := false })).rich p
+  let cast (targets : List ObjId) : Action := ⟨.player p, .playCard spell ⟨1, [.fury]⟩ targets⟩
+  let (casting, _) ← (step 100 s (cast [ally, enemy])).toOption
+  let (movingOnly, _) ← (step 100 s (cast [ally])).toOption
+  let choose : Says := { obj := (· == field) }
+  let both := settleChain choose 12 casting
+  let moved := settleChain choose 12 movingOnly
+  let enemyGone := settleChain choose 12 (moveHome casting enemy).1
+  let allyAt (t : GameState) := (t.unitsAtOf field p).any (fun id =>
+    (t.cardDef? id).any (·.id == cid "VEN-014") && (t.obj? id).any (fun o => !o.exhausted))
+  return [both, moved, enemyGone].all allyAt &&
+    (both.obj? enemy).any (·.damage == 2) && (moved.obj? enemy).any (·.damage == 0) &&
+    !(legalActions s).contains (cast []) && !(legalActions s).contains (cast [ally, spare])
+
+-- Shadow Dash offers only Battlefields with friendly Units, buffs exactly two
+-- there, and excludes a Battlefield already occupied by two other players.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let field := s.bf0
+  let other ← s.battlefields.find? (· != field)
+  let (s, empty) ← putBf s p "VEN-159"
+  let (s, spell) ← put s p "VEN-148" .hand
+  let (s, enemy) ← put s q "VEN-091" .base
+  let (s, first) ← putAt s p "VEN-014" field
+  let (s, second) ← putAt s p "VEN-014" field
+  let (s, solo) ← putAt s p "VEN-014" other
+  let s := ((s.control p field).control p other).rich p
+  let cast : Action := ⟨.player p, .playCard spell ⟨2, [.fury]⟩ [enemy]⟩
+  let (casting, _) ← (step 100 s cast).toOption
+  let picking ← passToChoice 5 casting
+  let choose (bf : ObjId) : Action := ⟨.player p, .choose bf⟩
+  let (double, _) ← (step 100 picking (choose field)).toOption
+  let (single, _) ← (step 100 picking (choose other)).toOption
+  let (s, _) ← putAt s third "VEN-014" field
+  let trio := { s with
+    config := { s.config with mode := { s.config.mode with players := 3 } }
+    turnOrder := [p, q, third] }
+  let (trioCasting, _) ← (step 100 trio cast).toOption
+  let blocked ← passToChoice 6 trioCasting
+  return (legalFrameActions picking).contains (choose field) &&
+    (legalFrameActions picking).contains (choose other) &&
+    !(legalFrameActions picking).contains (choose empty) &&
+    !(double.unitsAtOf field q).isEmpty && !(single.unitsAtOf other q).isEmpty &&
+    double.mightNow first == (s.mightNow first).map (· + 1) &&
+    double.mightNow second == (s.mightNow second).map (· + 1) &&
+    double.mightNow solo == s.mightNow solo && single.mightNow solo == s.mightNow solo &&
+    (legalFrameActions blocked) == [choose other]
+
 -- Bottled Constellation's three other friendly cards are paid before responses.
 -- The payment does not target those cards, and survives countering the ability.
 #guard vendettaCase fun s => do

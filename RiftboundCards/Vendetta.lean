@@ -2894,8 +2894,12 @@ def VEN_105.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Twilight Step: the effect is not written yet. -/
-def VEN_105 : CardDef := VEN_105.meta
+/-- Twilight Step. -/
+def VEN_105 : CardDef :=
+  { VEN_105.meta with
+    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit, .might .le (.const 3)]]
+      (.moveChoosing 0 true .nil .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-106
 /--
@@ -3866,8 +3870,13 @@ def VEN_140.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Shuriken Flip: the effect is not written yet. -/
-def VEN_140 : CardDef := VEN_140.meta
+/-- Shuriken Flip. The required friendly target fills the first slot so the other can be omitted. -/
+def VEN_140 : CardDef :=
+  { VEN_140.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+      .targetOf (.upTo 1) .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.deal (.slot 1) (.const 2)), .moveChoosing 0 true .nil .nop])),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-141
 /--
@@ -4067,8 +4076,15 @@ def VEN_148.meta : CardDef :=
     sets := [⟨"VEN"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Shadow Dash: the effect is not written yet. -/
-def VEN_148 : CardDef := VEN_148.meta
+/-- Shadow Dash. -/
+def VEN_148 : CardDef :=
+  let allies := Selector.all .friendly .atBattlefield [.ofType .unit, .at_ (.var pickVar)]
+  let bump := Effect.ifThen (.cmp .eq (.count allies) (.const 2))
+    (.grant allies (.mightPlus .it (.const 1)) .thisTurn) .nop
+  { VEN_148.meta with
+    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      (.moveChoosing 0 false (.ofList [.myUnitsHere]) bump)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-149
 /--
