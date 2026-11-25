@@ -468,8 +468,13 @@ def VEN_017.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Morgana, Vindictive: the effect is not written yet. -/
-def VEN_017 : CardDef := VEN_017.meta
+/-- Morgana, Vindictive. -/
+def VEN_017 : CardDef :=
+  { VEN_017.meta with
+    abilities := [.triggered (.onSelf .play)
+      (.of [.targetOf .one .any .anywhere [.ofType .unit]]
+        (.prim (.deal (.slot 0) (.damageOn (.slot 0))))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-018
 /--
@@ -3118,8 +3123,12 @@ def VEN_119.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Keeper of Law: the effect is not written yet. -/
-def VEN_119 : CardDef := VEN_119.meta
+/-- Keeper of Law. -/
+def VEN_119 : CardDef :=
+  { VEN_119.meta with
+    abilities := [.passive (.exists (.all .any .atBattlefield [.controlled, .unitsHere .eq 2]))
+      [.costMinus .self (.const 2), .costPower .self (.const 1) (some .order) false]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-120
 /--

@@ -36,6 +36,8 @@ inductive Amount where
   | count (s : Selector)
   /-- The Might of an object. -/
   | mightOf (s : Selector)
+  /-- The damage currently marked on the selected objects (CR 142.4). -/
+  | damageOn (s : Selector)
   /-- The Energy cost of an object. -/
   | costOf (s : Selector)
   /-- The number of Power symbols in the cost of an object. -/
@@ -112,6 +114,8 @@ inductive Filter where
   | powerCost (op : Cmp) (a : Amount)
   /-- Is a Battlefield an opponent of the object's controller controls. -/
   | controlledByOpponent
+  /-- Has a number of Units at this Battlefield that satisfies the comparison. -/
+  | unitsHere (op : Cmp) (n : Nat)
   /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
   | movedFromHere
   /-- Is exhausted. -/

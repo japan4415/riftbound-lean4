@@ -74,6 +74,7 @@ def Amount.understood : Amount → Bool
   | .min a b => Amount.understood a && Amount.understood b
   | .max a b => Amount.understood a && Amount.understood b
   | .mightOf s => Selector.understood s
+  | .damageOn s => Selector.understood s
   | .kwAmount s _ => Selector.understood s
   | _ => false
 
@@ -104,6 +105,7 @@ def Amount.understoodC : Amount → Bool
   | .costOf s => s.understood
   | .powerCostOf s => s.understood
   | .mightOf s => Selector.understood s
+  | .damageOn s => Selector.understood s
   | .add a b => Amount.understoodC a && Amount.understoodC b
   | .sub a b => Amount.understoodC a && Amount.understoodC b
   | .mul a b => Amount.understoodC a && Amount.understoodC b
@@ -141,6 +143,7 @@ def Filter.understood : Filter → Bool
   | .both a b => Filter.understood a && Filter.understood b
   | .controlled => true
   | .controlledByOpponent => true
+  | .unitsHere _ _ => true
   | .movedFromHere => true
   | .hidden => true
   | .top _ => true
@@ -492,7 +495,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .stun => true | .discard => true | .ready => true
       | .buff => true
-      | .becomeMighty => true
+      | .becomeMighty | .mightAtLeast _ => true
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .chosen => true

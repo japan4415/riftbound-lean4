@@ -445,4 +445,67 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     (former flowed .trash).countP (fun id => before.contains id) == 1 &&
     flowed.countIn s.me .banishment "VEN-156" == 1
 
+-- Crossing 10 triggers Brute once. Staying above 10 does not fire the ability again.
+#guard vendettaCase fun s => do
+  let (s, unit) ← put s s.me "VEN-092" .base
+  let s := (addMightMod ⟨5, .turn⟩ s unit).1
+  let crossed ← activate s s.me unit 0 [] ⟨1, []⟩
+  let above ← activate crossed s.me unit 0 [] ⟨1, []⟩
+  let down := (addMightMod ⟨-2, .turn⟩ above unit).1
+  let crossedAgain ← activate down s.me unit 0 [] ⟨1, []⟩
+  let fired (t : GameState) := (t.obj? unit).map (fun o => o.used.count 1)
+  return s.mightNow unit == some 9 && crossed.mightNow unit == some 10 &&
+    (crossed.obj? unit).any (·.empowerCount == 1) &&
+    (crossed.keywordsNow unit).any (·.keyword == .deflect) &&
+    (crossed.keywordsNow unit).any (·.keyword == .ganking) &&
+    fired crossed == some 1 && fired above == some 1 && fired crossedAgain == some 2 &&
+    (crossedAgain.obj? unit).any (·.empowerCount == 1)
+
+-- Entering already at the threshold does not count as a crossing.
+#guard vendettaCase fun s => do
+  let (s, unit) ← put s s.me "VEN-092" .hand
+  let cards := s.cards.cards.map (fun d =>
+    if d.id.code == "VEN-092" then { d with might := some 10 } else d)
+  let entered ← play { s with cards := { cards } } s.me unit
+  let renekton ← entered.firstOf s.me .base "VEN-092"
+  return entered.mightNow renekton == some 10 &&
+    (entered.obj? renekton).any (·.empowerCount == 0)
+
+-- A Standard Move can cross the threshold by entering a Battlefield with a passive Might bonus.
+#guard vendettaCase fun s => do
+  let (s, camp) ← putBf s s.me "OGN-294"
+  let (s, unit) ← put s s.me "VEN-092" .base
+  let s := (addMightMod ⟨5, .turn⟩ (s.control s.me camp) unit).1
+  let (moved, _) ← (step 100 s ⟨.player s.me, .standardMove unit (.battlefield camp)⟩).toOption
+  let result := settleChain {} 12 moved
+  return result.mightNow unit == some 10 && (result.obj? unit).any (fun o =>
+    o.loc == some camp && o.empowerCount == 1)
+
+-- Morgana reads the target's marked damage when the ability resolves.
+#guard vendettaCase fun s => do
+  let (s, morgana) ← put s s.me "VEN-017" .hand
+  let (s, target) ← put s s.you "OGN-088" .base
+  let (s, other) ← put s s.you "OGN-088" .base
+  let marked := s.modObj target (fun o => { o with damage := 2 })
+  let hit ← play marked s.me morgana [] { pick := (· == [target]) }
+  let zero ← play s s.me morgana [] { pick := (· == [target]) }
+  return (hit.obj? target).any (·.damage == 4) && (hit.obj? other).any (·.damage == 0) &&
+    (zero.obj? target).any (·.damage == 0)
+
+-- A controlled Battlefield with exactly two Units makes Keeper payable with only 3 Energy.
+#guard vendettaCase fun s => do
+  let (s, keeper) ← put s s.me "VEN-119" .hand
+  let camp := s.bf0
+  let (s, _) ← putAt s s.me "VEN-014" camp
+  let (two, _) ← putAt s s.me "VEN-014" camp
+  let (three, _) ← putAt two s.me "VEN-014" camp
+  let full : Cost := ⟨5, [.domain .order]⟩
+  let cost (t : GameState) := (t.cardDef? keeper).bind (t.effCost s.me keeper)
+  let funded := (two.control s.me camp).fund s.me 3
+  let playKeeper : Action := ⟨.player s.me, .playCard keeper ⟨3, []⟩ []⟩
+  return cost (s.control s.me camp) == some full &&
+    cost (two.control s.you camp) == some full && cost funded == some ⟨3, []⟩ &&
+    cost (three.control s.me camp) == some full &&
+    (legalActions funded).contains playKeeper && (step 100 funded playKeeper).isOk
+
 end RiftboundTest

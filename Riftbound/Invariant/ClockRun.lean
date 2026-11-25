@@ -501,7 +501,8 @@ theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2)) := tc_withTriggers _ _
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+    tc_withTriggers _ _
   obtain ⟨actor, kind⟩ := a
   simp only at hk
   subst hk
@@ -518,7 +519,8 @@ theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2)) := tc_withTriggers _ _
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+    tc_withTriggers _ _
   rcases applyFrame0_tc h0 with h1 | ⟨hk, ht, hcl⟩
   · exact Or.inl ((h1.trans h2).trans h4)
   · exact Or.inr ⟨hk, h4.1.trans (h2.1.trans ht), h4.2.trans (h2.2.trans hcl)⟩

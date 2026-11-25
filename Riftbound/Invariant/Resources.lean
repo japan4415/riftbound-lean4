@@ -143,7 +143,7 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
     s'.pending = .resolveChain :: rest := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
   obtain ⟨hpend, rfl⟩ := chainPass_last_resolves0 hp hn h0
-  simpa [extraEvents, withTriggers_nil, h3.pending_eq] using hpend
+  simpa [extraEvents, GameState.actionMightEvents, hp, withTriggers_nil, h3.pending_eq] using hpend
 
 /-- A resolved Spell goes to the Trash or, with Flow, to Banishment (CR 359.3.d, 829.1.b.1). -/
 theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}

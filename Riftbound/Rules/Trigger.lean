@@ -252,33 +252,64 @@ def GameState.attachDelta (s : GameState) (g u : ObjId) : Int :=
   let before := s.modObj g (fun o => { o with attached := none })
   s.equipBonus u - before.equipBonus u
 
-/-- The abilities of a Unit that has just become Mighty (5 or more Might). -/
-def GameState.becameMightyTriggers (s : GameState) (u : ObjId) : List PendTrigger :=
+/-- The abilities that observe a Unit reaching a Might threshold (CR 383, 709). -/
+def GameState.mightTriggers (s : GameState) (u : ObjId) (ev : TriggerEvent) :
+    List PendTrigger :=
   match s.obj? u with
   | some o =>
     if (s.cardDef? u).any (·.hasType .unit) then
-      triggersOf s u o.controller .becomeMighty ++ watchersOf s u o.controller .becomeMighty
+      triggersOf s u o.controller ev ++ watchersOf s u o.controller ev
     else []
   | none => []
 
-/-- Some object in play has an ability that waits for a Unit to become Mighty. -/
-def GameState.watchesMighty (s : GameState) : Bool :=
-  (s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))).any (fun g =>
-    (s.cardDef? g).any (fun d => d.abilities.any (fun ab =>
-      match ab with
-      | Ability.triggered t _ _ => t.event == .becomeMighty
-      | _ => false)))
+/-- The Mighty or numeric threshold named by an ability, with its trigger event. -/
+def Ability.mightWatch : Ability → Option (Nat × TriggerEvent)
+  | .triggered t _ _ =>
+    match t.event with
+    | .becomeMighty => some (5, .becomeMighty)
+    | .mightAtLeast n => some (n, .mightAtLeast n)
+    | _ => none
+  | _ => none
 
-/-- The Units that became Mighty between two states: they were in play, with less than 5 Might, and
-have 5 or more now (a Unit that is played Mighty did not become it). -/
+/-- Find the thresholds to check, including abilities that equipment or a lasting effect grants. -/
+def GameState.mightWatches (s : GameState) : List (Nat × TriggerEvent) :=
+  let printed := s.passiveSources.flatMap (fun id =>
+    ((s.cardDef? id).map (·.allAbilities)).getD [] |>.filterMap Ability.mightWatch)
+  let granted := s.turnFx.filterMap (fun f =>
+    match f.kind with
+    | .grantsAbility c i =>
+      if f.turn == s.turn then
+        ((s.cards.find? ⟨c⟩).bind (fun d => d.allAbilities[i]?)).bind Ability.mightWatch
+      else none
+    | _ => none)
+  (printed ++ granted).eraseDups
+
+/-- Compare the derived Might across a step. A Unit that enters with Might already at a threshold
+has not crossed it. A Unit that stays at or above it does not trigger again (CR 383, 709). -/
 def GameState.mightyEvents (s s' : GameState) : List Event :=
-  if s'.watchesMighty then
-    s'.inPlay.filterMap (fun u =>
-      if s.inPlay.contains u && (s'.cardDef? u).any (·.hasType .unit) &&
-          (s.mightNow u).any (fun m => decide (m < 5)) &&
-          (s'.mightNow u).any (fun m => decide (5 ≤ m)) then some (Event.becameMighty u)
-      else none)
-  else []
+  let watches := s'.mightWatches
+  if watches.isEmpty then [] else
+    let old := s.inPlay
+    s'.inPlay.flatMap (fun u =>
+      if old.contains u && (s'.cardDef? u).any (·.hasType .unit) then
+        match s.mightNow u, s'.mightNow u with
+        | some before, some after =>
+          watches.filterMap (fun (n, ev) =>
+            if before < (n : Int) && (n : Int) ≤ after then
+              match ev with
+              | .becomeMighty => some (.becameMighty u)
+              | .mightAtLeast k => some (.mightReached u k)
+              | _ => none
+            else none)
+        | _, _ => []
+      else [])
+
+/-- A Chain pass changes only who can respond or schedules resolution. Other decisions may
+change Might directly, including a pass that ends a Showdown. -/
+def GameState.actionMightEvents (s s' : GameState) (a : Action) : List Event :=
+  match s.pending, a.kind with
+  | .chainPass .. :: _, .pass => []
+  | _, _ => s.mightyEvents s'
 
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
@@ -400,7 +431,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | some o =>
       triggersOf s u o.controller .attachedTo
     | none => []
-  | .becameMighty u => s.becameMightyTriggers u
+  | .becameMighty u => s.mightTriggers u .becomeMighty
+  | .mightReached u n => s.mightTriggers u (.mightAtLeast n)
   | .empowered p u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .becomeEmpowered ++ watchersOf s u p .becomeEmpowered

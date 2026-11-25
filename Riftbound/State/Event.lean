@@ -60,6 +60,8 @@ inductive Event where
   | buffed (target : ObjId)
   /-- A Unit became Mighty: its Might was below 5 and is 5 or more now. -/
   | becameMighty (u : ObjId)
+  /-- A Unit crossed a specified Might threshold from below (CR 383). -/
+  | mightReached (u : ObjId) (threshold : Nat)
   /-- An object gained an instance of Empowered (CR 442). -/
   | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/

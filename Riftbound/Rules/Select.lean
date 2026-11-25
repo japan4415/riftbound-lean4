@@ -433,6 +433,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
                 (if (s.cardDef? self).any (·.hasType .battlefield) then some self else me.loc)
             | none => false)
       | none => false)
+  | .unitsHere op n =>
+    let count := (s.zone .battlefieldZone).countP (fun u =>
+      (s.obj? u).any (·.loc == some id) && (s.cardDef? u).any (·.hasType .unit))
+    pure ((s.cardDef? id).any (·.hasType .battlefield) && op.holds (Int.ofNat count) (Int.ofNat n))
   | .controlledByOpponent =>
     some (match s.obj? id, s.obj? self with
       | some b, some o => b.control.any (fun q => q != o.controller)
@@ -914,6 +918,8 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
           (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
   | .count sel => (sel.eval s p self env).map List.length
+  | .damageOn sel => (sel.eval s p self env).map (fun ids =>
+    (ids.map (fun id => ((s.obj? id).map (·.damage)).getD 0)).sum)
   -- the Might the filters read: the printed Might, the buff, the Equipment and what the passive
   -- abilities add (`env.passMight`; the Layers are defined after this)
   | .mightOf sel =>

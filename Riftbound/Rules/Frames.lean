@@ -256,7 +256,9 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
 off wait on the stack (CR 382-385). -/
 def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :=
   (applyFrame0 s a).map (fun r =>
-    ((s.paySurcharge a r.1).withTriggers (r.2 ++ extraEvents a r.2), r.2 ++ extraEvents a r.2))
+    let next := s.paySurcharge a r.1
+    let es := r.2 ++ extraEvents a r.2
+    (next.withTriggers (es ++ s.actionMightEvents next a), es))
 
 /-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
 the decision frame on top of the stack. -/
@@ -467,7 +469,8 @@ theorem applyFrame_cases {s s' : GameState} {a : Action} {es : List Event}
     (h : applyFrame s a = some (s', es)) :
     ∃ s2 es2 s3, applyFrame0 s a = some (s2, es2) ∧
       GameState.PoolStep s2 s3 ∧
-      s' = s3.withTriggers (es2 ++ extraEvents a es2) ∧ es = es2 ++ extraEvents a es2 := by
+      s' = s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a) ∧
+      es = es2 ++ extraEvents a es2 := by
   unfold applyFrame at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, h0, hr⟩ := h

@@ -54,6 +54,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
+  | .damageOn s => Selector.ok c s
   | .costOf s => Selector.ok c s
   | .powerCostOf s => Selector.ok c s
   | .xp => true

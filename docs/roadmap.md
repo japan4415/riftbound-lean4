@@ -1821,6 +1821,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Lightning Rush は見たカードのうち 1 枚を引くか見送り、残りを Trash に置く。山札が 3 枚未満の場合も、見たカードの範囲で処理する。
 - 167 枚中 101 枚が `drafted`、97 枚が `CardDef.runs` の検査を通る。
 
+### M8c Vendetta 13 — Might の閾値と盤面から読む効果
+
+- Renekton, Brute の誘発は、すでに場にいる Unit の実効 Might が 10 未満から 10 以上になったときに発生する。効果の解決に加え、Standard Move で Battlefield のパッシブが適用された場合も検出する。閾値以上を維持している間は再誘発せず、下がってからもう一度到達すれば再誘発する。
+- Morgana, Vindictive は解決時に対象に記録されているダメージと同じ量のダメージを与える。Keeper of Law は、Unit がちょうど 2 体いる Battlefield を支配している場合に 2 Energy と 1 Order Power が軽減される。
+- 167 枚中 103 枚が `drafted`、100 枚が `CardDef.runs` の検査を通る。
+
 ## M9: 多人数戦と隠れ情報（CR 483-491, 651-652, 128）
 
 **実装**
