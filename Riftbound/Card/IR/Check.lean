@@ -26,6 +26,8 @@ structure Ctx where
   vars : List VarId := []
   /-- The number of objects chosen when the card was played: the slots `0` to `slots - 1`. -/
   slots : Nat := 0
+  /-- The number of declared player target slots. -/
+  playerSlots : Nat := 0
   /-- An X was chosen when the card was played. -/
   hasX : Bool := false
   /-- The number of modes the card asks to choose from, if it does. -/
@@ -40,7 +42,7 @@ deriving DecidableEq, Repr
 
 /-- The players an effect names can be found. -/
 def PlayerSel.ok (c : Ctx) : PlayerSel → Bool
-  | .chosen i => decide (i < c.slots)
+  | .chosen i => decide (i < c.playerSlots)
   | .eventPlayer => c.eventOk
   | _ => true
 
@@ -396,6 +398,7 @@ def Choice.modeCount : Choice → Option Nat
 def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
   { base with
     slots := (d.choices.filter Choice.isTarget).length + base.slots,
+    playerSlots := if d.playerTarget.isSome then base.playerSlots + 1 else base.playerSlots,
     hasX := d.choices.any (· == .xValue),
     modes := (d.choices.filterMap Choice.modeCount).head? }
 
@@ -405,7 +408,8 @@ def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
   Choice.allOk 0 d.choices && Effect.ok ctx d.body &&
     (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
     d.modes.all (fun mode =>
-      let branch : EffectDef := { choices := mode.choices, body := mode.body }
+      let branch : EffectDef :=
+        { choices := mode.choices, body := mode.body, playerTarget := d.playerTarget }
       Choice.allOk 0 branch.choices && Effect.ok (branch.ctx base) branch.body)
 
 /-- An ability refers only to what is there. -/

@@ -40,6 +40,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .eachPlayer => true
   | .eachOpponent => true
   | .combatSides => true
+  | .chosen _ => true
   | .controllerOf _ => true
   | _ => false
 
@@ -422,7 +423,7 @@ def EffectDef.choicesRun (e : EffectDef) : Bool :=
 /-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
-  | some e => e.choicesRun
+  | some e => e.playerTarget.isNone && e.choicesRun
   | none => false
 
 /-! ### What a card does when it is played
@@ -578,14 +579,14 @@ def manaGuardUnderstood (body : EffectDef) : Bool :=
 def Ability.runs : Ability → Bool
   | .passive c mods => c.understood && mods.all StaticMod.runs
   | .activated costs _ body _ =>
-    (costs.all (fun
+    body.playerTarget.isNone && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
       | _ => true) && (costPlan costs).isSome &&
       ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
         (body.choices.all Choice.simple && body.body.understood))) ||
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
-    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body)
+    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body))
   | .triggered t body _ =>
     t.runs && body.moveChoice.isNone && body.choicesRun
   | .replacement .. => false
@@ -611,7 +612,7 @@ def CardDef.runs (c : CardDef) : Bool :=
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
-      | some e => e.choicesRun
+      | some _ => c.spellRuns
       | none => !c.types.contains .spell)
 
 end Riftbound

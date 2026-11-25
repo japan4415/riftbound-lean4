@@ -2366,11 +2366,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
   | .gainXP ps n =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k => (gainXPAll k s l, [])))
   | .spendXP ps n =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k => (spendXPAll k s l, [])))
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k => (spendXPAll k s l, [])))
   | .channel ps n extra =>
-    (ps.resolve s p).bind (fun l =>
+    (ps.resolve s p env).bind (fun l =>
       (n.evalS s p src env).bind (fun k =>
         (extra.evalS s p src env).map (fun x => channelAll k x s l)))
   | .recycle sel =>
@@ -2432,10 +2432,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some (b :: _) => onSelected s p src env sel (hideObj b)
     | _ => none
   | .recycleTop ps =>
-    (ps.resolve s p).map (fun l => (recycleTopAll s l,
+    (ps.resolve s p env).map (fun l => (recycleTopAll s l,
       l.filterMap (fun q =>
         if (s.zone (.player q .mainDeck)).isEmpty then none else some (Event.recycled q))))
-  | .swapTop ps => (ps.resolve s p).map (fun l => (swapTopAll s l, []))
+  | .swapTop ps => (ps.resolve s p env).map (fun l => (swapTopAll s l, []))
   | .takeControl sel => onSelected s p src env sel (setController p)
   | .addBattlefield name => (s.tokenCard name).map (fun c => (addBattlefieldTok c p s, []))
   | .createAtPrev name n ready => applyCreateAtPrev s p src env name n ready
@@ -2459,11 +2459,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
     -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
-    (ps.resolve s p).map (fun l =>
+    (ps.resolve s p env).map (fun l =>
       (gainPointsAll s.victoryScore s l, []))
   | .score ps n =>
     -- a player who cannot score gets no point from the effect either (Tianna)
-    (ps.resolve s p).bind (fun l0 => (n.evalS s p src env).map (fun k =>
+    (ps.resolve s p env).bind (fun l0 => (n.evalS s p src env).map (fun k =>
       let l := l0.filter (fun q => !s.cantActHere q .score src)
       (gainPointsAll k s l, if k = 0 then [] else l.map (fun q => Event.pointsGained q k))))
   | .turnEffect e =>
@@ -2480,7 +2480,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         (t.addTurnFxOn p id (.triggerOnDeath src card idx), [])))
   | .returnChampion => some (returnChampion p s)
   | .extraTurn ps =>
-    (ps.resolve s p).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
+    (ps.resolve s p env).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
   | .lookTop n => some (s, ((s.zone (.player p .mainDeck)).take n).map (Event.lookedAt p))
   | .choose sel => (sel.eval s p src env).map (fun ids => (s, ids.flatMap (chosenAt s p src)))
   | .activateConquer sel =>
@@ -2491,13 +2491,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some r => some r
     | none => some (s, [])
   | .addEnergy ps n none =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addEnergy k) s l, [])))
   | .addPower ps n (some d) none =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addPower d k) s l, [])))
   | .addPower ps n none none =>
-    (ps.resolve s p).bind (fun l => (n.evalS s p src env).map (fun k =>
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsAddAny k s l, [])))
   | _ => none
 
@@ -2578,7 +2578,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | disempower sel => exact onSelected_safe disempowerObj_safe h
   | gainXP ps n =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       cases hn : n.evalS s p src env with
@@ -2589,7 +2589,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         exact gainXPAll_safe k l s
   | spendXP ps n =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       cases hn : n.evalS s p src env with
@@ -2686,7 +2686,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         exact onSelected_safe (hideObj_safe b) h
   | recycleTop ps =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
@@ -2694,7 +2694,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       exact recycleTopAll_safe l s
   | swapTop ps =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
@@ -2749,7 +2749,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | «recall» sel ex => exact onSelected_safe (recallFx_safe ex) h
   | win ps =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
@@ -2757,7 +2757,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       exact gainPointsAll_safe _ l s
   | score ps n =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       cases hn : n.evalS s p src env with
@@ -2768,7 +2768,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         exact gainPointsAll_safe k _ s
   | channel ps n extra =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       cases hn : n.evalS s p src env with
@@ -2786,7 +2786,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     exact playFirstOf_safe fs p src env s
   | extraTurn ps =>
     simp only [applyPrim] at h
-    cases hl : ps.resolve s p with
+    cases hl : ps.resolve s p env with
     | none => simp [hl] at h
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
@@ -2845,7 +2845,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some a => simp [applyPrim] at h
     | none =>
       simp only [applyPrim] at h
-      cases hl : ps.resolve s p with
+      cases hl : ps.resolve s p env with
       | none => simp [hl] at h
       | some l =>
         cases hn : n.evalS s p src env with
@@ -2861,7 +2861,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | some a => simp [applyPrim] at h
       | none =>
         simp only [applyPrim] at h
-        cases hl : ps.resolve s p with
+        cases hl : ps.resolve s p env with
         | none => simp [hl] at h
         | some l =>
           cases hn : n.evalS s p src env with
@@ -2875,7 +2875,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       | some a => simp [applyPrim] at h
       | none =>
         simp only [applyPrim] at h
-        cases hl : ps.resolve s p with
+        cases hl : ps.resolve s p env with
         | none => simp [hl] at h
         | some l =>
           cases hn : n.evalS s p src env with
@@ -3315,7 +3315,7 @@ deck is refilled through the ordinary Burn Out decisions before the remainder is
 def burnEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (who : PlayerSel)
     (n : Amount) (es : EffectList) (unitTrigger : Option Nat := none) :
     GameState × List Frame × List Event :=
-  match who.resolve s p, n.evalS s p src env with
+  match who.resolve s p env, n.evalS s p src env with
   | some (q :: qs), some count =>
     let available := (s.zone (.player q .mainDeck)).length
     let r := burnTop s q count
@@ -3477,7 +3477,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         match env.slots[i]? with
         | some (.obj o) => (s.obj? o).map (fun (x : Object) => [x.controller])
         | _ => none
-      | _ => who.resolve s p : Option (List PlayerId)) with
+      | _ => who.resolve s p env : Option (List PlayerId)) with
     | some ps =>
       let playerEnv := { env with effectController := env.effectController <|> some p }
       (s, ps.map (fun q => Frame.run q src playerEnv (.cons body .nil)) ++ [.run p src env es], [])
@@ -3510,7 +3510,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
     | none => skip
   | .prim (.draw sel n) =>
-    match sel.resolve s p, n.evalS s p src env with
+    match sel.resolve s p env, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim (.reveal sel) =>
@@ -3548,7 +3548,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | some r => (r.1, [.run p src env es], r.2)
       | none => skip
   | .prim (.discard sel n) =>
-    match sel.resolve s p, n.evalS s p src env with
+    match sel.resolve s p env, n.evalS s p src env with
     | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
     | _, _ => skip
   | .prim pr =>
@@ -3680,6 +3680,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       subject.map Value.obj else slotValues o.targets definition
     let env : Env := {
       slots
+      playerTargets := o.targetPlayer.toList
       sourceCard := some card
       eventAmount := o.eventAmount }
     let body := match definition with

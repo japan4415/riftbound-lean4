@@ -149,6 +149,8 @@ structure Object where
   spellPick : SpellPick := .plain
   /-- The watched object of a triggered ability, which is not one of its declared targets. -/
   triggerSubject : Option ObjId := none
+  /-- A player targeted when this item was finalized (CR 355.7). -/
+  targetPlayer : Option PlayerId := none
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
   chose : List ObjId := []
   /-- The turn the objects in `chose` were chosen in. -/

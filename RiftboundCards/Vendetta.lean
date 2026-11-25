@@ -68,8 +68,12 @@ def VEN_002.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Blade Twirler: the effect is not written yet. -/
-def VEN_002 : CardDef := VEN_002.meta
+/-- Blade Twirler targets a player the first time it moves each turn. -/
+def VEN_002 : CardDef :=
+  { VEN_002.meta with
+    abilities := [.triggered { event := .move, condition := .cmp .eq .movesThisTurn (.const 1) }
+      { body := .prim (.burn (.chosen 0) (.const 1)), playerTarget := some .any } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-003
 /--

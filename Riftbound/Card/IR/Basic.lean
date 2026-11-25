@@ -116,7 +116,7 @@ inductive PlayerSel where
   | eachOpponent
   /-- The attacker and defender of the ongoing Combat (CR 466.2.c). -/
   | combatSides
-  /-- The player who chose a slot of the effect. -/
+  /-- The player chosen at a player target slot when the item was finalized (CR 355.7). -/
   | chosen (slot : Nat)
   /-- The player the replaced event is about ("they draw 1 instead"). -/
   | eventPlayer

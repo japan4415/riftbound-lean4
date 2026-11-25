@@ -34,6 +34,8 @@ structure Env where
   bindings : List (VarId × Value) := []
   /-- The values chosen when the card was played: slot `i` is `slots[i]` (CR 355). -/
   slots : List Value := []
+  /-- The players chosen during finalization, indexed separately from object slots. -/
+  playerTargets : List PlayerId := []
   /-- The card that defines the resolving ability, even if its source has left play. -/
   sourceCard : Option CardId := none
   /-- The controller of the original effect when an instruction is run for another player. -/

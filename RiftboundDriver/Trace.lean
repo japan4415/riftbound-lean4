@@ -113,11 +113,12 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (source.toList.map (fun id => ("source", toString id.n))) ++
       (match payment with
        | .skip => [("decline", "true")]
-       | .pay ids mode =>
+       | .pay ids mode player =>
          let costs := match state, trigger with
            | some s, some t =>
-             if mode.isNone && ts.isEmpty && !trigOptional s t &&
-                 (!(trigChoices s t).isEmpty || !(trigModes s t).contains none) then
+             if mode.isNone && player.isNone && ts.isEmpty && !trigOptional s t &&
+                 (!(trigChoices s t).isEmpty || !(trigModes s t).contains none ||
+                   !(trigPlayerOptions s t).contains none) then
                [("unavailable", "true")]
              else match trigCost s t with
                | .energy n => [("energy", toString n)]
@@ -126,6 +127,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
          mode.toList.flatMap (modeFields definition) ++ costs ++
+           player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
     | .activate src idx pay ts discards =>
       [("source", toString src.n), ("index", toString idx),

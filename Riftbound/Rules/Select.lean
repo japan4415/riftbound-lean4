@@ -81,13 +81,15 @@ def GameState.pickOrder (s : GameState) : List PlayerId :=
   order.drop i ++ order.take i
 
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
-def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (List PlayerId)
+def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env : Env := {}) :
+    Option (List PlayerId) :=
+  match sel with
   | .you => some [self]
   | .opponent => (s.players.filter (· ≠ self)).head?.map (fun o => [o])
   | .eachPlayer => some s.pickOrder
   | .eachOpponent => some (s.players.filter (· ≠ self))
   | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
-  | .chosen _ => none
+  | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])
   | .eventPlayer => none
   | .controllerOf _ => none
 
@@ -1031,13 +1033,13 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     let sym (id : ObjId) : Nat := (((s.cardDef? id).bind (·.cost)).map (·.power.length)).getD 0
     ids.map (fun l => (l.map sym).sum)
   | .points ps => do
-    let l ← ps.resolve s p
+    let l ← ps.resolve s p env
     pure (l.foldl (fun acc q => acc + s.pointsOf q) 0)
   | .turnsTaken ps => do
-    let l ← ps.resolve s p
+    let l ← ps.resolve s p env
     pure ((l.map s.turnsTaken).sum)
   | .handSize ps => do
-    let l ← ps.resolve s p
+    let l ← ps.resolve s p env
     pure ((l.map (fun q => (s.zone (.player q .hand)).length)).foldl (· + ·) 0)
   | .add a b => do pure ((← Amount.evalS0 s p self env a) + (← Amount.evalS0 s p self env b))
   | .sub a b => do pure ((← Amount.evalS0 s p self env a) - (← Amount.evalS0 s p self env b))

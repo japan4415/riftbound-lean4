@@ -156,6 +156,41 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Blade Twirler can target any player, including its controller. Resolution
+-- respects the recorded target, and a countered trigger still used the first move.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode := mode }, turnOrder := [p, q, third] }
+  let bf := s.bf0
+  let (s, blade) ← put s p "VEN-002" .base
+  let (s, top) ← put s third "VEN-014" .mainDeck
+  let s := s.control p bf
+  let move : Action := ⟨.player p, .standardMove blade (.battlefield bf)⟩
+  let pick (r : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some r))⟩
+  let (choosing, _) ← (step 100 s move).toOption
+  let (waiting, _) ← (step 100 choosing (pick third)).toOption
+  let item ← (waiting.zone .chain).head?
+  let resolved ← passToChoice 6 waiting
+  let canceled ← passToChoice 6 (counterObj waiting item).1
+  let (movedAgain, events) := moveHome canceled blade
+  let next := { movedAgain with turn := movedAgain.turn + 1 }
+  let (next, firstMove) := sendToBf bf next blade
+  let (nextChoice, _) ← (advance 100 (next.withTriggers firstMove) []).toOption
+  let deck (t : GameState) (r : PlayerId) := t.zone (.player r .mainDeck)
+  let burned := (resolved.zone (.player third .trash)).any (fun id =>
+    (resolved.obj? id).any (·.formerId == some top))
+  return legalFrameActions choosing == s.players.map pick &&
+    ((step 100 choosing (pick ⟨3⟩)).toOption).isNone &&
+    ((step 100 choosing ⟨.player p, .putTrigger 0 []⟩).toOption).isNone &&
+    (waiting.obj? item).any (fun o => o.targetPlayer == some third && o.targets.isEmpty) &&
+    deck waiting third == [top] && (deck resolved third).isEmpty && burned &&
+    deck resolved p == deck s p && deck resolved q == deck s q &&
+    deck canceled third == [top] && (movedAgain.detect events).isEmpty &&
+    legalFrameActions nextChoice == s.players.map pick
+
 -- Jayce's controller fixes which keyword he gets before players can respond to the ability.
 #guard vendettaCase fun s => do
   let p := s.me
@@ -534,7 +569,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let pay (ids : List ObjId) : Action := ⟨.player p, .putTrigger 0 [] (.pay ids)⟩
   let picks := legalFrameActions picking
   let payment ← picks.find? (fun a => match a.kind with | .putTrigger _ _ (.pay ..) => true | _ => false)
-  let .putTrigger _ _ (.pay paidIds _) := payment.kind | none
+  let .putTrigger _ _ (.pay paidIds _ _) := payment.kind | none
   let (declined, _) ← (step 100 picking skip).toOption
   let (waiting, events) ← (step 100 picking payment).toOption
   let ability ← (waiting.zone .chain).head?

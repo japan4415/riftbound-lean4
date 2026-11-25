@@ -354,14 +354,15 @@ function describeA(a, prev) {
       const ability = a.source == null ? '誘発能力' : cardName(a.source) + ' の誘発能力';
       if (a.decline) return [who + ': ' + ability + 'を見送る', 'コストは支払わず、能力は Chain に載らない'];
       if (a.unavailable) return [who + ': ' + ability + 'を取り除く', '選べる対象がないため、能力は Chain に残らない'];
-      const targets = (a.targets || []).map(cardName).join('、');
+      const targets = (a.targets || []).map(cardName);
+      if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const sacrifices = (a.sacrifices || []).map(cardName).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
       const mode = typeof a.mode === 'number' ? '（' + (a.modeLabel || 'モード ' + (a.mode + 1)) + '）' : '';
       return [who + ': ' + ability + 'を確定' + mode + energy + burn +
         (sacrifices ? '（コストとして ' + sacrifices + ' を Kill）' : '') +
-        (targets ? '（対象 ' + targets + '）' : '（対象なし）'),
+        (targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）'),
         sacrifices ? '選んだカードを Kill してから能力を Chain に載せる' :
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
