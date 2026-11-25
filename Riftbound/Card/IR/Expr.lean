@@ -127,6 +127,10 @@ inductive Filter where
   | atSourceMoveBattlefield
   /-- The unit is at a Battlefield with an active Showdown (CR 341). -/
   | atShowdown
+  /-- The unit is in combat with an enemy unit of the given domain. -/
+  | combatsEnemyOfDomain (domain : Domain)
+  /-- A finalized enemy spell of the given domain currently chooses this unit. -/
+  | chosenByEnemySpellOfDomain (domain : Domain)
   /-- A Spell whose effect has no choice to make when it is played. -/
   | noChoices
   /-- The Energy cost is less than the points of the player the effect belongs to. -/

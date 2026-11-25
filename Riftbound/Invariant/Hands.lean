@@ -837,6 +837,13 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        unfold retainTargetSetFrame
        dsimp only
        split <;> rfl)
+    | (rcases h with rfl
+       left
+       unfold collectOwnPicksFrame
+       dsimp only
+       split
+       · rfl
+       · split <;> rfl)
     | (rcases h with rfl | rfl <;> exact Or.inl rfl)
     | (rcases h with ⟨q, -, rfl⟩ | rfl
        · exact Or.inr (Or.inl ⟨q, _, rfl⟩)

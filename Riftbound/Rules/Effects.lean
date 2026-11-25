@@ -1210,12 +1210,43 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact moveHomeUnchecked_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- A Unit's move protection applies to enemy effects while its ability is active, including
+when it is granted by attached Equipment (CR 137, 451). -/
+def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
+  (s.obj? u).any (·.controller != p) &&
+    ((s.activeMods u).contains .noEnemyEffectMove ||
+      s.inPlay.any (fun gear =>
+        (s.obj? gear).any (·.attached == some u) &&
+          (s.cardDef? gear).any (fun d => d.grants.any (fun
+            | .passive .always mods => mods.contains .noEnemyEffectMove
+            | _ => false))))
+
+/-- Move the Unit only if the spell or ability that would move it is allowed to do so. -/
+def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    GameState × List Event :=
+  if s.blocksEnemyMove controller u then (s, [])
+  else match loc with
+    | none => moveHome s u
+    | some bf => sendToBf bf s u
+
+/-- Applying or preventing an effect move preserves the structural invariants. -/
+theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    Safe s (moveByEffect p loc s u).1 := by
+  unfold moveByEffect
+  split
+  · exact Safe.refl s
+  · cases loc
+    · exact moveHome_safe s u
+    · exact sendToBf_safe _ s u
+
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
-at the same place, or if a Battlefield that a Unit would leave for the Base forbids it. -/
-def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
+at the same place or either move is forbidden. -/
+def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
+    GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  if lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
+  if controller.any (fun p => s.blocksEnemyMove p x || s.blocksEnemyMove p y) ||
+      lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
       (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
   else
     let r1 := sendToLoc ly s x
@@ -1223,7 +1254,8 @@ def swapPlaces (s : GameState) (x y : ObjId) : GameState × List Event :=
     (r2.1, r1.2 ++ r2.2)
 
 /-- Swapping places is a safe change. -/
-theorem swapPlaces_safe (s : GameState) (x y : ObjId) : Safe s (swapPlaces s x y).1 := by
+theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
+    Safe s (swapPlaces s x y controller).1 := by
   unfold swapPlaces
   dsimp only
   split
@@ -2252,7 +2284,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .double sel => onSelected s p src env sel doubleObj
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
-  | .move sel .base => (onSelected s p src env sel moveHome).map (movedEvents p)
+  | .move sel .base =>
+    (onSelected s p src env sel (moveByEffect (env.effectController.getD p) none)).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -2260,12 +2293,15 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       -- a Battlefield, or the Battlefield a Unit is at; a Unit at a Base names no place yet
       match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
           else (s.obj? d).bind (·.loc)) with
-      | some bf => (onSelected s p src env sel (sendToLoc (some bf))).map (movedEvents p)
+      | some bf =>
+        (onSelected s p src env sel (moveByEffect (env.effectController.getD p) (some bf))).map
+          (movedEvents p)
       | none => none
     | _ => none
   | .swapPlaces a b =>
     match a.eval s p src env, b.eval s p src env with
-    | some (x :: _), some (y :: _) => some (movedEvents p (swapPlaces s x y))
+    | some (x :: _), some (y :: _) =>
+      some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p))))
     | _, _ => none
   | .stun sel => onSelected s p src env sel stunObj
   | .buff sel => onSelected s p src env sel buffObj
@@ -2460,7 +2496,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [applyPrim] at h
       obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
       show Safe s r0.1
-      exact onSelected_safe moveHome_safe hr0
+      exact onSelected_safe (moveByEffect_safe _ none) hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -2473,7 +2509,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           split at h
           · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
             show Safe s r0.1
-            exact onSelected_safe (sendToLoc_safe _) hr0
+            exact onSelected_safe (moveByEffect_safe _ _) hr0
           · simp at h
   | stun sel => exact onSelected_safe stunObj_safe h
   | detach sel => exact onSelected_safe detachObj_safe h
@@ -2731,7 +2767,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | cons y _ =>
             simp only [ha, lb, Option.some.injEq] at h
             rw [← h]
-            exact swapPlaces_safe s x y
+            exact swapPlaces_safe s x y _
   | activateConquer sel =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => Safe.refl t) h
@@ -3018,10 +3054,11 @@ def Effect.isLinkedCost : Effect → Bool
   | .doThen .. => true
   | _ => false
 
-/-- Picks for costs do not count as targets of the resolving instruction (CR 355.10.c.1). -/
+/-- Picks for costs or by multiple players do not fire target effects. Keeping original targets
+does not choose them again (CR 355.10.c.1, 355.10.e, 355.11.b). -/
 def Effect.pickEvents (e : Effect) (s : GameState) (p : PlayerId) (src id : ObjId) : List Event :=
   match e with
-  | .retainTargetSet _ => []
+  | .retainTargetSet _ | .collectOwnPicks .. => []
   | _ => if e.isLinkedCost then [] else chosenAt s p src id
 
 /-- Cast the spell now, in place (Kai'Sa): its Power is paid, its effect is done, and the card is
@@ -3283,6 +3320,31 @@ def retainTargetSetFrame (p : PlayerId) (src : ObjId) (env : Env)
   | id :: more => .pickDo p src env id more (.retainTargetSet remaining) es
   | [] => .run p src { env with slots := (remaining.headD []).map Value.obj } es
 
+/-- Order for an instruction that asks each player to make a choice (CR 303.2.a). -/
+def GameState.pickOrder (s : GameState) : List PlayerId :=
+  let order := if s.turnOrder.isEmpty then s.players else s.turnOrder
+  let i := (s.active.bind order.idxOf?).getD 0
+  order.drop i ++ order.take i
+
+/-- Ask the next player with more than one candidate, or record their sole pick and move on.
+The original effect resumes after every player has picked (CR 355.10.e). -/
+def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (remaining : List PlayerId) (place : Place) (fs : FilterList) (body : Effect)
+    (capture : Bool) (es : EffectList) : Frame :=
+  let env := if capture then
+    { env with slots := env.slots ++ (env.lookup pickVar).toList }
+    else env
+  match remaining with
+  | [] => .run p src env (.cons body es)
+  | q :: qs =>
+    let candidates := (s.pickCandidates q src env .friendly place fs false).getD []
+    let next := .cons (.collectOwnPicks p qs place fs body false) es
+    match candidates with
+    | [] => .run p src env next
+    | [id] => .run p src { env with slots := env.slots ++ [.obj id] } next
+    | id :: other :: more =>
+      .pickDo q src env id (other :: more) (.collectOwnPicks p qs place fs body true) es
+
 /-- Do the first effect of `e :: es`: the new state, the replacement frames, and the events. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) : GameState × List Frame × List Event :=
@@ -3307,6 +3369,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | some v => (s, [.run p src { env with slots := env.slots.set i v } es], [])
     | none => skip
   | .retainTargetSet groups => (s, [retainTargetSetFrame p src env groups es], [])
+  | .pickOwn place fs body =>
+    (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
+  | .collectOwnPicks controller players place fs body capture =>
+    (s, [collectOwnPicksFrame s controller src env players place fs body capture es], [])
   | .forEach sel body =>
     match sel.eval s p src env with
     | some ids =>

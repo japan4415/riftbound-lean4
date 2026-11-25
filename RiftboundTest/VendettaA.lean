@@ -17,6 +17,100 @@ open Riftbound
 meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   (lab.bind f).getD false
 
+-- Cataclysmic Duel asks each player for their own non-targeted choice in turn
+-- order, skips a player with no Units, and kills only after the choices finish.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode := mode }, turnOrder := [q, third, p] }
+  let (s, spell) ← put s p "VEN-090" .hand
+  let (s, mine) ← put s p "VEN-014" .base
+  let (s, mineOther) ← put s p "VEN-014" .base
+  let (s, theirs) ← put s q "VEN-014" .base
+  let (s, theirsOther) ← put s q "VEN-014" .base
+  let s := s.rich p
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨8, [.body, .body, .body]⟩ []⟩).toOption
+  let pass (t : GameState) : Option GameState := do
+    let .chainPass actor _ :: _ := t.pending | none
+    (step 100 t ⟨.player actor, .pass⟩).toOption.map Prod.fst
+  let first ← pass casting >>= pass >>= pass
+  let (second, firstEvents) ← (step 100 first ⟨.player p, .choose mine⟩).toOption
+  let (resolved, secondEvents) ← (step 100 second ⟨.player q, .choose theirs⟩).toOption
+  return !(legalActions first).contains ⟨.player q, .choose theirs⟩ &&
+    !(legalActions second).contains ⟨.player q, .choose mineOther⟩ &&
+    (second.obj? mineOther).isSome && (second.obj? theirsOther).isSome &&
+    (resolved.obj? mine).isSome && (resolved.obj? theirs).isSome &&
+    resolved.countIn p .trash "VEN-014" == 1 && resolved.countIn q .trash "VEN-014" == 1 &&
+    !((firstEvents ++ secondEvents).any (fun
+      | .chosenByAbility _ _ | .chosenBySpell _ _ => true
+      | _ => false))
+
+-- Jagged Cutlass applies once Equip resolves. The opponent can target the
+-- equipped Unit with Fight or Flight but cannot move it. Friendly moves and Recall still work.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, unit) ← putAt s q "VEN-014" field
+  let (s, gear) ← put s q "VEN-073" .base
+  let (s, enemyMove) ← put s p "OGN-168" .hand
+  let (s, ownMove) ← put s q "OGN-168" .hand
+  let (s, other) ← put s p "VEN-014" .base
+  let own := { s.control q field with active := some q, pending := [.priority q] }
+  let equipped ← activate own q gear 0 [unit] ⟨0, [.body]⟩
+  let opposing := { equipped with active := some p, pending := [.priority p] }
+  let blocked ← play opposing p enemyMove [unit]
+  let allowed ← play equipped q ownMove [unit]
+  let plain ← play (detachObj opposing gear).1 p enemyMove [unit]
+  let (standard, _) ← (step 100 equipped ⟨.player q, .standardMove unit .base⟩).toOption
+  let (swapped, _) ← applyPrim opposing p enemyMove { slots := [.obj unit, .obj other] }
+    (.swapPlaces (.slot 0) (.slot 1))
+  let recalled := (recallFx false equipped unit).1
+  return (equipped.obj? gear).any (·.attached == some unit) && equipped.mightNow unit == some 4 &&
+    (blocked.obj? unit).any (·.loc == some field) &&
+    (swapped.obj? unit).any (·.loc == some field) && (swapped.obj? other).any (·.loc.isNone) &&
+    allowed.locate unit == some (.player q .base) && plain.locate unit == some (.player q .base) &&
+    standard.locate unit == some (.player q .base) && recalled.locate unit == some (.player q .base)
+
+-- Decree of Focus can answer an enemy Fury spell choosing a friendly Unit.
+-- It rechecks the relation if that spell is countered while the Decree is on the Chain.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← putAt s q "VEN-014" s.bf0
+  let (s, spare) ← put s q "VEN-014" .base
+  let (s, ray) ← put s p "OGN-009" .hand
+  let (s, decree) ← put s q "VEN-040" .hand
+  let s := (s.control q s.bf0 |>.rich p).rich q
+  let (casting, _) ← (step 100 s ⟨.player p, .playCard ray ⟨1, [.fury]⟩ [unit]⟩).toOption
+  let item ← (casting.zone .chain).head?
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let action (target : ObjId) : Action := ⟨.player q, .playCard decree ⟨1, []⟩ [target]⟩
+  let (reply, _) ← (step 100 priority (action unit)).toOption
+  let boosted := settleChain {} 12 reply
+  let mistargeted := settleChain {} 12 (counterObj reply item).1
+  return !(legalActions priority).contains (action spare) &&
+    boosted.mightNow unit == some 6 && (boosted.obj? unit).any (·.damage == 3) &&
+    mistargeted.mightNow unit == some 2
+
+-- Combat with a Fury defender qualifies before either player casts a spell.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← putAt s p "VEN-033" s.bf0
+  let (s, enemy) ← putAt s q "VEN-014" s.bf0
+  let (s, decree) ← put s p "VEN-040" .hand
+  let rich := s.rich p
+  let showdown := { rich with pending := [.showdown s.bf0 p 0] }
+  let action : Action := ⟨.player p, .playCard decree ⟨1, []⟩ [unit]⟩
+  let (casting, _) ← (step 100 showdown action).toOption
+  let boosted := settleChain {} 8 casting
+  return !(legalActions rich).contains action &&
+    !(legalActions (moveHome showdown enemy).1).contains action &&
+    boosted.mightNow unit == (s.mightNow unit).map (· + 4)
+
 -- Decree of Discord can choose zero or more Order units. A Reaction raises one unit
 -- from 1 Might to 4, so the caster must keep it alone or keep the two 2-Might units.
 #guard vendettaCase fun s => do

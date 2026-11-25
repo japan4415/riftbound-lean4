@@ -62,7 +62,7 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
-/-- An action as JSON, with the destination of a token placement decision. -/
+/-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
@@ -96,7 +96,12 @@ def actionJson (a : Action) (frame : Option Frame := none) : String :=
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
     | .decide yes => [("yes", if yes then "true" else "false")] ++ tokenLocationFields frame yes
-    | .choose o => [("obj", toString o.n)]
+    | .choose o =>
+      [("obj", toString o.n)] ++
+        (match frame with
+        | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
+        | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
+        | _ => [])
     | .predictPick card recycle =>
       [("card", toString card.n), ("recycle", if recycle then "true" else "false")]
     | .burnOutTarget o => [("opponent", toString o.n)]

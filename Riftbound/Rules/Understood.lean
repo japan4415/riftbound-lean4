@@ -176,6 +176,7 @@ def Filter.understood : Filter → Bool
   | .enemyOccupied => true
   | .sameAs .self => true
   | .sameAs (.slot _) => true
+  | .sameAs (.slotsFrom _) => true
   | .sameAs (.var _) => true
   | .mighty => true
   | .attacker => true
@@ -200,6 +201,7 @@ def Filter.understood : Filter → Bool
   | .onBattlefield => true
   | .atSourceMoveBattlefield => true
   | .atShowdown => true
+  | .combatsEnemyOfDomain _ | .chosenByEnemySpellOfDomain _ => true
   | .noChoices => true
   | .costBelowPoints => true
   | .hideRoom => true
@@ -390,6 +392,7 @@ def Effect.understood : Effect → Bool
     s.understoodPickAny && Effect.understood e
   | .eitherOf es => EffectList.understood es
   | .eachPlayer w e => w.understood && Effect.understood e
+  | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
   | .grant s (.mightPlus .it a) d =>
     s.understoodPick && a.understood && d.endPoint?.isSome
   | .grant s (.mightMinus .it a) d =>
@@ -437,7 +440,7 @@ def StaticMod.runs : StaticMod → Bool
   | .costMinusMin s a _ => costSel s && a.understoodK
   | .costPlus s a => costSel s && a.understoodK
   | .costPower s a _ _ => costSel s && a.understoodK
-  | .noDamage | .noEnemyEffectDamage => true
+  | .noDamage | .noEnemyEffectDamage | .noEnemyEffectMove => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true

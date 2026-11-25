@@ -1114,8 +1114,15 @@ def VEN_040.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Decree of Focus: the effect is not written yet. -/
-def VEN_040 : CardDef := VEN_040.meta
+/-- Decree of Focus. -/
+def VEN_040 : CardDef :=
+  let againstFury : Filter :=
+    .either (.combatsEnemyOfDomain .fury) (.chosenByEnemySpellOfDomain .fury)
+  { VEN_040.meta with
+    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit, againstFury]]
+      (.ifThen (.matches (.slot 0) (.both (.sameController .self) againstFury))
+        (.grant (.slot 0) (.mightPlus .it (.const 4)) .thisTurn) .nop)),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-041
 /--
@@ -2012,8 +2019,12 @@ def VEN_073.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jagged Cutlass: the effect is not written yet. -/
-def VEN_073 : CardDef := VEN_073.meta
+/-- Jagged Cutlass. -/
+def VEN_073 : CardDef :=
+  { VEN_073.meta with
+    keywords := [⟨.equip, .cost ⟨0, [.domain .body]⟩⟩],
+    grants := [.passive .always [.noEnemyEffectMove]],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-074
 /--
@@ -2462,8 +2473,12 @@ def VEN_090.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Cataclysmic Duel: the effect is not written yet. -/
-def VEN_090 : CardDef := VEN_090.meta
+/-- Cataclysmic Duel. -/
+def VEN_090 : CardDef :=
+  { VEN_090.meta with
+    spellEffect := some (.of [] (.pickOwn .anywhere (.ofList [.ofType .unit])
+      (.prim (.kill (.all .any .anywhere [.ofType .unit, .not (.sameAs (.slotsFrom 0))]))))),
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-091
 /--

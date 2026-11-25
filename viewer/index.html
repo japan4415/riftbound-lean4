@@ -308,7 +308,12 @@ function describeA(a, prev) {
       }
       return [who + ': ' + (a.yes ? 'する' : 'しない'), '「〜してもよい」の効果を' + (a.yes ? 'する' : 'しない')];
     }
-    case 'choose': return [who + ': ' + cardName(a.obj) + ' を選ぶ', '効果の対象に ' + cardName(a.obj) + ' を選ぶ'];
+    case 'choose': {
+      const card = cardName(a.obj);
+      if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
+      if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
+      return [who + ': ' + card + ' を選ぶ', '効果の対象に ' + card + ' を選ぶ'];
+    }
     case 'predictPick': {
       const card = cardName(a.card);
       return a.recycle
@@ -880,7 +885,10 @@ function renderLegal(i) {
     if (bound(l) && !showAllMoves) continue;
     if (!by.has(l.a.actor)) by.set(l.a.actor, []); by.get(l.a.actor).push(l);
   }
-  $('livemsg').textContent = liveLegal.length ? '答えを選ぶ（' + liveLegal.length + ' 個）' +
+  const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
+  const prompt = choiceContext === 'own' ? '自分のカードから選ぶ'
+    : choiceContext === 'retain' ? '対象に残すカードを選ぶ' : '答えを選ぶ';
+  $('livemsg').textContent = liveLegal.length ? prompt + '（' + liveLegal.length + ' 個）' +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
   for (const [actor, list] of by) {
     group('P' + actor.slice(1) + ' の合法手', list.map((l) => {

@@ -464,8 +464,21 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     match sel with
     | .self => some (id == self)
     | .slot i => match env.slots[i]? with | some (.obj o) => some (id == o) | _ => none
+    | .slotsFrom i => some ((env.slots.drop i).contains (.obj id))
     | .var v => match env.lookup v with | some (.obj o) => some (id == o) | _ => none
     | _ => none
+  | .combatsEnemyOfDomain dom =>
+    some (match s.combatNow, s.obj? id with
+      | some (bf, _), some unit =>
+        unit.loc == some bf && s.players.any (fun q =>
+          q != unit.controller && (s.unitsAtOf bf q).any (fun enemy =>
+            (s.cardDef? enemy).any (fun card => card.domains.contains dom)))
+      | _, _ => false)
+  | .chosenByEnemySpellOfDomain dom =>
+    some ((s.obj? id).any (fun unit => (s.zone .chain).any (fun item =>
+      (s.obj? item).any (fun spell => spell.controller != unit.controller &&
+        spell.targets.contains id) &&
+      (s.cardDef? item).any (fun card => card.hasType .spell && card.domains.contains dom))))
   | .stunned => (s.obj? id).map (·.stunned)
   | .buffed => (s.obj? id).map (·.buffed)
   | .mighty =>

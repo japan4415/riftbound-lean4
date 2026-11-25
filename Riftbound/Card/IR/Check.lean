@@ -246,7 +246,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .costMinus s a => Selector.ok c s && Amount.ok c a
   | .costPower s a _ _ => Selector.ok c s && Amount.ok c a
   | .costMinusMin s a _ => Selector.ok c s && Amount.ok c a
-  | .noDamage | .noEnemyEffectDamage => true
+  | .noDamage | .noEnemyEffectDamage | .noEnemyEffectMove => true
   | .noMoveToBase => true
   | .recallAllOnTie => true
   | .extraHide => true
@@ -342,6 +342,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .fillFromPick _ => true
   | .retainTargetSet _ => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
+  | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
+  | .collectOwnPicks .. => false
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b
   | .repeatN n e => Amount.ok c n && Effect.ok c e

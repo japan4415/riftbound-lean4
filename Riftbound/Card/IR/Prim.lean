@@ -381,6 +381,8 @@ inductive StaticMod where
   | noDamage
   /-- Prevent damage from enemy spells and abilities. -/
   | noEnemyEffectDamage
+  /-- Enemy spells and abilities cannot move this Unit. -/
+  | noEnemyEffectMove
   /-- The Units at this Battlefield cannot make a Standard Move to the Base (CR 144). -/
   | noMoveToBase
   /-- The opponents of the player play Units only to their Base (not to a Battlefield). -/

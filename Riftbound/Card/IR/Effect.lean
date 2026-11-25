@@ -35,6 +35,12 @@ inductive Effect where
   /-- Each of the players does the effect: the effect is done for them, so that what they choose
   is theirs ("each player kills one of their units"). -/
   | eachPlayer (who : PlayerSel) (body : Effect)
+  /-- Each player chooses one of their own objects. Append the picks to the slots, then run the
+  body for the original controller. The picks are not targets (CR 355.10.e). -/
+  | pickOwn (place : Place) (filters : FilterList) (body : Effect)
+  /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
+  | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
+      (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)
   /-- The player may do the effect. -/
   | may (e : Effect)
   /-- Do the first effect, and if it was done, the second ("if you do") (CR 387). -/
