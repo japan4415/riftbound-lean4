@@ -3380,12 +3380,6 @@ def retainTargetSetFrame (p : PlayerId) (src : ObjId) (env : Env)
   | id :: more => .pickDo p src env id more (.retainTargetSet remaining) es
   | [] => .run p src { env with slots := (remaining.headD []).map Value.obj } es
 
-/-- Order for an instruction that asks each player to make a choice (CR 303.2.a). -/
-def GameState.pickOrder (s : GameState) : List PlayerId :=
-  let order := if s.turnOrder.isEmpty then s.players else s.turnOrder
-  let i := (s.active.bind order.idxOf?).getD 0
-  order.drop i ++ order.take i
-
 /-- Ask the next player with more than one candidate, or record their sole pick and move on.
 The original effect resumes after every player has picked (CR 355.10.e). -/
 def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -3662,9 +3656,10 @@ its controller, with the objects chosen as the slots, and then it leaves the Cha
 def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) : List Frame :=
   match o.kind with
   | .chainAbility card idx src =>
-    let definition := abilityDef s card idx
+    let definition := (abilityDef s card idx).bind (·.forPick o.spellPick)
+    let slots := finalizedSlots s o.controller src o.targets definition o.spellPick
     let env : Env := {
-      slots := slotValues o.targets definition
+      slots := slots ++ o.triggerSubject.toList.map Value.obj
       sourceCard := some card
       eventAmount := o.eventAmount }
     let body := match definition with

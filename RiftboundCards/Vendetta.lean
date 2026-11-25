@@ -2458,8 +2458,15 @@ def VEN_088.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Jayce, Hammer in Hand: the effect is not written yet. -/
-def VEN_088 : CardDef := VEN_088.meta
+/-- Jayce, Hammer in Hand. -/
+def VEN_088 : CardDef :=
+  let grant (k : KeywordInst) := Effect.grant .self (.keyword .it k) .thisTurn
+  { VEN_088.meta with
+    abilities := [.triggered (.onSelf .ready) { body := .nop, modes := [
+      ⟨"Assault 2 を得る", [], grant ⟨.assault, .amount 2⟩⟩,
+      ⟨"Deflect 2 を得る", [], grant ⟨.deflect, .amount 2⟩⟩,
+      ⟨"Ganking を得る", [], grant ⟨.ganking, .none⟩⟩] } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-089
 /--
@@ -3081,8 +3088,14 @@ def VEN_111.meta : CardDef :=
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
-/-- Minah Swiftfoot: the effect is not written yet. -/
-def VEN_111 : CardDef := VEN_111.meta
+/-- Minah Swiftfoot. -/
+def VEN_111 : CardDef :=
+  { VEN_111.meta with
+    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+      { body := .nop, modes := [
+        ⟨"全員が手札を1枚捨てる", [], .prim (.discard .eachPlayer (.const 1))⟩,
+        ⟨"全員がカードを1枚引く", [], .prim (.draw .eachPlayer (.const 1))⟩] } .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED VEN-112
 /--

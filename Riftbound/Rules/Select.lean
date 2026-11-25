@@ -74,11 +74,17 @@ def GameState.takerKey (s : GameState) (self : ObjId) : ObjId :=
   | some o => if o.leftBoard then o.formerId.getD self else self
   | none => self
 
+/-- Order for an instruction that applies to multiple players (CR 303.2.a). -/
+def GameState.pickOrder (s : GameState) : List PlayerId :=
+  let order := if s.turnOrder.isEmpty then s.players else s.turnOrder
+  let i := (s.active.bind order.idxOf?).getD 0
+  order.drop i ++ order.take i
+
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
 def PlayerSel.resolve (s : GameState) (self : PlayerId) : PlayerSel → Option (List PlayerId)
   | .you => some [self]
   | .opponent => (s.players.filter (· ≠ self)).head?.map (fun o => [o])
-  | .eachPlayer => some s.players
+  | .eachPlayer => some s.pickOrder
   | .eachOpponent => some (s.players.filter (· ≠ self))
   | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
   | .chosen _ => none

@@ -35,7 +35,7 @@ def extraEvents (a : Action) (es : List Event) : List Event :=
   | .playCard c _ ts _ _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
   | .activate _ _ _ ts _, .player p => ts.map (Event.chosenByAbility p)
-  | .putTrigger _ ts (.pay _), .player p => ts.map (Event.chosenByAbility p)
+  | .putTrigger _ ts (.pay ..), .player p => ts.map (Event.chosenByAbility p)
   | _, _ => []
 
 /-- The condition holds for the object when the event happens: none, a fact of how the object was
@@ -672,14 +672,15 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
     | pend => { next with pending := insertTriggers pend s.pending }
   else next
 
-/-- The choices of the triggered ability that waits (CR 355). -/
-def trigChoices (s : GameState) (t : PendTrigger) : List Choice :=
-  match s.cards.find? t.card with
-  | some d =>
-    match d.allAbilities[t.idx]? with
-    | some (Ability.triggered _ body _) => body.choices
-    | _ => []
-  | none => []
+/-- The modes on the ability that waits, or no mode for an ability without alternatives. -/
+def trigModes (s : GameState) (t : PendTrigger) : List (Option Nat) :=
+  let modes := ((abilityDef s t.card t.idx).map (·.modes)).getD []
+  if modes.isEmpty then [none] else (List.range modes.length).map some
+
+/-- The choices for the selected branch of the triggered ability (CR 355). -/
+def trigChoices (s : GameState) (t : PendTrigger) (mode : Option Nat := none) : List Choice :=
+  (((abilityDef s t.card t.idx).bind (·.forPick (mode.elim .plain SpellPick.mode))).map
+    (·.choices)).getD []
 
 /-- The trigger declaration on the queued ability, even if its source left the Board. -/
 def trigDeclaration (s : GameState) (t : PendTrigger) : Option Trigger :=
@@ -706,40 +707,55 @@ def trigPayments (s : GameState) (t : PendTrigger) : List (List ObjId) :=
     let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
     (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
 
-/-- Every legal pick for the ability's choices that the Pool of its controller can pay the Deflect
-of (CR 355, 809). -/
-def trigTuples (s : GameState) (t : PendTrigger) : List (List ObjId) :=
-  (targetTuples s t.controller t.source s.mightTable (trigChoices s t)).filter
+/-- Every legal pick for the mode that the Pool of the controller can pay for (CR 355, 809). -/
+def trigTuples (s : GameState) (t : PendTrigger) (mode : Option Nat) : List (List ObjId) :=
+  (targetTuples s t.controller t.source s.mightTable (trigChoices s t mode)).filter
     (fun ts => s.deflectOk t.controller (s.poolOf t.controller) ts)
 
-/-- The picks listed are exactly the legal ones that the Pool can pay for. -/
-theorem mem_trigTuples (s : GameState) (t : PendTrigger) (ts : List ObjId) :
-    ts ∈ trigTuples s t ↔ (targetsOk s t.controller t.source s.mightTable (trigChoices s t) ts &&
-      s.deflectOk t.controller (s.poolOf t.controller) ts) = true := by
-  unfold trigTuples
-  rw [List.mem_filter, mem_targetTuples]
-  simp [Bool.and_eq_true]
+/-- The mode and target combinations that can be finalized. -/
+def trigTargetOptions (s : GameState) (t : PendTrigger) : List (Option Nat × List ObjId) :=
+  (trigModes s t).flatMap (fun mode => (trigTuples s t mode).map (mode, ·))
+
+/-- Whether the mode is available and the targets are legal for that mode (CR 355.3, 355.5). -/
+def trigTargetOk (s : GameState) (t : PendTrigger) (mode : Option Nat) (ts : List ObjId) : Bool :=
+  (trigModes s t).contains mode &&
+    targetsOk s t.controller t.source s.mightTable (trigChoices s t mode) ts &&
+    s.deflectOk t.controller (s.poolOf t.controller) ts
+
+/-- A listed mode and its targets satisfy the finalization rules. -/
+theorem mem_trigTargetOptions (s : GameState) (t : PendTrigger) (mode : Option Nat)
+    (ts : List ObjId) : (mode, ts) ∈ trigTargetOptions s t ↔ trigTargetOk s t mode ts = true := by
+  simp only [trigTargetOptions, trigTuples, trigTargetOk, List.mem_flatMap, List.mem_map,
+    List.mem_filter, mem_targetTuples, Prod.mk.injEq, Bool.and_eq_true, List.contains_iff_mem]
+  constructor
+  · rintro ⟨_, hm, _, ⟨ht, hd⟩, rfl, rfl⟩
+    exact ⟨⟨hm, ht⟩, hd⟩
+  · rintro ⟨⟨hm, ht⟩, hd⟩
+    exact ⟨mode, hm, ts, ⟨ht, hd⟩, rfl, rfl⟩
 
 /-- No combination of targets and costs permits finalization. -/
 def noTriggerPick (s : GameState) (t : PendTrigger) : Bool :=
-  (trigTuples s t).isEmpty || (trigPayments s t).isEmpty
+  (trigTargetOptions s t).isEmpty || (trigPayments s t).isEmpty
+
+/-- Combine the available modes and targets with each way to pay the cost. -/
+def acceptedTriggers (s : GameState) (t : PendTrigger) : List (List ObjId × TriggerPayment) :=
+  let payments := trigPayments s t
+  (trigTargetOptions s t).flatMap (fun (mode, ts) =>
+    payments.map (fun ids => (ts, .pay ids mode)))
 
 /-- The legal ways to finalize or pass over the ability (CR 355, 383.3, 809). -/
 def trigOptions (s : GameState) (t : PendTrigger) : List (List ObjId × TriggerPayment) :=
-  let payments := trigPayments s t
-  let accepted := (trigTuples s t).flatMap (fun ts =>
-    payments.map (fun ids => (ts, TriggerPayment.pay ids)))
+  let accepted := acceptedTriggers s t
   if trigOptional s t then accepted ++ [([], .skip)]
   else if noTriggerPick s t then [([], .pay [])]
   else accepted
 
-/-- A legal trigger answer provides legal targets and costs, or dismisses the ability (CR 383.3). -/
+/-- A legal trigger answer provides a mode, targets and costs, or dismisses the ability (CR 383.3). -/
 def trigLegal (s : GameState) (t : PendTrigger) (ts : List ObjId) : TriggerPayment → Bool
   | .skip => ts.isEmpty && trigOptional s t
-  | .pay ids =>
-    (targetsOk s t.controller t.source s.mightTable (trigChoices s t) ts &&
-      s.deflectOk t.controller (s.poolOf t.controller) ts && (trigPayments s t).contains ids) ||
-    (!trigOptional s t && ts.isEmpty && ids.isEmpty && noTriggerPick s t)
+  | .pay ids mode =>
+    (trigTargetOk s t mode ts && (trigPayments s t).contains ids) ||
+    (!trigOptional s t && ts.isEmpty && ids.isEmpty && mode.isNone && noTriggerPick s t)
 
 /-- The picks listed are exactly the legal ones. -/
 theorem mem_trigOptions (s : GameState) (t : PendTrigger) (ts : List ObjId)
@@ -748,29 +764,29 @@ theorem mem_trigOptions (s : GameState) (t : PendTrigger) (ts : List ObjId)
   cases payment with
   | skip =>
     by_cases ho : trigOptional s t <;>
-      simp [trigOptions, trigLegal, ho, List.mem_flatMap, List.mem_map, List.isEmpty_iff]
+      simp [trigOptions, trigLegal, ho, acceptedTriggers, List.mem_flatMap, List.mem_map, List.isEmpty_iff]
     split <;> simp [List.mem_flatMap, List.mem_map]
-  | pay ids =>
+  | pay ids mode =>
     have accepts :
-        (ts, TriggerPayment.pay ids) ∈ (trigTuples s t).flatMap
-          (fun targets => (trigPayments s t).map (fun cost => (targets, TriggerPayment.pay cost))) ↔
-        ts ∈ trigTuples s t ∧ ids ∈ trigPayments s t := by
-      simp only [List.mem_flatMap, List.mem_map, Prod.mk.injEq, TriggerPayment.pay.injEq]
+        (ts, TriggerPayment.pay ids mode) ∈ acceptedTriggers s t ↔
+        (mode, ts) ∈ trigTargetOptions s t ∧ ids ∈ trigPayments s t := by
+      simp only [acceptedTriggers, List.mem_flatMap, List.mem_map, Prod.mk.injEq,
+        TriggerPayment.pay.injEq]
       constructor
-      · rintro ⟨_, ht, _, hi, rfl, rfl⟩
+      · rintro ⟨⟨_, _⟩, ht, _, hi, rfl, rfl, rfl⟩
         exact ⟨ht, hi⟩
       · rintro ⟨ht, hi⟩
-        exact ⟨ts, ht, ids, hi, rfl, rfl⟩
+        exact ⟨(mode, ts), ht, ids, hi, rfl, rfl, rfl⟩
     by_cases ho : trigOptional s t
-    · simp [trigOptions, trigLegal, ho, accepts, mem_trigTuples, and_assoc]
+    · simp [trigOptions, trigLegal, ho, accepts, mem_trigTargetOptions]
     · by_cases hn : noTriggerPick s t
-      · have missing : ¬(ts ∈ trigTuples s t ∧ ids ∈ trigPayments s t) := by
+      · have missing : ¬((mode, ts) ∈ trigTargetOptions s t ∧ ids ∈ trigPayments s t) := by
           simp only [noTriggerPick, Bool.or_eq_true, List.isEmpty_iff] at hn
           rcases hn with h | h <;> simp [h]
-        simp [trigOptions, trigLegal, ho, hn, List.isEmpty_iff]
-        intro ht hd hp
-        exact (missing ⟨(mem_trigTuples s t ts).mpr (by simp [ht, hd]), hp⟩).elim
-      · simp [trigOptions, trigLegal, ho, hn, accepts, mem_trigTuples, and_assoc]
+        have invalid : ¬(trigTargetOk s t mode ts = true ∧ ids ∈ trigPayments s t) := by
+          simpa only [mem_trigTargetOptions] using missing
+        simp [trigOptions, trigLegal, ho, hn, invalid, List.isEmpty_iff, and_assoc]
+      · simp [trigOptions, trigLegal, ho, hn, accepts, mem_trigTargetOptions]
 
 /-- An ability that waits has a legal pick. -/
 theorem trigLegal_exists (s : GameState) (t : PendTrigger) :
@@ -779,21 +795,27 @@ theorem trigLegal_exists (s : GameState) (t : PendTrigger) :
   · exact ⟨[], .skip, by simp [trigLegal, ho]⟩
   · by_cases hn : noTriggerPick s t
     · exact ⟨[], .pay [], by simp [trigLegal, ho, hn]⟩
-    · have ht : trigTuples s t ≠ [] := by
+    · have ht : trigTargetOptions s t ≠ [] := by
         intro ht
         exact hn (by simp [noTriggerPick, ht])
       have hp : trigPayments s t ≠ [] := by
         intro hp
         exact hn (by simp [noTriggerPick, hp])
-      obtain ⟨ts, hts⟩ := List.exists_mem_of_ne_nil _ ht
+      obtain ⟨⟨mode, ts⟩, hts⟩ := List.exists_mem_of_ne_nil _ ht
       obtain ⟨ids, hids⟩ := List.exists_mem_of_ne_nil _ hp
-      exact ⟨ts, .pay ids, by simp [trigLegal, ho, hn, (mem_trigTuples s t ts).mp hts, hids]⟩
+      exact ⟨ts, .pay ids mode, by
+        simp [trigLegal, (mem_trigTargetOptions s t mode ts).mp hts, hids]⟩
 
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
-def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) : GameState :=
+def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none) :
+    GameState :=
   let s1 := s.modObj t.source (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)
-  let item := abilityItem t.card t.idx t.source t.controller (ts ++ t.subject.toList) t.eventAmount
+  let item : Object :=
+    { abilityItem t.card t.idx t.source t.controller
+        (if mode.isNone then ts ++ t.subject.toList else ts) t.eventAmount with
+      spellPick := mode.elim .plain SpellPick.mode
+      triggerSubject := if mode.isSome then t.subject else none }
   match addObject s1 item .chain with
   | some r => r.1
   | none => s1
@@ -810,11 +832,12 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId) :
 def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
     (payment : TriggerPayment) : GameState × List Event :=
   match grp[i]?, payment with
-  | some t, .pay ids =>
-    if ts.isEmpty && !(trigChoices s t).isEmpty &&
-        !(trigOptional s t && targetsOk s t.controller t.source s.mightTable (trigChoices s t) []) then (s, [])
+  | some t, .pay ids mode =>
+    if !(trigModes s t).contains mode ||
+        (ts.isEmpty && !(trigChoices s t mode).isEmpty &&
+          !((trigOptional s t || mode.isSome) && trigTargetOk s t mode [])) then (s, [])
     else match payTriggerCost s t ids with
-      | some (paid, events) => (putTrigger paid t ts, events)
+      | some (paid, events) => (putTrigger paid t ts mode, events)
       | none => (s, [])
   | _, _ => (s, [])
 
@@ -846,13 +869,13 @@ def triggersStep (s : GameState) (pend : List PendTrigger) (rest : List Frame) :
   | t :: ts =>
     let grp := ts.filter (fun u => u.controller == t.controller)
     let others := ts.filter (fun u => u.controller != t.controller)
-    if grp.isEmpty && (trigChoices s t).isEmpty && !trigOptional s t &&
+    if grp.isEmpty && trigModes s t == [none] && (trigChoices s t).isEmpty && !trigOptional s t &&
         trigCost s t == .free then (putTrigger s t [], [.triggers others])
     else (s, [.triggerOrder t.controller t grp others])
 
 /-- Putting one ability on the Chain is a safe change. -/
-theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId) :
-    Safe s (putTrigger s t ts) := by
+theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
+    (mode : Option Nat := none) : Safe s (putTrigger s t ts mode) := by
   have h1 : Safe s (s.modObj t.source
       (fun o => ({ o with used := o.used ++ [t.idx] }).noteChose s.turn ts)) :=
     Safe.modObj s t.source (fun _ => rfl) (fun _ => rfl)
@@ -884,7 +907,7 @@ theorem finalizePick_safe (s : GameState) (grp : List PendTrigger) (i : Nat) (ts
     · exact Safe.refl s
     · split
       · rename_i paid events h
-        exact (payTriggerCost_safe h).trans (putTrigger_safe paid _ ts)
+        exact (payTriggerCost_safe h).trans (putTrigger_safe paid _ ts _)
       · exact Safe.refl s
   · exact Safe.refl s
 

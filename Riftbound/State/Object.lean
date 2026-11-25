@@ -145,8 +145,10 @@ structure Object where
   playedFromHand : Bool := true
   /-- This Spell was played for its Flow cost and is banished when it leaves the Chain (CR 829). -/
   flowed : Bool := false
-  /-- The mode or destination selected when this Spell was finalized. -/
+  /-- The mode or destination selected when this item was finalized. -/
   spellPick : SpellPick := .plain
+  /-- The watched object of a modal triggered ability, kept apart from its declared targets. -/
+  triggerSubject : Option ObjId := none
   /-- The objects chosen by the abilities this object used in the turn `choseTurn`. -/
   chose : List ObjId := []
   /-- The turn the objects in `chose` were chosen in. -/

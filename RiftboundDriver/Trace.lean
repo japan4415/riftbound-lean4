@@ -62,13 +62,15 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
+/-- Encode a mode number and its display name when known. -/
+def modeFields (definition : Option EffectDef) (i : Nat) : List (String × String) :=
+  let label := definition.bind (fun e => (e.modes[i]?).map SpellMode.label)
+  [("mode", toString i)] ++ label.toList.map (fun name => ("modeLabel", jstr name))
+
 /-- Encode the finalization choice separately from the targeted objects. -/
 def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List (String × String)
   | .plain => []
-  | .mode i =>
-    let label := state.bind (fun s => (s.cardDef? c).bind (fun d =>
-      d.spellEffect.bind (fun e => (e.modes[i]?).map SpellMode.label)))
-    [("mode", toString i)] ++ label.toList.map (fun name => ("modeLabel", jstr name))
+  | .mode i => modeFields (state.bind (fun s => (s.cardDef? c).bind CardDef.spellEffect)) i
   | .destination bf => [("moveDest", bf.elim "null" (fun id => toString id.n))]
 
 /-- The order the affected Unit's controller chooses for damage replacement. -/
@@ -107,20 +109,23 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.triggerOrder _ t more _) => (t :: more)[i]?
         | _ => none
       let source := trigger.map PendTrigger.source
-      let costs := match state, trigger with
-        | some s, some t =>
-          if ts.isEmpty && !(trigChoices s t).isEmpty && !trigOptional s t then
-            [("unavailable", "true")]
-          else match trigCost s t with
-            | .energy n => [("energy", toString n)]
-            | _ => []
-        | _, _ => []
       [("index", toString i), ("targets", jarr (ts.map (fun t => toString t.n)))] ++
       (source.toList.map (fun id => ("source", toString id.n))) ++
       (match payment with
        | .skip => [("decline", "true")]
-       | .pay [] => costs
-       | .pay ids => costs ++ [("sacrifices", jarr (ids.map (fun id => toString id.n)))])
+       | .pay ids mode =>
+         let costs := match state, trigger with
+           | some s, some t =>
+             if mode.isNone && ts.isEmpty && !trigOptional s t &&
+                 (!(trigChoices s t).isEmpty || !(trigModes s t).contains none) then
+               [("unavailable", "true")]
+             else match trigCost s t with
+               | .energy n => [("energy", toString n)]
+               | _ => []
+           | _, _ => []
+         let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
+         mode.toList.flatMap (modeFields definition) ++ costs ++
+           (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
     | .activate src idx pay ts discards =>
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),

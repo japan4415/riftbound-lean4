@@ -412,8 +412,8 @@ def EffectList.understood : EffectList → Bool
 
 end
 
-/-- All modes or the single effect of a Spell can be played and interpreted. -/
-def EffectDef.spellRuns (e : EffectDef) : Bool :=
+/-- All modes or the single effect can be played and interpreted. -/
+def EffectDef.choicesRun (e : EffectDef) : Bool :=
   if e.modes.isEmpty then
     e.choices.all Choice.simple && e.body.understood &&
       e.moveChoice.all (fun move => FilterList.understood move.filters)
@@ -422,7 +422,7 @@ def EffectDef.spellRuns (e : EffectDef) : Bool :=
 /-- A Spell whose choices and effects can be played and interpreted. -/
 def CardDef.spellRuns (c : CardDef) : Bool :=
   match c.spellEffect with
-  | some e => e.spellRuns
+  | some e => e.choicesRun
   | none => false
 
 /-! ### What a card does when it is played
@@ -587,7 +587,7 @@ def Ability.runs : Ability → Bool
     -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
     ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body)
   | .triggered t body _ =>
-    t.runs && body.choices.all Choice.simple && body.body.understood
+    t.runs && body.moveChoice.isNone && body.choicesRun
   | .replacement .. => false
 
 /-- A keyword the engine knows. -/
@@ -611,7 +611,7 @@ def CardDef.runs (c : CardDef) : Bool :=
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility)) &&
     (match c.spellEffect with
-      | some e => e.spellRuns
+      | some e => e.choicesRun
       | none => !c.types.contains .spell)
 
 end Riftbound

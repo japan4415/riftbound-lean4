@@ -156,6 +156,64 @@ meta def passToChoice : Nat → GameState → Option GameState
       (step 100 s ⟨.player p, .pass⟩).toOption.bind (passToChoice fuel ∘ Prod.fst)
     | _ => some s
 
+-- Jayce's controller fixes which keyword he gets before players can respond to the ability.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, jayce) ← put s p "VEN-088" .base
+  let (ready, events) := readyEffect (s.tire jayce) jayce
+  let (choosing, _) ← (advance 100 (ready.withTriggers events) []).toOption
+  let pick (i : Nat) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] (some i))⟩
+  let grants : List KeywordInst :=
+    [⟨.assault, .amount 2⟩, ⟨.deflect, .amount 2⟩, ⟨.ganking, .none⟩]
+  let results ← grants.zipIdx.mapM fun (kw, i) => do
+    let (waiting, _) ← (step 100 choosing (pick i)).toOption
+    let .chainPass .. :: _ := waiting.pending | none
+    let item ← (waiting.zone .chain).head?
+    let ability ← waiting.obj? item
+    let resolved ← passToChoice 5 waiting
+    let canceled ← passToChoice 5 (counterObj waiting item).1
+    return ability.spellPick == .mode i && ability.kind == .chainAbility (cid "VEN-088") 0 jayce &&
+      (waiting.keywordsNow jayce).isEmpty && (canceled.keywordsNow jayce).isEmpty &&
+      resolved.keywordsNow jayce == [kw] && (readyEffect resolved jayce).2.isEmpty
+  return events == [.readied jayce] &&
+    legalFrameActions choosing == (List.range 3).map pick && results.all id &&
+    ((step 100 choosing ⟨.player p, .putTrigger 0 []⟩).toOption).isNone &&
+    ((step 100 choosing (pick 3)).toOption).isNone
+
+-- Minah's controller chooses the mode even on another player's turn. When the
+-- ability resolves, the turn player draws or discards first.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let s := { s with active := some q, turnOrder := [p, q], pending := [.priority q] }
+  let (s, minah) ← put s p "VEN-111" .base
+  let (s, mine) ← put s p "VEN-014" .hand
+  let (s, theirs) ← put s q "VEN-014" .hand
+  let (moved, events) := sendToBf bf s minah
+  let entering ← moved.zone .battlefieldZone |>.find? (fun u =>
+    (moved.cardDef? u).any (·.id == cid "VEN-111"))
+  let (choosing, _) ← (advance 100 (moved.withTriggers events) []).toOption
+  let pick (i : Nat) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] (some i))⟩
+  let (discarding, _) ← (step 100 choosing (pick 0)).toOption
+  let first ← passToChoice 5 discarding
+  let .discard firstActor 1 :: _ := first.pending | none
+  let (second, _) ← (step 100 first ⟨.player q, .discardPick theirs⟩).toOption
+  let .discard secondActor 1 :: _ := second.pending | none
+  let (discarded, _) ← (step 100 second ⟨.player p, .discardPick mine⟩).toOption
+  let (drawing, _) ← (step 100 choosing (pick 1)).toOption
+  let .chainPass a _ :: _ := drawing.pending | none
+  let (priority, _) ← (step 100 drawing ⟨.player a, .pass⟩).toOption
+  let .chainPass b _ :: _ := priority.pending | none
+  let (drawn, draws) ← (step 100 priority ⟨.player b, .pass⟩).toOption
+  let (home, returned) := moveHome moved entering
+  let hand (t : GameState) (r : PlayerId) := (t.zone (.player r .hand)).length
+  return events == [.standardMoved entering (some bf)] && (home.detect returned).isEmpty &&
+    legalFrameActions choosing == [pick 0, pick 1] && firstActor == q && secondActor == p &&
+    hand discarded p + 1 == hand s p && hand discarded q + 1 == hand s q &&
+    hand drawn p == hand s p + 1 && hand drawn q == hand s q + 1 &&
+    draws.filter (fun | .drew _ => true | _ => false) == [.drew q, .drew p]
+
 -- Dune Surfer ignores an enemy's Tank only for its controller at that Battlefield.
 -- It neither removes Tank from the card nor changes the other side's assignment.
 #guard vendettaCase fun s => do
@@ -401,8 +459,8 @@ meta def passToChoice : Nat → GameState → Option GameState
   let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
   let pay (ids : List ObjId) : Action := ⟨.player p, .putTrigger 0 [] (.pay ids)⟩
   let picks := legalFrameActions picking
-  let payment ← picks.find? (fun a => match a.kind with | .putTrigger _ _ (.pay _) => true | _ => false)
-  let .putTrigger _ _ (.pay paidIds) := payment.kind | none
+  let payment ← picks.find? (fun a => match a.kind with | .putTrigger _ _ (.pay ..) => true | _ => false)
+  let .putTrigger _ _ (.pay paidIds _) := payment.kind | none
   let (declined, _) ← (step 100 picking skip).toOption
   let (waiting, events) ← (step 100 picking payment).toOption
   let ability ← (waiting.zone .chain).head?

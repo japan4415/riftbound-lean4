@@ -55,8 +55,8 @@ deriving DecidableEq, Repr
 
 /-- Accept the trigger with the objects offered as costs, or let it go without finalizing it. -/
 inductive TriggerPayment where
-  /-- Accept with these objects as costs, leaving the list empty for other payments. -/
-  | pay (sacrifices : List ObjId)
+  /-- Accept with the selected mode and any objects used as costs. -/
+  | pay (sacrifices : List ObjId) (mode : Option Nat := none)
   /-- Decline an optional trigger. -/
   | skip
 deriving DecidableEq, Repr
