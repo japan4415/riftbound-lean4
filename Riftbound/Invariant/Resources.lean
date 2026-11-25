@@ -73,18 +73,19 @@ theorem applyRune_adds_one {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : R
 smaller by the total of the card's cost, or of its cost with an additional cost (Accelerate), and no
 other player's Pool changes. -/
 theorem applyPlay_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {es : List Event} (hp : playable s p c pay = true)
+    {pay : RunePool.Payment} {ts : List ObjId} {es : List Event}
+    (hp : playable s p c pay none ts = true)
     (h : applyPlay s p c pay = some (s', es)) :
-    ∃ d cost c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
-      c' ∈ s.playCostsOf p c d cost ∧
+    ∃ d cost b c', s.cardDef? c = some d ∧ s.effCost p c d = some cost ∧
+      b ∈ s.cutOptionsOf p c cost ts ∧ c' ∈ s.playCostsOf p c d b ∧
       (s'.poolOf p).total + c'.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := playable_spec hp
   obtain ⟨pool', hpool', hs', hq⟩ := applyPlay_pool h
   rw [hpool] at hpool'
   cases hpool'
-  obtain ⟨c', hc', h2⟩ := GameState.paysForX_total hpaid
-  refine ⟨d, cost, c', hd, hc, hc', ?_, hq⟩
+  obtain ⟨b, hb, c', hc', h2⟩ := GameState.paysForXT_total hpaid
+  refine ⟨d, cost, b, c', hd, hc, hb, hc', ?_, hq⟩
   rw [hs']
   have h1 := RunePool.total_spend hpool
   omega

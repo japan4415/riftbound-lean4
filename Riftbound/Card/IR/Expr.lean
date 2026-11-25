@@ -213,6 +213,9 @@ inductive Filter where
   | mightLtOf (s : Selector)
   /-- Has a tag the object the effect belongs to gained or was told to name (The List). -/
   | sharesGainedTag
+  /-- The player of the object the effect belongs to has at least this much XP (Conscription: the
+  Might of what it can choose depends on the XP it can spend). -/
+  | xpAtLeast (n : Nat)
   /-- Is a spell or ability that chooses the object the selector names, and no other object of its
   controller (Repulse). -/
   | choosesOnly (s : Selector)

@@ -473,6 +473,8 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     (s.cardDef? id).map (fun d =>
       ((d.tags ++ s.gainedTags id).map (·.name)).any (fun n =>
         (s.obj? self).any (fun o => o.tagsGained.contains n)))
+  | .xpAtLeast n =>
+    some (decide (n ≤ s.xpOf (((s.obj? self).map (·.controller)).getD ⟨0⟩)))
   | .mightLtOf sel => do
     let d ← match sel with
       | .self => some self

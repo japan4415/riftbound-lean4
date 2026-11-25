@@ -173,6 +173,7 @@ def Filter.understood : Filter → Bool
   | .token => true
   | .choosesMine => true
   | .sharesGainedTag => true
+  | .xpAtLeast _ => true
   | .mightLtOf .self => true
   | .mightLtOf (.slot _) => true
   | .mightLtOf (.var _) => true
