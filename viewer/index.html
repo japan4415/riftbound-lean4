@@ -395,6 +395,12 @@ function describe(i) {
   if (step.bo1Initiative) return ['先手を決める', `P${step.action.turnOrder[0]} が先手`];
   const a = step.action;
   if (!a) return ['ゲーム開始前', 'セットアップを始める'];
+  if (a.kind === 'concede' && step.state.departed?.length) {
+    const winners = step.state.result?.won;
+    const detail = winners?.length ? winners.map(p => `P${p}`).join('、') + ' の勝ち（CR 651）'
+      : '残ったプレイヤーで対局を続ける（CR 652）';
+    return [`${a.actor.toUpperCase()}: 投了する`, detail];
+  }
   const before = steps[i - 1]?.state;
   return describeA(a, before?.pending, before);
 }
@@ -904,7 +910,7 @@ function layoutBattlefields(box, st) {
       cardsBox.append(e); decorate(e, st, id); placed.add(id);
     }
     head.textContent = '';
-    const nm = document.createElement('b'); nm.textContent = cardName(b.id); head.append(nm);
+    const nm = document.createElement('b'); nm.textContent = cardNameAt(b.id, st); head.append(nm);
     head.append(b.control === null ? tag('未支配', '') : tag('P' + b.control + ' が支配', 'ctl' + b.control));
     if (b.contested !== null) head.append(tag('Contested: P' + b.contested, 'hot'));
     g.className = 'bf' + (b.control !== null ? ' mine' + b.control : '') + (b.contested !== null ? ' contested' : '') +
