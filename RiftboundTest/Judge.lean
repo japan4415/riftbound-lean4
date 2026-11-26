@@ -156,4 +156,55 @@ meta def runeRewind (second channelRune : Bool) : Option Bool := do
     restored.state.zone trash == [discard] && restored.state.pointsOf q == target.pointsOf q
   : Option Bool).getD false
 
+-- A hidden card is drawn, Recycled directly from the hand, then drawn again. Undoing the
+-- later draw returns another card, which follows the first card's path back through Recycle.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let empty := GameState.empty { ruleSet := .tournament .constructed, mode := .duel }
+    RiftboundCards.db
+  let deck := Zone.player p .mainDeck
+  let hand := Zone.player p .hand
+  let add (s : GameState) (zone : Zone) (code : CardId) :=
+    addObject s (newCard s.cards s p code) zone .bottom
+  let (s, original) ← add empty deck ⟨"OGN-136"⟩
+  let (s, later) ← add s deck ⟨"OGN-001"⟩
+  let (s, inHand) ← add s hand ⟨"OGN-136"⟩
+  let effect := Effect.seqOf [.prim (.draw .you (.const 1)),
+    .prim (.recycle (Selector.one .you .inHand [])), .prim (.draw .you (.const 2))]
+  let target := { s with
+    active := some p, turnOrder := [p, q], phase := .main, turn := 1,
+    pending := [.mayDo p original {} effect .nil, .priority p] }
+  let atTarget : ReplayPosition := .fromState target
+  let input : GameInputs := { decks := .core [], answers := #[] }
+  let drawing (events : List Event) (old : ObjId) :=
+    events.findSome? (fun
+      | .moved source id zone => if source == old && zone == hand then some id else none
+      | _ => none)
+  let (_, first, firstEvents) ← (input.advance [atTarget] (.observed ⟨.player p, .decide true⟩)
+    1 100).toOption
+  let firstId ← drawing firstEvents original
+  let (_, second, secondEvents) ← (input.advance [first, atTarget]
+    (.observed ⟨.player p, .choose firstId⟩) 2 100).toOption
+  let recycled ← secondEvents.findSome? (fun
+    | .moved old id zone => if old == firstId && zone == deck then some id else none
+    | _ => none)
+  let secondId ← drawing secondEvents recycled
+  let history := [second, first, atTarget]
+  let cancel (choices : List JudgeDrawReturn) :=
+    input.advance history (.judgePrivateRewind { target := 0, returns := choices }) 3 100
+  let lastChoice : JudgeDrawReturn := ⟨secondId, [original, inHand, later], inHand⟩
+  let earlier : JudgeDrawReturn := ⟨firstId, [original, inHand], original⟩
+  let (_, undone, _) ← (cancel [earlier, lastChoice]).toOption
+  let (_, changed, _) ← (cancel [lastChoice]).toOption
+  let physical (state : GameState) (zone : Zone) :=
+    (state.zone zone).filterMap (fun id => (state.obj? id).bind (·.kind.phys?))
+  let invalidEarlier := { earlier with candidates := [original, later] }
+  return secondId != firstId && (second.state.zone hand).length == 3 &&
+    undone.state.zone deck == target.zone deck && undone.state.zone hand == target.zone hand &&
+    physical changed.state deck == physical target hand ++ (physical target deck).drop 1 &&
+    physical changed.state hand == (physical target deck).take 1 &&
+    !(cancel [lastChoice, invalidEarlier]).isOk
+  : Option Bool).getD false
+
 end RiftboundTest

@@ -721,19 +721,172 @@ private def applyDrawReturns (base : GameState) (known : List ObjId) (returns : 
     let next ← exchangeDrawSlot s draw chosen
     applyDrawReturns base known returns more next
 
+private inductive DrawReversal where
+  | draw (handObject : ObjId) (card : PhysId) (privateHand : List PhysId)
+  | publicCard (card : PhysId)
+
+private def hasPublicFace : Zone → Bool
+  | .battlefieldZone | .chain | .player _ .base | .player _ .legendZone
+  | .player _ .championZone | .player _ .trash | .player _ .banishment => true
+  | _ => false
+
+/-- Recover the hand at each draw, including when there are several draws or other moves
+in the same answer. Public appearances constrain substitutions made at later draws. -/
+private def drawReversals (before after : ReplayPosition) (publicHand : List ObjId) :
+    List DrawReversal × List ObjId :=
+  let s := before.state
+  let hands := s.players.flatMap (fun seat =>
+    (s.zone (.player seat .hand)).filterMap (fun id =>
+      (physicalCard s id).map (fun card => (id, seat, card))))
+  let known := if after.boundary == .ruling then before.knownCards
+    else before.knownCards ++ publicHand
+  let (steps, known) := go [] hands known after.events
+  let stillInHand := known.filter (fun id => match after.state.locate id with
+    | some (.player _ .hand) => true
+    | _ => false)
+  (steps.reverse, stillInHand.eraseDups)
+where
+  go (moved : List (ObjId × (Zone × PhysId)))
+      (hands : List (ObjId × PlayerId × PhysId)) (known : List ObjId) :
+      List Event → List DrawReversal × List ObjId
+    | [] => ([], known)
+    | event :: rest =>
+      let location (id : ObjId) := (moved.lookup id).map Prod.fst <|> before.state.locate id
+      let physical (id : ObjId) := (moved.lookup id).map Prod.snd <|> physicalCard before.state id
+      let prepend (steps : List DrawReversal) (result : List DrawReversal × List ObjId) :=
+        (steps ++ result.1, result.2)
+      let published (ids : List ObjId) :=
+        (ids.filterMap (fun id => physical id <|> physicalAfterMoves after.state id rest))
+          |>.map DrawReversal.publicCard
+      match event with
+      | .revealed _ id => prepend (published [id]) (go moved hands (id :: known) rest)
+      | .handRevealed _ ids => prepend (published ids) (go moved hands (ids ++ known) rest)
+      | .moved old next dest =>
+        let remaining := hands.filter (fun entry => entry.1 != old)
+        let remembered := notePublicMove known old next
+        match physical old <|> physicalCard after.state next <|>
+            physicalAfterMoves after.state next rest with
+        | none => go moved remaining remembered rest
+        | some card =>
+          let visible := hasPublicFace dest || (location old).any hasPublicFace
+          let remembered := if visible then next :: remembered else remembered
+          let hands := match dest with
+            | .player seat .hand => (next, seat, card) :: remaining
+            | _ => remaining
+          let later := go ((next, (dest, card)) :: moved) hands remembered rest
+          let movement := if visible then [.publicCard card] else []
+          match dest, rest with
+          | .player seat .hand, .drew drawer :: _ =>
+            if seat == drawer then
+              let eligible := hands.filterMap (fun (id, owner, member) =>
+                if owner == seat && !remembered.contains id then some member else none)
+              prepend (movement ++ [.draw next card eligible]) later
+            else prepend movement later
+          | _, _ => prepend movement later
+      | _ => go moved hands known rest
+
+/-- Each swap changes the physical identities occupying the two original trajectories.
+The most recent swap in reverse play is applied last to each original identity. -/
+private def rewindIdentity (swaps : List (PhysId × PhysId)) (card : PhysId) : PhysId :=
+  swaps.foldr (fun (first, second) id =>
+    if id == first then second else if id == second then first else id) card
+
+private def reverseDrawChoices (base : GameState) (returns : List JudgeDrawReturn)
+    (steps : List DrawReversal) : Except String (List (PhysId × PhysId)) := do
+  let mut swaps := []
+  for step in steps do
+    match step with
+    | .publicCard card =>
+      unless rewindIdentity swaps card == card do
+        throw "a private draw return conflicts with a card that was public in the undone play"
+    | .draw handObject original privateHand =>
+      if let some choice := returns.find? (·.drawn == handObject) then
+        let drawn := rewindIdentity swaps original
+        let available := privateHand.map (rewindIdentity swaps)
+        let candidates := choice.candidates.filterMap (physicalCard base)
+        unless available.contains drawn && decide choice.candidates.Nodup &&
+            candidates.length == choice.candidates.length && candidates.all available.contains &&
+            choice.candidates.contains choice.returned do
+          throw "private draw candidates must be distinct cards available in the affected hand"
+        let some returned := physicalCard base choice.returned
+          | throw "the card being returned is no longer available for this draw"
+        if returned != drawn then
+          swaps := (drawn, returned) :: swaps
+  return swaps
+
+private def handDeckZones (s : GameState) : List Zone :=
+  s.players.flatMap (fun seat => [.player seat .mainDeck, .player seat .hand])
+
+private def physicalInHandOrDeck (s : GameState) (seat : PlayerId) (card : PhysId) : Option ObjId :=
+  (s.zone (.player seat .mainDeck) ++ s.zone (.player seat .hand)).find?
+    (fun id => physicalCard s id == some card)
+
+/-- Apply the net substitutions to the target's original slots. Move changed cards
+across zones using the same engine primitive as a single draw correction. -/
+private def restoreDrawIdentities (target : ReplayPosition) (swaps : List (PhysId × PhysId)) :
+    Except String GameState := do
+  let base := target.state
+  if swaps.isEmpty then return base
+  let image := rewindIdentity swaps
+  unless target.knownCards.all (fun id => (physicalCard base id).all (fun card =>
+      image card == card)) do
+    throw "a private draw return would change a card already public at the rewind target"
+  let affected := swaps.flatMap (fun (a, b) => [a, b])
+  let zones := handDeckZones base
+  let wanted := zones.map (fun zone =>
+    (zone, (base.zone zone).filterMap (physicalCard base) |>.map image))
+  let privateCards := zones.flatMap (fun zone => (base.zone zone).filterMap (physicalCard base))
+  unless affected.all (fun card => image card == card || privateCards.contains card) do
+    throw "a private draw return would change a card outside the hand or deck at the rewind target"
+  let mut state := base
+  for (zone, cards) in wanted do
+    if let .player seat _ := zone then
+      for card in cards do
+        let some id := physicalInHandOrDeck state seat card
+          | throw "a private draw return would move a card to another seat"
+        if !(state.zone zone).contains id then
+          let some (next, _) := moveObj state id zone
+            | throw "the private draw return could not restore a card to its zone"
+          state := next
+  for (zone, cards) in wanted do
+    let some order := cards.mapM (fun card =>
+      (state.zone zone).find? (fun id => physicalCard state id == some card))
+      | throw "the private draw return could not restore the order of a zone"
+    unless decide (order.Perm (state.zone zone)) do
+      throw "the private draw return would change which cards belong to the restored zone"
+    if state.zone zone != order then state := state.reorder zone order
+  return state
+
+private def restoreRepeatedDraws (target : ReplayPosition) (undone : List ReplayPosition)
+    (returns : List JudgeDrawReturn) : Except String GameState := do
+  let transitions := (undone.zip (undone.drop 1 ++ [target])).reverse
+  let (steps, _) := transitions.foldl (fun (prior, known) (after, before) =>
+    let (steps, known) := drawReversals before after known
+    (steps ++ prior, known)) ([], [])
+  unless returns.all (fun choice => steps.any (fun
+    | .draw id _ _ => id == choice.drawn
+    | _ => false)) do
+    throw "a private return needs the physical cards present for that draw"
+  let swaps ← reverseDrawChoices target.state returns steps
+  restoreDrawIdentities target swaps
+
 private def applyRewindRemedies (target : ReplayPosition) (undone chronology : List ReplayPosition)
     (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle)
     (unshuffled : List JudgeUnshuffledDeck) : Except String ReplayPosition := do
   let restored ← if returns.isEmpty then pure target.state else do
-    let draws := undone.flatMap (fun pos => pos.draws.filterMap (DrawSlot.atTarget target.state))
+    let observed := undone.flatMap (·.draws)
     let named : List ObjId := returns.map (·.drawn)
-    unless decide named.Nodup && named.all (fun id => draws.any (·.drawn == id)) do
+    unless decide named.Nodup && named.all (fun id => observed.any (·.drawn == id)) do
       throw "each private return needs a distinct undone draw from the target deck"
-    if draws.any (fun draw => draw.wasRevealed && named.contains draw.drawn) then
+    if observed.any (fun draw => draw.wasRevealed && named.contains draw.drawn) then
       throw "a publicly revealed draw must restore the revealed card"
-    unless decide ((draws.map (fun draw => (draw.seat, draw.index))).Nodup) do
-      throw "the rewind contains repeated draws from the same original slot"
-    applyDrawReturns target.state target.knownCards returns draws target.state
+    if decide ((observed.filterMap (·.physical)).Nodup) then
+      let draws := observed.filterMap (DrawSlot.atTarget target.state)
+      unless named.all (fun id => draws.any (·.drawn == id)) do
+        throw "each private return needs a distinct undone draw from the target deck"
+      applyDrawReturns target.state target.knownCards returns draws target.state
+    else
+      restoreRepeatedDraws target undone returns
   let shuffle (acc : GameState × List ObjId × List PhysId) (change : JudgeShuffle) := do
     let (state, known, shuffled) := acc
     let obscured := change.obscuredCards state
