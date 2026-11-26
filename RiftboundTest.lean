@@ -40,6 +40,7 @@ public import RiftboundTest.Sideboard
 public import RiftboundTest.FirstPlayer
 public import RiftboundTest.LimitedDraw
 public import RiftboundTest.LimitedStart
+public import RiftboundTest.Visibility
 public import RiftboundTest.Live
 public import RiftboundTest.Fuel
 public import RiftboundTest.CardLab

@@ -2,10 +2,10 @@ module
 
 public import Riftbound.State.GameState
 
-/-! # Default visibility of card faces (CR 128)
+/-! # Visibility of card faces (CR 128)
 
-A zone's default privacy can be checked independently of the card's identifiers. Temporary
-revelation, inspection and setup choices are additional information for a full player view.
+The zone provides the default privacy of each card face. A resolving instruction can reveal
+particular faces or let a player inspect part of a deck.
 -/
 
 public section
@@ -63,6 +63,70 @@ theorem GameState.zoneCardFaces_hidden_other (s : GameState) (viewer seat : Play
       | none => rfl
       | some obj => simp [different id member obj found]
     _ = _ := List.map_const'
+
+/-- The environment carried forward while an effect is resolving. -/
+private def Frame.resolutionEnv : Frame → Option Env
+  | .run _ _ env _ | .mayDo _ _ env _ _ | .eitherDo _ _ env _ _ _
+  | .pickDo _ _ env _ _ _ _ | .guessCardType _ _ _ env _ _ _ _
+  | .nameCard _ _ env _ _ _ => some env
+  | _ => none
+
+/-- The card faces exposed by an environment to the player whose Main Deck is supplied
+(CR 425.1, 128.3). -/
+def Env.disclosedFaces (e : Env) (viewerDeck : List ObjId) : List ObjId :=
+  e.revealedCards ++ e.lookedCards.filter viewerDeck.contains
+
+/-- An inspection only discloses a card to the player whose deck contains it. -/
+theorem Env.mem_disclosedFaces {e : Env} {deck : List ObjId} {card : ObjId} :
+    card ∈ e.disclosedFaces deck ↔ card ∈ e.revealedCards ∨
+      (card ∈ e.lookedCards ∧ card ∈ deck) := by
+  simp [Env.disclosedFaces]
+
+/-- Faces shown by a resolving instruction (CR 425, 437). Reveal is public. Private inspections
+in an environment come from the inspecting player's Main Deck, even when another player is
+making a choice. Predict records its player explicitly. -/
+def Frame.disclosedFaces (viewer : PlayerId) (viewerDeck : List ObjId) :
+    Frame → List ObjId
+  | .predict p _ first more top bottom =>
+    if viewer == p then first :: (more ++ top ++ bottom) else []
+  | .chancePredict p _ top bottom =>
+    if viewer == p then top ++ bottom else []
+  | frame => match frame.resolutionEnv with
+    | some env => env.disclosedFaces viewerDeck
+    | none => []
+
+/-- Cards whose faces the current resolution lets the viewer read. Frames preserve the
+disclosures of a parent instruction while its child asks a question. -/
+def GameState.resolutionDisclosedFaces (s : GameState) (viewer : PlayerId) : List ObjId :=
+  s.pending.flatMap (Frame.disclosedFaces viewer (s.zone (.player viewer .mainDeck)))
+
+/-- Zone card faces including the current resolution's Reveal and inspection permissions.
+Only cards still present in the zone are shown, and bookkeeping zones remain outside the view. -/
+def GameState.resolutionZoneCardFaces (s : GameState) (viewer : PlayerId) (z : Zone) :
+    Option (List (Option CardId)) :=
+  let shown := s.resolutionDisclosedFaces viewer
+  let defaults := s.zoneCardFaces viewer z
+  if shown.isEmpty then defaults else
+    defaults.map (fun faces => ((s.zone z).zip faces).map (fun (id, face) =>
+      if shown.contains id then (s.obj? id).bind (·.kind.cardId?) else face))
+
+/-- With no active disclosure, the face view is the default privacy projection (CR 128). -/
+theorem GameState.resolutionZoneCardFaces_default (s : GameState) (viewer : PlayerId)
+    (z : Zone) (h : s.resolutionDisclosedFaces viewer = []) :
+    s.resolutionZoneCardFaces viewer z = s.zoneCardFaces viewer z := by
+  simp [resolutionZoneCardFaces, h]
+
+/-- Only the predicting player sees the faces from the Predict decision (CR 437.1). -/
+theorem Frame.disclosedFaces_predict_other {viewer p : PlayerId} (h : viewer ≠ p)
+    (deck : List ObjId) (n : Nat) (first : ObjId) (more top bottom : List ObjId) :
+    (Frame.predict p n first more top bottom).disclosedFaces viewer deck = [] := by
+  simp [Frame.disclosedFaces, h]
+
+/-- The same privacy applies to the cards awaiting the random order of recycling (CR 417.5). -/
+theorem Frame.disclosedFaces_chancePredict_other {viewer p : PlayerId} (h : viewer ≠ p)
+    (deck : List ObjId) (n : Nat) (top bottom : List ObjId) :
+    (Frame.chancePredict p n top bottom).disclosedFaces viewer deck = [] := by
+  simp [Frame.disclosedFaces, h]
 
 end Riftbound
 
