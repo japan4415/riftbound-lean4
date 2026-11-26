@@ -25,19 +25,37 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     steps := row :: steps
   return jobj [("players", toString state.playerCount), ("steps", jarr steps.reverse)]
 
+private def matchTraceJson (games : List String) (wins : Nat × Nat) (outcome : MatchResult)
+    (allObserved cardsChecked : Bool) (extra : List (String × String) := []) : String :=
+  let cards := RiftboundCards.db.cards.map (fun card => (card.id.code, cardJson card))
+  let winner := match outcome with | .won p => toString p.n | .draw => "null"
+  jobj ([("cards", jobj cards), ("games", jarr games), ("winner", winner),
+    ("wins", jarr [toString wins.1, toString wins.2]), ("exact", toString allObserved),
+    ("cardsFullyChecked", toString cardsChecked)] ++ extra)
+
 private def matchTrace (saved : RecordedMatch) : Except String String := do
   let summary ← saved.verify
   let games ← saved.input.games.toList.mapM (fun game => gameTrace game saved.input.config saved.input.fuel)
-  let cards := RiftboundCards.db.cards.map (fun card => (card.id.code, cardJson card))
-  let winner := match summary.result with | .won p => toString p.n | .draw => "null"
-  return jobj [("cards", jobj cards), ("games", jarr games), ("winner", winner),
-    ("wins", jarr [toString summary.wins.1, toString summary.wins.2]), ("exact", toString summary.exact),
-    ("cardsFullyChecked", toString summary.cardsFullyChecked)]
+  return matchTraceJson games summary.wins summary.result summary.exact summary.cardsFullyChecked
+
+private def teamEvidence (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Bool × Bool :=
+  (saved.games.all (·.summary.exact), summary.uncheckedCards.all (·.all List.isEmpty))
 
 private def teamVerificationJson (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Json :=
+  let (allObserved, cardsChecked) := teamEvidence saved summary
   (toJson summary)
-    |>.setObjValAs! "exact" (saved.games.all (·.summary.exact))
-    |>.setObjValAs! "cardsFullyChecked" (summary.uncheckedCards.all (·.all List.isEmpty))
+    |>.setObjValAs! "exact" allObserved
+    |>.setObjValAs! "cardsFullyChecked" cardsChecked
+
+private def teamMatchTrace (saved : RecordedTeamMatch) : Except String String := do
+  let summary ← saved.verify
+  let env ← saved.input.tournament.legality .twoVTwo saved.input.legalSets
+  let games ← saved.games.toList.mapM (fun game => gameTrace game.input (teamReplayConfig env) 100)
+  let (allObserved, cardsChecked) := teamEvidence saved summary
+  let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
+  let teams := saved.input.seats
+  return matchTraceJson games summary.wins summary.result allObserved cardsChecked
+    [("teams", jarr [seats teams.team0, seats teams.team1])]
 
 /-- Record, verify or generate a viewer trace from all the inputs of a saved match. -/
 def main (args : List String) : IO UInt32 := do
@@ -75,8 +93,13 @@ def main (args : List String) : IO UInt32 := do
       let result ← IO.ofExcept saved.verify
       IO.println (teamVerificationJson saved result).compress
       return 0
+    | ["view-team", input, output] =>
+      let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let trace ← IO.ofExcept (teamMatchTrace saved)
+      IO.FS.writeFile output (trace ++ "\n")
+      return 0
     | _ =>
-      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json"
+      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json"
       return 2
   catch error =>
     IO.eprintln error.toString

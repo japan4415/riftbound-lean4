@@ -284,17 +284,24 @@ function updateGamePicker() {
   $('gameNumber').value = String(traceIndex);
 }
 
+const teamLabel = (index) => `チーム ${index + 1}`;
+
 function loadFile(t) {
-  const games = Array.isArray(t.games) ? t.games.map((game) => ({ ...game, cards: t.cards })) : [t];
+  const teams = Array.isArray(t.teams) ? t.teams : null;
+  const games = Array.isArray(t.games) ? t.games.map((game) => ({ ...game, cards: t.cards, teams })) : [t];
   if (!games.length || !games.every((g) => g.cards && Array.isArray(g.steps) && g.steps.length && g.steps[0].state)) {
-    throw new Error('閲覧用 JSON を選んでください。マッチのアーカイブは riftbound-replay view で変換できます。');
+    throw new Error('閲覧用 JSON を選んでください。マッチのアーカイブは riftbound-replay の view または view-team で変換できます。');
   }
   liveGameIndex = null;
   matchTraces = games;
   $('matchinfo').textContent = '';
   $('livemsg').textContent = '';
-  $('traceinfo').textContent = Array.isArray(t.games)
-    ? `勝ち数 ${t.wins.join('–')} · ${t.winner === null ? '引き分け' : `P${t.winner} の勝ち`}${t.exact ? '' : ' · 推定を含む'}${t.cardsFullyChecked === false ? ' · 動作確認前のカードあり' : ''}` : '';
+  $('traceinfo').textContent = '';
+  if (Array.isArray(t.games)) {
+    const wins = teams ? t.wins.map((count, i) => `${teamLabel(i)} ${count}勝`).join(' · ') : `勝ち数 ${t.wins.join('–')}`;
+    const result = t.winner === null ? '引き分け' : `${teams ? teamLabel(t.winner) : `P${t.winner}`} の勝ち`;
+    $('traceinfo').textContent = `${wins} · ${result}${t.exact ? '' : ' · 推定を含む'}${t.cardsFullyChecked === false ? ' · 動作確認前のカードあり' : ''}`;
+  }
   selectGame(0);
   updateGamePicker();
 }
@@ -307,7 +314,8 @@ function buildBoard() {
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const seat = (p) => {
     const s = mk('section', 'seat'); seatBox[p] = s;
-    const head = mk('div', 'seat-head'); head.append(mk('h2', '', 'P' + p));
+    const team = trace.teams?.findIndex((seats) => seats.includes(p)) ?? -1;
+    const head = mk('div', 'seat-head'); head.append(mk('h2', '', team < 0 ? `P${p}` : `P${p} · ${teamLabel(team)}`));
     pointsBox[p] = mk('span', 'pts'); poolBox[p] = mk('div', 'pool'); head.append(pointsBox[p], poolBox[p]);
     const piles = mk('div', 'piles');
     for (const [k, label] of PILES) {
@@ -423,6 +431,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
   switch (a.kind) {
     case 'arrange': return [who + ': 並び替え', 'シャッフル、または Recycle の順番'];
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
+    case 'inviteTeammate': return [who + ': P' + a.guest + ' を招待', '招待された席はスペルか起動型能力を使える'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
     case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
     case 'guessCardType': {
@@ -544,6 +553,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
     }
     case 'choose': {
       const card = cardName(a.obj);
+      if (prev === 'chooseShowdown') return [who + ': ' + card + ' から始める', 'Showdown または Combat を開始'];
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
       if (a.choiceContext === 'banishReplay') {
         const banished = zoneEntries.filter(([zone]) => zone.endsWith('.banishment')).flatMap(([, ids]) => ids);
@@ -583,6 +593,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         destination + (a.dest === null ? ' へ戻る' : ' へ移動する') + '（Unit は Exhaust する）'];
     }
     case 'pass':
+      if (prev === 'teamInvitation') return [who + ': 招待を辞退', '手番プレイヤーに優先権が戻る'];
       if (prev === 'showdown') return [who + ': パス', 'Showdown でパス（全員がパスすると、Unit が 1 人だけなら Control と Conquer、2 人いれば Combat Damage）'];
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];

@@ -199,6 +199,13 @@ def check_cli(folder: Path, saved: dict, setup: dict) -> None:
     summary = json.loads(command("record-team", team_input, team_archive))
     assert summary["wins"] == [0, 1] and summary["exact"] and not summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", team_archive)) == summary
+    team_trace = folder / "team-trace.json"
+    command("view-team", team_archive, team_trace)
+    exported = json.loads(team_trace.read_text(encoding="utf-8"))
+    assert exported["teams"] == [[0, 1], [2, 3]] and exported["winner"] == 1
+    assert exported["games"][0]["players"] == 4 and exported["exact"]
+    steps = exported["games"][0]["steps"]
+    assert any((row["action"] or {}).get("kind") == "inviteTeammate" for row in steps)
 
     last = team_game["answers"][-1]["observed"]["action"]
     team_game["answers"][-1] = {"inferred": {"action": last, "evidence": "team reported the concession"}}

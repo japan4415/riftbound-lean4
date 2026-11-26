@@ -248,13 +248,17 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   if some normalized != expected then throw "the replayed game outcome differs"
   return some normalized
 
+/-- The game configuration shared by team recording and trace export. -/
+def teamReplayConfig (env : LegalityEnv) : GameConfig :=
+  { ruleSet := .tournament .constructed, mode := .teamDuel, formatLegality := some env }
+
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
     (expected : Option (Array RecordedGame)) : Except String RecordedTeamMatch := do
   if input.seats != { team0 := (⟨0⟩, ⟨1⟩), team1 := (⟨2⟩, ⟨3⟩) } then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
   if expected.any (fun games => games.size != input.games.size) then throw "the game count differs"
   let (summary, games) ← runTeamMatch input db fun env index game => do
-    let config : GameConfig := { ruleSet := .tournament .constructed, mode := .teamDuel, formatLegality := some env }
+    let config := teamReplayConfig env
     let replay : GameInputs := {
       decks := .constructed game.decks, answers := game.answers,
       chooser := game.chooser, openingOrder := some game.order }
