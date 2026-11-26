@@ -29,6 +29,17 @@ brings three Battlefields and one is chosen at random (CR 487.5). -/
 def Mode.duel : Mode :=
   { players := 2, victoryScore := 8, battlefieldsInPlay := 2, deckBattlefields := 3 }
 
+/-- Three-player Skirmish (CR 489). Each player contributes a Battlefield. -/
+def Mode.ffa3 : Mode :=
+  { players := 3, victoryScore := 8, battlefieldsInPlay := 3, deckBattlefields := 3 }
+
+/-- Four-player War (CR 490). The first player contributes no Battlefield. -/
+def Mode.ffa4 : Mode :=
+  { Mode.ffa3 with players := 4 }
+
+/-- The official solo multiplayer modes. -/
+def Mode.isFreeForAll (mode : Mode) : Bool := mode == Mode.ffa3 || mode == Mode.ffa4
+
 /-- Four seats in two teams (CR 491). A and B of the first team have seats 0 and 1,
 and A and B of the second team have seats 2 and 3 (TR 603.7). -/
 def Mode.teamDuel : Mode :=

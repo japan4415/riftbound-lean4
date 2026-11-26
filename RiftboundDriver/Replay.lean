@@ -173,9 +173,9 @@ structure GameInputs where
   answers : Array ReplayAnswer
   /-- The seat entitled to choose first or second, when the match made such a choice. -/
   chooser : Option PlayerId := none
-  /-- Four-seat tournament turn order determined before the engine shuffles the decks. -/
+  /-- Four-seat War or team turn order, known before choosing the three Battlefields. -/
   openingOrder : Option (List PlayerId) := none
-  /-- Evidence when the team starting order was not observed directly. -/
+  /-- Evidence when the supplied starting order was not observed directly. -/
   openingOrderEvidence? : Option ReplayOpeningOrderEvidence := none
   /-- The original registrations when the event uses the optional Constructed Best of 1 setup.
   The game decks describe the configuration after the initial sideboard window (TR 406.1.h). -/
@@ -271,7 +271,15 @@ def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig
     let some state := setup
       | throw "the team game cannot be set up from the submitted registrations and order"
     return state
-  if openingOrder.isSome then throw "only four-seat matches set the starting order before setup"
+  if config.mode == Mode.ffa4 then
+    let some order := openingOrder | throw "War replay requires the starting turn order"
+    let .core submitted := decks | throw "War replay requires Core Rules decks"
+    unless config.ruleSet == .coreOnly && config.formatLegality.isNone do
+      throw "War replay requires the Core Rules"
+    let some state := GameState.initialFfa4 db order submitted
+      | throw "the War game cannot be set up from the submitted decks and order"
+    return state
+  if openingOrder.isSome then throw "a supplied starting order requires War or a team game"
   let state ← match decks, config.ruleSet.tournamentFormat, config.formatLegality with
     | .core ds, none, none => pure (GameState.initial db config ds)
     | .constructed ds, some .constructed, some env =>
@@ -297,7 +305,8 @@ put out the Legends and Battlefield candidates before committing the cards from 
 def GameInputs.initial (input : GameInputs) (db : CardDB) (config : GameConfig) :
     Except String GameState := do
   if let some evidence := input.openingOrderEvidence? then
-    unless config.mode.isTeamDuel do throw "starting turn order evidence requires a team game"
+    unless config.mode.isTeamDuel || config.mode == Mode.ffa4 do
+      throw "supplied starting turn order evidence requires War or a team game"
     evidence.check
   let some registered := input.bo1Setup? | return ← input.decks.initial db config input.openingOrder
   unless config.mode == Mode.duel && config.ruleSet.tournamentFormat == some .constructed &&
@@ -719,6 +728,51 @@ def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfi
   let actual ← runGame saved.input db config fuel (some saved.checkpoints)
   if saved.summary != actual.summary then throw "the final game outcome differs"
   return actual.summary
+
+/-- The recorded inputs to one free-for-all game under the Core Rules. -/
+structure FreeForAllInputs where
+  /-- Skirmish or War (CR 489-490). -/
+  mode : Mode
+  /-- The registered decks, decisions and any supplied opening order. -/
+  game : GameInputs
+  /-- The per-answer work limit, retained for verification. -/
+  fuel : Nat := 100
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The archive for one completed free-for-all game. -/
+structure RecordedFreeForAll where
+  /-- The pinned replay format, rules editions and card definitions. -/
+  rules : ReplayRules
+  /-- The starting mode to replay. -/
+  mode : Mode
+  /-- The engine's work limit for each answer. -/
+  fuel : Nat
+  /-- The game input, outcome and all checkpoints. -/
+  game : RecordedGame
+deriving DecidableEq, Repr, ToJson, FromJson
+
+private def freeForAllConfig (mode : Mode) : Except String GameConfig := do
+  unless mode.isFreeForAll do throw "free-for-all replay requires Skirmish or War"
+  return { ruleSet := .coreOnly, mode }
+
+private def requireFinishedFreeForAll (summary : ReplayGameResult) : Except String Unit := do
+  unless summary.result.isSome do throw "the free-for-all game has no final result"
+
+/-- Play a complete Skirmish or War game and retain its inputs, outcome and checkpoints. -/
+def FreeForAllInputs.record (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :
+    Except String RecordedFreeForAll := do
+  let game ← input.game.record db (← freeForAllConfig input.mode) input.fuel
+  requireFinishedFreeForAll game.summary
+  return { rules := ReplayRules.current db, mode := input.mode, fuel := input.fuel, game }
+
+/-- Check the outcome and each checkpoint of an archived Skirmish or War game. -/
+def RecordedFreeForAll.verify (saved : RecordedFreeForAll) (db : CardDB := RiftboundCards.db) :
+    Except String ReplayGameResult := do
+  if saved.rules != ReplayRules.current db then
+    throw "the replay format, rules edition or card definitions differ"
+  let summary ← saved.game.verify db (← freeForAllConfig saved.mode) saved.fuel
+  requireFinishedFreeForAll summary
+  return summary
 
 end RiftboundDriver
 

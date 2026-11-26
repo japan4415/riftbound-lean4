@@ -57,9 +57,9 @@ theorem GameState.teamInvitee_phase {s : GameState} {p guest : PlayerId}
   · cases h
 
 /-- The last seat in the starting order gets an extra Rune in its first Channel Phase
-in Duel and team play (CR 315.3, 487.7, 491.7). -/
+in Duel and multiplayer games (CR 315.3, 487.7, 489.7, 490.7, 491.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
-  let openingBonus := if s.config.mode.isTeamDuel then
+  let openingBonus := if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
     s.turnOrder.getLast?.any (fun last => s.active == some last && s.turnsTaken last == 1)
   else s.config.mode.hasTwoSides && s.turn - s.turnShift == s.playerCount
   let normal := if openingBonus then 3 else 2
@@ -69,9 +69,9 @@ def GameState.channelCount (s : GameState) : Nat :=
       | .channelLimit n => min count n
       | _ => count) count) normal
 
-/-- The starting player has no regular draw on the first turn in team play (CR 491.7). -/
+/-- The starting player skips the regular first-turn draw in multiplayer (CR 489.7, 490.7, 491.7). -/
 def GameState.drawCount (s : GameState) : Nat :=
-  if s.config.mode.isTeamDuel && s.turn == 1 then 0 else 1
+  if (s.config.mode.isTeamDuel || s.config.mode.isFreeForAll) && s.turn == 1 then 0 else 1
 
 /-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
 format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither

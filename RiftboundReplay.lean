@@ -29,14 +29,14 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     steps := row :: steps
   return jobj [("players", toString state.playerCount), ("steps", jarr steps.reverse)]
 
-private def matchTraceJson (games : List String) (wins : Nat × Nat) (outcome : MatchResult)
+private def replayTraceJson (games : List String) (wins : List Nat) (outcome : MatchResult)
     (allObserved cardsChecked : Bool) (extra : List (String × String) := [])
     (limited : Bool := false) : String :=
   let db := if limited then RiftboundCards.db.withLimitedBlank else RiftboundCards.db
   let cards := db.cards.map (fun card => (card.id.code, cardJson card))
   let winner := match outcome with | .won p => toString p.n | .draw => "null"
   jobj ([("cards", jobj cards), ("games", jarr games), ("winner", winner),
-    ("wins", jarr [toString wins.1, toString wins.2]), ("exact", toString allObserved),
+    ("wins", jarr (wins.map toString)), ("exact", toString allObserved),
     ("cardsFullyChecked", toString cardsChecked)] ++ extra)
 
 private def matchPenaltyTrace (ending : ReplayMatchEnd) : List (String × String) :=
@@ -46,7 +46,8 @@ private def matchTrace (saved : RecordedMatch) : Except String String := do
   let summary ← saved.verify
   let games ← saved.games.toList.mapM (fun game =>
     gameTrace game.input (game.eliminationConfig?.getD saved.input.config) saved.input.fuel)
-  return matchTraceJson games summary.wins summary.result summary.exact summary.cardsFullyChecked
+  return replayTraceJson games [summary.wins.1, summary.wins.2] summary.result
+    summary.exact summary.cardsFullyChecked
     (matchPenaltyTrace saved.input.ending) (limited := saved.input.config.ruleSet.isLimited)
 
 private def teamEvidence (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Bool × Bool :=
@@ -66,11 +67,25 @@ private def teamMatchTrace (saved : RecordedTeamMatch) : Except String String :=
   let (allObserved, cardsChecked) := teamEvidence saved summary
   let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
   let teams := saved.input.seats
-  return matchTraceJson games summary.wins summary.result allObserved cardsChecked
+  return replayTraceJson games [summary.wins.1, summary.wins.2] summary.result allObserved cardsChecked
     ([("teams", jarr [seats teams.team0, seats teams.team1])] ++ matchPenaltyTrace saved.input.ending)
     config.ruleSet.isLimited
 
-/-- Record, verify or generate a viewer trace from all the inputs of a saved match. -/
+private def ffaVerificationJson (summary : ReplayGameResult) : Json :=
+  (toJson summary).setObjValAs! "cardsFullyChecked" (summary.uncheckedCards.all List.isEmpty)
+
+private def ffaTrace (saved : RecordedFreeForAll) : Except String String := do
+  let summary ← saved.verify
+  let outcome : MatchResult ← match summary.result with
+    | some (.won [seat]) => pure (.won seat)
+    | some .draw => pure .draw
+    | _ => throw "invalid free-for-all outcome"
+  let game ← gameTrace saved.game.input { ruleSet := .coreOnly, mode := saved.mode } saved.fuel
+  let wins := (allPlayers saved.mode.players).map (fun seat =>
+    if outcome == .won seat then 1 else 0)
+  return replayTraceJson [game] wins outcome summary.exact (summary.uncheckedCards.all List.isEmpty)
+
+/-- Record, verify or generate a viewer trace from the inputs of a saved game or match. -/
 def main (args : List String) : IO UInt32 := do
   try
     match args with
@@ -111,8 +126,24 @@ def main (args : List String) : IO UInt32 := do
       let trace ← IO.ofExcept (teamMatchTrace saved)
       IO.FS.writeFile output (trace ++ "\n")
       return 0
+    | ["record-ffa", input, output] =>
+      let script : FreeForAllInputs ← IO.ofExcept (fromJson? (← readJson input))
+      let saved ← IO.ofExcept script.record
+      writeJson output (toJson saved)
+      IO.println (ffaVerificationJson saved.game.summary).compress
+      return 0
+    | ["verify-ffa", input] =>
+      let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
+      let result ← IO.ofExcept saved.verify
+      IO.println (ffaVerificationJson result).compress
+      return 0
+    | ["view-ffa", input, output] =>
+      let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
+      let trace ← IO.ofExcept (ffaTrace saved)
+      IO.FS.writeFile output (trace ++ "\n")
+      return 0
     | _ =>
-      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json"
+      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"
       return 2
   catch error =>
     IO.eprintln error.toString

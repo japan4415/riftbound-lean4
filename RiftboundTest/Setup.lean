@@ -70,6 +70,31 @@ meta def p1 : PlayerId := ⟨1⟩
     s.turnOrder.length == 2 && s.turnOrder.contains p0 && s.turnOrder.contains p1
   | none => false
 
+private meta def ffaOpening (mode : Mode) : Option GameState := do
+  let decks := List.replicate mode.players goodDeck
+  let s ← if mode == Mode.ffa4 then
+      GameState.initialFfa4 db [⟨2⟩, p0, ⟨3⟩, p1] decks
+    else GameState.initial db { cfg with mode } decks
+  let ready ← (runAuto 100 100 (Rng.ofSeed 7) s).toOption
+  let first ← ready.turnOrder.head?
+  let last ← ready.turnOrder.getLast?
+  let final ← (runUntilTurn 100 mode.players 100 (Rng.ofSeed 7) ready).toOption
+  let battlefieldCount := (ready.zone .battlefieldZone).length
+  let candidateCount := count first .outOfGame ready
+  if ready.turn == 1 && ready.active == some first && count first .hand ready == 4 &&
+      count first .runeDeck ready == 10 && battlefieldCount == 3 &&
+      candidateCount == (if mode == Mode.ffa4 then 3 else 2) &&
+      final.turn == mode.players && final.active == some last && count last .hand final == 5 &&
+      count last .runeDeck final == 9 &&
+      (final.turnOrder.drop 1).all (fun seat => count seat .outOfGame final == 2) then
+    some final
+  else none
+
+-- CR 489.5, 489.7, 490.5, 490.7: three Battlefields and the multiplayer first-turn rules.
+#guard (ffaOpening .ffa3).isSome
+#guard (ffaOpening .ffa4).any (fun s => s.turnOrder == [⟨2⟩, p0, ⟨3⟩, p1])
+#guard (GameState.initialFfa4 db [p0, p1, p0, ⟨3⟩] (List.replicate 4 goodDeck)).isNone
+
 -- the same seed gives the same game (replay, design.md §6.4)
 #guard finished 5 == finished 5
 -- different seeds can give different orders of the deck

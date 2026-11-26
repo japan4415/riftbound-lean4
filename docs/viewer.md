@@ -154,6 +154,21 @@ Sealed では `tournament` に代えて `sealed` に両チームの共有プー�
 
 `riftbound-replay view-team ARCHIVE.json TRACE.json` で検証済みの対局を閲覧用に変換できる。既存ビューアの「閲覧用 JSON」から `TRACE.json` を開くと、チームの所属、ゲーム勝数、招待や Battlefield の選択を追える。
 
+### 3人戦・4人戦の記録
+
+Skirmish（FFA3）と War（FFA4）は Core Rules の1ゲームを `FreeForAllInputs` で記録する。`mode` には `players`（3 または 4）、`victoryScore`（8）、`battlefieldsInPlay`（3）、`deckBattlefields`（3）を指定する。`game.decks.core.decks` に席番号順のデッキを、`game.answers` にシャッフルや選択を含む操作列を入れる。入力の途中で終わっているゲームは記録エラーになる。
+
+- Skirmish は各席の Main Deck と Rune Deck のシャッフル、3席の Battlefield 選択、`arrangePlayers` による手番順の記録、マリガンの順に進む。
+- War は `game.openingOrder` に全4席の手番順を入れる。操作列はシャッフルから始まり、手番順の先頭を除く3席が手番順に Battlefield を選ぶ。手番順を推定した場合は `game.openingOrderEvidence` に、`{"inferred":{"evidence":"映像から推定した根拠"}}` の形で根拠を記録する。
+
+```sh
+.lake/build/bin/riftbound-replay record-ffa INPUT.json ARCHIVE.json
+.lake/build/bin/riftbound-replay verify-ffa ARCHIVE.json
+.lake/build/bin/riftbound-replay view-ffa ARCHIVE.json TRACE.json
+```
+
+`verify-ffa` では勝者、各席の得点、チェックポイントの一致、観測の確かさ、使用カードの確認状況を調べられる。`TRACE.json` はビューアの「閲覧用 JSON」から開ける。
+
 4席のセットアップ、手番、チームの共有得点、スイスラウンドの時間切れや投了まで再実行できる。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方がいる Battlefield への移動を制限し、Combat の参加者やカード効果の対象を判定するときはチームを区別する。
 
 Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。開始できる Showdown や Combat が複数ある場合は、手番プレイヤーが `choose` で Battlefield のオブジェクト ID を指定する。

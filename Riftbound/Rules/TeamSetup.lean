@@ -3,11 +3,10 @@ module
 public import Riftbound.Spec.Legal
 
 /-!
-# Tournament setup for four seats
+# Setup with a known order for four seats
 
-The tournament chooses the turn order before the game starts (TR 603.7). This identifies the three
-players who contribute a Battlefield (CR 491.5). The engine takes the shuffles, picks and
-mulligans as decisions in the normal way.
+The turn order is established before identifying the three players who contribute a Battlefield
+(CR 490.5, 491.5) (TR 603.7). The engine still takes the shuffles, picks and mulligans as decisions.
 -/
 
 @[expose] public section
@@ -47,11 +46,30 @@ def teamSealedRegistrationOk (db : CardDB) (a b : LimitedDeck) : Bool :=
         b.battlefields.any (fun other => CardDef.nameKey other == card.nameKey))
   ).getD false
 
-/-- Arrange the common shuffles, Battlefield answers and opening hands of a team game. -/
+/-- Arrange shuffles and opening hands in War or team play, skipping the first seat's Battlefield. -/
 def GameState.teamSetupOrder (s : GameState) (order : List PlayerId) : GameState :=
   let shuffles := s.pending.filter (fun | .chanceShuffle _ => true | _ => false)
   let fields := (order.drop 1).map Frame.chanceBattlefield
   { s with turnOrder := order, pending := shuffles ++ fields ++ [.setupHands] }
+
+/-- Start a War game after the first seat and the rest of the turn order are known (CR 490.5). -/
+def GameState.initialFfa4 (db : CardDB) (order : List PlayerId) (decks : List Deck) :
+    Option GameState := do
+  if !decide (order.Perm (allPlayers 4)) then none else
+    let s ← GameState.initial db { ruleSet := .coreOnly, mode := .ffa4 } decks
+    some (s.teamSetupOrder order)
+
+/-- War setup allocates the usual cards and changes only the turn order and setup frames. -/
+theorem GameState.initialFfa4_validState {db : CardDB} {order : List PlayerId}
+    {decks : List Deck} {s : GameState} (h : GameState.initialFfa4 db order decks = some s) :
+    s.WF ∧ s.OwnerOk := by
+  unfold GameState.initialFfa4 at h
+  split at h
+  · contradiction
+  · simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨base, hbase, rfl⟩ := h
+    exact ⟨(GameState.initial_wf hbase).congr rfl rfl rfl rfl,
+      (GameState.initial_ownerOk hbase).congr rfl rfl⟩
 
 /-- Start a four-seat Constructed game after the tournament has chosen the turn order. Seats 0
 and 1 are the A/B seats of one team, and 2 and 3 are the other team's A/B seats. -/
