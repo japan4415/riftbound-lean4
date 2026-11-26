@@ -358,8 +358,10 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
   let (s, chosen) ← put s p "OGN-095" .trash
   let (s, unit) ← put s p "OGN-142" .trash
   let (board, rival) ← put s s.you "OGN-095" .trash
-  let returned ← play board p annie [] { obj := (· == chosen) }
-  return returned.countIn p .hand "OGN-095" == 1 &&
+  let options ← castStop board p annie
+  let returned ← play board p annie [] { pick := (· == [chosen]) }
+  return options.trigPicks.contains chosen && !options.trigPicks.contains rival &&
+    returned.countIn p .hand "OGN-095" == 1 &&
     (returned.zone (.player p .trash)).contains first &&
     (returned.zone (.player p .trash)).contains unit &&
     !(returned.zone (.player p .trash)).contains chosen &&
@@ -385,11 +387,12 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
   let (s, annie) ← put s p "OGS-010" .hand
   let (s, _) ← put s p "OGN-094" .trash
   let (s, teammateSpell) ← put s mate "OGN-095" .trash
-  let returned ← play s p annie [] { obj := (· == teammateSpell) }
+  let options ← castStop s p annie
+  let returned ← play s p annie
   return [first, second].all (fun id => (hit.obj? id).any (·.damage == 3)) &&
     (hit.obj? ally).any (·.damage == 0) && strengthened.mightNow ally == some 12 &&
     strengthened.mightNow first == some 10 && returned.countIn p .hand "OGN-094" == 1 &&
-    (returned.zone (.player mate .trash)).contains teammateSpell
+    !options.trigPicks.contains teammateSpell && (returned.zone (.player mate .trash)).contains teammateSpell
 
 -- Lux adds Spell-only Energy immediately and leaves the same player able to act.
 #guard inLab fun s => do

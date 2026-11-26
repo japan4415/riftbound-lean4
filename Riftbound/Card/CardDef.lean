@@ -122,6 +122,8 @@ structure CardDef where
   grants : List Ability := []
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
+  /-- Energy discount when at least one declared target matches these filters (CR 355, 356.4). -/
+  chosenEnergyDiscount : Option (FilterList × Nat) := none
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none

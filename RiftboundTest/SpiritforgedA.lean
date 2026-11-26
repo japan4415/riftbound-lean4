@@ -342,16 +342,43 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return a.countIn s.me .base "SFD-032" == 1
 
 -- Guardian of the Passage (SFD-035): when it holds, a unit or gear (not a spell) from the Trash
--- may return to the hand
+-- may be targeted upon finalization or the player can decline the trigger.
 #guard tsf fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-280"
-  let (s2, _) ← putAt s1 s.me "SFD-035" bf
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.me "OGN-051" .trash
-  let a ← fire s4 [.scored s.me bf false]
-  let b ← fire s4 [.scored s.me bf false] { yes := false }
-  return a.countIn s.me .hand "OGN-051" == 1 && a.countIn s.me .hand "OGN-004" == 0 &&
-    b.countIn s.me .hand "OGN-051" == 0
+  let p := s.me
+  let (s, bf) ← putBf s p "OGN-280"
+  let (s, _) ← putAt s p "SFD-035" bf
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, gear) ← put s p "SFD-056" .trash
+  let (s, opposing) ← put s s.you "SFD-056" .trash
+  let holds := [Event.scored p bf false]
+  let picks ← firePicks s holds
+  let a ← fire s holds { pick := (· == [gear]) }
+  let b ← fire s holds { yes := false }
+  return picks.contains gear && picks.contains unit && !picks.contains spell && !picks.contains opposing &&
+    a.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056" + 1 &&
+    b.zone (.player p .trash) == s.zone (.player p .trash)
+
+-- Aspiring Engineer chooses a Gear while the ability is put on the Chain.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, engineer) ← put s p "SFD-061" .hand
+  let (s, gear) ← put s p "SFD-056" .trash
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, rivalGear) ← put s s.you "SFD-056" .trash
+  let deciding ← castStop s p engineer
+  let action ← (legalFrameActions deciding).find? (fun act => match act.kind with
+    | .putTrigger _ [id] (.pay ..) => id == gear
+    | _ => false)
+  let (queued, _) ← (step 100 deciding action).toOption
+  let (removed, _) ← moveObj queued gear (.player p .mainDeck)
+  let found := settleChain {} 12 queued
+  let lost := settleChain {} 12 removed
+  return !(legalFrameActions deciding).any (fun act => match act.kind with
+      | .putTrigger _ [id] (.pay ..) => id == unit || id == rivalGear
+      | _ => false) &&
+    found.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056" + 1 &&
+    lost.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056"
 
 -- Ribbon Dancer (SFD-038): when it moves to a battlefield, another friendly unit has +1 Might
 #guard tsf fun s => do
@@ -1321,10 +1348,12 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s, spell) ← put s p "UNL-007" .trash
   let (s, enemy) ← put s s.you "OGN-218" .trash
   let (dead, events) := killObj (s.fund p 0) mixologist
+  let picks ← firePicks dead events
   let accepted ← fire dead events
   let declined ← fire dead events { yes := false }
   let entered ← accepted.firstOf p .base "OGN-218"
-  return (accepted.obj? entered).any (fun o => o.energyPaid == 0 && o.exhausted) &&
+  return picks == [valid] &&
+    (accepted.obj? entered).any (fun o => o.energyPaid == 0 && o.exhausted) &&
     (accepted.poolOf p).total == 0 && !(accepted.zone (.player p .trash)).contains valid &&
     [energy, power, spell].all (accepted.zone (.player p .trash)).contains &&
     (accepted.zone (.player s.you .trash)).contains enemy &&

@@ -279,7 +279,8 @@ def OGS_010.meta : CardDef :=
 def OGS_010 : CardDef :=
   { OGS_010.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.prim (.returnToHand (.one .friendly .inTrash [.ofType .spell])))) .unlimited],
+      { EffectDef.of [.targetOf .one .you .inTrash [.ofType .spell]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
     status := .full }
 
 -- BEGIN GENERATED OGS-011

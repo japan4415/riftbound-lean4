@@ -529,6 +529,65 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return legal.contains (act second) && !legal.contains (act expensive) &&
     done.countIn p .base "UNL-111" == 2 && done.countIn p .trash "UNL-003" == 1
 
+-- Starhound can target a pet in its controller's Trash when its play trigger finalizes.
+#guard tun fun s => do
+  let p := s.me
+  let (s, hound) ← put s p "UNL-167" .hand
+  let (s, pet) ← put s p "VEN-007" .trash
+  let (s, unit) ← put s p "UNL-111" .trash
+  let (s, opposing) ← put s s.you "VEN-007" .trash
+  let deciding ← castStop s p hound
+  let candidates := (legalFrameActions deciding).filterMap (fun act => match act.kind with
+    | .putTrigger _ [id] (.pay ..) => some id
+    | _ => none)
+  let done ← play s p hound [] { pick := (· == [pet]) }
+  return candidates == [pet] && !candidates.contains opposing &&
+    done.countIn p .hand "VEN-007" == s.countIn p .hand "VEN-007" + 1 &&
+    (done.zone (.player p .trash)).contains unit
+
+-- Undying Loyalty's declared target determines the Energy discount, never the Order Power.
+#guard tun fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "UNL-168" .hand
+  let (s, pet) ← put s p "VEN-007" .trash
+  let (s, common) ← put s p "OGN-010" .trash
+  let (s, expensive) ← put s p "OGN-135" .trash
+  let (s, rivalPet) ← put s s.you "VEN-007" .trash
+  let s := s.fund p 2 0 0 0 0 0 1
+  let cheap : RunePool.Payment := ⟨0, [.order]⟩
+  let normal : RunePool.Payment := ⟨2, [.order]⟩
+  let action (pay : RunePool.Payment) (target : ObjId) : Action :=
+    ⟨.player p, .playCard spell pay [target]⟩
+  let legal := legalFrameActions s
+  let (casted, events) ← (step 100 s (action cheap pet)).toOption
+  let (removed, _) ← moveObj casted pet (.player p .mainDeck)
+  let revived := settleChain {} 12 casted
+  let missed := settleChain {} 12 removed
+  let nonPet ← cast s p spell normal [common]
+  return legal.contains (action cheap pet) && legal.contains (action normal common) &&
+    !legal.contains (action normal pet) && !legal.contains (action cheap common) &&
+    !legal.contains (action ⟨0, []⟩ pet) && !legal.contains (action cheap expensive) &&
+    !legal.contains (action cheap rivalPet) &&
+    events.contains (.chosenBySpell p pet) && (casted.poolOf p).energy == 2 &&
+    (casted.poolOf p).order == 0 && revived.countIn p .base "VEN-007" == 1 &&
+    missed.countIn p .base "OGN-010" == 0 && (missed.zone (.player p .trash)).contains common &&
+    nonPet.countIn p .base "OGN-010" == 1 && (nonPet.poolOf p).energy == 0
+
+-- An effect-driven cast uses the same discount, once across declared Repeat executions.
+#guard tun fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "UNL-168" .hand
+  let (s, first) ← put s p "VEN-007" .trash
+  let (s, second) ← put s p "VEN-007" .trash
+  let s := (s.fund p 6 0 0 0 0 0 2).addTurnFx p .nextSpellRepeat
+  let price := EffectPlayPrice.alternateBase ⟨3, [.domain .order]⟩
+  let (queued, item) ← queueLimitedSpell s p spell price .normal
+  let plans := limitedSpellOptions queued p item price
+  let totals := plans.filterMap (fun plan =>
+    if plan.targets == [first, second] && plan.pick.hasExecutionChoices then some plan.cost
+    else none)
+  return totals == [⟨3, [.domain .order, .domain .order]⟩]
+
 -- Blast Cone (UNL-133): when its player moves an enemy unit with an effect, it can stun it
 #guard tun fun s => do
   let (s1, g) ← put s s.me "UNL-133" .base

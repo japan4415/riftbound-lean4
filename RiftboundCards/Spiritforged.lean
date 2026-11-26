@@ -1043,11 +1043,10 @@ def SFD_035.meta : CardDef :=
 /-- Guardian of the Passage. -/
 def SFD_035 : CardDef :=
   { SFD_035.meta with
-
-    abilities := [.triggered (.onSelf .hold)
-      (.of [] (.may (.prim (.returnToHand
-        (Selector.one .friendly .inTrash [.not (.ofType .spell)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .hold, optional := true }
+      { EffectDef.of [.targetOf .one .you .inTrash [.either (.ofType .unit) (.ofType .gear)]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-036
 /--
@@ -1797,9 +1796,9 @@ def SFD_061.meta : CardDef :=
 def SFD_061 : CardDef :=
   { SFD_061.meta with
     abilities := [.triggered (.onSelf .play)
-        (.of []
-        (.prim (.returnToHand (.one .friendly .inTrash [.ofType .gear])))) .unlimited],
-    status := .drafted }
+      { EffectDef.of [.targetOf .one .you .inTrash [.ofType .gear]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-062
 /--
@@ -4861,10 +4860,10 @@ def SFD_165.meta : CardDef :=
 /-- Glasc Mixologist. -/
 def SFD_165 : CardDef :=
   { SFD_165.meta with
-    abilities := [.triggered (.onSelf .die)
-      (.of [] (.mayPlayCard (.one .friendly .inTrash
-        [.physicalCard, .ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)])
-        .ignoreBase)) .unlimited],
+    abilities := [.triggered { event := .die, optional := true }
+      { EffectDef.of
+        [.targetOf .one .you .inTrash [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
+        (.playCard (.slot 0) .ignoreBase) with recheckTargets := true } .unlimited],
     status := .full }
 
 -- BEGIN GENERATED SFD-166

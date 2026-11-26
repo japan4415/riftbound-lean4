@@ -807,13 +807,32 @@ def GameState.gearDiscountTotal (s : GameState) (p : PlayerId) (sources : List O
     let cut := s.gearDiscountAt p source
     (total.1 + cut.1, total.2 + cut.2)) (0, 0)
 
+/-- The card's own Energy discount for its declared targets (CR 356.4.a). -/
+def GameState.chosenEnergyCut (s : GameState) (c : ObjId) (ts : List ObjId) : Nat :=
+  match (s.cardDef? c).bind (·.chosenEnergyDiscount) with
+  | some (filters, amount) =>
+    if ts.any (fun target => FilterList.holds s c {} target filters == some true) then amount else 0
+  | none => 0
+
+/-- A matching declared target earns the card's Energy discount, even when other targets also match. -/
+theorem GameState.chosenEnergyCut_of_match {s : GameState} {c t : ObjId} {ts : List ObjId}
+    {filters : FilterList} {amount : Nat}
+    (discount : (s.cardDef? c).bind (·.chosenEnergyDiscount) = some (filters, amount))
+    (chosen : t ∈ ts) (matched : FilterList.holds s c {} t filters = some true) :
+    s.chosenEnergyCut c ts = amount := by
+  have qualifies : ts.any (fun target => FilterList.holds s c {} target filters == some true) = true :=
+    List.any_eq_true.mpr ⟨t, chosen, by simp [matched]⟩
+  simp [chosenEnergyCut, discount, qualifies]
+
 /-- Adjust the total cost for the targets, the Ambush destination, and next-card effects.
 The discounts may reduce optional costs or the cost of Deflect (CR 356.4.c-356.4.f). -/
 def GameState.targetCostOptions (s : GameState) (p : PlayerId) (c : ObjId)
     (ts : List ObjId) (cost : Cost) (extraCut : Nat × Nat := (0, 0)) : List Cost :=
   let reduction := s.nextCardDiscount p
   let unitReduction := if (s.cardDef? c).any (·.hasType .unit) then s.nextUnitDiscount p else (0, 0)
-  let cost := cost.lessEnergy (reduction.1 + unitReduction.1 + s.firstPermanentHereCut p c ts + extraCut.1)
+  let energyCut := reduction.1 + unitReduction.1 + s.firstPermanentHereCut p c ts +
+    s.chosenEnergyCut c ts + extraCut.1
+  let cost := cost.lessEnergy energyCut
   let tax := s.showdownReactionTax
   let power := if tax != 0 && s.ambushAt p c ts && !s.cardHasReaction c then
     cost.power ++ List.replicate tax .any else cost.power

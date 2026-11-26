@@ -1182,20 +1182,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← put s2 s.me "OGN-001" .trash
   let (s4, _) ← put s3 s.me "OGN-004" .trash
   let (s5, _) ← put s4 s.you "OGN-016" .trash
-  let a ← play s5 s.me c [] { obj := fun o => o == v }
+  let deciding ← castStop s5 s.me c
+  let a ← play s5 s.me c [] { pick := (· == [v]) }
   let b ← play (s5.setZone (.player s.me .trash) []) s.me c
-  return a.countIn s.me .hand "OGN-001" == s5.countIn s.me .hand "OGN-001" + 1 &&
+  let targets := (legalFrameActions deciding).filterMap (fun act => match act.kind with
+    | .putTrigger _ [id] (.pay ..) => some id
+    | _ => none)
+  return targets.length == 2 && targets.contains u && targets.contains v &&
+    a.countIn s.me .hand "OGN-001" == s5.countIn s.me .hand "OGN-001" + 1 &&
     a.countIn s.me .trash "OGN-001" == 0 && a.countIn s.me .trash "OGN-136" == 1 &&
     a.countIn s.you .hand "OGN-016" == s5.countIn s.you .hand "OGN-016" &&
     b.handN s.me == s5.handN s.me - 1 && (a.obj? u).isSome
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-170" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.you "OGN-001" .trash
-  let a ← play s4 s.me c
-  return a.countIn s.me .hand "OGN-136" == 1 && a.countIn s.me .hand "OGN-004" == 0 &&
-    a.countIn s.you .hand "OGN-001" == s4.countIn s.you .hand "OGN-001"
+  let p := s.me
+  let q := s.you
+  let (s, c) ← put s p "OGN-170" .hand
+  let (s, unit) ← put s p "OGN-136" .trash
+  let (s, fallback) ← put s p "OGN-051" .trash
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, opposing) ← put s q "OGN-001" .trash
+  let s := s.rich p
+  let action (ts : List ObjId) : Action := ⟨.player p, .playCard c (payOf s c) ts⟩
+  let legal := legalFrameActions s
+  let (queued, events) ← (step 100 s (action [unit])).toOption
+  let (removed, _) ← moveObj queued unit (.player p .mainDeck)
+  let a := settleChain {} 12 queued
+  let b := settleChain {} 12 removed
+  return legal.contains (action [unit]) && legal.contains (action [fallback]) &&
+    !legal.contains (action []) && !legal.contains (action [spell]) && !legal.contains (action [opposing]) &&
+    events.contains (.chosenBySpell p unit) &&
+    a.countIn p .hand "OGN-136" == 1 && a.countIn p .hand "OGN-004" == 0 &&
+    a.countIn q .hand "OGN-001" == s.countIn q .hand "OGN-001" &&
+    (b.zone (.player p .trash)).contains fallback && b.countIn p .hand "OGN-051" == 0
 
 -- Possession (OGN-203): take control of an enemy unit at a battlefield, and recall it to my Base
 #guard t fun s => do
@@ -2247,20 +2265,29 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
     runes.handN s.me == s1.handN s.me - 1 && runes.handN s.you == s1.handN s.you &&
     runeN runes s.me == runeN s1 s.me + 1 && runeN runes s.you == runeN s1 s.you + 1
 
--- Soulgorger (OGN-196), The Harrowing (OGN-198), Spectral Matron (OGN-226), Portal Rescue
--- (OGN-102): play a unit from the Trash, or a unit on the board, for free
+-- Soulgorger (OGN-196) and The Harrowing (OGN-198) target a unit in their controller's Trash
+-- and waive its Energy. The chosen unit's Power still has to be paid on resolution.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-196" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let a ← play s2 s.me c [] { yes := true }
-  let b ← play s2 s.me c [] { yes := false }
-  let (t1, h) ← put s s.me "OGN-198" .hand
-  let (t2, _) ← put t1 s.me "OGN-136" .trash
-  let (t3, _) ← put t2 s.you "OGN-136" .trash
-  let d ← play t3 s.me h
-  return a.countIn s.me .base "OGN-136" == 1 && a.countIn s.me .trash "OGN-136" == 0 &&
-    b.countIn s.me .base "OGN-136" == 0 && b.countIn s.me .trash "OGN-136" == 1 &&
-    d.countIn s.me .base "OGN-136" == 1 && d.countIn s.you .trash "OGN-136" == 1
+  let p := s.me
+  let (s1, c) ← put s p "OGN-196" .hand
+  let (s2, unit) ← put s1 p "OGN-178" .trash
+  let a ← cast (s2.fund p 8 (chaos := 3)) p c ⟨8, [.chaos, .chaos]⟩ [] { pick := (· == [unit]) }
+  let b ← cast (s2.fund p 8 (chaos := 2)) p c ⟨8, [.chaos, .chaos]⟩ [] { pick := (· == [unit]) }
+  let declined ← play s2 p c [] { yes := false }
+  let (t1, h) ← put s p "OGN-198" .hand
+  let (t2, wanted) ← put t1 p "OGN-178" .trash
+  let (t3, rival) ← put t2 s.you "OGN-178" .trash
+  let price : RunePool.Payment := ⟨6, [.chaos, .chaos]⟩
+  let funded := t3.fund p 6 (chaos := 3)
+  let done ← cast funded p h price [wanted]
+  let noPower ← cast (t3.fund p 6 (chaos := 2)) p h price [wanted]
+  return a.countIn p .base "OGN-178" == 1 && (a.poolOf p).total == 0 &&
+    (b.zone (.player p .trash)).contains unit && (declined.zone (.player p .trash)).contains unit &&
+    done.countIn p .base "OGN-178" == 1 && (done.poolOf p).total == 0 &&
+    (noPower.zone (.player p .trash)).contains wanted &&
+    (cast funded p h price [rival]).isNone && (cast funded p h price []).isNone
+
+-- Spectral Matron can decline or target a unit within both printed cost limits.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-226" .hand
   let (s2, _) ← put s1 s.me "OGN-001" .trash
@@ -2338,10 +2365,11 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s1, f) ← put s s.me "OGN-031" .hand
   let (s2, sp) ← put s1 s.me "OGN-198" .hand
   let (s3, sq) ← put s2 s.me "OGN-198" .hand
-  let on ← play s3 s.me f
+  let (board, target) ← put s3 s.me "OGN-136" .trash
+  let on ← play board s.me f
   let cut (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
     (x.cardDef? c).bind (fun d => (x.effCost p c d).map (·.energy))
-  let cheap ← cast (on.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩
+  let cheap ← cast (on.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩ [target]
   let next := { on with turn := on.turn + 1 }
   return cut on s.me sp == some 1 && cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
     cut on s.you sp == some 6 && cut next s.me sp == some 6
@@ -2405,8 +2433,9 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let (s4, comet) ← put s3 s.me "OGN-085" .hand
   let (s4b, star) ← put s4 s.me "OGN-029" .hand
   let (s5, u) ← putAt s4b s.you "OGN-136" s.bf0
+  let (s5, revived) ← put s5 s.me "OGN-136" .trash
   let small ← passBy (← castStop s5 s.me conf) s.me
-  let large ← passBy (← castStop s5 s.me big) s.me
+  let large ← passBy (← castOpen s5 s.me big [revived]) s.me
   let pricey ← passBy (← castOpen s5 s.me comet [u]) s.me
   let twoPower ← passBy (← castOpen s5 s.me star [u, u]) s.me
   let a ← play small s.you defy [← (small.zone .chain).head?]

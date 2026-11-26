@@ -4487,9 +4487,9 @@ def OGN_165.meta : CardDef :=
 def OGN_165 : CardDef :=
   { OGN_165.meta with
     abilities := [.triggered (.onSelf .play)
-        (.of []
-        (.prim (.returnToHand (.one .friendly .inTrash [.ofType .unit])))) .unlimited],
-    status := .drafted }
+      { EffectDef.of [.targetOf .one .you .inTrash [.ofType .unit]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-166
 /--
@@ -4610,9 +4610,9 @@ def OGN_170.meta : CardDef :=
 /-- Morbid Return. -/
 def OGN_170 : CardDef :=
   { OGN_170.meta with
-    spellEffect := some (.of []
-      (.prim (.returnToHand (.one .friendly .inTrash [.ofType .unit])))),
-    status := .drafted }
+    spellEffect := some { EffectDef.of [.targetOf .one .you .inTrash [.ofType .unit]]
+      (.prim (.returnToHand (.slot 0))) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-171
 /--
@@ -5299,9 +5299,10 @@ def OGN_196.meta : CardDef :=
 /-- Soulgorger. -/
 def OGN_196 : CardDef :=
   { OGN_196.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash [.ofType .unit]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .play, optional := true }
+      { EffectDef.of [.targetOf .one .you .inTrash [.ofType .unit]]
+        (.playCard (.slot 0) .ignoreEnergy) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-197
 /--
@@ -5350,9 +5351,9 @@ def OGN_198.meta : CardDef :=
 /-- The Harrowing. -/
 def OGN_198 : CardDef :=
   { OGN_198.meta with
-    spellEffect := some (.of []
-      (.prim (.play (Selector.one .friendly .inTrash [.ofType .unit])))),
-    status := .drafted }
+    spellEffect := some { EffectDef.of [.targetOf .one .you .inTrash [.ofType .unit]]
+      (.playCard (.slot 0) .ignoreEnergy) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-199
 /--
@@ -6104,10 +6105,11 @@ def OGN_226.meta : CardDef :=
 /-- Spectral Matron. -/
 def OGN_226 : CardDef :=
   { OGN_226.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash
-        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .play, optional := true }
+      { EffectDef.of
+        [.targetOf .one .you .inTrash [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
+        (.playCard (.slot 0) .ignoreBase) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-227
 /--

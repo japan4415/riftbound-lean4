@@ -4816,9 +4816,10 @@ def UNL_167.meta : CardDef :=
 def UNL_167 : CardDef :=
   { UNL_167.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.prim (.returnToHand (Selector.one .friendly .inTrash [.ofType .unit, petFilter]))))
+      { EffectDef.of [.targetOf .one .you .inTrash [petFilter]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true }
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-168
 /--
@@ -4841,9 +4842,11 @@ def UNL_168.meta : CardDef :=
 /-- Undying Loyalty. -/
 def UNL_168 : CardDef :=
   { UNL_168.meta with
-    spellEffect := some (.of [] (.prim (.play (Selector.one .friendly .inTrash
-      [.ofType .unit, .cost .le (.const 2), .powerCost .le (.const 1)])))),
-    status := .drafted }
+    chosenEnergyDiscount := some (.ofList [petFilter], 2),
+    spellEffect := some { EffectDef.of
+      [.targetOf .one .you .inTrash [.ofType .unit, .cost .le (.const 2), .powerCost .le (.const 1)]]
+      (.playCard (.slot 0) .ignoreBase) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED UNL-169
 /--
