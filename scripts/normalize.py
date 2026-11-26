@@ -24,6 +24,7 @@ SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
 # https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/
+# https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-errata/
 # https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
@@ -31,6 +32,10 @@ TEXT_ERRATA = {
     "OGN-077": {
         "The next time a friendly unit would die, kill this instead. Recall that unit exhausted.":
             "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it.",
+    },
+    "SFD-163": {
+        "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
+            "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",
     },
     "UNL-081": {
         "tokens here. They become copies of me.":
@@ -271,7 +276,7 @@ def normalize(snap: dict) -> dict:
         ident = card_id(first["code"])
         text = plain(first["text"])
         for printed, corrected in TEXT_ERRATA.get(ident, {}).items():
-            text = [line.replace(printed, corrected) for line in text]
+            text = [paragraph for line in text for paragraph in line.replace(printed, corrected).splitlines()]
         if ident == "RAD-071":
             text = [line.replace("Equip :rb_energy_1:", "[Equip] :rb_energy_1:", 1) for line in text]
         effect_text = plain(first["effect"])

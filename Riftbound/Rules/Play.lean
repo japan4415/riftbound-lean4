@@ -505,18 +505,21 @@ theorem Cost.mem_cutOptions_zero (c : Cost) : c ∈ c.cutOptions 0 := by
 
 /-- The object can pay the chosen additional cost for this player. -/
 def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : ObjId) : Bool :=
-  let friendly := decide (t ∈ s.inPlay) && (s.obj? t).any (·.controller == p)
+  let controlled := decide (t ∈ s.inPlay) && (s.obj? t).any (·.controller == p)
+  let friendly := decide (t ∈ s.inPlay) &&
+    (s.obj? t).any (fun o => s.config.mode.sameSide p o.controller)
   match k with
-  | .returnGear | .killGear =>
-    friendly && (s.cardDef? t).any (·.hasType .gear)
+  | .returnGear => controlled && (s.cardDef? t).any (·.hasType .gear)
+  | .killGear => friendly && (s.cardDef? t).any (·.hasType .gear)
   | .exhaustLegend =>
     decide (t ∈ s.zone (.player p .legendZone)) && (s.obj? t).any (fun o => !o.exhausted)
   | .killPet =>
-    friendly && (s.cardDef? t).any (fun d => d.hasType .unit &&
+    controlled && (s.cardDef? t).any (fun d => d.hasType .unit &&
         (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
           g.name == "Poro")))
-  | .returnUnit | .killUnit => friendly && (s.cardDef? t).any (·.hasType .unit)
-  | .exhaustUnit => friendly &&
+  | .returnUnit => controlled && (s.cardDef? t).any (·.hasType .unit)
+  | .killUnit => friendly && (s.cardDef? t).any (·.hasType .unit)
+  | .exhaustUnit => controlled &&
       ((s.cardDef? t).any (·.hasType .unit) && (s.obj? t).any (fun o => !o.exhausted))
   | .killUnitOrGear => friendly && (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear)
   | .spendXP n =>

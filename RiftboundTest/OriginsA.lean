@@ -2717,8 +2717,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (glory.poolOf s.me).energy == 12 && glory.mightNow a == some 5 &&
     (paid.poolOf s.me).energy == 9
 
--- Kraken Hunter (OGN-150): spend buffs, 1 Body each back; Cruel Patron (OGN-208): kill a friendly
--- unit; Commander Ledros (OGN-231): kill units, 1 Order each back
+-- Kraken Hunter (OGN-150): spend buffs, 1 Body each back; Commander Ledros (OGN-231):
+-- kill units, 1 Order each back.
 #guard t fun s => do
   let (s1, k) ← put s s.me "OGN-150" .hand
   let (s2, a) ← put s1 s.me "OGN-136" .base
@@ -2726,10 +2726,6 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let buffed := (s3.buff a).buff b
   let yes ← play buffed s.me k [] { yes := true }
   let no ← play buffed s.me k [] { yes := false }
-  let (t1, p) ← put s s.me "OGN-208" .hand
-  let (t2, u) ← put t1 s.me "OGN-136" .base
-  let sac ← play t2 s.me p
-  let lone ← play t1 s.me p
   let (v1, l) ← put s s.me "OGN-231" .hand
   let (v2, c) ← put v1 s.me "OGN-136" .base
   let (v3, d) ← put v2 s.me "OGN-136" .base
@@ -2739,10 +2735,39 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (yes.obj? a).map (·.buffed) == some false && (yes.obj? b).map (·.buffed) == some false &&
     (yes.poolOf s.me).body == (no.poolOf s.me).body + 2 &&
     (no.obj? a).map (·.buffed) == some true &&
-    (sac.obj? u).isNone && sac.countIn s.me .base "OGN-208" == 1 &&
-    lone.countIn s.me .base "OGN-208" == 0 && lone.countIn s.me .trash "OGN-208" == 1 &&
     (led.obj? c).isNone && (led.obj? d).isNone && (led.obj? e).isSome &&
     (led.poolOf s.me).order == (keep.poolOf s.me).order + 2 && (keep.obj? c).isSome
+
+-- Cruel Patron requires a declared Unit. If Hourglass saves that Unit, the cost still counts
+-- as paid and Cruel Patron enters play (CR 357.2.a, Origins FAQ).
+#guard t fun s => do
+  let p := s.me
+  let (s, patron) ← put s p "OGN-208" .hand
+  let (s, enemy) ← put s s.you "OGN-136" .base
+  let (s, unit) ← put s p "OGN-136" .base
+  let paid ← play s p patron [unit]
+  let (withGear, gear) ← put s p "OGN-077" .base
+  let replaced ← play withGear p patron [unit]
+  return (play s p patron []).isNone && (play s p patron [enemy]).isNone &&
+    (paid.obj? unit).isNone && paid.countIn p .base "OGN-208" == 1 &&
+    (replaced.obj? unit).any (·.exhausted) && (replaced.obj? gear).isNone &&
+    replaced.countIn p .base "OGN-208" == 1
+
+-- In 2v2 a teammate's Unit can pay for Cruel Patron, and the teammate's Hourglass can save it.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2,
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, patron) ← put s p "OGN-208" .hand
+  let (s, unit) ← put s ally "OGN-136" .base
+  let (s, gear) ← put s ally "OGN-077" .base
+  let (paid, events) ← (step 100 (s.rich p) ⟨.player p, .playCard patron (payOf s patron) [unit]⟩).toOption
+  return (paid.obj? unit).any (fun o => o.controller == ally && o.exhausted) &&
+    (paid.obj? gear).isNone && paid.countIn p .base "OGN-208" == 1 &&
+    events.any (fun | .died _ owner => owner == ally | _ => false)
 
 -- ... what is given back never exceeds what was paid: Wallop played for nothing gives nothing
 -- back, Kraken Hunter gives back at most its 2 Body, and Ledros at most its 4 Order

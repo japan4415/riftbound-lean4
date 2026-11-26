@@ -4781,8 +4781,9 @@ def SFD_162 : CardDef :=
 Printings: SFD-163/221
 
 > [Reaction] (Play any time, even before spells and abilities resolve.)
-> Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this
-> turn. Draw 1.
+> Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit
+> this turn.
+> Draw 1.
 -/
 def SFD_163.meta : CardDef :=
   { id := ⟨"SFD-163"⟩,
@@ -4794,15 +4795,19 @@ def SFD_163.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Deathgrip. -/
+/-- Deathgrip applies its Might bonus only after its first target dies from this Kill. -/
 def SFD_163 : CardDef :=
+  let victimMight : VarId := ⟨"victimMight"⟩
   { SFD_163.meta with
-
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
-      (.seqOf [.grant (.slot 1) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
-        .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))])),
-    status := .drafted }
+      body := .seqOf [
+        .bind victimMight (.mightOf (.slot 0))
+          (.killThenIfKilled 0 (.grant (.slot 1) (.mightPlus .it (.var victimMight)) .thisTurn)),
+        .prim (.draw .you (.const 1))]
+      recheckTargets := true }
+    status := .full }
 
 -- BEGIN GENERATED SFD-164
 /--

@@ -384,7 +384,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
     PlayerSel.ok c who && Effect.ok c unit && Effect.ok c gear && Effect.ok c spell
   | .nameCard _ | .rememberNamedCard _ => true
   | .killThenAtEnd targets _ => Selector.ok c targets
-  | .killThenForController slot body => Selector.ok c (.slot slot) && Effect.ok c body
+  | .killThenForController slot body | .killThenIfKilled slot body =>
+    Selector.ok c (.slot slot) && Effect.ok c body
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |

@@ -2092,12 +2092,11 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass. Deathgrip still applies its Might bonus when Hourglass saves its target
-(Spiritforged FAQ). -/
+/-- Zhonya's Hourglass replaces the death of a friendly Unit. -/
 def OGN_077 : CardDef :=
   { OGN_077.meta with
     abilities := [.passive .always [.diesInsteadOfFriendly]],
-    status := .partial }
+    status := .full }
 
 -- BEGIN GENERATED OGN-078
 /--
@@ -5632,14 +5631,11 @@ def OGN_208.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Cruel Patron. -/
+/-- Cruel Patron requires the Kill of a friendly Unit during its declaration. -/
 def OGN_208 : CardDef :=
   { OGN_208.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf]))
-        (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])))
-        (.prim (.kill .self)))) .unlimited],
-    status := .drafted }
+    playExtra := some (.killUnit, true),
+    status := .full }
 
 -- BEGIN GENERATED OGN-209
 /--

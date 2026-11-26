@@ -14382,7 +14382,8 @@
    "tags": [],
    "text": [
     "[Reaction] (Play any time, even before spells and abilities resolve.)",
-    "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1."
+    "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.",
+    "Draw 1."
    ],
    "textVariants": 1,
    "types": [

@@ -5518,20 +5518,46 @@ theorem recordKillCount_safe (s : GameState) (p : PlayerId) (src : ObjId) (env :
     · exact addTurnFxOn_safe s _ _ _
     · exact Safe.refl s
 
-/-- A linked controller instruction can use an object still on the Board, or look back at an object
-killed by the preceding instruction. A replacement that removed the target can leave no referent. -/
-def linkedKillFrames (before s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (events : List Event) (linked : Option (Nat × Effect)) : List Frame := Id.run do
-  let some (slot, body) := linked | return []
-  let some (.obj id) := env.slots[slot]? | return []
-  let controller := if s.inPlay.contains id then (s.obj? id).map (·.controller)
-    else directKilledController before id events
-  let some who := controller | return []
-  return [.run who src { env with effectController := env.effectController <|> some p } (.cons body .nil)]
+/-- How the linked Kill instruction determines whether and for whom its continuation runs. -/
+inductive KillFollowupKind where
+  /-- Instruct the affected permanent's controller, even if a replacement saved it. -/
+  | forController
+  /-- Keep the resolving player and require a death caused by this Kill. -/
+  | ifKilled
 
-/-- A linked controller instruction continues the current resolution. -/
+/-- The continuation and target preserved while a Kill waits for replacement choices. -/
+structure KillFollowup where
+  /-- The affected permanent's target slot. -/
+  slot : Nat
+  /-- The linked instruction. -/
+  body : Effect
+  /-- Which result of the Kill permits the continuation. -/
+  kind : KillFollowupKind
+
+/-- Reissue the same instruction after the player chooses its replacement. -/
+def KillFollowup.retry (link : KillFollowup) : Effect :=
+  match link.kind with
+  | .forController => .killThenForController link.slot link.body
+  | .ifKilled => .killThenIfKilled link.slot link.body
+
+/-- A conditional continuation requires the target's death. A controller continuation can also
+refer to the target if a replacement left it on the Board. -/
+def linkedKillFrames (before s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (events : List Event) (linked : Option KillFollowup) : List Frame := Id.run do
+  let some link := linked | return []
+  let some (.obj id) := env.slots[link.slot]? | return []
+  let player := match link.kind with
+    | .forController =>
+      if s.inPlay.contains id then (s.obj? id).map (·.controller)
+      else directKilledController before id events
+    | .ifKilled => (directKilledController before id events).map (fun _ => p)
+  let some who := player | return []
+  return [.run who src { env with effectController := env.effectController <|> some p }
+    (.cons link.body .nil)]
+
+/-- A linked instruction continues the current resolution. -/
 theorem linkedKillFrames_play {before s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {events : List Event} {linked : Option (Nat × Effect)} {f : Frame}
+    {events : List Event} {linked : Option KillFollowup} {f : Frame}
     (h : f ∈ linkedKillFrames before s p src env events linked) : f.isPlay = true := by
   unfold linkedKillFrames at h
   dsimp only at h
@@ -5546,13 +5572,13 @@ theorem linkedKillFrames_play {before s : GameState} {p : PlayerId} {src : ObjId
 
 /-- Kill the chosen objects, with any delayed ability or linked instruction (CR 359.3.e.14). -/
 def killEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (targets : Selector)
-    (delay : Option Nat) (es : EffectList) (linked : Option (Nat × Effect) := none) :
+    (delay : Option Nat) (es : EffectList) (linked : Option KillFollowup := none) :
     GameState × List Frame × List Event :=
   let ids := (targets.eval s p src env).getD []
   match s.deathGroupChoice ids with
   | some (unit, controller, first, other) =>
     let retry := match linked with
-      | some (slot, body) => Effect.killThenForController slot body
+      | some link => link.retry
       | none => delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
     (s, [.eitherDo controller unit {} first other .nil, .run p src env (.cons retry es)], [])
   | none =>
@@ -5565,7 +5591,7 @@ def killEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (tar
 
 /-- Resolving a kill instruction and recording delayed abilities preserves invariants. -/
 theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (targets : Selector) (delay : Option Nat) (es : EffectList) {linked : Option (Nat × Effect)} :
+    (targets : Selector) (delay : Option Nat) (es : EffectList) {linked : Option KillFollowup} :
     Safe s (killEffectStep s p src env targets delay es linked).1 := by
   unfold killEffectStep
   dsimp only
@@ -5581,7 +5607,7 @@ theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
 
 /-- The frames of a kill instruction stay on the Chain's resolution stack. -/
 theorem killEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {targets : Selector} {delay : Option Nat} {es : EffectList} {linked : Option (Nat × Effect)} {f : Frame}
+    {targets : Selector} {delay : Option Nat} {es : EffectList} {linked : Option KillFollowup} {f : Frame}
     (h : f ∈ (killEffectStep s p src env targets delay es linked).2.1) : f.isPlay = true := by
   unfold killEffectStep at h
   dsimp only at h
@@ -6378,7 +6404,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .endCombatDamage excess =>
     (recordCombatDamage s p excess, [.run p src env es], [])
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
-  | .killThenForController slot body => killEffectStep s p src env (.slot slot) none es (some (slot, body))
+  | .killThenForController slot body =>
+    killEffectStep s p src env (.slot slot) none es (some ⟨slot, body, .forController⟩)
+  | .killThenIfKilled slot body =>
+    killEffectStep s p src env (.slot slot) none es (some ⟨slot, body, .ifKilled⟩)
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)

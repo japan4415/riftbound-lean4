@@ -376,6 +376,9 @@ inductive Effect where
   /-- Kill the chosen permanent, then resolve the linked instruction for its controller
   (CR 359.3.e.14). -/
   | killThenForController (slot : Nat) (body : Effect)
+  /-- Kill the chosen permanent, then perform the linked instruction only if this action killed
+  that permanent (CR 359.3.e, 370.1.a.1). -/
+  | killThenIfKilled (slot : Nat) (body : Effect)
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of effects. -/

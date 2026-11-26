@@ -37,7 +37,7 @@ def analyse(path: Path) -> dict:
         state = s.group(1) if s else "todo"
         n[state] += 1
         if state != "todo":
-            if "spellEffect :=" in hand or "abilities :=" in hand or "grants :=" in hand:
+            if any(field in hand for field in ("spellEffect :=", "abilities :=", "grants :=", "playExtra :=")):
                 n["withEffect"] += 1
             else:
                 n["keywordOnly"] += 1
@@ -63,8 +63,8 @@ def render() -> str:
         out.append(f"| {name} | {r['total']} | {r['todo']} | {r['drafted']} | {r['partial']} | "
                    f"{r['full']} | {pct(done, r['total'])} | {r['withEffect']} | "
                    f"{r['keywordOnly']} | {r['custom']} |")
-    out += ["", "- 「効果あり」は `spellEffect` か `abilities` を書いたカード、「キーワードだけ」は、"
-            "印刷されたキーワードだけで、書く効果が無いカード。",
+    out += ["", "- 「効果あり」は呪文効果、能力、付与能力、追加のプレイコストを書いたカード。"
+            "「キーワードだけ」は印刷されたキーワードだけで、書く効果が無いカード。",
             "- 書けなかった文の一覧と、IR を直した記録は [ir-gaps.md](ir-gaps.md)。", ""]
     return "\n".join(out)
 

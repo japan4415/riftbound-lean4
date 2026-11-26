@@ -991,15 +991,55 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, e) ← put s1 s.you "OGN-051" .base
   return (play s2 s.me c [e]).isNone
 
--- Deathgrip (SFD-163): kill a friendly unit to give another friendly unit +Might equal to its
--- Might this turn, and draw 1
+-- Deathgrip (SFD-163): the first target's Might is read before the Kill. An actual death
+-- grants Might, and a death replaced by Hourglass or Banish still draws one (Spiritforged FAQ).
 #guard tsf fun s => do
-  let (s1, c) ← put s s.me "SFD-163" .hand
-  let (s2, a) ← put s1 s.me "OGN-001" .base
-  let (s3, b) ← put s2 s.me "OGN-051" .base
-  let r ← play s3 s.me c [a, b]
-  return (r.obj? a).isNone && r.mightNow b == (s3.mightNow b).map (· + 5) &&
-    r.handN s.me == s3.handN s.me && (play s3 s.me c [a, a]).isNone
+  let p := s.me
+  let (s, c) ← put s p "SFD-163" .hand
+  let (s, victim) ← put s p "OGN-001" .base
+  let (s, recipient) ← put s p "OGN-051" .base
+  let s := s.buff victim
+  let withKill ← play s p c [victim, recipient]
+  let (withGear, firstGear) ← put s p "OGN-077" .base
+  let (withGear, secondGear) ← put withGear p "OGN-077" .base
+  let withFirst ← play withGear p c [victim, recipient] { yes := true }
+  let withSecond ← play withGear p c [victim, recipient] { yes := false }
+  let withBanish ← play (s.addTurnFxOn s.you victim .banishInstead) p c [victim, recipient]
+  let original := s.mightNow recipient
+  let might ← s.mightNow victim
+  return (withKill.obj? victim).isNone && withKill.mightNow recipient == original.map (· + might) &&
+    withKill.countIn p .trash "OGN-001" == 1 &&
+    [withFirst, withSecond].all (fun board => (board.obj? victim).any (·.exhausted) &&
+      board.countIn p .trash "OGN-077" == 1 && board.mightNow recipient == original) &&
+    (withFirst.obj? firstGear).isSome != (withSecond.obj? firstGear).isSome &&
+    (withFirst.obj? secondGear).isSome != (withSecond.obj? secondGear).isSome &&
+    withBanish.countIn p .banishment "OGN-001" == 1 && withBanish.mightNow recipient == original &&
+    [withKill, withFirst, withSecond, withBanish].all (fun board => board.handN p == s.handN p) &&
+    (play s p c [victim, victim]).isNone
+
+-- Retreat in response can make either target illegal independently. Deathgrip still draws.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, c) ← put s p "SFD-163" .hand
+  let (s, retreat) ← put s p "OGN-104" .hand
+  let (s, victim) ← put s p "OGN-001" .base
+  let (s, recipient) ← put s p "OGN-051" .base
+  let before := s.rich p
+  let (declared, _) ← (step 100 before
+    ⟨.player p, .playCard c (payOf before c) [victim, recipient]⟩).toOption
+  let respond (target : ObjId) : Option GameState :=
+    cast declared p retreat (payOf declared retreat) [target]
+  let noVictim ← respond victim
+  let noRecipient ← respond recipient
+  let stolen := settleChain {} 12 (setController s.you declared victim).1
+  return declared.inPlay.contains victim && declared.inPlay.contains recipient &&
+    stolen.inPlay.contains victim && stolen.mightNow recipient == before.mightNow recipient &&
+    stolen.countIn p .trash "SFD-163" == 1 && stolen.handN p == before.handN p &&
+    noVictim.countIn p .hand "OGN-001" == 1 && noVictim.countIn p .trash "OGN-001" == 0 &&
+    noVictim.mightNow recipient == before.mightNow recipient &&
+    noRecipient.countIn p .hand "OGN-051" == 1 && noRecipient.countIn p .trash "OGN-001" == 1 &&
+    [noVictim, noRecipient].all (fun board =>
+      board.countIn p .trash "SFD-163" == 1 && board.handN p == before.handN p)
 
 -- Janna, Savior (SFD-053) at a base: heals the friendly units there
 #guard tsf fun s => do

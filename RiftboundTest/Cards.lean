@@ -59,8 +59,11 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- Hourglass has IR, with competing death replacements still partially covered.
-#guard (Origins.cards.filter (fun c => !c.runs)).map (·.id.code) == ["OGN-077"]
+#guard Origins.cards.all CardDef.runs
+-- The death replacement, its interaction with Deathgrip, and the Kill cost of Cruel Patron
+-- are covered by their Origins and Spiritforged scenarios.
+#guard ["OGN-077", "OGN-208", "SFD-163"].all fun code =>
+  (db.find? ⟨code⟩).any (fun c => c.status == .full && c.runs)
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 -- Spiritforged (222): the measure of the goal "every card of the second set works"
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 222

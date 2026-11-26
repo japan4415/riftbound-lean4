@@ -415,7 +415,7 @@ def Effect.understood : Effect → Bool
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e | .revealDeckTops w e => w.understood && Effect.understood e
   | .killThenAtEnd targets _ => targets.understood
-  | .killThenForController _ body => Effect.understood body
+  | .killThenForController _ body | .killThenIfKilled _ body => Effect.understood body
   | .lookAtTop _ body => Effect.understood body
   | .guessCardType who unit gear spell =>
     who.understood && unit.understood && gear.understood && spell.understood
