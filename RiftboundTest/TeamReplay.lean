@@ -79,6 +79,12 @@ private meta def exampleMatch : Except String Unit := do
   let summary ← archive.verify matchDB
   unless summary.wins == (0, 0) && summary.result == .won ⟨0⟩ &&
       (archive.games[0]?.any (·.summary.result.isNone)) do throw "an interrupted game was counted"
+  let tied := { interrupted with points := (11, 11) }
+  let tiedCheck ← ({ stopped with games := #[tied] } : TeamMatchRecord).check matchDB
+  unless tiedCheck.result == .won ⟨0⟩ do throw "a tied victory score ended the game"
+  let goAhead := { interrupted with points := (12, 11), ending := .scored }
+  let scored ← ({ stopped with games := #[goAhead], ending := .finalGame } : TeamMatchRecord).check matchDB
+  unless scored.result == .won ⟨0⟩ && scored.wins == (1, 0) do throw "a score above the threshold was rejected"
   let agreed ← ({ stopped with ending := .agreedDraw } : TeamMatchRecord).check matchDB
   unless agreed == { summary with result := .draw } do throw "an agreed match draw was rejected"
   if (({ stopped with ending := .finalGame } : TeamMatchRecord).check matchDB).isOk then

@@ -123,13 +123,16 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) :
     Except String (Option GameResult) := do
   let (a, b) := game.points
   let won (team : Nat) := GameResult.won [⟨team⟩]
+  let scoringWinner :=
+    if a >= 11 && a > b then some (won 0)
+    else if b >= 11 && b > a then some (won 1)
+    else none
   match game.ending with
   | .scored =>
-    if a >= 11 && b < 11 then return some (won 0)
-    if b >= 11 && a < 11 then return some (won 1)
-    throw "exactly one team must reach the victory score"
+    if scoringWinner.isSome then return scoringWinner
+    throw "a scoring winner must reach the victory score and lead the other team"
   | _ =>
-    if a >= 11 || b >= 11 then throw "a team already reached the victory score"
+    if scoringWinner.isSome then throw "a team already won by scoring"
     match game.ending with
     | .draw => return some .draw
     | .concede seat =>
