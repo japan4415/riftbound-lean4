@@ -46,6 +46,10 @@ open Riftbound RiftboundCards
       c.sets == [⟨"OGN"⟩, ⟨"SFD"⟩, ⟨"VEN"⟩]
   | none => false
 
+-- Lee Sin, Centered and Leona, Determined were Chosen Champions at RQ Houston.
+#guard ["OGN-151", "OGN-238"].all fun code =>
+  (db.find? ⟨code⟩).any (fun c => decide c.IsChosenChampionCandidate)
+
 -- a parameter that is a number, and a parameter that is a cost
 #guard match db.find? ⟨"OGN-003"⟩ with
   | some c => c.keywords.any (·.arg == .amount 2)

@@ -4424,6 +4424,9 @@
     "OGN"
    ],
    "subtitle": "Centered",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Lee Sin",
     "Ionia"
@@ -6985,6 +6988,9 @@
     "VEN"
    ],
    "subtitle": "Determined",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Leona",
     "Mount Targon"

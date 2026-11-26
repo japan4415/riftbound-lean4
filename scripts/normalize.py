@@ -72,6 +72,13 @@ TEXT_ERRATA = {
     },
 }
 
+# The gallery omits the Champion supertype. Riot's Houston report lists both as Chosen Champions.
+# https://playriftbound.com/en-us/news/announcements/from-garen-to-annie-rq-houstons-top-decks/
+ORIGINS_PRINT_METADATA = {
+    "OGN-151": {"supertypes": ["champion"]},
+    "OGN-238": {"supertypes": ["champion"]},
+}
+
 # The gallery omits or mislabels these fields. Checked against its card images.
 UNLEASHED_PRINT_METADATA = {
     "UNL-086": {"supertypes": ["champion"]},
@@ -285,6 +292,7 @@ def normalize(snap: dict) -> dict:
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
+            **ORIGINS_PRINT_METADATA.get(ident, {}),
             **UNLEASHED_PRINT_METADATA.get(ident, {}),
             **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
