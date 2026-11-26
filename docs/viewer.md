@@ -101,6 +101,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
 
+Sealed や Draft のサイドボードを照合する場合は、`limitedPools` に各席が受け取ったカードの ID を、同じカードの枚数も含めて登録する。ゲームごとに選んだデッキを `games[].decks.limited.decks` に記録する。Basic Rune はプール外から持ち込める。ブランクの Battlefield は `{"code":"TKN-LimitedBlank"}` で表す。
+
 時間制限付きシングルエリミネーション（TR 408.4）は、ライブ対局の設定 JSON に `"singleElimination": true`、外部の大会記録に `"elimination": {}` を指定する。ゲームの合間に時間切れとなり、勝数が同じため次のゲームを行う場合は、`elimination.timeAfterGames` に時間切れ時点で終了していたゲーム数を入れる。次のゲームは初手番に加えて5ターンを行い、同点ならサドンデスになる。ビューアでは期限のターンと、サドンデスに入った手を確認できる。
 
 ### 2v2 の大会記録
@@ -110,6 +112,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。
 
 先手は交互に並んだ A/B の順序上のどの席からでも選べる（TR 603.7.c）。たとえば、第1チームの B が先手で第2チームの B が次なら `order` は 1、3、0、2。引き分け後は同じ4席の順序を使う。
+
+2v2 Sealed の場合は `sealed.team0` と `sealed.team1` に、各チームが開封した8パックの中身を記録する（TR 603.6）。各ゲームの `sealedDecks` に4席の Limited デッキを入れる。プールにあるカードの枚数をチーム内で合算し、サイドボードの利用可否と Battlefield の使用履歴を確認する。Bo1 では各席に3枚の候補を登録する。Bo3 では Battlefield を出す席が選んだ1枚だけを登録し、操作列にはその候補を確定する `pick 0` を入れる。Bo3 の先手席は候補を空にできる。
 
 ゲーム途中にマッチ投了や合意の引き分けで終了した場合、最後のゲームの `ending` を `"matchEnded"` にする。そこまでの操作と終了時点の得点を照合し、そのゲームはマッチのゲーム勝数に加えない。
 

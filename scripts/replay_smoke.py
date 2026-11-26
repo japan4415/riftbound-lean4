@@ -3,6 +3,7 @@
 import argparse
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -153,6 +154,81 @@ def elimination_match(live: Lean, setup: dict) -> dict:
     return archive
 
 
+def observed(actor: object, kind: object) -> dict:
+    return {"observed": {"action": {"actor": actor, "kind": kind}}}
+
+
+def limited_answers(decks: list[dict], order: list[dict], team: bool = False) -> list[dict]:
+    answers = []
+    offset = 0
+    for deck in decks:
+        for zone in ("main", "runes"):
+            ids = [{"n": i} for i in range(offset, offset + len(deck[zone]))]
+            answers.append(observed("chance", {"arrange": {"order": ids}}))
+            offset += len(ids)
+        offset += len(deck["battlefields"])
+    contributors = order[1:] if team else order
+    answers.extend(observed("chance", {"pick": {"index": 0}}) for _ in contributors)
+    if not team:
+        answers.append(observed("chance", {"arrangePlayers": {"order": order}}))
+    answers.extend(observed({"player": {"p": seat}}, "mulliganDone") for seat in order)
+    answers.append(observed({"player": {"p": {"n": 3 if team else 1}}}, "concede"))
+    return answers
+
+
+def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
+    originals = [reg["deck"] for reg in setup["decks"]["constructed"]["decks"]]
+    p0, p1, p2, p3 = [{"n": i} for i in range(4)]
+    legal_sets = setup["config"]["formatLegality"]["legalSets"]
+    blank = {"code": "TKN-LimitedBlank"}
+
+    def build_decks(game: int) -> list[dict]:
+        return [
+            {"identity": ["fury", "order", "chaos"], "chosenChampion": None, "legend": None,
+             "reserveLegends": [], "main": deck["main"][game:25 + game],
+             "runes": deck["runes"], "battlefields": [deck["battlefields"][game]]}
+            for deck in originals
+        ]
+
+    duel_games = []
+    team_games = []
+    for game in range(2):
+        configuration = build_decks(game)
+        duel_games.append({"decks": {"limited": {"decks": configuration}}, "chooser": [p0, p1][game],
+                           "answers": limited_answers(configuration, [p0, p1])})
+        order = [p1, p3, p0, p2]
+        team_decks = [configuration[0], {**configuration[1], "battlefields": []},
+                      configuration[0], {**configuration[1], "battlefields": [blank]}]
+        team_games.append(
+            {"sealedDecks": team_decks, "chooser": [p0, p1][game], "order": order,
+             "battlefields": [[p, team_decks[p["n"]]["battlefields"][0]] for p in order[1:]],
+             "points": [0, 0], "ending": {"concede": {"seat": p3}}, "timed": False,
+             "answers": limited_answers(team_decks, order, team=True)}
+        )
+    duel = {"config": {**setup["config"], "ruleSet": {"tournament": {"format": "draft"}},
+                       "formatLegality": {"legalSets": legal_sets, "banned": []}},
+            "limitedPools": [d["main"] + d["battlefields"] for d in originals],
+            "winsRequired": 2, "fuel": 100, "games": duel_games, "ending": "finalGame"}
+    cards = originals[0]["main"] + originals[1]["main"] + originals[0]["battlefields"]
+    packs = [cards[i::8] for i in range(8)]
+    team = {"seats": {"team0": [p0, p1], "team1": [p2, p3]}, "legalSets": legal_sets,
+            "sealed": {"team0": packs, "team1": packs}, "winsRequired": 2, "games": team_games,
+            "ending": "finalGame"}
+
+    for label, inputs, suffix in (("draft", duel, ""), ("sealed-team", team, "-team")):
+        source = folder / f"{label}-input.json"
+        archive = folder / f"{label}-archive.json"
+        trace = folder / f"{label}-trace.json"
+        source.write_text(json.dumps(inputs), encoding="utf-8")
+        summary = json.loads(command("record" + suffix, source, archive))
+        assert summary["wins"] == [2, 0] and summary["exact"]
+        assert json.loads(command("verify" + suffix, archive)) == summary
+        command("view" + suffix, archive, trace)
+        exported = json.loads(trace.read_text(encoding="utf-8"))
+        assert exported["winner"] == 0 and len(exported["games"]) == 2
+        assert exported["cards"][blank["code"]]["name"] == "Blank Battlefield"
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
@@ -210,8 +286,8 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     command("verify", corrupted, error="game 1: checkpoint 2")
 
     answers = saved["input"]["games"][0]["answers"]
-    observed = answers[0]["observed"]["action"]
-    answers[0] = {"inferred": {"action": observed, "evidence": "reconstructed from later evidence"}}
+    observed_action = answers[0]["observed"]["action"]
+    answers[0] = {"inferred": {"action": observed_action, "evidence": "reconstructed from later evidence"}}
     source.write_text(json.dumps(saved["input"]), encoding="utf-8")
     assert not json.loads(command("record", source, folder / "inferred.json"))["exact"]
     answers[0] = {"unknown": {"description": "shuffle was hidden"}}
@@ -237,9 +313,6 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     team_game["order"] = [p0, p1, p2, p3]
     team_input.write_text(json.dumps(team_record), encoding="utf-8")
     command("check-team", team_input, error="team game 1: turn order")
-
-    def observed(actor: object, kind: object) -> dict:
-        return {"observed": {"action": {"actor": actor, "kind": kind}}}
 
     # Two copies of the already recorded shuffle orders, with new object IDs for the second pair.
     first_shuffles = saved["games"][0]["input"]["answers"][:4]
@@ -279,6 +352,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     inferred_archive = folder / "team-inferred-archive.json"
     assert not json.loads(command("record-team", inferred_team, inferred_archive))["exact"]
     assert not json.loads(command("verify-team", inferred_archive))["exact"]
+    check_limited_cli(folder, setup, command)
 
 
 def main() -> None:

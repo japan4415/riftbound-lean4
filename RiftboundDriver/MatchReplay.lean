@@ -1,6 +1,6 @@
 module
 
-public import RiftboundDriver.Replay
+public import RiftboundDriver.LimitedReplay
 
 /-!
 # Replay across games
@@ -54,6 +54,8 @@ structure MatchInputs where
   config : GameConfig
   /-- Optional event metadata identifying the official Constructed ban list. -/
   tournament : Option ReplayTournament := none
+  /-- The observed Sealed or Draft pool for each seat. Required to verify Limited sideboarding. -/
+  limitedPools? : Option (List (List CardId)) := none
   /-- The timed single-elimination procedure, when selected for this match. -/
   elimination? : Option ReplayElimination := none
   /-- The number of wins that finishes the match. -/
@@ -121,7 +123,9 @@ def sameRegistration (old new : ConstructedDeck) : Bool :=
   sameRegisteredPool old new && old.deck.chosenChampion == new.deck.chosenChampion &&
     decide (old.deck.main.Perm new.deck.main) && decide (old.sideboard.Perm new.sideboard)
 
-private def checkDecks (state : MatchState) (previous next : ReplayDecks) : Except String Unit := do
+/-- Check changes between games. A supplied Limited pool validates the allocation separately. -/
+def checkReplayDeckChange (state : MatchState) (previous next : ReplayDecks)
+    (limitedPoolKnown : Bool) : Except String Unit := do
   if previous == next then return
   match previous, next with
   | .constructed old, .constructed new =>
@@ -131,6 +135,12 @@ private def checkDecks (state : MatchState) (previous next : ReplayDecks) : Exce
         throw "deck changes are unavailable before this game"
       if state.sideboardAllowed && !sameRegisteredPool a b then
         throw "a Constructed change must use the registered cards and preserve the fixed slots"
+  | .limited old, .limited new =>
+    if !limitedPoolKnown then throw "the deck change has no verifiable registered sideboard"
+    if old.length != new.length then throw "the number of registrations changed"
+    unless state.sideboardAllowed ||
+        (old.zip new).all (fun (a, b) => sameLimitedRegistration a b (state.target == 2)) do
+      throw "Limited deck changes are unavailable before this game"
   | _, _ => throw "the deck change has no verifiable registered sideboard"
 
 private def checkOrder (config : GameConfig) (state : MatchState)
@@ -226,15 +236,27 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
     throw "the recorded game count differs"
   checkReplayEvent input.config input.tournament
   checkReplayClockBoundary input.elimination? input.games.size input.ending
+  if let some pools := input.limitedPools? then
+    unless input.config.ruleSet.isLimited && pools.length == 2 do
+      throw "two recorded pools are required for this Limited match"
+    pools.forM (checkLimitedPool db)
   let mut state := MatchState.start input.winsRequired
   let mut games : Array RecordedGame := #[]
   let mut previous : Option RecordedGame := none
   let mut timed := false
+  let mut usedFields := ([], [])
   for (game, index) in input.games.toList.zipIdx do
     let result := do
       let afterTime ← gameStartsAfterTime state timed input.elimination?
       let config := replayGameConfig input.config state input.elimination?.isSome afterTime
-      if let some prior := previous then checkDecks state prior.input.decks game.decks
+      if let some prior := previous then
+        checkReplayDeckChange state prior.input.decks game.decks input.limitedPools?.isSome
+      if let some pools := input.limitedPools? then
+        let .limited ds := game.decks | throw "the registrations must use the Limited format"
+        unless ds.length == 2 do throw "the two seat registrations are required"
+        checkLimitedBattlefieldCount db ds (allPlayers 2) (state.target == 2)
+        for ((pool, deck), seat) in (pools.zip ds).zipIdx do
+          checkLimitedCopies pool (limitedAllocation [deck]) s!"seat {seat}"
       let recorded ← match expected.bind (·[index]?) with
         | some saved =>
           if saved.input != game then throw "the saved game input differs"
@@ -243,8 +265,15 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
         | none => game.record db config input.fuel
       checkOrder input.config state game.chooser recorded.summary.turnOrder
       if let some prior := previous then checkBattlefields state prior.summary recorded.summary
-      pure recorded
-    let recorded ← result.mapError (fun error => s!"game {index + 1}: {error}")
+      let used ← match input.limitedPools? with
+        | some [a, b] => do
+          let selected (p : PlayerId) := (recorded.summary.battlefields.lookup p).toList
+          pure (← useLimitedBattlefields a usedFields.1 (selected ⟨0⟩) state.reuseBattlefields,
+            ← useLimitedBattlefields b usedFields.2 (selected ⟨1⟩) state.reuseBattlefields)
+        | _ => pure usedFields
+      pure (recorded, used)
+    let (recorded, used) ← result.mapError (fun error => s!"game {index + 1}: {error}")
+    usedFields := used
     if let some result := recorded.summary.result then
       let first := recorded.summary.turnOrder.head?
       state := { state.record result (first.getD ⟨0⟩) with lastFirst := first }

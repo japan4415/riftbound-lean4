@@ -88,7 +88,7 @@ private meta def exampleMatch : Except String Unit := do
   let (moved, groupAnswers) ← recordGroupMove resumed earlyAnswers
   let (afterShowdown, answers) ← collect 6 15 (Rng.ofSeed 24) moved groupAnswers
   let game : TeamGameRecord := {
-    decks := teamRegistrations, chooser := some ⟨0⟩, order,
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
     battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
     points := (afterShowdown.pointsOf ⟨0⟩, afterShowdown.pointsOf ⟨2⟩), ending := .draw,
     answers := answers.push (.observed ⟨.judge, .declareDraw⟩) }
@@ -96,7 +96,7 @@ private meta def exampleMatch : Except String Unit := do
     chooser := none, ending := .concede ⟨1⟩, answers := answers.push (.observed ⟨.player ⟨1⟩, .concede⟩) }
   let recorded ← TeamMatchRecord.record {
     seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
-    tournament := ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
     winsRequired := 1, games := #[game, win], ending := .finalGame } matchDB
   let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson recorded).compress)
   let result ← restored.verify matchDB
@@ -144,12 +144,12 @@ private meta def suddenDeathMatch : Except String Unit := do
   unless finish.turn == 5 && finish.result == some (.won [⟨0⟩, ⟨1⟩]) do
     throw "the first scoring side did not win sudden death"
   let game : TeamGameRecord := {
-    decks := teamRegistrations, chooser := some ⟨0⟩, order,
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
     battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
     points := (1, 0), ending := .suddenDeath ⟨0⟩, timed := true, answers }
   let input : TeamMatchRecord := {
     seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
-    tournament := ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
     winsRequired := 2, elimination? := some {}, games := #[game], ending := .finalGame }
   let archive ← input.record matchDB
   let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson archive).compress)
@@ -169,14 +169,14 @@ private meta def teamBStarts : Except String Unit := do
   unless start.active == some ⟨1⟩ && (start.zone (.player ⟨1⟩ .outOfGame)).length == 3 do
     throw "the starting B seat contributed a Battlefield or failed to go first"
   let game : TeamGameRecord := {
-    decks := teamRegistrations, chooser := some ⟨0⟩, order,
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
     battlefields := [(⟨3⟩, cid "B3"), (⟨0⟩, cid "B0"), (⟨2⟩, cid "B0")],
     points := (0, 0), ending := .draw, answers := setup.push (.observed ⟨.judge, .declareDraw⟩) }
   let next := { game with
     chooser := none, ending := .concede ⟨3⟩, answers := setup.push (.observed ⟨.player ⟨3⟩, .concede⟩) }
   let input : TeamMatchRecord := {
     seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
-    tournament := ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
     winsRequired := 1, games := #[game, next], ending := .finalGame }
   let archive ← input.record matchDB
   let result ← archive.verify matchDB
@@ -186,6 +186,71 @@ private meta def teamBStarts : Except String Unit := do
   if (invalid.check matchDB).isOk then throw "the starting seat changed after a draw"
 
 #guard teamBStarts.toOption.isSome
+
+private meta def sealedTeamGame (order : List PlayerId) (decks : List LimitedDeck)
+    (fields : List (PlayerId × CardId)) (chooser : PlayerId) :
+    Except String TeamGameRecord := do
+  let some initial := GameState.initialTeamSealed matchDB.withLimitedBlank teamEnv order decks
+    | throw "the Sealed game could not be set up"
+  let (start, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  let some first := order.head? | throw "no first Sealed player"
+  unless start.active == some first && (start.zone (.player first .hand)).length == 5 &&
+      start.battlefields.length == 3 do
+    throw "the first Sealed seat missed its extra draw or a Battlefield"
+  return {
+    sealedDecks? := some decks, chooser := some chooser, order, battlefields := fields,
+    points := (0, 0), ending := .concede ⟨3⟩,
+    answers := setup.push (.observed ⟨.player ⟨3⟩, .concede⟩) }
+
+private meta def sealedTeamMatch : Except String Unit := do
+  let runes := List.replicate 12 (cid "R1")
+  let blank := limitedBlankBattlefield.id
+  let deck (main : List CardId) (fields : List CardId) : LimitedDeck :=
+    { identity := [.fury, .calm, .order], legend := none, chosenChampion := none,
+      runes, main, battlefields := fields }
+  let main0 := List.replicate 25 (cid "V0")
+  let main1 := List.replicate 25 (cid "V1")
+  let order : List PlayerId := [⟨1⟩, ⟨3⟩, ⟨0⟩, ⟨2⟩]
+  let decks := [deck main0 [cid "B0"], deck main1 [], deck main0 [cid "B1"], deck main1 [blank]]
+  let fields := [(⟨3⟩, blank), (⟨0⟩, cid "B0"), (⟨2⟩, cid "B1")]
+  let first ← sealedTeamGame order decks fields ⟨0⟩
+  let switched := [deck main1 [cid "B2"], deck main0 [], deck main0 [cid "B3"], deck main1 [blank]]
+  let next ← sealedTeamGame order switched [(⟨3⟩, blank), (⟨0⟩, cid "B2"), (⟨2⟩, cid "B3")] ⟨1⟩
+  let draw := { first with
+    ending := .draw
+    answers := first.answers.pop.push (.observed ⟨.judge, .declareDraw⟩) }
+  let repeatGame := { first with chooser := none }
+  let packs (cards : List CardId) : List (List CardId) :=
+    (List.range 8).map fun i => (cards.drop (i * 7)).take 7
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩, legalSets := [testSet], winsRequired := 2,
+    sealed? := some {
+      team0 := packs (main0 ++ main1 ++ [cid "B0", cid "B2"])
+      team1 := packs (main0 ++ main1 ++ [cid "B1", cid "B3"]) },
+    games := #[draw, repeatGame, next], ending := .finalGame }
+  let archive ← input.record matchDB
+  let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson archive).compress)
+  let result ← restored.verify matchDB
+  unless result.wins == (2, 0) && restored.games.all (·.summary.exact) do
+    throw "the Sealed match did not reproduce the two game wins"
+  let excessiveDecks := [deck main0 [cid "B2"], deck main0 [], deck main0 [cid "B3"], deck main1 [blank]]
+  let excessive := { next with sealedDecks? := some excessiveDecks }
+  let reused := { first with chooser := some ⟨1⟩ }
+  let changedDecks := [deck main1 [cid "B0"], deck main0 [], deck main0 [cid "B1"], deck main1 [blank]]
+  let afterDraw := { repeatGame with sealedDecks? := some changedDecks }
+  if (({ input with games := #[first, excessive] }).check matchDB).isOk then
+    throw "the same physical cards were allocated to both teammates"
+  if (({ input with games := #[first, reused] }).check matchDB).isOk then
+    throw "the same Battlefield copy was reused after a game win"
+  if (({ input with games := #[draw, afterDraw] }).check matchDB).isOk then
+    throw "the Sealed decks changed after a draw"
+  let bo1 := deck main0 [blank, blank, cid "B0"]
+  let repeatedName := deck main0 [blank, cid "B0", cid "B0"]
+  checkLimitedBattlefieldCount matchDB [bo1] [⟨0⟩] false
+  if (checkLimitedBattlefieldCount matchDB [repeatedName] [⟨0⟩] false).isOk then
+    throw "a named Battlefield was registered twice for Best of 1"
+
+#guard sealedTeamMatch.toOption.isSome
 
 -- The same Legend and the same Battlefield may be registered only on opposing teams.
 #guard

@@ -119,12 +119,15 @@ def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig
     (openingOrder : Option (List PlayerId) := none) :
     Except String GameState := do
   if config.mode.isTeamDuel then
-    let .constructed registrations := decks | throw "team replay requires Constructed registrations"
     let some env := config.formatLegality | throw "team replay requires pinned format legality"
     let some order := openingOrder | throw "team replay requires the starting turn order"
-    if config.ruleSet.tournamentFormat != some .constructed then
-      throw "team replay requires Constructed Tournament Rules"
-    let some state := GameState.initialTeamConstructed db env order registrations config.ruleSet
+    let setup := match decks, config.ruleSet.tournamentFormat with
+      | .constructed registrations, some .constructed =>
+        GameState.initialTeamConstructed db env order registrations config.ruleSet
+      | .limited registrations, some .sealed =>
+        GameState.initialTeamSealed db.withLimitedBlank env order registrations config.ruleSet
+      | _, _ => none
+    let some state := setup
       | throw "the team game cannot be set up from the submitted registrations and order"
     return state
   if openingOrder.isSome then throw "only four-seat matches set the starting order before setup"
@@ -133,7 +136,7 @@ def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig
     | .constructed ds, some .constructed, some env =>
       pure (GameState.initialConstructed db env config ds)
     | .limited ds, some format, some env =>
-      if format.isLimited then pure (GameState.initialLimited db env config ds)
+      if format.isLimited then pure (GameState.initialLimited db.withLimitedBlank env config ds)
       else throw "Limited decks require Sealed or Draft"
     | _, _, _ => throw "deck type, rules and format legality do not agree"
   match state with
