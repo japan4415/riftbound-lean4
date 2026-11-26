@@ -624,16 +624,28 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_same ((Keeps.of_sameMeta hmeta).withPending _)
       (fun r => congrArg List.length (hh r))
       (fun q _ => ?_) (fun hmem => ?_) (fun f hf hpf => ?_)
-    · show stackContrib q (Frame.chooseBurnOut p :: rest) = stackContrib q s.pending
-      rw [hp, stackContrib_cons, stackContrib_cons]
-      simp [Frame.contrib]
-    · have : Frame.setupHands ∈ rest := by simpa using hmem
+    · show stackContrib q (s.burnOutDecision p ++ rest) = stackContrib q s.pending
+      rw [hp, stackContrib_cons]
+      rcases s.burnOutDecision_cases p with h | h | ⟨first, more, h⟩ <;>
+        simp [h, stackContrib, Frame.contrib]
+    · have hmem' : Frame.setupHands ∈ s.burnOutDecision p ++ rest := hmem
+      have : Frame.setupHands ∈ rest := by
+        rcases s.burnOutDecision_cases p with h | h | ⟨first, more, h⟩ <;>
+          simpa [h] using hmem'
       rw [hp]; exact List.mem_cons_of_mem _ this
-    · have hf' : f ∈ Frame.chooseBurnOut p :: rest := hf
-      rcases List.mem_cons.mp hf' with rfl | h
-      · simp [Frame.isPlay] at hpf
-      · exact ⟨f, by rw [hp]; exact List.mem_cons_of_mem _ h, hpf⟩
+    · have hf' : f ∈ s.burnOutDecision p ++ rest := hf
+      refine ⟨f, ?_, hpf⟩
+      rw [hp]
+      apply List.mem_cons_of_mem
+      rcases List.mem_append.mp hf' with queued | remains
+      · rcases s.burnOutDecision_cases p with h | h | ⟨first, more, h⟩ <;>
+          simp [h] at queued <;> subst f <;> cases hpf
+      · exact remains
   · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
+  · rename_i p first more rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
@@ -860,7 +872,8 @@ theorem stackContrib_zero {p : PlayerId} {l : List Frame} (h : ∀ f ∈ l, f.co
 private theorem withdrawal_frame_contrib (f : Frame) (before board : GameState)
     {departing p : PlayerId} (other : p ≠ departing) :
     stackContrib p (f.afterPlayerRemoval before board departing) = f.contrib p := by
-  cases f <;> simp [Frame.afterPlayerRemoval, Frame.contrib, stackContrib]
+  cases f <;> simp [Frame.afterPlayerRemoval, GameState.survivingBurnOutDecision, Frame.contrib,
+    stackContrib]
   all_goals
     repeat' first
       | solve | simp_all [Frame.contrib]

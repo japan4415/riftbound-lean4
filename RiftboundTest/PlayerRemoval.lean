@@ -288,6 +288,28 @@ private meta def removalState : GameState :=
     lastTwo.participatingOrder == [a, c] &&
     won.result == some (GameResult.won [c]) && (legalActions won).isEmpty).getD false
 
+-- Burn Out cannot award points to a seat that conceded before or during its opponent choice.
+#guard (do
+  let a : PlayerId := ⟨0⟩
+  let b : PlayerId := ⟨1⟩
+  let c : PlayerId := ⟨2⟩
+  let d : PlayerId := ⟨3⟩
+  let target (p : PlayerId) : Action := ⟨.player a, .burnOutTarget p⟩
+  let s := { removalState with
+    turnOrder := [a, b, c, d]
+    active := some a
+    turn := 1
+    phase := .main
+    pending := [.chanceBurnOut a, .priority a] }
+  let (three, _) ← (step 100 s ⟨.player b, .concede⟩).toOption
+  let (choice, _) ← (step 100 three ⟨.chance, .arrange []⟩).toOption
+  let (two, _) ← (step 100 choice ⟨.player c, .concede⟩).toOption
+  let (scored, _) ← (step 100 two (target d)).toOption
+  return (legalFrameActions choice) == [target c, target d] &&
+    !(legalActions choice).contains (target b) &&
+    (legalFrameActions two) == [target d] && (step 100 two (target c)).toOption.isNone &&
+    scored.pointsOf d == 1 && scored.pointsOf b == 0 && scored.pointsOf c == 0).getD false
+
 -- A skipped seat does not increment the turn number. An inserted extra turn does not
 -- advance the regular cycle, and each continuing seat keeps its own turn count.
 #guard

@@ -306,6 +306,8 @@ inductive Frame where
   | groupMove (p : PlayerId) (dest : MoveDest) (fee : Cost) (units : List ObjId)
   /-- Work: resolve a Showdown whose remaining participants have passed (CR 652.5.b.2). -/
   | endShowdown (bf : ObjId)
+  /-- Choice: after a concession, award the Burn Out point to one of the surviving opponents. -/
+  | chooseBurnOutAmong (p first : PlayerId) (more : List PlayerId)
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/

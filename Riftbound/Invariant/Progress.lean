@@ -345,8 +345,14 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := hr
     refine hinv.of_next (recycleAll_meta p _ hm).result (fun hb => ?_)
     rw [hp] at hb
-    exact hb.swap rfl [Frame.chooseBurnOut p]
+    exact hb.swap rfl (s.burnOutDecision p)
   · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
+  · rename_i p first more rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
@@ -1047,6 +1053,11 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     apply List.mem_append_left
     simp only [legalFrameActions, hp, List.mem_map]
     exact ⟨o, ho, rfl⟩
+  | chooseBurnOutAmong p first more =>
+    left
+    refine ⟨⟨.player p, .burnOutTarget first⟩, ?_, by simp⟩
+    rw [hla]
+    exact List.mem_append_left _ (by simp [legalFrameActions, hp])
   | chanceShuffle z => right; exact ⟨_, rest, hp, rfl⟩
   | chanceBattlefield p => right; exact ⟨_, rest, hp, rfl⟩
   | chanceTurnOrder => right; exact ⟨_, rest, hp, rfl⟩
@@ -1196,6 +1207,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | nameCard p src env card more es => exact absurd hc (by simp [Frame.isChance])
   | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
+  | chooseBurnOutAmong p first more => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
   | draw p n startingHand => exact absurd hc (by simp [Frame.isChance])
   | beginTurn => exact absurd hc (by simp [Frame.isChance])

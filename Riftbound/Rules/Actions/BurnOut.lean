@@ -20,13 +20,52 @@ namespace Riftbound
 def GameState.gainPoints (s : GameState) (p : PlayerId) (n : Nat) : GameState :=
   { s with points := s.points.insert (s.config.mode.scoringSeat p).n (s.pointsOf p + n) }
 
+/-- Build a Burn Out decision from the remaining opponents. The frame is nonempty by construction
+and a later departure refreshes it before the next answer (CR 432.2.c, 651.3). -/
+def GameState.survivingBurnOutDecision (s : GameState) (p : PlayerId) : List Frame :=
+  match s.participatingSeats.filter (fun q => !s.config.mode.sameSide p q) with
+  | [] => []
+  | first :: more => [.chooseBurnOutAmong p first more]
+
+/-- Every candidate in a refreshed Burn Out decision is a participating opponent. -/
+theorem GameState.survivingBurnOutDecision_target {s : GameState} {p first opp : PlayerId}
+    {more : List PlayerId}
+    (decision : .chooseBurnOutAmong p first more ∈ s.survivingBurnOutDecision p)
+    (target : opp ∈ first :: more) : s.participates opp = true ∧
+      s.config.mode.sameSide p opp = false := by
+  unfold GameState.survivingBurnOutDecision at decision
+  split at decision
+  · simp at decision
+  · rename_i first' more' candidates
+    simp only [List.mem_singleton, Frame.chooseBurnOutAmong.injEq, true_and] at decision
+    obtain ⟨head, tail⟩ := decision
+    rw [head, tail, ← candidates] at target
+    obtain ⟨live, opposing⟩ := List.mem_filter.mp target
+    exact ⟨(List.mem_filter.mp live).2, by simpa only [Bool.not_eq_true'] using opposing⟩
+
+/-- Preserve the ordinary Burn Out decision when every registered seat is still playing. -/
+def GameState.burnOutDecision (s : GameState) (p : PlayerId) : List Frame :=
+  if s.departures.seats.isEmpty then [.chooseBurnOut p] else s.survivingBurnOutDecision p
+
+/-- The Burn Out instruction queues either the ordinary prompt, a prompt with remaining
+opponents, or no prompt if there is nobody to choose. -/
+theorem GameState.burnOutDecision_cases (s : GameState) (p : PlayerId) :
+    s.burnOutDecision p = [.chooseBurnOut p] ∨ s.burnOutDecision p = [] ∨
+      ∃ first more, s.burnOutDecision p = [.chooseBurnOutAmong p first more] := by
+  unfold GameState.burnOutDecision
+  split
+  · exact Or.inl rfl
+  · unfold GameState.survivingBurnOutDecision
+    split
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inr (Or.inr ⟨_, _, rfl⟩)
+
 /-- Burn Out of player `p`: recycle the Trash in the order `order`, which must be an
-arrangement of the Trash, then `opp`, an opponent of `p`, gains 1 point (CR 432.2). `none` when the
-order is not an arrangement of the Trash or `opp` is not an opponent. -/
+arrangement of the Trash, then `opp`, a participating opponent of `p`, gains 1 point (CR 432.2). -/
 def burnOut (s : GameState) (p : PlayerId) (order : List ObjId) (opp : PlayerId) :
     Option (GameState × List Event) :=
   if order.Perm (s.zone (.player p .trash)) ∧ s.config.mode.sameSide p opp = false ∧
-      opp.n < s.playerCount then
+      s.participates opp = true then
     (recycleAll p s order).map
       (fun s1 => (s1.gainPoints opp 1, [Event.burnedOut p, Event.pointsGained opp 1]))
   else none

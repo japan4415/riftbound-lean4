@@ -168,6 +168,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
+  · rename_i p first more rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
   · rename_i bf q rest c pay ts flow hp hk
     obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
     have hout : _ = s' := congrArg Prod.fst he
@@ -521,6 +525,10 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     have hp' := recycleAll_physIds p _ hwf hm
     exact hp'
   · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · rename_i p first more rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _

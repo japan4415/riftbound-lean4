@@ -693,8 +693,13 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := hr
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (recycleAll_meta p _ hm).config])
-      (new := [Frame.chooseBurnOut p]) rfl (by simp [Frame.isSetup])
+      (new := s.burnOutDecision p) rfl (by
+        rcases s.burnOutDecision_cases p with h | h | ⟨first, more, h⟩ <;> simp [h, Frame.isSetup])
   · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · rename_i p first more rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)

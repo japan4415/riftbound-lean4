@@ -277,6 +277,8 @@ def legalFrameActions (s : GameState) : List Action :=
   | .chooseBurnOut p :: _ =>
     ((allPlayers s.playerCount).filter (fun o => !s.config.mode.sameSide p o)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
+  | .chooseBurnOutAmong p first more :: _ =>
+    (first :: more).map (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
       legalMoves s p ++ legalActivates s p true ++ legalGroupMoveStarts s p ++

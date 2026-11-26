@@ -80,6 +80,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- The opponent of a Burn Out is on an opposing side (CR 432.2.c).
   | .chooseBurnOut p :: _, .burnOutTarget opp =>
     a.actor = .player p ∧ s.config.mode.sameSide p opp = false ∧ opp.n < s.playerCount
+  | .chooseBurnOutAmong p first more :: _, .burnOutTarget opp =>
+    a.actor = .player p ∧ opp ∈ first :: more
   -- the turn player has priority in the Main Phase (CR 312, 316): passing ends the phase (CR 305)
   | .priority p :: _, .pass => a.actor = .player p
   -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)

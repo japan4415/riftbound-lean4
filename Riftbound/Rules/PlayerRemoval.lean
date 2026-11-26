@@ -657,9 +657,11 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
   let wasActive := before.active == some departing
   match frame with
   | .chanceShuffle (.player p _) | .chanceBattlefield p | .mulligan p _
-  | .chanceRecycle p | .chanceBurnOut p | .chooseBurnOut p | .draw p ..
+  | .chanceRecycle p | .chanceBurnOut p | .draw p ..
   | .discard p _ | .predict p .. | .chancePredict p .. | .teamInvitation p
   | .chooseShowdown p .. => keepFor p
+  | .chooseBurnOut p | .chooseBurnOutAmong p _ _ =>
+    if p == departing then [] else after.survivingBurnOutDecision p
   | .priority p =>
     if p != departing then [frame]
     else if before.phase == .setup then [.beginTurn] else [.expireTurn, .beginTurn]
@@ -729,7 +731,7 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
 theorem Frame.afterPlayerRemoval_setup {frame next : Frame} {before after : GameState}
     {departing : PlayerId} (member : next ∈ frame.afterPlayerRemoval before after departing)
     (setup : next.isSetup = true) : next = frame := by
-  cases frame <;> simp [Frame.afterPlayerRemoval] at member
+  cases frame <;> simp [Frame.afterPlayerRemoval, GameState.survivingBurnOutDecision] at member
   all_goals
     repeat' first
       | solve | simp_all [Frame.isSetup]
@@ -753,7 +755,7 @@ theorem Frame.afterPlayerRemoval_setup_sublist (frame : Frame) (before after : G
 theorem Frame.afterPlayerRemoval_setupHands {frame : Frame} {before after : GameState}
     {departing : PlayerId} (member : Frame.setupHands ∈ frame.afterPlayerRemoval before after departing) :
     frame = .setupHands := by
-  cases frame <;> simp [Frame.afterPlayerRemoval] at member ⊢
+  cases frame <;> simp [Frame.afterPlayerRemoval, GameState.survivingBurnOutDecision] at member ⊢
   all_goals
     repeat' first
       | solve | simp_all
@@ -765,7 +767,8 @@ theorem Frame.afterPlayerRemoval_play {frame next : Frame} {before after : GameS
     {departing : PlayerId} (phase : before.phase = .setup)
     (member : next ∈ frame.afterPlayerRemoval before after departing)
     (play : next.isPlay = true) : frame.isPlay = true := by
-  cases frame <;> simp [Frame.afterPlayerRemoval, Frame.isPlay, phase] at member ⊢
+  cases frame <;> simp [Frame.afterPlayerRemoval, Frame.isPlay, GameState.survivingBurnOutDecision,
+    phase] at member ⊢
   all_goals
     repeat' first
       | solve | simp_all [Frame.isPlay]

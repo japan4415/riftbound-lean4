@@ -172,6 +172,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
     simp only [hs2]
     exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
   · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass q 0 :: .showdown bf q 0 :: rest)
@@ -398,6 +399,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := hr
     exact (recycleAll_ownerOk p _ hwf hown hm).congr rfl rfl
   · rename_i p rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
+  · rename_i p first more rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (GameState.ownerOk_gainPoints hown opp 1).congr rfl rfl
