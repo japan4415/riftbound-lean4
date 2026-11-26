@@ -4,11 +4,12 @@ public import Riftbound.Invariant.Choices
 public import Riftbound.Invariant.Turn
 
 /-!
-# Passing Chain priority (I16)
+# Passing and regaining priority (I16, I17)
 
 The lemmas follow `step`, including the declaration and automatic work. Before the pass count
 reaches the number of seats, play stops at the next seat's decision. The final pass schedules the
 top item for resolution. The rotation lemmas identify the seats visited in a complete round.
+The final lemmas cover Cleanup after an immediate Add during neutral priority.
 -/
 
 @[expose] public section
@@ -201,6 +202,38 @@ theorem nextPlayer_round_covers {s : GameState} {p : PlayerId}
   rw [nextPlayer_repeat_turnPlayerAt order seats]
   simpa [GameState.turnPlayerAt, destination, List.getD_eq_getElem?_getD,
     List.getElem?_eq_getElem jWithin] using named
+
+/-- Work from an immediate Add is scheduled before the same neutral priority (CR 319, 430.2). -/
+theorem applyFrame0_priority_mana_cleanup {s next : GameState} {p : PlayerId} {rest : List Frame}
+    {source : ObjId} {index : Nat} {pay : RunePool.Payment} {chosen : Option ObjId}
+    {events : List Event} (pending : s.pending = .priority p :: rest)
+    (applied : applyFrame0 s ⟨.player p, .manaAbility source index pay chosen⟩ =
+      some (next, events)) : next.pending = .cleanup :: .priority p :: rest := by
+  simp only [applyFrame0, pending] at applied
+  obtain ⟨⟨afterAdd, addEvents⟩, _, mapped⟩ := Option.map_eq_some_iff.mp applied
+  exact (congrArg (fun result : GameState × List Event => result.1.pending) mapped).symm
+
+/-- Cleanup must have run out of immediate work before it returns neutral priority (CR 322). -/
+theorem cleanupFrame_priority_ready {s : GameState} {rest trailing : List Frame} {p : PlayerId}
+    (pending : (cleanupFrame s rest).1.pending = .priority p :: trailing) :
+    s.Settled ∧ s.stagedShowdowns rest = [] ∧ rest = .priority p :: trailing := by
+  unfold cleanupFrame at pending
+  split at pending
+  · simp at pending
+  next noWinner =>
+    split at pending
+    · cases pending
+    · split at pending
+      · cases pending
+      · split at pending
+        · cases pending
+        next noWork =>
+          split at pending
+          · split at pending
+            · cases pending
+            · simp [continueAfterCleanup] at pending
+          next staged =>
+            exact ⟨⟨noWinner, noWork⟩, staged, by simpa only [continueAfterCleanup] using pending⟩
 
 end Riftbound
 

@@ -84,6 +84,25 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     | none => false
   | none => false
 
+-- A Unit that pays for its own Add leaves its Battlefield before the player gets priority again.
+#guard (do
+  let s ← mainN
+  let p ← s.active
+  let field ← s.battlefields.head?
+  let unit : CardDef := { (vanilla 0) with
+    id := cid "T-ADD-UNIT", abilities := [.activated [.killSelf] .reaction
+      (.of [] (.prim (.addEnergy .you (.const 1) none))) .unlimited] }
+  let s := { s with cards := ⟨s.cards.cards ++ [unit]⟩ }
+  let (ready, source) ← putN s p unit.id.code .base
+  let (moved, _) ← (step 100 ready ⟨.player p, .standardMove source (.battlefield field)⟩).toOption
+  let before ← (runUntilTurn 100 s.turn 20 (Rng.ofSeed 1) moved).toOption
+  let occupier ← (before.unitsOf p field).head?
+  let (after, events) ← (step 100 before ⟨.player p, .manaAbility occupier 0 ⟨0, []⟩⟩).toOption
+  return before.controlOf field == some p && after.controlOf field == none &&
+    after.pending == [Frame.priority p] && (cleanupStep after).isNone &&
+    events.contains (.controlChanged field none) &&
+    (after.poolOf p).energy == (before.poolOf p).energy + 1).getD false
+
 -- Power of a domain, and Power of any domain, which pays a Power symbol of any domain (CR 430, 445)
 #guard match mainN with
   | some s0 =>

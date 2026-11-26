@@ -380,7 +380,11 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .triggerOrder p t more others (some next) :: rest }, [])
   | .triggerOrder p t more others (some _) :: rest, .decide _ =>
     some ({ s with pending := .triggerOrder p t more others :: rest }, [])
-  | .priority p :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
+  | .priority p :: rest, .manaAbility src idx pay chosen =>
+    -- An Add resolves immediately. Settle any board changes before returning to this priority
+    -- (CR 319.6, 319.7, 430.2).
+    (applyMana s p src idx pay chosen).map
+      (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
   | .chainPass p _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
   | .discard p n :: rest, .discardPick c =>
     let r := discardObj s c

@@ -207,8 +207,14 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp] at hb
     exact hb.swap rfl [_]
   · rename_i p tail src idx pay _chosen hp hk
-    have hmeta := applyMana_meta h
-    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have hmeta := applyMana_meta applied
+    refine hinv.of_next hmeta.2.2.2.1 (fun hb => ?_)
+    rw [hp] at hb
+    obtain ⟨last, hlast, hok⟩ := hb
+    exact ⟨last, by simpa [List.getLast?_cons_cons] using hlast, hok⟩
   · rename_i p n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)

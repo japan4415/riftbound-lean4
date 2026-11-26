@@ -108,7 +108,8 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · rename_i p tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
-    exact applyMana_isSome hl.2
+    obtain ⟨r, hr⟩ := applyMana_isSome hl.2
+    exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
   · rename_i p n tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
@@ -319,7 +320,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
   · rename_i p tail src idx pay _chosen hp hk
-    exact applyMana_ownerOk hwf hown h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    exact (applyMana_ownerOk hwf hown applied).congr rfl rfl
   · rename_i p n tail src idx pay _chosen hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n rest c hp hk

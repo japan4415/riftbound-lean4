@@ -428,12 +428,14 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     · exact List.mem_cons_of_mem _ h1
   · rename_i p tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    obtain ⟨hcfg, hto, hphase, -, -⟩ := applyMana_meta applied
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
-    · rw [hphase]
-      exact manaOk_not_setup hl.2
-    · rw [hpend] at hm
-      exact hm
+    · exact hphase ▸ (manaOk_not_setup hl.2)
+    · rw [hp]
+      simpa using hm
   · rename_i p n tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h

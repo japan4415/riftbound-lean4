@@ -47,8 +47,8 @@ def manaPlan : List AbilityCost → Option ManaCostPlan
   | .fromBattlefield :: cs => manaPlan cs
   | _ :: _ => none
 
-/-- Kill an object at once; a token that dies ceases to exist (CR 183): the step of the Cleanup that
-removes it is done here, since the use of an Add is not followed by a Cleanup. -/
+/-- Kill an object for an immediate Add and remove a token that left the Board (CR 183, 430.2).
+An Add can also be used while another decision is in progress. -/
 def killNow (s : GameState) (id : ObjId) : GameState :=
   let s1 := (killObj s id).1
   match tokenStep s1 with

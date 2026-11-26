@@ -94,7 +94,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i p tail src idx pay hp hk
-    exact applyMana_wf hwf h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    exact (applyMana_wf hwf applied).congr rfl rfl rfl rfl
   · rename_i p n tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n rest c hp hk
@@ -438,7 +441,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · rename_i p tail src idx pay hp hk
-    exact applyMana_physIds hwf h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have preserved := applyMana_physIds hwf applied
+    exact preserved
   · rename_i p n tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n rest c hp hk

@@ -238,7 +238,11 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
-  · exact Or.inl (tc_applyMana h)
+  · obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have hclock := tc_applyMana applied
+    exact Or.inl (hclock.trans ⟨rfl, rfl⟩)
   · exact Or.inl (tc_applyMana h)
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
