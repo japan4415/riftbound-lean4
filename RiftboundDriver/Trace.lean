@@ -739,6 +739,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
       | none => "null"),
     ("points", jarr (players.map (fun p => toString (s.pointsOf p)))),
     ("pools", jarr (players.map (fun p => poolJson (s.poolOf p)))),
+    ("xp", jarr (players.map (fun p => toString (s.xpOf p)))),
     ("zones", jobj zones),
     ("battlefields", jarr bfs), ("at", jarr locs),
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),

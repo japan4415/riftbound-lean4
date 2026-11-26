@@ -719,7 +719,7 @@ def check_seat_view(folder: Path, command: Callable[..., str], archive: Path,
             assert row.get("judgeRewind") == full_row.get("judgeRewind")
             assert not {"action", "events", "judgeShuffle", "privateDrawReturns"} & row.keys()
             state, full_state = row["state"], full_row["state"]
-            for field in ("turn", "phase", "active", "result", "points", "pools"):
+            for field in ("turn", "phase", "active", "result", "points", "pools", "xp"):
                 assert state[field] == full_state[field]
             assert state["departed"] == full_state.get("departed", [])
             assert not {"new", "pending"} & state.keys()

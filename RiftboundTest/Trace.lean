@@ -35,6 +35,15 @@ meta def traceOf (seed turns : Nat) : String :=
 #guard ((traceOf 1 12).splitOn "\"t\":\"moved_unit\"").length > 1
 #guard ((traceOf 1 12).splitOn "\"t\":\"scored\"").length > 1
 
+-- The full trace records public XP in seat order as it is gained and spent.
+#guard (do
+    let s ← lab
+    let gained := gainXPOf 3 (gainXPOf 2 s ⟨1⟩) ⟨0⟩
+    let (before, seen) := stateJson gained {}
+    let (after, _) := stateJson (gained.spendXP ⟨0⟩ 1) seen
+    return (before.splitOn "\"xp\":[3,2]").length == 2 &&
+      (after.splitOn "\"xp\":[2,2]").length == 2 : Option Bool).getD false
+
 -- A token already known to the viewer changes identity in `copies`, using its original ID.
 #guard (do
     let s ← lab
