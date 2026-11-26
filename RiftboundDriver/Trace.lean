@@ -683,14 +683,15 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false)
-    (bo1Initiative : Bool := false) :
+    (bo1Initiative : Bool := false) (gameLoss : Option (List PlayerId) := none) :
     String × Std.HashSet Nat :=
   let (st, seen') := stateJson s seen
+  let penalty := (gameLoss.map (fun seats => ("gameLoss", jarr (seats.map (fun p => toString p.n))))).toList
   (jobj ([("i", toString i),
     ("action", match a with | some a => actionJson a frame (some s) es | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)] ++
     (if bo1Sideboard then [("bo1Sideboard", "true")] else []) ++
-    (if bo1Initiative then [("bo1Initiative", "true")] else [])), seen')
+    (if bo1Initiative then [("bo1Initiative", "true")] else []) ++ penalty), seen')
 
 /-- The parameter of a keyword as JSON. -/
 def kwArgJson : KeywordArg → String

@@ -230,7 +230,7 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
         command("view" + suffix, archive, trace)
         exported = json.loads(trace.read_text(encoding="utf-8"))
         assert exported["winner"] == 0 and len(exported["games"]) == 2
-        assert exported["cards"][blank["code"]]["name"] == "Blank Battlefield"
+        assert exported["cards"]["TKN-LimitedBlank"]["name"] == "Blank Battlefield"
 
 
 def bo1_registration(original: dict) -> dict:
@@ -375,6 +375,79 @@ def live_team_matches(live: Lean, setup: dict) -> dict[str, tuple[dict, list[int
             "live-team-sealed": (sealed_archive, [2, 0]), "live-team-tiebreaker": (timed, [0, 0])}
 
 
+def live_judge_penalties(live: Lean, setup: dict) -> dict:
+    team = json.loads((ROOT / "data/replay/team-constructed-example.json").read_text(encoding="utf-8"))
+    duel_start = f"start-json 71 01 {json.dumps(setup)}"
+    team_start = f"start-team-json 71 0123 {json.dumps(team)}"
+
+    keep(live, ask(live, duel_start))
+    assert "distinct registered seats" in json.loads(live.ask("judge-game-loss 11"))["error"]
+    loss = ask(live, "judge-game-loss 1")
+    assert loss["steps"][0]["gameLoss"] == [1] and loss["match"]["wins"] == [1, 0]
+    assert ask(live, "next")["choice"] == 1
+    keep(live, ask(live, "next first"))
+    assert ask(live, "judge-game-loss 1")["archiveAvailable"]
+    duel = ask(live, "replay")
+    previous, next_game = [game["summary"]["battlefields"] for game in duel["games"]]
+    assert len(previous) == len(next_game) == 2
+    assert all(pair not in previous for pair in next_game)
+
+    keep(live, ask(live, team_start))
+    drawn = ask(live, "judge-game-loss 0123")
+    assert drawn["match"]["wins"] == [0, 0] and not drawn["match"]["sameBattlefields"]
+    keep(live, ask(live, "team-next"))
+    assert ask(live, "judge-game-loss 3")["match"]["wins"] == [1, 0]
+    assert ask(live, "judge-game-loss 3")["steps"] == []
+    queued = ask(live, "team-next 1302")
+    assert queued["archiveAvailable"] and len(queued["steps"]) == 2 and queued["steps"][1]["gameLoss"] == [3]
+    team_game_loss = ask(live, "replay")
+    games = team_game_loss["input"]["games"]
+    assert games[0]["ending"] == {"gameLoss": {"seats": [{"n": i} for i in range(4)]}}
+    assert games[0]["order"] == games[1]["order"]
+    assert all(pair not in games[0]["battlefields"] for pair in games[1]["battlefields"])
+    assert games[2]["battlefields"] == [] and len(games[2]["answers"]) == 1
+
+    keep(live, ask(live, team_start))
+    assert ask(live, "judge-match-loss 3")["match"]["winner"] == 0
+    match_loss = ask(live, "replay")
+    assert match_loss["input"]["ending"] == {"matchLoss": {"seat": {"n": 3}}}
+    assert match_loss["input"]["games"][0]["ending"] == "matchEnded"
+
+    keep(live, ask(live, duel_start))
+    assert ask(live, "judge-disqualification 0")["match"]["winner"] == 1
+    disqualification = ask(live, "replay")
+    assert disqualification["input"]["ending"] == {"disqualification": {"seat": {"n": 0}}}
+    return {"live-duel-game-loss": (duel, ""), "live-team-game-loss": (team_game_loss, "-team"),
+            "live-team-match-loss": (match_loss, "-team"), "live-duel-disqualification": (disqualification, "")}
+
+
+def check_judge_penalties(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
+    for label, (archive, suffix) in fixtures.items():
+        path = folder / f"{label}-archive.json"
+        path.write_text(json.dumps(archive), encoding="utf-8")
+        assert json.loads(command("verify" + suffix, path))["exact"]
+        trace = folder / f"{label}-trace.json"
+        command("view" + suffix, path, trace)
+        exported = json.loads(trace.read_text(encoding="utf-8"))
+        if "game-loss" in label:
+            assert all(game["steps"][-1]["gameLoss"] for game in exported["games"])
+        else:
+            assert exported["matchPenalty"] == archive["input"]["ending"]
+
+    duel = fixtures["live-duel-game-loss"][0]["input"]
+    previous = [answer for answer in duel["games"][0]["answers"]
+                if isinstance(answer, dict) and "pick" in answer.get("observed", {}).get("action", {}).get("kind", {})]
+    assert len(previous) == 2
+    second = duel["games"][1]["answers"]
+    picks = [index for index, answer in enumerate(second)
+             if isinstance(answer, dict) and "pick" in answer.get("observed", {}).get("action", {}).get("kind", {})]
+    for index, answer in zip(picks, previous, strict=True):
+        second[index] = answer
+    invalid = folder / "penalized-battlefield-reuse.json"
+    invalid.write_text(json.dumps(duel), encoding="utf-8")
+    command("record", invalid, folder / "invalid-penalty-archive.json", error="different Battlefield after a Game Loss")
+
+
 def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
     originals = setup["decks"]["constructed"]["decks"]
     changed = bo1_registration(originals[1])
@@ -432,7 +505,7 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
 
 
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
-              team_matches: dict[str, tuple[dict, list[int]]]) -> None:
+              team_matches: dict[str, tuple[dict, list[int]]], penalties: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -601,6 +674,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         command("view-team", archive, trace)
         exported = json.loads(trace.read_text(encoding="utf-8"))
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
+    check_judge_penalties(folder, command, penalties)
 
 
 def main() -> None:
@@ -616,15 +690,16 @@ def main() -> None:
         elimination = elimination_match(live, setup)
         bo1 = live_bo1_match(live, setup)
         team_matches = live_team_matches(live, setup)
+        penalties = live_judge_penalties(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches)
+        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches)
+            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties)
     print("replay smoke: OK")
 
 

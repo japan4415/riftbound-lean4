@@ -36,6 +36,8 @@ inductive ReplayAnswer where
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
   | bo1Sideboard
+  /-- The judge applies simultaneous Game Loss penalties to these seats (TR 701.2.b). -/
+  | gameLoss (seats : List PlayerId)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
@@ -48,6 +50,20 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     else pure a
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
+  | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
+
+/-- A Game Loss affects the whole side; if neither side remains, the game is a draw (TR 701.2.b). -/
+def judgeGameLossResult (players : List PlayerId) (sameSide : PlayerId → PlayerId → Bool)
+    (seats : List PlayerId) : Except String GameResult := do
+  unless !seats.isEmpty && decide seats.Nodup && seats.all players.contains do
+    throw "a Game Loss requires distinct registered seats"
+  let remaining := players.filter (fun p => !(seats.any (sameSide p)))
+  return if remaining.isEmpty then .draw else .won remaining
+
+/-- The affected seats, if the final answer was a Game Loss. -/
+def ReplayAnswer.penalizedSeats : ReplayAnswer → Option (List PlayerId)
+  | .gameLoss seats => some seats
+  | _ => none
 
 /-- Evidence for the starting turn order supplied before a team game's answer stream. -/
 inductive ReplayOpeningOrderEvidence where
@@ -137,6 +153,23 @@ structure RecordedGame where
   /-- The resulting setup details, score and winner. -/
   summary : ReplayGameResult
 deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The seats sanctioned by the judge, when the game ended with a Game Loss. -/
+def RecordedGame.gameLossSeats (game : RecordedGame) : Option (List PlayerId) :=
+  game.input.answers.back?.bind ReplayAnswer.penalizedSeats
+
+/-- The named Battlefields revealed before a Game Loss cannot be reused (TR 406.1.c).
+Each unlimited blank in Limited can be represented by a new physical copy. -/
+def RecordedGame.penaltyBattlefields (game : RecordedGame) : List (PlayerId × CardId) :=
+  if game.gameLossSeats.isSome then
+    game.summary.battlefields.filter (·.2 != limitedBlankBattlefield.id)
+  else []
+
+/-- Ensure a seat uses a different Battlefield from any game ended by a Game Loss. -/
+def checkPenaltyBattlefields (forbidden selected : List (PlayerId × CardId)) : Except String Unit := do
+  for (seat, card) in selected do
+    if forbidden.contains (seat, card) then
+      throw s!"seat {seat.n} must use a different Battlefield after a Game Loss: {card.code}"
 
 /-- Set up the recorded decks using the existing deck validation paths and pinned format legality. -/
 def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig)
@@ -230,6 +263,12 @@ def GameInputs.awaitsBo1Sideboard (input : GameInputs) (s : GameState) : Bool :=
 /-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
 def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+  if let .gameLoss seats := answer then
+    unless s.config.ruleSet.isTournament && s.config.mode.hasTwoSides && s.result.isNone do
+      throw s!"answer {index}: a Game Loss requires an ongoing tournament game"
+    let result ← (judgeGameLossResult s.players s.config.mode.sameSide seats).mapError
+      (fun error => s!"answer {index}: {error}")
+    return (none, { s with result := some result, pending := [] }, [])
   let awaitingSideboard := input.awaitsBo1Sideboard s
   if let .bo1Sideboard := answer then
     unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"

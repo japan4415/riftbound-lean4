@@ -141,6 +141,18 @@ def make_handler(lean: Lean, port: int):
                     line = "agree-match-draw"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/judge-game-loss":
+                    seats = req["seats"]
+                    if (not isinstance(seats, list) or not seats
+                            or not all(type(seat) is int and 0 <= seat < 4 for seat in seats)
+                            or len(set(seats)) != len(seats)):
+                        return self._json(400, {"error": "bad penalty seats"})
+                    line = "judge-game-loss " + "".join(map(str, seats))
+                elif path in ("/api/judge-match-loss", "/api/judge-disqualification"):
+                    seat = req["seat"]
+                    if type(seat) is not int or seat not in (0, 1, 2, 3):
+                        return self._json(400, {"error": "bad penalty seat"})
+                    line = f"{path.removeprefix('/api/')} {seat}"
                 elif path == "/api/undo":
                     line = "undo"
                 elif path == "/api/bo1-first":

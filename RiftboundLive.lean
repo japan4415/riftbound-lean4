@@ -27,7 +27,8 @@ sideboard), `next [first|second]` (the next game of a match; a person who choose
 who goes first says it), `undo` (take back the last answer, `act`, `clock` or `judge`, as many times
 as there are answers in this game), `quit`. For recorded matches: `start-json SEED HUMANS SETUP`,
 `register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
-`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. For team matches:
+`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `judge-game-loss SEATS`,
+`judge-match-loss SEAT`, `judge-disqualification SEAT`, `replay`. For team matches:
 `start-team-json SEED HUMANS SETUP`, `team-next [ORDER|- [SEALED_DECKS]]`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
@@ -90,6 +91,18 @@ def main : IO UInt32 := do
       match (← game.get) with
       | some g => goAnswer g (liveExternal g ⟨.judge, .declareDraw⟩)
       | none => fail "no game has been started"
+    | ["judge-game-loss", digits] =>
+      let seats := parseHumans digits
+      if seats.length != digits.length then fail "bad penalty seats" else
+        match ← game.get with
+        | some g => goAnswer g (liveJudgeGameLoss g seats)
+        | none => fail "no game has been started"
+    | ["judge-match-loss", seat] | ["judge-disqualification", seat] =>
+      match seat.toNat? with
+      | none => fail "bad penalty seat"
+      | some n =>
+        if line.trimAscii.toString.startsWith "judge-match-loss" then endMatch (.matchLoss ⟨n⟩)
+        else endMatch (.disqualification ⟨n⟩)
     | ["swap", out, inn] => swap out inn none
     | ["swap", out, inn, p] =>
       match p.toNat? with

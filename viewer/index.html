@@ -159,6 +159,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .choices button { text-align: left; }
 .choices.match-setup button { min-height: 2.75rem; min-width: 2.75rem; }
+.judge-penalties { flex-basis: 100%; }
+.judge-penalties summary { width: fit-content; cursor: pointer; }
+.judge-penalties .btns { margin-top: .35rem; }
+.judge-penalties button, .judge-penalties label { min-height: 2.75rem; }
+.judge-penalties label { display: inline-flex; align-items: center; gap: .25rem; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
 .choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .choices .name-cards { display: grid; gap: 6px; min-width: 0; width: min(100%, 26rem); }
@@ -288,6 +293,11 @@ function updateGamePicker() {
 }
 
 const teamLabel = (index) => `チーム ${index + 1}`;
+function matchPenaltyText(penalty) {
+  if (penalty?.matchLoss) return `P${penalty.matchLoss.seat.n} にマッチロス`;
+  if (penalty?.disqualification) return `P${penalty.disqualification.seat.n} が失格`;
+  return '';
+}
 
 function loadFile(t) {
   const teams = Array.isArray(t.teams) ? t.teams : null;
@@ -303,7 +313,8 @@ function loadFile(t) {
   if (Array.isArray(t.games)) {
     const wins = teams ? t.wins.map((count, i) => `${teamLabel(i)} ${count}勝`).join(' · ') : `勝ち数 ${t.wins.join('–')}`;
     const result = t.winner === null ? '引き分け' : `${teams ? teamLabel(t.winner) : `P${t.winner}`} の勝ち`;
-    $('traceinfo').textContent = `${wins} · ${result}${t.exact ? '' : ' · 推定を含む'}${t.cardsFullyChecked === false ? ' · 動作確認前のカードあり' : ''}`;
+    $('traceinfo').textContent = [wins, result, matchPenaltyText(t.matchPenalty),
+      t.exact ? '' : '推定を含む', t.cardsFullyChecked === false ? '動作確認前のカードあり' : ''].filter(Boolean).join(' · ');
   }
   selectGame(0);
   updateGamePicker();
@@ -349,6 +360,7 @@ function buildBoard() {
 
 function describe(i) {
   const step = steps[i];
+  if (step.gameLoss) return ['ジャッジがゲームロスを適用', step.gameLoss.map(p => 'P' + p).join('、')];
   if (step.bo1Sideboard) return ['サイドボードを確定', 'Chosen Champion を配置し、デッキをシャッフルする準備をする'];
   if (step.bo1Initiative) return ['先手を決める', `P${step.action.turnOrder[0]} が先手`];
   const a = step.action;
@@ -1172,7 +1184,8 @@ function matchText(m) {
     : liveTeamFormat ? '次のゲーム: 引き分けの後は手番順を引き継ぐ'
       : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
   return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち ' + label(0) + ' ' + m.wins[0] + ' - ' + label(1) + ' ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
-    + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : label(m.winner) + ' の勝ち') : ' ・ ' + order
+    + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : label(m.winner) + ' の勝ち')
+      + (m.matchPenalty ? ' · ' + matchPenaltyText(m.matchPenalty) : '') : ' ・ ' + order
       + (m.timedTiebreaker ? ' ・ 時間切れのため、次のゲームは初手番と追加5ターン' : '')
       + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
 }
@@ -1331,6 +1344,39 @@ function renderNameCards(box, options, btn) {
   update();
 }
 
+function renderJudgePenalties(box, button) {
+  if (!liveExt.penaltySeats?.length) return;
+  const details = document.createElement('details'); details.className = 'judge-penalties';
+  const title = document.createElement('summary'); title.textContent = 'ジャッジの裁定を記録';
+  const seats = document.createElement('div'); seats.className = 'btns'; seats.setAttribute('role', 'group');
+  seats.setAttribute('aria-label', '裁定の対象席');
+  const checkboxes = liveExt.penaltySeats.map(p => {
+    const label = document.createElement('label');
+    const input = document.createElement('input'); input.type = 'checkbox';
+    label.append(input, 'P' + p); seats.append(label);
+    return { p, input };
+  });
+  const selected = () => checkboxes.filter(({ input }) => input.checked).map(({ p }) => p);
+  const operations = document.createElement('div'); operations.className = 'btns';
+  const gameLoss = button(liveOver ? '次のゲームにゲームロスを適用' : 'ゲームロスを記録', '',
+    () => liveExternal('judge-game-loss', { seats: selected() }));
+  const matchLoss = button('マッチロスを記録', '',
+    () => liveExternal('judge-match-loss', { seat: selected()[0] }));
+  const disqualification = button('失格を記録', '',
+    () => liveExternal('judge-disqualification', { seat: selected()[0] }));
+  const update = () => { const n = selected().length; gameLoss.disabled = n === 0;
+    matchLoss.disabled = disqualification.disabled = n !== 1; };
+  seats.addEventListener('change', update); update();
+  operations.append(gameLoss, matchLoss, disqualification);
+  details.append(title, seats, operations);
+  if (liveExt.queuedGameLoss.length) {
+    const note = document.createElement('p'); note.className = 'note';
+    note.textContent = '次のゲームに適用予定 ' + liveExt.queuedGameLoss.map(p => 'P' + p).join('、');
+    details.append(note);
+  }
+  box.append(details);
+}
+
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
@@ -1380,6 +1426,7 @@ function renderLegal(i) {
         : 'ゲーム終了。「新しいゲーム」で、もう一度始められる。';
       if (liveArchive) group('対局記録', [btn('マッチの記録を保存', '手札やデッキ順を含む JSON', saveReplay)]);
     }
+    renderJudgePenalties(box, btn);
     return;
   }
   if (liveBo1?.chooser != null) {
@@ -1387,6 +1434,7 @@ function renderLegal(i) {
     group(`P${liveBo1.chooser} の選択`, [
       btn('先手にする', '', () => liveExternal('bo1-first', { choice: 'first' })),
       btn('後手にする', '', () => liveExternal('bo1-first', { choice: 'second' }))]);
+    renderJudgePenalties(box, btn);
     return;
   }
   if (liveBo1?.sideboards.length) {
@@ -1409,6 +1457,7 @@ function renderLegal(i) {
       btn('サイドボードを確定', 'Chosen Champion を配置してシャッフルする',
         () => liveExternal('bo1-sideboard'))]);
     renderSideboard(group, btn, side);
+    renderJudgePenalties(box, btn);
     return;
   }
   markActCards(liveLegal);
@@ -1474,6 +1523,7 @@ function renderLegal(i) {
     : '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
   if (ext.length) group('大会のルール', ext);
+  renderJudgePenalties(box, btn);
 }
 // サイドボード（TR 403.4）: Main Deck のカードを 1 枚出し、サイドボードのカードを 1 枚入れる。合法かどうかは Lean が決める。
 function renderSideboard(group, btn, s = liveSide) {
@@ -1511,7 +1561,7 @@ async function startWith(path, body, fresh) {
     if (j.teamChoice) { askTeamChoice = j.teamChoice; renderLegal(steps.length - 1); return; }
     const initialEdit = liveBo1?.sideboards.length && (path === '/api/swap' || path === '/api/register');
     if (fresh) { undoCount = 0; bo1SideSeat = null; teamNextDecks = null; }
-    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
+    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/judge-game-loss', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
     else undoCount = 0;
     setLive(j);
     if (fresh) {

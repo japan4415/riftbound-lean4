@@ -35,11 +35,33 @@ inductive ReplayMatchEnd where
   | concede (seat : PlayerId)
   /-- Both seats agreed to a draw of the match (TR 410.2). -/
   | agreedDraw
+  /-- The judge applied a Match Loss to the seat and their team (TR 701.2.c). -/
+  | matchLoss (seat : PlayerId)
+  /-- The seat was disqualified and loses the current match (TR 701.2.d.1). -/
+  | disqualification (seat : PlayerId)
 deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A seat that lost by a judge's penalty. -/
+def ReplayMatchEnd.penalizedSeat : ReplayMatchEnd → Option PlayerId
+  | .matchLoss seat | .disqualification seat => some seat
+  | _ => none
+
+/-- The individual named by a concession or penalty. -/
+def ReplayMatchEnd.affectedSeat : ReplayMatchEnd → Option PlayerId
+  | .concede seat => some seat
+  | ending => ending.penalizedSeat
+
+/-- Translate an individual result to the side responsible for it. -/
+def ReplayMatchEnd.mapSeat (ending : ReplayMatchEnd) (f : PlayerId → PlayerId) : ReplayMatchEnd :=
+  match ending with
+  | .concede seat => .concede (f seat)
+  | .matchLoss seat => .matchLoss (f seat)
+  | .disqualification seat => .disqualification (f seat)
+  | other => other
 
 /-- An external match result can interrupt a game or the preparations for the next game. -/
 def ReplayMatchEnd.interrupts : ReplayMatchEnd → Bool
-  | .concede _ | .agreedDraw => true
+  | .concede _ | .agreedDraw | .matchLoss _ | .disqualification _ => true
   | _ => false
 
 /-- Opt in to TR 408.4. A time call between games is recorded separately from in-game answers. -/
@@ -147,9 +169,13 @@ private def checkOrder (config : GameConfig) (state : MatchState)
     if chooser.isSome || order.head? != some p then
       throw s!"seat {p.n} must still go first after a draw"
 
-private def checkBattlefields (state : MatchState) (previous next : ReplayGameResult) :
+/-- A normal draw reuses its Battlefields; Game Loss penalties use the exception in TR 406.1.c. -/
+def reuseReplayBattlefields (state : MatchState) (previousWasGameLoss : Bool) : Bool :=
+  state.reuseBattlefields && !previousWasGameLoss
+
+private def checkBattlefields (reuse : Bool) (previous next : ReplayGameResult) :
     Except String Unit := do
-  if !state.reuseBattlefields then return
+  if !reuse then return
   for (seat, field) in next.battlefields do
     if let some prior := previous.battlefields.lookup seat then
       if prior != field then throw s!"seat {seat.n} must use the same Battlefield after a draw"
@@ -212,6 +238,9 @@ def concludeReplayMatch (state : MatchState) (timed : Bool) (ending : ReplayMatc
   | none, _, .concede p =>
     if timed && !needsTimedTiebreaker state elimination then throw "the match is over"
     else if p.n < 2 then pure (MatchState.concedeMatch p) else throw "invalid concession seat"
+  | none, _, .matchLoss p | none, _, .disqualification p =>
+    if timed && !needsTimedTiebreaker state elimination then throw "the match is over"
+    else if p.n < 2 then pure (MatchState.concedeMatch p) else throw "invalid penalty seat"
   | _, _, _ => throw "the stated match ending disagrees with the game results"
 
 private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
@@ -224,6 +253,8 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
     throw "single elimination uses Tournament Rules"
   if input.config.ruleSet == .coreOnly && input.ending == .timeBetweenGames then
     throw "the match clock requires Tournament Rules"
+  if input.ending.penalizedSeat.isSome && !input.config.ruleSet.isTournament then
+    throw "match penalties require Tournament Rules"
   if expected.any (fun games => games.size != input.games.size) then
     throw "the recorded game count differs"
   checkReplayEvent input.config input.tournament
@@ -237,6 +268,7 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
   let mut previous : Option RecordedGame := none
   let mut timed := false
   let mut usedFields := ([], [])
+  let mut penaltyFields := []
   for (game, index) in input.games.toList.zipIdx do
     let result := do
       if game.bo1Setup?.isSome && (index != 0 || input.winsRequired != 1) then
@@ -258,16 +290,19 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
           pure saved
         | none => game.record db config input.fuel
       checkOrder input.config state game.chooser recorded.summary.turnOrder
-      if let some prior := previous then checkBattlefields state prior.summary recorded.summary
+      let reuse := reuseReplayBattlefields state (previous.any (fun (prior : RecordedGame) => prior.gameLossSeats.isSome))
+      if let some prior := previous then checkBattlefields reuse prior.summary recorded.summary
+      checkPenaltyBattlefields penaltyFields recorded.summary.battlefields
       let used ← match input.limitedPools? with
         | some [a, b] => do
           let selected (p : PlayerId) := (recorded.summary.battlefields.lookup p).toList
-          pure (← useLimitedBattlefields a usedFields.1 (selected ⟨0⟩) state.reuseBattlefields,
-            ← useLimitedBattlefields b usedFields.2 (selected ⟨1⟩) state.reuseBattlefields)
+          pure (← useLimitedBattlefields a usedFields.1 (selected ⟨0⟩) reuse,
+            ← useLimitedBattlefields b usedFields.2 (selected ⟨1⟩) reuse)
         | _ => pure usedFields
       pure (recorded, used)
     let (recorded, used) ← result.mapError (fun error => s!"game {index + 1}: {error}")
     usedFields := used
+    penaltyFields := penaltyFields ++ recorded.penaltyBattlefields
     if let some result := recorded.summary.result then
       let first := recorded.summary.turnOrder.head?
       state := { state.record result (first.getD ⟨0⟩) with lastFirst := first }

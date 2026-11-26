@@ -20,7 +20,7 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     let (action, next, events) ← input.applyAnswer state answer (index + 1) fuel
     let sideboard := answer == .bo1Sideboard
     let (row, nextSeen) := stepJson (index + 1) action events next seen state.pending.head? sideboard
-      (input.isBo1Initiative state action)
+      (input.isBo1Initiative state action) answer.penalizedSeats
     state := next
     seen := nextSeen
     steps := row :: steps
@@ -36,12 +36,15 @@ private def matchTraceJson (games : List String) (wins : Nat × Nat) (outcome : 
     ("wins", jarr [toString wins.1, toString wins.2]), ("exact", toString allObserved),
     ("cardsFullyChecked", toString cardsChecked)] ++ extra)
 
+private def matchPenaltyTrace (ending : ReplayMatchEnd) : List (String × String) :=
+  if ending.penalizedSeat.isSome then [("matchPenalty", (toJson ending).compress)] else []
+
 private def matchTrace (saved : RecordedMatch) : Except String String := do
   let summary ← saved.verify
   let games ← saved.games.toList.mapM (fun game =>
     gameTrace game.input (game.eliminationConfig?.getD saved.input.config) saved.input.fuel)
   return matchTraceJson games summary.wins summary.result summary.exact summary.cardsFullyChecked
-    (limited := saved.input.config.ruleSet.isLimited)
+    (matchPenaltyTrace saved.input.ending) (limited := saved.input.config.ruleSet.isLimited)
 
 private def teamEvidence (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Bool × Bool :=
   (saved.games.all (·.summary.exact), summary.uncheckedCards.all (·.all List.isEmpty))
@@ -61,7 +64,8 @@ private def teamMatchTrace (saved : RecordedTeamMatch) : Except String String :=
   let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
   let teams := saved.input.seats
   return matchTraceJson games summary.wins summary.result allObserved cardsChecked
-    [("teams", jarr [seats teams.team0, seats teams.team1])] config.ruleSet.isLimited
+    ([("teams", jarr [seats teams.team0, seats teams.team1])] ++ matchPenaltyTrace saved.input.ending)
+    config.ruleSet.isLimited
 
 /-- Record, verify or generate a viewer trace from all the inputs of a saved match. -/
 def main (args : List String) : IO UInt32 := do

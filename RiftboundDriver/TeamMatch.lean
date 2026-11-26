@@ -70,7 +70,14 @@ inductive TeamGameEnd where
   | suddenDeath (team : PlayerId)
   /-- Match concession or an agreed match draw interrupted the game. -/
   | matchEnded
+  /-- The judge ended the game by applying Game Loss penalties to these seats. -/
+  | gameLoss (seats : List PlayerId)
 deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The seats named by a Game Loss ruling. -/
+def TeamGameEnd.gameLossSeats : TeamGameEnd → Option (List PlayerId)
+  | .gameLoss seats => some seats
+  | _ => none
 
 /-- Observations about a team game, through its own ending or the end of the match. -/
 structure TeamGameRecord where
@@ -191,6 +198,10 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) (config :
   | .suddenDeath team =>
     if game.timed && clock.allowsSuddenDeath && team.n < 2 then return some (.won [team])
     throw "this game cannot end with the stated sudden-death winner"
+  | .gameLoss affected =>
+    if scoringWinner.isSome then throw "a team already won by scoring"
+    let result ← judgeGameLossResult seats.players (fun p q => seats.teamOf p == seats.teamOf q) affected
+    return some (← seats.normalizeResult result)
   | _ =>
     if scoringWinner.isSome then throw "a team already won by scoring"
     match game.ending with
@@ -206,6 +217,7 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) (config :
     | .matchEnded => return none
     | .scored => throw "missing victory score"
     | .suddenDeath _ => throw "missing sudden-death winner"
+    | .gameLoss _ => throw "missing Game Loss"
 
 private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : MatchState)
     (decks : ReplayDecks) (previous : Option TeamGameRecord) : Except String PlayerId := do
@@ -222,14 +234,19 @@ private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : 
         !(previous.any (fun prior => prior.order == game.order)) then
       throw "a draw preserves the same turn order"
   let contributors := game.battlefields.map Prod.fst
-  if !decide (contributors.Perm (game.order.drop 1)) then
+  let expected := game.order.drop 1
+  let canEndInSetup := game.ending.gameLossSeats.isSome || game.ending == .matchEnded
+  if !(decide (contributors.Perm expected) ||
+      (canEndInSetup && decide contributors.Nodup && contributors.all expected.contains)) then
     throw "the three non-starting players each contribute one Battlefield"
   for (seat, id) in game.battlefields do
     if !(registeredBattlefields decks seat).contains id then
       throw s!"seat {seat.n} did not register Battlefield {id.code}"
   if let some prev := previous then
-    if state.reuseBattlefields && !decide (prev.battlefields.Perm game.battlefields) then
-      throw "a draw preserves the same Battlefields"
+    if reuseReplayBattlefields state prev.ending.gameLossSeats.isSome then
+      let same := if canEndInSetup then game.battlefields.all prev.battlefields.contains
+        else decide (prev.battlefields.Perm game.battlefields)
+      unless same do throw "a draw preserves the same Battlefields"
     let prior ← prev.registrations
     checkReplayDeckChange state prior decks true
   return firstTeam
@@ -284,6 +301,7 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
   let mut recorded := #[]
   let mut timed := false
   let mut used := ([], [])
+  let mut penaltyFields := []
   for (game, index) in input.games.toList.zipIdx do
     let next := do
       if let some evidence := game.openingOrderEvidence? then evidence.check
@@ -292,10 +310,13 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
       if afterTime && !game.timed then throw "a tiebreaker game starts with time already called"
       let decks ← game.registrations
       input.checkRegistrations decks game.order db env
+      checkPenaltyBattlefields penaltyFields game.battlefields
+      let reuse := reuseReplayBattlefields state
+        (previous.any (fun (prior : TeamGameRecord) => prior.ending.gameLossSeats.isSome))
       let used ← match input.sealed? with
         | none => pure used
         | some pools =>
-          pools.useBattlefields input.seats used game.battlefields state.reuseBattlefields
+          pools.useBattlefields input.seats used game.battlefields reuse
       let first ← checkTeamSetup input.seats game state decks previous
       let (result, evidence) ← readGame config index game decks
       if let some finished := result then
@@ -310,13 +331,15 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
     if let some game := evidence then recorded := recorded.push game
     timed := gameTimed
     used := fields
+    if game.ending.gameLossSeats.isSome then
+      penaltyFields := penaltyFields ++ game.battlefields.filter (·.2 != limitedBlankBattlefield.id)
     previous := some game
     uncheckedCards := uncheckedCards.push (decks.uncheckedCards db)
-  let ending ← match input.ending with
-    | .concede seat =>
-      let some team := input.seats.teamOf seat | throw "the concession seat is not in the match"
-      pure (ReplayMatchEnd.concede team)
-    | other => pure other
+  let ending ← match input.ending.affectedSeat with
+    | some seat =>
+      let some team := input.seats.teamOf seat | throw "the ending seat is not in the match"
+      pure (input.ending.mapSeat (fun _ => team))
+    | none => pure input.ending
   checkInterruptedClockBoundary state timed input.elimination? input.games.size
   let result ← concludeReplayMatch state timed ending input.elimination?.isSome
   return ({ wins := (state.wins0, state.wins1), result, uncheckedCards }, recorded)
@@ -342,7 +365,10 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   let some result := actual.result | throw "the recorded answers do not finish the team game"
   let winningEvents := (played.checkpoints.back?).any (fun w =>
     w.events.any (fun | .won _ => true | _ => false))
-  let endingAction ← played.input.answers.back?.mapM (fun answer => answer.resolve played.input.answers.size)
+  if played.gameLossSeats != observation.ending.gameLossSeats then
+    throw "the recorded Game Loss ruling differs"
+  let endingAction ← if played.gameLossSeats.isSome then pure none
+    else played.input.answers.back?.mapM (fun answer => answer.resolve played.input.answers.size)
   if let .scored := observation.ending then
     if !winningEvents then throw "the last answer did not produce a scoring win"
   else
