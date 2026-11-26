@@ -94,12 +94,24 @@ structure JudgeTimelineRewind where
   unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A chance outcome reported by card code instead of the engine's object IDs. -/
+inductive ReplayChance where
+  /-- Complete output order of the cards in the pending random permutation. -/
+  | cardOrder (cards : List CardId)
+  /-- The Battlefield selected by a random draw. -/
+  | battlefield (card : CardId)
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
   | observed (action : Action)
   /-- The answer is a reconstruction of an incompletely observed choice. -/
   | inferred (action : Action) (evidence : String)
+  /-- The chance outcome was recorded by card code. Copies may still need to be distinguished. -/
+  | observedChance (outcome : ReplayChance)
+  /-- The chance outcome by card code was reconstructed from incomplete observations. -/
+  | inferredChance (outcome : ReplayChance) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -116,19 +128,73 @@ inductive ReplayAnswer where
   | judgeTimelineRewind (rewind : JudgeTimelineRewind)
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The action, if the input directly specifies one without consulting a game state. -/
+def ReplayAnswer.action? : ReplayAnswer → Option Action
+  | .observed a | .inferred a _ => some a
+  | _ => none
+
+private def checkInference (index : Nat) (evidence : String) : Except String Unit :=
+  if evidence.trimAscii.toString.isEmpty then
+    throw s!"answer {index}: an inferred answer needs an explanation"
+  else pure ()
+
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
 def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String Action :=
   match answer with
   | .observed a => pure a
-  | .inferred a evidence =>
-    if evidence.trimAscii.toString.isEmpty then
-      throw s!"answer {index}: an inferred answer needs an explanation"
-    else pure a
+  | .inferred a evidence => checkInference index evidence *> pure a
+  | .observedChance _ | .inferredChance _ _ =>
+    throw s!"answer {index}: a chance outcome by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
   | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ | .judgeTimelineRewind _ =>
     throw s!"answer {index}: a correction is a judge ruling"
+
+private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
+  (s.obj? id).bind (·.kind.cardId?)
+
+private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
+    Except String (Action × Bool) := do
+  match outcome, s.pending.head? with
+  | .battlefield card, some (.chanceBattlefield seat) =>
+    let candidates := s.zone (.player seat .outOfGame)
+    let matching := candidates.zipIdx.filter (fun (id, _) => replayCardCode s id == some card)
+    let some (_, index) := matching.head? | throw s!"Battlefield {card.code} is not a candidate"
+    return (⟨.chance, .pick index⟩, matching.length == 1)
+  | .battlefield _, _ => throw "no random Battlefield selection is pending"
+  | .cardOrder cards, pending =>
+    let candidates ← match pending with
+      | some (.chanceShuffle z) => pure (s.zone z)
+      | some (.chanceRecycle p) => pure (s.zone (.player p .setAside))
+      | some (.chanceBurnOut p) => pure (s.zone (.player p .trash))
+      | some (.chancePredict _ _ _ bottom) => pure bottom
+      | some (.chanceRecycleTrash _ _ picked) => pure picked
+      | _ => throw "no random card order is pending"
+    if cards.length != candidates.length then
+      throw s!"the card order has {cards.length} cards but needs {candidates.length}"
+    let mut remaining := candidates
+    let mut order := []
+    for card in cards do
+      let some id := remaining.find? (fun id => replayCardCode s id == some card)
+        | throw s!"card order contains an unavailable copy of {card.code}"
+      order := id :: order
+      remaining := remaining.erase id
+    return (⟨.chance, .arrange order.reverse⟩, decide cards.Nodup)
+
+/-- Resolve a replay answer at the decision it answers. The flag records whether the
+input uniquely determines the choice and contains no explicit inference. -/
+def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat) :
+    Except String (Action × Bool) := do
+  let resolveChance (outcome : ReplayChance) :=
+    (outcome.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  match answer with
+  | .observedChance outcome => resolveChance outcome
+  | .inferredChance outcome evidence =>
+    checkInference index evidence
+    return ((← resolveChance outcome).1, false)
+  | _ =>
+    return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 
 private def unshuffledDecksJson (decks : Option (List JudgeUnshuffledDeck)) :
     List (String × String) :=
@@ -246,7 +312,7 @@ structure ReplayGameResult where
   timed : Bool
   /-- The last turn number when play continued beyond the scheduled turns (TR 408.4.c.3). -/
   suddenDeathTurn? : Option Nat := none
-  /-- Whether all answers and the supplied starting turn order were directly observed. -/
+  /-- Whether all answers and the supplied starting order were directly and uniquely observed. -/
   exact : Bool
   /-- Registered cards below `full`, in seat order. -/
   uncheckedCards : List (List (CardId × ImplStatus))
@@ -398,16 +464,16 @@ def JudgeShuffle.apply (shuffle : JudgeShuffle) (s : GameState) : Except String 
 
 private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) (observeFaces : Bool) :
-    Except String (Option Action × (GameState × List Event) × List CardDisclosure) := do
+    Except String (Option Action × (GameState × List Event) × List CardDisclosure × Bool) := do
   if let .judgeShuffle shuffle := answer then
     let next ← (shuffle.apply s).mapError (fun error => s!"answer {index}: {error}")
-    return (none, (next, []), [])
+    return (none, (next, []), [], true)
   if let .gameLoss seats := answer then
     unless s.config.ruleSet.isTournament && s.config.mode.hasTwoSides && s.result.isNone do
       throw s!"answer {index}: a Game Loss requires an ongoing tournament game"
     let result ← (judgeGameLossResult s.players s.config.mode.sameSide seats).mapError
       (fun error => s!"answer {index}: {error}")
-    return (none, ({ s with result := some result, pending := [] }, []), [])
+    return (none, ({ s with result := some result, pending := [] }, []), [], true)
   let awaitingSideboard := input.awaitsBo1Sideboard s
   if let .bo1Sideboard := answer then
     unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"
@@ -418,8 +484,8 @@ private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (ans
         | throw s!"seat {seat} could not set out the final registration"
       next := built
     let shuffles := (startFrames s.playerCount).filter (fun | .chanceShuffle _ => true | _ => false)
-    return (none, ({ next with pending := shuffles ++ [.setupHands] }, []), [])
-  let action ← answer.resolve index
+    return (none, ({ next with pending := shuffles ++ [.setupHands] }, []), [], true)
+  let (action, exact) ← answer.resolveAt s index
   if awaitingSideboard && action.kind != .concede && action.kind != .declareDraw then
     throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
   let transition := if input.isBo1Initiative s (some action) then
@@ -432,12 +498,12 @@ private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (ans
   else if observeFaces then stepWithDisclosures fuel s action
   else (step fuel s action).map (·, [])
   let (result, disclosures) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
-  return (some action, result, disclosures)
+  return (some action, result, disclosures, exact)
 
 /-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
 def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
-  let (action, (next, events), _) ← input.applyAnswerWith s answer index fuel false
+  let (action, (next, events), _, _) ← input.applyAnswerWith s answer index fuel false
   return (action, next, events)
 
 private def deckIds (d : Deck) : List CardId :=
@@ -529,6 +595,8 @@ structure ReplayPosition where
   events : List Event := []
   /-- Faces shown during the answer that produced this position. -/
   disclosures : List CardDisclosure := []
+  /-- Whether the answer producing this checkpoint was directly and uniquely observed. -/
+  answerExact : Bool := true
   /-- Publicly revealed cards still identifiable in a player's Main Deck or hand. -/
   private knownCards : List ObjId := []
   /-- Faces that were known at this checkpoint, keyed by seat and physical deck card. -/
@@ -542,10 +610,10 @@ structure ReplayPosition where
   /-- A rewind's parent on the active line, skipping the abandoned operations. -/
   private rewindParent : Option Nat := none
 
-/-- Capture a state without a preceding recorded action. -/
+/-- Capture a state without rewind metadata. -/
 def ReplayPosition.fromState (state : GameState) (fields : List (PlayerId × CardId) := [])
-    (disclosures : List CardDisclosure := []) : ReplayPosition :=
-  { state, fields, disclosures }
+    (disclosures : List CardDisclosure := []) (answerExact : Bool := true) : ReplayPosition :=
+  { state, fields, disclosures, answerExact }
 
 /-- One draw from a position in the deck at the rewind target. -/
 private structure DrawSlot extends ObservedDraw where
@@ -1003,10 +1071,12 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
       rewindParent := some target
       events := []
       disclosures := []
+      answerExact := true
       deckObservations := []
       draws := [] }
     return (none, restored, [])
-  let (action, (state, events), disclosures) ← input.applyAnswerWith prior.state answer index fuel observeFaces
+  let (action, (state, events), disclosures, answerExact) ←
+    input.applyAnswerWith prior.state answer index fuel observeFaces
   let boundary := if prior.state.phase == .setup then .setup else
     match answer, action with
     | .judgeShuffle _, _ => .ruling
@@ -1028,7 +1098,7 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
   let knownDeckCards := if observed.isEmpty then [] else
     let remainingDeck := deckPhysicalCards state
     observed.filter (fun known => remainingDeck.contains known.2)
-  let position := { state, fields, boundary, events, disclosures, draws, deckObservations,
+  let position := { state, fields, boundary, events, disclosures, answerExact, draws, deckObservations,
                     knownCards := trackedInPrivateZones state known, knownDeckCards }
   return (action, position, events)
 
@@ -1050,8 +1120,8 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut history := [ReplayPosition.fromState s]
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
-    if let .inferred .. := answer then exact := false
     let (_, next, events) ← input.advance history answer (index + 1) fuel
+    exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
     checkCheckpoint expected (index + 1) witness
     checkpoints := checkpoints.push witness

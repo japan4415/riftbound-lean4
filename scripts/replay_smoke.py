@@ -973,6 +973,52 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     assert steps[3]["state"]["zones"]["battlefield"] == sideboard["zones"]["battlefield"]
     assert steps[5]["action"]["kind"] == "arrange"
 
+    code_input = folder / "bo1-by-card-code.json"
+    code_archive = folder / "bo1-by-card-code-archive.json"
+    raw_archive = json.loads(archive.read_bytes())
+    by_code = tape.copy()
+    for index, registered_index in enumerate((1, 0)):
+        card = originals[index]["deck"]["battlefields"][registered_index]
+        by_code[index] = {"observedChance": {"outcome": {"battlefield": {"card": card}}}}
+    game["answers"] = by_code
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", code_input, code_archive)) == summary
+    assert json.loads(code_archive.read_bytes())["games"][0]["checkpoints"] == raw_archive["games"][0]["checkpoints"]
+
+    for index in range(4, 8):
+        ids = tape[index]["observed"]["action"]["kind"]["arrange"]["order"]
+        cards = [{"code": sideboard["new"][str(obj["n"])]["card"]} for obj in ids]
+        by_code[index] = {"observedChance": {"outcome": {"cardOrder": {"cards": cards}}}}
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    code_summary = {**summary, "exact": False}
+    assert json.loads(command("record", code_input, code_archive)) == code_summary
+    assert json.loads(command("verify", code_archive)) == code_summary
+    assert json.loads(code_archive.read_bytes())["games"][0]["checkpoints"] == raw_archive["games"][0]["checkpoints"]
+    command("view", code_archive, trace)
+    from_codes = json.loads(trace.read_bytes())
+    assert from_codes["games"][0]["steps"] == steps and not from_codes["exact"]
+
+    outcome = by_code[0]["observedChance"]["outcome"]
+    game["answers"] = [{"inferredChance": {"outcome": outcome, "evidence": "visible at first score"}}, *tape[1:]]
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", code_input, code_archive)) == code_summary
+    game["answers"][0]["inferredChance"]["evidence"] = " "
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", code_input, code_archive, error="answer 1: an inferred answer needs an explanation")
+
+    game["answers"] = by_code
+    cards = by_code[4]["observedChance"]["outcome"]["cardOrder"]["cards"]
+    omitted = cards.pop()
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", code_input, code_archive, error="answer 5: the card order has")
+    cards.append(champion)
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", code_input, code_archive, error="answer 5: card order contains an unavailable copy")
+    cards[-1] = omitted
+    game["answers"] = [*by_code[:2], by_code[4], *by_code[3:]]
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", code_input, code_archive, error="answer 3: no random card order is pending")
+
     invalid = folder / "bo1-invalid.json"
     game["answers"] = tape[:3] + tape[4:]
     invalid.write_text(json.dumps(inputs), encoding="utf-8")

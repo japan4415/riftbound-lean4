@@ -102,7 +102,16 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 外部の対局から記録を起こす場合は、アーカイブの `input` と同じ形の JSON を作り、`riftbound-replay record INPUT.json ARCHIVE.json` で照合用の記録を作る。`answers` にはシャッフル後のオブジェクト順、選択、支払い、時計やジャッジの決定を、適用された順に入れる。`observed` は直接観測した答え、`inferred` は根拠付きの推定、`unknown` は答えを確定できない箇所。推定を含むマッチは `exact: false` になり、`unknown` では該当する手で止まる。
 
-ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作と2v2の初期手番順の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
+カードの並びを直接確認できた場合は、内部IDの代わりに
+`{"observedChance":{"outcome":{"cardOrder":{"cards":[{"code":"OGN-001"},{"code":"OGN-002"}]}}}}`
+の形で記録できる。シャッフル前にあったカードを、同じカードの枚数も含め、結果の順番で全て並べる。山札は上から順に指定する。
+この形式は山札のシャッフル、マリガン、Burn Out、Predict、Trash からのランダムなリサイクルに使える。
+Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"code":"RAD-157"}}}}}` の形で、選ばれたコードを指定する。
+後から推定した結果には `inferredChance` を使い、`outcome` と根拠を記した `evidence` を入れる。
+
+同じコードの現物を区別できない場合、シャッフル前の並びから未使用の現物を順に割り当て、`exact: false` を記録する。
+現物まで特定できる場合は `observed` でIDを指定できる。
+`exact` は操作と2v2・War の初期手番順をどこまで特定できたかを示す。カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。`uncheckedCards` はゲームごとに、各席が登録した `full` 未満のカードを示す。
 
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 

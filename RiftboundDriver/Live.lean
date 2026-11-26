@@ -201,11 +201,12 @@ def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
   let (action, position, es) ← match g.input with
     | some input => input.advance g.history answer g.i (g.setup.map (·.fuel) |>.getD 100) (observeFaces := true)
     | none => do
-      let a ← answer.resolve g.i
+      let (a, answerExact) ← answer.resolveAt g.s g.i
       let ((next, events), disclosures) ← (stepWithDisclosures 100 g.s a).mapError
         (fun e => s!"the engine refused the answer: {repr e}")
       let fields := (pickedBattlefield g.s a).toList ++ g.fields
-      pure (some a, ReplayPosition.fromState next fields disclosures, events)
+      let position := ReplayPosition.fromState next fields disclosures answerExact
+      pure (some a, position, events)
   let initiative := g.input.any (fun input => input.isBo1Initiative g.s action)
   let priorSeen := if answer.rewinds then {} else g.seen
   let (j, seen') := stepJson g.i action es position.state priorSeen g.s.pending.head? (answer == .bo1Sideboard)
@@ -416,14 +417,14 @@ def LiveGame.gameRecord (g : LiveGame) (input : GameInputs) : RecordedGame :=
   { input := { input with answers := g.answersRev.reverse.toArray }
     eliminationConfig? := replayEliminationConfig g.s.config
     checkpoints := g.checkpointsRev.reverse.toArray
-    summary := ReplayGameResult.fromState g.s input.decks g.fields.reverse true }
+    summary := ReplayGameResult.fromState g.s input.decks g.fields.reverse
+      (input.openingOrderEvidence?.isNone && g.history.all (·.answerExact)) }
 
 /-- Recover the team's game outcome and its ending from the observed engine transitions. -/
 def RecordedGame.teamObservation (game : RecordedGame) : Except String TeamGameRecord := do
   let summary := game.summary
   let [a, _, b, _] := summary.points | throw "a team result needs four seat scores"
-  let closingAction : Option Action ← if summary.result.isNone || game.gameLossSeats.isSome then pure none
-    else game.input.answers.back?.mapM (fun answer => answer.resolve game.input.answers.size)
+  let closingAction := game.input.answers.back?.bind ReplayAnswer.action?
   let ending ← if let some seats := game.gameLossSeats then pure (TeamGameEnd.gameLoss seats)
   else match summary.result, closingAction with
     | none, _ => pure TeamGameEnd.matchEnded

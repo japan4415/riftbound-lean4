@@ -367,8 +367,7 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
     w.events.any (fun | .won _ => true | _ => false))
   if played.gameLossSeats != observation.ending.gameLossSeats then
     throw "the recorded Game Loss ruling differs"
-  let endingAction ← if played.gameLossSeats.isSome then pure none
-    else played.input.answers.back?.mapM (fun answer => answer.resolve played.input.answers.size)
+  let endingAction := played.input.answers.back?.bind ReplayAnswer.action?
   if let .scored := observation.ending then
     if !winningEvents then throw "the last answer did not produce a scoring win"
   else

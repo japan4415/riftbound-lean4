@@ -2,6 +2,8 @@ module
 
 import RiftboundDriver.Run
 meta import RiftboundDriver.Run
+import RiftboundDriver.Replay
+meta import RiftboundDriver.Replay
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -19,6 +21,32 @@ open Riftbound RiftboundDriver
 meta def cfg : GameConfig := { ruleSet := .coreOnly, mode := Mode.duel }
 
 meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDeck]
+
+-- In-play random orders can use a zone or only the objects named by the frame.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let a := cid "V0"
+  let b := cid "V1"
+  let pool := GameState.empty cfg db
+  let trash := Zone.player p .trash
+  let aside := Zone.player p .setAside
+  let add (s : GameState) (code : CardId) (z : Zone) := addObject s (newCard db s p code) z .bottom
+  let (s, first) ← add pool a trash
+  let (s, second) ← add s a trash
+  let (s, other) ← add s b trash
+  let (s, held) ← add s a aside
+  let (s, taken) ← add s b aside
+  let check (frame : Frame) (cards : List CardId) (ids : List ObjId) (exact : Bool) :=
+    let state := { s with pending := [frame] }
+    match (ReplayAnswer.observedChance (.cardOrder cards)).resolveAt state 1 with
+    | .ok (action, unique) =>
+      action == ⟨.chance, .arrange ids⟩ && unique == exact && decide (Legal state action)
+    | .error _ => false
+  return check (.chanceBurnOut p) [b, a, a] [other, first, second] false &&
+    check (.chanceRecycle p) [b, a] [taken, held] true &&
+    check (.chancePredict p 3 [first] [second, other]) [b, a] [other, second] true &&
+    check (.chanceRecycleTrash p first [second, other]) [b, a] [other, second] true
+  : Option Bool).getD false
 
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
 

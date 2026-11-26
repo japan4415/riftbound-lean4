@@ -96,7 +96,7 @@ structure ReplayMatchResult where
   wins : Nat × Nat
   /-- The final match outcome. -/
   result : MatchResult
-  /-- Whether every game was reproduced without any inferred answers. -/
+  /-- Whether all games were reproduced from directly and uniquely observed inputs. -/
   exact : Bool
   /-- Whether all checked registrations consist exclusively of fully verified card definitions. -/
   cardsFullyChecked : Bool
