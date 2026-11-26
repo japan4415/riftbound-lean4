@@ -1039,6 +1039,22 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact moveHomeUnchecked_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- A required move into an invalid Battlefield becomes a Recall. Read the destination from the
+board before the move, so both sides of a swap use the same board (CR 449.2.c). -/
+def moveOrRecall (before : GameState) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    GameState × List Event :=
+  if before.config.mode.isTeamDuel && loc.any (fun bf => (before.obj? u).any (fun o =>
+      o.loc != some bf && ((before.cardDef? u).any (·.hasType .unit) || !o.unitGearEffects.isEmpty) &&
+      !before.effectMoveBattlefieldOk o bf)) then recallFx false s u
+  else sendToLoc loc s u
+
+theorem moveOrRecall_safe (before : GameState) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    Safe s (moveOrRecall before loc s u).1 := by
+  unfold moveOrRecall
+  split
+  · exact recallFx_safe false s u
+  · exact sendToLoc_safe loc s u
+
 /-- A Unit's move protection applies to enemy effects while its ability is active, including
 when it is granted by attached Equipment (CR 137, 451). -/
 def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
@@ -1057,11 +1073,7 @@ def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u
   if s.moveBlocked u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
     | none => moveHome s u
-    | some bf =>
-      if s.config.mode.isTeamDuel && (s.obj? u).any (fun o => o.loc != some bf &&
-          ((s.cardDef? u).any (·.hasType .unit) || !o.unitGearEffects.isEmpty) &&
-          !s.effectMoveBattlefieldOk o bf) then recallFx false s u
-      else sendToBf bf s u
+    | some bf => moveOrRecall s (some bf) s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
 theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
@@ -1071,11 +1083,7 @@ theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u
   · exact Safe.refl s
   · cases loc with
     | none => exact moveHome_safe s u
-    | some bf =>
-      dsimp only
-      split
-      · exact recallFx_safe false s u
-      · exact sendToBf_safe bf s u
+    | some bf => exact moveOrRecall_safe s (some bf) s u
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
@@ -1088,8 +1096,8 @@ def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := no
       lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
       (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
   else
-    let r1 := sendToLoc ly s x
-    let r2 := sendToLoc lx r1.1 y
+    let r1 := moveOrRecall s ly s x
+    let r2 := moveOrRecall s lx r1.1 y
     (r2.1, r1.2 ++ r2.2)
 
 /-- Swapping places is a safe change. -/
@@ -1099,7 +1107,7 @@ theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option Playe
   dsimp only
   split
   · exact Safe.refl s
-  · exact (sendToLoc_safe _ s x).trans (sendToLoc_safe _ _ y)
+  · exact (moveOrRecall_safe s _ s x).trans (moveOrRecall_safe s _ _ y)
 
 /-- Play a card without paying, to a Battlefield. If it would put an outside Unit into a Combat,
 play the Unit at its controller's Base (CR 464.2.a). -/
@@ -2835,16 +2843,18 @@ def GameState.tokenFieldAllowed (s : GameState) (p : PlayerId) (src : ObjId)
     (card : CardDef) (field : ObjId) : Bool :=
   card.canPlayAtBattlefield && s.playBfLocationAllowed p src card field
 
-/-- Play tokens together at the Battlefield specified by the instruction. A Unit token contests
-its destination, while a Deploy Gear token does not (CR 184.2, 190.3, 830). -/
+/-- Play tokens at the specified Battlefield. Unit tokens redirected to Base by a Combat
+do not contest the Battlefield (CR 184.2, 190.3, 464.2.a, 830). -/
 def applyCreateAt (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (name : String) (n : Amount) (dest : Selector) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind fun count =>
     (s.tokenCard name).bind fun card =>
       ((dest.eval s p src env).bind List.head?).map fun field =>
-        if s.tokenFieldAllowed p src card field then
-          let placed := createN card.id p (some field) (ready || s.tokenReady p card (some field)) count s
-          let next := if card.hasType .unit && count > 0 then contestFor p field placed else placed
+        let redirected := card.hasType .unit && !s.combatAllowsUnitPlay p field
+        if redirected || s.tokenFieldAllowed p src card field then
+          let location := if redirected then none else some field
+          let placed := createN card.id p location (ready || s.tokenReady p card location) count s
+          let next := if card.hasType .unit && count > 0 && !redirected then contestFor p field placed else placed
           (buffNewTokens s next p, tokenPlays s next p)
         else (s, [])
 
@@ -2865,11 +2875,11 @@ theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : E
         cases fields with
         | nil => simp [hn, hc, hd] at h
         | cons field fields =>
-          simp [hn, hc, hd] at h
+          simp only [hn, hc, hd, Option.bind_some, List.head?_cons, Option.map_some] at h
           split at h
           · cases h
-            have placed := createN_safe card.id p (some field)
-              (ready || s.tokenReady p card (some field)) count s
+            let location := if card.hasType .unit && !s.combatAllowsUnitPlay p field then none else some field
+            have placed := createN_safe card.id p location (ready || s.tokenReady p card location) count s
             change Safe s (buffNewTokens s _ p)
             split
             · exact placed.trans ((contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _))

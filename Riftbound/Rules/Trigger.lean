@@ -761,14 +761,24 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
       if o.abilityUses t.idx t.copyStamp + taken < n then kept ++ [t] else kept
     | _, _ => kept ++ [t]) []
 
-/-- The abilities that fire together go onto the Chain in turn order (CR 383.3.d.1). -/
+/-- The order for abilities that fire together. Combat opens with the attacker and ends with
+the defender, with any other team-game seats in turn order between them (CR 383.3.d.1, 466.2.d.1). -/
+def GameState.triggerSeatOrder (s : GameState) (es : List Event) : List PlayerId :=
+  let opening := s.combat.filter (fun c => es.contains (.combatStarted c.battlefield c.attacker))
+  match opening with
+  | some c =>
+    let order := ({ s with active := some c.attacker } : GameState).pickOrder
+    [c.attacker] ++ order.filter (fun p => p != c.attacker && p != c.defender) ++ [c.defender]
+  | none => s.pickOrder
+
+/-- The abilities that fire because of the events of a step. -/
 def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
     List PendTrigger :=
   let all := s.trimLimits (es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra)
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
     if s.config.mode.isTeamDuel then
-      s.pickOrder.flatMap (fun p => group.filter (fun t => t.controller == p))
+      (s.triggerSeatOrder es).flatMap (fun p => group.filter (fun t => t.controller == p))
     else group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
   let (beforeMove, later) := all.partition (·.beforeStandardMove)
   seatOrder beforeMove ++ seatOrder later

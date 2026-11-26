@@ -216,6 +216,16 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
   let pending := [⟨3⟩, ⟨0⟩, ⟨1⟩, ⟨2⟩].map trigger
   (s.detect [] pending).map PendTrigger.controller == ([⟨2⟩, ⟨1⟩, ⟨3⟩, ⟨0⟩] : List PlayerId)
 
+-- Combat opening puts the attacker first and the defender last even when the attacker is
+-- not the turn player.
+#guard
+  let combat : CombatParticipation := { battlefield := ⟨0⟩, attacker := ⟨2⟩, defender := ⟨1⟩, units := [] }
+  let s := { teamState with turnOrder := Mode.teamTurnOrder true, active := some ⟨0⟩, combat := some combat }
+  let trigger (p : PlayerId) : PendTrigger := { source := ⟨p.n⟩, card := cid "V0", idx := 0, controller := p }
+  let pending := [⟨1⟩, ⟨0⟩, ⟨3⟩, ⟨2⟩].map trigger
+  let ordered := s.detect [.combatStarted combat.battlefield combat.attacker] pending
+  ordered.map PendTrigger.controller == ([⟨2⟩, ⟨3⟩, ⟨0⟩, ⟨1⟩] : List PlayerId)
+
 -- A staged non-combat Showdown precedes a Combat. With two Combats, the turn player can
 -- open either Battlefield, including the second one on the board.
 #guard (do
@@ -258,5 +268,24 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     !running.combatAllowsUnitPlay guest field && !running.playBfLocationAllowed guest unit (vanilla 0) field &&
     (after.unitsAt field).length == 2 && (after.zone (.player guest .base)).length == 1 &&
     (movedNew events).length == 1).getD false
+
+#guard (do
+  let (s, allyField, otherField) ← scoredStepBoard
+  let ally ← (s.unitsOf ⟨1⟩ allyField).head?
+  let (s, own) ← addObject s { newCard db s ⟨0⟩ (cid "V1") with loc := some otherField } .battlefieldZone
+  let (returned, events) := swapPlaces s own ally
+  return (returned.unitsAt allyField).isEmpty && (returned.unitsAt otherField).isEmpty &&
+    (returned.zone (.player ⟨0⟩ .base)).length == 1 && (returned.zone (.player ⟨1⟩ .base)).length == 1 &&
+    events == [Event.recalled own, Event.recalled ally]).getD false
+
+#guard (do
+  let (s, field, _) ← scoredStepBoard
+  let (s, _) ← addObject s { newCard db s ⟨2⟩ (cid "V2") with loc := some field } .battlefieldZone
+  let name := "Replay Recruit"
+  let card := { vanilla 0 with id := tokenId name, name }
+  let s := { s with cards := ⟨s.cards.cards ++ [card]⟩ }
+  let outsider : PlayerId := ⟨3⟩
+  let (played, _) ← applyCreateAt s outsider field { slots := [.obj field] } name (.const 2) (.slot 0) false
+  return (played.unitsAt field).length == 2 && (played.zone (.player outsider .base)).length == 2).getD false
 
 end RiftboundTest
