@@ -880,13 +880,12 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
         else some (⟨.player p, .pass⟩, r)
   | _ => autoAnswer r s
 
-/-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
-of the trace come back in reverse order. -/
-def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
-    Nat → Nat → Rng → GameState → Std.HashSet Nat → List String →
-      Except RuleError (List String)
-  | 0, _, _, _, _, acc => .ok acc
-  | n + 1, i, r, s, seen, acc =>
+/-- Run the demo's decisions, collecting the selected data after each completed answer. -/
+def playDemoWith {α : Type} (turns : Nat) (cap : Option Nat) (judge : Bool)
+    (collect : Nat → Action → List Event → GameState → Option Frame → α → α) :
+    Nat → Nat → Rng → GameState → α → Except RuleError α
+  | 0, _, _, _, acc => .ok acc
+  | n + 1, i, r, s, acc =>
     match (if (cap.any (· ≤ s.turn)) && s.clock.isNone && s.active.isSome && s.result.isNone then
         some ((if judge then ⟨.judge, .declareDraw⟩ else ⟨.clock, .timeCalled⟩), r)
       else demoAnswer r s) with
@@ -895,10 +894,44 @@ def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
       match step 100 s a with
       | .error e => .error e
       | .ok (s', es) =>
-        let (j, seen') := stepJson i (some a) es s' seen s.pending.head?
+        let acc' := collect i a es s' s.pending.head? acc
         let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
-        if a.kind == .pass && atPriority && turns ≤ s.turn then .ok (j :: acc)
-        else playTrace turns cap judge n (i + 1) r' s' seen' (j :: acc)
+        if a.kind == .pass && atPriority && turns ≤ s.turn then .ok acc'
+        else playDemoWith turns cap judge collect n (i + 1) r' s' acc'
+
+/-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
+of the trace come back in reverse order. -/
+def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false)
+    (n i : Nat) (r : Rng) (s : GameState) (seen : Std.HashSet Nat) (steps : List String) :
+    Except RuleError (List String) :=
+  let collect i a es next before (acc : Std.HashSet Nat × List String) :=
+    let (j, seen') := stepJson i (some a) es next acc.1 before
+    (seen', j :: acc.2)
+  (playDemoWith turns cap judge collect n i r s (seen, steps)).map Prod.snd
+
+/-- Set up the demo game under the selected timing and deck rules. -/
+def initialDemo (timed judge limited : Bool) : Except String GameState :=
+  let initial := if limited then
+    GameState.initialLimited demoDB { legalSets := [], banned := [] }
+      { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
+  else
+    GameState.initial demoDB
+      (if timed || judge then
+        { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
+      else demoConfig)
+      [demoDeck, demoDeck]
+  match initial with
+  | some s => .ok s
+  | none => .error "the demo game cannot be set up"
+
+/-- Run the same seeded demo as the trace exporter and return its final game state. -/
+def demoEndState (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
+    (limited : Bool := false) : Except String GameState := do
+  let s ← initialDemo timed judge limited
+  let cap := if timed || judge then some turns else none
+  (playDemoWith (if cap.isSome then 100000 else turns) cap judge
+    (fun _ _ _ next _ _ => next) 100000 1 (Rng.ofSeed seed) s s).mapError
+      (fun e => s!"the engine refused an answer: {repr e}")
 
 /-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. With `timed`, the game is
 played under the Tournament Rules, and the clock calls time when `turns` turns have begun: the
@@ -906,27 +939,16 @@ game goes on to its end (TR 408.2). With `judge`, the judge declares a draw then
 (TR 505.6). With `limited`, the game is set up from Sealed decks with no Legend and no Chosen
 Champion, so that each player draws 1 more in their first turn (TR 602.4.a.5.b). -/
 def demoTrace (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
-    (limited : Bool := false) : Except String String :=
-  match (if limited then
-      GameState.initialLimited demoDB { legalSets := [], banned := [] }
-        { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
-    else
-      GameState.initial demoDB
-        (if timed || judge then
-          { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
-        else demoConfig)
-        [demoDeck, demoDeck]) with
-  | none => .error "the demo game cannot be set up"
-  | some s0 =>
-    let (j0, seen) := stepJson 0 none [] s0 {}
-    match playTrace (if timed || judge then 100000 else turns)
-        (if timed || judge then some turns else none) judge 100000 1 (Rng.ofSeed seed) s0 seen
-        [j0] with
-    | .error e => .error s!"the engine refused an answer: {repr e}"
-    | .ok acc =>
-      .ok (jobj [("seed", toString seed), ("players", toString s0.playerCount),
-        ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c)))),
-        ("steps", jarr acc.reverse)])
+    (limited : Bool := false) : Except String String := do
+  let s0 ← initialDemo timed judge limited
+  let (j0, seen) := stepJson 0 none [] s0 {}
+  let cap := if timed || judge then some turns else none
+  let acc ← (playTrace (if cap.isSome then 100000 else turns) cap judge
+    100000 1 (Rng.ofSeed seed) s0 seen [j0]).mapError
+      (fun e => s!"the engine refused an answer: {repr e}")
+  return jobj [("seed", toString seed), ("players", toString s0.playerCount),
+    ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c)))),
+    ("steps", jarr acc.reverse)]
 
 end RiftboundDriver
 
