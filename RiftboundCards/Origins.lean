@@ -960,6 +960,7 @@ def OGN_036.meta : CardDef :=
     name := "Vi",
     subtitle := some "Destructive",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Vi"⟩, ⟨"Piltover"⟩],
     domains := [.fury],
     cost := some ⟨2, [.domain .fury]⟩,

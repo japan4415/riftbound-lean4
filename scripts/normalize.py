@@ -100,6 +100,20 @@ UNLEASHED_PRINT_METADATA = {
     "UNL-200": {"supertypes": ["signature"], "powerOwn": True},
 }
 
+# Riot lists the six chosen Champion options for the Vi and Vex decks.
+# https://playriftbound.com/en-us/news/announcements/vi--vex-champion-decks/
+# The printed Shadow and Hextech Gauntlets in the official gallery carry Signature.
+CHAMPION_DECK_PRINT_METADATA = {
+    "OGN-036": {"supertypes": ["champion"]},
+    "SFD-146": {"supertypes": ["champion"]},
+    "UNL-030": {"supertypes": ["champion"]},
+    "UNL-055": {"supertypes": ["champion"]},
+    "UNL-150": {"supertypes": ["champion"]},
+    "UNL-176": {"supertypes": ["champion"]},
+    "UNL-188": {"supertypes": ["signature"]},
+    "UNL-194": {"supertypes": ["signature"]},
+}
+
 RADIANCE_PRINT_METADATA = {
     "RAD-001": {"domains": ["fury"], "tags": ["Bandle City", "Yordle"]},
     "RAD-002": {"tags": []},
@@ -308,6 +322,7 @@ def normalize(snap: dict) -> dict:
             **ORIGINS_PRINT_METADATA.get(ident, {}),
             **PROVING_GROUNDS_PRINT_METADATA.get(ident, {}),
             **UNLEASHED_PRINT_METADATA.get(ident, {}),
+            **CHAMPION_DECK_PRINT_METADATA.get(ident, {}),
             **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
     cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))

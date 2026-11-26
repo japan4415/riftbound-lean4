@@ -54,6 +54,15 @@ open Riftbound RiftboundCards
 #guard ["OGN-151", "OGN-238"].all fun code =>
   (db.find? ⟨code⟩).any (fun c => decide c.IsChosenChampionCandidate)
 
+-- Riot lists these Choices in the Vi and Vex Champion Decks.
+#guard [("Vi", ["OGN-036", "UNL-030", "UNL-176"]), ("Vex", ["SFD-146", "UNL-055", "UNL-150"])].all
+  fun (tag, codes) => codes.all fun code =>
+    (db.find? ⟨code⟩).any (fun c => decide c.IsChosenChampionCandidate && c.tags.contains ⟨tag⟩)
+
+-- The printed Signature cards belong to the corresponding Champion's deck.
+#guard [("Vi", "UNL-188"), ("Vex", "UNL-194")].all fun (tag, code) =>
+  (db.find? ⟨code⟩).any (fun c => c.hasSupertype .signature && c.tags.contains ⟨tag⟩)
+
 -- a parameter that is a number, and a parameter that is a cost
 #guard match db.find? ⟨"OGN-003"⟩ with
   | some c => c.keywords.any (·.arg == .amount 2)

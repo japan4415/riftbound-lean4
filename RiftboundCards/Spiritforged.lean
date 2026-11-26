@@ -4290,6 +4290,7 @@ def SFD_146.meta : CardDef :=
     name := "Vex",
     subtitle := some "Cheerless",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Yordle"⟩, ⟨"Vex"⟩, ⟨"Shadow Isles"⟩],
     domains := [.chaos],
     cost := some ⟨5, [.domain .chaos]⟩,
