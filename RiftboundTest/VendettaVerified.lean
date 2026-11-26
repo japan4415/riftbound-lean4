@@ -1325,7 +1325,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     (stripped.obj? enemy).any (·.empowerCount == 0) && stripped.inPlay.contains enemy &&
     stripped.inPlay.contains friendly
 
--- Riven's Weaponmaster moves an attached Equipment for one less Power, and her attack counts both.
+-- Riven's Weaponmaster pays Hand Hammer's Calm cost, and her attack counts both Equipment.
 #guard verifiedCase fun s => do
   let p := s.me
   let q := s.you
@@ -1337,7 +1337,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, elsewhere) ← put s q "VEN-071" .base
   let (s, target) ← putAt s q "VEN-091" field
   let initial := (attachTo other (s.control q field) helm).1
-  let played ← cast (initial.fund p 3 (calm := 1)) p riven ⟨3, [.calm]⟩
+  let played ← cast (initial.fund p 3 (calm := 2)) p riven ⟨3, [.calm]⟩
     [] { pick := (· == [helm]) }
   let unit ← played.firstOf p .base "VEN-041"
   let geared ← activate played p brutalizer 0 [unit] ⟨0, [.calm]⟩
@@ -1350,6 +1350,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let single := settleChain { pick := (· == [target]) } 8 oneGear
   return (initial.obj? helm).any (·.attached == some other) &&
     (played.obj? helm).any (·.attached == some unit) &&
+    (played.poolOf p).calm == 0 &&
     waiting.trigPicks == [target] && !waiting.trigPicks.contains elsewhere &&
     (struck.obj? target).any (·.damage == 4) && (single.obj? target).any (·.damage == 2)
 

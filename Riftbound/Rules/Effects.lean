@@ -2845,7 +2845,11 @@ theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
           exact applyEach_safe (fun s id => attachTo_safe u s id) gs s
         | cons _ _ => simp at h
 
-/-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` Power
+/-- Remove up to `less` generic Power symbols from the Equip cost (CR 821.1.c.3). -/
+def Cost.weaponmasterDiscount (c : Cost) (less : Nat) : Cost :=
+  { c with power := Nat.repeat (fun symbols => symbols.erase .any) less c.power }
+
+/-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` generic Power
 (Weaponmaster): an Equipment whose cost cannot be paid stays where it is, and one with no Equip
 cost is not attached. `none` if the unit is not exactly one object, or either cannot be
 answered. -/
@@ -2859,7 +2863,7 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
         some (gs.foldl (fun (r : GameState × List Event) g =>
           match (r.1.cardDef? g).bind CardDef.equipCost with
           | some c =>
-            match payByRunes r.1 p g (c.dropPower less) with
+            match payByRunes r.1 p g (c.weaponmasterDiscount less) with
             | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
             | none => r
           | none => r) (s, []))
@@ -2890,7 +2894,7 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 Safe s (l.foldl (fun (r : GameState × List Event) g =>
                   match (r.1.cardDef? g).bind CardDef.equipCost with
                   | some c =>
-                    match payByRunes r.1 p g (c.dropPower less) with
+                    match payByRunes r.1 p g (c.weaponmasterDiscount less) with
                     | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
                     | none => r
                   | none => r) r0).1 := by
@@ -2904,7 +2908,7 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 cases hc : (r0.1.cardDef? g).bind CardDef.equipCost with
                 | none => simpa [hc] using h0
                 | some c =>
-                  cases hp : payByRunes r0.1 p g (c.dropPower less) with
+                  cases hp : payByRunes r0.1 p g (c.weaponmasterDiscount less) with
                   | none => simpa [hc, hp] using h0
                   | some q =>
                     simp only [hp]

@@ -40,28 +40,29 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let gear := s3.inBase s.me "SFD-056"
   return gear.any (fun o => (s3.obj? o).any (·.attached == none))
 
--- Weaponmaster (Combat Chef, SFD-092): when played, the player may Equip one of their Equipment to
--- it for one Power less: Brutalizer (Equip: one Power) is free
+-- Weaponmaster (Combat Chef, SFD-092) discounts [A]. Brutalizer still requires Calm Power.
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-042" .base
   let s3 ← play s2 s.me chef
+  let unfunded ← cast (s2.fund s.me 5) s.me chef (payOf s2 chef)
   let chef' := s3.inBase s.me "SFD-092"
   return chef'.any (fun c => (s3.obj? gear).any (·.attached == some c)) &&
-    (s3.poolOf s.me).calm == 12 && (s3.poolOf s.me).energy == 7
--- Skyfall of Areion (Equip: 1 Energy and 1 Fury): one Power less leaves 1 Energy to pay
+    (s3.poolOf s.me).calm == 11 && (s3.poolOf s.me).energy == 7 &&
+    (unfunded.obj? gear).any (·.attached.isNone)
+-- Skyfall of Areion retains both its Energy and Fury cost.
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-030" .base
   let s3 ← play s2 s.me chef
   let chef' := s3.inBase s.me "SFD-092"
   return chef'.any (fun c => (s3.obj? gear).any (·.attached == some c)) &&
-    (s3.poolOf s.me).fury == 12 && (s3.poolOf s.me).energy == 6
+    (s3.poolOf s.me).fury == 11 && (s3.poolOf s.me).energy == 6
 -- ... and if the Energy is not there, the Equipment stays where it is
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-030" .base
-  let s3 ← cast (s2.fund s.me 5) s.me chef (payOf s2 chef)
+  let s3 ← cast (s2.fund s.me 5 (fury := 1)) s.me chef (payOf s2 chef)
   return (s3.obj? gear).any (·.attached == none)
 -- "even if it's already attached": the Equipment of another unit moves to the new one
 #guard tsf fun s => do
@@ -137,7 +138,8 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let (s2, gear) ← put s1 s.me "SFD-030" .base
   let r ← applyAttachPaying (s2.rich s.me) s.me chef { slots := [.obj gear] } (.slot 0) .self 1
   return (r.1.obj? gear).any (·.attached == some chef) &&
-    (r.1.poolOf s.me).energy + 1 == ((s2.rich s.me).poolOf s.me).energy
+    (r.1.poolOf s.me).energy + 1 == ((s2.rich s.me).poolOf s.me).energy &&
+    (r.1.poolOf s.me).fury + 1 == ((s2.rich s.me).poolOf s.me).fury
 
 /-- The damage on the object. -/
 meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat :=

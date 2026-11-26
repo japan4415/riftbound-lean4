@@ -1245,7 +1245,7 @@ def SFD_042 : CardDef :=
   { SFD_042.meta with
 
     grants := [.passive .always [.mightIfFresh 2]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-043
 /--

@@ -78,6 +78,18 @@ private meta def checkGear (code : String) (domain : Domain) (bonus : Int) : Boo
 #guard checkGear "SFD-095" .body 2
 #guard checkGear "SFD-161" .order 3
 
+-- Brutalizer gives its printed bonus as long as it is attached, plus two on that turn.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, brutalizer) ← put s p "SFD-042" .hand
+  let played ← play s p brutalizer
+  let gear ← played.firstOf p .base "SFD-042"
+  let (board, host) ← put played p "OGN-049" .base
+  let equipped ← activate board p gear 0 [host] ⟨0, [.calm]⟩
+  let later := { equipped with turn := equipped.turn + 1 }
+  return board.mightNow host == some (5 : Int) && equipped.mightNow host == some (8 : Int) &&
+    later.mightNow host == some (6 : Int) && (later.obj? gear).any (·.attached == some host)
+
 private meta def checkQuickDraw (code : String) (bonus : Int) : Bool :=
   testBoard fun s => do
     let p := s.me
