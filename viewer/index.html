@@ -193,7 +193,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         <option value="bo1">Best of 1</option><option value="bo3">Best of 3</option></select></label>
       <button id="newgame">新しいゲーム</button>
       <button id="undobtn" hidden title="直前の答えを取り消す（Ctrl+Z）">1 手戻す</button>
-      <span class="note" id="livemsg"></span>
+      <span class="note" id="livemsg" role="status"></span>
     </div>
     <div class="note" id="matchinfo"></div>
     <div class="choices" id="choices" aria-live="polite"></div>
@@ -308,9 +308,58 @@ function describe(i) {
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
 function describeA(a, prev, state = steps[cur]?.state) {
   const cardName = (id) => cardNameAt(id, state);
+  const visibleCardLabel = (id, selectableIds) => {
+    const name = cardName(id);
+    const code = cardCode(id, state);
+    const copies = selectableIds.filter(candidate => cardCode(candidate, state) === code);
+    return copies.length > 1 ? name + ' #' + id : name;
+  };
+  const zoneEntries = Object.entries(state?.zones || {});
+  const boardIds = zoneEntries
+    .filter(([zone]) => zone === 'battlefield' || zone.endsWith('.base') || zone.endsWith('.legendZone'))
+    .flatMap(([, ids]) => ids);
+  const boardCardLabel = (id) => visibleCardLabel(id, boardIds);
+  const paymentChoices = (choice) => {
+    const details = [];
+    if (typeof choice.variablePower === 'number') details.push('追加 Power ' + choice.variablePower);
+    if (choice.gearDiscounts?.length) {
+      details.push(choice.gearDiscounts.map(boardCardLabel).join('、') + ' の割引を使う');
+    }
+    if (choice.spellExhaustPayers?.length) {
+      details.push(choice.spellExhaustPayers.map(boardCardLabel).join('、') + ' を Exhaust');
+    }
+    return details;
+  };
+  const showOffLabel = (choice, card) => {
+    if (typeof choice.showOff === 'number') {
+      const faceDown = Object.entries(state?.zones || {}).some(([zone, ids]) =>
+        zone.endsWith('.hidden') && ids.includes(choice.showOff));
+      return (faceDown ? '伏せたカード' : cardName(choice.showOff)) + ' を Show Off';
+    }
+    return cards[cardCode(card, state)]?.keywords?.some(({ k }) => k === 'showOff')
+      ? 'Show Off を見送る' : '';
+  };
+  const spellObjectCostLabel = (choice, card) => {
+    if (typeof choice.extraCostObject !== 'number') return '';
+    const name = cardName(choice.extraCostObject);
+    const kind = cards[cardCode(card, state)]?.spellObjectCost;
+    if (kind === 'exhaustUnit') return name + ' を Exhaust';
+    if (kind === 'returnUnit') return name + ' をオーナーの手札に戻す';
+    return '追加コストに ' + name + ' を使う';
+  };
+  const banishCostLabel = (id) => {
+    const trash = Object.entries(state?.zones || {}).find(([zone, ids]) =>
+      zone.endsWith('.trash') && ids.includes(id))?.[1] || [];
+    const copies = trash.filter(candidate => cardCode(candidate, state) === cardCode(id, state));
+    const suffix = copies.length > 1 ? '（' + (copies.indexOf(id) + 1) + '枚目）' : '';
+    return cardName(id) + suffix + ' を Banish';
+  };
   const addLabel = (add) => {
     const id = add.source;
-    if (!add.rune) return cardName(id) + ' の Add';
+    if (!add.rune) {
+      const cost = typeof add.banishCostCard === 'number' ? '（' + banishCostLabel(add.banishCostCard) + '）' : '';
+      return cardName(id) + ' の Add' + cost;
+    }
     const runes = (state?.zones['p' + objs[id]?.owner + '.base'] || [])
       .filter(candidate => cardCode(candidate, state) === cardCode(id, state));
     const order = runes.indexOf(id);
@@ -338,11 +387,17 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
     case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
+    case 'guessCardType': {
+      const cardTypes = { unit: 'ユニット', gear: 'ギア', spell: 'スペル' };
+      return [who + ': ' + cardTypes[a.cardType] + ' と予想', ''];
+    }
     case 'mulliganDone': return [who + ': マリガンしない', '手札を確定した'];
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
       if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
+      if (a.equipPayment) return [who + ': ' + (a.equipPayment === 'resources'
+        ? '割引後の Equip コストを支払う' : '味方のユニットを Exhaust して支払う'), ''];
       if (a.effectCost) {
         const cost = costText(a.effectCost);
         if (a.spellPaymentTarget != null) {
@@ -364,12 +419,14 @@ function describeA(a, prev, state = steps[cur]?.state) {
         const choices = a.repeatExecutions ? repeatChoices(a.repeatExecutions) : spellChoices(a);
         if (a.queuedSpell != null) {
           const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
+          const finalization = [showOffLabel(a, a.queuedSpell), choices,
+            spellObjectCostLabel(a, a.queuedSpell), ...paymentChoices(a)].filter(Boolean).join('、');
           const payment = [costText(a.queuedCost)];
           if (a.playDiscard !== undefined) {
             payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
           }
           if (a.preparedAdds?.length) payment.push('選択済み ' + a.preparedAdds.map(addLabel).join('、'));
-          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + choices + '）', payment.join(' ・ ')];
+          return [who + ': ' + cardName(a.queuedSpell) + action + '（' + finalization + '）', payment.join(' ・ ')];
         }
         return [who + ': ' + cardName(a.remadeSpell) + ' の選択を確定（' + choices + '）', ''];
       }
@@ -387,7 +444,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.reducedPlay) {
         const plan = a.reducedPlay;
         const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
-        const parts = [costText(plan.cost)];
+        const parts = [costText(plan.cost), ...paymentChoices(plan)];
+        const showOff = showOffLabel(plan, plan.card);
+        if (showOff) parts.push(showOff);
         if (plan.battlefieldFees?.length) parts.push(plan.battlefieldFees.map(cardName).join('、') + ' の追加コストを払う');
         const def = cards[cardCode(plan.card, state)];
         if (plan.additionalPaid || def?.optionalCost) parts.push(plan.additionalPaid ? '追加コストを払う' : '追加コストを見送る');
@@ -399,12 +458,33 @@ function describeA(a, prev, state = steps[cur]?.state) {
         const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
         return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
       }
+      if (typeof a.deathOrderUnit === 'number') {
+        return [who + ': ' + boardCardLabel(a.deathOrderUnit) + ' の死亡置換を次に適用する', ''];
+      }
+      if (a.moreDeathOrders) return [who + ': ほかの死亡置換を選ぶ', ''];
+      if (typeof a.deathSacrificeUnit === 'number') {
+        const unit = boardCardLabel(a.deathSacrificeUnit);
+        if (!('deathSacrificeCost' in a)) return [who + ': ほかの身代わりを選ぶ', unit];
+        if (a.deathSacrificeCost === null) return [who + ': ' + unit + ' の死亡置換を見送る', ''];
+        return [who + ': ' + boardCardLabel(a.deathSacrificeCost) + ' を身代わりにする',
+          unit + ' の死亡を置き換える'];
+      }
       if (a.moreDamageReplacements) return [who + ': ほかの置換効果を見る', ''];
       if (a.banishDeathUnit != null) {
         if (a.banishingPlayer == null) return [who + ': ほかの置換効果を見る', ''];
         return [who + ': P' + a.banishingPlayer + ' の効果で ' + cardName(a.banishDeathUnit) + ' を Banish',
           'このユニットの死亡を置き換える'];
       }
+      if (a.damageDivision) {
+        const names = a.damageDivision.map(({ unit }) => cardName(unit));
+        const amounts = a.damageDivision.map(({ unit, amount }, i) => {
+          const name = names[i];
+          const label = names.indexOf(name) === names.lastIndexOf(name) ? name : name + ' #' + unit;
+          return label + ' に ' + amount + ' 点';
+        });
+        return [who + ': ' + amounts.join('、'), ''];
+      }
+      if (a.moreDamageDivisions) return [who + ': ほかの割り振りを見る', ''];
       if (a.damageReplacement) {
         const replacement = a.damageReplacement === 'double' ? '2倍にする' :
           a.damageReplacement === 'shield' ? 'すべて防ぐ' : '最大 ' + a.preventValue + ' 軽減する';
@@ -427,8 +507,16 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'choose': {
       const card = cardName(a.obj);
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
+      if (a.choiceContext === 'banishReplay') {
+        const banished = zoneEntries.filter(([zone]) => zone.endsWith('.banishment')).flatMap(([, ids]) => ids);
+        return [who + ': 次にプレイする ' + visibleCardLabel(a.obj, banished) + ' を選ぶ', 'Chronobreak'];
+      }
+      if (a.choiceContext === 'reserveLegend') {
+        return [who + ': ' + card + ' を追加の Legend に選ぶ', '予備枠から Legend Zone に置く'];
+      }
       if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
+      if (a.choiceContext === 'equipExhaust') return [who + ': ' + card + ' を Exhaust', 'Equip コストとして支払う'];
       if (a.choiceContext === 'revealedHand') return [who + ': ' + card + ' を選ぶ', '公開された手札から選ぶ'];
       if (a.choiceContext === 'lookedDeck') return [who + ': ' + card + ' を選ぶ', '見たカードからプレイする1枚を選ぶ'];
       if (a.choiceContext === 'revealedPlay') return [who + ': ' + card + ' を選ぶ', '公開したカードからプレイする1枚を選ぶ'];
@@ -448,16 +536,22 @@ function describeA(a, prev, state = steps[cur]?.state) {
       return [who + ': ' + cardName(a.unit) + ' に先にダメージを割り当てる', 'Combat Damage: 致死ダメージを与える順に、相手の Unit を選ぶ（Tank が先）'];
     case 'assignDone':
       return [who + ': 割り当てを確定', '選んだ順に致死ダメージを割り当て、残りは最後の Unit へ。両陣営が終えると同時に与える'];
-    case 'standardMove':
-      return [who + ': ' + cardName(a.unit) + ' を Standard Move',
-        (a.dest === null ? 'Base へ戻る' : cardName(a.dest) + ' へ移動する') + '（Unit は Exhaust する）'];
+    case 'standardMove': {
+      const destination = a.dest === null ? 'Base' : cardName(a.dest);
+      const move = a.movePayment
+        ? destination + ' へ Standard Move（' + costText(a.movePayment) + ' を支払う）'
+        : 'Standard Move';
+      return [who + ': ' + cardName(a.unit) + ' を ' + move,
+        destination + (a.dest === null ? ' へ戻る' : ' へ移動する') + '（Unit は Exhaust する）'];
+    }
     case 'pass':
       if (prev === 'showdown') return [who + ': パス', 'Showdown でパス（全員がパスすると、Unit が 1 人だけなら Control と Conquer、2 人いれば Combat Damage）'];
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
     case 'activate': {
       const targetIds = a.targets || [];
-      const targets = (a.costBanish ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
+      const legacyKill = a.costBanish && typeof a.killCostObject !== 'number';
+      const targets = (legacyKill ? targetIds.slice(0, -1) : targetIds).map((t) => cardName(t));
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const tg = targets.join('、');
       const dc = (a.discards || []).map((t) => cardName(t)).join('、');
@@ -465,7 +559,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const costs = [];
       if (a.disempowerSelf) costs.push('Disempower');
       if (a.exhaustSelf) costs.push('Exhaust');
+      if (typeof a.exhaustCostObject === 'number') costs.push(cardName(a.exhaustCostObject) + ' を Exhaust');
       if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
+      else if (typeof a.killCostObject === 'number') costs.push(cardName(a.killCostObject) + ' を Kill');
       if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
         costs.push(costText({ energy: a.pay - power.length, power }));
       }
@@ -513,6 +609,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
             '確定した能力は最後に Chain に載ったものから解決する')];
     }
     case 'manaAbility': {
+      if (a.permanentPowerAdded != null) {
+        return [who + ': ' + addLabel(a),
+          'Legend を Exhaust し、Unit または Gear のプレイに使える Power を ' + a.permanentPowerAdded + ' 得る'];
+      }
       if (a.unitEnergyAdded != null) {
         const cost = costText({energy: a.energy, power: a.power});
         return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
@@ -533,7 +633,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const energy = a.pay - (a.power?.length || 0);
       const flow = base ? '（Flow ' + base.energy + ' Energy' +
         (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）' : '';
-      const cost = fees.length || permanentChoice || a.repeatExecutions
+      const objectCost = spellObjectCostLabel(a, a.card);
+      const namedPayment = paymentChoices(a);
+      const cost = fees.length || permanentChoice || a.repeatExecutions || objectCost || namedPayment.length
         ? '（' + energy + ' Energy）' + flow
         : flow || (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
       const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
@@ -549,8 +651,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const fee = fees.length ? '（' + fees.map(cardName).join('、') + ' の追加コストを払う）' : '';
       const accelerate = typeof a.accelerated === 'boolean'
         ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
+      const showOff = showOffLabel(a, a.card);
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        discard + extra + repeat + mode + dest + fee + accelerate;
+        discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
+        (objectCost ? '（' + objectCost + '）' : '') +
+        (namedPayment.length ? '（' + namedPayment.join('、') + '）' : '');
       if (def && def.types.includes('spell')) {
         const targets = (a.targets || []).map(cardName);
         if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
@@ -892,7 +997,10 @@ function showCardInfo(id, x, y) {
   if (def.might !== null && def.might !== undefined) row('Might', String(def.might) + (st.boosted.some((b) => b[0] === nid) ? '（現在 ' + (def.might + st.boosted.find((b) => b[0] === nid)[1]) + '）' : ''));
   if (def.mightBonus !== null && def.mightBonus !== undefined) row('Might 修正', (def.mightBonus >= 0 ? '+' : '') + def.mightBonus);
   if (def.tags && def.tags.length) row('タグ', def.tags.join('、'));
-  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map((k) => k.k + (k.arg === null ? '' : typeof k.arg === 'object' ? ' [' + costText(k.arg) + ']' : ' ' + k.arg)).join('、'));
+  if (def.keywords && def.keywords.length) row('キーワード', def.keywords.map(({ k, arg }) => {
+    if (arg?.orExhaustFriendlyUnit) return k + ' [' + costText(arg.resources) + ' または味方ユニットを Exhaust]';
+    return k + (arg === null ? '' : typeof arg === 'object' ? ' [' + costText(arg) + ']' : ' ' + arg);
+  }).join('、'));
   const zone = Object.keys(st.zones).find((z) => st.zones[z].includes(nid));
   if (zone) { const [who, k] = zone.includes('.') ? zone.split('.') : [null, zone]; row('場所', (who ? 'P' + who.slice(1) + ' の ' : '') + (ZONE_JA[k] || (k === 'battlefield' ? 'Battlefield の Unit' : k === 'chain' ? 'Chain' : k))); }
   row('持ち主', 'P' + o.owner);
@@ -954,7 +1062,7 @@ function setLive(j) {
     if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
     else if (a.unitEnergyAdded != null) choice = [a.source, a.index, a.energy];
     else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
-      a.accelerated, a.additionalCostPaid, a.discards];
+      a.accelerated, a.additionalCostPaid, a.discards, a.showOff];
     else return true;
     const payment = JSON.stringify([a.actor, a.kind, choice, a.pay, [...a.power].sort()]);
     if (shownPayments.has(payment)) return false;
@@ -1002,12 +1110,13 @@ function markActCards(list) {
 }
 function hideActMenu() { const m = $('actmenu'); if (m) m.hidden = true; }
 // 手が「対象」や「移動先」だけ違うときは、カードを選んだあと、盤面の光っている所をクリックして選ぶ。
-// プレイ・起動では対象、次に捨てるカードを選ぶ。移動では Base か Battlefield を選ぶ。
+// プレイ・起動では対象、盤面のコスト、捨てるカードの順に選ぶ。移動では Base か Battlefield を選ぶ。
 // 捨てない手も選べる場合など、ほかの違いが残ればメニューを開く。
 function selSeq(a) {
   if (a.kind === 'standardMove') return [a.dest === null ? 'base' : String(a.dest)];
   if (a.kind === 'activate' || a.kind === 'playCard') {
-    return [...(a.targets || []), ...(a.discards || [])].map(String);
+    const cost = a.exhaustCostObject ?? a.killCostObject;
+    return [...(a.targets || []), ...(typeof cost === 'number' ? [cost] : []), ...(a.discards || [])].map(String);
   }
   return [];
 }
@@ -1036,16 +1145,28 @@ function showMenu(list, title, x, y) {
   m.style.top = Math.max(8, Math.min(y + 6, innerHeight - hh - 8)) + 'px';
   const f = m.querySelector('button'); if (f) f.focus();
 }
+function showsPayment(a) {
+  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
+    typeof a.banishCostCard === 'number' || typeof a.variablePower === 'number' ||
+    Boolean(a.gearDiscounts?.length || a.spellExhaustPayers?.length);
+}
 function stepPick(x, y) {
   const { card, list, chosen } = pick, d = chosen.length;
   const rem = list.filter((l) => { const q = selSeq(l.a); return chosen.every((v, i) => q[i] === v); });
   const cands = [...new Set(rem.filter((l) => selSeq(l.a).length > d).map((l) => selSeq(l.a)[d]))];
   const done = rem.filter((l) => selSeq(l.a).length === d);
-  const discarding = rem.filter(({a}) => a.discards?.length &&
-    d >= (a.targets || []).length && d < selSeq(a).length);
-  if (!cands.length || done.length || (discarding.length && discarding.length !== rem.length)) {
+  const roles = new Set(rem.map(({a}) => {
+    const afterTargets = d - (a.targets || []).length;
+    if (afterTargets < 0) return 'target';
+    const cost = typeof a.exhaustCostObject === 'number' ? 'exhaust' :
+      typeof a.killCostObject === 'number' ? 'kill' : null;
+    if (cost && afterTargets === 0) return cost;
+    if (afterTargets < (a.discards || []).length + Number(Boolean(cost))) return 'discard';
+    return 'target';
+  }));
+  if (!cands.length || done.length || roles.size !== 1) {
     pick = null; clearPickMarks();
-    if (rem.length === 1) { liveAct(rem[0].k); return; }
+    if (rem.length === 1 && !showsPayment(rem[0].a)) { liveAct(rem[0].k); return; }
     showMenu(rem, cardName(card) + ' で選べる手', x, y); return;
   }
   const actor = rem[0].a.actor;
@@ -1056,7 +1177,9 @@ function stepPick(x, y) {
   document.querySelectorAll('.card.act').forEach((c) => { c.classList.remove('act'); c.removeAttribute('tabindex'); });
   cands.forEach((k, i) => elems[i].forEach((e) => { e.classList.add('tgt'); if (e.classList.contains('card')) e.tabIndex = 0; }));
   const destination = cands.every((k) => k === 'base' || document.querySelector('.bf[data-bf="' + k + '"]'));
-  const next = discarding.length ? '捨てるカード' : destination ? '移動先' : '対象';
+  const next = roles.has('discard') ? '捨てるカード' :
+    roles.has('exhaust') ? 'コストとして Exhaust するカード' :
+    roles.has('kill') ? 'コストとして Kill するカード' : destination ? '移動先' : '対象';
   $('livemsg').textContent = cardName(card) + ': ' + next + 'を選ぶ（光っている所をクリック。Escape でやめる）';
 }
 function pickClick(el, x, y) {
@@ -1067,7 +1190,7 @@ function pickClick(el, x, y) {
 function cancelPick() { if (!pick) return; pick = null; renderLegal(steps.length - 1); }
 function chooseCard(c, x, y) {
   const list = cardActs.get(c.dataset.id); if (!list || !live) return;
-  if (list.length === 1) { hideActMenu(); liveAct(list[0].k); return; }
+  if (list.length === 1 && !showsPayment(list[0].a)) { hideActMenu(); liveAct(list[0].k); return; }
   hideActMenu();
   if (list.every((l) => selSeq(l.a).length)) { pick = { card: c.dataset.id, list, chosen: [], cands: [] }; stepPick(x, y); return; }
   showMenu(list, cardName(c.dataset.id) + ' で選べる手', x, y);
@@ -1150,6 +1273,7 @@ function renderLegal(i) {
   const bound = (l) => { const id = actCard(l.a); return id !== null && id !== undefined && cardActs.has(String(id)); };
   const nBound = liveLegal.filter(bound).length;
   const naming = liveLegal.filter(({ a }) => a.kind === 'nameCard');
+  const guessing = liveLegal.find(({ a }) => a.kind === 'guessCardType');
   const by = new Map();
   for (const l of liveLegal) {
     if (l.a.kind === 'nameCard' || (bound(l) && !showAllMoves)) continue;
@@ -1161,8 +1285,11 @@ function renderLegal(i) {
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
   const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
   const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
+    : guessing ? 'P' + guessing.a.actor.slice(1) + ' がカードの種別を予想する'
     : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
+    : choiceContext === 'equipExhaust' ? 'Equip コストで Exhaust するユニットを選ぶ'
+    : liveLegal.some(({ a }) => a.equipPayment) ? 'Equip コストの支払い方を選ぶ'
     : choiceContext === 'revealedHand' ? '公開された手札から選ぶ'
     : choiceContext === 'lookedDeck' ? '見たカードからプレイする1枚を選ぶ'
     : choiceContext === 'revealedPlay' ? '公開したカードからプレイする1枚を選ぶ'
@@ -1178,6 +1305,7 @@ function renderLegal(i) {
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
     : damageChoices[0]?.a.combatDamageOrder ? '割り振り前に戦闘ダメージの置換順を選ぶ'
     : damageChoices.length ? '次に適用するダメージの置換効果を選ぶ'
+    : liveLegal.some(({ a }) => a.damageDivision) ? 'ダメージの割り振りを選ぶ'
     : banishChoices.length ? 'Banish に置き換える効果を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';

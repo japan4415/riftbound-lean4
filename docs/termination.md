@@ -28,7 +28,7 @@
 
 ## 3. 最も重い部分: Cleanup
 
-`cleanupFrame` は、`cleanupStep` が `some` を返す限り、状態を直して、`cleanup` をまた積む。1 回の直しは、次のどれか（`Rules/Battlefield.lean`）: Board の外にあるトークンの消滅、離れた Equipment の取り外し、致死ダメージの Unit の撃破、支配する Unit を失った Battlefield の Control の解除、古い Contested の解除、新しい Contested。
+`cleanupFrame` の通常の反復では、`cleanupStep` が `some` を返すたびに状態を直し、`cleanup` をまた積む。1 回の直しは、次のどれか（`Rules/Battlefield.lean`）: Board の外にあるトークンの消滅、離れた Equipment の取り外し、致死ダメージの Unit の撃破、支配する Unit を失った Battlefield の Control の解除、古い Contested の解除、新しい Contested。
 
 止まることを示す測度の案（字引き順）:
 
@@ -48,7 +48,8 @@
 
 ### I12a の結果（証明済み）
 
-- **定理**: `cleanup_terminates`（`WF` な状態から、Cleanup の歩みは有限）、`cleanup_no_infinite_run`（終わらない列は無い）。公理は標準の 3 つだけ。**ほかの前提は無い**。
+- **定理**: `cleanup_terminates` と `cleanup_no_infinite_run` は、`WF` な状態からの `cleanupStep` の反復が有限であることを示す。公理は標準の 3 つだけ。**ほかの前提は無い**。
+- Radiance の同時撃破や入れ子の死亡置換は `cleanupFrame` でまとめて処理する。状態の不変条件は `cleanupResolveDeathGroup_safe` で示す。この分岐を含む作業フレームの停止は `advance` の fuel で扱う。
 - **測度**: 上の 6 つを字引き順にした組（`GameState.cleanupMeasure`、順序は `MeasLt`）。**6 つの歩み（トークンの消滅、Equipment の取り外し、撃破、Control の解除、古い Contested の解除、新しい Contested）の、どれもが測度を真に減らす**ことを、1 つずつ示した。
 - **撃破が場の数を減らすのに要る条件**: 撃破される Unit の持ち主が、ゲームのプレイヤーであること。なければ、持ち主の Trash がゲームのゾーンでなく、移動が失敗して、状態が変わらないまま Cleanup が繰り返す。**遊べるどのゲームでも、どの物体の持ち主もプレイヤーである**が、これを不変条件として全部の腕で証明するには、フレームに入るプレイヤー（優先権、`run`、誘発の controller）の妥当性まで通す必要があり、大きい。そこで、**`GameState.lethal`（致死ダメージ: CR 142.4.b）に「持ち主がプレイヤーである」を足した**。遊べるゲームでは、動きは変わらない。持ち主がプレイヤーでない物体は、致死ダメージとは数えず、Cleanup は撃破しない（そういう物体は、遊べるゲームには存在しない）。
 - 実測と合わせると、Cleanup は、デモのゲームで有限であるだけでなく、`OwnersValid` の下で、どのカードの組み合わせでも有限である。

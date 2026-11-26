@@ -41,22 +41,6 @@ def Object.ownerMoveEvents (o : Object) (id new : ObjId) (dest : ZoneKind)
 
 namespace GameState
 
-/-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/
-def passiveSources (s : GameState) : List ObjId :=
-  s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
-
-/-- The changes the passive abilities of `src` make now: those of the abilities whose condition
-holds. -/
-def activeMods (s : GameState) (src : ObjId) : List StaticMod :=
-  match s.obj? src, s.cardDef? src with
-  | some o, some d =>
-    (s.appendedAbilities src d).flatMap (fun ab =>
-      match ab with
-      | Ability.passive cond mods =>
-        if cond.eval s o.controller src {} == some true then mods else []
-      | _ => [])
-  | _, _ => []
-
 /-- The active passive changes from sources controlled by this player (CR 363). -/
 def controlledMods (s : GameState) (p : PlayerId) : List StaticMod :=
   (s.passiveSources.filter (fun src => (s.obj? src).any (·.controller == p))).flatMap s.activeMods
@@ -136,6 +120,11 @@ def drawForBattlefieldPoint (s : GameState) (p : PlayerId) : Bool :=
 def anyActive (s : GameState) (m : StaticMod) : Bool :=
   s.passiveSources.any (fun g => (s.activeMods g).contains m)
 
+/-- The player chose a Battlefield they control and has an effect that readies Units played there. -/
+def readyAtDestination (s : GameState) (p : PlayerId) (dest : Option ObjId) : Bool :=
+  dest.any (fun field => (s.obj? field).any (·.control == some p)) &&
+    s.hasControlledMod p .unitsEnterReadyAtControlledBattlefields
+
 /-- A Unit at the Battlefield `bf` cannot move to the Base: by the Battlefield, or by a Unit
 (Minotaur Reckoner). -/
 def homeForbidden (s : GameState) (bf : ObjId) : Bool :=
@@ -145,6 +134,26 @@ def homeForbidden (s : GameState) (bf : ObjId) : Bool :=
 Unit itself says it cannot (Determined Sentry). -/
 def homeForbiddenFor (s : GameState) (u bf : ObjId) : Bool :=
   s.homeForbidden bf || (s.activeMods u).contains .noMoveToBase
+
+/-- The total fee for one Move to these Battlefields, paid by the player instructed to move.
+Several Units moving to the same Battlefield in one instruction incur each fee once. -/
+def movementFee (s : GameState) (p : PlayerId) (fields : List ObjId) : Cost :=
+  if fields.isEmpty then Cost.zero else
+    (s.zone .battlefieldZone).foldl (fun total id =>
+      if (s.obj? id).any (fun o => o.controller != p && o.loc.any fields.contains) then
+        (s.activeMods id).foldl (fun c mod => match mod with
+          | .moveFeeHere fee => c.plus fee
+          | _ => c) total
+      else total) Cost.zero
+
+/-- The resource payments available for a Standard Move, independent of the Unit's Exhaust cost. -/
+def standardMovePayments (s : GameState) (p : PlayerId) (dest : MoveDest) :
+    List Cost :=
+  let fee := match dest with
+    | .base => Cost.zero
+    | .battlefield bf => s.movementFee p [bf]
+  if fee == Cost.zero then [Cost.zero]
+  else (s.symbolPayments p fee [] false).map Prod.fst
 
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=
@@ -160,42 +169,6 @@ def victoryScore (s : GameState) : Nat :=
       | .victoryScoreMinus a => -((a.evalS0 s (s.controllerOf src) src {}).getD 0 : Int)
       | _ => 0))).sum
   (s.config.mode.victoryScore + delta).toNat
-
-/-- The Bonus Damage the passive abilities of the player give to each instance of damage of their
-spells and abilities: those of the objects they control, and those an Equipment gives the Unit it
-is attached to (Rabadon's Deathcrown). -/
-def passiveBonus (s : GameState) (p : PlayerId) : Nat :=
-  let amount (src : ObjId) (m : StaticMod) : Option Nat :=
-    match m with
-    | .bonusDamage a => a.evalS0 s p src {}
-    | _ => none
-  (s.passiveSources.flatMap (fun g =>
-    if (s.obj? g).any (·.controller == p) then (s.activeMods g).filterMap (amount g)
-    else [])).sum +
-  (s.inPlay.flatMap (fun g =>
-    match s.obj? g, s.cardDef? g with
-    | some o, some d =>
-      match o.attached with
-      | some u =>
-        if (s.obj? u).any (·.controller == p) then
-          d.grants.flatMap (fun ab =>
-            match ab with
-            | Ability.passive .always mods => mods.filterMap (amount g)
-            | _ => [])
-        else []
-      | none => []
-    | _, _ => [])).sum
-
-/-- The Bonus Damage with each instance of damage that the spell or ability `src` of the player
-deals to the object `id`: that of the effect of the turn for the next spell, and that of the
-Battlefield the object is at (CR 142). -/
-def bonusOn (s : GameState) (p : PlayerId) (src id : ObjId) : Nat :=
-  s.spellBonus p src + s.passiveBonus p +
-    (match (s.obj? id).bind (·.loc) with
-      | some bf =>
-        (s.activeMods bf).foldl
-          (fun acc m => match m with | .bonusDamageHere n => acc + n | _ => acc) 0
-      | none => 0)
 
 /-- The keywords the Equipment attached to an object gives it (CR 137): the passive abilities with
 no condition that give the object the keyword. -/
@@ -255,7 +228,11 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
 
 /-- Whether the object has a printed or granted keyword (CR 479.3). -/
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
-  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k)
+  (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k) ||
+    (k == .reaction && (s.cardDef? id).any (·.hasType .spell) &&
+      (s.obj? id).any (fun o => s.hasControlledMod o.controller .spellsHaveReaction)) ||
+    (k == .action && (s.cardDef? id).any (fun d => d.hasType .gear && d.hasKeyword .deploy) &&
+      (s.obj? id).any (fun o => s.hasControlledMod o.controller .deployGearHaveAction))
 
 /-- How much the passive change `m` of `src` changes the Might of `id` (CR 479.4). -/
 def modMight (s : GameState) (src id : ObjId) (m : StaticMod) : Int :=
@@ -301,14 +278,20 @@ def passiveMight (s : GameState) (id : ObjId) : Int :=
 
 /-- The number a printed keyword carries on the card of an object (0 if it does not print it). -/
 def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
-  let amount (i : KeywordInst) : Option Nat :=
-    -- "[Assault]" and "[Shield]" with no number are Assault 1 and Shield 1
-    if i.keyword == k then
-      (match i.arg with
-        | .amount n => some n
-        | .none => if k == .assault || k == .shield then some 1 else none
-        | _ => none)
+  let instances := ((s.cardDef? u).map (·.keywords)).getD [] ++ s.grantedKws u
+  let fixedAmount (keyword : Keyword) (i : KeywordInst) : Option Nat :=
+    -- Assault, Shield and Disarm default to one when they have no number.
+    if i.keyword == keyword then
+      match i.arg with
+      | .amount n => some n
+      | .none =>
+        if keyword == .assault || keyword == .shield || keyword == .disarm then some 1 else none
+      | _ => none
     else none
+  let amount (i : KeywordInst) : Option Nat :=
+    if k == .assault && i.keyword == .assault && i.arg == .equalShield then
+      some ((instances.filterMap (fixedAmount .shield)).sum)
+    else fixedAmount k i
   -- Assault that equals a number of objects (Ancient Warmonger: the enemy units here)
   let counted : Nat :=
     if k == .assault then
@@ -319,9 +302,7 @@ def kwAmount (s : GameState) (u : ObjId) (k : Keyword) : Nat :=
             (·.length)).getD 0)
         | _ => acc) 0
     else 0
-  (match s.cardDef? u with
-    | some d => (d.keywords.filterMap amount).sum
-    | none => 0) + ((s.grantedKws u).filterMap amount).sum + counted
+  (instances.filterMap amount).sum + counted
 
 /-- Might with the bonus from the Unit's role in combat, before taking a nonnegative damage value. -/
 def mightWithCombatBonus (s : GameState) (id : ObjId) (bonus : Nat) : Option Int :=

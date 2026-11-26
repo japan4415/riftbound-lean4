@@ -41,14 +41,16 @@ inductive ZoneKind where
   | outOfGame
   /-- Cards hidden face down at a Battlefield (CR 811). Non-Board. -/
   | hidden
+  /-- Additional Legends registered during deckbuilding (CR 103.1). Non-Board. -/
+  | reserveLegends
 deriving DecidableEq, Repr, Hashable
 
 /-- Every zone kind. -/
 def ZoneKind.all : List ZoneKind :=
   [.base, .trash, .championZone, .mainDeck, .runeDeck, .banishment, .hand, .legendZone,
-    .setAside, .outOfGame, .hidden]
+    .setAside, .outOfGame, .hidden, .reserveLegends]
 
-/-- A distinct number for each kind, below 11. -/
+/-- A distinct number for each kind, below 12. -/
 def ZoneKind.idx : ZoneKind → Nat
   | .base => 0
   | .trash => 1
@@ -61,9 +63,10 @@ def ZoneKind.idx : ZoneKind → Nat
   | .setAside => 8
   | .outOfGame => 9
   | .hidden => 10
+  | .reserveLegends => 11
 
-/-- The numbers of the kinds are below 11. -/
-theorem ZoneKind.idx_lt (k : ZoneKind) : k.idx < 11 := by
+/-- The numbers of the kinds are below 12. -/
+theorem ZoneKind.idx_lt (k : ZoneKind) : k.idx < 12 := by
   cases k <;> decide
 
 /-- Different kinds have different numbers. -/
@@ -106,11 +109,11 @@ def isBoard : Zone → Bool
 theorem isBoard_player (p : PlayerId) (k : ZoneKind) : (Zone.player p k).isBoard = k.isBoard := by
   cases k <;> rfl
 
-/-- A number for each zone: 0 and 1 for the shared zones, then eleven per seat. -/
+/-- A number for each zone: 0 and 1 for the shared zones, then twelve per seat. -/
 def key : Zone → Nat
   | .battlefieldZone => 0
   | .chain => 1
-  | .player p k => 2 + p.n * 11 + k.idx
+  | .player p k => 2 + p.n * 12 + k.idx
 
 /-- Different zones have different keys. -/
 theorem key_inj {a b : Zone} (h : a.key = b.key) : a = b := by

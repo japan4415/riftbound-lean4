@@ -49,11 +49,11 @@ theorem killAll_safe : ∀ (us : List ObjId) (s : GameState) (es : List Event),
 
 /-- The Beginning Step kills the turn player's Temporary Units (CR 315.2.a, 816). -/
 def beginStep (s : GameState) (tp : PlayerId) : GameState × List Event :=
-  killAll (tempUnits s tp) s []
+  resolveDeathGroupWith s (tempUnits s tp) (killOrSaveInGroup s)
 
 /-- The Beginning Step preserves the structural invariants. -/
 theorem beginStep_safe (s : GameState) (tp : PlayerId) : Safe s (beginStep s tp).1 :=
-  killAll_safe _ s []
+  resolveDeathGroupWith_safe s _ (killOrSaveInGroup_safe s)
 
 end Riftbound
 

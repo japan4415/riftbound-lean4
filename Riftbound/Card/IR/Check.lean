@@ -55,6 +55,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .var v => c.vars.contains v || v == pickVar
   | .points p => PlayerSel.ok c p
   | .eventAmount => c.eventOk || c.eventAmountOk
+  | .shownOffMight | .shownOffPower => true
   | .turnsTaken p => p.ok c
   | .count s => Selector.ok c s
   | .mightOf s => Selector.ok c s
@@ -76,7 +77,7 @@ def Amount.ok (c : Ctx) : Amount → Bool
   | .heldPoints => true
   | .movesThisTurn => true
   | .notes _ => true
-  | .energyPaid => true
+  | .energyPaid | .returnedGearEnergy => true
   | .empowerCount => true
   | .handSize p => p.ok c
   | .add a b => Amount.ok c a && Amount.ok c b
@@ -112,6 +113,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .it => c.itOk
   | .var v => c.vars.contains v || v == pickVar
   | .pick _ _ _ fs => FilterList.ok c fs
+  | .revealedDeck _ => true
   | .attachedTo s => Selector.ok c s
   | .attachments s => Selector.ok c s
   | .locationOf s => Selector.ok c s
@@ -140,6 +142,7 @@ def Dest.ok (c : Ctx) : Dest → Bool
 /-- A game action refers only to what is there. -/
 def Prim.ok (c : Ctx) : Prim → Bool
   | .draw p n => p.ok c && Amount.ok c n
+  | .drawLooked s => Selector.ok c s
   | .discard p n => p.ok c && Amount.ok c n
   | .deal s n => Selector.ok c s && Amount.ok c n
   | .exchangeDamage a b => Selector.ok c a && Selector.ok c b
@@ -182,6 +185,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .revealTop _ => true
   | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
+  | .createAt _ n bf _ => Amount.ok c n && Selector.ok c bf
   | .playUnitToken _ | .playUnitTokenAt _ _ => true
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
@@ -261,10 +265,13 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .assignedLast => true
   | .anyDamageKills => true
   | .movesHereFromAnywhere => true
-  | .grantRepeat _ => true
+  | .grantRepeat _ | .spellsHaveReaction | .deployGearHaveAction => true
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
+  | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
+  | .sharedBattlefieldActivation | .grantFriendlyLegendsActivations
+  | .additionalExhaustedRunes _ => true
   | .assaultCount s => Selector.ok c s
   | .legendsAttach => true
   | .chosenSpellsCostLess _ => true
@@ -274,12 +281,14 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .firstGearAbilityLess _ | .empowerHereLess _ => true
+  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ |
+      .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
-  | .diesInsteadGear => true
-  | .rescueWeakerHere => true
+  | .diesInsteadGear | .sacrificeToSaveSelf => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
   | .noMoveToBaseAny => true
+  | .moveFeeHere _ => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .playHereFor _ _ => true
@@ -293,7 +302,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .victoryScoreMinus a => Amount.ok c a
   | .ignoreKeyword _ _ => true
   | .entersReady s => Selector.ok c s
-  | .bonusDamage a => Amount.ok c a
+  | .bonusDamage a | .bonusAbilityDamage _ a => Amount.ok c a
   | .noCombatDamage => true
   | .channelLimit _ => true
   | .uncounterable | .controlledItemsUncounterable | .friendlyExhaustAbilities
@@ -313,7 +322,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
 
 /-- A cost of an ability refers only to what is there. -/
 def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
-  | .killFriendly _ fs | .discardMatching _ fs => FilterList.ok c fs
+  | .killFriendly _ fs | .discardMatching _ fs | .exhaustFriendly fs
+  | .killFriendlyPermanent fs | .banishFromTrash fs => FilterList.ok c fs
   | .energyDiscount cond amount => Condition.ok c cond && Amount.ok c amount
   | _ => true
 
@@ -342,35 +352,56 @@ mutual
 
 /-- An effect refers only to what is there, and a mode is chosen only where modes were declared. -/
 def Effect.ok (c : Ctx) : Effect → Bool
+  | .addReservedLegend => true
+  | .addReservedLegendPicked | .addReservedLegendChosen _ => false
+  | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
   | .nop => true
+  | .animateGear => decide (0 < c.slots)
+  | .markTriggeredAdd _ => false
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
   | .eitherOf modes => EffectList.ok c modes
-  | .payThen _ body => Effect.ok c body
-  | .paySelected .. => false
+  | .equipWithCost gear recipient _ => gear.ok c && recipient.ok c
+  | .payThen _ body _ => Effect.ok c body
+  | .paySelected .. | .moveAfterFee .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s
   | .fillFromPick _ => true
-  | .retainTargetSet _ => false
+  | .retainTargetSet _ | .applySplitDamage _ => false
+  | .splitDamage targets _ => Selector.ok c targets
   | .remakeSpellChoices spell => Selector.ok c spell
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
-  | .revealHand w e => PlayerSel.ok c w && Effect.ok c e
+  | .revealHand w e | .revealDeckTops w e => PlayerSel.ok c w && Effect.ok c e
+  | .guessCardType who unit gear spell =>
+    PlayerSel.ok c who && Effect.ok c unit && Effect.ok c gear && Effect.ok c spell
   | .nameCard _ | .rememberNamedCard _ => true
+  | .killThenAtEnd targets _ => Selector.ok c targets
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked => true
+  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+      .banishAndReplayGroup => true
+  | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
+      .mayPlayPermanents sel _ _ => Selector.ok c sel
+  | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
+      .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
-      .banishForReplay .. | .finishReducedPermanent .. | .fundLookedPermanent .. |
+      .banishForReplay .. | .orderBanishReplays .. | .recordBanishReplay .. |
+      .planBanishReplay .. | .cancelBanishReplay .. |
+      .finishReducedPermanent .. | .fundPermanentFromEffect .. |
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. |
+      .recordDeathSacrifice .. | .recordDeathOrder .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
-  | .moveChoosing i _ fs e => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
+  | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
+  | .forceMoveToBattlefield who destination => PlayerSel.ok c who && Selector.ok c destination
+  | .grantNumericKeyword objects _ amount duration =>
+    Selector.ok c objects && Amount.ok c amount && Duration.ok c duration
   | .collectOwnPicks .. => false
   | .may e => Effect.ok c e
   | .doThen a b => Effect.ok c a && Effect.ok c b
@@ -426,13 +457,17 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
 
 /-- An effect with its choices refers only to what is there. -/
 def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
+  let d := { d with choices := d.choices ++ d.showOffChoices }
   let ctx := d.ctx base
   Choice.allOk 0 d.choices && Effect.ok ctx d.body &&
     (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
     d.modes.all (fun mode =>
       let branch : EffectDef :=
-        { choices := mode.choices, body := mode.body, playerTarget := d.playerTarget }
-      Choice.allOk 0 branch.choices && Effect.ok (branch.ctx base) branch.body)
+        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget }
+      let context := branch.ctx base
+      Choice.allOk 0 branch.choices && Effect.ok context branch.body &&
+        mode.moveChoice.all (fun move =>
+          decide (move.slot < context.slots) && FilterList.ok context move.filters))
 
 /-- An ability refers only to what is there. -/
 def Ability.ok : Ability → Bool
@@ -443,8 +478,9 @@ def Ability.ok : Ability → Bool
   | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
+    let hasAmount := t.event == .linkedBurnUnit || t.event == .delayedEnd
     Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := t.watched, eventAmountOk := t.event == .linkedBurnUnit }
+      body.ok { itOk := true, slots := t.watched, eventAmountOk := hasAmount }
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

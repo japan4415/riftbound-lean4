@@ -4125,9 +4125,9 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, g) ← put s s.me "SFD-083" .base
   let funded := ((s1.noRunes s.me).setPool s.me { mind := 2, body := 1 })
   let pays := (legalActions funded).filterMap (fun a =>
-    match a.kind with | .manaAbility src 0 pay => if src == g then some pay else none | _ => none)
+    match a.kind with | .manaAbility src 0 pay _ => if src == g then some pay else none | _ => none)
   let none_ := (legalActions ((s1.noRunes s.me).setPool s.me {})).filterMap (fun a =>
-    match a.kind with | .manaAbility src 0 pay => if src == g then some pay else none | _ => none)
+    match a.kind with | .manaAbility src 0 pay _ => if src == g then some pay else none | _ => none)
   return pays.length == 5 && pays.contains ⟨0, [.mind, .mind]⟩ && pays.contains ⟨0, [.mind, .body]⟩ &&
     !pays.contains ⟨0, []⟩ && none_.isEmpty
 

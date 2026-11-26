@@ -14,9 +14,13 @@ moved, and neither owner nor physical card changes.
 
 namespace Riftbound
 
+/-- Change every object by `f`, with access to its identifier. -/
+def GameState.mapObjectsAt (s : GameState) (f : ObjId → Object → Object) : GameState :=
+  { s with objects := s.objects.map (fun k o => f ⟨k⟩ o) }
+
 /-- Change every object by `f`. -/
 def GameState.mapObjects (s : GameState) (f : Object → Object) : GameState :=
-  { s with objects := s.objects.map (fun _ o => f o) }
+  s.mapObjectsAt (fun _ => f)
 
 /-- Ready the objects the player controls (CR 416). -/
 def readyOf (p : PlayerId) (o : Object) : Object :=
@@ -52,12 +56,12 @@ namespace GameState
 /-- The same objects are in the table. -/
 theorem mem_mapObjects (s : GameState) (f : Object → Object) (k : Nat) :
     k ∈ (s.mapObjects f).objects ↔ k ∈ s.objects := by
-  simp [mapObjects, Std.ExtTreeMap.mem_map]
+  simp [mapObjects, mapObjectsAt, Std.ExtTreeMap.mem_map]
 
 /-- An object after the change is the changed object. -/
 theorem obj?_mapObjects (s : GameState) (f : Object → Object) (id : ObjId) :
     (s.mapObjects f).obj? id = (s.obj? id).map f := by
-  simp [mapObjects, obj?, Std.ExtTreeMap.getElem?_map]
+  simp [mapObjects, mapObjectsAt, obj?, Std.ExtTreeMap.getElem?_map]
 
 /-- The zones do not change. -/
 theorem zone_mapObjects (s : GameState) (f : Object → Object) (z : Zone) :
@@ -68,16 +72,24 @@ theorem sameMeta_mapObjects (s : GameState) (f : Object → Object) : SameMeta s
   rfl
 
 /-- Changing attributes keeps the game well formed. -/
+theorem wf_mapObjectsAt {s : GameState} (hwf : s.WF) (f : ObjId → Object → Object) :
+    (s.mapObjectsAt f).WF :=
+  hwf.congr_mem rfl (fun k => by simp [mapObjectsAt, Std.ExtTreeMap.mem_map]) rfl rfl
+
 theorem wf_mapObjects {s : GameState} (hwf : s.WF) (f : Object → Object) :
-    (s.mapObjects f).WF :=
-  hwf.congr_mem rfl (mem_mapObjects s f) rfl rfl
+    (s.mapObjects f).WF := wf_mapObjectsAt hwf (fun _ => f)
+
+/-- Looking up a transformed object supplies its identifier to the transformation. -/
+theorem obj?_mapObjectsAt (s : GameState) (f : ObjId → Object → Object) (id : ObjId) :
+    (s.mapObjectsAt f).obj? id = (s.obj? id).map (f id) := by
+  cases id
+  simp [mapObjectsAt, obj?, Std.ExtTreeMap.getElem?_map]
 
 /-- Changing attributes that are not the owner keeps `OwnerOk`. -/
-theorem ownerOk_mapObjects {s : GameState} (hown : s.OwnerOk) {f : Object → Object}
-    (hf : ∀ o, (f o).owner = o.owner) : (s.mapObjects f).OwnerOk := by
+theorem ownerOk_mapObjectsAt {s : GameState} (hown : s.OwnerOk) {f : ObjId → Object → Object}
+    (hf : ∀ id o, (f id o).owner = o.owner) : (s.mapObjectsAt f).OwnerOk := by
   refine ⟨fun p k hk id hid o ho => ?_⟩
-  rw [obj?_mapObjects] at ho
-  rw [zone_mapObjects] at hid
+  rw [obj?_mapObjectsAt] at ho
   cases hs : s.obj? id with
   | none => rw [hs] at ho; simp at ho
   | some o0 =>
@@ -87,16 +99,24 @@ theorem ownerOk_mapObjects {s : GameState} (hown : s.OwnerOk) {f : Object → Ob
     rw [hf]
     exact hown.owner p k hk id hid o0 hs
 
+theorem ownerOk_mapObjects {s : GameState} (hown : s.OwnerOk) {f : Object → Object}
+    (hf : ∀ o, (f o).owner = o.owner) : (s.mapObjects f).OwnerOk :=
+  ownerOk_mapObjectsAt (f := fun _ => f) hown (fun _ => hf)
+
 /-- Changing attributes that are not the kind keeps the physical cards. -/
-theorem physIds_mapObjects (s : GameState) {f : Object → Object}
-    (hf : ∀ o, (f o).kind = o.kind) : (s.mapObjects f).physIds = s.physIds := by
+theorem physIds_mapObjectsAt (s : GameState) {f : ObjId → Object → Object}
+    (hf : ∀ id o, (f id o).kind = o.kind) : (s.mapObjectsAt f).physIds = s.physIds := by
   unfold physIds
   apply filterMap_congr_mem
   intro id _
-  rw [obj?_mapObjects]
+  rw [obj?_mapObjectsAt]
   cases s.obj? id with
   | none => rfl
   | some o => simp [hf]
+
+theorem physIds_mapObjects (s : GameState) {f : Object → Object}
+    (hf : ∀ o, (f o).kind = o.kind) : (s.mapObjects f).physIds = s.physIds :=
+  physIds_mapObjectsAt s (f := fun _ => f) (fun _ => hf)
 
 end GameState
 
@@ -142,7 +162,7 @@ theorem healObj_idem (o : Object) : healObj (healObj o) = healObj o := rfl
 /-- Readying the objects of a player twice is readying them once. -/
 theorem mapObjects_ready_idem (s : GameState) (p : PlayerId) :
     (s.mapObjects (readyOf p)).mapObjects (readyOf p) = s.mapObjects (readyOf p) := by
-  simp only [GameState.mapObjects, Std.ExtTreeMap.map_map, readyOf_idem]
+  simp only [GameState.mapObjects, GameState.mapObjectsAt, Std.ExtTreeMap.map_map, readyOf_idem]
 
 /-- Readying makes an object of the player ready. -/
 theorem readyOf_ready {p : PlayerId} {o : Object} (h : o.controller = p) (hc : o.cantReady = false) :

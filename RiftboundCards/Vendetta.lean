@@ -597,7 +597,7 @@ def VEN_021 : CardDef :=
   { VEN_021.meta with
     abilities := [.passive (.empowered .self) [.mightPlus .self (.const 1)],
       .triggered (.onSelf .move)
-        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atSourceMoveBattlefield]]
+        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atEventBattlefield]]
           (.ifThen (.empowered .self)
             (.prim (.deal (.slot 0) (.const 2))) (.prim (.deal (.slot 0) (.const 1))))) .unlimited],
     status := .full }
@@ -1001,9 +1001,9 @@ def VEN_035 : CardDef :=
       .triggered delayed (.of [] (.prim (.empower .self))) .unlimited],
     spellEffect := some { body := .nop, modes := [
       ⟨"Empower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit]],
-        .seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 0))]⟩,
+        .seqOf [.prim (.empower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 0))], none⟩,
       ⟨"Disempower してターン終了時に戻す", [.targetOf .one .any .anywhere [.ofType .unit, .empowered]],
-        .seqOf [.prim (.disempower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 1))]⟩] },
+        .seqOf [.prim (.disempower (.slot 0)), .prim (.markOn (.slot 0) (.endTrigger "VEN-035" 1))], none⟩] },
     status := .full }
 
 -- BEGIN GENERATED VEN-036
@@ -1476,9 +1476,9 @@ def VEN_052 : CardDef :=
   { VEN_052.meta with
     spellEffect := some { body := .nop, modes := [
       ⟨"味方を手札に戻す", [.targetOf .one .friendly .anywhere [.ofType .unit]],
-        .prim (.returnToHand (.slot 0))⟩,
+        .prim (.returnToHand (.slot 0)), none⟩,
       ⟨"敵に Might −2", [.targetOf .one .enemy .anywhere [.ofType .unit]],
-        .grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn⟩] },
+        .grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn, none⟩] },
     status := .full }
 
 -- BEGIN GENERATED VEN-053
@@ -2498,9 +2498,9 @@ def VEN_088 : CardDef :=
   let grant (k : KeywordInst) := Effect.grant .self (.keyword .it k) .thisTurn
   { VEN_088.meta with
     abilities := [.triggered (.onSelf .ready) { body := .nop, modes := [
-      ⟨"Assault 2 を得る", [], grant ⟨.assault, .amount 2⟩⟩,
-      ⟨"Deflect 2 を得る", [], grant ⟨.deflect, .amount 2⟩⟩,
-      ⟨"Ganking を得る", [], grant ⟨.ganking, .none⟩⟩] } .unlimited],
+      ⟨"Assault 2 を得る", [], grant ⟨.assault, .amount 2⟩, none⟩,
+      ⟨"Deflect 2 を得る", [], grant ⟨.deflect, .amount 2⟩, none⟩,
+      ⟨"Ganking を得る", [], grant ⟨.ganking, .none⟩, none⟩] } .unlimited],
     status := .full }
 
 -- BEGIN GENERATED VEN-089
@@ -3153,8 +3153,8 @@ def VEN_111 : CardDef :=
   { VEN_111.meta with
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
       { body := .nop, modes := [
-        ⟨"全員が手札を1枚捨てる", [], .prim (.discard .eachPlayer (.const 1))⟩,
-        ⟨"全員がカードを1枚引く", [], .prim (.draw .eachPlayer (.const 1))⟩] } .unlimited],
+        ⟨"全員が手札を1枚捨てる", [], .prim (.discard .eachPlayer (.const 1)), none⟩,
+        ⟨"全員がカードを1枚引く", [], .prim (.draw .eachPlayer (.const 1)), none⟩] } .unlimited],
     status := .full }
 
 -- BEGIN GENERATED VEN-112

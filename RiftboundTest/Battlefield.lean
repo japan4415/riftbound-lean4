@@ -62,7 +62,7 @@ meta def bfReady : Option (GameState × PlayerId × ObjId × ObjId × ObjId × O
 
 /-- Whether an action is a Standard Move. -/
 meta def isMove (a : Action) : Bool :=
-  match a.kind with | .standardMove _ _ => true | _ => false
+  match a.kind with | .standardMove .. => true | _ => false
 
 -- the Standard Moves that can be made: each Unit to each Battlefield, and nothing else (CR 144)
 #guard match bfReady with

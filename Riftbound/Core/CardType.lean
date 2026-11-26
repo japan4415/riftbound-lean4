@@ -27,6 +27,19 @@ inductive CardType where
   | legend
 deriving DecidableEq, Repr, Hashable
 
+/-- A card type that can be guessed for a card from the Main Deck. -/
+inductive CardTypeGuess where
+  /-- The player guesses Unit. -/
+  | unit
+  /-- The player guesses Gear. -/
+  | gear
+  /-- The player guesses Spell. -/
+  | spell
+deriving DecidableEq, Repr, Hashable
+
+/-- The three possible answers to a Main Deck card-type guess. -/
+def CardTypeGuess.choices : List CardTypeGuess := [.unit, .gear, .spell]
+
 /-- A supertype (CR 133.7). -/
 inductive Supertype where
   /-- Champion. Units only. -/

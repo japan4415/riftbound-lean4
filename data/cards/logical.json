@@ -27856,7 +27856,7 @@
   {
    "cardId": "RAD-001",
    "domains": [
-    "chaos"
+    "fury"
    ],
    "effectText": [],
    "energy": 2,
@@ -27871,7 +27871,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "When you play me, play a Bomb gear token to a battlefield. (It has [Deploy]. When it dies, deal 2 to an enemy there and kill your other Bombs there.)"
    ],
@@ -27898,9 +27901,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "Friendly units here have [Assault]. (+1 :rb_might: while they're attackers.)"
@@ -27913,7 +27914,7 @@
   {
    "cardId": "RAD-003",
    "domains": [
-    "body"
+    "fury"
    ],
    "effectText": [],
    "energy": 3,
@@ -27928,7 +27929,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "When you play me, deal 1 to each of up to 2 units."
    ],
@@ -27940,7 +27943,7 @@
   {
    "cardId": "RAD-004",
    "domains": [
-    "chaos"
+    "fury"
    ],
    "effectText": [],
    "energy": 3,
@@ -27983,7 +27986,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Spirit"
+   ],
    "text": [
     "I enter ready if a friendly unit or gear died this turn."
    ],
@@ -27994,7 +28000,9 @@
   },
   {
    "cardId": "RAD-006",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 4,
    "might": null,
@@ -28063,7 +28071,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia",
+    "Yordle"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_fury: as an additional cost to have me enter ready.)",
     "When you play me, give a unit +2 :rb_might: this turn."
@@ -28075,7 +28086,9 @@
   },
   {
    "cardId": "RAD-009",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 6,
    "might": 3,
@@ -28089,7 +28102,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle",
+    "Mech"
+   ],
    "text": [
     "I enter ready.",
     "When you play me, play a ready 3 :rb_might: Mech unit token here."
@@ -28120,7 +28137,7 @@
    "tags": [],
    "text": [
     "Ready a unit.",
-    "When you play a card with Energy cost :rb_energy_7: or more, you may play this from your trash for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Banish this."
+    "When you play a card with Energy cost :rb_energy_7: or more, you may play this from your trash for :rb_energy_1::rb_rune_fury::rb_rune_fury:. Then banish this."
    ],
    "textVariants": 1,
    "types": [
@@ -28145,7 +28162,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "[Show Off] a Mech. (As you play me, you may reveal a Mech from hand or pick another friendly Mech.)",
     "I enter ready if you showed off."
@@ -28229,7 +28249,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "You may kill a friendly unit or gear as an additional cost to play me.",
     "When you play me, if you paid the additional cost, deal 2 to a unit."
@@ -28242,7 +28264,7 @@
   {
    "cardId": "RAD-016",
    "domains": [
-    "mind"
+    "fury"
    ],
    "effectText": [],
    "energy": 4,
@@ -28257,7 +28279,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "At the end of your turn, recycle all your runes, then channel 4 runes exhausted."
    ],
@@ -28269,7 +28293,7 @@
   {
    "cardId": "RAD-017",
    "domains": [
-    "chaos"
+    "fury"
    ],
    "effectText": [],
    "energy": 4,
@@ -28284,9 +28308,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, you may kill another friendly unit or gear to draw 1.",
@@ -28315,7 +28337,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus"
+   ],
    "text": [
     "When you play me, reveal the top card of each opponent's Main Deck. Choose one and banish it, then play it, ignoring its cost. Recycle the rest."
    ],
@@ -28342,7 +28366,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "I enter ready.",
     "When you play me, ready all enemy units.",
@@ -28407,6 +28433,9 @@
     "RAD"
    ],
    "subtitle": "Revolutionary",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Ekko",
     "Zaun"
@@ -28423,7 +28452,9 @@
   },
   {
    "cardId": "RAD-022",
-   "domains": [],
+   "domains": [
+    "fury"
+   ],
    "effectText": [],
    "energy": 4,
    "might": null,
@@ -28467,9 +28498,13 @@
     "RAD"
    ],
    "subtitle": "Short-Fused",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Bandle City",
-    "Ziggs"
+    "Ziggs",
+    "Zaun",
+    "Yordle"
    ],
    "text": [
     "When you play me, play a Bomb gear token to a battlefield. (It has [Deploy]. When it dies, deal 2 to an enemy there and kill your other Bombs there.)",
@@ -28483,7 +28518,7 @@
   {
    "cardId": "RAD-024",
    "domains": [
-    "chaos"
+    "calm"
    ],
    "effectText": [],
    "energy": 2,
@@ -28498,9 +28533,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you win a combat here, draw 1."
@@ -28541,7 +28574,9 @@
   },
   {
    "cardId": "RAD-026",
-   "domains": [],
+   "domains": [
+    "calm"
+   ],
    "effectText": [],
    "energy": 2,
    "might": 2,
@@ -28555,7 +28590,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "You may have me enter ready. If you do, I can't move this turn."
    ],
@@ -28582,7 +28619,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Ixtal",
+    "Bird"
+   ],
    "text": [
     ":rb_exhaust:: [Buff] a unit. If it's already buffed, give it +2 :rb_might: this turn instead. (To buff a unit, give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
@@ -28667,7 +28707,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play a card with Energy cost :rb_energy_7: or more, ready me."
    ],
@@ -28694,7 +28736,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Sentinel"
+   ],
    "text": [
     "[Shield 3] (+3 :rb_might: while I'm a defender.)",
     "When you play me to a battlefield, you may move another unit you control here to your base."
@@ -28834,7 +28879,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Bird"
+   ],
    "text": [
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)",
     "When a stunned enemy unit here dies, draw 1."
@@ -28862,7 +28910,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover"
+   ],
    "text": [
     "Your gear have [Deflect]. (Opponents must pay :rb_rune_rainbow: to choose each with a spell or ability.)"
    ],
@@ -28917,7 +28967,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Spirit"
+   ],
    "text": [
     "When you play me, ready a friendly legend.",
     "Friendly legends have \":rb_exhaust:: Give a unit +3 :rb_might: this turn.\""
@@ -28929,7 +28982,9 @@
   },
   {
    "cardId": "RAD-041",
-   "domains": [],
+   "domains": [
+    "calm"
+   ],
    "effectText": [],
    "energy": 1,
    "might": null,
@@ -28972,9 +29027,12 @@
     "RAD"
    ],
    "subtitle": "Exquisite",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Orianna"
+    "Orianna",
+    "Piltover"
    ],
    "text": [
     "[Shield] (+1 :rb_might: while I'm a defender.)",
@@ -29004,8 +29062,12 @@
     "RAD"
    ],
    "subtitle": "Broken Blade",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Riven"
+    "Riven",
+    "Noxus"
    ],
    "text": [
     "When I become exhausted, choose one that hasn't been chosen this turn —[Buff] me. (Give me a +1 :rb_might: buff if I don't have one.)Spend my buff to [Stun] an enemy unit. (It doesn't deal combat damage this turn.)Spend my buff to ready me."
@@ -29033,9 +29095,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, you may move an enemy unit to this battlefield.",
@@ -29065,9 +29125,12 @@
     "RAD"
    ],
    "subtitle": "Dauntless",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Shurima",
-    "K'Sante"
+    "K'Sante",
+    "Shurima"
    ],
    "text": [
     "[Shield] (+1 :rb_might: while I'm a defender.)",
@@ -29108,7 +29171,9 @@
   },
   {
    "cardId": "RAD-047",
-   "domains": [],
+   "domains": [
+    "mind"
+   ],
    "effectText": [],
    "energy": 3,
    "might": null,
@@ -29161,7 +29226,9 @@
   },
   {
    "cardId": "RAD-049",
-   "domains": [],
+   "domains": [
+    "mind"
+   ],
    "effectText": [],
    "energy": 4,
    "might": 1,
@@ -29175,7 +29242,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "When you play me, play a 3 :rb_might: Mech unit token here."
    ],
@@ -29202,7 +29271,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play me, [Predict 2]. (Look at the top 2 cards of your Main Deck. Recycle any of them and put the rest back in any order.)",
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)"
@@ -29258,9 +29329,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "At the end of your turn, if you control this battlefield, play a Gold gear token exhausted. (It has \"[Reaction][>] Kill this, :rb_exhaust:: [Add] :rb_rune_rainbow:.\")"
@@ -29288,7 +29357,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Bird"
+   ],
    "text": [
     "When I become exhausted, [Predict]. (Look at the top card of your Main Deck. You may recycle it.)"
    ],
@@ -29315,7 +29387,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "[Disarm] (When I attack, give an enemy unit here -1 :rb_might: this turn.)"
    ],
@@ -29342,7 +29417,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "Your Mechs have [Disarm]. (When each of us attacks, give an enemy unit there -1 :rb_might: this turn.)"
    ],
@@ -29397,7 +29475,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover",
+    "Mech"
+   ],
    "text": [
     "When you play a card, you may have my base Might become equal to that card's Energy cost this turn."
    ],
@@ -29424,7 +29505,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_mind: as an additional cost to have me enter ready.)",
     "When you play me, give an enemy unit -3 :rb_might: this turn."
@@ -29437,7 +29520,7 @@
   {
    "cardId": "RAD-059",
    "domains": [
-    "order"
+    "mind"
    ],
    "effectText": [],
    "energy": 9,
@@ -29480,6 +29563,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Ionia",
     "Dragon"
    ],
    "text": [
@@ -29510,6 +29594,9 @@
     "RAD"
    ],
    "subtitle": "Ingenious",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Ekko",
     "Zaun"
@@ -29526,7 +29613,7 @@
   {
    "cardId": "RAD-062",
    "domains": [
-    "calm"
+    "mind"
    ],
    "effectText": [],
    "energy": 5,
@@ -29541,9 +29628,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "Opponents must pay :rb_energy_1::rb_rune_rainbow: to move one or more units to this battlefield.",
@@ -29600,9 +29685,12 @@
     "RAD"
    ],
    "subtitle": "Inspiring",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Seraphine"
+    "Seraphine",
+    "Piltover"
    ],
    "text": [
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)",
@@ -29631,7 +29719,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Spirit"
+   ],
    "text": [
     "You may return a friendly gear to its owner's hand as an additional cost to play me.",
     "When you play me, if you paid the additional cost, ready me and give me +:rb_might: this turn equal to the Energy cost of the gear you returned."
@@ -29644,7 +29735,7 @@
   {
    "cardId": "RAD-067",
    "domains": [
-    "fury"
+    "mind"
    ],
    "effectText": [],
    "energy": 8,
@@ -29660,7 +29751,7 @@
    ],
    "subtitle": null,
    "tags": [
-    "Mech"
+    "Shurima"
    ],
    "text": [
     "When you play me or when I hold, [Predict 3].",
@@ -29762,7 +29853,7 @@
   {
    "cardId": "RAD-071",
    "domains": [
-    "order"
+    "body"
    ],
    "effectText": [
     "[Shield 2] (+2 :rb_might: while I'm a defender.)"
@@ -29779,9 +29870,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Equipment"
+   ],
    "text": [
-    "Equip :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
+    "[Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
    ],
    "textVariants": 1,
    "types": [
@@ -29806,7 +29899,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "While there's a friendly gear with [Deploy] at my battlefield, I have +1 :rb_might:."
    ],
@@ -29818,7 +29914,7 @@
   {
    "cardId": "RAD-073",
    "domains": [
-    "calm"
+    "body"
    ],
    "effectText": [],
    "energy": 1,
@@ -29833,9 +29929,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this or when you conquer here, [Buff] a friendly unit. (Give it a +1 :rb_might: buff if it doesn't have one.)"
@@ -29863,7 +29957,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "When I move, reveal the top card of your Main Deck. If it's [Mighty], draw it. Otherwise, recycle it. (A unit is Mighty while it has 5+ :rb_might:.)"
    ],
@@ -29890,7 +29986,11 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia",
+    "Elite",
+    "Bird"
+   ],
    "text": [
     "You may return a friendly gear to its owner's hand as an additional cost to play me. If you do, I cost :rb_energy_2: less.",
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)"
@@ -29945,7 +30045,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord",
+    "Spirit"
+   ],
    "text": [
     "I enter ready.",
     "[Shield 3] (+3 :rb_might: while I'm a defender.)"
@@ -29973,7 +30076,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus"
+   ],
    "text": [
     "[Shield 3] (+3 :rb_might: while I'm a defender.)",
     "[Tank] (I must be assigned combat damage first.)",
@@ -30029,7 +30134,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "I cost :rb_energy_2: less for each battlefield you've conquered this turn."
    ],
@@ -30041,7 +30148,7 @@
   {
    "cardId": "RAD-081",
    "domains": [
-    "fury"
+    "body"
    ],
    "effectText": [],
    "energy": 6,
@@ -30056,10 +30163,12 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
-    "When you play me, give another friendly unit +3 :rb_might: this turn, then recycle me if I was played from face down."
+    "When you play me, give a friendly unit +3 :rb_might: this turn, then recycle me if I was played from face down."
    ],
    "textVariants": 1,
    "types": [
@@ -30112,7 +30221,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Mount Targon"
+   ],
    "text": [
     "[Shield 2] (+2 :rb_might: while I'm a defender.)",
     "When you play me, you may kill a gear with Energy cost :rb_energy_4: or less."
@@ -30168,6 +30279,9 @@
     "RAD"
    ],
    "subtitle": "Blasting Through",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Bilgewater",
     "Graves"
@@ -30201,9 +30315,12 @@
     "RAD"
    ],
    "subtitle": "Courageous",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Shurima",
-    "K'Sante"
+    "K'Sante",
+    "Shurima"
    ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_body: as an additional cost to have me enter ready.)",
@@ -30233,9 +30350,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, you may pay :rb_rune_body: to ready a unit here.",
@@ -30264,7 +30379,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Freljord"
+   ],
    "text": [
     "[Assault 2], [Shield 2] (+2 :rb_might: while I'm an attacker or defender.)"
    ],
@@ -30321,8 +30438,12 @@
     "RAD"
    ],
    "subtitle": "Consuming",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Evelynn"
+    "Evelynn",
+    "Demon"
    ],
    "text": [
     "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)",
@@ -30384,6 +30505,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Mount Targon",
     "Dragon"
    ],
    "text": [
@@ -30397,7 +30519,7 @@
   {
    "cardId": "RAD-093",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 4,
@@ -30412,7 +30534,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bandle City",
+    "Yordle"
+   ],
    "text": [
     "I enter ready if you control no other units.",
     "[Disarm 2] (When I attack, give an enemy unit here -2 :rb_might: this turn.)"
@@ -30440,7 +30565,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "When I hold, play three Bomb gear tokens to a single battlefield. (They have [Deploy]. When each dies, deal 2 to an enemy there and kill your other Bombs there.)"
    ],
@@ -30467,7 +30594,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Demon"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "When you play me, if it's not your turn, give me [Temporary]. (Kill me at the start of my controller's Beginning Phase, before scoring.)"
@@ -30523,7 +30653,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     "[Disarm] (When I attack, give an enemy unit here -1 :rb_might: this turn.)",
     "[Ganking] (I can move from battlefield to battlefield.)"
@@ -30579,7 +30711,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Demon"
+   ],
    "text": [
     "When you play me, choose an opponent. You and that player each draw 1."
    ],
@@ -30690,7 +30825,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "[Show Off] a card with [Hidden]. (As you play me, you may reveal such a card from hand or pick another friendly one on the board.)",
@@ -30703,7 +30840,9 @@
   },
   {
    "cardId": "RAD-104",
-   "domains": [],
+   "domains": [
+    "chaos"
+   ],
    "effectText": [],
    "energy": 5,
    "might": 5,
@@ -30717,7 +30856,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Cat"
+   ],
    "text": [
     ":rb_exhaust:: [Stun] an enemy unit. (It doesn't deal combat damage this turn.)"
    ],
@@ -30744,7 +30886,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Piltover"
+   ],
    "text": [
     "[Accelerate] (You may pay :rb_energy_1::rb_rune_chaos: as an additional cost to have me enter ready.)",
     "When I become exhausted, choose one —Play a Gold gear token exhausted. (It has \"[Reaction][>] Kill this, :rb_exhaust:: [Add] :rb_rune_rainbow:.\")Pay :rb_rune_chaos: to draw 1."
@@ -30757,7 +30901,7 @@
   {
    "cardId": "RAD-106",
    "domains": [
-    "body"
+    "chaos"
    ],
    "effectText": [],
    "energy": 3,
@@ -30772,9 +30916,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, discard 1, then draw 3.",
@@ -30803,7 +30945,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shadow Isles",
+    "Demon"
+   ],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "When you play me, choose a battlefield. If there are 4 or more units there, you may return an enemy unit there to its owner's hand."
@@ -30816,7 +30961,7 @@
   {
    "cardId": "RAD-108",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 1,
@@ -30831,9 +30976,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "While you or an ally control this battlefield, that player may hide an additional card here."
@@ -30861,10 +31004,13 @@
     "RAD"
    ],
    "subtitle": "Whimsical",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Yordle",
+    "Lulu",
     "Bandle City",
-    "Lulu"
+    "Yordle"
    ],
    "text": [
     "When I move, you may have another unit's base Might become 4 this turn."
@@ -30877,7 +31023,7 @@
   {
    "cardId": "RAD-111",
    "domains": [
-    "fury"
+    "chaos"
    ],
    "effectText": [],
    "energy": 4,
@@ -30892,9 +31038,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "At the start of your Beginning Phase, each player reveals the top card of their Main Deck. If you revealed a card with the lowest Energy cost, draw it. Recycle the rest."
    ],
@@ -30922,9 +31066,13 @@
     "RAD"
    ],
    "subtitle": "Explosive",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Bandle City",
-    "Ziggs"
+    "Ziggs",
+    "Zaun",
+    "Yordle"
    ],
    "text": [
     ":rb_energy_1:, :rb_exhaust:: Play a Bomb gear token to a battlefield. (It has [Deploy]. When it dies, deal 2 to an enemy there and kill your other Bombs there.)",
@@ -30953,7 +31101,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater",
+    "Dragon"
+   ],
    "text": [
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)",
     ":rb_exhaust:: Choose an opponent. They must move a unit they control to my battlefield."
@@ -30982,8 +31133,12 @@
     "RAD"
    ],
    "subtitle": "Deserter",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Riven"
+    "Riven",
+    "Noxus"
    ],
    "text": [
     "When another friendly unit becomes exhausted, give me +1 :rb_might: this turn.",
@@ -31012,7 +31167,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Bilgewater"
+   ],
    "text": [
     ":rb_rune_chaos:, :rb_exhaust:: Return a friendly unit to its owner's hand. You may play a unit with less Might than that unit had, ignoring its cost."
    ],
@@ -31039,9 +31196,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this or when you conquer here, you may pay :rb_energy_1: to play a 1 :rb_might: Recruit unit token to your base."
@@ -31097,7 +31252,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Shurima"
+   ],
    "text": [
     "When you play me, choose a friendly unit. Its base Might becomes 5 this turn."
    ],
@@ -31124,7 +31281,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia",
+    "Dog"
+   ],
    "text": [
     "[Deathknell][>] Play a 1 :rb_might: Bird unit token with [Deflect] to your base. (When I die, get the effect. Opponents must pay :rb_rune_rainbow: to choose a [Deflect] unit with a spell or ability.)"
    ],
@@ -31152,7 +31312,7 @@
    ],
    "subtitle": null,
    "tags": [
-    "Device"
+    "Piltover"
    ],
    "text": [
     "When you play a card with Energy cost :rb_energy_7: or more, you may play me from your trash for :rb_rune_order:."
@@ -31164,7 +31324,9 @@
   },
   {
    "cardId": "RAD-121",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [],
    "energy": 3,
    "might": null,
@@ -31206,7 +31368,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Zaun"
+   ],
    "text": [
     "I cost :rb_energy_1: less for each exhausted unit you control.",
     "[Tank] (I must be assigned combat damage first.)"
@@ -31218,7 +31382,9 @@
   },
   {
    "cardId": "RAD-123",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [
     "[Tank] (I must be assigned combat damage first.)"
    ],
@@ -31234,7 +31400,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Equipment"
+   ],
    "text": [
     "[Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)",
     "[Equip] :rb_energy_1: (:rb_energy_1:: Attach this to a unit you control.)"
@@ -31247,7 +31415,7 @@
   {
    "cardId": "RAD-124",
    "domains": [
-    "body"
+    "order"
    ],
    "effectText": [],
    "energy": 3,
@@ -31289,7 +31457,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "The Void"
+   ],
    "text": [
     "You may kill a friendly unit as an additional cost to play me. If you do, I cost :rb_energy_2: less.",
     "[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)"
@@ -31318,6 +31488,7 @@
    ],
    "subtitle": null,
    "tags": [
+    "Shadow Isles",
     "Spirit"
    ],
    "text": [
@@ -31349,7 +31520,7 @@
    "tags": [],
    "text": [
     "[Show Off] a card with Energy cost :rb_energy_7: or more. (As you play this, you may reveal such a card from hand or pick a friendly one.)",
-    "Play two 1 :rb_might: Recruit unit tokens to your base. If you showed off, play four to your base instead.disa"
+    "Play two 1 :rb_might: Recruit unit tokens to your base. If you showed off, play four to your base instead."
    ],
    "textVariants": 1,
    "types": [
@@ -31374,7 +31545,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "[Tank] (I must be assigned combat damage first.)",
     "While there are 2 or more other friendly units and/or gear at my battlefield, I have +2 :rb_might:."
@@ -31402,7 +31575,10 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Noxus",
+    "Trifarian"
+   ],
    "text": [
     "When you play me, look at the top 4 cards of your Main Deck. You may reveal from among them a unit or gear with Energy cost no more than :rb_energy_3: and with Power cost no more than :rb_rune_rainbow: and draw it. Recycle the rest."
    ],
@@ -31429,7 +31605,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "When a friendly gear at a battlefield dies, you may pay :rb_energy_1: to return it to its owner's hand."
    ],
@@ -31456,7 +31634,9 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [],
+   "tags": [
+    "Demacia"
+   ],
    "text": [
     "When one or more friendly units die, [Buff] a friendly unit. (Give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
@@ -31515,9 +31695,12 @@
     "RAD"
    ],
    "subtitle": "Royal Heir",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Demacia",
-    "Jarvan IV"
+    "Jarvan IV",
+    "Demacia"
    ],
    "text": [
     "[Assault] (+1 :rb_might: while I'm attacking.)",
@@ -31531,7 +31714,9 @@
   },
   {
    "cardId": "RAD-134",
-   "domains": [],
+   "domains": [
+    "order"
+   ],
    "effectText": [],
    "energy": 7,
    "might": null,
@@ -31599,9 +31784,7 @@
     "RAD"
    ],
    "subtitle": null,
-   "tags": [
-    "Device"
-   ],
+   "tags": [],
    "text": [
     "[Deploy] (Play this only to a battlefield. When an opponent holds here, kill this.)",
     "When you play this, banish a unit here.",
@@ -31631,9 +31814,13 @@
     "RAD"
    ],
    "subtitle": "Dominating",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
+    "Mordekaiser",
     "Noxus",
-    "Mordekaiser"
+    "Spirit"
    ],
    "text": [
     "When you play me or when I attack, you may discard 1 to kill a unit or gear."
@@ -31727,7 +31914,6 @@
    ],
    "subtitle": null,
    "tags": [
-    "Yordle",
     "Ziggs"
    ],
    "text": [
@@ -31750,6 +31936,7 @@
    "mightBonus": null,
    "name": "Hexplosive Minefield",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-142/167"
    ],
@@ -31757,6 +31944,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Ziggs"
    ],
@@ -31812,6 +32002,7 @@
    "mightBonus": null,
    "name": "Realm of Death",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-144/167"
    ],
@@ -31819,6 +32010,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Mordekaiser"
    ],
@@ -31873,6 +32067,7 @@
    "mightBonus": null,
    "name": "The Ball",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-146/167"
    ],
@@ -31880,8 +32075,10 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
-    "Device",
     "Orianna"
    ],
    "text": [
@@ -31937,6 +32134,7 @@
    "mightBonus": null,
    "name": "Ntofo Strikes",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-148/167"
    ],
@@ -31944,6 +32142,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "K'Sante"
    ],
@@ -32001,6 +32202,7 @@
    "mightBonus": 3,
    "name": "Blade of the Exile",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-150/167"
    ],
@@ -32008,6 +32210,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Equipment",
     "Riven"
@@ -32063,6 +32268,7 @@
    "mightBonus": null,
    "name": "Encore",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-152/167"
    ],
@@ -32070,6 +32276,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Seraphine"
    ],
@@ -32136,7 +32345,7 @@
    ],
    "text": [
     "[Reaction] (Play any time, even before spells and abilities resolve.)",
-    "The next unit you play this turn (even from face down) can be played to any battlefield. When you play it, [Buff] it. (Give it a +1 :rb_might: buff if it doesn't have one.)"
+    "The next unit you play this turn, even from face down, can be played to any battlefield. When you play it, [Buff] it. (Give it a +1 :rb_might: buff if it doesn't have one.)"
    ],
    "textVariants": 1,
    "types": [
@@ -32186,6 +32395,7 @@
    "mightBonus": null,
    "name": "Demacian Standard",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-156/167"
    ],
@@ -32193,8 +32403,10 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
-    "Device",
     "Jarvan IV"
    ],
    "text": [
@@ -32502,8 +32714,8 @@
    ],
    "text": [
     "(Neutral cards can go in decks of any Domain.)",
-    "If Neeko is in your deck, choose 3 different legends in addition to your starting legend. (Different means none match names.)",
-    "When you play me, choose one of those legends and add it to your Legend Zone while I'm on the board."
+    "If Neeko is in your deck, choose up to 3 different legends in addition to your starting legend. (Different means none match names.)",
+    "When you play me, choose one of those Legends and add it to your Legend Zone while I'm on the board."
    ],
    "textVariants": 1,
    "types": [
@@ -32594,8 +32806,12 @@
     "RAD"
    ],
    "subtitle": "In Control",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Evelynn"
+    "Evelynn",
+    "Demon"
    ],
    "text": [
     "[Disarm]",
@@ -32625,6 +32841,9 @@
     "RAD"
    ],
    "subtitle": "Rebel",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Kai'Sa",
     "The Void"
@@ -32658,9 +32877,12 @@
     "RAD"
    ],
    "subtitle": "Not Alone",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
-    "Piltover",
-    "Seraphine"
+    "Seraphine",
+    "Piltover"
    ],
    "text": [
     "When you play me or when I become exhausted, play a 1 :rb_might: Recruit unit token to your base.",

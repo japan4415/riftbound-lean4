@@ -37,6 +37,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Prim where
   /-- The players draw cards (CR 414). -/
   | draw (p : PlayerSel) (n : Amount)
+  /-- Draw the selected card from the cards looked at by this instruction (CR 414, 432). -/
+  | drawLooked (s : Selector)
   /-- The players discard cards (CR 415). -/
   | discard (p : PlayerSel) (n : Amount)
   /-- Deal damage to objects. -/
@@ -132,6 +134,8 @@ inductive Prim where
   | revealNow (s : Selector)
   /-- Play tokens, by name, in a place: `n` of them, ready or exhausted (CR 179-187, 359). -/
   | create (token : String) (n : Amount) (at_ : Place) (ready : Bool)
+  /-- Play all the tokens at the single selected Battlefield (CR 184.2, 355.2). -/
+  | createAt (token : String) (n : Amount) (battlefield : Selector) (ready : Bool)
   /-- Play a Unit token, choosing its location as it is played (CR 185.2.a, 355.2). -/
   | playUnitToken (token : String)
   /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
@@ -271,10 +275,18 @@ inductive TriggerEvent where
   | play
   /-- The player completes their first play of a card this turn (CR 420.4.a). -/
   | firstCardResolved
+  /-- The player plays their first Unit or Gear at this Battlefield this turn. -/
+  | firstPermanentHere
+  /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/
+  | delayedPlay
+  /-- A registered ability fires at the end of the current turn with its captured amount. -/
+  | delayedEnd
   /-- The object enters play. -/
   | enter
   /-- The object attacks. -/
   | attack
+  /-- One or more friendly Units become attackers at the source's Battlefield together. -/
+  | friendlyAttackGroupHere
   /-- The object defends. -/
   | defend
   /-- The object conquers a Battlefield. -/
@@ -285,18 +297,26 @@ inductive TriggerEvent where
   | move
   /-- The object dies. -/
   | die
+  /-- The first non-token Unit the player controls to die at this Battlefield each turn. -/
+  | firstUnitDeathHere
   /-- A Deathknell that is explicitly represented as a triggered ability (CR 808). -/
   | deathknell
   /-- The object leaves play. -/
   | leave
   /-- A card is drawn. -/
   | draw
+  /-- The controller draws one or more cards with at least this many other cards in hand. -/
+  | drawGroupWithHand (minimum : Nat)
   /-- The player banishes a card they own. -/
   | banishOwn
   /-- A card is discarded. -/
   | discard
   /-- The object is stunned. -/
   | stun
+  /-- The object becomes exhausted while on the Board (CR 415). -/
+  | exhaust
+  /-- This ability's controller exhausts at least this many friendly Units at once (CR 415). -/
+  | youExhaustUnits (minimum : Nat)
   /-- The object is readied (it was exhausted). -/
   | ready
   /-- The object gets a buff. -/
@@ -313,6 +333,9 @@ inductive TriggerEvent where
   /-- The player plays a Unit, Gear, or activated ability whose base Energy cost is at least this
   much (CR 206-206.1). -/
   | playAtBaseEnergy (minimum : Nat)
+  /-- While in this player's Trash, wait for them to finish playing a card of this Energy cost
+  or higher (CR 206, 385.2, 420.4.a). -/
+  | playCardFromTrashAtEnergy (minimum : Nat)
   /-- An Equipment is attached to the unit (the unit itself waits for it). -/
   | attachedTo
   /-- The player defends at a Battlefield (their units elsewhere wait for it; the ability reaches
@@ -339,6 +362,8 @@ inductive TriggerEvent where
   | opponentScores
   /-- An opponent of the player holds a Battlefield. -/
   | opponentHolds
+  /-- An opponent holds the Battlefield where the source is located (CR 830). -/
+  | opponentHoldsHere
   /-- The player moves a unit with an effect (Blast Cone). -/
   | movedByYou
   /-- The card is revealed from its owner's deck. -/
@@ -364,6 +389,8 @@ inductive TriggerEvent where
   | youHold
   /-- The unit's Might becomes `n` or more. -/
   | mightAtLeast (n : Nat)
+  /-- The player caused a Unit's current Might to decrease. -/
+  | mightReducedByYou
   /-- The linked Burn instruction burned a Unit card (CR 388-389). -/
   | linkedBurnUnit
   /-- The linked Discard instruction discarded a card of the corresponding type. -/
@@ -422,6 +449,18 @@ inductive StaticMod where
   | oppsCantPlayNamed
   /-- The controller skips their Draw Phase (CR 315.4). -/
   | skipDrawPhase
+  /-- Other Units enter ready, regardless of who plays them. -/
+  | allUnitsEnterReady
+  /-- Neither player's Units ready during the Awaken Phase. -/
+  | skipUnitAwaken
+  /-- The controller's Units enter ready when played to a Battlefield they control. -/
+  | unitsEnterReadyAtControlledBattlefields
+  /-- Each player can use this Battlefield's activated ability during their own turn. -/
+  | sharedBattlefieldActivation
+  /-- Friendly Legends gain the activated abilities in the source's grants while it is in play. -/
+  | grantFriendlyLegendsActivations
+  /-- Channel this many additional exhausted Runes when the controller channels (CR 431). -/
+  | additionalExhaustedRunes (count : Nat)
   /-- The controller can play cards from their Trash at their regular costs (CR 420.1). -/
   | playFromTrash
   /-- A card entering the controller's Trash from outside their Main Deck is banished instead
@@ -430,9 +469,13 @@ inductive StaticMod where
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear
+  /-- Once per turn the controller may kill a friendly Unit to save this one (CR 371). -/
+  | sacrificeToSaveSelf
   /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,
   exhausted and recalled instead (Soraka). -/
   | rescueWeakerHere
+  /-- The player can replace each Unit token play with this Unit token at the same location. -/
+  | replaceUnitTokenWith (token : String)
   /-- The objects the selector gives add this much more Energy when they Add (Chem-Baroness). -/
   | manaExtraEnergy (s : Selector) (n : Amount)
   /-- The optional additional costs the player pays cost this much less (Ezreal, Prodigy). -/
@@ -441,6 +484,12 @@ inductive StaticMod where
   | repeatCostLess (n : Nat)
   /-- The first activated ability of a Gear its controller plays each turn costs less Energy. -/
   | firstGearAbilityLess (n : Nat)
+  /-- The first Unit or Gear played here on its player's turn costs less Energy. -/
+  | firstPermanentHereLess (n : Nat)
+  /-- Once per turn, its controller can elect this reduction when playing Gear. -/
+  | gearPlayDiscount (energy power : Nat)
+  /-- Exhaust this Legend and this many friendly Units as a Spell cost to reduce its Energy. -/
+  | spellExhaustDiscount (units energy : Nat)
   /-- The controller's Units here pay less for Empower, in Energy or Power per reduction. -/
   | empowerHereLess (n : Nat)
   /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once
@@ -466,6 +515,8 @@ inductive StaticMod where
   | assaultCount (s : Selector)
   /-- Units cannot move to a Base from anywhere (Minotaur Reckoner). -/
   | noMoveToBaseAny
+  /-- An opponent who moves Units to this Battlefield pays this once for the move instruction. -/
+  | moveFeeHere (cost : Cost)
   /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is
   attacking), as an ability. -/
   | playToBf (fs : List Filter)
@@ -477,6 +528,10 @@ inductive StaticMod where
   | movesHereFromAnywhere
   /-- The Spells of the player have Repeat, for the cost (Syndra, in a showdown). -/
   | grantRepeat (k : Cost)
+  /-- The Spells of the player have Reaction. -/
+  | spellsHaveReaction
+  /-- The controller's Gear with Deploy have Action, including before they are played. -/
+  | deployGearHaveAction
   /-- A card with Hidden can be hidden for one Energy instead of one Power. -/
   | hideWithEnergy
   /-- The Unit must be assigned combat damage last (after the others, but not before a Tank). -/
@@ -529,6 +584,8 @@ inductive StaticMod where
   | entersReady (s : Selector)
   /-- The player's spells and abilities deal more damage (Bonus Damage). -/
   | bonusDamage (a : Amount)
+  /-- The player's abilities from sources of this type deal more damage (CR 142). -/
+  | bonusAbilityDamage (sourceType : CardType) (a : Amount)
   /-- The player's triggered abilities for the event fire one more time, at the place. -/
   | triggersExtra (ev : TriggerEvent) (where_ : Place)
   /-- The players can't do something at a place until their `untilTurn`-th turn. -/
@@ -579,6 +636,8 @@ a card are a `Cost` (`Riftbound.Core.Cost`); these are the others. -/
 inductive AbilityCost where
   /-- Exhaust the object the ability belongs to. -/
   | exhaustSelf
+  /-- Exhaust one friendly permanent that matches the filters (CR 355.10.c, 415.4). -/
+  | exhaustFriendly (filters : FilterList)
   /-- Pay Energy and Power. -/
   | pay (c : Cost)
   /-- Recycle cards from the Trash. -/
@@ -587,8 +646,12 @@ inductive AbilityCost where
   | discard (n : Nat)
   /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/
   | discardMatching (n : Nat) (fs : FilterList)
-  /-- Kill friendly objects that match. -/
+  /-- Kill friendly objects in the legacy list of declared choices. -/
   | killFriendly (q : Quantity) (fs : FilterList)
+  /-- Kill one friendly permanent selected independently of the ability's targets. -/
+  | killFriendlyPermanent (filters : FilterList)
+  /-- Banish one eligible card from the activating player's Trash to pay an Add cost. -/
+  | banishFromTrash (filters : FilterList)
   /-- Spend XP. -/
   | spendXP (n : Nat)
   /-- Spend a buff. -/
@@ -618,12 +681,16 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Pay Energy or Power, and optionally exhaust the source, during finalization (CR 383.3.b). -/
+  | pay (cost : Cost) (exhaustSelf : Bool := false)
   /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
   | exhaustSelf
   /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
   | burn (count : Nat)
   /-- Kill exactly this many friendly permanents that match the filters. -/
   | killFriendly (count : Nat) (filters : FilterList)
+  /-- Discard exactly this many cards of the controller's choice (CR 423). -/
+  | discard (count : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/
@@ -638,6 +705,8 @@ structure Trigger where
   occurrence : Occurrence := .every
   /-- A leading "you may" is a choice whether to finalize the ability (CR 383.3.a). -/
   optional : Bool := false
+  /-- Each mode may be chosen only once this turn (Riven, Broken Blade). -/
+  separateModesPerTurn : Bool := false
   /-- The cost in an instruction that precedes its effect. -/
   cost : TriggerCost := .free
 deriving DecidableEq, Repr, Hashable

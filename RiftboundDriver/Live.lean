@@ -191,11 +191,14 @@ def LiveGame.undoReply (g : LiveGame) : String :=
   g.reply [] [("truncate", toString g.i)]
 
 /-- The game before any answer, for the kind of game, from the decks of the players. -/
-def LiveKind.initial (decks : List Deck) : LiveKind → Option GameState
+def LiveKind.initial (decks : List Deck) (sides : List (List CardId) := []) :
+    LiveKind → Option GameState
   | .core => GameState.initial demoDB demoConfig decks
   | .constructed =>
-    GameState.initial demoDB
-      { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv } decks
+    let registrations := decks.zipIdx.map (fun (deck, seat) =>
+      ({ deck, sideboard := sides[seat]?.getD [] } : ConstructedDeck))
+    GameState.initialConstructed demoDB demoEnv
+      { ruleSet := .tournament .constructed, mode := Mode.duel } registrations
   | .sealed =>
     GameState.initialLimited demoDB { legalSets := [], banned := [] }
       { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
@@ -208,7 +211,7 @@ def liveNew (kind : LiveKind) (seed : Nat) (humans : List PlayerId) (order : Opt
     (m : Option MatchState) (decks : List Deck := [demoDeck, demoDeck])
     (sides : List (List CardId) := [demoSideboard, demoSideboard]) :
     Except String (LiveGame × List String) :=
-  match kind.initial decks with
+  match kind.initial decks sides with
   | none => .error "the demo game cannot be set up"
   | some s0 =>
     let (j0, seen) := stepJson 0 none [] s0 {}

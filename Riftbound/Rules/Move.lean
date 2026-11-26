@@ -96,8 +96,11 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
         { o with controller := o.owner, exhausted := false, damage := 0, damagedTurn := none,
                  -- a card in the Trash remembers where it was, for what it does when it dies
                  loc := if dst = .player o.owner .trash then o.loc else none,
-                 baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
+                 baseMightThisTurn := none, unitGearEffects := [],
+                 leftUnitGearMight := if src.isBoard then o.unitGearEffects.head?.map Prod.snd else none,
+                 mightMods := [], tempKws := [], tempActivations := [],
                  attached := none, attachedTurn := none, attachmentCopyStamp := none,
+                 reservedBy := none,
                  attachmentTextStamp := none,
                  attachmentTextCopies := if src.isBoard then s.activeAttachmentText id else [],
                  attachmentCopies := [],
@@ -112,8 +115,8 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  namedCard := none,
                  leftBoard := src.isBoard,
                  formerId := some id,
-                 stunned := false, flowed := false, recycleAfterPlay := false, pendingSpellPlay := none,
-                 spellPick := .plain, empowerCount := 0,
+                 stunned := false, flowed := false, limitedSpellExit := .normal, pendingSpellPlay := none,
+                 spellPick := .plain, playUntilEnding := none, empowerCount := 0,
                  leftEmpowered := src.isBoard && 0 < o.empowerCount,
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))
@@ -262,13 +265,13 @@ theorem mem_zoneIds {s : GameState} {z : Zone} {id : ObjId}
 
 end GameState
 
-/-- Everything but the zones, the object table, the counters and the points is as it was: the
-rules, the stack, the turn order, the phase, the result, and whatever the state will hold later. -/
+/-- The rules, phase, result, and decision stack are unchanged. Objects, resources and
+turn bookkeeping may change. -/
 def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
             nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
             turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-            turnShift := s.turnShift } = s
+            turnShift := s.turnShift, drawLog := s.drawLog } = s
 
 namespace SameMeta
 
@@ -283,7 +286,7 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
               nextTimestamp := s.nextTimestamp, points := s.points,
               turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-              turnShift := s.turnShift } : GameState)) h2
+              turnShift := s.turnShift, drawLog := s.drawLog } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this

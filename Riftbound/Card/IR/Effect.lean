@@ -24,6 +24,18 @@ inductive EffectPlayPrice where
   | ignoreEnergy
   /-- Ignore the entire base cost. -/
   | ignoreBase
+  /-- Replace the base cost before modifiers and additional costs (CR 356.1). -/
+  | alternateBase (cost : Cost)
+deriving DecidableEq, Repr, Hashable
+
+/-- A limited play can change where the finalized Spell goes when it leaves the Chain (CR 391.3.a). -/
+inductive LimitedSpellExit where
+  /-- Use the normal Chain destination. -/
+  | normal
+  /-- Recycle the Spell after it resolves. -/
+  | recycle
+  /-- Banish it in place of the regular exit from the Chain. -/
+  | banish
 deriving DecidableEq, Repr, Hashable
 
 /-- An effect play's cost and mandatory destination requirements (CR 355.17). Each requirement
@@ -33,6 +45,8 @@ structure EffectPlayTerms where
   price : EffectPlayPrice
   /-- The sets of locations required by the effects already in force. -/
   requirements : List (List (Option ObjId)) := []
+  /-- Banish a card from the look as part of finalizing its play (CR 420.3.c). -/
+  banishBeforeFunding : Bool := false
 deriving DecidableEq, Repr, Hashable
 
 /-- A finalization choice for a Unit or Gear played by an effect (CR 355-357, 420.3). -/
@@ -51,6 +65,10 @@ structure ReducedPermanentPlay where
   accelerated : Bool
   /-- The Battlefields whose additional costs the player elected to pay. -/
   battlefieldFees : List ObjId := []
+  /-- The passive sources whose Gear play reductions were elected. -/
+  gearDiscounts : List ObjId := []
+  /-- The card revealed or friendly object picked for Show Off (CR 832). -/
+  showOff : Option ObjId := none
 deriving DecidableEq, Repr, Hashable
 
 /-- One activation that provides resources for an effect's play (CR 357.1.a). -/
@@ -58,7 +76,7 @@ inductive EffectAdd where
   /-- Exhaust or Recycle a Basic Rune. -/
   | rune (source : ObjId) (recycle : Bool)
   /-- Use a card's Add ability with its own selected resource cost. -/
-  | ability (source : ObjId) (index energy : Nat) (power : List Domain)
+  | ability (source : ObjId) (index energy : Nat) (power : List Domain) (banish : Option ObjId := none)
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices and resource price of a Spell under a limited play effect. -/
@@ -96,22 +114,52 @@ structure EffectDamageBatch where
   spent : List (Nat × Nat) := []
 deriving DecidableEq, Repr, Hashable
 
+/-- A simultaneous group of Unit token plays at the specified location. Each entry records
+its card and any instruction to enter ready (CR 184.2, 375-376). -/
+structure UnitTokenBatch where
+  /-- The shared Battlefield, or the controller's Base. -/
+  destination : Option ObjId
+  /-- Whether the original instruction explicitly contests its destination. -/
+  contest : Bool
+  /-- The token definitions and their explicit entry-ready flags. -/
+  entries : List (CardId × Bool)
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
 inductive Effect where
+  /-- Choose a previously registered additional Legend to add while the source is on the Board. -/
+  | addReservedLegend
+  /-- Capture the answer to the registered Legend choice. -/
+  | addReservedLegendPicked
+  /-- Add one available registered Legend. -/
+  | addReservedLegendChosen (legend : ObjId)
+  /-- Choose the replacements for the tokens before the group is placed. -/
+  | planUnitTokenEntries (batch : UnitTokenBatch) (remaining chosen : List (CardId × Bool))
+  /-- Choose resources and add funding for the token's optional Accelerate. -/
+  | fundTokenAccelerate (batch : UnitTokenBatch) (payment : Nat × List Domain) (adds : List EffectAdd)
+  /-- Place the group with the selected additional cost, if any. -/
+  | finishUnitTokens (batch : UnitTokenBatch) (accelerate : Option (Nat × List Domain))
+      (adds : List EffectAdd)
   /-- Nothing happens. -/
   | nop
+  /-- Turn the chosen Gear into a Unit Gear until this ability chooses another (CR 143.5, 479). -/
+  | animateGear
+  /-- Record a triggered Add's use before its resource effects resolve (CR 430.2). -/
+  | markTriggeredAdd (idx : Nat)
   /-- Do the effects in order. -/
   | seq (es : EffectList)
   /-- Do the mode that was chosen when the card was played (CR 355). -/
   | chooseOne (modes : EffectList)
+  /-- Attach the Equipment to the Unit after paying a discounted Equip cost (CR 821). -/
+  | equipWithCost (gear recipient : Selector) (powerDiscount : Nat)
   /-- The player chooses one of the effects while the effect resolves, and does it. -/
   | eitherOf (modes : EffectList)
   /-- Pay a resource cost from the Rune Pool, then continue with the effect (CR 445.2). -/
-  | payThen (cost : Cost) (body : Effect)
+  | payThen (cost : Cost) (body : Effect) (gearPower : Bool := true)
   /-- Spend the specific resources selected from the Pool for this payment. -/
-  | paySelected (resources : Cost) (body : Effect)
+  | paySelected (resources : Cost) (body : Effect) (gearPower : Bool := true)
   /-- Do the first effect if the condition holds, the second otherwise. -/
   | ifThen (c : Condition) (t e : Effect)
   /-- Do the effect for each of the objects, with `it` the object. -/
@@ -121,6 +169,10 @@ inductive Effect where
   | eachPlayer (who : PlayerSel) (body : Effect)
   /-- Reveal the specified hands for the following instructions (CR 425). -/
   | revealHand (who : PlayerSel) (body : Effect)
+  /-- Reveal one top Main Deck card from each listed player and keep those cards for the body. -/
+  | revealDeckTops (who : PlayerSel) (body : Effect)
+  /-- The chosen player guesses a Main Deck card type, then the controller runs that branch. -/
+  | guessCardType (who : PlayerSel) (onUnit onGear onSpell : Effect)
   /-- Name a format-legal card of this type and remember it on the source (CR 759-762). -/
   | nameCard (kind : CardType)
   /-- Record the answer to a naming choice on the original source. -/
@@ -132,18 +184,59 @@ inductive Effect where
   | banishAndPlayLooked (less : Nat) (filters : FilterList)
   /-- Recycle the looked-at cards still in the Main Deck in a random order (CR 417.5). -/
   | recycleLooked
+  /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/
+  | recycleRunes
+  /-- Continue collecting the order of each owner's Runes before any are Recycled. -/
+  | orderRuneRecycle (groups : List (PlayerId × List ObjId)) (picked : List ObjId)
+  /-- Record the Rune chosen next in an owner's order. -/
+  | recordRuneRecycle (remaining : List ObjId) (later : List (PlayerId × List ObjId))
+      (picked : List ObjId)
   /-- Continue after offering a choice of eligible cards from a look. -/
   | chooseLookedToPlay (less : Nat) (first : ObjId) (more : List ObjId)
   /-- Banish the card picked from the looked-at cards and finalize the play. -/
   | banishLookedForPlay (less : Nat)
+  /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
+  | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Play one of the matching physical cards, if it has a legal finalization (CR 420.3). -/
+  | playCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Banish the selected card and play that physical card from Banishment (CR 420.3). -/
+  | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
+  /-- Banish the top Main Deck card and permit its play until the player's next Ending Phase. -/
+  | banishTopForPlay
+  /-- Kill the targets and register the end-of-turn ability with their actual death count. -/
+  | killThenAtEnd (targets : Selector) (triggerIndex : Nat)
+  /-- Play the source card if it is still in this player's Trash. -/
+  | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
+  /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/
+  | mayPlayPermanents (selector : Selector) (maximum : Nat) (price : EffectPlayPrice)
+  /-- Offer another play from the candidates identified when the instruction began. -/
+  | offerNextCardPlay (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+  /-- Ask which of the available cards to play. -/
+  | chooseOfferedPlay (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+      (first : ObjId) (others : List ObjId)
+  /-- Continue to the selected card's finalization. -/
+  | playOfferedCard (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+  /-- Count a successful finalization before offering another play. -/
+  | afterOfferedPlay (card : ObjId) (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
   /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/
   | planPermanentPlay (card : ObjId) (terms : EffectPlayTerms)
   /-- Banish one Unit before its owner finalizes the new play. -/
   | banishForReplay (card : ObjId) (replay : BanishReplay)
+  /-- Banish the chosen group of Units together, then replay each owner's cards. -/
+  | banishAndReplayGroup
+  /-- The owners order their pending plays in turn order before finalization (CR 303.2.a). -/
+  | orderBanishReplays (remaining ordered : List (PlayerId × ObjId × Option ObjId))
+  /-- Record one owner's next play and return to ordering the rest of the group. -/
+  | recordBanishReplay (controller : PlayerId)
+      (remaining ordered : List (PlayerId × ObjId × Option ObjId))
+  /-- Finalize an ordered replay from Banishment once the group is ready. -/
+  | planBanishReplay (card : ObjId) (location : Option ObjId)
+  /-- Return a pending replay to Banishment if it could not finalize. -/
+  | cancelBanishReplay (card : ObjId)
   /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
   | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
   /-- Continue choosing resource activations for the selected finalization. -/
-  | fundLookedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
+  | fundPermanentFromEffect (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
       (adds : List EffectAdd)
   /-- Use the chosen Add abilities and pay for the effect's permanent as one finalization. -/
   | finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
@@ -160,6 +253,10 @@ inductive Effect where
   | resolveSpellExecution (pick : SpellPick) (targets : List ObjId)
   /-- Continue working through the events of a single damage instruction. -/
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
+  /-- Divide damage among the remaining targets at resolution (CR 355.14). -/
+  | splitDamage (targets : Selector) (total : Nat)
+  /-- Deal the chosen damage simultaneously after replacements have been applied. -/
+  | applySplitDamage (hits : List (ObjId × Nat))
   /-- Apply one selected replacement and continue with the rest. -/
   | chooseDamageReplacement (batch : EffectDamageBatch) (hit : EffectDamageHit)
       (replacement : DamageReplacement)
@@ -167,6 +264,10 @@ inductive Effect where
   | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
   /-- Record which player's Banish replaces the pending death (CR 372). -/
   | chooseDeathBanisher (unit : ObjId) (banisher : PlayerId)
+  /-- Declare the friendly Unit paying for this death replacement, or decline it. -/
+  | recordDeathSacrifice (unit : ObjId) (cost : Option ObjId)
+  /-- Record a controller's next replacement among simultaneous deaths (CR 373). -/
+  | recordDeathOrder (group : List ObjId) (unit : ObjId)
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
   | endCombatDamage (excess : Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
@@ -178,6 +279,15 @@ inductive Effect where
   /-- Move the Unit in the given slot to the location chosen during finalization (CR 355.4).
   If the move happens, run the follow-up with a chosen Battlefield available as the latest pick. -/
   | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)
+      (afterNegatedMove : Bool := false)
+  /-- During resolution the named player chooses and moves one of their Units to the Battlefield
+  when the move is possible. The choice is not a target (CR 355.10.e). -/
+  | forceMoveToBattlefield (who : PlayerSel) (destination : Selector)
+  /-- Carry out the Move after its fee was paid. Its follow-up runs only if a Unit moved. -/
+  | moveAfterFee (move : Prim) (afterMove : Effect)
+  /-- Grant a numbered keyword whose amount is determined as the effect resolves. -/
+  | grantNumericKeyword (objects : Selector) (keyword : Keyword) (amount : Amount)
+      (duration : Duration)
   /-- Continue gathering each player's own pick. `capture` records the latest answer first. -/
   | collectOwnPicks (controller : PlayerId) (remaining : List PlayerId)
       (place : Place) (filters : FilterList) (body : Effect) (capture : Bool)

@@ -43,8 +43,8 @@ theorem of_safeP {s s' : GameState} (h : SafeP s s') : TC s s' := by
 end TC
 
 theorem tc_applyMana {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event}
-    (h : applyMana s p src idx pay = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event}
+    (h : applyMana s p src idx pay chosen = some (s', es)) : TC s s' := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
   exact (TC.of_safe hs).trans ⟨rfl, rfl⟩
 
@@ -100,15 +100,17 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
-    (h : applyActivate s p src idx pay ts discards targetPlayer = some (s', es)) : TC s s' := by
+    {costObject : Option ObjId}
+    (h : applyActivate s p src idx pay ts discards targetPlayer costObject = some (s', es)) : TC s s' := by
   exact TC.of_sameMeta (applyActivate_safe h).same
 
 theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {new : List Frame}
     {targetPlayer banisher : Option PlayerId} {es : List Event}
-    (h : activateStep s p src idx pay ts new discards targetPlayer banisher = some (s', es)) : TC s s' := by
+    {costObject : Option ObjId}
+    (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact ((TC.of_safe (noteActivationBanisher_safe s ts banisher)).trans
+  exact ((TC.of_safe (noteActivationBanisher_safe s (ts ++ costObject.toList) banisher)).trans
     (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -325,6 +327,9 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
   · exact absurd h (by simp)
@@ -358,13 +363,11 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     exact beginTurnStep_tick _ _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (s.mapObjects (readyOf (s.active.getD ⟨0⟩))) :=
-      TC.of_sameMeta (GameState.sameMeta_mapObjects s _)
-    exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+    exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (channel (s.active.getD ⟨0⟩) s.channelCount s).1 :=
-      TC.of_sameMeta (channel_sameMeta _ _ s)
+    have h1 : TC s (channelEx (s.active.getD ⟨0⟩) s.channelCount 0 s).1 :=
+      TC.of_sameMeta (channelEx_safe _ _ _ s).same
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -380,10 +383,15 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safe (beginStep_safe s _)
-    exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact Tick.of_tc ⟨rfl, rfl⟩
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safe (beginStep_safe s _)
+      exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     have h1 : TC s (hold s (s.active.getD ⟨0⟩)).1 := TC.of_safeP (hold_safeP s _)
@@ -394,7 +402,7 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩
-  · rename_i p n rest hp
+  · rename_i p n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -472,9 +480,9 @@ theorem tc_addDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') : TC s s' := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
   exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
-    ((tc_addCards _ _ _ h4).trans (tc_addCards _ _ _ h5))))
+    ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addDecks {db : CardDB} :
     ∀ (ds : List Deck) {s s' : GameState} {i : Nat}, s.addDecks db i ds = some s' → TC s s'
@@ -493,9 +501,9 @@ theorem tc_addLimitedDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : L
     (h : s.addLimitedDeck db p d = some s') : TC s s' := by
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
   exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
-    ((tc_addCards _ _ _ h4).trans (tc_addCards _ _ _ h5))))
+    ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addLimitedDecks {db : CardDB} :
     ∀ (ds : List LimitedDeck) {s s' : GameState} {i : Nat},
@@ -555,7 +563,7 @@ theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionTransitionEvents s3 a)) :=
     tc_withTriggers _ _
   obtain ⟨actor, kind⟩ := a
   simp only at hk
@@ -573,7 +581,7 @@ theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩
     · exact TC.refl _
     · exact ⟨rfl, rfl⟩
-  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionMightEvents s3 a)) :=
+  have h4 : TC s3 (s3.withTriggers (es2 ++ extraEvents a es2 ++ s.actionTransitionEvents s3 a)) :=
     tc_withTriggers _ _
   rcases applyFrame0_tc h0 with h1 | ⟨hk, ht, hcl⟩
   · exact Or.inl ((h1.trans h2).trans h4)
@@ -606,11 +614,40 @@ theorem microStep_tick {s s' : GameState} {es : List Event}
     (h : microStep s = some (s', es)) : Tick s s' := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   have h1 := microStep0_tick h0
-  have h2 := tc_withTriggers s2 (es ++ s.mightyEvents s2)
+  have h2 := tc_withTriggers s2 (es ++ s.workTransitionEvents s2)
   refine ⟨h2.2.trans h1.1, ?_⟩
   rcases h1.2 with h | h
   · exact Or.inl (h2.1.trans h)
   · exact Or.inr ⟨h2.1.trans h.1, h.2⟩
+
+/-- A replacement question does not affect the clock. -/
+theorem tc_applyDeclaredAction {s s' : GameState} {a : Action} {es : List Event}
+    (h : applyDeclaredAction s a = some (s', es)) :
+    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.turn + 3)) := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, _, rfl, _⟩
+  · exact tc_applyAction ordinary
+  · exact Or.inl ⟨rfl, rfl⟩
+
+/-- Calling time sets the clock without a choice of payment. -/
+theorem applyDeclaredAction_called {s s' : GameState} {a : Action} {es : List Event}
+    (hk : a.kind = .timeCalled) (h : applyDeclaredAction s a = some (s', es)) :
+    s'.turn = s.turn ∧ s'.clock = some (s.turn + 3) := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, choice, _, _⟩
+  · exact applyAction_called hk ordinary
+  · cases hp : s.pending with
+    | nil => simp [GameState.actionDeathCostChoice, hp] at choice
+    | cons frame rest =>
+      cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, hp, hk] at choice
+
+/-- Automatic work preserves the clock even when it resumes a payment. -/
+theorem workStep_tick {s s' : GameState} {es : List Event}
+    (h : workStep s = some (s', es)) : Tick s s' := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, _, ⟨notClock, _, applied⟩ | ⟨rfl, _⟩⟩
+  · exact microStep_tick ordinary
+  · rcases tc_applyDeclaredAction applied with same | ⟨called, _, _⟩
+    · exact Tick.of_tc same
+    · exact absurd called notClock
+  · exact Tick.of_tc ⟨rfl, rfl⟩
 
 /-- The work after an answer keeps the clock and does not take the turn counter past it. -/
 theorem advance_keep :
@@ -635,7 +672,7 @@ theorem advance_keep :
       split at h
       · split at h
         · rename_i s1 es1 hm
-          obtain ⟨hc1, hcl1⟩ := (microStep_tick hm).keep hc
+          obtain ⟨hc1, hcl1⟩ := (workStep_tick hm).keep hc
           obtain ⟨hc2, hcl2⟩ := advance_keep n hc1 h
           exact ⟨hc2, hcl2.trans hcl1⟩
         · exact absurd h (by simp)
@@ -659,7 +696,7 @@ theorem step_keep {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
     split at h
     · rename_i s1 es1 hm
       have hc1 : ClockOk s1 := by
-        rcases tc_applyAction hm with ht | ⟨-, ht, hcl⟩
+        rcases tc_applyDeclaredAction hm with ht | ⟨-, ht, hcl⟩
         · exact hc.of_tc ht
         · intro lim hl'
           rw [hcl] at hl'
@@ -670,10 +707,10 @@ theorem step_keep {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
       refine ⟨hc2, fun hne => ?_, fun hk => ?_⟩
       · by_cases hk : a.kind = .timeCalled
         · exact absurd (legal_timeCalled hk (hl.frame (by rw [hk]; decide))).2.2.2.1 hne
-        · rcases tc_applyAction hm with ht | ⟨hk', -, -⟩
+        · rcases tc_applyDeclaredAction hm with ht | ⟨hk', -, -⟩
           · exact hcl2.trans ht.2
           · exact absurd hk' hk
-      · exact hcl2.trans (applyAction_called hk hm).2
+      · exact hcl2.trans (applyDeclaredAction_called hk hm).2
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 

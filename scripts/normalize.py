@@ -6,7 +6,7 @@
 - `cardId` は最初の印刷の公開コードから、通し番号の分母を除いたもの（例: OGN-029）。
 - 型は、公式ギャラリーの欄が空か食い違うとき、代替テキスト（"Riftbound Unit: ..."）で補う。
 - 装備品の `effect` 欄（付けた Unit に与える文）は、`text` と別に `effectText` として持つ。
-- supertype（Champion / Signature）は公式ギャラリーに無いので、ここでは埋めない。
+- 公式ギャラリーの欄とカード画像が異なる場合は、画像で確認できた値を補う。
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
+# https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
 TEXT_ERRATA = {
     "VEN-034": {
         "[Reaction] (Play on your turn or in showdowns.)":
@@ -36,6 +37,136 @@ TEXT_ERRATA = {
         "return me to hand, give me +3 :rb_might: instead.":
             "return me to hand, give me +3 :rb_might: this turn instead.",
     },
+    "RAD-010": {
+        "Banish this.": "Then banish this.",
+    },
+    "RAD-081": {
+        "give another friendly unit": "give a friendly unit",
+    },
+    "RAD-127": {
+        "base instead.disa": "base instead.",
+    },
+    "RAD-154": {
+        "play this turn (even from face down) can":
+            "play this turn, even from face down, can",
+    },
+    "RAD-167": {
+        "choose 3 different legends": "choose up to 3 different legends",
+        "one of those legends": "one of those Legends",
+    },
+}
+
+# The gallery omits or mislabels these fields. Checked against its card images.
+RADIANCE_PRINT_METADATA = {
+    "RAD-001": {"domains": ["fury"], "tags": ["Bandle City", "Yordle"]},
+    "RAD-002": {"tags": []},
+    "RAD-003": {"domains": ["fury"], "tags": ["Bilgewater"]},
+    "RAD-004": {"domains": ["fury"]},
+    "RAD-005": {"tags": ["Shadow Isles", "Spirit"]},
+    "RAD-006": {"domains": ["fury"]},
+    "RAD-008": {"tags": ["Demacia", "Yordle"]},
+    "RAD-009": {"domains": ["fury"], "tags": ["Bandle City", "Yordle", "Mech"]},
+    "RAD-011": {"tags": ["Piltover", "Mech"]},
+    "RAD-014": {"tags": ["Bilgewater"]},
+    "RAD-016": {"domains": ["fury"], "tags": ["Shurima"]},
+    "RAD-017": {"domains": ["fury"], "tags": []},
+    "RAD-018": {"tags": ["Noxus"]},
+    "RAD-019": {"tags": ["Freljord"]},
+    "RAD-021": {"supertypes": ["champion"], "tags": ["Ekko", "Zaun"]},
+    "RAD-022": {"domains": ["fury"]},
+    "RAD-023": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
+    "RAD-024": {"domains": ["calm"], "tags": []},
+    "RAD-026": {"domains": ["calm"], "tags": ["Freljord"]},
+    "RAD-027": {"tags": ["Ixtal", "Bird"]},
+    "RAD-030": {"tags": ["Shurima"]},
+    "RAD-031": {"tags": ["Bilgewater", "Sentinel"]},
+    "RAD-035": {"domains": ["calm"], "tags": []},
+    "RAD-036": {"tags": ["Freljord", "Bird"]},
+    "RAD-037": {"tags": ["Piltover"]},
+    "RAD-040": {"tags": ["Shadow Isles", "Spirit"]},
+    "RAD-041": {"domains": ["calm"]},
+    "RAD-042": {"supertypes": ["champion"], "tags": ["Orianna", "Piltover"]},
+    "RAD-043": {"supertypes": ["champion"], "tags": ["Riven", "Noxus"]},
+    "RAD-044": {"tags": []},
+    "RAD-045": {"supertypes": ["champion"], "tags": ["K'Sante", "Shurima"]},
+    "RAD-047": {"domains": ["mind"]},
+    "RAD-049": {"domains": ["mind"], "tags": ["Zaun"]},
+    "RAD-050": {"tags": ["Shurima"]},
+    "RAD-052": {"tags": []},
+    "RAD-053": {"tags": ["Freljord", "Bird"]},
+    "RAD-054": {"tags": ["Bandle City", "Yordle"]},
+    "RAD-055": {"tags": ["Piltover", "Mech"]},
+    "RAD-057": {"tags": ["Piltover", "Mech"]},
+    "RAD-058": {"tags": ["Bilgewater"]},
+    "RAD-059": {"domains": ["mind"]},
+    "RAD-060": {"tags": ["Ionia", "Dragon"]},
+    "RAD-061": {"supertypes": ["champion"], "tags": ["Ekko", "Zaun"]},
+    "RAD-062": {"domains": ["mind"], "tags": []},
+    "RAD-065": {"supertypes": ["champion"], "tags": ["Seraphine", "Piltover"]},
+    "RAD-066": {"tags": ["Freljord", "Spirit"]},
+    "RAD-067": {"domains": ["mind"], "tags": ["Shurima"]},
+    "RAD-071": {"domains": ["body"], "tags": ["Equipment"]},
+    "RAD-072": {"tags": ["Bandle City", "Yordle"]},
+    "RAD-073": {"domains": ["body"], "tags": []},
+    "RAD-074": {"tags": ["Freljord"]},
+    "RAD-075": {"tags": ["Demacia", "Elite", "Bird"]},
+    "RAD-077": {"tags": ["Freljord", "Spirit"]},
+    "RAD-078": {"tags": ["Noxus"]},
+    "RAD-080": {"tags": ["Shurima"]},
+    "RAD-081": {"domains": ["body"], "tags": ["Freljord"]},
+    "RAD-083": {"tags": ["Mount Targon"]},
+    "RAD-085": {"supertypes": ["champion"]},
+    "RAD-086": {"supertypes": ["champion"], "tags": ["K'Sante", "Shurima"]},
+    "RAD-087": {"tags": []},
+    "RAD-088": {"tags": ["Freljord"]},
+    "RAD-090": {"supertypes": ["champion"], "tags": ["Evelynn", "Demon"]},
+    "RAD-092": {"tags": ["Mount Targon", "Dragon"]},
+    "RAD-093": {"domains": ["chaos"], "tags": ["Bandle City", "Yordle"]},
+    "RAD-094": {"tags": ["Zaun"]},
+    "RAD-095": {"tags": ["Shadow Isles", "Demon"]},
+    "RAD-097": {"tags": ["Bilgewater"]},
+    "RAD-099": {"tags": ["Bilgewater", "Demon"]},
+    "RAD-103": {"tags": ["Zaun"]},
+    "RAD-104": {"domains": ["chaos"], "tags": ["Shadow Isles", "Cat"]},
+    "RAD-105": {"tags": ["Piltover"]},
+    "RAD-106": {"domains": ["chaos"], "tags": []},
+    "RAD-107": {"tags": ["Shadow Isles", "Demon"]},
+    "RAD-108": {"domains": ["chaos"], "tags": []},
+    "RAD-110": {"supertypes": ["champion"], "tags": ["Lulu", "Bandle City", "Yordle"]},
+    "RAD-111": {"domains": ["chaos"], "tags": []},
+    "RAD-112": {"supertypes": ["champion"], "tags": ["Ziggs", "Zaun", "Yordle"]},
+    "RAD-113": {"tags": ["Bilgewater", "Dragon"]},
+    "RAD-114": {"supertypes": ["champion"], "tags": ["Riven", "Noxus"]},
+    "RAD-115": {"tags": ["Bilgewater"]},
+    "RAD-116": {"tags": []},
+    "RAD-118": {"tags": ["Shurima"]},
+    "RAD-119": {"tags": ["Demacia", "Dog"]},
+    "RAD-120": {"tags": ["Piltover"]},
+    "RAD-121": {"domains": ["order"]},
+    "RAD-122": {"tags": ["Zaun"]},
+    "RAD-123": {"domains": ["order"], "tags": ["Equipment"]},
+    "RAD-124": {"domains": ["order"], "power": 1},
+    "RAD-125": {"tags": ["The Void"]},
+    "RAD-126": {"tags": ["Shadow Isles", "Spirit"]},
+    "RAD-128": {"tags": ["Demacia"]},
+    "RAD-129": {"tags": ["Noxus", "Trifarian"]},
+    "RAD-130": {"tags": ["Demacia"]},
+    "RAD-131": {"tags": ["Demacia"]},
+    "RAD-133": {"supertypes": ["champion"], "tags": ["Jarvan IV", "Demacia"]},
+    "RAD-134": {"domains": ["order"]},
+    "RAD-136": {"tags": []},
+    "RAD-137": {"supertypes": ["champion"], "tags": ["Mordekaiser", "Noxus", "Spirit"]},
+    "RAD-141": {"tags": ["Ziggs"]},
+    "RAD-142": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-144": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-146": {"supertypes": ["signature"], "tags": ["Orianna"], "powerOwn": True},
+    "RAD-148": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-150": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-152": {"supertypes": ["signature"], "powerOwn": True},
+    "RAD-156": {"supertypes": ["signature"], "tags": ["Jarvan IV"], "powerOwn": True},
+    "RAD-SP3": {"supertypes": ["champion"], "tags": ["Evelynn", "Demon"]},
+    "RAD-SP4": {"supertypes": ["champion"], "tags": ["Kai'Sa", "The Void"]},
+    "RAD-SP5": {"supertypes": ["champion"], "tags": ["Seraphine", "Piltover"]},
 }
 
 
@@ -111,6 +242,8 @@ def normalize(snap: dict) -> dict:
         text = plain(first["text"])
         for printed, corrected in TEXT_ERRATA.get(ident, {}).items():
             text = [line.replace(printed, corrected) for line in text]
+        if ident == "RAD-071":
+            text = [line.replace("Equip :rb_energy_1:", "[Equip] :rb_energy_1:", 1) for line in text]
         effect_text = plain(first["effect"])
         variants = sorted({rules_text(p) for p in ps} - {()})
         cards.append({
@@ -129,6 +262,7 @@ def normalize(snap: dict) -> dict:
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
+            **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
     cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))
     ids = [c["cardId"] for c in cards]

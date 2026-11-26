@@ -43,6 +43,8 @@ inductive Event where
   | readied (target : ObjId)
   /-- An object became exhausted (CR 415). -/
   | exhausted (target : ObjId)
+  /-- A completed action or instruction exhausted these Board objects together (CR 415). -/
+  | exhaustBatch (who : Option PlayerId) (objects : List ObjId) (beforeMove : Bool)
   /-- A Unit made a Standard Move (CR 144) to a Battlefield (`some`) or to its Base (`none`). -/
   | standardMoved (unit : ObjId) (dest : Option ObjId)
   /-- A player took control of a Battlefield (`some`), or the Battlefield lost its controller
@@ -76,6 +78,8 @@ inductive Event where
   | becameMighty (u : ObjId)
   /-- A Unit crossed a specified Might threshold from below (CR 383). -/
   | mightReached (u : ObjId) (threshold : Nat)
+  /-- The player caused this Unit's current Might to decrease. -/
+  | mightReduced (p : PlayerId) (u : ObjId) (amount : Nat)
   /-- An object gained an instance of Empowered (CR 442). -/
   | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/
@@ -96,6 +100,9 @@ inductive Event where
   | hiddenPlayed (p : PlayerId)
   /-- The player drew a card. -/
   | drew (p : PlayerId)
+  /-- The player completed a draw instruction that drew at least one card (CR 414).
+  Count the other cards from before the first draw of this instruction. -/
+  | drewGroup (p : PlayerId) (otherCards : Nat)
   /-- An effect of the player moved the unit (Blast Cone). -/
   | movedByEffect (p : PlayerId) (u : ObjId)
   /-- A player discarded a card: the object it has become in the Trash (CR 423). `last` is
@@ -115,6 +122,8 @@ inductive Event where
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- Units entered a Combat for the first time after it began (CR 462.1). -/
+  | combatJoined (bf : ObjId) (attacker : PlayerId) (units : List ObjId)
   /-- The Combat ended (CR 468.7). The list names the Unit objects that participated. -/
   | combatEnded (bf : ObjId) (units : List ObjId)
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won

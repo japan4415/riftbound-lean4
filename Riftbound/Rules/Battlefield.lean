@@ -33,17 +33,9 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
   | some d => d.types.contains t
   | none => false
 
-/-- Whether an object occupies a Unit's place on the board. An attachment copies Unit to Unit. -/
+/-- Whether an object occupies a Unit's place, including an animated Gear. -/
 def isUnit (s : GameState) (id : ObjId) : Bool :=
-  (s.printedCardDef? id).any (·.hasType .unit)
-
-/-- Whether an object is a Battlefield. Attachment copies apply only to Units. -/
-def isBattlefield (s : GameState) (id : ObjId) : Bool :=
-  (s.printedCardDef? id).any (·.hasType .battlefield)
-
-/-- The Battlefields of the game, in the order of the Battlefield Zone. -/
-def battlefields (s : GameState) : List ObjId :=
-  (s.zone .battlefieldZone).filter (fun b => s.isBattlefield b)
+  (s.printedCardDef? id).any (·.hasType .unit) || (s.obj? id).any (fun o => !o.unitGearEffects.isEmpty)
 
 /-- Whether the Unit `u` is at the Battlefield `bf`. -/
 def isAt (s : GameState) (bf u : ObjId) : Bool :=
@@ -97,13 +89,13 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
   | none => false
   | some o =>
     decide (p.n < s.playerCount) && decide (s.phase = .main) && s.isUnit u &&
-      decide (o.controller = p) && !o.exhausted &&
+      decide (o.controller = p) && (!o.exhausted && !s.moveBlocked u) &&
       match d with
       | .base =>
         decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
           !(o.loc.any (fun bf => s.homeForbiddenFor u bf))
       | .battlefield bf =>
-        decide (bf ∈ s.battlefields) &&
+        (decide (bf ∈ s.battlefields) && s.effectMoveBattlefieldOk o bf) &&
           (decide (u ∈ s.zone (.player p .base)) ||
             ((s.hasKw u .ganking ||
                 -- a Battlefield units can move to from anywhere (Baron Pit)
@@ -150,9 +142,10 @@ def GameState.destinations (s : GameState) : List MoveDest :=
 
 /-- The Standard Moves a player can make. -/
 def legalMoves (s : GameState) (p : PlayerId) : List Action :=
+  let priced := s.destinations.map (fun d => (d, s.standardMovePayments p d))
   (s.movable p).flatMap (fun u =>
-    (s.destinations.filter (fun d => moveOk s p u d)).map
-      (fun d => ⟨.player p, .standardMove u d⟩))
+    (priced.filter (fun (d, _) => moveOk s p u d)).flatMap (fun (d, pays) =>
+      pays.map (fun pay => ⟨.player p, .standardMove u d pay⟩)))
 
 /-- A Standard Move that can be made starts from a Unit a player might move, and goes to a
 destination there is. -/
@@ -175,7 +168,7 @@ theorem moveOk_mem {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
         · exact Or.inl h1
         · exact Or.inr h1.1.1.2
       · simp only [GameState.destinations, List.mem_cons, List.mem_map]
-        exact Or.inr ⟨bf, h.2.1, rfl⟩
+        exact Or.inr ⟨bf, h.2.1.1, rfl⟩
 
 /-- A Standard Move that can be made can be done. -/
 theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDest}
@@ -212,15 +205,17 @@ theorem applyMove_isSome {s : GameState} {p : PlayerId} {u : ObjId} {d : MoveDes
 /-- The Standard Moves listed are those a player can make. -/
 theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
     a ∈ legalMoves s p ↔
-      ∃ u d, a = ⟨.player p, .standardMove u d⟩ ∧ moveOk s p u d = true := by
+      ∃ u d pay, a = ⟨.player p, .standardMove u d pay⟩ ∧
+        moveOk s p u d = true ∧ pay ∈ s.standardMovePayments p d := by
   unfold legalMoves
   simp only [List.mem_flatMap, List.mem_map, List.mem_filter]
   constructor
-  · rintro ⟨u, -, d, ⟨-, hd⟩, rfl⟩
-    exact ⟨u, d, rfl, hd⟩
-  · rintro ⟨u, d, rfl, hd⟩
+  · rintro ⟨u, -, ⟨d, pays⟩, ⟨⟨d', _, hp⟩, hm⟩, pay, hf, rfl⟩
+    cases hp
+    exact ⟨u, d, pay, rfl, hm, hf⟩
+  · rintro ⟨u, d, pay, rfl, hd, hpay⟩
     obtain ⟨hu, hdm⟩ := moveOk_mem hd
-    exact ⟨u, hu, d, ⟨hdm, hd⟩, rfl⟩
+    exact ⟨u, hu, (d, _), ⟨⟨d, hdm, rfl⟩, hd⟩, pay, hpay, rfl⟩
 
 /-! ### Scoring -/
 
@@ -356,7 +351,8 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     -- (its Might fell to 0), it dies
     else if !decide (u ∈ s.zone Zone.battlefieldZone) &&
         (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
-      ((s.modObj u (fun o => { o with damage := 0, exhausted := true })).addTurnFxOn
+      let healed := s.modObj u (fun o => { o with damage := 0, exhausted := true })
+      ((closeDeathSacrifice healed u).addTurnFxOn
         (match s.obj? u with | some o => o.controller | none => ⟨0⟩) u .saveUsed, [])
     else killObj s u
   | none => killObj s u
@@ -373,7 +369,8 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
     · exact saveUnit_safe s u none
     · split
       · exact (Safe.modObj s u (f := fun o => { o with damage := 0, exhausted := true })
-        (fun _ => rfl) (fun _ => rfl)).trans (addTurnFxOn_safe _ _ _ _)
+        (fun _ => rfl) (fun _ => rfl)).trans
+          ((closeDeathSacrifice_safe _ u).trans (addTurnFxOn_safe _ _ _ _))
       · exact killObj_safe s u
   · exact killObj_safe s u
 
@@ -410,17 +407,39 @@ def tokenStep (s : GameState) : Option (GameState × List Event) :=
   | some id => (removeObj s id).map (fun s' => (s', []))
   | none => none
 
-/-- An Equipment attached to something that is not a Unit in play (CR 137). -/
+/-- An Equipment whose recipient left the Board (CR 137.3.b). -/
 def GameState.looseGear (s : GameState) : Option ObjId :=
   s.inPlay.find? (fun g => (s.obj? g).any (fun o =>
     match o.attached with
-    | some u => !(s.inPlay.contains u && s.isUnit u)
+    | some u => !(s.inPlay.contains u)
     | none => false))
 
 /-- The step of the Cleanup for an Equipment whose Unit is gone: it is not attached any more
 (CR 137). -/
 def detachStep (s : GameState) : Option (GameState × List Event) :=
   s.looseGear.map (fun g => (s.modObj g (fun o => { o with attached := none }), []))
+
+/-- Additional Legends whose source left the Board return to their owner's reserve. -/
+def GameState.expiredReservedLegend (s : GameState) : Option (PlayerId × ObjId) :=
+  s.players.findSome? (fun p =>
+    ((s.zone (.player p .legendZone)).find? (fun id =>
+      (s.obj? id).any (fun o => o.reservedBy.any (fun src => !s.inPlay.contains src)))).map (p, ·))
+
+/-- Return an additional Legend when the duration that keeps it in the game ends. -/
+def returnReservedLegendStep (s : GameState) : Option (GameState × List Event) := do
+  let (p, id) ← s.expiredReservedLegend
+  let dest := Zone.player p .reserveLegends
+  let (t, next) ← moveObj s id dest
+  return (t, [.moved id next dest])
+
+theorem returnReservedLegendStep_safe {s t : GameState} {events : List Event}
+    (h : returnReservedLegendStep s = some (t, events)) : Safe s t := by
+  unfold returnReservedLegendStep at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨p, id⟩, -, ⟨result, next⟩, moved, resultEq⟩ := h
+  have he : result = t := (Prod.mk.inj (Option.some.inj resultEq)).1
+  subst t
+  exact Safe.moveObj moved
 
 /-- One step of the Cleanup (CR 323): a token off the Board ceases to exist (CR 183), an Equipment
 whose Unit is gone is detached (CR 137), or else the first step of `cleanupStep0`. `none` if none
@@ -431,7 +450,7 @@ def cleanupStep (s : GameState) : Option (GameState × List Event) :=
   | none =>
     match detachStep s with
     | some r => some r
-    | none => cleanupStep0 s
+    | none => (returnReservedLegendStep s).orElse (fun _ => cleanupStep0 s)
 
 /-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
 player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
@@ -457,7 +476,9 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
           .combatControl bf | .combatFinish bf => bf == c.battlefield
         | _ => false) then
       let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
-      (some { c with units := (c.units ++ present).eraseDups }, [])
+      let joined := present.filter (fun unit => !c.units.contains unit)
+      (some { c with units := c.units ++ joined },
+        if joined.isEmpty then [] else [.combatJoined c.battlefield c.attacker joined])
     else (some c, [])
   | none =>
     match pending.findSome? (fun f => match f with
@@ -482,11 +503,46 @@ def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × L
   let r := s.observeCombat pending
   ({ s with pending := pending, combat := r.1 }, r.2)
 
-/-- A pending lethal death can require a replacement choice before the automatic kill.
-Off-board tokens and unattached Equipment are still handled first (CR 323, 372). -/
+/-- Collect simultaneous lethal deaths after higher-priority Cleanup matters (CR 323). -/
+def cleanupDeathGroup (s : GameState) : List ObjId :=
+  if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then [] else
+    s.inPlay.filter (fun u => s.isUnit u && s.lethal u)
+
+/-- Offer decisions associated with the simultaneous deaths (CR 372-373). -/
 def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
-  if s.offBoardToken.isSome || s.looseGear.isSome then none else
-    (s.inPlay.find? (fun u => s.isUnit u && s.lethal u)).bind s.deathBanishChoice
+  s.deathGroupChoice (cleanupDeathGroup s)
+
+/-- A survival replacement can itself alter the death that pays for it. -/
+def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
+  (s.deathSaver victim).join.any (fun cost => (s.deathSaveFor cost []).isSome)
+
+/-- The individual death when resolving a Cleanup group. -/
+def cleanupResolveDeath (s : GameState) (victim : ObjId) : GameState × List Event :=
+  if hasNestedDeath s victim then killOrSave s victim else cleanupKill s victim
+
+theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
+    Safe s (cleanupResolveDeath s victim).1 := by
+  unfold cleanupResolveDeath
+  split
+  · exact killOrSave_safe s victim
+  · exact cleanupKill_safe s victim
+
+/-- The automatic Cleanup handles a single death. A simultaneous group or a nested replacement
+must complete all of its decisions together. -/
+def cleanupResolveDeathGroup (s : GameState) : Option (GameState × List Event) :=
+  let ids := cleanupDeathGroup s
+  if 1 < ids.length || ids.any (hasNestedDeath s) then
+    some (resolveDeathGroupWith s ids cleanupResolveDeath)
+  else none
+
+theorem cleanupResolveDeathGroup_safe {s : GameState} {r : GameState × List Event}
+    (h : cleanupResolveDeathGroup s = some r) : Safe s r.1 := by
+  unfold cleanupResolveDeathGroup at h
+  dsimp only at h
+  split at h
+  · cases h
+    exact resolveDeathGroupWith_safe s _ cleanupResolveDeath_safe
+  · contradiction
 
 /-- The step of the `cleanup` frame (CR 322-323): declare a winner, or do a step, or start a
 Showdown, or finish. -/
@@ -498,13 +554,16 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
     | some (u, controller, first, other) =>
       ({ s with pending := .eitherDo controller u {} first other .nil :: .cleanup :: rest }, [])
     | none =>
-      match cleanupStep s with
+      match cleanupResolveDeathGroup s with
       | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
       | none =>
-        match s.startShowdown rest with
-        | some (bf, q) =>
-          continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
-        | none => continueAfterCleanup s rest
+        match cleanupStep s with
+        | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
+        | none =>
+          match s.startShowdown rest with
+          | some (bf, q) =>
+            continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+          | none => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -628,7 +687,7 @@ theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :
   · simp at h
   · split at h
     · simp at h
-    · exact h
+    · cases hr : returnReservedLegendStep s <;> simp_all [Option.orElse]
 
 /-- The token that is found is a token, which has no physical card. -/
 theorem offBoardToken_spec {s : GameState} {id : ObjId} (h : s.offBoardToken = some id) :
@@ -703,7 +762,9 @@ theorem cleanupStep_safe {s s' : GameState} {es : List Event}
       simp only [Prod.mk.injEq] at hg
       rw [← hg.1]
       exact Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
-    · exact cleanupStep0_safe h
+    · cases hreturn : returnReservedLegendStep s with
+      | none => exact cleanupStep0_safe (by simpa [hreturn, Option.orElse] using h)
+      | some result => exact returnReservedLegendStep_safe (by simpa [hreturn, Option.orElse] using h)
 
 /-- Scoring a Battlefield is a safe change, then points. -/
 theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
@@ -830,12 +891,15 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
   · split
     · exact Or.inr (Or.inl ⟨_, _, _, _, rfl⟩)
     · split
-      · rename_i r hr
-        exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
+      · rename_i result hr
+        exact Or.inr (Or.inr (Or.inl ⟨result.1, cleanupResolveDeathGroup_safe hr, rfl⟩))
       · split
-        · rename_i bf q hq
-          exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
-        · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
+        · rename_i r hr
+          exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
+        · split
+          · rename_i bf q hq
+            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
 
 /-- What the winner has: the Victory Score and more points than every other player. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
@@ -949,18 +1013,15 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
     (h : s.Settled) (hn : s.startShowdown rest = none) :
     cleanupFrame s rest = continueAfterCleanup s rest := by
   obtain ⟨hw, hs⟩ := h
-  have hchoice : cleanupDeathBanishChoice s = none := by
-    cases ht : s.offBoardToken <;> cases hg : s.looseGear <;>
-      simp [cleanupDeathBanishChoice, ht, hg]
-    have hs0 : cleanupStep0 s = none := by
-      simpa [cleanupStep, tokenStep, detachStep, ht, hg] using hs
-    unfold cleanupStep0 at hs0
-    split at hs0
-    · contradiction
-    · rename_i hfind
-      simp [hfind]
-  unfold cleanupFrame
-  rw [hw, hchoice, hs, hn]
+  have noneLethal : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) = none := by
+    have h0 := cleanupStep0_of_none hs
+    cases hv : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
+    | none => rfl
+    | some u => simp [cleanupStep0, hv] at h0
+  have noGroup : cleanupDeathGroup s = [] := by
+    have hfilter := List.filter_eq_nil_iff.mpr (List.find?_eq_none.mp noneLethal)
+    simp [cleanupDeathGroup, hfilter]
+  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, hn]
 
 end Riftbound
 

@@ -1640,7 +1640,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     none none (.withCosts (.thenRepeat .plain 2 .plain) true 1)⟩
   let (repeating, _) ← (step 100 (s.addTurnFx p .nextSpellRepeat) twice).toOption
   let rep ← (repeating.zone .chain).head?
-  let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) false
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s0 p card (.reduceEnergy 0) .normal
   let plan ← (limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 0)).find? (fun plan =>
     plan.targets == [ally, enemy] && plan.cost == ⟨1, []⟩ && plan.pick == .withCosts .plain true 0)
   let (reduced, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy
@@ -1872,7 +1872,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let recycled ← (resolved.zone (.player third .mainDeck)).getLast?
   let (countered, canceled) ← settle 12 (counterObj waiting item).1 []
   let (stolen, stolenEvents) ← settle 12 (setController third waiting item).1 []
-  let (queuedReduced, reducedItem) ← queueLimitedSpell s p decree (.reduceEnergy 1) false
+  let (queuedReduced, reducedItem) ← queueLimitedSpell s p decree (.reduceEnergy 1) .normal
   let reduced := limitedSpellOptions queuedReduced p reducedItem (.reduceEnergy 1)
   let plan ← reduced.find? (fun plan => plan.pick.playerTarget == some third)
   let (castByEffect, _) ← commitLimitedSpell queuedReduced p reducedItem plan [] effectAddPolicy
@@ -2454,17 +2454,24 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
     choices.findSome? (fun (id, who) => if id == unit then some who else none)
   let choose (a b : PlayerId) := pays.find? (fun (_, _, choices) =>
     actorOf choices first == some a && actorOf choices second == some b)
+  let pay (a : Action) : Option (GameState × List Event) := do
+    let (ordered, declared) ← (step 100 picking a).toOption
+    let .eitherDo controller _ _ (.recordDeathOrder _ candidate) _ _ :: _ := ordered.pending
+      | none
+    if controller != p || candidate != riches || !declared.isEmpty then none else
+      let (next, ordering) ← (step 100 ordered ⟨.player p, .decide true⟩).toOption
+      if !ordering.isEmpty then none else (step 100 next ⟨.player p, .decide true⟩).toOption
   let (chosen, ids, _) ← choose p q
   let (flipped, _, _) ← choose q p
-  let (paid, events) ← (step 100 picking chosen).toOption
-  let (other, otherEvents) ← (step 100 picking flipped).toOption
+  let (paid, events) ← pay chosen
+  let (other, otherEvents) ← pay flipped
   let correct (t : GameState) (es : List Event) (a b : PlayerId) : Option Bool := do
     let first ← t.firstOf p .banishment "VEN-014"
     let second ← t.firstOf p .banishment "VEN-128"
     let rich ← t.firstOf p .banishment "VEN-022"
     return (t.zone .chain).length == 1 && t.pointsOf p == s.pointsOf p &&
       es.contains (.banished a p first) && es.contains (.banished b p second) &&
-      es.contains (.banished p p rich) &&
+      (es.find? (fun | .banished .. => true | _ => false)) == some (.banished p p rich) &&
       !(es.any (fun | .died .. | .chosenByAbility .. => true | _ => false))
   let a ← correct paid events p q
   let b ← correct other otherEvents q p
@@ -3641,7 +3648,7 @@ meta def chooseLookedPayment (p : PlayerId) (accept : Effect → Bool) :
 
 /-- Select the next activation of the specified Rune. -/
 meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
-  | .fundLookedPermanent _ _ _ adds => adds.getLast? == some (.rune id recycle)
+  | .fundPermanentFromEffect _ _ _ adds => adds.getLast? == some (.rune id recycle)
   | _ => false
 
 -- The player chooses which Chaos Rune to Exhaust and Recycle. Gear-only
@@ -3706,7 +3713,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let looking ← passToChoice 8 casting
   let (choosing, _) ← act looking (.decide true)
   let (funding, opened) ← act choosing (.choose unit)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.ability source 0 0 []]) .nop _ :: _ :=
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [.ability source 0 0 []]) .nop _ :: _ :=
     funding.pending | none
   let (prepared, selected) ← act funding (.decide true)
   let (declined, discarded) ← act prepared (.decide false)
@@ -3735,9 +3742,9 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let looking ← passToChoice 8 casting
   let (choosing, _) ← act looking (.decide true)
   let (funding, _) ← act choosing (.choose unit)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [.rune rune false]) _ _ :: _ := funding.pending | none
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [.rune rune false]) _ _ :: _ := funding.pending | none
   let (funded, _) ← act funding (.decide true)
-  let .eitherDo _ _ _ (.fundLookedPermanent _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
+  let .eitherDo _ _ _ (.fundPermanentFromEffect _ _ _ [_, .ability source 0 1 []]) _ _ :: _ :=
     funded.pending | none
   let (prepared, _) ← act funded (.decide true)
   let other := if rune == first then second else first

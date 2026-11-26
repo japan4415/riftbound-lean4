@@ -8,7 +8,7 @@
 - 生成ブロックだけを書き換える。手書きの部分、ファイルの先頭（ヘッダ）は触れない。
 - 新しいカードには、生成ブロックと手書きの雛形を足す。
 - 弾ごとのカード一覧（`cards`）と RiftboundCards/Registry.lean も生成する。
-- 公式ギャラリーに無い supertype は空のまま。2 つのドメインを持つカードの Power の
+- 公式ギャラリーの画像から確認した supertype を反映する。2 つのドメインを持つカードの Power の
   ドメインの割り当ては分からないので、任意のドメイン（`.any`）にして、印を付ける。
 """
 from __future__ import annotations
@@ -70,13 +70,14 @@ def power_sym(d: str | None) -> str:
     return f".domain .{d}" if d else ".any"
 
 
-def cost_expr(energy: int | None, power: int | None, domains: list[str]) -> tuple[str, bool]:
+def cost_expr(energy: int | None, power: int | None, domains: list[str], power_own: bool = False) -> tuple[str, bool]:
     """Lean の式と、Power のドメインが分からなかったか。"""
     if energy is None and power is None:
         return "none", False
     doms = [d for d in domains if d in DOMAINS]
-    unknown = bool(power) and len(doms) != 1
-    syms = [power_sym(doms[0] if len(doms) == 1 else None)] * (power or 0)
+    unknown = bool(power) and len(doms) != 1 and not power_own
+    sym = ".own" if power_own else power_sym(doms[0] if len(doms) == 1 else None)
+    syms = [sym] * (power or 0)
     return f"some ⟨{energy or 0}, [{', '.join(syms)}]⟩", unknown
 
 
@@ -115,11 +116,17 @@ def keywords_of(lines: list[str]) -> tuple[list[str], int]:
             if name in AMOUNT_KW:
                 arg = f", arg := .amount {int(n) if n else 1}"
             elif name in COST_KW:
-                c = parse_cost(line[pos:])
+                tail = line[pos:]
+                alternative = (
+                    re.match(r"\s*—\s*(.*?)\s+or exhaust a friendly unit\b", tail)
+                    if name == "Equip" else None
+                )
+                c = parse_cost(alternative.group(1) if alternative else tail)
                 if c is None:
                     unparsed += 1
                 else:
-                    arg = f", arg := .cost {c}"
+                    variant = "costOrExhaustUnit" if alternative else "cost"
+                    arg = f", arg := .{variant} {c}"
             elif name == "Show Off":
                 mo = re.match(r"\s*(.+?)(?:\.|\s\(|$)", line[pos:])
                 if mo:
@@ -136,7 +143,7 @@ def card_block(c: dict) -> str:
     cid = c["cardId"]
     types = [TYPES[t] for t in c["types"] if t in TYPES]
     doms = [d for d in c["domains"] if d in DOMAINS]
-    cost, unknown_power = cost_expr(c["energy"], c["power"], c["domains"])
+    cost, unknown_power = cost_expr(c["energy"], c["power"], c["domains"], c.get("powerOwn", False))
     kws, unparsed = keywords_of(c["text"])
     title = c["name"] + (f", {c['subtitle']}" if c["subtitle"] else "")
     kind = " ".join(t.capitalize() for t in c["types"]) or "Token"
@@ -162,6 +169,8 @@ def card_block(c: dict) -> str:
     if c["subtitle"]:
         fields.append(f"subtitle := some {lean_str(c['subtitle'])}")
     fields.append(f"types := [{', '.join('.' + t for t in types)}]")
+    if c.get("supertypes"):
+        fields.append(f"supertypes := [{', '.join('.' + s for s in c['supertypes'])}]")
     if c["tags"]:
         fields.append("tags := [" + ", ".join(f"⟨{lean_str(t)}⟩" for t in c["tags"]) + "]")
     if doms:

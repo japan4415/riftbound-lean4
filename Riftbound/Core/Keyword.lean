@@ -96,8 +96,12 @@ inductive KeywordArg where
   | none
   /-- A number: Assault X, Shield X, Deflect X, Hunt X, Level N, Disarm X. -/
   | amount (n : Nat)
+  /-- An Assault instance whose amount follows the same Unit's current Shield. -/
+  | equalShield
   /-- A cost: Equip, Repeat, Empower, Flow. -/
   | cost (c : Cost)
+  /-- Equip can be paid with either this resource cost or by exhausting a friendly Unit. -/
+  | costOrExhaustUnit (c : Cost)
   /-- An object description: Show Off. Provisional text until selectors exist (milestone M3b). -/
   | object (desc : String)
 deriving DecidableEq, Repr, Hashable

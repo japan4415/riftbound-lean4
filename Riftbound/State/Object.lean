@@ -104,8 +104,14 @@ structure Object where
   targets : List ObjId := []
   /-- For an ability on the Chain: the amount captured when it triggered (CR 388-389). -/
   eventAmount : Option Nat := none
-  /-- A Move trigger's original Battlefield information (CR 477.3.b). -/
-  moveBattlefields : Option (List ObjId) := none
+  /-- Characteristics recorded during this object's play or captured by its play trigger. -/
+  shownOff : Option ShownOff := none
+  /-- For an ability assembled from the source's effective keywords. -/
+  triggerKeyword : Option Keyword := none
+  /-- A triggered ability's original Battlefield information (CR 477.3.b). -/
+  eventBattlefields : Option (List ObjId) := none
+  /-- The members of the group that triggered this ability. -/
+  eventObjects : List ObjId := []
   /-- For a Unit at a Battlefield: that Battlefield (CR 106, 144). `none` for a Unit on a Base and
   for what is not a Unit. Leaving the Board clears it, except into the Trash: a card there
   remembers where it was, for what it does when it dies ("here"). -/
@@ -123,6 +129,10 @@ structure Object where
   copiedUses : List (Timestamp × Nat) := []
   /-- The base Might set by an effect for this turn, before arithmetic changes (CR 143.2.a, 479.2). -/
   baseMightThisTurn : Option Nat := none
+  /-- Gear animation effects, with the newest source and its base Might first (CR 479). -/
+  unitGearEffects : List (ObjId × Nat) := []
+  /-- The latest animation just before leaving the Board, for its death event. -/
+  leftUnitGearMight : Option Nat := none
   /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
   Board clears them. -/
   mightMods : List MightMod := []
@@ -173,6 +183,8 @@ structure Object where
   paid : Bool := false
   /-- Whether a hand card was discarded as an additional cost for the current play. -/
   discardPaid : Bool := false
+  /-- The printed Energy of the Gear returned to pay this card's additional cost. -/
+  returnedGearEnergy : Nat := 0
   /-- How many of the optional additional costs were paid when the card was played: a Spell does
   its effect once more for each Repeat that was paid (CR 820.3). -/
   extraPaid : Nat := 0
@@ -195,12 +207,14 @@ structure Object where
   /-- For a Battlefield token that replaced a Battlefield (Brush): the Battlefield it replaced, set
   aside in its owner's Banishment. -/
   replaces : Option ObjId := none
+  /-- This banished card can be played by its owner until the start of this numbered Ending Phase. -/
+  playUntilEnding : Option Nat := none
   /-- The card was played from its owner's hand (not from the Trash, the Deck, ...). -/
   playedFromHand : Bool := true
   /-- This Spell was played for its Flow cost and is banished when it leaves the Chain (CR 829). -/
   flowed : Bool := false
-  /-- This Spell was played by an effect that Recycles it after it resolves. -/
-  recycleAfterPlay : Bool := false
+  /-- A replacement for a finalized Spell's departure after a limited play. -/
+  limitedSpellExit : LimitedSpellExit := .normal
   /-- The limited play awaiting finalization once the parent effect has resolved. -/
   pendingSpellPlay : Option PendingSpellPlay := none
   /-- The mode or destination selected when this item was finalized. -/
@@ -222,6 +236,8 @@ structure Object where
   formerId : Option ObjId := none
   /-- The Equipment this card was banished by, when its Unit died (The Zero Drive). -/
   banishedWith : Option ObjId := none
+  /-- The Unit keeping this additional Legend in the Legend Zone (CR 103.1). -/
+  reservedBy : Option ObjId := none
   /-- The Energy paid when the card was played (0 if it was played for nothing). -/
   energyPaid : Nat := 0
   /-- How many Standard Moves the Unit made in the turn `movesTurn` (CR 447). -/

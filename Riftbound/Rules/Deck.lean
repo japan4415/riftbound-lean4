@@ -30,6 +30,8 @@ structure Deck where
   runes : List CardId
   /-- The Battlefields (CR 103.5). -/
   battlefields : List CardId
+  /-- Additional Legends the player selected as part of deckbuilding (CR 103.1). -/
+  reserveLegends : List CardId := []
 deriving DecidableEq, Repr
 
 /-- A deck whose identifiers are resolved to card definitions. -/
@@ -44,6 +46,8 @@ structure Deck.Resolved where
   runes : List CardDef
   /-- The Battlefields. -/
   battlefields : List CardDef
+  /-- The resolved additional Legends. -/
+  reserveLegends : List CardDef := []
 deriving DecidableEq, Repr
 
 /-- Resolve a deck against a database. `none` if some identifier is unknown. -/
@@ -53,7 +57,8 @@ def Deck.resolve (db : CardDB) (d : Deck) : Option Deck.Resolved := do
   let main ← d.main.mapM db.find?
   let runes ← d.runes.mapM db.find?
   let battlefields ← d.battlefields.mapM db.find?
-  pure { legend, chosenChampion, main, runes, battlefields }
+  let reserveLegends ← d.reserveLegends.mapM db.find?
+  pure { legend, chosenChampion, main, runes, battlefields, reserveLegends }
 
 namespace Deck
 
@@ -127,47 +132,56 @@ instance (r : Resolved) : Decidable (RuneDeckOk r) := by unfold RuneDeckOk; infe
 instance (m : Mode) (r : Resolved) : Decidable (BattlefieldsOk m r) := by
   unfold BattlefieldsOk; infer_instance
 
-/-- A resolved deck is legal under the Core Rules (CR 101-103). -/
-def Resolved.Valid (mode : Mode) (r : Resolved) : Prop :=
-  LegendOk r ∧ ChosenOk r ∧ MainSizeOk r ∧ MainTypesOk r.main ∧ CopyLimitOk r.main ∧
-    SignatureOk r ∧ IdentityOk r ∧ RuneDeckOk r ∧ BattlefieldsOk mode r
+/-- Additional Legends have distinct names, including from the starting Legend. The highest
+allowance in the player's registered card pool is the maximum count (CR 103.1). -/
+def ReserveLegendsOk (start : Option CardDef) (registered picked : List CardDef) : Prop :=
+  (picked = [] ∨ ∃ c ∈ registered, picked.length ≤ c.reserveLegendLimit) ∧
+    (∀ l ∈ picked, l.hasType .legend = true) ∧
+    ((start.toList ++ picked).map (·.nameKey)).Nodup
 
-instance (mode : Mode) (r : Resolved) : Decidable (r.Valid mode) := by
+instance (start : Option CardDef) (registered picked : List CardDef) :
+    Decidable (ReserveLegendsOk start registered picked) := by
+  unfold ReserveLegendsOk
+  infer_instance
+
+/-- A resolved deck is legal under the Core Rules (CR 101-103). -/
+def Resolved.Valid (mode : Mode) (r : Resolved) (registeredSideboard : List CardDef := []) : Prop :=
+  LegendOk r ∧ ChosenOk r ∧ MainSizeOk r ∧ MainTypesOk r.main ∧ CopyLimitOk r.main ∧
+    SignatureOk r ∧ IdentityOk r ∧ RuneDeckOk r ∧ BattlefieldsOk mode r ∧
+    ReserveLegendsOk (some r.legend) (r.main ++ registeredSideboard) r.reserveLegends
+
+instance (mode : Mode) (r : Resolved) (side : List CardDef) : Decidable (r.Valid mode side) := by
   unfold Resolved.Valid; infer_instance
 
 end Deck
 
 /-- A deck is legal under the Core Rules (CR 101-103) in `mode`. -/
-def DeckValid (db : CardDB) (mode : Mode) (d : Deck) : Prop :=
-  match d.resolve db with
-  | some r => r.Valid mode
-  | none => False
+def DeckValid (db : CardDB) (mode : Mode) (d : Deck) (registeredSideboard : List CardId := []) : Prop :=
+  match d.resolve db, registeredSideboard.mapM db.find? with
+  | some r, some side => r.Valid mode side
+  | _, _ => False
 
-instance (db : CardDB) (mode : Mode) (d : Deck) : Decidable (DeckValid db mode d) := by
+instance (db : CardDB) (mode : Mode) (d : Deck) (side : List CardId) :
+    Decidable (DeckValid db mode d side) := by
   unfold DeckValid
   split <;> infer_instance
 
 /-- A deck with an unknown card is not legal. -/
 theorem DeckValid.resolve_isSome {db : CardDB} {mode : Mode} {d : Deck}
     (h : DeckValid db mode d) : (d.resolve db).isSome = true := by
-  unfold DeckValid at h
-  split at h <;> simp_all
+  cases hr : d.resolve db <;> simp [DeckValid, hr] at h ⊢
 
 /-- A legal deck is a legal resolved deck. -/
 theorem DeckValid.exists_resolved {db : CardDB} {mode : Mode} {d : Deck}
     (h : DeckValid db mode d) : ∃ r, d.resolve db = some r ∧ r.Valid mode := by
-  unfold DeckValid at h
-  split at h
-  · rename_i r hr
-    exact ⟨r, hr, h⟩
-  · exact h.elim
+  cases hr : d.resolve db with
+  | none => simp [DeckValid, hr] at h
+  | some r => exact ⟨r, rfl, by simpa [DeckValid, hr] using h⟩
 
 /-- A legal resolved deck is a legal deck. -/
 theorem DeckValid.of_resolved {db : CardDB} {mode : Mode} {d : Deck} {r : Deck.Resolved}
     (hr : d.resolve db = some r) (h : r.Valid mode) : DeckValid db mode d := by
-  unfold DeckValid
-  rw [hr]
-  exact h
+  simpa [DeckValid, hr] using h
 
 namespace Deck.Resolved
 

@@ -31,6 +31,10 @@ inductive Amount where
   /-- The amount carried by an event a replacement ability changes or a reflexive ability
   reads. -/
   | eventAmount
+  /-- The Might of the object shown off during finalization (CR 832). -/
+  | shownOffMight
+  /-- The number of Power symbols on the object shown off during finalization (CR 832). -/
+  | shownOffPower
   /-- How many turns the players have taken so far. -/
   | turnsTaken (p : PlayerSel)
   /-- How many objects the selector matches. -/
@@ -77,6 +81,8 @@ inductive Amount where
   | notes (e : TurnEffect)
   /-- The Energy that was paid to play the object (0 if it was played for nothing). -/
   | energyPaid
+  /-- The printed Energy of the Gear returned to pay the source's additional cost. -/
+  | returnedGearEnergy
   /-- How many instances of Empowered the source currently has (CR 442.1.c.1). -/
   | empowerCount
   /-- The number of cards in a player's hand. -/
@@ -95,6 +101,8 @@ deriving DecidableEq, Repr, Hashable
 
 /-- A property an object can have, used to pick objects. -/
 inductive Filter where
+  /-- An actual card, rather than a token, copy, or ability. -/
+  | physicalCard
   /-- Has the card type. -/
   | ofType (t : CardType)
   /-- Has the supertype. -/
@@ -121,12 +129,18 @@ inductive Filter where
   | unitsHere (op : Cmp) (n : Nat)
   /-- Made its last move this turn from the Battlefield the object the effect belongs to is. -/
   | movedFromHere
+  /-- The object made a Move on the current turn (CR 447). -/
+  | movedThisTurn
+  /-- The object has the specified record from this turn, including records kept on death. -/
+  | notedOn (kind : TurnEffect)
   /-- Is exhausted. -/
   | exhausted
   /-- The object is at a Battlefield (not at a Base). -/
   | onBattlefield
-  /-- The unit is at a Battlefield the source just moved from or to. -/
-  | atSourceMoveBattlefield (recorded : Option (List ObjId) := none)
+  /-- The object is at a Battlefield recorded by the triggering event (CR 477.3.b). -/
+  | atEventBattlefield (recorded : Option (List ObjId) := none)
+  /-- Is one of the objects recorded when a group triggered this ability. -/
+  | inTriggerGroup (recorded : List ObjId := [])
   /-- The unit is at a Battlefield with an active Showdown (CR 341). -/
   | atShowdown
   /-- The unit is in combat with an enemy unit of the given domain. -/
@@ -272,6 +286,8 @@ inductive Selector where
   | var (v : VarId)
   /-- Objects picked while the effect resolves, or all that match (Pick) (CR 355). -/
   | pick (q : Quantity) (side : Side) (place : Place) (fs : FilterList)
+  /-- The revealed cards of this side that are still in their owners' Main Decks. -/
+  | revealedDeck (side : Side)
   /-- The object another one is attached to. -/
   | attachedTo (s : Selector)
   /-- The objects attached to another one. -/
@@ -308,6 +324,8 @@ inductive Condition where
   | paid
   /-- The optional discard cost of playing this card was paid (CR 357.2). -/
   | discardPaid
+  /-- An object was shown off for this play (CR 832). -/
+  | showedOff
   /-- The controller has played another card this turn, as the ability is used (CR 812). -/
   | playedAnother
   /-- The player finalized a card of this type this turn (CR 420.4.b). -/
@@ -350,6 +368,8 @@ inductive Condition where
   | openConquered
   /-- The player controls a card face down (Hidden). -/
   | hasHidden
+  /-- The player controls a facedown card at the source's Battlefield (CR 811). -/
+  | hasHiddenHere
   /-- The player spent at least `n` Energy to play a Spell this turn. -/
   | spentOnSpell (n : Nat)
   /-- A showdown is going on. -/

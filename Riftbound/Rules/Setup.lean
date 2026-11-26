@@ -41,6 +41,7 @@ def addCards (db : CardDB) (owner : PlayerId) (z : Zone) :
 /-- Add the cards of one player's deck. -/
 def GameState.addDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : Deck) :
     Option GameState := do
+  let s ← addCards db p (.player p .reserveLegends) s d.reserveLegends
   let s ← addCards db p (.player p .legendZone) s [d.legend]
   let s ← addCards db p (.player p .championZone) s [d.chosenChampion]
   let s ← addCards db p (.player p .mainDeck) s (d.main.erase d.chosenChampion)
@@ -58,6 +59,7 @@ def GameState.addDecks (db : CardDB) : GameState → Nat → List Deck → Optio
 has them (TR 602.4.a.5). -/
 def GameState.addLimitedDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : LimitedDeck) :
     Option GameState := do
+  let s ← addCards db p (.player p .reserveLegends) s d.reserveLegends
   let s ← addCards db p (.player p .legendZone) s d.legend.toList
   let s ← addCards db p (.player p .championZone) s d.chosenChampion.toList
   let s ← addCards db p (.player p .mainDeck) s
@@ -95,6 +97,16 @@ def GameState.initial (db : CardDB) (config : GameConfig) (decks : List Deck) :
       (fun s => { s with pending := startFrames config.mode.players })
   else none
 
+/-- Start with Constructed registrations, so a construction permission remains valid when its
+provider is in a sideboard (CR 103.1) (TR 403.4, 601). Only Main Deck cards enter the Main Deck. -/
+def GameState.initialConstructed (db : CardDB) (env : LegalityEnv) (config : GameConfig)
+    (registrations : List ConstructedDeck) : Option GameState :=
+  if registrations.length = config.mode.players ∧ config.Valid ∧ config.mode.deckBattlefields = 3 ∧
+      ∀ d ∈ registrations, ConstructedDeckValid db env d then
+    ((GameState.empty { config with formatLegality := some env } db).addDecks db 0
+      (registrations.map (·.deck))).map (fun s => { s with pending := startFrames config.mode.players })
+  else none
+
 /-- Adding cards keeps the game well formed. -/
 theorem addCards_wf {db : CardDB} (owner : PlayerId) (z : Zone) :
     ∀ (cs : List CardId) {s s' : GameState}, s.WF → addCards db owner z s cs = some s' → s'.WF
@@ -114,9 +126,10 @@ theorem GameState.addDeck_wf {db : CardDB} {s s' : GameState} {p : PlayerId} {d 
     (h : s.addDeck db p d = some s') : s'.WF := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have initialReserve := addCards_wf _ _ _ hwf h0
   exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _
-    (addCards_wf _ _ _ hwf h1) h2) h3) h4) h5
+    (addCards_wf _ _ _ initialReserve h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps the game well formed. -/
 theorem GameState.addDecks_wf {db : CardDB} :
@@ -139,9 +152,10 @@ theorem GameState.addLimitedDeck_wf {db : CardDB} {s s' : GameState} {p : Player
     (h : s.addLimitedDeck db p d = some s') : s'.WF := by
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have initialReserve := addCards_wf _ _ _ hwf h0
   exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _
-    (addCards_wf _ _ _ hwf h1) h2) h3) h4) h5
+    (addCards_wf _ _ _ initialReserve h1) h2) h3) h4) h5
 
 /-- Adding the Limited decks keeps the game well formed. -/
 theorem GameState.addLimitedDecks_wf {db : CardDB} :
@@ -217,14 +231,16 @@ theorem GameState.addDeck_ownerOk {db : CardDB} {s s' : GameState} {p : PlayerId
     (hown : s.OwnerOk) (h : s.addDeck db p d = some s') : s'.OwnerOk := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
-  have w1 := addCards_wf _ _ _ hwf h1
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have w0 := addCards_wf _ _ _ hwf h0
+  have o0 := addCards_ownerOk _ _ _ hwf hown h0
+  have w1 := addCards_wf _ _ _ w0 h1
   have w2 := addCards_wf _ _ _ w1 h2
   have w3 := addCards_wf _ _ _ w2 h3
   have w4 := addCards_wf _ _ _ w3 h4
   exact addCards_ownerOk _ _ _ w4
     (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
-      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ hwf hown h1) h2) h3) h4) h5
+      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps `OwnerOk`. -/
 theorem GameState.addDecks_ownerOk {db : CardDB} :
@@ -249,14 +265,16 @@ theorem GameState.addLimitedDeck_ownerOk {db : CardDB} {s s' : GameState} {p : P
     (hown : s.OwnerOk) (h : s.addLimitedDeck db p d = some s') : s'.OwnerOk := by
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
-  have w1 := addCards_wf _ _ _ hwf h1
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  have w0 := addCards_wf _ _ _ hwf h0
+  have o0 := addCards_ownerOk _ _ _ hwf hown h0
+  have w1 := addCards_wf _ _ _ w0 h1
   have w2 := addCards_wf _ _ _ w1 h2
   have w3 := addCards_wf _ _ _ w2 h3
   have w4 := addCards_wf _ _ _ w3 h4
   exact addCards_ownerOk _ _ _ w4
     (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
-      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ hwf hown h1) h2) h3) h4) h5
+      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
 
 /-- Adding the Limited decks keeps `OwnerOk`. -/
 theorem GameState.addLimitedDecks_ownerOk {db : CardDB} :

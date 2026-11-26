@@ -54,6 +54,10 @@ structure Env where
   hiddenPlayLocation : Option ObjId := none
   /-- A value saved by the event that triggered the resolving ability (CR 388-389). -/
   eventAmount : Option Nat := none
+  /-- Characteristics of the card or token shown off when this play was finalized. -/
+  shownOff : Option ShownOff := none
+  /-- The places referred to by a triggered ability, even if its source left the Board. -/
+  eventBattlefields : Option (List ObjId) := none
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/
   it : Option ObjId := none
   /-- What the passive abilities add to the Might of each object now (the Layers' last step). The

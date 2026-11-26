@@ -75,7 +75,7 @@ end RunePool
 def Action.targetsOf (a : Action) : List ObjId :=
   match a.kind with
   | .playCard _ _ ts _ _ _ => ts
-  | .activate _ _ _ ts _ _ _ => ts
+  | .activate _ _ _ ts _ _ _ _ => ts
   | .putTrigger _ ts _ => ts
   | _ => []
 
@@ -140,7 +140,7 @@ def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
     | .triggerOrder _ _ _ _ (some _) :: _ => true
     | _ => false
   | .playCard c _ ts _ _ _ => s.playPowerCut p c ts != 0
-  | .activate c idx _ ts _ _ _ =>
+  | .activate c idx _ ts _ _ _ _ =>
     s.playPowerCut p c ts != 0 &&
       (match (s.cardDef? c).bind (fun d => d.fullAbilities[idx]?) with
       | some (.activated costs _ _ _) => costs.contains .fromHidden
@@ -152,8 +152,13 @@ leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
   match a.actor with
   | .player p =>
-    if s.deflectInPayment p a then s2
-    else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
+    match a.kind with
+    | .standardMove _ _ pay =>
+      if pay == Cost.zero then s2
+      else ((s2.spendSymbols p pay false).map (s2.setPool p)).getD s2
+    | _ =>
+      if s.deflectInPayment p a then s2
+      else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/
@@ -161,9 +166,17 @@ theorem paySurcharge_cases (s : GameState) (a : Action) (s2 : GameState) :
     paySurcharge s a s2 = s2 ∨ ∃ p pool, paySurcharge s a s2 = s2.setPool p pool := by
   unfold paySurcharge
   split
-  · split
-    · exact Or.inl rfl
-    · exact Or.inr ⟨_, _, rfl⟩
+  · rename_i p _
+    split
+    · rename_i _ _ pay _
+      split
+      · exact Or.inl rfl
+      · cases h : s2.spendSymbols p pay false with
+        | none => exact Or.inl rfl
+        | some pool => exact Or.inr ⟨p, pool, rfl⟩
+    · split
+      · exact Or.inl rfl
+      · exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inl rfl
 
 /-- `s3` is `s2`, or `s2` with the Pool of a player replaced: the change that paying a surcharge

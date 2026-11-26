@@ -62,7 +62,8 @@ def Resolved.ConstructedValid (env : LegalityEnv) (r : Resolved) (side : List Ca
     CopyLimitOk (r.main ++ side) ∧ SignatureOk r ∧ IdentityOk r ∧ RuneDeckOk r ∧
     ConstructedBattlefieldsOk r ∧
     side.length ≤ 10 ∧ MainTypesOk side ∧ DomainsIn r.legend.domains side ∧
-    (∀ c ∈ r.legend :: (r.main ++ side ++ r.runes ++ r.battlefields), CardLegal env c)
+    (∀ c ∈ r.legend :: (r.main ++ side ++ r.runes ++ r.battlefields ++ r.reserveLegends), CardLegal env c) ∧
+    ReserveLegendsOk (some r.legend) (r.main ++ side) r.reserveLegends
 
 instance (env : LegalityEnv) (r : Resolved) (side : List CardDef) :
     Decidable (r.ConstructedValid env side) := by
@@ -98,9 +99,9 @@ every mode that asks for three Battlefields (for example 1v1 Duel). The Battlefi
 the mode's (CR 103.5), so the theorem is stated for modes that agree with Constructed. -/
 theorem Resolved.valid_of_constructedValid {env : LegalityEnv} {r : Resolved}
     {side : List CardDef} (mode : Mode) (hm : mode.deckBattlefields = 3)
-    (h : r.ConstructedValid env side) : r.Valid mode := by
-  obtain ⟨hl, hc, hsz, hty, hcp, hsig, hid, hrune, ⟨hb1, hb2, hb3⟩, -⟩ := h
-  refine ⟨hl, hc, ?_, hty, copyLimitOk_of_append hcp, hsig, hid, hrune, ?_⟩
+    (h : r.ConstructedValid env side) : r.Valid mode side := by
+  obtain ⟨hl, hc, hsz, hty, hcp, hsig, hid, hrune, ⟨hb1, hb2, hb3⟩, _, _, _, _, hreserve⟩ := h
+  refine ⟨hl, hc, ?_, hty, copyLimitOk_of_append hcp, hsig, hid, hrune, ?_, hreserve⟩
   · unfold MainSizeOk; omega
   · refine ⟨by omega, hb2, fun _ => hb3⟩
 
@@ -110,17 +111,17 @@ end Deck
 that asks for three Battlefields (TR 402.1, 601) and (CR 103). -/
 theorem constructedDeckValid_deckValid {db : CardDB} {env : LegalityEnv} {cd : ConstructedDeck}
     (mode : Mode) (hm : mode.deckBattlefields = 3)
-    (h : ConstructedDeckValid db env cd) : DeckValid db mode cd.deck := by
+    (h : ConstructedDeckValid db env cd) : DeckValid db mode cd.deck cd.sideboard := by
   unfold ConstructedDeckValid at h
   split at h
   · rename_i r side hr hs
-    exact DeckValid.of_resolved hr (Deck.Resolved.valid_of_constructedValid mode hm h)
+    simpa [DeckValid, hr, hs] using Deck.Resolved.valid_of_constructedValid mode hm h
   · exact h.elim
 
 /-- **I13** for 1v1 Duel. -/
 theorem constructedDeckValid_deckValid_duel {db : CardDB} {env : LegalityEnv}
     {cd : ConstructedDeck} (h : ConstructedDeckValid db env cd) :
-    DeckValid db Mode.duel cd.deck :=
+    DeckValid db Mode.duel cd.deck cd.sideboard :=
   constructedDeckValid_deckValid Mode.duel rfl h
 
 /-! ## Limited (Sealed and Draft) -/
@@ -140,6 +141,8 @@ structure LimitedDeck where
   runes : List CardId
   /-- The Battlefields. -/
   battlefields : List CardId
+  /-- The additional Legends this player's deck allows them to register (CR 103.1). -/
+  reserveLegends : List CardId := []
 deriving DecidableEq, Repr
 
 /-- A Limited deck whose identifiers are resolved. -/
@@ -156,6 +159,8 @@ structure LimitedDeck.Resolved where
   runes : List CardDef
   /-- The Battlefields. -/
   battlefields : List CardDef
+  /-- The resolved additional Legends. -/
+  reserveLegends : List CardDef := []
 deriving DecidableEq, Repr
 
 /-- Resolve a Limited deck. `none` if some identifier is unknown. -/
@@ -165,7 +170,8 @@ def LimitedDeck.resolve (db : CardDB) (d : LimitedDeck) : Option LimitedDeck.Res
   let main ← d.main.mapM db.find?
   let runes ← d.runes.mapM db.find?
   let battlefields ← d.battlefields.mapM db.find?
-  pure { identity := d.identity, legend, chosenChampion, main, runes, battlefields }
+  let reserveLegends ← d.reserveLegends.mapM db.find?
+  pure { identity := d.identity, legend, chosenChampion, main, runes, battlefields, reserveLegends }
 
 /-- A resolved Limited deck is legal (TR 602.4) with at least `minMain` Main Deck cards:
 three different Domain Identity domains; every Main Deck and Rune Deck card fits the identity;
@@ -180,7 +186,8 @@ def LimitedDeck.Resolved.Valid (env : LegalityEnv) (minMain : Nat)
     (∀ l ∈ r.legend.toList, l.hasType .legend = true) ∧
     (∀ c ∈ r.chosenChampion.toList, c.IsChosenChampionCandidate ∧ c ∈ r.main) ∧
     (∀ b ∈ r.battlefields, b.hasType .battlefield = true) ∧
-    (∀ c ∈ r.legend.toList ++ r.main ++ r.runes ++ r.battlefields, NotBanned env c)
+    (∀ c ∈ r.legend.toList ++ r.main ++ r.runes ++ r.battlefields ++ r.reserveLegends, NotBanned env c) ∧
+    Deck.ReserveLegendsOk r.legend r.main r.reserveLegends
 
 instance LimitedDeck.Resolved.decidableValid (env : LegalityEnv) (n : Nat)
     (r : LimitedDeck.Resolved) : Decidable (r.Valid env n) := by

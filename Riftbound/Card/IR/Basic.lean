@@ -27,7 +27,12 @@ structure AbilityGrant where
   copyStamp : Option Timestamp := none
   /-- The source index is in the full definition of a friendly object whose ability was gained. -/
   borrowed : Bool := false
+  /-- The object supplying a continuous grant, identified by its unique entry timestamp. -/
+  sourceStamp : Option Timestamp := none
 deriving DecidableEq, Repr, Hashable
+
+/-- Distinguish different instances of the same granted text. -/
+def AbilityGrant.instanceStamp (g : AbilityGrant) : Option Timestamp := g.copyStamp <|> g.sourceStamp
 
 /-- An additional selection recorded when a card is finalized (CR 355). -/
 inductive SpellPick where
@@ -35,17 +40,29 @@ inductive SpellPick where
   | plain
   /-- The index of the chosen mode. -/
   | mode (index : Nat)
-  /-- The chosen Battlefield, or the moved Unit's Base. -/
+  /-- The chosen Battlefield, or the moved object's Base. -/
   | destination (battlefield : Option ObjId)
+  /-- The chosen mode and its required Move destination. -/
+  | modeDestination (index : Nat) (battlefield : Option ObjId)
   /-- Pay the elected Battlefields' fees and the listed optional costs of the Unit itself. -/
   | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
   /-- A Unit or Gear's elected optional costs without any Battlefield fees. -/
   | withPermanentCosts (ownCosts : List Nat)
+  /-- The optional discounts declared for this permanent play (CR 355, 356.4). -/
+  | withGearDiscounts (pick : SpellPick) (sources : List ObjId)
   /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
   | withPlayer (pick : SpellPick) (player : PlayerId)
+  /-- The object revealed from hand or picked from the Board for Show Off (CR 832). -/
+  | withShowOff (pick : SpellPick) (object : ObjId)
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
+  /-- A permanent used to pay an additional Spell cost. It is not a target of the Spell. -/
+  | withExtraObject (pick : SpellPick) (object : ObjId)
+  /-- The amount of a variable additional Power cost declared for this play. -/
+  | withVariablePower (pick : SpellPick) (amount : Nat)
+  /-- Additional Spell costs that exhaust each named source and its chosen Units (CR 357.2). -/
+  | withSpellExhausts (pick : SpellPick) (groups : List (ObjId × List ObjId))
   /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
 deriving DecidableEq, Repr, Hashable
@@ -53,37 +70,111 @@ deriving DecidableEq, Repr, Hashable
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
-  | .withPlayer pick _ => pick.optionalCosts
+  | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ |
+      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
+  | .withShowOff pick _ | .withGearDiscounts pick _ => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
-  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.playerTarget
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
+      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
-  | .withPlayer pick _ => pick.effectChoice
-  | .withCosts pick _ _ | .thenRepeat pick _ _ => pick.effectChoice
+  | .withPlayer pick _ | .withShowOff pick _ | .withVariablePower pick _ => pick.effectChoice
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
+      .withSpellExhausts pick _ => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
-  | .withCosts pick _ _ => pick.hasExecutionChoices
+  | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ |
+      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
 def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick × List ObjId)
   | .withCosts pick _ _ => pick.executions targets
+  | .withExtraObject pick _ | .withSpellExhausts pick _ => pick.executions targets
+  | .withVariablePower pick n => (pick.executions targets).map (fun (k, ts) => (.withVariablePower k n, ts))
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
   | pick => [(pick, targets)]
+
+/-- The object shown off for this play. -/
+def SpellPick.showOffObject : SpellPick → Option ObjId
+  | .withShowOff _ object => some object
+  | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
+      .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
+      .withSpellExhausts pick _ => pick.showOffObject
+  | _ => none
+
+/-- The declared amount of a variable Power cost for this play. -/
+def SpellPick.variablePower : SpellPick → Option Nat
+  | .withVariablePower _ n => some n
+  | .withCosts pick _ _ | .withPlayer pick _ | .withShowOff pick _ |
+      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ => pick.variablePower
+  | _ => none
+
+/-- Decorate a finalization when its additional Power amount is declared. -/
+def SpellPick.addVariablePower (pick : SpellPick) (amount : Option Nat) : SpellPick :=
+  amount.elim pick (.withVariablePower pick)
+
+/-- Passive sources whose optional Gear discount was elected. -/
+def SpellPick.gearDiscounts : SpellPick → List ObjId
+  | .withGearDiscounts _ sources => sources
+  | _ => []
+
+/-- Remove the Gear discount declaration before inspecting other costs. -/
+def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
+  | .withGearDiscounts pick _ => pick
+  | pick => pick
+
+/-- The permanent selected to pay the cost for this Spell play. -/
+def SpellPick.extraObject : SpellPick → Option ObjId
+  | .withExtraObject _ object => some object
+  | .withSpellExhausts pick _ => pick.extraObject
+  | _ => none
+
+/-- Every source and group of Units elected to exhaust together during the Spell's play. -/
+def SpellPick.spellExhausts : SpellPick → List (ObjId × List ObjId)
+  | .withSpellExhausts _ groups => groups
+  | _ => []
+
+/-- Strip the extra Exhaust cost while preserving any separate object cost. -/
+def SpellPick.withoutSpellExhausts : SpellPick → SpellPick
+  | .withSpellExhausts pick _ => pick
+  | pick => pick
+
+/-- Strip the payment choice from the rest of the Spell's finalization. -/
+def SpellPick.withoutExtraObject : SpellPick → SpellPick
+  | .withExtraObject pick _ => pick
+  | pick => pick
+
+/-- Add the optional Show Off selection to an otherwise complete finalization. -/
+def SpellPick.addShowOff (pick : SpellPick) (object : Option ObjId) : SpellPick :=
+  object.elim pick (.withShowOff pick)
+
+/-- Remove the permanent's Show Off choice before determining its costs. -/
+def SpellPick.withoutShowOff : SpellPick → SpellPick
+  | .withShowOff pick _ => pick
+  | pick => pick
+
+/-- Characteristics of an object shown off, as they were during finalization (CR 832). -/
+structure ShownOff where
+  /-- The effective Might on the Board or the printed Might in hand. -/
+  might : Option Int
+  /-- The number of Power symbols in its cost. -/
+  power : Nat
+deriving DecidableEq, Repr, Hashable
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where
@@ -141,6 +232,8 @@ inductive Quantity where
   | anyNumber
   /-- Any subset whose total Might is at most the limit (CR 355.11). -/
   | combinedMightAtMost (limit : Nat)
+  /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
+  | atOneBattlefield (limit : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/
@@ -196,10 +289,14 @@ deriving DecidableEq, Repr, Hashable
 inductive TurnEffect where
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
   | unchoosableEnemy
+  /-- No standard or instructed Move can move this Unit this turn (CR 447). -/
+  | cannotMove
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
   /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
   | nextCardCostMinus (energy power : Nat)
+  /-- Discount the next Unit play and give that Unit the indicated Ending Step trigger. -/
+  | nextUnitCostMinusThenEnd (energy power : Nat) (card : CardId) (idx : Nat)
   /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of
   damage it deals (CR 142). -/
   | nextSpellBonus (n : Nat)
@@ -211,6 +308,10 @@ inductive TurnEffect where
   | unitsBuffed
   /-- The next unit the player plays this turn is buffed (Nami). -/
   | nextUnitBuffed
+  /-- The next unit the player plays this turn has Accelerate (CR 805). -/
+  | nextUnitAccelerate
+  /-- The player's next Unit can be played to any legal Battlefield and enters buffed. -/
+  | nextUnitAnywhereBuffed
   /-- The units the player plays this turn cost `n` Energy more (Vaults of Helia). -/
   | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
@@ -218,12 +319,21 @@ inductive TurnEffect where
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
+  /-- This source chose the indicated mode of a triggered ability this turn (CR 355.3). -/
+  | chosenTriggerMode (card : CardId) (idx mode : Nat) (copy : Option Timestamp)
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
+  /-- A delayed ability fires for the next plays of the type by this player this turn
+  (CR 391-393). Its source is the object named by the note. -/
+  | triggerOnPlays (card : CardId) (idx : Nat) (kind : CardType) (remaining : Nat)
+  /-- The player played a Unit or Gear to the Battlefield named by the note this turn. -/
+  | playedToBattlefield
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)
+  /-- At this turn's end, run the remembered ability with the amount captured by its instruction. -/
+  | endTriggerWithAmount (card : CardId) (idx amount : Nat)
   /-- The next Spell the player plays this turn has Repeat, for its own cost (Temporal Portal). -/
   | nextSpellRepeat
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
@@ -281,6 +391,12 @@ inductive TurnEffect where
   | banishInstead
   /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
   | chosenDeathBanisher
+  /-- The choice for the death currently being processed. None declines just this event. -/
+  | deathSacrificeChoice (unit : Option ObjId)
+  /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
+  | deathOrder (group : List ObjId)
+  /-- This permanent has used its optional death replacement this turn (CR 371). -/
+  | deathSacrificeUsed
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce
@@ -290,15 +406,24 @@ inductive TurnEffect where
   | doubleDamage
   /-- A unit the player controlled was killed (a note of the turn, not an effect). -/
   | unitDied
+  /-- At least one Unit or Gear the player controlled died this turn. -/
+  | permanentDied
+  /-- A Battlefield's first non-token Unit death this turn for this player.
+  The note's timestamp identifies the dead object. -/
+  | firstUnitDeathHere
   /-- A card of the player was discarded (a note of the turn, not an effect). -/
   | cardDiscarded
   /-- The player chose an enemy Unit this turn (CR 355.7). -/
   | choseEnemyUnit
   /-- The player already played an activated ability of a Gear this turn. -/
   | usedGearAbility
+  /-- This passive source supplied its optional Gear play discount this turn. -/
+  | usedGearPlayDiscount
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana
+  /-- One flexible Power reserved for playing a Unit or Gear (CR 135, 357). -/
+  | permanentMana
   /-- The next Gear the player plays from their hand this turn, with an Energy cost of no more than
   `n`, costs no Energy (Jayce). -/
   | nextGearFree (n : Nat)
@@ -377,6 +502,8 @@ deriving DecidableEq, Repr, Hashable
 inductive Occurrence where
   /-- Every time. -/
   | every
+  /-- Once when one or more subjects die together. -/
+  | deathGroup
   /-- On the `n`-th time only. -/
   | nth (n : Nat)
   /-- On the next `n` times, then no more. -/

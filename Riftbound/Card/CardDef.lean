@@ -33,15 +33,20 @@ inductive ImplStatus where
   | full
 deriving DecidableEq, Repr, Hashable
 
-/-- What a non-mana additional cost to play a card asks for: a friendly gear is returned to its
-owner's hand, or killed, or the player's Legend is exhausted. -/
+/-- An additional cost to play a card that is paid by an action instead of Energy or Power. -/
 inductive PlayExtra where
   /-- A friendly gear returns to its owner's hand. -/
   | returnGear
+  /-- A friendly Unit returns to its owner's hand. -/
+  | returnUnit
   /-- A friendly gear is killed. -/
   | killGear
+  /-- A friendly Unit or Gear is killed. -/
+  | killUnitOrGear
   /-- The player's Legend is exhausted. -/
   | exhaustLegend
+  /-- A ready friendly Unit is exhausted. -/
+  | exhaustUnit
   /-- A friendly Bird, Cat, Dog or Poro is killed. -/
   | killPet
   /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
@@ -54,6 +59,16 @@ inductive PlayExtra where
   | spendXPOver (n : Nat) (cap : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- The Spell picks the object for this cost separately from its effect's choices (CR 355, 357). -/
+def PlayExtra.separateSpellObject : PlayExtra → Bool
+  | .returnUnit | .exhaustUnit => true
+  | _ => false
+
+/-- Whether this cost asks for a permanent to die. -/
+def PlayExtra.kills : PlayExtra → Bool
+  | .killGear | .killUnitOrGear | .killUnit | .killPet => true
+  | _ => false
+
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
 done as the card is played. -/
 inductive PaidCut where
@@ -63,6 +78,14 @@ inductive PaidCut where
   symbols less as it has (Atakhan). -/
   | killed
 deriving DecidableEq, Repr, Hashable
+
+/-- A Show Off requirement for one object (CR 832). -/
+structure ShowOffRequirement where
+  /-- Qualities the shown card or object must have. -/
+  filters : FilterList := .nil
+  /-- The requirement specifies a card, excluding tokens (CR 185). -/
+  cardsOnly : Bool := false
+deriving DecidableEq, Repr
 
 /-- The definition of one logical card. -/
 structure CardDef where
@@ -88,6 +111,8 @@ structure CardDef where
   mightBonus : Option Int := none
   /-- The printed keywords. -/
   keywords : List KeywordInst := []
+  /-- Requirements for the optional object shown off during this card's finalization (CR 832). -/
+  showOffRequirement : Option ShowOffRequirement := none
   /-- The abilities of the card (CR 361): passive, replacement, activated and triggered. The
   abilities that a printed keyword stands for are not here (design.md §7.4). -/
   abilities : List Ability := []
@@ -99,6 +124,11 @@ structure CardDef where
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- This Spell declares an additional cost of any amount of Power (CR 355.1, 356.4.f). -/
+  variablePower : Bool := false
+  /-- Electing the zero-resource entry option makes this Unit enter ready and unable to move
+  for the rest of the turn. The play's cost choices carry the election. -/
+  electReadyEntryNoMove : Bool := false
   /-- The player may discard a card as an additional cost to play this card (CR 357.2). -/
   discardToPlay : Bool := false
   /-- What else the player does as an additional cost to play the card (not Energy or Power): what
@@ -111,6 +141,8 @@ structure CardDef where
   empowerLimit : Nat := 1
   /-- The card's text waives the number of copies allowed in a deck (CR 002, 103.3.b). -/
   unlimitedCopies : Bool := false
+  /-- How many additional Legends this card permits its player to register (CR 103.1). -/
+  reserveLegendLimit : Nat := 0
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/
@@ -160,24 +192,44 @@ def hideEnergyEffect : EffectDef :=
 def equipCost (c : CardDef) : Option Cost :=
   c.keywords.findSome? (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost => some cost
+    | .equip, .cost cost | .equip, .costOrExhaustUnit cost => some cost
     | _, _ => none)
+
+/-- Whether the Equipment lets its controller exhaust a Unit to pay its Equip cost. -/
+def equipCanExhaust (c : CardDef) : Bool :=
+  c.keywords.any (fun k => match k.keyword, k.arg with
+    | .equip, .costOrExhaustUnit _ => true
+    | _, _ => false)
+
+/-- Keyword effects that need an effective value captured when they trigger. -/
+def keywordTrigger : Keyword → Option Ability
+  | .disarm => some (.triggered (Trigger.onSelf .attack)
+      (EffectDef.of [Choice.targetOf .one .enemy .here [.ofType .unit]]
+        (.grant (.slot 0) (.mightMinus .it .eventAmount) .thisTurn)) .unlimited)
+  | _ => none
 
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
 activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def printedKeywordAbilities (c : CardDef) : List Ability :=
-  c.keywords.filterMap (fun k =>
+  let equipAbility (cost : AbilityCost) : Ability :=
+    .activated [cost] .normal
+      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.prim (.attach .self (.slot 0)))) .unlimited
+  c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost =>
-      some (.activated [.pay cost] .normal
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (.prim (.attach .self (.slot 0)))) .unlimited)
-    | _, _ => none) ++
+    | .equip, .cost cost => [equipAbility (.pay cost)]
+    | .equip, .costOrExhaustUnit cost =>
+      [equipAbility (.pay cost), equipAbility (.exhaustFriendly (.ofList [.ofType .unit]))]
+    | _, _ => []) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
     -- Backline: the Unit must be assigned combat damage last (CR 826)
     | .backline, _ => [.passive .always [.assignedLast]]
+    -- Deploy: the Gear is killed when an opponent holds its Battlefield (CR 830).
+    | .deploy, _ =>
+      [.triggered (Trigger.onSelf .opponentHoldsHere)
+        (EffectDef.of [] (.prim (.kill .self))) .unlimited]
     -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)
@@ -188,7 +240,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | .weaponmaster, _ =>
       [.triggered (Trigger.onSelf .play)
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
-          (.may (.prim (.attachPaying (.slot 0) .self 1)))) .unlimited]
+          (.may (.equipWithCost (.slot 0) .self 1))) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)

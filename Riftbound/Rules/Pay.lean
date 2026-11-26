@@ -87,6 +87,33 @@ theorem Cost.mem_payments (own : List Domain) (c : Cost) (pay : RunePool.Payment
   · rintro ⟨rfl, h⟩
     exact ⟨ds, (mem_powerChoices own _ _).mpr h, rfl, rfl⟩
 
+/-- Enumerate a fixed-size bag of domains, visiting each eligible number of each domain once. -/
+def powerBagsOf : Nat → List (Domain × Nat) → List (List Domain)
+  | n, [] => if n == 0 then [[]] else []
+  | n, (domain, cap) :: more =>
+    let count := min cap n
+    (List.range (count + 1)).reverse.flatMap (fun k =>
+      (powerBagsOf (n - k) more).map (fun powers => List.replicate k domain ++ powers))
+termination_by _ caps => caps.length
+
+/-- Flexible symbols need only one canonical order for each set of domain payments. Use the
+pool's domain limits before enumeration instead of generating all orders of all domains. -/
+def Cost.flexiblePayments (c : Cost) (pool : RunePool) : List RunePool.Payment :=
+  if c.power.length > pool.totalPower then [] else
+    let caps := Domain.all.map (fun d => (d, pool.get d + pool.any))
+    ((powerBagsOf c.power.length caps).map (fun powers => ⟨c.energy, powers⟩)).filter
+      (fun pay => c.paidBy [] pay && (pool.takePowers pay.power).isSome)
+
+/-- Each canonical flexible payment pays the corresponding cost. -/
+theorem Cost.flexiblePayments_pays {c : Cost} {pool : RunePool} {payment : RunePool.Payment}
+    (h : payment ∈ c.flexiblePayments pool) : c.paidBy [] payment = true := by
+  unfold Cost.flexiblePayments at h
+  split at h
+  · simp at h
+  · have paid := (List.mem_filter.mp h).2
+    simp only [Bool.and_eq_true] at paid
+    exact paid.1
+
 /-- A payment that pays a cost takes out as much as the cost's total (CR 357.1). -/
 theorem Cost.total_of_paidBy {own : List Domain} {c : Cost} {pay : RunePool.Payment}
     (h : c.paidBy own pay = true) : pay.energy + pay.power.length = c.total := by

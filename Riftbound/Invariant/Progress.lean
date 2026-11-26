@@ -99,7 +99,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     · rw [e]
       exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
         (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -165,7 +165,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp] at hb
     rw [hpend]
     exact hb.swap rfl [Frame.chainPass p 0]
-  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
+  · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -174,7 +174,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
+  · rename_i p rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -205,10 +205,10 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [_]
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p n rest c hp hk
@@ -317,7 +317,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp] at hb
     rw [hpend]
     exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
-  · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher hp hk
+  · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
@@ -326,7 +326,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i q c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i q src idx pay hp hk
+  · rename_i q src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -357,6 +357,12 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.run p src env (.cons (.rememberNamedCard card) es)]
+  · rename_i guesser p src env unit gear spell es rest guess hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    cases guess <;> exact hb.swap rfl [Frame.run p src env (.cons _ es)]
   · have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h
@@ -372,7 +378,7 @@ theorem StackInv.withTriggers {s : GameState} (hinv : StackInv s) (es : List Eve
   · rw [h]
     intro hres
     obtain ⟨g, hg, hb⟩ := hinv hres
-    refine ⟨g, insertTriggers_getLast pend _ hg ?_ ?_, hb⟩
+    refine ⟨g, insertDetectedTriggers_getLast _ pend _ hg ?_ ?_, hb⟩
     · cases g <;> simp [Frame.isBottom, Frame.isResolution] at hb ⊢
     · intro x hx
       subst hx
@@ -435,7 +441,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (channel_sameMeta (s.active.getD ⟨0⟩) s.channelCount s).result
+    refine hinv.of_next (channelEx_safe (s.active.getD ⟨0⟩) s.channelCount 0 s).same.result
       (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
@@ -467,11 +473,18 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     rw [hp] at hb
     exact hb.pop rfl
   · rename_i rest hp
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
-    rw [hp] at hb
-    exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
+    dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [_, .phase .beginning]
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -484,25 +497,25 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.cleanup]
-  · rename_i q rest hp
+  · rename_i q startingHand rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
-  · rename_i q n rest hp
+  · rename_i q n startingHand rest hp
     split at h
     · rename_i s1 es1 hd
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next (drawOne_meta hd).result (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.draw q n]
+      exact hb.swap rfl [Frame.draw q n (startingHand <|> some (s.zone (.player q .hand)).length)]
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.chanceBurnOut q, Frame.draw q (n + 1)]
+      exact hb.swap rfl [Frame.chanceBurnOut q, Frame.draw q (n + 1) startingHand]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -597,6 +610,30 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   exact (microStep_stack0 hinv h0).withTriggers _
 
+/-- Declaring an action may add frames above the original bottom frame. -/
+theorem applyDeclaredAction_stack {s s' : GameState} {a : Action} {es : List Event}
+    (hinv : StackInv s) (hl : Legal s a) (h : applyDeclaredAction s a = some (s', es)) : StackInv s' := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, choice, rfl, _⟩
+  · exact applyAction_stack hinv hl ordinary
+  · refine hinv.of_next rfl (fun bottom => ?_)
+    obtain ⟨old, last, allowed⟩ := bottom
+    obtain ⟨_, frame, rest, pending, _⟩ := GameState.actionDeathCostChoice_context choice
+    refine ⟨old, ?_, allowed⟩
+    simpa only [pending, List.getLast?_cons_cons] using last
+
+/-- Resuming a declaration pops only a non-bottom frame and then applies the action. -/
+theorem workStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
+    (h : workStep s = some (s', es)) : StackInv s' := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, pending, resumed⟩
+  · exact microStep_stack hinv ordinary
+  · have before : StackInv { s with pending := rest } := by
+      refine hinv.of_next rfl (fun bottom => ?_)
+      rw [pending] at bottom
+      exact bottom.pop rfl
+    rcases resumed with ⟨_, legal, applied⟩ | ⟨rfl, _⟩
+    · exact applyDeclaredAction_stack before legal applied
+    · exact before
+
 /-- The automatic work keeps the stack invariant. -/
 theorem advance_stack :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, StackInv s →
@@ -618,7 +655,7 @@ theorem advance_stack :
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_stack n (microStep_stack hinv hm) h
+          exact advance_stack n (workStep_stack hinv hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -635,7 +672,7 @@ theorem step_stack {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_stack fuel (applyAction_stack hinv hl ha) h
+      exact advance_stack fuel (applyDeclaredAction_stack hinv hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -848,6 +885,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | guessCardType p controller src env unit gear spell es =>
+    left
+    refine ⟨⟨.player p, .guessCardType .unit⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp, CardTypeGuess.choices]
   | nameCard p src env card more es =>
     left
     refine ⟨⟨.player p, .nameCard card⟩, ?_, by simp⟩
@@ -875,7 +918,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | chanceBurnOut p => right; exact ⟨_, rest, hp, rfl⟩
   | chancePredict p n top bottom => right; exact ⟨_, rest, hp, rfl⟩
   | setupHands => exact absurd hw (by simp [Frame.isWork])
-  | draw p n => exact absurd hw (by simp [Frame.isWork])
+  | draw p n startingHand => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
   | phase ph => exact absurd hw (by simp [Frame.isWork])
   | scoreHolds => exact absurd hw (by simp [Frame.isWork])
@@ -886,7 +929,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
-  | resolveChain => exact absurd hw (by simp [Frame.isWork])
+  | resolveChain | resumeCost _ => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
   | triggers pend => exact absurd hw (by simp [Frame.isWork])
@@ -976,18 +1019,19 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | mayDo p src env e es => exact absurd hc (by simp [Frame.isChance])
   | eitherDo p src env a b es => exact absurd hc (by simp [Frame.isChance])
   | pickDo p src env c more e es => exact absurd hc (by simp [Frame.isChance])
+  | guessCardType p controller src env unit gear spell es => exact absurd hc (by simp [Frame.isChance])
   | nameCard p src env card more es => exact absurd hc (by simp [Frame.isChance])
   | predict p n c cs top bottom => exact absurd hc (by simp [Frame.isChance])
   | chooseBurnOut p => exact absurd hc (by simp [Frame.isChance])
   | setupHands => exact absurd hc (by simp [Frame.isChance])
-  | draw p n => exact absurd hc (by simp [Frame.isChance])
+  | draw p n startingHand => exact absurd hc (by simp [Frame.isChance])
   | beginTurn => exact absurd hc (by simp [Frame.isChance])
   | phase ph => exact absurd hc (by simp [Frame.isChance])
   | scoreHolds => exact absurd hc (by simp [Frame.isChance])
   | expireTurn => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
-  | resolveChain => exact absurd hc (by simp [Frame.isChance])
+  | resolveChain | resumeCost _ => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])
   | finishSpell item => exact absurd hc (by simp [Frame.isChance])
   | triggers pend => exact absurd hc (by simp [Frame.isChance])

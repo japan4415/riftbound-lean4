@@ -30,7 +30,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact (payPlayDiscard_safe _ _ _ _).wf (applyPlayCard_wf hwf hr)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -191,6 +191,9 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
   · exact applyMana_wf hwf h
   · exact absurd h (by simp)
@@ -212,6 +215,22 @@ theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_wf hwf (hl.frame hk) h
+
+/-- Queuing a payment decision, or applying its declared action, preserves well-formedness. -/
+theorem applyDeclaredAction_wf {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyDeclaredAction s a = some (s', es)) : s'.WF := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, _, rfl, _⟩
+  · exact applyAction_wf hwf hl ordinary
+  · exact GameState.WF.congr hwf rfl rfl rfl rfl
+
+/-- Automatic work, including a locked payment, preserves well-formedness. -/
+theorem workStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : workStep s = some (s', es)) : s'.WF := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, _, ⟨_, legal, applied⟩ | ⟨rfl, _⟩⟩
+  · exact microStep_wf hwf ordinary
+  · exact applyDeclaredAction_wf (s := { s with pending := rest })
+      (hwf.congr rfl rfl rfl rfl) legal applied
+  · exact GameState.WF.congr hwf rfl rfl rfl rfl
 
 /-- The automatic work keeps the game well formed. -/
 theorem advance_wf :
@@ -236,7 +255,7 @@ theorem advance_wf :
       split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_wf n (microStep_wf hwf hm) h
+          exact advance_wf n (workStep_wf hwf hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -253,7 +272,7 @@ theorem step_wf {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_wf fuel (applyAction_wf hwf hl ha) h
+      exact advance_wf fuel (applyDeclaredAction_wf hwf hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -305,7 +324,7 @@ theorem advance_mono :
 theorem step_mono {n m : Nat} {s : GameState} {a : Action} {r : GameState × List Event}
     (h : step n s a = .ok r) (hnm : n ≤ m) : step m s a = .ok r := by
   by_cases hl : Legal s a
-  · cases ha : applyAction s a with
+  · cases ha : applyDeclaredAction s a with
     | none => simp [step, hl, ha] at h
     | some r1 =>
       simp only [step, hl, ha, ite_true] at h ⊢
@@ -328,7 +347,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     rw [← hout]
     exact ((payPlayDiscard_safe _ _ _ _).phys (applyPlayCard_wf hwf hr)).trans
       (applyPlayCard_physIds hwf hr)
-  · rename_i p rest u d hp hk
+  · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -493,6 +512,9 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · exact applyRune_physIds hwf h
   · exact applyMana_physIds hwf h
   · exact absurd h (by simp)
@@ -518,6 +540,23 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_physIds hwf (hl.frame hk) h
 
+/-- A declaration leaves the same physical cards in the game. -/
+theorem applyDeclaredAction_physIds {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hl : Legal s a) (h : applyDeclaredAction s a = some (s', es)) :
+    s'.physIds.Perm s.physIds := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, _, rfl, _⟩
+  · exact applyAction_physIds hwf hl ordinary
+  · exact List.Perm.refl _
+
+/-- Automatic work, including a locked payment, leaves the same physical cards in the game. -/
+theorem workStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
+    (h : workStep s = some (s', es)) : s'.physIds.Perm s.physIds := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, _, ⟨_, legal, applied⟩ | ⟨rfl, _⟩⟩
+  · exact microStep_physIds hwf ordinary
+  · exact applyDeclaredAction_physIds (s := { s with pending := rest })
+      (hwf.congr rfl rfl rfl rfl) legal applied
+  · exact List.Perm.refl _
+
 /-- The automatic work keeps the physical cards. -/
 theorem advance_physIds :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
@@ -539,7 +578,7 @@ theorem advance_physIds :
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact (advance_physIds n (microStep_wf hwf hm) h).trans (microStep_physIds hwf hm)
+          exact (advance_physIds n (workStep_wf hwf hm) h).trans (workStep_physIds hwf hm)
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -557,8 +596,8 @@ theorem step_physIds {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact (advance_physIds fuel (applyAction_wf hwf hl ha) h).trans
-        (applyAction_physIds hwf hl ha)
+      exact (advance_physIds fuel (applyDeclaredAction_wf hwf hl ha) h).trans
+        (applyDeclaredAction_physIds hwf hl ha)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
