@@ -370,18 +370,18 @@ def JudgeShuffle.apply (shuffle : JudgeShuffle) (s : GameState) : Except String 
   let changes := shuffle.positions.zip shuffle.order
   return s.reorder zone (previous.zipIdx.map (fun (card, i) => (changes.lookup i).getD card))
 
-/-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
-def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
-    (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) (observeFaces : Bool) :
+    Except String (Option Action × (GameState × List Event) × List CardDisclosure) := do
   if let .judgeShuffle shuffle := answer then
     let next ← (shuffle.apply s).mapError (fun error => s!"answer {index}: {error}")
-    return (none, next, [])
+    return (none, (next, []), [])
   if let .gameLoss seats := answer then
     unless s.config.ruleSet.isTournament && s.config.mode.hasTwoSides && s.result.isNone do
       throw s!"answer {index}: a Game Loss requires an ongoing tournament game"
     let result ← (judgeGameLossResult s.players s.config.mode.sameSide seats).mapError
       (fun error => s!"answer {index}: {error}")
-    return (none, { s with result := some result, pending := [] }, [])
+    return (none, ({ s with result := some result, pending := [] }, []), [])
   let awaitingSideboard := input.awaitsBo1Sideboard s
   if let .bo1Sideboard := answer then
     unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"
@@ -392,19 +392,27 @@ def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : Replay
         | throw s!"seat {seat} could not set out the final registration"
       next := built
     let shuffles := (startFrames s.playerCount).filter (fun | .chanceShuffle _ => true | _ => false)
-    return (none, { next with pending := shuffles ++ [.setupHands] }, [])
+    return (none, ({ next with pending := shuffles ++ [.setupHands] }, []), [])
   let action ← answer.resolve index
   if awaitingSideboard && action.kind != .concede && action.kind != .declareDraw then
     throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
   let transition := if input.isBo1Initiative s (some action) then
     if Legal s action then
       match applyFrame0 s action with
-      | some result => .ok result
+      | some (next, events) => .ok ((next, events),
+          if observeFaces then CardDisclosure.capture s next 0 events else [])
       | none => .error (.internal "applyFrame0")
     else .error .illegal
-  else step fuel s action
-  let (next, events) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
-  return (some action, next, events)
+  else if observeFaces then stepWithDisclosures fuel s action
+  else (step fuel s action).map (·, [])
+  let (result, disclosures) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
+  return (some action, result, disclosures)
+
+/-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
+def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+  let (action, (next, events), _) ← input.applyAnswerWith s answer index fuel false
+  return (action, next, events)
 
 private def deckIds (d : Deck) : List CardId :=
   d.legend :: d.main ++ d.runes ++ d.battlefields ++ d.reserveLegends
@@ -474,6 +482,8 @@ structure ReplayPosition where
   fields : List (PlayerId × CardId) := []
   /-- Events in the action that produced this checkpoint. -/
   events : List Event := []
+  /-- Faces shown during the answer that produced this position. -/
+  disclosures : List CardDisclosure := []
   /-- Publicly revealed cards still identifiable in a player's Main Deck or hand. -/
   private knownCards : List ObjId := []
   /-- Draws made by this answer, newest first. -/
@@ -484,9 +494,9 @@ structure ReplayPosition where
   private rewindParent : Option Nat := none
 
 /-- Capture a state without a preceding recorded action. -/
-def ReplayPosition.fromState (state : GameState) (fields : List (PlayerId × CardId) := []) :
-    ReplayPosition :=
-  { state, fields }
+def ReplayPosition.fromState (state : GameState) (fields : List (PlayerId × CardId) := [])
+    (disclosures : List CardDisclosure := []) : ReplayPosition :=
+  { state, fields, disclosures }
 
 /-- One draw from a position in the deck at the rewind target. -/
 private structure DrawSlot extends ObservedDraw where
@@ -660,7 +670,8 @@ private def timelineRewind (history : List ReplayPosition) (before : GameState)
 
 /-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
 def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
-    (answer : ReplayAnswer) (index fuel : Nat) : Except String (Option Action × ReplayPosition × List Event) := do
+    (answer : ReplayAnswer) (index fuel : Nat) (observeFaces : Bool := false) :
+    Except String (Option Action × ReplayPosition × List Event) := do
   let some prior := history.head? | throw "the initial checkpoint is missing"
   let correction : Option (Nat × Except String ReplayPosition) := match answer with
     | .judgeRewind target => some (target, (simpleRewind history target index).map Prod.snd)
@@ -673,8 +684,14 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     | _ => none
   if let some (target, result) := correction then
     let pos ← result.mapError (fun error => s!"answer {index}: {error}")
-    return (none, { pos with boundary := .ruling, rewindParent := some target, events := [], draws := [] }, [])
-  let (action, state, events) ← input.applyAnswer prior.state answer index fuel
+    let restored := { pos with
+      boundary := .ruling
+      rewindParent := some target
+      events := []
+      disclosures := []
+      draws := [] }
+    return (none, restored, [])
+  let (action, (state, events), disclosures) ← input.applyAnswerWith prior.state answer index fuel observeFaces
   let boundary := if prior.state.phase == .setup then .setup else
     match answer, action with
     | .judgeShuffle _, _ => .ruling
@@ -685,7 +702,9 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
   let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
   let obscured := obscuredDeckCards prior.state answer action
   let (known, draws) := observeDraws (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
-  return (action, { state, fields, boundary, events, knownCards := trackedInPrivateZones state known, draws }, events)
+  let position := { state, fields, boundary, events, disclosures, draws,
+                    knownCards := trackedInPrivateZones state known }
+  return (action, position, events)
 
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do

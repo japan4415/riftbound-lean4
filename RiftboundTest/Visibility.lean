@@ -2,8 +2,8 @@ module
 
 import Riftbound.Spec.Visibility
 meta import Riftbound.Spec.Visibility
-import Riftbound.Engine.Step
-meta import Riftbound.Engine.Step
+import Riftbound.Engine.Observe
+meta import Riftbound.Engine.Observe
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -74,5 +74,31 @@ private meta def startEffect (s : GameState) (p : PlayerId) (effect : Effect) :
     (predicting.resolutionZoneCardFaces p deck).any (fun cards => cards.head? == some (cardFace s first)) &&
     predicting.resolutionZoneCardFaces q deck == predicting.zoneCardFaces q deck &&
     done.resolutionZoneCardFaces p deck == done.zoneCardFaces p deck : Option Bool) == some true
+
+-- A single answer looks at a card, reveals it, then moves it under a fresh object ID.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let deck := Zone.player p .mainDeck
+  let hand := Zone.player p .hand
+  let s ← initialViewBoard
+  let id ← (s.zone deck).head?
+  let face ← cardFace s id
+  let effect := Effect.seqOf [
+    .prim (.lookTop 1), .prim (.revealTop 1), .prim (.draw .you (.const 1))]
+  let before := { s with
+    active := some p
+    phase := .main
+    pending := [.mayDo p ⟨0⟩ {} effect .nil, .priority p] }
+  let ((after, events), shown) ←
+    (stepWithDisclosures 40 before ⟨.player p, .decide true⟩).toOption
+  let drawn ← (after.zone hand).head?
+  let [privateFace, publicFace] := shown | none
+  return drawn != id && (after.obj? id).isNone && cardFace after drawn == some face &&
+    privateFace.cards == [face] && events[privateFace.eventIndex]? == some (.lookedAt p id) &&
+    publicFace.cards == [face] && events[publicFace.eventIndex]? == some (.revealed p id) &&
+    privateFace.visibleTo p && !privateFace.visibleTo q &&
+    publicFace.visibleTo p && publicFace.visibleTo q &&
+    (after.resolutionDisclosedFaces p).isEmpty : Option Bool) == some true
 
 end RiftboundTest

@@ -199,16 +199,17 @@ def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
     Except String (LiveGame × String) := do
   if g.ending.isSome then throw "the match is over"
   let (action, position, es) ← match g.input with
-    | some input => input.advance g.history answer g.i (g.setup.map (·.fuel) |>.getD 100)
+    | some input => input.advance g.history answer g.i (g.setup.map (·.fuel) |>.getD 100) (observeFaces := true)
     | none => do
       let a ← answer.resolve g.i
-      let (next, events) ← (step 100 g.s a).mapError (fun e => s!"the engine refused the answer: {repr e}")
+      let ((next, events), disclosures) ← (stepWithDisclosures 100 g.s a).mapError
+        (fun e => s!"the engine refused the answer: {repr e}")
       let fields := (pickedBattlefield g.s a).toList ++ g.fields
-      pure (some a, ReplayPosition.fromState next fields, events)
+      pure (some a, ReplayPosition.fromState next fields disclosures, events)
   let initiative := g.input.any (fun input => input.isBo1Initiative g.s action)
   let priorSeen := if answer.rewinds then {} else g.seen
   let (j, seen') := stepJson g.i action es position.state priorSeen g.s.pending.head? (answer == .bo1Sideboard)
-    initiative answer.penalizedSeats answer.correctionJson
+    initiative answer.penalizedSeats (answer.correctionJson ++ cardDisclosureFields position.disclosures)
   return ({ g with
     s := position.state, seen := seen', i := g.i + 1,
     answersRev := if g.input.isSome then answer :: g.answersRev else g.answersRev,

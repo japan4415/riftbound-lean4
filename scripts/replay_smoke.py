@@ -256,6 +256,7 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     field = next(field["id"] for field in after["battlefields"] if field["control"] == 2)
     assert after["new"][str(field)]["card"] == "TKN-ConcessionBattlefield"
     assert following["turn"] == after["turn"] + 1 and following["active"] == 0
+    check_seat_disclosures(folder, command, archive, "-ffa", 3, exported["games"])
 
 
 def check_lux_spell_energy_cli(folder: Path, command: Callable[..., str]) -> None:
@@ -625,12 +626,21 @@ def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]
 
     target = response["steps"][-1]
     assert target["state"]["active"] == 0
+    looked_row, look_index, looked = next(
+        (row, index, event["card"]) for row in response["steps"]
+        for index, event in enumerate(row["events"]) if event["t"] == "looked_at"
+    )
+    assert {"event": look_index, "onlyFor": 0, "cards": [catalog[looked]]} in looked_row["disclosures"]
     deck = target["state"]["zones"]["p0.mainDeck"]
     hand = target["state"]["zones"]["p0.hand"]
     yes = next(action for action in response["legal"] if action["a"].get("yes") is True)
     chosen = choose(live, ask(live, f"act {yes['k']}"), "choose", "p0")
     events = [event for row in chosen["steps"] for event in row["events"]]
-    revealed = next(event["card"] for event in events if event["t"] == "revealed")
+    reveal_row, reveal_index, revealed = next(
+        (row, index, event["card"]) for row in chosen["steps"]
+        for index, event in enumerate(row["events"]) if event["t"] == "revealed"
+    )
+    assert {"event": reveal_index, "onlyFor": None, "cards": [catalog[revealed]]} in reveal_row["disclosures"]
     public_draw = next(event["new"] for event in events if event["t"] == "moved"
                        and event["old"] == revealed and event["dst"] == "p0.hand")
     unknown = chosen["steps"][-1]["state"]["zones"]["p0.mainDeck"][0]
@@ -659,6 +669,22 @@ def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]
     return ask(live, "replay"), "", row
 
 
+def check_seat_disclosures(folder: Path, command: Callable[..., str], archive: Path,
+                           suffix: str, seat: int, games: list[dict]) -> None:
+    path = folder / f"{archive.stem}-seat-{seat}-disclosures.json"
+    command("disclosures" + suffix, archive, str(seat), path)
+    selected = []
+    for game in games:
+        steps = []
+        for row in game["steps"]:
+            visible = [{"cards": entry["cards"], "public": entry["onlyFor"] is None}
+                       for entry in row.get("disclosures", []) if entry["onlyFor"] in (None, seat)]
+            if visible:
+                steps.append({"i": row["i"], "disclosures": visible})
+        selected.append({"steps": steps})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"seat": seat, "exact": True, "games": selected}
+
+
 def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix, live_row) in fixtures.items():
         path = folder / f"judge-{label}-private-rewind-archive.json"
@@ -666,8 +692,14 @@ def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: d
         assert json.loads(command("verify" + suffix, path))["exact"]
         trace = folder / f"judge-{label}-private-rewind-trace.json"
         command("view" + suffix, path, trace)
-        steps = json.loads(trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+        games = json.loads(trace.read_text(encoding="utf-8"))["games"]
+        steps = games[0]["steps"]
         assert steps[live_row["i"]] == live_row
+        if label == "revealed-draw":
+            assert not live_row.get("disclosures")
+            check_seat_disclosures(folder, command, path, suffix, 0, games)
+            check_seat_disclosures(folder, command, path, suffix, 1, games)
+            command("disclosures", path, "2", folder / "bad-seat.json", error="outside the game")
 
 
 def live_timeline_rewinds(live: Lean, setup: dict) -> dict:
@@ -1002,6 +1034,8 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         command("view-team", archive, trace)
         exported = json.loads(trace.read_text(encoding="utf-8"))
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
+        if label == "live-team":
+            check_seat_disclosures(folder, command, archive, "-team", 2, exported["games"])
     check_judge_penalties(folder, command, penalties)
     check_judge_corrections(folder, command, corrections)
     check_private_rewinds(folder, command, private_rewinds)

@@ -748,6 +748,16 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("stunned", jarr (stunned.map (fun id => toString id.n)))] ++ clock ++ departures)
   (json, seen')
 
+/-- Faces shown during an answer, tagged with who could see them. -/
+def cardDisclosureJson (disclosure : CardDisclosure) : String :=
+  jobj [("event", toString disclosure.eventIndex),
+    ("onlyFor", disclosure.onlyFor.elim "null" (fun seat => toString seat.n)),
+    ("cards", jarr (disclosure.cards.map (fun card => jstr card.code)))]
+
+/-- The optional trace field for disclosures, absent when no faces were shown. -/
+def cardDisclosureFields (disclosures : List CardDisclosure) : List (String × String) :=
+  if disclosures.isEmpty then [] else [("disclosures", jarr (disclosures.map cardDisclosureJson))]
+
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false)
