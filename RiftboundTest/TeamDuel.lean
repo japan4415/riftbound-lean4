@@ -186,4 +186,34 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     chained.pending == [Frame.chainPass guest 0, Frame.priority turnPlayer] &&
     (chained.obj? src).any (fun o : Object => o.exhausted)).getD false
 
+-- If the last seat gets an early extra turn, its bonus is paid then. No later extra turn
+-- may receive the same opening bonus again.
+#guard
+  let s := { teamState with
+    turnOrder := Mode.teamTurnOrder true, turn := 3, active := some ⟨1⟩, extraTurns := [⟨3⟩] }
+  let early := beginTurnStep s []
+  let regular := beginTurnStep early []
+  let late := beginTurnStep { regular with extraTurns := [⟨2⟩] } []
+  [early.channelCount, regular.channelCount, late.channelCount] == [3, 2, 2]
+
+-- Effects that check enemy control or earlier enemy choices ignore teammates' objects.
+#guard (do
+  let (s, held, _) ← scoredStepBoard
+  let s := { s with phase := .main }
+  let (s, source) ← addObject s (newCard db s ⟨0⟩ (cid "V0")) (.player ⟨0⟩ .base)
+  let ally ← (s.unitsOf ⟨1⟩ held).head?
+  let (s, enemy) ← addObject s (newCard db s ⟨2⟩ (cid "V1")) (.player ⟨2⟩ .base)
+  let watched (target : ObjId) :=
+    (s.recordTurnEvents [.chosenBySpell ⟨0⟩ target]).turnFx.any (·.kind == TurnEffect.choseEnemyUnit)
+  let opposed := s.modObj held (fun o => { o with control := some ⟨2⟩ })
+  return Filter.holds s source {} held .controlledByOpponent == some false &&
+    Filter.holds opposed source {} held .controlledByOpponent == some true && !watched ally && watched enemy)
+  |>.getD false
+
+#guard
+  let s := { teamState with turnOrder := Mode.teamTurnOrder true, active := some ⟨2⟩ }
+  let trigger (p : PlayerId) : PendTrigger := { source := ⟨p.n⟩, card := cid "V0", idx := 0, controller := p }
+  let pending := [⟨3⟩, ⟨0⟩, ⟨1⟩, ⟨2⟩].map trigger
+  (s.detect [] pending).map PendTrigger.controller == ([⟨2⟩, ⟨1⟩, ⟨3⟩, ⟨0⟩] : List PlayerId)
+
 end RiftboundTest

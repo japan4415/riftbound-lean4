@@ -529,7 +529,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     pure ((s.cardDef? id).any (·.hasType .battlefield) && op.holds (Int.ofNat count) (Int.ofNat n))
   | .controlledByOpponent =>
     some (match s.obj? id, s.obj? self with
-      | some b, some o => b.control.any (fun q => q != o.controller)
+      | some b, some o => b.control.any (fun q => !s.config.mode.sameSide q o.controller)
       | _, _ => false)
   | .controlled =>
     -- a Battlefield the controller of the object the effect belongs to controls
@@ -547,12 +547,12 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (match s.combatNow, s.obj? id with
       | some (bf, _), some unit =>
         unit.loc == some bf && s.players.any (fun q =>
-          q != unit.controller && (s.unitsAtOf bf q).any (fun enemy =>
+          !s.config.mode.sameSide q unit.controller && (s.unitsAtOf bf q).any (fun enemy =>
             (s.cardDef? enemy).any (fun card => card.domains.contains dom)))
       | _, _ => false)
   | .chosenByEnemySpellOfDomain dom =>
     some ((s.obj? id).any (fun unit => (s.zone .chain).any (fun item =>
-      (s.obj? item).any (fun spell => spell.controller != unit.controller &&
+      (s.obj? item).any (fun spell => !s.config.mode.sameSide spell.controller unit.controller &&
         spell.targets.contains id) &&
       (s.cardDef? item).any (fun card => card.hasType .spell && card.domains.contains dom))))
   | .stunned => (s.obj? id).map (·.stunned)
@@ -1123,9 +1123,9 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
   | .heldPoints =>
     some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
   | .spellsChoseEnemy =>
-    -- an enemy object is a Unit or Gear of another player (or one that is gone)
+    -- an enemy object is a Unit or Gear of an opponent (or one that is gone)
     let enemy (t : ObjId) : Bool :=
-      (s.obj? t).all (fun x => x.controller != p &&
+      (s.obj? t).all (fun x => !s.config.mode.sameSide x.controller p &&
         ((s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear) || (s.cardDef? t).isNone))
     -- the Spells of the player that chose one, and each one the abilities of their Units chose
     let spells := (s.objects.toList.filter (fun (k, o) =>

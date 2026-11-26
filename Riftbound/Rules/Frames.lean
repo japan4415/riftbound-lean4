@@ -56,10 +56,13 @@ theorem GameState.teamInvitee_phase {s : GameState} {p guest : PlayerId}
     exact allowed.2
   · cases h
 
-/-- The last seat in the starting order gets an extra Rune on its first regular turn
+/-- The last seat in the starting order gets an extra Rune in its first Channel Phase
 in Duel and team play (CR 315.3, 487.7, 491.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
-  let normal := if s.config.mode.hasTwoSides && s.turn - s.turnShift == s.playerCount then 3 else 2
+  let openingBonus := if s.config.mode.isTeamDuel then
+    s.turnOrder.getLast?.any (fun last => s.active == some last && s.turnsTaken last == 1)
+  else s.config.mode.hasTwoSides && s.turn - s.turnShift == s.playerCount
+  let normal := if openingBonus then 3 else 2
   s.passiveSources.foldl (fun count src =>
     (s.activeMods src).foldl (fun count mod =>
       match mod with

@@ -367,7 +367,7 @@ def GameState.mightReductionEvents (s s' : GameState) (actor : Option PlayerId) 
       let oldBoard := s.inPlay
       s'.inPlay.filterMap (fun id =>
         if !oldBoard.contains id || !(s'.cardDef? id).any (·.hasType .unit) ||
-            !(s'.obj? id).any (·.controller != p) then none
+            !(s'.obj? id).any (fun o => !s'.config.mode.sameSide p o.controller) then none
         else
           match s.mightNow id, s'.mightNow id with
           | some before, some after =>
@@ -685,7 +685,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     s.passiveSources.flatMap (fun u =>
       match s.obj? u with
       | some o =>
-        if o.controller != p then
+        if !s.config.mode.sameSide p o.controller then
           triggersOf s u o.controller .opponentScores ++
             (if conquer then [] else
               triggersOf s u o.controller .opponentHolds ++
@@ -761,13 +761,15 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
       if o.abilityUses t.idx t.copyStamp + taken < n then kept ++ [t] else kept
     | _, _ => kept ++ [t]) []
 
-/-- The abilities that fire because of the events of a step, the turn player's first (CR 383.3). -/
+/-- The abilities that fire together go onto the Chain in turn order (CR 383.3.d.1). -/
 def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
     List PendTrigger :=
   let all := s.trimLimits (es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra)
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
-    group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
+    if s.config.mode.isTeamDuel then
+      s.pickOrder.flatMap (fun p => group.filter (fun t => t.controller == p))
+    else group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
   let (beforeMove, later) := all.partition (·.beforeStandardMove)
   seatOrder beforeMove ++ seatOrder later
 
@@ -972,7 +974,7 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
     | some (field, stamp) => s.recordTurnFact waiting p .playedToBattlefield (some field) stamp
     | none => waiting
   | .chosenBySpell p id | .chosenByAbility p id =>
-    if s.inPlay.contains id && (s.obj? id).any (·.controller != p) &&
+    if s.inPlay.contains id && (s.obj? id).any (fun o => !s.config.mode.sameSide p o.controller) &&
         (s.cardDef? id).any (·.hasType .unit) then
       s.recordTurnFact notes p .choseEnemyUnit none s.nextTimestamp
     else notes
@@ -1589,10 +1591,12 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 
 /-- With no event, nothing fires. -/
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
+  have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
+    List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
   unfold GameState.withTriggers
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
-      GameState.trimLimits, GameState.firstCardTriggers, GameState.delayedPlayTriggers]
+      GameState.trimLimits, GameState.firstCardTriggers, GameState.delayedPlayTriggers, empty]
   · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/

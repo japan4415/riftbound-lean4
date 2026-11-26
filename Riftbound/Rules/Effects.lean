@@ -1900,7 +1900,7 @@ def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
 def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option PlayerId) : Bool :=
   let mods := s.activeMods id
   mods.contains .noDamage ||
-    (controller.any (· != o.controller) && mods.contains .noEnemyEffectDamage)
+    (controller.any (fun p => !s.config.mode.sameSide p o.controller) && mods.contains .noEnemyEffectDamage)
 
 /-- Record applied damage, then process effects that react directly to it (CR 418). -/
 def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
