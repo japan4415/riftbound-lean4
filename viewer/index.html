@@ -993,10 +993,12 @@ function renderStatic(i, st, prev, animate) {
   const cardName = (id) => cardNameAt(id, st);
   const clockStatus = st.eliminationDeadline == null ? ''
     : st.turn > st.eliminationDeadline ? ' ・ サドンデス' : ` ・ 時間切れ（ターン ${st.eliminationDeadline} まで）`;
+  const active = st.result ? null : st.active;
+  const turnStatus = st.result ? ' ・ 対局終了' : active !== null ? ` ・ P${active} の番` : '';
   $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}` + clockStatus
-    + (st.active !== null ? ` ・ P${st.active} の番` : '') + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
+    + turnStatus + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
-  seatBox.forEach((e, p) => e.classList.toggle('active', st.active === p));
+  seatBox.forEach((e, p) => e.classList.toggle('active', active === p));
   for (let p = 0; p < trace.players; p++) {
     pointsBox[p].textContent = st.points[p] + ' 点';
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
