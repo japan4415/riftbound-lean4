@@ -451,6 +451,12 @@ private inductive RewindBoundary where
   | setup
 deriving DecidableEq
 
+private structure ObservedDraw where
+  seat : PlayerId
+  source : ObjId
+  drawn : ObjId
+  wasRevealed : Bool
+
 /-- The state and setup observations at a chronological checkpoint. -/
 structure ReplayPosition where
   /-- The state at the checkpoint. -/
@@ -459,6 +465,10 @@ structure ReplayPosition where
   fields : List (PlayerId × CardId) := []
   /-- Events in the action that produced this checkpoint. -/
   events : List Event := []
+  /-- Publicly revealed cards still identifiable in a player's Main Deck or hand. -/
+  private knownCards : List ObjId := []
+  /-- Draws made by this answer, newest first. -/
+  private draws : List ObservedDraw := []
   /-- The kind of transition that ended at this checkpoint. -/
   private boundary : RewindBoundary := .setup
   /-- A rewind's parent on the active line, skipping the abandoned operations. -/
@@ -470,21 +480,46 @@ def ReplayPosition.fromState (state : GameState) (fields : List (PlayerId × Car
   { state, fields }
 
 /-- One draw from a position in the deck at the rewind target. -/
-private structure DrawSlot where
-  seat : PlayerId
-  source : ObjId
-  drawn : ObjId
+private structure DrawSlot extends ObservedDraw where
   index : Nat
 
-private def drawSlots (base : GameState) : List Event → List DrawSlot
+private def notePublicMove (known : List ObjId) (source moved : ObjId) : List ObjId :=
+  if known.contains source then moved :: known.erase source else known
+
+private def observeDraws (known : List ObjId) (draws : List ObservedDraw) :
+    List Event → List ObjId × List ObservedDraw
+  | .revealed _ card :: rest => observeDraws (card :: known.erase card) draws rest
+  | .handRevealed _ cards :: rest => observeDraws ((cards ++ known).eraseDups) draws rest
   | .moved source drawn (.player seat .hand) :: .drew p :: rest =>
-    let more := drawSlots base rest
-    if seat != p then more else
-    match (base.zone (.player seat .mainDeck)).findIdx? (· == source) with
-    | some index => ⟨seat, source, drawn, index⟩ :: more
-    | none => more
-  | _ :: rest => drawSlots base rest
-  | [] => []
+    let draws := if seat == p then ⟨seat, source, drawn, known.contains source⟩ :: draws else draws
+    observeDraws (notePublicMove known source drawn) draws rest
+  | .moved source moved _ :: rest => observeDraws (notePublicMove known source moved) draws rest
+  | _ :: rest => observeDraws known draws rest
+  | [] => (known, draws)
+
+private def DrawSlot.atTarget (base : GameState) (draw : ObservedDraw) : Option DrawSlot := do
+  let index ← (base.zone (.player draw.seat .mainDeck)).findIdx? (· == draw.source)
+  pure { toObservedDraw := draw, index }
+
+private def JudgeShuffle.obscuredCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
+  match shuffle.deck with
+  | .mainDeck => shuffle.positions.filterMap (fun i => (before.zone (.player shuffle.seat .mainDeck))[i]?)
+  | .runeDeck => []
+
+private def obscuredDeckCards (before : GameState) (answer : ReplayAnswer) (action : Option Action) : List ObjId :=
+  match answer with
+  | .judgeShuffle shuffle => shuffle.obscuredCards before
+  | _ =>
+    match action, before.pending with
+    | some ⟨.chance, .arrange _⟩, .chanceShuffle (.player p .mainDeck) :: _ =>
+      before.zone (.player p .mainDeck)
+    | some ⟨.chance, .arrange _⟩, .chancePredict _ _ _ bottom :: _ => bottom
+    | _, _ => []
+
+private def trackedInPrivateZones (s : GameState) (known : List ObjId) : List ObjId :=
+  known.filter (fun id => match s.locate id with
+    | some (.player _ .mainDeck) | some (.player _ .hand) => true
+    | _ => false)
 
 private def physicalCard (s : GameState) (id : ObjId) : Option PhysId :=
   (s.obj? id).bind (·.kind.phys?)
@@ -517,41 +552,46 @@ private def exchangeDrawSlot (s : GameState) (draw : DrawSlot) (returned : ObjId
     | throw "the selected card could not be returned to the deck"
   return restored
 
-private def applyDrawReturns (base : GameState) (returns : List JudgeDrawReturn) :
+private def applyDrawReturns (base : GameState) (known : List ObjId) (returns : List JudgeDrawReturn) :
     List DrawSlot → GameState → Except String GameState
   | [], s => pure s
   | draw :: more, s => do
+    let some choice := returns.find? (·.drawn == draw.drawn) | applyDrawReturns base known returns more s
     let deck := s.zone (.player draw.seat .mainDeck)
-    -- Earlier draws are still in the hand at this stage of reversing the actions.
+    -- Earlier private draws are still in the hand at this stage of reversing the actions.
     let drawCards := (draw :: more).filterMap (fun slot =>
-      if slot.seat == draw.seat then deck[slot.index]? else none)
-    let available := s.zone (.player draw.seat .hand) ++ drawCards
+      if slot.seat == draw.seat && !slot.wasRevealed then deck[slot.index]? else none)
+    let hiddenHand := (s.zone (.player draw.seat .hand)).filter (fun id => !known.contains id)
+    let available := hiddenHand ++ drawCards
     let findAvailable (ref : ObjId) : Option ObjId := do
       let phys ← physicalCard base ref
       available.find? (fun id => physicalCard s id == some phys)
-    let ref ← match returns.find? (·.drawn == draw.drawn) with
-      | none => pure draw.source
-      | some choice => do
-        unless decide choice.candidates.Nodup && choice.candidates.contains choice.returned &&
-            choice.candidates.all (fun id => (findAvailable id).isSome) do
-          throw "private draw candidates must be distinct cards available in the affected hand"
-        pure choice.returned
-    let some chosen := findAvailable ref
+    unless decide choice.candidates.Nodup && choice.candidates.contains choice.returned &&
+        choice.candidates.all (fun id => (findAvailable id).isSome) do
+      throw "private draw candidates must be distinct cards available in the affected hand"
+    let some chosen := findAvailable choice.returned
       | throw "the card being returned is no longer available for this draw"
     let next ← exchangeDrawSlot s draw chosen
-    applyDrawReturns base returns more next
+    applyDrawReturns base known returns more next
 
-private def applyRewindRemedies (target : GameState) (undone : List ReplayPosition)
-    (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle) : Except String GameState := do
-  if returns.isEmpty then return ← shuffles.foldlM (shuffleAfterRewind target) target
-  let draws := undone.flatMap (fun pos => (drawSlots target pos.events).reverse)
-  let named : List ObjId := returns.map (·.drawn)
-  unless decide named.Nodup && named.all (fun id => draws.any (·.drawn == id)) do
-    throw "each private return needs a distinct undone draw from the target deck"
-  unless decide ((draws.map (·.source)).Nodup) do
-    throw "the rewind contains repeated draws from the same original slot"
-  let restored ← applyDrawReturns target returns draws target
-  shuffles.foldlM (shuffleAfterRewind target) restored
+private def applyRewindRemedies (target : ReplayPosition) (undone : List ReplayPosition)
+    (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle) : Except String ReplayPosition := do
+  let restored ← if returns.isEmpty then pure target.state else do
+    let draws := undone.flatMap (fun pos => pos.draws.filterMap (DrawSlot.atTarget target.state))
+    let named : List ObjId := returns.map (·.drawn)
+    unless decide named.Nodup && named.all (fun id => draws.any (·.drawn == id)) do
+      throw "each private return needs a distinct undone draw from the target deck"
+    if draws.any (fun draw => draw.wasRevealed && named.contains draw.drawn) then
+      throw "a publicly revealed draw must restore the revealed card"
+    unless decide ((draws.map (·.source)).Nodup) do
+      throw "the rewind contains repeated draws from the same original slot"
+    applyDrawReturns target.state target.knownCards returns draws target.state
+  let shuffle (s : GameState × List ObjId) (change : JudgeShuffle) := do
+    let obscured := change.obscuredCards s.1
+    let next ← shuffleAfterRewind target.state s.1 change
+    return (next, s.2.filter (fun id => !obscured.contains id))
+  let (state, known) ← shuffles.foldlM shuffle (restored, target.knownCards)
+  return { target with state, knownCards := trackedInPrivateZones state known }
 
 private def rewindPath (history : List ReplayPosition) (target index : Nat) :
     Except String (List (Nat × ReplayPosition) × ReplayPosition) := do
@@ -605,9 +645,9 @@ private def timelineRewind (history : List ReplayPosition) (before : GameState)
     throw "the rewind must name each reversed ruling, latest first"
   let crossedCall := undone.any (fun (_, step) => decide (step.boundary = .clock))
   let clock ← retainedClock before position.state crossedCall rewind.deadline?
-  let state ← applyRewindRemedies position.state (undone.map Prod.snd)
+  let restored ← applyRewindRemedies position (undone.map Prod.snd)
     (rewind.returns?.getD []) (rewind.shuffles?.getD [])
-  return { position with state := { state with clock } }
+  return { restored with state := { restored.state with clock } }
 
 /-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
 def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
@@ -618,14 +658,13 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     | .judgePrivateRewind rewind => some (rewind.target, do
       let (undone, pos) ← simpleRewind history rewind.target index
       if rewind.returns.isEmpty then throw "each private return needs a distinct undone draw from the target deck"
-      let state ← applyRewindRemedies pos.state undone rewind.returns (rewind.shuffles?.getD [])
-      pure { pos with state })
+      applyRewindRemedies pos undone rewind.returns (rewind.shuffles?.getD []))
     | .judgeTimelineRewind rewind =>
       some (rewind.target, timelineRewind history prior.state rewind index)
     | _ => none
   if let some (target, result) := correction then
     let pos ← result.mapError (fun error => s!"answer {index}: {error}")
-    return (none, { pos with boundary := .ruling, rewindParent := some target, events := [] }, [])
+    return (none, { pos with boundary := .ruling, rewindParent := some target, events := [], draws := [] }, [])
   let (action, state, events) ← input.applyAnswer prior.state answer index fuel
   let boundary := if prior.state.phase == .setup then .setup else
     match answer, action with
@@ -635,7 +674,9 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
       else if a.actor == .judge || a.actor == .clock then .setup else .play
     | _, none => .setup
   let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
-  return (action, { state, fields, boundary, events }, events)
+  let obscured := obscuredDeckCards prior.state answer action
+  let (known, draws) := observeDraws (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
+  return (action, { state, fields, boundary, events, knownCards := trackedInPrivateZones state known, draws }, events)
 
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do

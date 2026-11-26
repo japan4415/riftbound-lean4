@@ -514,6 +514,11 @@ def live_private_rewinds(live: Lean, setup: dict) -> dict:
                                if event["t"] == "moved" and event["dst"] == f"p{seat}.hand" and event["old"] == deck[1])
             declared["returns"].append({"drawn": obj(second_draw), "candidates": list(map(obj, deck[:2])),
                                         "returned": obj(deck[0])})
+            recent = {"target": target["i"], "returns": declared["returns"][1:]}
+            restored = ask(live, f"judge-private-rewind {json.dumps(recent)}")["steps"][0]["state"]["zones"]
+            assert restored[f"p{seat}.mainDeck"] == [deck[1], deck[0], *deck[2:]]
+            assert restored[f"p{seat}.hand"] == hand
+            ask(live, "undo")
             # The first drawn card is already back in the deck after reversing the second draw.
             assert "candidates must be distinct" in json.loads(
                 live.ask(f"judge-private-rewind {json.dumps(declared)}"))["error"]
@@ -542,6 +547,72 @@ def live_private_rewinds(live: Lean, setup: dict) -> dict:
         assert ask(live, end)["archiveAvailable"]
         fixtures[label] = (ask(live, "replay"), suffix, row)
     return fixtures
+
+
+def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]:
+    first, second = setup["decks"]["constructed"]["decks"]
+    main = [{"code": "RAD-129"} if card["code"] == "RAD-119" else card for card in first["deck"]["main"]]
+    captain_deck = {**first, "deck": {**first["deck"], "main": main}}
+    config = {**setup, "winsRequired": 1, "decks": {"constructed": {"decks": [captain_deck, second]}}}
+    response = start(live, config)
+    captain_cards = set()
+    catalog = {}
+    for _ in range(45):
+        steps = response["steps"]
+        for row in steps:
+            catalog.update((int(ident), obj["card"]) for ident, obj in row["state"]["new"].items())
+            captain_cards.update(int(ident) for ident, obj in row["state"]["new"].items()
+                                 if obj["card"] == "RAD-129")
+        if any(event["t"] == "looked_at" for row in steps for event in row["events"]):
+            break
+        actions = response["legal"]
+        preferred = next((a for a in actions if a["a"]["kind"] == "playCard"
+                          and a["a"]["card"] in captain_cards), None)
+        preferred = preferred or next((a for a in actions if a["a"]["actor"] == "p0"
+                                       and a["a"]["kind"] == "runeAbility" and a["a"].get("ability") == "exhaust"), None)
+        if preferred:
+            response = ask(live, f"act {preferred['k']}")
+        elif any(a["a"]["kind"] == "mulliganDone" for a in actions):
+            response = choose(live, response, "mulliganDone")
+        else:
+            response = choose(live, response, "pass")
+    else:
+        raise AssertionError("Trifarian Captain did not look at the deck")
+
+    target = response["steps"][-1]
+    assert target["state"]["active"] == 0
+    deck = target["state"]["zones"]["p0.mainDeck"]
+    hand = target["state"]["zones"]["p0.hand"]
+    yes = next(action for action in response["legal"] if action["a"].get("yes") is True)
+    chosen = choose(live, ask(live, f"act {yes['k']}"), "choose", "p0")
+    events = [event for row in chosen["steps"] for event in row["events"]]
+    revealed = next(event["card"] for event in events if event["t"] == "revealed")
+    public_draw = next(event["new"] for event in events if event["t"] == "moved"
+                       and event["old"] == revealed and event["dst"] == "p0.hand")
+    unknown = chosen["steps"][-1]["state"]["zones"]["p0.mainDeck"][0]
+    later = choose(live, choose(live, chosen, "pass", "p0"), "pass", "p1")
+    hidden_draw = next(event["new"] for row in later["steps"] for event in row["events"]
+                       if event["t"] == "moved" and event["old"] == unknown and event["dst"] == "p0.hand")
+
+    def record(drawn: int, candidates: list[int], returned: int, checkpoint: int = target["i"]) -> str:
+        payload = {"target": checkpoint, "returns": [{"drawn": {"n": drawn},
+                   "candidates": [{"n": card} for card in candidates], "returned": {"n": returned}}]}
+        return f"judge-private-rewind {json.dumps(payload)}"
+
+    assert "publicly revealed" in json.loads(live.ask(record(public_draw, [hand[0]], hand[0])))["error"]
+    assert "candidates must be distinct" in json.loads(live.ask(record(hidden_draw, [revealed], revealed)))["error"]
+    earlier_public = record(hidden_draw, [public_draw], public_draw, chosen["steps"][-1]["i"])
+    assert "candidates must be distinct" in json.loads(live.ask(earlier_public))["error"]
+    row = ask(live, record(hidden_draw, [unknown, hand[0]], hand[0]))["steps"][0]
+    restored = row["state"]["zones"]
+    metadata = row["state"]["new"]
+    assert restored["p0.mainDeck"][deck.index(revealed)] == revealed
+    restored_top = restored["p0.mainDeck"][deck.index(unknown)]
+    assert restored_top != unknown and metadata[str(restored_top)]["card"] == catalog[hand[0]]
+    assert restored["p0.hand"][0] != hand[0]
+    assert metadata[str(restored["p0.hand"][0])]["card"] == catalog[unknown]
+    assert ask(live, "judge-game-loss 1")["archiveAvailable"]
+    return ask(live, "replay"), "", row
 
 
 def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
@@ -907,6 +978,7 @@ def main() -> None:
         penalties = live_judge_penalties(live, setup)
         corrections = live_judge_corrections(live, setup)
         private_rewinds = live_private_rewinds(live, setup)
+        private_rewinds["revealed-draw"] = live_revealed_draw_rewind(live, setup)
         timeline_rewinds = live_timeline_rewinds(live, setup)
     finally:
         live.close()
