@@ -1101,26 +1101,30 @@ theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option Playe
   · exact Safe.refl s
   · exact (sendToLoc_safe _ s x).trans (sendToLoc_safe _ _ y)
 
-/-- Play a card without paying, to a Battlefield: it is played, and moved there (CR 447). -/
+/-- Play a card without paying, to a Battlefield. If it would put an outside Unit into a Combat,
+play the Unit at its controller's Base (CR 464.2.a). -/
 def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := playFree p s id
-  match movedNew r.2 with
-  | n :: _ =>
-    -- the card is played there: it does not move, so nothing that waits for a move fires, and
-    -- no move is counted
-    (((sendToBf bf r.1 n).1.modObj n (fun x => { x with moves := 0, movesTurn := none })), r.2)
-  | [] => r
+  if (s.cardDef? id).any (·.hasType .unit) && !s.combatAllowsUnitPlay p bf then r
+  else
+    match movedNew r.2 with
+    | n :: _ =>
+      -- The card enters there directly, without any move events, state or triggers.
+      (((sendToBf bf r.1 n).1.modObj n (fun x => { x with moves := 0, movesTurn := none })), r.2)
+    | [] => r
 
 /-- Playing a card to a Battlefield is a safe change. -/
 theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
     Safe s (playFreeAt p bf s id).1 := by
   unfold playFreeAt
-  cases hm : movedNew (playFree p s id).2 with
-  | nil => simpa [hm] using playFree_safe p s id
-  | cons n _ =>
-    simp only [hm]
-    exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
-      (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
+  dsimp only
+  split
+  · exact playFree_safe p s id
+  · cases movedNew (playFree p s id).2 with
+    | nil => exact playFree_safe p s id
+    | cons n _ =>
+      exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
+        (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
 
 
 /-- A Unit cannot be replayed by its owner to another player's Base (CR 419.4). -/
@@ -2723,7 +2727,7 @@ def GameState.unitTokenDestinations (s : GameState) (p : PlayerId) (c : CardDef)
   let extra := preview.playBfOptions p ⟨s.nextId⟩
   let fields := (s.zone .battlefieldZone).filter (fun bf =>
     (s.cardDef? bf).any (·.hasType .battlefield) &&
-    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play bf &&
+    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play bf && s.combatAllowsUnitPlay p bf &&
     FilterList.holds s bf {} bf (.cons .unitsPlayable .nil) == some true &&
     ((s.obj? bf).any (·.control == some p) || extra.contains bf))
   none :: fields.map some
@@ -2769,7 +2773,8 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
       | .here =>
         match s.hereOf src with
         | some bf =>
-          let r := createN c.id p (some bf) (ready || s.tokenReady p c (some bf)) k s
+          let location := if c.hasType .unit && !s.combatAllowsUnitPlay p bf then none else some bf
+          let r := createN c.id p location (ready || s.tokenReady p c location) k s
           some (buffNewTokens s r p, tokenPlays s r p)
         | none =>
           -- at a Base, "here" is that Base
@@ -2877,7 +2882,8 @@ def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (
     (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind (fun k =>
     (s.tokenCard name).map (fun c =>
-      let dest := (s.obj? src).bind (·.prevLoc)
+      let dest := ((s.obj? src).bind (·.prevLoc)).filter (fun bf =>
+        !c.hasType .unit || s.combatAllowsUnitPlay p bf)
       let r := createN c.id p dest (ready || s.tokenReady p c dest) k s
       (buffNewTokens s r p, tokenPlays s r p)))
 

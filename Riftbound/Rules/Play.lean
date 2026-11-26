@@ -956,7 +956,8 @@ from another effect cannot override a restriction (CR 054.2, 355.17.b). -/
 def GameState.playBfLocationAllowed (s : GameState) (p : PlayerId) (c : ObjId)
     (d : CardDef) (b : ObjId) : Bool :=
   (s.zone .battlefieldZone).contains b && (s.cardDef? b).any (·.hasType .battlefield) &&
-    (!d.hasType .unit || (!s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b)) &&
+    (!d.hasType .unit || (!s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play b &&
+      s.combatAllowsUnitPlay p b)) &&
     (!d.requiresMatchingBattlefield || d.playBattlefieldFilters.any (s.matchesPlayLocation p c b))
 
 /-- The Battlefields the Unit can enter when played (CR 355.2): those its player controls by

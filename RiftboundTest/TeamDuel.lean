@@ -243,4 +243,20 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     (resolved.combat.any (fun fight : CombatParticipation => fight.battlefield == b)) &&
     events.contains (Event.combatStarted b opponent)).getD false
 
+-- The other two seats cannot put a third player's Unit in Combat. An effect forcing that
+-- Unit to the Battlefield plays it at the controller's Base instead.
+#guard (do
+  let (s, field, _) ← scoredStepBoard
+  let opponent : PlayerId := ⟨2⟩
+  let guest : PlayerId := ⟨3⟩
+  let (s, _) ← addObject s { newCard db s opponent (cid "V2") with loc := some field } .battlefieldZone
+  let (s, unit) ← addObject s (newCard db s guest (cid "V0")) (.player guest .hand)
+  let combat := s.observeCombat [Frame.showdown field opponent 0]
+  let running := { s with combat := combat.1 }
+  let (after, events) := playFreeAt guest field running unit
+  return s.combatAllowsUnitPlay opponent field && !s.combatAllowsUnitPlay guest field &&
+    !running.combatAllowsUnitPlay guest field && !running.playBfLocationAllowed guest unit (vanilla 0) field &&
+    (after.unitsAt field).length == 2 && (after.zone (.player guest .base)).length == 1 &&
+    (movedNew events).length == 1).getD false
+
 end RiftboundTest

@@ -210,6 +210,16 @@ def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
     | .combatResolve bf att => some (bf, att)
     | _ => none)
 
+/-- A team-game player can only play Units to a staged or ongoing Combat in which they are a
+participant (CR 464.2). The participants stay designated if their last Units leave Combat. -/
+def GameState.combatAllowsUnitPlay (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  !s.config.mode.isTeamDuel ||
+    match s.combat.filter (·.battlefield == bf) with
+    | some c => p == c.attacker || p == c.defender
+    | none =>
+      let present := s.players.filter (fun q => !(s.unitsAtOf bf q).isEmpty)
+      present.contains p || decide (present.length < 2)
+
 /-- The player has played a card of the kind since the timestamp counter was `stamp`. -/
 def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp : Nat) : Bool :=
   s.objects.toList.any (fun (k, o) =>
