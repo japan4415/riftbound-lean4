@@ -95,12 +95,22 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let gear5 := s5.inBase s.me "SFD-056"
   return gear4.any (fun o => (s4.obj? o).any (·.attached == some v)) &&
     gear5.any (fun o => (s5.obj? o).any (·.attached == some u))
--- Weaponmaster: "may", so the player can decline
+-- Weaponmaster can be declined before choosing an Equipment or putting the ability on the Chain.
 #guard tsf fun s => do
-  let (s1, chef) ← put s s.me "SFD-092" .hand
-  let (s2, gear) ← put s1 s.me "SFD-042" .base
-  let s3 ← play s2 s.me chef [] { yes := false }
-  return (s3.obj? gear).any (·.attached == none) && (s3.poolOf s.me).calm == 12
+  let p := s.me
+  let (s1, chef) ← put s p "SFD-092" .hand
+  let (s2, gear) ← put s1 p "SFD-042" .base
+  let (waiting, _) ← (step 100 (s2.rich p) ⟨.player p, .playCard chef (payOf s2 chef) []⟩).toOption
+  let actions := legalFrameActions waiting
+  let skip ← actions.find? (fun action => match action.kind with
+    | .putTrigger _ [] .skip => true
+    | _ => false)
+  let (declined, events) ← (step 100 waiting skip).toOption
+  return actions.any (fun action => match action.kind with
+      | .putTrigger _ [target] (.pay ..) => target == gear
+      | _ => false) && (declined.zone .chain).isEmpty &&
+    !events.any (fun | .chosenByAbility _ target => target == gear | _ => false) &&
+    (declined.obj? gear).any (·.attached.isNone) && (declined.poolOf p).calm == 12
 -- ... one of several Equipment, as the player picks
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand

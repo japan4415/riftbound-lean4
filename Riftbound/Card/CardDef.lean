@@ -238,9 +238,9 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     -- Weaponmaster: when the Unit is played, its player may Equip one of their Equipment to it
     -- for one Power less, even if it is attached already (CR 821)
     | .weaponmaster, _ =>
-      [.triggered (Trigger.onSelf .play)
+      [.triggered { event := .play, optional := true }
         (EffectDef.of [Choice.targetOf .one .you .anywhere [.tag ⟨"Equipment"⟩]]
-          (.may (.equipWithCost (.slot 0) .self 1))) .unlimited]
+          (.equipWithCost (.slot 0) .self 1)) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)
