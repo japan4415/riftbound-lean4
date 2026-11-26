@@ -487,6 +487,38 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return one.mightNow d == some 5 && none_.mightNow d == some 4 &&
     a.handN s.me == one.handN s.me - 1 + 1 && b.handN s.me == none_.handN s.me - 1
 
+-- Ownership and the shared team side do not determine who draws or satisfies "you control".
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, detonate) ← put s p "SFD-005" .hand
+  let (s, gear) ← put s enemy "SFD-030" .base
+  let (s, ownGear) ← put s p "SFD-030" .base
+  let s := s.modObj gear (fun o => { o with controller := mate })
+  let sent ← play s p detonate [gear]
+  let (s, dropboarder) ← put s p "SFD-072" .hand
+  let pitched ← play s p dropboarder
+  let (more, _) ← put s p "SFD-030" .base
+  let twoGear ← play more p dropboarder
+  let (s, direwing) ← put s p "SFD-094" .hand
+  let (s, _) ← put s mate "OGN-001" .base
+  let otherDragon ← play s p direwing
+  let (s, ownDragon) ← put s p "OGN-001" .base
+  let ready ← play s p direwing
+  let (s, strength) ← put s p "SFD-106" .hand
+  let drawn ← play s p strength
+  return sent.handN mate == s.handN mate + 2 && sent.handN enemy == s.handN enemy &&
+    sent.countIn enemy .trash "SFD-030" == 1 && (sent.obj? ownGear).isSome &&
+    (pitched.inBase p "SFD-072").bind pitched.tired == some true &&
+    (twoGear.inBase p "SFD-072").bind twoGear.tired == some false &&
+    (otherDragon.inBase p "SFD-094").bind otherDragon.tired == some true &&
+    (ready.inBase p "SFD-094").bind ready.tired == some false &&
+    drawn.handN p == s.handN p && (drawn.obj? ownDragon).isSome
+
 -- Jaull-Fish (SFD-103) counts a unit that is Mighty by a passive ability (Draven with a point)
 #guard tsf fun s => do
   let (s1, j) ← put s s.me "SFD-103" .hand

@@ -148,11 +148,9 @@ def SFD_005 : CardDef :=
   { SFD_005.meta with
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
-      (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
-        (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2))])
-        (.ifThen (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
-          (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .opponent (.const 2))]) .nop))),
-    status := .drafted }
+      (.eachPlayer (.controllerOf 0)
+        (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2))]))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-006
 /--
@@ -204,7 +202,7 @@ def SFD_007 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.keyword .it { keyword := .ganking }) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-008
 /--
@@ -343,7 +341,7 @@ def SFD_012 : CardDef :=
   { SFD_012.meta with
 
     abilities := [.passive .always [.costMinusMin .self .cardsPlayed 1]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-013
 /--
@@ -792,7 +790,7 @@ def SFD_027 : CardDef :=
         (.count (Selector.all .friendly .inHand [.sameAs .self]))) (.const 2))
         [.entersReady .self],
       .triggered (.onSelf .hold) (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-028
 /--
@@ -965,7 +963,7 @@ def SFD_032 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .gear]] (.may (.prim (.kill (.slot 0)))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-033
 /--
@@ -1828,7 +1826,7 @@ def SFD_062 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .tag ⟨"Mech"⟩, .notSelf]]
         (.prim (.ready (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-063
 /--
@@ -2117,12 +2115,12 @@ def SFD_072 : CardDef :=
 
     abilities :=
       let twoGear : Condition :=
-        .cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear])) (.const 2)
+        .cmp .ge (.count (Selector.all .you .anywhere [.ofType .gear])) (.const 2)
       -- "if you control two or more gear": it is asked when the ability is set off, and again
       -- when it resolves
       [.triggered { event := .play, condition := twoGear }
         (.of [] (.ifThen twoGear (.prim (.ready .self)) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-073
 /--
@@ -2787,9 +2785,9 @@ def SFD_094 : CardDef :=
   { SFD_094.meta with
 
     abilities := [.passive
-      (.exists (Selector.all .friendly .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
+      (.exists (Selector.all .you .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
       [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-095
 /--
@@ -3113,8 +3111,8 @@ def SFD_106 : CardDef :=
   { SFD_106.meta with
 
     spellEffect := some (.of [] (.prim (.draw .you
-      (.count (Selector.all .friendly .anywhere [.ofType .unit, .mighty]))))),
-    status := .drafted }
+      (.count (Selector.all .you .anywhere [.ofType .unit, .mighty]))))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-107
 /--
