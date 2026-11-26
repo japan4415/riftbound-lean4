@@ -258,6 +258,25 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     assert following["turn"] == after["turn"] + 1 and following["active"] == 0
 
 
+def check_lux_spell_energy_cli(folder: Path, command: Callable[..., str]) -> None:
+    source = ROOT / "data/replay/lux-spell-energy-example.json"
+    archive = folder / "lux-spell-energy-archive.json"
+    trace = folder / "lux-spell-energy-trace.json"
+    summary = json.loads(command("record", source, archive))
+    assert summary["exact"] and summary["cardsFullyChecked"] and summary["wins"] == [1, 0]
+    assert json.loads(command("verify", archive)) == summary
+
+    command("view", archive, trace)
+    steps = json.loads(trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+    add_index = next(i for i, row in enumerate(steps)
+                     if (row["action"] or {}).get("spellEnergyAdded") == 2)
+    gained, spent = steps[add_index:add_index + 2]
+    assert gained["state"]["pools"][0]["energy"] == 0
+    assert gained["state"]["pools"][0]["spellEnergy"] == 2
+    assert spent["action"]["kind"] == "playCard" and spent["action"]["pay"] == 2
+    assert spent["state"]["pools"][0].get("spellEnergy", 0) == 0
+
+
 def bo1_registration(original: dict) -> dict:
     previous = original["deck"]
     champion = {"code": "RAD-112"}
@@ -963,6 +982,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert json.loads(command("verify-team", inferred_archive)) == inferred_summary
     check_limited_cli(folder, setup, command)
     check_war_concession_cli(folder, command)
+    check_lux_spell_energy_cli(folder, command)
     check_bo1_cli(folder, setup, command)
     live_archive = folder / "live-bo1-archive.json"
     live_archive.write_text(json.dumps(bo1), encoding="utf-8")

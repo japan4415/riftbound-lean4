@@ -1,0 +1,263 @@
+{
+  "config": {
+    "formatLegality": {
+      "banned": [
+        {"code": "SFD-122"}, {"code": "SFD-020"}, {"code": "OGN-168"}, {"code": "OGN-182"},
+        {"code": "OGN-292"}, {"code": "OGN-284"}, {"code": "OGN-285"}, {"code": "OGN-177"},
+        {"code": "OGN-290"}, {"code": "OGN-276"}, {"code": "OGN-110"}, {"code": "OGN-183"},
+        {"code": "RAD-043"}, {"code": "OGN-077"}, {"code": "SFD-048"}, {"code": "OGN-194"},
+        {"code": "OGN-195"}, {"code": "OGN-026"}, {"code": "OGN-160"}, {"code": "OGN-242"},
+        {"code": "SFD-207"}, {"code": "UNL-215"}
+      ],
+      "legalSets": [{"code": "OGN"}, {"code": "OGS"}, {"code": "SFD"}, {"code": "UNL"}, {"code": "VEN"}, {"code": "RAD"}]
+    },
+    "mode": {"battlefieldsInPlay": 2, "deckBattlefields": 3, "players": 2, "victoryScore": 8},
+    "ruleSet": {"tournament": {"format": "constructed"}}
+  },
+  "ending": "finalGame",
+  "fuel": 100,
+  "games": [
+    {
+      "answers": [
+        {
+          "observed": {
+            "action": {
+              "actor": "chance",
+              "kind": {
+                "arrange": {
+                  "order": [
+                    {"n": 3}, {"n": 30}, {"n": 4}, {"n": 31}, {"n": 8}, {"n": 2}, {"n": 7}, {"n": 13},
+                    {"n": 34}, {"n": 40}, {"n": 21}, {"n": 22}, {"n": 36}, {"n": 12}, {"n": 27}, {"n": 9},
+                    {"n": 29}, {"n": 5}, {"n": 15}, {"n": 14}, {"n": 11}, {"n": 25}, {"n": 16}, {"n": 37},
+                    {"n": 28}, {"n": 26}, {"n": 10}, {"n": 33}, {"n": 23}, {"n": 19}, {"n": 18}, {"n": 32},
+                    {"n": 17}, {"n": 24}, {"n": 6}, {"n": 35}, {"n": 39}, {"n": 38}, {"n": 20}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": "chance",
+              "kind": {
+                "arrange": {
+                  "order": [
+                    {"n": 51}, {"n": 52}, {"n": 44}, {"n": 41}, {"n": 48}, {"n": 47}, {"n": 42}, {"n": 49},
+                    {"n": 45}, {"n": 43}, {"n": 46}, {"n": 50}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": "chance",
+              "kind": {
+                "arrange": {
+                  "order": [
+                    {"n": 73}, {"n": 82}, {"n": 66}, {"n": 90}, {"n": 62}, {"n": 87}, {"n": 89}, {"n": 93},
+                    {"n": 70}, {"n": 80}, {"n": 78}, {"n": 79}, {"n": 60}, {"n": 91}, {"n": 64}, {"n": 74},
+                    {"n": 71}, {"n": 95}, {"n": 72}, {"n": 92}, {"n": 83}, {"n": 94}, {"n": 76}, {"n": 63},
+                    {"n": 67}, {"n": 61}, {"n": 85}, {"n": 59}, {"n": 96}, {"n": 77}, {"n": 86}, {"n": 68},
+                    {"n": 88}, {"n": 75}, {"n": 84}, {"n": 69}, {"n": 65}, {"n": 81}, {"n": 58}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": "chance",
+              "kind": {
+                "arrange": {
+                  "order": [
+                    {"n": 101}, {"n": 103}, {"n": 108}, {"n": 106}, {"n": 98}, {"n": 102}, {"n": 107},
+                    {"n": 104}, {"n": 99}, {"n": 105}, {"n": 100}, {"n": 97}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {"observed": {"action": {"actor": "chance", "kind": {"pick": {"index": 2}}}}},
+        {"observed": {"action": {"actor": "chance", "kind": {"pick": {"index": 0}}}}},
+        {
+          "observed": {"action": {"actor": "chance", "kind": {"arrangePlayers": {"order": [{"n": 0}, {"n": 1}]}}}}
+        },
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 0}}}, "kind": "mulliganDone"}}},
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 1}}}, "kind": "mulliganDone"}}},
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 123}}}
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 122}}}
+            }
+          }
+        },
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 0}}}, "kind": "pass"}}},
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 1}}}, "kind": "pass"}}},
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 130}}}
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 129}}}
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 123}}}
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {"runeAbility": {"ability": "exhaust", "card": {"n": 122}}}
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {
+                "playCard": {
+                  "card": {"n": 131},
+                  "discard": null,
+                  "flowCost": null,
+                  "pay": {"energy": 4, "power": []},
+                  "spellPick": "plain",
+                  "targets": []
+                }
+              }
+            }
+          }
+        },
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 0}}}, "kind": "pass"}}},
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 1}}}, "kind": "pass"}}},
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {
+                "manaAbility": {"banish": null, "idx": 0, "pay": {"energy": 0, "power": []}, "source": {"n": 132}}
+              }
+            }
+          }
+        },
+        {
+          "observed": {
+            "action": {
+              "actor": {"player": {"p": {"n": 0}}},
+              "kind": {
+                "playCard": {
+                  "card": {"n": 138},
+                  "discard": null,
+                  "flowCost": null,
+                  "pay": {"energy": 2, "power": []},
+                  "spellPick": "plain",
+                  "targets": [{"n": 132}]
+                }
+              }
+            }
+          }
+        },
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 0}}}, "kind": "pass"}}},
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 1}}}, "kind": "pass"}}},
+        {"observed": {"action": {"actor": {"player": {"p": {"n": 1}}}, "kind": "concede"}}}
+      ],
+      "chooser": {"n": 1},
+      "decks": {
+        "constructed": {
+          "decks": [
+            {
+              "deck": {
+                "battlefields": [{"code": "RAD-157"}, {"code": "RAD-158"}, {"code": "RAD-159"}],
+                "chosenChampion": {"code": "RAD-137"},
+                "legend": {"code": "RAD-143"},
+                "main": [
+                  {"code": "RAD-137"}, {"code": "OGS-014"}, {"code": "OGS-014"}, {"code": "OGS-014"},
+                  {"code": "RAD-010"}, {"code": "RAD-010"}, {"code": "RAD-010"}, {"code": "RAD-005"},
+                  {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+                  {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+                  {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+                  {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+                  {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+                  {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-119"},
+                  {"code": "RAD-119"}, {"code": "RAD-119"}, {"code": "RAD-120"}, {"code": "RAD-120"},
+                  {"code": "RAD-120"}, {"code": "RAD-122"}, {"code": "RAD-122"}, {"code": "RAD-122"}
+                ],
+                "reserveLegends": [],
+                "runes": [
+                  {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+                  {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-214"}, {"code": "OGN-214"},
+                  {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}
+                ]
+              },
+              "sideboard": [{"code": "RAD-126"}]
+            },
+            {
+              "deck": {
+                "battlefields": [{"code": "RAD-160"}, {"code": "RAD-161"}, {"code": "RAD-162"}],
+                "chosenChampion": {"code": "RAD-023"},
+                "legend": {"code": "RAD-141"},
+                "main": [
+                  {"code": "RAD-023"}, {"code": "RAD-001"}, {"code": "RAD-001"}, {"code": "RAD-001"},
+                  {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-005"},
+                  {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+                  {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+                  {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+                  {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+                  {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+                  {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-093"},
+                  {"code": "RAD-093"}, {"code": "RAD-093"}, {"code": "RAD-094"}, {"code": "RAD-094"},
+                  {"code": "RAD-094"}, {"code": "RAD-095"}, {"code": "RAD-095"}, {"code": "RAD-095"}
+                ],
+                "reserveLegends": [],
+                "runes": [
+                  {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+                  {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-166"}, {"code": "OGN-166"},
+                  {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}
+                ]
+              },
+              "sideboard": [{"code": "RAD-112"}, {"code": "RAD-097"}]
+            }
+          ]
+        }
+      },
+      "openingOrder": null
+    }
+  ],
+  "tournament": {
+    "banPeriod": {"global": {"date": {"day": 23, "month": 11, "year": 2026}}},
+    "date": {"day": 23, "month": 11, "year": 2026},
+    "format": "standard"
+  },
+  "winsRequired": 1
+}
