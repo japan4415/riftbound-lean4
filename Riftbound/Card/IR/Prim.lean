@@ -471,6 +471,9 @@ inductive StaticMod where
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear
+  /-- When a friendly Unit would die, this permanent dies instead and that Unit is healed,
+  exhausted and recalled (Zhonya's Hourglass). -/
+  | diesInsteadOfFriendly
   /-- Once per turn the controller may kill a friendly Unit to save this one (CR 371). -/
   | sacrificeToSaveSelf
   /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,

@@ -1724,13 +1724,17 @@ theorem takeUntil_safe (p : PlayerId) (card : Option ObjId) (s : GameState) (id 
     Safe s (takeUntil p card s id).1 :=
   (setController_safe p s id).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
 
+/-- Players whose effects can replace this Unit's death with Banish. -/
+def GameState.deathBanishers (s : GameState) (id : ObjId) : List PlayerId :=
+  let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
+  let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
+  (marked ++ trash).eraseDups
+
 /-- Banish replacements for this Unit's death, grouped by the player credited with Banish. -/
 def GameState.deathBanisherOptions (s : GameState) (id : ObjId) : List (Option PlayerId) :=
   if (s.chosenDeathBanisher id).isSome || (s.automaticDeathSaver id).isSome ||
       !(s.cardDef? id).any (·.hasType .unit) then [none] else
-    let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
-    let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
-    match (marked ++ trash).eraseDups with
+    match s.deathBanishers id with
     | first :: second :: rest => (first :: second :: rest).map some
     | _ => [none]
 
@@ -1746,6 +1750,23 @@ def GameState.deathBanishChoice (s : GameState) (id : ObjId) :
     let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
     some (id, unit.controller, first, other)
   | _ => none
+
+/-- The affected Unit's controller chooses a competing paid automatic replacement (CR 372). -/
+def GameState.deathGearChoice (s : GameState) (id : ObjId) (used : List (ObjId × Bool))
+    (offerBanish : Bool) : Option (ObjId × PlayerId × Effect × Effect) := do
+  let unit ← s.obj? id
+  if !(s.cardDef? id).any (·.hasType .unit) || (s.chosenDeathBanisher id).isSome ||
+      (s.selectedDeathSacrifice id).isSome then none
+  else
+    let gears := s.deathGearOptions id used
+    if gears.isEmpty || (s.chosenDeathGear id).any gears.contains then none
+    else
+      let banish := if offerBanish then (s.deathBanishers id).map (Effect.chooseDeathBanisher id) else []
+      match gears.map (Effect.chooseDeathGear id) ++ banish with
+      | first :: second :: rest =>
+        let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
+        some (id, unit.controller, first, other)
+      | _ => none
 
 /-- Offer the optional sacrifice to the affected Unit's controller. Declining does not use the
 once-per-turn allowance (CR 371, 372). -/
@@ -1770,10 +1791,11 @@ def GameState.deathReplacementChoiceFrom (s : GameState) :
     Nat → ObjId → List (ObjId × Bool) → Bool → Option (ObjId × PlayerId × Effect × Effect)
   | 0, _, _, _ => none
   | fuel + 1, id, used, offerBanish =>
-    let own := if used.contains (id, true) then none else s.deathSacrificeChoice id
-    own <|> match s.deathSaveFor id used with
+    let own := if used.contains (id, true) || (s.chosenDeathBanisher id).isSome then none
+      else s.deathSacrificeChoice id
+    own <|> s.deathGearChoice id used offerBanish <|> match s.deathSaveFor id used with
     | some save => save.cost.bind (fun cost =>
-        s.deathReplacementChoiceFrom fuel cost ((id, save.isSacrifice) :: used) true)
+        s.deathReplacementChoiceFrom fuel cost (save.useKey id :: used) true)
     | none => if offerBanish then s.deathBanishChoice id else none
 
 /-- Ask the controllers of the original and replacement Kills in order. -/
@@ -1790,11 +1812,19 @@ def GameState.recordedDeathOrder (s : GameState) (group : List ObjId) : List Obj
   s.turnFx.filterMap (fun note =>
     if note.turn == s.turn && note.kind == .deathOrder group then note.target else none)
 
+/-- A team-wide replacement is controlled by its source. The other replacements use the
+affected Unit's seat unless a Banish source was recorded (CR 373.1). -/
+def GameState.deathOrderController (s : GameState) (id : ObjId) : Option PlayerId :=
+  let gear := (s.deathSaver id).join.filter fun source =>
+    s.selectedDeathSacrifice id != some source && (s.activeMods source).contains .diesInsteadOfFriendly
+  (gear.bind (fun source => (s.obj? source).map (·.controller))) <|>
+    s.chosenDeathBanisher id <|> (s.obj? id).map (·.controller)
+
 /-- Replacements act in turn order and before simultaneous unmodified deaths (CR 373.1.a). -/
 def GameState.deathGroupOrder (s : GameState) (group : List ObjId) : List ObjId :=
   let (modified, ordinary) := group.partition s.modifiedDeath
   let recorded := s.recordedDeathOrder group
-  let seat id := ((s.obj? id).bind (fun o => s.pickOrder.idxOf? o.controller)).getD s.playerCount
+  let seat id := ((s.deathOrderController id).bind s.pickOrder.idxOf?).getD s.playerCount
   let index id := (recorded.idxOf? id).getD recorded.length
   modified.mergeSort (fun a b => decide
     (seat a < seat b ∨ (seat a = seat b ∧ index a ≤ index b))) ++ ordinary
@@ -1807,7 +1837,7 @@ def GameState.deathGroupChoice (s : GameState) (group : List ObjId) (offerBanish
     let recorded := s.recordedDeathOrder group
     s.pickOrder.findSome? (fun controller =>
       let remains := group.eraseDups.filter (fun id =>
-        s.modifiedDeath id && !recorded.contains id && (s.obj? id).any (·.controller == controller))
+        s.modifiedDeath id && !recorded.contains id && s.deathOrderController id == some controller)
       match remains with
       | first :: second :: rest =>
         let choose := Effect.recordDeathOrder group
@@ -6107,6 +6137,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     orderCombatDamageStep s p src env target chosen remaining es
   | .chooseDeathBanisher unit banisher =>
     (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
+  | .chooseDeathGear unit gear =>
+    (s.addTurnFxOn p unit (.chosenDeathGear gear), [.run p src env es], [])
   | .recordDeathSacrifice unit cost =>
     (s.addTurnFxOn p unit (.deathSacrificeChoice cost), [.run p src env es], [])
   | .recordDeathOrder group unit =>

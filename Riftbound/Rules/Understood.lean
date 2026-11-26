@@ -519,7 +519,7 @@ def StaticMod.runs : StaticMod → Bool
       .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
-  | .diesInsteadGear | .sacrificeToSaveSelf => true
+  | .diesInsteadGear | .diesInsteadOfFriendly | .sacrificeToSaveSelf => true
   | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true

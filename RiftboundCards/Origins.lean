@@ -2079,8 +2079,8 @@ def OGN_076 : CardDef :=
 Printings: OGN-077/298
 
 > [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)
-> The next time a friendly unit would die, kill this instead. Recall that unit exhausted. (Send
-> it to base. This isn't a move.)
+> If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it.
+> (Send it to base. This isn't a move.)
 -/
 def OGN_077.meta : CardDef :=
   { id := ⟨"OGN-077"⟩,
@@ -2092,18 +2092,12 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass. -/
+/-- Zhonya's Hourglass. Competing free saves and reselection after a shared source is
+consumed during a simultaneous death group still need replacement ordering. -/
 def OGN_077 : CardDef :=
   { OGN_077.meta with
-    abilities := [.triggered
-      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen
-        (.and (.cmp .ge (.count (Selector.all .friendly .inTrash [.sameAs (.slot 0)])) (.const 1))
-          (.exists (Selector.all .friendly .anywhere [.sameAs .self])))
-        (.seqOf [.prim (.kill .self),
-          .prim (.play (Selector.one .friendly .inTrash [.sameAs (.slot 0)]))]) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.passive .always [.diesInsteadOfFriendly]],
+    status := .partial }
 
 -- BEGIN GENERATED OGN-078
 /--

@@ -399,6 +399,8 @@ inductive TurnEffect where
   | banishInstead
   /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
   | chosenDeathBanisher
+  /-- The affected Unit's controller selected the permanent that will die in its place. -/
+  | chosenDeathGear (gear : ObjId)
   /-- The choice for the death currently being processed. None declines just this event. -/
   | deathSacrificeChoice (unit : Option ObjId)
   /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/

@@ -288,7 +288,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
       .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
-  | .diesInsteadGear | .sacrificeToSaveSelf => true
+  | .diesInsteadGear | .diesInsteadOfFriendly | .sacrificeToSaveSelf => true
   | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
@@ -400,7 +400,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
-      .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. |
+      .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. | .chooseDeathGear .. |
       .recordDeathSacrifice .. | .recordDeathOrder .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e

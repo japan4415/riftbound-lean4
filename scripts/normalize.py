@@ -23,10 +23,15 @@ ROOT = Path(__file__).resolve().parent.parent
 SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
+# https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/
 # https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
 TEXT_ERRATA = {
+    "OGN-077": {
+        "The next time a friendly unit would die, kill this instead. Recall that unit exhausted.":
+            "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it.",
+    },
     "UNL-081": {
         "tokens here. They become copies of me.":
             "tokens here. Then do this: They become copies of me.",

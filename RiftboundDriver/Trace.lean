@@ -239,6 +239,18 @@ def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × Stri
       | _ => [])
   | _ => []
 
+/-- Describe the Gear or competing Banish replacement selected for a pending death. -/
+def deathGearFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ unit _ first@(.chooseDeathGear ..) other _) =>
+    [("deathGearUnit", toString unit.n)] ++
+      (match if yes then first else other with
+      | .chooseDeathGear _ gear => [("deathGearSource", toString gear.n)]
+      | .chooseDeathBanisher _ player =>
+        [("banishDeathUnit", toString unit.n), ("banishingPlayer", toString player.n)]
+      | _ => [])
+  | _ => []
+
 /-- Identify the affected Unit and the exact sacrifice elected during its death replacement. -/
 def deathSacrificeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
@@ -483,7 +495,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _ => []) ++
         tokenLocationFields frame yes ++ unitTokenReplacementFields frame yes ++
         damageOrderFields frame yes ++ damageDivisionFields frame yes ++
-        deathBanishFields frame yes ++ deathSacrificeFields frame yes ++ deathOrderFields frame yes ++
+        deathBanishFields frame yes ++ deathGearFields frame yes ++ deathSacrificeFields frame yes ++
+        deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes

@@ -410,56 +410,103 @@ theorem GameState.selectedDeathSacrifice_mem {s : GameState} {id unit : ObjId}
   rcases List.mem_append.mp hm with member | member
   all_goals exact List.mem_eraseDups.mp (List.mem_filter.mp (List.mem_filter.mp member).1).1
 
-/-- What would save a Unit that is about to die ("If I would die, ... instead"): an Equipment
-attached to it that says so (Guardian Angel: it dies instead), or a Unit of the same player at the
-same Battlefield with more Might that says so (Soraka). `some (some g)` if the Equipment `g` dies
-instead, `some none` if nothing does. -/
-def GameState.automaticDeathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
-  match s.inPlay.find? (fun g => (s.obj? g).any (·.attached == some id) &&
-      (s.cardDef? g).any (fun d => d.grants.any (fun ab =>
-        match ab with
-        | Ability.passive .always mods => mods.contains .diesInsteadGear
-        | _ => false))) with
+/-- The Gear the affected controller selected to die in place of the Unit (CR 372). -/
+def GameState.chosenDeathGear (s : GameState) (id : ObjId) : Option ObjId :=
+  s.turnFx.findSome? fun note =>
+    if note.turn == s.turn && note.target == some id then
+      match note.kind with | .chosenDeathGear gear => some gear | _ => none
+    else none
+
+/-- The in-play sources that could die in the Unit's place. An inherent replacement works
+across a team, while an Equipment's granted replacement belongs to its wearer (CR 491.8.e). -/
+def GameState.deathGearOptions (s : GameState) (id : ObjId) (used : List (ObjId × Bool)) : List ObjId :=
+  (s.obj? id).elim [] fun victim =>
+    s.inPlay.eraseDups.filter fun gear => !used.contains (gear, false) &&
+      ((s.obj? gear).any (fun o => s.config.mode.sameSide victim.controller o.controller) &&
+        (s.activeMods gear).contains .diesInsteadOfFriendly ||
+       (s.obj? gear).any (·.attached == some id) &&
+        (s.cardDef? gear).any (fun d => d.grants.any fun
+          | .passive .always mods => mods.contains .diesInsteadGear
+          | _ => false))
+
+/-- Use the recorded source when available. A simultaneous death may have consumed it already. -/
+def GameState.selectedDeathGear (s : GameState) (id : ObjId) (used : List (ObjId × Bool)) : Option ObjId :=
+  let options := s.deathGearOptions id used
+  (options.find? (fun gear => s.chosenDeathGear id == some gear)) <|> options.head?
+
+private theorem GameState.selectedDeathGear_mem {s : GameState} {id gear : ObjId}
+    {used : List (ObjId × Bool)} (h : s.selectedDeathGear id used = some gear) : gear ∈ s.inPlay := by
+  unfold GameState.selectedDeathGear at h
+  dsimp only at h
+  have found : gear ∈ s.deathGearOptions id used := by
+    cases hp : (s.deathGearOptions id used).find? (fun x => s.chosenDeathGear id == some x) with
+    | none =>
+      have hd : (s.deathGearOptions id used).head? = some gear := by simpa [hp] using h
+      exact List.mem_of_head? hd
+    | some x =>
+      have he : x = gear := by simpa [hp] using h
+      subst x
+      exact List.mem_of_find?_eq_some hp
+  unfold GameState.deathGearOptions at found
+  cases hobj : s.obj? id with
+  | none => simp [hobj] at found
+  | some _ =>
+    simp only [hobj, Option.elim_some] at found
+    exact List.mem_eraseDups.mp (List.mem_filter.mp found).1
+
+/-- The automatic save for this Kill. In the resulting sequence of Kills, each Gear source
+can apply once and a free save cannot apply twice to the same Unit (CR 370.2). -/
+def GameState.automaticDeathSaver (s : GameState) (id : ObjId)
+    (used : List (ObjId × Bool) := []) : Option (Option ObjId) :=
+  match s.selectedDeathGear id used with
   | some g => some (some g)
   | none =>
     match s.obj? id with
     | some o =>
-      if s.saveOnceFor id || s.inPlay.any (fun u => u != id &&
+      if !used.contains (id, false) && (s.saveOnceFor id || s.inPlay.any (fun u => u != id &&
           (s.obj? u).any (fun v => v.controller == o.controller && v.loc == o.loc) &&
           (s.activeMods u).contains .rescueWeakerHere &&
-          decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)) then some none
+          decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0))) then some none
       else none
     | none => none
 
+private theorem GameState.automaticDeathSaver_cost_mem {s : GameState} {id cost : ObjId}
+    {used : List (ObjId × Bool)} (h : s.automaticDeathSaver id used = some (some cost)) :
+    cost ∈ s.inPlay := by
+  unfold GameState.automaticDeathSaver at h
+  split at h
+  · rename_i gear found
+    cases h
+    exact GameState.selectedDeathGear_mem found
+  · split at h
+    · split at h <;> simp at h
+    · contradiction
+
 /-- The choice of the affected object's controller takes precedence over an automatic saver. -/
 def GameState.deathSaver (s : GameState) (id : ObjId) : Option (Option ObjId) :=
-  match s.selectedDeathSacrifice id with
-  | some cost => some (some cost)
-  | none => s.automaticDeathSaver id
+  if (s.chosenDeathBanisher id).isSome then none else
+    match s.selectedDeathSacrifice id with
+    | some cost => some (some cost)
+    | none => s.automaticDeathSaver id
 
 /-- The object selected to pay for a death replacement is in play. -/
 theorem GameState.deathSaver_cost_mem {s : GameState} {id cost : ObjId}
     (h : s.deathSaver id = some (some cost)) : cost ∈ s.inPlay := by
   unfold GameState.deathSaver at h
   split at h
-  · rename_i unit hu
-    simp only [Option.some.injEq] at h
-    subst cost
-    exact GameState.selectedDeathSacrifice_mem hu
-  · unfold GameState.automaticDeathSaver at h
-    split at h
+  · contradiction
+  · split at h
     · rename_i unit hu
-      simp only [Option.some.injEq] at h
-      subst cost
-      exact List.mem_of_find?_eq_some hu
-    · split at h
-      · split at h <;> simp at h
-      · simp at h
+      cases h
+      exact GameState.selectedDeathSacrifice_mem hu
+    · exact GameState.automaticDeathSaver_cost_mem h
 
 /-- Forget the decision after this event, so declining does not disable a later replacement. -/
 def closeDeathSacrifice (s : GameState) (id : ObjId) : GameState :=
   { s with turnFx := s.turnFx.filter (fun note =>
-    note.target != some id || match note.kind with | .deathSacrificeChoice _ => false | _ => true) }
+    note.target != some id || match note.kind with
+      | .deathSacrificeChoice _ | .chosenDeathGear _ => false
+      | _ => true) }
 
 theorem closeDeathSacrifice_safe (s : GameState) (id : ObjId) : Safe s (closeDeathSacrifice s id) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
@@ -508,16 +555,19 @@ structure DeathSave where
   /-- The permanent that would die as part of the replacement's instructions. -/
   cost : Option ObjId
 
+/-- An automatic sacrifice of Gear is keyed by its source. A Unit's own sacrifice and a free
+replacement are keyed by the affected Unit (CR 370.2). -/
+def DeathSave.useKey (save : DeathSave) (victim : ObjId) : ObjId × Bool :=
+  if save.isSacrifice then (victim, true) else (save.cost.getD victim, false)
+
 /-- Each survival replacement is available only once across one resulting sequence of deaths. -/
 def GameState.deathSaveFor (s : GameState) (id : ObjId)
     (used : List (ObjId × Bool)) : Option DeathSave :=
-  if !(s.cardDef? id).any (·.hasType .unit) then none else
+  if !(s.cardDef? id).any (·.hasType .unit) || (s.chosenDeathBanisher id).isSome then none else
     let sacrifice := if used.contains (id, true) then none else s.selectedDeathSacrifice id
     match sacrifice with
     | some cost => some ⟨true, some cost⟩
-    | none =>
-      if used.contains (id, false) then none
-      else (s.automaticDeathSaver id).map (fun cost => ⟨false, cost⟩)
+    | none => (s.automaticDeathSaver id used).map (fun cost => ⟨false, cost⟩)
 
 /-- Each replacement Kill can involve only a permanent that is still on the Board. -/
 theorem GameState.deathSaveFor_cost_mem {s : GameState} {id cost : ObjId}
@@ -529,28 +579,17 @@ theorem GameState.deathSaveFor_cost_mem {s : GameState} {id cost : ObjId}
   · dsimp only at h
     split at h
     · rename_i chosen hchosen
-      have heq : chosen = cost := (congrArg DeathSave.cost (Option.some.inj h) |> Option.some.inj)
+      have heq := congrArg DeathSave.cost (Option.some.inj h)
+      have eq : chosen = cost := Option.some.inj heq
       subst chosen
       split at hchosen
       · contradiction
       · exact GameState.selectedDeathSacrifice_mem hchosen
-    · split at h
-      · contradiction
-      · have hauto : s.automaticDeathSaver id = some (some cost) := by
-          cases ha : s.automaticDeathSaver id with
-          | none => simp [ha] at h
-          | some chosen =>
-            have heq := congrArg DeathSave.cost (Option.some.inj (by simpa only [ha, Option.map_some] using h))
-            exact congrArg some heq
-        unfold GameState.automaticDeathSaver at hauto
-        split at hauto
-        · rename_i gear found
-          have eq : gear = cost := Option.some.inj (Option.some.inj hauto)
-          subst gear
-          exact List.mem_of_find?_eq_some found
-        · split at hauto
-          · split at hauto <;> simp at hauto
-          · contradiction
+    · cases ha : s.automaticDeathSaver id used with
+      | none => simp [ha] at h
+      | some chosen =>
+        have heq := congrArg DeathSave.cost (Option.some.inj (by simpa only [ha, Option.map_some] using h))
+        exact GameState.automaticDeathSaver_cost_mem (ha.trans (congrArg some heq))
 
 /-- Heal, exhaust, and recall after the replacement Kill has completed. -/
 def completeDeathSave (s : GameState) (id : ObjId) (sacrifice : Bool)
@@ -572,7 +611,7 @@ def killOrSaveFrom : Nat → GameState → ObjId → List (ObjId × Bool) → Ga
     | none => killObj s id
     | some save =>
       let replaced := save.cost.elim (s, [])
-        (fun cost => killOrSaveFrom fuel s cost ((id, save.isSacrifice) :: used))
+        (fun cost => killOrSaveFrom fuel s cost (save.useKey id :: used))
       let owner := ((s.obj? id).map (·.controller)).getD ⟨0⟩
       let completed := completeDeathSave replaced.1 id save.isSacrifice owner
       (completed.1, replaced.2 ++ completed.2)
@@ -592,7 +631,7 @@ theorem killOrSaveFrom_safe :
     · rename_i save _
       have prior : Safe s
           (save.cost.elim (s, []) (fun cost => killOrSaveFrom fuel s cost
-            ((id, save.isSacrifice) :: used))).1 := by
+            (save.useKey id :: used))).1 := by
         cases h : save.cost with
         | none => exact Safe.refl s
         | some cost => exact killOrSaveFrom_safe fuel s cost _
@@ -665,7 +704,7 @@ theorem killOrSaveFrom_zone_other (fuel : Nat) {s : GameState} (hwf : s.WF)
     · exact killObj_zone_other hwf hmem hother hd
     · rename_i save found
       let paid := (save.cost.elim (s, []) (fun cost => killOrSaveFrom fuel s cost
-        ((id, save.isSacrifice) :: used))).1
+        (save.useKey id :: used))).1
       have hpaid : paid.zone z = s.zone z := by
         unfold paid
         cases save with

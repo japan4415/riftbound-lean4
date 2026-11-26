@@ -4048,28 +4048,100 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     ready.tired boss == some false && two.countIn s.me .base "OGN-136" == 1 &&
     two.countIn s.me .trash "OGN-136" == 1 && theirsReady.tired boss == some true
 
--- Zhonya's Hourglass (OGN-077): the next time a friendly unit dies, the gear is killed and the
--- unit comes back exhausted (approximation: it dies, then returns); once, and not for an enemy unit
+-- The Gear dies instead, and the original Unit is healed and recalled exhausted without a play.
 #guard t fun s => do
-  let (s1, _) ← put s s.me "OGN-077" .base
-  let (s2, u) ← put s1 s.me "OGN-136" .base
-  let (s3, v) ← put s2 s.me "OGN-136" .base
-  let (s4, foe) ← put s3 s.you "OGN-136" .base
-  let die (x : GameState) (id : ObjId) : Option GameState :=
-    let (k, ev) := killObj x id
-    fire k ev
-  let a ← die s4 u
-  let theirs ← die s4 foe
-  let (k1, ev1) := killObj s4 u
-  let (k2, ev2) := killObj k1 v
-  let twice ← fire k2 (ev1 ++ ev2)
-  let back := (a.zone (.player s.me .base)).filter (fun x =>
-    (a.cardDef? x).any (·.id == cid "OGN-136"))
-  return a.countIn s.me .base "OGN-136" == 2 && a.countIn s.me .trash "OGN-136" == 0 &&
-    a.countIn s.me .trash "OGN-077" == 1 && a.countIn s.me .base "OGN-077" == 0 &&
-    back.all (fun x => (a.obj? x).any (fun o => o.exhausted || x == v)) &&
-    theirs.countIn s.you .trash "OGN-136" == 1 && theirs.countIn s.me .base "OGN-077" == 1 &&
-    twice.countIn s.me .trash "OGN-136" == 1 && twice.countIn s.me .base "OGN-136" == 1
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s p "OGN-077" .base
+  let (s, unit) ← putAt s p "OGN-096" s.bf0
+  let (s, foe) ← putAt s q "OGN-136" s.bf0
+  let before := s.modObj unit (fun o => { o with damage := 1, exhausted := false, buffed := true })
+  let (saved, events) := killOrSave before unit
+  let dead ← saved.firstOf p .trash "OGN-077"
+  let (used, _) := killOrSave saved unit
+  let (theirs, _) := killOrSave before foe
+  return (saved.obj? unit).any (fun o => o.loc.isNone && o.damage == 0 && o.exhausted && o.buffed) &&
+    (saved.zone (.player p .base)).contains unit &&
+    events.contains (.died dead p) && events.contains (.recalled unit) &&
+    (saved.detect events).isEmpty && !(events.any (fun | .played .. => true | _ => false)) &&
+    used.countIn p .trash "OGN-096" == 1 &&
+    (theirs.obj? gear).isSome && theirs.countIn q .trash "OGN-136" == 1
+
+-- Hidden can be used at a different Battlefield from the Unit killed by Hidden Blade.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let targetField := s.bf0
+  let (s, hidingField) ← putBf s q "OGN-276"
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .hidden
+  let (s, unit) ← putAt s q "OGN-096" targetField
+  let before := ((s.control q targetField).control q hidingField).modObj gear
+    (fun o => { o with hiddenAt := some hidingField, hiddenTurn := some 0 })
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let reveal ← (legalFrameActions priority).find? (fun act => act.actor == .player q &&
+    match act.kind with | .activate id .. => id == gear | _ => false)
+  let (saving, _) ← (step 100 priority reveal).toOption
+  let done := settleChain {} 12 saving
+  return (done.obj? unit).any (fun o => o.loc.isNone && o.exhausted) &&
+    done.handN q == before.handN q + 2 && done.countIn q .trash "OGN-077" == 1 &&
+    done.countIn q .trash "OGN-096" == 0 && done.countIn p .trash "OGN-213" == 1
+
+-- When Smite and the Hourglass compete, the affected controller chooses the replacement.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .base
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := (s.control q s.bf0).addTurnFxOn p unit .banishInstead
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let (saved, _) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
+  let (banished, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
+  return (saved.obj? unit).any (·.loc.isNone) && saved.countIn q .trash "OGN-077" == 1 &&
+    saved.handN q == before.handN q + 2 && banished.countIn q .banishment "OGN-136" == 1 &&
+    (banished.obj? gear).isSome && banished.handN q == before.handN q
+
+-- In 2v2 the Gear's controller orders its applications to two simultaneous lethal deaths.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2, turnOrder := Mode.teamTurnOrder true
+    pending := [.cleanup, .priority p] }
+  let (s, gear) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-136" .base
+  let (s, b) ← put s ally "OGN-136" .base
+  let before := (s.modObj a (fun o => { o with damage := 12 })).modObj b
+    (fun o => { o with damage := 12 })
+  let (choices, events) ← (advance 100 before []).toOption
+  let .eitherDo chooser _ _ (.recordDeathOrder _ first) (.recordDeathOrder _ other) _ :: _ :=
+    choices.pending | none
+  let (saved, settled) ← (step 100 choices ⟨.player p, .decide (first == b)⟩).toOption
+  return chooser == p && events.isEmpty && [first, other].contains b &&
+    (saved.obj? b).any (fun o => o.damage == 0 && o.exhausted) &&
+    (saved.obj? a).isNone && (saved.obj? gear).isNone &&
+    (settled.countP (fun | .died .. => true | _ => false)) == 2
+
+-- Each animated Hourglass can replace one Kill in the same series (CR 370.2).
+#guard t fun s => do
+  let p := s.me
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let s := animateGearObject (animateGearObject s p s.bf0 a) p s.bf0 b
+  let choose source := s.addTurnFxOn p a (.chosenDeathGear source)
+  let (keepA, firstEvents) := killOrSave (choose a) a
+  let (keepB, otherEvents) := killOrSave (choose b) a
+  let oneDeath (events : List Event) := events.countP (fun | .died .. => true | _ => false) == 1
+  return (keepA.obj? a).any (·.exhausted) && (keepA.obj? b).isNone &&
+    (keepB.obj? b).any (·.exhausted) && (keepB.obj? a).isNone &&
+    oneDeath firstEvents && oneDeath otherEvents
 
 -- Unlicensed Armory (OGN-023): discard 1, exhaust: choose a friendly unit; the next time it dies
 -- this turn, I may pay Fury to bring it back exhausted (approximation: it dies, then returns)

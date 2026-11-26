@@ -301,6 +301,8 @@ inductive Effect where
   | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
   /-- Record which player's Banish replaces the pending death (CR 372). -/
   | chooseDeathBanisher (unit : ObjId) (banisher : PlayerId)
+  /-- Record which mandatory Gear replacement the affected Unit's controller selected. -/
+  | chooseDeathGear (unit gear : ObjId)
   /-- Declare the friendly Unit paying for this death replacement, or decline it. -/
   | recordDeathSacrifice (unit : ObjId) (cost : Option ObjId)
   /-- Record a controller's next replacement among simultaneous deaths (CR 373). -/

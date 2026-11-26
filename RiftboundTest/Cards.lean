@@ -55,9 +55,8 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
--- goal "every card of the first set works" (298)
-#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 298
+-- Hourglass has IR, with competing death replacements still partially covered.
+#guard (Origins.cards.filter (fun c => !c.runs)).map (·.id.code) == ["OGN-077"]
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 -- Spiritforged (222): the measure of the goal "every card of the second set works"
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 222
@@ -70,7 +69,7 @@ open Riftbound RiftboundCards
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
 #guard Radiance.cards.all (fun c => c.status == .full && c.runs)
-#guard allCards.all (fun c => c.status == .drafted || c.status == .full)
+#guard allCards.all (fun c => c.status != .todo)
 
 -- The official image of Bilgewater Tracker shows Fury and the Bilgewater tag.
 #guard match db.find? ⟨"RAD-003"⟩ with
