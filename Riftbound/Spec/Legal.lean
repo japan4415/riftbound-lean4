@@ -27,6 +27,18 @@ def allPlayers (n : Nat) : List PlayerId := (List.range n).map (fun i => ⟨i⟩
   · rintro ⟨i, hi, rfl⟩; exact hi
   · intro h; exact ⟨p.n, h, by cases p; rfl⟩
 
+/-- Team play alternates sides (CR 491.5.c). Tournaments specify each team's A/B ordering
+(TR 603.7). This checks the team restrictions on a permutation of the seats. -/
+def GameState.turnOrderAllowed (s : GameState) (order : List PlayerId) : Bool :=
+  let mode := s.config.mode
+  if !mode.isTeamDuel then true
+  else if s.config.ruleSet.isTournament then
+    order == Mode.teamTurnOrder true || order == Mode.teamTurnOrder false
+  else
+    match order with
+    | [a, b, c, d] => mode.sameSide a c && mode.sameSide b d && !mode.sameSide a b
+    | _ => false
+
 /-- `a` is a legal answer to the frame on top of the stack. -/
 def LegalFrame (s : GameState) (a : Action) : Prop :=
   match s.pending, a.kind with
@@ -36,9 +48,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- the random Battlefield of a player (CR 487.5): one of the player's Battlefields
   | .chanceBattlefield p :: _, .pick i =>
     a.actor = .chance ∧ i < (s.zone (.player p .outOfGame)).length
-  -- the turn order (CR 115): an arrangement of the players
+  -- Turn order is a permutation of the seats compatible with the game mode (CR 115, 491.5.c).
   | .chanceTurnOrder :: _, .arrangePlayers l =>
-    a.actor = .chance ∧ l.Perm (allPlayers s.playerCount)
+    a.actor = .chance ∧ l.Perm (allPlayers s.playerCount) ∧ s.turnOrderAllowed l = true
   -- the mulligan (CR 117): set aside up to two cards of the hand, or finish
   | .mulligan p n :: _, .mulliganPick c =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ n < 2
@@ -64,9 +76,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- the order of the Trash in a Burn Out (CR 432.2.b): an arrangement of the Trash
   | .chanceBurnOut p :: _, .arrange l =>
     a.actor = .chance ∧ l.Perm (s.zone (.player p .trash))
-  -- the opponent of a Burn Out (CR 432.2.c): a player other than the one who burned out
+  -- The opponent of a Burn Out is on an opposing side (CR 432.2.c).
   | .chooseBurnOut p :: _, .burnOutTarget opp =>
-    a.actor = .player p ∧ opp ≠ p ∧ opp.n < s.playerCount
+    a.actor = .player p ∧ s.config.mode.sameSide p opp = false ∧ opp.n < s.playerCount
   -- the turn player has priority in the Main Phase (CR 312, 316): passing ends the phase (CR 305)
   | .priority p :: _, .pass => a.actor = .player p
   -- a Basic Rune of the player's on the Base adds a resource (CR 164.2, 430)
@@ -134,10 +146,9 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- every Unit of the other side is named (CR 467.2.c)
   | .assign bf _ side acc _ :: _, .assignDone =>
     a.actor = .player side ∧ s.doneOk bf side acc = true
-  -- the clock calls time, whatever question is open, once, in a 1v1 game under the Tournament
-  -- Rules, after the first turn has begun (TR 408.2)
+  -- The clock calls time once, in a two-sided Tournament game after the first turn starts (TR 408.2).
   | _, .timeCalled =>
-    a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.playerCount = 2 ∧
+    a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.config.mode.hasTwoSides = true ∧
       s.clock = none ∧ s.active.isSome = true
   -- the judge declares a draw, whatever question is open, under the Tournament Rules: the players
   -- agree to it (TR 410.1), or a loop has no end (TR 505.6)
@@ -158,22 +169,21 @@ instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFra
   unfold LegalFrame
   split <;> infer_instance
 
-/-- A player concedes (CR 649-650): at any time, whatever question is open. In a 1v1 game the
-other player wins (CR 651.1); with more players a concession removes the player from the game
-(CR 651.2, 652), which comes with the multiplayer rules (roadmap.md, M9). -/
+/-- A player can concede at any time when one opposing side remains after the concession
+(CR 649-651). -/
 def LegalConcede (s : GameState) (a : Action) : Prop :=
   a.kind = .concede ∧
     match a.actor with
-    | .player p => p.n < s.playerCount ∧ s.playerCount = 2
+    | .player p => p.n < s.playerCount ∧ s.config.mode.hasTwoSides = true
     | _ => False
 
 instance LegalConcede.decidable (s : GameState) (a : Action) : Decidable (LegalConcede s a) := by
   unfold LegalConcede
   split <;> infer_instance
 
-/-- A legal concession is made by a player of the game, in a 1v1 game. -/
+/-- A legal concession is made by a player of a two-sided game. -/
 theorem LegalConcede.actor {s : GameState} {a : Action} (h : LegalConcede s a) :
-    ∃ p, a.actor = .player p ∧ p.n < s.playerCount ∧ s.playerCount = 2 := by
+    ∃ p, a.actor = .player p ∧ p.n < s.playerCount ∧ s.config.mode.hasTwoSides = true := by
   obtain ⟨-, h2⟩ := h
   cases hac : a.actor with
   | player p =>

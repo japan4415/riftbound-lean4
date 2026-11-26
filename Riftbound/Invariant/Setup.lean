@@ -767,7 +767,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) (by simp [hs]) (by simp)
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) (by simp [hs]) (by simp [Frame.isSetup])
+        (new := [Frame.draw (s.active.getD ⟨0⟩) s.drawCount]) (by simp [hs]) (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

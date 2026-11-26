@@ -41,15 +41,19 @@ def GameState.nextTurnPlayer (s : GameState) : PlayerId :=
 def turnFrames (tp : PlayerId) : List Frame :=
   [.phase .awaken, .phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority tp]
 
-/-- How many Runes the Channel Phase channels: two (CR 315.3), and one more for the second player
-on their first turn in a 1v1 game (CR 487.7). The turns are counted without the extra turns. -/
+/-- The last seat in the starting order gets an extra Rune on its first regular turn
+in Duel and team play (CR 315.3, 487.7, 491.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
-  let normal := if s.playerCount = 2 ∧ s.turn - s.turnShift = 2 then 3 else 2
+  let normal := if s.config.mode.hasTwoSides && s.turn - s.turnShift == s.playerCount then 3 else 2
   s.passiveSources.foldl (fun count src =>
     (s.activeMods src).foldl (fun count mod =>
       match mod with
       | .channelLimit n => min count n
       | _ => count) count) normal
+
+/-- The starting player has no regular draw on the first turn in team play (CR 491.7). -/
+def GameState.drawCount (s : GameState) : Nat :=
+  if s.config.mode.isTeamDuel && s.turn == 1 then 0 else 1
 
 /-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
 format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither
@@ -74,9 +78,17 @@ def GameState.clockDue (s : GameState) : Bool :=
 
 /-- The turn that follows (CR 301); or, when the clock has run out, the end of the game: the player
 2 points ahead wins, any other score is a draw (TR 408.2). -/
+def GameState.resultOnTime (s : GameState) : GameResult :=
+  if s.config.mode.isTeamDuel then
+    match gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨2⟩) with
+    | .won [p] => .won (s.config.mode.sideSeats ⟨p.n * 2⟩)
+    | _ => .draw
+  else gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)
+
+/-- Advance to the next turn, or finish if the clock has run out. -/
 def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
   if s.clockDue then
-    { s with result := some (gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)), pending := [] }
+    { s with result := some s.resultOnTime, pending := [] }
   else
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
@@ -95,7 +107,7 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
   by_cases hc : s.clockDue = true
-  · exact Or.inr ⟨gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩), by simp [hc]⟩
+  · exact Or.inr ⟨s.resultOnTime, by simp [hc]⟩
   · exact Or.inl (by simp [hc])
 
 /-- The separate Combat steps after damage and Combat Cleanup (CR 468.2-468.7). -/
@@ -219,7 +231,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     let p := s.active.getD ⟨0⟩
     let skip := s.hasControlledMod p .skipDrawPhase
     let phase := if skip then s.phase else .draw
-    let pending := if skip then rest else .draw p 1 :: rest
+    let pending := if skip then rest else .draw p s.drawCount :: rest
     some ({ s with phase, pending }, [])
   | .phase .ending :: rest =>
     some ({ s with phase := .ending, pending := .cleanup :: .expireTurn :: rest },
@@ -299,6 +311,11 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
 
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
 def otherPlayer (p : PlayerId) : PlayerId := ⟨1 - p.n⟩
+
+/-- The opposing side wins when a player concedes (CR 651.1, 651.4). -/
+def GameState.concessionWinners (s : GameState) (p : PlayerId) : List PlayerId :=
+  if s.config.mode.isTeamDuel then s.players.filter (fun q => !s.config.mode.sameSide p q)
+  else [otherPlayer p]
 
 /-- Apply an answer to the decision frame on top of the stack, before the triggered abilities it set
 off are found. The answer is assumed to be legal; `none` if it does not fit the frame or a primitive
@@ -428,7 +445,7 @@ def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) 
   match a.kind with
   | .concede =>
     match a.actor with
-    | .player p => some ({ s with result := some (.won [otherPlayer p]), pending := [] }, [])
+    | .player p => some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, [])
     | _ => none
   | _ => applyFrame s a
 
@@ -440,12 +457,11 @@ theorem applyAction_of_ne {s : GameState} {a : Action} (hk : a.kind ≠ .concede
   · exact absurd ‹a.kind = .concede› hk
   · rfl
 
-/-- A concession by a player ends the game: the other player wins, and nothing is left to answer
-(CR 651.1). -/
+/-- A concession ends the game with the opposing side as winner (CR 651). -/
 theorem applyAction_concede {s : GameState} {a : Action} {p : PlayerId} (hk : a.kind = .concede)
     (hp : a.actor = .player p) :
     applyAction s a =
-      some ({ s with result := some (.won [otherPlayer p]), pending := [] }, []) := by
+      some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
   unfold applyAction
   rw [hk]
   simp [hp]

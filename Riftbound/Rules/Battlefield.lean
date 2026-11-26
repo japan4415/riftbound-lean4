@@ -219,19 +219,22 @@ theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
 
 /-! ### Scoring -/
 
-/-- Score the Battlefield `bf` for `r` (CR 471). Nothing happens if `r` has scored it this turn
-(CR 472). A Conquer when `r` is one point short of the Victory Score or closer gives the last point
-only if `r` has scored every Battlefield this turn, and a card drawn instead (CR 473.1.b). -/
+/-- Whether the Battlefield has been scored by the player's side this turn (CR 472, 491.8.b). -/
+def Object.scoredFor (o : Object) (mode : Mode) (p : PlayerId) : Bool :=
+  o.scored.any (mode.sameSide p)
+
+/-- Score the Battlefield for a player whose side has yet to score it this turn (CR 471-472).
+Conquering for the final point checks which Battlefields the side scored (CR 473.1.b, 491.8.g). -/
 def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
     GameState × List Frame × List Event :=
   match s.obj? bf with
   | none => (s, [], [])
   | some o =>
-    if o.scored.contains r then (s, [], [])
+    if o.scoredFor s.config.mode r then (s, [], [])
     else
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
       let all := s1.battlefields.all
-        (fun b => ((s1.obj? b).map (·.scored.contains r)) == some true)
+        (fun b => (s1.obj? b).any (·.scoredFor s.config.mode r))
       -- a card can say the player can't score points here: the Battlefield is scored all the same
       -- (the abilities still fire), but no point comes of it
       if s.cantScoreHere r bf then (s1, [], [Event.scored r bf conquer])
@@ -244,7 +247,7 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
 /-- The Battlefields the turn player holds and has not scored this turn (CR 315.2.b). -/
 def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
   s.battlefields.filter (fun b =>
-    decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false)
+    decide (s.controlOf b = some tp) && !(s.obj? b).any (·.scoredFor s.config.mode tp))
 
 /-- Remember that `tp` has scored a Battlefield this turn, and held it if a point came of it. -/
 def markScored (tp : PlayerId) (pt : Bool) (o : Object) : Object :=
@@ -298,7 +301,7 @@ opponent. -/
 def GameState.winner (s : GameState) : Option PlayerId :=
   s.players.find? (fun p =>
     decide (s.victoryScore ≤ s.pointsOf p) &&
-      s.players.all (fun q => decide (q = p) || decide (s.pointsOf q < s.pointsOf p)))
+      s.players.all (fun q => s.config.mode.sameSide p q || decide (s.pointsOf q < s.pointsOf p)))
 
 /-! ### Cleanup -/
 
@@ -548,7 +551,9 @@ theorem cleanupResolveDeathGroup_safe {s : GameState} {r : GameState × List Eve
 Showdown, or finish. -/
 def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :=
   match s.winner with
-  | some w => ({ s with result := some (.won [w]), pending := [] }, [Event.won w])
+  | some w =>
+    let seats := s.config.mode.sideSeats w
+    ({ s with result := some (.won seats), pending := [] }, seats.map Event.won)
   | none =>
     match cleanupDeathBanishChoice s with
     | some (u, controller, first, other) =>
@@ -875,7 +880,8 @@ theorem endShowdown_frames (s : GameState) (bf : ObjId) (expire : Bool := true) 
 
 /-- What the `cleanup` frame does, in the cases the invariants look at. -/
 theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
-    (∃ w, (cleanupFrame s rest).1 = { s with result := some (.won [w]), pending := [] }) ∨
+    (∃ w, (cleanupFrame s rest).1 =
+      { s with result := some (.won (s.config.mode.sideSeats w)), pending := [] }) ∨
     (∃ u p a b, (cleanupFrame s rest).1 =
       { s with pending := .eitherDo p u {} a b .nil :: .cleanup :: rest }) ∨
     (∃ r, Safe s r ∧ (cleanupFrame s rest).1 = { r with pending := .cleanup :: rest }) ∨
@@ -901,16 +907,16 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
             exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
           · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
 
-/-- What the winner has: the Victory Score and more points than every other player. -/
+/-- A winning seat reaches the Victory Score and leads every opposing seat. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
     s.victoryScore ≤ s.pointsOf w ∧
-      ∀ q ∈ s.players, q ≠ w → s.pointsOf q < s.pointsOf w := by
+      ∀ q ∈ s.players, s.config.mode.sameSide w q = false → s.pointsOf q < s.pointsOf w := by
   unfold GameState.winner at h
   have := List.find?_some h
   simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true] at this
   refine ⟨this.1, fun q hq hne => ?_⟩
   rcases this.2 q hq with h1 | h1
-  · exact absurd (by simpa using h1) hne
+  · simp [hne] at h1
   · simpa using h1
 
 /-- **I7** (roadmap.md). At most one player satisfies the condition for winning: two players cannot
@@ -927,47 +933,60 @@ theorem win_condition_unique {s : GameState} {p q : PlayerId}
 
 /-! ### What the rules guarantee -/
 
-/-- Scoring a Battlefield a player has already scored this turn does nothing (CR 472). -/
+/-- Scoring a Battlefield a player's side already scored this turn does nothing (CR 472, 491.8.b). -/
 theorem scoreBf_of_scored {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool}
-    (h : ((s.obj? bf).map (·.scored.contains r)) = some true) :
+    (h : (s.obj? bf).any (·.scoredFor s.config.mode r) = true) :
     scoreBf s r bf c = (s, [], []) := by
   unfold scoreBf
   cases ho : s.obj? bf with
   | none => simp [ho] at h
   | some o =>
     rw [ho] at h
-    have h' : o.scored.contains r = true := by simpa using h
+    have h' : o.scoredFor s.config.mode r = true := by simpa using h
     simp only [h', ↓reduceIte]
 
-/-- Scoring a Battlefield marks it as scored by the player (CR 472). -/
+/-- Scoring a Battlefield leaves it marked as scored by the player's side (CR 472). -/
 theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o : Object}
     (h : s.obj? bf = some o) :
-    (((scoreBf s r bf c).1.obj? bf).map (·.scored.contains r)) = some true := by
+    ((scoreBf s r bf c).1.obj? bf).any (·.scoredFor (scoreBf s r bf c).1.config.mode r) = true := by
   unfold scoreBf
   simp only [h]
   split
   · rename_i hc
-    show ((s.obj? bf).map _) = some true
-    rw [h]
-    have hm : r ∈ o.scored := by simpa using hc
-    simp [hm]
+    simpa [h] using hc
   · split
     · rw [GameState.obj?_modObj]
-      simp [h]
+      simp [h, Object.scoredFor, GameState.modObj]
     · split
       · rw [GameState.obj?_modObj]
-        simp [h]
+        simp [h, Object.scoredFor, GameState.modObj]
       · split <;>
-          (show (((s.modObj bf _).obj? bf).map _) = some true
+          (show ((s.modObj bf _).obj? bf).any (·.scoredFor s.config.mode r) = true
            rw [GameState.obj?_modObj]
-           simp [h])
+           simp [h, Object.scoredFor])
 
-/-- **I11** (roadmap.md). A player scores a Battlefield at most once in a turn: scoring it a second
-time changes nothing, whichever way it is scored (CR 472, 473). -/
+/-- **I11** (roadmap.md). A side scores a Battlefield at most once in a turn (CR 472, 491.8.b). -/
+theorem scoreBf_twice_side {s : GameState} {r q : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
+    (h : s.obj? bf = some o) (side : s.config.mode.sameSide r q = true) :
+    scoreBf (scoreBf s r bf c).1 q bf c' = ((scoreBf s r bf c).1, [], []) := by
+  let next := (scoreBf s r bf c).1
+  have hk : next.config.mode.scoringSeat r = next.config.mode.scoringSeat q := by
+    rw [(scoreBf_safeP s r bf c).config]
+    exact of_decide_eq_true side
+  have hs : next.config.mode.sameSide r = next.config.mode.sameSide q := by
+    funext p
+    unfold Mode.sameSide
+    rw [hk]
+  apply scoreBf_of_scored
+  change (next.obj? bf).any (fun o => o.scored.any (next.config.mode.sameSide q)) = true
+  rw [← hs]
+  exact scoreBf_marks h
+
+/-- Scoring the same Battlefield twice by a player is the single-seat case of I11. -/
 theorem scoreBf_twice {s : GameState} {r : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
     (h : s.obj? bf = some o) :
     scoreBf (scoreBf s r bf c).1 r bf c' = ((scoreBf s r bf c).1, [], []) :=
-  scoreBf_of_scored (scoreBf_marks h)
+  scoreBf_twice_side h (Mode.sameSide_self _ _)
 
 /-- A settled state has no Unit with lethal damage in play: the Cleanup has killed them
 (CR 323.4). -/

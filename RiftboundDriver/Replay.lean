@@ -54,6 +54,8 @@ structure GameInputs where
   answers : Array ReplayAnswer
   /-- The seat entitled to choose first or second, when the match made such a choice. -/
   chooser : Option PlayerId := none
+  /-- Four-seat tournament turn order determined before the engine shuffles the decks. -/
+  openingOrder : Option (List PlayerId) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Rules pinned by a saved recording. -/
@@ -109,8 +111,18 @@ structure RecordedGame where
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Set up the recorded decks using the existing deck validation paths and pinned format legality. -/
-def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig) :
+def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig)
+    (openingOrder : Option (List PlayerId) := none) :
     Except String GameState := do
+  if config.mode.isTeamDuel then
+    let .constructed registrations := decks | throw "team replay requires Constructed registrations"
+    let some env := config.formatLegality | throw "team replay requires pinned format legality"
+    let some order := openingOrder | throw "team replay requires the starting turn order"
+    if config.ruleSet != .tournament .constructed then throw "team replay requires Tournament Rules"
+    let some state := GameState.initialTeamConstructed db env order registrations
+      | throw "the team game cannot be set up from the submitted registrations and order"
+    return state
+  if openingOrder.isSome then throw "only four-seat matches set the starting order before setup"
   let state ← match decks, config.ruleSet, config.formatLegality with
     | .core ds, .coreOnly, none => pure (GameState.initial db config ds)
     | .constructed ds, .tournament .constructed, some env =>
@@ -172,7 +184,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
-  let mut s ← input.decks.initial db config
+  let mut s ← input.decks.initial db config input.openingOrder
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]

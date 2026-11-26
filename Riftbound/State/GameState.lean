@@ -221,8 +221,9 @@ def poolOf (s : GameState) (p : PlayerId) : RunePool := s.pools.getD p.n RunePoo
 def setPool (s : GameState) (p : PlayerId) (pool : RunePool) : GameState :=
   { s with pools := s.pools.insert p.n pool }
 
-/-- The points of a player. -/
-def pointsOf (s : GameState) (p : PlayerId) : Nat := s.points.getD p.n 0
+/-- The points of a player or their team (CR 491.8.d). -/
+def pointsOf (s : GameState) (p : PlayerId) : Nat :=
+  s.points.getD (s.config.mode.scoringSeat p).n 0
 
 /-- Every object on any zone, zone by zone. -/
 def zoneIds (s : GameState) : List ObjId :=

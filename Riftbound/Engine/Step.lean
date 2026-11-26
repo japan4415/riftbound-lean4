@@ -254,7 +254,7 @@ def legalFrameActions (s : GameState) : List Action :=
     CardTypeGuess.choices.map (fun guess => ⟨.player p, .guessCardType guess⟩)
   | .nameCard p _ _ c more _ :: _ => (c :: more).map (fun id => ⟨.player p, .nameCard id⟩)
   | .chooseBurnOut p :: _ =>
-    ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
+    ((allPlayers s.playerCount).filter (fun o => !s.config.mode.sameSide p o)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
@@ -273,9 +273,10 @@ def legalFrameActions (s : GameState) : List Action :=
     (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
-/-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/
+/-- Any player may concede in a two-sided game (CR 649-651). -/
 def concedeActions (s : GameState) : List Action :=
-  if s.playerCount = 2 then (allPlayers 2).map (fun p => ⟨.player p, .concede⟩) else []
+  if s.config.mode.hasTwoSides then (allPlayers s.playerCount).map (fun p => ⟨.player p, .concede⟩)
+  else []
 
 /-- The answers of the players: to the open question, and the concessions. Nothing once the game
 is over. -/

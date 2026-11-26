@@ -52,6 +52,7 @@ public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Spec.Legal
+public import Riftbound.Rules.TeamSetup
 public import Riftbound.Engine.Step
 public import Riftbound.Invariant.Step
 public import Riftbound.Invariant.Sound

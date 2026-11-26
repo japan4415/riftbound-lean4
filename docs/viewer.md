@@ -103,7 +103,11 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 ### 2v2 の大会記録
 
-`riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。チームの操作列は記録欄に保持できる。個々の操作の再実行は 1v1 のエンジンが対象で、2v2 の対戦処理は [ロードマップの M9](roadmap.md) にある。
+`riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。
+
+操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。
+
+現段階で再実行を確認した範囲は、4席のセットアップ、手番、チーム単位の得点と終了処理。味方への招待、味方のユニットが関わる戦闘と対象選択、Final Point の一部は [ロードマップの M9](roadmap.md) に残っている。
 
 ## カードの詳細と画像
 

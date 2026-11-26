@@ -38,11 +38,11 @@ theorem timeCalled_sets_clock {s s' : GameState} {es : List Event} {actor : Acto
   exact ⟨rfl, rfl, rfl, rfl⟩
 
 set_option maxHeartbeats 800000 in
-/-- A legal call of time is the clock's, once, in a 1v1 game under the Tournament Rules, after the
+/-- A legal call of time is the clock's, once, in a two-sided Tournament game after the
 first turn has begun (TR 408.2). -/
 theorem legal_timeCalled {s : GameState} {a : Action} (hk : a.kind = .timeCalled)
     (h : LegalFrame s a) :
-    a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.playerCount = 2 ∧
+    a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.config.mode.hasTwoSides = true ∧
       s.clock = none ∧ s.active.isSome = true := by
   unfold LegalFrame at h
   rw [hk] at h
@@ -72,7 +72,7 @@ is a draw. -/
 theorem beginTurn_ends {s : GameState} {rest : List Frame} (hp : s.pending = .beginTurn :: rest)
     (hd : s.clockDue = true) :
     ∃ s', microStep0 s = some (s', []) ∧
-      s'.result = some (gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)) ∧
+      s'.result = some s.resultOnTime ∧
         s'.pending = [] ∧ s'.turn = s.turn := by
   refine ⟨beginTurnStep s rest, ?_, ?_⟩
   · unfold microStep0

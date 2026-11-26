@@ -64,11 +64,10 @@ theorem step_over {fuel : Nat} {s : GameState} {a : Action} (h : s.result ≠ no
     step fuel s a = .error .illegal :=
   step_illegal (fun hl => h hl.1)
 
-/-- **Concession** (CR 649-651). In a 1v1 game a legal concession by a player ends the game at once:
-the other player wins, and nothing is left to answer. -/
+/-- **Concession** (CR 649-651). A legal concession ends the game immediately. -/
 theorem step_concede {fuel : Nat} {s : GameState} {a : Action} {p : PlayerId}
     (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p) :
-    step fuel s a = .ok ({ s with result := some (.won [otherPlayer p]), pending := [] }, []) := by
+    step fuel s a = .ok ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
   have hc := hl.of_concede hk
   have noCost : s.actionDeathCostChoice a = none := by
     cases h : s.pending with

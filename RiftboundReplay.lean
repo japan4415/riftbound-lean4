@@ -12,7 +12,7 @@ private def writeJson (path : String) (value : Json) : IO Unit :=
 
 private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     Except String String := do
-  let mut state ← input.decks.initial RiftboundCards.db config
+  let mut state ← input.decks.initial RiftboundCards.db config input.openingOrder
   let (initial, firstSeen) := stepJson 0 none [] state {}
   let mut seen := firstSeen
   let mut steps := [initial]
@@ -59,8 +59,19 @@ def main (args : List String) : IO UInt32 := do
       let result ← IO.ofExcept observed.check
       IO.println (toJson result).compress
       return 0
+    | ["record-team", input, output] =>
+      let observed : TeamMatchRecord ← IO.ofExcept (fromJson? (← readJson input))
+      let saved ← IO.ofExcept observed.record
+      writeJson output (toJson saved)
+      IO.println (toJson saved.summary).compress
+      return 0
+    | ["verify-team", input] =>
+      let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let result ← IO.ofExcept saved.verify
+      IO.println (toJson result).compress
+      return 0
     | _ =>
-      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json"
+      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json"
       return 2
   catch error =>
     IO.eprintln error.toString

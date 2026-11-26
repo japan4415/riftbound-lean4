@@ -59,7 +59,10 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let (i, r) := r.below (s.zone (.player p .outOfGame)).length
     some (⟨.chance, .pick i⟩, r)
   | .chanceTurnOrder :: _ =>
-    let (l, r) := shuffle r (allPlayers s.playerCount)
+    let (l, r) := if s.config.mode.isTeamDuel then
+      let (i, r) := r.below 2
+      (Mode.teamTurnOrder (i == 0), r)
+    else shuffle r (allPlayers s.playerCount)
     some (⟨.chance, .arrangePlayers l⟩, r)
   | .chanceRecycle p :: _ =>
     let (l, r) := shuffle r (s.zone (.player p .setAside))
@@ -81,7 +84,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .pickDo .. :: _ | .nameCard .. :: _ | .guessCardType .. :: _ | .predict .. :: _ =>
     (legalFrameActions s).head?.map (fun a => (a, r))
   | .chooseBurnOut p :: _ =>
-    match (allPlayers s.playerCount).filter (· ≠ p) with
+    match (allPlayers s.playerCount).filter (fun q => !s.config.mode.sameSide p q) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)
     | [] => none
   | _ => none

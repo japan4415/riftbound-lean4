@@ -125,6 +125,14 @@ def check_cli(folder: Path, saved: dict, setup: dict) -> None:
     assert json.loads(command("record", source, archive)) == saved["summary"]
     assert json.loads(archive.read_text(encoding="utf-8")) == saved
     assert json.loads(command("verify", archive)) == saved["summary"]
+    legacy = json.loads(archive.read_text(encoding="utf-8"))
+    for game in legacy["input"]["games"]:
+        game.pop("openingOrder", None)
+    for game in legacy["games"]:
+        game["input"].pop("openingOrder", None)
+    legacy_archive = folder / "previous-format.json"
+    legacy_archive.write_text(json.dumps(legacy), encoding="utf-8")
+    assert json.loads(command("verify", legacy_archive)) == saved["summary"]
     command("view", archive, trace)
     view = json.loads(trace.read_text(encoding="utf-8"))
     assert len(view["games"]) == 3 and view["wins"] == [2, 0] and view["exact"]
@@ -164,6 +172,30 @@ def check_cli(folder: Path, saved: dict, setup: dict) -> None:
     team_game["order"] = [p0, p1, p2, p3]
     team_input.write_text(json.dumps(team_record), encoding="utf-8")
     command("check-team", team_input, error="team game 1: turn order")
+
+    def observed(actor: object, kind: object) -> dict:
+        return {"observed": {"action": {"actor": actor, "kind": kind}}}
+
+    # Two copies of the already recorded shuffle orders, with new object IDs for the second pair.
+    first_shuffles = saved["games"][0]["input"]["answers"][:4]
+    offset = sum(1 + sum(len(reg["deck"][field]) for field in
+                         ("reserveLegends", "main", "runes", "battlefields")) for reg in decks[:2])
+    other_shuffles = [observed("chance", {"arrange": {"order": [
+        {"n": item["n"] + offset} for item in answer["observed"]["action"]["kind"]["arrange"]["order"]
+    ]}}) for answer in first_shuffles]
+    team_order = [p0, p2, p1, p3]
+    team_game.update(
+        order=team_order, points=[0, 0], timed=False, ending={"concede": {"seat": p1}},
+        answers=[*first_shuffles, *other_shuffles,
+                 *[observed("chance", {"pick": {"index": 0}}) for _ in range(3)],
+                 *[observed({"player": {"p": seat}}, "mulliganDone") for seat in team_order],
+                 observed({"player": {"p": p1}}, "concede")],
+    )
+    team_record["winsRequired"] = 1
+    team_input.write_text(json.dumps(team_record), encoding="utf-8")
+    team_archive = folder / "team-archive.json"
+    assert json.loads(command("record-team", team_input, team_archive))["wins"] == [0, 1]
+    assert json.loads(command("verify-team", team_archive))["wins"] == [0, 1]
 
 
 def main() -> None:

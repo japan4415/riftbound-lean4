@@ -629,8 +629,8 @@ theorem concedeActions_iff (s : GameState) (a : Action) :
     a ∈ concedeActions s ↔ LegalConcede s a ∧ a.actor.isPlayer = true := by
   obtain ⟨actor, kind⟩ := a
   unfold concedeActions LegalConcede
-  cases kind <;> cases actor <;> by_cases h : s.playerCount = 2 <;>
-    simp [Actor.isPlayer, h, allPlayers]
+  cases kind <;> cases actor <;> by_cases h : s.config.mode.hasTwoSides = true <;>
+    simp [Actor.isPlayer, h]
   all_goals grind
 
 /-- **I6** (enumeration). The answers of the players that `legalActions` lists are exactly the legal

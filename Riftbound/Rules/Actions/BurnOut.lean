@@ -18,14 +18,15 @@ namespace Riftbound
 
 /-- Give a player points. -/
 def GameState.gainPoints (s : GameState) (p : PlayerId) (n : Nat) : GameState :=
-  { s with points := s.points.insert p.n (s.pointsOf p + n) }
+  { s with points := s.points.insert (s.config.mode.scoringSeat p).n (s.pointsOf p + n) }
 
 /-- Burn Out of player `p`: recycle the Trash in the order `order`, which must be an
 arrangement of the Trash, then `opp`, an opponent of `p`, gains 1 point (CR 432.2). `none` when the
 order is not an arrangement of the Trash or `opp` is not an opponent. -/
 def burnOut (s : GameState) (p : PlayerId) (order : List ObjId) (opp : PlayerId) :
     Option (GameState × List Event) :=
-  if order.Perm (s.zone (.player p .trash)) ∧ opp ≠ p ∧ opp.n < s.playerCount then
+  if order.Perm (s.zone (.player p .trash)) ∧ s.config.mode.sameSide p opp = false ∧
+      opp.n < s.playerCount then
     (recycleAll p s order).map
       (fun s1 => (s1.gainPoints opp 1, [Event.burnedOut p, Event.pointsGained opp 1]))
   else none
@@ -35,10 +36,25 @@ theorem GameState.pointsOf_gainPoints_self (s : GameState) (p : PlayerId) (n : N
     (s.gainPoints p n).pointsOf p = s.pointsOf p + n := by
   simp [gainPoints, pointsOf]
 
-/-- Another player's points do not change. -/
-theorem GameState.pointsOf_gainPoints_ne (s : GameState) {p q : PlayerId} (h : q ≠ p) (n : Nat) :
+/-- A teammate sees the same gain. -/
+theorem GameState.pointsOf_gainPoints_side (s : GameState) {p q : PlayerId}
+    (h : s.config.mode.sameSide p q = true) (n : Nat) :
+    (s.gainPoints p n).pointsOf q = s.pointsOf p + n := by
+  have hs := of_decide_eq_true h
+  simp [gainPoints, pointsOf, hs]
+
+/-- A player on another side keeps their points. -/
+theorem GameState.pointsOf_gainPoints_ne (s : GameState) {p q : PlayerId}
+    (h : s.config.mode.sameSide p q = false) (n : Nat) :
     (s.gainPoints p n).pointsOf q = s.pointsOf q := by
-  have h' : p.n ≠ q.n := fun e => h (by cases p; cases q; simp_all)
+  have hs := of_decide_eq_false h
+  have h' : (s.config.mode.scoringSeat p).n ≠ (s.config.mode.scoringSeat q).n := by
+    intro e
+    have seatEq (a b : PlayerId) (hn : a.n = b.n) : a = b := by
+      cases a
+      cases b
+      exact congrArg PlayerId.mk hn
+    exact hs (seatEq _ _ e)
   simp [gainPoints, pointsOf, Std.ExtTreeMap.getD_insert, h']
 
 /-- Gaining points keeps the game well formed: points are not part of `WF`. -/
@@ -72,12 +88,11 @@ theorem burnOut_physIds {s s' : GameState} {p : PlayerId} {order : List ObjId} {
     exact recycleAll_physIds p order hwf hs1
   · exact absurd h (by simp)
 
-/-- **Burn Out gives exactly one opponent exactly one point** (CR 432.2.c): the chosen opponent
-gains 1, every other player keeps their points. -/
+/-- Burn Out gives one point to the chosen opposing side (CR 432.2.c, 491.8.d). -/
 theorem burnOut_points {s s' : GameState} {p : PlayerId} {order : List ObjId} {opp : PlayerId}
     {es : List Event} (h : burnOut s p order opp = some (s', es)) :
-    opp ≠ p ∧ s'.pointsOf opp = s.pointsOf opp + 1 ∧
-      ∀ q, q ≠ opp → s'.pointsOf q = s.pointsOf q := by
+    s.config.mode.sameSide p opp = false ∧ s'.pointsOf opp = s.pointsOf opp + 1 ∧
+      ∀ q, s.config.mode.sameSide opp q = false → s'.pointsOf q = s.pointsOf q := by
   unfold burnOut at h
   split at h
   · rename_i hc
@@ -86,10 +101,11 @@ theorem burnOut_points {s s' : GameState} {p : PlayerId} {order : List ObjId} {o
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     have hp := recycleAll_points p order hs1
-    have hpo : ∀ q, s1.pointsOf q = s.pointsOf q := fun q => by simp [GameState.pointsOf, hp]
+    have hcfg := (recycleAll_meta p order hs1).config
+    have hpo : ∀ q, s1.pointsOf q = s.pointsOf q := fun q => by simp [GameState.pointsOf, hp, hcfg]
     refine ⟨hc.2.1, ?_, fun q hq => ?_⟩
     · rw [GameState.pointsOf_gainPoints_self, hpo]
-    · rw [GameState.pointsOf_gainPoints_ne _ hq, hpo]
+    · rw [GameState.pointsOf_gainPoints_ne s1 (q := q) (p := opp) (by simpa [hcfg] using hq), hpo]
   · exact absurd h (by simp)
 
 end Riftbound

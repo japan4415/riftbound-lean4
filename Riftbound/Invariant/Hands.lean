@@ -513,7 +513,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rw [hp, hk] at hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    refine ⟨fun _ => hl.2, fun hph hres q hq => ?_, fun f hf hpf => ?_⟩
+    refine ⟨fun _ => hl.2.1, fun hph hres q hq => ?_, fun f hf hpf => ?_⟩
     · have h0 := hinv.hands hph hres q hq
       rw [hp, stackContrib_cons] at h0
       show s.handLen q + stackContrib q (Frame.setupHands :: rest) = 4

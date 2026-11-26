@@ -453,7 +453,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     dsimp only
     split
     · exact hb.pop rfl
-    · exact hb.swap rfl [Frame.draw (s.active.getD ⟨0⟩) 1]
+    · exact hb.swap rfl [Frame.draw (s.active.getD ⟨0⟩) s.drawCount]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -810,6 +810,24 @@ theorem exists_other_player {n : Nat} (hn : 2 ≤ n) (p : PlayerId) :
     simp only [List.mem_filter, mem_allPlayers, decide_eq_true_eq]
     exact ⟨by omega, fun e => hp e.symm⟩
 
+/-- In a mode of at least two players, every seat has an opposing seat. -/
+theorem exists_opposing_player {mode : Mode} (hn : 2 ≤ mode.players) (p : PlayerId) :
+    ∃ o, o ∈ (allPlayers mode.players).filter (fun o => !mode.sameSide p o) := by
+  by_cases ht : mode.isTeamDuel = true
+  · have hm : mode = Mode.teamDuel := of_decide_eq_true ht
+    subst mode
+    by_cases hs : Mode.teamDuel.scoringSeat p = ⟨0⟩
+    · refine ⟨⟨2⟩, List.mem_filter.mpr ⟨mem_allPlayers _ _ |>.mpr (by decide), ?_⟩⟩
+      rw [Mode.sameSide, hs]
+      decide
+    · refine ⟨⟨0⟩, List.mem_filter.mpr ⟨mem_allPlayers _ _ |>.mpr (by decide), ?_⟩⟩
+      simpa [Mode.sameSide, show Mode.teamDuel.scoringSeat ⟨0⟩ = ⟨0⟩ from rfl] using hs
+  · obtain ⟨o, ho⟩ := exists_other_player hn p
+    have hfalse : mode.isTeamDuel = false := by cases h : mode.isTeamDuel <;> simp_all
+    have ⟨hom, hne⟩ := List.mem_filter.mp ho
+    have hpo : p ≠ o := Ne.symm (of_decide_eq_true hne)
+    exact ⟨o, List.mem_filter.mpr ⟨hom, by simp [Mode.sameSide, hfalse, hpo]⟩⟩
+
 /-- **I5, progress, for a game of at least two players.** In a reachable game of at least two
 players that is not over, either there is an answer other than a concession in `legalActions`, or
 the top frame asks for a chance decision. The decisions that are split into steps (the mulligan, the
@@ -905,7 +923,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     simp [legalFrameActions, hp]
   | chooseBurnOut p =>
     left
-    obtain ⟨o, ho⟩ := exists_other_player hv p
+    obtain ⟨o, ho⟩ := exists_opposing_player hv p
     refine ⟨⟨.player p, .burnOutTarget o⟩, ?_, by simp⟩
     rw [hla]
     apply List.mem_append_left
@@ -995,10 +1013,21 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     rw [hp]
     exact ⟨rfl, hr⟩
   | chanceTurnOrder =>
-    refine ⟨⟨.chance, .arrangePlayers (allPlayers s.playerCount)⟩, rfl, hres, Or.inl ?_⟩
-    unfold LegalFrame
-    rw [hp]
-    exact ⟨rfl, List.Perm.refl _⟩
+    by_cases ht : s.config.mode.isTeamDuel = true
+    · have hm : s.config.mode = Mode.teamDuel := of_decide_eq_true ht
+      refine ⟨⟨.chance, .arrangePlayers (Mode.teamTurnOrder true)⟩, rfl, hres, Or.inl ?_⟩
+      unfold LegalFrame
+      rw [hp]
+      refine ⟨rfl, ?_, ?_⟩
+      · rw [GameState.playerCount, hm]
+        decide
+      · unfold GameState.turnOrderAllowed
+        simp only [ht, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+        cases s.config.ruleSet.isTournament <;> simp [hm, Mode.teamTurnOrder] <;> decide
+    · refine ⟨⟨.chance, .arrangePlayers (allPlayers s.playerCount)⟩, rfl, hres, Or.inl ?_⟩
+      unfold LegalFrame
+      rw [hp]
+      exact ⟨rfl, List.Perm.refl _, by simp [GameState.turnOrderAllowed, ht]⟩
   | chanceRecycle p =>
     refine ⟨⟨.chance, .arrange (s.zone (.player p .setAside))⟩, rfl, hres, Or.inl ?_⟩
     unfold LegalFrame
