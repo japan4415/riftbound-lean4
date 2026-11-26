@@ -340,6 +340,9 @@ def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : Effe
   [("queuedSpell", toString card.n), ("queuedCost", costJson plan.cost)] ++
     spellTargetFields state plan.targets ++ spellPickFields state card plan.pick ++
     spellExecutionFields state card plan.pick plan.targets ++
+    (if (state.bind (fun s => (s.cardDef? card).bind (·.playExtra))).any
+      (fun | (.spendXPOver .., _) => true | _ => false) then
+      [("card", toString card.n), ("xpPaid", toString plan.pick.paysXP)] else []) ++
     (if plan.discard.isSome || (state.bind (·.cardDef? card)).any (·.discardToPlay) then
       [("playDiscard", plan.discard.elim "null" (fun id => toString id.n))]
     else [])
@@ -416,9 +419,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
         if (s.cardDef? played).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
       let hidden := state.any (fun s =>
         (s.obj? played).any (fun o => o.fromHidden || s.playingFromHidden o.owner c))
-      let hasXP := (state.bind (fun s => (s.cardDef? played).bind (·.playExtra))).any
-        (fun | (.spendXP _, _) => true | _ => false)
-      let legacyXP := hasXP && ts.length == 1 && battlefield.isNone
+      let extra := state.bind (fun s => (s.cardDef? played).bind (·.playExtra))
+      let hasXP := extra.any (fun | (.spendXP _, _) | (.spendXPOver .., _) => true | _ => false)
+      let legacyXP := extra.any (fun | (.spendXP _, _) => true | _ => false) &&
+        ts.length == 1 && battlefield.isNone
       let xp := if hasXP || pick.paysXP then [("xpPaid", toString (pick.paysXP || legacyXP))] else []
       let targets := if legacyXP then [] else ts
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
@@ -820,7 +824,7 @@ def cardJson (c : CardDef) : String :=
     ("ir", jstr (irText c))] ++
     c.additionalCost.toList.map (fun cost => ("optionalCost", costJson cost)) ++
     (match c.playExtra with
-    | some (.spendXP n, _) => [("optionalXP", toString n)]
+    | some (.spendXP n, _) | some (.spendXPOver n _, _) => [("optionalXP", toString n)]
     | _ => []) ++
     c.spellObjectCost.toList.map (fun cost => ("spellObjectCost", jstr (ctorName cost.1))) ++
     (if c.discardToPlay then [("discardToPlay", "true")] else []))

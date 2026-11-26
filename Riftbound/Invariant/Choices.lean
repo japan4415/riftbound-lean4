@@ -185,6 +185,7 @@ theorem castPicks_printedOptionalCost {s : GameState} {p : PlayerId} {card : Obj
   apply Or.inl
   apply Or.inl
   apply Or.inl
+  apply Or.inl
   apply Or.inr
   simp only [List.mem_flatMap]
   refine ⟨pick, base, repeats, repeatsInRange, ?_⟩

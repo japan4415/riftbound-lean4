@@ -951,23 +951,79 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     free.countIn s.me .base "UNL-111" == 1 && free.countIn s.me .base "UNL-170" == 1 &&
     (cast (s2.rich s.me) s.me c less []).isNone
 
--- Conscription (UNL-140): a unit with 3 Might or less is chosen for free; a bigger one only with 5 XP,
--- which is spent as the spell is cast
+-- Conscription records the optional payment separately from the target's Might.
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-140" .hand
-  let (s2, small) ← putAt s1 s.you "OGN-135" s.bf0
-  let (s3, big) ← putAt s2 s.you "UNL-170" s.bf0
-  let rich := s3.setXP s.me 5
-  let poor := s3.setXP s.me 4
-  let a ← play rich s.me c [small]
-  let b ← play rich s.me c [big]
-  let bigMightIsOver := (s3.mightNow big).getD 0 > 3
-  let afterCast ← match step 100 (rich.rich s.me) ⟨.player s.me, .playCard c (payOf rich c) [big]⟩ with
-    | .ok (x, _) => some x
-    | .error _ => none
-  return bigMightIsOver && (a.obj? small).any (·.controller == s.me) && a.xpOf s.me == 5 &&
-    (b.obj? big).any (·.controller == s.me) && b.xpOf s.me == 0 && afterCast.xpOf s.me == 0 &&
-    (play poor s.me c [big]).isNone && (play poor s.me c [small]).isSome
+  let p := s.me
+  let q := s.you
+  let (s, c) ← put s p "UNL-140" .hand
+  let (s, small) ← putAt s q "OGN-135" s.bf0
+  let (s, big) ← putAt s q "UNL-170" s.bf0
+  let s := (s.rich p).setXP p 5
+  let pay := payOf s c
+  let xp := SpellPick.withXP .plain
+  let act (target : ObjId) (pick : SpellPick) : Action :=
+    ⟨.player p, .playCard c pay [target] none none pick⟩
+  let legal := legalFrameActions s
+  let (free, _) ← (step 100 s (act small .plain)).toOption
+  let (paid, _) ← (step 100 s (act small xp)).toOption
+  let item ← (paid.zone .chain).head?
+  let (paidBig, _) ← (step 100 s (act big xp)).toOption
+  let (passed, _) ← (step 100 paidBig ⟨.player p, .pass⟩).toOption
+  let (afterBig, resolved) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let d ← paid.cardDef? item
+  let effect ← d.spellEffect
+  let grow (t : GameState) := t.modObj small (fun o => { o with
+    mightMods := [{ amount := 10, ends := .never }] })
+  let afterFree := settleChain {} 12 (grow free)
+  let afterPaid := settleChain {} 12 (grow paid)
+  let recalled (state : GameState) (id : ObjId) := (state.obj? id).any (fun o =>
+    o.controller == p && o.exhausted && o.loc.isNone) && (state.zone (.player p .base)).contains id
+  return (s.mightNow small).any (· ≤ 3) && (s.mightNow big).any (· > 3) &&
+    legal.contains (act small .plain) && legal.contains (act small xp) &&
+    legal.contains (act big xp) && !(legal.contains (act big .plain)) &&
+    !(legalFrameActions (s.setXP p 4)).contains (act small xp) &&
+    free.xpOf p == 5 && paid.xpOf p == 0 && paidBig.xpOf p == 0 &&
+    (paid.obj? item).any (fun o => o.paid && o.spellPick.paysXP) &&
+    (counterObj paid item).1.xpOf p == 0 &&
+    (spellChoicesWithShowOff paid p item d effect [none] none (some true)).contains (xp, [big]) &&
+    recalled (settleChain {} 12 free) small &&
+    (afterFree.obj? small).any (fun o => o.controller == q && o.loc.isSome) &&
+    recalled afterPaid small && recalled afterBig big &&
+    resolved.filter (fun e => e == .exhausted big || e == .recalled big) == [.exhausted big, .recalled big]
+
+-- A Repeat shares the declaration for every execution and pays XP once.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, c) ← put s p "UNL-140" .hand
+  let (s, first) ← putAt s q "UNL-170" s.bf0
+  let (s, second) ← putAt s q "UNL-170" s.bf0
+  let s := ((s.rich p).setXP p 7).addTurnFx p .nextSpellRepeat
+  let pay : RunePool.Payment := ⟨10, [.chaos, .chaos, .chaos, .chaos]⟩
+  let xp := SpellPick.withXP .plain
+  let act (last : SpellPick) : Action :=
+    ⟨.player p, .playCard c pay [first, second] none none (.withCosts (.thenRepeat xp 1 last) false 1)⟩
+  let (casted, _) ← (step 100 s (act xp)).toOption
+  let done := settleChain {} 16 casted
+  return (legalFrameActions s).contains (act xp) && !(legalFrameActions s).contains (act .plain) &&
+    casted.xpOf p == 2 && done.xpOf p == 2 &&
+    [first, second].all ((done.zone (.player p .base)).contains)
+
+-- A Spell finalized by an effect keeps the same choice and spends the acting seat's XP.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, c) ← put s q "UNL-140" .hand
+  let (s, target) ← putAt s q "UNL-170" s.bf0
+  let s := (s.setXP p 5).setXP q 7
+  let price := EffectPlayPrice.ignoreBase
+  let (queued, item) ← queueLimitedSpell s p c price .normal
+  let plans := limitedSpellOptions queued p item price
+  let plan ← plans.find? (fun plan => plan.pick.paysXP && plan.targets == [target])
+  let (paid, _) ← commitLimitedSpell queued p item plan [] effectAddPolicy
+  return !(plans.any (fun plan => !plan.pick.paysXP && plan.targets == [target])) &&
+    !(limitedSpellOptions (queued.setXP p 4) p item price).contains plan &&
+    paid.xpOf p == 0 && paid.xpOf q == 7 && (paid.obj? item).any (fun o => o.paid)
 
 -- Showdown (CR 347-348): the player with Focus can play a Spell with Action, but not one without a
 -- speed; the Chain resolves above the Showdown, and the Showdown goes on

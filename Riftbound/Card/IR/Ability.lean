@@ -83,12 +83,12 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .modeDestination i _ => (e.modeAt i).filter (·.moveChoice.isSome)
   | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
-  | .payForBattlefield .. | .withPermanentCosts .. | .withGearDiscounts .. | .withXP .. => none
+  | .payForBattlefield .. | .withPermanentCosts .. | .withGearDiscounts .. => none
   | .withPlayer pick _ => e.forPick pick
   | .withShowOff pick _ => (e.forPick pick).map (fun branch =>
     { branch with choices := branch.choices ++ e.showOffChoices, showOffChoices := [] })
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ => e.forPick pick
+      .withSpellExhausts pick _ | .withXP pick => e.forPick pick
   | .withVariablePower pick n => (e.forPick pick).map (fun branch =>
     if branch.variablePowerTargets then
       { branch with choices := branch.choices.map (fun

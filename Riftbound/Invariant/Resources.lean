@@ -211,14 +211,14 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
     resolveFrames s rest =
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets
-          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
+          (d.spellForPick o.spellPick) o.spellPick
         targetObjs := o.targets
         hiddenPlayLocation := o.hiddenAt
         shownOff := o.shownOff
-        playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
+        playerTargets := if (d.spellForPick o.spellPick).any
             (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
           then o.targetPlayer.toList else [] }
-        (match d.spellEffect.bind (·.forPick o.spellPick) with
+        (match d.spellForPick o.spellPick with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.recheckTargetGroup s o.controller item o.targets

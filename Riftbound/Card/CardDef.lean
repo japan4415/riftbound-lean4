@@ -54,8 +54,7 @@ inductive PlayExtra where
   | killUnit
   /-- The player spends this much of their own XP. -/
   | spendXP (n : Nat)
-  /-- For a Spell: the player spends this much XP if the first object it chooses has more Might than
-  the cap (Conscription: with the XP it can choose any unit). Nothing is chosen for the cost. -/
+  /-- For a Spell: spending this much XP lifts the first target's Might cap (Conscription). -/
   | spendXPOver (n : Nat) (cap : Nat)
 deriving DecidableEq, Repr, Hashable
 

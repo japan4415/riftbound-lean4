@@ -533,8 +533,21 @@ def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : L
 /-- The additional XP cost when the player has enough XP to pay it. -/
 def GameState.playXPCost (s : GameState) (p : PlayerId) (d : CardDef) : Option Nat :=
   match d.playExtra with
-  | some (.spendXP n, _) => if n ≤ s.xpOf p then some n else none
+  | some (.spendXP n, _) | some (.spendXPOver n _, _) => if n ≤ s.xpOf p then some n else none
   | _ => none
+
+/-- Apply the target restriction belonging to the recorded optional XP choice (CR 355.1.a). -/
+def CardDef.spellBranchForPick (d : CardDef) (e : EffectDef) (pick : SpellPick) : Option EffectDef :=
+  (e.forPick pick).map (fun branch =>
+    match d.playExtra, branch.choices with
+    | some (.spendXPOver _ cap, _), .target q side place filters :: rest =>
+      if pick.paysXP then branch else
+        { branch with choices := .target q side place (.cons (.might .le (.const cap)) filters) :: rest }
+    | _, _ => branch)
+
+/-- The Spell's instructions and target requirements for the selected payment. -/
+def CardDef.spellForPick (d : CardDef) (pick : SpellPick) : Option EffectDef :=
+  d.spellEffect.bind (fun effect => d.spellBranchForPick effect pick)
 
 /-- The discount for electing a card's additional XP cost. -/
 def CardDef.xpPlayDiscount (d : CardDef) (cost : Cost) : Cost :=
@@ -708,12 +721,16 @@ additional cost it is played with takes off (Poppy, Atakhan). -/
 def GameState.cutOptionsOf (s : GameState) (p : PlayerId) (c : ObjId) (cost : Cost)
     (ts : List ObjId) (pick : SpellPick := .plain) : List Cost :=
   if pick.paysXP then
-    let destination := match ts with
+    let destination : Bool := match ts with
       | [] => true
       | [field] => (s.cardDef? field).any (·.hasType .battlefield)
       | _ => false
-    ((s.cardDef? c).filter (fun d => destination && (s.playXPCost p d).isSome)).toList.map
-      (·.xpPlayDiscount cost)
+    match s.cardDef? c with
+    | some d =>
+      if (s.playXPCost p d).isNone then []
+      else if d.hasType .spell then cost.cutOptions (s.chooseCut p c ts) (s.cutFloor p c)
+      else if destination then [d.xpPlayDiscount cost] else []
+    | none => []
   else
     match s.extraCutOf p c ts with
     | some (e, w) => [(cost.lessEnergy e).lessPower w]
@@ -841,7 +858,7 @@ def CardDef.spellCostPicks (d : CardDef) (picked : List Nat) : Bool × Nat :=
 /-- The possible Spell payments, each with its explicit optional-cost choices. -/
 def GameState.spellCostPlans (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) (pick : SpellPick := .plain) : List (Cost × (Bool × Nat)) :=
-  (s.cutOptionsOf p c cost ts).flatMap (fun base =>
+  (s.cutOptionsOf p c cost ts pick).flatMap (fun base =>
     (s.playCostPlans p c d base).flatMap (fun (total, picked) =>
       (s.targetCostOptions p c ts (total.withVariablePower (pick.variablePower.getD 0))).map
         (fun priced => (priced.lessEnergy (s.spellExhaustDiscount p pick), d.spellCostPicks picked))))
@@ -892,6 +909,15 @@ def GameState.paysForXT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
   (s.cutOptionsOf p c cost ts pick).any (fun b =>
     (s.targetCosts p c d b ts pick).any (fun x =>
       x.1.targetPaymentOk d.domains (s.poolOf p) pick.variablePower.isSome pay))
+
+/-- A payment that elects XP requires the acting seat to have that amount available. -/
+theorem GameState.paysForXT_xpAffordable {s : GameState} {p : PlayerId} {c : ObjId} {d : CardDef}
+    {cost : Cost} {ts : List ObjId} {pay : RunePool.Payment} {pick : SpellPick}
+    (card : s.cardDef? c = some d) (xp : pick.paysXP = true)
+    (legal : s.paysForXT p c d cost ts pay pick = true) : (s.playXPCost p d).isSome = true := by
+  cases available : s.playXPCost p d with
+  | none => simp [GameState.paysForXT, GameState.cutOptionsOf, xp, card, available] at legal
+  | some _ => rfl
 
 /-- The payments that pay the cost of the card, with what the objects it chooses take off. -/
 def GameState.playPaymentsOfT (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
@@ -1247,7 +1273,8 @@ def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     else []
   let exhaustPicks := (choices ++ declared).flatMap (fun pick =>
     (s.spellPaymentPicks p d pick).filter (fun choice => !choice.spellExhausts.isEmpty))
-  ((choices ++ declared ++ objectPicks) ++ exhaustPicks) ++
+  let ordinary := (choices ++ declared ++ objectPicks) ++ exhaustPicks
+  (ordinary ++ if d.hasType .spell then s.xpPlayPicks p d ordinary else []) ++
     (s.permanentCostPicks p c d ++ s.battlefieldPicks p c d)
 
 /-- Check the chosen destination relative to the moved target (CR 355.4).
@@ -1265,14 +1292,21 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
   | .withPlayer pick _ | .withCosts pick _ _ | .withExtraObject pick _ |
       .withSpellExhausts pick _ => s.moveTargetOk c e ts pick
   | .withShowOff pick _ | .withVariablePower pick _ => s.moveTargetOk c e ts pick
+  | .withXP pick => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
 
 /-- The legal targets and modes for the supplied Show Off selections, without costs. -/
 def spellChoicesWithShowOff (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef)
-    (showOffs : List (Option ObjId)) (power : Option Nat := none) : List (SpellPick × List ObjId) :=
-  ((s.spellPicks p d).flatMap (fun pick => showOffs.map pick.addShowOff)).flatMap (fun base =>
-    let pick := base.addVariablePower power
-    (e.forPick pick).toList.flatMap (fun branch =>
+    (showOffs : List (Option ObjId)) (power : Option Nat := none)
+    (paidXP : Option Bool := none) : List (SpellPick × List ObjId) :=
+  let ordinary := (s.spellPicks p d).flatMap (fun pick =>
+    showOffs.map (fun showOff => (pick.addShowOff showOff).addVariablePower power))
+  let choices := match paidXP with
+    | some true => ordinary.map SpellPick.withXP
+    | some false => ordinary
+    | none => ordinary ++ s.xpPlayPicks p d ordinary
+  choices.flatMap (fun pick =>
+    (d.spellBranchForPick e pick).toList.flatMap (fun branch =>
       if s.spellPlayerTargetOk p branch pick then
         ((targetTuples s p id s.mightTable branch.choices).filter
           (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
@@ -1360,12 +1394,13 @@ theorem repeatSpellChoices_targets {options : List (SpellPick × List ObjId)} {P
     · exact single (first, ts) hfirst t ht
     · exact ih hlater t ht
 
-/-- Each execution can have its own targets and mode. Show Off is chosen once for the play. -/
+/-- Each execution can pick its own targets and mode. Show Off and XP payment are shared. -/
 def repeatExecutionGroups (d : CardDef) (options : List (SpellPick × List ObjId)) :
     List (List (SpellPick × List ObjId)) :=
-  if d.showOffRequirement.isNone then [options] else
-    let showOffs := (options.map (fun (pick, _) => pick.showOffObject)).eraseDups
-    showOffs.map (fun shown => options.filter (fun (pick, _) => pick.showOffObject == shown))
+  if d.showOffRequirement.isNone && !(options.any (fun (pick, _) => pick.paysXP)) then [options]
+  else
+    let shared (option : SpellPick × List ObjId) := (option.1.showOffObject, option.1.paysXP)
+    (options.map shared).eraseDups.map (fun payment => options.filter (fun option => shared option == payment))
 
 /-- Offer a sequence of executions with a shared Show Off selection. -/
 def repeatExecutions (d : CardDef) (options : List (SpellPick × List ObjId)) (count : Nat) :
@@ -1506,7 +1541,7 @@ theorem GameState.repeatedCastChoices_targets_present {s : GameState} {p : Playe
 /-- A cast with one recorded execution uses a legal mode, targets and destination (CR 355). -/
 def GameState.ordinaryCastChoicesOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (targets : List ObjId) (pick : SpellPick) : Bool :=
-  match d.spellEffect.bind (·.forPick pick) with
+  match d.spellForPick pick with
   | some e => targetsOk s p c s.mightTable e.choices targets &&
       (s.castPicks p c d).contains pick && s.moveTargetOk c e targets pick &&
       s.spellPlayerTargetOk p e pick
@@ -1516,10 +1551,10 @@ def GameState.ordinaryCastChoicesOk (s : GameState) (p : PlayerId) (c : ObjId) (
 theorem GameState.ordinaryCastChoices_spec {s : GameState} {p : PlayerId} {c : ObjId}
     {d : CardDef} {pick : SpellPick} {targets : List ObjId}
     (h : s.ordinaryCastChoicesOk p c d targets pick = true) :
-    ∃ e, d.spellEffect.bind (·.forPick pick) = some e ∧
+    ∃ e, d.spellForPick pick = some e ∧
       targetsOk s p c s.mightTable e.choices targets = true ∧ pick ∈ s.castPicks p c d := by
   unfold ordinaryCastChoicesOk at h
-  cases he : d.spellEffect.bind (·.forPick pick) with
+  cases he : d.spellForPick pick with
   | none => simp [he] at h
   | some e =>
     simp only [he, Bool.and_eq_true, List.contains_iff_mem] at h
@@ -1853,11 +1888,9 @@ def castPayOnTarget (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameState
   let costs := ((s.cardDef? c).bind (·.playExtra)).filter (fun cost => !cost.1.separateSpellObject)
   let spell := onChain <|> r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none)
   match costs, ts, spell with
-  | some (.spendXPOver n cap, _), t :: _, some _ =>
-    -- the XP is spent only for an object with more Might than the cap
-    match s.obj? c with
-    | some o =>
-      if decide (((cap : Nat) : Int) < (s.mightNow t).getD 0) then (r.1.spendXP o.owner n, r.2)
+  | some (.spendXPOver n _, _), _, some id =>
+    match r.1.obj? id with
+    | some o => if o.spellPick.paysXP then (markPaid (r.1.spendXP o.controller n) (some id), r.2)
       else r
     | none => r
   | some (k, _), t :: rest, some n =>
@@ -1877,9 +1910,12 @@ theorem castPayOnTarget_safe (s : GameState) (c : ObjId) (ts : List ObjId)
   unfold castPayOnTarget
   dsimp only
   split
-  · split
-    · split
-      · exact Safe.spendXP _ _ _
+  · rename_i n cap mandatory id hcost hspell
+    split
+    · rename_i obj hobj
+      split
+      · dsimp only
+        exact (Safe.spendXP r.1 obj.controller n).trans (markPaid_safe _ (some id))
       · exact Safe.refl _
     · exact Safe.refl _
   · split
@@ -2649,7 +2685,7 @@ instance PlayOk.decidable (s : GameState) (p : PlayerId) (c : ObjId) (pay : Rune
 each object its additional cost can be done to. -/
 def playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (pick : SpellPick := .plain) : List (List ObjId) :=
-  [] :: ((match d.spellEffect.bind (·.forPick pick) with
+  [] :: ((match d.spellForPick pick with
     | some e => (targetTuples s p c s.mightTable e.choices).filter (fun ts => decide (ts ≠ []))
     | none => []) ++
     ((match d.playExtra with
@@ -2662,7 +2698,7 @@ def playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
 additional cost. -/
 theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (ts : List ObjId) (pick : SpellPick := .plain) : ts ∈ playTargets s p c d pick ↔
-      ts = [] ∨ (∃ e, d.spellEffect.bind (·.forPick pick) = some e ∧ targetsOk s p c s.mightTable e.choices ts = true) ∨
+      ts = [] ∨ (∃ e, d.spellForPick pick = some e ∧ targetsOk s p c s.mightTable e.choices ts = true) ∨
         (∃ k b t, d.playExtra = some (k, b) ∧ ts = [t] ∧ s.extraTarget p k t = true) ∨
         (∃ b, ts = [b] ∧ b ∈ s.playBfPicks p c pick) := by
   unfold playTargets
@@ -2671,7 +2707,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
   · rintro (h | h | h | h)
     · exact Or.inl h
     · right; left
-      cases hs : d.spellEffect.bind (·.forPick pick) with
+      cases hs : d.spellForPick pick with
       | none => rw [hs] at h; simp at h
       | some e =>
         rw [hs] at h

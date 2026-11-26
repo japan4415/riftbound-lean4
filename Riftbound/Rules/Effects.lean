@@ -5314,7 +5314,7 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
         d.spellEffect.toList.flatMap (fun effect =>
           if !effect.hasFinalizationChoice then [] else
             let choices := spellChoicesWithShowOff s p id d effect [item.spellPick.showOffObject]
-              item.spellPick.variablePower
+              item.spellPick.variablePower (some item.spellPick.paysXP)
             let executions := if d.usesRepeatChoices then repeatSpellChoices choices item.extraPaid
               else choices
             executions.map (fun (pick, targets) => .setSpellChoices id pick targets))
@@ -5403,7 +5403,7 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
 A previous execution may already have changed those targets. -/
 def spellExecutionFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pick : SpellPick) (targets : List ObjId) : List Frame := Id.run do
-  let definition := (s.cardDef? src).bind (·.spellEffect) |>.bind (·.forPick pick)
+  let definition := (s.cardDef? src).bind (·.spellForPick pick)
   let some body := definition | return []
   let ctx := { env with
     slots := recheckedSlots s p src targets definition
@@ -6584,7 +6584,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
           .run o.controller item { hiddenPlayLocation := o.hiddenAt, shownOff := o.shownOff }
             (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest)
       else
-        let definition := d.spellEffect.bind (·.forPick o.spellPick)
+        let definition := d.spellForPick o.spellPick
         .run o.controller item {
           slots := finalizedSlots s o.controller item o.targets definition o.spellPick
           targetObjs := o.targets

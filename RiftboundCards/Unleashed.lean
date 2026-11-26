@@ -4042,13 +4042,12 @@ def UNL_140.meta : CardDef :=
 /-- Conscription. -/
 def UNL_140 : CardDef :=
   { UNL_140.meta with
-    -- the unit is chosen with at most 3 Might, or any unit if 5 XP can be spent; the XP is spent
-    -- as the spell is cast, for a unit with more Might
-    spellEffect := some (.of [.targetOf .one .enemy .atBattlefield
-        [.ofType .unit, .either (.might .le (.const 3)) (.xpAtLeast 5)]]
-      (.seqOf [.prim (.takeControl (.slot 0)), .prim (.recall (.slot 0) true)])),
+    spellEffect := some { EffectDef.of [.targetOf .one .enemy .atBattlefield [.ofType .unit]]
+      (.seqOf [.prim (.takeControl (.slot 0)), .prim (.exhaust (.slot 0)),
+        .prim (.recall (.slot 0) false)]) with
+      recheckTargets := true },
     playExtra := some (.spendXPOver 5 3, false),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-141
 /--

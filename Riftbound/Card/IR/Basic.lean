@@ -72,6 +72,8 @@ deriving DecidableEq, Repr, Hashable
 /-- Whether the play elects the printed XP cost. -/
 def SpellPick.paysXP : SpellPick → Bool
   | .withXP _ => true
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
+      .withSpellExhausts pick _ => pick.paysXP
   | _ => false
 
 /-- Remove the XP payment before inspecting the remaining finalization choices. -/
@@ -83,7 +85,7 @@ def SpellPick.withoutXP : SpellPick → SpellPick
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
   | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.optionalCosts
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
@@ -96,21 +98,22 @@ def SpellPick.permanentCosts : SpellPick → Option (List Nat)
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
-      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ => pick.playerTarget
+      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ |
+      .withXP pick => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
   | .withPlayer pick _ | .withShowOff pick _ | .withVariablePower pick _ => pick.effectChoice
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ => pick.effectChoice
+      .withSpellExhausts pick _ | .withXP pick => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
   | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.hasExecutionChoices
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
@@ -119,6 +122,7 @@ def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick 
   | .withExtraObject pick _ | .withSpellExhausts pick _ => pick.executions targets
   | .withVariablePower pick n => (pick.executions targets).map (fun (k, ts) => (.withVariablePower k n, ts))
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
+  | .withXP pick => (pick.executions targets).map (fun (k, ts) => (.withXP k, ts))
   | pick => [(pick, targets)]
 
 /-- The object shown off for this play. -/
@@ -133,7 +137,8 @@ def SpellPick.showOffObject : SpellPick → Option ObjId
 def SpellPick.variablePower : SpellPick → Option Nat
   | .withVariablePower _ n => some n
   | .withCosts pick _ _ | .withPlayer pick _ | .withShowOff pick _ |
-      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ => pick.variablePower
+      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ |
+      .withXP pick => pick.variablePower
   | _ => none
 
 /-- Decorate a finalization when its additional Power amount is declared. -/
@@ -154,12 +159,13 @@ def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
 /-- The permanent selected to pay the cost for this Spell play. -/
 def SpellPick.extraObject : SpellPick → Option ObjId
   | .withExtraObject _ object => some object
-  | .withSpellExhausts pick _ => pick.extraObject
+  | .withSpellExhausts pick _ | .withXP pick => pick.extraObject
   | _ => none
 
 /-- Every source and group of Units elected to exhaust together during the Spell's play. -/
 def SpellPick.spellExhausts : SpellPick → List (ObjId × List ObjId)
   | .withSpellExhausts _ groups => groups
+  | .withXP pick => pick.spellExhausts
   | _ => []
 
 /-- Strip the extra Exhaust cost while preserving any separate object cost. -/
