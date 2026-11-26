@@ -87,6 +87,15 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return ((s3.obj? u).any (·.buffed)) && s3.xpOf s.me == 0 &&
     (match s5 with | none => true | some t => !((t.obj? u).any (·.buffed)))
 
+-- Crowd Favorite gets the printed Hunt XP for either kind of scoring.
+#guard tun fun s => do
+  let p := s.me
+  let (s, _) ← putAt s p "UNL-102" s.bf0
+  let held ← fire s [.scored p s.bf0 false]
+  let conquered ← fire s [.scored p s.bf0 true]
+  return held.xpOf p == s.xpOf p + 1 && conquered.xpOf p == s.xpOf p + 1 &&
+    held.xpOf s.you == s.xpOf s.you && conquered.xpOf s.you == s.xpOf s.you
+
 -- Alpha Wildclaw (UNL-057): the units of its player here with less Might can't be chosen by
 -- enemies; the stronger ones, and those elsewhere, can
 #guard tun fun s => do
@@ -102,11 +111,38 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s3, mine) ← putAt s2 s.me "UNL-111" s.bf0
   return s3.noCombatDamage weak && !s3.noCombatDamage mine
 
+-- The Hold ability belongs to Vilemaw's controller. Conquering does not draw a card.
+#guard tun fun s => do
+  let p := s.me
+  let (s, _) ← putAt s p "UNL-060" s.bf0
+  let held ← fire s [.scored p s.bf0 false]
+  let conquered ← fire s [.scored p s.bf0 true]
+  return held.handN p == s.handN p + 1 && held.handN s.you == s.handN s.you &&
+    conquered.handN p == s.handN p
+
+-- Alpha Wildclaw protects only units its controller controls, even in a team duel.
+#guard tun fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let opponent ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, _) ← putAt s p "UNL-057" s.bf0
+  let (s, ownUnit) ← putAt s p "UNL-111" s.bf0
+  let (s, allied) ← putAt s mate "UNL-111" s.bf0
+  return s.blocksChoice opponent ownUnit && !s.blocksChoice opponent allied &&
+    !s.blocksChoice mate ownUnit
+
 -- Wily Newtfish (UNL-108): +1 Might after the player gained XP this turn
 #guard tun fun s => do
   let (s1, u) ← put s s.me "UNL-108" .base
   let s2 := gainXPOf 1 s1 s.me
-  return s1.mightNow u == some 4 && s2.mightNow u == some 5
+  let other := gainXPOf 1 s1 s.you
+  let expired := { s2 with turn := s2.turn + 1 }
+  return s1.mightNow u == some 4 && s2.mightNow u == some 5 && s2.hasKw u .ganking &&
+    other.mightNow u == some 4 && !other.hasKw u .ganking &&
+    expired.mightNow u == some (4 : Int) && !expired.hasKw u .ganking
 
 -- Shadow Watcher (UNL-037) enters ready if a unit of its player died in their Beginning Phase
 #guard tun fun s => do
@@ -492,6 +528,17 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s3 ← play s2 s.me c [e]
   return (s3.obj? e).any (·.stunned) && s3.handN s.me == s2.handN s.me
 
+-- A facedown Back Off still stuns the target, and the player keeps their current hand.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, spell) ← put (s.control p field) p "UNL-042" .hidden
+  let s := s.modObj spell (fun o => { o with hiddenAt := some field, hiddenTurn := some 0 })
+  let (s, target) ← putAt s s.you "OGN-088" field
+  let (casting, _) ← (step 100 (s.fund p 0) ⟨.player p, .activate spell 1 ⟨0, []⟩ [target]⟩).toOption
+  let resolved := settleChain {} 12 casting
+  return resolved.handN p == s.handN p && (resolved.obj? target).any (·.stunned)
+
 -- Sacrifice (UNL-173): draw 2 and channel one rune (not two)
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-173" .hand
@@ -539,13 +586,29 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s2, v) ← putAt s1 s.me "OGN-088" s.bf0
   return !moveOk s2 s.me u .base && moveOk s2 s.me v .base
 
--- Abandon (UNL-131): the countered spell returns to its owner's hand, not the Trash
+-- Abandon returns the Spell and opens a private Predict decision for the printed top card.
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-131" .hand
-  let (s2, sp) ← onChain s1 s.you "OGN-004"
-  let before := s2.handN s.you
-  let r ← cast (s2.rich s.me) s.me c (payOf s2 c) [sp]
-  return r.handN s.you == before + 1 && r.countIn s.you .trash "OGN-004" == 0
+  let p := s.me
+  let q := s.you
+  let deck := Zone.player p .mainDeck
+  let (s, spell) ← put s p "UNL-131" .hand
+  let (s, target) ← onChain s q "OGN-004"
+  let first ← (s.zone deck).head?
+  let (waiting, _) ← (step 100 (s.rich p) ⟨.player p, .playCard spell (payOf s spell) [target]⟩).toOption
+  let chooser ← match waiting.pending.head? with
+    | some (.chainPass chooser _) => some chooser
+    | _ => none
+  let (passing, _) ← (step 100 waiting ⟨.player chooser, .pass⟩).toOption
+  let other ← match passing.pending.head? with
+    | some (.chainPass other _) => some other
+    | _ => none
+  let ((predicting, _), disclosures) ←
+    (stepWithDisclosures 100 passing ⟨.player other, .pass⟩).toOption
+  let (kept, _) ← (step 100 predicting ⟨.player p, .predictPick first false⟩).toOption
+  let (recycled, _) ← (step 100 predicting ⟨.player p, .predictPick first true⟩).toOption
+  return predicting.handN q == s.handN q + 1 && predicting.countIn q .trash "OGN-004" == 0 &&
+    disclosures.any (fun d => d.visibleTo p && !d.visibleTo q) &&
+    (kept.zone deck).head? == some first && (recycled.zone deck).getLast? == some first
 
 -- Frisky Hunter (UNL-033) and Lord Broadmane (UNL-012): played to the Base, "here" is the Base
 #guard tun fun s => do

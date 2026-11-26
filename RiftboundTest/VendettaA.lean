@@ -1564,7 +1564,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
     let (reacting, _) ← (step 100 priority ⟨.player q, .playCard abandon ⟨2, []⟩ [item]⟩).toOption
     let predicted ← passToChoice 8 reacting
-    let (finished, _) ← (step 100 predicted ⟨.player q, .decide true⟩).toOption
+    let (finished, _) ← (step 100 predicted ⟨.player q, .predictPick top true⟩).toOption
     return settleChain {} 8 finished
   let safeSpell ← answer (empowerObj p s mel).1
   let ordinary ← answer s

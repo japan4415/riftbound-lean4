@@ -200,7 +200,7 @@ def UNL_003 : CardDef :=
     abilities := [.triggered { event := .play, condition := .matches .self .onBattlefield }
       (.of [.targetOf .one .enemy .here [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-004
 /--
@@ -306,7 +306,7 @@ def UNL_007 : CardDef :=
   { UNL_007.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit, .onBattlefield]]
       (.seqOf [.prim (.markOn (.slot 0) .banishInstead), .prim (.deal (.slot 0) (.const 3))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-008
 /--
@@ -467,7 +467,7 @@ def UNL_013 : CardDef :=
   { UNL_013.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.prim (.markOn (.slot 0) .doubleDamage))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-014
 /--
@@ -1282,8 +1282,8 @@ def UNL_042 : CardDef :=
   { UNL_042.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.prim (.stun (.slot 0)),
-        .ifThen (.not (.matches .self .hidden)) (.prim (.draw .you (.const 1))) .nop])),
-    status := .drafted }
+        .ifThen (.not (.matches .self .playedFromElsewhere)) (.prim (.draw .you (.const 1))) .nop])),
+    status := .full }
 
 -- BEGIN GENERATED UNL-043
 /--
@@ -1723,8 +1723,8 @@ def UNL_057.meta : CardDef :=
 def UNL_057 : CardDef :=
   { UNL_057.meta with
     abilities := [.passive .always
-      [.cant (Selector.all .friendly .here [.ofType .unit, .mightLtOf .self]) .beChosen]],
-    status := .drafted }
+      [.cant (Selector.all .you .here [.ofType .unit, .mightLtOf .self]) .beChosen]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-058
 /--
@@ -1823,7 +1823,7 @@ def UNL_060 : CardDef :=
       .passive .always
         [.noCombatDamageFor (Selector.all .enemy .here [.ofType .unit, .mightLtOf .self])],
       .triggered (.onSelf .hold) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-061
 /--
@@ -2993,7 +2993,7 @@ def UNL_102.meta : CardDef :=
 def UNL_102 : CardDef :=
   { UNL_102.meta with
     abilities := [.activated [] .normal (.of [] (spendXpThen 2 (.prim (.buff .self)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-103
 /--
@@ -3159,7 +3159,7 @@ def UNL_108 : CardDef :=
   { UNL_108.meta with
     abilities := [.passive (.noted .gainedXP)
       [.mightPlus .self (.const 1), .keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-109
 /--
@@ -3793,8 +3793,8 @@ def UNL_131.meta : CardDef :=
 def UNL_131 : CardDef :=
   { UNL_131.meta with
     spellEffect := some (.of [.targetOf .one .any .onChain [.ofType .spell]]
-      (.seqOf [.prim (.counterToHand (.slot 0)), predict1])),
-    status := .drafted }
+      (.seqOf [.prim (.counterToHand (.slot 0)), .prim (.predict (.const 1))])),
+    status := .full }
 
 -- BEGIN GENERATED UNL-132
 /--
@@ -4502,7 +4502,7 @@ def UNL_155 : CardDef :=
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .enemy .anywhere [.ofType .unit, .at_ (.slot 0)]]
       (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn, .prim (.stun (.slot 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-156
 /--
