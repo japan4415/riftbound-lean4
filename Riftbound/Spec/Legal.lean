@@ -50,7 +50,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .chance ∧ i < (s.zone (.player p .outOfGame)).length
   -- Turn order is a permutation of the seats compatible with the game mode (CR 115, 491.5.c).
   | .chanceTurnOrder :: _, .arrangePlayers l =>
-    a.actor = .chance ∧ l.Perm (allPlayers s.playerCount) ∧ s.turnOrderAllowed l = true
+    let order := s.completeOpeningOrder l
+    a.actor = .chance ∧ order.Perm (allPlayers s.playerCount) ∧ s.turnOrderAllowed order = true
   -- the mulligan (CR 117): set aside up to two cards of the hand, or finish
   | .mulligan p n :: _, .mulliganPick c =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .hand) ∧ n < 2

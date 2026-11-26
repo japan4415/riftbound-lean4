@@ -62,7 +62,7 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let (l, r) := if s.config.mode.isTeamDuel then
       let (i, r) := r.below 2
       (Mode.teamTurnOrder (i == 0), r)
-    else shuffle r (allPlayers s.playerCount)
+    else shuffle r s.participatingSeats
     some (⟨.chance, .arrangePlayers l⟩, r)
   | .chanceRecycle p :: _ =>
     let (l, r) := shuffle r (s.zone (.player p .setAside))

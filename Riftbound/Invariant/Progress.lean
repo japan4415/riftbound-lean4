@@ -1152,18 +1152,25 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | chanceTurnOrder =>
     by_cases ht : s.config.mode.isTeamDuel = true
     · have hm : s.config.mode = Mode.teamDuel := of_decide_eq_true ht
+      have complete : (Mode.teamTurnOrder true).Perm s.players := by
+        rw [GameState.players, GameState.playerCount, hm]
+        decide
       refine ⟨⟨.chance, .arrangePlayers (Mode.teamTurnOrder true)⟩, rfl, hres, Or.inl ?_⟩
       unfold LegalFrame
       rw [hp]
+      dsimp only
+      rw [s.completeOpeningOrder_of_perm complete]
       refine ⟨rfl, ?_, ?_⟩
-      · rw [GameState.playerCount, hm]
-        decide
+      · exact complete
       · unfold GameState.turnOrderAllowed
         simp only [ht, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
         cases s.config.ruleSet.isTournament <;> simp [hm, Mode.teamTurnOrder] <;> decide
     · refine ⟨⟨.chance, .arrangePlayers (allPlayers s.playerCount)⟩, rfl, hres, Or.inl ?_⟩
       unfold LegalFrame
       rw [hp]
+      dsimp only
+      have complete : (allPlayers s.playerCount).Perm s.players := List.Perm.refl _
+      rw [s.completeOpeningOrder_of_perm complete]
       exact ⟨rfl, List.Perm.refl _, by simp [GameState.turnOrderAllowed, ht]⟩
   | chanceRecycle p =>
     refine ⟨⟨.chance, .arrange (s.zone (.player p .setAside))⟩, rfl, hres, Or.inl ?_⟩

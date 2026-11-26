@@ -343,6 +343,25 @@ def GameState.concessionWinners (s : GameState) (p : PlayerId) : List PlayerId :
   if s.config.mode.isTeamDuel then s.players.filter (fun q => !s.config.mode.sameSide p q)
   else [otherPlayer p]
 
+/-- A recorded opening order may omit seats that already conceded. Keep those seats at the
+end of the internal order so the registered seat indices remain available (CR 115, 651.3). -/
+def GameState.completeOpeningOrder (s : GameState) (order : List PlayerId) : List PlayerId :=
+  if s.departures.seats.isEmpty then order else
+    order ++ s.players.filter (fun p => !s.participates p && !order.contains p)
+
+/-- An order that already contains every registered seat is preserved verbatim. -/
+theorem GameState.completeOpeningOrder_of_perm (s : GameState) {order : List PlayerId}
+    (complete : order.Perm s.players) : s.completeOpeningOrder order = order := by
+  unfold GameState.completeOpeningOrder
+  split
+  · rfl
+  · have noMissing : s.players.filter (fun p => !s.participates p && !order.contains p) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro p registered
+      have member : p ∈ order := complete.mem_iff.mpr registered
+      simp [member]
+    rw [noMissing, List.append_nil]
+
 /-- Apply an answer to the decision frame on top of the stack, before the triggered abilities it set
 off are found. The answer is assumed to be legal; `none` if it does not fit the frame or a primitive
 cannot be done. -/
@@ -415,7 +434,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
         (fun r => ({ r.1 with pending := rest }, [Event.moved id r.2 .battlefieldZone]))
     | none => none
   | .chanceTurnOrder :: rest, .arrangePlayers l =>
-    some ({ s with turnOrder := l, pending := .setupHands :: rest }, [])
+    some ({ s with turnOrder := s.completeOpeningOrder l, pending := .setupHands :: rest }, [])
   | .mulligan p n :: rest, .mulliganPick c =>
     (moveObj s c (.player p .setAside)).map
       (fun r => ({ r.1 with pending := .mulligan p (n + 1) :: rest },
@@ -491,7 +510,7 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
 def finishFreeForAllConcession (before : GameState) (r : GameState × List Event) :
     GameState × List Event :=
   let next := { r.1 with cards := r.1.cards.withConcessionBattlefield }
-  let events := r.2 ++ before.mightyEvents next
+  let events := if next.result.isSome then [] else r.2 ++ before.mightyEvents next
   (next.withTriggers events, events)
 
 /-- A concession removes a player at any time (CR 649–652). Other answers go to the decision frame. -/

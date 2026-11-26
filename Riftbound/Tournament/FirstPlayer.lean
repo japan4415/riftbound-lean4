@@ -26,11 +26,15 @@ theorem turnOrder_answer_legal {s : GameState} {rest : List Frame}
     (hp : s.pending = .chanceTurnOrder :: rest) (h2 : s.playerCount = 2) {f : PlayerId}
     (hf : f.n < 2) :
     LegalFrame s ⟨.chance, .arrangePlayers (MatchState.turnOrderOf f)⟩ := by
+  have complete : (MatchState.turnOrderOf f).Perm s.players := by
+    rw [GameState.players, h2]
+    exact MatchState.turnOrderOf_perm hf
   unfold LegalFrame
   rw [hp]
+  dsimp only
+  rw [s.completeOpeningOrder_of_perm complete]
   refine ⟨rfl, ?_, ?_⟩
-  · rw [h2]
-    exact MatchState.turnOrderOf_perm hf
+  · exact complete
   · have ht : s.config.mode.isTeamDuel = false := by
       cases h : s.config.mode.isTeamDuel
       · rfl
@@ -39,15 +43,16 @@ theorem turnOrder_answer_legal {s : GameState} {rest : List Frame}
         contradiction
     simp [GameState.turnOrderAllowed, ht]
 
-/-- The answer is the turn order of the game. -/
+/-- A complete order given in the answer becomes the turn order verbatim. -/
 theorem turnOrder_answer_sets {s s' : GameState} {rest : List Frame} {es : List Event}
     {l : List PlayerId} (hp : s.pending = .chanceTurnOrder :: rest)
+    (complete : l.Perm s.players)
     (h : applyFrame0 s ⟨.chance, .arrangePlayers l⟩ = some (s', es)) : s'.turnOrder = l := by
   unfold applyFrame0 at h
   rw [hp] at h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, -⟩ := h
-  rfl
+  exact s.completeOpeningOrder_of_perm complete
 
 /-- **The first turn is the chosen player's, and the second turn the other player's** (TR 407):
 with the turn order of the chosen first player, in a 1v1 game (CR 301). -/

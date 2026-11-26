@@ -60,6 +60,21 @@ private meta def replayConcessions (mode : Mode) : Except String Unit := do
 #guard (replayConcessions .ffa3).isOk
 #guard (replayConcessions .ffa4).isOk
 
+-- A three-seat match can record the opening order of just its two remaining players.
+#guard (do
+  let a : PlayerId := ⟨0⟩
+  let b : PlayerId := ⟨1⟩
+  let c : PlayerId := ⟨2⟩
+  let s := { (GameState.empty { ruleSet := .coreOnly, mode := .ffa3 } db) with
+    pending := [.chanceTurnOrder] }
+  let (after, _) ← (step 100 s ⟨.player b, .concede⟩).toOption
+  let chosen : Action := ⟨.chance, .arrangePlayers [c, a]⟩
+  let incomplete : Action := ⟨.chance, .arrangePlayers [c]⟩
+  let (next, _) ← (step 100 after chosen).toOption
+  return next.turnOrder == [c, a, b] && next.participatingOrder == [c, a] &&
+    next.pending.head? == some (Frame.chanceBurnOut c) &&
+    (step 100 after incomplete).toOption.isNone).getD false
+
 private meta def strengthField : CardDef :=
   { (battlefield 0) with abilities := [.passive .always
     [.mightPlus (.all .any .here [.ofType .unit]) (.const 1)]] }
