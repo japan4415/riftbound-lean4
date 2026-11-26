@@ -382,8 +382,8 @@ def OGS_014.meta : CardDef :=
 def OGS_014 : CardDef :=
   { OGS_014.meta with
     abilities := [.activated [.exhaustSelf] .reaction
-      (.of [] (.prim (.addEnergy .you (.const 2) (some .play)))) .unlimited],
-    status := .drafted }
+      (.of [] (.prim (.addSpellEnergy .you (.const 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGS-015
 /--

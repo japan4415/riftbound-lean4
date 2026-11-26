@@ -317,7 +317,7 @@ def Prim.understood : Prim → Bool
   | .swapPlaces a b => a.understood && b.understood
   | .returnChampion => true
   | .pay _ => true
-  | .addEnergy ps n none | .addUnitEnergy ps n => ps.understood && n.understoodC
+  | .addEnergy ps n none | .addUnitEnergy ps n | .addSpellEnergy ps n => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood

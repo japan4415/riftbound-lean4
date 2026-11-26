@@ -428,6 +428,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .manaAbility src idx pay banish =>
       let restricted := match state.bind (fun s => s.manaOffer src idx) with
         | some (_, _, .unitEnergy n) => [("unitEnergyAdded", toString n)]
+        | some (_, _, .spellEnergy n) => [("spellEnergyAdded", toString n)]
         | some (_, _, .permanent) => [("permanentPowerAdded", "1")]
         | _ => []
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
@@ -673,10 +674,11 @@ def objJson (s : GameState) (id : ObjId) : String :=
 
 /-- The Rune Pool of a player as JSON. -/
 def poolJson (p : RunePool) : String :=
-  jobj [("energy", toString p.energy), ("unitEnergy", toString p.unitEnergy),
+  jobj ([("energy", toString p.energy), ("unitEnergy", toString p.unitEnergy),
     ("fury", toString p.fury), ("calm", toString p.calm),
     ("mind", toString p.mind), ("body", toString p.body), ("chaos", toString p.chaos),
-    ("order", toString p.order), ("any", toString p.any)]
+    ("order", toString p.order), ("any", toString p.any)] ++
+    (if p.spellEnergy == 0 then [] else [("spellEnergy", toString p.spellEnergy)]))
 
 /-- The state as JSON. `seen` are the identifiers already sent: only new objects are described. -/
 def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=

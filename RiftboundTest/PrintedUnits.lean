@@ -391,6 +391,48 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
     strengthened.mightNow first == some 10 && returned.countIn p .hand "OGN-094" == 1 &&
     (returned.zone (.player mate .trash)).contains teammateSpell
 
+-- Lux adds Spell-only Energy immediately and leaves the same player able to act.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, lux) ← put s p "OGS-014" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (s, unit) ← put s p "OGS-014" .hand
+  let (s, gear) ← put s p "OGN-143" .hand
+  let funded := s.fund p 2
+  let add : Action := ⟨.player p, .manaAbility lux 0 ⟨0, []⟩⟩
+  let (afterAdd, _) ← (step 100 funded add).toOption
+  let castFlash : Action := ⟨.player p, .playCard flash ⟨2, []⟩ []⟩
+  let paid ← cast afterAdd p flash ⟨2, []⟩
+  let (expired, _) ← microStep0 { afterAdd with pending := [.expireTurn] }
+  return (legalActions funded).contains add && afterAdd.pending == funded.pending &&
+    afterAdd.tired lux == some true && !(step 100 afterAdd add).isOk &&
+    (afterAdd.poolOf p).spellEnergy == 2 && (afterAdd.poolOf s.you).spellEnergy == 0 &&
+    (legalActions afterAdd).contains castFlash && (paid.poolOf p).spellEnergy == 0 &&
+    (paid.poolOf p).energy == 2 && paid.countIn p .trash "OGS-011" == 1 &&
+    expired.poolOf p == RunePool.empty &&
+    (cast afterAdd p unit ⟨4, []⟩).isNone && (cast afterAdd p gear ⟨3, []⟩).isNone
+
+-- A limited Spell play can use the same Energy, and a resolution payment cannot.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, lux) ← put s p "OGS-014" .base
+  let (s, flash) ← put s p "OGS-011" .trash
+  let funded := s.fund p 0
+  let (added, _) ← (step 100 funded ⟨.player p, .manaAbility lux 0 ⟨0, []⟩⟩).toOption
+  let price := EffectPlayPrice.reduceEnergy 0
+  let (queued, item) ← queueLimitedSpell added p flash price .normal
+  let plan ← (limitedSpellOptions queued p item price).find? (fun plan => plan.targets.isEmpty)
+  let (paid, events) ← commitLimitedSpell queued p item plan [] effectAddPolicy
+  let (ready, readyItem) ← queueLimitedSpell funded p flash price .normal
+  let luxAdd : EffectAdd := .ability lux 0 0 [] none
+  let (paidWithAdd, _) ← commitLimitedSpell ready p readyItem plan [luxAdd] effectAddPolicy
+  return (paid.poolOf p).spellEnergy == 0 && events.contains (.played p item) &&
+    (queued.payNow p item ⟨1, []⟩).isNone &&
+    (fundLimitedOptions ready p readyItem plan [] effectAddPolicy).contains
+      (.fundLimitedSpell readyItem plan [luxAdd]) &&
+    (paidWithAdd.poolOf p).spellEnergy == 0 && paidWithAdd.tired lux == some true &&
+    (commitLimitedSpell ready p readyItem plan [] effectAddPolicy).isNone
+
 -- Both Lux cards watch the controller's spells after resolution and read printed Energy.
 #guard inLab fun s => do
   let p := s.me

@@ -50,7 +50,8 @@ theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) :
 theorem totalPower_takeOne {p : RunePool} (h : 0 < p.totalPower) :
     p.takeOne.totalPower + 1 = p.totalPower := by
   have h1 := total_takeOne h
-  have h2 : p.takeOne.energy + p.takeOne.unitEnergy = p.energy + p.unitEnergy := by
+  have h2 : p.takeOne.energy + p.takeOne.unitEnergy + p.takeOne.spellEnergy =
+      p.energy + p.unitEnergy + p.spellEnergy := by
     unfold takeOne
     split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
       (try split) <;> simp

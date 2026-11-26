@@ -956,7 +956,7 @@ def GameState.runesOf (s : GameState) (p : PlayerId) : List ObjId :=
 /-- How the player pays the payment `pay` with Runes, if the Pool falls short: exhaust a ready Rune
 for each Energy missing, and recycle a Rune of the domain for each Power missing. -/
 def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment)
-    (unit : Bool := false) (reservedPower : Nat := 0) :
+    (unit : Bool := false) (reservedPower : Nat := 0) (spell : Bool := false) :
     Option (List (ObjId × RuneAbility)) := Id.run do
   let pool := s.poolOf p
   let isNeeded (r : ObjId) : Bool :=
@@ -965,7 +965,7 @@ def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment)
       | none => false)
   let readyAll := (s.runesOf p).filter (fun r => (s.obj? r).any (fun o => !o.exhausted))
   let ready := readyAll.filter (fun r => !isNeeded r) ++ readyAll.filter isNeeded
-  let energyNeeded := pay.energy - pool.energyFor unit
+  let energyNeeded := pay.energy - pool.energyFor unit spell
   if ready.length < energyNeeded then return none
   let exhaust := ready.take energyNeeded
   -- Recycle a Rune after its Exhaust ability when the Power also needs that Rune (CR 164.2).
@@ -1025,8 +1025,9 @@ def GameState.spendPowerNotes (s : GameState) (p : PlayerId) (gear permanent : B
 
 /-- Spend resources eligible for the cost. Permanent-only Power pays for the play itself (CR 357). -/
 def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RunePool.Payment)
-    (unit : Bool := false) (permanent : Bool := false) : Option RunePool :=
-  ((s.poolOf p).spend pay unit).filter (fun q => decide (s.restrictedFor p gear permanent ≤ q.any))
+    (unit : Bool := false) (permanent : Bool := false) (spell : Bool := false) :
+    Option RunePool :=
+  ((s.poolOf p).spend pay unit spell).filter (fun q => decide (s.restrictedFor p gear permanent ≤ q.any))
 
 /-- The kinds of Power in the Pool that can pay each symbol, including flexible Power. -/
 def resolutionPowerChoices (own : List Domain) : List PowerSym → List (List PowerSym)
@@ -1059,11 +1060,11 @@ def GameState.symbolPayments (s : GameState) (p : PlayerId) (cost : Cost)
 
 /-- A payment that the Pool allows is a payment the Pool makes. -/
 theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
-    {pay : RunePool.Payment} {unit permanent : Bool} {q : RunePool}
-    (h : s.spendFor p g pay unit permanent = some q) :
-    (s.poolOf p).spend pay unit = some q := by
+    {pay : RunePool.Payment} {unit permanent spell : Bool} {q : RunePool}
+    (h : s.spendFor p g pay unit permanent spell = some q) :
+    (s.poolOf p).spend pay unit spell = some q := by
   unfold GameState.spendFor at h
-  cases hs : (s.poolOf p).spend pay unit with
+  cases hs : (s.poolOf p).spend pay unit spell with
   | none => simp [hs] at h
   | some q' =>
     simp only [hs, Option.filter] at h
@@ -1074,17 +1075,19 @@ theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
 Power the cost may name), if it can: the first payment that the Pool has. -/
 def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) (permanent : Bool := false) : Option RunePool :=
+    (unit : Bool := false) (permanent : Bool := false) (spell : Bool := false) :
+    Option RunePool :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
   let payments := if c.power.length > 1 && c.power.all (· == .any) then
     c.flexiblePayments (s.poolOf p) else c.payments own
   payments.findSome? (fun pay =>
-    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit permanent)
+    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit permanent spell)
 
 /-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
 nothing to do when the Pool pays it already. -/
 def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) (permanent : Bool := false) : Option (List (ObjId × RuneAbility)) :=
+    (unit : Bool := false) (permanent : Bool := false) (spell : Bool := false) :
+    Option (List (ObjId × RuneAbility)) :=
   let d := s.cardDef? src
   let gear := d.any (·.hasType .gear)
   let payments := if c.power.length > 1 && c.power.all (· == .any) then
@@ -1093,8 +1096,8 @@ def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
     c.flexiblePayments available
   else c.payments ((d.map (·.domains)).getD [])
   payments.findSome? (fun pay =>
-    if (s.spendFor p gear pay unit permanent).isSome then some []
-    else s.runeCover p pay unit (s.restrictedFor p gear permanent))
+    if (s.spendFor p gear pay unit permanent spell).isSome then some []
+    else s.runeCover p pay unit (s.restrictedFor p gear permanent) spell)
 
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in

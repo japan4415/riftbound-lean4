@@ -619,6 +619,8 @@ inductive ManaKind where
   | energy (n : Nat)
   /-- Energy that pays only for Units and activated abilities of Units. -/
   | unitEnergy (n : Nat)
+  /-- Energy that pays only for playing Spells. -/
+  | spellEnergy (n : Nat)
   /-- Power of a domain. -/
   | power (d : Domain) (n : Nat)
   /-- Power of any domain. -/
@@ -637,6 +639,7 @@ deriving DecidableEq, Repr
 def ManaKind.add : ManaKind → RunePool → RunePool.Payment → RunePool
   | .energy n, p, _ => p.addEnergy n
   | .unitEnergy n, p, _ => p.addUnitEnergy n
+  | .spellEnergy n, p, _ => p.addSpellEnergy n
   | .power d n, p, _ => p.addPower d n
   | .any n, p, _ => p.addAny n
   | .gear n, p, _ => p.addAny n
@@ -649,6 +652,7 @@ def manaKind (body : EffectDef) : Option ManaKind :=
   match body.choices, body.body with
   | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
   | [], .prim (.addUnitEnergy .you (.const n)) => some (.unitEnergy n)
+  | [], .prim (.addSpellEnergy .you (.const n)) => some (.spellEnergy n)
   | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
   | [], .prim (.addPower .you (.const n) none none) => some (.any n)
   -- the Power of Fire Below the Mountain: it pays only for Gear

@@ -246,7 +246,7 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
                 cases k with
                 | gear n => exact h3.trans (addTurnFx_safe _ _ _)
                 | permanent => exact h3.trans (addTurnFx_safe _ _ _)
-                | energy n | unitEnergy n => exact h3
+                | energy n | unitEnergy n | spellEnergy n => exact h3
                 | power d n => exact h3
                 | any n => exact h3
                 | powerToEnergy => exact h3
@@ -481,7 +481,7 @@ def effectAddPowerBudget (s : GameState) (p : PlayerId) : Nat :=
     let slots := ((s.cardDef? src).map (fun d => (s.activationList src d).length)).getD 0
     (List.range slots).foldl (fun found idx =>
       let added := (s.manaOffer src idx).elim 0 (fun (_, _, kind) => match kind with
-        | .energy n | .unitEnergy n | .power _ n | .any n | .gear n => n
+        | .energy n | .unitEnergy n | .spellEnergy n | .power _ n | .any n | .gear n => n
         | .permanent => 1
         | .powerToEnergy | .energyToPower => 0)
       max found (added + s.manaBonus p src)) largest) 0

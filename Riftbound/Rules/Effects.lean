@@ -824,34 +824,35 @@ theorem setPoolFor_safe (s : GameState) (p : PlayerId) (src : ObjId) (pool : Run
 
 /-- Pay the cost `c` from eligible Pool resources, with Basic Runes if the Pool falls short. -/
 def payByRunes (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) (permanent : Bool := false) : Option (GameState × List Event) :=
-  match s.payNow p src c unit permanent with
+    (unit : Bool := false) (permanent : Bool := false) (spell : Bool := false) :
+    Option (GameState × List Event) :=
+  match s.payNow p src c unit permanent spell with
   | some pool => some (s.setPoolFor p src pool permanent, [])
   | none =>
-    match s.runePlan p src c unit permanent with
+    match s.runePlan p src c unit permanent spell with
     | some plan =>
       (applyRunes s p plan).bind (fun r =>
-        (r.1.payNow p src c unit permanent).map (fun pool => (r.1.setPoolFor p src pool permanent, r.2)))
+        (r.1.payNow p src c unit permanent spell).map (fun pool => (r.1.setPoolFor p src pool permanent, r.2)))
     | none => none
 
 /-- Paying is a safe change. -/
 theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
-    {unit permanent : Bool} {r : GameState × List Event}
-    (h : payByRunes s p src c unit permanent = some r) : Safe s r.1 := by
+    {unit permanent spell : Bool} {r : GameState × List Event}
+    (h : payByRunes s p src c unit permanent spell = some r) : Safe s r.1 := by
   unfold payByRunes at h
-  cases hp : s.payNow p src c unit permanent with
+  cases hp : s.payNow p src c unit permanent spell with
   | some pool =>
     simp only [hp, Option.some.injEq] at h
     rw [← h]
     exact setPoolFor_safe s p src pool permanent
   | none =>
     simp only [hp] at h
-    cases hq : s.runePlan p src c unit permanent with
+    cases hq : s.runePlan p src c unit permanent spell with
     | none => simp [hq] at h
     | some plan =>
       simp only [hq, Option.bind_eq_some_iff] at h
       obtain ⟨x, hx, hr⟩ := h
-      cases hy : x.1.payNow p src c unit permanent with
+      cases hy : x.1.payNow p src c unit permanent spell with
       | none => simp [hy] at hr
       | some pool =>
         simp only [hy, Option.map_some, Option.some.injEq] at hr
@@ -1582,7 +1583,7 @@ def limitedSpellOptions (s : GameState) (p : PlayerId) (card : ObjId)
 def effectSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
     (plan : EffectSpellPlay) (funding : EffectAddPolicy) : List EffectAdd :=
   if plan.cost.total == 0 then [] else
-  funding.choices s p (fun t => (payByRunes t p card plan.cost).isSome &&
+  funding.choices s p (fun t => (payByRunes t p card plan.cost (spell := true)).isSome &&
     (limitedSpellOptions t p card price (if (t.cardDef? card).any (·.variablePower) then
       some (funding.powerBudget t p) else none)).contains plan)
 
@@ -1592,12 +1593,12 @@ def limitedSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : E
   let powerBudget := if (s.cardDef? card).any (·.variablePower) then some (funding.powerBudget s p) else none
   (limitedSpellOptions s p card price powerBudget).filterMap (fun plan =>
     let hasAdds := !(effectSpellAddChoices s p card price plan funding).isEmpty
-    if hasAdds || (s.payNow p card plan.cost).isSome then some (plan, hasAdds) else none)
+    if hasAdds || (s.payNow p card plan.cost (spell := true)).isSome then some (plan, hasAdds) else none)
 
 /-- Check the choices before paying the exact price from the Pool. -/
 def effectSpellPoolPayment (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
     (plan : EffectSpellPlay) : Option RunePool :=
-  if (limitedSpellOptions s p card price).contains plan then s.payNow p card plan.cost else none
+  if (limitedSpellOptions s p card price).contains plan then s.payNow p card plan.cost (spell := true) else none
 
 /-- Start a limited play by moving the card onto the Chain; its payment and targets wait
 for the parent resolution (CR 354.2, 354.3). -/
@@ -3696,6 +3697,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .addUnitEnergy ps n =>
     (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addUnitEnergy k) s l, [])))
+  | .addSpellEnergy ps n =>
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (poolsMap (fun pool => pool.addSpellEnergy k) s l, [])))
   | .addPower ps n (some d) none =>
     (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addPower d k) s l, [])))
@@ -4070,7 +4074,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
           rw [← h]
           exact poolsMap_safe _ l s
-  | addUnitEnergy ps n =>
+  | addUnitEnergy ps n | addSpellEnergy ps n =>
     simp only [applyPrim, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨l, -, k, -, rfl⟩ := h
     exact poolsMap_safe _ l s

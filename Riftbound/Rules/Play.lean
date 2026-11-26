@@ -2065,7 +2065,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
                 (!s.playingFromHidden p c || d.hiddenUsesCast || decide (0 < repeats) ||
                   !pick.spellExhausts.isEmpty))
           | none => false) &&
-        (s.spendFor p false pay).any (fun pool =>
+        (s.spendFor p false pay (spell := true)).any (fun pool =>
           s.playPowerCut p c targets != 0 || s.deflectOk p pool targets (some c)) &&
         s.spellObjectPickOk p d targets pick
     | _, _ => false
@@ -2074,7 +2074,7 @@ def castable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
 def applyCast (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) :
     Option (GameState × List Event) :=
-  match (s.poolOf p).spend pay with
+  match (s.poolOf p).spend pay (spell := true) with
   | some pool =>
     let hiddenPlayLocation := if s.playingFromHidden p c then (s.obj? c).bind (·.hiddenAt) else none
     let mark := { s.playMark p c pay targets true flow pick with spellPick := pick, hiddenPlayLocation }
@@ -2358,7 +2358,7 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} (h : castable s p c pay targets flow pick = true) :
     ∃ o d cost pool, s.phase ≠ .setup ∧ s.obj? c = some o ∧ s.cardDef? c = some d ∧
       o.owner = p ∧ d.hasType .spell = true ∧ s.directCost p c d flow = some cost ∧
-      s.paysForXT p c d cost targets pay pick = true ∧ (s.poolOf p).spend pay = some pool := by
+      s.paysForXT p c d cost targets pay pick = true ∧ (s.poolOf p).spend pay (spell := true) = some pool := by
   unfold castable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨⟨⟨hph, -⟩, -⟩, hrest⟩ := h
@@ -2378,8 +2378,8 @@ theorem castable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
       | none => rw [hc] at hcost; simp at hcost
       | some cost =>
         simp only [hc, Bool.and_eq_true] at hcost
-        obtain ⟨pool, hpool⟩ : ∃ pool, (s.poolOf p).spend pay = some pool := by
-          cases hs : s.spendFor p false pay with
+        obtain ⟨pool, hpool⟩ : ∃ pool, (s.poolOf p).spend pay (spell := true) = some pool := by
+          cases hs : s.spendFor p false pay (spell := true) with
           | none => rw [hs] at hspend; simp at hspend
           | some pool => exact ⟨pool, GameState.spendFor_eq_some hs⟩
         exact ⟨o, d, cost, pool, hturn, rfl, rfl, howner, hty, hc, hcost.1.1, hpool⟩
@@ -2405,12 +2405,12 @@ theorem castable_choices {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 /-- The shape of a Spell being cast: the Pool after paying, and the move to the Chain. -/
 theorem applyCast_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
-    ∃ pool s2 id' rep, (s.poolOf p).spend pay = some pool ∧
+    ∃ pool s2 id' rep, (s.poolOf p).spend pay (spell := true) = some pool ∧
       moveObj s c .chain = some (s2, id') ∧
       s' = (s2.setPool p pool).modObj id' (Object.withPlay targets rep) ∧
         es = s.showOffEvents p pick.showOffObject ++ [Event.moved c id' .chain] := by
   unfold applyCast at h
-  cases hs : (s.poolOf p).spend pay with
+  cases hs : (s.poolOf p).spend pay (spell := true) with
   | none => simp [hs] at h
   | some pool =>
     simp only [hs, Option.map_eq_some_iff] at h
@@ -2548,7 +2548,7 @@ theorem applyCast_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
 /-- **Casting a Spell takes exactly the payment out of the Pool** (I8) (CR 357, 445). -/
 theorem applyCast_pool {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {es : List Event} (h : applyCast s p c pay targets flow pick = some (s', es)) :
-    ∃ pool, (s.poolOf p).spend pay = some pool ∧ s'.poolOf p = pool ∧
+    ∃ pool, (s.poolOf p).spend pay (spell := true) = some pool ∧ s'.poolOf p = pool ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨pool, s2, id', rep, hspend, hm, rfl, -⟩ := applyCast_cases h
   obtain ⟨src, dd, hs⟩ := moveObj_spec hm

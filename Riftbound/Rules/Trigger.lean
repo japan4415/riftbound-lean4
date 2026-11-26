@@ -1033,7 +1033,7 @@ mutual
 
 /-- Resource-only effects the engine can resolve without a further player decision. -/
 def Effect.isTriggerAdd : Effect → Bool
-  | .prim (.addEnergy .you _ none) | .prim (.addUnitEnergy .you _)
+  | .prim (.addEnergy .you _ none) | .prim (.addUnitEnergy .you _) | .prim (.addSpellEnergy .you _)
   | .prim (.addPower .you _ _ none) => true
   | .seq (.cons first more) => first.isTriggerAdd && more.areTriggerAdds
   | .ifThen _ body .nop => body.isTriggerAdd

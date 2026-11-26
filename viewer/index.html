@@ -767,6 +767,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
           'Exhaust し、Unit のプレイと起動型能力に使える Energy を ' + a.unitEnergyAdded + ' 得る'];
       }
+      if (a.spellEnergyAdded != null) {
+        return [who + ': ' + addLabel(a),
+          'Exhaust し、Spell のプレイに使える Energy を ' + a.spellEnergyAdded + ' 得る'];
+      }
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];
     }
     case 'runeAbility':
@@ -1002,16 +1006,18 @@ function renderStatic(i, st, prev, animate) {
   for (let p = 0; p < trace.players; p++) {
     pointsBox[p].textContent = st.points[p] + ' 点';
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
-    const add = (key, label) => {
+    const add = (key, label, usage) => {
       if (key !== 'energy' && !pool[key]) return;
       const c = document.createElement('span');
-      c.className = 'chip' + (key === 'energy' || key === 'unitEnergy' ? ' energy' : '');
+      c.className = 'chip' + (key === 'energy' || usage ? ' energy' : '');
       c.textContent = label + ' ' + pool[key];
-      if (key === 'unitEnergy') c.title = 'Unit のプレイと Unit の起動型能力に使える';
+      if (usage) c.title = usage;
       if (animate && pool[key] > (old[key] ?? 0)) c.classList.add('pop');
       box.append(c);
     };
-    add('energy', 'Energy'); add('unitEnergy', 'Unit 用 Energy');
+    add('energy', 'Energy');
+    add('unitEnergy', 'Unit 用 Energy', 'Unit のプレイと Unit の起動型能力に使える');
+    add('spellEnergy', 'Spell 用 Energy', 'Spell のプレイに使える');
     for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
     for (const [k] of PILES) {
       const e = zoneBox.get('p' + p + '.' + k), n = (st.zones['p' + p + '.' + k] || []).length;
