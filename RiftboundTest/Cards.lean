@@ -90,7 +90,7 @@ open Riftbound RiftboundCards
 
 -- Firestorm: one choice (the Battlefield), a spell effect and no abilities
 #guard match db.find? ⟨"OGS-002"⟩ with
-  | some c => c.spellEffect.isSome && c.abilities.isEmpty && c.status == .drafted &&
+  | some c => c.spellEffect.isSome && c.abilities.isEmpty && c.status == .full &&
       (match c.spellEffect with | some e => e.choices.length == 1 | none => false)
   | none => false
 
