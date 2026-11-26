@@ -204,7 +204,7 @@ def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
       let a ← answer.resolve g.i
       let (next, events) ← (step 100 g.s a).mapError (fun e => s!"the engine refused the answer: {repr e}")
       let fields := (pickedBattlefield g.s a).toList ++ g.fields
-      pure (some a, { state := next, fields }, events)
+      pure (some a, ReplayPosition.fromState next fields, events)
   let initiative := g.input.any (fun input => input.isBo1Initiative g.s action)
   let priorSeen := if answer.rewinds then {} else g.seen
   let (j, seen') := stepJson g.i action es position.state priorSeen g.s.pending.head? (answer == .bo1Sideboard)
@@ -387,7 +387,7 @@ def LiveKind.initial (decks : List Deck) (sides : List (List CardId) := []) :
 def LiveGame.begin (g : LiveGame) : Except String (LiveGame × List String) := do
   let (j0, seen) := stepJson 0 none [] g.s {}
   let checkpointsRev := if g.input.isSome then [ReplayCheckpoint.capture g.s []] else []
-  let history : List ReplayPosition := if g.input.isSome then [{ state := g.s }] else []
+  let history := if g.input.isSome then [ReplayPosition.fromState g.s] else []
   let game := { g with i := 1, seen, checkpointsRev, history, queuedGameLoss := none }
   let (next, steps) ← match g.queuedGameLoss with
     | some seats => do
@@ -623,7 +623,8 @@ def liveExternal (g : LiveGame) (a : Action) : Except String (LiveGame × String
 def liveJudgeCorrection (g : LiveGame) (answer : ReplayAnswer) :
     Except String (LiveGame × String) :=
   match answer with
-  | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ => LiveGame.runAfterAnswer (g.applyReplay answer)
+  | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ | .judgeTimelineRewind _ =>
+    LiveGame.runAfterAnswer (g.applyReplay answer)
   | _ => .error "expected a judge correction"
 
 /-- Apply an in-game Game Loss or schedule one for the next game (TR 701.2.b.1). -/

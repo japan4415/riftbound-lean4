@@ -555,6 +555,82 @@ def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: d
         assert steps[live_row["i"]] == live_row
 
 
+def live_timeline_rewinds(live: Lean, setup: dict) -> dict:
+    def rewind(payload: dict) -> str:
+        return f"judge-timeline-rewind {json.dumps(payload)}"
+
+    ready = keep(live, ask(live, f"start-json 71 01 {json.dumps({**setup, 'winsRequired': 1})}"))
+    target = ready["steps"][-1]
+    advanced = choose(live, ready, "pass")
+    assert advanced["steps"][-1]["state"]["turn"] == 2
+    assert "cannot add a time call" in json.loads(live.ask(rewind({"target": target["i"], "deadline": 4})))["error"]
+    clock = ask(live, "clock")
+    assert "final scheduled turn" in json.loads(live.ask(rewind({"target": target["i"]})))["error"]
+    assert "precedes the restored turn" in json.loads(live.ask(rewind({"target": target["i"], "deadline": 0})))["error"]
+    assert "without crossing" in json.loads(live.ask(f"judge-rewind {target['i']}"))["error"]
+
+    deck_top = target["state"]["zones"]["p1.mainDeck"][0]
+    other_hand = target["state"]["zones"]["p1.hand"][0]
+    drawn = next(event["new"] for event in advanced["steps"][-1]["events"]
+                 if event["t"] == "moved" and event["dst"] == "p1.hand" and event["old"] == deck_top)
+    payload = {"target": target["i"], "deadline": 4, "returns": [
+        {"drawn": {"n": drawn}, "candidates": [{"n": deck_top}, {"n": other_hand}], "returned": {"n": other_hand}}
+    ]}
+    current = ask(live, rewind(payload))
+    swiss = current["steps"][0]
+    assert swiss["rewindDeadline"] == 4 and swiss["privateDrawReturns"] == 1
+    assert swiss["state"]["turn"] == target["state"]["turn"] and not current["external"]["clock"]
+    for _ in range(12):
+        if current["over"]:
+            break
+        current = choose(live, current, "pass")
+    assert current["archiveAvailable"] and current["steps"][-1]["state"]["turn"] == 4
+    assert not clock["external"]["clock"]
+    duel = ask(live, "replay")
+    assert duel["games"][0]["summary"]["timed"] and duel["summary"]["result"] == "draw"
+
+    team = json.loads((ROOT / "data/replay/team-constructed-example.json").read_text(encoding="utf-8"))
+    team["singleElimination"] = True
+    ready = keep(live, ask(live, f"start-team-json 71 0123 {json.dumps(team)}"))
+    target = ready["steps"][-1]
+    origin = target["state"]["zones"]["p1.mainDeck"]
+    shuffle = {"seat": {"n": 1}, "deck": "mainDeck", "positions": [0, 1], "order": [{"n": origin[1]}, {"n": origin[0]}]}
+    current = ask(live, f"judge-shuffle {json.dumps(shuffle)}")
+    sh = current["steps"][0]["i"]
+    restored = ask(live, rewind({"target": target["i"], "rulings": [sh]}))
+    assert restored["steps"][0]["state"]["zones"]["p1.mainDeck"] == origin
+    assert restored["external"]["clock"] and "rewindDeadline" not in restored["steps"][0]
+    ask(live, "undo")
+    advanced = choose(live, current, "pass")["steps"][-1]
+    clock = ask(live, "clock")["steps"][-1]
+    first = ask(live, rewind({"target": advanced["i"], "deadline": 5}))["steps"][0]
+    assert first["state"]["eliminationDeadline"] == 5
+    assert "abandoned" in json.loads(live.ask(rewind({"target": clock["i"], "deadline": 5})))["error"]
+    assert "each reversed ruling" in json.loads(live.ask(rewind({"target": target["i"], "deadline": 6})))["error"]
+    assert "final scheduled turn" in json.loads(live.ask(rewind({"target": target["i"], "rulings": [first["i"], sh]})))["error"]
+    current = ask(live, rewind({"target": target["i"], "deadline": 6, "rulings": [first["i"], sh]}))
+    second = current["steps"][0]
+    assert second["rewindRulings"] == 2 and second["state"]["eliminationDeadline"] == 6
+    assert second["state"]["zones"]["p1.mainDeck"] == origin
+    assert not current["external"]["clock"]
+    assert ask(live, "judge-match-loss 3")["archiveAvailable"]
+    archive = ask(live, "replay")
+    assert archive["games"][0]["summary"]["timed"]
+    return {"swiss": (duel, "", swiss), "elimination": (archive, "-team", second)}
+
+
+def check_timeline_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
+    for label, (archive, suffix, live_row) in fixtures.items():
+        path = folder / f"judge-{label}-timeline-archive.json"
+        path.write_text(json.dumps(archive), encoding="utf-8")
+        assert json.loads(command("verify" + suffix, path))["exact"]
+        trace = folder / f"judge-{label}-timeline-trace.json"
+        command("view" + suffix, path, trace)
+        steps = json.loads(trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+        assert steps[live_row["i"]] == live_row
+        assert any((step.get("action") or {}).get("kind") == "timeCalled" for step in steps)
+
+
 def check_judge_penalties(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix) in fixtures.items():
         path = folder / f"{label}-archive.json"
@@ -640,7 +716,7 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
 
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
               team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
-              private_rewinds: dict) -> None:
+              private_rewinds: dict, timeline_rewinds: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -812,6 +888,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     check_judge_penalties(folder, command, penalties)
     check_judge_corrections(folder, command, corrections)
     check_private_rewinds(folder, command, private_rewinds)
+    check_timeline_rewinds(folder, command, timeline_rewinds)
 
 
 def main() -> None:
@@ -830,17 +907,18 @@ def main() -> None:
         penalties = live_judge_penalties(live, setup)
         corrections = live_judge_corrections(live, setup)
         private_rewinds = live_private_rewinds(live, setup)
+        timeline_rewinds = live_timeline_rewinds(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
         check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties,
-                  corrections, private_rewinds)
+                  corrections, private_rewinds, timeline_rewinds)
     else:
         with TemporaryDirectory() as folder:
             check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties,
-                      corrections, private_rewinds)
+                      corrections, private_rewinds, timeline_rewinds)
     print("replay smoke: OK")
 
 

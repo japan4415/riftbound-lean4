@@ -14,7 +14,7 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     Except String String := do
   let mut state ← input.initial RiftboundCards.db config
   let (initial, firstSeen) := stepJson 0 none [] state {}
-  let mut history : List ReplayPosition := [{ state }]
+  let mut history := [ReplayPosition.fromState state]
   let mut seen := firstSeen
   let mut steps := [initial]
   for (answer, index) in input.answers.toList.zipIdx do

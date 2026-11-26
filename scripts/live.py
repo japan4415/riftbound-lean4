@@ -150,6 +150,8 @@ def make_handler(lean: Lean, port: int):
                     line = "judge-shuffle " + json.dumps(req["shuffle"], ensure_ascii=True)
                 elif path == "/api/judge-private-rewind":
                     line = "judge-private-rewind " + json.dumps(req["rewind"], ensure_ascii=True)
+                elif path == "/api/judge-timeline-rewind":
+                    line = "judge-timeline-rewind " + json.dumps(req["rewind"], ensure_ascii=True)
                 elif path == "/api/judge-game-loss":
                     seats = req["seats"]
                     if (not isinstance(seats, list) or not seats

@@ -116,13 +116,15 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 標準入力では `judge-game-loss SEATS`、`judge-match-loss SEAT`、`judge-disqualification SEAT` を使う。`judge-game-loss 13` は P1 と P3 への同時裁定を表す。
 
-プレイを巻き戻した場合は「ジャッジの裁定を記録」で戻す手を指定する。巻き戻す前の操作もログに残る。外部記録では `{"judgeRewind":{"target":18}}` を裁定位置の `answers` に置く。手番号は初期状態を0とする。現在は、時計や別の裁定を挟まない同じゲームのプレイ区間を戻せる。
+プレイを巻き戻した場合は「ジャッジの裁定を記録」で戻す手を指定する。巻き戻す前の操作もログに残る。外部記録では `{"judgeRewind":{"target":18}}` を裁定位置の `answers` に置く。手番号は初期状態を0とする。通常の指定では、時計や別の裁定を挟まない同じゲームのプレイ区間を戻せる。
 
-非公開のドローを戻す際にジャッジがカードを選び直した場合は、「非公開カードの巻き戻しを読み込む」で `target` と `returns` を持つJSONを使う。各要素の `drawn` はドローによって手札に作られたオブジェクトのID。候補の `candidates` と実際に戻した `returned` は、巻き戻し先のチェックポイントにおける各カードのオブジェクトIDで指定する。対象は、巻き戻し先の Main Deck にあったカードのドロー。複数のドローは後のものから戻し、その時点で手札に残っているカードを候補にする。必要なら `shuffles` に部分シャッフルを含め、プレイを再開する前にまとめて適用できる。その `order` も巻き戻し先のIDを使う（TR 701.5.d.3–4）。外部記録では `{"judgePrivateRewind":{"rewind":{...}}}` としてこのJSONを入れる。
+非公開のドローを戻す際にジャッジがカードを選び直した場合は、「巻き戻し裁定の JSON を読み込む」で `target` と `returns` を持つJSONを使う。各要素の `drawn` はドローによって手札に作られたオブジェクトのID。候補の `candidates` と実際に戻した `returned` は、巻き戻し先のチェックポイントにおける各カードのオブジェクトIDで指定する。対象は、巻き戻し先の Main Deck にあったカードのドロー。複数のドローは後のものから戻し、その時点で手札に残っているカードを候補にする。必要なら `shuffles` に部分シャッフルを含め、プレイを再開する前にまとめて適用できる。その `order` も巻き戻し先のIDを使う（TR 701.5.d.3–4）。外部記録では `{"judgePrivateRewind":{"rewind":{...}}}` としてこのJSONを入れる。
+
+時計が鳴る前に戻す場合は `target` と、裁定で確定した最終予定ターン `deadline` を記録する。時計の方式と時間切れが宣言済みであることは引き継ぐ。前の巻き戻しや裁定シャッフルも取り消す場合は、対象の裁定の手番号を `rulings` に新しい順で並べる。以前の巻き戻しで取り消された手は、元のログから参照できる。復元先は現在の進行経路から選ぶ。外部記録では `{"judgeTimelineRewind":{"rewind":{"target":9,"deadline":5,"rulings":[16,12]}}}` の形を使い、必要に応じて `returns` と `shuffles` を追加できる。
 
 山札の一部をジャッジが混ぜ直した場合は、変更した位置と混ぜ直した後のオブジェクトIDを保存する。ライブ画面の「裁定シャッフルを読み込む」では `seat`、`deck`（`"mainDeck"` または `"runeDeck"`）、`positions`、`order` を持つJSONを使う。位置は山札の上を0として昇順に並べ、`order` の各IDは `{"n":42}` の形で同じ順に並べる。外部記録では `{"judgeShuffle":{"shuffle":{...}}}` としてそのJSONを入れる。選んだ位置にあったカードの集合を照合し、他の位置とゲーム内のシャッフル誘発には影響させない（TR 701.4）。
 
-標準入力では `judge-rewind CHECKPOINT`、`judge-private-rewind REWIND_JSON`、`judge-shuffle SHUFFLE_JSON` を使う。
+標準入力では `judge-rewind CHECKPOINT`、`judge-private-rewind REWIND_JSON`、`judge-timeline-rewind REWIND_JSON`、`judge-shuffle SHUFFLE_JSON` を使う。
 
 ### 2v2 の大会記録
 
