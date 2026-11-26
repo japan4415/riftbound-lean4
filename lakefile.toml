@@ -37,3 +37,7 @@ root = "RiftboundMatch"
 [[lean_exe]]
 name = "riftbound-live"    # ビューアから答えを選んで進めるゲーム（標準入出力で JSON を返す）
 root = "RiftboundLive"
+
+[[lean_exe]]
+name = "riftbound-replay"  # マッチを入力から再実行し、記録・照合する
+root = "RiftboundReplay"

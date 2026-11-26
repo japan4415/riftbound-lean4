@@ -11,7 +11,7 @@
 | [card-data.md](card-data.md) | カードデータの取り込み、効果 IR への写像、新カードと新キーワードの追加手順、権利面の注意 | エージェント・人間 |
 | [coverage.md](coverage.md) | カードの実装状況の表（`scripts/coverage.py` が作る。編集しない） | スクリプト |
 | [ir-gaps.md](ir-gaps.md) | 効果 IR に転記して分かった不足の一覧（IR を直したもの、書けなかった文、近似したもの） | エージェント・人間 |
-| [viewer.md](viewer.md) | エンジンが動かした 1 ゲームをアニメーションで再生するビューア（トレースの書き出しと再生。何が保証されて、何がされないか） | エージェント・人間 |
+| [viewer.md](viewer.md) | ゲームの再生、実カードでの対局、マッチ記録の保存と照合 | エージェント・人間 |
 
 読む順番: `original.md` → `rules-model.md`（ルール用語を押さえる。§7〜§11 だけでもよい）→ `design.md` → `roadmap.md`。`lean-guidelines.md` と `card-data.md` は、作業に応じて参照する。
 

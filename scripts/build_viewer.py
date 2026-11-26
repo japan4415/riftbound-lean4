@@ -26,7 +26,8 @@ def main() -> int:
     # </script> で HTML が途切れないようにする
     body = json.dumps(trace, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     dst.write_text(template.replace(PLACEHOLDER, body), encoding="utf-8")
-    print(f"wrote {dst} ({len(trace['steps'])} steps)")
+    games = trace["games"] if "games" in trace else [trace]
+    print(f"wrote {dst} ({sum(len(game['steps']) for game in games)} steps)")
     return 0
 
 
