@@ -29,8 +29,9 @@ def keep(live: Lean, response: dict) -> dict:
     return response
 
 
-def play_to_turn(live: Lean, response: dict, turn: int) -> dict:
-    priorities = ("mulliganDone", "manaAbility", "runeAbility", "playCard", "standardMove", "pass")
+def play_to_turn(live: Lean, response: dict, turn: int, move: bool = True) -> dict:
+    priorities = ("mulliganDone", "manaAbility", "runeAbility", "playCard")
+    priorities += ("standardMove", "pass") if move else ("pass",)
     for _ in range(100):
         if response["steps"][-1]["state"]["turn"] >= turn:
             return response
@@ -130,7 +131,29 @@ def group_move_match(live: Lean, setup: dict) -> dict:
     return ask(live, "replay")
 
 
-def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict) -> None:
+def elimination_match(live: Lean, setup: dict) -> dict:
+    keep(live, start(live, {**setup, "singleElimination": True}))
+    tied = ask(live, "judge")
+    assert tied["match"]["wins"] == [0, 0] and not tied["match"]["finished"]
+    clock = ask(live, "time-between-games")
+    assert clock["match"]["timedTiebreaker"] and not clock["external"]["betweenGames"]
+    second = keep(live, ask(live, "next"))
+    assert not second["external"]["clock"]
+    sudden_death = play_to_turn(live, second, 7, move=False)
+    assert sudden_death["steps"][-1]["state"]["points"] == [0, 0]
+    won = choose(live, sudden_death, "standardMove")
+    for _ in range(8):
+        if won["over"]:
+            break
+        won = choose(live, won, "pass")
+    assert won["archiveAvailable"] and won["match"]["winner"] == 0
+    archive = ask(live, "replay")
+    assert archive["input"]["elimination"]["timeAfterGames"] == 1
+    assert archive["games"][1]["summary"]["suddenDeathTurn"] == 7
+    return archive
+
+
+def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -170,6 +193,15 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict) -> None:
     checked_move = next(row for row in group_steps if (row["action"] or {}).get("groupMoveUnits"))
     assert len(checked_move["action"]["groupMoveUnits"]) == 2
     assert len([event for event in checked_move["events"] if event["t"] == "moved_unit"]) == 2
+
+    elimination_archive = folder / "elimination-archive.json"
+    elimination_archive.write_text(json.dumps(elimination), encoding="utf-8")
+    assert json.loads(command("verify", elimination_archive)) == elimination["summary"]
+    elimination_trace = folder / "elimination-trace.json"
+    command("view", elimination_archive, elimination_trace)
+    overtime = json.loads(elimination_trace.read_text(encoding="utf-8"))["games"][1]["steps"][-1]
+    assert overtime["state"]["turn"] == 7
+    assert any(event["t"] == "points" for event in overtime["events"])
 
     witness = saved["games"][0]["checkpoints"][2]
     witness["state"] = "0"
@@ -259,15 +291,16 @@ def main() -> None:
         saved = played_match(live, setup)
         check_match_endings(live, setup)
         group_move = group_move_match(live, setup)
+        elimination = elimination_match(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move)
+        check_cli(args.output, saved, setup, group_move, elimination)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move)
+            check_cli(Path(folder), saved, setup, group_move, elimination)
     print("replay smoke: OK")
 
 

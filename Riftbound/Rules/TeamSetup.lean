@@ -29,8 +29,10 @@ def teamRegistrationOk (db : CardDB) (decks : List ConstructedDeck) (first : Nat
 /-- Start a four-seat Constructed game after the tournament has chosen the turn order. Seats 0
 and 1 are the A/B seats of one team, and 2 and 3 are the other team's A/B seats. -/
 def GameState.initialTeamConstructed (db : CardDB) (env : LegalityEnv) (order : List PlayerId)
-    (registrations : List ConstructedDeck) : Option GameState := do
-  let config : GameConfig := { ruleSet := .tournament .constructed, mode := .teamDuel }
+    (registrations : List ConstructedDeck) (ruleSet : RuleSet := .tournament .constructed) :
+    Option GameState := do
+  if ruleSet.tournamentFormat != some .constructed then none else
+  let config : GameConfig := { ruleSet, mode := .teamDuel }
   let s ← GameState.initialConstructed db env config registrations
   if !s.turnOrderAllowed order || !teamRegistrationOk db registrations 0 ||
       !teamRegistrationOk db registrations 2 then none
@@ -57,10 +59,12 @@ theorem GameState.initialConstructed_validState {db : CardDB} {env : LegalityEnv
 
 /-- The four-seat start retains the zone and ownership invariants. -/
 theorem GameState.initialTeamConstructed_validState {db : CardDB} {env : LegalityEnv}
-    {order : List PlayerId} {registrations : List ConstructedDeck} {s : GameState}
-    (h : GameState.initialTeamConstructed db env order registrations = some s) :
+    {order : List PlayerId} {registrations : List ConstructedDeck} {s : GameState} {ruleSet : RuleSet}
+    (h : GameState.initialTeamConstructed db env order registrations ruleSet = some s) :
     s.WF ∧ s.OwnerOk := by
   unfold GameState.initialTeamConstructed at h
+  split at h
+  · contradiction
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨base, hbase, h⟩ := h
   split at h

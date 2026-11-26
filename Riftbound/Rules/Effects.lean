@@ -151,9 +151,9 @@ def CardDef.isTokenCard (c : CardDef) : Bool := (c.id.code.splitOn "-T").length 
 def GameState.nameableCards (s : GameState) (kind : CardType) : List CardId :=
   (s.cards.cards.filter (fun d =>
     d.hasType kind && !d.isTokenCard && !d.id.code.startsWith "TKN-" &&
-      (match s.config.ruleSet, s.config.formatLegality with
-        | .tournament .constructed, some env => decide (CardLegal env d)
-        | .tournament _, some env => decide (NotBanned env d)
+      (match s.config.ruleSet.tournamentFormat, s.config.formatLegality with
+        | some .constructed, some env => decide (CardLegal env d)
+        | some _, some env => decide (NotBanned env d)
         | _, _ => true))).map (·.id)
 
 /-- The card of the token with the name: one the model defines, or one of the printed tokens. -/

@@ -802,7 +802,9 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
 on the stack, and not during the setup. -/
 theorem HandInv.withTriggers {s : GameState} (hinv : HandInv s) (es : List Event) :
     HandInv (s.withTriggers es) := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, hph, -⟩
+  rcases withTriggers_cases s es with ⟨p, h, hph⟩ | h | ⟨pend, h, hph, -⟩
+  · rw [h]
+    exact hinv.of_play hph rfl rfl (by simp)
   · rw [h]
     exact ⟨hinv.turn, hinv.hands, hinv.play⟩
   · rw [h]

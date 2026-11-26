@@ -1091,14 +1091,27 @@ theorem insertDetectedTriggers_getLast (s : GameState) (pend : List PendTrigger)
   · simp [hg]
   · simp [insertTriggers_getLast _ _ hg hr ht]
 
-/-- After a step, queue the abilities that fired outside setup. -/
+/-- During sudden death, the first actual point ends the game (TR 408.4.c.3). -/
+def GameState.suddenDeathScorer (s : GameState) (es : List Event) : Option PlayerId := do
+  let clock ← s.clock
+  if s.phase != .setup && s.result.isNone && clock.allowsSuddenDeath &&
+      decide (clock.lastTurn < s.turn) then
+    es.findSome? (fun
+      | .pointsGained p (_ + 1) => some p
+      | _ => none)
+  else none
+
+/-- After a step, finish on the sudden-death point or queue the abilities that fired outside setup. -/
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   let next := s.recordTurnEvents es
-  if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-    match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) with
-    | [] => next
-    | pend => { next with pending := insertDetectedTriggers next pend s.pending }
-  else next
+  match s.suddenDeathScorer es with
+  | some p => { next with result := some (.won (s.config.mode.sideSeats p)), pending := [] }
+  | none =>
+    if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
+      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) with
+      | [] => next
+      | pend => { next with pending := insertDetectedTriggers next pend s.pending }
+    else next
 
 /-- Whether the source already chose this mode of the triggered ability in the current turn. -/
 def PendTrigger.choseMode (t : PendTrigger) (s : GameState) (mode : Nat) : Bool :=
@@ -1556,48 +1569,57 @@ theorem triggersStep_spec (s : GameState) (pend : List PendTrigger) (rest : List
 
 /-- After recording plays, triggers are inserted only outside the setup. -/
 theorem withTriggers_cases (s : GameState) (es : List Event) :
+    (∃ p, s.withTriggers es = { s.recordTurnEvents es with
+        result := some (.won (s.config.mode.sideSeats p)), pending := [] } ∧ s.phase ≠ .setup) ∨
     s.withTriggers es = s.recordTurnEvents es ∨ ∃ pend, s.withTriggers es = { s.recordTurnEvents es with
         pending := insertDetectedTriggers (s.recordTurnEvents es) pend s.pending } ∧ s.phase ≠ .setup ∧
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
-  by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
-  · cases hd : (s.recordTurnEvents es).detect es
-      ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) with
-    | nil => simp [hg, hd]
-    | cons x xs =>
-      right
-      refine ⟨x :: xs, by simp [hg, hd], ?_, ?_⟩
-      · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hg
-        exact hg.1
-      · simp only [Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hg
-        exact hg.2
-  · simp [hg]
+  cases hs : s.suddenDeathScorer es with
+  | some p =>
+    refine Or.inl ⟨p, rfl, fun hp => ?_⟩
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc, hp] at hs
+  | none =>
+    right
+    by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
+    · cases hd : (s.recordTurnEvents es).detect es
+        ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) with
+      | nil => simp [hg, hd]
+      | cons x xs =>
+        right
+        refine ⟨x :: xs, by simp [hg, hd], ?_, ?_⟩
+        · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hg
+          exact hg.1
+        · simp only [Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hg
+          exact hg.2
+    · simp [hg]
 
-/-- Besides recording plays, `withTriggers` changes only the stack. -/
+/-- Besides recording plays, `withTriggers` changes only the stack and result. -/
 theorem withTriggers_pending (s : GameState) (es : List Event) :
-    ∃ p, s.withTriggers es = { s.recordTurnEvents es with pending := p } := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -⟩
-  · exact ⟨s.pending, by rw [h]; rfl⟩
-  · exact ⟨_, h⟩
+    ∃ p result, s.withTriggers es = { s.recordTurnEvents es with pending := p, result } := by
+  rcases withTriggers_cases s es with ⟨p, h, -⟩ | h | ⟨pend, h, -⟩
+  · exact ⟨[], _, h⟩
+  · exact ⟨s.pending, s.result, by rw [h]; rfl⟩
+  · exact ⟨_, s.result, h⟩
 
 /-- Finding the triggers keeps the game well formed. -/
 theorem withTriggers_wf {s : GameState} (es : List Event) (hwf : s.WF) :
     (s.withTriggers es).WF := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   exact hwf.congr rfl rfl rfl rfl
 
 /-- Finding the triggers keeps the physical cards. -/
 theorem withTriggers_physIds (s : GameState) (es : List Event) :
     (s.withTriggers es).physIds = s.physIds := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   rfl
 
 /-- Finding the triggers keeps `OwnerOk`. -/
 theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk) :
     (s.withTriggers es).OwnerOk := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   exact hown.congr rfl rfl
 
@@ -1605,7 +1627,11 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
     List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
+  have noScore : s.suddenDeathScorer [] = none := by
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
   unfold GameState.withTriggers
+  rw [noScore]
+  dsimp only
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
       GameState.trimLimits, GameState.firstCardTriggers, GameState.delayedPlayTriggers, empty]

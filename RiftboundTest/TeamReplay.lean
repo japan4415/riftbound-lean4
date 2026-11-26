@@ -29,7 +29,7 @@ private meta def collect (turn : Nat) :
     Nat → Rng → GameState → Array ReplayAnswer → Except String (GameState × Array ReplayAnswer)
   | 0, _, _, _ => .error "setup did not reach the chosen turn"
   | n + 1, rng, state, answers => do
-    if state.turn >= turn then return (state, answers)
+    if state.turn >= turn || state.result.isSome then return (state, answers)
     let answer := match state.pending with
       | .chanceBattlefield _ :: _ => some (⟨.chance, .pick 0⟩, rng)
       | _ => playAnswer rng state
@@ -131,6 +131,35 @@ private meta def exampleMatch : Except String Unit := do
     throw "a completed game was accepted as interrupted"
 
 #guard exampleMatch.toOption.isSome
+
+private meta def suddenDeathMatch : Except String Unit := do
+  let order := Mode.teamTurnOrder true
+  let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
+      (.tournamentElimination .constructed (.regular true)) | throw "invalid four-seat setup"
+  let (first, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  let clock := Action.mk .clock .timeCalled
+  let (timed, _) ← (step 100 first clock).mapError reprStr
+  let (moved, tape) ← recordGroupMove timed (setup.push (.observed clock))
+  let (finish, answers) ← collect 6 15 (Rng.ofSeed 24) moved tape
+  unless finish.turn == 5 && finish.result == some (.won [⟨0⟩, ⟨1⟩]) do
+    throw "the first scoring side did not win sudden death"
+  let game : TeamGameRecord := {
+    decks := teamRegistrations, chooser := some ⟨0⟩, order,
+    battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
+    points := (1, 0), ending := .suddenDeath ⟨0⟩, timed := true, answers }
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
+    tournament := ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    winsRequired := 2, elimination? := some {}, games := #[game], ending := .finalGame }
+  let archive ← input.record matchDB
+  let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson archive).compress)
+  let result ← restored.verify matchDB
+  unless result.wins == (1, 0) && result.result == .won ⟨0⟩ do
+    throw "the recorded sudden-death point did not decide the match"
+  if ({ input with games := #[{ game with ending := .time }] }.record matchDB).isOk then
+    throw "a sudden-death point was accepted as a deadline result"
+
+#guard suddenDeathMatch.toOption.isSome
 
 -- The same Legend and the same Battlefield may be registered only on opposing teams.
 #guard

@@ -19,7 +19,7 @@ deriving instance ToJson, FromJson for
   CardId, SetCode, PlayerId, ObjId, Domain, PowerSym, Cost, RunePool.Payment,
   SpellPick, CardTypeGuess, EffectAdd, Actor, RuneAbility, MoveDest, TriggerPayment,
   ActionKind, Action, ZoneKind, Zone, Phase, Event, GameResult,
-  RulesDate, Mode, Riftbound.Format, RuleSet, LegalityEnv, GameConfig,
+  RulesDate, Mode, Riftbound.Format, EliminationGame, RuleSet, LegalityEnv, GameConfig,
   Deck, ConstructedDeck, LimitedDeck, ImplStatus, ConstructedFormat, RegionalSeason, BanListPeriod,
   MatchResult
 

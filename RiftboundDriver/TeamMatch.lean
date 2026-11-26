@@ -45,6 +45,8 @@ inductive TeamGameEnd where
   | concede (seat : PlayerId)
   /-- The last extra turn finished with neither team having won. -/
   | time
+  /-- This team scored the match-winning point in sudden death (TR 408.4.c.3). -/
+  | suddenDeath (team : PlayerId)
   /-- Match concession or an agreed match draw interrupted the game. -/
   | matchEnded
 deriving DecidableEq, Repr, ToJson, FromJson
@@ -79,6 +81,8 @@ structure TeamMatchRecord where
   legalSets : List SetCode
   /-- The number of games needed to win. -/
   winsRequired : Nat
+  /-- The timed single-elimination procedure, when selected for this match. -/
+  elimination? : Option ReplayElimination := none
   /-- The games in chronological order, including an interrupted final game if recorded. -/
   games : Array TeamGameRecord
   /-- The match ending. A concession names an individual seat. -/
@@ -119,7 +123,7 @@ private def checkTeamDecks (game : TeamGameRecord) (seats : TeamSeats) (db : Car
         first.battlefields.any (fun card => second.battlefields.any (·.nameKey == card.nameKey)) then
       throw "teammates share a Champion Legend or Battlefield"
 
-private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) :
+private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) (config : GameConfig) :
     Except String (Option GameResult) := do
   let (a, b) := game.points
   let won (team : Nat) := GameResult.won [⟨team⟩]
@@ -127,10 +131,14 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) :
     if a >= 11 && a > b then some (won 0)
     else if b >= 11 && b > a then some (won 1)
     else none
+  let clock := config.ruleSet.callClock 0
   match game.ending with
   | .scored =>
     if scoringWinner.isSome then return scoringWinner
     throw "a scoring winner must reach the victory score and lead the other team"
+  | .suddenDeath team =>
+    if game.timed && clock.allowsSuddenDeath && team.n < 2 then return some (.won [team])
+    throw "this game cannot end with the stated sudden-death winner"
   | _ =>
     if scoringWinner.isSome then throw "a team already won by scoring"
     match game.ending with
@@ -140,9 +148,12 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) :
       return some (.won [MatchState.other team])
     | .time =>
       if !game.timed then throw "the team game ended on time without a time call"
-      return some (gameOnTime a b)
+      let some result := clock.resultOnTime a b
+        | throw "tied points and tied game wins require sudden death"
+      return some result
     | .matchEnded => return none
     | .scored => throw "missing victory score"
+    | .suddenDeath _ => throw "missing sudden-death winner"
 
 private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : MatchState)
     (previous : Option TeamGameRecord) : Except String PlayerId := do
@@ -170,11 +181,16 @@ private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : 
       throw "a team registration changed outside its permitted sideboard window or pool"
   return firstTeam
 
+/-- The game configuration shared by team recording and trace export. -/
+def teamReplayConfig (env : LegalityEnv) : GameConfig :=
+  { ruleSet := .tournament .constructed, mode := .teamDuel, formatLegality := some env }
+
 private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
-    (readGame : LegalityEnv → Nat → TeamGameRecord → Except String (Option GameResult × Option RecordedGame)) :
+    (readGame : GameConfig → Nat → TeamGameRecord → Except String (Option GameResult × Option RecordedGame)) :
     Except String (TeamMatchResult × Array RecordedGame) := do
   if !decide (input.seats.players.Perm (allPlayers 4)) then throw "the teams must use four different seats"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
+  checkReplayClockBoundary input.elimination? input.games.size input.ending
   let env ← input.tournament.legality .twoVTwo input.legalSets
   let mut state := MatchState.start input.winsRequired
   let mut previous : Option TeamGameRecord := none
@@ -183,15 +199,16 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
   let mut timed := false
   for (game, index) in input.games.toList.zipIdx do
     let next := do
-      if state.finished || timed then throw "a game starts after the match is over"
+      let afterTime ← gameStartsAfterTime state timed input.elimination?
+      let config := replayGameConfig (teamReplayConfig env) state input.elimination?.isSome afterTime
+      if afterTime && !game.timed then throw "a tiebreaker game starts with time already called"
       checkTeamDecks game input.seats db env
       let first ← checkTeamSetup input.seats game state previous
-      let (result, evidence) ← readGame env index game
+      let (result, evidence) ← readGame config index game
       if let some finished := result then
         pure (state.record finished first, game.timed, evidence)
       else
-        let matchEnds := match input.ending with | .concede _ | .agreedDraw => true | _ => false
-        unless index + 1 == input.games.size && matchEnds do
+        unless index + 1 == input.games.size && input.ending.interrupts do
           throw "only a match concession or agreed match draw can interrupt the last game"
         pure (state, false, evidence)
     let (m, gameTimed, evidence) ← next.mapError (fun error => s!"team game {index + 1}: {error}")
@@ -205,23 +222,25 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
       let some team := input.seats.teamOf seat | throw "the concession seat is not in the match"
       pure (ReplayMatchEnd.concede team)
     | other => pure other
-  let result ← concludeReplayMatch state timed ending
+  checkInterruptedClockBoundary state timed input.elimination? input.games.size
+  let result ← concludeReplayMatch state timed ending input.elimination?.isSome
   return ({ wins := (state.wins0, state.wins1), result, uncheckedCards }, recorded)
 
 /-- Check the registrations, setup, reported shared scores and match outcome. -/
 def TeamMatchRecord.check (input : TeamMatchRecord) (db : CardDB := RiftboundCards.db) :
     Except String TeamMatchResult :=
-  (runTeamMatch input db fun _ _ game => (teamGameResult game input.seats).map (·, none)).map Prod.fst
+  (runTeamMatch input db fun config _ game =>
+    (teamGameResult game input.seats config).map (·, none)).map Prod.fst
 
 private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGame)
-    (seats : TeamSeats) : Except String (Option GameResult) := do
+    (seats : TeamSeats) (config : GameConfig) : Except String (Option GameResult) := do
   let actual := played.summary
   if actual.turnOrder != observation.order || !decide (actual.battlefields.Perm observation.battlefields) then
     throw "the replayed setup differs from the observed order or Battlefield choices"
   let (a, b) := observation.points
   if actual.points != [a, a, b, b] || actual.timed != observation.timed then
     throw "the replayed score or clock differs from the observations"
-  let expected ← teamGameResult observation seats
+  let expected ← teamGameResult observation seats config
   if expected.isNone then
     if actual.result.isSome then throw "a game result precedes the recorded match ending"
     return none
@@ -238,8 +257,16 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
     if let .draw := observation.ending then
       if endingAction != some ⟨.judge, .declareDraw⟩ then throw "the judge did not declare a draw"
     if let .time := observation.ending then
-      if endingAction.any (fun a => a.kind == .concede || a.kind == .declareDraw) then
-        throw "the game ended before the extra turns finished"
+      if actual.suddenDeathTurn?.isSome ||
+          endingAction.any (fun a => a.kind == .concede || a.kind == .declareDraw) then
+        throw "the game did not end at the extra-turn deadline"
+    if let .suddenDeath team := observation.ending then
+      unless actual.suddenDeathTurn?.isSome && (played.checkpoints.back?).any (fun w =>
+          w.events.any (fun
+            | .pointsGained p (_ + 1) => seats.teamOf p == some team
+            | _ => false)) &&
+          !(endingAction.any (fun a => a.kind == .concede || a.kind == .declareDraw)) do
+        throw "the last answer did not score the stated sudden-death point"
   let normalized ← match result with
     | .draw => pure GameResult.draw
     | .won (first :: rest) => do
@@ -251,17 +278,12 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   if some normalized != expected then throw "the replayed game outcome differs"
   return some normalized
 
-/-- The game configuration shared by team recording and trace export. -/
-def teamReplayConfig (env : LegalityEnv) : GameConfig :=
-  { ruleSet := .tournament .constructed, mode := .teamDuel, formatLegality := some env }
-
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
     (expected : Option (Array RecordedGame)) : Except String RecordedTeamMatch := do
   if input.seats != { team0 := (⟨0⟩, ⟨1⟩), team1 := (⟨2⟩, ⟨3⟩) } then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
   if expected.any (fun games => games.size != input.games.size) then throw "the game count differs"
-  let (summary, games) ← runTeamMatch input db fun env index game => do
-    let config := teamReplayConfig env
+  let (summary, games) ← runTeamMatch input db fun config index game => do
     let replay : GameInputs := {
       decks := .constructed game.decks, answers := game.answers,
       chooser := game.chooser, openingOrder := some game.order }
@@ -271,7 +293,7 @@ private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
         if saved.input != replay then throw "the saved game inputs differ"
         let _ ← saved.verify db config
         pure saved
-    let result ← confirmTeamGame game recorded input.seats
+    let result ← confirmTeamGame game recorded input.seats config
     pure (result, some recorded)
   return { rules := ReplayRules.current db, input, games, summary }
 

@@ -345,6 +345,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .judge => "judge"
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
+    | .timeCalled =>
+      if state.any (fun s => match s.config.ruleSet with
+          | .tournamentElimination .. => true
+          | _ => false) then [("singleElimination", "true")] else []
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
     | .playCard c pay ts flow discard pick =>
       let played := (events.findSome? (fun
@@ -653,7 +657,10 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     match (s.obj? u).bind (·.loc) with
     | some b => some (jarr [toString u.n, toString b.n])
     | none => none)
-  let json := jobj [
+  let clock := match s.clock with
+    | some (.elimination deadline _) => [("eliminationDeadline", toString deadline)]
+    | _ => []
+  let json := jobj ([
     ("turn", toString s.turn), ("phase", jstr (ctorName s.phase)),
     ("active", match s.active with | some p => toString p.n | none => "null"),
     ("pending", match s.pending with | f :: _ => jstr (ctorName f) | [] => "null"),
@@ -669,7 +676,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
     ("attached", jarr attached), ("namedCards", jobj named), ("copies", jobj copies),
-    ("stunned", jarr (stunned.map (fun id => toString id.n)))]
+    ("stunned", jarr (stunned.map (fun id => toString id.n)))] ++ clock)
   (json, seen')
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/

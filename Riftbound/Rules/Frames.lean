@@ -87,27 +87,29 @@ def scoreDrawCount (p : PlayerId) (es : List Event) : Nat :=
     | .scoreDraw who _ => who == p
     | _ => false)
 
-/-- The clock has run out: time was called, and the last of the turns that may be played has
-begun (TR 408.2). -/
+/-- The last scheduled turn has begun (TR 408.2, 408.4). -/
 def GameState.clockDue (s : GameState) : Bool :=
   match s.clock with
-  | some lim => decide (lim ≤ s.turn)
+  | some clock => decide (clock.lastTurn ≤ s.turn)
   | none => false
 
-/-- The turn that follows (CR 301); or, when the clock has run out, the end of the game: the player
-2 points ahead wins, any other score is a draw (TR 408.2). -/
-def GameState.resultOnTime (s : GameState) : GameResult :=
-  if s.config.mode.isTeamDuel then
-    match gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨2⟩) with
-    | .won [p] => .won (s.config.mode.sideSeats ⟨p.n * 2⟩)
-    | _ => .draw
-  else gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)
+/-- The result due at the next turn boundary. Tied points after the scheduled turns can instead
+start sudden death when game wins are also tied (TR 408.2, 408.4.c). -/
+def GameState.clockConclusion (s : GameState) : Option GameResult := do
+  let clock ← s.clock
+  if s.turn < clock.lastTurn then none else
+    let second : PlayerId := ⟨if s.config.mode.isTeamDuel then 2 else 1⟩
+    let result ← clock.resultOnTime (s.pointsOf ⟨0⟩) (s.pointsOf second)
+    return match result with
+      | .won side =>
+        .won (side.flatMap (fun p => s.config.mode.sideSeats (if p.n == 0 then ⟨0⟩ else second)))
+      | .draw => .draw
 
-/-- Advance to the next turn, or finish if the clock has run out. -/
+/-- Advance to the next turn, or finish at the clock's deadline. -/
 def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
-  if s.clockDue then
-    { s with result := some s.resultOnTime, pending := [] }
-  else
+  match s.clockConclusion with
+  | some result => { s with result := some result, pending := [] }
+  | none =>
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
         active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
@@ -124,9 +126,9 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
             extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
-  by_cases hc : s.clockDue = true
-  · exact Or.inr ⟨s.resultOnTime, by simp [hc]⟩
-  · exact Or.inl (by simp [hc])
+  cases hc : s.clockConclusion with
+  | some result => exact Or.inr ⟨result, by simp⟩
+  | none => exact Or.inl (by simp)
 
 /-- The separate Combat steps after damage and Combat Cleanup (CR 468.2-468.7). -/
 def combatSteps (bf : ObjId) : List Frame :=
@@ -428,7 +430,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay chosen => applyMana s q src idx pay chosen
-  | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
+  | _, .timeCalled => some ({ s with clock := some (s.config.ruleSet.callClock s.turn) }, [])
   | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
   | .predict p n c cs top bottom :: rest, .predictPick id recycle =>
     let r := continuePrediction s p n ((c :: cs).erase id)

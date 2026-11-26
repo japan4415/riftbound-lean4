@@ -430,7 +430,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
 work, above a frame that decides, so the bottom of the stack stays. -/
 theorem StackInv.withTriggers {s : GameState} (hinv : StackInv s) (es : List Event) :
     StackInv (s.withTriggers es) := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -⟩
+  rcases withTriggers_cases s es with ⟨p, h, -⟩ | h | ⟨pend, h, -⟩
+  · rw [h]
+    simp [StackInv]
   · rw [h]; exact hinv
   · rw [h]
     intro hres

@@ -54,7 +54,7 @@ private meta def teamState : GameState :=
   match step 100 start ⟨.clock, .timeCalled⟩ with
   | .error _ => false
   | .ok (timed, _) =>
-    timed.clock == some 4 &&
+    timed.clock == some (.swiss 4) &&
       (beginTurnStep { timed with turn := 4 } []).result == some (.won [⟨2⟩, ⟨3⟩])
 
 -- Burn Out may award the point to either member of the opposing team.

@@ -35,7 +35,8 @@ private def matchTraceJson (games : List String) (wins : Nat × Nat) (outcome : 
 
 private def matchTrace (saved : RecordedMatch) : Except String String := do
   let summary ← saved.verify
-  let games ← saved.input.games.toList.mapM (fun game => gameTrace game saved.input.config saved.input.fuel)
+  let games ← saved.games.toList.mapM (fun game =>
+    gameTrace game.input (game.eliminationConfig?.getD saved.input.config) saved.input.fuel)
   return matchTraceJson games summary.wins summary.result summary.exact summary.cardsFullyChecked
 
 private def teamEvidence (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Bool × Bool :=
@@ -50,7 +51,8 @@ private def teamVerificationJson (saved : RecordedTeamMatch) (summary : TeamMatc
 private def teamMatchTrace (saved : RecordedTeamMatch) : Except String String := do
   let summary ← saved.verify
   let env ← saved.input.tournament.legality .twoVTwo saved.input.legalSets
-  let games ← saved.games.toList.mapM (fun game => gameTrace game.input (teamReplayConfig env) 100)
+  let games ← saved.games.toList.mapM (fun game =>
+    gameTrace game.input (game.eliminationConfig?.getD (teamReplayConfig env)) 100)
   let (allObserved, cardsChecked) := teamEvidence saved summary
   let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
   let teams := saved.input.seats

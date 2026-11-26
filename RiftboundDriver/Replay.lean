@@ -94,6 +94,8 @@ structure ReplayGameResult where
   result : Option GameResult
   /-- Whether time had been called in this game. -/
   timed : Bool
+  /-- The last turn number when play continued beyond the scheduled turns (TR 408.4.c.3). -/
+  suddenDeathTurn? : Option Nat := none
   /-- Whether all answers were directly observed. -/
   exact : Bool
   /-- Registered cards below `full`, in seat order. -/
@@ -104,6 +106,8 @@ deriving DecidableEq, Repr, ToJson, FromJson
 structure RecordedGame where
   /-- The submitted decks and the input stream. -/
   input : GameInputs
+  /-- Rules derived from the preceding games of a single-elimination match. -/
+  eliminationConfig? : Option GameConfig := none
   /-- A checkpoint for the initial state and for each successful answer. -/
   checkpoints : Array ReplayCheckpoint
   /-- The resulting setup details, score and winner. -/
@@ -118,16 +122,17 @@ def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig
     let .constructed registrations := decks | throw "team replay requires Constructed registrations"
     let some env := config.formatLegality | throw "team replay requires pinned format legality"
     let some order := openingOrder | throw "team replay requires the starting turn order"
-    if config.ruleSet != .tournament .constructed then throw "team replay requires Tournament Rules"
-    let some state := GameState.initialTeamConstructed db env order registrations
+    if config.ruleSet.tournamentFormat != some .constructed then
+      throw "team replay requires Constructed Tournament Rules"
+    let some state := GameState.initialTeamConstructed db env order registrations config.ruleSet
       | throw "the team game cannot be set up from the submitted registrations and order"
     return state
   if openingOrder.isSome then throw "only four-seat matches set the starting order before setup"
-  let state ← match decks, config.ruleSet, config.formatLegality with
-    | .core ds, .coreOnly, none => pure (GameState.initial db config ds)
-    | .constructed ds, .tournament .constructed, some env =>
+  let state ← match decks, config.ruleSet.tournamentFormat, config.formatLegality with
+    | .core ds, none, none => pure (GameState.initial db config ds)
+    | .constructed ds, some .constructed, some env =>
       pure (GameState.initialConstructed db env config ds)
-    | .limited ds, .tournament format, some env =>
+    | .limited ds, some format, some env =>
       if format.isLimited then pure (GameState.initialLimited db env config ds)
       else throw "Limited decks require Sealed or Draft"
     | _, _, _ => throw "deck type, rules and format legality do not agree"
@@ -155,6 +160,12 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
   ⟨toString (hash (reprStr { s with cards := ⟨[]⟩ })), events⟩
 
+/-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
+def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
+  match config.ruleSet with
+  | .tournamentElimination .. => some config
+  | _ => none
+
 /-- Summarize the engine state together with its recorded Battlefield selections. -/
 def ReplayGameResult.fromState (s : GameState) (decks : ReplayDecks)
     (battlefields : List (PlayerId × CardId)) (exact : Bool) : ReplayGameResult :=
@@ -163,6 +174,8 @@ def ReplayGameResult.fromState (s : GameState) (decks : ReplayDecks)
     points := (allPlayers s.playerCount).map s.pointsOf
     result := s.result
     timed := s.clock.isSome
+    suddenDeathTurn? := s.clock.bind (fun clock =>
+      if clock.allowsSuddenDeath && decide (clock.lastTurn < s.turn) then some s.turn else none)
     exact
     uncheckedCards := decks.uncheckedCards s.cards }
 
@@ -202,7 +215,9 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
       checkCheckpoint expected (index + 1) witness
       checkpoints := checkpoints.push witness
       s := next
-  return { input, checkpoints, summary := ReplayGameResult.fromState s input.decks fields.reverse exact }
+  return {
+    input, eliminationConfig? := replayEliminationConfig config, checkpoints,
+    summary := ReplayGameResult.fromState s input.decks fields.reverse exact }
 
 /-- Play recorded answers with the engine, retaining the exact input, checkpoints and outcome. -/
 def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
@@ -212,6 +227,8 @@ def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
 /-- Replay one game and report the first recorded checkpoint that disagrees. -/
 def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayGameResult := do
+  if saved.eliminationConfig? != replayEliminationConfig config then
+    throw "the saved single-elimination clock procedure differs"
   let actual ← runGame saved.input db config fuel (some saved.checkpoints)
   if saved.summary != actual.summary then throw "the final game outcome differs"
   return actual.summary

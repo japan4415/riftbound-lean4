@@ -106,9 +106,9 @@ structure GameState where
   /-- The Rune Pool of each player, keyed by `PlayerId.n`. A missing player has an empty Pool
   (CR 166). -/
   pools : Std.ExtTreeMap Nat RunePool
-  /-- The turn after which the clock ends the game: when time is called, the turn that is going
-  on is played to its end, and 3 turns more (TR 408.2). `none` until time is called. -/
-  clock : Option Nat := none
+  /-- The schedule and end-of-match procedure once the tournament clock has been called
+  (TR 408.2, 408.4). -/
+  clock : Option RoundClock := none
   /-- What spells and abilities made true for the rest of a turn (CR 389-393). -/
   turnFx : List TurnFx := []
   /-- The cards drawn in the current turn: the player who drew, and the turn (older ones are

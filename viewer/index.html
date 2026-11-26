@@ -732,7 +732,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
         'コストを払って場に出す（通常、Unit は Exhaust で入る）'];
     }
     case 'concede': return [who + ': 投了する', 'ゲームを投了する。相手の勝ちになる（CR 651）'];
-    case 'timeCalled': return [who + ': 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
+    case 'timeCalled': return [who + ': 時間切れを知らせる', a.singleElimination
+      ? '今のターンと追加の3ターンを行う。終了時の点数とゲーム勝数に従って勝敗を決める（TR 408.4）'
+      : '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
     case 'declareDraw': return [who + ': 引き分けを宣言する', '選手が合意した（TR 410.1）、または終わらないループ（TR 505.6）。ゲームは、その場で引き分けで終わる'];
     default: return [who + ': ' + a.kind, ''];
   }
@@ -901,7 +903,9 @@ function fly(src, from, to) {
 
 function renderStatic(i, st, prev, animate) {
   const cardName = (id) => cardNameAt(id, st);
-  $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}`
+  const clockStatus = st.eliminationDeadline == null ? ''
+    : st.turn > st.eliminationDeadline ? ' ・ サドンデス' : ` ・ 時間切れ（ターン ${st.eliminationDeadline} まで）`;
+  $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}` + clockStatus
     + (st.active !== null ? ` ・ P${st.active} の番` : '') + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
   seatBox.forEach((e, p) => e.classList.toggle('active', st.active === p));
@@ -1155,6 +1159,7 @@ function matchText(m) {
     : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
   return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち P0 ' + m.wins[0] + ' - P1 ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
     + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : 'P' + m.winner + ' の勝ち') : ' ・ ' + order
+      + (m.timedTiebreaker ? ' ・ 時間切れのため、次のゲームは初手番と追加5ターン' : '')
       + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
 }
 // 手とカードの結びつき: カードをクリックして答える。手が 1 つならすぐ、複数ならメニューで選ぶ。
@@ -1339,7 +1344,9 @@ function renderLegal(i) {
         $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
         if (liveSide && liveSide.allowed) renderSideboard(group, btn);
         const actions = [btn('次のゲーム', '', () => liveNext(null))];
-        if (liveExt.betweenGames) actions.push(btn('時間切れ', '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
+        if (liveExt.betweenGames) actions.push(btn('時間切れ', liveMatch?.singleElimination
+          ? 'ゲーム勝数が同じ場合は次のゲームを行う（TR 408.4）'
+          : '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
         if (liveSide?.allowed) for (const seat of liveSeats) {
           actions.push(btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
             () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); }));
@@ -1411,7 +1418,9 @@ function renderLegal(i) {
   if (nBound) group('表示', [btn(showAllMoves ? 'カードの手を、ボタンから隠す' : 'カードの手も、ボタンで全部出す',
     'カードをクリックしても同じ手を選べる', () => { showAllMoves = !showAllMoves; renderLegal(steps.length - 1); })]);
   const ext = [];
-  if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
+  if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', liveMatch?.singleElimination
+    ? '今のターンと追加の3ターンを行う（TR 408.4）'
+    : '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
   if (ext.length) group('大会のルール', ext);
 }

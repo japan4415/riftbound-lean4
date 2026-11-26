@@ -742,7 +742,9 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
 a frame of the setup is on it. -/
 theorem SetupInv.withTriggers {s : GameState} (hinv : SetupInv s) (es : List Event) :
     SetupInv (s.withTriggers es) := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -, hs⟩
+  rcases withTriggers_cases s es with ⟨p, h, -⟩ | h | ⟨pend, h, -, hs⟩
+  · rw [h]
+    exact ⟨hinv.1, Or.inr (by simp)⟩
   · rw [h]; exact hinv
   · rw [h]
     refine ⟨hinv.1, Or.inr (fun f hf => ?_)⟩

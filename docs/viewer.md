@@ -101,6 +101,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
 
+時間制限付きシングルエリミネーション（TR 408.4）は、ライブ対局の設定 JSON に `"singleElimination": true`、外部の大会記録に `"elimination": {}` を指定する。ゲームの合間に時間切れとなり、勝数が同じため次のゲームを行う場合は、`elimination.timeAfterGames` に時間切れ時点で終了していたゲーム数を入れる。次のゲームは初手番に加えて5ターンを行い、同点ならサドンデスになる。ビューアでは期限のターンと、サドンデスに入った手を確認できる。
+
 ### 2v2 の大会記録
 
 `riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。
@@ -108,6 +110,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。
 
 ゲーム途中にマッチ投了や合意の引き分けで終了した場合、最後のゲームの `ending` を `"matchEnded"` にする。そこまでの操作と終了時点の得点を照合し、そのゲームはマッチのゲーム勝数に加えない。
+
+2v2 のシングルエリミネーションも `elimination` で指定する。サドンデスで決まったゲームは `ending` に `{"suddenDeath":{"team":{"n":0}}}` の形で得点したチームを記録する。
 
 `record-team` と `verify-team` の出力には `exact` と `cardsFullyChecked` が含まれる。`exact` は推定された操作があるかどうかを示し、カードの実装状況は `cardsFullyChecked` と席別の `uncheckedCards` で確認する。
 

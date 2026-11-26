@@ -54,7 +54,7 @@ theorem microStep_phase {s s' : GameState} {es : List Event} {ph : Phase} {rest 
     s'.phase = if ph == .draw && s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase
       then s.phase else ph := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
+  obtain ⟨q, result, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
   have h2 := microStep_phase0 hp hne h0
   rw [hq]
   exact h2
