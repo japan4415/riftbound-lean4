@@ -2,6 +2,7 @@ module
 
 import Riftbound.Engine.Step
 meta import Riftbound.Engine.Step
+meta import RiftboundCards.Origins
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -14,12 +15,37 @@ open Riftbound
 private meta def teamState : GameState :=
   GameState.empty { ruleSet := .tournament .constructed, mode := .teamDuel } db
 
--- Both starting teams are legal; switching their A and B seats is illegal in a tournament.
+-- Whirlwind includes the caster's teammate and wraps around to the active seat last.
+#guard (do
+  let active : PlayerId := ⟨2⟩
+  let teammate : PlayerId := ⟨3⟩
+  let owner : PlayerId := ⟨0⟩
+  let firstOpponent : PlayerId := ⟨1⟩
+  let some spell := RiftboundCards.Origins.OGN_187.spellEffect | none
+  let s := { teamState with
+    phase := .main, turn := 2, active := some active, turnOrder := Mode.teamTurnOrder true }
+  let (s, target) ← addObject s (newCard db s owner (cid "V0")) (.player owner .base)
+  let (s, _) ← addObject s (newCard db s active (cid "V1")) (.player active .base)
+  let run := Frame.run active ⟨99⟩ {} (.cons spell.body .nil)
+  let (first, _) ← (advance 100 { s with pending := [run, .priority active] } []).toOption
+  let send (s : GameState) (actor : PlayerId) (kind : ActionKind) :=
+    (step 100 s ⟨.player actor, kind⟩).toOption
+  let (second, _) ← send first firstOpponent (.decide false)
+  let (choosing, _) ← send second teammate (.decide true)
+  let (third, _) ← send choosing teammate (.choose target)
+  let (fourth, _) ← send third owner (.decide false)
+  let (finished, _) ← send fourth active (.decide false)
+  return (send first teammate (.decide false)).isNone &&
+    (third.zone (.player owner .hand)).length == 1 && (third.obj? target).isNone &&
+    finished.pending == [Frame.priority active]).getD false
+
+-- A tournament can start from any seat in the alternating A/B cycle.
 #guard
   let s := { teamState with pending := [.chanceTurnOrder] }
   let allows (order : List PlayerId) : Bool := decide (Legal s ⟨.chance, .arrangePlayers order⟩)
   allows (Mode.teamTurnOrder true) && allows (Mode.teamTurnOrder false) &&
-    !allows [⟨1⟩, ⟨2⟩, ⟨0⟩, ⟨3⟩] && !allows [⟨0⟩, ⟨1⟩, ⟨2⟩, ⟨3⟩]
+    allows [⟨1⟩, ⟨3⟩, ⟨0⟩, ⟨2⟩] && allows [⟨3⟩, ⟨0⟩, ⟨2⟩, ⟨1⟩] &&
+    !allows [⟨0⟩, ⟨1⟩, ⟨2⟩, ⟨3⟩]
 
 -- Both teammates read the same score. A win names both winners, with one event per seat.
 #guard

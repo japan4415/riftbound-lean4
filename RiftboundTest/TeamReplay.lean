@@ -161,6 +161,32 @@ private meta def suddenDeathMatch : Except String Unit := do
 
 #guard suddenDeathMatch.toOption.isSome
 
+private meta def teamBStarts : Except String Unit := do
+  let order : List PlayerId := [⟨1⟩, ⟨3⟩, ⟨0⟩, ⟨2⟩]
+  let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
+    | throw "the B starting seat was refused"
+  let (start, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  unless start.active == some ⟨1⟩ && (start.zone (.player ⟨1⟩ .outOfGame)).length == 3 do
+    throw "the starting B seat contributed a Battlefield or failed to go first"
+  let game : TeamGameRecord := {
+    decks := teamRegistrations, chooser := some ⟨0⟩, order,
+    battlefields := [(⟨3⟩, cid "B3"), (⟨0⟩, cid "B0"), (⟨2⟩, cid "B0")],
+    points := (0, 0), ending := .draw, answers := setup.push (.observed ⟨.judge, .declareDraw⟩) }
+  let next := { game with
+    chooser := none, ending := .concede ⟨3⟩, answers := setup.push (.observed ⟨.player ⟨3⟩, .concede⟩) }
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
+    tournament := ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    winsRequired := 1, games := #[game, next], ending := .finalGame }
+  let archive ← input.record matchDB
+  let result ← archive.verify matchDB
+  unless result.result == .won ⟨0⟩ do throw "the B-start match did not replay to its observed result"
+  let changed := { next with order := Mode.teamTurnOrder true }
+  let invalid : TeamMatchRecord := { input with games := #[game, changed] }
+  if (invalid.check matchDB).isOk then throw "the starting seat changed after a draw"
+
+#guard teamBStarts.toOption.isSome
+
 -- The same Legend and the same Battlefield may be registered only on opposing teams.
 #guard
   let dup := List.replicate 4 (⟨goodDeck, []⟩ : ConstructedDeck)

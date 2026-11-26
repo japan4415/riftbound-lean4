@@ -5063,8 +5063,8 @@ def OGN_187 : CardDef :=
     spellEffect := some (.of []
       (let pickOne : Effect :=
         .may (.prim (.returnToHand (Selector.one .any .anywhere [.ofType .unit])))
-      .seqOf [.eachPlayer .eachOpponent pickOne, .eachPlayer .you pickOne])),
-    status := .drafted }
+      .eachPlayer .eachPlayerFromNext pickOne)),
+    status := .full }
 
 -- BEGIN GENERATED OGN-188
 /--

@@ -38,6 +38,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .you => true
   | .opponent => true
   | .eachPlayer => true
+  | .eachPlayerFromNext => true
   | .eachOpponent => true
   | .combatSides => true
   | .chosen _ => true

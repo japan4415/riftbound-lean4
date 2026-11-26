@@ -52,9 +52,20 @@ def Mode.sideSeats (mode : Mode) (p : PlayerId) : List PlayerId :=
     [first, ⟨first.n + 1⟩]
   else [p]
 
-/-- The teams alternate and A of each team precedes its B (TR 603.7). -/
+/-- The A/B cycle arranged by the first and second teams (TR 603.7.a). -/
+def Mode.teamCycle (first second : PlayerId × PlayerId) : List PlayerId :=
+  [first.1, second.1, first.2, second.2]
+
+/-- The alternating A/B turn order beginning at the first team's A seat (TR 603.7.a). -/
 def Mode.teamTurnOrder (team0First : Bool) : List PlayerId :=
-  if team0First then [⟨0⟩, ⟨2⟩, ⟨1⟩, ⟨3⟩] else [⟨2⟩, ⟨0⟩, ⟨3⟩, ⟨1⟩]
+  if team0First then Mode.teamCycle (⟨0⟩, ⟨1⟩) (⟨2⟩, ⟨3⟩)
+  else Mode.teamCycle (⟨2⟩, ⟨3⟩) (⟨0⟩, ⟨1⟩)
+
+/-- The tournament's choice of team assignment and where to start in the A/B cycle
+(TR 603.7.a, 603.7.c). -/
+def Mode.teamTurnOrderChoices (team0 team1 : PlayerId × PlayerId) : List (List PlayerId) :=
+  [Mode.teamCycle team0 team1, Mode.teamCycle team1 team0].flatMap (fun cycle =>
+    (List.range cycle.length).map (fun start => cycle.drop start ++ cycle.take start))
 
 /-- The number of sides whose players can all be eliminated together supports a direct finish. -/
 def Mode.hasTwoSides (mode : Mode) : Bool := mode.players == 2 || mode.isTeamDuel

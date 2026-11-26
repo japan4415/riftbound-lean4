@@ -411,14 +411,11 @@ def OGS_015.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/--
-Recruit the Vanguard.
-Not written: the Recruit token needs a definition (name, type, Might), and the tokens are
-played to a place chosen then (docs/ir-gaps.md).
--/
+/-- Recruit the Vanguard. -/
 def OGS_015 : CardDef :=
   { OGS_015.meta with
-    status := .todo }
+    spellEffect := some (.of [] (.repeatN (.const 4) (.prim (.playUnitToken "Recruit")))),
+    status := .full }
 
 -- BEGIN GENERATED OGS-016
 /--

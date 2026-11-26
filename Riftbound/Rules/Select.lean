@@ -112,6 +112,7 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env :
   | .you => some [self]
   | .opponent => (opponents ()).head?.map (fun o => [o])
   | .eachPlayer => some s.pickOrder
+  | .eachPlayerFromNext => some (s.pickOrder.drop 1 ++ s.pickOrder.take 1)
   | .eachOpponent => some (opponents ())
   | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
   | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])

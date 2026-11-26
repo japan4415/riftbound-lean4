@@ -33,7 +33,7 @@ def GameState.turnOrderAllowed (s : GameState) (order : List PlayerId) : Bool :=
   let mode := s.config.mode
   if !mode.isTeamDuel then true
   else if s.config.ruleSet.isTournament then
-    order == Mode.teamTurnOrder true || order == Mode.teamTurnOrder false
+    (Mode.teamTurnOrderChoices (⟨0⟩, ⟨1⟩) (⟨2⟩, ⟨3⟩)).contains order
   else
     match order with
     | [a, b, c, d] => mode.sameSide a c && mode.sameSide b d && !mode.sameSide a b

@@ -26,10 +26,6 @@ deriving DecidableEq, Repr, ToJson, FromJson
 private def TeamSeats.players (seats : TeamSeats) : List PlayerId :=
   [seats.team0.1, seats.team0.2, seats.team1.1, seats.team1.2]
 
-private def TeamSeats.order (seats : TeamSeats) (team0First : Bool) : List PlayerId :=
-  let (first, second) := if team0First then (seats.team0, seats.team1) else (seats.team1, seats.team0)
-  [first.1, second.1, first.2, second.2]
-
 private def TeamSeats.teamOf (seats : TeamSeats) (seat : PlayerId) : Option PlayerId :=
   if seat == seats.team0.1 || seat == seats.team0.2 then some ⟨0⟩
   else if seat == seats.team1.1 || seat == seats.team1.2 then some ⟨1⟩
@@ -157,16 +153,18 @@ private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) (config :
 
 private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : MatchState)
     (previous : Option TeamGameRecord) : Except String PlayerId := do
-  let team0 := game.order == seats.order true
-  if !team0 && game.order != seats.order false then throw "turn order must be A, A, B, B across the teams"
-  let firstTeam : PlayerId := ⟨if team0 then 0 else 1⟩
+  if !(Mode.teamTurnOrderChoices seats.team0 seats.team1).contains game.order then
+    throw "turn order must start at a seat in the alternating A/B cycle"
+  let some firstTeam := game.order.head?.bind seats.teamOf | throw "the starting seat is missing"
   match state.nextOrder with
   | .chance =>
     if !(game.chooser.any (·.n < 2)) then throw "the team chosen by chance is missing"
   | .loserChooses team =>
     if game.chooser != some team then throw s!"team {team.n} must choose who goes first"
   | .same team =>
-    if game.chooser.isSome || firstTeam != team then throw "a draw preserves the same starting team"
+    if game.chooser.isSome || firstTeam != team ||
+        !(previous.any (fun prior => prior.order == game.order)) then
+      throw "a draw preserves the same turn order"
   let contributors := game.battlefields.map Prod.fst
   if !decide (contributors.Perm (game.order.drop 1)) then
     throw "the three non-starting players each contribute one Battlefield"
