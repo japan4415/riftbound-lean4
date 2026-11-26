@@ -85,6 +85,51 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let s2 ← play s1 s.me chef
   return s2.countIn s.me .base "SFD-092" == 1
 
+private meta def weaponmasterPlay (code : String) : Bool :=
+  tsf fun s => do
+    let p := s.me
+    let (s, card) ← put s p code .hand
+    let (s, original) ← put s p "OGN-135" .base
+    let (s, cape) ← put s p "SFD-190" .base
+    let s := s.modObj cape (fun o => { o with attached := some original })
+    let payment := payOf s card
+    let (first, _) ← (step 100 (s.rich p) ⟨.player p, .playCard card payment []⟩).toOption
+    let actions := legalFrameActions first
+    let take ← actions.find? (fun a => match a.kind with
+      | .putTrigger _ [target] (.pay ..) => target == cape
+      | _ => false)
+    let skip ← actions.find? (fun a => match a.kind with
+      | .putTrigger _ [] .skip => true
+      | _ => false)
+    let (accepted, _) ← (step 100 first take).toOption
+    let (declined, _) ← (step 100 first skip).toOption
+    let done := settleChain {} 12 accepted
+    let new ← done.firstOf p .base code
+    return (done.obj? cape).any (·.attached == some new) &&
+      (declined.obj? cape).any (·.attached == some original) &&
+      done.poolOf p == declined.poolOf p
+
+-- Each printed Weaponmaster can move Equipment already attached and can decline without paying.
+#guard weaponmasterPlay "SFD-002"
+#guard weaponmasterPlay "SFD-008"
+#guard weaponmasterPlay "SFD-092"
+#guard weaponmasterPlay "SFD-099"
+#guard weaponmasterPlay "SFD-127"
+
+-- Armed Assailant can buy Accelerate in the same play as its Weaponmaster trigger.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-002" .hand
+  let (s, cape) ← put s p "SFD-190" .base
+  let payment := payOf s card
+  let rich := s.rich p
+  let accelerated ← cast rich p card ⟨payment.energy + 1, payment.power ++ [.fury]⟩
+  let normal ← cast rich p card payment
+  let a ← accelerated.firstOf p .base "SFD-002"
+  let n ← normal.firstOf p .base "SFD-002"
+  return accelerated.tired a == some false && normal.tired n == some true &&
+    (accelerated.obj? cape).any (·.attached == some a) && (normal.obj? cape).any (·.attached == some n)
+
 -- Quick-Draw with several friendly units: the player picks the unit
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-056" .hand

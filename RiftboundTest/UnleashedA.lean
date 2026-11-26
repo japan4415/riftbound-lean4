@@ -1020,4 +1020,24 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return (play s p retreat [enemy]).isNone && (armed.tacticalRetreatFor ally).isSome &&
     (following.tacticalRetreatFor ally).isNone && (dead.obj? ally).isNone
 
+-- Rengar enters Ready through Accelerate, contributes Assault on attack, has
+-- Deflect against foes and can move between battlefields while ready.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let first := s.bf0
+  let second ← s.battlefields.find? (· != first)
+  let (s, rengar) ← put (s.control p first) p "UNL-024" .hand
+  let base := payOf s rengar
+  let accelerated : RunePool.Payment := ⟨base.energy + 1, base.power ++ [.fury]⟩
+  let (ready, _) ← (step 100 (s.rich p) ⟨.player p, .playCard rengar accelerated [first]⟩).toOption
+  let normal ← play s p rengar [first]
+  let find (state : GameState) := state.inPlay.find? (fun u => (state.cardDef? u).any (·.id == cid "UNL-024"))
+  let a ← find ready
+  let n ← find normal
+  return ready.tired a == some false && normal.tired n == some true &&
+    ready.combatMight a true == ready.mightEff a + 2 && ready.combatMight a false == ready.mightEff a &&
+    ready.deflectCost q [a] == 1 && ready.deflectCost p [a] == 0 &&
+    moveOk ready p a (.battlefield second) && !moveOk normal p n (.battlefield second)
+
 end RiftboundTest

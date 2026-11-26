@@ -3647,7 +3647,7 @@ def OGN_135.meta : CardDef :=
 /-- Pakaa Cub. -/
 def OGN_135 : CardDef :=
   { OGN_135.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-136
 /--
@@ -6521,7 +6521,7 @@ def OGN_241.meta : CardDef :=
 /-- Shen, Kinkou. -/
 def OGN_241 : CardDef :=
   { OGN_241.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-242
 /--

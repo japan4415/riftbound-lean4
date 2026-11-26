@@ -71,7 +71,7 @@ def SFD_002.meta : CardDef :=
 /-- Armed Assailant. -/
 def SFD_002 : CardDef :=
   { SFD_002.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-003
 /--
@@ -227,7 +227,7 @@ def SFD_008.meta : CardDef :=
 /-- Sentinel Adept. -/
 def SFD_008 : CardDef :=
   { SFD_008.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-009
 /--
@@ -2734,7 +2734,7 @@ def SFD_092.meta : CardDef :=
 /-- Combat Chef. -/
 def SFD_092 : CardDef :=
   { SFD_092.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-093
 /--
@@ -2915,7 +2915,7 @@ def SFD_099.meta : CardDef :=
 /-- Veteran Poro. -/
 def SFD_099 : CardDef :=
   { SFD_099.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-100
 /--
@@ -3748,7 +3748,7 @@ def SFD_127.meta : CardDef :=
 /-- Master Bingwen. -/
 def SFD_127 : CardDef :=
   { SFD_127.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-128
 /--

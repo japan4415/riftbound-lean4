@@ -1651,6 +1651,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
     (activate mine s.me c 0 [s.bf0] ⟨0, []⟩).isNone &&
     (activate mine s.me c 0 [s.bf0] ⟨0, [.fury, .calm]⟩).isNone
 
+-- Shen can answer an enemy Spell by joining a controlled battlefield, where
+-- Shield adds two as a defender and Tank places him first in damage assignment.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, shen) ← put (s.control p field) p "OGN-241" .hand
+  let (s, ally) ← putAt s p "OGN-135" field
+  let (s, _) ← onChain s q "OGN-004"
+  let rich := s.rich p
+  let pay := payOf rich shen
+  let (answered, _) ← (step 100 rich ⟨.player p, .playCard shen pay [field]⟩).toOption
+  let placed ← answered.inPlay.find? (fun u => (answered.cardDef? u).any (·.id == cid "OGN-241"))
+  let order := (legalAssigns answered field q []).map (·.kind)
+  return (answered.obj? placed).any (·.loc == some field) &&
+    answered.combatMight placed false == 5 && answered.combatMight placed true == 3 &&
+    order == [.assignPick placed] && !(order.contains (.assignPick ally))
+
 -- Block (OGN-057), a spell: hidden, then played from hiding: Shield 3 and Tank, and into my Trash
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand

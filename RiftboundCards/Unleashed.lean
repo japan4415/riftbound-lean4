@@ -782,7 +782,7 @@ def UNL_024.meta : CardDef :=
 /-- Rengar, Unseen. -/
 def UNL_024 : CardDef :=
   { UNL_024.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-025
 /--
