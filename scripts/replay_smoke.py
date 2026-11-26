@@ -615,7 +615,7 @@ def live_private_rewinds(live: Lean, setup: dict) -> dict:
     return fixtures
 
 
-def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]:
+def reach_captain_look(live: Lean, setup: dict) -> tuple[dict, dict, dict, dict, int]:
     first, second = setup["decks"]["constructed"]["decks"]
     main = [{"code": "RAD-129"} if card["code"] == "RAD-119" else card for card in first["deck"]["main"]]
     captain_deck = {**first, "deck": {**first["deck"], "main": main}}
@@ -623,9 +623,11 @@ def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]
     response = start(live, config)
     captain_cards = set()
     catalog = {}
+    history = {}
     for _ in range(45):
         steps = response["steps"]
         for row in steps:
+            history[row["i"]] = row
             catalog.update((int(ident), obj["card"]) for ident, obj in row["state"]["new"].items())
             captain_cards.update(int(ident) for ident, obj in row["state"]["new"].items()
                                  if obj["card"] == "RAD-129")
@@ -645,13 +647,59 @@ def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]
     else:
         raise AssertionError("Trifarian Captain did not look at the deck")
 
-    target = response["steps"][-1]
-    assert target["state"]["active"] == 0
     looked_row, look_index, looked = next(
         (row, index, event["card"]) for row in response["steps"]
         for index, event in enumerate(row["events"]) if event["t"] == "looked_at"
     )
     assert {"event": look_index, "onlyFor": 0, "cards": [catalog[looked]]} in looked_row["disclosures"]
+    return response, catalog, history[looked_row["i"] - 1], looked_row, looked
+
+
+def live_undrawn_deck_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]:
+    _, _, target, looked_row, looked = reach_captain_look(live, setup)
+    deck = target["state"]["zones"]["p0.mainDeck"]
+    seen = [event["card"] for event in looked_row["events"] if event["t"] == "looked_at"]
+    positions = [deck.index(card) for card in seen]
+    assert seen[0] == looked and positions == [0, 1, 2, 3]
+    assert looked_row["state"]["zones"]["p0.mainDeck"] == deck
+
+    def shuffle(positions: list[int]) -> dict:
+        return {"seat": {"n": 0}, "deck": "mainDeck", "positions": positions,
+                "order": [{"n": deck[index]} for index in reversed(positions)]}
+
+    def private(**remedy: object) -> str:
+        return f"judge-private-rewind {json.dumps(dict(target=target['i'], returns=[], **remedy))}"
+
+    missing = "must shuffle deck cards seen without drawing or channeling them"
+    assert missing in json.loads(live.ask(f"judge-rewind {target['i']}"))["error"]
+    assert missing in json.loads(live.ask(private(shuffles=[shuffle([1, 2])])))["error"]
+    assert missing in json.loads(
+        live.ask(private(shuffles=[shuffle([index]) for index in positions])))["error"]
+    wrong_deck = {"seat": {"n": 1}, "deck": "mainDeck"}
+    assert "must contain a card affected" in json.loads(
+        live.ask(private(unshuffledDecks=[wrong_deck])))["error"]
+
+    remedy = shuffle([*positions, 4])
+    restored = ask(live, private(shuffles=[remedy]))["steps"][0]
+    assert restored["rewindShuffles"] == 1 and restored["privateDrawReturns"] == 0
+    assert restored["state"]["zones"]["p0.mainDeck"] == [*reversed(deck[:5]), *deck[5:]]
+
+    def timeline(**additional: object) -> str:
+        payload = dict(target=target["i"], rulings=[restored["i"]], **additional)
+        return f"judge-timeline-rewind {json.dumps(payload)}"
+
+    # Undoing the earlier correction restores the order the player learned on the abandoned line.
+    assert missing in json.loads(live.ask(timeline()))["error"]
+    row = ask(live, timeline(shuffles=[remedy]))["steps"][0]
+    assert row["rewindRulings"] == 1 and row["state"]["zones"] == restored["state"]["zones"]
+    assert ask(live, "judge-game-loss 1")["archiveAvailable"]
+    return ask(live, "replay"), "", row
+
+
+def live_revealed_draw_rewind(live: Lean, setup: dict) -> tuple[dict, str, dict]:
+    response, catalog, _, _, _ = reach_captain_look(live, setup)
+    target = response["steps"][-1]
+    assert target["state"]["active"] == 0
     deck = target["state"]["zones"]["p0.mainDeck"]
     hand = target["state"]["zones"]["p0.hand"]
     yes = next(action for action in response["legal"] if action["a"].get("yes") is True)
@@ -763,6 +811,20 @@ def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: d
             rewind = p1[live_row["i"]]
             assert rewind["judgeRewind"] < rewind["i"]
             assert all(slot is None for slot in rewind["state"]["zones"]["p0.hand"])
+        if label == "undrawn-look":
+            p0 = check_seat_view(folder, command, path, suffix, 0, games)["games"][0]["steps"]
+            p1 = check_seat_view(folder, command, path, suffix, 1, games)["games"][0]["steps"]
+            look = next(row["i"] for row in steps if any(d["onlyFor"] == 0 for d in row.get("disclosures", [])))
+            assert p0[look]["disclosures"] and not p1[look].get("disclosures")
+            for seat in (p0, p1):
+                assert all(slot is None for slot in seat[live_row["i"]]["state"]["zones"]["p0.mainDeck"])
+            corrupted = json.loads(json.dumps(archive["input"]))
+            last_correction = corrupted["games"][0]["answers"][live_row["i"] - 1]
+            last_correction["judgeTimelineRewind"]["rewind"]["shuffles"] = []
+            input_path = folder / "undrawn-look-missing-shuffle.json"
+            input_path.write_text(json.dumps(corrupted), encoding="utf-8")
+            command("record", input_path, folder / "invalid-rewind.json",
+                    error="must shuffle deck cards seen without drawing or channeling them")
 
 
 def live_timeline_rewinds(live: Lean, setup: dict) -> dict:
@@ -1165,6 +1227,7 @@ def main() -> None:
         corrections = live_judge_corrections(live, setup)
         private_rewinds = live_private_rewinds(live, setup)
         private_rewinds["revealed-draw"] = live_revealed_draw_rewind(live, setup)
+        private_rewinds["undrawn-look"] = live_undrawn_deck_rewind(live, setup)
         timeline_rewinds = live_timeline_rewinds(live, setup)
     finally:
         live.close()

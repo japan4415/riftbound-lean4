@@ -34,6 +34,15 @@ inductive JudgeDeck where
   | runeDeck
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A deck for which the judge found no randomized portion and could complete the remedy
+without a shuffle (TR 701.4.b.1). -/
+structure JudgeUnshuffledDeck where
+  /-- The seat whose deck had no randomized portion. -/
+  seat : PlayerId
+  /-- Which of that seat's decks was left as it was. -/
+  deck : JudgeDeck
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- The observed positions and outcome of a remedy shuffle. -/
 structure JudgeShuffle where
   /-- The owner of the affected deck. -/
@@ -65,6 +74,8 @@ structure JudgePrivateRewind where
   /-- Optional remedy shuffles before play resumes. Order IDs refer to the rewind target
   (TR 701.5.d.4). -/
   shuffles? : Option (List JudgeShuffle) := none
+  /-- The judge's recorded exceptions when there was no randomized portion of a deck. -/
+  unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A judge's recorded rewind across earlier administrative actions. -/
@@ -79,6 +90,8 @@ structure JudgeTimelineRewind where
   returns? : Option (List JudgeDrawReturn) := none
   /-- Optional remedy shuffles using object IDs at the rewind target. -/
   shuffles? : Option (List JudgeShuffle) := none
+  /-- The judge's recorded exceptions when there was no randomized portion of a deck. -/
+  unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A recorded answer, including how it was observed. -/
@@ -117,18 +130,25 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
   | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ | .judgeTimelineRewind _ =>
     throw s!"answer {index}: a correction is a judge ruling"
 
+private def unshuffledDecksJson (decks : Option (List JudgeUnshuffledDeck)) :
+    List (String × String) :=
+  let recorded := decks.getD []
+  if recorded.isEmpty then [] else [("rewindUnshuffledDecks", (toJson recorded).compress)]
+
 /-- Additional trace metadata for a judge correction, independent of in-game actions. -/
 def ReplayAnswer.correctionJson : ReplayAnswer → List (String × String)
   | .judgeRewind target => [("judgeRewind", toString target)]
   | .judgeShuffle shuffle => [("judgeShuffle", (toJson shuffle).compress)]
   | .judgePrivateRewind rewind =>
     [("judgeRewind", toString rewind.target), ("privateDrawReturns", toString rewind.returns.length),
-     ("rewindShuffles", toString (rewind.shuffles?.getD []).length)]
+     ("rewindShuffles", toString (rewind.shuffles?.getD []).length)] ++
+      unshuffledDecksJson rewind.unshuffledDecks?
   | .judgeTimelineRewind rewind =>
     [("judgeRewind", toString rewind.target), ("privateDrawReturns", toString (rewind.returns?.getD []).length),
      ("rewindShuffles", toString (rewind.shuffles?.getD []).length),
      ("rewindRulings", toString (rewind.rulings?.getD []).length)] ++
-      (rewind.deadline?.map (fun deadline => ("rewindDeadline", toString deadline))).toList
+      (rewind.deadline?.map (fun deadline => ("rewindDeadline", toString deadline))).toList ++
+      unshuffledDecksJson rewind.unshuffledDecks?
   | _ => []
 
 /-- Whether a trace row needs to rescan object metadata after restoring an earlier state. -/
@@ -490,6 +510,13 @@ private structure ObservedDraw where
   drawn : ObjId
   wasRevealed : Bool
 
+private abbrev DeckKnowledge := PlayerId × PhysId
+
+/-- Information gained from a deck and the withdrawals that may follow it in the same answer. -/
+private inductive DeckObservation where
+  | seen (viewer : PlayerId) (card : PhysId)
+  | withdrawn (card : PhysId)
+
 /-- The state and setup observations at a chronological checkpoint. -/
 structure ReplayPosition where
   /-- The state at the checkpoint. -/
@@ -502,6 +529,10 @@ structure ReplayPosition where
   disclosures : List CardDisclosure := []
   /-- Publicly revealed cards still identifiable in a player's Main Deck or hand. -/
   private knownCards : List ObjId := []
+  /-- Faces that were known at this checkpoint, keyed by seat and physical deck card. -/
+  private knownDeckCards : List (PlayerId × PhysId) := []
+  /-- What the preceding answer showed or took from a deck, in event order. -/
+  private deckObservations : List DeckObservation := []
   /-- Draws made by this answer, newest first. -/
   private draws : List ObservedDraw := []
   /-- The kind of transition that ended at this checkpoint. -/
@@ -536,10 +567,13 @@ private def DrawSlot.atTarget (base : GameState) (draw : ObservedDraw) : Option 
   let index ← (base.zone (.player draw.seat .mainDeck)).findIdx? (· == draw.source)
   pure { toObservedDraw := draw, index }
 
+private def JudgeShuffle.selectedCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let deck := before.zone (.player shuffle.seat kind)
+  shuffle.positions.filterMap (fun index => deck[index]?)
+
 private def JudgeShuffle.obscuredCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
-  match shuffle.deck with
-  | .mainDeck => shuffle.positions.filterMap (fun i => (before.zone (.player shuffle.seat .mainDeck))[i]?)
-  | .runeDeck => []
+  if shuffle.deck == .mainDeck then shuffle.selectedCards before else []
 
 private def obscuredDeckCards (before : GameState) (answer : ReplayAnswer) (action : Option Action) : List ObjId :=
   match answer with
@@ -559,6 +593,65 @@ private def trackedInPrivateZones (s : GameState) (known : List ObjId) : List Ob
 
 private def physicalCard (s : GameState) (id : ObjId) : Option PhysId :=
   (s.obj? id).bind (·.kind.phys?)
+
+private def deckPhysicalCards (s : GameState) : List PhysId :=
+  s.players.flatMap (fun seat =>
+    (s.zone (.player seat .mainDeck) ++ s.zone (.player seat .runeDeck)).filterMap (physicalCard s))
+
+/-- A move may rename an object between the look and the draw. Follow the actual physical cards
+through the answer without using its final zones to decide where the look took place. -/
+private def observeDeckCards (before after : GameState) (events : List Event) : List DeckObservation :=
+  go [] events
+where
+  go (moved : List (ObjId × (Zone × PhysId))) : List Event → List DeckObservation
+    | [] => []
+    | event :: rest =>
+      let location (id : ObjId) := (moved.lookup id).map Prod.fst <|> before.locate id
+      let physical (id : ObjId) := (moved.lookup id).map Prod.snd <|> physicalCard before id
+      let seen (id : ObjId) (audience : List PlayerId) :=
+        match location id, physical id with
+        | some (.player _ .mainDeck), some card | some (.player _ .runeDeck), some card =>
+          audience.map (fun seat => DeckObservation.seen seat card)
+        | _, _ => []
+      match event with
+      | .lookedAt viewer id => seen id [viewer] ++ go moved rest
+      | .revealed _ id => seen id before.players ++ go moved rest
+      | .moved old next dest =>
+        match physical old <|> physicalCard after next with
+        | none => go moved rest
+        | some card =>
+          let withdrew := match location old, dest, rest with
+            | _, .player seat .hand, .drew drawer :: _ => seat == drawer
+            | some (.player seat .runeDeck), .player owner .base, _ => seat == owner
+            | _, _, _ => false
+          let later := go ((next, (dest, card)) :: moved) rest
+          if withdrew then .withdrawn card :: later else later
+      | _ => go moved rest
+
+private def obscuredDeckPhysicalCards (before : GameState) (answer : ReplayAnswer)
+    (action : Option Action) : List PhysId :=
+  let ids := match answer with
+    | .judgeShuffle shuffle => shuffle.selectedCards before
+    | _ =>
+      match action, before.pending with
+      | some ⟨.chance, .arrange _⟩, .chanceShuffle (.player p .runeDeck) :: _ =>
+        before.zone (.player p .runeDeck)
+      | _, _ => obscuredDeckCards before answer action
+  ids.filterMap (physicalCard before)
+
+private def DeckObservation.remember (known : List DeckKnowledge) :
+    DeckObservation → List DeckKnowledge
+  | .seen seat card => if known.contains (seat, card) then known else (seat, card) :: known
+  | .withdrawn card => known.filter (fun knownCard => knownCard.2 != card)
+
+/-- What a rewind would expose again in an unreordered deck (TR 701.5.d.4). -/
+private def rewindDeckKnowledge (target : ReplayPosition) (chronology : List ReplayPosition) :
+    List DeckKnowledge :=
+  let newlySeen := chronology.foldl (fun known pos =>
+    pos.deckObservations.foldl DeckObservation.remember known) []
+  if newlySeen.isEmpty then [] else
+    let deck := deckPhysicalCards target.state
+    newlySeen.filter (fun known => !target.knownDeckCards.contains known && deck.contains known.2)
 
 private def shuffleAfterRewind (base current : GameState) (shuffle : JudgeShuffle) :
     Except String GameState := do
@@ -610,8 +703,9 @@ private def applyDrawReturns (base : GameState) (known : List ObjId) (returns : 
     let next ← exchangeDrawSlot s draw chosen
     applyDrawReturns base known returns more next
 
-private def applyRewindRemedies (target : ReplayPosition) (undone : List ReplayPosition)
-    (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle) : Except String ReplayPosition := do
+private def applyRewindRemedies (target : ReplayPosition) (undone chronology : List ReplayPosition)
+    (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle)
+    (unshuffled : List JudgeUnshuffledDeck) : Except String ReplayPosition := do
   let restored ← if returns.isEmpty then pure target.state else do
     let draws := undone.flatMap (fun pos => pos.draws.filterMap (DrawSlot.atTarget target.state))
     let named : List ObjId := returns.map (·.drawn)
@@ -622,12 +716,37 @@ private def applyRewindRemedies (target : ReplayPosition) (undone : List ReplayP
     unless decide ((draws.map (·.source)).Nodup) do
       throw "the rewind contains repeated draws from the same original slot"
     applyDrawReturns target.state target.knownCards returns draws target.state
-  let shuffle (s : GameState × List ObjId) (change : JudgeShuffle) := do
-    let obscured := change.obscuredCards s.1
-    let next ← shuffleAfterRewind target.state s.1 change
-    return (next, s.2.filter (fun id => !obscured.contains id))
-  let (state, known) ← shuffles.foldlM shuffle (restored, target.knownCards)
-  return { target with state, knownCards := trackedInPrivateZones state known }
+  let shuffle (acc : GameState × List ObjId × List PhysId) (change : JudgeShuffle) := do
+    let (state, known, shuffled) := acc
+    let obscured := change.obscuredCards state
+    let covered := (change.selectedCards state).filterMap (physicalCard state)
+    let next ← shuffleAfterRewind target.state state change
+    let shuffled := if covered.length < 2 then shuffled else covered ++ shuffled
+    return (next, known.filter (fun id => !obscured.contains id), shuffled)
+  let (state, known, shuffled) ← shuffles.foldlM shuffle (restored, target.knownCards, [])
+  let learned := rewindDeckKnowledge target chronology
+  let required := (learned.map Prod.snd).eraseDups
+  unless decide unshuffled.Nodup do throw "each unshuffled deck must be named once"
+  let waived ← unshuffled.flatMapM (fun deck => do
+    let kind := match deck.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+    let cards := (state.zone (.player deck.seat kind)).filterMap (physicalCard state)
+    unless restored.players.contains deck.seat && cards.any required.contains do
+      throw "an unshuffled deck must contain a card affected by the rewind"
+    if shuffles.any (fun change => change.seat == deck.seat && change.deck == deck.deck) then
+      throw "a deck cannot be both shuffled and left unshuffled in one rewind"
+    return cards.filter required.contains)
+  unless required.all (fun card => shuffled.contains card || waived.contains card) do
+    throw "a rewind must shuffle deck cards seen without drawing or channeling them"
+  let remainingDeck := deckPhysicalCards state
+  let remembered := target.knownDeckCards ++ learned.filter (fun card => waived.contains card.2)
+  let knownDeckCards := remembered.filter (fun card =>
+    remainingDeck.contains card.2 && !shuffled.contains card.2)
+  return { target with state, knownCards := trackedInPrivateZones state known, knownDeckCards }
+
+/-- Knowledge from an abandoned line remains when an earlier deck order is restored. -/
+private def rewindChronology (history : List ReplayPosition) (target index : Nat) :
+    List ReplayPosition :=
+  (history.take (index - (target + 1))).reverse
 
 private def rewindPath (history : List ReplayPosition) (target index : Nat) :
     Except String (List (Nat × ReplayPosition) × ReplayPosition) := do
@@ -682,7 +801,8 @@ private def timelineRewind (history : List ReplayPosition) (before : GameState)
   let crossedCall := undone.any (fun (_, step) => decide (step.boundary = .clock))
   let clock ← retainedClock before position.state crossedCall rewind.deadline?
   let restored ← applyRewindRemedies position (undone.map Prod.snd)
-    (rewind.returns?.getD []) (rewind.shuffles?.getD [])
+    (rewindChronology history rewind.target index) (rewind.returns?.getD []) (rewind.shuffles?.getD [])
+    (rewind.unshuffledDecks?.getD [])
   return { restored with state := { restored.state with clock } }
 
 /-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
@@ -691,11 +811,17 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     Except String (Option Action × ReplayPosition × List Event) := do
   let some prior := history.head? | throw "the initial checkpoint is missing"
   let correction : Option (Nat × Except String ReplayPosition) := match answer with
-    | .judgeRewind target => some (target, (simpleRewind history target index).map Prod.snd)
+    | .judgeRewind target => some (target, do
+      let (undone, pos) ← simpleRewind history target index
+      applyRewindRemedies pos undone (rewindChronology history target index) [] [] [])
     | .judgePrivateRewind rewind => some (rewind.target, do
       let (undone, pos) ← simpleRewind history rewind.target index
-      if rewind.returns.isEmpty then throw "each private return needs a distinct undone draw from the target deck"
-      applyRewindRemedies pos undone rewind.returns (rewind.shuffles?.getD []))
+      let shuffles := rewind.shuffles?.getD []
+      let unshuffled := rewind.unshuffledDecks?.getD []
+      if rewind.returns.isEmpty && shuffles.isEmpty && unshuffled.isEmpty then
+        throw "a private rewind needs a draw return or a recorded shuffle decision"
+      applyRewindRemedies pos undone (rewindChronology history rewind.target index)
+        rewind.returns shuffles unshuffled)
     | .judgeTimelineRewind rewind =>
       some (rewind.target, timelineRewind history prior.state rewind index)
     | _ => none
@@ -706,6 +832,7 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
       rewindParent := some target
       events := []
       disclosures := []
+      deckObservations := []
       draws := [] }
     return (none, restored, [])
   let (action, (state, events), disclosures) ← input.applyAnswerWith prior.state answer index fuel observeFaces
@@ -719,8 +846,15 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
   let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
   let obscured := obscuredDeckCards prior.state answer action
   let (known, draws) := observeDraws (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
-  let position := { state, fields, boundary, events, disclosures, draws,
-                    knownCards := trackedInPrivateZones state known }
+  let deckObservations := observeDeckCards prior.state state events
+  let obscuredDeck := obscuredDeckPhysicalCards prior.state answer action
+  let previous := prior.knownDeckCards.filter (fun known => !obscuredDeck.contains known.2)
+  let observed := deckObservations.foldl DeckObservation.remember previous
+  let knownDeckCards := if observed.isEmpty then [] else
+    let remainingDeck := deckPhysicalCards state
+    observed.filter (fun known => remainingDeck.contains known.2)
+  let position := { state, fields, boundary, events, disclosures, draws, deckObservations,
+                    knownCards := trackedInPrivateZones state known, knownDeckCards }
   return (action, position, events)
 
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))

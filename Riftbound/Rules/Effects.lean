@@ -3481,6 +3481,13 @@ theorem killSpellTarget_safe (p : PlayerId) (before current : GameState) (target
     Safe current (killSpellTarget p before current target).1 :=
   killOrSaveInGroup_safe before current target
 
+/-- Record a reveal from either of the player's decks (CR 425). -/
+def deckRevealEvent (s : GameState) (id : ObjId) : Option Event :=
+  match s.locate id with
+  | some (.player owner .mainDeck) | some (.player owner .runeDeck) =>
+    some (.revealed owner id)
+  | _ => none
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -3559,12 +3566,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         (if sel == .self then spellCompletion s src r.2 true else [])))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal sel =>
-    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
-    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
-      match s.obj? id with
-      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
-          some (Event.revealed o.owner id) else none
-      | none => none))
+    some (s, ((sel.eval s p src env).getD []).filterMap (deckRevealEvent s))
   | .revealTop n =>
     -- the top cards of the Main Deck are revealed: what waits for them fires
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
@@ -3572,12 +3574,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
   | .drawLooked sel => onSelected s p src env sel (drawLookedCard p env.lookedCards)
   | .revealNow sel =>
-    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
-    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
-      match s.obj? id with
-      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
-          some (Event.revealed o.owner id) else none
-      | none => none))
+    some (s, ((sel.eval s p src env).getD []).filterMap (deckRevealEvent s))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel | .playAtBase sel => onSelected s p src env sel (playFree p)
   | .banishReplay sel keep =>

@@ -4,6 +4,8 @@ import RiftboundCards
 meta import RiftboundCards
 import RiftboundDriver.Run
 meta import RiftboundDriver.Run
+import RiftboundDriver.Replay
+meta import RiftboundDriver.Replay
 import Riftbound.Tournament.LoopDetect
 meta import Riftbound.Tournament.LoopDetect
 import RiftboundTest.Fixtures
@@ -74,5 +76,43 @@ meta def declare : Action := ⟨.judge, .declareDraw⟩
     (runForcedAnswers 100 waiting [answer]).any (fun next => next.pending.isEmpty) &&
     (detectExactForcedLoop 100 waiting [(waiting, answer)]).isNone &&
     (forcedAnswer optional).isNone && (forcedAnswer chance).isNone
+
+-- A public Rune Deck reveal requires a remedy if the Rune was not Channeled. A one-card
+-- deck can be named as the judge's explicit exception when no random portion exists.
+meta def runeRewind (second channelRune : Bool) : Option Bool := do
+  let seats : List PlayerId := [⟨0⟩, ⟨1⟩]
+  let p : PlayerId := ⟨0⟩
+  let base := GameState.empty { ruleSet := .tournament .constructed, mode := .duel }
+    RiftboundCards.db
+  let deck := Zone.player p .runeDeck
+  let (s, rune) ← addObject base (newCard base.cards base p ⟨"OGN-007"⟩) deck
+  let (s, other) ← if second then addObject s (newCard s.cards s p ⟨"OGN-126"⟩) deck .bottom
+    else some (s, rune)
+  let reveal : Effect := .prim (.reveal (Selector.one .friendly .inRuneDeck [.top 1]))
+  let effect := if channelRune then
+      .seqOf [reveal, .prim (.channel .you (.const 1) (.const 0))]
+    else reveal
+  let target := { s with
+    active := some p, turnOrder := seats, phase := .main, turn := 1,
+    pending := [.mayDo p rune {} effect .nil, .priority p] }
+  let inputs : GameInputs := { decks := .core [], answers := #[] }
+  let history := [ReplayPosition.fromState target]
+  let (_, after, events) ← (inputs.advance history (.observed ⟨.player p, .decide true⟩)
+    1 100).toOption
+  let played := after :: history
+  let simple := inputs.advance played (.judgeRewind 0) 2 100
+  let remedy : JudgePrivateRewind := {
+    target := 0, returns := [],
+    shuffles? := if second then some [⟨p, .runeDeck, [0, 1], [other, rune]⟩] else none,
+    unshuffledDecks? := if second then none else some [⟨p, .runeDeck⟩] }
+  let (_, restored, _) ← (if channelRune then simple else
+    inputs.advance played (.judgePrivateRewind remedy) 2 100).toOption
+  return events.contains (.revealed p rune) && simple.isOk == channelRune &&
+    restored.state.zone deck == (if channelRune then target.zone deck
+      else if second then [other, rune] else [rune])
+
+#guard (runeRewind true false).getD false
+#guard (runeRewind false false).getD false
+#guard (runeRewind true true).getD false
 
 end RiftboundTest
