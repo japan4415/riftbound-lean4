@@ -34,6 +34,8 @@ inductive ReplayAnswer where
   | inferred (action : Action) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
+  /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
+  | bo1Sideboard
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
@@ -45,6 +47,7 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
       throw s!"answer {index}: an inferred answer needs an explanation"
     else pure a
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
+  | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
 
 /-- The data required to set up and replay one game. -/
 structure GameInputs where
@@ -56,6 +59,9 @@ structure GameInputs where
   chooser : Option PlayerId := none
   /-- Four-seat tournament turn order determined before the engine shuffles the decks. -/
   openingOrder : Option (List PlayerId) := none
+  /-- The original registrations when the event uses the optional Constructed Best of 1 setup.
+  The game decks describe the configuration after the initial sideboard window (TR 406.1.h). -/
+  bo1Setup? : Option (List ConstructedDeck) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Rules pinned by a saved recording. -/
@@ -143,6 +149,80 @@ def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig
   | some s => pure s
   | none => throw "the game cannot be set up from the submitted decks"
 
+/-- A Constructed sideboard must use the registered pool and preserve the fixed slots (TR 403.4). -/
+def sameRegisteredPool (old new : ConstructedDeck) : Bool :=
+  let a := old.deck
+  let b := new.deck
+  a.legend == b.legend && decide (a.runes.Perm b.runes) &&
+    decide (a.battlefields.Perm b.battlefields) && decide (a.reserveLegends.Perm b.reserveLegends) &&
+    decide (List.Perm (a.main ++ old.sideboard) (b.main ++ new.sideboard))
+
+/-- Initialize the replay at the official setup boundary. In the optional Best of 1 procedure,
+put out the Legends and Battlefield candidates before committing the cards from the closed decks. -/
+def GameInputs.initial (input : GameInputs) (db : CardDB) (config : GameConfig) :
+    Except String GameState := do
+  let some registered := input.bo1Setup? | return ← input.decks.initial db config input.openingOrder
+  unless config.mode == Mode.duel && config.ruleSet.tournamentFormat == some .constructed &&
+      input.openingOrder.isNone do
+    throw "the optional Best of 1 setup requires a Constructed Duel"
+  let some env := config.formatLegality | throw "the Best of 1 setup needs pinned format legality"
+  let .constructed submitted := input.decks | throw "the Best of 1 setup needs final registrations"
+  unless registered.length == 2 && submitted.length == 2 do
+    throw "two original and two final registrations are required"
+  let mut s := GameState.empty config db
+  for ((original, final), index) in (registered.zip submitted).zipIdx do
+    unless decide (ConstructedDeckValid db env original) &&
+        decide (ConstructedDeckValid db env final) do
+      throw s!"seat {index} has an illegal Best of 1 registration"
+    unless sameRegisteredPool original final do
+      throw s!"seat {index} must sideboard from the registered pool and preserve the fixed slots"
+    let p : PlayerId := ⟨index⟩
+    let placed := do
+      let next ← addCards db p (.player p .legendZone) s [original.deck.legend]
+      addCards db p (.player p .outOfGame) next original.deck.battlefields
+    let some next := placed
+      | throw s!"seat {index} could not place the Legend and Battlefields"
+    s := next
+  return { s with pending := [.chanceBattlefield ⟨0⟩, .chanceBattlefield ⟨1⟩, .chanceTurnOrder] }
+
+private def addBo1Deck (db : CardDB) (s : GameState) (p : PlayerId) (deck : Deck) :
+    Option GameState := do
+  let s ← addCards db p (.player p .reserveLegends) s deck.reserveLegends
+  let s ← addCards db p (.player p .championZone) s [deck.chosenChampion]
+  let s ← addCards db p (.player p .mainDeck) s (deck.main.erase deck.chosenChampion)
+  addCards db p (.player p .runeDeck) s deck.runes
+
+/-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
+def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+  let awaitingSideboard := input.bo1Setup?.isSome && s.phase == .setup &&
+    s.pending == [.setupHands] && s.result.isNone
+  if let .bo1Sideboard := answer then
+    unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"
+    let .constructed registrations := input.decks | throw "the Best of 1 setup needs final registrations"
+    let mut next := s
+    for (registration, seat) in registrations.zipIdx do
+      let some built := addBo1Deck s.cards next ⟨seat⟩ registration.deck
+        | throw s!"seat {seat} could not set out the final registration"
+      next := built
+    let shuffles := (startFrames s.playerCount).filter (fun | .chanceShuffle _ => true | _ => false)
+    return (none, { next with pending := shuffles ++ [.setupHands] }, [])
+  let action ← answer.resolve index
+  if awaitingSideboard && action.kind != .concede && action.kind != .declareDraw then
+    throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
+  let transition := if input.bo1Setup?.isSome && s.pending == [.chanceTurnOrder] then
+    match action.kind with
+    | .arrangePlayers _ =>
+      if Legal s action then
+        match applyFrame0 s action with
+        | some result => .ok result
+        | none => .error (.internal "applyFrame0")
+      else .error .illegal
+    | _ => step fuel s action
+  else step fuel s action
+  let (next, events) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
+  return (some action, next, events)
+
 private def deckIds (d : Deck) : List CardId :=
   d.legend :: d.main ++ d.runes ++ d.battlefields ++ d.reserveLegends
 
@@ -200,24 +280,20 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
-  let mut s ← input.decks.initial db config input.openingOrder
+  let mut s ← input.initial db config
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
   let mut fields : List (PlayerId × CardId) := []
   let mut exact := true
   for (answer, index) in input.answers.toList.zipIdx do
-    let action ← answer.resolve (index + 1)
     if let .inferred .. := answer then exact := false
-    let field := pickedBattlefield s action
-    match step fuel s action with
-    | .error error => throw s!"answer {index + 1}: {repr error}"
-    | .ok (next, events) =>
-      if let some entry := field then fields := entry :: fields
-      let witness := ReplayCheckpoint.capture next events
-      checkCheckpoint expected (index + 1) witness
-      checkpoints := checkpoints.push witness
-      s := next
+    let (action, next, events) ← input.applyAnswer s answer (index + 1) fuel
+    if let some entry := action.bind (pickedBattlefield s) then fields := entry :: fields
+    let witness := ReplayCheckpoint.capture next events
+    checkCheckpoint expected (index + 1) witness
+    checkpoints := checkpoints.push witness
+    s := next
   return {
     input, eliminationConfig? := replayEliminationConfig config, checkpoints,
     summary := ReplayGameResult.fromState s input.decks fields.reverse exact }

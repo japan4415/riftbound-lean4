@@ -229,6 +229,69 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
         assert exported["cards"][blank["code"]]["name"] == "Blank Battlefield"
 
 
+def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
+    originals = setup["decks"]["constructed"]["decks"]
+    previous = originals[1]["deck"]
+    champion = {"code": "RAD-112"}
+    outgoing = {"code": "RAD-094"}
+    main = list(previous["main"])
+    main[main.index(outgoing)] = champion
+    changed = {
+        "deck": {**previous, "main": main, "chosenChampion": champion},
+        "sideboard": [outgoing if card == champion else card for card in originals[1]["sideboard"]],
+    }
+    submitted = [originals[0], changed]
+    p0, p1 = {"n": 0}, {"n": 1}
+    order = [p1, p0]
+    initiative = observed("chance", {"arrangePlayers": {"order": order}})
+    tape = [observed("chance", {"pick": {"index": i}}) for i in (1, 0)]
+    tape.extend([initiative, "bo1Sideboard"])
+    # One Legend and three Battlefield candidates per seat, then two Battlefield zone changes.
+    offset = sum(2 + len(reg["deck"]["battlefields"]) for reg in originals)
+    for registration in submitted:
+        deck = registration["deck"]
+        offset += len(deck["reserveLegends"]) + 1
+        for size in (len(deck["main"]) - 1, len(deck["runes"])):
+            order_ids = [{"n": i} for i in range(offset, offset + size)]
+            tape.append(observed("chance", {"arrange": {"order": order_ids}}))
+            offset += size
+    tape.extend(observed({"player": {"p": p}}, "mulliganDone") for p in order)
+    tape.append(observed({"player": {"p": p0}}, "concede"))
+    game = {"bo1Setup": originals, "decks": {"constructed": {"decks": submitted}},
+            "answers": tape, "chooser": p0}
+    inputs = {"config": setup["config"], "tournament": setup["tournament"],
+              "winsRequired": 1, "fuel": 100, "games": [game], "ending": "finalGame"}
+    source = folder / "bo1-input.json"
+    archive = folder / "bo1-archive.json"
+    trace = folder / "bo1-trace.json"
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    summary = json.loads(command("record", source, archive))
+    assert summary["wins"] == [0, 1] and summary["exact"]
+    assert json.loads(command("verify", archive)) == summary
+    command("view", archive, trace)
+    steps = json.loads(trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+    assert [step["action"]["kind"] for step in steps[1:4]] == ["pick", "pick", "arrangePlayers"]
+    assert "p1.championZone" not in steps[3]["state"]["zones"]
+    assert steps[4]["action"] is None and steps[4]["bo1Sideboard"]
+    sideboard = steps[4]["state"]
+    champion_id = sideboard["zones"]["p1.championZone"][0]
+    assert sideboard["new"][str(champion_id)]["card"] == champion["code"]
+    assert steps[3]["state"]["zones"]["battlefield"] == sideboard["zones"]["battlefield"]
+    assert steps[5]["action"]["kind"] == "arrange"
+
+    invalid = folder / "bo1-invalid.json"
+    game["answers"] = tape[:3] + tape[4:]
+    invalid.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", invalid, archive, error="close the Best of 1 sideboard window")
+    game["answers"] = tape[:2] + ["bo1Sideboard", initiative] + tape[4:]
+    invalid.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", invalid, archive, error="no Best of 1 sideboard window is open")
+    game["answers"] = tape
+    changed["sideboard"] = changed["sideboard"][:-1]
+    invalid.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", invalid, archive, error="must sideboard from the registered pool")
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
@@ -353,6 +416,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert not json.loads(command("record-team", inferred_team, inferred_archive))["exact"]
     assert not json.loads(command("verify-team", inferred_archive))["exact"]
     check_limited_cli(folder, setup, command)
+    check_bo1_cli(folder, setup, command)
 
 
 def main() -> None:

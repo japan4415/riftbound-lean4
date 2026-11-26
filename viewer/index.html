@@ -345,7 +345,9 @@ function buildBoard() {
 }
 
 function describe(i) {
-  const a = steps[i].action;
+  const step = steps[i];
+  if (step.bo1Sideboard) return ['サイドボードを確定', 'Chosen Champion を配置し、デッキをシャッフルする準備をする'];
+  const a = step.action;
   if (!a) return ['ゲーム開始前', '山札・Rune Deck・Battlefield の準備ができた状態'];
   const before = steps[i - 1]?.state;
   return describeA(a, before?.pending, before);

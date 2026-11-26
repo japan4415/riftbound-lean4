@@ -12,14 +12,14 @@ private def writeJson (path : String) (value : Json) : IO Unit :=
 
 private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     Except String String := do
-  let mut state ← input.decks.initial RiftboundCards.db config input.openingOrder
+  let mut state ← input.initial RiftboundCards.db config
   let (initial, firstSeen) := stepJson 0 none [] state {}
   let mut seen := firstSeen
   let mut steps := [initial]
   for (answer, index) in input.answers.toList.zipIdx do
-    let action ← answer.resolve (index + 1)
-    let (next, events) ← (step fuel state action).mapError (fun e => s!"answer {index + 1}: {repr e}")
-    let (row, nextSeen) := stepJson (index + 1) (some action) events next seen state.pending.head?
+    let (action, next, events) ← input.applyAnswer state answer (index + 1) fuel
+    let sideboard := answer == .bo1Sideboard
+    let (row, nextSeen) := stepJson (index + 1) action events next seen state.pending.head? sideboard
     state := next
     seen := nextSeen
     steps := row :: steps

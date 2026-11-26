@@ -110,14 +110,6 @@ def checkReplayEvent (config : GameConfig) (event : Option ReplayTournament)
     if config.ruleSet.tournamentFormat != some .constructed || env != official then
       throw "the pinned environment disagrees with the official event ban list"
 
-/-- An inter-game registration must use the same pool and keep the same fixed slots. -/
-def sameRegisteredPool (old new : ConstructedDeck) : Bool :=
-  let a := old.deck
-  let b := new.deck
-  a.legend == b.legend && decide (a.runes.Perm b.runes) &&
-    decide (a.battlefields.Perm b.battlefields) && decide (a.reserveLegends.Perm b.reserveLegends) &&
-    decide (List.Perm (a.main ++ old.sideboard) (b.main ++ new.sideboard))
-
 /-- Compare Constructed registrations, allowing a reordering of the same cards. -/
 def sameRegistration (old new : ConstructedDeck) : Bool :=
   sameRegisteredPool old new && old.deck.chosenChampion == new.deck.chosenChampion &&
@@ -247,6 +239,8 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
   let mut usedFields := ([], [])
   for (game, index) in input.games.toList.zipIdx do
     let result := do
+      if game.bo1Setup?.isSome && (index != 0 || input.winsRequired != 1) then
+        throw "the optional Best of 1 setup is only used to start a Best of 1 match"
       let afterTime ← gameStartsAfterTime state timed input.elimination?
       let config := replayGameConfig input.config state input.elimination?.isSome afterTime
       if let some prior := previous then
