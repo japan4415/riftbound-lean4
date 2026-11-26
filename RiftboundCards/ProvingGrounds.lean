@@ -312,7 +312,7 @@ def OGS_011 : CardDef :=
   { OGS_011.meta with
     spellEffect := some (.of [.targetOf (.upTo 2) .friendly .anywhere [.ofType .unit]]
     (.forEach (Selector.slotsFrom 0) (.prim (.move .it .base)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-012
 /--
@@ -337,7 +337,7 @@ def OGS_012 : CardDef :=
   { OGS_012.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
     (.prim (.kill (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-013
 /--
@@ -363,7 +363,7 @@ def OGS_013 : CardDef :=
   { OGS_013.meta with
     abilities := [.passive .always
       [.mightPlus (.all .friendly .here [.ofType .unit, .notSelf]) (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-014
 /--

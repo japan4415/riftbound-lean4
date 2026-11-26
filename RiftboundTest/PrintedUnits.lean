@@ -255,4 +255,54 @@ private meta def printedRecruit (code : String) : Bool := inLab fun s => do
   return (after.obj? target).any (·.damage == 8) && (after.obj? other).any (·.damage == 0) &&
     (after.poolOf s.me).energy == 0 && (cast (s.fund s.me 7) s.me spell ⟨8, []⟩ [target]).isNone
 
+-- Flash moves the teammate's Unit back to the teammate's Base.
+#guard inLab fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { ruleSet := .coreOnly, mode := .teamDuel } labState.cards
+  let s := { s with
+    phase := .main, turn := 1, active := some p, turnOrder := Mode.teamTurnOrder true,
+    pending := [Frame.priority p] : GameState }
+  let (s, ownField) ← putBf s p "B0"
+  let (s, allyField) ← putBf s teammate "B1"
+  let (s, own) ← putAt s p "OGN-142" ownField
+  let (s, ally) ← putAt s teammate "OGN-142" allyField
+  let (s, opponent) ← putAt s enemy "OGN-142" ownField
+  let (s, spell) ← put s p "OGS-011" .hand
+  let next ← play s p spell [own, ally]
+  return (next.zone (.player p .base)).contains own &&
+    (next.zone (.player teammate .base)).contains ally &&
+    (next.obj? opponent).any (·.loc == some ownField) &&
+    (play s p spell [opponent]).isNone
+
+-- Blast of Power requires Order Power and can kill either side's Unit at a Battlefield.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "OGS-012" .hand
+  let (s, friendly) ← putAt s p "OGN-142" s.bf0
+  let (s, enemy) ← putAt s s.you "OGN-142" s.bf0
+  let (s, atBase) ← put s s.you "OGN-142" .base
+  let killedEnemy ← play s p spell [enemy]
+  let killedFriendly ← play s p spell [friendly]
+  return (killedEnemy.obj? enemy).isNone && (killedEnemy.obj? friendly).isSome &&
+    (killedEnemy.firstOf s.you .trash "OGN-142").isSome &&
+    (killedFriendly.obj? friendly).isNone && (killedFriendly.obj? enemy).isSome &&
+    (play s p spell [atBase]).isNone &&
+    (cast (s.fund p 6) p spell ⟨6, [.order]⟩ [enemy]).isNone
+
+-- Garen's aura excludes himself, opponents here, and friendly Units elsewhere.
+#guard inLab fun s => do
+  let other ← s.battlefields.find? (· != s.bf0)
+  let (s, garen) ← putAt s s.me "OGS-013" s.bf0
+  let (s, together) ← putAt s s.me "OGN-049" s.bf0
+  let (s, away) ← putAt s s.me "OGN-049" other
+  let (s, baseUnit) ← put s s.me "OGN-049" .base
+  let (board, enemy) ← putAt s s.you "OGN-049" s.bf0
+  let (atBase, _) ← applyMove board s.me garen .base
+  return board.mightNow garen == some 5 && board.mightNow together == some 6 &&
+    board.mightNow away == some 5 && board.mightNow enemy == some 5 &&
+    board.mightNow baseUnit == some 5 && atBase.mightNow baseUnit == some 6 &&
+    atBase.mightNow together == some 5
+
 end RiftboundTest
