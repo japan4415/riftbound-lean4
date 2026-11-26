@@ -150,31 +150,52 @@ def GameState.zoneView (s : GameState) (viewer : PlayerId) (zone : Zone) :
       ((s.zone zone).zip faces).map (fun (id, face) => viewObject s zone id face)
     | _ => faces.map ViewCard.plain
 
-/-- At a point without a current disclosure, a Main Deck's view depends only on its size
+/-- When none of its cards are disclosed, a Main Deck's view depends only on its size
 (CR 108.4.d-108.4.e). -/
+theorem GameState.zoneView_mainDeck_of_disjoint {s : GameState} {viewer : PlayerId}
+    (owner : PlayerId) (h : ∀ id ∈ s.zone (.player owner .mainDeck), id ∉ s.resolutionDisclosedFaces viewer) :
+    s.zoneView viewer (.player owner .mainDeck) =
+      some (List.replicate (s.zone (.player owner .mainDeck)).length (.plain none)) := by
+  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_of_disjoint _ _ _ h,
+    GameState.zoneCardFaces_mainDeck]
+
+/-- When none of its cards are disclosed, a Rune Deck's view depends only on its size
+(CR 108.5). -/
+theorem GameState.zoneView_runeDeck_of_disjoint {s : GameState} {viewer : PlayerId}
+    (owner : PlayerId) (h : ∀ id ∈ s.zone (.player owner .runeDeck), id ∉ s.resolutionDisclosedFaces viewer) :
+    s.zoneView viewer (.player owner .runeDeck) =
+      some (List.replicate (s.zone (.player owner .runeDeck)).length (.plain none)) := by
+  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_of_disjoint _ _ _ h,
+    GameState.zoneCardFaces_runeDeck]
+
+/-- Unless a card in it is disclosed, another player's hand exposes only its size (CR 108.7). -/
+theorem GameState.zoneView_otherHand_of_disjoint {s : GameState} {viewer owner : PlayerId}
+    (different : viewer ≠ owner) (h : ∀ id ∈ s.zone (.player owner .hand), id ∉ s.resolutionDisclosedFaces viewer) :
+    s.zoneView viewer (.player owner .hand) =
+      some (List.replicate (s.zone (.player owner .hand)).length (.plain none)) := by
+  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_of_disjoint _ _ _ h,
+    GameState.zoneCardFaces_otherHand s different, handView]
+
+/-- With no active disclosure, a Main Deck's view depends only on its size. -/
 theorem GameState.zoneView_mainDeck {s : GameState} {viewer : PlayerId}
     (owner : PlayerId) (h : s.resolutionDisclosedFaces viewer = []) :
     s.zoneView viewer (.player owner .mainDeck) =
-      some (List.replicate (s.zone (.player owner .mainDeck)).length (.plain none)) := by
-  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_default _ _ _ h,
-    GameState.zoneCardFaces_mainDeck]
+      some (List.replicate (s.zone (.player owner .mainDeck)).length (.plain none)) :=
+  s.zoneView_mainDeck_of_disjoint owner (by simp [h])
 
-/-- At a point without a current disclosure, a Rune Deck's view depends only on its size
-(CR 108.5). -/
+/-- With no active disclosure, a Rune Deck's view depends only on its size. -/
 theorem GameState.zoneView_runeDeck {s : GameState} {viewer : PlayerId}
     (owner : PlayerId) (h : s.resolutionDisclosedFaces viewer = []) :
     s.zoneView viewer (.player owner .runeDeck) =
-      some (List.replicate (s.zone (.player owner .runeDeck)).length (.plain none)) := by
-  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_default _ _ _ h,
-    GameState.zoneCardFaces_runeDeck]
+      some (List.replicate (s.zone (.player owner .runeDeck)).length (.plain none)) :=
+  s.zoneView_runeDeck_of_disjoint owner (by simp [h])
 
-/-- Without a current disclosure, another player's hand exposes only its size (CR 108.7). -/
+/-- With no active disclosure, another player's hand exposes only its size. -/
 theorem GameState.zoneView_otherHand {s : GameState} {viewer owner : PlayerId}
     (different : viewer ≠ owner) (h : s.resolutionDisclosedFaces viewer = []) :
     s.zoneView viewer (.player owner .hand) =
-      some (List.replicate (s.zone (.player owner .hand)).length (.plain none)) := by
-  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_default _ _ _ h,
-    GameState.zoneCardFaces_otherHand s different, handView]
+      some (List.replicate (s.zone (.player owner .hand)).length (.plain none)) :=
+  s.zoneView_otherHand_of_disjoint different (by simp [h])
 
 end Riftbound
 

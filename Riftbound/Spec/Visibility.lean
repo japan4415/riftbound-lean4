@@ -30,6 +30,18 @@ def GameState.zoneCardFaces (s : GameState) (viewer : PlayerId) (z : Zone) :
   | .battlefieldZone | .chain | .player _ .base | .player _ .legendZone | .player _ .championZone
   | .player _ .trash | .player _ .banishment => some (ids.map face)
 
+/-- Every visible zone has one face or back for each of its slots. -/
+theorem GameState.zoneCardFaces_length {s : GameState} {viewer : PlayerId} {z : Zone}
+    {faces : List (Option CardId)} (h : s.zoneCardFaces viewer z = some faces) :
+    faces.length = (s.zone z).length := by
+  have lengths := congrArg (Option.map List.length) h
+  cases z with
+  | player owner kind =>
+    by_cases eq : viewer = owner <;> cases kind <;>
+      simp [GameState.zoneCardFaces, eq] at lengths <;> exact lengths.symm
+  | battlefieldZone | chain =>
+    simpa [GameState.zoneCardFaces] using congrArg (Option.map List.length) h.symm
+
 /-- The default view of the Main Deck depends only on the number of cards (CR 108.4.d-108.4.e). -/
 theorem GameState.zoneCardFaces_mainDeck (s : GameState) (viewer owner : PlayerId) :
     s.zoneCardFaces viewer (.player owner .mainDeck) =
@@ -115,6 +127,25 @@ theorem GameState.resolutionZoneCardFaces_default (s : GameState) (viewer : Play
     (z : Zone) (h : s.resolutionDisclosedFaces viewer = []) :
     s.resolutionZoneCardFaces viewer z = s.zoneCardFaces viewer z := by
   simp [resolutionZoneCardFaces, h]
+
+/-- An active disclosure in another zone leaves this zone's face view unchanged. -/
+theorem GameState.resolutionZoneCardFaces_of_disjoint (s : GameState) (viewer : PlayerId)
+    (z : Zone) (hidden : ∀ id ∈ s.zone z, id ∉ s.resolutionDisclosedFaces viewer) :
+    s.resolutionZoneCardFaces viewer z = s.zoneCardFaces viewer z := by
+  unfold GameState.resolutionZoneCardFaces
+  dsimp only
+  split
+  · rfl
+  · cases h : s.zoneCardFaces viewer z with
+    | none => rfl
+    | some faces =>
+      simp only [Option.map_some, Option.some.injEq]
+      calc
+        _ = ((s.zone z).zip faces).map Prod.snd := by
+          apply List.map_congr_left
+          rintro ⟨id, face⟩ member
+          simp [hidden id (List.of_mem_zip member).1]
+        _ = faces := List.map_snd_zip (Nat.le_of_eq (s.zoneCardFaces_length h))
 
 /-- Only the predicting player sees the faces from the Predict decision (CR 437.1). -/
 theorem Frame.disclosedFaces_predict_other {viewer p : PlayerId} (h : viewer ≠ p)
