@@ -364,6 +364,9 @@ inductive Effect where
   The linked ability can inherit one previously chosen object without choosing it again. -/
   | playUnitTokensThen (name : String) (count : Nat) (place : Place) (ready : Bool)
       (index : Nat) (target : Option Selector := none)
+  /-- Kill the chosen permanent, then resolve the linked instruction for its controller
+  (CR 359.3.e.14). -/
+  | killThenForController (slot : Nat) (body : Effect)
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of effects. -/

@@ -1973,6 +1973,107 @@ meta def t (f : GameState → Option Bool) : Bool :=
     a.handN s.you == s3.handN s.you + 2 && a.handN s.me == s3.handN s.me - 1 &&
     b.handN s.me == s3.handN s.me - 1 + 2 && b.handN s.you == s3.handN s.you
 
+-- Hidden Blade attributes the Kill to the spell's controller before the target's controller draws.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s q "OGN-136" s.bf0
+  let paid := s.rich p
+  let run (state : GameState) (player : PlayerId) (action : ActionKind) :=
+    (step 100 state ⟨.player player, action⟩).toOption
+  let (casting, _) ← run paid p (.playCard blade (payOf paid blade) [target])
+  let (offered, _) ← run casting p .pass
+  let (done, events) ← run offered q .pass
+  let dead ← done.firstOf q .trash "OGN-136"
+  let effects := events.filter (fun | .died .. | .killedBySpell _ | .drew _ => true | _ => false)
+  return effects == [.died dead q, .killedBySpell p, .drew q, .drew q]
+
+-- Flash moves the target to Base before Hidden Blade resolves, so the linked draw is ignored.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (s, target) ← putAt s q "OGN-136" s.bf0
+  let paid := (s.rich p).rich q
+  let (casting, _) ← (step 100 paid ⟨.player p, .playCard blade (payOf paid blade) [target]⟩).toOption
+  let (response, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (saving, _) ← (step 100 response ⟨.player q, .playCard flash (payOf paid flash) [target]⟩).toOption
+  let done := settleChain {} 12 saving
+  return done.countIn q .base "OGN-136" == 1 && done.countIn q .trash "OGN-136" == 0 &&
+    done.handN q + 1 == paid.handN q && done.countIn p .trash "OGN-213" == 1
+
+-- Saving Mordekaiser kills the sacrifice under his effect, while Hidden Blade still draws for him.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s q "RAD-020" s.bf0
+  let (s, victim) ← put s q "OGN-136" .base
+  let paid := s.rich p
+  let (casting, _) ← (step 100 paid ⟨.player p, .playCard blade (payOf paid blade) [target]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (replacement, before) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let (done, events) ← (step 100 replacement ⟨.player q, .decide true⟩).toOption
+  let (other, _) ← (step 100 replacement ⟨.player q, .decide false⟩).toOption
+  let (selfKilled, ownEvents) ← (step 100 other ⟨.player q, .decide true⟩).toOption
+  let dead ← done.firstOf q .trash "OGN-136"
+  return (done.obj? target).any (fun o => o.loc.isNone && o.exhausted) &&
+    (done.obj? dead).any (·.formerId == some victim) && events.contains (.died dead q) &&
+    !(before.any (fun | .drew _ => true | _ => false)) && (events.countP (· == .drew q)) == 2 &&
+    !(events.any (fun | .killedBySpell _ => true | _ => false)) &&
+    selfKilled.countIn q .trash "RAD-020" == 1 && (selfKilled.obj? victim).isSome &&
+    !(ownEvents.any (fun | .drew _ | .killedBySpell _ => true | _ => false))
+
+-- Smite replaces Hidden Blade's Kill with a Banish and removes the referent for the draw.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, smite) ← put s p "UNL-007" .hand
+  let (s, target) ← putAt s q "OGN-001" s.bf0
+  let marked ← play (s.control q s.bf0) p smite [target]
+  let done ← play marked p blade [target]
+  return (marked.obj? target).any (·.damage == 3) && done.countIn q .banishment "OGN-001" == 1 &&
+    done.countIn q .trash "OGN-001" == 0 && done.handN q == marked.handN q
+
+-- Repeating Hidden Blade checks each execution; the same dead Unit cannot be targeted twice.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, first) ← putAt s q "OGN-136" s.bf0
+  let (s, second) ← putAt s q "OGN-136" s.bf0
+  let marked := (s.rich p).addTurnFx p .nextSpellRepeat
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let pay : RunePool.Payment := ⟨4, [.order, .order]⟩
+  let once ← cast marked p blade pay [first, first] (pick := pick)
+  let twice ← cast marked p blade pay [first, second] (pick := pick)
+  return once.handN q == s.handN q + 2 && once.countIn q .trash "OGN-136" == 1 &&
+    twice.handN q == s.handN q + 4 && twice.countIn q .trash "OGN-136" == 2
+
+-- In 2v2, only the current controller draws, even when their teammate owns the killed Unit.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let owner : PlayerId := ⟨2⟩
+  let controller : PlayerId := ⟨3⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, turn := 2, active := some p, turnOrder := Mode.teamTurnOrder true
+    pending := [.priority p] }
+  let (s, field) ← putBf s owner "OGN-275"
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s owner "OGN-136" field
+  let changed := (s.control controller field).modObj target (fun o => { o with controller })
+  let fill (state : GameState) (player : PlayerId) : Option GameState :=
+    List.range 2 |>.foldlM (fun t _ => (put t player "OGN-136" .mainDeck).map Prod.fst) state
+  let s ← fill changed owner
+  let s ← fill s controller
+  let done ← play s p blade [target]
+  return done.countIn owner .trash "OGN-136" == 1 && done.handN controller == 2 &&
+    done.handN owner == 0 && (done.zone (.player owner .mainDeck)).length == 2
+
 -- Reaver's Row (OGN-285): when I defend here, I may move a friendly unit here to my base
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-285"

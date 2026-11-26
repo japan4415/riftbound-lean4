@@ -2763,8 +2763,7 @@ def RAD_101 : CardDef :=
   { RAD_101.meta with
     spellEffect := some {
       choices := [.targetOf .one .any .anywhere [.ofType .gear]]
-      body := .eachPlayer (.controllerOf 0) (.seqOf [.prim (.kill (.slot 0)),
-        .prim (.create "Gold" (.const 1) .atBase false)])
+      body := .killThenForController 0 (.prim (.create "Gold" (.const 1) .atBase false))
       recheckTargets := true },
     status := .full }
 

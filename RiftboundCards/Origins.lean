@@ -5769,12 +5769,11 @@ def OGN_213.meta : CardDef :=
 /-- Hidden Blade. -/
 def OGN_213 : CardDef :=
   { OGN_213.meta with
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.seqOf [.eachPlayer .eachPlayer
-          (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
-            (.prim (.draw .you (.const 2))) .nop),
-        .prim (.kill (.slot 0))])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      body := .killThenForController 0 (.prim (.draw .you (.const 2)))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-214
 /--

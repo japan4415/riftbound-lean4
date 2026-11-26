@@ -3203,6 +3203,34 @@ theorem drawLookedCard_safe (p : PlayerId) (looked : List ObjId) (s : GameState)
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The controller of an object killed by the instruction, linked across its change of zone. -/
+def killedController (target : ObjId) (events : List Event) : Option PlayerId :=
+  events.findSome? fun
+    | .moved old next _ => if old == target then
+        events.findSome? fun
+          | .died id controller => if id == next then some controller else none
+          | _ => none
+      else none
+    | _ => none
+
+/-- The Kill itself must cause the death. A replacement may kill a permanent as its own action
+(CR 370.1.a.1, 429). -/
+def directKilledController (s : GameState) (target : ObjId) (events : List Event) : Option PlayerId :=
+  if (s.deathSaveFor target []).isSome then none else killedController target events
+
+/-- Resolve one of a Spell's Kill actions, noting only a Unit killed by that Spell. -/
+def killSpellTarget (p : PlayerId) (before current : GameState) (target : ObjId) :
+    GameState × List Event :=
+  let (next, events) := killOrSaveInGroup before current target
+  let credited := (current.cardDef? target).any (·.hasType .unit) &&
+    (directKilledController current target events).isSome
+  (next, if credited then Event.killedBySpell p :: events else events)
+
+/-- Attribution changes the event log while retaining the result of the Kill or its replacement. -/
+theorem killSpellTarget_safe (p : PlayerId) (before current : GameState) (target : ObjId) :
+    Safe current (killSpellTarget p before current target).1 :=
+  killOrSaveInGroup_safe before current target
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -3222,12 +3250,11 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
     (sel.eval s p src env).map (fun ids =>
-      let r := resolveDeathGroupWith s ids (killOrSaveInGroup s)
-      (r.1, r.2 ++ (if (s.cardDef? src).any (·.hasType .spell) &&
-          r.2.any (fun e => match e with
-            | .died n _ => (r.1.cardDef? n).any (·.hasType .unit)
-            | _ => false)
-        then [Event.killedBySpell p] else [])))
+      if (s.cardDef? src).any (·.hasType .spell) then
+        let (next, events) := resolveDeathGroupWith s ids (killSpellTarget p s)
+        let credit := Event.killedBySpell p
+        (next, events.filter (· != credit) ++ (if events.contains credit then [credit] else []))
+      else resolveDeathGroupWith s ids (killOrSaveInGroup s))
   | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (banishObj p)
@@ -3452,7 +3479,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some ids =>
       simp only [hs, Option.map_some, Option.some.injEq] at h
       rw [← h]
-      exact resolveDeathGroupWith_safe s ids (killOrSaveInGroup_safe s)
+      split
+      · exact resolveDeathGroupWith_safe s ids (killSpellTarget_safe p s)
+      · exact resolveDeathGroupWith_safe s ids (killOrSaveInGroup_safe s)
   | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (banishObj_safe p) h
@@ -5210,11 +5239,7 @@ theorem equipWithCostFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (en
 /-- Count only the chosen objects killed by this instruction, including a token that ceased to
 exist. A replacement that saved a target and killed something else does not count. -/
 def killedTargets (targets : List ObjId) (events : List Event) : Nat :=
-  targets.countP (fun target => events.any (fun
-    | .moved old next _ => old == target && events.any (fun
-        | .died id _ => id == next
-        | _ => false)
-    | _ => false))
+  targets.countP (fun target => (killedController target events).isSome)
 
 /-- Remember a delayed ability independently of what happens to its source afterward (CR 391). -/
 def recordKillCount (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -5237,25 +5262,55 @@ theorem recordKillCount_safe (s : GameState) (p : PlayerId) (src : ObjId) (env :
     · exact addTurnFxOn_safe s _ _ _
     · exact Safe.refl s
 
-/-- Kill the chosen objects, optionally remembering the number for a delayed end-of-turn ability. -/
+/-- A linked controller instruction can use an object still on the Board, or look back at an object
+killed by the preceding instruction. A replacement that removed the target can leave no referent. -/
+def linkedKillFrames (before s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (events : List Event) (linked : Option (Nat × Effect)) : List Frame := Id.run do
+  let some (slot, body) := linked | return []
+  let some (.obj id) := env.slots[slot]? | return []
+  let controller := if s.inPlay.contains id then (s.obj? id).map (·.controller)
+    else directKilledController before id events
+  let some who := controller | return []
+  return [.run who src { env with effectController := env.effectController <|> some p } (.cons body .nil)]
+
+/-- A linked controller instruction continues the current resolution. -/
+theorem linkedKillFrames_play {before s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {events : List Event} {linked : Option (Nat × Effect)} {f : Frame}
+    (h : f ∈ linkedKillFrames before s p src env events linked) : f.isPlay = true := by
+  unfold linkedKillFrames at h
+  dsimp only at h
+  split at h
+  · split at h
+    · split at h
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- Kill the chosen objects, with any delayed ability or linked instruction (CR 359.3.e.14). -/
 def killEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (targets : Selector)
-    (delay : Option Nat) (es : EffectList) : GameState × List Frame × List Event :=
+    (delay : Option Nat) (es : EffectList) (linked : Option (Nat × Effect) := none) :
+    GameState × List Frame × List Event :=
   let ids := (targets.eval s p src env).getD []
   match s.deathGroupChoice ids with
   | some (unit, controller, first, other) =>
-    let retry := delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
+    let retry := match linked with
+      | some (slot, body) => Effect.killThenForController slot body
+      | none => delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
     (s, [.eitherDo controller unit {} first other .nil, .run p src env (.cons retry es)], [])
   | none =>
     match applyPrim s p src env (.kill targets) with
     | some (killed, events) =>
       let next := delay.elim killed (fun i => recordKillCount killed p src env i ids events)
-      (next, attachmentReplacementFrames killed events ++ [.run p src env es], events)
+      (next, attachmentReplacementFrames killed events ++ linkedKillFrames s next p src env events linked ++
+        [.run p src env es], events)
     | none => (s, [.run p src env es], [.skipped src])
 
 /-- Resolving a kill instruction and recording delayed abilities preserves invariants. -/
 theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (targets : Selector) (delay : Option Nat) (es : EffectList) :
-    Safe s (killEffectStep s p src env targets delay es).1 := by
+    (targets : Selector) (delay : Option Nat) (es : EffectList) {linked : Option (Nat × Effect)} :
+    Safe s (killEffectStep s p src env targets delay es linked).1 := by
   unfold killEffectStep
   dsimp only
   split
@@ -5270,17 +5325,19 @@ theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
 
 /-- The frames of a kill instruction stay on the Chain's resolution stack. -/
 theorem killEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {targets : Selector} {delay : Option Nat} {es : EffectList} {f : Frame}
-    (h : f ∈ (killEffectStep s p src env targets delay es).2.1) : f.isPlay = true := by
+    {targets : Selector} {delay : Option Nat} {es : EffectList} {linked : Option (Nat × Effect)} {f : Frame}
+    (h : f ∈ (killEffectStep s p src env targets delay es linked).2.1) : f.isPlay = true := by
   unfold killEffectStep at h
   dsimp only at h
   split at h
   · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
     rcases h with rfl | rfl <;> rfl
   · split at h
-    · rcases List.mem_append.mp h with hs | h
-      · exact attachmentReplacementFrames_play hs
-      · obtain rfl := List.mem_singleton.mp h
+    · rcases List.mem_append.mp h with used | hr
+      · rcases List.mem_append.mp used with hs | hl
+        · exact attachmentReplacementFrames_play hs
+        · exact linkedKillFrames_play hl
+      · obtain rfl := List.mem_singleton.mp hr
         rfl
     · obtain rfl := List.mem_singleton.mp h
       rfl
@@ -6057,6 +6114,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .endCombatDamage excess =>
     (recordCombatDamage s p excess, [.run p src env es], [])
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
+  | .killThenForController slot body => killEffectStep s p src env (.slot slot) none es (some (slot, body))
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)
