@@ -306,7 +306,7 @@ def legalFrameActions (s : GameState) : List Action :=
     (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
-/-- The eligible seats may concede regardless of the decision on top of the stack (CR 649–651). -/
+/-- The eligible seats may concede regardless of the decision on top of the stack (CR 649-651). -/
 def concedeActions (s : GameState) : List Action :=
   ((allPlayers s.playerCount).filter (fun p => decide (s.canConcede p))).map
     (fun p => ⟨.player p, .concede⟩)

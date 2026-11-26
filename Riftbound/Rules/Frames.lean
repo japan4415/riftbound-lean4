@@ -514,7 +514,7 @@ def finishFreeForAllConcession (before : GameState) (r : GameState × List Event
   let events := if next.result.isSome then [] else r.2 ++ before.mightyEvents next
   (next.withTriggers events, events)
 
-/-- A concession removes a player at any time (CR 649–652). Other answers go to the decision frame. -/
+/-- A concession removes a player at any time (CR 649-652). Other answers go to the decision frame. -/
 def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) :=
   match a.kind with
   | .concede =>

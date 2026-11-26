@@ -197,7 +197,7 @@ instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFra
   split <;> infer_instance
 
 /-- A seat can concede if it is still participating and an opposing player or side will
-remain in the game (CR 649–651). -/
+remain in the game (CR 649-651). -/
 def GameState.canConcede (s : GameState) (p : PlayerId) : Prop :=
   if s.config.mode.isFreeForAll then
     s.participates p = true ∧ (s.withdrawSeat p).participatingSeats ≠ []
@@ -215,7 +215,7 @@ theorem GameState.canConcede_registered {s : GameState} {p : PlayerId} (h : s.ca
   · exact of_decide_eq_true (Bool.and_eq_true_iff.mp h.1).1
   · exact h.1
 
-/-- An eligible player may concede independently of the open decision (CR 649–651). -/
+/-- An eligible player may concede independently of the open decision (CR 649-651). -/
 def LegalConcede (s : GameState) (a : Action) : Prop :=
   a.kind = .concede ∧
     match a.actor with
