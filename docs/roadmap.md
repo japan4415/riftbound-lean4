@@ -27,7 +27,7 @@
 | I3 | **整形性の保存**: 初期状態は `WF`。`WF s` かつ `step fuel db s a = .ok (s', es)` なら `WF s'`。したがって `Reachable s → WF s`。`WF` は構造の条件だけを含む（[design.md §5.2](design.md#52-ゾーンとオブジェクト)） | L3 | M2（以後、マイルストーンごとに対象の遷移を広げる） |
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
 | I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。`Reachable.exists_legal` が、偶然の決定を含めて合法な答えの存在を述べる） | L3 | M3 |
-| I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
+| I6 | **`Legal` との一致**: `legal_of_step_ok` は成功した `step` が合法であること、`step_sound` は整形性と所有者の不変条件の下で合法手が失敗する場合の理由が fuel 切れに限られることを示す。`legalFrameActions_iff` は現在の全フレームを場合分けし、`legalActions_iff` は投了を含むプレイヤーの合法手と列挙が一致することを示す。偶然・時計・ジャッジの答えは `Legal` で判定する（[design.md §6.3](design.md#63-できること全ての担保)） | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
 | I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」）。M5a で証明（`win_condition_unique`、`winner_spec`） | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
@@ -39,7 +39,7 @@
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
 | I16 | **Priority の受け渡し**: Closed でプレイヤーがパスしたら、次の `priority` フレームは手番順で次のプレイヤーのものになる。全員が続けてパスしたら、最も新しい Finalized の項目が解決される（312.2, 339, 340） | L2 | M4 |
 | I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。M5a では局所版だけ証明（`cleanupFrame_pop_settled`、`Settled.no_lethal`）。全体の形は未 | L2 | M5 |
-| I18 | **任意の選択は必ず問われる**: 解釈器は、`may`、任意の追加コスト、Pick を自分では決めない。必ず `choose` フレームを出す（[design.md §3](design.md#3-設計原則) の P4） | L4 | M4 |
+| I18 | **任意の選択は必ず問われる**: 解決中の選択は決定フレーム、プレイ時の追加コストなどは `Action` で受け取る（[design.md §3](design.md#3-設計原則) の P4）。[Choices.lean](../Riftbound/Invariant/Choices.lean) で、実行可能な `may`、明示的な対象選択、複数の効果の選択、任意の誘発、印刷された Spell の任意追加コストを局所的に証明した。すべての効果・コスト・誘発を通した証明は残っている | L4 | M4 |
 | I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
 
 I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正しさ」を補う定理である（[design.md §6.3](design.md#63-できること全ての担保)）。
