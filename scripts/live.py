@@ -139,11 +139,23 @@ def make_handler(lean: Lean, port: int):
                     line = "judge"
                 elif path == "/api/undo":
                     line = "undo"
+                elif path == "/api/bo1-first":
+                    choice = req.get("choice")
+                    if choice not in ("first", "second"):
+                        return self._json(400, {"error": "bad choice"})
+                    line = f"bo1-first {choice}"
+                elif path == "/api/bo1-sideboard":
+                    line = "bo1-sideboard"
                 elif path == "/api/swap":
                     out, inn = str(req.get("out", "")), str(req.get("in", ""))
                     if not (CARD_ID.fullmatch(out) and CARD_ID.fullmatch(inn)):
                         return self._json(400, {"error": "bad card"})
                     line = f"swap {out} {inn}"
+                    if "seat" in req:
+                        seat = int(req["seat"])
+                        if seat not in (0, 1):
+                            return self._json(400, {"error": "bad seat"})
+                        line += f" {seat}"
                 elif path == "/api/next":
                     choice = req.get("choice")
                     if choice not in (None, "first", "second"):

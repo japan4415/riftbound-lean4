@@ -158,6 +158,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices h3 { margin: 0; font-size: .72rem; color: var(--muted); font-weight: 600; }
 .choices .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .choices button { text-align: left; }
+.choices.bo1-controls button { min-height: 2.75rem; min-width: 2.75rem; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
 .choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .choices .name-cards { display: grid; gap: 6px; min-width: 0; width: min(100%, 26rem); }
@@ -347,8 +348,9 @@ function buildBoard() {
 function describe(i) {
   const step = steps[i];
   if (step.bo1Sideboard) return ['サイドボードを確定', 'Chosen Champion を配置し、デッキをシャッフルする準備をする'];
+  if (step.bo1Initiative) return ['先手を決める', `P${step.action.turnOrder[0]} が先手`];
   const a = step.action;
-  if (!a) return ['ゲーム開始前', '山札・Rune Deck・Battlefield の準備ができた状態'];
+  if (!a) return ['ゲーム開始前', 'セットアップを始める'];
   const before = steps[i - 1]?.state;
   return describeA(a, before?.pending, before);
 }
@@ -1111,6 +1113,7 @@ $('board').addEventListener('scroll', hideCardInfo);
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
 let liveOver = false, liveArchive = false, liveSeats = '0';
 let liveSide = null, swapOut = null, swapIn = null;
+let liveBo1 = null, bo1SideSeat = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
@@ -1146,7 +1149,7 @@ function setLive(j) {
     shownPayments.add(payment);
     return true;
   });
-  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; liveBo1 = j.bo1; askChoice = null;
   liveOver = j.over; liveArchive = j.archiveAvailable;
   swapOut = swapIn = null;
 }
@@ -1323,6 +1326,7 @@ function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
   const atLiveEnd = live && liveGameIndex === traceIndex && steps && i === steps.length - 1;
+  box.classList.toggle('bo1-controls', Boolean(atLiveEnd && liveBo1));
   $('undobtn').hidden = !(atLiveEnd && undoCount > 0);
   if (!atLiveEnd) return;
   const last = steps[i].state;
@@ -1335,6 +1339,8 @@ function renderLegal(i) {
     const h = document.createElement('h3'); h.textContent = title;
     const row = document.createElement('div'); row.className = 'btns'; row.append(...buttons); box.append(h, row);
   };
+  const register = (seat) => btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
+    () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); });
   if (liveOver) {
     if (liveMatch && !liveMatch.finished) {
       if (askChoice !== null) {
@@ -1349,10 +1355,7 @@ function renderLegal(i) {
         if (liveExt.betweenGames) actions.push(btn('時間切れ', liveMatch?.singleElimination
           ? 'ゲーム勝数が同じ場合は次のゲームを行う（TR 408.4）'
           : '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
-        if (liveSide?.allowed) for (const seat of liveSeats) {
-          actions.push(btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
-            () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); }));
-        }
+        if (liveSide?.allowed) for (const seat of liveSeats) actions.push(register(seat));
         group('マッチ', actions);
       }
     } else {
@@ -1360,6 +1363,35 @@ function renderLegal(i) {
         : 'ゲーム終了。「新しいゲーム」で、もう一度始められる。';
       if (liveArchive) group('対局記録', [btn('マッチの記録を保存', '手札やデッキ順を含む JSON', saveReplay)]);
     }
+    return;
+  }
+  if (liveBo1?.chooser != null) {
+    $('livemsg').textContent = `P${liveBo1.chooser} が最初のゲームの先手か後手かを選びます。`;
+    group(`P${liveBo1.chooser} の選択`, [
+      btn('先手にする', '', () => liveExternal('bo1-first', { choice: 'first' })),
+      btn('後手にする', '', () => liveExternal('bo1-first', { choice: 'second' }))]);
+    return;
+  }
+  if (liveBo1?.sideboards.length) {
+    const side = liveBo1.sideboards.find(({ player }) => player === bo1SideSeat) ?? liveBo1.sideboards[0];
+    $('livemsg').textContent = 'サイドボードを編集できます。確定するとシャッフルを始めます。';
+    if (liveBo1.sideboards.length > 1) {
+      group('編集する席', liveBo1.sideboards.map(({ player }) => {
+        const seat = btn(`P${player}`, '', () => {
+          bo1SideSeat = player; swapOut = swapIn = null;
+          renderLegal(i);
+          box.querySelector(`[data-sideboard-seat="${player}"]`)?.focus();
+        }, player === side.player ? 'sel' : null);
+        seat.dataset.sideboardSeat = player;
+        seat.setAttribute('aria-pressed', player === side.player);
+        return seat;
+      }));
+    }
+    group('ゲーム開始前の操作', [
+      register(side.player),
+      btn('サイドボードを確定', 'Chosen Champion を配置してシャッフルする',
+        () => liveExternal('bo1-sideboard'))]);
+    renderSideboard(group, btn, side);
     return;
   }
   markActCards(liveLegal);
@@ -1427,8 +1459,7 @@ function renderLegal(i) {
   if (ext.length) group('大会のルール', ext);
 }
 // サイドボード（TR 403.4）: Main Deck のカードを 1 枚出し、サイドボードのカードを 1 枚入れる。合法かどうかは Lean が決める。
-function renderSideboard(group, btn) {
-  const s = liveSide;
+function renderSideboard(group, btn, s = liveSide) {
   const cardBtns = (list, sel, set) => list.map((c) =>
     btn(c.name + ' ×' + c.n, c.id, () => { set(sel === c.id ? null : c.id); renderLegal(steps.length - 1); },
       sel === c.id ? 'sel' : null));
@@ -1439,22 +1470,20 @@ function renderSideboard(group, btn) {
   const nm = (list, id) => { const c = list.find((x) => x.id === id); return c ? c.name : id; };
   const go = btn(swapOut && swapIn ? '入れ替える: ' + nm(s.main, swapOut) + ' ⇄ ' + nm(s.side, swapIn) : '出すカードと入れるカードを選ぶ',
     '1 対 1 で入れ替える。入れ替えの後のデッキが Constructed で合法かどうかは、Lean が確かめる（TR 403.4.c）',
-    () => liveSwap());
+    () => liveSwap(s.player));
   go.disabled = !(swapOut && swapIn);
   group('入れ替え', [go]);
 }
-async function liveSwap() {
+async function liveSwap(seat) {
   if (liveRequest) return;
-  setLiveRequest(true);
   const out = swapOut, inn = swapIn;
   $('livemsg').textContent = '確かめ中…';
   try {
-    const j = await api('/api/swap', { out, in: inn });
-    undoCount = 0;
-    setLive(j); renderLegal(steps.length - 1);
-    $('livemsg').textContent = '入れ替えた。続けて入れ替えるか、「次のゲーム」へ。';
+    await startWith('/api/swap', { out, in: inn, seat }, false);
+    $('livemsg').textContent = liveBo1
+      ? 'カードを入れ替えました。編集を続けるか、サイドボードを確定してください。'
+      : 'カードを入れ替えました。編集を続けるか、次のゲームへ進んでください。';
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
-  finally { setLiveRequest(false); }
 }
 async function startWith(path, body, fresh) {
   if (liveRequest) return;
@@ -1462,8 +1491,9 @@ async function startWith(path, body, fresh) {
   try {
     const j = await api(path, body);
     if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
-    if (fresh) undoCount = 0;
-    else if (path === '/api/act' || path === '/api/clock' || path === '/api/judge') undoCount++;
+    const initialEdit = liveBo1?.sideboards.length && (path === '/api/swap' || path === '/api/register');
+    if (fresh) { undoCount = 0; bo1SideSeat = null; }
+    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
     else undoCount = 0;
     setLive(j);
     if (fresh) {
@@ -1514,11 +1544,11 @@ async function liveAct(k) {
   try { await startWith('/api/act', { k }, false); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
-async function liveExternal(which) {
+async function liveExternal(which, body = {}) {
   if (liveRequest) return;
   $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
-  try { await startWith('/api/' + which, {}, false); }
-  catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+  try { await startWith('/api/' + which, body, false); }
+  catch (e) { renderLegal(cur); $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveNext(choice) {
   if (liveRequest) return;

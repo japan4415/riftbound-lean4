@@ -20,6 +20,7 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     let (action, next, events) ← input.applyAnswer state answer (index + 1) fuel
     let sideboard := answer == .bo1Sideboard
     let (row, nextSeen) := stepJson (index + 1) action events next seen state.pending.head? sideboard
+      (input.isBo1Initiative state action)
     state := next
     seen := nextSeen
     steps := row :: steps

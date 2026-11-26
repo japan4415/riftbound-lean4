@@ -213,11 +213,24 @@ private def addBo1Deck (db : CardDB) (s : GameState) (p : PlayerId) (deck : Deck
   let s ← addCards db p (.player p .mainDeck) s (deck.main.erase deck.chosenChampion)
   addCards db p (.player p .runeDeck) s deck.runes
 
+/-- Whether the optional Best of 1 setup is waiting for the initiative choice. -/
+def GameInputs.awaitsBo1Initiative (input : GameInputs) (s : GameState) : Bool :=
+  input.bo1Setup?.isSome && s.phase == .setup && s.pending == [.chanceTurnOrder] && s.result.isNone
+
+/-- Identify the initiative answer in this setup for trace presentation. -/
+def GameInputs.isBo1Initiative (input : GameInputs) (s : GameState) (action : Option Action) : Bool :=
+  input.awaitsBo1Initiative s && action.any (fun a => match a.kind with
+    | .arrangePlayers _ => true
+    | _ => false)
+
+/-- Whether the optional Best of 1 setup is waiting for the final registrations. -/
+def GameInputs.awaitsBo1Sideboard (input : GameInputs) (s : GameState) : Bool :=
+  input.bo1Setup?.isSome && s.phase == .setup && s.pending == [.setupHands] && s.result.isNone
+
 /-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
 def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
-  let awaitingSideboard := input.bo1Setup?.isSome && s.phase == .setup &&
-    s.pending == [.setupHands] && s.result.isNone
+  let awaitingSideboard := input.awaitsBo1Sideboard s
   if let .bo1Sideboard := answer then
     unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"
     let .constructed registrations := input.decks | throw "the Best of 1 setup needs final registrations"
@@ -231,15 +244,12 @@ def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : Replay
   let action ← answer.resolve index
   if awaitingSideboard && action.kind != .concede && action.kind != .declareDraw then
     throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
-  let transition := if input.bo1Setup?.isSome && s.pending == [.chanceTurnOrder] then
-    match action.kind with
-    | .arrangePlayers _ =>
-      if Legal s action then
-        match applyFrame0 s action with
-        | some result => .ok result
-        | none => .error (.internal "applyFrame0")
-      else .error .illegal
-    | _ => step fuel s action
+  let transition := if input.isBo1Initiative s (some action) then
+    if Legal s action then
+      match applyFrame0 s action with
+      | some result => .ok result
+      | none => .error (.internal "applyFrame0")
+    else .error .illegal
   else step fuel s action
   let (next, events) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
   return (some action, next, events)

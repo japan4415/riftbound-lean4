@@ -229,17 +229,84 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
         assert exported["cards"][blank["code"]]["name"] == "Blank Battlefield"
 
 
-def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
-    originals = setup["decks"]["constructed"]["decks"]
-    previous = originals[1]["deck"]
+def bo1_registration(original: dict) -> dict:
+    previous = original["deck"]
     champion = {"code": "RAD-112"}
     outgoing = {"code": "RAD-094"}
     main = list(previous["main"])
     main[main.index(outgoing)] = champion
-    changed = {
+    return {
         "deck": {**previous, "main": main, "chosenChampion": champion},
-        "sideboard": [outgoing if card == champion else card for card in originals[1]["sideboard"]],
+        "sideboard": [outgoing if card == champion else card for card in original["sideboard"]],
     }
+
+
+def live_bo1_match(live: Lean, setup: dict) -> dict:
+    config = {**setup, "bo1Sideboarding": True, "winsRequired": 1}
+    originals = config["decks"]["constructed"]["decks"]
+    wrong_format = json.loads(live.ask(f"start-json 71 01 {json.dumps({**config, 'winsRequired': 2})}"))
+    assert "initial sideboarding requires a Constructed Best of 1 match" in wrong_format["error"]
+    automated = ask(live, f"start-json 71 0 {json.dumps(config)}")
+    assert automated["bo1"]["chooser"] is None
+    assert [seat["player"] for seat in automated["bo1"]["sideboards"]] == [0]
+    assert [row["action"]["kind"] for row in automated["steps"][1:]] == ["pick", "pick", "arrangePlayers"]
+
+    started = start(live, config)
+    assert started["bo1"] == {"chooser": 1, "sideboards": []}
+    assert [row["action"]["kind"] for row in started["steps"][1:]] == ["pick", "pick"]
+    assert "no Best of 1 sideboard window" in json.loads(live.ask("bo1-sideboard"))["error"]
+    changed = bo1_registration(originals[1])
+    register = f"register 1 {json.dumps(changed)}"
+    assert "cannot be used now" in json.loads(live.ask(register))["error"]
+    initiative = ask(live, "bo1-first first")
+    assert initiative["bo1"]["chooser"] is None
+    assert initiative["steps"][0]["bo1Initiative"]
+    assert initiative["steps"][0]["action"]["turnOrder"] == [1, 0]
+    assert "p1.championZone" not in initiative["steps"][0]["state"]["zones"]
+    assert [seat["player"] for seat in initiative["bo1"]["sideboards"]] == [0, 1]
+    assert ask(live, "undo")["bo1"] == started["bo1"]
+    alternate = ask(live, "bo1-first second")
+    assert alternate["steps"][0]["action"]["turnOrder"] == [0, 1]
+    assert ask(live, "undo")["bo1"] == started["bo1"]
+    assert ask(live, "bo1-first first") == initiative
+    illegal = json.loads(live.ask(f"register 1 {json.dumps({**changed, 'sideboard': []})}"))
+    assert "registered pool or fixed slots changed" in illegal["error"]
+    registered = ask(live, register)
+    assert registered["steps"] == []
+    reverted = ask(live, "undo")
+    assert reverted["bo1"] == initiative["bo1"]
+    ask(live, register)
+
+    p0 = originals[0]["deck"]
+    outgoing = next(card for card in p0["main"] if card != p0["chosenChampion"])
+    incoming = originals[0]["sideboard"][0]
+    swap = f"swap {outgoing['code']} {incoming['code']} 0"
+    swapped = ask(live, swap)
+    assert any(card["id"] == outgoing["code"] for card in swapped["bo1"]["sideboards"][0]["side"])
+    confirmed = ask(live, "bo1-sideboard")
+    assert confirmed["bo1"] is None and confirmed["steps"][0]["bo1Sideboard"]
+    state = confirmed["steps"][0]["state"]
+    champion_id = state["zones"]["p1.championZone"][0]
+    assert state["new"][str(champion_id)]["card"] == changed["deck"]["chosenChampion"]["code"]
+    assert all(f"p{seat}.hand" not in state["zones"] for seat in (0, 1))
+    assert confirmed["steps"][1]["action"]["kind"] == "arrange"
+    assert ask(live, "undo")["bo1"] == swapped["bo1"]
+    assert ask(live, "bo1-sideboard") == confirmed
+    assert "cannot be used now" in json.loads(live.ask(register))["error"]
+    final = choose(live, keep(live, confirmed), "concede", "p0")
+    assert final["archiveAvailable"] and final["match"]["winner"] == 1
+    archive = ask(live, "replay")
+    game = archive["input"]["games"][0]
+    assert game["bo1Setup"] == originals and game["answers"][3] == "bo1Sideboard"
+    assert game["decks"]["constructed"]["decks"][1] == changed
+    assert archive["games"][0]["summary"]["turnOrder"] == [{"n": 1}, {"n": 0}]
+    return archive
+
+
+def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
+    originals = setup["decks"]["constructed"]["decks"]
+    changed = bo1_registration(originals[1])
+    champion = changed["deck"]["chosenChampion"]
     submitted = [originals[0], changed]
     p0, p1 = {"n": 0}, {"n": 1}
     order = [p1, p0]
@@ -292,7 +359,7 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     command("record", invalid, archive, error="must sideboard from the registered pool")
 
 
-def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict) -> None:
+def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -443,6 +510,15 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert json.loads(command("verify-team", inferred_archive)) == inferred_summary
     check_limited_cli(folder, setup, command)
     check_bo1_cli(folder, setup, command)
+    live_archive = folder / "live-bo1-archive.json"
+    live_archive.write_text(json.dumps(bo1), encoding="utf-8")
+    live_summary = json.loads(command("verify", live_archive))
+    assert live_summary["exact"] and live_summary["wins"] == [0, 1]
+    live_trace = folder / "live-bo1-trace.json"
+    command("view", live_archive, live_trace)
+    steps = json.loads(live_trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+    assert steps[3]["bo1Initiative"] and steps[3]["action"]["turnOrder"] == [1, 0]
+    assert steps[4]["bo1Sideboard"]
 
 
 def main() -> None:
@@ -456,15 +532,16 @@ def main() -> None:
         check_match_endings(live, setup)
         group_move = group_move_match(live, setup)
         elimination = elimination_match(live, setup)
+        bo1 = live_bo1_match(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move, elimination)
+        check_cli(args.output, saved, setup, group_move, elimination, bo1)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move, elimination)
+            check_cli(Path(folder), saved, setup, group_move, elimination, bo1)
     print("replay smoke: OK")
 
 

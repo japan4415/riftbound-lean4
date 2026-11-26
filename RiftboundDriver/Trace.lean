@@ -439,6 +439,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
       | _ => [])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
+    | .arrangePlayers order => [("turnOrder", jarr (order.map (fun p => toString p.n)))]
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         (match frame with
@@ -681,13 +682,15 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
-    (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false) :
+    (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false)
+    (bo1Initiative : Bool := false) :
     String × Std.HashSet Nat :=
   let (st, seen') := stateJson s seen
   (jobj ([("i", toString i),
     ("action", match a with | some a => actionJson a frame (some s) es | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)] ++
-    (if bo1Sideboard then [("bo1Sideboard", "true")] else [])), seen')
+    (if bo1Sideboard then [("bo1Sideboard", "true")] else []) ++
+    (if bo1Initiative then [("bo1Initiative", "true")] else [])), seen')
 
 /-- The parameter of a keyword as JSON. -/
 def kwArgJson : KeywordArg → String

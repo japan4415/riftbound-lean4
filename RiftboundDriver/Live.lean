@@ -52,6 +52,8 @@ structure LiveSetup where
   tournament : Option ReplayTournament := none
   /-- Whether to apply the timed single-elimination procedure (TR 408.4). -/
   singleElimination? : Option Bool := none
+  /-- Whether to use the optional initial sideboard window for Constructed Best of 1 (TR 406.1.h). -/
+  bo1Sideboarding? : Option Bool := none
   /-- The starting registrations in seat order. -/
   decks : ReplayDecks
   /-- The number of game wins that finishes the match. -/
@@ -125,27 +127,48 @@ def LiveGame.legal (g : LiveGame) : List Action :=
     | .player p => g.humans.contains p
     | _ => false)
 
+/-- The controlled seat deciding initiative after the Battlefield draws. -/
+def LiveGame.bo1Chooser (g : LiveGame) : Option PlayerId := do
+  let input ← g.input
+  if g.ending.isNone && input.awaitsBo1Initiative g.s then
+    input.chooser.filter g.humans.contains
+  else none
+
+/-- Whether setup is at the optional Best of 1 sideboard window. -/
+def LiveGame.bo1SideboardOpen (g : LiveGame) : Bool :=
+  g.ending.isNone && g.input.any (·.awaitsBo1Sideboard g.s)
+
 /-- The game waits for a person. -/
 def LiveGame.needsHuman (g : LiveGame) : Bool :=
-  g.s.result.isNone && (match g.waiting with | some p => g.humans.contains p | none => false)
+  g.s.result.isNone && (g.bo1Chooser.isSome ||
+    (g.bo1SideboardOpen && !g.humans.isEmpty) || g.waiting.any g.humans.contains)
 
 /-- Whether this recorded match uses the single-elimination clock. -/
 def LiveGame.singleElimination (g : LiveGame) : Bool :=
   g.setup.any (fun setup => setup.singleElimination?.getD false)
 
+/-- Apply the same transition that an exported match uses to reproduce an answer. -/
+def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
+    Except String (LiveGame × String) := do
+  if g.ending.isSome then throw "the match is over"
+  let (action, s', es) ← match g.input with
+    | some input => input.applyAnswer g.s answer g.i (g.setup.map (·.fuel) |>.getD 100)
+    | none => do
+      let a ← answer.resolve g.i
+      let (next, events) ← (step 100 g.s a).mapError (fun e => s!"the engine refused the answer: {repr e}")
+      pure (some a, next, events)
+  let initiative := g.input.any (fun input => input.isBo1Initiative g.s action)
+  let (j, seen') := stepJson g.i action es s' g.seen g.s.pending.head? (answer == .bo1Sideboard) initiative
+  return ({ g with
+    s := s', seen := seen', i := g.i + 1,
+    answersRev := if g.input.isSome then answer :: g.answersRev else g.answersRev,
+    checkpointsRev := if g.input.isSome then ReplayCheckpoint.capture s' es :: g.checkpointsRev
+      else g.checkpointsRev,
+    fields := (action.bind (pickedBattlefield g.s)).toList ++ g.fields }, j)
+
 /-- Give an answer: the step as JSON, and the game after it. -/
 def LiveGame.apply (g : LiveGame) (a : Action) : Except String (LiveGame × String) :=
-  if g.ending.isSome then .error "the match is over" else
-  match step (g.setup.map (·.fuel) |>.getD 100) g.s a with
-  | .error e => .error s!"the engine refused the answer: {repr e}"
-  | .ok (s', es) =>
-    let (j, seen') := stepJson g.i (some a) es s' g.seen g.s.pending.head?
-    .ok ({ g with
-      s := s', seen := seen', i := g.i + 1,
-      answersRev := if g.input.isSome then .observed a :: g.answersRev else g.answersRev,
-      checkpointsRev := if g.input.isSome then ReplayCheckpoint.capture s' es :: g.checkpointsRev
-        else g.checkpointsRev,
-      fields := (pickedBattlefield g.s a).toList ++ g.fields }, j)
+  g.applyReplay (.observed a)
 
 /-- When the game is over, its result goes to the match, once (TR 404). -/
 def LiveGame.settle (g : LiveGame) : LiveGame :=
@@ -182,6 +205,9 @@ def LiveGame.autoRun : Nat → LiveGame → List String → Except String (LiveG
     else .error "the automatic player reached its action limit"
   | n + 1, g, acc => do
     if g.s.result.isSome || g.needsHuman then return (g.settle, acc.reverse)
+    if g.bo1SideboardOpen then
+      let (next, json) ← g.applyReplay .bo1Sideboard
+      return ← LiveGame.autoRun n next (json :: acc)
     let planned ← g.setupAnswer
     let answer := match planned with
       | some a => some (a, g.rng)
@@ -209,7 +235,7 @@ def LiveGame.matchJson (g : LiveGame) : String :=
       ("timedTiebreaker", toString (g.ending.isNone && g.s.result.isSome &&
         (g.s.clock.isSome || g.timeAfterGames.isSome) && needsTimedTiebreaker m g.singleElimination)),
       ("winner", match result with | some (.won p) => toString p.n | _ => "null"),
-      ("sideboard", if m.sideboardAllowed then "true" else "false"),
+      ("sideboard", toString (m.sideboardAllowed || g.bo1SideboardOpen)),
       ("sameBattlefields", if m.reuseBattlefields then "true" else "false"),
       ("order", jstr (match m.nextOrder with
         | .chance => "chance" | .loserChooses p => s!"loser{p.n}" | .same f => s!"same{f.n}"))]
@@ -231,24 +257,35 @@ def countIds (l : List CardId) : List (CardId × Nat) :=
 /-- The player whose deck a person changes between games: the first player they control. -/
 def LiveGame.sideSeat (g : LiveGame) : Option PlayerId := g.humans.head?
 
+/-- A seat's Main Deck and sideboard, with card names and counts for the live controls. -/
+def LiveGame.sideEntry (g : LiveGame) (p : PlayerId) (allowed : Bool) : String :=
+  match g.decks[p.n]?, g.sides[p.n]? with
+  | some d, some side =>
+    let group (l : List CardId) : String :=
+      jarr ((countIds l).map (fun (c, n) =>
+        jobj [("id", jstr c.code), ("name", jstr ((g.s.cards.find? c).map (·.name) |>.getD c.code)),
+          ("n", toString n)]))
+    jobj [("player", toString p.n), ("allowed", toString allowed),
+      ("main", group d.main), ("side", group side),
+      ("mainCount", toString d.main.length), ("sideCount", toString side.length)]
+  | _, _ => "null"
+
 /-- The sideboard of the match as JSON, for a Constructed match: the Main Deck and the sideboard of
 the player, and whether the players may use the sideboard now (TR 403.5, 403.10). `null`
 otherwise. -/
 def LiveGame.sideJson (g : LiveGame) : String :=
   match g.match_, g.sideSeat, g.kind with
   | some m, some p, .constructed =>
-    match g.decks[p.n]?, g.sides[p.n]? with
-    | some d, some side =>
-      let group (l : List CardId) : String :=
-        jarr ((countIds l).map (fun (c, n) =>
-          jobj [("id", jstr c.code), ("name", jstr ((g.s.cards.find? c).map (·.name) |>.getD c.code)),
-            ("n", toString n)]))
-      jobj [("player", toString p.n),
-        ("allowed", toString (m.sideboardAllowed && g.s.result.isSome && g.ending.isNone)),
-        ("main", group d.main), ("side", group side),
-        ("mainCount", toString d.main.length), ("sideCount", toString side.length)]
-    | _, _ => "null"
+    g.sideEntry p (m.sideboardAllowed && g.s.result.isSome && g.ending.isNone)
   | _, _, _ => "null"
+
+/-- The available controls during the optional Best of 1 setup. -/
+def LiveGame.bo1Json (g : LiveGame) : String :=
+  let chooser := g.bo1Chooser
+  if chooser.isNone && !g.bo1SideboardOpen then "null"
+  else
+    let sideboards := if g.bo1SideboardOpen then g.humans.eraseDups.map (g.sideEntry · true) else []
+    jobj [("chooser", chooser.elim "null" (fun p => toString p.n)), ("sideboards", jarr sideboards)]
 
 /-- What a request returns: the steps made, the answers a person can give, whether the game is
 over, the match, and what the clock and the judge can do. -/
@@ -257,7 +294,7 @@ def LiveGame.reply (g : LiveGame) (steps : List String) (extra : List (String ×
   jobj (extra ++ [("steps", jarr steps), ("legal", g.legalJson),
     ("over", toString (g.s.result.isSome || g.ending.isSome)),
     ("archiveAvailable", toString (g.setup.isSome && g.ending.isSome)),
-    ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson)])
+    ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson), ("bo1", g.bo1Json)])
 
 /-- What the reply to an undo says: the answers a person can give again, and how many steps the
 viewer keeps (the steps made until then). -/
@@ -315,16 +352,18 @@ def liveNewConfigured (setup : LiveSetup) (decks : ReplayDecks) (seed : Nat)
     (timeAfterGames : Option Nat := none) (afterTime : Bool := false) :
     Except String (LiveGame × List String) := do
   let config := replayGameConfig setup.config m (setup.singleElimination?.getD false) afterTime
-  let s ← decks.initial RiftboundCards.db config
   let kind := match setup.config.ruleSet.tournamentFormat with
     | none => LiveKind.core
     | some format => match format with
       | .constructed => .constructed | .sealed => .sealed | .draft => .draft
   let registrations := match decks with | .constructed ds => ds | _ => []
+  let bo1Setup? := if m.games == 0 && setup.bo1Sideboarding?.getD false then some registrations else none
+  let input : GameInputs := { decks, answers := #[], chooser, bo1Setup? }
+  let s ← input.initial RiftboundCards.db config
   LiveGame.begin {
     s, seen := {}, i := 0, rng := Rng.ofSeed seed, humans, kind, seed,
     order := some (MatchState.turnOrderOf first), match_ := some m, setup := some setup,
-    input := some { decks, answers := #[], chooser }, completed, reuseFields, timeAfterGames,
+    input := some input, completed, reuseFields, timeAfterGames,
     decks := registrations.map (·.deck), sides := registrations.map (·.sideboard) }
 
 /-- The fixed part of the reply to the start of a game. -/
@@ -350,6 +389,9 @@ def liveStartConfigured (seed : Nat) (humans : List PlayerId) (setup : LiveSetup
     throw "choose single elimination on the match, rather than setting a per-game procedure"
   if setup.singleElimination?.getD false && !setup.config.ruleSet.isTournament then
     throw "single elimination uses Tournament Rules"
+  if setup.bo1Sideboarding?.getD false &&
+      (setup.winsRequired != 1 || setup.config.ruleSet.tournamentFormat != some .constructed) then
+    throw "initial sideboarding requires a Constructed Best of 1 match"
   checkReplayEvent setup.config setup.tournament
   let (g, steps) ← liveNewConfigured setup setup.decks seed humans setup.first
     (some setup.firstChooser) (MatchState.start setup.winsRequired)
@@ -387,27 +429,35 @@ def liveEnd (g : LiveGame) (ending : ReplayMatchEnd) : Except String (LiveGame �
   let next := { g with ending := some ending }
   return (next, next.reply [])
 
+/-- Follow a manual answer with automatic answers and package the steps in one reply. -/
+def LiveGame.runAfterAnswer (answer : Except String (LiveGame × String)) :
+    Except String (LiveGame × String) := do
+  let (g, json) ← answer
+  let (next, steps) ← g.autoRun 100000 []
+  return (next, next.reply (json :: steps))
+
 /-- Give the answer of the person, number `k` of the answers listed, and let the game go on. -/
-def liveAct (g : LiveGame) (k : Nat) : Except String (LiveGame × String) :=
-  match g.legal[k]? with
-  | none => .error s!"there is no answer number {k}"
-  | some a =>
-    match g.apply a with
-    | .error e => .error e
-    | .ok (g1, j) =>
-      match LiveGame.autoRun 100000 g1 [] with
-      | .error e => .error e
-      | .ok (g2, js) => .ok (g2, g2.reply (j :: js))
+def liveAct (g : LiveGame) (k : Nat) : Except String (LiveGame × String) := do
+  let some a := g.legal[k]? | throw s!"there is no answer number {k}"
+  LiveGame.runAfterAnswer (g.apply a)
 
 /-- The clock calls time, or the judge declares a draw (TR 408.2, 505.6): an answer that is not a
 player's. The engine refuses it when it is not legal. -/
 def liveExternal (g : LiveGame) (a : Action) : Except String (LiveGame × String) :=
-  match g.apply a with
-  | .error e => .error e
-  | .ok (g1, j) =>
-    match LiveGame.autoRun 100000 g1 [] with
-    | .error e => .error e
-    | .ok (g2, js) => .ok (g2, g2.reply (j :: js))
+  LiveGame.runAfterAnswer (g.apply a)
+
+/-- The controlled chooser selects first or second after the Battlefield draws (TR 406.1.h.3). -/
+def liveBo1First (g : LiveGame) (first : Bool) : Except String (LiveGame × String) := do
+  let some chooser := g.bo1Chooser | throw "there is no Best of 1 initiative choice now"
+  let starter := if first then chooser else MatchState.other chooser
+  let order := MatchState.turnOrderOf starter
+  LiveGame.runAfterAnswer ({ g with order := some order }.apply ⟨.chance, .arrangePlayers order⟩)
+
+/-- Close the initial sideboard window before setting out the chosen champions and shuffling. -/
+def liveBo1Sideboard (g : LiveGame) : Except String (LiveGame × String) := do
+  unless g.bo1SideboardOpen && !g.humans.isEmpty do
+    throw "there is no Best of 1 sideboard window now"
+  LiveGame.runAfterAnswer (g.applyReplay .bo1Sideboard)
 
 /-- The player who chooses who goes first in the next game, when a person is that player and has not
 chosen yet (TR 407). -/
@@ -458,8 +508,9 @@ def liveRegister (g : LiveGame) (p : PlayerId) (registration : ConstructedDeck) 
     Except String (LiveGame × String) := do
   let some m := g.match_ | throw "this is not a match"
   if g.ending.isSome then throw "the match is over"
-  if g.s.result.isNone then throw "the game is not over"
-  if !m.sideboardAllowed then throw "the sideboard cannot be used now"
+  let initial := g.bo1SideboardOpen
+  unless initial || (g.s.result.isSome && m.sideboardAllowed) do
+    throw "the sideboard cannot be used now"
   if !g.humans.contains p then throw "this seat is not controlled"
   let some env := g.s.config.formatLegality | throw "the sideboard requires format legality"
   let some old := g.registrations[p.n]? | throw "there is no Constructed registration for this seat"
@@ -469,15 +520,17 @@ def liveRegister (g : LiveGame) (p : PlayerId) (registration : ConstructedDeck) 
   let next := { g with
     decks := g.decks.set p.n registration.deck,
     sides := g.sides.set p.n registration.sideboard }
+  let next := if initial then
+    { next with input := next.input.map (fun input => { input with decks := .constructed next.registrations }) }
+    else next
   return (next, next.reply [])
 
-/-- A person exchanges a card of their Main Deck for a card of their sideboard, between the games of
-a Constructed match (TR 403.4): one for one, only when the match allows it (not before the first
-game, not after a draw: TR 403.5, 403.10), and only if the deck stays a legal Constructed deck
-(TR 403.4.c). The check is the engine's: `ConstructedDeckValid`. -/
-def liveSwap (g : LiveGame) (out inn : String) : Except String (LiveGame × String) :=
+/-- Exchange one Main Deck card for one sideboard card during a permitted sideboard window
+(TR 403.4, 403.5, 403.10, 406.1.h). The engine rechecks Constructed deck legality. -/
+def liveSwap (g : LiveGame) (out inn : String) (seat : Option PlayerId := none) :
+    Except String (LiveGame × String) :=
   do
-    let some p := g.sideSeat | throw "there is no controlled seat"
+    let some p := seat <|> g.sideSeat | throw "there is no controlled seat"
     let some r := g.registrations[p.n]? | throw "there is no Constructed registration for this seat"
     let outgoing : CardId := ⟨out⟩
     let incoming : CardId := ⟨inn⟩

@@ -26,7 +26,8 @@ judge declares a draw), `swap OUT IN` (exchange a card of the Main Deck for a ca
 sideboard), `next [first|second]` (the next game of a match; a person who chooses
 who goes first says it), `undo` (take back the last answer, `act`, `clock` or `judge`, as many times
 as there are answers in this game), `quit`. For recorded matches: `start-json SEED HUMANS SETUP`,
-`register SEAT DECK`, `time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. -/
+`register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
+`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout
@@ -45,6 +46,12 @@ def main : IO UInt32 := do
     match r with
     | .error e => fail e
     | .ok (g, j) => do game.set (some g); hist.modify (old :: ·); say j
+  let goRegistration (g : LiveGame) (r : Except String (LiveGame × String)) : IO Unit :=
+    if g.bo1SideboardOpen then goAnswer g r else go r
+  let swap (out inn : String) (seat : Option PlayerId) : IO Unit := do
+    match ← game.get with
+    | some g => goRegistration g (liveSwap g out inn seat)
+    | none => fail "no game has been started"
   let start (seed humans kind mt : String) : IO Unit :=
     match seed.toNat?, LiveKind.ofString kind, parseMatch mt with
     | some n, some k, some t => go (liveStart n (parseHumans humans) k t)
@@ -78,15 +85,26 @@ def main : IO UInt32 := do
       match (← game.get) with
       | some g => goAnswer g (liveExternal g ⟨.judge, .declareDraw⟩)
       | none => fail "no game has been started"
-    | ["swap", out, inn] =>
-      match (← game.get) with
-      | some g => go (liveSwap g out inn)
-      | none => fail "no game has been started"
+    | ["swap", out, inn] => swap out inn none
+    | ["swap", out, inn, p] =>
+      match p.toNat? with
+      | some n => swap out inn (some ⟨n⟩)
+      | none => fail "bad seat"
     | "register" :: seat :: registration =>
       match seat.toNat?, (← game.get) with
-      | some p, some g => go ((decodeLine registration).bind (liveRegister g ⟨p⟩))
+      | some p, some g => goRegistration g ((decodeLine registration).bind (liveRegister g ⟨p⟩))
       | none, _ => fail "bad seat"
       | _, none => fail "no game has been started"
+    | ["bo1-first", choice] =>
+      match choice, (← game.get) with
+      | "first", some g => goAnswer g (liveBo1First g true)
+      | "second", some g => goAnswer g (liveBo1First g false)
+      | _, none => fail "no game has been started"
+      | _, _ => fail "bad initiative choice"
+    | ["bo1-sideboard"] =>
+      match (← game.get) with
+      | some g => goAnswer g (liveBo1Sideboard g)
+      | none => fail "no game has been started"
     | ["time-between-games"] => endMatch .timeBetweenGames
     | ["agree-match-draw"] => endMatch .agreedDraw
     | ["concede-match", p] =>
