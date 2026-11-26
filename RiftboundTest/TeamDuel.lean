@@ -92,4 +92,49 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
       (scoreBf ready ⟨0⟩ field true).1.pointsOf ⟨1⟩ == 11 &&
       (scoreBf ready ⟨2⟩ field true).1.pointsOf ⟨2⟩ == 10
 
+-- The regular and instructed move checks both reject a location occupied by an ally.
+#guard (do
+  let (s, held, empty) ← scoredStepBoard
+  let s := { s with phase := .main }
+  let unit := newCard db s ⟨0⟩ (cid "V1")
+  let (s, id) ← addObject s unit (.player ⟨0⟩ .base)
+  return !s.effectMoveBattlefieldOk unit held && s.effectMoveBattlefieldOk unit empty &&
+    !moveOk s ⟨0⟩ id (.battlefield held) && moveOk s ⟨0⟩ id (.battlefield empty)).getD false
+
+-- An instructed move to the ally's Battlefield recalls the Unit.
+#guard (do
+  let (s, held, openField) ← scoredStepBoard
+  let unit := { newCard db s ⟨0⟩ (cid "V1") with loc := some openField }
+  let (s, id) ← addObject s unit .battlefieldZone
+  let (recalled, events) := moveByEffect ⟨0⟩ (some held) s id
+  return (recalled.zone (.player ⟨0⟩ .base)).contains id &&
+    (recalled.obj? id).any (fun o : Object => o.loc.isNone) && events == [Event.recalled id]).getD false
+
+-- The two participants must be opponents. The defender is the actual opposing occupant,
+-- regardless of who is next in the turn order.
+#guard (do
+  let (s, held, _) ← scoredStepBoard
+  let ally := { newCard db s ⟨0⟩ (cid "V1") with loc := some held }
+  let opp := { newCard db s ⟨3⟩ (cid "V2") with loc := some held }
+  let (allies, _) ← addObject s ally .battlefieldZone
+  let (opponents, _) ← addObject s opp .battlefieldZone
+  let pending : List Frame := [.showdown held ⟨1⟩ 0]
+  return !allies.isCombat held && (allies.observeCombat pending).1.isNone &&
+    opponents.isCombat held && opponents.defenderAt held ⟨1⟩ == (⟨3⟩ : PlayerId) &&
+    (opponents.observeCombat pending).1.any (fun r : CombatParticipation =>
+      r.attacker == (⟨1⟩ : PlayerId) && r.defender == (⟨3⟩ : PlayerId))).getD false
+
+-- Board effects can select a friendly teammate's Unit. The same side filter on a hand still
+-- selects the acting player's own cards.
+#guard (do
+  let (s, field, _) ← scoredStepBoard
+  let (s, own) ← addObject s (newCard db s ⟨0⟩ (cid "V0")) (.player ⟨0⟩ .hand)
+  let (s, _) ← addObject s (newCard db s ⟨1⟩ (cid "V1")) (.player ⟨1⟩ .hand)
+  let actor : PlayerId := ⟨0⟩
+  let units := FilterList.ofList [.ofType .unit]
+  return (s.candidates actor field {} .friendly .atBattlefield units) == some (s.unitsOf ⟨1⟩ field) &&
+    (s.candidates actor field {} .enemy .atBattlefield units) == some [] &&
+    (s.pickCandidates actor field {} .friendly .inHand .nil) == some [own] &&
+    PlayerSel.resolve s actor .eachOpponent == (some [⟨2⟩, ⟨3⟩] : Option (List PlayerId))).getD false
+
 end RiftboundTest

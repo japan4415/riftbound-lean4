@@ -46,7 +46,7 @@ def noCombatDamage (s : GameState) (u : ObjId) : Bool :=
         | Ability.passive .always mods =>
           mods.any (fun m => match m with
             | .noCombatDamageFor (.pick .all side place fs) =>
-              side.admits og.controller o && ((s.placeObjs g place).getD []).contains u &&
+              side.admits og.controller o s.config.mode && ((s.placeObjs g place).getD []).contains u &&
                 FilterList.holds s g {} u fs == some true
             | _ => false)
         | _ => false))
@@ -66,7 +66,7 @@ def combatTotal (s : GameState) (bf : ObjId) (att side : PlayerId) : Nat :=
 
 /-- The Units of the other side at the Battlefield: those the damage of `side` goes to. -/
 def foes (s : GameState) (bf : ObjId) (side : PlayerId) : List ObjId :=
-  (s.unitsAt bf).filter (fun u => !s.isControlledBy side u)
+  (s.unitsAt bf).filter (fun u => (s.obj? u).any (fun o => !s.config.mode.sameSide side o.controller))
 
 /-- The damage a Unit needs to be killed: what is missing to its Might, and at least 1 if it has no
 damage, because lethal damage is not 0 (CR 142.4.b). -/
@@ -121,8 +121,7 @@ def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
 
 /-- Whether Combat began at the Battlefield, or two sides are present in a constructed state. -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=
-  (s.combat.any (·.battlefield == bf)) ||
-    decide (2 ≤ (s.players.filter (fun p => !(s.unitsOf p bf).isEmpty)).length)
+  (s.combat.any (·.battlefield == bf)) || (s.combatantsAt bf).isSome
 
 /-- The Attacker of a Combat at the Battlefield: the player who made it Contested (CR 466). -/
 def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
@@ -131,7 +130,9 @@ def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
 
 /-- The Defender designated at the start of this Combat (CR 466.2.c.2). -/
 def defenderAt (s : GameState) (bf : ObjId) (att : PlayerId) : PlayerId :=
-  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (s.nextPlayer att)
+  let present := (s.combatantsAt bf).bind (fun (a, b) =>
+    if att == a then some b else if att == b then some a else none)
+  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (present.getD (s.nextPlayer att))
 
 end GameState
 

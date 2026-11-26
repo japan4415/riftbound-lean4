@@ -53,6 +53,12 @@ def isControlledBy (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
 def unitsOf (s : GameState) (p : PlayerId) (bf : ObjId) : List ObjId :=
   (s.unitsAt bf).filter (fun u => s.isControlledBy p u)
 
+/-- Combat requires exactly two opposing players at a Battlefield (CR 316.7.a, 464). -/
+def combatantsAt (s : GameState) (bf : ObjId) : Option (PlayerId × PlayerId) :=
+  match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
+  | [a, b] => if s.config.mode.sameSide a b then none else some (a, b)
+  | _ => none
+
 /-- The player who controls a Battlefield, if any (CR 190.6). -/
 def controlOf (s : GameState) (bf : ObjId) : Option PlayerId := (s.obj? bf).bind (·.control)
 
@@ -60,7 +66,7 @@ def controlOf (s : GameState) (bf : ObjId) : Option PlayerId := (s.obj? bf).bind
 damage is enough to kill the units of `q` (Elder Dragon). -/
 def anyDamageKills (s : GameState) (q : PlayerId) : Bool :=
   s.inPlay.any (fun g =>
-    (s.obj? g).any (fun o => o.controller != q) &&
+    (s.obj? g).any (fun o => !s.config.mode.sameSide q o.controller) &&
       (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
         match ab with
         | Ability.passive .always mods => mods.contains .anyDamageKills
@@ -526,8 +532,8 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
         | .showdown bf focus _ => some (bf, focus)
         | _ => none) with
     | some (bf, focus) =>
-      match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
-      | [a, b] =>
+      match s.combatantsAt bf with
+      | some (a, b) =>
         let contested := ((s.obj? bf).bind (·.contested)).getD focus
         let (att, def_) := if contested == b then (b, a) else (a, b)
         (some
@@ -536,7 +542,7 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
             defender := def_
             units := s.unitsOf att bf ++ s.unitsOf def_ bf },
           [Event.combatStarted bf att])
-      | _ => (none, [])
+      | none => (none, [])
     | none => (none, [])
 
 /-- Leave a settled Cleanup and update whether Combat has started or gained participants. -/

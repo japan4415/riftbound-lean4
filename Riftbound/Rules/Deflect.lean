@@ -105,7 +105,7 @@ def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
         ((s.obj? t).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .ignoreDeflectHere)) then 0
   else
     (ts.map (fun t =>
-      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) then
+      if s.passiveSources.contains t && (s.obj? t).any (fun o => !s.config.mode.sameSide p o.controller) then
         s.deflectOf t
       else 0)).sum
 
@@ -120,7 +120,7 @@ def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) 
   if (s.cardDef? c).any (·.hasType .spell) then
     let fields := ts.filterMap (fun t =>
       if (s.cardDef? t).any (·.hasType .unit) then
-        ((s.obj? t).filter (·.controller == p)).bind (·.loc)
+        ((s.obj? t).filter (fun o => s.config.mode.sameSide p o.controller)).bind (·.loc)
       else none)
     (fields.eraseDups.flatMap (fun bf => (s.activeMods bf).filterMap (fun
       | .friendlyTargetPowerCut n => some n

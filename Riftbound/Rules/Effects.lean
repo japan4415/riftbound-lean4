@@ -1042,7 +1042,7 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
 /-- A Unit's move protection applies to enemy effects while its ability is active, including
 when it is granted by attached Equipment (CR 137, 451). -/
 def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
-  (s.obj? u).any (·.controller != p) &&
+  (s.obj? u).any (fun o => !s.config.mode.sameSide p o.controller) &&
     ((s.activeMods u).contains .noEnemyEffectMove ||
       s.inPlay.any (fun gear =>
         (s.obj? gear).any (·.attached == some u) &&
@@ -1050,13 +1050,18 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
             | .passive .always mods => mods.contains .noEnemyEffectMove
             | _ => false))))
 
-/-- Move the Unit only if the spell or ability that would move it is allowed to do so. -/
+/-- Apply a move instructed by a spell or ability. In team play, a Unit going to an invalid
+Battlefield is recalled instead (CR 449.2.c). -/
 def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
     GameState × List Event :=
   if s.moveBlocked u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
     | none => moveHome s u
-    | some bf => sendToBf bf s u
+    | some bf =>
+      if s.config.mode.isTeamDuel && (s.obj? u).any (fun o => o.loc != some bf &&
+          ((s.cardDef? u).any (·.hasType .unit) || !o.unitGearEffects.isEmpty) &&
+          !s.effectMoveBattlefieldOk o bf) then recallFx false s u
+      else sendToBf bf s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
 theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
@@ -1064,9 +1069,13 @@ theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u
   unfold moveByEffect
   split
   · exact Safe.refl s
-  · cases loc
-    · exact moveHome_safe s u
-    · exact sendToBf_safe _ s u
+  · cases loc with
+    | none => exact moveHome_safe s u
+    | some bf =>
+      dsimp only
+      split
+      · exact recallFx_safe false s u
+      · exact sendToBf_safe bf s u
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
@@ -2949,7 +2958,7 @@ def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side 
     Option (GameState × List Event) :=
   match place.zoneKind?, dest.zoneKind? with
   | some z, some k =>
-    let ids := (s.players.filter (fun q => side.admitsPlayer p q)).flatMap (fun q =>
+    let ids := (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap (fun q =>
       (s.zone (.player q z)).filter (fun u => FilterList.holds s src env u fs == some true))
     some (applyEach (sendMarked p src mark k) s ids)
   | _, _ => none

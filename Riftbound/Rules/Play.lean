@@ -188,7 +188,7 @@ def GameState.hiddenBlocked (s : GameState) (p : PlayerId) (src : ObjId) : Bool 
   match (s.obj? src).bind (·.hiddenAt) with
   | some bf =>
     (s.zone .battlefieldZone).any (fun u =>
-      (s.obj? u).any (fun o => o.loc == some bf && o.controller != p) &&
+      (s.obj? u).any (fun o => o.loc == some bf && !s.config.mode.sameSide p o.controller) &&
         (s.activeMods u).contains .noHiddenReveal)
   | none => false
 
@@ -266,7 +266,7 @@ The prohibition is checked at play time, including plays instructed by a resolvi
 def GameState.blocksNamedPlay (s : GameState) (p : PlayerId) (d : CardDef) : Bool :=
   s.passiveSources.any (fun src =>
     (s.obj? src).any (fun o =>
-      o.controller != p &&
+      !s.config.mode.sameSide p o.controller &&
         (o.namedCard.bind s.cards.find?).any (fun named => named.nameKey == d.nameKey)) &&
     (s.activeMods src).contains .oppsCantPlayNamed)
 
@@ -1128,13 +1128,15 @@ def bfPlayOk (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
   | some b => playable s p c pay (some b) targets pick
   | none => false
 
-/-- A Battlefield can receive an effect move when it is a new location and the Unit can be there
-(CR 449.2.a, 451.2). A Battlefield with two sides can have a staged Combat (CR 463). -/
+/-- Check a Unit's move destination, including the restrictions on entering Combat and moving to a
+Battlefield occupied by a teammate (CR 449.2.a, 449.2.b, 451.2). -/
 def GameState.effectMoveBattlefieldOk (s : GameState) (u : Object) (bf : ObjId) : Bool :=
   let occupying := s.players.filter (fun q => !(s.unitsAtOf bf q).isEmpty)
   let staged := decide (occupying.length ≥ 2)
   let running := s.combatNow.any (fun combat => combat.1 == bf)
-  u.loc != some bf && decide ((occupying.erase u.controller).length < 2) &&
+  let teammatePresent := s.config.mode.isTeamDuel && occupying.any (fun q =>
+    q != u.controller && s.config.mode.sameSide u.controller q)
+  u.loc != some bf && !teammatePresent && decide ((occupying.erase u.controller).length < 2) &&
     (!decide (s.playerCount > 2) || !(staged || running) || occupying.contains u.controller)
 
 /-- Deploy Gear can move to a different Battlefield without joining its Combat (CR 830.1.b). -/
@@ -1158,7 +1160,7 @@ def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List Spe
     | none => [])
   base ++ (match d.spellEffect.bind EffectDef.playerTarget with
     | some side =>
-      (s.players.filter (side.admitsPlayer p)).flatMap (fun q => base.map (·.withPlayer q))
+      (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap (fun q => base.map (·.withPlayer q))
     | none => [])
 
 /-- The eligible player targets of an effect, or no choice if it does not declare one
@@ -1166,14 +1168,14 @@ def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List Spe
 def GameState.playerTargetOptions (s : GameState) (p : PlayerId) :
     Option Side → List (Option PlayerId)
   | none => [none]
-  | some side => (s.players.filter (side.admitsPlayer p)).map some
+  | some side => (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).map some
 
 /-- Check the required player choice independently of any object targets (CR 355.7, 355.9). -/
 def GameState.spellPlayerTargetOk (s : GameState) (p : PlayerId) (e : EffectDef)
     (pick : SpellPick) : Bool :=
   match e.playerTarget, pick.playerTarget with
   | none, none => true
-  | some side, some q => s.players.contains q && side.admitsPlayer p q
+  | some side, some q => s.players.contains q && side.admitsPlayer p q s.config.mode
   | _, _ => false
 
 /-- Amounts that can be declared as an additional cost before applying total Power reductions.

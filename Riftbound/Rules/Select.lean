@@ -107,11 +107,12 @@ def GameState.pickOrder (s : GameState) : List PlayerId :=
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
 def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env : Env := {}) :
     Option (List PlayerId) :=
+  let opponents := fun () => s.pickOrder.filter (fun p => !s.config.mode.sameSide self p)
   match sel with
   | .you => some [self]
-  | .opponent => (s.players.filter (· ≠ self)).head?.map (fun o => [o])
+  | .opponent => (opponents ()).head?.map (fun o => [o])
   | .eachPlayer => some s.pickOrder
-  | .eachOpponent => some (s.players.filter (· ≠ self))
+  | .eachOpponent => some (opponents ())
   | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
   | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])
   | .eventPlayer => none
@@ -184,7 +185,8 @@ def GameState.gainedTags (s : GameState) (id : ObjId) : List Tag :=
 /-- The Units of the player that are at the Battlefield. -/
 def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId :=
   (s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some bf &&
-    o.controller == p) && (s.cardDef? u).any (·.hasType .unit))
+    o.controller == p && ((s.cardDef? u).any (·.hasType .unit) ||
+      (s.config.mode.isTeamDuel && !o.unitGearEffects.isEmpty))))
 
 /-- The turns of this player that have begun, including extra turns and the current turn (CR 301). -/
 def GameState.turnsTaken (s : GameState) (p : PlayerId) : Nat :=
@@ -197,11 +199,12 @@ def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
   (s.combat.map (fun c => (c.battlefield, c.attacker))) <|> s.pending.findSome? (fun f =>
     match f with
     | .showdown bf _ _ =>
-      -- the Showdown of a Combat: Units of at least two players are at the Battlefield (CR 464);
-      -- the Attacker is the player who made it Contested (CR 466)
-      if 2 ≤ (s.players.filter (fun p => !(s.unitsAtOf bf p).isEmpty)).length then
-        some (bf, ((s.obj? bf).bind (·.contested)).getD (s.active.getD ⟨0⟩))
-      else none
+      -- The attacker is the player who made the Battlefield Contested (CR 466).
+      match s.players.filter (fun p => !(s.unitsAtOf bf p).isEmpty) with
+      | [a, b] =>
+        if s.config.mode.sameSide a b then none
+        else some (bf, ((s.obj? bf).bind (·.contested)).getD (s.active.getD ⟨0⟩))
+      | _ => none
     | .combatDamage bf att => some (bf, att)
     | .assign bf att _ _ _ => some (bf, att)
     | .combatResolve bf att => some (bf, att)
@@ -297,11 +300,11 @@ def GameState.spellBonus (s : GameState) (p : PlayerId) (src : ObjId) : Nat :=
 
 /-- The player cannot play cards now, by an effect of this turn that is an opponent's. -/
 def GameState.cantPlay (s : GameState) (p : PlayerId) : Bool :=
-  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsCantPlay && f.who != p)
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsCantPlay && !s.config.mode.sameSide p f.who)
 
 /-- The player cannot play Spells now, by an effect of this turn that is an opponent's. -/
 def GameState.noSpells (s : GameState) (p : PlayerId) : Bool :=
-  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsNoSpells && f.who != p)
+  s.turnFx.any (fun f => f.turn == s.turn && f.kind == .opponentsNoSpells && !s.config.mode.sameSide p f.who)
 
 /-- Spells and abilities deal no damage, by an effect of this turn. -/
 def GameState.damageOff (s : GameState) : Bool :=
@@ -494,13 +497,13 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (match s.obj? self with
       | some me =>
         ((s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          o.controller != me.controller) && (s.cardDef? u).any (·.hasType .unit))).length == 1
+          !s.config.mode.sameSide me.controller o.controller) && (s.cardDef? u).any (·.hasType .unit))).length == 1
       | none => false)
   | .enemyOccupied =>
     some (match s.obj? self with
       | some me =>
         (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          o.controller != me.controller))
+          !s.config.mode.sameSide me.controller o.controller))
       | none => false)
   | .hidden =>
     some (match s.obj? id with
@@ -628,11 +631,11 @@ def FilterList.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) :
     let b ← FilterList.holds s self env id rest
     pure (a && b)
 
-/-- The side of an object, seen from player `p`: the controller (CR 740.1). -/
-def Side.admits (p : PlayerId) (side : Side) (o : Object) : Bool :=
+/-- The side of a controlled object, seen from a player (CR 740.1, 491.8.e). -/
+def Side.admits (p : PlayerId) (side : Side) (o : Object) (mode : Mode := .duel) : Bool :=
   match side with
-  | .friendly => o.controller == p
-  | .enemy => o.controller != p
+  | .friendly => mode.sameSide p o.controller
+  | .enemy => !mode.sameSide p o.controller
   | .any => true
 
 /-- The Battlefield an object is "here" at: its own, for a Battlefield, and the one a Unit is at
@@ -700,18 +703,19 @@ def Place.zoneKind? : Place → Option ZoneKind
   | .inBanishment => some .banishment
   | _ => none
 
-/-- Whether a player is on the side, seen from player `p`. -/
-def Side.admitsPlayer (p : PlayerId) (side : Side) (q : PlayerId) : Bool :=
+/-- A player selector denotes oneself, an opponent or any player. A player's private zones only
+belong to that player. -/
+def Side.admitsPlayer (p : PlayerId) (side : Side) (q : PlayerId) (mode : Mode := .duel) : Bool :=
   match side with
   | .friendly => q == p
-  | .enemy => q != p
+  | .enemy => !mode.sameSide p q
   | .any => true
 
 /-- Whether an object is on the side and has the properties. -/
 def GameState.matchesOne (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) (side : Side)
     (fs : FilterList) (id : ObjId) : Option Bool :=
   match s.obj? id with
-  | some o => if side.admits p o then fs.holds s self env id else some false
+  | some o => if side.admits p o s.config.mode then fs.holds s self env id else some false
   | none => some false
 
 /-- Keep the objects of the list that are on the side and have the properties. -/
@@ -851,7 +855,8 @@ def GameState.targetCandidates (s : GameState) (p : PlayerId) (self : ObjId) (en
   | none => s.candidates p self env side place fs
   | some z =>
     if targetZoneKinds.contains z then
-      let objs := (s.players.filter (side.admitsPlayer p)).flatMap (fun q => s.zone (.player q z))
+      let objs := (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap
+        (fun q => s.zone (.player q z))
       s.keepMatching p self env .any fs objs
     else some []
 
@@ -901,7 +906,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .pick .all side place fs => s.candidates p self env side place fs
   | .revealedDeck side => some (env.revealedCards.filter (fun id =>
     (s.obj? id).any (fun o =>
-      side.admitsPlayer p o.owner && (s.zone (.player o.owner .mainDeck)).contains id)))
+      side.admitsPlayer p o.owner s.config.mode && (s.zone (.player o.owner .mainDeck)).contains id)))
   | .slotsFrom i =>
     some ((env.slots.drop i).filterMap (fun v =>
       match v with
@@ -1083,7 +1088,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     -- the cards of a player's zone off the board are counted from the zone
     match place.zoneKind? with
     | some z =>
-      (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+      (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).foldl (fun acc q =>
         acc.bind (fun n => ((s.zone (.player q z)).filterM (fun u =>
           (FilterList.holds s self env u fs))).map (fun l => n + l.length))) (some 0)
     | none => ((Selector.pick .all side place fs).eval s p self env).map List.length
@@ -1260,7 +1265,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   -- the passives are read from the cards as printed (their conditions are not asked)
   | .hasFriendlyCard cid =>
     some ((s.players.flatMap (fun q => s.zone (.player q .legendZone)) ++ s.inPlay).any (fun g =>
-      (s.obj? g).any (·.controller == p) && (s.cardDef? g).any (·.id == cid)))
+      (s.obj? g).any (fun o => s.config.mode.sameSide p o.controller) && (s.cardDef? g).any (·.id == cid)))
   | .hidesWithEnergy =>
     some ((s.players.flatMap (fun q => s.zone (.player q .legendZone)) ++ s.inPlay).any (fun g =>
       (s.obj? g).any (·.controller == p) &&
@@ -1275,7 +1280,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == kind && f.who == p &&
       f.target == some self))
   | .enemyUnitDied =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && f.who != p))
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && !s.config.mode.sameSide p f.who))
   | .discardedThisTurn =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .cardDiscarded && f.who == p))
   | .hasHidden => some (!(s.zone (.player p .hidden)).isEmpty)
@@ -1295,7 +1300,7 @@ as well as protection granted by an effect of this turn (CR 355). -/
 def GameState.blocksChoice (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
   match s.obj? id with
   | none => false
-  | some o => o.controller != p &&
+  | some o => !s.config.mode.sameSide p o.controller &&
     (s.turnFx.any (fun f =>
         f.turn == s.turn && f.target == some id && f.kind == .unchoosableEnemy) ||
       ((s.inPlay.contains id || (s.zone (.player o.owner .legendZone)).contains id) &&
@@ -1323,7 +1328,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
     (side : Side) (place : Place) (fs : FilterList) (target : Bool := true) : Option (List ObjId) :=
   match place.zoneKind? with
   | some z =>
-    (s.players.filter (fun q => side.admitsPlayer p q)).foldl (fun acc q =>
+    (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).foldl (fun acc q =>
       acc.bind (fun l => ((s.zone (.player q z)).filterM (fun u =>
         FilterList.holds s self env u fs)).map (fun m => l ++ m))) (some [])
   | none => (s.candidates p self env side place fs).map
