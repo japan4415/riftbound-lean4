@@ -4,6 +4,8 @@ import RiftboundCards
 meta import RiftboundCards
 import RiftboundDriver.Run
 meta import RiftboundDriver.Run
+import Riftbound.Tournament.LoopDetect
+meta import Riftbound.Tournament.LoopDetect
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -58,5 +60,19 @@ meta def declare : Action := ⟨.judge, .declareDraw⟩
 #guard MatchState.concedeMatch ⟨0⟩ == .won ⟨1⟩
 #guard MatchState.concedeMatch ⟨1⟩ == .won ⟨0⟩
 #guard MatchState.agreedDrawMatch == .draw
+
+-- A mandatory discard answer can advance the state, but only a return to the same state is a
+-- loop. A choice or a chance decision cannot be one of the forced answers.
+#guard
+  let p : PlayerId := ⟨0⟩
+  let base := GameState.empty { ruleSet := .tournament .constructed, mode := Mode.duel } db
+  let waiting := { base with pending := [Frame.discard p 1] }
+  let answer : Action := ⟨.player p, .discardDone⟩
+  let optional := { base with pending := [Frame.mayDo p ⟨0⟩ {} .nop .nil] }
+  let chance := { base with pending := [Frame.chanceRecycle p] }
+  forcedAnswer waiting == some answer &&
+    (runForcedAnswers 100 waiting [answer]).any (fun next => next.pending.isEmpty) &&
+    (detectExactForcedLoop 100 waiting [(waiting, answer)]).isNone &&
+    (forcedAnswer optional).isNone && (forcedAnswer chance).isNone
 
 end RiftboundTest

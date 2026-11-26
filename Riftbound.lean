@@ -75,6 +75,7 @@ public import Riftbound.Tournament.DeckLegality
 public import Riftbound.Tournament.Match
 public import Riftbound.Tournament.Sideboard
 public import Riftbound.Tournament.FirstPlayer
+public import Riftbound.Tournament.LoopDetect
 
 /-!
 # Riftbound
