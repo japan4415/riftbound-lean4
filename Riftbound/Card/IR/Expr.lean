@@ -351,6 +351,8 @@ inductive Condition where
   | excessAtLeast (n : Nat)
   /-- The player has the effect noted this turn. -/
   | noted (e : TurnEffect)
+  /-- The player or a teammate has the effect noted this turn (CR 491.8.e). -/
+  | friendlyNoted (e : TurnEffect)
   /-- The player has a passive ability that lets them hide a card for one Energy (Swift Scout). -/
   | hidesWithEnergy
   /-- The player has a card in play, or a Legend, that is the card (Heimerdinger). -/

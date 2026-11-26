@@ -872,4 +872,152 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let back := match r.pending with | .showdown _ q 0 :: _ => q == s.you | _ => false
   return (r.obj? a).any (·.stunned) && back && (r.obj? sh).any (·.exhausted)
 
+-- Shadow Watcher enters ready from the turn player's own Beginning Phase death.
+#guard tun fun s => do
+  let p := s.me
+  let (s, watcher) ← put s p "UNL-037" .hand
+  let beginning := { s with phase := .beginning }
+  let died := beginning.noteUnitDied p
+  let otherDied := beginning.noteUnitDied s.you
+  let normal ← play { (s.noteUnitDied p) with phase := .main } p watcher
+  let ready ← play { died with phase := .main } p watcher
+  let enemy ← play { otherDied with phase := .main } p watcher
+  let nr ← normal.firstOf p .base "UNL-037"
+  let r ← ready.firstOf p .base "UNL-037"
+  let e ← enemy.firstOf p .base "UNL-037"
+  return normal.tired nr == some true && ready.tired r == some false && enemy.tired e == some true
+
+-- Lord Broadmane can Ambush at a friendly battlefield and grants Assault only to
+-- the other friendly units at that location.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, broadmane) ← put s p "UNL-012" .hand
+  let (s, ally) ← putAt s p "OGN-088" field
+  let (s, remote) ← put s p "OGN-088" .base
+  let (s, _) ← onChain s q "OGN-004"
+  let ready := s.rich p
+  let payment := payOf ready broadmane
+  let (played, _) ← (step 100 ready ⟨.player p, .playCard broadmane payment [field]⟩).toOption
+  let done := settleChain {} 16 played
+  let placed ← done.inPlay.find? (fun u => (done.cardDef? u).any (·.id == cid "UNL-012"))
+  return reactable ready p broadmane payment [field] && !reactable ready p broadmane payment [] &&
+    done.hasKw ally .assault && !done.hasKw remote .assault && !done.hasKw placed .assault
+
+-- Teammate deaths satisfy Shadow Watcher's friendly condition. Lord Broadmane's
+-- grant is limited to units its player controls.
+#guard tun fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let field := s.bf0
+  let (s, broadmane) ← put (s.control p field) p "UNL-012" .hand
+  let (s, watcher) ← put s p "UNL-037" .hand
+  let (s, own) ← putAt s p "OGN-088" field
+  let (s, allied) ← putAt s mate "OGN-088" field
+  let buffed ← play s p broadmane [field]
+  let beginning := { s with phase := .beginning }
+  let allyDied := beginning.noteUnitDied mate
+  let enemyDied := beginning.noteUnitDied enemy
+  let ally ← play { allyDied with phase := .main } p watcher
+  let opp ← play { enemyDied with phase := .main } p watcher
+  let ready ← ally.firstOf p .base "UNL-037"
+  let tired ← opp.firstOf p .base "UNL-037"
+  return buffed.hasKw own .assault && !buffed.hasKw allied .assault &&
+    ally.tired ready == some false && opp.tired tired == some true
+
+-- Frisky Hunter creates an exhausted Bird with Deflect alongside it at a battlefield.
+#guard tun fun s => do
+  let p := s.me
+  let (s, hunter) ← put (s.control p s.bf0) p "UNL-033" .hand
+  let done ← play s p hunter [s.bf0]
+  let bird ← done.inPlay.find? (fun u => (done.cardDef? u).any (·.name == "Bird"))
+  return (done.obj? bird).any (fun o => o.loc == some s.bf0 && o.controller == p) &&
+    done.mightNow bird == some 1 && done.hasKw bird .deflect && done.tired bird == some true
+
+-- Paying Equip gives the Might bonus to the selected Unit. Ordinary Equip requires unattached Gear.
+#guard tun fun s => do
+  let p := s.me
+  let (s, first) ← put s p "OGN-135" .base
+  let (s, second) ← put s p "OGN-135" .base
+  let (s, sword) ← put s p "UNL-039" .base
+  let equipped ← activate s p sword 0 [first] ⟨0, [.calm]⟩
+  let leveled ← withXPOf equipped p 3
+  return equipped.mightNow first == (s.mightNow first).map (· + 1) &&
+    leveled.mightNow first == (s.mightNow first).map (· + 2) &&
+    leveled.mightNow second == s.mightNow second &&
+    (activate leveled p sword 0 [second] ⟨0, [.calm]⟩).isNone
+
+-- Determined Sentry can still be Recalled because that instruction is not a Move.
+#guard tun fun s => do
+  let p := s.me
+  let (s, sentry) ← putAt s p "UNL-111" s.bf0
+  let (recalled, events) := recallObj s sentry
+  let atBase ← recalled.firstOf p .base "UNL-111"
+  return !moveOk s p sentry .base && events == [.recalled atBase] &&
+    (recalled.obj? atBase).any (·.loc.isNone)
+
+-- Soul Harvest accepts a Unit with exactly 3 Might at a battlefield.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, harvest) ← put s p "UNL-159" .hand
+  let (s, field) ← putAt s q "OGN-135" s.bf0
+  let (s, base) ← put s q "OGN-135" .base
+  let (s, stronger) ← putAt s q "OGN-088" s.bf0
+  let s := s.buff stronger
+  let finished ← play s p harvest [field]
+  return s.mightNow field == some 3 && (s.mightNow stronger).any (· > 3) &&
+    (play s p harvest [base]).isNone && (play s p harvest [stronger]).isNone &&
+    (finished.obj? field).isNone && finished.countIn q .trash "OGN-135" == 1
+
+-- A later death earns Gold during the spell's turn. The delayed trigger expires with the turn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, flourish) ← put s p "UNL-073" .hand
+  let (s, unit) ← putAt s q "OGN-088" s.bf0
+  let damaged ← play s p flourish [unit]
+  let (dead, death) := killOrSave damaged unit
+  let paid ← fire dead death
+  let following := { damaged with turn := damaged.turn + 1 }
+  let (late, lateDeath) := killOrSave following unit
+  let expired ← fire late lateDeath
+  let gold ← (paid.zone (.player p .base)).find? (fun id =>
+    (paid.cardDef? id).any (·.name == "Gold"))
+  return (damaged.obj? unit).any (·.damage == 3) &&
+    damaged.countNamed p .base "Gold" == 0 && paid.countNamed p .base "Gold" == 1 &&
+    paid.tired gold == some true && expired.countNamed p .base "Gold" == 0
+
+-- A second draw by the opponent cannot trigger your Jewel, and the Might expires.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "UNL-074" .base
+  let (s, unit) ← put s p "OGN-135" .base
+  let logs := [p, q, p, q].map (fun seat => (seat, s.turn))
+  let drawing := { s with drawLog := logs }
+  let yours ← fire drawing [.drew p] { pick := fun targets => targets == [unit] }
+  let theirs ← fire drawing [.drew q] { pick := fun targets => targets == [unit] }
+  let (expired, _) ← (advance 100 { yours with pending := [.expireTurn, .priority p] } []).toOption
+  return yours.mightNow unit == (s.mightNow unit).map (· + 2) &&
+    theirs.mightNow unit == s.mightNow unit && expired.mightNow unit == s.mightNow unit
+
+-- Tactical Retreat cannot target an enemy, and unused protection expires after this turn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, retreat) ← put s p "UNL-175" .hand
+  let (s, ally) ← putAt s p "OGN-135" s.bf0
+  let (s, enemy) ← put s q "OGN-135" .base
+  let armed ← play s p retreat [ally]
+  let following := { armed with turn := armed.turn + 1 }
+  let (dead, _) := killOrSave following ally
+  return (play s p retreat [enemy]).isNone && (armed.tacticalRetreatFor ally).isSome &&
+    (following.tacticalRetreatFor ally).isNone && (dead.obj? ally).isNone
+
 end RiftboundTest

@@ -268,7 +268,7 @@ def Condition.understood : Condition → Bool
   | .marked _ => true
   | .fromHidden => true
   | .excessAtLeast _ => true
-  | .noted _ => true
+  | .noted _ | .friendlyNoted _ => true
   | .hidesWithEnergy => true
   | .hasFriendlyCard _ => true
   | .diedWith _ => true

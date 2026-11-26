@@ -1307,6 +1307,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
         (((s.cardDef? g).map (·.fullAbilities)).getD []).any (fun ab =>
           match ab with | .passive _ mods => mods.contains .hideWithEnergy | _ => false)))
   | .noted e => some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p && f.kind == e))
+  | .friendlyNoted e =>
+    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e &&
+      s.config.mode.sameSide p f.who))
   | .excessAtLeast n =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p &&
       (match f.kind with | .excessDamage k => decide (n ≤ k) | _ => false)))

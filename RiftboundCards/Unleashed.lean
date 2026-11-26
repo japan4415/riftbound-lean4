@@ -438,9 +438,9 @@ def UNL_012.meta : CardDef :=
 def UNL_012 : CardDef :=
   { UNL_012.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.grant (Selector.all .friendly .here [.ofType .unit, .notSelf])
+      (.of [] (.grant (Selector.all .you .here [.ofType .unit, .notSelf])
         (.keyword .it { keyword := .assault }) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-013
 /--
@@ -1037,7 +1037,7 @@ def UNL_033 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of []
         (.prim (.create "Bird" (.const 1) .here false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-034
 /--
@@ -1139,8 +1139,8 @@ def UNL_037.meta : CardDef :=
 /-- Shadow Watcher. -/
 def UNL_037 : CardDef :=
   { UNL_037.meta with
-    abilities := [.passive (.and (.noted .diedInBeginning) .yourTurn) [.entersReady .self]],
-    status := .drafted }
+    abilities := [.passive (.and (.friendlyNoted .diedInBeginning) .yourTurn) [.entersReady .self]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-038
 /--
@@ -1199,7 +1199,7 @@ def UNL_039.meta : CardDef :=
 def UNL_039 : CardDef :=
   { UNL_039.meta with
     grants := [.passive (.cmp .ge .xp (.const 3)) [.mightPlus .self (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-040
 /--
@@ -2167,7 +2167,7 @@ def UNL_073 : CardDef :=
     spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
       (.seqOf [.prim (.delayUntilDeath (.slot 0) 0),
         .prim (.deal (.slot 0) (.const 3))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-074
 /--
@@ -2191,7 +2191,7 @@ def UNL_074 : CardDef :=
     abilities := [.triggered { condition := .drewCards 2, event := .draw }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-075
 /--
@@ -3237,7 +3237,7 @@ def UNL_111.meta : CardDef :=
 def UNL_111 : CardDef :=
   { UNL_111.meta with
     abilities := [.passive .always [.noMoveToBase]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-112
 /--
@@ -4610,7 +4610,7 @@ def UNL_159 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere
         [.ofType .unit, .onBattlefield, .might .le (.const 3)]]
       (.prim (.kill (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-160
 /--
@@ -5059,7 +5059,7 @@ def UNL_175 : CardDef :=
     -- the next time the unit would die this turn, it is healed, exhausted and recalled instead
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
       (.prim (.markOn (.slot 0) .saveOnce))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-176
 /--
