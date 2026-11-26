@@ -9,10 +9,11 @@ export PATH="$HOME/.elan/bin:$PATH"
 step() { printf '\n==> %s\n' "$*"; }
 
 step "1/5 build (--wfail)"
-lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest riftbound-trace --wfail
+lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest riftbound-trace riftbound-replay riftbound-live --wfail
 
 step "2/5 test"
 lake test
+uv run --no-project python -B scripts/replay_smoke.py
 
 step "3/5 axiom audit (lake check)"
 # サンドボックスは Linux でしか動かない。自分のコードを自分のマシンで検査するので外す。

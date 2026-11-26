@@ -1,6 +1,6 @@
 # トレースビューア
 
-エンジンが動かした 1 ゲームを、アニメーションで再生する。**ルールは Lean だけにあり、画面は表示だけをする。**
+エンジンが進めたゲームをアニメーションで再生する。マッチの記録では、ゲームを切り替えて各手を確認できる。ルールの判定は Lean が行う。
 
 ```
 RiftboundDriver/Trace.lean ──JSON──▶ viewer/index.html（再生）
@@ -75,7 +75,35 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
 
 **サイドボード**: 大会の Constructed のマッチで、サイドボードを使えるとき（最初のゲームの前と、引き分けの後は使えない）、ゲームが終わると、画面に Main Deck とサイドボードのカードが枚数つきで出る。出すカードと入れるカードを 1 枚ずつ選んで「入れ替える」を押すと、Lean が、入れ替えの後のデッキが Constructed で合法かどうかを確かめ（TR 403.4.c）、合法なら受ける。次のゲームは、そのデッキで始まる。
 
-**まだ無いもの**: 複数の入れ替えをまとめて合法にすること（今は 1 枚ずつ、毎回、合法でなければ拒否）、2 人とも人のときの隠れ情報（相手の手札が見える）、カードを指す操作（今は答えを文のボタンで選ぶ）。
+画面には双方の手札が表示される。両席を人が操作する場合は、この表示を含めて同じ画面を使う。
+
+## 実カードの登録とマッチの保存
+
+`lake build riftbound-live riftbound-replay` を実行し、上の手順でライブビューアを開く。「登録デッキで開始」から [Constructed の設定例](../data/replay/constructed-example.json) を読み込むと、実カードを使って Bo3 を始められる。操作する席を「両方」にすれば、双方の手を選べる。設定ファイルの型は `LiveSetup`。
+
+- `decks` に両席のデッキを席番号順に入れる。カード ID は `data/cards/logical.json` の `cardId` を使う。Constructed は登録時のサイドボードを含める。
+- `config` にゲーム形式とカードの合法性を入れる。公式 Constructed の `tournament` を指定すると、開催日・禁止改定の適用区分と `formatLegality` の整合性を確認する。`firstChooser` は最初の先手・後手を決める席、`first` は実際に先手で始める席。
+- サイドボードの変更が許されているときは、その席の変更後の `ConstructedDeck` を JSON で読み込める。`decks.constructed.decks` の各要素と同じ形で、複数枚と Chosen Champion をまとめて変更できる。引き分けの後は先手と Battlefield を引き継ぐ。
+- ゲームの合間に時間切れになったら「時間切れ」を押す。その時点の勝ち数でマッチが決まる。マッチ全体の投了と合意した引き分けは、標準入力プロトコルの `concede-match SEAT` と `agree-match-draw` で記録できる。
+- マッチ終了後に「マッチの記録を保存」を押す。アーカイブには両席の手札を再現できるデッキ順が含まれる。個々のゲームはビューアの「ゲーム」欄で切り替えられる。
+
+### 別のプロセスで照合する
+
+```sh
+.lake/build/bin/riftbound-replay verify riftbound-match.json
+.lake/build/bin/riftbound-replay view riftbound-match.json match-trace.json
+uv run --no-project python scripts/build_viewer.py match-trace.json match.html
+```
+
+`verify` はアーカイブのルール版とカード定義を照合し、すべての手を再実行する。各手で状態のハッシュとイベント列を比較し、違いがあれば最初のゲーム番号と手の位置を出す。`view` で書き出した JSON はビューアの「対局記録を開く」からも読み込める。
+
+外部の対局から記録を起こす場合は、アーカイブの `input` と同じ形の JSON を作り、`riftbound-replay record INPUT.json ARCHIVE.json` で照合用の記録を作る。`answers` にはシャッフル後のオブジェクト順、選択、支払い、時計やジャッジの決定を、適用された順に入れる。`observed` は直接観測した答え、`inferred` は根拠付きの推定、`unknown` は答えを確定できない箇所。推定を含むマッチは `exact: false` になり、`unknown` では該当する手で止まる。
+
+ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
+
+### 2v2 の大会記録
+
+`riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。チームの操作列は記録欄に保持できる。個々の操作の再実行は 1v1 のエンジンが対象で、2v2 の対戦処理は [ロードマップの M9](roadmap.md) にある。
 
 ## カードの詳細と画像
 

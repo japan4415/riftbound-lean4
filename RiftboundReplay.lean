@@ -1,0 +1,67 @@
+import RiftboundDriver.TeamMatch
+import RiftboundDriver.Trace
+
+open Lean Riftbound RiftboundDriver
+
+private def readJson (path : String) : IO Json := do
+  let text ← IO.FS.readFile path
+  IO.ofExcept (Json.parse text)
+
+private def writeJson (path : String) (value : Json) : IO Unit :=
+  IO.FS.writeFile path (value.compress ++ "\n")
+
+private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
+    Except String String := do
+  let mut state ← input.decks.initial RiftboundCards.db config
+  let (initial, firstSeen) := stepJson 0 none [] state {}
+  let mut seen := firstSeen
+  let mut steps := [initial]
+  for (answer, index) in input.answers.toList.zipIdx do
+    let action ← answer.resolve (index + 1)
+    let (next, events) ← (step fuel state action).mapError (fun e => s!"answer {index + 1}: {repr e}")
+    let (row, nextSeen) := stepJson (index + 1) (some action) events next seen state.pending.head?
+    state := next
+    seen := nextSeen
+    steps := row :: steps
+  return jobj [("players", toString state.playerCount), ("steps", jarr steps.reverse)]
+
+private def matchTrace (saved : RecordedMatch) : Except String String := do
+  let summary ← saved.verify
+  let games ← saved.input.games.toList.mapM (fun game => gameTrace game saved.input.config saved.input.fuel)
+  let cards := RiftboundCards.db.cards.map (fun card => (card.id.code, cardJson card))
+  let winner := match summary.result with | .won p => toString p.n | .draw => "null"
+  return jobj [("cards", jobj cards), ("games", jarr games), ("winner", winner),
+    ("wins", jarr [toString summary.wins.1, toString summary.wins.2]), ("exact", toString summary.exact),
+    ("cardsFullyChecked", toString summary.cardsFullyChecked)]
+
+/-- Record, verify or generate a viewer trace from all the inputs of a saved match. -/
+def main (args : List String) : IO UInt32 := do
+  try
+    match args with
+    | ["record", input, output] =>
+      let script : MatchInputs ← IO.ofExcept (fromJson? (← readJson input))
+      let saved ← IO.ofExcept (script.record)
+      writeJson output (toJson saved)
+      IO.println (toJson saved.summary).compress
+      return 0
+    | ["verify", input] =>
+      let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let result ← IO.ofExcept (saved.verify)
+      IO.println (toJson result).compress
+      return 0
+    | ["view", input, output] =>
+      let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let trace ← IO.ofExcept (matchTrace saved)
+      IO.FS.writeFile output (trace ++ "\n")
+      return 0
+    | ["check-team", input] =>
+      let observed : TeamMatchRecord ← IO.ofExcept (fromJson? (← readJson input))
+      let result ← IO.ofExcept observed.check
+      IO.println (toJson result).compress
+      return 0
+    | _ =>
+      IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json"
+      return 2
+  catch error =>
+    IO.eprintln error.toString
+    return 1

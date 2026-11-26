@@ -111,8 +111,30 @@ def make_handler(lean: Lean, port: int):
                             or match not in ("single", "bo1", "bo3")):
                         return self._json(400, {"error": "bad start"})
                     line = f"start {seed} {humans} {kind} {match}"
+                elif path == "/api/register-start":
+                    seed = int(req.get("seed", 1))
+                    humans = str(req.get("humans", "01"))
+                    if seed < 0 or humans not in ("0", "1", "01"):
+                        return self._json(400, {"error": "bad start"})
+                    line = f"start-json {seed} {humans} {json.dumps(req['setup'], ensure_ascii=True)}"
                 elif path == "/api/clock":
                     line = "clock"
+                elif path == "/api/time-between-games":
+                    line = "time-between-games"
+                elif path == "/api/replay":
+                    line = "replay"
+                elif path == "/api/register":
+                    seat = int(req["seat"])
+                    if seat not in (0, 1):
+                        return self._json(400, {"error": "bad seat"})
+                    line = f"register {seat} {json.dumps(req['registration'], ensure_ascii=True)}"
+                elif path == "/api/concede-match":
+                    seat = int(req["seat"])
+                    if seat not in (0, 1):
+                        return self._json(400, {"error": "bad seat"})
+                    line = f"concede-match {seat}"
+                elif path == "/api/agree-match-draw":
+                    line = "agree-match-draw"
                 elif path == "/api/judge":
                     line = "judge"
                 elif path == "/api/undo":

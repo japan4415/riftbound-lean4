@@ -177,8 +177,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     <div class="phases" id="phases"></div>
   </div>
   <div class="empty" id="empty" hidden>
-    <p><code>riftbound-trace</code> が書き出した JSON を選んでください。</p>
-    <input type="file" id="file" accept=".json,application/json" aria-label="トレースの JSON">
+    <p>ゲームやマッチの閲覧用 JSON を選んでください。</p>
+    <input type="file" id="file" accept=".json,application/json" aria-label="閲覧用 JSON">
+    <p class="note" id="filemsg" role="status"></p>
   </div>
   <section class="live" id="live" hidden aria-label="ライブ操作">
     <div class="row">
@@ -192,10 +193,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <label>試合 <select id="matchmode"><option value="single" selected>1 ゲームだけ</option>
         <option value="bo1">Best of 1</option><option value="bo3">Best of 3</option></select></label>
       <button id="newgame">新しいゲーム</button>
+      <button id="registerStart">登録デッキで開始</button>
+      <input type="file" id="setupFile" accept=".json,application/json" hidden aria-label="マッチ設定の JSON">
+      <button id="openTrace">対局記録を開く</button>
       <button id="undobtn" hidden title="直前の答えを取り消す（Ctrl+Z）">1 手戻す</button>
       <span class="note" id="livemsg" role="status"></span>
     </div>
     <div class="note" id="matchinfo"></div>
+    <input type="file" id="registrationFile" accept=".json,application/json" hidden aria-label="変更後のデッキ登録 JSON">
     <div class="choices" id="choices" aria-live="polite"></div>
   </section>
   <div id="result" class="banner" hidden></div>
@@ -207,6 +212,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     </div>
   </div>
   <div class="controls" id="controls" hidden>
+    <label id="gamePicker" hidden>ゲーム <select id="gameNumber"></select></label>
+    <span class="note" id="traceinfo"></span>
     <button id="first" aria-label="最初へ">⏮</button>
     <button id="prev" aria-label="1 手戻る">◀</button>
     <button id="play" aria-label="再生">▶ 再生</button>
@@ -234,6 +241,8 @@ const DOMAINS = ['fury', 'calm', 'mind', 'body', 'chaos', 'order'];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 let trace, steps, cards, objs, cur = 0, playing = false, timer = null, speed = 1;
+let matchTraces = [], traceIndex = 0, liveGameIndex = null;
+let liveRequest = false;
 const els = new Map();        // object id -> card element
 const zoneBox = new Map();    // zone name -> container element
 const poolBox = [], pointsBox = [], seatBox = [];
@@ -259,6 +268,35 @@ function load(t) {
   $('empty').hidden = true; $('layout').hidden = false; $('controls').hidden = false;
   $('scrub').max = steps.length - 1;
   show(0, false);
+}
+
+function selectGame(index, last = false) {
+  traceIndex = index;
+  load(matchTraces[index]);
+  if (last) show(steps.length - 1, false);
+  $('gameNumber').value = String(index);
+}
+
+function updateGamePicker() {
+  $('gamePicker').hidden = matchTraces.length < 2;
+  $('gameNumber').replaceChildren(...matchTraces.map((_, i) =>
+    new Option(`第 ${i + 1} ゲーム${i === liveGameIndex ? '（最新）' : ''}`, String(i))));
+  $('gameNumber').value = String(traceIndex);
+}
+
+function loadFile(t) {
+  const games = Array.isArray(t.games) ? t.games.map((game) => ({ ...game, cards: t.cards })) : [t];
+  if (!games.length || !games.every((g) => g.cards && Array.isArray(g.steps) && g.steps.length && g.steps[0].state)) {
+    throw new Error('閲覧用 JSON を選んでください。マッチのアーカイブは riftbound-replay view で変換できます。');
+  }
+  liveGameIndex = null;
+  matchTraces = games;
+  $('matchinfo').textContent = '';
+  $('livemsg').textContent = '';
+  $('traceinfo').textContent = Array.isArray(t.games)
+    ? `勝ち数 ${t.wins.join('–')} · ${t.winner === null ? '引き分け' : `P${t.winner} の勝ち`}${t.exact ? '' : ' · 推定を含む'}${t.cardsFullyChecked === false ? ' · 動作確認前のカードあり' : ''}` : '';
+  selectGame(0);
+  updateGamePicker();
 }
 
 const baseGroups = new Map();
@@ -841,7 +879,7 @@ function fly(src, from, to) {
 function renderStatic(i, st, prev, animate) {
   const cardName = (id) => cardNameAt(id, st);
   $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}`
-    + (st.active !== null ? ` ・ P${st.active} の番` : '') + ` ・ seed ${trace.seed}`;
+    + (st.active !== null ? ` ・ P${st.active} の番` : '') + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
   seatBox.forEach((e, p) => e.classList.toggle('active', st.active === p));
   for (let p = 0; p < trace.players; p++) {
@@ -937,7 +975,16 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') $('next').click(); else if (e.key === 'ArrowLeft') $('prev').click();
 });
 $('file').addEventListener('change', async (e) => {
-  const f = e.target.files[0]; if (f) load(JSON.parse(await f.text()));
+  const f = e.target.files[0];
+  if (!f) return;
+  try { loadFile(JSON.parse(await f.text())); $('filemsg').textContent = ''; }
+  catch (error) { (live ? $('livemsg') : $('filemsg')).textContent = error.message; }
+  finally { e.target.value = ''; }
+});
+$('gameNumber').addEventListener('change', (e) => {
+  const index = +e.target.value;
+  selectGame(index, index === liveGameIndex);
+  if (liveGameIndex !== null && index !== liveGameIndex) $('livemsg').textContent = '過去のゲームを閲覧中';
 });
 // ---- カードの右クリックで詳細 ----
 const ZONE_JA = { hand: '手札', base: 'Base', trash: 'Trash', mainDeck: 'Main Deck', runeDeck: 'Rune Deck', legendZone: 'Legend',
@@ -1033,6 +1080,7 @@ $('board').addEventListener('scroll', hideCardInfo);
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
+let liveOver = false, liveArchive = false, liveSeats = '0';
 let liveSide = null, swapOut = null, swapIn = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1070,7 +1118,12 @@ function setLive(j) {
     return true;
   });
   liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  liveOver = j.over; liveArchive = j.archiveAvailable;
   swapOut = swapIn = null;
+}
+function setLiveRequest(pending) {
+  liveRequest = pending;
+  for (const id of ['newgame', 'registerStart', 'openTrace', 'gameNumber', 'undobtn']) $(id).disabled = pending;
 }
 function matchText(m) {
   if (!m) return '';
@@ -1078,7 +1131,7 @@ function matchText(m) {
     : m.order.startsWith('loser') ? '次のゲーム: 負けた P' + m.order.slice(5) + ' が先手か後手かを選ぶ（TR 407）'
     : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
   return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち P0 ' + m.wins[0] + ' - P1 ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
-    + (m.finished ? ' ・ マッチ終了: 勝者 P' + m.winner : ' ・ ' + order
+    + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : 'P' + m.winner + ' の勝ち') : ' ・ ' + order
       + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
 }
 // 手とカードの結びつき: カードをクリックして答える。手が 1 つならすぐ、複数ならメニューで選ぶ。
@@ -1239,8 +1292,9 @@ function renderNameCards(box, options, btn) {
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
-  $('undobtn').hidden = !(live && steps && undoCount > 0 && i === steps.length - 1);
-  if (!live || !steps || i !== steps.length - 1) return;
+  const atLiveEnd = live && liveGameIndex === traceIndex && steps && i === steps.length - 1;
+  $('undobtn').hidden = !(atLiveEnd && undoCount > 0);
+  if (!atLiveEnd) return;
   const last = steps[i].state;
   $('matchinfo').textContent = matchText(liveMatch);
   const btn = (text, title, fn, cls) => {
@@ -1251,7 +1305,7 @@ function renderLegal(i) {
     const h = document.createElement('h3'); h.textContent = title;
     const row = document.createElement('div'); row.className = 'btns'; row.append(...buttons); box.append(h, row);
   };
-  if (last.result) {
+  if (liveOver) {
     if (liveMatch && !liveMatch.finished) {
       if (askChoice !== null) {
         $('livemsg').textContent = 'P' + askChoice + ' が、次のゲームの先手か後手かを選ぶ（TR 407）';
@@ -1261,11 +1315,18 @@ function renderLegal(i) {
       } else {
         $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
         if (liveSide && liveSide.allowed) renderSideboard(group, btn);
-        group('マッチ', [btn('次のゲーム', '結果をマッチに数えて、次のゲームを始める', () => liveNext(null))]);
+        const actions = [btn('次のゲーム', '', () => liveNext(null))];
+        if (liveExt.betweenGames) actions.push(btn('時間切れ', '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
+        if (liveSide?.allowed) for (const seat of liveSeats) {
+          actions.push(btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
+            () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); }));
+        }
+        group('マッチ', actions);
       }
     } else {
       $('livemsg').textContent = liveMatch ? 'マッチ終了。「新しいゲーム」で、もう一度始められる。'
         : 'ゲーム終了。「新しいゲーム」で、もう一度始められる。';
+      if (liveArchive) group('対局記録', [btn('マッチの記録を保存', '手札やデッキ順を含む JSON', saveReplay)]);
     }
     return;
   }
@@ -1347,22 +1408,45 @@ function renderSideboard(group, btn) {
   group('入れ替え', [go]);
 }
 async function liveSwap() {
-  const out = swapOut, inn = swapIn; undoCount = 0;
+  if (liveRequest) return;
+  setLiveRequest(true);
+  const out = swapOut, inn = swapIn;
   $('livemsg').textContent = '確かめ中…';
   try {
     const j = await api('/api/swap', { out, in: inn });
+    undoCount = 0;
     setLive(j); renderLegal(steps.length - 1);
     $('livemsg').textContent = '入れ替えた。続けて入れ替えるか、「次のゲーム」へ。';
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+  finally { setLiveRequest(false); }
 }
 async function startWith(path, body, fresh) {
-  const j = await api(path, body);
-  if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
-  if (fresh) undoCount = 0;
-  else if (path === '/api/act' || path === '/api/clock' || path === '/api/judge') undoCount++;
-  if (fresh) load({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
-  else { const from = steps.length - 1; appendSteps(j.steps); pause(); show(from, false); }
-  setLive(j); if (fresh) { speed = +$('speed').value; play(); } else play();
+  if (liveRequest) return;
+  setLiveRequest(true);
+  try {
+    const j = await api(path, body);
+    if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
+    if (fresh) undoCount = 0;
+    else if (path === '/api/act' || path === '/api/clock' || path === '/api/judge') undoCount++;
+    else undoCount = 0;
+    setLive(j);
+    if (fresh) {
+      if (path !== '/api/next') { matchTraces = []; liveSeats = body.humans; }
+      matchTraces.push({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
+      liveGameIndex = matchTraces.length - 1;
+      $('traceinfo').textContent = '';
+      selectGame(liveGameIndex);
+      updateGamePicker();
+      speed = +$('speed').value;
+    } else if (j.steps.length) {
+      const from = steps.length - 1; appendSteps(j.steps); pause(); show(from, false);
+    } else {
+      pause(); show(steps.length - 1, false); return;
+    }
+    play();
+  } finally {
+    setLiveRequest(false);
+  }
 }
 async function liveStart() {
   $('livemsg').textContent = '準備中…'; $('matchinfo').textContent = '';
@@ -1371,24 +1455,45 @@ async function liveStart() {
       kind: $('kind').value, match: $('matchmode').value }, true);
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
+async function startRegistered(file) {
+  $('livemsg').textContent = '登録デッキを確認中…';
+  try {
+    const setup = JSON.parse(await file.text());
+    await startWith('/api/register-start', { seed: +$('seed').value, humans: $('seat').value, setup }, true);
+  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+}
+async function saveReplay() {
+  $('livemsg').textContent = '対局記録を検証中…';
+  try {
+    const archive = await api('/api/replay', {});
+    const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'riftbound-match.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $('livemsg').textContent = '対局記録を保存しました';
+  } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+}
 async function liveAct(k) {
+  if (liveRequest) return;
   clearActMarks(); $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
   try { await startWith('/api/act', { k }, false); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveExternal(which) {
+  if (liveRequest) return;
   $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
   try { await startWith('/api/' + which, {}, false); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveNext(choice) {
+  if (liveRequest) return;
   $('choices').textContent = ''; $('livemsg').textContent = '準備中…';
   try { await startWith('/api/next', choice ? { choice } : {}, true); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 // 直前の答えを取り消す: Lean が、答える前のゲームに戻す。画面は、その手までの記録に切り詰める。
 async function liveUndo() {
-  if (!live || undoCount <= 0) return;
+  if (liveRequest || !live || liveGameIndex !== traceIndex || cur !== steps.length - 1 || undoCount <= 0) return;
+  setLiveRequest(true);
   clearActMarks(); $('choices').textContent = ''; $('livemsg').textContent = '戻しています…';
   try {
     const j = await api('/api/undo', {});
@@ -1398,6 +1503,7 @@ async function liveUndo() {
     $('scrub').max = n - 1; setLive(j);
     buildBoard(); cur = 0; show(n - 1, false);
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; renderLegal(steps.length - 1); }
+  finally { setLiveRequest(false); }
 }
 $('undobtn').addEventListener('click', liveUndo);
 document.addEventListener('keydown', (e) => {
@@ -1405,6 +1511,17 @@ document.addEventListener('keydown', (e) => {
       && !(e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))) { e.preventDefault(); liveUndo(); }
 });
 $('newgame').addEventListener('click', liveStart);
+$('registerStart').addEventListener('click', () => $('setupFile').click());
+$('openTrace').addEventListener('click', () => $('file').click());
+$('setupFile').addEventListener('change', (e) => {
+  const file = e.target.files[0]; e.target.value = ''; if (file) startRegistered(file);
+});
+$('registrationFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0], seat = +e.target.dataset.seat; e.target.value = '';
+  if (!file) return;
+  try { await startWith('/api/register', { seat, registration: JSON.parse(await file.text()) }, false); }
+  catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
 async function detectLive() {
   try {
     const r = await fetch('/api/ping');
@@ -1414,7 +1531,7 @@ async function detectLive() {
   } catch (e) { /* 橋渡しが無い: 再生だけ */ }
 }
 loadArtFile();
-if (EMBEDDED) load(EMBEDDED); else { $('empty').hidden = false; detectLive(); }
+if (EMBEDDED) loadFile(EMBEDDED); else { $('empty').hidden = false; detectLive(); }
 </script>
 </body>
 </html>

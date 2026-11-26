@@ -3,6 +3,8 @@ module
 public import RiftboundDriver.Run
 public import RiftboundDriver.Match
 public import RiftboundDriver.Live
+public import RiftboundDriver.MatchReplay
+public import RiftboundDriver.TeamMatch
 
 /-!
 # RiftboundDriver

@@ -1,6 +1,7 @@
 module
 
 public import RiftboundDriver.Trace
+public import RiftboundDriver.MatchReplay
 
 /-!
 # Driver: live play
@@ -21,7 +22,7 @@ goes first in the next game (TR 407); a person who chooses answers on screen.
 
 namespace RiftboundDriver
 
-open Riftbound
+open Lean Riftbound
 
 /-- The kind of game: the rules and the decks (the decks are those of the demo). -/
 inductive LiveKind where
@@ -42,6 +43,24 @@ def LiveKind.ofString : String → Option LiveKind
   | "sealed" => some .sealed
   | "draft" => some .draft
   | _ => none
+
+/-- Registrations, rules and first-game initiative for a recorded live match. -/
+structure LiveSetup where
+  /-- Rules and the pinned legality environment. -/
+  config : GameConfig
+  /-- Tournament details, for official Constructed events. -/
+  tournament : Option ReplayTournament := none
+  /-- The starting registrations in seat order. -/
+  decks : ReplayDecks
+  /-- The number of game wins that finishes the match. -/
+  winsRequired : Nat
+  /-- The per-answer engine work limit. -/
+  fuel : Nat := 100
+  /-- The seat selected by chance to decide who goes first in the first game. -/
+  firstChooser : PlayerId
+  /-- The seat chosen to go first. -/
+  first : PlayerId
+deriving ToJson, FromJson
 
 /-- A game in progress: the state, the objects the viewer has seen, the number of steps written,
 the generator for the chance decisions, the seats a person controls, and the match it belongs to. -/
@@ -70,6 +89,22 @@ structure LiveGame where
   decks : List Deck := [demoDeck, demoDeck]
   /-- The sideboards of the players (Constructed, TR 601.1.c). -/
   sides : List (List CardId) := [demoSideboard, demoSideboard]
+  /-- The real match registration, if started with one. -/
+  setup : Option LiveSetup := none
+  /-- This game's starting registration and initiative, separate from edits for the next game. -/
+  input : Option GameInputs := none
+  /-- Answers already given, newest first so undo snapshots share the earlier entries. -/
+  answersRev : List ReplayAnswer := []
+  /-- Evidence for setup and each answer, newest first. -/
+  checkpointsRev : List ReplayCheckpoint := []
+  /-- Completed games in chronological order, up to the start of this game. -/
+  completed : Array RecordedGame := #[]
+  /-- Battlefield cards selected for this game, keyed by the seat that brought them. -/
+  fields : List (PlayerId × CardId) := []
+  /-- When replaying a draw, require the same Battlefield selections. -/
+  reuseFields : List (PlayerId × CardId) := []
+  /-- The reason the match ended. -/
+  ending : Option ReplayMatchEnd := none
 
 /-- The player whose answer the game waits for, if it is a player's. -/
 def LiveGame.waiting (g : LiveGame) : Option PlayerId :=
@@ -80,6 +115,7 @@ def LiveGame.waiting (g : LiveGame) : Option PlayerId :=
 /-- The answers a person can give now: those of the players they control, a concession included.
 -/
 def LiveGame.legal (g : LiveGame) : List Action :=
+  if g.ending.isSome then [] else
   (legalActions g.s).filter (fun a =>
     match a.actor with
     | .player p => g.humans.contains p
@@ -91,39 +127,58 @@ def LiveGame.needsHuman (g : LiveGame) : Bool :=
 
 /-- Give an answer: the step as JSON, and the game after it. -/
 def LiveGame.apply (g : LiveGame) (a : Action) : Except String (LiveGame × String) :=
-  match step 100 g.s a with
+  if g.ending.isSome then .error "the match is over" else
+  match step (g.setup.map (·.fuel) |>.getD 100) g.s a with
   | .error e => .error s!"the engine refused the answer: {repr e}"
   | .ok (s', es) =>
     let (j, seen') := stepJson g.i (some a) es s' g.seen g.s.pending.head?
-    .ok ({ g with s := s', seen := seen', i := g.i + 1 }, j)
+    .ok ({ g with
+      s := s', seen := seen', i := g.i + 1,
+      answersRev := if g.input.isSome then .observed a :: g.answersRev else g.answersRev,
+      checkpointsRev := if g.input.isSome then ReplayCheckpoint.capture s' es :: g.checkpointsRev
+        else g.checkpointsRev,
+      fields := (pickedBattlefield g.s a).toList ++ g.fields }, j)
 
 /-- When the game is over, its result goes to the match, once (TR 404). -/
 def LiveGame.settle (g : LiveGame) : LiveGame :=
   match g.match_, g.s.result with
   | some m, some r =>
     if g.recorded then g
-    else { g with match_ := some (m.record r (g.s.turnOrder.headD ⟨0⟩)), recorded := true }
+    else
+      let first := g.s.turnOrder.head?
+      let next := { m.record r (first.getD ⟨0⟩) with lastFirst := first }
+      { g with
+        match_ := some next, recorded := true,
+        ending := if next.finished || g.s.clock.isSome then some .finalGame else none }
   | _, _ => g
+
+/-- A forced answer during setup, when match decisions already determine the choice. -/
+def LiveGame.setupAnswer (g : LiveGame) : Except String (Option Action) := do
+  match g.s.pending with
+  | .chanceTurnOrder :: _ => return g.order.map (fun order => ⟨.chance, .arrangePlayers order⟩)
+  | .chanceBattlefield seat :: _ =>
+    let some card := g.reuseFields.lookup seat | return none
+    let some index := (g.s.zone (.player seat .outOfGame)).findIdx?
+        (fun id => (g.s.cardDef? id).any (·.id == card))
+      | throw s!"seat {seat.n} cannot reuse Battlefield {card.code}"
+    return some ⟨.chance, .pick index⟩
+  | _ => return none
 
 /-- Answer for the seats nobody controls until the game is over or a person is to answer. The steps
 that were made, in order. -/
 def LiveGame.autoRun : Nat → LiveGame → List String → Except String (LiveGame × List String)
-  | 0, g, acc => .ok (g.settle, acc.reverse)
-  | n + 1, g, acc =>
+  | 0, g, acc =>
     if g.s.result.isSome || g.needsHuman then .ok (g.settle, acc.reverse)
-    else
-      match g.s.pending, g.order with
-      | .chanceTurnOrder :: _, some o =>
-        match g.apply ⟨.chance, .arrangePlayers o⟩ with
-        | .error e => .error e
-        | .ok (g', j) => LiveGame.autoRun n g' (j :: acc)
-      | _, _ =>
-        match demoAnswer g.rng g.s with
-        | none => .ok (g.settle, acc.reverse)
-        | some (a, r') =>
-          match { g with rng := r' }.apply a with
-          | .error e => .error e
-          | .ok (g', j) => LiveGame.autoRun n g' (j :: acc)
+    else .error "the automatic player reached its action limit"
+  | n + 1, g, acc => do
+    if g.s.result.isSome || g.needsHuman then return (g.settle, acc.reverse)
+    let planned ← g.setupAnswer
+    let answer := match planned with
+      | some a => some (a, g.rng)
+      | none => demoAnswer g.rng g.s
+    let some (action, rng) := answer | throw "no answer for the automatic player"
+    let (next, json) ← { g with rng }.apply action
+    LiveGame.autoRun n next (json :: acc)
 
 /-- The answers a person can give, as JSON: the number to send back, and the answer. -/
 def LiveGame.legalJson (g : LiveGame) : String :=
@@ -136,9 +191,11 @@ def LiveGame.matchJson (g : LiveGame) : String :=
   match g.match_ with
   | none => "null"
   | some m =>
+    let result := g.ending.bind (fun ending =>
+      (concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome) ending).toOption)
     jobj [("target", toString m.target), ("wins", jarr [toString m.wins0, toString m.wins1]),
-      ("games", toString m.games), ("finished", if m.finished then "true" else "false"),
-      ("winner", match m.winner with | some p => toString p.n | none => "null"),
+      ("games", toString m.games), ("finished", toString g.ending.isSome),
+      ("winner", match result with | some (.won p) => toString p.n | _ => "null"),
       ("sideboard", if m.sideboardAllowed then "true" else "false"),
       ("sameBattlefields", if m.reuseBattlefields then "true" else "false"),
       ("order", jstr (match m.nextOrder with
@@ -146,8 +203,10 @@ def LiveGame.matchJson (g : LiveGame) : String :=
 
 /-- Whether the clock may call time and the judge declare a draw now (TR 408.2, 410.1, 505.6). -/
 def LiveGame.externalJson (g : LiveGame) : String :=
-  let ok (a : Action) : String := if decide (Legal g.s a) then "true" else "false"
-  jobj [("clock", ok ⟨.clock, .timeCalled⟩), ("judge", ok ⟨.judge, .declareDraw⟩)]
+  let ok (a : Action) : String := toString (g.ending.isNone && decide (Legal g.s a))
+  jobj [("clock", ok ⟨.clock, .timeCalled⟩), ("judge", ok ⟨.judge, .declareDraw⟩),
+    ("betweenGames", toString (g.ending.isNone && g.match_.isSome &&
+      g.s.result.isSome && g.s.config.ruleSet.isTournament))]
 
 /-- The cards of a list with how many of each, in the order they first appear. -/
 def countIds (l : List CardId) : List (CardId × Nat) :=
@@ -168,10 +227,10 @@ def LiveGame.sideJson (g : LiveGame) : String :=
     | some d, some side =>
       let group (l : List CardId) : String :=
         jarr ((countIds l).map (fun (c, n) =>
-          jobj [("id", jstr c.code), ("name", jstr ((demoDB.find? c).map (·.name) |>.getD c.code)),
+          jobj [("id", jstr c.code), ("name", jstr ((g.s.cards.find? c).map (·.name) |>.getD c.code)),
             ("n", toString n)]))
       jobj [("player", toString p.n),
-        ("allowed", if m.sideboardAllowed && g.s.result.isSome then "true" else "false"),
+        ("allowed", toString (m.sideboardAllowed && g.s.result.isSome && g.ending.isNone)),
         ("main", group d.main), ("side", group side),
         ("mainCount", toString d.main.length), ("sideCount", toString side.length)]
     | _, _ => "null"
@@ -182,7 +241,8 @@ over, the match, and what the clock and the judge can do. -/
 def LiveGame.reply (g : LiveGame) (steps : List String) (extra : List (String × String) := []) :
     String :=
   jobj (extra ++ [("steps", jarr steps), ("legal", g.legalJson),
-    ("over", if g.s.result.isSome then "true" else "false"),
+    ("over", toString (g.s.result.isSome || g.ending.isSome)),
+    ("archiveAvailable", toString (g.setup.isSome && g.ending.isSome)),
     ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson)])
 
 /-- What the reply to an undo says: the answers a person can give again, and how many steps the
@@ -207,25 +267,53 @@ def LiveKind.initial (decks : List Deck) (sides : List (List CardId) := []) :
       { ruleSet := .tournament .draft, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
 
 /-- A new game: the first step, and the game after the answers of the seats nobody controls. -/
+def LiveGame.begin (g : LiveGame) : Except String (LiveGame × List String) := do
+  let (j0, seen) := stepJson 0 none [] g.s {}
+  let checkpointsRev := if g.input.isSome then [ReplayCheckpoint.capture g.s []] else []
+  let (next, steps) ← { g with i := 1, seen, checkpointsRev }.autoRun 100000 []
+  return (next, j0 :: steps)
+
+/-- Start a live game with the demo registrations. -/
 def liveNew (kind : LiveKind) (seed : Nat) (humans : List PlayerId) (order : Option (List PlayerId))
     (m : Option MatchState) (decks : List Deck := [demoDeck, demoDeck])
-    (sides : List (List CardId) := [demoSideboard, demoSideboard]) :
-    Except String (LiveGame × List String) :=
-  match kind.initial decks sides with
-  | none => .error "the demo game cannot be set up"
-  | some s0 =>
-    let (j0, seen) := stepJson 0 none [] s0 {}
-    let g0 : LiveGame := { s := s0, seen := seen, i := 1, rng := Rng.ofSeed seed, humans := humans }
-    let g1 : LiveGame := { g0 with kind := kind, seed := seed, order := order, match_ := m }
-    let g : LiveGame := { g1 with decks := decks, sides := sides }
-    match LiveGame.autoRun 100000 g [] with
-    | .error e => .error e
-    | .ok (g', js) => .ok (g', j0 :: js)
+    (sides : List (List CardId) := [demoSideboard, demoSideboard])
+    (reuseFields : List (PlayerId × CardId) := []) : Except String (LiveGame × List String) := do
+  let some s := kind.initial decks sides | throw "the demo game cannot be set up"
+  LiveGame.begin {
+    s, seen := {}, i := 0, rng := Rng.ofSeed seed, humans, kind, seed, order,
+    match_ := m, decks, sides, reuseFields }
+
+/-- The current Constructed registrations, including any edits for the next game. -/
+def LiveGame.registrations (g : LiveGame) : List ConstructedDeck :=
+  g.decks.zipWith (fun deck sideboard => { deck, sideboard }) g.sides
+
+/-- Capture the input, evidence and outcome of the current game in its present state. -/
+def LiveGame.gameRecord (g : LiveGame) (input : GameInputs) : RecordedGame :=
+  { input := { input with answers := g.answersRev.reverse.toArray }
+    checkpoints := g.checkpointsRev.reverse.toArray
+    summary := ReplayGameResult.fromState g.s input.decks g.fields.reverse true }
+
+/-- Set up a game with real cards and keep its starting registration available for export. -/
+def liveNewConfigured (setup : LiveSetup) (decks : ReplayDecks) (seed : Nat)
+    (humans : List PlayerId) (first : PlayerId) (chooser : Option PlayerId) (m : MatchState)
+    (completed : Array RecordedGame := #[]) (reuseFields : List (PlayerId × CardId) := []) :
+    Except String (LiveGame × List String) := do
+  let s ← decks.initial RiftboundCards.db setup.config
+  let kind := match setup.config.ruleSet with
+    | .coreOnly => LiveKind.core
+    | .tournament format => match format with
+      | .constructed => .constructed | .sealed => .sealed | .draft => .draft
+  let registrations := match decks with | .constructed ds => ds | _ => []
+  LiveGame.begin {
+    s, seen := {}, i := 0, rng := Rng.ofSeed seed, humans, kind, seed,
+    order := some (MatchState.turnOrderOf first), match_ := some m, setup := some setup,
+    input := some { decks, answers := #[], chooser }, completed, reuseFields,
+    decks := registrations.map (·.deck), sides := registrations.map (·.sideboard) }
 
 /-- The fixed part of the reply to the start of a game. -/
 def LiveGame.startInfo (g : LiveGame) : List (String × String) :=
   [("seed", toString g.seed), ("players", toString g.s.playerCount),
-    ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c))))]
+    ("cards", jobj (g.s.cards.cards.map (fun c => (c.id.code, cardJson c))))]
 
 /-- Start a game of the kind, with `seed` for the chance decisions. A person controls the players in
 `humans`. With `matchTarget` (1 or 2 wins), the game is the first of a match. -/
@@ -234,6 +322,44 @@ def liveStart (seed : Nat) (humans : List PlayerId) (kind : LiveKind := .core)
   match liveNew kind seed humans none (matchTarget.map MatchState.start) with
   | .error e => .error e
   | .ok (g, js) => .ok (g, g.reply js g.startInfo)
+
+/-- Start a match using the real card registry, preserving every answer for replay. -/
+def liveStartConfigured (seed : Nat) (humans : List PlayerId) (setup : LiveSetup) :
+    Except String (LiveGame × String) := do
+  if setup.config.mode != Mode.duel || setup.firstChooser.n >= 2 || setup.first.n >= 2 ||
+      !(humans.all (fun p => p.n < 2)) || (setup.winsRequired != 1 && setup.winsRequired != 2) then
+    throw "invalid live match configuration"
+  checkReplayEvent setup.config setup.tournament
+  let (g, steps) ← liveNewConfigured setup setup.decks seed humans setup.first
+    (some setup.firstChooser) (MatchState.start setup.winsRequired)
+  return (g, g.reply steps g.startInfo)
+
+/-- Export the entire recorded live match for independent replay. -/
+def LiveGame.archive (g : LiveGame) : Except String RecordedMatch := do
+  let some setup := g.setup | throw "no real decks were registered for this match"
+  let some ending := g.ending | throw "the match is not over"
+  let some input := g.input | throw "the game's inputs are missing"
+  let games := g.completed.push (g.gameRecord input)
+  MatchInputs.recordPlayed {
+    config := setup.config, tournament := setup.tournament,
+    winsRequired := setup.winsRequired, fuel := setup.fuel, games := games.map (·.input), ending }
+    games g.s.cards
+
+/-- End a live match by an external match decision. -/
+def liveEnd (g : LiveGame) (ending : ReplayMatchEnd) : Except String (LiveGame × String) := do
+  let some m := g.match_ | throw "this is not a match"
+  if g.ending.isSome then throw "the match is over"
+  match ending with
+  | .finalGame => throw "the engine records game results"
+  | .timeBetweenGames =>
+    if g.s.result.isNone || !g.s.config.ruleSet.isTournament then
+      throw "time between games requires a completed tournament game"
+  | .concede seat =>
+    if !g.humans.contains seat then throw "the concession must come from a controlled seat"
+  | .agreedDraw => pure ()
+  let _ ← concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome) ending
+  let next := { g with ending := some ending }
+  return (next, next.reply [])
 
 /-- Give the answer of the person, number `k` of the answers listed, and let the game go on. -/
 def liveAct (g : LiveGame) (k : Nat) : Except String (LiveGame × String) :=
@@ -276,7 +402,7 @@ def liveNext (g : LiveGame) (choice : Option Bool) : Except String (LiveGame × 
   match g.match_ with
   | none => .error "this is not a match"
   | some m =>
-    if m.finished then .error "the match is over"
+    if g.ending.isSome then .error "the match is over"
     else if g.s.result.isNone then .error "the game is not over"
     else
       match g.chooser, choice with
@@ -285,39 +411,54 @@ def liveNext (g : LiveGame) (choice : Option Bool) : Except String (LiveGame × 
         let how := m.nextOrder
         let random : PlayerId := ⟨(g.seed + m.games) % 2⟩
         let first := how.first random (choice.getD true)
-        match liveNew g.kind (g.seed + m.games) g.humans (some (MatchState.turnOrderOf first))
-            (some m) g.decks g.sides with
-        | .error e => .error e
-        | .ok (g', js) => .ok (g', g'.reply js g'.startInfo)
+        let seed := g.seed + m.games
+        let fields := if m.reuseBattlefields then g.fields else []
+        let replayChooser := match how with | .same _ => none | _ => some (how.chooser random)
+        let next := match g.setup, g.input with
+          | some setup, some input =>
+            let decks := match input.decks with
+              | .constructed _ => ReplayDecks.constructed g.registrations
+              | other => other
+            liveNewConfigured setup decks seed g.humans first replayChooser m
+              (g.completed.push (g.gameRecord input)) fields
+          | _, _ =>
+            liveNew g.kind seed g.humans (some (MatchState.turnOrderOf first))
+              (some m) g.decks g.sides fields
+        next.map (fun (g', steps) => (g', g'.reply steps g'.startInfo))
+
+/-- Apply a seat's complete post-sideboard registration through the same checks as replay. -/
+def liveRegister (g : LiveGame) (p : PlayerId) (registration : ConstructedDeck) :
+    Except String (LiveGame × String) := do
+  let some m := g.match_ | throw "this is not a match"
+  if g.ending.isSome then throw "the match is over"
+  if g.s.result.isNone then throw "the game is not over"
+  if !m.sideboardAllowed then throw "the sideboard cannot be used now"
+  if !g.humans.contains p then throw "this seat is not controlled"
+  let some env := g.s.config.formatLegality | throw "the sideboard requires format legality"
+  let some old := g.registrations[p.n]? | throw "there is no Constructed registration for this seat"
+  if !sameRegisteredPool old registration then throw "the registered pool or fixed slots changed"
+  if !decide (ConstructedDeckValid g.s.cards env registration) then
+    throw "the deck would not be a legal Constructed deck"
+  let next := { g with
+    decks := g.decks.set p.n registration.deck,
+    sides := g.sides.set p.n registration.sideboard }
+  return (next, next.reply [])
 
 /-- A person exchanges a card of their Main Deck for a card of their sideboard, between the games of
 a Constructed match (TR 403.4): one for one, only when the match allows it (not before the first
 game, not after a draw: TR 403.5, 403.10), and only if the deck stays a legal Constructed deck
 (TR 403.4.c). The check is the engine's: `ConstructedDeckValid`. -/
 def liveSwap (g : LiveGame) (out inn : String) : Except String (LiveGame × String) :=
-  match g.match_, g.sideSeat, g.kind with
-  | some m, some p, .constructed =>
-    if m.finished then .error "the match is over"
-    else if g.s.result.isNone then .error "the game is not over"
-    else if !m.sideboardAllowed then
-      .error "the sideboard cannot be used now (not before the first game, nor after a draw)"
-    else
-      match g.decks[p.n]?, g.sides[p.n]? with
-      | some d, some side =>
-        let o : CardId := ⟨out⟩
-        let i : CardId := ⟨inn⟩
-        if !d.main.contains o then .error s!"{out} is not in the Main Deck"
-        else if !side.contains i then .error s!"{inn} is not in the sideboard"
-        else
-          let d' := { d with main := d.main.erase o ++ [i] }
-          let side' := side.erase i ++ [o]
-          if decide (ConstructedDeckValid demoDB demoEnv { deck := d', sideboard := side' }) then
-            let g' := { g with decks := g.decks.set p.n d', sides := g.sides.set p.n side' }
-            .ok (g', g'.reply [])
-          else .error "the deck would not be a legal Constructed deck"
-      | _, _ => .error "there is no deck"
-  | none, _, _ => .error "this is not a match"
-  | _, _, _ => .error "the sideboard is for a Constructed match"
+  do
+    let some p := g.sideSeat | throw "there is no controlled seat"
+    let some r := g.registrations[p.n]? | throw "there is no Constructed registration for this seat"
+    let outgoing : CardId := ⟨out⟩
+    let incoming : CardId := ⟨inn⟩
+    if !r.deck.main.contains outgoing then throw s!"{out} is not in the Main Deck"
+    if !r.sideboard.contains incoming then throw s!"{inn} is not in the sideboard"
+    liveRegister g p {
+      deck := { r.deck with main := r.deck.main.erase outgoing ++ [incoming] },
+      sideboard := r.sideboard.erase incoming ++ [outgoing] }
 
 end RiftboundDriver
 
