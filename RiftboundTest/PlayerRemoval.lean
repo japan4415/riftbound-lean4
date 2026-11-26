@@ -147,6 +147,21 @@ private meta def removalState : GameState :=
   pending.flatMap (fun frame => Frame.afterPlayerRemoval frame removalState next departing) ==
     [Frame.chanceBattlefield first, .chanceTurnOrder]
 
+-- Applying a departure during setup leaves another seat's unchosen Battlefield available.
+#guard (do
+  let first : PlayerId := ⟨0⟩
+  let departing : PlayerId := ⟨1⟩
+  let s := { removalState with pending := [Frame.chanceShuffle (.player departing .runeDeck),
+    .chanceBattlefield departing, .chanceBattlefield first, .chanceTurnOrder] }
+  let (s, field) ← addObject s (newCard s.cards s first (cid "B0")) (.player first .outOfGame)
+  let (s, _) ← addObject s (newCard s.cards s departing (cid "R1")) (.player departing .runeDeck)
+  let (next, _) ← applyFreeForAllConcession s departing limitedBlankBattlefield.id
+  let (picked, _) ← applyFrame0 next ⟨.chance, .pick 0⟩
+  return next.pending == [Frame.chanceBattlefield first, .chanceTurnOrder] &&
+    next.zone (.player first .outOfGame) == [field] &&
+    next.zone (.player departing .runeDeck) == [] && picked.battlefields.length == 1 &&
+    picked.pending == [Frame.chanceTurnOrder]).getD false
+
 -- Every remaining seat has already passed. Resolve the Chain first, then the waiting
 -- Showdown. For an empty Chain the Chain window is simply discarded.
 #guard (do

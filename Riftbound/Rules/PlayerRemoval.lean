@@ -711,6 +711,30 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
     | none => [.endShowdown field]
   | _ => [frame]
 
+/-- A departure may cancel a setup question, and can never create a new one. -/
+theorem Frame.afterPlayerRemoval_setup {frame next : Frame} {before after : GameState}
+    {departing : PlayerId} (member : next ∈ frame.afterPlayerRemoval before after departing)
+    (setup : next.isSetup = true) : next = frame := by
+  cases frame <;> simp [Frame.afterPlayerRemoval] at member
+  all_goals
+    repeat' first
+      | solve | simp_all [Frame.isSetup]
+      | split at member
+      | simp only [List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl <;> cases setup
+
+/-- A setup frame is retained in place if its answer is still needed. -/
+theorem Frame.afterPlayerRemoval_setup_sublist (frame : Frame) (before after : GameState)
+    (departing : PlayerId) (setup : frame.isSetup = true) :
+    (frame.afterPlayerRemoval before after departing).Sublist [frame] := by
+  cases frame <;> simp_all [Frame.isSetup]
+  · rename_i zone
+    cases zone <;> simp [Frame.afterPlayerRemoval]
+    split <;> simp
+  · simp [Frame.afterPlayerRemoval]
+    split <;> simp
+  · exact List.Sublist.refl _
+
 /-- Apply a free-for-all concession. With one player left the game ends immediately. Otherwise
 the departure changes the board, then the pending work continues under the remaining roster
 (CR 651.1, 652). -/
@@ -724,7 +748,8 @@ def applyFreeForAllConcession (s : GameState) (departing : PlayerId) (blank : Ca
   | _ :: _ :: _ =>
     let (board, events) ← removePlayerObjects withdrew departing blank
     let pending := s.pending.flatMap (fun frame => frame.afterPlayerRemoval s board departing)
-    let pending := if board.phase == .setup then pending else .cleanup :: pending
+    let pending := if board.phase == .setup || s.pending.any Frame.isSetup then pending
+      else .cleanup :: pending
     return ({ board with pending }, events)
 
 /-- A concession by a participating seat can be applied if the game has a remaining player. -/

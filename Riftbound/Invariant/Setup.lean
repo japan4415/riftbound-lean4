@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.Progress
+public import Riftbound.Rules.PlayerRemoval
 
 /-!
 # The set-up game
@@ -332,6 +333,77 @@ theorem SetupInv.of_sublist {s s2 : GameState} (hinv : SetupInv s)
   rcases hinv.2 with ⟨setup, picks⟩ | noSetup
   · exact Or.inl ⟨hc ▸ hp.trans setup, fun p mem => hbf p mem (picks p (hp.subset mem))⟩
   · exact Or.inr fun f mem => noSetup f (hp.subset mem)
+
+/-- Removing a player leaves the remaining setup questions in their original order, with
+their Battlefield options still available. -/
+theorem SetupInv.of_freeForAllConcession {s s2 : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event}
+    (hinv : SetupInv s) (hwf : s.WF) (howner : s.OwnerOk)
+    (applied : applyFreeForAllConcession s departing blank = some (s2, events)) : SetupInv s2 := by
+  have sameCount : s2.playerCount = s.playerCount := by
+    simp only [GameState.playerCount, (applyFreeForAllConcession_meta applied).1]
+  have preserved (p : PlayerId) (otherSeat : p ≠ departing) :
+      s2.zone (.player p .outOfGame) = s.zone (.player p .outOfGame) :=
+    applyFreeForAllConcession_privateZone applied p .outOfGame otherSeat (Or.inr rfl) hwf howner
+  unfold applyFreeForAllConcession at applied
+  split at applied
+  · simp at applied
+  · dsimp only at applied
+    split at applied
+    · simp at applied
+    · simp only [Option.some.injEq, Prod.mk.injEq] at applied
+      obtain ⟨rfl, _⟩ := applied
+      exact ⟨sameCount ▸ hinv.1, Or.inr (fun _ absent => nomatch absent)⟩
+    · obtain ⟨⟨board, removalEvents⟩, _, completed⟩ := Option.bind_eq_some_iff.mp applied
+      obtain ⟨rfl, _⟩ := completed
+      let rewrite := fun f : Frame => f.afterPlayerRemoval s board departing
+      have original (f : Frame) (member : f ∈ s.pending.flatMap rewrite) (setup : f.isSetup = true) :
+          f ∈ s.pending := by
+        obtain ⟨old, before, after⟩ := List.mem_flatMap.mp member
+        exact (Frame.afterPlayerRemoval_setup after setup).symm ▸ before
+      have retainedPick (p : PlayerId) (member : Frame.chanceBattlefield p ∈ s.pending.flatMap rewrite) :
+          p ≠ departing := by
+        intro same
+        subst p
+        obtain ⟨old, _, after⟩ := List.mem_flatMap.mp member
+        have same := Frame.afterPlayerRemoval_setup after rfl
+        subst old
+        simp [rewrite, Frame.afterPlayerRemoval] at after
+      have sublist : ∀ frames : List Frame, (∀ f ∈ frames, f.isSetup = true) →
+          (frames.flatMap rewrite).Sublist frames := by
+        intro frames
+        induction frames with
+        | nil => intros; exact List.Sublist.refl _
+        | cons f tail ih =>
+          intro setup
+          exact (Frame.afterPlayerRemoval_setup_sublist f s board departing
+            (setup f List.mem_cons_self)).append (ih (fun g hg => setup g (List.mem_cons_of_mem _ hg)))
+      dsimp only
+      split
+      · rcases hinv.2 with ⟨ordered, _⟩ | noSetup
+        · refine hinv.of_sublist (s2 := { board with pending := s.pending.flatMap rewrite })
+            sameCount ?_ ?_
+          · exact sublist s.pending (fun f member =>
+              startFrames_isSetup s.playerCount f (ordered.subset member))
+          · intro p member available
+            have same : board.zone (.player p .outOfGame) = s.zone (.player p .outOfGame) :=
+              preserved p (retainedPick p member)
+            change 0 < (board.zone (.player p .outOfGame)).length
+            rwa [same]
+        · refine ⟨sameCount ▸ hinv.1, Or.inr (fun f member => ?_)⟩
+          cases flag : f.isSetup
+          · rfl
+          · have impossible := (noSetup f (original f member flag)).symm.trans flag
+            cases impossible
+      · rename_i noSetupOrPhase
+        refine ⟨sameCount ▸ hinv.1, Or.inr (fun f member => ?_)⟩
+        rcases List.mem_cons.mp member with rfl | member
+        · rfl
+        · cases flag : f.isSetup
+          · rfl
+          · have hasSetup : s.pending.any Frame.isSetup = true :=
+              List.any_eq_true.mpr ⟨f, original f member flag, flag⟩
+            simp [hasSetup] at noSetupOrPhase
 
 /-- A step that takes a frame which is not a setup frame, and puts frames that are not setup frames
 in its place, keeps the setup invariant. -/
