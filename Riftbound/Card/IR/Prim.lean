@@ -279,6 +279,8 @@ inductive TriggerEvent where
   | firstPermanentHere
   /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/
   | delayedPlay
+  /-- A registered ability fires at the end of the current turn with its captured amount. -/
+  | delayedEnd
   /-- The object enters play. -/
   | enter
   /-- The object attacks. -/
@@ -387,6 +389,8 @@ inductive TriggerEvent where
   | youHold
   /-- The unit's Might becomes `n` or more. -/
   | mightAtLeast (n : Nat)
+  /-- The player caused a Unit's current Might to decrease. -/
+  | mightReducedByYou
   /-- The linked Burn instruction burned a Unit card (CR 388-389). -/
   | linkedBurnUnit
   /-- The linked Discard instruction discarded a card of the corresponding type. -/

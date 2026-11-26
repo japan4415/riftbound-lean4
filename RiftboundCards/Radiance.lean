@@ -18,9 +18,11 @@ namespace RiftboundCards.Radiance
 open Riftbound
 
 /-- Place the whole group of Bombs at a single Battlefield picked during resolution. -/
-def playBombs (count : Nat) : Effect :=
-  .prim (.createAt "Bomb" (.const count)
-    (Selector.one .any .atBattlefield [.ofType .battlefield]) true)
+def playBombsAmount (count : Amount) : Effect :=
+  .prim (.createAt "Bomb" count (Selector.one .any .atBattlefield [.ofType .battlefield]) true)
+
+/-- Play a fixed number of Bombs at one Battlefield. -/
+def playBombs (count : Nat) : Effect := playBombsAmount (.const count)
 
 -- BEGIN GENERATED RAD-001
 /--
@@ -3789,8 +3791,16 @@ def RAD_139.meta : CardDef :=
     sets := [⟨"RAD"⟩] }  -- keyword cost unread
 -- END GENERATED
 
-/-- Boy Who Shattered Time: the effect is not written yet. -/
-def RAD_139 : CardDef := RAD_139.meta
+/-- Boy Who Shattered Time discounts the next Unit and gives it a delayed self-kill. -/
+def RAD_139 : CardDef :=
+  let delayed : Trigger := { event := .at_ .endOfTurn, condition := .not .always }
+  { RAD_139.meta with
+    abilities := [
+      .empower [.pay ⟨1, []⟩, .exhaustSelf],
+      .activated [.disempowerSelf, .exhaustSelf] .normal
+        (.of [] (.prim (.turnEffect (.nextUnitCostMinusThenEnd 2 1 ⟨"RAD-139"⟩ 2)))) .unlimited,
+      .triggered delayed (.of [] (.prim (.kill .self))) .unlimited ],
+    status := .full }
 
 -- BEGIN GENERATED RAD-140
 /--
@@ -3851,15 +3861,22 @@ def RAD_142.meta : CardDef :=
   { id := ⟨"RAD-142"⟩,
     name := "Hexplosive Minefield",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Ziggs"⟩],
     domains := [.fury, .chaos],
-    cost := some ⟨2, [.any]⟩,
+    cost := some ⟨2, [.own]⟩,
     keywords := [{ keyword := .action }],
-    sets := [⟨"RAD"⟩] }  -- Power domains unknown
+    sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Hexplosive Minefield: the effect is not written yet. -/
-def RAD_142 : CardDef := RAD_142.meta
+/-- Hexplosive Minefield replaces the Bombs it killed with new Bombs at the end of this turn. -/
+def RAD_142 : CardDef :=
+  { RAD_142.meta with
+    spellEffect := some (.of
+      [.targetOf .anyNumber .friendly .anywhere [.token, .named "Bomb"]]
+      (.killThenAtEnd (.slotsFrom 0) 0)),
+    abilities := [.triggered (.onSelf .delayedEnd) (.of [] (playBombsAmount .eventAmount)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-143
 /--
@@ -4186,8 +4203,11 @@ def RAD_154.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Last Caress: the effect is not written yet. -/
-def RAD_154 : CardDef := RAD_154.meta
+/-- Last Caress gives the next Unit a wider choice of Battlefields and a buff, even from Hidden. -/
+def RAD_154 : CardDef :=
+  { RAD_154.meta with
+    spellEffect := some (.of [] (.prim (.turnEffect .nextUnitAnywhereBuffed))),
+    status := .full }
 
 -- BEGIN GENERATED RAD-155
 /--
@@ -4380,8 +4400,12 @@ def RAD_162.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Firelights' Hideout: the effect is not written yet. -/
-def RAD_162 : CardDef := RAD_162.meta
+/-- Firelights' Hideout grants Accelerate for the conquering player's next Unit play. -/
+def RAD_162 : CardDef :=
+  { RAD_162.meta with
+    abilities := [.triggered (.onSelf .youConquer)
+      (.of [] (.prim (.turnEffect .nextUnitAccelerate))) .unlimited],
+    status := .drafted }
 
 -- BEGIN GENERATED RAD-163
 /--
@@ -4514,8 +4538,14 @@ def RAD_SP1.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Ahri, Confident: the effect is not written yet. -/
-def RAD_SP1 : CardDef := RAD_SP1.meta
+/-- Ahri grows when her controller reduces the Might of an enemy Unit here, including by Disarm. -/
+def RAD_SP1 : CardDef :=
+  { RAD_SP1.meta with
+    abilities := [.triggered {
+        event := .mightReducedByYou
+        subject := .all .enemy .anywhere [.ofType .unit, .at_ .self] }
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-SP2
 /--

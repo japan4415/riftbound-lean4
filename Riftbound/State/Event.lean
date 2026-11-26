@@ -78,6 +78,8 @@ inductive Event where
   | becameMighty (u : ObjId)
   /-- A Unit crossed a specified Might threshold from below (CR 383). -/
   | mightReached (u : ObjId) (threshold : Nat)
+  /-- The player caused this Unit's current Might to decrease. -/
+  | mightReduced (p : PlayerId) (u : ObjId) (amount : Nat)
   /-- An object gained an instance of Empowered (CR 442). -/
   | empowered (p : PlayerId) (target : ObjId)
   /-- The player looked at a card of their Main Deck (and did not draw it). -/

@@ -372,6 +372,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .guessCardType who unit gear spell =>
     PlayerSel.ok c who && Effect.ok c unit && Effect.ok c gear && Effect.ok c spell
   | .nameCard _ | .rememberNamedCard _ => true
+  | .killThenAtEnd targets _ => Selector.ok c targets
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true
@@ -468,8 +469,9 @@ def Ability.ok : Ability → Bool
   | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
+    let hasAmount := t.event == .linkedBurnUnit || t.event == .delayedEnd
     Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := t.watched, eventAmountOk := t.event == .linkedBurnUnit }
+      body.ok { itOk := true, slots := t.watched, eventAmountOk := hasAmount }
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

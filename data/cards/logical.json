@@ -31936,6 +31936,7 @@
    "mightBonus": null,
    "name": "Hexplosive Minefield",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "RAD-142/167"
    ],
@@ -31943,6 +31944,9 @@
     "RAD"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Ziggs"
    ],

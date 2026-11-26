@@ -222,7 +222,7 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
       (match f.kind with
         | .nextCardCostMinus .. => f.playCount == s.finalizedCount p
         | .nextSpellCostMinus _ | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
-        | .nextGearFree _ =>
+        | .nextGearFree _ | .nextUnitAccelerate | .nextUnitAnywhereBuffed =>
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
@@ -243,6 +243,14 @@ def GameState.nextCardDiscount (s : GameState) (p : PlayerId) : Nat × Nat :=
         (a.1 + e, a.2 + w)
       else a
     | _ => a) (0, 0)
+
+/-- Total discounts pending for the player's next Unit play. A successful Unit play converts
+each discount into its own delayed ability, including when the Unit is a token. -/
+def GameState.nextUnitDiscount (s : GameState) (p : PlayerId) : Nat × Nat :=
+  (s.fxOf p).foldl (fun acc kind =>
+    match kind with
+    | .nextUnitCostMinusThenEnd e w _ _ => (acc.1 + e, acc.2 + w)
+    | _ => acc) (0, 0)
 
 /-- The Energy cost of a Gear in the hand of the player that an effect of the turn drops: the
 limits of the Gear the player may play for free now. -/

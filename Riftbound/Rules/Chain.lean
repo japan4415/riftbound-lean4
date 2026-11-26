@@ -195,8 +195,11 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
       else 0
     let gearCut := s.firstGearAbilityCut p d costs
     let options := (base.getD Cost.zero).cutOptions (s.empowerHereCut p src d idx)
-    (ex, options.map (fun c =>
-      { c.lessEnergy (discount + gearCut) with power := c.power ++ List.replicate tax .any })))
+    (ex, options.flatMap (fun c =>
+      let adjusted := { c.lessEnergy (discount + gearCut) with power := c.power ++ List.replicate tax .any }
+      if costs.contains .fromChampionZone && d.hasType .unit &&
+          s.nextUnitDiscount p != (0, 0) then s.targetCostOptions p src targets adjusted
+      else [adjusted])))
 
 /-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
 def costKills (costs : List AbilityCost) : Bool :=

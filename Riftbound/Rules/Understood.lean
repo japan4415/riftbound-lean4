@@ -409,6 +409,7 @@ def Effect.understood : Effect → Bool
   | .payThen _ body _ => Effect.understood body
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e | .revealDeckTops w e => w.understood && Effect.understood e
+  | .killThenAtEnd targets _ => targets.understood
   | .lookAtTop _ body => Effect.understood body
   | .guessCardType who unit gear spell =>
     who.understood && unit.understood && gear.understood && spell.understood
@@ -570,11 +571,12 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .friendlyAttackGroupHere => t.subject == .self
       | .firstUnitDeathHere => t.subject != .self
       | .deathknell => t.subject == .self
-      | .firstCardResolved | .firstPermanentHere | .delayedPlay => t.subject == .self
+      | .firstCardResolved | .firstPermanentHere | .delayedPlay | .delayedEnd => t.subject == .self
       | .stun => true | .discard => true | .ready => true | .exhaust => true
       | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
+      | .mightReducedByYou => t.subject != .self
       | .linkedBurnUnit | .linkedDiscardType => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self

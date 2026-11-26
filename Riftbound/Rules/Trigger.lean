@@ -259,6 +259,10 @@ def GameState.fxTriggers (s : GameState) (tm : Timing) : List PendTrigger :=
         if f.turn == s.turn && (s.obj? u).isSome then
           some { source := u, card := ⟨c⟩, idx := i, controller := f.who }
         else none
+      | .endTriggerWithAmount card idx amount, some src =>
+        if f.turn == s.turn then
+          some { source := src, card, idx, controller := f.who, eventAmount := some amount }
+        else none
       | _, _ => none)
   else []
 
@@ -346,6 +350,30 @@ def GameState.mightyEvents (s s' : GameState) : List Event :=
         | _, _ => []
       else [])
 
+/-- Report a decrease only for a Unit that remains on the Board, while a player is carrying
+out an instruction or taking an action. State-based changes have no reducing player. -/
+def GameState.mightReductionEvents (s s' : GameState) (actor : Option PlayerId) : List Event :=
+  match actor with
+  | none => []
+  | some p =>
+    let watching (d : CardDef) := d.allAbilities.any (fun
+      | .triggered t _ _ => t.event == .mightReducedByYou
+      | _ => false)
+    if s'.passiveSources.any (fun id =>
+      (s'.obj? id).any (·.controller == p) &&
+        ((s'.cardDef? id).any watching ||
+          (s'.attachmentTextDefs id false).any (fun (d, _) => watching d))) then
+      let oldBoard := s.inPlay
+      s'.inPlay.filterMap (fun id =>
+        if !oldBoard.contains id || !(s'.cardDef? id).any (·.hasType .unit) ||
+            !(s'.obj? id).any (·.controller != p) then none
+        else
+          match s.mightNow id, s'.mightNow id with
+          | some before, some after =>
+            if after < before then some (.mightReduced p id (before - after).toNat) else none
+          | _, _ => none)
+    else []
+
 /-- Detect exhaustion of objects that were already on the Board. Entering exhausted and
 exhausting an already exhausted object do not change it from ready to exhausted (CR 415). -/
 def GameState.exhaustionEvents (s s' : GameState) (who : Option PlayerId)
@@ -360,7 +388,7 @@ def GameState.workTransitionEvents (s s' : GameState) : List Event :=
   let who := match s.pending with
     | .run p .. :: _ => some p
     | _ => none
-  s.exhaustionEvents s' who ++ s.mightyEvents s'
+  s.exhaustionEvents s' who ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
 
 /-- State changes during an answer. Passing Chain priority cannot change Board objects. -/
 def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Event :=
@@ -369,7 +397,7 @@ def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Even
   | _, kind =>
     let who := match a.actor with | .player p => some p | _ => none
     let beforeMove := match kind with | .standardMove .. => true | _ => false
-    s.exhaustionEvents s' who beforeMove ++ s.mightyEvents s'
+    s.exhaustionEvents s' who beforeMove ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
 
 /-- The marked Unit's death sets off the effects that were created by a spell or ability.
 They retain their original source and controller and are independent of Deathknell (CR 391-393). -/
@@ -674,6 +702,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .becameMighty u => s.mightTriggers u .becomeMighty
   | .mightReached u n => s.mightTriggers u (.mightAtLeast n)
+  | .mightReduced p u amount =>
+    if amount == 0 then [] else
+      (s.obj? u).toList.flatMap (fun o =>
+        (watchersOf s u o.controller .mightReducedByYou).filter (·.controller == p))
   | .empowered p u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .becomeEmpowered ++ watchersOf s u p .becomeEmpowered
@@ -916,7 +948,18 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
         if f.turn == s.turn && remaining > 0 && s.matchesDelayedPlay f.who kind event then
           { f with kind := .triggerOnPlays card idx kind (remaining - 1) }
         else f
+      | .nextUnitCostMinusThenEnd _ _ card idx =>
+        if f.who == p && f.turn == s.turn && s.matchesDelayedPlay p .unit event then
+          { f with kind := .endTrigger card.code idx, target := some id }
+        else f
       | _ => f)
+    let waiting := match event with
+      | .tokenPlayed .. =>
+        if (s.cardDef? id).any (·.hasType .unit) then
+          waiting.filter (fun f =>
+            !(f.who == p && f.turn == s.turn && f.kind == .nextUnitAnywhereBuffed))
+        else waiting
+      | _ => waiting
     match s.battlefieldPlay id with
     | some (field, stamp) => s.recordTurnFact waiting p .playedToBattlefield (some field) stamp
     | none => waiting

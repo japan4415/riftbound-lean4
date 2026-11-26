@@ -472,6 +472,8 @@ def eventJson : Event → String
   | .becameMighty o => jobj [("t", jstr "became_mighty"), ("unit", toString o.n)]
   | .mightReached o n => jobj [("t", jstr "might_reached"), ("unit", toString o.n),
       ("threshold", toString n)]
+  | .mightReduced p o n => jobj [("t", jstr "might_reduced"), ("player", toString p.n),
+      ("unit", toString o.n), ("n", toString n)]
   | .empowered p o =>
     jobj [("t", jstr "empowered"), ("player", toString p.n), ("target", toString o.n)]
   | .conquerActivated u => jobj [("t", jstr "conquer_activated"), ("unit", toString u.n)]

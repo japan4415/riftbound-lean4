@@ -175,6 +175,8 @@ inductive Effect where
   | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Banish the top Main Deck card and permit its play until the player's next Ending Phase. -/
   | banishTopForPlay
+  /-- Kill the targets and register the end-of-turn ability with their actual death count. -/
+  | killThenAtEnd (targets : Selector) (triggerIndex : Nat)
   /-- Play the source card if it is still in this player's Trash. -/
   | playSelfFromTrash (cost : Cost) (exit : LimitedSpellExit)
   /-- Optionally play up to this many distinct Units or Gear selected during resolution. -/

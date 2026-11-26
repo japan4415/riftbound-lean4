@@ -361,15 +361,19 @@ def GameState.extraCuts (s : GameState) (p : PlayerId) : Nat × Nat :=
 /-- The cost with `k` less Power symbols. -/
 def Cost.lessPower (c : Cost) (k : Nat) : Cost := { c with power := c.power.drop k }
 
-/-- The optional additional costs the card may pay when the player plays it now, as they are
-printed: those it prints (Accelerate, Repeat, an extra cost), and the Repeat that an effect of the
-turn gives the next Spell, for its cost (Temporal Portal). A Repeat is marked: it can be cut in
-Energy by a passive ability (Marai Spire). -/
+/-- Whether the next play of this Unit offers the optional cost of Accelerate (CR 805).
+Multiple grants of the keyword still offer only one payment. -/
+def GameState.accelerateForPlay (s : GameState) (p : PlayerId) (d : CardDef) : Bool :=
+  d.hasType .unit && (d.hasKeyword .accelerate || (s.fxOf p).contains .nextUnitAccelerate)
+
+/-- The optional additional costs available for this play. Repeat is marked so that a passive
+ability can reduce its Energy cost (Marai Spire). -/
 def GameState.extrasRaw (s : GameState) (p : PlayerId) (_c : ObjId) (d : CardDef) :
     List (Cost × Bool) :=
-  d.additionalCost.toList.map (fun k => (k, false)) ++ d.keywords.filterMap (fun i =>
+  d.additionalCost.toList.map (fun k => (k, false)) ++
+  (if s.accelerateForPlay p d then [(⟨1, [.own]⟩, false)] else []) ++
+  d.keywords.filterMap (fun i =>
     match i.keyword, i.arg with
-    | .accelerate, _ => if d.hasType .unit then some (⟨1, [.own]⟩, false) else none
     | .repeat_, .cost k => if d.hasType .spell then some (k, true) else none
     | _, _ => none) ++
   -- the Repeat that a passive ability of an object of the player gives their Spells (Syndra)
@@ -635,11 +639,12 @@ The discounts may reduce optional costs or the cost of Deflect (CR 356.4.c-356.4
 def GameState.targetCostOptions (s : GameState) (p : PlayerId) (c : ObjId)
     (ts : List ObjId) (cost : Cost) : List Cost :=
   let reduction := s.nextCardDiscount p
-  let cost := cost.lessEnergy (reduction.1 + s.firstPermanentHereCut p c ts)
+  let unitReduction := if (s.cardDef? c).any (·.hasType .unit) then s.nextUnitDiscount p else (0, 0)
+  let cost := cost.lessEnergy (reduction.1 + unitReduction.1 + s.firstPermanentHereCut p c ts)
   let tax := s.showdownReactionTax
   let power := if tax != 0 && s.ambushAt p c ts && !s.cardHasReaction c then
     cost.power ++ List.replicate tax .any else cost.power
-  let cut := s.choosePowerCut p c ts + reduction.2
+  let cut := s.choosePowerCut p c ts + reduction.2 + unitReduction.2
   if cut = 0 then [{ cost with power := power }]
   else
     let deflect := if (s.cardDef? c).any (·.hasType .spell) then s.deflectCost p ts (some c) else 0
@@ -837,9 +842,10 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
       let ambush : List FilterList :=
         if d.hasKeyword .ambush then [FilterList.ofList [.myUnitsHere]] else []
       let anywhereAllowed := d.playBattlefieldFilters ++ open_ ++ ambush ++ granted
+      let nextUnit := d.hasType .unit && (s.fxOf p).contains .nextUnitAnywhereBuffed
       (s.zone .battlefieldZone).filter (fun b =>
         s.playBfLocationAllowed p c d b &&
-          (d.hasKeyword .deploy || (s.obj? b).any (·.control == some p) ||
+          (nextUnit || d.hasKeyword .deploy || (s.obj? b).any (·.control == some p) ||
             anywhereAllowed.any (s.matchesPlayLocation p c b)))
     else []
   | none => []
@@ -1360,7 +1366,8 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
       | none => 0)) Prod.snd,
     legion := s.playedBefore p,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
-    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any (fun k => k == .unitsBuffed || k == .nextUnitBuffed),
+    buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any
+      (fun k => k == .unitsBuffed || k == .nextUnitBuffed || k == .nextUnitAnywhereBuffed),
     fromHand := (s.obj? c).any (fun o => (s.zone (.player o.owner .hand)).contains c),
     flowed := directCast && s.playingFromTrash p c && (flow.isSome || !s.canPlayNormally p c),
     shownOff := s.captureShowOff p pick.showOffObject }
@@ -1383,7 +1390,7 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
         (fun own => own.contains (if d.additionalCost.isSome then 1 else 0))
       let s1 := (r.1.modObj r.2 (Object.withPlay [] mark)).setPool p pool
       ((if (d.hasType .unit && !s.readyNow p c d mark.shownOff &&
-            !(d.hasKeyword .accelerate && accelerated)) || d.entersExhausted
+            !(s.accelerateForPlay p d && accelerated)) || d.entersExhausted
           then s1.exhaustObj r.2
         else s1),
         s.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))

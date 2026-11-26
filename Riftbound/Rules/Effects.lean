@@ -1252,7 +1252,7 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
         for cost in s.cutOptionsOf p id base extra do
           for (total, picked) in s.playCostPlans p id d cost do
             let additionalPaid := d.additionalCost.isSome && picked.contains 0
-            let accelerated := d.hasType .unit && d.hasKeyword .accelerate &&
+            let accelerated := s.accelerateForPlay p d &&
               picked.contains (if d.additionalCost.isSome then 1 else 0)
             for fee in s.battlefieldFeeTotals p d battlefieldFees do
               let combined := (total.plus fee).lessEnergy terms.price.energyCut
@@ -2501,17 +2501,27 @@ theorem foldl_buffTokenEv_safe : ∀ (l : List Event) (t : GameState),
   | [], t => Safe.refl t
   | e :: l, t => (buffTokenEv_safe t e).trans (foldl_buffTokenEv_safe l _)
 
-/-- The Units played as tokens enter buffed, by an effect of the turn (Rally the Troops): `r` is
-the state after the tokens were made from `s`. -/
+/-- Buff the new Unit tokens that are covered by this turn's effects. -/
 def buffNewTokens (s r : GameState) (p : PlayerId) : GameState :=
-  if (s.fxOf p).any (· == .unitsBuffed) then (tokenPlays s r p).foldl buffTokenEv r else r
+  let tokens := tokenPlays s r p
+  let fx := s.fxOf p
+  if fx.contains .unitsBuffed then tokens.foldl buffTokenEv r
+  else if fx.contains .nextUnitAnywhereBuffed then
+    let units := tokens.filter (fun
+      | .tokenPlayed _ id => (r.cardDef? id).any (·.hasType .unit)
+      | _ => false)
+    (units.take 1).foldl buffTokenEv r
+  else r
 
 /-- Buffing the new tokens is a safe change. -/
 theorem buffNewTokens_safe (s r : GameState) (p : PlayerId) : Safe r (buffNewTokens s r p) := by
   unfold buffNewTokens
+  dsimp only
   split
   · exact foldl_buffTokenEv_safe _ r
-  · exact Safe.refl r
+  · split
+    · exact foldl_buffTokenEv_safe _ r
+    · exact Safe.refl r
 
 /-- The locations a Unit token can be played to. Its controller may use their Base or a Battlefield
 they control, and effects can grant or restrict Battlefield permissions (CR 184.2, 355.2). -/
@@ -4556,7 +4566,13 @@ def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
       requirements := [none] :: env.hiddenPlayRequirements }
     some (env, EffectList.ofList ((locations sel).map (fun card => .planPermanentPlay card terms)))
   | .playPaying sel => schedule (locations sel) .ignoreEnergy none
-  | .playTo sel dest => schedule (locations sel) .ignoreBase (some (locations dest))
+  | .playTo sel dest =>
+    if sel == .self && s.playingFromHidden p src && (s.fxOf p).contains .nextUnitAnywhereBuffed &&
+        (s.cardDef? src).any (·.hasType .unit) then
+      let terms : EffectPlayTerms := {
+        price := .ignoreBase, requirements := [(s.playBfOptions p src).map some] }
+      some (env, .cons (.planPermanentPlay src terms) .nil)
+    else schedule (locations sel) .ignoreBase (some (locations dest))
   | .playReduced sel less dest => do
     let amount ← less.evalS s p src env
     schedule (locations sel) (.reduceEnergy amount) (dest.map locations) dest.isSome
@@ -4807,6 +4823,84 @@ theorem equipWithCostFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (en
       · split <;> rfl
     · rfl
   · rfl
+
+/-- Count only the chosen objects killed by this instruction, including a token that ceased to
+exist. A replacement that saved a target and killed something else does not count. -/
+def killedTargets (targets : List ObjId) (events : List Event) : Nat :=
+  targets.countP (fun target => events.any (fun
+    | .moved old next _ => old == target && events.any (fun
+        | .died id _ => id == next
+        | _ => false)
+    | _ => false))
+
+/-- Remember a delayed ability independently of what happens to its source afterward (CR 391). -/
+def recordKillCount (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (index : Nat) (targets : List ObjId) (events : List Event) : GameState :=
+  let amount := killedTargets targets events
+  if amount == 0 then s else
+    match env.sourceCard <|> (s.cardDef? src).map (·.id) with
+    | some card => s.addTurnFxOn p src (.endTriggerWithAmount card index amount)
+    | none => s
+
+/-- Recording the received count changes only the turn notes. -/
+theorem recordKillCount_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (index : Nat) (targets : List ObjId) (events : List Event) :
+    Safe s (recordKillCount s p src env index targets events) := by
+  unfold recordKillCount
+  dsimp only
+  split
+  · exact Safe.refl s
+  · split
+    · exact addTurnFxOn_safe s _ _ _
+    · exact Safe.refl s
+
+/-- Kill the chosen objects, optionally remembering the number for a delayed end-of-turn ability. -/
+def killEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (targets : Selector)
+    (delay : Option Nat) (es : EffectList) : GameState × List Frame × List Event :=
+  let ids := (targets.eval s p src env).getD []
+  match ids.findSome? s.deathBanishChoice with
+  | some (unit, controller, first, other) =>
+    let retry := delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
+    (s, [.eitherDo controller unit {} first other .nil, .run p src env (.cons retry es)], [])
+  | none =>
+    match applyPrim s p src env (.kill targets) with
+    | some (killed, events) =>
+      let next := delay.elim killed (fun i => recordKillCount killed p src env i ids events)
+      (next, attachmentReplacementFrames killed events ++ [.run p src env es], events)
+    | none => (s, [.run p src env es], [.skipped src])
+
+/-- Resolving a kill instruction and recording delayed abilities preserves invariants. -/
+theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (targets : Selector) (delay : Option Nat) (es : EffectList) :
+    Safe s (killEffectStep s p src env targets delay es).1 := by
+  unfold killEffectStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · split
+    · rename_i killed events hm
+      refine (applyPrim_safe hm).trans ?_
+      cases delay with
+      | none => exact Safe.refl killed
+      | some i => exact recordKillCount_safe killed p src env i _ events
+    · exact Safe.refl s
+
+/-- The frames of a kill instruction stay on the Chain's resolution stack. -/
+theorem killEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {targets : Selector} {delay : Option Nat} {es : EffectList} {f : Frame}
+    (h : f ∈ (killEffectStep s p src env targets delay es).2.1) : f.isPlay = true := by
+  unfold killEffectStep at h
+  dsimp only at h
+  split at h
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with rfl | rfl <;> rfl
+  · split at h
+    · rcases List.mem_append.mp h with hs | h
+      · exact attachmentReplacementFrames_play hs
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
+    · obtain rfl := List.mem_singleton.mp h
+      rfl
 
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
@@ -5137,14 +5231,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
   | .endCombatDamage excess =>
     (recordCombatDamage s p excess, [.run p src env es], [])
-  | .prim (.kill sel) =>
-    match ((sel.eval s p src env).getD []).findSome? s.deathBanishChoice with
-    | some (u, controller, first, other) =>
-      (s, [.eitherDo controller u {} first other .nil, .run p src env (.cons e es)], [])
-    | none =>
-      match applyPrim s p src env (.kill sel) with
-      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
-      | none => skip
+  | .prim (.kill sel) => killEffectStep s p src env sel none es
+  | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
   | .prim (.banishReplay sel replay) =>
     let units := (sel.eval s p src env).getD []
     let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
@@ -5203,6 +5291,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
+    | exact killEffectStep_safe s p src env _ _ es
     | exact moveEffectStep_safe s p src env _ _ es _
     | exact recordCombatDamage_safe s p _
     | exact addTurnFxOn_safe s _ _ _

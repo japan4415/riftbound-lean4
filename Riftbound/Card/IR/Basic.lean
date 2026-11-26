@@ -252,6 +252,8 @@ inductive TurnEffect where
   | nextSpellCostMinus (n : Nat)
   /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
   | nextCardCostMinus (energy power : Nat)
+  /-- Discount the next Unit play and give that Unit the indicated Ending Step trigger. -/
+  | nextUnitCostMinusThenEnd (energy power : Nat) (card : CardId) (idx : Nat)
   /-- The next spell the player plays this turn deals `n` Bonus Damage with each instance of
   damage it deals (CR 142). -/
   | nextSpellBonus (n : Nat)
@@ -263,6 +265,10 @@ inductive TurnEffect where
   | unitsBuffed
   /-- The next unit the player plays this turn is buffed (Nami). -/
   | nextUnitBuffed
+  /-- The next unit the player plays this turn has Accelerate (CR 805). -/
+  | nextUnitAccelerate
+  /-- The player's next Unit can be played to any legal Battlefield and enters buffed. -/
+  | nextUnitAnywhereBuffed
   /-- The units the player plays this turn cost `n` Energy more (Vaults of Helia). -/
   | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
@@ -283,6 +289,8 @@ inductive TurnEffect where
   /-- At the end of this turn, the ability of the card at the place fires, with the object as its
   source (Hostile Takeover: the unit goes back). -/
   | endTrigger (card : String) (idx : Nat)
+  /-- At this turn's end, run the remembered ability with the amount captured by its instruction. -/
+  | endTriggerWithAmount (card : CardId) (idx amount : Nat)
   /-- The next Spell the player plays this turn has Repeat, for its own cost (Temporal Portal). -/
   | nextSpellRepeat
   /-- The next damage the object (a Unit) would be dealt this turn is prevented (Counter Strike). -/
