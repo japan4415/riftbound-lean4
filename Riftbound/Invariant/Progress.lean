@@ -75,6 +75,40 @@ theorem StackInv.of_next {s s2 : GameState} (hinv : StackInv s) (hres : s2.resul
     (hb : BottomOk s.pending → BottomOk s2.pending) : StackInv s2 :=
   fun h => hb (hinv (hres ▸ h))
 
+private theorem BottomOk.prepend {stack : List Frame} (h : BottomOk stack) (priorFrames : List Frame) :
+    BottomOk (priorFrames ++ stack) := by
+  obtain ⟨f, last, bottom⟩ := h
+  exact ⟨f, by simp [last], bottom⟩
+
+private theorem removal_preserves_bottom (f : Frame) (before board : GameState) (departing : PlayerId)
+    (bottom : f.isBottom = true) : BottomOk (f.afterPlayerRemoval before board departing) := by
+  cases f <;> simp only [Frame.isBottom, Bool.false_eq_true] at bottom
+  case priority p =>
+    simp only [Frame.afterPlayerRemoval]
+    split
+    · exact ⟨_, rfl, rfl⟩
+    · split <;> exact ⟨_, rfl, rfl⟩
+  all_goals exact ⟨_, rfl, rfl⟩
+
+/-- Removing a player keeps a bottom decision or continuation when the game goes on. -/
+theorem StackInv.of_freeForAllConcession {s next : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event} (hinv : StackInv s)
+    (applied : applyFreeForAllConcession s departing blank = some (next, events)) : StackInv next := by
+  intro ongoing
+  rcases applyFreeForAllConcession_cases applied with ⟨_, rfl⟩ | ⟨board, removed, rfl⟩
+  · cases ongoing
+  · obtain ⟨last, lastEq, isBottom⟩ := hinv ((removalBoard_result removed).symm.trans ongoing)
+    obtain ⟨pre, stackEq⟩ := List.getLast?_eq_some_iff.mp lastEq
+    let rewrite := fun f : Frame => f.afterPlayerRemoval s board departing
+    have keep : BottomOk (s.pending.flatMap rewrite) := by
+      rw [stackEq, List.flatMap_append, List.flatMap_singleton]
+      exact (removal_preserves_bottom last s board departing isBottom).prepend _
+    show BottomOk (s.pendingAfterConcession board departing)
+    unfold GameState.pendingAfterConcession
+    split
+    · exact keep
+    · exact keep.prepend [.cleanup]
+
 /-- Applying a legal answer to the open question keeps the stack invariant. -/
 theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     (hinv : StackInv s) (h : applyFrame0 s a = some (s', es)) : StackInv s' := by
@@ -459,17 +493,21 @@ theorem applyFrame_stack {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩ <;> exact h5
   exact h4.withTriggers _
 
-/-- Applying an answer keeps the stack invariant. A concession ends the game, and the stack is then
-no longer asked for a bottom frame. -/
+/-- Applying an answer preserves the stack invariant. -/
 theorem applyAction_stack {s s' : GameState} {a : Action} {es : List Event}
     (hinv : StackInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) : StackInv s' := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    intro hres
-    simp at hres
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      have kept := hinv.of_freeForAllConcession removed
+      exact (show StackInv { board with cards := board.cards.withConcessionBattlefield } from kept).withTriggers _
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      intro hres
+      simp at hres
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_stack hinv h
 

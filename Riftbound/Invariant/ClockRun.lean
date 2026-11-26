@@ -627,13 +627,19 @@ theorem tc_applyAction {s s' : GameState} {a : Action} {es : List Event}
     (h : applyAction s a = some (s', es)) :
     TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   by_cases hk : a.kind = .concede
-  · unfold applyAction at h
-    simp only [hk] at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact Or.inl ⟨rfl, rfl⟩
-    · exact absurd h (by simp)
+  · cases actor : a.actor
+    case player p =>
+      by_cases ffa : s.config.mode.isFreeForAll = true
+      · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk actor ffa h
+        have unchanged := applyFreeForAllConcession_meta removed
+        apply Or.inl
+        exact (show TC s { board with cards := board.cards.withConcessionBattlefield } from
+          ⟨unchanged.2.2.2.1, unchanged.2.2.2.2.1⟩).trans (tc_withTriggers _ _)
+      · rw [applyAction_concede hk actor (by simpa using ffa)] at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact Or.inl ⟨rfl, rfl⟩
+    all_goals simp [applyAction, hk, actor] at h
   · rw [applyAction_of_ne hk] at h
     exact tc_applyFrame h
 

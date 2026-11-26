@@ -378,6 +378,7 @@ theorem SetupInv.of_freeForAllConcession {s s2 : GameState} {departing : PlayerI
           intro setup
           exact (Frame.afterPlayerRemoval_setup_sublist f s board departing
             (setup f List.mem_cons_self)).append (ih (fun g hg => setup g (List.mem_cons_of_mem _ hg)))
+      unfold GameState.pendingAfterConcession
       dsimp only
       split
       · rcases hinv.2 with ⟨ordered, _⟩ | noSetup
@@ -829,16 +830,21 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩ <;> exact h5
   exact h4.withTriggers _
 
-/-- Applying an answer keeps the setup invariant. A concession leaves no frame at all. -/
+/-- Applying an answer keeps the setup invariant. -/
 theorem applyAction_setup {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
     SetupInv s' := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      have kept := hinv.of_freeForAllConcession hwf hown removed
+      exact (show SetupInv { board with cards := board.cards.withConcessionBattlefield } from kept).withTriggers _
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_setup hwf hinv (hl.frame hk) h
 
@@ -1057,10 +1063,10 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
 
 /-- A declared cost can only add non-setup frames to an ordinary play decision. -/
 theorem applyDeclaredAction_setup {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (hl : Legal s a)
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (hl : Legal s a)
     (h : applyDeclaredAction s a = some (s', es)) : SetupInv s' := by
   rcases applyDeclaredAction_cases h with ordinary | ⟨unit, controller, first, other, choice, rfl, _⟩
-  · exact applyAction_setup hwf hinv hl ordinary
+  · exact applyAction_setup hwf hown hinv hl ordinary
   · obtain ⟨_, frame, rest, pending, hf⟩ := GameState.actionDeathCostChoice_context choice
     refine hinv.of_nonsetup
       (new := [.eitherDo controller unit {} first other .nil, .resumeCost a, frame])
@@ -1075,7 +1081,7 @@ theorem applyDeclaredAction_setup {s s' : GameState} {a : Action} {es : List Eve
         exact hf
 
 /-- Resolving a locked payment leaves the setup invariant intact. -/
-theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hinv : SetupInv s)
+theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s)
     (h : workStep s = some (s', es)) : SetupInv s' := by
   rcases workStep_cases h with ordinary | ⟨a, rest, pending, resumed⟩
   · exact microStep_setup hinv ordinary
@@ -1083,14 +1089,14 @@ theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hinv :
       hinv.of_nonsetup (new := []) pending rfl rfl rfl (fun _ absent => nomatch absent)
     rcases resumed with ⟨_, legal, applied⟩ | ⟨rfl, _⟩
     · exact applyDeclaredAction_setup (s := { s with pending := rest })
-        (hwf.congr rfl rfl rfl rfl) before legal applied
+        (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) before legal applied
     · exact before
 
 /-- The automatic work keeps the setup invariant. -/
 theorem advance_setup :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → SetupInv s →
+    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk → SetupInv s →
       advance n s es = .ok (s', es') → SetupInv s'
-  | 0, s, s', es, es', _, hinv, h => by
+  | 0, s, s', es, es', _, _, hinv, h => by
     unfold advance at h
     split at h
     · split at h
@@ -1101,13 +1107,14 @@ theorem advance_setup :
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv
-  | n + 1, s, s', es, es', hwf, hinv, h => by
+  | n + 1, s, s', es, es', hwf, hown, hinv, h => by
     unfold advance at h
     split at h
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_setup n (workStep_wf hwf hm) (workStep_setup hwf hinv hm) h
+          exact advance_setup n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm)
+            (workStep_setup hwf hown hinv hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -1118,13 +1125,14 @@ theorem advance_setup :
 
 /-- A step keeps the setup invariant. -/
 theorem step_setup {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (h : step fuel s a = .ok (s', es)) : SetupInv s' := by
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (h : step fuel s a = .ok (s', es)) : SetupInv s' := by
   unfold step at h
   split at h
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_setup fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_setup hwf hinv hl ha) h
+      exact advance_setup fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_ownerOk hwf hown hl ha)
+        (applyDeclaredAction_setup hwf hown hinv hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -1234,7 +1242,7 @@ theorem Reachable.setup {s : GameState} (h : Reachable s) : SetupInv s := by
     cases h with
     | core h => exact GameState.initial_setupInv h
     | limited h => exact GameState.initialLimited_setupInv h
-  | next hs h ih => exact step_setup (Reachable.inv hs).1 ih h
+  | next hs h ih => exact step_setup (Reachable.inv hs).1 (Reachable.inv hs).2 ih h
 
 /-- **I5, progress.** In a reachable game that is not over, either there is an answer other than a
 concession in `legalActions`, or the top frame asks for a chance decision. -/

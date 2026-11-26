@@ -236,8 +236,14 @@ theorem applyFrame_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.Ow
 theorem applyAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
     (hl : Legal s a) : ∃ r, applyAction s a = some r := by
   by_cases hk : a.kind = .concede
-  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    exact ⟨_, applyAction_concede hk hp⟩
+  · obtain ⟨p, hp, eligible⟩ := (hl.of_concede hk).actor
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · rw [applyAction_concede_ffa hk hp ffa]
+      simp only [GameState.canConcede, ffa, ite_true] at eligible
+      obtain ⟨result, applied⟩ :=
+        applyFreeForAllConcession_isSome s p concessionBattlefieldToken.id eligible.1 eligible.2
+      exact ⟨_, by rw [applied]; rfl⟩
+    · exact ⟨_, applyAction_concede hk hp (by simpa using ffa)⟩
   · rw [applyAction_of_ne hk]
     exact applyFrame_isSome hwf hown (hl.frame hk)
 
@@ -468,10 +474,14 @@ theorem applyAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
     s'.OwnerOk := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact hown.congr rfl rfl
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨_, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      exact withTriggers_ownerOk _ (((applyFreeForAllConcession_preservesBoard hwf removed).2.1 hown).congr rfl rfl)
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_ownerOk hwf hown (hl.frame hk) h
 

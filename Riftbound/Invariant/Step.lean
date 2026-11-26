@@ -239,10 +239,14 @@ theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) : s'.WF := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨_, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      exact withTriggers_wf _ ((applyFreeForAllConcession_preservesBoard hwf removed).1.congr rfl rfl rfl rfl)
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_wf hwf (hl.frame hk) h
 
@@ -595,10 +599,15 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
     s'.physIds.Perm s.physIds := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨_, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      rw [withTriggers_physIds]
+      exact (applyFreeForAllConcession_preservesBoard hwf removed).2.2
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_physIds hwf (hl.frame hk) h
 
@@ -692,9 +701,8 @@ theorem concedeActions_iff (s : GameState) (a : Action) :
     a ∈ concedeActions s ↔ LegalConcede s a ∧ a.actor.isPlayer = true := by
   obtain ⟨actor, kind⟩ := a
   unfold concedeActions LegalConcede
-  cases kind <;> cases actor <;> by_cases h : s.config.mode.hasTwoSides = true <;>
-    simp [Actor.isPlayer, h]
-  all_goals grind
+  cases kind <;> cases actor <;> simp [Actor.isPlayer]
+  exact fun eligible => GameState.canConcede_registered eligible
 
 /-- **I6** (enumeration). The answers of the players that `legalActions` lists are exactly the legal
 answers by a player: nothing legal is missing and nothing illegal is listed (design.md §6.3).

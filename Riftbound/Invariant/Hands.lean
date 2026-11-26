@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.Sound
+public import Riftbound.Rules.PlayerRemoval
 
 /-!
 # The opening hands
@@ -842,23 +843,6 @@ theorem applyFrame_handInv {s s' : GameState} {a : Action} {es : List Event}
         (fun f hf hp => ⟨f, hf, hp⟩)
   exact h4.withTriggers _
 
-/-- Applying a legal answer keeps the hand invariant. A concession ends the game, and the hands are
-then no longer counted. -/
-theorem applyAction_handInv {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : Legal s a)
-    (h : applyAction s a = some (s', es)) : HandInv s' := by
-  by_cases hk : a.kind = .concede
-  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    refine ⟨fun hm => ?_, fun _ hres => ?_, fun f hf _ => ?_⟩
-    · simp at hm
-    · simp at hres
-    · simp at hf
-  · rw [applyAction_of_ne hk] at h
-    exact applyFrame_handInv hwf hown hinv (hl.frame hk) h
-
 /-- The stack accounts for the sum of its parts. -/
 theorem stackContrib_append (p : PlayerId) (l1 l2 : List Frame) :
     stackContrib p (l1 ++ l2) = stackContrib p l1 + stackContrib p l2 := by
@@ -872,6 +856,102 @@ theorem stackContrib_zero {p : PlayerId} {l : List Frame} (h : ∀ f ∈ l, f.co
   | cons f fs ih =>
     rw [stackContrib_cons, h f List.mem_cons_self,
       ih (fun g hg => h g (List.mem_cons_of_mem _ hg))]
+
+private theorem withdrawal_frame_contrib (f : Frame) (before board : GameState)
+    {departing p : PlayerId} (other : p ≠ departing) :
+    stackContrib p (f.afterPlayerRemoval before board departing) = f.contrib p := by
+  cases f <;> simp [Frame.afterPlayerRemoval, Frame.contrib, stackContrib]
+  all_goals
+    repeat' first
+      | solve | simp_all [Frame.contrib]
+      | split
+
+private theorem withdrawal_stack_contrib (before board : GameState)
+    {departing p : PlayerId} (other : p ≠ departing) (frames : List Frame) :
+    stackContrib p (frames.flatMap (fun f => f.afterPlayerRemoval before board departing)) =
+      stackContrib p frames := by
+  induction frames with
+  | nil => rfl
+  | cons f tail ih =>
+    rw [List.flatMap_cons, stackContrib_append, stackContrib_cons,
+      withdrawal_frame_contrib f before board other, ih]
+
+/-- A free-for-all concession preserves the opening-hand accounting of the remaining seats. -/
+theorem HandInv.of_freeForAllConcession {s next : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event} (hinv : HandInv s) (hwf : s.WF) (howner : s.OwnerOk)
+    (applied : applyFreeForAllConcession s departing blank = some (next, events)) : HandInv next := by
+  obtain ⟨sameConfig, samePhase, sameOrder, _, _, sameDepartures⟩ :=
+    applyFreeForAllConcession_meta applied
+  rcases applyFreeForAllConcession_cases applied with ⟨_, rfl⟩ | ⟨board, removed, rfl⟩
+  · exact ⟨fun h => by simp at h, fun _ h => by simp at h, fun _ h => by simp at h⟩
+  · let rewrite := fun f : Frame => f.afterPlayerRemoval s board departing
+    refine ⟨fun member => ?_, fun phase ongoing p present => ?_, fun f member play phase => ?_⟩
+    · have retained : Frame.setupHands ∈ s.pending.flatMap rewrite := by
+        change Frame.setupHands ∈ s.pendingAfterConcession board departing at member
+        unfold GameState.pendingAfterConcession at member
+        split at member
+        · exact member
+        · simpa using member
+      obtain ⟨f, before, after⟩ := List.mem_flatMap.mp retained
+      have h := hinv.turn (Frame.afterPlayerRemoval_setupHands after ▸ before)
+      change board.turnOrder.Perm (allPlayers board.playerCount)
+      have order : board.turnOrder = s.turnOrder := sameOrder
+      have count : board.playerCount = s.playerCount := congrArg (·.mode.players) sameConfig
+      rwa [order, count]
+    · have remains : (s.withdrawSeat departing).participates p = true := by
+        have config : board.config = (s.withdrawSeat departing).config := (removePlayerObjects_safe removed).same.config
+        have recorded : board.departures = (s.withdrawSeat departing).departures := sameDepartures
+        change board.participates p = true at present
+        obtain ⟨registered, seats⟩ := Bool.and_eq_true_iff.mp present
+        refine Bool.and_eq_true_iff.mpr ⟨decide_eq_true ?_, ?_⟩
+        · unfold GameState.playerCount
+          rw [← config]
+          exact of_decide_eq_true registered
+        · rw [← recorded]
+          exact seats
+      rw [GameState.withdrawSeat_participates] at remains
+      obtain ⟨stillRegistered, different⟩ := Bool.and_eq_true_iff.mp remains
+      have other : p ≠ departing := by simpa using different
+      have sq : board.phase = .setup := phase
+      have beforePhase : s.phase = .setup := samePhase.symm.trans phase
+      have beforeResult : s.result = none := (removalBoard_result removed).symm.trans ongoing
+      have hands := hinv.hands beforePhase beforeResult p stillRegistered
+      have zone : board.zone (.player p .hand) = s.zone (.player p .hand) :=
+        applyFreeForAllConcession_privateZone applied p .hand other (Or.inl rfl) hwf howner
+      change (board.zone (.player p .hand)).length +
+        stackContrib p (s.pendingAfterConcession board departing) = 4
+      rw [zone, GameState.pendingAfterConcession]
+      simp only [sq, beq_self_eq_true, Bool.true_or, ↓reduceIte,
+        withdrawal_stack_contrib s board other]
+      exact hands
+    · have sq : board.phase = .setup := phase
+      have beforePhase : s.phase = .setup := samePhase.symm.trans phase
+      change f ∈ s.pendingAfterConcession board departing at member
+      simp only [GameState.pendingAfterConcession, sq, beq_self_eq_true, Bool.true_or, ↓reduceIte] at member
+      obtain ⟨old, before, after⟩ := List.mem_flatMap.mp member
+      exact hinv.play old before (Frame.afterPlayerRemoval_play beforePhase after play) beforePhase
+
+/-- Applying a legal answer preserves the opening-hand invariant. -/
+theorem applyAction_handInv {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : Legal s a)
+    (h : applyAction s a = some (s', es)) : HandInv s' := by
+  by_cases hk : a.kind = .concede
+  · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      have kept := hinv.of_freeForAllConcession hwf hown removed
+      have withCards : HandInv { board with cards := board.cards.withConcessionBattlefield } := ⟨kept.turn, kept.hands, kept.play⟩
+      exact withCards.withTriggers _
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine ⟨fun hm => ?_, fun _ hres => ?_, fun f hf _ => ?_⟩
+      · simp at hm
+      · simp at hres
+      · simp at hf
+  · rw [applyAction_of_ne hk] at h
+    exact applyFrame_handInv hwf hown hinv (hl.frame hk) h
 
 /-- The opening draws of the players account for four cards for each player listed. -/
 theorem stackContrib_draws (p : PlayerId) (l : List PlayerId) :

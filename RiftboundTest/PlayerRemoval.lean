@@ -8,6 +8,8 @@ import Riftbound.Rules.TeamSetup
 meta import Riftbound.Rules.TeamSetup
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
+import RiftboundDriver.Replay
+meta import RiftboundDriver.Replay
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -16,6 +18,47 @@ meta import RiftboundTest.Fixtures
 namespace RiftboundTest
 
 open Riftbound
+
+private meta def replayConcessions (mode : Mode) : Except String Unit := do
+  let order : Option (List PlayerId) :=
+    if mode == .ffa4 then some [⟨2⟩, ⟨0⟩, ⟨3⟩, ⟨1⟩] else none
+  let config : GameConfig := { ruleSet := .coreOnly, mode }
+  let game : RiftboundDriver.GameInputs :=
+    { decks := .core (List.replicate mode.players goodDeck), openingOrder := order, answers := #[] }
+  let mut state ← game.initial db config
+  let mut rng := RiftboundDriver.Rng.ofSeed 21
+  let mut answers : Array RiftboundDriver.ReplayAnswer := #[]
+  let record (s : GameState) (a : Action) :=
+    (step 100 s a).mapError reprStr
+  for _ in [:50] do
+    if state.phase == .main then break
+    let some (action, nextRng) := RiftboundDriver.autoAnswer rng state | throw "setup stopped early"
+    let (next, _) ← record state action
+    state := next
+    rng := nextRng
+    answers := answers.push (.observed action)
+  let some winner := state.active | throw "setup did not reach a turn"
+  let departing := state.turnOrder.filter (· != winner)
+  let mut sawReplacement := false
+  for p in departing do
+    let action : Action := ⟨.player p, .concede⟩
+    let (next, _) ← record state action
+    if next.participates p then throw "a conceded seat is still in play"
+    sawReplacement := sawReplacement || next.battlefields.any (fun bf =>
+      (next.cardDef? bf).any (fun (card : CardDef) => card.id == concessionBattlefieldToken.id))
+    state := next
+    answers := answers.push (.observed action)
+  unless sawReplacement && state.result == some (.won [winner]) do throw "incorrect concession result"
+  let input : RiftboundDriver.FreeForAllInputs := { mode, game := { game with answers } }
+  let saved ← input.record db
+  let restored : RiftboundDriver.RecordedFreeForAll ←
+    Lean.fromJson? (← Lean.Json.parse (Lean.toJson saved).compress)
+  let verified ← restored.verify db
+  unless verified.result == state.result && verified.exact && restored.game.checkpoints.size == answers.size + 1 do
+    throw "verification did not reproduce the complete game"
+
+#guard (replayConcessions .ffa3).isOk
+#guard (replayConcessions .ffa4).isOk
 
 private meta def strengthField : CardDef :=
   { (battlefield 0) with abilities := [.passive .always
@@ -203,6 +246,32 @@ private meta def removalState : GameState :=
     (next.cardDef? field).any (fun (card : CardDef) => card.id == limitedBlankBattlefield.id) &&
     started.active == some c && started.turn == 3 &&
     won.result == some (GameResult.won [a]) && won.pending.isEmpty).getD false
+
+-- The normal step API exposes concessions, removes the seat and supplies the blank token.
+#guard (do
+  let a : PlayerId := ⟨0⟩
+  let b : PlayerId := ⟨1⟩
+  let c : PlayerId := ⟨2⟩
+  let d : PlayerId := ⟨3⟩
+  let concede (p : PlayerId) : Action := ⟨.player p, .concede⟩
+  let s := { removalState with
+    turnOrder := [a, b, c, d]
+    active := some b
+    turn := 2
+    phase := .main
+    pending := [.priority b] }
+  let (s, field) ← addObject s (newCard s.cards s b (cid "B0")) .battlefieldZone
+  let (next, _) ← (step 80 s (concede b)).toOption
+  let (lastTwo, _) ← (step 80 next (concede d)).toOption
+  let (won, _) ← (step 80 lastTwo (concede a)).toOption
+  return (legalActions s).contains (concede b) &&
+    next.active == some c && next.participatingOrder == [a, c, d] &&
+    next.battlefields == [field] &&
+    (next.cardDef? field).any (fun (card : CardDef) =>
+      card.id == concessionBattlefieldToken.id && card.fullAbilities.isEmpty) &&
+    !(legalActions next).contains (concede b) && (step 80 next (concede b)).toOption.isNone &&
+    lastTwo.participatingOrder == [a, c] &&
+    won.result == some (GameResult.won [c]) && (legalActions won).isEmpty).getD false
 
 -- A skipped seat does not increment the turn number. An inserted extra turn does not
 -- advance the regular cycle, and each continuing seat keeps its own turn count.

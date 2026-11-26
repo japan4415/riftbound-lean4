@@ -304,10 +304,10 @@ def legalFrameActions (s : GameState) : List Action :=
     (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
-/-- Any player may concede in a two-sided game (CR 649-651). -/
+/-- The eligible seats may concede regardless of the decision on top of the stack (CR 649–651). -/
 def concedeActions (s : GameState) : List Action :=
-  if s.config.mode.hasTwoSides then (allPlayers s.playerCount).map (fun p => ⟨.player p, .concede⟩)
-  else []
+  ((allPlayers s.playerCount).filter (fun p => decide (s.canConcede p))).map
+    (fun p => ⟨.player p, .concede⟩)
 
 /-- The answers of the players: to the open question, and the concessions. Nothing once the game
 is over. -/

@@ -14,6 +14,7 @@ public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Battlefield
+public import Riftbound.Rules.PlayerRemoval
 public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Temporary
 public import Riftbound.Tournament.Match
@@ -486,13 +487,23 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
     let es := r.2 ++ extraEvents a r.2
     (next.withTriggers (es ++ s.actionTransitionEvents next a), es))
 
-/-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
-the decision frame on top of the stack. -/
+/-- Update the card definitions and schedule surviving players' triggers after the removal. -/
+def finishFreeForAllConcession (before : GameState) (r : GameState × List Event) :
+    GameState × List Event :=
+  let next := { r.1 with cards := r.1.cards.withConcessionBattlefield }
+  let events := r.2 ++ before.mightyEvents next
+  (next.withTriggers events, events)
+
+/-- A concession removes a player at any time (CR 649–652). Other answers go to the decision frame. -/
 def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) :=
   match a.kind with
   | .concede =>
     match a.actor with
-    | .player p => some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, [])
+    | .player p =>
+      if s.config.mode.isFreeForAll then
+        (applyFreeForAllConcession s p concessionBattlefieldToken.id).map (finishFreeForAllConcession s)
+      else
+        some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, [])
     | _ => none
   | _ => applyFrame s a
 
@@ -504,14 +515,38 @@ theorem applyAction_of_ne {s : GameState} {a : Action} (hk : a.kind ≠ .concede
   · exact absurd ‹a.kind = .concede› hk
   · rfl
 
-/-- A concession ends the game with the opposing side as winner (CR 651). -/
+/-- A two-sided concession ends the game with the opposing side as winner (CR 651). -/
 theorem applyAction_concede {s : GameState} {a : Action} {p : PlayerId} (hk : a.kind = .concede)
-    (hp : a.actor = .player p) :
+    (hp : a.actor = .player p) (twoSided : s.config.mode.isFreeForAll = false) :
     applyAction s a =
       some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
   unfold applyAction
   rw [hk]
-  simp [hp]
+  simp [hp, twoSided]
+
+/-- A free-for-all concession runs player removal and the resulting triggers (CR 652). -/
+theorem applyAction_concede_ffa {s : GameState} {a : Action} {p : PlayerId} (hk : a.kind = .concede)
+    (hp : a.actor = .player p) (ffa : s.config.mode.isFreeForAll = true) :
+    applyAction s a =
+      (applyFreeForAllConcession s p concessionBattlefieldToken.id).map (finishFreeForAllConcession s) := by
+  unfold applyAction
+  rw [hk]
+  simp [hp, ffa]
+
+/-- A free-for-all concession exposes its removal step and subsequent trigger processing. -/
+theorem applyAction_concede_ffa_cases {s s' : GameState} {a : Action} {p : PlayerId} {es : List Event}
+    (hk : a.kind = .concede) (hp : a.actor = .player p) (ffa : s.config.mode.isFreeForAll = true)
+    (applied : applyAction s a = some (s', es)) :
+    ∃ board events, applyFreeForAllConcession s p concessionBattlefieldToken.id = some (board, events) ∧
+      s' = ({ board with cards := board.cards.withConcessionBattlefield } : GameState).withTriggers es := by
+  rw [applyAction_concede_ffa hk hp ffa] at applied
+  obtain ⟨⟨board, events⟩, removed, resolved⟩ := Option.map_eq_some_iff.mp applied
+  have triggers := congrArg Prod.fst resolved
+  have reported := congrArg Prod.snd resolved
+  exact ⟨board, events, removed, by
+    simp only [finishFreeForAllConcession] at triggers reported
+    rw [← reported]
+    exact triggers.symm⟩
 
 /-- A step of work keeps the game well formed. -/
 theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)

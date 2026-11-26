@@ -193,21 +193,39 @@ instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFra
   unfold LegalFrame
   split <;> infer_instance
 
-/-- A player can concede at any time when one opposing side remains after the concession
-(CR 649-651). -/
+/-- A seat can concede if it is still participating and an opposing player or side will
+remain in the game (CR 649–651). -/
+def GameState.canConcede (s : GameState) (p : PlayerId) : Prop :=
+  if s.config.mode.isFreeForAll then
+    s.participates p = true ∧ (s.withdrawSeat p).participatingSeats ≠ []
+  else p.n < s.playerCount ∧ s.config.mode.hasTwoSides = true
+
+instance GameState.canConcedeDecidable (s : GameState) (p : PlayerId) : Decidable (s.canConcede p) := by
+  unfold GameState.canConcede
+  split <;> infer_instance
+
+/-- An eligible concession comes from a registered seat. -/
+theorem GameState.canConcede_registered {s : GameState} {p : PlayerId} (h : s.canConcede p) :
+    p.n < s.playerCount := by
+  unfold GameState.canConcede at h
+  split at h
+  · exact of_decide_eq_true (Bool.and_eq_true_iff.mp h.1).1
+  · exact h.1
+
+/-- An eligible player may concede independently of the open decision (CR 649–651). -/
 def LegalConcede (s : GameState) (a : Action) : Prop :=
   a.kind = .concede ∧
     match a.actor with
-    | .player p => p.n < s.playerCount ∧ s.config.mode.hasTwoSides = true
+    | .player p => s.canConcede p
     | _ => False
 
 instance LegalConcede.decidable (s : GameState) (a : Action) : Decidable (LegalConcede s a) := by
   unfold LegalConcede
   split <;> infer_instance
 
-/-- A legal concession is made by a player of a two-sided game. -/
+/-- A legal concession names a seat eligible to concede. -/
 theorem LegalConcede.actor {s : GameState} {a : Action} (h : LegalConcede s a) :
-    ∃ p, a.actor = .player p ∧ p.n < s.playerCount ∧ s.config.mode.hasTwoSides = true := by
+    ∃ p, a.actor = .player p ∧ s.canConcede p := by
   obtain ⟨-, h2⟩ := h
   cases hac : a.actor with
   | player p =>

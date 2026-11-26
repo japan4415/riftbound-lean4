@@ -8,6 +8,16 @@ public import Riftbound.Rules.Battlefield
 
 namespace Riftbound
 
+/-- The ability-free token that replaces a departing player's Battlefield (CR 652.2.a). -/
+def concessionBattlefieldToken : CardDef :=
+  { id := ⟨"TKN-ConcessionBattlefield"⟩, name := "Blank Battlefield", types := [.battlefield],
+    status := .full }
+
+/-- Supply the rule-defined token while preserving the registered card definitions. -/
+def CardDB.withConcessionBattlefield (db : CardDB) : CardDB :=
+  if (db.find? concessionBattlefieldToken.id).isSome then db
+  else ⟨db.cards ++ [concessionBattlefieldToken]⟩
+
 /-- Move an object to its owner's zone as part of removing a player (CR 652.1, 652.3).
 A change of zone required by removal does not offer the departing player another choice. -/
 def moveForPlayerRemoval (destination : ZoneKind) (s : GameState) (id : ObjId) :
@@ -650,8 +660,12 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
   | .chanceRecycle p | .chanceBurnOut p | .chooseBurnOut p | .draw p ..
   | .discard p _ | .predict p .. | .chancePredict p .. | .teamInvitation p
   | .chooseShowdown p .. => keepFor p
-  | .priority p => if p == departing then [.expireTurn, .beginTurn] else [frame]
-  | .phase .ending => if wasActive then [.expireTurn] else [frame]
+  | .priority p =>
+    if p != departing then [frame]
+    else if before.phase == .setup then [.beginTurn] else [.expireTurn, .beginTurn]
+  | .phase .ending =>
+    if !wasActive then [frame]
+    else if before.phase == .setup then [] else [.expireTurn]
   | .phase _ | .scoreHolds => if wasActive then [] else [frame]
   | .resumeCost action =>
     if action.actor == .player departing then [] else [frame]
@@ -735,6 +749,34 @@ theorem Frame.afterPlayerRemoval_setup_sublist (frame : Frame) (before after : G
     split <;> simp
   · exact List.Sublist.refl _
 
+/-- A departure does not create an instruction to deal the opening hands. -/
+theorem Frame.afterPlayerRemoval_setupHands {frame : Frame} {before after : GameState}
+    {departing : PlayerId} (member : Frame.setupHands ∈ frame.afterPlayerRemoval before after departing) :
+    frame = .setupHands := by
+  cases frame <;> simp [Frame.afterPlayerRemoval] at member ⊢
+  all_goals
+    repeat' first
+      | solve | simp_all
+      | split at member
+      | simp only [List.mem_cons, List.not_mem_nil, or_false] at member
+
+/-- During setup, a departure can only retain play frames that were already present. -/
+theorem Frame.afterPlayerRemoval_play {frame next : Frame} {before after : GameState}
+    {departing : PlayerId} (phase : before.phase = .setup)
+    (member : next ∈ frame.afterPlayerRemoval before after departing)
+    (play : next.isPlay = true) : frame.isPlay = true := by
+  cases frame <;> simp [Frame.afterPlayerRemoval, Frame.isPlay, phase] at member ⊢
+  all_goals
+    repeat' first
+      | solve | simp_all [Frame.isPlay]
+      | split at member
+      | simp only [List.mem_cons, List.not_mem_nil, or_false] at member
+
+/-- Resume the stack after removal and run a Cleanup once play has begun (CR 318, 652.5). -/
+def GameState.pendingAfterConcession (s board : GameState) (departing : PlayerId) : List Frame :=
+  let pending := s.pending.flatMap (fun f => f.afterPlayerRemoval s board departing)
+  if board.phase == .setup || s.pending.any Frame.isSetup then pending else .cleanup :: pending
+
 /-- Apply a free-for-all concession. With one player left the game ends immediately. Otherwise
 the departure changes the board, then the pending work continues under the remaining roster
 (CR 651.1, 652). -/
@@ -747,10 +789,35 @@ def applyFreeForAllConcession (s : GameState) (departing : PlayerId) (blank : Ca
   | [winner] => some ({ withdrew with result := some (.won [winner]), pending := [] }, [])
   | _ :: _ :: _ =>
     let (board, events) ← removePlayerObjects withdrew departing blank
-    let pending := s.pending.flatMap (fun frame => frame.afterPlayerRemoval s board departing)
-    let pending := if board.phase == .setup || s.pending.any Frame.isSetup then pending
-      else .cleanup :: pending
-    return ({ board with pending }, events)
+    return ({ board with pending := s.pendingAfterConcession board departing }, events)
+
+/-- A concession either awards the game to the last player or resumes the stack on the new board. -/
+theorem applyFreeForAllConcession_cases {s next : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event}
+    (applied : applyFreeForAllConcession s departing blank = some (next, events)) :
+    (∃ winner, next = { s.withdrawSeat departing with result := some (.won [winner]), pending := [] }) ∨
+      (∃ board, removePlayerObjects (s.withdrawSeat departing) departing blank = some (board, events) ∧
+        next = { board with pending := s.pendingAfterConcession board departing }) := by
+  unfold applyFreeForAllConcession at applied
+  split at applied
+  · simp at applied
+  · dsimp only at applied
+    split at applied
+    · simp at applied
+    · simp only [Option.some.injEq, Prod.mk.injEq] at applied
+      exact Or.inl ⟨_, applied.1.symm⟩
+    · obtain ⟨⟨board, removalEvents⟩, removed, completed⟩ := Option.bind_eq_some_iff.mp applied
+      obtain ⟨rfl, rfl⟩ := completed
+      exact Or.inr ⟨board, removed, rfl⟩
+
+/-- A concession in a game that continues leaves the result field untouched. -/
+theorem removalBoard_result {s board : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event}
+    (removed : removePlayerObjects (s.withdrawSeat departing) departing blank = some (board, events)) :
+    board.result = s.result := by
+  refine (removePlayerObjects_safe removed).same.result.trans ?_
+  unfold GameState.withdrawSeat
+  split <;> rfl
 
 /-- A concession by a participating seat can be applied if the game has a remaining player. -/
 theorem applyFreeForAllConcession_isSome (s : GameState) (departing : PlayerId) (blank : CardId)

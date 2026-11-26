@@ -64,17 +64,17 @@ theorem step_over {fuel : Nat} {s : GameState} {a : Action} (h : s.result ≠ no
     step fuel s a = .error .illegal :=
   step_illegal (fun hl => h hl.1)
 
-/-- **Concession** (CR 649-651). A legal concession ends the game immediately. -/
+/-- A two-sided game ends immediately on a legal concession (CR 649–651). -/
 theorem step_concede {fuel : Nat} {s : GameState} {a : Action} {p : PlayerId}
-    (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p) :
+    (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p)
+    (twoSided : s.config.mode.isFreeForAll = false) :
     step fuel s a = .ok ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
-  have hc := hl.of_concede hk
   have noCost : s.actionDeathCostChoice a = none := by
     cases h : s.pending with
     | nil => simp [GameState.actionDeathCostChoice, h]
     | cons frame rest =>
       cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, h, hk]
-  simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp]
+  simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp twoSided]
   unfold advance
   cases fuel <;> simp
 

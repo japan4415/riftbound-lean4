@@ -31,8 +31,9 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
 
 private def replayTraceJson (games : List String) (wins : List Nat) (outcome : MatchResult)
     (allObserved cardsChecked : Bool) (extra : List (String × String) := [])
-    (limited : Bool := false) : String :=
+    (limited : Bool := false) (ffaConcession : Bool := false) : String :=
   let db := if limited then RiftboundCards.db.withLimitedBlank else RiftboundCards.db
+  let db := if ffaConcession then db.withConcessionBattlefield else db
   let cards := db.cards.map (fun card => (card.id.code, cardJson card))
   let winner := match outcome with | .won p => toString p.n | .draw => "null"
   jobj ([("cards", jobj cards), ("games", jarr games), ("winner", winner),
@@ -83,7 +84,12 @@ private def ffaTrace (saved : RecordedFreeForAll) : Except String String := do
   let game ← gameTrace saved.game.input { ruleSet := .coreOnly, mode := saved.mode } saved.fuel
   let wins := (allPlayers saved.mode.players).map (fun seat =>
     if outcome == .won seat then 1 else 0)
+  let ffaConcession := saved.game.input.answers.any fun answer =>
+    match answer with
+    | .observed action | .inferred action _ => action.kind == .concede
+    | _ => false
   return replayTraceJson [game] wins outcome summary.exact (summary.uncheckedCards.all List.isEmpty)
+    (ffaConcession := ffaConcession)
 
 /-- Record, verify or generate a viewer trace from the inputs of a saved game or match. -/
 def main (args : List String) : IO UInt32 := do
