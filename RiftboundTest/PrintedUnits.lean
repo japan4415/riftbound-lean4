@@ -365,4 +365,26 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
     !(returned.zone (.player p .trash)).contains chosen &&
     (returned.zone (.player s.you .trash)).contains rival
 
+-- In team play, Firestorm hits both opponents and Annie only returns from her controller's Trash.
+#guard inLab fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (RiftboundDriver.runUntilTurn 100 1 2000 (RiftboundDriver.Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let [enemyA, enemyB] := s.players.filter (fun q => !config.mode.sameSide p q) | none
+  let field := s.bf0
+  let (s, spell) ← put s p "OGS-002" .hand
+  let (s, ally) ← putAt s mate "OGN-142" field
+  let (s, first) ← putAt s enemyA "OGN-142" field
+  let (s, second) ← putAt s enemyB "OGN-142" field
+  let hit ← play s p spell [field]
+  let (s, annie) ← put s p "OGS-010" .hand
+  let (s, _) ← put s p "OGN-094" .trash
+  let (s, teammateSpell) ← put s mate "OGN-095" .trash
+  let returned ← play s p annie [] { obj := (· == teammateSpell) }
+  return [first, second].all (fun id => (hit.obj? id).any (·.damage == 3)) &&
+    (hit.obj? ally).any (·.damage == 0) && returned.countIn p .hand "OGN-094" == 1 &&
+    (returned.zone (.player mate .trash)).contains teammateSpell
+
 end RiftboundTest
