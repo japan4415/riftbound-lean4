@@ -580,7 +580,7 @@ def OGN_022 : CardDef :=
   { OGN_022.meta with
     spellEffect := some (.of []
       (.prim (.kill (Selector.all .any .anywhere [.ofType .gear])))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-023
 /--
@@ -1353,7 +1353,7 @@ def OGN_050 : CardDef :=
   { OGN_050.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.prim (.stun (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-051
 /--
@@ -1378,7 +1378,7 @@ def OGN_051 : CardDef :=
   { OGN_051.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .unit]] (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-052
 /--
@@ -3349,7 +3349,7 @@ def OGN_123 : CardDef :=
     spellEffect := some (.of []
       (.seqOf [.prim (.exhaust (Selector.all .friendly .anywhere [.ofType .unit])),
         .prim (.deal (Selector.all .any .atBattlefield [.ofType .unit]) (.const 12))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-124
 /--
@@ -3574,7 +3574,7 @@ def OGN_132 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .unit, .notSelf]] (.prim (.ready (.slot 0))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-133
 /--
@@ -3599,7 +3599,7 @@ def OGN_133 : CardDef :=
   { OGN_133.meta with
     spellEffect := some (.of []
       (.prim (.deal (Selector.all .any .atBattlefield [.ofType .unit]) (.const 1)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-134
 /--
@@ -3674,7 +3674,7 @@ def OGN_136 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]] (.prim (.buff (.slot 0))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-137
 /--
@@ -4586,7 +4586,7 @@ def OGN_169 : CardDef :=
     spellEffect := some (.of
       [.targetOf .one .any .atBattlefield [.ofType .unit, .might .le (.const 3)]]
       (.prim (.returnToHand (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-170
 /--
@@ -4660,7 +4660,7 @@ def OGN_172 : CardDef :=
   { OGN_172.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.prim (.returnToHand (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-173
 /--
@@ -6022,9 +6022,10 @@ def OGN_223 : CardDef :=
   { OGN_223.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.seqOf [.prim (.buff .self),
-        .prim (.buff (Selector.all .friendly .here [.ofType .unit, .notSelf]))]))
+        .ifThen (.matches .self .onBattlefield)
+          (.prim (.buff (.all .friendly .here [.ofType .unit, .notSelf]))) .nop]))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-224
 /--
@@ -6297,7 +6298,7 @@ def OGN_233 : CardDef :=
     spellEffect := some (.of []
       (.grant (Selector.all .friendly .anywhere [.ofType .unit]) (.mightPlus .it (.const 5))
         .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-234
 /--

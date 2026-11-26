@@ -250,12 +250,14 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let u ← s2.firstOf s.me .base "OGN-139"
   return (s2.obj? u).map (·.buffed) == some false
 
--- Peak Guardian (OGN-223): when played, buff itself
+-- Peak Guardian buffs only itself when played to Base.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-223" .hand
-  let s2 ← play s1 s.me c
-  let u ← s2.firstOf s.me .base "OGN-223"
-  return (s2.obj? u).map (·.buffed) == some true
+  let p := s.me
+  let (s, guardian) ← put s p "OGN-223" .hand
+  let (s, ally) ← put s p "OGN-001" .base
+  let entered ← play s p guardian
+  let unit ← entered.firstOf p .base "OGN-223"
+  return (entered.obj? unit).any (·.buffed) && (entered.obj? ally).any (!·.buffed)
 
 -- Cithria reacts to units only, and only to the plays of its player's side
 #guard t fun s => do
@@ -280,19 +282,30 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s3 := s2.buff v
   return s3.mightNow u == s1.mightNow u
 
--- Peak Guardian at a battlefield: it buffs itself and the other friendly units there (the
--- ability is put on the stack by hand: a unit cannot be played to a battlefield yet)
-#guard t fun s => do
-  let (s1, g) ← putAt s s.me "OGN-223" s.bf0
-  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
-  let (s3, w) ← put s2 s.me "OGN-001" .base
-  let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
-  let pend := detectOne s4 (.played s.me g)
-  let s5 := { s4 with pending := .triggers pend :: s4.pending }
-  let s6 := settleChain {} 12 (← (advance 100 s5 []).toOption).1
-  return pend.length == 1 && (s6.obj? g).map (·.buffed) == some true &&
-    (s6.obj? v).map (·.buffed) == some true && (s6.obj? w).map (·.buffed) == some false &&
-    (s6.obj? e).map (·.buffed) == some false
+-- When an effect plays Peak Guardian to a Battlefield, only friendly units there share its buff.
+#guard t fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let field := s.bf0
+  let elsewhere ← s.battlefields.find? (· != field)
+  let (s, guardian) ← put s p "OGN-223" .hand
+  let (s, away) ← putAt s p "OGN-001" elsewhere
+  let (allied, mateUnit) ← putAt s mate "OGN-001" field
+  let (entered, events) := playFreeAt p field allied guardian
+  let resolved ← fire entered events
+  let unit ← (resolved.unitsAt field).find? (fun id =>
+    (resolved.cardDef? id).any (fun card => card.id == cid "OGN-223"))
+  let (contested, ownUnit) ← putAt s p "OGN-001" field
+  let (contested, enemyUnit) ← putAt contested enemy "OGN-001" field
+  let (reinforced, events) := playFreeAt p field contested guardian
+  let after ← fire reinforced events
+  return [unit, mateUnit].all (fun id => (resolved.obj? id).any (·.buffed)) &&
+    (resolved.obj? away).any (!·.buffed) && (after.obj? ownUnit).any (·.buffed) &&
+    (after.obj? enemyUnit).any (!·.buffed)
 
 -- Salvage (OGN-224): you may kill a gear (you choose which when there are two), then draw 1
 #guard t fun s => do
