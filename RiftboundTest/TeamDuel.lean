@@ -90,6 +90,29 @@ private meta def teamState : GameState :=
   legalFrameActions s == [give ⟨2⟩, give ⟨3⟩] && (step 100 s (give ⟨1⟩)).toOption.isNone &&
     (step 100 s (give ⟨3⟩)).toOption.any (fun (next, _) => next.players.map next.pointsOf == [0, 0, 1, 1])
 
+-- Each printed Basic Rune gives one Energy when exhausted, and its own Power when recycled.
+-- Neither resource is shared with a teammate, and the exhausted Rune cannot be exhausted again.
+#guard
+  let runes : List (CardDef × Domain) := [
+    (RiftboundCards.Origins.OGN_007, .fury), (RiftboundCards.Origins.OGN_042, .calm),
+    (RiftboundCards.Origins.OGN_089, .mind), (RiftboundCards.Origins.OGN_126, .body),
+    (RiftboundCards.Origins.OGN_166, .chaos), (RiftboundCards.Origins.OGN_214, .order)]
+  runes.all fun (card, domain) => (do
+    let p : PlayerId := ⟨0⟩
+    let teammate : PlayerId := ⟨1⟩
+    let cards : CardDB := ⟨[card]⟩
+    let start := { teamState with cards, phase := .main, active := some p, pending := [.priority p] }
+    let (s, rune) ← addObject start (newCard cards start p card.id) (.player p .base)
+    let exhaust : Action := ⟨.player p, .runeAbility rune .exhaust⟩
+    let (exhausted, _) ← (step 100 s exhaust).toOption
+    let (recycled, _) ← (step 100 exhausted ⟨.player p, .runeAbility rune .recycle⟩).toOption
+    let [recycledRune] := recycled.zone (.player p .runeDeck) | none
+    let energy := RunePool.empty.addEnergy 1
+    return !runeUsable s teammate rune .recycle && (step 100 exhausted exhaust).toOption.isNone &&
+      exhausted.poolOf p == energy && recycled.poolOf p == energy.addPower domain 1 &&
+      recycled.poolOf teammate == RunePool.empty &&
+      (recycled.cardDef? recycledRune).any (fun (d : CardDef) => d.id == card.id)).getD false
+
 private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
   let start := { teamState with active := some ⟨0⟩, turn := 1 }
   let held := { newCard db start ⟨1⟩ (cid "B0") with control := some ⟨1⟩ }
@@ -194,6 +217,35 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     chained.pending == [Frame.chainPass guest 0, Frame.priority turnPlayer] &&
     finished.pending == [Frame.priority turnPlayer] && finished.active == some turnPlayer &&
     (finished.zone (.player guest .mainDeck)).isEmpty).getD false
+
+-- Retreat can target a unit controlled by a teammate. The unit's owner receives both the
+-- returned unit and the exhausted Rune, even when the owner is on the opposing team.
+#guard (do
+  let caster : PlayerId := ⟨0⟩
+  let controller : PlayerId := ⟨1⟩
+  let owner : PlayerId := ⟨2⟩
+  let card := RiftboundCards.Origins.OGN_104
+  let cards : CardDB := ⟨db.cards ++ [card]⟩
+  let order := Mode.teamTurnOrder true
+  let start := { teamState with
+    cards, phase := .main, turn := 1, active := some caster,
+    turnOrder := order, pending := [.priority caster] }
+  let start := start.setPool caster { energy := 1 }
+  let (s, spell) ← addObject start (newCard cards start caster card.id) (.player caster .hand)
+  let controlled := { newCard cards s owner (cid "V1") with controller := controller }
+  let (s, target) ← addObject s controlled (.player controller .base)
+  let (s, _) ← addObject s (newCard cards s owner (cid "R1")) (.player owner .runeDeck)
+  let (chained, _) ← (step 100 s ⟨.player caster, .playCard spell ⟨1, []⟩ [target]⟩).toOption
+  let finished ← order.foldlM (m := Option) (fun next seat =>
+    (step 100 next ⟨.player seat, .pass⟩).toOption.map Prod.fst) chained
+  let [returned] := finished.zone (.player owner .hand) | none
+  let [rune] := finished.zone (.player owner .base) | none
+  return (finished.cardDef? returned).any (fun (d : CardDef) => d.id == cid "V1") &&
+    (finished.obj? rune).any (fun (o : Object) => o.exhausted && o.owner == owner) &&
+    (finished.cardDef? rune).any (fun (d : CardDef) => d.id == cid "R1") &&
+    (finished.zone (.player owner .runeDeck)).isEmpty &&
+    (finished.zone (.player caster .base)).isEmpty &&
+    (finished.zone (.player controller .base)).isEmpty).getD false
 
 #guard (do
   let turnPlayer : PlayerId := ⟨0⟩

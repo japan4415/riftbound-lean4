@@ -43,6 +43,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .combatSides => true
   | .chosen _ => true
   | .controllerOf _ => true
+  | .ownerOf _ => true
   | _ => false
 
 mutual

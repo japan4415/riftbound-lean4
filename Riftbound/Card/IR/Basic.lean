@@ -274,6 +274,8 @@ inductive PlayerSel where
   | controllerOf (slot : Nat)
   /-- Every player in turn order, starting after the current turn player. -/
   | eachPlayerFromNext
+  /-- The owner of the object held in an effect's slot. -/
+  | ownerOf (slot : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- A replacement still available for one damage event. Turn notes use their positions in

@@ -193,7 +193,7 @@ def OGN_007.meta : CardDef :=
 /-- Fury Rune. -/
 def OGN_007 : CardDef :=
   { OGN_007.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-008
 /--
@@ -1141,7 +1141,7 @@ def OGN_042.meta : CardDef :=
 /-- Calm Rune. -/
 def OGN_042 : CardDef :=
   { OGN_042.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-043
 /--
@@ -2413,7 +2413,7 @@ def OGN_089.meta : CardDef :=
 /-- Mind Rune. -/
 def OGN_089 : CardDef :=
   { OGN_089.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-090
 /--
@@ -2802,8 +2802,9 @@ def OGN_104.meta : CardDef :=
 def OGN_104 : CardDef :=
   { OGN_104.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.returnToHand (.slot 0)), .prim (.channel .you (.const 0) (.const 1))])),
-    status := .drafted }
+      (.eachPlayer (.ownerOf 0)
+        (.seqOf [.prim (.returnToHand (.slot 0)), .prim (.channel .you (.const 0) (.const 1))]))),
+    status := .full }
 
 -- BEGIN GENERATED OGN-105
 /--
@@ -3425,7 +3426,7 @@ def OGN_126.meta : CardDef :=
 /-- Body Rune. -/
 def OGN_126 : CardDef :=
   { OGN_126.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-127
 /--
@@ -4514,7 +4515,7 @@ def OGN_166.meta : CardDef :=
 /-- Chaos Rune. -/
 def OGN_166 : CardDef :=
   { OGN_166.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-167
 /--
@@ -5793,7 +5794,7 @@ def OGN_214.meta : CardDef :=
 /-- Order Rune. -/
 def OGN_214 : CardDef :=
   { OGN_214.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-215
 /--

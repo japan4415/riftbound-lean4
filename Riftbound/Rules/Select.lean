@@ -118,6 +118,10 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env :
   | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])
   | .eventPlayer => none
   | .controllerOf _ => none
+  | .ownerOf i =>
+    match env.slots[i]? with
+    | some (.obj id) => (s.obj? id).map (fun obj => [obj.owner])
+    | _ => none
 
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
 def Amount.eval (env : Env) : Amount → Option Nat

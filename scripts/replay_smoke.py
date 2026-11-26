@@ -321,7 +321,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     command("view", archive, trace)
     view = json.loads(trace.read_text(encoding="utf-8"))
     assert len(view["games"]) == 3 and view["wins"] == [2, 0] and view["exact"]
-    assert not view["cardsFullyChecked"] and saved["games"][0]["summary"]["uncheckedCards"][0]
+    assert view["cardsFullyChecked"] and not any(saved["games"][0]["summary"]["uncheckedCards"])
 
     group_archive = folder / "group-move-archive.json"
     group_archive.write_text(json.dumps(group_move), encoding="utf-8")
@@ -352,7 +352,8 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     observed_action = answers[0]["observed"]["action"]
     answers[0] = {"inferred": {"action": observed_action, "evidence": "reconstructed from later evidence"}}
     source.write_text(json.dumps(saved["input"]), encoding="utf-8")
-    assert not json.loads(command("record", source, folder / "inferred.json"))["exact"]
+    inferred = json.loads(command("record", source, folder / "inferred.json"))
+    assert not inferred["exact"] and inferred["cardsFullyChecked"]
     answers[0] = {"unknown": {"description": "shuffle was hidden"}}
     source.write_text(json.dumps(saved["input"]), encoding="utf-8")
     command("record", source, folder / "unknown.json", error="game 1: answer 1 is unobserved")
@@ -398,7 +399,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     team_input.write_text(json.dumps(team_record), encoding="utf-8")
     team_archive = folder / "team-archive.json"
     summary = json.loads(command("record-team", team_input, team_archive))
-    assert summary["wins"] == [0, 1] and summary["exact"] and not summary["cardsFullyChecked"]
+    assert summary["wins"] == [0, 1] and summary["exact"] and summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", team_archive)) == summary
     team_trace = folder / "team-trace.json"
     command("view-team", team_archive, team_trace)
@@ -410,11 +411,14 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
 
     last = team_game["answers"][-1]["observed"]["action"]
     team_game["answers"][-1] = {"inferred": {"action": last, "evidence": "team reported the concession"}}
+    team_game["decks"] = [{**decks[0], "sideboard": [*decks[0]["sideboard"], {"code": "OGN-001"}]},
+                          *decks[1:]]
     inferred_team = folder / "team-inferred.json"
     inferred_team.write_text(json.dumps(team_record), encoding="utf-8")
     inferred_archive = folder / "team-inferred-archive.json"
-    assert not json.loads(command("record-team", inferred_team, inferred_archive))["exact"]
-    assert not json.loads(command("verify-team", inferred_archive))["exact"]
+    inferred_summary = json.loads(command("record-team", inferred_team, inferred_archive))
+    assert not inferred_summary["exact"] and not inferred_summary["cardsFullyChecked"]
+    assert json.loads(command("verify-team", inferred_archive)) == inferred_summary
     check_limited_cli(folder, setup, command)
     check_bo1_cli(folder, setup, command)
 

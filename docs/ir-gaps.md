@@ -78,7 +78,7 @@
 | Smite | "If it would die this turn" を「次に死ぬとき」で表した。ユニットは 1 回しか死なないので同じ |
 | Blue Sentinel | "at the start of your next Main Phase" を、自分の次の Main Phase 開始の遅延効果で表した。`delayed` の期間は `permanent`（発火するまで） |
 | Forgotten Monument | 「その場所で、プレイヤーが自分の 3 ターン目まで得点できない」を `untilTurn := 3` で表した |
-| Retreat（OGN-104） | 「Its owner channels」を `PlayerSel.you` で表した。友軍の Unit の owner と controller が違う場合（take control の後）は、誤る。「slot の物体の owner」を表す `PlayerSel` が無い |
+| Retreat（OGN-104、解決済み） | `PlayerSel.ownerOf` で帰還前に持ち主を確定する。2v2 で持ち主と操作者が異なる場合も、持ち主がユニットを手札に戻し、Exhausted の Rune を Channel する |
 | Gust（OGN-169） | 「3 Might or less」の Might フィルタは、印刷の Might、持続する増減、Buff を読む。Equipment の加算と Passive は読まない（`mightNow` は、フィルタより後で定義されている） |
 | Lux, Illuminated ほか | 「コストが 5 以上の Spell をプレイしたとき」を、トリガーの subject に Spell のフィルタを置いて表した。subject は「イベントの対象」と「世界にあるもの」の両方を表せてしまい、解釈器で意味を決める必要がある |
 
