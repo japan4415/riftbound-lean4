@@ -140,7 +140,8 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
       rw [e]
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.assign b a q [] d]
+      simpa only [List.append_assoc, List.singleton_append] using
+        (hb.swap rfl (combatAssignmentChoices s b q ++ [Frame.assign b a q [] d]))
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]

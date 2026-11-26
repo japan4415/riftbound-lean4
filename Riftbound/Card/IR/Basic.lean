@@ -289,6 +289,14 @@ inductive DamageReplacement where
   | shield (note : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- Which requirement applies to a Unit with conflicting combat priorities (CR 467.2.c.8). -/
+inductive CombatAssignmentPriority where
+  /-- Assign damage before the controller's Units without Tank. -/
+  | tank
+  /-- Assign damage after the controller's Units without Backline. -/
+  | backline
+deriving DecidableEq, Repr, Hashable
+
 /-- One answer to a death replacement decision (CR 372). -/
 inductive DeathDecision where
   /-- Banish the dying permanent with this player's replacement. -/
@@ -370,6 +378,8 @@ inductive TurnEffect where
   | preventDamage (remaining : Nat)
   /-- The replacement order chosen for the Unit's current combat damage (CR 467.2.c.5). -/
   | combatDamageOrder (order : List DamageReplacement)
+  /-- The assigning player's choice between a Unit's conflicting requirements this combat. -/
+  | combatAssignmentPriority (priority : CombatAssignmentPriority)
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/

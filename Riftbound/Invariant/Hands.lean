@@ -295,7 +295,11 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         ⟨b, a, q, d, e⟩ | ⟨_, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
     · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)
-      have : Frame.setupHands ∈ rest := by simpa using hmem
+      have : Frame.setupHands ∈ rest := by
+        rcases List.mem_append.mp hmem with h | h
+        · have play := combatAssignmentChoices_play h
+          simp [Frame.isPlay] at play
+        · simpa using h
       rw [hp]
       exact List.mem_cons_of_mem _ this
     · refine hinv.of_play hph0 rfl rfl (fun hmem => ?_)

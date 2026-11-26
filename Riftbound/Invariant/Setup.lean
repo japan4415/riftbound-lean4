@@ -485,8 +485,14 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     rcases assignDoneStep_cases s bf att side acc done rest with
         ⟨b, a, q, d, e⟩ | ⟨damage, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
-    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.assign b a q [] d]) rfl (by simp [Frame.isSetup])
+    · refine hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := combatAssignmentChoices s b q ++ [Frame.assign b a q [] d])
+        (by simp only [List.append_assoc, List.singleton_append]) (fun f hf => ?_)
+      rcases List.mem_append.mp hf with h | h
+      · have play := combatAssignmentChoices_play h
+        cases f <;> simp_all [Frame.isPlay, Frame.isSetup]
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])

@@ -3,6 +3,7 @@ module
 import Riftbound.Engine.Step
 meta import Riftbound.Engine.Step
 meta import RiftboundCards.Origins
+meta import RiftboundCards.Spiritforged
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -330,6 +331,109 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     (step 100 choice (select ally b)).toOption.isNone &&
     (resolved.combat.any (fun fight : CombatParticipation => fight.battlefield == b)) &&
     events.contains (Event.combatStarted b opponent)).getD false
+
+-- The two combatants make their own choices when assigning damage. Caitlyn may go first
+-- for Tank or last for Backline. The other two seats cannot choose for the combatants.
+#guard (do
+  let attacker : PlayerId := ⟨0⟩
+  let defender : PlayerId := ⟨2⟩
+  let observer : PlayerId := ⟨1⟩
+  let s := { teamState with
+    phase := .main, turn := 3, active := some attacker, turnOrder := Mode.teamTurnOrder true
+    cards := ⟨db.cards ++ [RiftboundCards.Origins.OGN_068]⟩ }
+  let (s, field) ← addObject s
+    { newCard s.cards s defender (cid "B0") with control := some defender, contested := some attacker }
+    .battlefieldZone
+  let put (board : GameState) (p : PlayerId) (code : String) :=
+    addObject board { newCard board.cards board p (cid code) with loc := some field } .battlefieldZone
+  let (s, _) ← put s attacker "V0"
+  let (s, plain) ← put s defender "V1"
+  let (s, caitlyn) ← put s defender "OGN-068"
+  let s := (addTempKw ⟨.tank, .none⟩ .turn s caitlyn).1
+  let (combat, _) := s.observeCombat [.showdown field attacker 0]
+  let (prompt, _) ← (advance 100 {
+    s with combat, pending := [.combatDamage field attacker, .priority attacker] } []).toOption
+  let select (p : PlayerId) (tank : Bool) := Action.mk (.player p) (.decide tank)
+  let pick (board : GameState) (unit : ObjId) :=
+    (step 100 board ⟨.player attacker, .assignPick unit⟩).toOption.map Prod.fst
+  let (tank, _) ← (step 100 prompt (select attacker true)).toOption
+  let (backline, _) ← (step 100 prompt (select attacker false)).toOption
+  let assigned (board : GameState) (first second : ObjId) := do
+    let picked ← pick board first
+    let picked ← pick picked second
+    let (next, _) ← (step 100 picked ⟨.player attacker, .assignDone⟩).toOption
+    let .assign _ _ side _ hits :: _ := next.pending | none
+    if side == defender then some hits else none
+  let tankHits ← assigned tank caitlyn plain
+  let backlineHits ← assigned backline plain caitlyn
+  return combat.isSome && (step 100 prompt (select observer true)).toOption.isNone &&
+    (step 100 prompt (select defender false)).toOption.isNone &&
+    (pick tank plain).isNone && (pick backline caitlyn).isNone &&
+    tankHits == [(caitlyn, 2), (plain, 0)] && backlineHits == [(plain, 2), (caitlyn, 0)]).getD false
+
+-- The defender's priority choice is made after the attacker's assignment, and its note
+-- is forgotten when damage has been dealt.
+#guard (do
+  let attacker : PlayerId := ⟨0⟩
+  let defender : PlayerId := ⟨2⟩
+  let s := { teamState with
+    phase := .main, turn := 3, active := some attacker, turnOrder := Mode.teamTurnOrder true
+    cards := ⟨db.cards ++ [RiftboundCards.Origins.OGN_068]⟩ }
+  let (s, field) ← addObject s
+    { newCard s.cards s defender (cid "B0") with control := some defender, contested := some attacker }
+    .battlefieldZone
+  let put (board : GameState) (p : PlayerId) (code : String) :=
+    addObject board { newCard board.cards board p (cid code) with loc := some field } .battlefieldZone
+  let (s, defenderUnit) ← put s defender "V0"
+  let (s, plain) ← put s attacker "V1"
+  let (s, caitlyn) ← put s attacker "OGN-068"
+  let s := (addTempKw ⟨.tank, .none⟩ .turn s caitlyn).1
+  let (combat, _) := s.observeCombat [.showdown field attacker 0]
+  let (assign, _) ← (advance 100 {
+    s with combat, pending := [.combatDamage field attacker, .priority attacker] } []).toOption
+  let answer (board : GameState) (p : PlayerId) (kind : ActionKind) :=
+    (step 100 board ⟨.player p, kind⟩).toOption.map Prod.fst
+  let named ← answer assign attacker (.assignPick defenderUnit)
+  let prompt ← answer named attacker .assignDone
+  let .eitherDo chooser unit .. :: _ := prompt.pending | none
+  let chose ← answer prompt defender (.decide false)
+  let first ← answer chose defender (.assignPick plain)
+  let second ← answer first defender (.assignPick caitlyn)
+  let settled ← answer second defender .assignDone
+  return chooser == defender && unit == caitlyn &&
+    (answer prompt attacker (.decide false)).isNone &&
+    chose.assignmentPriorityChoice defender caitlyn == some CombatAssignmentPriority.backline &&
+    (settled.assignmentPriorityChoice defender caitlyn).isNone &&
+    (settled.obj? plain).isNone && (settled.obj? caitlyn).isSome).getD false
+
+-- A Unit with both requirements can obey them both between a Tank and a Backline Unit.
+-- Damage immunity exempts a Tank. Counter Strike only prevents damage and preserves Tank priority.
+#guard (do
+  let attacker : PlayerId := ⟨0⟩
+  let defender : PlayerId := ⟨2⟩
+  let s := { teamState with
+    turn := 2, cards := ⟨db.cards ++ [
+      RiftboundCards.Origins.OGN_054, RiftboundCards.Origins.OGN_068,
+      RiftboundCards.Origins.OGN_189, RiftboundCards.Spiritforged.SFD_173]⟩ }
+  let (s, field) ← addObject s (newCard s.cards s attacker (cid "B0")) .battlefieldZone
+  let put (board : GameState) (code : String) :=
+    addObject board { newCard board.cards board defender (cid code) with loc := some field }
+      .battlefieldZone
+  let (s, tank) ← put s "OGN-054"
+  let (s, caitlyn) ← put s "OGN-068"
+  let (s, soraka) ← put s "SFD-173"
+  let (s, kayn) ← put s "OGN-189"
+  let s := s.modObj kayn (fun o => { o with moves := 2, movesTurn := some s.turn })
+  let s := (addTempKw ⟨.tank, .none⟩ .turn s caitlyn).1
+  let s := (addTempKw ⟨.tank, .none⟩ .turn s kayn).1
+  let s := s.addTurnFxOn defender tank .damagePrevented
+  let picks (prior : List ObjId) :=
+    (legalAssigns s field attacker prior).filterMap fun (a : Action) =>
+      match a.kind with | .assignPick u => some u | _ => none
+  return (combatAssignmentChoices s field attacker).isEmpty &&
+    (s.combatNeed tank).isNone && picks [] == [tank] &&
+    picks [tank] == [caitlyn] && picks [tank, caitlyn] == [soraka] &&
+    legalAssigns s field attacker [tank, caitlyn, soraka] == [Action.mk (.player attacker) .assignDone]).getD false
 
 -- The other two seats cannot put a third player's Unit in Combat. An effect forcing that
 -- Unit to the Battlefield plays it at the controller's Base instead.

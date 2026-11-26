@@ -61,6 +61,16 @@ meta def traceOf (seed turns : Nat) : String :=
   deathReplacementFields (some frame) true ==
     [("deathRootUnit", "5"), ("deathDepth", "1"), ("deathGearUnit", "5"), ("deathGearSource", "10")]
 
+-- A combat priority choice identifies the Unit and the selected keyword.
+#guard
+  let record (priority : CombatAssignmentPriority) :=
+    Effect.prim (.markOn .self (.combatAssignmentPriority priority))
+  let frame := Frame.eitherDo ⟨0⟩ ⟨5⟩ {} (record .tank) (record .backline) .nil
+  combatPriorityFields (some frame) true ==
+      [("combatPriorityUnit", "5"), ("combatAssignmentPriority", jstr "tank")] &&
+    combatPriorityFields (some frame) false ==
+      [("combatPriorityUnit", "5"), ("combatAssignmentPriority", jstr "backline")]
+
 -- quotes and backslashes in a name are escaped
 #guard jstr "a\"b\\c" == "\"a\\\"b\\\\c\""
 #guard jarr ["1", "2"] == "[1,2]"

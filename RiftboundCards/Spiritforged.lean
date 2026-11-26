@@ -5099,7 +5099,7 @@ def SFD_173 : CardDef :=
   { SFD_173.meta with
 
     abilities := [.passive .always [.assignedLast, .rescueWeakerHere]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-174
 /--

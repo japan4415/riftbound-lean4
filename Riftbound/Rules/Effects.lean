@@ -2386,10 +2386,10 @@ def damageDeathChoice (s : GameState) (hit : ObjId × Nat) :
     s.deathReplacementChoice id
   else none
 
-/-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
+/-- Combat assignment and damage replacement choices end once Combat Damage has been dealt. -/
 def clearDamageOrder (s : GameState) : GameState :=
   { s with turnFx := s.turnFx.filter (fun note => match note.kind with
-    | .combatDamageOrder _ => false
+    | .combatDamageOrder _ | .combatAssignmentPriority _ => false
     | _ => true) }
 
 /-- Forgetting the order of damage replacements changes no structural properties. -/

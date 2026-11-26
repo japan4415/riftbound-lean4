@@ -594,6 +594,13 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + amounts.join('、'), ''];
       }
       if (a.moreDamageDivisions) return [who + ': ほかの割り振りを見る', ''];
+      if (a.combatAssignmentPriority) {
+        const tank = a.combatAssignmentPriority === 'tank';
+        const keyword = tank ? 'Tank' : 'Backline';
+        const detail = tank ? '同じ支配者の Tank を持たないユニットより先'
+          : '同じ支配者の Backline を持たないユニットより後';
+        return [who + ': ' + boardCardLabel(a.combatPriorityUnit) + ' に ' + keyword + ' を適用', detail];
+      }
       if (a.damageReplacement) {
         const replacement = a.damageReplacement === 'double' ? '2倍にする' :
           a.damageReplacement === 'shield' ? 'すべて防ぐ' : '最大 ' + a.preventValue + ' 軽減する';
@@ -1548,6 +1555,7 @@ function renderLegal(i) {
   }
   const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
   const damageChoices = liveLegal.filter(({ a }) => a.damageReplacement);
+  const combatPriorityChoices = liveLegal.filter(({ a }) => a.combatAssignmentPriority);
   const tokenReplacement = liveLegal.find(({ a }) => a.unitTokenReplacement)?.a.unitTokenReplacement;
   const deathChoices = liveLegal.filter(({ a }) => deathReplacementUnit(a) != null);
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
@@ -1573,6 +1581,8 @@ function renderLegal(i) {
     : liveLegal.some(({ a }) => a.queuedSpell != null) ? '呪文の対象と支払いを選ぶ'
     : playPayment ? 'プレイの支払いを選ぶ' + (playPrice ? '（' + costText(playPrice) + '）' : '')
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
+    : combatPriorityChoices.length
+      ? cardNameAt(combatPriorityChoices[0].a.combatPriorityUnit, last) + ' に適用する戦闘ダメージの優先順を選ぶ'
     : damageChoices[0]?.a.combatDamageOrder ? '割り振り前に戦闘ダメージの置換順を選ぶ'
     : damageChoices.length ? '次に適用するダメージの置換効果を選ぶ'
     : tokenReplacement?.kind.endsWith('First') ? '先に適用するトークンの置換効果を選ぶ'
@@ -1583,7 +1593,7 @@ function renderLegal(i) {
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
   const answerCount = damageChoices.length
     ? liveLegal.filter(({ a }) => a.damageReplacement || a.moreDamageReplacements).length
-    : deathChoices.length || (choiceContext === 'attachmentCopy'
+    : combatPriorityChoices.length || deathChoices.length || (choiceContext === 'attachmentCopy'
       ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length);
   $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + answerCount + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';

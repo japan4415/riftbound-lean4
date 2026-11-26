@@ -218,6 +218,17 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
     | _ => [("moreDamageReplacements", "true")]
   | _ => []
 
+/-- Identify the Unit and the requirement chosen for its combat assignment. -/
+def combatPriorityFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ unit _ first other _) =>
+    match if yes then first else other with
+    | .prim (.markOn .self (.combatAssignmentPriority priority)) =>
+      let choice := match priority with | .tank => "tank" | .backline => "backline"
+      [("combatPriorityUnit", toString unit.n), ("combatAssignmentPriority", jstr choice)]
+    | _ => []
+  | _ => []
+
 /-- Describe the allocation selected for split damage (CR 355.14). -/
 def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
@@ -496,7 +507,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
         tokenLocationFields frame yes ++ unitTokenReplacementFields frame yes ++
-        damageOrderFields frame yes ++ damageDivisionFields frame yes ++
+        damageOrderFields frame yes ++ combatPriorityFields frame yes ++ damageDivisionFields frame yes ++
         deathReplacementFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
