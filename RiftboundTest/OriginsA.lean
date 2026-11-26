@@ -1445,11 +1445,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s5, _) ← put s4 s.me "OGN-136" .trash
   let trash (x : GameState) := (x.zone (.player s.me .trash)).length
   let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
-  let a ← fire s5 [.phaseStarted s.me .beginning]
+  let waiting ← fire s5 [.phaseStarted s.me .beginning]
+  let .chanceRecycleTrash p _ cards :: _ := waiting.pending | none
+  let (a, _) ← (step 100 waiting ⟨.chance, .arrange cards.reverse⟩).toOption
   let (t1, _) ← put s1 s.me "OGN-136" .trash
   let b ← fire t1 [.phaseStarted s.me .beginning]
   return s5.mightNow d == (s1.mightNow d).map (· + 4) && trash a + 3 == trash s5 &&
-    deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1
+    deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1 &&
+    p == s.me && cards.length == 3 && trash waiting == trash s5 &&
+    a.mightNow d == (s1.mightNow d).map (· + 1)
 
 -- Wraith of Echoes: two friendly units dying at once draw 1, not 2; two Wraiths draw 1 each
 #guard t fun s => do
@@ -1461,17 +1465,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← fire t1 [.died x s.me]
   return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == t1.handN s.me + 2
 
--- Dr. Mundo recycles the cards the player chooses, and not in the opponent's Beginning Phase
+-- Dr. Mundo chooses from the current Trash during resolution. None of the choices is a target.
 #guard t fun s => do
-  let (s1, _) ← put s s.me "OGN-109" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-001" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let (s5, d) ← put s4 s.me "OGN-016" .trash
-  let x ← fire s5 [.phaseStarted s.me .beginning] { obj := fun o => o != d }
-  let y ← fire s5 [.phaseStarted s.you .beginning]
-  return x.countIn s.me .trash "OGN-016" == 1 && (x.zone (.player s.me .trash)).length == 1 &&
-    (y.zone (.player s.me .trash)).length == 4
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "OGN-109" .base
+  let (s, first) ← put s p "OGN-136" .trash
+  let (s, second) ← put s p "OGN-001" .trash
+  let (s, third) ← put s p "OGN-004" .trash
+  let (s, left) ← put s p "OGN-016" .trash
+  let (s, enemy) ← put s q "OGN-010" .trash
+  let triggers := s.detect [.phaseStarted p .beginning]
+  let (initial, _) ← (advance 100 { s with pending := insertTriggers triggers (below s.pending) } []).toOption
+  let (passed, _) ← (step 100 initial ⟨.player p, .pass⟩).toOption
+  let (choosing, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let pick (state : GameState) (id : ObjId) := step 100 state ⟨.player p, .choose id⟩
+  let (a, firstEvents) ← (pick choosing third).toOption
+  let (b, secondEvents) ← (pick a first).toOption
+  let (waiting, thirdEvents) ← (pick b second).toOption
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let deck := Zone.player p .mainDeck
+  let (done, events) ← (step 100 waiting ⟨.chance, .arrange [second, third, first]⟩).toOption
+  let otherTurn ← fire s [.phaseStarted q .beginning]
+  let bottom := ((done.zone deck).drop (s.zone deck).length).filterMap (fun id =>
+    (done.cardDef? id).map (·.id))
+  return cards == [third, first, second] && firstEvents == [] && secondEvents == [] &&
+    thirdEvents == [] && events.contains (.recycled p) &&
+    !(pick choosing enemy).isOk && !(pick a third).isOk &&
+    !(step 100 choosing ⟨.player p, .decide false⟩).isOk &&
+    a.zone (.player p .trash) == s.zone (.player p .trash) &&
+    waiting.zone deck == s.zone deck && done.zone (.player p .trash) == [left] &&
+    done.zone (.player q .trash) == [enemy] && otherTurn.zone (.player p .trash) == s.zone (.player p .trash) &&
+    bottom == [cid "OGN-001", cid "OGN-004", cid "OGN-136"]
 
 -- Qiyana (OGN-155): when she conquers, draw 1 or channel 1 rune exhausted
 #guard t fun s => do
@@ -1793,20 +1818,57 @@ meta def t (f : GameState → Option Bool) : Bool :=
     spent.mightNow sett == (a.mightNow sett).map (· + 4 - 1) &&
     (activate t1 s.me plain 2).isNone
 
--- Forge of the Future (OGN-212): a Recruit token when played; kill it to recycle up to 4 cards
+-- Forge of the Future creates a Recruit and pays Kill this before anyone can respond.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-212" .hand
-  let a ← play s1 s.me c
-  let (t1, f) ← put s s.me "OGN-212" .base
-  let (t2, _) ← put t1 s.me "OGN-136" .trash
-  let (t3, _) ← put t2 s.you "OGN-001" .trash
-  let k ← activate t3 s.me f 1
-  let trashes (x : GameState) := (x.zone (.player s.me .trash)).length +
-    (x.zone (.player s.you .trash)).length
-  let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).length
-  -- the Forge itself, my card and the opponent's card are recycled: three cards, up to four
-  return a.countNamed s.me .base "Recruit" == 1 && trashes k == 0 &&
-    deck k s.me == deck t3 s.me + 2 && deck k s.you == deck t3 s.you + 1
+  let p := s.me
+  let q := s.you
+  let (s1, c) ← put s p "OGN-212" .hand
+  let played ← play s1 p c
+  let (s, f) ← put s p "OGN-212" .base
+  let (s, own) ← put s p "OGN-136" .trash
+  let (s, enemy) ← put s q "OGN-001" .trash
+  let (queued, events) ← (step 100 s ⟨.player p, .activate f 1 ⟨0, []⟩ []⟩).toOption
+  let forge ← queued.firstOf p .trash "OGN-212"
+  let waiting := settleChain {} 12 queued
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (done, recycled) ← (step 100 waiting ⟨.chance, .arrange [own, enemy, forge]⟩).toOption
+  let declined := settleChain { yes := false } 12 queued
+  let deck (state : GameState) (seat : PlayerId) := (state.zone (.player seat .mainDeck)).length
+  return played.countNamed p .base "Recruit" == 1 && queued.locate f == none &&
+    events.contains (.moved f forge (.player p .trash)) && events.contains (.died forge p) &&
+    queued.pending.head?.any (fun | .chainPass .. => true | _ => false) &&
+    queued.zone (.player p .trash) == waiting.zone (.player p .trash) &&
+    queued.zone (.player q .trash) == waiting.zone (.player q .trash) &&
+    cards.length == 3 && cards.contains forge && cards.contains own && cards.contains enemy &&
+    done.zone (.player p .trash) == [] && done.zone (.player q .trash) == [] &&
+    deck done p == deck s p + 2 && deck done q == deck s q + 1 &&
+    recycled.contains (.recycled p) && recycled.contains (.recycled q) &&
+    declined.zone (.player p .trash) == queued.zone (.player p .trash) &&
+    declined.zone (.player q .trash) == queued.zone (.player q .trash)
+
+-- Forge can stop after the first choice, and cannot choose a fifth card.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, forge) ← put s p "OGN-212" .base
+  let (s, first) ← put s q "OGN-136" .trash
+  let (s, second) ← put s q "OGN-001" .trash
+  let (s, third) ← put s q "OGN-004" .trash
+  let (s, fourth) ← put s q "OGN-016" .trash
+  let (s, fifth) ← put s q "OGN-010" .trash
+  let (queued, _) ← (step 100 s ⟨.player p, .activate forge 1 ⟨0, []⟩ []⟩).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (picking, _) ← (step 100 offer ⟨.player p, .decide true⟩).toOption
+  let (one, events) ← (step 100 picking ⟨.player p, .choose first⟩).toOption
+  let (done, _) ← (step 100 one ⟨.player p, .decide false⟩).toOption
+  let wanted := [first, second, third, fourth]
+  let waiting := settleChain { obj := wanted.contains } 12 queued
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  return events == [] && one.zone (.player q .trash) == queued.zone (.player q .trash) &&
+    !(done.zone (.player q .trash)).contains first &&
+    (done.zone (.player q .trash)).length == 4 && cards.length == 4 &&
+    cards.all wanted.contains && !cards.contains fifth
 
 -- Monastery of Hirana (OGN-282) and Wildclaw Shaman (OGN-147): spend a buff
 #guard t fun s => do

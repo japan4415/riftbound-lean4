@@ -2934,10 +2934,10 @@ def OGN_109.meta : CardDef :=
 def OGN_109 : CardDef :=
   { OGN_109.meta with
     abilities :=
-      let r : Effect := .prim (.recycle (Selector.one .friendly .inTrash []))
       [.passive .always [.mightPlus .self (.count (Selector.all .friendly .inTrash []))],
-       .triggered { event := .at_ .beginning } (.of [] (.seqOf [r, r, r])) .unlimited],
-    status := .drafted }
+       .triggered { event := .at_ .beginning } (.of [] (.recycleFromTrash .you 3 false))
+         .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-110
 /--
@@ -5732,11 +5732,10 @@ def OGN_212.meta : CardDef :=
 def OGN_212 : CardDef :=
   { OGN_212.meta with
     abilities :=
-      let r : Effect := .may (.prim (.recycle (Selector.one .any .inTrash [])))
       [.triggered (.onSelf .play) (.of [] (.prim (.create "Recruit" (.const 1) .atBase false)))
         .unlimited,
-       .activated [] .normal (.of [] (.seqOf [.prim (.kill .self), r, r, r, r])) .unlimited],
-    status := .drafted }
+       .activated [.killSelf] .normal (.of [] (.recycleFromTrash .any 4 true)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-213
 /--

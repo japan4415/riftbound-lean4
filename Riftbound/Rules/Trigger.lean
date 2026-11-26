@@ -817,7 +817,9 @@ def Frame.isResolution : Frame → Bool
   | .combatDamage .. => true
   | .combatResolve .. => true
   | .pickDo _ _ _ _ _ (.recordBanishReplay ..) _
-  | .pickDo _ _ _ _ _ (.recordRuneRecycle ..) _ => true
+  | .pickDo _ _ _ _ _ (.recordRuneRecycle ..) _
+  | .pickDo _ _ _ _ _ (.recordTrashRecycle ..) _ => true
+  | .eitherDo _ _ _ (.chooseTrashRecycle ..) _ _ => true
   | .predict .. | .chancePredict .. | .chanceRecycleTrash .. => true
   | .eitherDo _ _ _ (.fundPermanentFromEffect ..) _ _ => true
   | .eitherDo _ _ _ (.finishFundedPermanent ..) _ _ => true

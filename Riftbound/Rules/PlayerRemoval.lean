@@ -699,6 +699,9 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
               entry.1 != departing && stillPresent entry.2.1
             [.run controller src env
               (.cons (.orderBanishReplays (remaining.filter keepEntry) (ordered.filter keepEntry)) rest)]
+        | .recordTrashRecycle side count upTo picked =>
+          if p == departing then [] else
+            [.run p src env (.cons (.recycleFromTrash side (count + 1) upTo picked) rest)]
         | .recordRuneRecycle _ later picked =>
           [.run after.chainPrioritySeat src env
             (.cons (.orderRuneRecycle (later.filter (fun (owner, _) => owner != departing))

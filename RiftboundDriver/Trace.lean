@@ -521,6 +521,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.groupMove _ dest pay units) =>
           [("groupMoveUnits", jarr (units.map (fun u => toString u.n)))] ++ moveFields dest pay
         | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
+        | some (.eitherDo _ _ _ (.chooseTrashRecycle ..) _ _) =>
+          [("choiceContext", jstr "recycleTrash")]
         | some (.eitherDo _ _ _ (.prim (.attachPaying ..)) (.doThen (.prim (.exhaust _)) _) _) =>
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
@@ -536,6 +538,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.groupMove ..) => [("choiceContext", jstr "groupMove")]
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.recordBanishReplay ..) _) => [("choiceContext", jstr "banishReplay")]
+        | some (.pickDo _ _ _ _ _ (.recordTrashRecycle ..) _) => [("choiceContext", jstr "recycleTrash")]
         | some (.pickDo _ _ _ _ _ .addReservedLegendPicked _) => [("choiceContext", jstr "reserveLegend")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.doThen (.prim (.exhaust _)) _) _) =>

@@ -237,6 +237,14 @@ inductive Effect where
   | recycleLooked
   /-- Recycle the cards targeted in Trashes together (CR 417.5). -/
   | recycleTrashTargets
+  /-- Choose cards in the specified Trashes as this resolves, then Recycle them together (CR 417.4-6). -/
+  | recycleFromTrash (side : Side) (count : Nat) (upTo : Bool) (picked : List ObjId := [])
+  /-- Offer the next object choice after agreeing to Recycle one more card. -/
+  | chooseTrashRecycle (side : Side) (count : Nat) (picked : List ObjId)
+  /-- Continue a group Recycle with the chosen card still in its Trash. -/
+  | recordTrashRecycle (side : Side) (count : Nat) (upTo : Bool) (picked : List ObjId)
+  /-- Recycle an exact group selected during resolution. -/
+  | finishTrashRecycle (picked : List ObjId)
   /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/
   | recycleRunes
   /-- Continue collecting the order of each owner's Runes before any are Recycled. -/

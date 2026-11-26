@@ -424,6 +424,7 @@ def Effect.understood : Effect → Bool
   | .banishAndPlayLooked _ fs => FilterList.understood fs
   | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
+  | .recycleFromTrash _ _ _ picked => picked.isEmpty
   | .banishAndPlayCard sel _ => sel.understood
   | .playCard sel _ _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>

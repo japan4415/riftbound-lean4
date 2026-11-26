@@ -391,9 +391,11 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
+  | .recycleFromTrash _ _ _ picked => picked.isEmpty
   | .playCard sel _ _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
-  | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
+  | .chooseTrashRecycle .. | .recordTrashRecycle .. | .finishTrashRecycle .. |
+      .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
       .banishForReplay .. | .orderBanishReplays .. | .recordBanishReplay .. |

@@ -4353,7 +4353,8 @@ def Effect.pickTargets (e : Effect) : Bool :=
   match e with
   | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ |
       .prim (.castInline _) | .prim (.createAt ..) | .recordRuneRecycle .. |
-      .addReservedLegendPicked | .playOfferedCard .. | .recordBanishReplay .. => false
+      .addReservedLegendPicked | .playOfferedCard .. | .recordBanishReplay .. |
+      .recordTrashRecycle .. => false
   | _ => !e.isLinkedCost
 
 /-- A resolution pick in a private or secret zone is not a target (CR 355.10.a). -/
@@ -4967,8 +4968,7 @@ theorem recycleTrashCards_safe (s : GameState) (cards : List ObjId) :
 /-- Only decks receiving multiple Main Deck cards need a random ordering. Runes use their
 owners' ordering decision (CR 417.5.a). -/
 def recycleTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (es : EffectList) : GameState × List Frame × List Event :=
-  let chosen := ((Selector.slotsFrom 0).eval s p src env).getD []
+    (es : EffectList) (chosen : List ObjId) : GameState × List Frame × List Event :=
   let (runes, cards) := (chosen.filter s.inTrash).eraseDups.partition
     (fun id => recycleKind s id == .runeDeck)
   let owned (owner : PlayerId) (ids : List ObjId) :=
@@ -4984,7 +4984,7 @@ def recycleTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (done.1, remainingFrames, done.2)
 
 theorem recycleTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (es : EffectList) : Safe s (recycleTrashStep s p src env es).1 := by
+    (es : EffectList) (chosen : List ObjId) : Safe s (recycleTrashStep s p src env es chosen).1 := by
   unfold recycleTrashStep
   dsimp only
   split
@@ -4992,7 +4992,8 @@ theorem recycleTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env 
   · exact recycleTrashCards_safe _ _
 
 theorem recycleTrashStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
-    {env : Env} {es : EffectList} {f : Frame} (h : f ∈ (recycleTrashStep s p src env es).2.1) :
+    {env : Env} {es : EffectList} {chosen : List ObjId} {f : Frame}
+    (h : f ∈ (recycleTrashStep s p src env es chosen).2.1) :
     f.isPlay = true := by
   unfold recycleTrashStep at h
   dsimp only at h
@@ -5009,6 +5010,12 @@ theorem recycleTrashStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
       rfl
     · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
       rcases h with rfl | rfl <;> rfl
+
+/-- Cards still eligible for a group Recycle without targeting (CR 417.6). -/
+def GameState.trashRecycleCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (side : Side) (picked : List ObjId) : List ObjId :=
+  let candidates := (s.pickCandidates p src env side .inTrash (.cons .physicalCard .nil) false).getD []
+  candidates.filter (fun id => !picked.contains id)
 
 /-- Mandatory locations imposed by resolving a Hidden spell or the play effect of a Unit
 that was played from hiding (CR 811.1.d.5). -/
@@ -6364,7 +6371,31 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     let choices := fundPermanentOptions s p card terms plan adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
   | .recycleLooked => recycleLookedStep s p src env es
-  | .recycleTrashTargets => recycleTrashStep s p src env es
+  | .recycleTrashTargets =>
+    recycleTrashStep s p src env es (((Selector.slotsFrom 0).eval s p src env).getD [])
+  | .finishTrashRecycle picked => recycleTrashStep s p src env es picked.reverse
+  | .recycleFromTrash side count upTo picked =>
+    let done := Effect.finishTrashRecycle picked
+    match count, s.trashRecycleCandidates p src env side picked with
+    | 0, _ | _, [] => (s, [.run p src env (.cons done es)], [])
+    | n + 1, first :: more =>
+      if upTo then
+        (s, [.eitherDo p src env (.chooseTrashRecycle side n picked) done es], [])
+      else
+        (s, [.pickDo p src env first more (.recordTrashRecycle side n false picked) es], [])
+  | .chooseTrashRecycle side count picked =>
+    match s.trashRecycleCandidates p src env side picked with
+    | [] => (s, [.run p src env (.cons (.finishTrashRecycle picked) es)], [])
+    | first :: more =>
+      (s, [.pickDo p src env first more (.recordTrashRecycle side count true picked) es], [])
+  | .recordTrashRecycle side count upTo picked =>
+    match env.bindings with
+    | (var, .obj id) :: previous =>
+      if var == pickVar then
+        (s, [.run p src { env with bindings := previous }
+          (.cons (.recycleFromTrash side count upTo (id :: picked)) es)], [])
+      else skip
+    | _ => skip
   | .recycleRunes =>
     let runes := s.inPlay.filter (fun id =>
       (s.cardDef? id).any (·.hasType .rune) && (s.obj? id).any (·.controller == p))
@@ -6513,7 +6544,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact banishTopForPlay_safe s p
     | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
-    | exact recycleTrashStep_safe s p src env es
+    | exact recycleTrashStep_safe s p src env es _
     | exact recycleList_safe _ s
     | exact setPoolFor_safe s p src _
     | exact setPool_safe s p _
