@@ -68,7 +68,7 @@ def OGS_002 : CardDef :=
   { OGS_002.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .battlefield]]
     (.prim (.deal (.all .enemy .atBattlefield [.ofType .unit, .at_ (.slot 0)]) (.const 3)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-003
 /--
@@ -261,7 +261,7 @@ def OGS_009.meta : CardDef :=
 def OGS_009 : CardDef :=
   { OGS_009.meta with
     abilities := [.passive .always [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-010
 /--
@@ -287,7 +287,7 @@ def OGS_010 : CardDef :=
   { OGS_010.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.prim (.returnToHand (.one .friendly .inTrash [.ofType .spell])))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-011
 /--
@@ -439,7 +439,7 @@ def OGS_016.meta : CardDef :=
 def OGS_016 : CardDef :=
   { OGS_016.meta with
     abilities := [.passive .always [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-017
 /--

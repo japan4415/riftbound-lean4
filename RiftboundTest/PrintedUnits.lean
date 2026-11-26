@@ -305,4 +305,64 @@ private meta def printedRecruit (code : String) : Bool := inLab fun s => do
     board.mightNow baseUnit == some 5 && atBase.mightNow baseUnit == some 6 &&
     atBase.mightNow together == some 5
 
+private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domain)
+    (might : Int) : Bool := inLab fun s => do
+  let p := s.me
+  let (board, card) ← put s p code .hand
+  let funded := board.rich p
+  let played ← cast funded p card ⟨energy, [power]⟩
+  let unit ← played.firstOf p .base code
+  return played.mightNow unit == some might && played.tired unit == some false &&
+    (played.poolOf p).energy == (funded.poolOf p).energy - energy &&
+    (played.poolOf p).totalPower + 1 == (funded.poolOf p).totalPower &&
+    (cast funded p card ⟨energy, [.fury]⟩).isNone &&
+    (cast funded p card ⟨energy - 1, [power]⟩).isNone
+
+-- Master Yi, Honed and Vanguard Attendant both enter Ready.
+#guard printedReadyEntry "OGS-009" 7 .body 6
+#guard printedReadyEntry "OGS-016" 6 .order 5
+
+-- Master Yi can move directly between Battlefields. Vanguard Attendant must return to Base first.
+#guard inLab fun s => do
+  let p := s.me
+  let dest ← s.battlefields.find? (· != s.bf0)
+  let (s, yi) ← putAt s p "OGS-009" s.bf0
+  let (board, attendant) ← putAt s p "OGS-016" s.bf0
+  let move (unit : ObjId) : Action := ⟨.player p, .standardMove unit (.battlefield dest)⟩
+  let (moved, events) ← (step 100 board (move yi)).toOption
+  return (step 100 board (move attendant)).toOption.isNone &&
+    (moved.obj? yi).any (·.loc == some dest) && moved.tired yi == some true &&
+    events.contains (Event.standardMoved yi (some dest))
+
+-- Firestorm uses one Battlefield and deals damage only to enemy Units there.
+#guard inLab fun s => do
+  let p := s.me
+  let field := s.bf0
+  let other ← s.battlefields.find? (· != field)
+  let (s, spell) ← put s p "OGS-002" .hand
+  let (s, ally) ← putAt s p "OGN-142" field
+  let (s, first) ← putAt s s.you "OGN-142" field
+  let (s, second) ← putAt s s.you "OGN-142" field
+  let (board, elsewhere) ← putAt s s.you "OGN-142" other
+  let played ← play board p spell [field]
+  let damage (id : ObjId) := (played.obj? id).map (·.damage)
+  return damage first == some 3 && damage second == some 3 &&
+    damage ally == some 0 && damage elsewhere == some 0 &&
+    (play board p spell [first]).isNone
+
+-- Annie returns one chosen Spell from her controller's Trash to their hand.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, annie) ← put s p "OGS-010" .hand
+  let (s, first) ← put s p "OGN-094" .trash
+  let (s, chosen) ← put s p "OGN-095" .trash
+  let (s, unit) ← put s p "OGN-142" .trash
+  let (board, rival) ← put s s.you "OGN-095" .trash
+  let returned ← play board p annie [] { obj := (· == chosen) }
+  return returned.countIn p .hand "OGN-095" == 1 &&
+    (returned.zone (.player p .trash)).contains first &&
+    (returned.zone (.player p .trash)).contains unit &&
+    !(returned.zone (.player p .trash)).contains chosen &&
+    (returned.zone (.player s.you .trash)).contains rival
+
 end RiftboundTest
