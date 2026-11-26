@@ -1108,13 +1108,6 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire { s1 with turn := 2 } [.phaseStarted s.you .beginning]
   return a.pointsOf s.you == s1.pointsOf s.you + 1 && a.pointsOf s.me == s1.pointsOf s.me
 
--- Dark Child (OGS-017) now sets off its end-of-turn ability; a choice of two runes is not
--- understood yet, so the game goes on without it
-#guard t fun s => do
-  let (s1, _) ← put s s.me "OGS-017" .base
-  let a ← fire s1 [.phaseStarted s.me .ending]
-  return a.pending.length ≤ s1.pending.length + 1
-
 -- Zenith Blade (OGN-262): stun an enemy unit at a battlefield; I may move a friendly unit there
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-262" .hand

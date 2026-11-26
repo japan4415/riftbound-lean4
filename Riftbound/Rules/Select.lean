@@ -603,7 +603,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _, _ => false)
   | .alone =>
     pure (match s.combatNow, s.obj? id with
-      | some (bf, _), some o => o.loc == some bf && (s.unitsAtOf bf o.controller).length == 1
+      | some (bf, _), some o =>
+        (s.unitsAtOf bf o.controller).contains id &&
+          !(s.players.any fun p => s.config.mode.sameSide p o.controller &&
+            (s.unitsAtOf bf p).any (· != id))
       | _, _ => false)
   | .isAttached => pure ((s.obj? id).any (·.attached.isSome))
   | .attached => pure (s.inPlay.any (fun g => (s.obj? g).any (·.attached == some id)))

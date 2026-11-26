@@ -365,7 +365,8 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
     !(returned.zone (.player p .trash)).contains chosen &&
     (returned.zone (.player s.you .trash)).contains rival
 
--- In team play, Firestorm hits both opponents and Annie only returns from her controller's Trash.
+-- In team play, Firestorm hits both opponents, Decisive Strike strengthens the teammate,
+-- and Annie only returns from her controller's Trash.
 #guard inLab fun labState => do
   let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
   let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
@@ -379,12 +380,141 @@ private meta def printedReadyEntry (code : String) (energy : Nat) (power : Domai
   let (s, first) ← putAt s enemyA "OGN-142" field
   let (s, second) ← putAt s enemyB "OGN-142" field
   let hit ← play s p spell [field]
+  let (s, strike) ← put s p "OGS-024" .hand
+  let strengthened ← cast (s.fund p 5 (order := 1)) p strike ⟨5, [.order]⟩
   let (s, annie) ← put s p "OGS-010" .hand
   let (s, _) ← put s p "OGN-094" .trash
   let (s, teammateSpell) ← put s mate "OGN-095" .trash
   let returned ← play s p annie [] { obj := (· == teammateSpell) }
   return [first, second].all (fun id => (hit.obj? id).any (·.damage == 3)) &&
-    (hit.obj? ally).any (·.damage == 0) && returned.countIn p .hand "OGN-094" == 1 &&
+    (hit.obj? ally).any (·.damage == 0) && strengthened.mightNow ally == some 12 &&
+    strengthened.mightNow first == some 10 && returned.countIn p .hand "OGN-094" == 1 &&
     (returned.zone (.player mate .trash)).contains teammateSpell
+
+-- Both Lux cards watch the controller's spells after resolution and read printed Energy.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, lux) ← put s p "OGS-006" .base
+  let (s, _) ← put s p "OGS-021" .legendZone
+  let (s, _) ← put s s.you "OGS-021" .legendZone
+  let (s, cheap) ← put s p "OGS-011" .hand
+  let (s, dear) ← put s p "OGS-024" .hand
+  let cheapPlayed ← play s p cheap []
+  let discounted := cheapPlayed.addTurnFx p (.nextSpellCostMinus 2)
+  let dearPlayed ← cast (discounted.fund p 3 (body := 1)) p dear ⟨3, [.body]⟩
+  return cheapPlayed.mightNow lux == some 5 && cheapPlayed.handN p + 1 == s.handN p &&
+    dearPlayed.handN p == cheapPlayed.handN p && dearPlayed.handN s.you == s.handN s.you &&
+    dearPlayed.mightNow lux == some 10
+
+-- In Gentlemen's Duel the units deal the damage themselves.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, _) ← put s p "OGS-001" .base
+  let (s, duel) ← put s p "OGS-008" .hand
+  let (s, ally) ← put s p "OGN-049" .base
+  let (s, enemy) ← put s s.you "OGN-142" .base
+  let resolved ← play s p duel [ally, enemy]
+  return (play s p duel [enemy, ally]).isNone && (play s p duel [ally]).isNone &&
+    (resolved.obj? enemy).any (·.damage == 8) && resolved.countIn p .trash "OGN-049" == 1
+
+-- Dark Child targets two different runes when its controller ends their turn.
+#guard inLab fun initial => do
+  let p := initial.me
+  let s := (initial.noRunes p).noRunes initial.you
+  let (s, _) ← put s p "OGS-017" .legendZone
+  let (s, a) ← put s p "OGN-042" .base
+  let (s, b) ← put s p "OGN-042" .base
+  let (s, c) ← put s s.you "OGN-042" .base
+  let ready := ((s.tire a).tire b).tire c
+  let event := Event.phaseStarted p .ending
+  let prepared ← firePicks ready [event]
+  let resolved ← fire ready [event] { pick := fun ts => ts.contains a && ts.contains c }
+  return prepared.contains a && prepared.contains b && prepared.contains c &&
+    (ready.detect [Event.phaseStarted s.you .ending]).isEmpty &&
+    resolved.tired a == some false && resolved.tired c == some false && resolved.tired b == some true
+
+-- Tibbers marks damage on units at every Battlefield, including friendly units, and needs
+-- two Power from its own domains.
+#guard inLab fun s => do
+  let p := s.me
+  let other ← s.battlefields.find? (· != s.bf0)
+  let (s, tibbers) ← put s p "OGS-018" .hand
+  let (s, ally) ← putAt s p "OGN-142" s.bf0
+  let (s, enemy) ← putAt s s.you "OGN-142" other
+  let (s, baseUnit) ← put s p "OGN-142" .base
+  let funded := s.rich p
+  let resolved ← cast funded p tibbers ⟨8, [.fury, .chaos]⟩
+  return (cast funded p tibbers ⟨8, [.fury, .order]⟩).isNone &&
+    [ally, enemy].all (fun id => (resolved.obj? id).any (·.damage == 3)) &&
+    (resolved.obj? baseUnit).any (·.damage == 0) && resolved.countIn p .base "OGS-018" == 1
+
+-- Wuju Bladesman gives Might only to a friendly unit defending alone.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, _) ← put s p "OGS-019" .legendZone
+  let (s, own) ← putAt s p "OGN-049" s.bf0
+  let (s, foe) ← putAt s s.you "OGN-049" s.bf0
+  let (crowd, _) ← putAt s p "OGN-049" s.bf0
+  return s.mightNow own == some 5 && (s.inCombatAt s.bf0 s.you).mightNow own == some 7 &&
+    (s.inCombatAt s.bf0 p).mightNow own == some 5 &&
+    (s.inCombatAt s.bf0 p).mightNow foe == some 5 &&
+    (crowd.inCombatAt s.bf0 s.you).mightNow own == some 5
+
+-- Highlander spends its replacement on the first death and recalls the unit exhausted.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, highlander) ← put s p "OGS-020" .hand
+  let (s, target) ← putAt s p "OGN-049" s.bf0
+  let (s, enemy) ← putAt s s.you "OGN-049" s.bf0
+  let shielded ← play s p highlander [target]
+  let (recalled, first) := killOrSave shielded target
+  let (killed, second) := killOrSave recalled target
+  let (nextTurn, _) := killOrSave { shielded with turn := shielded.turn + 1 } target
+  let discarded ← killed.firstOf p .trash "OGN-049"
+  return (play s p highlander [enemy]).isNone && first.contains (.recalled target) &&
+    (recalled.obj? target).any (fun o => o.loc.isNone && o.exhausted) &&
+    !first.any (fun | .died .. | .standardMoved .. => true | _ => false) &&
+    second.contains (.died discarded p) &&
+    killed.countIn p .trash "OGN-049" == 1 && nextTurn.countIn p .trash "OGN-049" == 1
+
+-- Might of Demacia uses the Battlefield of this Conquer, even if another was scored first.
+#guard inLab fun s => do
+  let p := s.me
+  let field ← s.battlefields.find? (· != s.bf0)
+  let (s, _) ← put s p "OGS-023" .legendZone
+  let mut crowded := s
+  for _ in [:4] do
+    let (next, _) ← putAt crowded p "OGN-049" s.bf0
+    crowded := next
+  let alreadyScored := crowded.modObj s.bf0 (fun o => { o with scored := [p] })
+  let (scoredEmpty, _, emptyEvents) := scoreBf alreadyScored p field true
+  let empty ← fire scoredEmpty emptyEvents
+  let emptyMarked := s.modObj s.bf0 (fun o => { o with scored := [p] })
+  let mut three := emptyMarked
+  for _ in [:3] do
+    let (next, _) ← putAt three p "OGN-049" field
+    three := next
+  let (four, _) ← putAt three p "OGN-049" field
+  let (scoredThree, _, threeEvents) := scoreBf three p field true
+  let (scoredFour, _, fourEvents) := scoreBf four p field true
+  let withoutDraw ← fire scoredThree threeEvents
+  let draws ← fire scoredFour fourEvents
+  return empty.handN p == s.handN p && withoutDraw.handN p == s.handN p &&
+    draws.handN p == s.handN p + 2 &&
+    (four.detect [Event.scored p field false]).isEmpty
+
+-- Decisive Strike accepts either of its domains and increases friendly Might for the turn.
+#guard inLab fun s => do
+  let p := s.me
+  let (s, strike) ← put s p "OGS-024" .hand
+  let (s, baseUnit) ← put s p "OGN-049" .base
+  let (s, fieldUnit) ← putAt s p "OGN-049" s.bf0
+  let (s, enemy) ← put s s.you "OGN-049" .base
+  let funded := s.rich p
+  let byBody ← cast funded p strike ⟨5, [.body]⟩
+  let byOrder ← cast funded p strike ⟨5, [.order]⟩
+  return [byBody, byOrder].all (fun board => board.mightNow baseUnit == some 7 &&
+    board.mightNow fieldUnit == some 7 && board.mightNow enemy == some 5) &&
+    (cast funded p strike ⟨5, [.fury]⟩).isNone
 
 end RiftboundTest

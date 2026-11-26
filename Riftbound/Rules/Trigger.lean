@@ -57,10 +57,11 @@ def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
-def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef) :
+def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef)
+    (eventBattlefields : Option (List ObjId) := none) :
     Bool :=
   let shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none
-  let env : Env := { passMight := s.mightTable, shownOff }
+  let env : Env := { passMight := s.mightTable, shownOff, eventBattlefields }
   t.subject == .self && condOkEnv s src who env t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
@@ -73,13 +74,16 @@ def limitOk (s : GameState) (src : ObjId) (idx : Nat) (limit : Limit)
 object `src` controlled by `p`, that fire on the event. -/
 def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
     (eventMatches : TriggerEvent → Bool) (d : CardDef)
-    (lo hi : Nat) (copy : Option Timestamp := none) : List PendTrigger :=
+    (lo hi : Nat) (copy : Option Timestamp := none)
+    (eventBattlefields : Option (List ObjId) := none) : List PendTrigger :=
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim copy then
+      if eventMatches t.event && trigOk s src p t body eventBattlefields &&
+          limitOk s src (lo + j) lim copy then
         some {
-          source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy
+          source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy,
+          eventBattlefields,
           shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none }
       else none
     | _ => none)
@@ -91,23 +95,27 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
 
 /-- The object's abilities whose event matches, including abilities it gains (CR 137, 479.3). -/
 def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
-    (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none) :
+    (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none)
+    (eventBattlefields : Option (List ObjId) := none) :
     List PendTrigger :=
   let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? src
   let stamp := (lastCopy.map (·.stamp)) <|> s.copyStamp? src
   let last := eventMatches .leave || eventMatches .die || eventMatches .deathknell
   (match definition with
     | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length stamp
+        eventBattlefields
     | none => []) ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
       if o.attached == some src then
         triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
+          (eventBattlefields := eventBattlefields)
       else []
     | _, _ => []) ++
   (s.attachmentTextDefs src last).flatMap (fun (d, stamp) =>
-    triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)) ++
+    triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)
+      eventBattlefields) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
@@ -118,13 +126,15 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
         match s.cards.find? ⟨c⟩ with
         | some d =>
           triggersAmongMatching s src (if u == src then p else f.who) eventMatches d i (i + 1)
+            (eventBattlefields := eventBattlefields)
         | none => []
       else []
     | _, _ => [])
 
 /-- The triggered abilities of the object that fire on exactly this event. -/
-def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) : List PendTrigger :=
-  triggersOfMatching s src p (· == ev)
+def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent)
+    (eventBattlefields : Option (List ObjId) := none) : List PendTrigger :=
+  triggersOfMatching s src p (· == ev) (eventBattlefields := eventBattlefields)
 
 /-- The definition of a queued trigger, including a keyword assembled from several sources. -/
 def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
@@ -679,17 +689,17 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
-    let eff := (
+    let atField (src : ObjId) (event : TriggerEvent) := triggersOf s src p event (some [bf])
+    let eff :=
       (s.trigUnitsAt bf p).flatMap
-        (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
-          triggersOf s u p .scored ++
+        (fun u => atField u (if conquer then .conquer else .hold) ++
+          atField u .scored ++
           -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
-          (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
+          (if s.holdIsConquer u then atField u (if conquer then .hold else .conquer)
            else [])) ++
       (s.zone (.player p .legendZone)).flatMap
-        (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
-      triggersOf s bf p (if conquer then .youConquer else .youHold)).map
-        (fun t => { t with eventBattlefields := some [bf] })
+        (fun l => atField l (if conquer then .youConquer else .youHold)) ++
+      atField bf (if conquer then .youConquer else .youHold)
     -- the effects fire one more time if a unit there says so
     eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
     -- what the opponents of the player who scores wait for

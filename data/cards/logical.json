@@ -9283,6 +9283,7 @@
    "mightBonus": null,
    "name": "Tibbers",
    "power": 2,
+   "powerOwn": true,
    "printings": [
     "OGS-018/024"
    ],
@@ -9290,6 +9291,9 @@
     "OGS"
    ],
    "subtitle": "Annie",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Annie"
    ],
@@ -9350,6 +9354,9 @@
     "OGS"
    ],
    "subtitle": "Yi",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Master Yi"
    ],
@@ -9411,6 +9418,9 @@
     "OGS"
    ],
    "subtitle": "Lux",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Lux"
    ],
@@ -9465,6 +9475,7 @@
    "mightBonus": null,
    "name": "Decisive Strike",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "OGS-024/024"
    ],
@@ -9472,6 +9483,9 @@
     "OGS"
    ],
    "subtitle": "Garen",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Garen"
    ],

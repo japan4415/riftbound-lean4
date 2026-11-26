@@ -23,6 +23,10 @@ open Riftbound RiftboundCards
 -- the cards of each set (first printings)
 #guard Origins.cards.length == 298
 #guard ProvingGrounds.cards.length == 24
+#guard (ProvingGrounds.cards.filter (·.hasSupertype .signature)).map (·.id.code) ==
+  ["OGS-018", "OGS-020", "OGS-022", "OGS-024"]
+#guard ProvingGrounds.OGS_018.cost == some ⟨8, [.own, .own]⟩
+#guard ProvingGrounds.OGS_024.cost == some ⟨5, [.own]⟩
 #guard Spiritforged.cards.length == 222
 #guard Unleashed.cards.length == 225
 #guard Vendetta.cards.length == 167
@@ -104,11 +108,8 @@ open Riftbound RiftboundCards
   | some c => c.status == .full && c.spellRuns
   | none => false
 
--- the Spells with written effects: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
--- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
--- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
--- Might that ends with the turn (`grant`) runs since M6d.
+-- Every written Spell passes the interpreter's structural check.
 #guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 271
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 270
+#guard allCards.all (fun c => c.spellEffect.isNone || c.spellRuns)
 
 end RiftboundTest

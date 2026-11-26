@@ -169,9 +169,9 @@ def OGS_006.meta : CardDef :=
 def OGS_006 : CardDef :=
   { OGS_006.meta with
     abilities := [.triggered
-      { event := .play, subject := .all .friendly .anywhere [.ofType .spell, .cost .ge (.const 5)] }
+      { event := .play, subject := .all .you .anywhere [.ofType .spell, .cost .ge (.const 5)] }
       (.of [] (.grant .self (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-007
 /--
@@ -218,11 +218,7 @@ def OGS_008.meta : CardDef :=
     sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
-/--
-Gentlemen's Duel.
-The two amounts are bound before either unit is dealt damage, so the exchange is
-simultaneous.
--/
+/-- Gentlemen's Duel. The targets deal the damage themselves (CR 418.6.b.3). -/
 def OGS_008 : CardDef :=
   { OGS_008.meta with
     spellEffect := some (.of
@@ -230,11 +226,8 @@ def OGS_008 : CardDef :=
      .targetOf .one .enemy .anywhere [.ofType .unit]]
     (.seqOf [
       .grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn,
-      .bind ⟨"mine"⟩ (.mightOf (.slot 0))
-        (.bind ⟨"theirs"⟩ (.mightOf (.slot 1))
-          (.seqOf [.prim (.deal (.slot 1) (.var ⟨"mine"⟩)),
-                   .prim (.deal (.slot 0) (.var ⟨"theirs"⟩))]))])),
-    status := .drafted }
+      .prim (.exchangeDamage (.slot 0) (.slot 1))])),
+    status := .full }
 
 -- BEGIN GENERATED OGS-009
 /--
@@ -462,9 +455,9 @@ def OGS_017.meta : CardDef :=
 def OGS_017 : CardDef :=
   { OGS_017.meta with
     abilities := [.triggered { event := .at_ .endOfTurn, condition := .yourTurn }
-      (.of [] (.prim (.ready (.pick (.exactly 2) .friendly .anywhere
-        (FilterList.ofList [.ofType .rune]))))) .unlimited],
-    status := .drafted }
+      (.of [.targetOf (.exactly 2) .any .atBase [.ofType .rune]]
+        (.prim (.ready (.slotsFrom 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGS-018
 /--
@@ -478,11 +471,12 @@ def OGS_018.meta : CardDef :=
     name := "Tibbers",
     subtitle := some "Annie",
     types := [.unit],
+    supertypes := [.signature],
     tags := [⟨"Annie"⟩],
     domains := [.fury, .chaos],
-    cost := some ⟨8, [.any, .any]⟩,
+    cost := some ⟨8, [.own, .own]⟩,
     might := some 7,
-    sets := [⟨"OGS"⟩] }  -- Power domains unknown
+    sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
 /-- Tibbers, Annie. -/
@@ -490,7 +484,7 @@ def OGS_018 : CardDef :=
   { OGS_018.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.prim (.deal (.all .any .atBattlefield [.ofType .unit]) (.const 3)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-019
 /--
@@ -514,7 +508,7 @@ def OGS_019 : CardDef :=
   { OGS_019.meta with
     abilities := [.passive .always
       [.mightPlus (.all .friendly .anywhere [.ofType .unit, .defender, .alone]) (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-020
 /--
@@ -530,6 +524,7 @@ def OGS_020.meta : CardDef :=
     name := "Highlander",
     subtitle := some "Yi",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Master Yi"⟩],
     domains := [.calm, .body],
     cost := some ⟨4, []⟩,
@@ -541,8 +536,8 @@ def OGS_020.meta : CardDef :=
 def OGS_020 : CardDef :=
   { OGS_020.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-    (.replaceNext .die (.slot 0) (.prim (.recall (.slot 0) true)) .thisTurn)),
-    status := .drafted }
+      (.prim (.markOn (.slot 0) .saveOnce))),
+    status := .full }
 
 -- BEGIN GENERATED OGS-021
 /--
@@ -565,9 +560,9 @@ def OGS_021.meta : CardDef :=
 def OGS_021 : CardDef :=
   { OGS_021.meta with
     abilities := [.triggered
-      { event := .play, subject := .all .friendly .anywhere [.ofType .spell, .cost .ge (.const 5)] }
+      { event := .play, subject := .all .you .anywhere [.ofType .spell, .cost .ge (.const 5)] }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-022
 /--
@@ -582,6 +577,7 @@ def OGS_022.meta : CardDef :=
     name := "Final Spark",
     subtitle := some "Lux",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Lux"⟩],
     domains := [.mind, .order],
     cost := some ⟨8, []⟩,
@@ -618,9 +614,10 @@ def OGS_023 : CardDef :=
   { OGS_023.meta with
     abilities := [.triggered
       { event := .youConquer,
-        condition := .cmp .ge (.count (.all .friendly .here [.ofType .unit])) (.const 4) }
+        condition := .cmp .ge
+          (.count (.all .you .atBattlefield [.ofType .unit, .atEventBattlefield none])) (.const 4) }
       (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-024
 /--
@@ -635,11 +632,12 @@ def OGS_024.meta : CardDef :=
     name := "Decisive Strike",
     subtitle := some "Garen",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Garen"⟩],
     domains := [.body, .order],
-    cost := some ⟨5, [.any]⟩,
+    cost := some ⟨5, [.own]⟩,
     keywords := [{ keyword := .action }],
-    sets := [⟨"OGS"⟩] }  -- Power domains unknown
+    sets := [⟨"OGS"⟩] }
 -- END GENERATED
 
 /-- Decisive Strike, Garen. -/
@@ -647,7 +645,7 @@ def OGS_024 : CardDef :=
   { OGS_024.meta with
     spellEffect := some (.of []
     (.grant (.all .friendly .anywhere [.ofType .unit]) (.mightPlus .it (.const 2)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Proving Grounds. -/

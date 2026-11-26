@@ -84,6 +84,14 @@ ORIGINS_PRINT_METADATA = {
     "OGN-238": {"supertypes": ["champion"]},
 }
 
+# Signature marks and split-domain Power symbols on Riot's Proving Grounds card images.
+PROVING_GROUNDS_PRINT_METADATA = {
+    "OGS-018": {"supertypes": ["signature"], "powerOwn": True},
+    "OGS-020": {"supertypes": ["signature"]},
+    "OGS-022": {"supertypes": ["signature"]},
+    "OGS-024": {"supertypes": ["signature"], "powerOwn": True},
+}
+
 # The gallery omits or mislabels these fields. Checked against its card images.
 UNLEASHED_PRINT_METADATA = {
     "UNL-086": {"supertypes": ["champion"]},
@@ -298,6 +306,7 @@ def normalize(snap: dict) -> dict:
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
             **ORIGINS_PRINT_METADATA.get(ident, {}),
+            **PROVING_GROUNDS_PRINT_METADATA.get(ident, {}),
             **UNLEASHED_PRINT_METADATA.get(ident, {}),
             **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
