@@ -289,6 +289,18 @@ inductive DamageReplacement where
   | shield (note : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- One answer to a death replacement decision (CR 372). -/
+inductive DeathDecision where
+  /-- Banish the dying permanent with this player's replacement. -/
+  | banish (player : PlayerId)
+  /-- Kill this Gear in place of the dying Unit. -/
+  | gear (source : ObjId)
+  /-- Apply a rescuer on the Board, or Tactical Retreat when the source is absent. -/
+  | free (source : Option ObjId)
+  /-- Sacrifice a Unit, or decline the optional replacement. -/
+  | sacrifice (cost : Option ObjId)
+deriving DecidableEq, Repr, Hashable
+
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
@@ -407,6 +419,8 @@ inductive TurnEffect where
   | deathSacrificeChoice (unit : Option ObjId)
   /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
   | deathOrder (group : List ObjId)
+  /-- Apply the revised choice only after the earlier events in this group have been resolved. -/
+  | deathReselection (group earlier : List ObjId) (choice : DeathDecision)
   /-- This permanent has used its optional death replacement this turn (CR 371). -/
   | deathSacrificeUsed
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead

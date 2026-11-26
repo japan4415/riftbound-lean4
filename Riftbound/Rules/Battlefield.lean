@@ -618,10 +618,6 @@ def cleanupDeathGroup (s : GameState) : List ObjId :=
   if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then [] else
     s.inPlay.filter (fun u => s.isUnit u && s.lethal u)
 
-/-- Offer decisions associated with the simultaneous deaths (CR 372-373). -/
-def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
-  s.deathGroupChoice (cleanupDeathGroup s)
-
 /-- A survival replacement can itself alter the death that pays for it. -/
 def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
   (s.deathSaver victim).join.any (fun cost => (s.deathSaveFor cost []).isSome)
@@ -636,6 +632,10 @@ theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
   split
   · exact killOrSave_safe s victim
   · exact cleanupKill_safe s victim
+
+/-- Offer decisions against the same projected resolutions that Cleanup will perform (CR 372-373). -/
+def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
+  s.deathGroupChoiceWith (cleanupDeathGroup s) true cleanupResolveDeath
 
 /-- The automatic Cleanup handles a single death. A simultaneous group or a nested replacement
 must complete all of its decisions together. -/

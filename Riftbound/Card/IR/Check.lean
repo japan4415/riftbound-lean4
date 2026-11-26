@@ -402,7 +402,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. | .chooseDeathGear .. |
       .chooseDeathFree .. |
-      .recordDeathSacrifice .. | .recordDeathOrder .. |
+      .recordDeathSacrifice .. | .recordDeathOrder .. | .recordDeathReselection .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e

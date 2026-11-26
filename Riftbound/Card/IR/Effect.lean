@@ -309,6 +309,8 @@ inductive Effect where
   | recordDeathSacrifice (unit : ObjId) (cost : Option ObjId)
   /-- Record a controller's next replacement among simultaneous deaths (CR 373). -/
   | recordDeathOrder (group : List ObjId) (unit : ObjId)
+  /-- Record a revised replacement after an earlier event consumed or moved its source. -/
+  | recordDeathReselection (group earlier : List ObjId) (unit : ObjId) (choice : DeathDecision)
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
   | endCombatDamage (excess : Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following

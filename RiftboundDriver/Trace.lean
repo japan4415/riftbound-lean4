@@ -230,13 +230,20 @@ def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × S
   | _ => []
 
 /-- Name the affected Unit field and the choice field for a death replacement. -/
+def deathDecisionFields : DeathDecision → String × String × String
+  | .banish player => ("banishDeathUnit", "banishingPlayer", toString player.n)
+  | .gear gear => ("deathGearUnit", "deathGearSource", toString gear.n)
+  | .free source => ("deathFreeUnit", "deathFreeSource", source.elim "null" (fun id => toString id.n))
+  | .sacrifice cost =>
+    ("deathSacrificeUnit", "deathSacrificeCost", cost.elim "null" (fun id => toString id.n))
+
+/-- A revised selection is shown with the same labels as the original replacement. -/
 def deathChoiceFields : Effect → Option (String × String × String)
-  | .chooseDeathBanisher _ player => some ("banishDeathUnit", "banishingPlayer", toString player.n)
-  | .chooseDeathGear _ gear => some ("deathGearUnit", "deathGearSource", toString gear.n)
-  | .chooseDeathFree _ source =>
-    some ("deathFreeUnit", "deathFreeSource", source.elim "null" (fun id => toString id.n))
-  | .recordDeathSacrifice _ cost =>
-    some ("deathSacrificeUnit", "deathSacrificeCost", cost.elim "null" (fun id => toString id.n))
+  | .chooseDeathBanisher _ player => some (deathDecisionFields (.banish player))
+  | .chooseDeathGear _ gear => some (deathDecisionFields (.gear gear))
+  | .chooseDeathFree _ source => some (deathDecisionFields (.free source))
+  | .recordDeathSacrifice _ cost => some (deathDecisionFields (.sacrifice cost))
+  | .recordDeathReselection _ _ _ decision => some (deathDecisionFields decision)
   | _ => none
 
 /-- Also label the affected Unit when browsing a list of more death replacements. -/

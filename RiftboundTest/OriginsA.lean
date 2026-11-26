@@ -4131,6 +4131,64 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (saved.obj? a).isNone && (saved.obj? gear).isNone &&
     (settled.countP (fun | .died .. => true | _ => false)) == 2
 
+-- A spent shared Gear reopens the later Unit's choice without committing an earlier event.
+#guard t fun s => do
+  let p := s.me
+  let (s, used) ← put s p "OGN-077" .base
+  let (s, spared) ← put s p "OGN-077" .base
+  let (s, chosen) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-136" .base
+  let (s, b) ← put s p "OGN-136" .base
+  let lethal := (s.modObj a (fun o => { o with damage := 12 })).modObj b
+    (fun o => { o with damage := 12 })
+  let marked := (lethal.addTurnFxOn p a (.chosenDeathGear used)).addTurnFxOn p b (.chosenDeathGear used)
+  let (ordering, _) ← (advance 100 { marked with pending := [.cleanup, .priority p] } []).toOption
+  let .eitherDo owner _ _ (.recordDeathOrder _ first) (.recordDeathOrder _ second) _ :: _ :=
+    ordering.pending | none
+  let (reopen, beforeEvents) ← (step 100 ordering ⟨.player p, .decide (first == a)⟩).toOption
+  let .eitherDo chooser _ _ (.recordDeathReselection group earlier victim (.gear source))
+      (.recordDeathReselection _ _ _ (.gear alternative)) _ :: _ := reopen.pending | none
+  let (saved, events) ← (step 100 reopen ⟨.player p, .decide (source == chosen)⟩).toOption
+  let (other, _) ← (step 100 reopen ⟨.player p, .decide (source != chosen)⟩).toOption
+  let rescued id := (saved.obj? id).any (fun o => o.damage == 0 && o.exhausted)
+  return owner == p && chooser == p && [first, second].contains a && earlier == [a] &&
+    victim == b && group.length == 2 && [source, alternative].contains chosen &&
+    [source, alternative].contains spared && beforeEvents.isEmpty &&
+    (reopen.obj? used).isSome && (reopen.obj? a).any (fun o => o.damage == 12) &&
+    rescued a && rescued b && (saved.obj? used).isNone && (saved.obj? chosen).isNone &&
+    (saved.obj? spared).isSome && (other.obj? spared).isNone && (other.obj? chosen).isSome &&
+    saved.countIn p .trash "OGN-077" == 2 &&
+    events.countP (fun | .died .. => true | _ => false) == 2 &&
+    (saved.deathGroupPrefix group).isEmpty
+
+-- A spell that kills several Units uses the same revised choices and returns one event group.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-180" .hand
+  let (s, spent) ← put s q "OGN-077" .base
+  let (s, kept) ← put s q "OGN-077" .base
+  let (s, replacement) ← put s q "OGN-077" .base
+  let (s, first) ← put s q "OGN-136" .base
+  let (s, later) ← putAt s q "OGN-136" s.bf0
+  let noted := ((s.control q s.bf0).rich p).addTurnFxOn q first (.chosenDeathGear spent)
+  let noted := noted.addTurnFxOn q later (.chosenDeathGear spent)
+  let (casting, _) ← (step 100 noted ⟨.player p, .playCard spell (payOf noted spell) []⟩).toOption
+  let (offer, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (ordering, _) ← (step 100 offer ⟨.player q, .pass⟩).toOption
+  let .eitherDo _ _ _ (.recordDeathOrder _ firstOption) _ _ :: _ := ordering.pending | none
+  let (reopen, earlierEvents) ← (step 100 ordering
+    ⟨.player q, .decide (firstOption == first)⟩).toOption
+  let .eitherDo chooser _ _ (.recordDeathReselection _ [prior] victim (.gear source)) _ _ :: _ :=
+    reopen.pending | none
+  let (saved, events) ← (step 100 reopen ⟨.player q, .decide (source == replacement)⟩).toOption
+  return chooser == q && prior == first && victim == later && earlierEvents.isEmpty &&
+    (saved.obj? first).any (·.exhausted) &&
+    (saved.obj? later).any (fun o => o.exhausted && o.loc.isNone) &&
+    (saved.obj? kept).isSome && (saved.obj? replacement).isNone &&
+    saved.countIn p .trash "UNL-180" == 1 &&
+    events.countP (fun | .died .. => true | _ => false) == 2
+
 -- The affected controller chooses Hourglass, Tactical Retreat, or Soraka before Hidden Blade's draw.
 #guard t fun s => do
   let p := s.me

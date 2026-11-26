@@ -48,6 +48,12 @@ meta def traceOf (seed turns : Nat) : String :=
       (after.splitOn ("\"copies\":{" ++ s!"\"{id.n}\":\"UNL-111\"" ++ "}")).length == 2 &&
       (after.splitOn "\"new\":{}").length == 2 : Option Bool).getD false
 
+-- A revised replacement still identifies the affected Unit and the actual Gear selected.
+#guard
+  let choose := Effect.recordDeathReselection [⟨3⟩, ⟨5⟩] [⟨3⟩] ⟨5⟩
+  let frame := Frame.eitherDo ⟨1⟩ ⟨5⟩ {} (choose (.gear ⟨10⟩)) (choose (.gear ⟨11⟩)) .nil
+  deathReplacementFields (some frame) false == [("deathGearUnit", "5"), ("deathGearSource", "11")]
+
 -- quotes and backslashes in a name are escaped
 #guard jstr "a\"b\\c" == "\"a\\\"b\\\\c\""
 #guard jarr ["1", "2"] == "[1,2]"
