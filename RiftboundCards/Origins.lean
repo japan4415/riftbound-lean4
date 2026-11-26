@@ -40,7 +40,7 @@ def OGN_001.meta : CardDef :=
 /-- Blazing Scorcher. -/
 def OGN_001 : CardDef :=
   { OGN_001.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-002
 /--
@@ -269,7 +269,7 @@ def OGN_010.meta : CardDef :=
 /-- Legion Rearguard. -/
 def OGN_010 : CardDef :=
   { OGN_010.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-011
 /--
@@ -344,7 +344,7 @@ def OGN_013.meta : CardDef :=
 /-- Pouty Poro. -/
 def OGN_013 : CardDef :=
   { OGN_013.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-014
 /--
@@ -1328,7 +1328,7 @@ def OGN_049.meta : CardDef :=
 /-- Playful Phantom. -/
 def OGN_049 : CardDef :=
   { OGN_049.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-050
 /--
@@ -1402,7 +1402,7 @@ def OGN_052.meta : CardDef :=
 /-- Stalwart Poro. -/
 def OGN_052 : CardDef :=
   { OGN_052.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-053
 /--
@@ -1456,7 +1456,7 @@ def OGN_054.meta : CardDef :=
 /-- Sunlit Guardian. -/
 def OGN_054 : CardDef :=
   { OGN_054.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-055
 /--
@@ -2385,7 +2385,7 @@ def OGN_088.meta : CardDef :=
 /-- Mega-Mech. -/
 def OGN_088 : CardDef :=
   { OGN_088.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-089
 /--
@@ -3829,7 +3829,7 @@ def OGN_142.meta : CardDef :=
 /-- Mountain Drake. -/
 def OGN_142 : CardDef :=
   { OGN_142.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-143
 /--
@@ -4739,7 +4739,7 @@ def OGN_175.meta : CardDef :=
 /-- Shipyard Skulker. -/
 def OGN_175 : CardDef :=
   { OGN_175.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-176
 /--
@@ -5681,7 +5681,7 @@ def OGN_210.meta : CardDef :=
 /-- Daring Poro. -/
 def OGN_210 : CardDef :=
   { OGN_210.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-211
 /--
@@ -5807,7 +5807,7 @@ def OGN_215.meta : CardDef :=
 /-- Petty Officer. -/
 def OGN_215 : CardDef :=
   { OGN_215.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-216
 /--
@@ -5913,7 +5913,7 @@ def OGN_219.meta : CardDef :=
 /-- Vanguard Sergeant. -/
 def OGN_219 : CardDef :=
   { OGN_219.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-220
 /--

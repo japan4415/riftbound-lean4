@@ -144,7 +144,7 @@ def OGS_005.meta : CardDef :=
 /-- Zephyr Sage. -/
 def OGS_005 : CardDef :=
   { OGS_005.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-006
 /--
@@ -197,7 +197,7 @@ def OGS_007.meta : CardDef :=
 /-- Garen, Rugged. -/
 def OGS_007 : CardDef :=
   { OGS_007.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-008
 /--

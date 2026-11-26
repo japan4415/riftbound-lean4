@@ -102,6 +102,15 @@ private meta def exampleMatch : Except String Unit := do
   let result ← restored.verify matchDB
   unless result.wins == (0, 1) && result.result == .won ⟨1⟩ &&
       restored.games.all (·.summary.exact) do throw "incorrect recorded team winner"
+  let drafted := cid "V0"
+  let coverageDB : CardDB := ⟨matchDB.cards.map (fun c =>
+    { c with status := if c.id == drafted then .drafted else .full })⟩
+  let mixedCoverage ← restored.input.record coverageDB
+  let checkedCoverage ← mixedCoverage.verify coverageDB
+  let expected := List.replicate 4 [(drafted, ImplStatus.drafted)]
+  unless mixedCoverage.games.all (·.summary.exact) &&
+      checkedCoverage.uncheckedCards == #[expected, expected] do
+    throw "exact replays should report drafted cards separately for every seat and game"
   let some checkpoint := restored.games[0]?.bind (·.checkpoints[2]?) | throw "missing checkpoint"
   let changed := restored.games.modify 0 (fun g =>
     { g with checkpoints := g.checkpoints.set! 2 { checkpoint with state := "0" } })

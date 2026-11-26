@@ -1101,7 +1101,7 @@ def SFD_037.meta : CardDef :=
 /-- Navori Scout. -/
 def SFD_037 : CardDef :=
   { SFD_037.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-038
 /--
@@ -2838,7 +2838,7 @@ def SFD_096.meta : CardDef :=
 def SFD_096 : CardDef :=
   { SFD_096.meta with
     keywords := [{ keyword := .ganking }],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-097
 /--
@@ -4607,7 +4607,7 @@ def SFD_156.meta : CardDef :=
 /-- Laurent Duelist. -/
 def SFD_156 : CardDef :=
   { SFD_156.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-157
 /--

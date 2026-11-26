@@ -934,7 +934,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     inferred_team.write_text(json.dumps(team_record), encoding="utf-8")
     inferred_archive = folder / "team-inferred-archive.json"
     inferred_summary = json.loads(command("record-team", inferred_team, inferred_archive))
-    assert not inferred_summary["exact"] and not inferred_summary["cardsFullyChecked"]
+    assert not inferred_summary["exact"] and inferred_summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", inferred_archive)) == inferred_summary
     check_limited_cli(folder, setup, command)
     check_bo1_cli(folder, setup, command)

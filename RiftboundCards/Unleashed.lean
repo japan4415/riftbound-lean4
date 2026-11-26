@@ -281,7 +281,7 @@ def UNL_006.meta : CardDef :=
 /-- Sharkling. -/
 def UNL_006 : CardDef :=
   { UNL_006.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-007
 /--
@@ -1116,7 +1116,7 @@ def UNL_036.meta : CardDef :=
 /-- Mutated Mouser. -/
 def UNL_036 : CardDef :=
   { UNL_036.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-037
 /--
@@ -2916,7 +2916,7 @@ def UNL_099.meta : CardDef :=
 /-- Towering Combatant. -/
 def UNL_099 : CardDef :=
   { UNL_099.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-100
 /--
