@@ -28,11 +28,11 @@
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
 | I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。`Reachable.exists_legal` が、偶然の決定を含めて合法な答えの存在を述べる） | L3 | M3 |
 | I6 | **`Legal` との一致**: `legal_of_step_ok` は成功した `step` が合法であること、`step_sound` は整形性と所有者の不変条件の下で合法手が失敗する場合の理由が fuel 切れに限られることを示す。`legalFrameActions_iff` は現在の全フレームを場合分けし、`legalActions_iff` は投了を含むプレイヤーの合法手と列挙が一致することを示す。偶然・時計・ジャッジの答えは `Legal` で判定する（[design.md §6.3](design.md#63-できること全ての担保)） | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
-| I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」）。M5a で証明（`win_condition_unique`、`winner_spec`） | L2 | M5 |
+| I7 | **勝者の一意性**: 全対戦相手より得点が多い側は高々1つ。Duel と FFA では1人、2v2 では1チームが勝つ（CR 323.1, 491.6）。`win_condition_unique`、`winner_spec`、`win_side_unique` で証明した | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
 | I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
-| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
+| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。同じ Battlefield に対する連続した `scoreBf` では、同じ席の2回目（`scoreBf_twice`）も味方の2回目（`scoreBf_twice_side`）も得点しないと証明した | L2 | M5 |
 | I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。通常の Cleanup の反復と初期手札の上限を証明済み。残りは [termination.md](termination.md) に記載。 | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |

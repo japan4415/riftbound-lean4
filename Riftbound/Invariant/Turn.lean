@@ -113,6 +113,34 @@ theorem turnPlayerAt_alternates {s : GameState} (hc : s.playerCount = 2)
     rw [h, h2]
     simpa using hne.symm
 
+/-- Seats that each lead all their opponents belong to the same winning side (CR 323.1, 491.6). -/
+theorem win_side_unique {s : GameState} {p q : PlayerId}
+    (pSeat : p ∈ s.players) (qSeat : q ∈ s.players)
+    (pLeads : ∀ other ∈ s.players, s.config.mode.sameSide p other = false →
+      s.pointsOf other < s.pointsOf p)
+    (qLeads : ∀ other ∈ s.players, s.config.mode.sameSide q other = false →
+      s.pointsOf other < s.pointsOf q) :
+    s.config.mode.sameSide p q = true := by
+  cases side : s.config.mode.sameSide p q
+  · have reverse : s.config.mode.sameSide q p = false := by
+      cases reverse : s.config.mode.sameSide q p
+      · rfl
+      · have seats : s.config.mode.scoringSeat q = s.config.mode.scoringSeat p :=
+          of_decide_eq_true reverse
+        simp [Mode.sameSide, seats] at side
+    have hp := pLeads q qSeat side
+    have hq := qLeads p pSeat reverse
+    omega
+  · rfl
+
+/-- A seat that leads all its opponents belongs to the side the engine declares the winner. -/
+theorem GameState.winner_sameSide {s : GameState} {p winner : PlayerId}
+    (result : s.winner = some winner) (seat : p ∈ s.players)
+    (leads : ∀ other ∈ s.players, s.config.mode.sameSide p other = false →
+      s.pointsOf other < s.pointsOf p) : s.config.mode.sameSide p winner = true := by
+  have member : winner ∈ s.players := List.mem_of_find?_eq_some result
+  exact win_side_unique seat member leads (winner_spec result).2
+
 end Riftbound
 
 end

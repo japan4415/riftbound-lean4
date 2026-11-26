@@ -98,6 +98,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 `verify` はアーカイブのルール版とカード定義を照合し、すべての手を再実行する。各手で状態のハッシュとイベント列を比較し、違いがあれば最初のゲーム番号と手の位置を出す。`view` で書き出した JSON はビューアの「対局記録を開く」からも読み込める。
 
+カード定義の識別子は、使われなかったカードの効果や実装状況を更新しても変わる。後から検証する記録には、記録時に使った実行ファイルか、その実行ファイルを再ビルドできる Git コミット ID を一緒に保存する。
+
 外部の対局から記録を起こす場合は、アーカイブの `input` と同じ形の JSON を作り、`riftbound-replay record INPUT.json ARCHIVE.json` で照合用の記録を作る。`answers` にはシャッフル後のオブジェクト順、選択、支払い、時計やジャッジの決定を、適用された順に入れる。`observed` は直接観測した答え、`inferred` は根拠付きの推定、`unknown` は答えを確定できない箇所。推定を含むマッチは `exact: false` になり、`unknown` では該当する手で止まる。
 
 ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作と2v2の初期手番順の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
