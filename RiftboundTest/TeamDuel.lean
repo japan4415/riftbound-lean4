@@ -64,4 +64,32 @@ private meta def teamState : GameState :=
   legalFrameActions s == [give ⟨2⟩, give ⟨3⟩] && (step 100 s (give ⟨1⟩)).toOption.isNone &&
     (step 100 s (give ⟨3⟩)).toOption.any (fun (next, _) => next.players.map next.pointsOf == [0, 0, 1, 1])
 
+private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
+  let start := { teamState with active := some ⟨0⟩, turn := 1 }
+  let held := { newCard db start ⟨1⟩ (cid "B0") with control := some ⟨1⟩ }
+  let (s, first) ← addObject start held .battlefieldZone
+  let (s, second) ← addObject s (newCard db s ⟨0⟩ (cid "B1")) .battlefieldZone
+  let unit := { newCard db s ⟨1⟩ (cid "V0") with loc := some first }
+  let (s, _) ← addObject s unit .battlefieldZone
+  return (s, first, second)
+
+-- A control change later in the turn keeps the scoring-step disqualification in effect.
+#guard match scoredStepBoard with
+  | none => false
+  | some (s, held, _) =>
+    let snapshot := (hold s ⟨0⟩).1
+    let openField := snapshot.modObj held (fun b => { b with control := none })
+    (scoreBf openField ⟨0⟩ held true).2.2.isEmpty &&
+      (scoreBf openField ⟨2⟩ held true).1.pointsOf ⟨3⟩ == 1
+
+-- The ally's occupation satisfies the Final Point condition during this side's turn only.
+#guard match scoredStepBoard with
+  | none => false
+  | some (s, _, field) =>
+    let onFinalPoint := (s.gainPoints ⟨0⟩ 10).gainPoints ⟨2⟩ 10
+    let ready := (hold onFinalPoint ⟨0⟩).1
+    (scoreBf onFinalPoint ⟨0⟩ field true).1.pointsOf ⟨0⟩ == 10 &&
+      (scoreBf ready ⟨0⟩ field true).1.pointsOf ⟨1⟩ == 11 &&
+      (scoreBf ready ⟨2⟩ field true).1.pointsOf ⟨2⟩ == 10
+
 end RiftboundTest

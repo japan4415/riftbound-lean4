@@ -223,18 +223,35 @@ theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
 def Object.scoredFor (o : Object) (mode : Mode) (p : PlayerId) : Bool :=
   o.scored.any (mode.sameSide p)
 
+/-- A teammate's control at the scoring step disqualifies the Battlefield for this side. -/
+def GameState.teamScoreBlocked (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  s.config.mode.isTeamDuel && s.turnFx.any (fun note =>
+    note.turn == s.turn && note.target == some bf && note.kind == .teamHeldAtScoring &&
+      s.config.mode.sameSide p note.who)
+
+/-- Whether this side's score on a Battlefield is already spent or is disqualified. -/
+def GameState.scoringUnavailable (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  s.teamScoreBlocked p bf || (s.obj? bf).any (·.scoredFor s.config.mode p)
+
+/-- An ally's occupation at the scoring step satisfies the Final Point requirement during a
+turn of that side (CR 491.8.g.1). Other Battlefields must have been scored by this player. -/
+def GameState.battlefieldCountsForFinalPoint (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  (s.obj? bf).any (·.scored.contains p) ||
+    (s.config.mode.isTeamDuel && s.active.any (s.config.mode.sameSide p) && s.turnFx.any (fun note =>
+      note.turn == s.turn && note.target == some bf && note.kind == .teamOccupiedAtScoring &&
+        s.config.mode.sameSide p note.who && p != note.who))
+
 /-- Score the Battlefield for a player whose side has yet to score it this turn (CR 471-472).
 Conquering for the final point checks which Battlefields the side scored (CR 473.1.b, 491.8.g). -/
 def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
     GameState × List Frame × List Event :=
   match s.obj? bf with
   | none => (s, [], [])
-  | some o =>
-    if o.scoredFor s.config.mode r then (s, [], [])
+  | some _ =>
+    if s.scoringUnavailable r bf then (s, [], [])
     else
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
-      let all := s1.battlefields.all
-        (fun b => (s1.obj? b).any (·.scoredFor s.config.mode r))
+      let all := s1.battlefields.all (s1.battlefieldCountsForFinalPoint r)
       -- a card can say the player can't score points here: the Battlefield is scored all the same
       -- (the abilities still fire), but no point comes of it
       if s.cantScoreHere r bf then (s1, [], [Event.scored r bf conquer])
@@ -247,7 +264,28 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
 /-- The Battlefields the turn player holds and has not scored this turn (CR 315.2.b). -/
 def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
   s.battlefields.filter (fun b =>
-    decide (s.controlOf b = some tp) && !(s.obj? b).any (·.scoredFor s.config.mode tp))
+    decide (s.controlOf b = some tp) && !s.scoringUnavailable tp b)
+
+/-- Remember control and occupation at the scoring step for the rest of the turn. -/
+def GameState.rememberTeamScoring (s : GameState) (tp : PlayerId) : GameState :=
+  if s.config.mode.isTeamDuel then
+    let notes := s.battlefields.flatMap (fun bf =>
+      let note (who : PlayerId) (kind : TurnEffect) : TurnFx :=
+        { who, kind, target := some bf, turn := s.turn, stamp := s.nextTimestamp }
+      let held := (s.controlOf bf).toList.filter (fun p => p != tp && s.config.mode.sameSide tp p)
+      let occupied := (s.config.mode.sideSeats tp).filter (fun p => !(s.unitsOf p bf).isEmpty)
+      held.map (fun p => note p .teamHeldAtScoring) ++ occupied.map (fun p => note p .teamOccupiedAtScoring))
+    { s with turnFx := s.turnFx ++ notes }
+  else s
+
+/-- Remembering scoring-step circumstances changes neither the board nor the current decision. -/
+theorem GameState.rememberTeamScoring_safe (s : GameState) (tp : PlayerId) :
+    Safe s (s.rememberTeamScoring tp) := by
+  unfold rememberTeamScoring
+  split
+  · exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ hown => hown.congr rfl rfl, rfl⟩
+  · exact Safe.refl s
 
 /-- Remember that `tp` has scored a Battlefield this turn, and held it if a point came of it. -/
 def markScored (tp : PlayerId) (pt : Bool) (o : Object) : Object :=
@@ -263,7 +301,7 @@ def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
   let bs := s.holds tp
   let replace := s.drawForBattlefieldPoint tp
   let s1 := bs.foldl (fun s' b =>
-    s'.modObj b (markScored tp (!replace && !s.cantScoreHere tp b))) s
+    s'.modObj b (markScored tp (!replace && !s.cantScoreHere tp b))) (s.rememberTeamScoring tp)
   let awarded := bs.filter (fun b => !s.cantScoreHere tp b)
   let scored := bs.map (fun b => Event.scored tp b false)
   if replace then (s1, scored ++ awarded.map (Event.scoreDraw tp))
@@ -794,9 +832,9 @@ theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
 theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 := by
   unfold hold
   dsimp only
-  have h := foldl_modObj_safe'
+  have h := (GameState.rememberTeamScoring_safe s tp).trans (foldl_modObj_safe'
     (g := fun b => markScored tp (!s.drawForBattlefieldPoint tp && !s.cantScoreHere tp b))
-    (fun _ _ => rfl) (fun _ _ => rfl) (s.holds tp) s
+    (fun _ _ => rfl) (fun _ _ => rfl) (s.holds tp) (s.rememberTeamScoring tp))
   split
   · exact SafeP.of_safe h
   · exact ⟨_, h, Or.inr ⟨tp, _, rfl⟩⟩
@@ -933,37 +971,33 @@ theorem win_condition_unique {s : GameState} {p q : PlayerId}
 
 /-! ### What the rules guarantee -/
 
-/-- Scoring a Battlefield a player's side already scored this turn does nothing (CR 472, 491.8.b). -/
+/-- Scoring a Battlefield unavailable to a player's side does nothing (CR 472, 491.8.b). -/
 theorem scoreBf_of_scored {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool}
-    (h : (s.obj? bf).any (·.scoredFor s.config.mode r) = true) :
+    (h : s.scoringUnavailable r bf = true) :
     scoreBf s r bf c = (s, [], []) := by
   unfold scoreBf
   cases ho : s.obj? bf with
-  | none => simp [ho] at h
-  | some o =>
-    rw [ho] at h
-    have h' : o.scoredFor s.config.mode r = true := by simpa using h
-    simp only [h', ↓reduceIte]
+  | none => rfl
+  | some _ => simp only [h, ↓reduceIte]
 
-/-- Scoring a Battlefield leaves it marked as scored by the player's side (CR 472). -/
+/-- Attempting to score a Battlefield leaves it unavailable to the player's side (CR 472). -/
 theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o : Object}
     (h : s.obj? bf = some o) :
-    ((scoreBf s r bf c).1.obj? bf).any (·.scoredFor (scoreBf s r bf c).1.config.mode r) = true := by
+    (scoreBf s r bf c).1.scoringUnavailable r bf = true := by
+  have marked : (s.modObj bf (fun o => { o with scored := r :: o.scored })).scoringUnavailable r bf = true := by
+    unfold GameState.scoringUnavailable
+    rw [GameState.obj?_modObj]
+    simp [h, Object.scoredFor, GameState.modObj]
   unfold scoreBf
   simp only [h]
   split
   · rename_i hc
-    simpa [h] using hc
+    exact hc
   · split
-    · rw [GameState.obj?_modObj]
-      simp [h, Object.scoredFor, GameState.modObj]
+    · exact marked
     · split
-      · rw [GameState.obj?_modObj]
-        simp [h, Object.scoredFor, GameState.modObj]
-      · split <;>
-          (show ((s.modObj bf _).obj? bf).any (·.scoredFor s.config.mode r) = true
-           rw [GameState.obj?_modObj]
-           simp [h, Object.scoredFor])
+      · exact marked
+      · split <;> exact marked
 
 /-- **I11** (roadmap.md). A side scores a Battlefield at most once in a turn (CR 472, 491.8.b). -/
 theorem scoreBf_twice_side {s : GameState} {r q : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
@@ -978,7 +1012,8 @@ theorem scoreBf_twice_side {s : GameState} {r q : PlayerId} {bf : ObjId} {c c' :
     unfold Mode.sameSide
     rw [hk]
   apply scoreBf_of_scored
-  change (next.obj? bf).any (fun o => o.scored.any (next.config.mode.sameSide q)) = true
+  change next.scoringUnavailable q bf = true
+  unfold GameState.scoringUnavailable GameState.teamScoreBlocked Object.scoredFor
   rw [← hs]
   exact scoreBf_marks h
 

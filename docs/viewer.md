@@ -107,7 +107,7 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。
 
-現段階で再実行を確認した範囲は、4席のセットアップ、手番、チーム単位の得点と終了処理。味方への招待、味方のユニットが関わる戦闘と対象選択、Final Point の一部は [ロードマップの M9](roadmap.md) に残っている。
+現段階で再実行を確認した範囲は、4席のセットアップ、手番、チーム単位の得点と終了処理。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方への招待と、味方のユニットが関わる戦闘や対象選択は [ロードマップの M9](roadmap.md) に残っている。
 
 ## カードの詳細と画像
 

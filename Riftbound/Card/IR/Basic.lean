@@ -316,6 +316,10 @@ inductive TurnEffect where
   | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
+  /-- The Turn Player's teammate controlled this Battlefield at the scoring step (CR 491.8.b.1). -/
+  | teamHeldAtScoring
+  /-- This player occupied the Battlefield at their side's scoring step (CR 491.8.g.1). -/
+  | teamOccupiedAtScoring
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
