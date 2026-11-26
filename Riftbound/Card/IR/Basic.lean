@@ -301,6 +301,14 @@ inductive DeathDecision where
   | sacrifice (cost : Option ObjId)
 deriving DecidableEq, Repr, Hashable
 
+/-- A Board source that can replace more than one death in a simultaneous group (CR 373.2). -/
+inductive DeathSequenceSource where
+  /-- The Gear whose own Kill replaces the original death. -/
+  | gear (source : ObjId)
+  /-- The Unit that directly heals, exhausts, and recalls the dying Unit. -/
+  | rescuer (source : ObjId)
+deriving DecidableEq, Repr, Hashable
+
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
@@ -419,6 +427,8 @@ inductive TurnEffect where
   | deathSacrificeChoice (unit : Option ObjId)
   /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
   | deathOrder (group : List ObjId)
+  /-- Transient context for a root death: these effects already completed their sequences. -/
+  | closedDeathSequences (sources : List DeathSequenceSource)
   /-- Apply the revised choice only after the earlier events in this group have been resolved. -/
   | deathReselection (group earlier : List ObjId) (choice : DeathDecision)
   /-- A choice for a Kill created by an earlier replacement in the same chain (CR 370.2). -/

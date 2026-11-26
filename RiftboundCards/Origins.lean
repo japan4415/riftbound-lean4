@@ -2092,8 +2092,8 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass. Interleaving simultaneous effects that apply in one uninterrupted
-sequence still needs coverage (CR 373.2). -/
+/-- Zhonya's Hourglass. Deathgrip still applies its Might bonus when Hourglass saves its target
+(Spiritforged FAQ). -/
 def OGN_077 : CardDef :=
   { OGN_077.meta with
     abilities := [.passive .always [.diesInsteadOfFriendly]],

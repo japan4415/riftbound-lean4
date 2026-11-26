@@ -1048,6 +1048,15 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
             · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, rfl⟩)))
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))
 
+/-- The Cleanup frame preserves well-formedness and the collection of physical cards. -/
+theorem cleanupFrame_preservesBoard (s : GameState) (rest : List Frame) (hwf : s.WF) :
+    (cleanupFrame s rest).1.WF ∧ (cleanupFrame s rest).1.physIds.Perm s.physIds := by
+  rcases cleanupFrame_cases s rest with
+    ⟨_, e⟩ | ⟨_, _, _, _, e⟩ | ⟨_, hr, e⟩ | ⟨_, _, e⟩ | ⟨_, _, _, e⟩ | e <;> rw [e]
+  all_goals first
+    | exact ⟨hwf.congr rfl rfl rfl rfl, List.Perm.refl _⟩
+    | exact ⟨(hr.wf hwf).congr rfl rfl rfl rfl, hr.phys hwf⟩
+
 /-- A winning seat reaches the Victory Score and leads every opposing seat. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
     s.victoryScore ≤ s.pointsOf w ∧

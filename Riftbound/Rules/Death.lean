@@ -427,11 +427,28 @@ def GameState.chosenDeathFree (s : GameState) (id : ObjId) : Option (Option ObjI
       match note.kind with | .chosenDeathFree source => some source | _ => none
     else none
 
+/-- Sequences closed for this root event of a simultaneous group (CR 373.2). -/
+def GameState.closedDeathSequences (s : GameState) (id : ObjId) : List DeathSequenceSource :=
+  (s.turnFx.findSome? fun note =>
+    if note.turn != s.turn || note.target != some id then none else
+      match note.kind with | .closedDeathSequences sources => some sources | _ => none).getD []
+
+/-- Remove the transient group context before a nested Kill, or after applying the root event. -/
+def clearClosedDeathSequences (s : GameState) : GameState :=
+  { s with turnFx := s.turnFx.filter fun note =>
+      match note.kind with | .closedDeathSequences _ => false | _ => true }
+
+theorem clearClosedDeathSequences_safe (s : GameState) : Safe s (clearClosedDeathSequences s) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- The in-play sources that could die in the Unit's place. An inherent replacement works
 across a team, while an Equipment's granted replacement belongs to its wearer (CR 491.8.e). -/
 def GameState.deathGearOptions (s : GameState) (id : ObjId) (used : List (ObjId × Bool)) : List ObjId :=
+  let closed := s.closedDeathSequences id
   (s.obj? id).elim [] fun victim =>
     s.inPlay.eraseDups.filter fun gear => !used.contains (gear, false) &&
+      !closed.contains (.gear gear) &&
       ((s.obj? gear).any (fun o => s.config.mode.sameSide victim.controller o.controller) &&
         (s.activeMods gear).contains .diesInsteadOfFriendly ||
        (s.obj? gear).any (·.attached == some id) &&
@@ -467,10 +484,12 @@ private theorem GameState.selectedDeathGear_mem {s : GameState} {id gear : ObjId
 /-- Free replacements are scoped to the marked Unit or the rescuer at its location. -/
 def GameState.deathFreeOptions (s : GameState) (id : ObjId)
     (used : List (ObjId × Bool)) : List (Option ObjId) :=
+  let closed := s.closedDeathSequences id
   (s.obj? id).elim [] fun victim =>
     let retreat := if (s.tacticalRetreatFor id).isSome then [none] else []
     let rescuers := s.inPlay.eraseDups.filter fun u =>
-      u != id && (s.obj? u).any (fun o => o.controller == victim.controller && o.loc == victim.loc) &&
+      u != id && !closed.contains (.rescuer u) &&
+      (s.obj? u).any (fun o => o.controller == victim.controller && o.loc == victim.loc) &&
       (s.activeMods u).contains .rescueWeakerHere &&
       decide ((s.mightNow id).getD 0 < (s.mightNow u).getD 0)
     (retreat ++ rescuers.map some).filter fun source => !used.contains (source.getD id, false)
@@ -566,7 +585,7 @@ def GameState.nestedDeathDecision (s : GameState) (root id : ObjId) (used : List
 /-- Read or apply a nested Kill with only the selections for that occurrence available. -/
 def prepareNestedDeath (s : GameState) (root id : ObjId) (used : List (ObjId × Bool)) : GameState :=
   { s with turnFx := if used.isEmpty then s.turnFx else
-      (s.applyDeathDecision id (s.nestedDeathDecision root id used)).turnFx }
+      (clearClosedDeathSequences (s.applyDeathDecision id (s.nestedDeathDecision root id used))).turnFx }
 
 /-- Clear the chain's choices once its original Kill has finished. -/
 def finishNestedDeaths (s : GameState) (root : ObjId) : GameState :=

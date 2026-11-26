@@ -4161,6 +4161,77 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     events.countP (fun | .died .. => true | _ => false) == 2 &&
     (saved.deathGroupPrefix group).isEmpty
 
+-- CR 373.2: Soraka rescues the Recruits at only one of her two locations, depending on
+-- whether Guardian Angel recalls her before or after her sequence of replacements.
+#guard t fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, soraka) ← putAt s p "SFD-173" bf
+  let (s, guardian) ← put s p "SFD-051" .base
+  let recruit : Object :=
+    { kind := .token ⟨"VEN-T04"⟩, owner := p, controller := p, timestamp := ⟨0⟩ }
+  let (s, fieldA) ← addObject s { recruit with loc := some bf } .battlefieldZone
+  let (s, fieldB) ← addObject s { recruit with loc := some bf } .battlefieldZone
+  let (s, baseA) ← addObject s recruit (.player p .base)
+  let (s, baseB) ← addObject s recruit (.player p .base)
+  let group := [soraka, fieldA, fieldB, baseA, baseB]
+  let lethal := group.foldl (fun (board : GameState) id =>
+    board.modObj id (fun o => { o with damage := 12 })) (attachTo soraka (s.control p bf) guardian).1
+  let (ordering, beforeEvents) ← (advance 100 { lethal with pending := [.cleanup, .priority p] } []).toOption
+  let choose (board : GameState) (unit : ObjId) : Option (GameState × List Event) := do
+    let .eitherDo chooser _ _ (.recordDeathOrder _ first) other _ :: _ := board.pending | none
+    if chooser != p then none
+    else if first == unit then (step 100 board ⟨.player p, .decide true⟩).toOption
+    else
+      let (next, events) ← (step 100 board ⟨.player p, .decide false⟩).toOption
+      match other with
+      | .recordDeathOrder _ second => if second == unit then some (next, events) else none
+      | .eitherOf _ =>
+        let .eitherDo chooser _ _ (.recordDeathOrder _ second) (.recordDeathOrder _ third) _ :: _ :=
+          next.pending | none
+        if events.isEmpty && chooser == p && [second, third].contains unit then
+          (step 100 next ⟨.player p, .decide (second == unit)⟩).toOption
+        else none
+      | _ => none
+  let (atField, fieldEvents) ← choose ordering fieldA
+  let (baseOrdering, betweenEvents) ← choose ordering soraka
+  let (atBase, baseEvents) ← choose baseOrdering baseA
+  let rescued (board : GameState) (units : List ObjId) :=
+    units.all fun id => board.inPlay.contains id &&
+      (board.obj? id).any (fun o => o.damage == 0 && o.exhausted && o.loc.isNone)
+  let gone (board : GameState) (units : List ObjId) :=
+    units.all (!board.inPlay.contains ·)
+  let recalls := fieldEvents.filterMap fun | .recalled id => some id | _ => none
+  return beforeEvents.isEmpty && betweenEvents.isEmpty &&
+    rescued atField [soraka, fieldA, fieldB] && gone atField [guardian, baseA, baseB] &&
+    recalls == [fieldA, fieldB, soraka] &&
+    rescued atBase [soraka, baseA, baseB] && gone atBase [guardian, fieldA, fieldB] &&
+    baseEvents.contains (.recalled soraka)
+
+-- A nested Kill of an animated Hourglass does not interrupt its sequence (CR 373.2.a.1).
+#guard t fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, hourglass) ← put s p "OGN-077" .base
+  let (s, alternate) ← put s p "OGN-077" .base
+  let (s, guardian) ← put s p "SFD-051" .base
+  let (s, first) ← putAt s p "OGN-136" bf
+  let (s, second) ← putAt s p "OGN-136" bf
+  let (s, wearer) ← putAt s p "OGN-136" bf
+  let animated := animateGearObject (animateGearObject (s.control p bf) p bf hourglass) p bf alternate
+  let group := [first, wearer, second]
+  let equipped := (attachTo wearer animated guardian).1
+  let firstChosen := equipped.addTurnFxOn p first (.chosenDeathGear hourglass)
+  let secondChosen := firstChosen.addTurnFxOn p second (.chosenDeathGear hourglass)
+  let before := secondChosen.addTurnFxOn p wearer (.chosenDeathGear guardian)
+  let before := before.addTurnFxOn p first (.deathOrder group)
+  let (saved, events) := resolveDeathGroupWith before group cleanupResolveDeath
+  let recalls := events.filterMap fun | .recalled id => some id | _ => none
+  return recalls == [first, second, wearer] && events.contains (.exhausted hourglass) &&
+    [first, second, wearer].all (fun id => (saved.obj? id).any (·.exhausted)) &&
+    [hourglass, alternate, guardian].all (!saved.inPlay.contains ·) &&
+    events.countP (fun | .died .. => true | _ => false) == 3
+
 -- A spell that kills several Units uses the same revised choices and returns one event group.
 #guard t fun s => do
   let p := s.me

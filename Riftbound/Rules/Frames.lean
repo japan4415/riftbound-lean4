@@ -577,15 +577,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
       rw [this]
-    subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
-      rw [e]
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact (hr.wf hwf).congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
+    exact hs'.symm ▸ (cleanupFrame_preservesBoard s rest hwf).1
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hwf.congr rfl rfl rfl rfl
@@ -683,15 +675,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
       rw [this]
-    subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
-      rw [e]
-    · exact List.Perm.refl _
-    · exact List.Perm.refl _
-    · exact hr.phys hwf
-    · exact List.Perm.refl _
-    · exact List.Perm.refl _
-    · exact List.Perm.refl _
+    exact hs'.symm ▸ (cleanupFrame_preservesBoard s rest hwf).2
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
