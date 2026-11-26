@@ -401,6 +401,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. | .chooseDeathGear .. |
+      .chooseDeathFree .. |
       .recordDeathSacrifice .. | .recordDeathOrder .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e

@@ -401,6 +401,8 @@ inductive TurnEffect where
   | chosenDeathBanisher
   /-- The affected Unit's controller selected the permanent that will die in its place. -/
   | chosenDeathGear (gear : ObjId)
+  /-- The affected Unit's controller selected a free rescue. None selects Tactical Retreat. -/
+  | chosenDeathFree (source : Option ObjId)
   /-- The choice for the death currently being processed. None declines just this event. -/
   | deathSacrificeChoice (unit : Option ObjId)
   /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
@@ -410,7 +412,7 @@ inductive TurnEffect where
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce
-  /-- The unit was saved from dying (a note of the turn, not an effect): `saveOnce` is used up. -/
+  /-- A rescue was recorded. It spends a preceding Tactical Retreat if one is available. -/
   | saveUsed
   /-- All damage that would be dealt to the unit this turn is doubled (Lotus Trap). -/
   | doubleDamage

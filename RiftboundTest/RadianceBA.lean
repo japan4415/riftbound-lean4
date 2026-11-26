@@ -34,7 +34,7 @@ open Riftbound
     done.countIn p .trash "RAD-020" == 1).getD false
 
 -- A Kill instruction can offer the optional replacement even without any damage.
--- Declining it leaves Tactical Retreat available and does not spend Mordekaiser's allowance.
+-- Choosing Tactical Retreat instead leaves Mordekaiser's allowance available.
 #guard (lab.bind fun s => do
   let p := s.me
   let q := s.you
@@ -45,11 +45,14 @@ open Riftbound
   let frames := [.run q source { slots := [.obj mord] } theKill, .cleanup, .priority p]
   let armed := s.addTurnFxOn p mord .saveOnce
   let (asked, _) ← (advance 100 { armed with pending := frames } []).toOption
-  let (options, _) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
-  let (declined, _) ← (step 100 options ⟨.player p, .decide false⟩).toOption
-  let (again, _) ← (advance 100 { declined with pending := frames } []).toOption
+  let .eitherDo _ _ _ (.chooseDeathFree affected none) _ _ :: _ := asked.pending | none
+  let (withRetreat, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let (optional, _) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
+  let (sacrificed, _) ← (step 100 optional ⟨.player p, .decide true⟩).toOption
+  let (again, _) ← (advance 100 { withRetreat with pending := frames } []).toOption
   let (saved, _) ← (step 100 again ⟨.player p, .decide true⟩).toOption
-  return declined.inPlay.contains mord && declined.inPlay.contains ally &&
+  return affected == mord && withRetreat.inPlay.contains mord && withRetreat.inPlay.contains ally &&
+    (sacrificed.tacticalRetreatFor mord).isSome && sacrificed.countIn p .trash "V0" == 1 &&
     saved.inPlay.contains mord && saved.countIn p .trash "V0" == 1).getD false
 
 -- A limited play still pays its additional cost when Mordekaiser replaces his own death.
@@ -116,6 +119,24 @@ open Riftbound
     !(triggered.zone .chain).isEmpty && activated.inPlay.contains mord &&
     triggered.inPlay.contains mord && activated.countIn p .trash "V0" == 1 &&
     triggered.countIn p .trash "V0" == 1).getD false
+
+-- Choosing one of several Banish effects can replace a declared Kill cost.
+#guard (lab.bind fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mord) ← putAt (s.control p s.bf0) p "RAD-020" s.bf0
+  let (s, ally) ← put s p "V0" .base
+  let (s, gear) ← put s p "RAD-022" .base
+  let marked := (s.addTurnFxOn q mord .banishInstead).addTurnFxOn p mord .banishInstead
+  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, []⟩ [] [] none none (some mord)⟩
+  let (asked, events) ← (step 100 marked ability).toOption
+  let .eitherDo chooser _ _ (.chooseDeathBanisher victim banisher) _ _ ::
+      .resumeCost locked :: _ := asked.pending | none
+  let (paid, settled) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  return chooser == p && victim == mord && banisher == q && locked == ability && events.isEmpty &&
+    paid.tired gear == some true && !(paid.zone .chain).isEmpty &&
+    paid.countIn p .banishment "RAD-020" == 1 && paid.inPlay.contains ally &&
+    settled.any (fun | .banished player _ _ => player == q | _ => false)).getD false
 
 -- Temporary is a Kill at the beginning of the turn and can be replaced before it occurs.
 #guard (lab.bind fun s => do

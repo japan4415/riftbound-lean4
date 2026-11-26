@@ -544,6 +544,21 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return (a.obj? u).any (fun o => o.exhausted && o.damage == 0 && o.loc.isNone) &&
     a.handN s.me == hurt.handN s.me && (b.obj? u).isNone && b.countIn s.me .trash "UNL-156" == 1
 
+-- Two resolved Tactical Retreats can save a Unit from two separate deaths that turn.
+#guard tun fun s => do
+  let p := s.me
+  let (s, first) ← put s p "UNL-175" .hand
+  let (s, second) ← put s p "UNL-175" .hand
+  let (s, unit) ← putAt s p "OGN-136" s.bf0
+  let once ← play s p first [unit]
+  let twice ← play once p second [unit]
+  let (firstSave, _) := killOrSave twice unit
+  let (secondSave, _) := killOrSave firstSave unit
+  let (dead, _) := killOrSave secondSave unit
+  return (firstSave.obj? unit).isSome && (firstSave.tacticalRetreatFor unit).isSome &&
+    (secondSave.obj? unit).isSome && (secondSave.tacticalRetreatFor unit).isNone &&
+    (dead.obj? unit).isNone
+
 -- Soul Sword (UNL-039): +1 Might, and one more at Level 3
 #guard tun fun s => do
   let (s1, u) ← put s s.me "OGN-135" .base

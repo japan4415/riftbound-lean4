@@ -229,37 +229,27 @@ def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × S
     | _ => [("moreDamageDivisions", "true")]
   | _ => []
 
-/-- Describe whose effect can replace this Unit's pending death (CR 372). -/
-def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
-  match frame with
-  | some (.eitherDo _ unit _ first@(.chooseDeathBanisher ..) other _) =>
-    [("banishDeathUnit", toString unit.n)] ++
-      (match if yes then first else other with
-      | .chooseDeathBanisher _ player => [("banishingPlayer", toString player.n)]
-      | _ => [])
-  | _ => []
+/-- Name the affected Unit field and the choice field for a death replacement. -/
+def deathChoiceFields : Effect → Option (String × String × String)
+  | .chooseDeathBanisher _ player => some ("banishDeathUnit", "banishingPlayer", toString player.n)
+  | .chooseDeathGear _ gear => some ("deathGearUnit", "deathGearSource", toString gear.n)
+  | .chooseDeathFree _ source =>
+    some ("deathFreeUnit", "deathFreeSource", source.elim "null" (fun id => toString id.n))
+  | .recordDeathSacrifice _ cost =>
+    some ("deathSacrificeUnit", "deathSacrificeCost", cost.elim "null" (fun id => toString id.n))
+  | _ => none
 
-/-- Describe the Gear or competing Banish replacement selected for a pending death. -/
-def deathGearFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+/-- Also label the affected Unit when browsing a list of more death replacements. -/
+def deathReplacementFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
-  | some (.eitherDo _ unit _ first@(.chooseDeathGear ..) other _) =>
-    [("deathGearUnit", toString unit.n)] ++
-      (match if yes then first else other with
-      | .chooseDeathGear _ gear => [("deathGearSource", toString gear.n)]
-      | .chooseDeathBanisher _ player =>
-        [("banishDeathUnit", toString unit.n), ("banishingPlayer", toString player.n)]
-      | _ => [])
-  | _ => []
-
-/-- Identify the affected Unit and the exact sacrifice elected during its death replacement. -/
-def deathSacrificeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
-  match frame with
-  | some (.eitherDo _ _ _ first@(.recordDeathSacrifice unit _) other _) =>
-    [("deathSacrificeUnit", toString unit.n)] ++
-      (match if yes then first else other with
-      | .recordDeathSacrifice _ cost =>
-        [("deathSacrificeCost", cost.elim "null" (fun id => toString id.n))]
-      | _ => [])
+  | some (.eitherDo _ unit _ first other _) =>
+    let affected := toString unit.n
+    let firstKey := (deathChoiceFields first).map (·.1)
+    match deathChoiceFields (if yes then first else other) with
+    | some (unitKey, choiceKey, choice) =>
+      ((firstKey.filter (· != unitKey)).toList.map (·, affected)) ++
+        [(unitKey, affected), (choiceKey, choice)]
+    | none => firstKey.toList.map (·, affected)
   | _ => []
 
 /-- Identify the replacement that the controller puts next. -/
@@ -495,8 +485,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _ => []) ++
         tokenLocationFields frame yes ++ unitTokenReplacementFields frame yes ++
         damageOrderFields frame yes ++ damageDivisionFields frame yes ++
-        deathBanishFields frame yes ++ deathGearFields frame yes ++ deathSacrificeFields frame yes ++
-        deathOrderFields frame yes ++
+        deathReplacementFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes

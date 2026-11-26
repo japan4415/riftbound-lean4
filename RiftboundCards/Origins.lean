@@ -2092,8 +2092,8 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass. Competing free saves and reselection after a shared source is
-consumed during a simultaneous death group still need replacement ordering. -/
+/-- Zhonya's Hourglass. Reselection when a chosen source has been consumed during simultaneous
+or nested deaths still needs replacement ordering. -/
 def OGN_077 : CardDef :=
   { OGN_077.meta with
     abilities := [.passive .always [.diesInsteadOfFriendly]],

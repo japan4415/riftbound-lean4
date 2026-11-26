@@ -4059,12 +4059,14 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (saved, events) := killOrSave before unit
   let dead ← saved.firstOf p .trash "OGN-077"
   let (used, _) := killOrSave saved unit
+  let (laterRetreat, _) := killOrSave (saved.addTurnFxOn p unit .saveOnce) unit
   let (theirs, _) := killOrSave before foe
   return (saved.obj? unit).any (fun o => o.loc.isNone && o.damage == 0 && o.exhausted && o.buffed) &&
     (saved.zone (.player p .base)).contains unit &&
     events.contains (.died dead p) && events.contains (.recalled unit) &&
     (saved.detect events).isEmpty && !(events.any (fun | .played .. => true | _ => false)) &&
     used.countIn p .trash "OGN-096" == 1 &&
+    (laterRetreat.obj? unit).isSome && (laterRetreat.tacticalRetreatFor unit).isNone &&
     (theirs.obj? gear).isSome && theirs.countIn q .trash "OGN-136" == 1
 
 -- Hidden can be used at a different Battlefield from the Unit killed by Hidden Blade.
@@ -4128,6 +4130,58 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (saved.obj? b).any (fun o => o.damage == 0 && o.exhausted) &&
     (saved.obj? a).isNone && (saved.obj? gear).isNone &&
     (settled.countP (fun | .died .. => true | _ => false)) == 2
+
+-- The affected controller chooses Hourglass, Tactical Retreat, or Soraka before Hidden Blade's draw.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .base
+  let (s, soraka) ← putAt s q "SFD-173" s.bf0
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := (s.control q s.bf0).addTurnFxOn q unit .saveOnce
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let .eitherDo chooser _ _ (.chooseDeathGear affected source) (.eitherOf _) _ :: _ :=
+    offer.pending | none
+  let (withGear, gearEvents) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
+  let (other, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
+  let .eitherDo chooser' _ _ (.chooseDeathFree retreatUnit none)
+      (.chooseDeathFree rescueUnit (some rescuer)) _ :: _ := other.pending | none
+  let (withRetreat, retreatEvents) ← (step 100 other ⟨.player q, .decide true⟩).toOption
+  let (withSoraka, sorakaEvents) ← (step 100 other ⟨.player q, .decide false⟩).toOption
+  let (spent, _) := killOrSave withGear unit
+  let (dead, _) := killOrSave spent unit
+  let rescued (state : GameState) := (state.obj? unit).any (fun o => o.loc.isNone && o.exhausted) &&
+    state.handN q == before.handN q + 2
+  let deaths (events : List Event) := events.countP (fun | .died .. => true | _ => false)
+  return chooser == q && chooser' == q && affected == unit && source == gear &&
+    retreatUnit == unit && rescueUnit == unit && rescuer == soraka &&
+    [withGear, withRetreat, withSoraka].all rescued &&
+    (withGear.obj? gear).isNone && deaths gearEvents == 1 &&
+    (withRetreat.obj? gear).isSome && (withRetreat.tacticalRetreatFor unit).isNone &&
+    retreatEvents.contains (.recalled unit) && deaths retreatEvents == 0 &&
+    (withSoraka.obj? gear).isSome && (withSoraka.tacticalRetreatFor unit).isSome &&
+    sorakaEvents.contains (.recalled unit) && deaths sorakaEvents == 0 &&
+    (spent.obj? unit).isSome && (spent.tacticalRetreatFor unit).isNone && (dead.obj? unit).isNone
+
+-- A free rescue also competes with a Banish when no Gear can pay for the death.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := ((s.control q s.bf0).addTurnFxOn p unit .banishInstead).addTurnFxOn q unit .saveOnce
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let (saved, _) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
+  let (banished, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
+  return (saved.obj? unit).any (·.loc.isNone) && saved.handN q == before.handN q + 2 &&
+    banished.countIn q .banishment "OGN-136" == 1 && banished.handN q == before.handN q
 
 -- Each animated Hourglass can replace one Kill in the same series (CR 370.2).
 #guard t fun s => do

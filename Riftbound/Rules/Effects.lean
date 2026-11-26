@@ -1730,73 +1730,59 @@ def GameState.deathBanishers (s : GameState) (id : ObjId) : List PlayerId :=
   let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
   (marked ++ trash).eraseDups
 
-/-- Banish replacements for this Unit's death, grouped by the player credited with Banish. -/
+/-- Offer the optional sacrifice while it is still available to the Unit (CR 371). -/
+def GameState.deathSacrificeOptions (s : GameState) (p : PlayerId) (id : ObjId)
+    (used : List (ObjId × Bool)) : List Effect :=
+  if used.contains (id, true) || (s.deathSacrificeDecision id).isSome ||
+      s.turnFx.any (·.appliesTo s.turn id .deathSacrificeUsed) ||
+      !(s.activeMods id).contains .sacrificeToSaveSelf then []
+  else (s.deathSacrificeUnits p id).map fun cost => .recordDeathSacrifice id (some cost)
+
+/-- A declaration carries Banish attribution when Banish effects compete on their own.
+The affected controller chooses separately whenever the Unit could also be rescued. -/
 def GameState.deathBanisherOptions (s : GameState) (id : ObjId) : List (Option PlayerId) :=
   if (s.chosenDeathBanisher id).isSome || (s.automaticDeathSaver id).isSome ||
+      (s.deathSacrificeDecision id).isSome ||
+      (s.obj? id).any (fun o => !(s.deathSacrificeOptions o.controller id []).isEmpty) ||
       !(s.cardDef? id).any (·.hasType .unit) then [none] else
     match s.deathBanishers id with
     | first :: second :: rest => (first :: second :: rest).map some
     | _ => [none]
 
-/-- Competing Banish effects with different attribution require the Unit's controller to
-choose. After the chosen replacement applies, there is no kill or Trash move left to replace
-(CR 370.1.a.1, 372). -/
-def GameState.deathBanishChoice (s : GameState) (id : ObjId) :
-    Option (ObjId × PlayerId × Effect × Effect) := do
-  let unit ← s.obj? id
-  let choices := (s.deathBanisherOptions id).filterMap (Option.map (Effect.chooseDeathBanisher id))
-  match choices with
-  | first :: second :: rest =>
-    let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
-    some (id, unit.controller, first, other)
-  | _ => none
-
-/-- The affected Unit's controller chooses a competing paid automatic replacement (CR 372). -/
-def GameState.deathGearChoice (s : GameState) (id : ObjId) (used : List (ObjId × Bool))
+/-- The affected Unit's controller chooses the first applicable replacement (CR 372).
+For an action cost, a Banish-only choice can already be part of the declaration. -/
+def GameState.deathChoice (s : GameState) (id : ObjId) (used : List (ObjId × Bool))
     (offerBanish : Bool) : Option (ObjId × PlayerId × Effect × Effect) := do
   let unit ← s.obj? id
   if !(s.cardDef? id).any (·.hasType .unit) || (s.chosenDeathBanisher id).isSome ||
-      (s.selectedDeathSacrifice id).isSome then none
+      (!used.contains (id, true) && (s.selectedDeathSacrifice id).isSome) then none
   else
     let gears := s.deathGearOptions id used
-    if gears.isEmpty || (s.chosenDeathGear id).any gears.contains then none
+    if (s.chosenDeathGear id).any gears.contains || (s.selectedDeathFree id used).isSome then none
     else
-      let banish := if offerBanish then (s.deathBanishers id).map (Effect.chooseDeathBanisher id) else []
-      match gears.map (Effect.chooseDeathGear id) ++ banish with
+      let free := s.deathFreeOptions id used
+      let optional := s.deathSacrificeOptions unit.controller id used
+      let banish := if offerBanish || !(gears.isEmpty && free.isEmpty && optional.isEmpty)
+        then s.deathBanishers id else []
+      let mandatory := gears.map (Effect.chooseDeathGear id) ++ free.map (Effect.chooseDeathFree id) ++
+        banish.map (Effect.chooseDeathBanisher id)
+      let choices := if mandatory.isEmpty && !optional.isEmpty
+        then optional ++ [.recordDeathSacrifice id none] else mandatory ++ optional
+      match choices with
       | first :: second :: rest =>
         let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
         some (id, unit.controller, first, other)
       | _ => none
-
-/-- Offer the optional sacrifice to the affected Unit's controller. Declining does not use the
-once-per-turn allowance (CR 371, 372). -/
-def GameState.deathSacrificeChoice (s : GameState) (id : ObjId) :
-    Option (ObjId × PlayerId × Effect × Effect) := do
-  let unit ← s.obj? id
-  if (s.deathSacrificeDecision id).isSome ||
-      s.turnFx.any (·.appliesTo s.turn id .deathSacrificeUsed) ||
-      !(s.activeMods id).contains .sacrificeToSaveSelf then none
-  else
-    match s.deathSacrificeUnits unit.controller id with
-    | [] => none
-    | first :: rest =>
-      let decline := Effect.recordDeathSacrifice id none
-      let choose (target : ObjId) := Effect.recordDeathSacrifice id (some target)
-      let other := if rest.isEmpty then decline
-        else .eitherOf (EffectList.ofList (rest.map choose ++ [decline]))
-      some (id, unit.controller, choose first, other)
 
 /-- Read the next outstanding choice in the same sequence used to resolve the Kill (CR 370.2). -/
 def GameState.deathReplacementChoiceFrom (s : GameState) :
     Nat → ObjId → List (ObjId × Bool) → Bool → Option (ObjId × PlayerId × Effect × Effect)
   | 0, _, _, _ => none
   | fuel + 1, id, used, offerBanish =>
-    let own := if used.contains (id, true) || (s.chosenDeathBanisher id).isSome then none
-      else s.deathSacrificeChoice id
-    own <|> s.deathGearChoice id used offerBanish <|> match s.deathSaveFor id used with
+    s.deathChoice id used offerBanish <|> match s.deathSaveFor id used with
     | some save => save.cost.bind (fun cost =>
         s.deathReplacementChoiceFrom fuel cost (save.useKey id :: used) true)
-    | none => if offerBanish then s.deathBanishChoice id else none
+    | none => none
 
 /-- Ask the controllers of the original and replacement Kills in order. -/
 def GameState.deathReplacementChoice (s : GameState) (id : ObjId) (offerBanish : Bool := true) :
@@ -1815,10 +1801,18 @@ def GameState.recordedDeathOrder (s : GameState) (group : List ObjId) : List Obj
 /-- A team-wide replacement is controlled by its source. The other replacements use the
 affected Unit's seat unless a Banish source was recorded (CR 373.1). -/
 def GameState.deathOrderController (s : GameState) (id : ObjId) : Option PlayerId :=
-  let gear := (s.deathSaver id).join.filter fun source =>
-    s.selectedDeathSacrifice id != some source && (s.activeMods source).contains .diesInsteadOfFriendly
-  (gear.bind (fun source => (s.obj? source).map (·.controller))) <|>
-    s.chosenDeathBanisher id <|> (s.obj? id).map (·.controller)
+  let source := match s.deathSaver id with
+    | some (some gear) =>
+      if s.selectedDeathSacrifice id != some gear && (s.activeMods gear).contains .diesInsteadOfFriendly
+        then (s.obj? gear).map (·.controller)
+      else none
+    | some none =>
+      match s.freeDeathSaver id with
+      | some (some rescuer) => (s.obj? rescuer).map (·.controller)
+      | some none => (s.tacticalRetreatFor id).map (·.who)
+      | none => none
+    | none => s.chosenDeathBanisher id
+  source <|> (s.obj? id).map (·.controller)
 
 /-- Replacements act in turn order and before simultaneous unmodified deaths (CR 373.1.a). -/
 def GameState.deathGroupOrder (s : GameState) (group : List ObjId) : List ObjId :=
@@ -6139,6 +6133,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
   | .chooseDeathGear unit gear =>
     (s.addTurnFxOn p unit (.chosenDeathGear gear), [.run p src env es], [])
+  | .chooseDeathFree unit source =>
+    (s.addTurnFxOn p unit (.chosenDeathFree source), [.run p src env es], [])
   | .recordDeathSacrifice unit cost =>
     (s.addTurnFxOn p unit (.deathSacrificeChoice cost), [.run p src env es], [])
   | .recordDeathOrder group unit =>
