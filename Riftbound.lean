@@ -22,6 +22,7 @@ public import Riftbound.State.Zone
 public import Riftbound.State.Object
 public import Riftbound.State.GameConfig
 public import Riftbound.State.GameState
+public import Riftbound.Spec.Visibility
 public import Riftbound.Rules.Deck
 public import Riftbound.State.Event
 public import Riftbound.State.Decision
