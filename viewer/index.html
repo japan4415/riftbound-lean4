@@ -209,6 +209,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     <div class="note" id="matchinfo"></div>
     <input type="file" id="registrationFile" accept=".json,application/json" hidden aria-label="変更後のデッキ登録 JSON">
     <input type="file" id="sealedTeamFile" accept=".json,application/json" hidden aria-label="変更後の4席の Sealed デッキ JSON">
+    <input type="file" id="judgeShuffleFile" accept=".json,application/json" hidden aria-label="ジャッジが混ぜ直した山札の JSON">
     <div class="choices" id="choices" aria-live="polite"></div>
   </section>
   <div id="result" class="banner" hidden></div>
@@ -248,7 +249,8 @@ const LANES = [['legendZone', 'Legend'], ['base', 'Base'], ['hand', 'Hand']];
 const DOMAINS = ['fury', 'calm', 'mind', 'body', 'chaos', 'order'];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-let trace, steps, cards, objs, cur = 0, playing = false, timer = null, speed = 1;
+let trace, steps, cards, cur = 0, playing = false, timer = null, speed = 1;
+let objectHistory = new Map(), checkpointByState = new WeakMap();
 let matchTraces = [], traceIndex = 0, liveGameIndex = null;
 let liveRequest = false;
 const els = new Map();        // object id -> card element
@@ -256,7 +258,22 @@ const zoneBox = new Map();    // zone name -> container element
 const poolBox = [], pointsBox = [], seatBox = [];
 const bfGroup = new Map();    // Battlefield id -> its column
 
-function cardCode(id, state) { return state?.copies?.[id] || objs[id]?.card; }
+function indexObjects(step, checkpoint) {
+  checkpointByState.set(step.state, checkpoint);
+  for (const [id, record] of Object.entries(step.state.new)) {
+    if (!objectHistory.has(id)) objectHistory.set(id, []);
+    objectHistory.get(id).push({ checkpoint, record });
+  }
+}
+function indexTraceObjects() {
+  objectHistory = new Map(); checkpointByState = new WeakMap();
+  steps.forEach(indexObjects);
+}
+function objectAt(id, state = steps[cur]?.state) {
+  const checkpoint = checkpointByState.get(state);
+  return objectHistory.get(String(id))?.findLast(version => version.checkpoint <= checkpoint)?.record;
+}
+function cardCode(id, state) { return state?.copies?.[id] || objectAt(id, state)?.card; }
 function cardNameAt(id, state) {
   const code = cardCode(id, state);
   return cards[code]?.name || code || '#' + id;
@@ -270,8 +287,7 @@ function dur() { return reduce ? 0 : 480 / speed; }
 
 function load(t) {
   pause(); cur = 0;
-  trace = t; steps = t.steps; cards = t.cards; objs = {};
-  for (const s of steps) for (const [id, o] of Object.entries(s.state.new)) objs[id] = o;
+  trace = t; steps = t.steps; cards = t.cards; indexTraceObjects();
   buildBoard(); buildLog();
   $('empty').hidden = true; $('layout').hidden = false; $('controls').hidden = false;
   $('scrub').max = steps.length - 1;
@@ -360,6 +376,12 @@ function buildBoard() {
 
 function describe(i) {
   const step = steps[i];
+  if (step.judgeRewind != null) return ['ジャッジが巻き戻す', `${step.judgeRewind} 手目の状態に戻す`];
+  if (step.judgeShuffle) {
+    const { seat, deck, positions } = step.judgeShuffle;
+    const zone = deck === 'runeDeck' ? 'Rune Deck' : 'Main Deck';
+    return ['ジャッジが山札を混ぜ直す', `P${seat.n} の ${zone} のうち ${positions.length} 枚`];
+  }
   if (step.gameLoss) return ['ジャッジがゲームロスを適用', step.gameLoss.map(p => 'P' + p).join('、')];
   if (step.bo1Sideboard) return ['サイドボードを確定', 'Chosen Champion を配置し、デッキをシャッフルする準備をする'];
   if (step.bo1Initiative) return ['先手を決める', `P${step.action.turnOrder[0]} が先手`];
@@ -424,7 +446,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const cost = typeof add.banishCostCard === 'number' ? '（' + banishCostLabel(add.banishCostCard) + '）' : '';
       return cardName(id) + ' の Add' + cost;
     }
-    const runes = (state?.zones['p' + objs[id]?.owner + '.base'] || [])
+    const runes = (state?.zones['p' + objectAt(id, state)?.owner + '.base'] || [])
       .filter(candidate => cardCode(candidate, state) === cardCode(id, state));
     const order = runes.indexOf(id);
     const name = runes.length > 1 && order >= 0 ? cardName(id) + '（' + (order + 1) + '枚目）' : cardName(id);
@@ -701,9 +723,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
     }
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
-      return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
+      return [who + ': ' + cardName(a.card) + ' を Recycle', (objectAt(a.card, state)?.rune || '') + ' Power +1、Rune Deck の下へ'];
     case 'playCard': {
-      const o = objs[a.card], def = o && cards[o.card];
+      const o = objectAt(a.card, state), def = o && cards[o.card];
       const base = a.flowCost;
       const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
       const fees = a.battlefieldFees || [];
@@ -783,7 +805,7 @@ function updateCardTraits(el, id, state) {
   const code = cardCode(id, state) || '?';
   if (el.dataset.card === code) return;
   el.dataset.card = code;
-  const o = objs[id] || {}, def = cards[code] || { name: code, types: [], domains: [] };
+  const o = objectAt(id, state) || {}, def = cards[code] || { name: code, types: [], domains: [] };
   const inn = document.createElement('div'); inn.className = 'card-in';
   const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = def.name;
   inn.append(nm);
@@ -1076,7 +1098,7 @@ function artBox(el, cid) {
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
   const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
-  const o = objs[id], code = cardCode(id, st), def = o && cards[code]; if (!def) return;
+  const o = objectAt(id, st), code = cardCode(id, st), def = o && cards[code]; if (!def) return;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
   box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
@@ -1141,7 +1163,7 @@ async function api(path, body) {
 function appendSteps(list) {
   for (const s of list) {
     steps.push(s);
-    for (const [id, o] of Object.entries(s.state.new)) objs[id] = o;
+    indexObjects(s, steps.length - 1);
     const i = steps.length - 1, li = document.createElement('li');
     li.textContent = i + '. ' + describe(i)[0];
     li.addEventListener('click', () => { pause(); show(i, false); }); $('log').append(li);
@@ -1369,6 +1391,19 @@ function renderJudgePenalties(box, button) {
   seats.addEventListener('change', update); update();
   operations.append(gameLoss, matchLoss, disqualification);
   details.append(title, seats, operations);
+  if (liveExt.correction) {
+    const corrections = document.createElement('div'); corrections.className = 'btns';
+    const label = document.createElement('label'); label.textContent = '戻す手';
+    const target = document.createElement('input'); target.type = 'number'; target.min = 0;
+    target.max = steps.length - 2; target.value = target.max; label.append(target);
+    const rewind = button('巻き戻しを記録', 'ゲーム内の手順を指定した手に戻す',
+      () => liveExternal('judge-rewind', { target: target.valueAsNumber }));
+    const updateTarget = () => { rewind.disabled = !target.validity.valid || !Number.isInteger(target.valueAsNumber); };
+    target.addEventListener('input', updateTarget); updateTarget();
+    corrections.append(label, rewind, button('裁定シャッフルを読み込む', '混ぜ直した部分の順序を記録した JSON',
+      () => $('judgeShuffleFile').click()));
+    details.append(corrections);
+  }
   if (liveExt.queuedGameLoss.length) {
     const note = document.createElement('p'); note.className = 'note';
     note.textContent = '次のゲームに適用予定 ' + liveExt.queuedGameLoss.map(p => 'P' + p).join('、');
@@ -1561,7 +1596,8 @@ async function startWith(path, body, fresh) {
     if (j.teamChoice) { askTeamChoice = j.teamChoice; renderLegal(steps.length - 1); return; }
     const initialEdit = liveBo1?.sideboards.length && (path === '/api/swap' || path === '/api/register');
     if (fresh) { undoCount = 0; bo1SideSeat = null; teamNextDecks = null; }
-    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/judge-game-loss', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
+    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/judge-game-loss', '/api/judge-rewind',
+      '/api/judge-shuffle', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
     else undoCount = 0;
     setLive(j);
     if (fresh) {
@@ -1645,7 +1681,7 @@ async function liveUndo() {
   try {
     const j = await api('/api/undo', {});
     pause(); undoCount--;
-    const n = j.truncate; steps.length = n;
+    const n = j.truncate; steps.length = n; indexTraceObjects();
     const lis = $('log').children; while (lis.length > n) lis[lis.length - 1].remove();
     $('scrub').max = n - 1; setLive(j);
     buildBoard(); cur = 0; show(n - 1, false);
@@ -1679,6 +1715,12 @@ $('sealedTeamFile').addEventListener('change', async (e) => {
     renderLegal(cur);
     $('livemsg').textContent = '4席のデッキを読み込みました。次のゲームの開始時に照合します。';
   } catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
+$('judgeShuffleFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try { await liveExternal('judge-shuffle', { shuffle: JSON.parse(await file.text()) }); }
+  catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
 });
 async function detectLive() {
   try {

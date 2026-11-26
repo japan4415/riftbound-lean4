@@ -28,7 +28,8 @@ who goes first says it), `undo` (take back the last answer, `act`, `clock` or `j
 as there are answers in this game), `quit`. For recorded matches: `start-json SEED HUMANS SETUP`,
 `register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
 `time-between-games`, `concede-match SEAT`, `agree-match-draw`, `judge-game-loss SEATS`,
-`judge-match-loss SEAT`, `judge-disqualification SEAT`, `replay`. For team matches:
+`judge-match-loss SEAT`, `judge-disqualification SEAT`, `judge-rewind CHECKPOINT`,
+`judge-shuffle SHUFFLE_JSON`, `replay`. For team matches:
 `start-team-json SEED HUMANS SETUP`, `team-next [ORDER|- [SEALED_DECKS]]`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
@@ -97,6 +98,15 @@ def main : IO UInt32 := do
         match ← game.get with
         | some g => goAnswer g (liveJudgeGameLoss g seats)
         | none => fail "no game has been started"
+    | ["judge-rewind", target] =>
+      match target.toNat?, (← game.get) with
+      | some n, some g => goAnswer g (liveJudgeCorrection g (.judgeRewind n))
+      | none, _ => fail "bad rewind checkpoint"
+      | _, none => fail "no game has been started"
+    | "judge-shuffle" :: shuffle =>
+      match ← game.get with
+      | some g => goAnswer g ((decodeLine shuffle).bind (fun data => liveJudgeCorrection g (.judgeShuffle data)))
+      | none => fail "no game has been started"
     | ["judge-match-loss", seat] | ["judge-disqualification", seat] =>
       match seat.toNat? with
       | none => fail "bad penalty seat"

@@ -14,14 +14,17 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     Except String String := do
   let mut state ← input.initial RiftboundCards.db config
   let (initial, firstSeen) := stepJson 0 none [] state {}
+  let mut history : List ReplayPosition := [{ state }]
   let mut seen := firstSeen
   let mut steps := [initial]
   for (answer, index) in input.answers.toList.zipIdx do
-    let (action, next, events) ← input.applyAnswer state answer (index + 1) fuel
+    let (action, next, events) ← input.advance history answer (index + 1) fuel
     let sideboard := answer == .bo1Sideboard
-    let (row, nextSeen) := stepJson (index + 1) action events next seen state.pending.head? sideboard
-      (input.isBo1Initiative state action) answer.penalizedSeats
-    state := next
+    let priorSeen := if answer.rewinds then {} else seen
+    let (row, nextSeen) := stepJson (index + 1) action events next.state priorSeen state.pending.head? sideboard
+      (input.isBo1Initiative state action) answer.penalizedSeats answer.correctionJson
+    history := next :: history
+    state := next.state
     seen := nextSeen
     steps := row :: steps
   return jobj [("players", toString state.playerCount), ("steps", jarr steps.reverse)]

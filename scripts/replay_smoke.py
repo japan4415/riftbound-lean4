@@ -421,6 +421,66 @@ def live_judge_penalties(live: Lean, setup: dict) -> dict:
             "live-team-match-loss": (match_loss, "-team"), "live-duel-disqualification": (disqualification, "")}
 
 
+def live_judge_corrections(live: Lean, setup: dict) -> dict:
+    team = json.loads((ROOT / "data/replay/team-constructed-example.json").read_text(encoding="utf-8"))
+    fixtures = {}
+    for label, source, seats, config, suffix in (
+        ("duel", "start-json", "01", {**setup, "winsRequired": 1}, ""),
+        ("team", "start-team-json", "0123", team, "-team"),
+    ):
+        opened = keep(live, ask(live, f"{source} 71 {seats} {json.dumps(config)}"))
+        target = opened["steps"][-1]
+        assert "earlier checkpoint" in json.loads(live.ask(f"judge-rewind {target['i']}"))["error"]
+        progressed = choose(live, opened, "pass")
+        assert progressed["steps"][-1]["state"]["turn"] > target["state"]["turn"]
+        rewound = ask(live, f"judge-rewind {target['i']}")
+        row = rewound["steps"][0]
+        assert row["judgeRewind"] == target["i"] and row["action"] is None and row["events"] == []
+        assert {key: value for key, value in row["state"].items() if key != "new"} == {
+            key: value for key, value in target["state"].items() if key != "new"
+        }
+        assert row["state"]["new"]
+
+        def apply_shuffle(deck: str) -> None:
+            before = row["state"]["zones"][f"p0.{deck}"]
+            change = {"seat": {"n": 0}, "deck": deck, "positions": [0, 2],
+                      "order": [{"n": before[2]}, {"n": before[0]}]}
+            replacing = {**change, "order": [{"n": before[1]}, {"n": before[0]}]}
+            assert "keep exactly the objects" in json.loads(live.ask(f"judge-shuffle {json.dumps(replacing)}"))["error"]
+            duplicate = {**change, "positions": [0, 0]}
+            assert "strictly increasing" in json.loads(live.ask(f"judge-shuffle {json.dumps(duplicate)}"))["error"]
+            shuffled = ask(live, f"judge-shuffle {json.dumps(change)}")["steps"][0]
+            assert shuffled["judgeShuffle"] == change and shuffled["action"] is None and shuffled["events"] == []
+            after = shuffled["state"]["zones"][f"p0.{deck}"]
+            assert after == [before[2], before[1], before[0], *before[3:]]
+            assert "without crossing" in json.loads(live.ask(f"judge-rewind {target['i']}"))["error"]
+
+        apply_shuffle("mainDeck")
+        apply_shuffle("runeDeck")
+        if suffix:
+            assert ask(live, "judge-match-loss 3")["archiveAvailable"]
+        else:
+            assert ask(live, "judge-game-loss 1")["archiveAvailable"]
+        fixtures[label] = (ask(live, "replay"), suffix, target["i"])
+    return fixtures
+
+
+def check_judge_corrections(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
+    for label, (archive, suffix, target) in fixtures.items():
+        path = folder / f"judge-{label}-corrections-archive.json"
+        path.write_text(json.dumps(archive), encoding="utf-8")
+        assert json.loads(command("verify" + suffix, path))["exact"]
+        trace_path = folder / f"judge-{label}-corrections-trace.json"
+        command("view" + suffix, path, trace_path)
+        steps = json.loads(trace_path.read_text(encoding="utf-8"))["games"][0]["steps"]
+        rewind_step = next(step for step in steps if "judgeRewind" in step)
+        witness = archive["games"][0]["checkpoints"]
+        assert rewind_step["judgeRewind"] == target and witness[target]["state"] == witness[rewind_step["i"]]["state"]
+        remedies = [step for step in steps if step.get("judgeShuffle")]
+        assert [step["judgeShuffle"]["deck"] for step in remedies] == ["mainDeck", "runeDeck"]
+        assert all(not row["events"] for row in remedies)
+
+
 def check_judge_penalties(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix) in fixtures.items():
         path = folder / f"{label}-archive.json"
@@ -505,7 +565,7 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
 
 
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
-              team_matches: dict[str, tuple[dict, list[int]]], penalties: dict) -> None:
+              team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -675,6 +735,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         exported = json.loads(trace.read_text(encoding="utf-8"))
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
     check_judge_penalties(folder, command, penalties)
+    check_judge_corrections(folder, command, corrections)
 
 
 def main() -> None:
@@ -691,15 +752,16 @@ def main() -> None:
         bo1 = live_bo1_match(live, setup)
         team_matches = live_team_matches(live, setup)
         penalties = live_judge_penalties(live, setup)
+        corrections = live_judge_corrections(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties)
+        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties, corrections)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties)
+            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties, corrections)
     print("replay smoke: OK")
 
 

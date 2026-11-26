@@ -131,6 +131,8 @@ structure LiveGame where
   answersRev : List ReplayAnswer := []
   /-- Evidence for setup and each answer, newest first. -/
   checkpointsRev : List ReplayCheckpoint := []
+  /-- The states behind the checkpoints of a recorded game, newest first. -/
+  history : List ReplayPosition := []
   /-- Completed games in chronological order, up to the start of this game. -/
   completed : Array RecordedGame := #[]
   /-- Battlefield cards selected for this game, keyed by the seat that brought them. -/
@@ -196,21 +198,24 @@ def LiveGame.endedByGameLoss (g : LiveGame) : Bool :=
 def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
     Except String (LiveGame × String) := do
   if g.ending.isSome then throw "the match is over"
-  let (action, s', es) ← match g.input with
-    | some input => input.applyAnswer g.s answer g.i (g.setup.map (·.fuel) |>.getD 100)
+  let (action, position, es) ← match g.input with
+    | some input => input.advance g.history answer g.i (g.setup.map (·.fuel) |>.getD 100)
     | none => do
       let a ← answer.resolve g.i
       let (next, events) ← (step 100 g.s a).mapError (fun e => s!"the engine refused the answer: {repr e}")
-      pure (some a, next, events)
+      let fields := (pickedBattlefield g.s a).toList ++ g.fields
+      pure (some a, { state := next, fields }, events)
   let initiative := g.input.any (fun input => input.isBo1Initiative g.s action)
-  let (j, seen') := stepJson g.i action es s' g.seen g.s.pending.head? (answer == .bo1Sideboard)
-    initiative answer.penalizedSeats
+  let priorSeen := if answer.rewinds then {} else g.seen
+  let (j, seen') := stepJson g.i action es position.state priorSeen g.s.pending.head? (answer == .bo1Sideboard)
+    initiative answer.penalizedSeats answer.correctionJson
   return ({ g with
-    s := s', seen := seen', i := g.i + 1,
+    s := position.state, seen := seen', i := g.i + 1,
     answersRev := if g.input.isSome then answer :: g.answersRev else g.answersRev,
-    checkpointsRev := if g.input.isSome then ReplayCheckpoint.capture s' es :: g.checkpointsRev
+    checkpointsRev := if g.input.isSome then ReplayCheckpoint.capture position.state es :: g.checkpointsRev
       else g.checkpointsRev,
-    fields := (action.bind (pickedBattlefield g.s)).toList ++ g.fields }, j)
+    history := if g.input.isSome then position :: g.history else g.history,
+    fields := position.fields }, j)
 
 /-- Give an answer: the step as JSON, and the game after it. -/
 def LiveGame.apply (g : LiveGame) (a : Action) : Except String (LiveGame × String) :=
@@ -302,6 +307,7 @@ def LiveGame.externalJson (g : LiveGame) : String :=
     g.s.players else []
   jobj [("clock", ok ⟨.clock, .timeCalled⟩), ("judge", ok ⟨.judge, .declareDraw⟩),
     ("penaltySeats", seatsJson penaltySeats), ("queuedGameLoss", seatsJson (g.queuedGameLoss.getD [])),
+    ("correction", toString (!penaltySeats.isEmpty && g.s.result.isNone && g.s.phase != .setup)),
     ("betweenGames", toString (g.ending.isNone && g.match_.isSome &&
       g.s.result.isSome && g.s.config.ruleSet.isTournament && g.s.clock.isNone &&
       g.timeAfterGames.isNone))]
@@ -381,7 +387,8 @@ def LiveKind.initial (decks : List Deck) (sides : List (List CardId) := []) :
 def LiveGame.begin (g : LiveGame) : Except String (LiveGame × List String) := do
   let (j0, seen) := stepJson 0 none [] g.s {}
   let checkpointsRev := if g.input.isSome then [ReplayCheckpoint.capture g.s []] else []
-  let game := { g with i := 1, seen, checkpointsRev, queuedGameLoss := none }
+  let history : List ReplayPosition := if g.input.isSome then [{ state := g.s }] else []
+  let game := { g with i := 1, seen, checkpointsRev, history, queuedGameLoss := none }
   let (next, steps) ← match g.queuedGameLoss with
     | some seats => do
       let (next, row) ← game.applyReplay (.gameLoss seats)
@@ -414,7 +421,7 @@ def LiveGame.gameRecord (g : LiveGame) (input : GameInputs) : RecordedGame :=
 def RecordedGame.teamObservation (game : RecordedGame) : Except String TeamGameRecord := do
   let summary := game.summary
   let [a, _, b, _] := summary.points | throw "a team result needs four seat scores"
-  let closingAction : Option Action ← if game.gameLossSeats.isSome then pure none
+  let closingAction : Option Action ← if summary.result.isNone || game.gameLossSeats.isSome then pure none
     else game.input.answers.back?.mapM (fun answer => answer.resolve game.input.answers.size)
   let ending ← if let some seats := game.gameLossSeats then pure (TeamGameEnd.gameLoss seats)
   else match summary.result, closingAction with
@@ -611,6 +618,13 @@ def liveAct (g : LiveGame) (k : Nat) : Except String (LiveGame × String) := do
 player's. The engine refuses it when it is not legal. -/
 def liveExternal (g : LiveGame) (a : Action) : Except String (LiveGame × String) :=
   LiveGame.runAfterAnswer (g.apply a)
+
+/-- Log a rewind or remedy shuffle in the record of the active game. -/
+def liveJudgeCorrection (g : LiveGame) (answer : ReplayAnswer) :
+    Except String (LiveGame × String) :=
+  match answer with
+  | .judgeRewind _ | .judgeShuffle _ => LiveGame.runAfterAnswer (g.applyReplay answer)
+  | _ => .error "expected a judge correction"
 
 /-- Apply an in-game Game Loss or schedule one for the next game (TR 701.2.b.1). -/
 def liveJudgeGameLoss (g : LiveGame) (seats : List PlayerId) : Except String (LiveGame × String) := do

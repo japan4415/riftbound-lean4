@@ -26,6 +26,26 @@ inductive ReplayDecks where
   | limited (decks : List LimitedDeck)
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A private deck whose randomized portion can be shuffled by a judge (TR 701.4). -/
+inductive JudgeDeck where
+  /-- The player's Main Deck. -/
+  | mainDeck
+  /-- The player's Rune Deck. -/
+  | runeDeck
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The observed positions and outcome of a remedy shuffle. -/
+structure JudgeShuffle where
+  /-- The owner of the affected deck. -/
+  seat : PlayerId
+  /-- The affected deck. -/
+  deck : JudgeDeck
+  /-- Zero-based positions, in ascending order, included in the random portion. -/
+  positions : List Nat
+  /-- The resulting object IDs at those positions, in the same order. -/
+  order : List ObjId
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -38,6 +58,10 @@ inductive ReplayAnswer where
   | bo1Sideboard
   /-- The judge applies simultaneous Game Loss penalties to these seats (TR 701.2.b). -/
   | gameLoss (seats : List PlayerId)
+  /-- The judge restores the state at a preceding game checkpoint (TR 701.5). -/
+  | judgeRewind (target : Nat)
+  /-- The judge reorders a private deck's randomized portion (TR 701.4). -/
+  | judgeShuffle (shuffle : JudgeShuffle)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
@@ -51,6 +75,18 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
+  | .judgeRewind _ | .judgeShuffle _ => throw s!"answer {index}: a correction is a judge ruling"
+
+/-- Additional trace metadata for a judge correction, independent of in-game actions. -/
+def ReplayAnswer.correctionJson : ReplayAnswer → List (String × String)
+  | .judgeRewind target => [("judgeRewind", toString target)]
+  | .judgeShuffle shuffle => [("judgeShuffle", (toJson shuffle).compress)]
+  | _ => []
+
+/-- Whether a trace row needs to rescan object metadata after restoring an earlier state. -/
+def ReplayAnswer.rewinds : ReplayAnswer → Bool
+  | .judgeRewind _ => true
+  | _ => false
 
 /-- A Game Loss affects the whole side; if neither side remains, the game is a draw (TR 701.2.b). -/
 def judgeGameLossResult (players : List PlayerId) (sameSide : PlayerId → PlayerId → Bool)
@@ -260,9 +296,29 @@ def GameInputs.isBo1Initiative (input : GameInputs) (s : GameState) (action : Op
 def GameInputs.awaitsBo1Sideboard (input : GameInputs) (s : GameState) : Bool :=
   input.bo1Setup?.isSome && s.phase == .setup && s.pending == [.setupHands] && s.result.isNone
 
+/-- A remedy shuffle leaves known positions and the game's trigger stream alone (TR 701.4). -/
+def JudgeShuffle.apply (shuffle : JudgeShuffle) (s : GameState) : Except String GameState := do
+  unless s.config.ruleSet.isTournament && s.result.isNone && s.phase != .setup do
+    throw "a judge shuffle requires ongoing tournament play"
+  unless s.players.contains shuffle.seat do throw "invalid judge shuffle seat"
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let zone := Zone.player shuffle.seat kind
+  let previous := s.zone zone
+  unless !shuffle.positions.isEmpty && decide (shuffle.positions.Pairwise (· < ·)) do
+    throw "judge shuffle positions must be nonempty and strictly increasing"
+  let some selected := shuffle.positions.mapM (fun i => previous[i]?)
+    | throw "a judge shuffle position is outside the deck"
+  unless decide (selected.Perm shuffle.order) do
+    throw "a judge shuffle must keep exactly the objects selected from that deck"
+  let changes := shuffle.positions.zip shuffle.order
+  return s.reorder zone (previous.zipIdx.map (fun (card, i) => (changes.lookup i).getD card))
+
 /-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
 def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+  if let .judgeShuffle shuffle := answer then
+    let next ← (shuffle.apply s).mapError (fun error => s!"answer {index}: {error}")
+    return (none, next, [])
   if let .gameLoss seats := answer then
     unless s.config.ruleSet.isTournament && s.config.mode.hasTwoSides && s.result.isNone do
       throw s!"answer {index}: a Game Loss requires an ongoing tournament game"
@@ -340,6 +396,33 @@ def pickedBattlefield (s : GameState) (action : Action) : Option (PlayerId × Ca
   let card ← s.cardDef? id
   pure (p, card.id)
 
+/-- The state and setup observations at a chronological checkpoint. -/
+structure ReplayPosition where
+  /-- The state at the checkpoint. -/
+  state : GameState
+  /-- Setup observations made by this checkpoint, newest first. -/
+  fields : List (PlayerId × CardId) := []
+  /-- Whether the action that produced this checkpoint can be reversed in play. -/
+  reversible : Bool := false
+
+/-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
+def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
+    (answer : ReplayAnswer) (index fuel : Nat) : Except String (Option Action × ReplayPosition × List Event) := do
+  let some prior := history.head? | throw "the initial checkpoint is missing"
+  if let .judgeRewind target := answer then
+    unless prior.state.config.ruleSet.isTournament && prior.state.result.isNone &&
+        prior.state.phase != .setup do
+      throw s!"answer {index}: rewinding requires ongoing tournament play"
+    let distance := index - (target + 1)
+    unless target + 1 < index && (history.take distance).all (·.reversible) do
+      throw s!"answer {index}: a rewind must target an earlier checkpoint within play without crossing a ruling or clock call"
+    let some position := history[distance]? | throw s!"answer {index}: rewind checkpoint not found"
+    return (none, { position with reversible := false }, [])
+  let (action, state, events) ← input.applyAnswer prior.state answer index fuel
+  let reversible := prior.state.phase != .setup && action.any (fun a => a.actor != .clock && a.actor != .judge)
+  let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
+  return (action, { state, fields, reversible }, events)
+
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do
   if let some witnesses := expected then
@@ -350,23 +433,23 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
-  let mut s ← input.initial db config
+  let s ← input.initial db config
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
-  let mut fields : List (PlayerId × CardId) := []
+  let mut history : List ReplayPosition := [{ state := s }]
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
     if let .inferred .. := answer then exact := false
-    let (action, next, events) ← input.applyAnswer s answer (index + 1) fuel
-    if let some entry := action.bind (pickedBattlefield s) then fields := entry :: fields
-    let witness := ReplayCheckpoint.capture next events
+    let (_, next, events) ← input.advance history answer (index + 1) fuel
+    let witness := ReplayCheckpoint.capture next.state events
     checkCheckpoint expected (index + 1) witness
     checkpoints := checkpoints.push witness
-    s := next
+    history := next :: history
+  let some final := history.head? | throw "the final checkpoint is missing"
   return {
     input, eliminationConfig? := replayEliminationConfig config, checkpoints,
-    summary := ReplayGameResult.fromState s input.decks fields.reverse exact }
+    summary := ReplayGameResult.fromState final.state input.decks final.fields.reverse exact }
 
 /-- Play recorded answers with the engine, retaining the exact input, checkpoints and outcome. -/
 def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)

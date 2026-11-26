@@ -116,6 +116,12 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 標準入力では `judge-game-loss SEATS`、`judge-match-loss SEAT`、`judge-disqualification SEAT` を使う。`judge-game-loss 13` は P1 と P3 への同時裁定を表す。
 
+プレイを巻き戻した場合は「ジャッジの裁定を記録」で戻す手を指定する。巻き戻す前の操作もログに残る。外部記録では `{"judgeRewind":{"target":18}}` を裁定位置の `answers` に置く。手番号は初期状態を0とする。現在は、時計や別の裁定を挟まない同じゲームのプレイ区間を戻せる。非公開カードをランダムに選び直す手順は今後の対象。
+
+山札の一部をジャッジが混ぜ直した場合は、変更した位置と混ぜ直した後のオブジェクトIDを保存する。ライブ画面の「裁定シャッフルを読み込む」では `seat`、`deck`（`"mainDeck"` または `"runeDeck"`）、`positions`、`order` を持つJSONを使う。位置は山札の上を0として昇順に並べ、`order` の各IDは `{"n":42}` の形で同じ順に並べる。外部記録では `{"judgeShuffle":{"shuffle":{...}}}` としてそのJSONを入れる。選んだ位置にあったカードの集合を照合し、他の位置とゲーム内のシャッフル誘発には影響させない（TR 701.4）。
+
+標準入力では `judge-rewind CHECKPOINT` と `judge-shuffle SHUFFLE_JSON` を使う。
+
 ### 2v2 の大会記録
 
 ライブで記録する場合は、操作する席を「4席すべて（2v2）」にして、「登録デッキで開始」から [2v2 Constructed の設定例](../data/replay/team-constructed-example.json) を読み込む。設定の型は `LiveTeamSetup`。最初に手番順を選んだチームを `firstChooser` に、選ばれた手番順を `order` に入れる。ゲームに勝敗がつくと負けたチームが次の手番順を選び、引き分けなら直前の手番順と Battlefield を引き継ぐ。

@@ -141,6 +141,13 @@ def make_handler(lean: Lean, port: int):
                     line = "agree-match-draw"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/judge-rewind":
+                    target = req["target"]
+                    if type(target) is not int or target < 0:
+                        return self._json(400, {"error": "bad rewind checkpoint"})
+                    line = f"judge-rewind {target}"
+                elif path == "/api/judge-shuffle":
+                    line = "judge-shuffle " + json.dumps(req["shuffle"], ensure_ascii=True)
                 elif path == "/api/judge-game-loss":
                     seats = req["seats"]
                     if (not isinstance(seats, list) or not seats
