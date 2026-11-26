@@ -294,6 +294,8 @@ inductive Selector where
   | attachments (s : Selector)
   /-- The Battlefields the objects are at (a Unit in a Base is at none). -/
   | locationOf (s : Selector)
+  /-- The objects recorded by the linked instruction that fired this ability. -/
+  | eventObjects
 deriving DecidableEq, Repr, Hashable
 
 /-- A question about the game. -/

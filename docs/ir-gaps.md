@@ -46,7 +46,7 @@
 | カード | 文 | 足りないもの |
 |---|---|---|
 | Recruit the Vanguard（解決済み） | "Play four 1 Might Recruit unit tokens." | 各トークンの配置先を `Prim.playUnitToken` で順に選ぶ |
-| Mirror Image | "Play a ready Reflection unit token ... It becomes a copy of that unit. Give it [Temporary]." | 作ったオブジェクトを後続の指示で参照すること、コピー（CR 479.1）、トークンの定義 |
+| Mirror Image、Keeper of Masks | Reflection のプレイ後に、別の誘発型能力でコピーにする | `playUnitTokensThen` は実際に入ったトークンの ID を誘発に渡す。Heimerdinger による置換後も、その ID がコピーの対象になる（CR 375、388–389）。Zilean の追加トークンを同じ指示の結果として扱う処理は残っている。 [Unleashed 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間。**近似して書いた**（`StaticMod.copiesUnitText`: 付いたユニットが、自分のカードの誘発する能力を、もう一度持つ。起動する能力、パッシブ、死ぬときの誘発（死ぬと、Equipment が外れた新しい物になる）は、複製しない）。 |
 | Whirlwind（解決済み） | "Starting with the next player, each player may return a unit ..." | `eachPlayerFromNext` で現手番の次の席から全員を順に回る。2v2 で味方を含む4席の選択と手札への帰還を確認した |
 | Spiritforged 22 の近似（[roadmap.md](roadmap.md) 『Spiritforged 22』） | 山札から公開（Undertitan）、公開の置き換え（Void Hatchling）、手札以外から遊ぶときの Accelerate（Rek'Sai）、選ぶ呪文の費用（Irelia）、追放したユニットの記録（The Zero Drive）、Akshan の『離れるまで支配』 | `Prim.reveal` を使うカードだけが `Event.revealed` を出す。置き換えは、公開のあとの誘発で近似する。費用は、Energy の払い戻しで近似する。ほかは、書いていない |

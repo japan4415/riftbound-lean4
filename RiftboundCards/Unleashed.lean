@@ -70,20 +70,6 @@ def otherDragon : Selector := Selector.all .friendly .anywhere [.ofType .unit, .
 /-- A friendly unit other than the one the ability belongs to. -/
 def otherFriendlyUnit : Selector := Selector.all .friendly .anywhere [.ofType .unit, .notSelf]
 
-/-- Play `n` Reflection unit tokens at the place the object is (the Battlefield, else the Base): they
-become copies of the object the selector names, and have Temporary if asked to. -/
-def reflections (n : Nat) (ready : Bool) (src : Selector) (temporary : Bool) : Effect :=
-  let tmp (pl : Place) : Effect :=
-    if temporary then
-      .grant (Selector.all .friendly pl [.ofType .unit, .named "Reflection"])
-        (.keyword .it { keyword := .temporary }) .permanent
-    else .nop
-  .ifThen (.matches .self .onBattlefield)
-    (.seqOf [.prim (.create "Reflection" (.const n) .here ready), tmp .here,
-      .prim (.becomeCopy (Selector.all .friendly .here [.ofType .unit, .named "Reflection"]) src)])
-    (.seqOf [.prim (.create "Reflection" (.const n) .atBase ready), tmp .atBase,
-      .prim (.becomeCopy (Selector.all .friendly .atBase [.ofType .unit, .named "Reflection"]) src)])
-
 /-- A mode that has not been chosen yet (Curtain Call): it is noted, then done. -/
 def freshMode (k : Nat) (e : Effect) : Effect :=
   .ifThen (.not (.marked (.modeUsed k))) (.seqOf [.prim (.markOn .self (.modeUsed k)), e]) .nop
@@ -2395,7 +2381,8 @@ Printings: UNL-081/219
 
 > [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)
 > [Temporary] (Kill me at the start of my controller's Beginning Phase, before scoring.)
-> When you play me, play two Reflection unit tokens here. They become copies of me.
+> When you play me, play two Reflection unit tokens here. Then do this: They become copies of
+> me.
 -/
 def UNL_081.meta : CardDef :=
   { id := ⟨"UNL-081"⟩,
@@ -2413,7 +2400,11 @@ def UNL_081.meta : CardDef :=
 /-- Keeper of Masks. -/
 def UNL_081 : CardDef :=
   { UNL_081.meta with
-    abilities := [.triggered (.onSelf .play) (.of [] (reflections 2 false .self false)) .unlimited],
+    abilities := [
+      .triggered (.onSelf .play) (.of [] (.playUnitTokensThen "Reflection" 2 .here false 1))
+        .unlimited,
+      .triggered (.onSelf (.linkedUnitTokens false))
+        (.of [] (.prim (.becomeCopy .eventObjects .self))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-082
@@ -2670,6 +2661,7 @@ def UNL_090.meta : CardDef :=
     name := "LeBlanc",
     subtitle := some "Everywhere at Once",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Noxus"⟩, ⟨"LeBlanc"⟩],
     domains := [.mind],
     cost := some ⟨4, []⟩,
@@ -4972,6 +4964,7 @@ def UNL_172.meta : CardDef :=
     name := "LeBlanc",
     subtitle := some "Fragmented",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Noxus"⟩, ⟨"LeBlanc"⟩],
     domains := [.order],
     cost := some ⟨3, [.domain .order]⟩,
@@ -5825,29 +5818,29 @@ def UNL_199 : CardDef :=
 **Mirror Image** — Spell · Mind/Order · Energy 3 + Power 2
 Printings: UNL-200/219
 
-> Choose a unit. Play a ready Reflection unit token to your base. It becomes a copy of that
-> unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before
-> scoring.)
+> Choose a unit. Play a ready Reflection unit token to your base. Then do this: It becomes a
+> copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning
+> Phase, before scoring.)
 -/
 def UNL_200.meta : CardDef :=
   { id := ⟨"UNL-200"⟩,
     name := "Mirror Image",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"LeBlanc"⟩],
     domains := [.mind, .order],
-    cost := some ⟨3, [.any, .any]⟩,
-    sets := [⟨"UNL"⟩] }  -- Power domains unknown
+    cost := some ⟨3, [.own, .own]⟩,
+    sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
 /-- Mirror Image. -/
 def UNL_200 : CardDef :=
   { UNL_200.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.create "Reflection" (.const 1) .atBase true),
-        .grant (Selector.all .friendly .atBase [.ofType .unit, .named "Reflection"])
-          (.keyword .it { keyword := .temporary }) .permanent,
-        .prim (.becomeCopy (Selector.all .friendly .atBase [.ofType .unit, .named "Reflection"])
-          (.slot 0))])),
+      (.playUnitTokensThen "Reflection" 1 .atBase true 0 (some (.slot 0)))),
+    abilities := [.triggered (.onSelf (.linkedUnitTokens true))
+      (.of [] (.seqOf [.prim (.becomeCopy .eventObjects (.slot 0)),
+        .grant .eventObjects (.keyword .it { keyword := .temporary }) .permanent])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-201

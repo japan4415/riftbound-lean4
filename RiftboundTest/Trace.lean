@@ -2,6 +2,8 @@ module
 
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
+import RiftboundTest.CardLab
+meta import RiftboundTest.CardLab
 
 /-!
 # Tests: the trace of a game (the viewer's input)
@@ -9,7 +11,7 @@ meta import RiftboundDriver.Trace
 
 namespace RiftboundTest
 
-open RiftboundDriver
+open Riftbound RiftboundDriver
 
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=
@@ -32,6 +34,19 @@ meta def traceOf (seed turns : Nat) : String :=
 #guard ((traceOf 1 12).splitOn "\"battlefields\":[{").length > 2
 #guard ((traceOf 1 12).splitOn "\"t\":\"moved_unit\"").length > 1
 #guard ((traceOf 1 12).splitOn "\"t\":\"scored\"").length > 1
+
+-- A token already known to the viewer changes identity in `copies`, using its original ID.
+#guard (do
+    let s ← lab
+    let (s, model) ← put s s.you "UNL-111" .base
+    let id : ObjId := ⟨s.nextId⟩
+    let placed := createOne (cid "UNL-T06") s.me none true s
+    let (before, seen) := stateJson placed {}
+    let copied := (becomeCopyOf model placed id).1
+    let (after, _) := stateJson copied seen
+    return (before.splitOn (s!"\"{id.n}\":" ++ "{\"card\":\"UNL-T06\"")).length == 2 &&
+      (after.splitOn ("\"copies\":{" ++ s!"\"{id.n}\":\"UNL-111\"" ++ "}")).length == 2 &&
+      (after.splitOn "\"new\":{}").length == 2 : Option Bool).getD false
 
 -- quotes and backslashes in a name are escaped
 #guard jstr "a\"b\\c" == "\"a\\\"b\\\\c\""

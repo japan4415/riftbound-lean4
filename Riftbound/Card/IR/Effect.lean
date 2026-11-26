@@ -114,6 +114,18 @@ structure EffectDamageBatch where
   spent : List (Nat × Nat) := []
 deriving DecidableEq, Repr, Hashable
 
+/-- The reflexive ability attached to a Unit token instruction (CR 375, 388-389). -/
+structure UnitTokenFollowup where
+  /-- The object from which the linked instruction originated. -/
+  source : ObjId
+  /-- The definition containing the follow-up ability. -/
+  card : CardId
+  /-- The index of the ability in that definition. -/
+  index : Nat
+  /-- The object chosen earlier, if the linked ability refers to it. -/
+  target : Option ObjId
+deriving DecidableEq, Repr, Hashable
+
 /-- A simultaneous group of Unit token plays at the specified location. Each entry records
 its card and any instruction to enter ready (CR 184.2, 375-376). -/
 structure UnitTokenBatch where
@@ -123,6 +135,8 @@ structure UnitTokenBatch where
   contest : Bool
   /-- The token definitions and their explicit entry-ready flags. -/
   entries : List (CardId × Bool)
+  /-- The ability to queue with the objects that actually enter. -/
+  followup : Option UnitTokenFollowup := none
 deriving DecidableEq, Repr, Hashable
 
 mutual
@@ -323,6 +337,10 @@ inductive Effect where
   | setSpellChoices (spell : ObjId) (pick : SpellPick) (targets : List ObjId)
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
+  /-- Play a group of Unit tokens, then queue the linked ability with the resulting objects.
+  The linked ability can inherit one previously chosen object without choosing it again. -/
+  | playUnitTokensThen (name : String) (count : Nat) (place : Place) (ready : Bool)
+      (index : Nat) (target : Option Selector := none)
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of effects. -/

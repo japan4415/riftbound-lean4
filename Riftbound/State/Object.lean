@@ -252,6 +252,8 @@ structure Object where
   fromHidden : Bool := false
   /-- For a card hidden face down: the turn it was hidden. -/
   hiddenTurn : Option Nat := none
+  /-- A token's original definition before it became a copy (CR 446.1). -/
+  originalToken : Option CardId := none
 deriving DecidableEq, Repr
 
 /-- The object has the mark that it can't be readied (Maduli): the effects that ready, and the

@@ -549,6 +549,11 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.cards.find? card with
     | some d => triggersAmong s src p .linkedDiscardType d idx (idx + 1)
     | none => []
+  | .unitTokensFor p src card idx target tokens =>
+    match s.cards.find? card with
+    | some d => (triggersAmong s src p (.linkedUnitTokens target.isSome) d idx (idx + 1)).map
+      (fun t => { t with subject := target, eventObjects := tokens })
+    | none => []
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
     let own := triggersOfMatching s obj p (fun ev => ev == .die || ev == .deathknell) lastCopy

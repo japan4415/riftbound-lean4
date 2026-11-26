@@ -922,6 +922,7 @@ def Selector.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .revealedDeck side => some (env.revealedCards.filter (fun id =>
     (s.obj? id).any (fun o =>
       side.admitsPlayer p o.owner s.config.mode && (s.zone (.player o.owner .mainDeck)).contains id)))
+  | .eventObjects => some (env.eventObjects.filter (fun id => id ∈ s.inPlay))
   | .slotsFrom i =>
     some ((env.slots.drop i).filterMap (fun v =>
       match v with

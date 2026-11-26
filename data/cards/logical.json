@@ -18557,7 +18557,7 @@
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "[Temporary] (Kill me at the start of my controller's Beginning Phase, before scoring.)",
-    "When you play me, play two Reflection unit tokens here. They become copies of me."
+    "When you play me, play two Reflection unit tokens here. Then do this: They become copies of me."
    ],
    "textVariants": 1,
    "types": [
@@ -18826,6 +18826,9 @@
     "UNL"
    ],
    "subtitle": "Everywhere at Once",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Noxus",
     "LeBlanc"
@@ -21272,6 +21275,9 @@
     "UNL"
    ],
    "subtitle": "Fragmented",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Noxus",
     "LeBlanc"
@@ -22141,6 +22147,7 @@
    "mightBonus": null,
    "name": "Mirror Image",
    "power": 2,
+   "powerOwn": true,
    "printings": [
     "UNL-200/219"
    ],
@@ -22148,11 +22155,14 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "LeBlanc"
    ],
    "text": [
-    "Choose a unit. Play a ready Reflection unit token to your base. It becomes a copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)"
+    "Choose a unit. Play a ready Reflection unit token to your base. Then do this: It becomes a copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)"
    ],
    "textVariants": 1,
    "types": [

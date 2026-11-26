@@ -1639,7 +1639,7 @@ theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
 stays what it is. -/
 def copyKind (card : CardId) (x : Object) : Object :=
   match x.kind with
-  | .token _ => { x with kind := .token card }
+  | .token before => { x with kind := .token card, originalToken := x.originalToken <|> some before }
   | _ => x
 
 /-- Becoming a copy keeps the physical card and the owner. -/
@@ -5317,8 +5317,21 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
       if o.controller == p then some (d, 1, !o.exhausted, o.loc, false) else none
     | _ => none
   if card.hasType .unit && count > 0 then
-    some ⟨destination, contest, List.replicate count (card.id, ready)⟩
+    some { destination, contest, entries := List.replicate count (card.id, ready) }
   else none
+
+/-- Prepare entry with the card and original target that the reflexive ability will use. -/
+def linkedUnitTokenBatch (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (name : String) (count : Nat) (place : Place) (ready : Bool) (index : Nat)
+    (target : Option Selector) : Option UnitTokenBatch := do
+  let batch ← unitTokenBatchOf s p src env (.create name (.const count) place ready)
+  let card ← env.sourceCard <|> (s.cardDef? src).map (·.id)
+  let targetId ← match target with
+    | none => some none
+    | some sel => do
+      let [id] ← sel.eval s p src env | none
+      some (some id)
+  some { batch with followup := some ⟨src, card, index, targetId⟩ }
 
 /-- The Unit token replacements currently offered by this player's effects. -/
 def GameState.unitTokenReplacements (s : GameState) (p : PlayerId) : List CardId :=
@@ -5348,7 +5361,12 @@ def enterUnitTokenBatch (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) 
   let t := batch.entries.foldl (enterUnitToken s p batch.destination) s
   let next := if batch.contest then batch.destination.elim t (fun field => contestFor p field t)
     else t
-  (buffNewTokens s next p, tokenPlays s next p)
+  let played := tokenPlays s next p
+  let linked := batch.followup.toList.flatMap fun link =>
+    let tokens := played.filterMap (fun | .tokenPlayed _ id => some id | _ => none)
+    if tokens.isEmpty then []
+    else [.unitTokensFor p link.source link.card link.index link.target tokens]
+  (buffNewTokens s next p, played ++ linked)
 
 /-- Placing the whole group preserves the structural invariants. -/
 theorem enterUnitTokenBatch_safe (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) :
@@ -5464,6 +5482,12 @@ def unitTokenEntryPlan (s : GameState) (p : PlayerId) (batch : UnitTokenBatch)
         Effect.planUnitTokenEntries batch tail ((card, entry.2) :: chosen))
       .eitherOf (EffectList.ofList opts)
 
+/-- Open the usual Unit token play, with any available replacement and optional costs. -/
+def beginUnitTokenEntries (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) : Effect :=
+  if (s.unitTokenReplacements p).isEmpty then
+    .planUnitTokenEntries batch [] batch.entries.reverse
+  else .planUnitTokenEntries batch batch.entries []
+
 /-- The legacy paths handle Gear and effects without a token replacement or new optional cost. -/
 def unitTokenPrimStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) (es : EffectList) : GameState × List Frame × List Event :=
@@ -5471,10 +5495,7 @@ def unitTokenPrimStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     unitTokenBatchOf s p src env pr else none
   match planned with
   | some batch =>
-    let offered := if (s.unitTokenReplacements p).isEmpty then
-      Effect.planUnitTokenEntries batch [] batch.entries.reverse
-      else .planUnitTokenEntries batch batch.entries []
-    (s, [.run p src env (.cons offered es)], [])
+    (s, [.run p src env (.cons (beginUnitTokenEntries s p batch) es)], [])
   | none =>
     match applyPrim s p src env pr with
     | some (t, events) => (t, [.run p src env es], events)
@@ -5532,6 +5553,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match env.slots.head? with
     | some (.obj gear) => (animateGearObject s p src gear, [.run p src env es], [])
     | _ => skip
+  | .playUnitTokensThen name count place ready index target =>
+    match linkedUnitTokenBatch s p src env name count place ready index target with
+    | some batch => (s, [.run p src env (.cons (beginUnitTokenEntries s p batch) es)], [])
+    | none => skip
   | .planUnitTokenEntries batch remaining chosen =>
     let next := unitTokenEntryPlan s p batch remaining chosen funding
     (s, [.run p src env (.cons next es)], [])
@@ -6074,6 +6099,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       sourceCard := some ((o.activationGrant.filter (·.copyStamp.isSome)).map (·.card) |>.getD card)
       abilityCopyStamp := o.abilityCopyStamp
       eventBattlefields := o.eventBattlefields
+      eventObjects := o.eventObjects
       shownOff := o.shownOff
       eventAmount := o.eventAmount }
     let body := match definition with

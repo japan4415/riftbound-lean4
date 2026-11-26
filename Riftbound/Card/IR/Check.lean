@@ -38,6 +38,8 @@ structure Ctx where
   eventOk : Bool := false
   /-- An amount was captured by a reflexive trigger. -/
   eventAmountOk : Bool := false
+  /-- Objects were captured by a linked instruction. -/
+  eventObjectsOk : Bool := false
 deriving DecidableEq, Repr
 
 /-- The players an effect names can be found. -/
@@ -118,6 +120,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .attachments s => Selector.ok c s
   | .locationOf s => Selector.ok c s
   | .slotsFrom i => decide (i < c.slots)
+  | .eventObjects => c.eventObjectsOk
 
 /-- A condition refers only to what is there. -/
 def Condition.ok (c : Ctx) : Condition → Bool
@@ -332,6 +335,7 @@ object, and for the player's units elsewhere when they defend (the Battlefield).
 def Trigger.watched (t : Trigger) : Nat :=
   match t.event with
   | .youDefend => 1
+  | .linkedUnitTokens true => 1
   | _ => if t.subject == .self then 0 else 1
 
 /-- A trigger refers only to what is there. -/
@@ -355,6 +359,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .addReservedLegend => true
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
+  | .playUnitTokensThen _ n place _ _ target =>
+    decide (n > 0) && (place == .atBase || place == .here) && target.all (Selector.ok c)
   | .nop => true
   | .animateGear => decide (0 < c.slots)
   | .markTriggeredAdd _ => false
@@ -479,8 +485,10 @@ def Ability.ok : Ability → Bool
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
     let hasAmount := t.event == .linkedBurnUnit || t.event == .delayedEnd
-    Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := t.watched, eventAmountOk := hasAmount }
+    let hasObjects := match t.event with | .linkedUnitTokens _ => true | _ => false
+    let ctx : Ctx := { itOk := true, slots := t.watched, eventAmountOk := hasAmount,
+                       eventObjectsOk := hasObjects }
+    Trigger.ok { itOk := true } t && body.ok ctx
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

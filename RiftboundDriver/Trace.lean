@@ -503,6 +503,10 @@ def eventJson : Event → String
   | .discardedTypeFor p source _ idx card =>
     jobj [("t", jstr "discarded_type"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("card", toString card.n)]
+  | .unitTokensFor p source _ idx target tokens =>
+    jobj [("t", jstr "unit_tokens_for"), ("player", toString p.n), ("source", toString source.n),
+      ("index", toString idx), ("target", target.elim "null" (fun id => toString id.n)),
+      ("tokens", jarr (tokens.map (fun id => toString id.n)))]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
@@ -599,7 +603,7 @@ def objJson (s : GameState) (id : ObjId) : String :=
   | some o =>
     let card := match o.kind with
       | .card _ c => c.code
-      | .token c => c.code
+      | .token c => (o.originalToken.getD c).code
       | .chainAbility c _ _ => c.code
     let ability : List (String × String) := match o.kind with
       | .chainAbility _ idx src => [("source", toString src.n), ("ability", toString idx)]
@@ -646,8 +650,9 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ((s.obj? id).bind (·.namedCard)).map (fun card => (toString id.n, jstr card.code)))
   let copies := s.inPlay.filterMap (fun id => do
     let o ← s.obj? id
-    let copy ← s.attachmentCopyOf id o
-    return (toString id.n, jstr copy.card.code))
+    let copied ← (s.attachmentCopyOf id o).map (·.card) <|>
+      o.originalToken.bind (fun _ => o.kind.cardId?)
+    return (toString id.n, jstr copied.code))
   let players := allPlayers s.playerCount
   let bfs := s.battlefields.map (fun b =>
     jobj [("id", toString b.n),

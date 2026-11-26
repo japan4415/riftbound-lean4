@@ -131,20 +131,81 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return s2.energyCost? s.me c == some 1 && s3.energyCost? s.me c == some 2
 
 -- Mirror Image (UNL-200): a ready Reflection token at the Base becomes a copy of the unit, with
--- Temporary
+-- Temporary. The linked ability leaves an existing Reflection alone.
 #guard tun fun s => do
+  let old : ObjId := ⟨s.nextId⟩
+  let s := createOne (cid "UNL-T06") s.me none false s
   let (s1, c) ← put s s.me "UNL-200" .hand
   let (s2, e) ← putAt s1 s.you "UNL-111" s.bf0
-  let s3 ← play s2 s.me c [e]
+  let funded := s2.rich s.me
+  let invalid := step 100 funded ⟨.player s.me, .playCard c ⟨3, [.mind, .fury]⟩ [e]⟩
+  let s3 ← cast funded s.me c ⟨3, [.mind, .order]⟩ [e]
   let base := (s3.zone (.player s.me .base)).filter (fun u => (s3.cardDef? u).any (·.id == cid "UNL-111"))
-  return base.length == 1 && base.all (fun u => s3.hasKw u .temporary) &&
-    base.all (fun u => s3.tired u == some false)
+  return invalid.toOption.isNone && base.length == 1 && base.all (fun u => s3.hasKw u .temporary) &&
+    base.all (fun u => s3.tired u == some false) &&
+    (s3.cardDef? old).any (·.id == cid "UNL-T06") && !s3.hasKw old .temporary
+
+-- The Reflection is on the Board while the copy is on the Chain. Retreat can remove it there.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mirror) ← put s p "UNL-200" .hand
+  let (s, retreat) ← put s p "OGN-104" .hand
+  let (s, gust) ← put s q "OGN-169" .hand
+  let (s, model) ← putAt s q "UNL-111" s.bf0
+  let (s, other) ← putAt s q "UNL-111" s.bf0
+  let funded := (s.rich p).rich q
+  let (castMirror, _) ← (step 100 funded ⟨.player p, .playCard mirror ⟨3, [.mind, .mind]⟩ [model]⟩).toOption
+  let .chainPass first _ :: _ := castMirror.pending | none
+  let (afterFirst, _) ← (step 100 castMirror ⟨.player first, .pass⟩).toOption
+  let .chainPass second _ :: _ := afterFirst.pending | none
+  let (window, events) ← (step 100 afterFirst ⟨.player second, .pass⟩).toOption
+  let .chainPass current _ :: _ := window.pending | none
+  let [ability] := window.zone .chain | none
+  let token ← window.firstOf p .base "UNL-T06"
+  let stopped ← cast window p retreat (payOf window retreat) [token]
+  let (opponentWindow, _) ← (step 100 window ⟨.player p, .pass⟩).toOption
+  let answered ← cast opponentWindow q gust (payOf opponentWindow gust) [other]
+  return current == p && (window.obj? ability).any (fun o =>
+      o.eventObjects == [token] && o.triggerSubject == some model) &&
+    events.any (fun | .unitTokensFor _ _ _ _ _ [id] => id == token | _ => false) &&
+    window.tired token == some false && !window.hasKw token .temporary &&
+    !(stopped.inPlay.contains token) && stopped.countIn p .base "UNL-111" == 0 &&
+    (stopped.zone .chain).isEmpty && !(answered.inPlay.contains other) &&
+    (answered.cardDef? token).any (·.id == cid "UNL-111") && answered.hasKw token .temporary
+
+-- A token substituted by Heimerdinger inherits both the copy and Temporary.
+#guard tun fun s => do
+  let p := s.me
+  let (s, _) ← putAt (s.control p s.bf0) p "RAD-132" s.bf0
+  let (s, mirror) ← put s p "UNL-200" .hand
+  let (s, model) ← put s s.you "UNL-111" .base
+  let finished ← cast (s.rich p) p mirror ⟨3, [.order, .order]⟩ [model] { yes := false }
+  let copy ← finished.firstOf p .base "UNL-111"
+  let original ← (finished.obj? copy).bind (·.originalToken)
+  return (finished.cards.find? original).any (·.name == "Mech") &&
+    finished.hasKw copy .temporary && finished.tired copy == some false
 
 -- Keeper of Masks (UNL-081): two Reflection tokens, copies of it (so with Temporary too)
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-081" .hand
   let s2 ← play s1 s.me c
   return s2.countIn s.me .base "UNL-081" == 3
+
+-- Keeper of Masks: the two copies also enter when the Keeper was played at a Battlefield.
+-- They stay exhausted and do not trigger the Keeper's own play effect.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let old : ObjId := ⟨s.nextId⟩
+  let s := createOne (cid "UNL-T06") p (some field) true (s.control p field)
+  let (s, keeper) ← put s p "UNL-081" .hand
+  let finished ← play s p keeper [field]
+  let tokens := (finished.unitsAtOf field p).filter (fun id =>
+    (finished.obj? id).any (fun o => o.originalToken == some (cid "UNL-T06")))
+  return tokens.length == 2 && tokens.all (fun id => finished.tired id == some true &&
+    finished.hasKw id .temporary && (finished.cardDef? id).any (·.id == cid "UNL-081")) &&
+    (finished.cardDef? old).any (·.id == cid "UNL-T06") && finished.tired old == some false
 
 -- Baron Nashor (UNL-147): the Baron Pit enters the board once, and Baron Nashor goes there
 #guard tun fun s => do

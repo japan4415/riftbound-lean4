@@ -129,6 +129,9 @@ inductive Event where
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won
   it (CR 468). -/
   | combatWon (bf : ObjId) (winner : PlayerId)
+  /-- A linked Unit token instruction played these specific objects (CR 375, 388-389). -/
+  | unitTokensFor (p : PlayerId) (source : ObjId) (card : CardId) (index : Nat)
+      (target : Option ObjId) (tokens : List ObjId)
 deriving DecidableEq, Repr
 
 end Riftbound

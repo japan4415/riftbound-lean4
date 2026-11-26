@@ -23,9 +23,17 @@ ROOT = Path(__file__).resolve().parent.parent
 SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
+# https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
 TEXT_ERRATA = {
+    "UNL-081": {
+        "tokens here. They become copies of me.":
+            "tokens here. Then do this: They become copies of me.",
+    },
+    "UNL-200": {
+        "to your base. It becomes a copy": "to your base. Then do this: It becomes a copy",
+    },
     "VEN-034": {
         "[Reaction] (Play on your turn or in showdowns.)":
             "[Reaction] (Play any time, even before spells and abilities resolve.)",
@@ -57,6 +65,12 @@ TEXT_ERRATA = {
 }
 
 # The gallery omits or mislabels these fields. Checked against its card images.
+UNLEASHED_PRINT_METADATA = {
+    "UNL-090": {"supertypes": ["champion"]},
+    "UNL-172": {"supertypes": ["champion"]},
+    "UNL-200": {"supertypes": ["signature"], "powerOwn": True},
+}
+
 RADIANCE_PRINT_METADATA = {
     "RAD-001": {"domains": ["fury"], "tags": ["Bandle City", "Yordle"]},
     "RAD-002": {"tags": []},
@@ -262,6 +276,7 @@ def normalize(snap: dict) -> dict:
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
+            **UNLEASHED_PRINT_METADATA.get(ident, {}),
             **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
     cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))

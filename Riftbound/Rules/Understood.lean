@@ -235,7 +235,7 @@ def Selector.understood : Selector → Bool
   | .var _ => true
   | .pick .all _ place fs => place.understood && FilterList.understood fs
   | .locationOf sel => Selector.understood sel
-  | .slotsFrom _ | .revealedDeck _ => true
+  | .slotsFrom _ | .revealedDeck _ | .eventObjects => true
   | _ => false
 
 end
@@ -392,6 +392,8 @@ mutual
 /-- An effect that is understood. -/
 def Effect.understood : Effect → Bool
   | .nop | .animateGear | .addReservedLegend => true
+  | .playUnitTokensThen _ n place _ _ target =>
+    decide (n > 0) && (place == .atBase || place == .here) && target.all Selector.understood
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .seq es => EffectList.understood es
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e
@@ -582,7 +584,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
       | .mightReducedByYou => t.subject != .self
-      | .linkedBurnUnit | .linkedDiscardType => t.subject == .self
+      | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .combatStart => t.subject == .self

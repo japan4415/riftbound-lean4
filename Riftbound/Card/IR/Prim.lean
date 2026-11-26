@@ -397,6 +397,8 @@ inductive TriggerEvent where
   | linkedDiscardType
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
+  /-- A linked instruction played a group of Unit tokens (CR 388-389). -/
+  | linkedUnitTokens (inheritsTarget : Bool)
 deriving DecidableEq, Repr, Hashable
 
 /-- Something that happens in the game that a replacement ability can change (CR 367-375). -/
