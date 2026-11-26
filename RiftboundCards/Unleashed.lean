@@ -172,7 +172,7 @@ def UNL_002.meta : CardDef :=
 /-- Inferna. -/
 def UNL_002 : CardDef :=
   { UNL_002.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-003
 /--
@@ -2940,7 +2940,7 @@ def UNL_100.meta : CardDef :=
 /-- Voracious Gromp. -/
 def UNL_100 : CardDef :=
   { UNL_100.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-101
 /--

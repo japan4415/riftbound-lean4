@@ -320,7 +320,7 @@ def OGN_012.meta : CardDef :=
 def OGN_012 : CardDef :=
   { OGN_012.meta with
     abilities := [.passive .legion [.costMinus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-013
 /--
@@ -2334,7 +2334,7 @@ def OGN_086.meta : CardDef :=
 /-- Jeweled Colossus. -/
 def OGN_086 : CardDef :=
   { OGN_086.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-087
 /--
@@ -4635,7 +4635,7 @@ def OGN_171.meta : CardDef :=
 /-- Mystic Poro. -/
 def OGN_171 : CardDef :=
   { OGN_171.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-172
 /--
@@ -7396,7 +7396,7 @@ def OGN_271.meta : CardDef :=
 /-- Recruit (DE). -/
 def OGN_271 : CardDef :=
   { OGN_271.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-272
 /--
@@ -7417,7 +7417,7 @@ def OGN_272.meta : CardDef :=
 /-- Recruit (NX). -/
 def OGN_272 : CardDef :=
   { OGN_272.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-273
 /--
@@ -7438,7 +7438,7 @@ def OGN_273.meta : CardDef :=
 /-- Recruit (ZN). -/
 def OGN_273 : CardDef :=
   { OGN_273.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-274
 /--
@@ -7460,7 +7460,7 @@ def OGN_274.meta : CardDef :=
 /-- Sprite. -/
 def OGN_274 : CardDef :=
   { OGN_274.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-275
 /--

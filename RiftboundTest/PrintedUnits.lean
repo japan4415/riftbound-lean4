@@ -67,7 +67,9 @@ private meta def combatKeywords (code : String) (base assault shield : Nat)
 #guard combatKeywords "OGN-215" 5 1 0
 #guard combatKeywords "OGS-005" 6 0 1
 #guard combatKeywords "OGS-007" 5 2 2
+#guard combatKeywords "OGN-086" 5 0 1
 #guard combatKeywords "SFD-156" 3 2 0
+#guard combatKeywords "UNL-002" 1 2 0
 #guard combatKeywords "UNL-006" 1 4 0
 #guard combatKeywords "UNL-036" 1 0 2 true
 #guard combatKeywords "UNL-099" 3 0 2 true
@@ -107,6 +109,94 @@ private meta def deflects (code : String) (might : Int) : Bool :=
 -- Pouty Poro and Navori Scout both charge Deflect 1 to the opponent.
 #guard deflects "OGN-013" 2
 #guard deflects "SFD-037" 4
+
+private meta def visionChoice (code : String) : Bool :=
+  inLab fun s => do
+    let p := s.me
+    let ownDeck (t : GameState) := t.zone (.player p .mainDeck)
+    let otherDeck (t : GameState) := t.zone (.player s.you .mainDeck)
+    let (board, card) ← put s p code .hand
+    let first ← (ownDeck board).head?
+    let kept ← play board p card [] { yes := false }
+    let recycled ← play board p card
+    let empty ← play (board.setZone (.player p .mainDeck) []) p card
+    return ownDeck kept == ownDeck board && ownDeck recycled == (ownDeck board).tail ++ [first] &&
+      otherDeck kept == otherDeck board && otherDeck recycled == otherDeck board &&
+      (ownDeck empty).isEmpty && kept.countIn p .base code == 1 && recycled.countIn p .base code == 1
+
+-- Mystic Poro and Jeweled Colossus can each keep or recycle the inspected card.
+#guard visionChoice "OGN-171"
+#guard visionChoice "OGN-086"
+
+private meta def printedRecruit (code : String) : Bool := inLab fun s => do
+  let p := s.me
+  let id : CardId := ⟨code⟩
+  let token : ObjId := ⟨s.nextId⟩
+  let entered := createOne id p none false s
+  let d ← entered.cardDef? token
+  let object ← entered.obj? token
+  let (killed, events) := killOrSave entered token
+  let (clean, _) ← (advance 100 { killed with pending := [.cleanup, .priority p] } []).toOption
+  return d.id == id && d.isTokenCard && d.tags.contains ⟨"Recruit"⟩ &&
+    object.kind == .token id && object.owner == p && object.controller == p &&
+    entered.mightNow token == some (1 : Int) && entered.tired token == some true &&
+    clean.countIn p .base code == 0 && clean.countIn p .trash code == 0 &&
+    events.any (fun | .died _ owner => owner == p | _ => false) && clean.physIds == s.physIds
+
+#guard printedRecruit "OGN-271"
+#guard printedRecruit "OGN-272"
+#guard printedRecruit "OGN-273"
+
+-- No printed or model token can be registered or named as a Unit or Gear card (CR 185).
+#guard inLab fun s => do
+  let ids := [⟨"OGN-271"⟩, ⟨"OGN-272"⟩, ⟨"OGN-273"⟩, ⟨"OGN-274"⟩,
+    ⟨"SFD-T03"⟩, ⟨"UNL-T02"⟩, ⟨"UNL-T06"⟩, ⟨"VEN-T04"⟩, tokenId "Sprite"]
+  let invalid (id : CardId) := { goodDeck with main := goodDeck.main ++ [id] }
+  let named := s.nameableCards .unit ++ s.nameableCards .gear
+  return (GameState.initial s.cards s.config [goodDeck, goodDeck]).isSome &&
+    named.contains ⟨"OGN-049"⟩ && ids.all (fun id =>
+      (s.cards.find? id).any (·.isTokenCard) && !named.contains id &&
+        (GameState.initial s.cards s.config [invalid id, goodDeck]).isNone)
+
+-- Sprite Call creates a ready Sprite with the printed characteristics. Its controller's
+-- Beginning Phase kills it (CR 315.2.a, 816).
+#guard inLab fun s => do
+  let p := s.me
+  let (board, spell) ← put s p "OGN-094" .hand
+  let played ← play board p spell
+  let model ← played.tokenCard "Sprite"
+  let printed ← played.cards.find? ⟨"OGN-274"⟩
+  let token ← played.firstOf p .base model.id.code
+  let beginning (who : PlayerId) :=
+    (advance 100 { played with active := some who, pending := [.phase .beginning, .priority who] }
+      []).toOption
+  let (opponentTurn, _) ← beginning s.you
+  let (ownTurn, events) ← beginning p
+  return model.might == printed.might && model.keywords == printed.keywords &&
+    played.mightNow token == some (3 : Int) && played.tired token == some false &&
+    opponentTurn.countIn p .base model.id.code == 1 && ownTurn.countIn p .base model.id.code == 0 &&
+    events.any (fun | .died _ owner => owner == p | _ => false)
+
+-- Voracious Gromp earns XP when it helps score, once for either kind of scoring.
+#guard inLab fun s => do
+  let p := s.me
+  let field := s.bf0
+  let other ← s.battlefields.find? (· != field)
+  let (s, gromp) ← putAt s p "UNL-100" field
+  let (s, _) ← putAt s s.you "UNL-100" other
+  let baseXP := s.xpOf p
+  let rivalXP := s.xpOf s.you
+  let (scored, _, conquerEvents) := scoreBf s p field true
+  let conquered ← fire scored conquerEvents
+  let (retry, _, replayedEvents) := scoreBf conquered p field true
+  let duplicate ← fire retry replayedEvents
+  let (heldField, holdEvents) := hold (s.modObj field (fun o => { o with control := some p })) p
+  let held ← fire heldField holdEvents
+  let (elsewhere, _, awayEvents) := scoreBf s p other true
+  let away ← fire elsewhere awayEvents
+  return s.mightNow gromp == some (5 : Int) && conquered.xpOf p == baseXP + 3 &&
+    held.xpOf p == baseXP + 3 && duplicate.xpOf p == baseXP + 3 && away.xpOf p == baseXP &&
+    conquered.xpOf s.you == rivalXP && held.xpOf s.you == rivalXP
 
 -- Laurent Bladekeeper can standard-move directly between Battlefields with Ganking.
 #guard inLab fun s => do

@@ -144,13 +144,10 @@ theorem safe_addObject {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {i
 /-- The identifier of the card of a token the model defines itself (CR 179). -/
 def tokenId (name : String) : CardId := ⟨"TKN-" ++ name⟩
 
-/-- The card is a token the rules print: its number has a T, as SFD-T03 (Gold) has. -/
-def CardDef.isTokenCard (c : CardDef) : Bool := (c.id.code.splitOn "-T").length > 1
-
 /-- Cards that can be named for this type, whether or not a copy exists in the game (CR 759-762). -/
 def GameState.nameableCards (s : GameState) (kind : CardType) : List CardId :=
   (s.cards.cards.filter (fun d =>
-    d.hasType kind && !d.isTokenCard && !d.id.code.startsWith "TKN-" &&
+    d.hasType kind && !d.isTokenCard &&
       (match s.config.ruleSet.tournamentFormat, s.config.formatLegality with
         | some .constructed, some env => decide (CardLegal env d)
         | some _, some env => decide (NotBanned env d)

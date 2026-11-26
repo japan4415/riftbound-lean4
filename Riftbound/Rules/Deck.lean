@@ -81,9 +81,10 @@ def ChosenOk (r : Resolved) : Prop :=
 /-- The Main Deck holds at least 40 cards (CR 103.3). -/
 def MainSizeOk (r : Resolved) : Prop := 40 ≤ r.main.length
 
-/-- Main Deck cards are Units, Gear or Spells (CR 103.3). -/
+/-- Main Deck cards are Units, Gear or Spells. Tokens are not cards (CR 103.3, 185). -/
 def MainTypesOk (cards : List CardDef) : Prop :=
-  ∀ c ∈ cards, c.hasType .unit = true ∨ c.hasType .gear = true ∨ c.hasType .spell = true
+  ∀ c ∈ cards, c.isTokenCard = false ∧
+    (c.hasType .unit = true ∨ c.hasType .gear = true ∨ c.hasType .spell = true)
 
 /-- Each name respects its limit unless the card's text waives it (CR 002, 103.3.b, 825).
 The Chosen Champion is counted because it is one of the cards. -/

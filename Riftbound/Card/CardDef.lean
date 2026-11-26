@@ -316,6 +316,12 @@ def nameKey (c : CardDef) : String × Option String := (c.name, c.subtitle)
 /-- The card has the type `t`. -/
 def hasType (c : CardDef) (t : CardType) : Bool := c.types.contains t
 
+/-- Identify token definitions, including the four Origins tokens numbered with the main set
+(CR 179, 185). -/
+def isTokenCard (c : CardDef) : Bool :=
+  c.id.code.startsWith "TKN-" || (c.id.code.splitOn "-T").length > 1 ||
+    ["OGN-271", "OGN-272", "OGN-273", "OGN-274"].contains c.id.code
+
 /-- The card has the supertype `s`. -/
 def hasSupertype (c : CardDef) (s : Supertype) : Bool := c.supertypes.contains s
 
