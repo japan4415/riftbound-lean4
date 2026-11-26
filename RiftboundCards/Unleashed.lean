@@ -3012,12 +3012,11 @@ def UNL_103.meta : CardDef :=
 /-- Disposal Order. -/
 def UNL_103 : CardDef :=
   { UNL_103.meta with
-    spellEffect := some (.of [] (.eitherOf (EffectList.ofList
-      [.seqOf [.may (.prim (.recycle (Selector.one .enemy .inTrash []))),
-         .may (.prim (.recycle (Selector.one .enemy .inTrash []))),
-         .may (.prim (.recycle (Selector.one .enemy .inTrash [])))],
-       .prim (.draw .you (.const 1))]))),
-    status := .drafted }
+    spellEffect := some { body := .nop, recheckTargets := true, modes := [
+      ⟨"相手の Trash から最大3枚を Recycle", [.targetOf (.upTo 3) .enemy .inTrash [.physicalCard]],
+        .recycleTrashTargets, none⟩,
+      ⟨"1枚引く", [], .prim (.draw .you (.const 1)), none⟩] },
+    status := .full }
 
 -- BEGIN GENERATED UNL-104
 /--

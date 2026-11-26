@@ -4944,6 +4944,72 @@ theorem recycleLookedStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
     subst f
     rfl
 
+/-- A selected card still occupies one of the public Trashes. -/
+def GameState.inTrash (s : GameState) (id : ObjId) : Bool :=
+  match s.locate id with
+  | some (.player _ .trash) => true
+  | _ => false
+
+/-- Apply Main Deck recycling in the supplied order. Each moved card goes to its own deck,
+and only owners whose Main Deck received a card are credited with recycling (CR 417.1.c). -/
+def recycleTrashCards (s : GameState) (cards : List ObjId) : GameState × List Event :=
+  let result := recycleList (cards.filter s.inTrash) s
+  let owners := result.2.filterMap (fun
+    | .moved _ _ (.player owner .mainDeck) => some owner
+    | _ => none)
+  (result.1, result.2 ++ owners.eraseDups.map Event.recycled)
+
+/-- A group Recycle preserves the structural invariants. -/
+theorem recycleTrashCards_safe (s : GameState) (cards : List ObjId) :
+    Safe s (recycleTrashCards s cards).1 :=
+  recycleList_safe _ s
+
+/-- Only decks receiving multiple Main Deck cards need a random ordering. Runes use their
+owners' ordering decision (CR 417.5.a). -/
+def recycleTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (es : EffectList) : GameState × List Frame × List Event :=
+  let chosen := ((Selector.slotsFrom 0).eval s p src env).getD []
+  let (runes, cards) := (chosen.filter s.inTrash).eraseDups.partition
+    (fun id => recycleKind s id == .runeDeck)
+  let owned (owner : PlayerId) (ids : List ObjId) :=
+    ids.filter (fun id => (s.obj? id).any (·.owner == owner))
+  let resume := Frame.run p src env es
+  let remainingFrames := if runes.isEmpty then [resume] else
+    let groups := s.pickOrder.map (fun q => (q, owned q runes))
+    [.run p src env (.cons (.orderRuneRecycle groups []) .nil), resume]
+  if s.players.any (fun q => decide (2 ≤ (owned q cards).length)) then
+    (s, .chanceRecycleTrash p src cards :: remainingFrames, [])
+  else
+    let done := recycleTrashCards s cards
+    (done.1, remainingFrames, done.2)
+
+theorem recycleTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (es : EffectList) : Safe s (recycleTrashStep s p src env es).1 := by
+  unfold recycleTrashStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · exact recycleTrashCards_safe _ _
+
+theorem recycleTrashStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {es : EffectList} {f : Frame} (h : f ∈ (recycleTrashStep s p src env es).2.1) :
+    f.isPlay = true := by
+  unfold recycleTrashStep at h
+  dsimp only at h
+  split at h
+  · rcases List.mem_cons.mp h with rfl | h
+    · rfl
+    · split at h
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+        rcases h with rfl | rfl <;> rfl
+  · split at h
+    · obtain rfl := List.mem_singleton.mp h
+      rfl
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+      rcases h with rfl | rfl <;> rfl
+
 /-- Mandatory locations imposed by resolving a Hidden spell or the play effect of a Unit
 that was played from hiding (CR 811.1.d.5). -/
 def Env.hiddenPlayRequirements (env : Env) : List (List (Option ObjId)) :=
@@ -6298,6 +6364,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     let choices := fundPermanentOptions s p card terms plan adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
   | .recycleLooked => recycleLookedStep s p src env es
+  | .recycleTrashTargets => recycleTrashStep s p src env es
   | .recycleRunes =>
     let runes := s.inPlay.filter (fun id =>
       (s.cardDef? id).any (·.hasType .rune) && (s.obj? id).any (·.controller == p))
@@ -6446,6 +6513,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact banishTopForPlay_safe s p
     | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
+    | exact recycleTrashStep_safe s p src env es
     | exact recycleList_safe _ s
     | exact setPoolFor_safe s p src _
     | exact setPool_safe s p _

@@ -740,6 +740,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hsafe := completePrediction_safe s p n top bottom
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
       (new := []) rfl (by simp)
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := recycleTrashCards_safe s order
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
+      (new := []) rfl (by simp)
   · rename_i p src env first more es rest card hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -1271,6 +1277,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
     | chancePredict p n top bottom => trivial
+    | chanceRecycleTrash controller source cards => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
   · have := hn f (by rw [hp]; exact List.mem_cons_self)
     cases f with
@@ -1280,6 +1287,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
     | chancePredict p n top bottom => trivial
+    | chanceRecycleTrash controller source cards => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
 
 /-- **I5, in full.** A reachable game that is not over always has a legal answer other than a

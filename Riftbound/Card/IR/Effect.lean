@@ -235,6 +235,8 @@ inductive Effect where
   | banishAndPlayLooked (less : Nat) (filters : FilterList)
   /-- Recycle the looked-at cards still in the Main Deck in a random order (CR 417.5). -/
   | recycleLooked
+  /-- Recycle the cards targeted in Trashes together (CR 417.5). -/
+  | recycleTrashTargets
   /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/
   | recycleRunes
   /-- Continue collecting the order of each owner's Runes before any are Recycled. -/

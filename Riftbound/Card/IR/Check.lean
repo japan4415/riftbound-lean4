@@ -389,7 +389,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
     Selector.ok c (.slot slot) && Effect.ok c body
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+  | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
   | .playCard sel _ _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel

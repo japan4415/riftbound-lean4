@@ -295,6 +295,9 @@ inductive Frame where
   /-- Chance: Recycle the selected group from the Main Deck in a random order
   (CR 417.5, 437). `n` is the length of the prefix partitioned into `top` and `bottom`. -/
   | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
+  /-- Chance: order selected cards from Trashes before putting them on the bottoms of their
+  owners' Main Decks (CR 417.5). Only their relative order within each deck is used. -/
+  | chanceRecycleTrash (controller : PlayerId) (source : ObjId) (cards : List ObjId)
   /-- Choice: this player can cast a spell, activate an ability, or decline. The turn player's
   normal priority frame is next on the stack (CR 491.8.a). -/
   | teamInvitation (guest : PlayerId)
@@ -343,7 +346,7 @@ def Frame.isPlay : Frame → Bool
   | .eitherDo .. => true
   | .pickDo .. => true
   | .nameCard .. | .guessCardType .. => true
-  | .predict .. | .chancePredict .. => true
+  | .predict .. | .chancePredict .. | .chanceRecycleTrash .. => true
   | .teamInvitation _ | .chooseShowdown .. | .groupMove .. => true
   | _ => false
 

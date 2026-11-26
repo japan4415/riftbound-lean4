@@ -722,6 +722,14 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
     rw [hp]
     exact List.mem_cons_of_mem _ hf
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hph := hinv.play (.chanceRecycleTrash p src cards) (by rw [hp]; exact List.mem_cons_self) rfl
+    have hm := (recycleTrashCards_safe s order).same
+    refine hinv.of_play (hm.phase ▸ hph) hm.turnOrder hm.config (fun hf => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hf
   · rename_i p src env first more es rest card hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -1116,6 +1124,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | (obtain rfl := List.mem_singleton.mp h
        exact Or.inl (addReservedLegendFrame_play _ _ _ _ _))
     | exact Or.inl (recycleLookedStep_mem h)
+    | exact Or.inl (recycleTrashStep_mem h)
     | exact Or.inl (replayFrames_mem h)
     | exact Or.inl (orderBanishReplayFrames_mem h)
     | exact Or.inl (castLimitedStep_mem h)

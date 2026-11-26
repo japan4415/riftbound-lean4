@@ -330,6 +330,11 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     have tc := TC.of_safe (completePrediction_safe s p n top bottom)
     exact Or.inl (tc.trans ⟨rfl, rfl⟩)
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (recycleTrashCards_safe s order)
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩

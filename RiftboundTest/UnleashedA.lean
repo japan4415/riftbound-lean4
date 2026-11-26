@@ -143,6 +143,115 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return ((s3.obj? u).any (·.buffed)) && s3.xpOf s.me == 0 &&
     (match s5 with | none => true | some t => !((t.obj? u).any (·.buffed)))
 
+-- Disposal Order declares one mode and a set of at most three opponent Trash cards.
+-- A chance answer can change the order of that group but cannot add, omit or duplicate a card.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, order) ← put s p "UNL-103" .hand
+  let (s, own) ← put s p "UNL-111" .trash
+  let (s, first) ← put s q "UNL-111" .trash
+  let (s, second) ← put s q "OGN-010" .trash
+  let (s, left) ← put s q "VEN-074" .trash
+  let (s, fourth) ← put s q "VEN-007" .trash
+  let s := s.fund p 2
+  let deck := Zone.player q .mainDeck
+  let start := s.zone deck
+  let action (targets : List ObjId) (mode : SpellPick) : Action :=
+    ⟨.player p, .playCard order ⟨2, []⟩ targets none none mode⟩
+  let legal := legalFrameActions s
+  let chosen := action [first, second] (.mode 0)
+  let (queued, events) ← (step 100 s chosen).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let ((random, _), disclosures) ← (stepWithDisclosures 100 passed ⟨.player q, .pass⟩).toOption
+  let .chanceRecycleTrash owner _ cards :: _ := random.pending | none
+  let (done, moves) ← (step 100 random ⟨.chance, .arrange [second, first]⟩).toOption
+  let topBefore := (done.zone deck).take start.length
+  let bottomCodes := ((done.zone deck).drop start.length).map (fun id => (done.cardDef? id).map (·.id))
+  let draw ← cast s p order ⟨2, []⟩ [] {} (.mode 1)
+  return legal.contains chosen && legal.contains (action [] (.mode 0)) &&
+    legal.contains (action [first, second, left] (.mode 0)) &&
+    !legal.contains (action [first, second, left, fourth] (.mode 0)) &&
+    !legal.contains (action [first, first] (.mode 0)) && !legal.contains (action [own] (.mode 0)) &&
+    !legal.contains (action [first] (.mode 1)) && !legal.contains (action [] .plain) &&
+    events.contains (.chosenBySpell p first) && events.contains (.chosenBySpell p second) &&
+    random.zone deck == start && disclosures.isEmpty && owner == p && cards == [first, second] &&
+    !(step 100 random ⟨.player q, .arrange [second, first]⟩).isOk &&
+    !(step 100 random ⟨.chance, .arrange [first, first]⟩).isOk &&
+    !(step 100 random ⟨.chance, .arrange [first, left]⟩).isOk &&
+    !(step 100 random ⟨.chance, .arrange [first]⟩).isOk &&
+    topBefore == start && bottomCodes == [some (cid "OGN-010"), some (cid "UNL-111")] &&
+    moves.contains (.recycled q) && !moves.contains (.recycled p) &&
+    (done.zone (.player q .trash)).contains left && draw.handN p == s.handN p
+
+-- A card that leaves the Trash during a response stays out of the group. The single remaining
+-- target goes to the bottom without asking for an order.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, order) ← put s p "UNL-103" .hand
+  let (s, first) ← put s q "UNL-111" .trash
+  let (s, second) ← put s q "OGN-010" .trash
+  let s := s.fund p 2
+  let action : Action := ⟨.player p, .playCard order ⟨2, []⟩ [first, second] none none (.mode 0)⟩
+  let (queued, _) ← (step 100 s action).toOption
+  let (changed, returned) ← moveObj queued second (.player q .hand)
+  let (done, _) ← (step 100 (← (step 100 changed ⟨.player p, .pass⟩).toOption).1
+    ⟨.player q, .pass⟩).toOption
+  let top := s.zone (.player q .mainDeck)
+  let last ← (done.zone (.player q .mainDeck)).getLast?
+  return (done.zone (.player q .mainDeck)).length == top.length + 1 &&
+    (done.cardDef? last).any (·.id == cid "UNL-111") &&
+    (done.zone (.player q .hand)).contains returned &&
+    done.pending.all (fun | .chanceRecycleTrash .. => false | _ => true)
+
+-- In 2v2, cards can be taken from both opponents. Each goes to its own deck,
+-- and the teammate's Trash cannot be targeted.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let empty := GameState.empty { ruleSet := .coreOnly, mode := .teamDuel } labState.cards
+  let s := { empty with
+    phase := .main, turn := 2, active := some p,
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, spell) ← put s p "UNL-103" .hand
+  let (s, friend) ← put s ally "VEN-007" .trash
+  let (s, first) ← put s q "VEN-007" .trash
+  let (s, second) ← put s r "UNL-111" .trash
+  let (s, third) ← put s q "OGN-010" .trash
+  let s := s.fund p 2
+  let picked (cards : List ObjId) : Action := ⟨.player p, .playCard spell ⟨2, []⟩ cards
+    none none (.mode 0)⟩
+  let (queued, _) ← (step 100 s (picked [first, second, third])).toOption
+  let waiting := settleChain {} 12 queued
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (done, moved) ← (step 100 waiting ⟨.chance, .arrange [third, second, first]⟩).toOption
+  let cardCodes (seat : PlayerId) := (done.zone (.player seat .mainDeck)).filterMap
+    (fun id => (done.cardDef? id).map (·.id))
+  return cards == [first, second, third] &&
+    !(legalFrameActions s).contains (picked [friend]) &&
+    (done.zone (.player ally .trash)).contains friend &&
+    cardCodes q == [cid "OGN-010", cid "VEN-007"] &&
+    cardCodes r == [cid "UNL-111"] &&
+    (moved.filter (fun | .recycled _ => true | _ => false)) == [.recycled q, .recycled r]
+
+-- If Runes are among the targets, their owner sets the order of the Rune Deck.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-103" .hand
+  let (s, fury) ← put s q "OGN-007" .trash
+  let (s, body) ← put s q "OGN-126" .trash
+  let s := s.fund p 2
+  let casted ← cast s p spell ⟨2, []⟩ [fury, body] { obj := (· == body) } (.mode 0)
+  let deck := casted.zone (.player q .runeDeck)
+  let tail := (deck.drop ((s.zone (.player q .runeDeck)).length)).filterMap
+    (fun id => (casted.cardDef? id).map (·.id))
+  return (casted.zone (.player q .mainDeck)) == s.zone (.player q .mainDeck) &&
+    tail == [cid "OGN-126", cid "OGN-007"]
+
 -- Crowd Favorite gets the printed Hunt XP for either kind of scoring.
 #guard tun fun s => do
   let p := s.me

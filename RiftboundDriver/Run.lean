@@ -73,6 +73,9 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .chancePredict _ _ _ bottom :: _ =>
     let (order, r) := shuffle r bottom
     some (⟨.chance, .arrange order⟩, r)
+  | .chanceRecycleTrash _ _ cards :: _ =>
+    let (order, r) := shuffle r cards
+    some (⟨.chance, .arrange order⟩, r)
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
   | .chainPass p _ :: _ => some (⟨.player p, .pass⟩, r)
   | .showdown _ q _ :: _ => some (⟨.player q, .pass⟩, r)

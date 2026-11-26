@@ -398,6 +398,12 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next (completePrediction_safe s p n top bottom).same.result (fun hb => ?_)
     rw [hp] at hb
     exact hb.pop rfl
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next (recycleTrashCards_safe s order).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
   · rename_i p src env first more es rest card hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -919,6 +925,7 @@ def Frame.isChance : Frame → Bool
   | .chanceRecycle _ => true
   | .chanceBurnOut _ => true
   | .chancePredict .. => true
+  | .chanceRecycleTrash .. => true
   | _ => false
 
 /-- In a game of at least two players, there is a player other than `p`. -/
@@ -1064,6 +1071,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | chanceRecycle p => right; exact ⟨_, rest, hp, rfl⟩
   | chanceBurnOut p => right; exact ⟨_, rest, hp, rfl⟩
   | chancePredict p n top bottom => right; exact ⟨_, rest, hp, rfl⟩
+  | chanceRecycleTrash p src cards => right; exact ⟨_, rest, hp, rfl⟩
   | setupHands => exact absurd hw (by simp [Frame.isWork])
   | draw p n startingHand => exact absurd hw (by simp [Frame.isWork])
   | beginTurn => exact absurd hw (by simp [Frame.isWork])
@@ -1195,6 +1203,11 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
     exact ⟨rfl, List.Perm.refl _⟩
   | chancePredict p n top bottom =>
     refine ⟨⟨.chance, .arrange bottom⟩, rfl, hres, Or.inl ?_⟩
+    unfold LegalFrame
+    rw [hp]
+    exact ⟨rfl, List.Perm.refl _⟩
+  | chanceRecycleTrash _ _ cards =>
+    refine ⟨⟨.chance, .arrange cards⟩, rfl, hres, Or.inl ?_⟩
     unfold LegalFrame
     rw [hp]
     exact ⟨rfl, List.Perm.refl _⟩

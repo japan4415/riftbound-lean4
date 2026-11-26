@@ -469,6 +469,9 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chancePredict p n top _ :: rest, .arrange bottom =>
     some ({ completePrediction s p n top bottom with pending := rest },
       if bottom.isEmpty then [] else [.recycled p])
+  | .chanceRecycleTrash _ _ _ :: rest, .arrange order =>
+    let r := recycleTrashCards s order
+    some ({ r.1 with pending := rest }, r.2)
   | .nameCard p src env _ _ es :: rest, .nameCard card =>
     some ({ s with pending := .run p src env (.cons (.rememberNamedCard card) es) :: rest }, [])
   | .guessCardType _ p src env unit gear spell es :: rest, .guessCardType guess =>

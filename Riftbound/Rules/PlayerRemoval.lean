@@ -660,6 +660,9 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
   | .chanceRecycle p | .chanceBurnOut p | .draw p ..
   | .discard p _ | .predict p .. | .chancePredict p .. | .teamInvitation p
   | .chooseShowdown p .. => keepFor p
+  | .chanceRecycleTrash p src cards =>
+    if p == departing || removedItem src then []
+    else [.chanceRecycleTrash p src (cards.filter stillPresent)]
   | .chooseBurnOut p | .chooseBurnOutAmong p _ _ =>
     if p == departing then [] else after.survivingBurnOutDecision p
   | .priority p =>

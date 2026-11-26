@@ -103,6 +103,7 @@ def Frame.disclosedFaces (viewer : PlayerId) (viewerDeck : List ObjId) :
     if viewer == p then first :: (more ++ top ++ bottom) else []
   | .chancePredict p _ top bottom =>
     if viewer == p then top ++ bottom else []
+  | .chanceRecycleTrash .. => []
   | frame => match frame.resolutionEnv with
     | some env => env.disclosedFaces viewerDeck
     | none => []
@@ -158,6 +159,12 @@ theorem Frame.disclosedFaces_chancePredict_other {viewer p : PlayerId} (h : view
     (deck : List ObjId) (n : Nat) (top bottom : List ObjId) :
     (Frame.chancePredict p n top bottom).disclosedFaces viewer deck = [] := by
   simp [Frame.disclosedFaces, h]
+
+/-- Randomizing selected Trash cards does not expose any Main Deck faces to either side. -/
+theorem Frame.disclosedFaces_chanceRecycleTrash (viewer controller : PlayerId) (source : ObjId)
+    (deck cards : List ObjId) :
+    (Frame.chanceRecycleTrash controller source cards).disclosedFaces viewer deck = [] := by
+  simp [Frame.disclosedFaces]
 
 end Riftbound
 

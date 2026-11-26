@@ -160,6 +160,7 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .predict p _ c cs _ _ :: _, .predictPick id _ => a.actor = .player p ∧ id ∈ c :: cs
   -- The simultaneous Recycle goes to the bottom in random order (CR 417.5).
   | .chancePredict _ _ _ bottom :: _, .arrange l => a.actor = .chance ∧ l.Perm bottom
+  | .chanceRecycleTrash _ _ cards :: _, .arrange l => a.actor = .chance ∧ l.Perm cards
   -- Basic Runes and Reaction Add abilities can supply a cost during resolution (CR 445.2.c).
   | .eitherDo p _ _ first _ _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true ∧

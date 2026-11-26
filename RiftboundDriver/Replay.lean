@@ -549,6 +549,7 @@ private def obscuredDeckCards (before : GameState) (answer : ReplayAnswer) (acti
     | some ⟨.chance, .arrange _⟩, .chanceShuffle (.player p .mainDeck) :: _ =>
       before.zone (.player p .mainDeck)
     | some ⟨.chance, .arrange _⟩, .chancePredict _ _ _ bottom :: _ => bottom
+    | some ⟨.chance, .arrange _⟩, .chanceRecycleTrash _ _ cards :: _ => cards
     | _, _ => []
 
 private def trackedInPrivateZones (s : GameState) (known : List ObjId) : List ObjId :=

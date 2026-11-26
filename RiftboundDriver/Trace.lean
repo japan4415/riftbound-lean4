@@ -511,6 +511,10 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
     | .arrangePlayers order => [("turnOrder", jarr (order.map (fun p => toString p.n)))]
+    | .arrange order =>
+      if frame.any (fun | .chanceRecycleTrash .. => true | _ => false) then
+        [("recycleOrder", jarr (order.map (fun id => toString id.n)))]
+      else []
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         (match frame with

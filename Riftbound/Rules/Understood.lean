@@ -422,7 +422,7 @@ def Effect.understood : Effect → Bool
     who.understood && unit.understood && gear.understood && spell.understood
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+  | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
   | .banishAndPlayCard sel _ => sel.understood
   | .playCard sel _ _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
