@@ -1,7 +1,7 @@
 module
 
-import Riftbound.Spec.Visibility
-meta import Riftbound.Spec.Visibility
+import Riftbound.Spec.PlayerView
+meta import Riftbound.Spec.PlayerView
 import Riftbound.Engine.Observe
 meta import Riftbound.Engine.Observe
 import RiftboundTest.Fixtures
@@ -73,7 +73,41 @@ private meta def startEffect (s : GameState) (p : PlayerId) (effect : Effect) :
   return events.contains (.lookedAt p first) &&
     (predicting.resolutionZoneCardFaces p deck).any (fun cards => cards.head? == some (cardFace s first)) &&
     predicting.resolutionZoneCardFaces q deck == predicting.zoneCardFaces q deck &&
-    done.resolutionZoneCardFaces p deck == done.zoneCardFaces p deck : Option Bool) == some true
+    (predicting.zoneView p deck).any (fun cards => cards.head? == some (.plain (cardFace s first))) &&
+    predicting.zoneView q deck == s.zoneView q deck &&
+    done.resolutionZoneCardFaces p deck == done.zoneCardFaces p deck &&
+    done.zoneView p deck == s.zoneView p deck : Option Bool) == some true
+
+-- A shuffled deck retains only its size, and a hand has no observable order.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let deck := Zone.player p .mainDeck
+  let hand := Zone.player p .hand
+  let s ← initialViewBoard
+  let cards := s.zone deck
+  let (s, _) ← moveObj s (← cards.head?) hand
+  let (s, _) ← moveObj s (← (s.zone deck).getLast?) hand
+  let reordered := (s.setZone hand (s.zone hand).reverse).setZone deck (s.zone deck).reverse
+  return s.zoneView p hand == reordered.zoneView p hand &&
+    s.zoneView q hand == some [.plain none, .plain none] &&
+    s.zoneView p deck == reordered.zoneView p deck : Option Bool) == some true
+
+-- The public location and controller of a facedown card remain visible from both seats.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let deck := Zone.player p .mainDeck
+  let hidden := Zone.player p .hidden
+  let s ← initialViewBoard
+  let battlefield ← (s.zone (.player p .outOfGame)).head?
+  let (s, bf) ← moveObj s battlefield .battlefieldZone
+  let (s, card) ← moveObj s (← (s.zone deck).head?) hidden
+  let s := s.modObj card (fun o => { o with hiddenAt := some bf })
+  let pos : Option ViewPosition := some ⟨.battlefieldZone, 0⟩
+  return s.zoneView p hidden == some [.hidden (cardFace s card) p pos] &&
+    (cardFace s card).isSome && s.zoneView q hidden == some [.hidden none p pos] &&
+    s.publicPosition card == none && s.publicPosition bf == pos : Option Bool) == some true
 
 -- A single answer looks at a card, reveals it, then moves it under a fresh object ID.
 #guard (do

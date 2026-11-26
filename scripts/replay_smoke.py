@@ -257,6 +257,10 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     assert after["new"][str(field)]["card"] == "TKN-ConcessionBattlefield"
     assert following["turn"] == after["turn"] + 1 and following["active"] == 0
     check_seat_disclosures(folder, command, archive, "-ffa", 3, exported["games"])
+    seat_steps = check_seat_view(folder, command, archive, "-ffa", 3, exported["games"])["games"][0]["steps"]
+    seat_board = seat_steps[index]["state"]["zones"]["battlefield"]
+    assert any(card["card"] == "TKN-ConcessionBattlefield" and card["control"] == 2
+               for card in seat_board)
 
 
 def check_lux_spell_energy_cli(folder: Path, command: Callable[..., str]) -> None:
@@ -685,6 +689,31 @@ def check_seat_disclosures(folder: Path, command: Callable[..., str], archive: P
     assert json.loads(path.read_text(encoding="utf-8")) == {"seat": seat, "exact": True, "games": selected}
 
 
+def check_seat_view(folder: Path, command: Callable[..., str], archive: Path,
+                    suffix: str, seat: int, games: list[dict]) -> dict:
+    path = folder / f"{archive.stem}-seat-{seat}-view.json"
+    command(f"view{suffix}-seat", archive, str(seat), path)
+    view = json.loads(path.read_text(encoding="utf-8"))
+    assert view["seat"] == seat and view["exact"]
+    assert len(view["games"]) == len(games)
+    for game, full_game in zip(view["games"], games, strict=True):
+        for row, full_row in zip(game["steps"], full_game["steps"], strict=True):
+            assert row["i"] == full_row["i"]
+            assert row.get("judgeRewind") == full_row.get("judgeRewind")
+            assert not {"action", "events", "judgeShuffle", "privateDrawReturns"} & row.keys()
+            state, full_state = row["state"], full_row["state"]
+            for field in ("turn", "phase", "active", "result", "points", "pools"):
+                assert state[field] == full_state[field]
+            assert state["departed"] == full_state.get("departed", [])
+            assert not {"new", "pending"} & state.keys()
+            for zone, cards in state["zones"].items():
+                assert len(cards) == len(full_state["zones"].get(zone, []))
+            known = [{"cards": entry["cards"], "public": entry["onlyFor"] is None}
+                     for entry in full_row.get("disclosures", []) if entry["onlyFor"] in (None, seat)]
+            assert row.get("disclosures", []) == known
+    return view
+
+
 def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix, live_row) in fixtures.items():
         path = folder / f"judge-{label}-private-rewind-archive.json"
@@ -700,6 +729,23 @@ def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: d
             check_seat_disclosures(folder, command, path, suffix, 0, games)
             check_seat_disclosures(folder, command, path, suffix, 1, games)
             command("disclosures", path, "2", folder / "bad-seat.json", error="outside the game")
+            command("view-seat", path, "2", folder / "bad-view-seat.json", error="outside the game")
+            p0 = check_seat_view(folder, command, path, suffix, 0, games)["games"][0]["steps"]
+            p1 = check_seat_view(folder, command, path, suffix, 1, games)["games"][0]["steps"]
+            looked = next(row["i"] for row in steps if any(d["onlyFor"] == 0
+                          for d in row.get("disclosures", [])))
+            inspected = {card for d in p0[looked]["disclosures"] if not d["public"]
+                         for card in d["cards"]}
+            assert p0[looked]["state"]["zones"]["p0.mainDeck"][0]["card"] in inspected
+            assert all(slot is None for slot in p1[looked]["state"]["zones"]["p0.mainDeck"])
+            assert all(slot is None for slot in p1[looked]["state"]["zones"]["p0.hand"])
+            revealed = next(row["i"] for row in steps if any(d["onlyFor"] is None
+                            for d in row.get("disclosures", [])))
+            published = {card for d in p1[revealed]["disclosures"] if d["public"] for card in d["cards"]}
+            assert published and published <= inspected
+            rewind = p1[live_row["i"]]
+            assert rewind["judgeRewind"] < rewind["i"]
+            assert all(slot is None for slot in rewind["state"]["zones"]["p0.hand"])
 
 
 def live_timeline_rewinds(live: Lean, setup: dict) -> dict:
@@ -1036,6 +1082,11 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
         if label == "live-team":
             check_seat_disclosures(folder, command, archive, "-team", 2, exported["games"])
+            seat_view = check_seat_view(folder, command, archive, "-team", 2, exported["games"])
+            assert seat_view["teams"] == exported["teams"] and seat_view["wins"] == wins
+            zones = seat_view["games"][0]["steps"][-1]["state"]["zones"]
+            assert zones["p2.hand"] and all(card is not None for card in zones["p2.hand"])
+            assert all(card is None for card in zones["p3.hand"])
     check_judge_penalties(folder, command, penalties)
     check_judge_corrections(folder, command, corrections)
     check_private_rewinds(folder, command, private_rewinds)

@@ -1,5 +1,5 @@
 import RiftboundDriver.TeamMatch
-import RiftboundDriver.Trace
+import RiftboundDriver.SeatTrace
 
 open Lean Riftbound RiftboundDriver
 
@@ -39,24 +39,50 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
   let (steps, _) ← collectGame input config fuel initial collect
   return jobj [("players", toString config.mode.players), ("steps", jarr steps.reverse)]
 
-private def gameDisclosures (input : GameInputs) (config : GameConfig) (fuel : Nat)
-    (seat : PlayerId) : Except String String := do
-  let collect (steps : List String) index _ _ _ (next : ReplayPosition) _ :=
+private def rewindField : ReplayAnswer → List (String × String)
+  | .judgeRewind target => [("judgeRewind", toString target)]
+  | .judgePrivateRewind rewind => [("judgeRewind", toString rewind.target)]
+  | .judgeTimelineRewind rewind => [("judgeRewind", toString rewind.target)]
+  | _ => []
+
+private def seatGameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat)
+    (seat : PlayerId) (includeBoard : Bool) : Except String String := do
+  let initial (state : GameState) :=
+    if includeBoard then [jobj [("i", "0"), ("state", seatStateJson state seat)]] else []
+  let collect (steps : List String) index answer state action (next : ReplayPosition) _ :=
     let faces := next.disclosures.filter (CardDisclosure.visibleTo seat)
-    if faces.isEmpty then steps else
+    if !includeBoard && faces.isEmpty then steps else
       let items := faces.map (fun d =>
         jobj [("cards", jarr (d.cards.map (fun c => jstr c.code))),
           ("public", toString d.onlyFor.isNone)])
-      jobj [("i", toString index), ("disclosures", jarr items)] :: steps
-  let steps ← collectGame input config fuel (fun _ => []) collect
+      let disclosures := if items.isEmpty then [] else [("disclosures", jarr items)]
+      let board := if includeBoard then
+        let penalties := (answer.penalizedSeats.map fun seats =>
+          ("gameLoss", jarr (seats.map (fun p => toString p.n)))).toList
+        [("state", seatStateJson next.state seat)] ++ rewindField answer ++ penalties ++
+          (if answer == .bo1Sideboard then [("bo1Sideboard", "true")] else []) ++
+          (if input.isBo1Initiative state action then [("bo1Initiative", "true")] else [])
+        else []
+      jobj ([("i", toString index)] ++ board ++ disclosures) :: steps
+  let steps ← collectGame input config fuel initial collect
   return jobj [("steps", jarr steps.reverse)]
 
 private def seatOutput (position : String) (players : Nat) (exact : Bool)
-    (games : PlayerId → Except String (List String)) : Except String String := do
+    (games : PlayerId → Except String (List String)) (extra : List (String × String)) :
+    Except String String := do
   let some seat := position.toNat? | throw "the viewing seat must be a nonnegative integer"
   unless seat < players do throw "the viewing seat is outside the game"
   let rows ← games ⟨seat⟩
-  return jobj [("seat", toString seat), ("exact", toString exact), ("games", jarr rows)]
+  return jobj ([("seat", toString seat), ("exact", toString exact), ("games", jarr rows)] ++ extra)
+
+private def seatMatchFields (wins : Nat × Nat) (result : MatchResult) : List (String × String) :=
+  let winner := match result with | .won p => toString p.n | .draw => "null"
+  [("winner", winner), ("wins", jarr [toString wins.1, toString wins.2])]
+
+private def teamSeatsField (saved : RecordedTeamMatch) : String × String :=
+  let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
+  let teams := saved.input.seats
+  ("teams", jarr [seats teams.team0, seats teams.team1])
 
 private def replayTraceJson (games : List String) (wins : List Nat) (outcome : MatchResult)
     (allObserved cardsChecked : Bool) (extra : List (String × String) := [])
@@ -95,10 +121,8 @@ private def teamMatchTrace (saved : RecordedTeamMatch) : Except String String :=
   let games ← saved.games.toList.mapM (fun game =>
     gameTrace game.input (game.eliminationConfig?.getD config) 100)
   let (allObserved, cardsChecked) := teamEvidence saved summary
-  let seats (team : PlayerId × PlayerId) := jarr [toString team.1.n, toString team.2.n]
-  let teams := saved.input.seats
   return replayTraceJson games [summary.wins.1, summary.wins.2] summary.result allObserved cardsChecked
-    ([("teams", jarr [seats teams.team0, seats teams.team1])] ++ matchPenaltyTrace saved.input.ending)
+    ([teamSeatsField saved] ++ matchPenaltyTrace saved.input.ending)
     config.ruleSet.isLimited
 
 private def ffaVerificationJson (summary : ReplayGameResult) : Json :=
@@ -120,24 +144,35 @@ private def ffaTrace (saved : RecordedFreeForAll) : Except String String := do
   return replayTraceJson [game] wins outcome summary.exact (summary.uncheckedCards.all List.isEmpty)
     (ffaConcession := ffaConcession)
 
-private def matchDisclosures (saved : RecordedMatch) (seat : String) : Except String String := do
+private def matchSeatTrace (saved : RecordedMatch) (seat : String) (includeBoard : Bool) :
+    Except String String := do
   let summary ← saved.verify
-  seatOutput seat saved.input.config.mode.players summary.exact fun viewer =>
-    saved.games.toList.mapM (fun game =>
-      gameDisclosures game.input (game.eliminationConfig?.getD saved.input.config) saved.input.fuel viewer)
+  let games viewer := saved.games.toList.mapM (fun game =>
+    seatGameTrace game.input (game.eliminationConfig?.getD saved.input.config) saved.input.fuel
+      viewer includeBoard)
+  let extra := if includeBoard then seatMatchFields summary.wins summary.result ++ matchPenaltyTrace saved.input.ending
+    else []
+  seatOutput seat saved.input.config.mode.players summary.exact games extra
 
-private def teamMatchDisclosures (saved : RecordedTeamMatch) (seat : String) : Except String String := do
-  let _ ← saved.verify
+private def teamMatchSeatTrace (saved : RecordedTeamMatch) (seat : String) (includeBoard : Bool) :
+    Except String String := do
+  let summary ← saved.verify
   let config ← saved.input.replayConfig
-  seatOutput seat config.mode.players (saved.games.all (·.summary.exact)) fun viewer =>
-    saved.games.toList.mapM (fun game =>
-      gameDisclosures game.input (game.eliminationConfig?.getD config) 100 viewer)
+  let games viewer := saved.games.toList.mapM (fun game =>
+    seatGameTrace game.input (game.eliminationConfig?.getD config) 100 viewer includeBoard)
+  let extra := if includeBoard then
+    [teamSeatsField saved] ++ seatMatchFields summary.wins summary.result ++
+      matchPenaltyTrace saved.input.ending
+    else []
+  seatOutput seat config.mode.players (saved.games.all (·.summary.exact)) games extra
 
-private def ffaDisclosures (saved : RecordedFreeForAll) (seat : String) : Except String String := do
+private def ffaSeatTrace (saved : RecordedFreeForAll) (seat : String) (includeBoard : Bool) :
+    Except String String := do
   let summary ← saved.verify
-  seatOutput seat saved.mode.players summary.exact fun viewer =>
-    (gameDisclosures saved.game.input { ruleSet := .coreOnly, mode := saved.mode } saved.fuel viewer).map
-      List.singleton
+  let games viewer :=
+    (seatGameTrace saved.game.input { ruleSet := .coreOnly, mode := saved.mode } saved.fuel
+      viewer includeBoard).map List.singleton
+  seatOutput seat saved.mode.players summary.exact games []
 
 /-- Record, verify or generate a viewer trace from the inputs of a saved game or match. -/
 def main (args : List String) : IO UInt32 := do
@@ -196,24 +231,28 @@ def main (args : List String) : IO UInt32 := do
       let trace ← IO.ofExcept (ffaTrace saved)
       IO.FS.writeFile output (trace ++ "\n")
       return 0
-    | ["disclosures", input, seat, output] =>
+    | [kind@"disclosures", input, seat, output]
+    | [kind@"view-seat", input, seat, output] =>
       let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
-      let trace ← IO.ofExcept (matchDisclosures saved seat)
+      let trace ← IO.ofExcept (matchSeatTrace saved seat (kind != "disclosures"))
       IO.FS.writeFile output (trace ++ "\n")
       return 0
-    | ["disclosures-team", input, seat, output] =>
+    | [kind@"disclosures-team", input, seat, output]
+    | [kind@"view-team-seat", input, seat, output] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
-      let trace ← IO.ofExcept (teamMatchDisclosures saved seat)
+      let trace ← IO.ofExcept (teamMatchSeatTrace saved seat (kind != "disclosures-team"))
       IO.FS.writeFile output (trace ++ "\n")
       return 0
-    | ["disclosures-ffa", input, seat, output] =>
+    | [kind@"disclosures-ffa", input, seat, output]
+    | [kind@"view-ffa-seat", input, seat, output] =>
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
-      let trace ← IO.ofExcept (ffaDisclosures saved seat)
+      let trace ← IO.ofExcept (ffaSeatTrace saved seat (kind != "disclosures-ffa"))
       IO.FS.writeFile output (trace ++ "\n")
       return 0
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"
       IO.eprintln "       riftbound-replay disclosures[-team|-ffa] ARCHIVE.json SEAT OUTPUT.json"
+      IO.eprintln "       riftbound-replay view[-team|-ffa]-seat ARCHIVE.json SEAT OUTPUT.json"
       return 2
   catch error =>
     IO.eprintln error.toString

@@ -33,6 +33,7 @@ public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Objects
 public import Riftbound.Rules.Select
 public import Riftbound.Rules.Passive
+public import Riftbound.Spec.PlayerView
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Play
