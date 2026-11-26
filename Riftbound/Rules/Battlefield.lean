@@ -473,7 +473,7 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
     · split
       · exact (Safe.modObj s u (f := fun o => { o with damage := 0, exhausted := true })
         (fun _ => rfl) (fun _ => rfl)).trans
-          (finishDeathSave_safe _ u _ _)
+          (finishDeathSave_safe _ u _ _ true)
       · exact killObj_safe s u
   · exact killObj_safe s u
 
@@ -620,7 +620,12 @@ def cleanupDeathGroup (s : GameState) : List ObjId :=
 
 /-- A survival replacement can itself alter the death that pays for it. -/
 def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
-  (s.deathSaver victim).join.any (fun cost => (s.deathSaveFor cost []).isSome)
+  (s.deathSaveFor victim []).any fun save =>
+    save.cost.any fun cost =>
+      let used := [save.useKey victim]
+      let ready := prepareNestedDeath s victim cost used
+      (s.nestedDeathDecision victim cost used).isSome || (ready.deathSaveFor cost used).isSome ||
+        ready.banishOnDeathBy cost != s.banishOnDeathBy cost
 
 /-- The individual death when resolving a Cleanup group. -/
 def cleanupResolveDeath (s : GameState) (victim : ObjId) : GameState × List Event :=

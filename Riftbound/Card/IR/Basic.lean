@@ -421,6 +421,9 @@ inductive TurnEffect where
   | deathOrder (group : List ObjId)
   /-- Apply the revised choice only after the earlier events in this group have been resolved. -/
   | deathReselection (group earlier : List ObjId) (choice : DeathDecision)
+  /-- A choice for a Kill created by an earlier replacement in the same chain (CR 370.2). -/
+  | nestedDeathDecision (root : ObjId) (used : List (ObjId × Bool)) (choice : DeathDecision)
+      (groupScope : Option (List ObjId × List ObjId))
   /-- This permanent has used its optional death replacement this turn (CR 371). -/
   | deathSacrificeUsed
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead

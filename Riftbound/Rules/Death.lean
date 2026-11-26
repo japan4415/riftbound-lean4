@@ -385,11 +385,12 @@ def GameState.deathSacrificeDecision (s : GameState) (id : ObjId) : Option (Opti
       | _ => none
     else none)
 
-/-- The friendly Units that can pay for this replacement. A Unit may pay for its own replacement,
-but cannot use the replacement again on the resulting Kill (CR 370.2). -/
+/-- The friendly Units that can pay, including teammates' Units (CR 491.8.e). A Unit can
+pay for its own replacement, using that replacement once across the resulting Kills (CR 370.2). -/
 def GameState.deathSacrificeUnits (s : GameState) (p : PlayerId) (id : ObjId) : List ObjId :=
   let options := s.inPlay.eraseDups.filter (fun unit =>
-    (s.obj? unit).any (·.controller == p) && (s.cardDef? unit).any (·.hasType .unit) &&
+    (s.obj? unit).any (fun o => s.config.mode.sameSide p o.controller) &&
+    (s.cardDef? unit).any (·.hasType .unit) &&
     !s.turnFx.any (fun note => note.turn == s.turn && note.target != some id &&
       note.kind == .deathSacrificeChoice (some unit)))
   (options.filter (· != id)) ++ (options.filter (· == id))
@@ -533,15 +534,58 @@ theorem closeDeathSacrifice_safe (s : GameState) (id : ObjId) : Safe s (closeDea
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Use the decision for this event in place of any other death choices about this Unit. -/
+def GameState.applyDeathDecision (s : GameState) (id : ObjId)
+    (decision : Option (PlayerId × DeathDecision)) : GameState :=
+  let cleared := (closeDeathSacrifice s id).turnFx.filter (fun note =>
+    !note.appliesTo s.turn id .chosenDeathBanisher)
+  let selected := decision.map fun (p, choice) =>
+    let (actor, kind) := match choice with
+      | .gear gear => (p, TurnEffect.chosenDeathGear gear)
+      | .free source => (p, .chosenDeathFree source)
+      | .banish player => (player, .chosenDeathBanisher)
+      | .sacrifice cost => (p, .deathSacrificeChoice cost)
+    { who := actor, turn := s.turn, stamp := s.nextTimestamp, kind, target := some id : TurnFx }
+  { s with turnFx := cleared ++ selected.toList }
+
+theorem GameState.applyDeathDecision_safe (s : GameState) (id : ObjId)
+    (decision : Option (PlayerId × DeathDecision)) : Safe s (s.applyDeathDecision id decision) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Look up this exact occurrence, even if an earlier Kill targeted the same Unit. -/
+def GameState.nestedDeathDecision (s : GameState) (root id : ObjId) (used : List (ObjId × Bool)) :
+    Option (PlayerId × DeathDecision) :=
+  s.turnFx.reverse.findSome? fun note =>
+    if note.turn != s.turn || note.target != some id then none else
+      match note.kind with
+      | .nestedDeathDecision r prior choice none =>
+        if r == root && prior == used then some (note.who, choice) else none
+      | _ => none
+
+/-- Read or apply a nested Kill with only the selections for that occurrence available. -/
+def prepareNestedDeath (s : GameState) (root id : ObjId) (used : List (ObjId × Bool)) : GameState :=
+  { s with turnFx := if used.isEmpty then s.turnFx else
+      (s.applyDeathDecision id (s.nestedDeathDecision root id used)).turnFx }
+
+/-- Clear the chain's choices once its original Kill has finished. -/
+def finishNestedDeaths (s : GameState) (root : ObjId) : GameState :=
+  { s with turnFx := s.turnFx.filter fun note =>
+      match note.kind with | .nestedDeathDecision r _ _ none => r != root | _ => true }
+
+theorem finishNestedDeaths_safe (s : GameState) (root : ObjId) : Safe s (finishNestedDeaths s root) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Clear the decisions for this death and record which limited rescue it spent, if any. -/
 def finishDeathSave (s : GameState) (id : ObjId) (p : PlayerId)
-    (mark : Option TurnEffect) : GameState :=
-  let cleared := closeDeathSacrifice s id
-  { cleared with turnFx := cleared.turnFx ++ mark.toList.map (fun kind =>
+    (mark : Option TurnEffect) (clear : Bool := true) : GameState :=
+  let notes := if clear then (closeDeathSacrifice s id).turnFx else s.turnFx
+  { s with turnFx := notes ++ mark.toList.map (fun kind =>
       { who := p, turn := s.turn, stamp := s.nextTimestamp, kind, target := some id }) }
 
 theorem finishDeathSave_safe (s : GameState) (id : ObjId) (p : PlayerId)
-    (mark : Option TurnEffect) : Safe s (finishDeathSave s id p mark) :=
+    (mark : Option TurnEffect) (clear : Bool) : Safe s (finishDeathSave s id p mark clear) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
@@ -586,7 +630,7 @@ theorem saveUnit_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
     Safe s (saveUnit s id g).1 := by
   unfold saveUnit
   dsimp only
-  exact (saveUnitCore_safe s id g).trans (finishDeathSave_safe _ id _ _)
+  exact (saveUnitCore_safe s id g).trans (finishDeathSave_safe _ id _ _ true)
 
 /-- A survival replacement can have a Kill of its own (CR 370.2). -/
 structure DeathSave where
@@ -633,52 +677,61 @@ theorem GameState.deathSaveFor_cost_mem {s : GameState} {id cost : ObjId}
 
 /-- Heal, exhaust, and recall after the replacement Kill has completed. -/
 def completeDeathSave (s : GameState) (id : ObjId) (mark : Option TurnEffect)
-    (p : PlayerId) : GameState × List Event :=
+    (p : PlayerId) (clear : Bool) : GameState × List Event :=
   let recalled := saveUnitCore s id none
-  (finishDeathSave recalled.1 id p mark, recalled.2)
+  (finishDeathSave recalled.1 id p mark clear, recalled.2)
 
 theorem completeDeathSave_safe (s : GameState) (id : ObjId) (mark : Option TurnEffect)
-    (p : PlayerId) : Safe s (completeDeathSave s id mark p).1 :=
-  (saveUnitCore_safe s id none).trans (finishDeathSave_safe _ id p mark)
+    (p : PlayerId) (clear : Bool) : Safe s (completeDeathSave s id mark p clear).1 :=
+  (saveUnitCore_safe s id none).trans (finishDeathSave_safe _ id p mark clear)
 
 /-- Resolve any Kill that is part of a replacement before performing its remaining instructions. -/
-def killOrSaveFrom : Nat → GameState → ObjId → List (ObjId × Bool) → GameState × List Event
-  | 0, s, id, _ => killObj s id
+def killOrSaveFrom (root : ObjId) :
+    Nat → GameState → ObjId → List (ObjId × Bool) → GameState × List Event
+  | 0, s, id, used => killObj (prepareNestedDeath s root id used) id
   | fuel + 1, s, id, used =>
-    match s.deathSaveFor id used with
-    | none => killObj s id
+    let ready := prepareNestedDeath s root id used
+    match ready.deathSaveFor id used with
+    | none => killObj ready id
     | some save =>
       let replaced := save.cost.elim (s, [])
-        (fun cost => killOrSaveFrom fuel s cost (save.useKey id :: used))
+        (fun cost => killOrSaveFrom root fuel s cost (save.useKey id :: used))
       let owner := ((s.obj? id).map (·.controller)).getD ⟨0⟩
       let completed := completeDeathSave replaced.1 id
-        (s.deathSaveMark id save.isSacrifice save.cost used) owner
+        (ready.deathSaveMark id save.isSacrifice save.cost used) owner used.isEmpty
       (completed.1, replaced.2 ++ completed.2)
 
 /-- Resolve a Kill, allowing each in-play Unit its own and its automatic replacement. -/
 def killOrSave (s : GameState) (id : ObjId) : GameState × List Event :=
-  killOrSaveFrom (2 * s.inPlay.length) s id []
+  let resolved := killOrSaveFrom id (2 * s.inPlay.length) s id []
+  (finishNestedDeaths resolved.1 id, resolved.2)
 
-theorem killOrSaveFrom_safe :
+theorem prepareNestedDeath_safe (s : GameState) (root id : ObjId)
+    (used : List (ObjId × Bool)) : Safe s (prepareNestedDeath s root id used) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+theorem killOrSaveFrom_safe (root : ObjId) :
     ∀ (fuel : Nat) (s : GameState) (id : ObjId) (used : List (ObjId × Bool)),
-      Safe s (killOrSaveFrom fuel s id used).1
-  | 0, s, id, _ => killObj_safe s id
+      Safe s (killOrSaveFrom root fuel s id used).1
+  | 0, s, id, used => (prepareNestedDeath_safe s root id used).trans (killObj_safe _ _)
   | fuel + 1, s, id, used => by
     unfold killOrSaveFrom
+    dsimp only
     split
-    · exact killObj_safe s id
+    · exact (prepareNestedDeath_safe s root id used).trans (killObj_safe _ _)
     · rename_i save _
       have prior : Safe s
-          (save.cost.elim (s, []) (fun cost => killOrSaveFrom fuel s cost
+          (save.cost.elim (s, []) (fun cost => killOrSaveFrom root fuel s cost
             (save.useKey id :: used))).1 := by
         cases h : save.cost with
         | none => exact Safe.refl s
-        | some cost => exact killOrSaveFrom_safe fuel s cost _
-      exact prior.trans (completeDeathSave_safe _ id _ _)
+        | some cost => exact killOrSaveFrom_safe root fuel s cost _
+      exact prior.trans (completeDeathSave_safe _ id _ _ _)
 
 /-- Killing or saving preserves the game invariants, including the entire sequence of costs. -/
 theorem killOrSave_safe (s : GameState) (id : ObjId) : Safe s (killOrSave s id).1 :=
-  killOrSaveFrom_safe _ _ _ _
+  (killOrSaveFrom_safe id _ _ _ _).trans (finishNestedDeaths_safe _ _)
 
 /-- Every in-play object is in a Board zone. -/
 theorem GameState.mem_inPlay_zone {s : GameState} {id : ObjId} (h : id ∈ s.inPlay) :
@@ -721,15 +774,16 @@ theorem recallFx_zone_of_not_mem {s : GameState} {u : ObjId} {z : Zone}
     exact he.trans hs
 
 /-- The Kill and its replacements affect only Board, Trash, and Banishment zones. -/
-theorem killOrSaveFrom_zone_other (fuel : Nat) {s : GameState} (hwf : s.WF)
+theorem killOrSaveFrom_zone_other (root : ObjId) (fuel : Nat) {s : GameState} (hwf : s.WF)
     {id : ObjId} {used : List (ObjId × Bool)} {z : Zone}
     (hid : id ∈ s.inPlay) (hz : z.isBoard = false)
     (hd : ∀ q k, (k = ZoneKind.trash ∨ k = ZoneKind.banishment) → z ≠ .player q k) :
-    (killOrSaveFrom fuel s id used).1.zone z = s.zone z := by
+    (killOrSaveFrom root fuel s id used).1.zone z = s.zone z := by
   induction fuel generalizing s id used with
   | zero =>
     obtain ⟨origin, hboard, hmem⟩ := GameState.mem_inPlay_zone hid
-    exact killObj_zone_other hwf hmem (by rintro rfl; simp [hboard] at hz) hd
+    exact killObj_zone_other ((prepareNestedDeath_safe s root id used).wf hwf)
+      hmem (by rintro rfl; simp [hboard] at hz) hd
   | succ fuel ih =>
     obtain ⟨origin, hboard, hmem⟩ := GameState.mem_inPlay_zone hid
     have hother : z ≠ origin := by rintro rfl; simp [hboard] at hz
@@ -739,10 +793,11 @@ theorem killOrSaveFrom_zone_other (fuel : Nat) {s : GameState} (hwf : s.WF)
       have h₂ := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hmem) hmem
       exact hother (Option.some.inj (h₁.symm.trans h₂))
     unfold killOrSaveFrom
+    dsimp only
     split
-    · exact killObj_zone_other hwf hmem hother hd
+    · exact killObj_zone_other ((prepareNestedDeath_safe s root id used).wf hwf) hmem hother hd
     · rename_i save found
-      let paid := (save.cost.elim (s, []) (fun cost => killOrSaveFrom fuel s cost
+      let paid := (save.cost.elim (s, []) (fun cost => killOrSaveFrom root fuel s cost
         (save.useKey id :: used))).1
       have hpaid : paid.zone z = s.zone z := by
         unfold paid
@@ -750,7 +805,10 @@ theorem killOrSaveFrom_zone_other (fuel : Nat) {s : GameState} (hwf : s.WF)
         | mk mode cost =>
           cases cost with
           | none => rfl
-          | some next => exact ih hwf (GameState.deathSaveFor_cost_mem found)
+          | some next =>
+            have member : next ∈ (prepareNestedDeath s root id used).inPlay :=
+              GameState.deathSaveFor_cost_mem found
+            exact ih hwf member
       let healed := paid.modObj id (fun o => { o with damage := 0 })
       have hzone : healed.zone z = s.zone z := (GameState.zone_modObj _ _ _ _).trans hpaid
       have hpresent : id ∉ healed.zone z := by rw [hzone]; exact hnot
@@ -760,7 +818,7 @@ theorem killOrSave_zone_other {s : GameState} (hwf : s.WF) {id : ObjId} {z : Zon
     (hid : id ∈ s.inPlay) (hz : z.isBoard = false)
     (hd : ∀ q k, (k = ZoneKind.trash ∨ k = ZoneKind.banishment) → z ≠ .player q k) :
     (killOrSave s id).1.zone z = s.zone z :=
-  killOrSaveFrom_zone_other _ hwf hid hz hd
+  killOrSaveFrom_zone_other id _ hwf hid hz hd
 
 end Riftbound
 

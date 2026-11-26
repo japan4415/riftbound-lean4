@@ -1774,20 +1774,42 @@ def GameState.deathChoice (s : GameState) (id : ObjId) (used : List (ObjId × Bo
         some (id, unit.controller, first, other)
       | _ => none
 
+/-- Rewrite an answer or the answers behind a more-choices option. -/
+def Effect.mapDeathOptions (map : Effect → Effect) (e : Effect) : Effect :=
+  let rec mapList : EffectList → EffectList
+    | .nil => .nil
+    | .cons first rest => .cons (map first) (mapList rest)
+  match e with
+  | .eitherOf options => .eitherOf (mapList options)
+  | other => map other
+
+/-- Give one ordinary replacement answer its event scope. -/
+def Effect.scopeDeathDecision (scope : ObjId → DeathDecision → Effect) : Effect → Effect
+  | .chooseDeathBanisher unit player => scope unit (.banish player)
+  | .chooseDeathGear unit source => scope unit (.gear source)
+  | .chooseDeathFree unit source => scope unit (.free source)
+  | .recordDeathSacrifice unit cost => scope unit (.sacrifice cost)
+  | other => other
+
 /-- Read the next outstanding choice in the same sequence used to resolve the Kill (CR 370.2). -/
-def GameState.deathReplacementChoiceFrom (s : GameState) :
+def GameState.deathReplacementChoiceFrom (s : GameState) (root : ObjId) :
     Nat → ObjId → List (ObjId × Bool) → Bool → Option (ObjId × PlayerId × Effect × Effect)
   | 0, _, _, _ => none
   | fuel + 1, id, used, offerBanish =>
-    s.deathChoice id used offerBanish <|> match s.deathSaveFor id used with
+    let ready := prepareNestedDeath s root id used
+    let ask := (ready.deathChoice id used offerBanish).map fun (unit, player, first, other) =>
+      let scope := Effect.mapDeathOptions (Effect.scopeDeathDecision fun target choice =>
+        .recordNestedDeathDecision root used target choice none)
+      if used.isEmpty then (unit, player, first, other) else (unit, player, scope first, scope other)
+    ask <|> match ready.deathSaveFor id used with
     | some save => save.cost.bind (fun cost =>
-        s.deathReplacementChoiceFrom fuel cost (save.useKey id :: used) true)
+        s.deathReplacementChoiceFrom root fuel cost (save.useKey id :: used) true)
     | none => none
 
 /-- Ask the controllers of the original and replacement Kills in order. -/
 def GameState.deathReplacementChoice (s : GameState) (id : ObjId) (offerBanish : Bool := true) :
     Option (ObjId × PlayerId × Effect × Effect) :=
-  s.deathReplacementChoiceFrom (2 * s.inPlay.length + 1) id [] offerBanish
+  s.deathReplacementChoiceFrom id (2 * s.inPlay.length + 1) id [] offerBanish
 
 /-- Which deaths will be changed by an elected replacement or an automatic one. -/
 def GameState.modifiedDeath (s : GameState) (id : ObjId) : Bool :=
@@ -1845,7 +1867,8 @@ def GameState.deathGroupPrefix (s : GameState) (group : List ObjId) : List ObjId
   ((s.turnFx.reverse.findSome? fun note =>
     if note.turn != s.turn then none else
       match note.kind with
-      | .deathReselection g earlier _ => if g == group then some earlier else none
+      | .deathReselection g earlier _ | .nestedDeathDecision _ _ _ (some (g, earlier)) =>
+        if g == group then some earlier else none
       | _ => none).getD []).filter group.contains
 
 /-- The latest revision available at this point in the group's execution. -/
@@ -1858,31 +1881,26 @@ def GameState.deathReselectionAt (s : GameState) (group : List ObjId) (index : N
         if g == group && earlier.length ≤ index then some (note.who, choice) else none
       | _ => none
 
-/-- Install a revised choice once the earlier events in the group have taken place. -/
+/-- Make replacements chosen against the projected Board available to this root Kill. -/
 def prepareDeathReselection (s : GameState) (group : List ObjId) (index : Nat)
     (id : ObjId) : GameState :=
-  match s.deathReselectionAt group index id with
-  | none => s
-  | some (p, chosen) =>
-    let cleared := closeDeathSacrifice s id
-    let cleared := { cleared with turnFx := cleared.turnFx.filter (fun note =>
-      !(note.appliesTo s.turn id .chosenDeathBanisher)) }
-    match chosen with
-    | .gear source => cleared.addTurnFxOn p id (.chosenDeathGear source)
-    | .free source => cleared.addTurnFxOn p id (.chosenDeathFree source)
-    | .banish player => cleared.addTurnFxOn player id .chosenDeathBanisher
-    | .sacrifice cost => cleared.addTurnFxOn p id (.deathSacrificeChoice cost)
+  let rootNotes := match s.deathReselectionAt group index id with
+    | none => s.turnFx
+    | some choice => (s.applyDeathDecision id (some choice)).turnFx
+  let nested := rootNotes.filterMap fun note =>
+    if note.turn != s.turn then none else
+      match note.kind with
+      | .nestedDeathDecision root used choice (some (g, earlier)) =>
+        if root == id && g == group && earlier.length ≤ index then
+          some { note with kind := .nestedDeathDecision root used choice none }
+        else none
+      | _ => none
+  { s with turnFx := rootNotes ++ nested }
 
 theorem prepareDeathReselection_safe (s : GameState) (group : List ObjId) (index : Nat)
-    (id : ObjId) : Safe s (prepareDeathReselection s group index id) := by
-  unfold prepareDeathReselection
-  cases s.deathReselectionAt group index id with
-  | none => exact Safe.refl s
-  | some choice =>
-    obtain ⟨_, chosen⟩ := choice
-    cases chosen <;>
-      exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
-        fun _ hown => hown.congr rfl rfl, rfl⟩
+    (id : ObjId) : Safe s (prepareDeathReselection s group index id) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- Apply one event using the same board and scoped choice in the preview and the real resolution. -/
 def applyGroupDeath (group : List ObjId) (g : GameState → ObjId → GameState × List Event)
@@ -1906,23 +1924,6 @@ def deathExecutionOrder (s : GameState) (group : List ObjId)
     let (decided, remaining) := projectDeathGroupTail s group earlier g
     earlier ++ decided.deathGroupOrderFor group remaining
 
-/-- Convert a choice against the projected board into an answer scoped to its position. -/
-def Effect.scopeDeathReselection (group earlier : List ObjId) (unit : ObjId) (e : Effect) :
-    Effect :=
-  let scope := Effect.recordDeathReselection group earlier unit
-  let encode : Effect → Effect
-    | .chooseDeathBanisher _ player => scope (.banish player)
-    | .chooseDeathGear _ source => scope (.gear source)
-    | .chooseDeathFree _ source => scope (.free source)
-    | .recordDeathSacrifice _ cost => scope (.sacrifice cost)
-    | other => other
-  let rec encodeList : EffectList → EffectList
-    | .nil => .nil
-    | .cons first rest => .cons (encode first) (encodeList rest)
-  match e with
-  | .eitherOf options => .eitherOf (encodeList options)
-  | other => encode other
-
 /-- Preview the group as it will run. A replacement can become unavailable after an earlier
 event, so ask against the projected Board before committing any of the outcomes. -/
 def deathGroupReselection (group : List ObjId) (offerBanish : Bool)
@@ -1933,10 +1934,13 @@ def deathGroupReselection (group : List ObjId) (offerBanish : Bool)
     let entry := (unit, prior.length)
     let ready := prepareDeathReselection s group entry.2 unit
     let ask := if !prior.isEmpty && ready.inPlay.contains unit
-      then ready.deathChoice unit [] offerBanish else none
+      then ready.deathReplacementChoice unit offerBanish else none
     match ask with
     | some (victim, player, first, other) =>
-      let scope := Effect.scopeDeathReselection group prior.reverse victim
+      let scope := Effect.mapDeathOptions fun
+        | .recordNestedDeathDecision root used target choice _ =>
+          .recordNestedDeathDecision root used target choice (some (group, prior.reverse))
+        | effect => effect.scopeDeathDecision (Effect.recordDeathReselection group prior.reverse)
       some (victim, player, scope first, scope other)
     | none => deathGroupReselection group offerBanish g remaining (unit :: prior) (g ready unit).1
 
@@ -1991,7 +1995,8 @@ def GameState.deathGroupChoice (s : GameState) (group : List ObjId) (offerBanish
 def clearDeathOrder (s : GameState) (group : List ObjId) : GameState :=
   { s with turnFx := s.turnFx.filter (fun note =>
       match note.kind with
-      | .deathOrder g | .deathReselection g _ _ => g != group
+      | .deathOrder g | .deathReselection g _ _ | .nestedDeathDecision _ _ _ (some (g, _)) =>
+        g != group
       | _ => true) }
 
 theorem clearDeathOrder_safe (s : GameState) (group : List ObjId) : Safe s (clearDeathOrder s group) :=
@@ -6270,6 +6275,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s.addTurnFxOn p unit (.deathOrder group), [.run p src env es], [])
   | .recordDeathReselection group earlier unit choice =>
     (s.addTurnFxOn p unit (.deathReselection group earlier choice), [.run p src env es], [])
+  | .recordNestedDeathDecision root used unit choice groupScope =>
+    (s.addTurnFxOn p unit (.nestedDeathDecision root used choice groupScope), [.run p src env es], [])
   | .endCombatDamage excess =>
     (recordCombatDamage s p excess, [.run p src env es], [])
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es

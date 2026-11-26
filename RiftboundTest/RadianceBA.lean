@@ -173,10 +173,12 @@ open Riftbound
     | .eitherDo _ _ _ pick _ _ :: _ =>
       ((step 100 options ⟨.player p, .decide (choseSecond pick)⟩).toOption).map Prod.fst
     | _ => none
-  let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := next.pending
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root used victim (.sacrifice (some cost)) none)
+      _ _ :: _ := next.pending
     | none
   let (saved, events) ← (step 100 next ⟨.player p, .decide true⟩).toOption
-  return victim == second && cost == ally && es₁.isEmpty && es₂.isEmpty &&
+  return root == first && used == [(first, true)] &&
+    victim == second && cost == ally && es₁.isEmpty && es₂.isEmpty &&
     next.inPlay.contains ally && saved.countIn p .base "RAD-020" == 2 &&
     saved.countIn p .trash "V0" == 1 && saved.tired first == some true &&
     saved.tired second == some true &&
@@ -220,6 +222,26 @@ open Riftbound
   return before.isEmpty && controller == p && ordered == [other, original, gone] &&
     (settled.zone (.player p .base)).contains original && (settled.zone (.player p .base)).contains other &&
     !(settled.turnFx.any (fun note => match note.kind with | .deathOrder _ => true | _ => false))).getD false
+
+-- In 2v2 the replacement accepts a teammate's Unit and keeps the opponent in play.
+#guard (lab.bind fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with phase := .main, active := some p, turn := 2, turnOrder := Mode.teamTurnOrder true }
+  let (s, mord) ← put s p "RAD-020" .base
+  let (s, teammate) ← put s ally "V0" .base
+  let (s, opponent) ← put s q "V1" .base
+  let run := Frame.run q opponent { slots := [.obj mord] } (.ofList [.prim (.kill (.slot 0))])
+  let (asked, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
+    | none
+  let (settled, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let dead ← settled.firstOf ally .trash "V0"
+  return controller == p && victim == mord && cost == teammate &&
+    (settled.obj? opponent).isSome && settled.tired mord == some true &&
+    events.contains (.died dead ally)).getD false
 
 -- A limited Spell play still pays its mandatory Kill cost and can replace that death.
 #guard (lab.bind fun s => do

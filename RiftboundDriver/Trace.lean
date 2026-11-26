@@ -244,6 +244,7 @@ def deathChoiceFields : Effect → Option (String × String × String)
   | .chooseDeathFree _ source => some (deathDecisionFields (.free source))
   | .recordDeathSacrifice _ cost => some (deathDecisionFields (.sacrifice cost))
   | .recordDeathReselection _ _ _ decision => some (deathDecisionFields decision)
+  | .recordNestedDeathDecision _ _ _ decision _ => some (deathDecisionFields decision)
   | _ => none
 
 /-- Also label the affected Unit when browsing a list of more death replacements. -/
@@ -251,8 +252,12 @@ def deathReplacementFields (frame : Option Frame) (yes : Bool) : List (String ×
   match frame with
   | some (.eitherDo _ unit _ first other _) =>
     let affected := toString unit.n
+    let scope := match first with
+      | .recordNestedDeathDecision root used _ _ _ =>
+        [("deathRootUnit", toString root.n), ("deathDepth", toString used.length)]
+      | _ => []
     let firstKey := (deathChoiceFields first).map (·.1)
-    match deathChoiceFields (if yes then first else other) with
+    scope ++ match deathChoiceFields (if yes then first else other) with
     | some (unitKey, choiceKey, choice) =>
       ((firstKey.filter (· != unitKey)).toList.map (·, affected)) ++
         [(unitKey, affected), (choiceKey, choice)]

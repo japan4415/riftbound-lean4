@@ -4255,6 +4255,74 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (keepB.obj? b).any (·.exhausted) && (keepB.obj? a).isNone &&
     oneDeath firstEvents && oneDeath otherEvents
 
+-- The same animated Gear can be the subject of two distinct Kills (CR 370.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let (s, c) ← put s p "OGN-077" .base
+  let (s, d) ← put s p "OGN-077" .base
+  let s := [a, b, c, d].foldl (fun board gear => animateGearObject board p s.bf0 gear) s
+  let run := Frame.run q s.bf0 { slots := [.obj a] } (.ofList [.prim (.kill (.slot 0))])
+  let (original, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let source : Effect → Option ObjId
+    | .chooseDeathGear _ gear | .recordNestedDeathDecision _ _ _ (.gear gear) _ => some gear
+    | _ => none
+  let rec selectGear (wanted : ObjId) (s : GameState) : Nat → Option GameState
+    | 0 => none
+    | fuel + 1 => do
+      let .eitherDo chooser _ _ first other _ :: _ := s.pending | none
+      if chooser != p then none else
+        let (next, events) ← (step 100 s ⟨.player p, .decide (source first == some wanted)⟩).toOption
+        if !events.isEmpty then none
+        else if source first == some wanted || source other == some wanted then some next
+        else selectGear wanted next fuel
+  let repeated ← selectGear a original 4
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root used victim (.gear _) none) _ _ :: _ :=
+    repeated.pending | none
+  let third ← selectGear b repeated 3
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root' used' victim' (.gear offered) none)
+      (.recordNestedDeathDecision _ _ _ (.gear alternative) none) _ :: _ := third.pending | none
+  let chosen := offered == c
+  let (keptC, events) ← (step 100 third ⟨.player p, .decide chosen⟩).toOption
+  let (keptD, other) ← (step 100 third ⟨.player p, .decide !chosen⟩).toOption
+  let settled (state : GameState) (keeping killed : ObjId) (events : List Event) :=
+    [a, b, keeping].all (fun id => state.tired id == some true) && (state.obj? killed).isNone &&
+    events.countP (fun | .died .. => true | _ => false) == 1 &&
+    !(state.turnFx.any (fun note => match note.kind with | .nestedDeathDecision .. => true | _ => false))
+  return root == a && victim == a && used == [(a, false)] &&
+    root' == a && victim' == b && used' == [(b, false), (a, false)] &&
+    [offered, alternative].contains c && [offered, alternative].contains d &&
+    settled keptC c d events && settled keptD d c other
+
+-- A prior simultaneous event can consume the Gear chosen for a nested Kill.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spent) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let (s, c) ← put s p "OGN-077" .base
+  let (s, ordinary) ← put s p "OGN-136" .base
+  let s := [a, b, c].foldl (fun board gear => animateGearObject board p s.bf0 gear) s
+  let s := (s.addTurnFxOn p ordinary (.chosenDeathGear spent)).addTurnFxOn p a (.chosenDeathGear a)
+  let s := s.addTurnFxOn p a (.nestedDeathDecision a [(a, false)] (.gear spent) none)
+  let run := Frame.run q s.bf0 { slots := [.obj ordinary, .obj a] }
+    (.ofList [.prim (.kill (.slotsFrom 0))])
+  let (ordered, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let .eitherDo _ _ _ (.recordDeathOrder _ first) _ _ :: _ := ordered.pending | none
+  let (reopen, waiting) ← (step 100 ordered ⟨.player p, .decide (first == ordinary)⟩).toOption
+  let .eitherDo chooser _ _ (.recordNestedDeathDecision root used target (.gear gear)
+      (some (group, earlier))) _ _ :: _ := reopen.pending | none
+  let (saved, events) ← (step 100 reopen ⟨.player p, .decide (gear == b)⟩).toOption
+  return chooser == p && root == a && target == a && used == [(a, false)] &&
+    group == [ordinary, a] && earlier == [ordinary] && waiting.isEmpty &&
+    (reopen.obj? spent).isSome && (saved.obj? spent).isNone &&
+    [ordinary, a, b].all (fun id => saved.tired id == some true) &&
+    (saved.obj? c).isNone && events.countP (fun | .died .. => true | _ => false) == 2 &&
+    saved.turnFx.all (fun note => match note.kind with | .nestedDeathDecision .. => false | _ => true)
+
 -- Unlicensed Armory (OGN-023): discard 1, exhaust: choose a friendly unit; the next time it dies
 -- this turn, I may pay Fury to bring it back exhausted (approximation: it dies, then returns)
 #guard t fun s => do

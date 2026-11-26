@@ -2092,8 +2092,8 @@ def OGN_077.meta : CardDef :=
     sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
-/-- Zhonya's Hourglass. A Kill created by a replacement still needs its own event scope when
-the same Unit reappears within a chain of replacements. -/
+/-- Zhonya's Hourglass. Interleaving simultaneous effects that apply in one uninterrupted
+sequence still needs coverage (CR 373.2). -/
 def OGN_077 : CardDef :=
   { OGN_077.meta with
     abilities := [.passive .always [.diesInsteadOfFriendly]],

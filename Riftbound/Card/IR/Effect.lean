@@ -311,6 +311,9 @@ inductive Effect where
   | recordDeathOrder (group : List ObjId) (unit : ObjId)
   /-- Record a revised replacement after an earlier event consumed or moved its source. -/
   | recordDeathReselection (group earlier : List ObjId) (unit : ObjId) (choice : DeathDecision)
+  /-- Record an answer for one distinct nested Kill event. -/
+  | recordNestedDeathDecision (root : ObjId) (used : List (ObjId × Bool))
+      (unit : ObjId) (choice : DeathDecision) (groupScope : Option (List ObjId × List ObjId))
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
   | endCombatDamage (excess : Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following

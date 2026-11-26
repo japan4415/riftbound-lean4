@@ -54,6 +54,13 @@ meta def traceOf (seed turns : Nat) : String :=
   let frame := Frame.eitherDo ⟨1⟩ ⟨5⟩ {} (choose (.gear ⟨10⟩)) (choose (.gear ⟨11⟩)) .nil
   deathReplacementFields (some frame) false == [("deathGearUnit", "5"), ("deathGearSource", "11")]
 
+-- The trace distinguishes the original Kill from a new Kill of the same Unit.
+#guard
+  let choose := Effect.recordNestedDeathDecision ⟨5⟩ [(⟨5⟩, false)] ⟨5⟩
+  let frame := Frame.eitherDo ⟨1⟩ ⟨5⟩ {} (choose (.gear ⟨10⟩) none) (choose (.gear ⟨11⟩) none) .nil
+  deathReplacementFields (some frame) true ==
+    [("deathRootUnit", "5"), ("deathDepth", "1"), ("deathGearUnit", "5"), ("deathGearSource", "10")]
+
 -- quotes and backslashes in a name are escaped
 #guard jstr "a\"b\\c" == "\"a\\\"b\\\\c\""
 #guard jarr ["1", "2"] == "[1,2]"
