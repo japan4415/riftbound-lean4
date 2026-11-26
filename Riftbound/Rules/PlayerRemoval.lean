@@ -31,6 +31,35 @@ theorem moveForPlayerRemoval_safe (destination : ZoneKind) (s : GameState) (id :
     · rename_i next moved h
       exact Safe.moveObj h
 
+private theorem moveForPlayerRemoval_zone (s : GameState) (destination : ZoneKind) (id : ObjId)
+    (z : Zone) (absent : id ∉ s.zone z)
+    (different : ∀ o, s.obj? id = some o → z ≠ .player o.owner destination) :
+    (moveForPlayerRemoval destination s id).1.zone z = s.zone z := by
+  unfold moveForPlayerRemoval
+  split
+  · rfl
+  · rename_i o found
+    dsimp only
+    split
+    · rfl
+    · rename_i next moved applied
+      obtain ⟨src, dst, spec, source, sourceFound, normalized⟩ := moveObj_spec_dst applied
+      have same : source = o := Option.some.inj (sourceFound.symm.trans found)
+      subst source
+      refine spec.zone_other (z := z) (fun eq => absent (eq.symm ▸ spec.id_mem)) ?_
+      simpa only [normalized, Zone.normalize_owner] using different o found
+
+private theorem applyEach_moveForPlayerRemoval_zone (destination : ZoneKind) (z : Zone)
+    (different : ∀ owner, z ≠ .player owner destination) (ids : List ObjId) (s : GameState)
+    (absent : ∀ id ∈ ids, id ∉ s.zone z) :
+    (applyEach (moveForPlayerRemoval destination) s ids).1.zone z = s.zone z := by
+  induction ids generalizing s with
+  | nil => rfl
+  | cons id rest ih =>
+    have same := moveForPlayerRemoval_zone s destination id z (absent id List.mem_cons_self)
+      (fun o _ => different o.owner)
+    exact (ih _ (fun u mem => same.symm ▸ absent u (List.mem_cons_of_mem _ mem))).trans same
+
 /-- Banish the permanents, runes and facedown cards owned or controlled by the departing player
 (CR 652.1). Events are zone changes from the rules, with no player credited for banishing. -/
 def banishForPlayerRemoval (s : GameState) (departing : PlayerId) : GameState × List Event :=
@@ -46,18 +75,98 @@ theorem banishForPlayerRemoval_safe (s : GameState) (departing : PlayerId) :
     Safe s (banishForPlayerRemoval s departing).1 :=
   applyEach_safe (moveForPlayerRemoval_safe .banishment) _ _
 
+/-- Banishment for a departure leaves every hand and out-of-game zone alone. -/
+theorem banishForPlayerRemoval_privateZone (s : GameState) (departing p : PlayerId)
+    (k : ZoneKind) (privateZone : k = .hand ∨ k = .outOfGame) (hwf : s.WF) :
+    (banishForPlayerRemoval s departing).1.zone (.player p k) = s.zone (.player p k) := by
+  unfold banishForPlayerRemoval
+  apply applyEach_moveForPlayerRemoval_zone .banishment (.player p k)
+  · intro owner
+    rcases privateZone with rfl | rfl <;> simp
+  · intro id candidate present
+    have distinct (src : Zone) (member : id ∈ s.zone src) : src = .player p k :=
+      GameState.zone_unique hwf (GameState.zone_valid_of_mem hwf present)
+        (GameState.zone_valid_of_mem hwf member) present member
+    have source := (List.mem_filter.mp candidate).1
+    rcases List.mem_append.mp source with onBoard | hidden
+    · have inPlay := (List.mem_filter.mp onBoard).1
+      rcases List.mem_append.mp inPlay with inBase | atField
+      · obtain ⟨seat, _, inZone⟩ := List.mem_flatMap.mp inBase
+        have eq := distinct (.player seat .base) inZone
+        rcases privateZone with rfl | rfl <;> cases eq
+      · cases distinct .battlefieldZone atField
+    · obtain ⟨seat, _, inZone⟩ := List.mem_flatMap.mp hidden
+      have eq := distinct (.player seat .hidden) inZone
+      rcases privateZone with rfl | rfl <;> cases eq
+
+/-- Archive this physical card if it still belongs to the departing player and is in use. -/
+def archivePlayerCard (departing : PlayerId) (s : GameState) (id : ObjId) :
+    GameState × List Event :=
+  if !(s.zone (.player departing .outOfGame)).contains id &&
+      (s.obj? id).any (fun o => o.owner == departing && o.kind.phys?.isSome) then
+    moveForPlayerRemoval .outOfGame s id
+  else (s, [])
+
+private theorem archivePlayerCard_safe (departing : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (archivePlayerCard departing s id).1 := by
+  unfold archivePlayerCard
+  split
+  · exact moveForPlayerRemoval_safe .outOfGame s id
+  · exact Safe.refl _
+
 /-- Remove the departing player's physical cards from play while preserving the physical
 inventory in their out-of-game zone (CR 652.3). -/
 def archivePlayerCards (s : GameState) (departing : PlayerId) : GameState × List Event :=
-  let outside := s.zone (.player departing .outOfGame)
-  let physical := s.zoneIds.filter fun id =>
-    !outside.contains id && (s.obj? id).any fun o =>
-      o.owner == departing && o.kind.phys?.isSome
-  applyEach (moveForPlayerRemoval .outOfGame) s physical
+  applyEach (archivePlayerCard departing) s s.zoneIds
 
 theorem archivePlayerCards_safe (s : GameState) (departing : PlayerId) :
     Safe s (archivePlayerCards s departing).1 :=
-  applyEach_safe (moveForPlayerRemoval_safe .outOfGame) _ _
+  applyEach_safe (archivePlayerCard_safe departing) _ _
+
+private theorem archivePlayerCard_privateZone (s : GameState) (departing p : PlayerId)
+    (k : ZoneKind) (id : ObjId) (otherSeat : p ≠ departing)
+    (privateZone : k = .hand ∨ k = .outOfGame) (howner : s.OwnerOk) :
+    (archivePlayerCard departing s id).1.zone (.player p k) = s.zone (.player p k) := by
+  unfold archivePlayerCard
+  split
+  · rename_i eligible
+    have owns := (Bool.and_eq_true_iff.mp eligible).2
+    cases found : s.obj? id with
+    | none => simp [found] at owns
+    | some o =>
+      have qualified : (o.owner == departing && o.kind.phys?.isSome) = true := by
+        rw [found] at owns
+        exact owns
+      have sameOwner : o.owner = departing := beq_iff_eq.mp (Bool.and_eq_true_iff.mp qualified).1
+      have nonBoard : k.isBoard = false := by rcases privateZone with rfl | rfl <;> rfl
+      apply moveForPlayerRemoval_zone s .outOfGame id (.player p k)
+      · intro present
+        exact otherSeat ((howner.owner p k nonBoard id present o found).symm.trans sameOwner)
+      · intro actual actualFound sameZone
+        have sameObj := Option.some.inj (actualFound.symm.trans found)
+        subst actual
+        exact otherSeat ((congrArg (fun z : Zone => match z with
+          | .player owner _ => owner
+          | _ => p) sameZone).trans sameOwner)
+  · rfl
+
+/-- Archiving the departing player's cards leaves the other seats' hands and
+out-of-game zones alone. -/
+theorem archivePlayerCards_privateZone (s : GameState) (departing p : PlayerId)
+    (k : ZoneKind) (otherSeat : p ≠ departing)
+    (privateZone : k = .hand ∨ k = .outOfGame) (hwf : s.WF) (howner : s.OwnerOk) :
+    (archivePlayerCards s departing).1.zone (.player p k) = s.zone (.player p k) := by
+  have keep : ∀ (ids : List ObjId) (g : GameState), g.WF → g.OwnerOk →
+      (applyEach (archivePlayerCard departing) g ids).1.zone (.player p k) = g.zone (.player p k) := by
+    intro ids
+    induction ids with
+    | nil => intros; rfl
+    | cons id rest ih =>
+      intro g wellFormed owner
+      have safe := archivePlayerCard_safe departing g id
+      exact (ih _ (safe.wf wellFormed) (safe.own wellFormed owner)).trans
+        (archivePlayerCard_privateZone g departing p k id otherSeat privateZone owner)
+  exact keep _ s hwf howner
 
 /-- Keep the location and status of a Battlefield while replacing its definition. -/
 def Object.asBlankBattlefield (o : Object) (blank : CardId) : Object :=
@@ -213,6 +322,28 @@ theorem retireBattlefield_otherObject {s next : GameState} {field id : ObjId} {b
           exact (Nat.ne_of_lt (hwf.lt_nextId id present)).symm
         rw [GameState.obj?_modObj, ite_eq_right keyDifferent, obj?_other_add added freshKey]
 
+private theorem retireBattlefield_zone {s next : GameState} {field : ObjId} {blank : CardId}
+    {archived : Option ObjId} (changed : retireBattlefield s field blank = some (next, archived))
+    (z : Zone) (different : ∀ o, s.obj? field = some o → o.kind.phys?.isSome = true →
+      z ≠ .player o.owner .outOfGame) :
+    next.zone z = s.zone z := by
+  unfold retireBattlefield at changed
+  cases found : s.obj? field with
+  | none => simp [found] at changed
+  | some o =>
+    simp only [found, Option.bind_eq_bind, Option.bind_some] at changed
+    split at changed
+    · simp at changed
+    · cases physical : o.kind.phys? with
+      | none =>
+        simp only [physical, Option.some.injEq, Prod.mk.injEq] at changed
+        obtain ⟨rfl, _⟩ := changed
+        rfl
+      | some id =>
+        simp only [physical, Option.bind_eq_some_iff] at changed
+        obtain ⟨⟨board, stored⟩, added, rfl, _⟩ := changed
+        exact addObject_zone_other added (different o found (by simp [physical]))
+
 /-- The departing player's Battlefield still in use. A token may be standing in for the
 original physical card. -/
 def GameState.contributedBattlefield (s : GameState) (departing : PlayerId) : Option ObjId :=
@@ -258,6 +389,43 @@ theorem counterForPlayerRemoval_safe (s : GameState) (id : ObjId) :
         · rename_i hm
           exact Safe.moveObj hm
 
+private theorem counterForPlayerRemoval_privateZone (s : GameState) (id : ObjId) (p : PlayerId)
+    (k : ZoneKind) (privateZone : k = .hand ∨ k = .outOfGame) (hwf : s.WF) :
+    (counterForPlayerRemoval s id).1.zone (.player p k) = s.zone (.player p k) := by
+  cases found : s.obj? id with
+  | none => simp [counterForPlayerRemoval, found]
+  | some o =>
+    by_cases inChain : id ∈ s.zone .chain
+    · have chain := List.contains_iff_mem.mpr inChain
+      rw [counterForPlayerRemoval, found]
+      simp only [chain, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+      cases kind : o.kind
+      case chainAbility =>
+        cases removed : removeObj s id with
+        | none => rfl
+        | some board =>
+          simp only [Option.getD_some]
+          obtain ⟨src, valid, member, rfl⟩ := removeObj_spec removed
+          have srcChain : src = .chain := GameState.zone_unique hwf
+            (Zone.valid_chain _) valid inChain member
+          subst src
+          exact GameState.zone_setZone_ne _ (by simp) _
+      all_goals
+        cases moved : moveObj s id (s.chainDestination id o .trash) with
+        | none => rfl
+        | some result =>
+          obtain ⟨board, new⟩ := result
+          refine moveObj_zone_unchanged hwf inChain moved (by simp) (fun owner ownerFound => ?_)
+          have eq := Option.some.inj (ownerFound.symm.trans found)
+          subst owner
+          rw [GameState.chainDestination, Zone.normalize_owner, GameState.chainDestinationKind]
+          split
+          · rcases privateZone with rfl | rfl <;> simp
+          · rcases GameState.ownerDestination_trash_or_banishment s id o (Or.inl rfl) with trash | banished
+            · rw [trash]; rcases privateZone with rfl | rfl <;> simp
+            · rw [banished]; rcases privateZone with rfl | rfl <;> simp
+    · simp [counterForPlayerRemoval, found, inChain]
+
 /-- Apply the object changes for a departure in rules order, keeping the original Battlefield
 identifier so existing targets and occupancy still refer to it (CR 652.1, 652.2, 652.3, 652.4). -/
 def removePlayerObjects (s : GameState) (departing : PlayerId) (blank : CardId) :
@@ -294,6 +462,54 @@ theorem removePlayerObjects_safe {s next : GameState} {departing : PlayerId} {bl
   obtain ⟨rfl, -⟩ := hRest
   exact (banishForPlayerRemoval_safe s departing).trans (boardSafe.trans
     ((archivePlayerCards_safe board departing).trans (applyEach_safe counterForPlayerRemoval_safe _ _)))
+
+/-- The departure leaves the contents and order of every remaining player's hand and
+out-of-game zone intact. -/
+theorem removePlayerObjects_privateZone {s next : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event} (applied : removePlayerObjects s departing blank = some (next, events))
+    (p : PlayerId) (k : ZoneKind) (otherSeat : p ≠ departing) (privateZone : k = .hand ∨ k = .outOfGame)
+    (hwf : s.WF) (howner : s.OwnerOk) : next.zone (.player p k) = s.zone (.player p k) := by
+  let base := (banishForPlayerRemoval s departing).1
+  let z := Zone.player p k
+  have banished := banishForPlayerRemoval_safe s departing
+  have banishedZone : base.zone z = s.zone z :=
+    banishForPlayerRemoval_privateZone s departing p k privateZone hwf
+  have counterZone : ∀ (ids : List ObjId) (g : GameState), g.WF →
+      (applyEach counterForPlayerRemoval g ids).1.zone z = g.zone z := by
+    intro ids
+    induction ids with
+    | nil => intros; rfl
+    | cons id rest ih =>
+      intro g wellFormed
+      exact (ih _ ((counterForPlayerRemoval_safe g id).wf wellFormed)).trans
+        (counterForPlayerRemoval_privateZone g id p k privateZone wellFormed)
+  unfold removePlayerObjects at applied
+  dsimp only at applied
+  obtain ⟨⟨board, retiredEvents⟩, retirement, completed⟩ := Option.bind_eq_some_iff.mp applied
+  have retired : Safe base board ∧ board.zone z = base.zone z := by
+    split at retirement
+    · simp only [Option.some.injEq, Prod.mk.injEq] at retirement
+      obtain ⟨rfl, _⟩ := retirement
+      exact ⟨Safe.refl _, rfl⟩
+    · rename_i field chosen
+      obtain ⟨⟨retired, archive⟩, changed, output⟩ := Option.bind_eq_some_iff.mp retirement
+      obtain ⟨rfl, _⟩ := output
+      refine ⟨retireBattlefield_safe changed, retireBattlefield_zone changed z ?_⟩
+      intro o found physical sameZone
+      have selected := List.find?_some chosen
+      have ownerIsDeparted : o.owner = departing := by
+        change (banishForPlayerRemoval s departing).1.obj? field = some o at found
+        simpa [found, physical] using selected
+      have sameSeat : p = o.owner := congrArg (fun zone : Zone =>
+        match zone with | .player owner _ => owner | _ => p) sameZone
+      exact otherSeat (sameSeat.trans ownerIsDeparted)
+  obtain ⟨rfl, _⟩ := completed
+  have boardWF := retired.1.wf (banished.wf hwf)
+  have boardOwner := retired.1.own (banished.wf hwf) (banished.own hwf howner)
+  have archivedZone := archivePlayerCards_privateZone board departing p k otherSeat privateZone
+    boardWF boardOwner
+  exact (counterZone _ _ ((archivePlayerCards_safe board departing).wf boardWF)).trans
+    (archivedZone.trans (retired.2.trans banishedZone))
 
 /-- A selected Battlefield can be retired. A physical card requires a registered owner
 for its out-of-game zone. -/
@@ -562,6 +778,30 @@ theorem applyFreeForAllConcession_preservesBoard {s next : GameState} {departing
       exact ⟨(safe.wf withdrew.1).congr rfl rfl rfl rfl, fun owner =>
         (safe.own withdrew.1 (withdrew.2.1 owner)).congr rfl rfl,
         (safe.phys withdrew.1).trans withdrew.2.2⟩
+
+/-- A concession preserves the remaining players' hands and out-of-game zones. -/
+theorem applyFreeForAllConcession_privateZone {s next : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event}
+    (applied : applyFreeForAllConcession s departing blank = some (next, events))
+    (p : PlayerId) (k : ZoneKind) (otherSeat : p ≠ departing) (privateZone : k = .hand ∨ k = .outOfGame)
+    (hwf : s.WF) (howner : s.OwnerOk) : next.zone (.player p k) = s.zone (.player p k) := by
+  have withdrew := withdrawSeat_preservesBoard s departing hwf
+  have sameZone : (s.withdrawSeat departing).zone (.player p k) = s.zone (.player p k) := by
+    unfold GameState.withdrawSeat
+    split <;> rfl
+  unfold applyFreeForAllConcession at applied
+  split at applied
+  · simp at applied
+  · dsimp only at applied
+    split at applied
+    · simp at applied
+    · simp only [Option.some.injEq, Prod.mk.injEq] at applied
+      obtain ⟨rfl, _⟩ := applied
+      exact sameZone
+    · obtain ⟨⟨board, removalEvents⟩, removed, completed⟩ := Option.bind_eq_some_iff.mp applied
+      obtain ⟨rfl, _⟩ := completed
+      exact (removePlayerObjects_privateZone removed p k otherSeat privateZone
+        withdrew.1 (withdrew.2.1 howner)).trans sameZone
 
 /-- The concession records the departure without advancing the turn or the clock.
 Automatic work advances the turn after resolving the pending decisions. -/
