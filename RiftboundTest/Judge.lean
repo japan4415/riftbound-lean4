@@ -115,4 +115,45 @@ meta def runeRewind (second channelRune : Bool) : Option Bool := do
 #guard (runeRewind false false).getD false
 #guard (runeRewind true true).getD false
 
+-- Burn Out returns a burned card to the deck under a new object ID. In a rewind to
+-- before the Burn, the draw still belongs to that physical card's original deck slot.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let empty := GameState.empty { ruleSet := .tournament .constructed, mode := .duel }
+    RiftboundCards.db
+  let deck := Zone.player p .mainDeck
+  let hand := Zone.player p .hand
+  let trash := Zone.player p .trash
+  let add (s : GameState) (zone : Zone) (code : CardId) :=
+    addObject s (newCard s.cards s p code) zone
+  let (s, original) ← add empty deck ⟨"OGN-136"⟩
+  let (s, handCopy) ← add s hand ⟨"OGN-136"⟩
+  let (s, discard) ← add s trash ⟨"OGN-001"⟩
+  let effect := Effect.seqOf [.prim (.burn .you (.const 1)), .prim (.draw .you (.const 1))]
+  let target := { s with
+    active := some p, turnOrder := [p, q], phase := .main, turn := 1,
+    pending := [.mayDo p original {} effect .nil, .priority p] }
+  let atTarget : ReplayPosition := .fromState target
+  let inputs : GameInputs := { decks := .core [], answers := #[] }
+  let apply (history : List ReplayPosition) (action : Action) :=
+    (inputs.advance history (.observed action) history.length 100).toOption
+  let (_, burned, _) ← apply [atTarget] ⟨.player p, .decide true⟩
+  let top ← (burned.state.zone trash).find? (· != discard)
+  let (_, recycled, _) ← apply [burned, atTarget] ⟨.chance, .arrange [top, discard]⟩
+  let recycledTop ← (recycled.state.zone deck).head?
+  let (_, drawn, events) ← apply [recycled, burned, atTarget] ⟨.player p, .burnOutTarget q⟩
+  let drawnId ← events.findSome? (fun
+    | .moved old next dst => if old == recycledTop && dst == hand then some next else none
+    | _ => none)
+  let rewind : ReplayAnswer := .judgePrivateRewind {
+    target := 0, returns := [⟨drawnId, [original, handCopy], handCopy⟩] }
+  let (_, restored, _) ← (inputs.advance [drawn, recycled, burned, atTarget] rewind 4 100).toOption
+  let physical (state : GameState) (id : ObjId) := (state.obj? id).bind (·.kind.phys?)
+  return recycledTop != original && physical drawn.state drawnId == physical target original &&
+    (restored.state.zone deck).map (physical restored.state) == [physical target handCopy] &&
+    (restored.state.zone hand).map (physical restored.state) == [physical target original] &&
+    restored.state.zone trash == [discard] && restored.state.pointsOf q == target.pointsOf q
+  : Option Bool).getD false
+
 end RiftboundTest

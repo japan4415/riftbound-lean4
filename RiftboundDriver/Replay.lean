@@ -508,6 +508,7 @@ private structure ObservedDraw where
   seat : PlayerId
   source : ObjId
   drawn : ObjId
+  physical : Option PhysId
   wasRevealed : Bool
 
 private abbrev DeckKnowledge := PlayerId × PhysId
@@ -515,7 +516,8 @@ private abbrev DeckKnowledge := PlayerId × PhysId
 /-- Information gained from a deck and the withdrawals that may follow it in the same answer. -/
 private inductive DeckObservation where
   | seen (viewer : PlayerId) (card : PhysId)
-  | withdrawn (card : PhysId)
+  | drawn (handObject : ObjId) (card : PhysId)
+  | channeled (card : PhysId)
 
 /-- The state and setup observations at a chronological checkpoint. -/
 structure ReplayPosition where
@@ -552,20 +554,18 @@ private structure DrawSlot extends ObservedDraw where
 private def notePublicMove (known : List ObjId) (source moved : ObjId) : List ObjId :=
   if known.contains source then moved :: known.erase source else known
 
-private def observeDraws (known : List ObjId) (draws : List ObservedDraw) :
-    List Event → List ObjId × List ObservedDraw
-  | .revealed _ card :: rest => observeDraws (card :: known.erase card) draws rest
-  | .handRevealed _ cards :: rest => observeDraws ((cards ++ known).eraseDups) draws rest
+private def observeDraws (physical : List (ObjId × PhysId)) (known : List ObjId)
+    (draws : List ObservedDraw) : List Event → List ObjId × List ObservedDraw
+  | .revealed _ card :: rest => observeDraws physical (card :: known.erase card) draws rest
+  | .handRevealed _ cards :: rest => observeDraws physical ((cards ++ known).eraseDups) draws rest
   | .moved source drawn (.player seat .hand) :: .drew p :: rest =>
-    let draws := if seat == p then ⟨seat, source, drawn, known.contains source⟩ :: draws else draws
-    observeDraws (notePublicMove known source drawn) draws rest
-  | .moved source moved _ :: rest => observeDraws (notePublicMove known source moved) draws rest
-  | _ :: rest => observeDraws known draws rest
+    let draws := if seat == p then
+      ⟨seat, source, drawn, physical.lookup drawn, known.contains source⟩ :: draws
+      else draws
+    observeDraws physical (notePublicMove known source drawn) draws rest
+  | .moved source moved _ :: rest => observeDraws physical (notePublicMove known source moved) draws rest
+  | _ :: rest => observeDraws physical known draws rest
   | [] => (known, draws)
-
-private def DrawSlot.atTarget (base : GameState) (draw : ObservedDraw) : Option DrawSlot := do
-  let index ← (base.zone (.player draw.seat .mainDeck)).findIdx? (· == draw.source)
-  pure { toObservedDraw := draw, index }
 
 private def JudgeShuffle.selectedCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
   let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
@@ -594,9 +594,26 @@ private def trackedInPrivateZones (s : GameState) (known : List ObjId) : List Ob
 private def physicalCard (s : GameState) (id : ObjId) : Option PhysId :=
   (s.obj? id).bind (·.kind.phys?)
 
+/-- Find the slot of the drawn physical card at the rewind target, even if the draw used a newer
+object ID after a movement or Burn Out (TR 701.5.d.3). -/
+private def DrawSlot.atTarget (base : GameState) (draw : ObservedDraw) : Option DrawSlot := do
+  let index ← (base.zone (.player draw.seat .mainDeck)).findIdx? (fun id =>
+    match draw.physical with
+    | some card => physicalCard base id == some card
+    | none => id == draw.source)
+  pure { toObservedDraw := draw, index }
+
 private def deckPhysicalCards (s : GameState) : List PhysId :=
   s.players.flatMap (fun seat =>
     (s.zone (.player seat .mainDeck) ++ s.zone (.player seat .runeDeck)).filterMap (physicalCard s))
+
+/-- Recover a newly allocated object's identity from the final state, following any subsequent
+moves in the same answer. A Burn Out shuffle may have allocated the first ID without a move event. -/
+private def physicalAfterMoves (after : GameState) (id : ObjId) : List Event → Option PhysId
+  | .moved source next _ :: rest =>
+    physicalAfterMoves after (if source == id then next else id) rest
+  | _ :: rest => physicalAfterMoves after id rest
+  | [] => physicalCard after id
 
 /-- A move may rename an object between the look and the draw. Follow the actual physical cards
 through the answer without using its final zones to decide where the look took place. -/
@@ -617,15 +634,16 @@ where
       | .lookedAt viewer id => seen id [viewer] ++ go moved rest
       | .revealed _ id => seen id before.players ++ go moved rest
       | .moved old next dest =>
-        match physical old <|> physicalCard after next with
+        match physical old <|> physicalCard after next <|> physicalAfterMoves after next rest with
         | none => go moved rest
         | some card =>
-          let withdrew := match location old, dest, rest with
-            | _, .player seat .hand, .drew drawer :: _ => seat == drawer
-            | some (.player seat .runeDeck), .player owner .base, _ => seat == owner
-            | _, _, _ => false
           let later := go ((next, (dest, card)) :: moved) rest
-          if withdrew then .withdrawn card :: later else later
+          match location old, dest, rest with
+          | _, .player seat .hand, .drew drawer :: _ =>
+            if seat == drawer then .drawn next card :: later else later
+          | some (.player seat .runeDeck), .player owner .base, _ =>
+            if seat == owner then .channeled card :: later else later
+          | _, _, _ => later
       | _ => go moved rest
 
 private def obscuredDeckPhysicalCards (before : GameState) (answer : ReplayAnswer)
@@ -642,7 +660,7 @@ private def obscuredDeckPhysicalCards (before : GameState) (answer : ReplayAnswe
 private def DeckObservation.remember (known : List DeckKnowledge) :
     DeckObservation → List DeckKnowledge
   | .seen seat card => if known.contains (seat, card) then known else (seat, card) :: known
-  | .withdrawn card => known.filter (fun knownCard => knownCard.2 != card)
+  | .drawn _ card | .channeled card => known.filter (fun knownCard => knownCard.2 != card)
 
 /-- What a rewind would expose again in an unreordered deck (TR 701.5.d.4). -/
 private def rewindDeckKnowledge (target : ReplayPosition) (chronology : List ReplayPosition) :
@@ -713,7 +731,7 @@ private def applyRewindRemedies (target : ReplayPosition) (undone chronology : L
       throw "each private return needs a distinct undone draw from the target deck"
     if draws.any (fun draw => draw.wasRevealed && named.contains draw.drawn) then
       throw "a publicly revealed draw must restore the revealed card"
-    unless decide ((draws.map (·.source)).Nodup) do
+    unless decide ((draws.map (fun draw => (draw.seat, draw.index))).Nodup) do
       throw "the rewind contains repeated draws from the same original slot"
     applyDrawReturns target.state target.knownCards returns draws target.state
   let shuffle (acc : GameState × List ObjId × List PhysId) (change : JudgeShuffle) := do
@@ -845,8 +863,12 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     | _, none => .setup
   let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
   let obscured := obscuredDeckCards prior.state answer action
-  let (known, draws) := observeDraws (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
   let deckObservations := observeDeckCards prior.state state events
+  let drawnCards := deckObservations.filterMap (fun
+    | .drawn id card => some (id, card)
+    | _ => none)
+  let (known, draws) := observeDraws drawnCards
+    (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
   let obscuredDeck := obscuredDeckPhysicalCards prior.state answer action
   let previous := prior.knownDeckCards.filter (fun known => !obscuredDeck.contains known.2)
   let observed := deckObservations.foldl DeckObservation.remember previous
