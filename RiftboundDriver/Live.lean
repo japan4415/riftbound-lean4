@@ -1,7 +1,7 @@
 module
 
 public import RiftboundDriver.Trace
-public import RiftboundDriver.MatchReplay
+public import RiftboundDriver.TeamMatch
 
 /-!
 # Driver: live play
@@ -66,6 +66,34 @@ structure LiveSetup where
   first : PlayerId
 deriving ToJson, FromJson
 
+/-- Tournament 2v2 registrations and the observed initiative decision for the first game. -/
+structure LiveTeamSetup where
+  /-- Applied eligibility for a Constructed tournament. -/
+  tournament? : Option ReplayTournament := none
+  /-- The shared pools at a Sealed tournament. -/
+  sealed? : Option TeamSealedPools := none
+  /-- Sets used by the tournament. -/
+  legalSets : List SetCode
+  /-- Starting deck registrations in A/B seat order, for team 0 then team 1. -/
+  decks : ReplayDecks
+  /-- Wins required for the match. -/
+  winsRequired : Nat
+  /-- Whether to use the timed elimination procedure. -/
+  singleElimination? : Option Bool := none
+  /-- The team selected by chance to choose the opening order. -/
+  firstChooser : PlayerId
+  /-- The four seats in their chosen turn order. -/
+  order : List PlayerId
+deriving ToJson, FromJson
+
+/-- The common match metadata used to validate starting games and export the match. -/
+def LiveTeamSetup.matchRecord (setup : LiveTeamSetup) (games : Array TeamGameRecord)
+    (ending : ReplayMatchEnd) (timeAfterGames : Option Nat) : TeamMatchRecord :=
+  { seats := TeamSeats.standard, tournament? := setup.tournament?, sealed? := setup.sealed?,
+    legalSets := setup.legalSets, winsRequired := setup.winsRequired, games, ending,
+    elimination? := if setup.singleElimination?.getD false then some { timeAfterGames? := timeAfterGames }
+      else none }
+
 /-- A game in progress: the state, the objects the viewer has seen, the number of steps written,
 the generator for the chance decisions, the seats a person controls, and the match it belongs to. -/
 structure LiveGame where
@@ -95,6 +123,8 @@ structure LiveGame where
   sides : List (List CardId) := [demoSideboard, demoSideboard]
   /-- The real match registration, if started with one. -/
   setup : Option LiveSetup := none
+  /-- The real team registration, if this is a 2v2 match. -/
+  teamSetup : Option LiveTeamSetup := none
   /-- This game's starting registration and initiative, separate from edits for the next game. -/
   input : Option GameInputs := none
   /-- Answers already given, newest first so undo snapshots share the earlier entries. -/
@@ -145,7 +175,17 @@ def LiveGame.needsHuman (g : LiveGame) : Bool :=
 
 /-- Whether this recorded match uses the single-elimination clock. -/
 def LiveGame.singleElimination (g : LiveGame) : Bool :=
-  g.setup.any (fun setup => setup.singleElimination?.getD false)
+  g.setup.any (fun setup => setup.singleElimination?.getD false) ||
+    g.teamSetup.any (fun setup => setup.singleElimination?.getD false)
+
+/-- Convert a seat to a team number when applying the two sides' match rules. -/
+def LiveGame.matchSide (g : LiveGame) (seat : PlayerId) : PlayerId :=
+  if g.teamSetup.isSome then (TeamSeats.standard.teamOf seat).getD seat else seat
+
+/-- Resolve a match ending from the match's point of view while storing the original seat. -/
+def LiveGame.matchEnding (g : LiveGame) : ReplayMatchEnd → ReplayMatchEnd
+  | .concede seat => .concede (g.matchSide seat)
+  | other => other
 
 /-- Apply the same transition that an exported match uses to reproduce an answer. -/
 def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
@@ -171,19 +211,20 @@ def LiveGame.apply (g : LiveGame) (a : Action) : Except String (LiveGame × Stri
   g.applyReplay (.observed a)
 
 /-- When the game is over, its result goes to the match, once (TR 404). -/
-def LiveGame.settle (g : LiveGame) : LiveGame :=
+def LiveGame.settle (g : LiveGame) : Except String LiveGame := do
   match g.match_, g.s.result with
   | some m, some r =>
-    if g.recorded then g
+    if g.recorded then return g
     else
-      let first := g.s.turnOrder.head?
+      let first := g.s.turnOrder.head?.map g.matchSide
+      let r ← if g.teamSetup.isSome then TeamSeats.standard.normalizeResult r else pure r
       let next := { m.record r (first.getD ⟨0⟩) with lastFirst := first }
-      { g with
+      return { g with
         match_ := some next, recorded := true,
         ending := if next.finished ||
           (g.s.clock.isSome && !needsTimedTiebreaker next g.singleElimination)
           then some .finalGame else none }
-  | _, _ => g
+  | _, _ => return g
 
 /-- A forced answer during setup, when match decisions already determine the choice. -/
 def LiveGame.setupAnswer (g : LiveGame) : Except String (Option Action) := do
@@ -200,11 +241,11 @@ def LiveGame.setupAnswer (g : LiveGame) : Except String (Option Action) := do
 /-- Answer for the seats nobody controls until the game is over or a person is to answer. The steps
 that were made, in order. -/
 def LiveGame.autoRun : Nat → LiveGame → List String → Except String (LiveGame × List String)
-  | 0, g, acc =>
-    if g.s.result.isSome || g.needsHuman then .ok (g.settle, acc.reverse)
-    else .error "the automatic player reached its action limit"
+  | 0, g, acc => do
+    if g.s.result.isSome || g.needsHuman then return (← g.settle, acc.reverse)
+    else throw "the automatic player reached its action limit"
   | n + 1, g, acc => do
-    if g.s.result.isSome || g.needsHuman then return (g.settle, acc.reverse)
+    if g.s.result.isSome || g.needsHuman then return (← g.settle, acc.reverse)
     if g.bo1SideboardOpen then
       let (next, json) ← g.applyReplay .bo1Sideboard
       return ← LiveGame.autoRun n next (json :: acc)
@@ -228,7 +269,8 @@ def LiveGame.matchJson (g : LiveGame) : String :=
   | none => "null"
   | some m =>
     let result := g.ending.bind (fun ending =>
-      (concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome) ending g.singleElimination).toOption)
+      (concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome)
+        (g.matchEnding ending) g.singleElimination).toOption)
     jobj [("target", toString m.target), ("wins", jarr [toString m.wins0, toString m.wins1]),
       ("games", toString m.games), ("finished", toString g.ending.isSome),
       ("singleElimination", toString g.singleElimination),
@@ -293,8 +335,10 @@ def LiveGame.reply (g : LiveGame) (steps : List String) (extra : List (String ×
     String :=
   jobj (extra ++ [("steps", jarr steps), ("legal", g.legalJson),
     ("over", toString (g.s.result.isSome || g.ending.isSome)),
-    ("archiveAvailable", toString (g.setup.isSome && g.ending.isSome)),
-    ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson), ("bo1", g.bo1Json)])
+    ("archiveAvailable", toString ((g.setup.isSome || g.teamSetup.isSome) && g.ending.isSome)),
+    ("match", g.matchJson), ("external", g.externalJson), ("sideboard", g.sideJson), ("bo1", g.bo1Json),
+    ("teamFormat", if g.teamSetup.isNone then "null"
+      else jstr (if g.s.config.ruleSet.isLimited then "sealed" else "constructed"))])
 
 /-- What the reply to an undo says: the answers a person can give again, and how many steps the
 viewer keeps (the steps made until then). -/
@@ -345,6 +389,76 @@ def LiveGame.gameRecord (g : LiveGame) (input : GameInputs) : RecordedGame :=
     checkpoints := g.checkpointsRev.reverse.toArray
     summary := ReplayGameResult.fromState g.s input.decks g.fields.reverse true }
 
+/-- Recover the team's game outcome and its ending from the observed engine transitions. -/
+def RecordedGame.teamObservation (game : RecordedGame) : Except String TeamGameRecord := do
+  let summary := game.summary
+  let [a, _, b, _] := summary.points | throw "a team result needs four seat scores"
+  let closingAction : Option Action ← game.input.answers.back?.mapM (fun answer =>
+    answer.resolve game.input.answers.size)
+  let ending ← match summary.result, closingAction with
+    | none, _ => pure TeamGameEnd.matchEnded
+    | some _, some (Action.mk (.player p) .concede) => pure (.concede p)
+    | some .draw, some (Action.mk .judge .declareDraw) => pure .draw
+    | some result, _ => do
+      if game.checkpoints.back?.any (fun w => w.events.any (fun | .won _ => true | _ => false)) then
+        pure .scored
+      else if summary.suddenDeathTurn?.isSome then
+        let .won [team] ← TeamSeats.standard.normalizeResult result
+          | throw "the sudden-death game has no winning team"
+        pure (.suddenDeath team)
+      else pure .time
+  let (decks?, sealedDecks?) ← match game.input.decks with
+    | .constructed decks => pure (some decks, none)
+    | .limited decks => pure (none, some decks)
+    | .core _ => throw "the game has no tournament team registrations"
+  return {
+    decks?, sealedDecks?, chooser := game.input.chooser, order := summary.turnOrder,
+    openingOrderEvidence? := game.input.openingOrderEvidence?, battlefields := summary.battlefields,
+    points := (a, b), ending, timed := summary.timed, answers := game.input.answers }
+
+/-- Check that the declared Battlefields for Sealed Best of 3 still have available copies. -/
+def LiveTeamSetup.checkBattlefieldHistory (setup : LiveTeamSetup) (decks : ReplayDecks)
+    (order : List PlayerId) (completed : Array RecordedGame) (reuse : Bool) : Except String Unit := do
+  let some pools := setup.sealed? | return ()
+  let .limited registrations := decks | throw "the game needs Sealed registrations"
+  unless setup.winsRequired == 2 do return ()
+  let selected ← order.drop 1 |>.mapM fun seat => do
+    let some card := registrations[seat.n]?.bind (·.battlefields.head?)
+      | throw s!"seat {seat.n} needs a declared Battlefield"
+    return (seat, card)
+  let mut used := ([], [])
+  let mut priorWasDraw := false
+  for game in completed do
+    used ← pools.useBattlefields TeamSeats.standard used game.summary.battlefields priorWasDraw
+    priorWasDraw := game.summary.result == some .draw
+  if reuse && !decide (selected.Perm ((completed.back?).map (·.summary.battlefields) |>.getD [])) then
+    throw "a draw preserves the same Battlefields"
+  let _ ← pools.useBattlefields TeamSeats.standard used selected reuse
+
+/-- Set up a recorded team game from the same registered decks and choices as offline replay. -/
+def liveNewTeam (setup : LiveTeamSetup) (seed : Nat) (humans : List PlayerId)
+    (state : MatchState) (input : GameInputs) (completed : Array RecordedGame := #[])
+    (timeAfterGames : Option Nat := none) : Except String (LiveGame × List String) := do
+  let db := RiftboundCards.db
+  let record := setup.matchRecord #[] .agreedDraw timeAfterGames
+  let base ← record.replayConfig
+  let some env := base.formatLegality | throw "missing tournament eligibility"
+  let some order := input.openingOrder | throw "the starting turn order is missing"
+  let timed := completed.back?.any (·.summary.timed)
+  let afterTime ← gameStartsAfterTime state timed record.elimination?
+  record.checkRegistrations input.decks order db env
+  setup.checkBattlefieldHistory input.decks order completed state.reuseBattlefields
+  let config := replayGameConfig base state record.elimination?.isSome afterTime
+  let s ← input.initial db config
+  let registrations := match input.decks with | .constructed ds => ds | _ => []
+  let reuseFields := if state.reuseBattlefields then
+    (completed.back?.map (·.summary.battlefields)).getD [] else []
+  LiveGame.begin {
+    s, seen := {}, i := 0, rng := Rng.ofSeed seed, humans, seed,
+    kind := if base.ruleSet.isLimited then .sealed else .constructed,
+    match_ := some state, teamSetup := some setup, input := some input, completed, reuseFields,
+    timeAfterGames, decks := registrations.map (·.deck), sides := registrations.map (·.sideboard) }
+
 /-- Set up a game with real cards and keep its starting registration available for export. -/
 def liveNewConfigured (setup : LiveSetup) (decks : ReplayDecks) (seed : Nat)
     (humans : List PlayerId) (first : PlayerId) (chooser : Option PlayerId) (m : MatchState)
@@ -369,7 +483,8 @@ def liveNewConfigured (setup : LiveSetup) (decks : ReplayDecks) (seed : Nat)
 /-- The fixed part of the reply to the start of a game. -/
 def LiveGame.startInfo (g : LiveGame) : List (String × String) :=
   [("seed", toString g.seed), ("players", toString g.s.playerCount),
-    ("cards", jobj (g.s.cards.cards.map (fun c => (c.id.code, cardJson c))))]
+    ("cards", jobj (g.s.cards.cards.map (fun c => (c.id.code, cardJson c))))] ++
+      if g.teamSetup.isSome then [("teams", "[[0,1],[2,3]]")] else []
 
 /-- Start a game of the kind, with `seed` for the chance decisions. A person controls the players in
 `humans`. With `matchTarget` (1 or 2 wins), the game is the first of a match. -/
@@ -397,6 +512,18 @@ def liveStartConfigured (seed : Nat) (humans : List PlayerId) (setup : LiveSetup
     (some setup.firstChooser) (MatchState.start setup.winsRequired)
   return (g, g.reply steps g.startInfo)
 
+/-- Start a real Constructed or Sealed 2v2 tournament match with its observed opening order. -/
+def liveStartTeam (seed : Nat) (humans : List PlayerId) (setup : LiveTeamSetup) :
+    Except String (LiveGame × String) := do
+  unless humans.all (fun p => p.n < 4) && setup.firstChooser.n < 2 &&
+      (setup.winsRequired == 1 || setup.winsRequired == 2) do
+    throw "invalid live team match configuration"
+  if let some pools := setup.sealed? then pools.check RiftboundCards.db
+  let input : GameInputs :=
+    { decks := setup.decks, answers := #[], chooser := some setup.firstChooser, openingOrder := some setup.order }
+  let (g, steps) ← liveNewTeam setup seed humans (MatchState.start setup.winsRequired) input
+  return (g, g.reply steps g.startInfo)
+
 /-- Export the entire recorded live match for independent replay. -/
 def LiveGame.archive (g : LiveGame) : Except String RecordedMatch := do
   let some setup := g.setup | throw "no real decks were registered for this match"
@@ -408,6 +535,15 @@ def LiveGame.archive (g : LiveGame) : Except String RecordedMatch := do
     elimination? := if g.singleElimination then some { timeAfterGames? := g.timeAfterGames } else none,
     winsRequired := setup.winsRequired, fuel := setup.fuel, games := games.map (·.input), ending }
     games g.s.cards
+
+/-- Package the four-seat match in the same format consumed by `verify-team`. -/
+def LiveGame.teamArchive (g : LiveGame) : Except String RecordedTeamMatch := do
+  let some setup := g.teamSetup | throw "no team match was started"
+  let some ending := g.ending | throw "the match is not over"
+  let some input := g.input | throw "the game's inputs are missing"
+  let games := g.completed.push (g.gameRecord input)
+  let observations ← games.mapM RecordedGame.teamObservation
+  (setup.matchRecord observations ending g.timeAfterGames).recordPlayed games
 
 /-- End a live match by an external match decision. -/
 def liveEnd (g : LiveGame) (ending : ReplayMatchEnd) : Except String (LiveGame × String) := do
@@ -425,7 +561,8 @@ def liveEnd (g : LiveGame) (ending : ReplayMatchEnd) : Except String (LiveGame �
   if ending == .timeBetweenGames && needsTimedTiebreaker m g.singleElimination then
     let next := { g with timeAfterGames := some m.games }
     return (next, next.reply [])
-  let _ ← concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome) ending g.singleElimination
+  let _ ← concludeReplayMatch m (g.s.result.isSome && g.s.clock.isSome) (g.matchEnding ending)
+    g.singleElimination
   let next := { g with ending := some ending }
   return (next, next.reply [])
 
@@ -475,6 +612,7 @@ def LiveGame.chooser (g : LiveGame) : Option PlayerId :=
 they have not said it, the reply asks (`choice` is the chooser). Otherwise the chooser goes first
 (TR 407). The seed of a game is the seed of the match plus the games played. -/
 def liveNext (g : LiveGame) (choice : Option Bool) : Except String (LiveGame × String) :=
+  if g.teamSetup.isSome then .error "use team-next for a team match" else
   match g.match_ with
   | none => .error "this is not a match"
   | some m =>
@@ -502,6 +640,47 @@ def liveNext (g : LiveGame) (choice : Option Bool) : Except String (LiveGame × 
             liveNew g.kind seed g.humans (some (MatchState.turnOrderOf first))
               (some m) g.decks g.sides fields
         next.map (fun (g', steps) => (g', g'.reply steps g'.startInfo))
+
+/-- Start the next team game. The losing team makes the choice; after a draw the complete
+order and Battlefields are reused. Sealed registrations can be submitted together so that
+teammates can reallocate cards within their shared pool. -/
+def liveTeamNext (g : LiveGame) (requested : Option (List PlayerId) := none)
+    (sealedDecks : Option (List LimitedDeck) := none) : Except String (LiveGame × String) := do
+  let some setup := g.teamSetup | throw "this is not a team match"
+  let some state := g.match_ | throw "this is not a match"
+  let some oldInput := g.input | throw "the game's inputs are missing"
+  if g.ending.isSome then throw "the match is over"
+  if g.s.result.isNone then throw "the game is not over"
+  if sealedDecks.isSome && setup.sealed?.isNone then throw "this is not a Sealed match"
+  let seats := TeamSeats.standard
+  let orders := Mode.teamTurnOrderChoices seats.team0 seats.team1
+  let chooser ← match state.nextOrder with
+    | .loserChooses team => pure (some team)
+    | .same _ => pure none
+    | .chance => throw "the previous game did not establish the next initiative choice"
+  if let some team := chooser then
+    if requested.isNone && g.humans.any (fun p => g.matchSide p == team) then
+      let choices := jarr (orders.map (fun order => jarr (order.map (fun p => toString p.n))))
+      return (g, jobj [("teamChoice", jobj [("team", toString team.n), ("orders", choices)])])
+  let order ← match requested, chooser with
+    | none, none => pure g.s.turnOrder
+    | some chosen, none =>
+      if chosen == g.s.turnOrder then pure chosen else throw "a draw preserves the same turn order"
+    | some chosen, some _ =>
+      if orders.contains chosen then pure chosen else throw "invalid alternating A/B turn order"
+    | none, some team =>
+      let some chosen := orders.find? (fun o => o.head?.any (fun p => g.matchSide p == team))
+        | throw "no starting order for the losing team"
+      pure chosen
+  let decks := match oldInput.decks with
+    | .constructed _ => ReplayDecks.constructed g.registrations
+    | .limited existing => .limited (sealedDecks.getD existing)
+    | other => other
+  checkReplayDeckChange state oldInput.decks decks setup.sealed?.isSome
+  let input : GameInputs := { decks, answers := #[], chooser, openingOrder := some order }
+  let completed := g.completed.push (g.gameRecord oldInput)
+  let (next, steps) ← liveNewTeam setup (g.seed + state.games) g.humans state input completed g.timeAfterGames
+  return (next, next.reply steps next.startInfo)
 
 /-- Apply a seat's complete post-sideboard registration through the same checks as replay. -/
 def liveRegister (g : LiveGame) (p : PlayerId) (registration : ConstructedDeck) :

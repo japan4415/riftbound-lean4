@@ -2,10 +2,10 @@ import RiftboundDriver.Live
 
 open Lean RiftboundDriver Riftbound
 
-/-- The players named by `01`, `0` or `1`. -/
+/-- Seat numbers named by the digits of the supplied string. -/
 def parseHumans (s : String) : List PlayerId :=
-  s.toList.filterMap (fun c =>
-    if c == '0' then some ⟨0⟩ else if c == '1' then some ⟨1⟩ else none)
+  s.toList.filterMap (fun
+    | '0' => some ⟨0⟩ | '1' => some ⟨1⟩ | '2' => some ⟨2⟩ | '3' => some ⟨3⟩ | _ => none)
 
 /-- The match named by `single`, `bo1` or `bo3`: the wins that end it. -/
 def parseMatch : String → Option (Option Nat)
@@ -27,7 +27,8 @@ sideboard), `next [first|second]` (the next game of a match; a person who choose
 who goes first says it), `undo` (take back the last answer, `act`, `clock` or `judge`, as many times
 as there are answers in this game), `quit`. For recorded matches: `start-json SEED HUMANS SETUP`,
 `register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
-`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. -/
+`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. For team matches:
+`start-team-json SEED HUMANS SETUP`, `team-next [ORDER|- [SEALED_DECKS]]`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout
@@ -54,7 +55,7 @@ def main : IO UInt32 := do
     | none => fail "no game has been started"
   let start (seed humans kind mt : String) : IO Unit :=
     match seed.toNat?, LiveKind.ofString kind, parseMatch mt with
-    | some n, some k, some t => go (liveStart n (parseHumans humans) k t)
+    | some n, some k, some t => go (liveStart n ((parseHumans humans).filter (·.n < 2)) k t)
     | _, _, _ => fail "bad start"
   let endMatch (ending : ReplayMatchEnd) : IO Unit := do
     match ← game.get with
@@ -71,6 +72,10 @@ def main : IO UInt32 := do
     | "start-json" :: seed :: humans :: setup =>
       match seed.toNat? with
       | some n => go ((decodeLine setup).bind (liveStartConfigured n (parseHumans humans)))
+      | none => fail "bad seed"
+    | "start-team-json" :: seed :: humans :: setup =>
+      match seed.toNat? with
+      | some n => go ((decodeLine setup).bind (liveStartTeam n (parseHumans humans)))
       | none => fail "bad seed"
     | ["act", k] =>
       match k.toNat?, (← game.get) with
@@ -115,8 +120,21 @@ def main : IO UInt32 := do
       match ← game.get with
       | none => fail "no game has been started"
       | some g =>
-        match g.archive with
-        | .ok archive => say (toJson archive).compress
+        let archive := if g.teamSetup.isSome then g.teamArchive.map toJson else g.archive.map toJson
+        match archive with
+        | .ok json => say json.compress
+        | .error e => fail e
+    | "team-next" :: rest =>
+      match ← game.get with
+      | none => fail "no game has been started"
+      | some g =>
+        let order := rest.head?.filter (· != "-") |>.map parseHumans
+        let next := if rest.drop 1 == [] then liveTeamNext g order
+          else (decodeLine (rest.drop 1)).bind (fun decks => liveTeamNext g order (some decks))
+        match next with
+        | .ok (state, json) =>
+          if state.completed.size == g.completed.size then say json
+          else go (.ok (state, json))
         | .error e => fail e
     | "next" :: rest =>
       let choice : Option (Option Bool) := match rest with

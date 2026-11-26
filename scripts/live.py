@@ -111,12 +111,16 @@ def make_handler(lean: Lean, port: int):
                             or match not in ("single", "bo1", "bo3")):
                         return self._json(400, {"error": "bad start"})
                     line = f"start {seed} {humans} {kind} {match}"
-                elif path == "/api/register-start":
+                elif path in ("/api/register-start", "/api/register-team-start"):
+                    team = path == "/api/register-team-start"
                     seed = int(req.get("seed", 1))
-                    humans = str(req.get("humans", "01"))
-                    if seed < 0 or humans not in ("0", "1", "01"):
+                    humans = str(req.get("humans", "0123" if team else "01"))
+                    valid_humans = (bool(humans) and set(humans) <= set("0123") and len(set(humans)) == len(humans)
+                                    if team else humans in ("0", "1", "01"))
+                    if seed < 0 or not valid_humans:
                         return self._json(400, {"error": "bad start"})
-                    line = f"start-json {seed} {humans} {json.dumps(req['setup'], ensure_ascii=True)}"
+                    start = "start-team-json" if team else "start-json"
+                    line = f"{start} {seed} {humans} {json.dumps(req['setup'], ensure_ascii=True)}"
                 elif path == "/api/clock":
                     line = "clock"
                 elif path == "/api/time-between-games":
@@ -125,12 +129,12 @@ def make_handler(lean: Lean, port: int):
                     line = "replay"
                 elif path == "/api/register":
                     seat = int(req["seat"])
-                    if seat not in (0, 1):
+                    if seat not in (0, 1, 2, 3):
                         return self._json(400, {"error": "bad seat"})
                     line = f"register {seat} {json.dumps(req['registration'], ensure_ascii=True)}"
                 elif path == "/api/concede-match":
                     seat = int(req["seat"])
-                    if seat not in (0, 1):
+                    if seat not in (0, 1, 2, 3):
                         return self._json(400, {"error": "bad seat"})
                     line = f"concede-match {seat}"
                 elif path == "/api/agree-match-draw":
@@ -153,7 +157,7 @@ def make_handler(lean: Lean, port: int):
                     line = f"swap {out} {inn}"
                     if "seat" in req:
                         seat = int(req["seat"])
-                        if seat not in (0, 1):
+                        if seat not in (0, 1, 2, 3):
                             return self._json(400, {"error": "bad seat"})
                         line += f" {seat}"
                 elif path == "/api/next":
@@ -161,6 +165,16 @@ def make_handler(lean: Lean, port: int):
                     if choice not in (None, "first", "second"):
                         return self._json(400, {"error": "bad choice"})
                     line = "next" + (f" {choice}" if choice else "")
+                elif path == "/api/team-next":
+                    order = req.get("order")
+                    if order is not None and (not isinstance(order, list) or len(order) != 4
+                                              or not all(type(seat) is int and 0 <= seat < 4 for seat in order)
+                                              or len(set(order)) != 4):
+                        return self._json(400, {"error": "bad team order"})
+                    digits = "".join(map(str, order)) if order is not None else "-"
+                    line = f"team-next {digits}"
+                    if "decks" in req:
+                        line += " " + json.dumps(req["decks"], ensure_ascii=True)
                 elif path == "/api/act":
                     k = int(req["k"])
                     if k < 0:

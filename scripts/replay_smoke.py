@@ -176,7 +176,7 @@ def limited_answers(decks: list[dict], order: list[dict], team: bool = False) ->
     return answers
 
 
-def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
+def limited_fixtures(setup: dict) -> tuple[dict, dict]:
     originals = [reg["deck"] for reg in setup["decks"]["constructed"]["decks"]]
     p0, p1, p2, p3 = [{"n": i} for i in range(4)]
     legal_sets = setup["config"]["formatLegality"]["legalSets"]
@@ -214,7 +214,11 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
     team = {"seats": {"team0": [p0, p1], "team1": [p2, p3]}, "legalSets": legal_sets,
             "sealed": {"team0": packs, "team1": packs}, "winsRequired": 2, "games": team_games,
             "ending": "finalGame"}
+    return duel, team
 
+
+def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
+    duel, team = limited_fixtures(setup)
     for label, inputs, suffix in (("draft", duel, ""), ("sealed-team", team, "-team")):
         source = folder / f"{label}-input.json"
         archive = folder / f"{label}-archive.json"
@@ -303,6 +307,74 @@ def live_bo1_match(live: Lean, setup: dict) -> dict:
     return archive
 
 
+def live_team_matches(live: Lean, setup: dict) -> dict[str, tuple[dict, list[int]]]:
+    original = setup["decks"]["constructed"]["decks"]
+    team = json.loads((ROOT / "data/replay/team-constructed-example.json").read_text(encoding="utf-8"))
+
+    def start_team(config: dict) -> dict:
+        return ask(live, f"start-team-json 71 0123 {json.dumps(config)}")
+
+    opened = start_team(team)
+    assert opened["players"] == 4 and opened["teams"] == [[0, 1], [2, 3]]
+    assert opened["teamFormat"] == "constructed"
+    first = keep(live, opened)
+    invite = choose(live, first, "inviteTeammate", "p1")
+    choose(live, invite, "pass", "p0")
+    drawn = ask(live, "judge")
+    assert drawn["match"]["wins"] == [0, 0] and drawn["match"]["sameBattlefields"]
+    registration = f"register 3 {json.dumps(bo1_registration(original[1]))}"
+    assert "cannot be used now" in json.loads(live.ask(registration))["error"]
+    assert "draw preserves the same turn order" in json.loads(live.ask("team-next 0213"))["error"]
+    second = keep(live, ask(live, "team-next"))
+    won = choose(live, second, "concede", "p3")
+    assert won["match"]["wins"] == [1, 0] and won["sideboard"]["allowed"]
+    ask(live, registration)
+    choices = ask(live, "team-next")["teamChoice"]
+    assert choices["team"] == 1 and [3, 1, 2, 0] in choices["orders"]
+    assert "invalid alternating A/B turn order" in json.loads(live.ask("team-next 0123"))["error"]
+    third = keep(live, ask(live, "team-next 3120"))
+    match_end = choose(live, third, "concede", "p3")
+    assert match_end["match"]["winner"] == 0 and match_end["archiveAvailable"]
+    completed = ask(live, "replay")
+    games = completed["input"]["games"]
+    assert games[0]["order"] == games[1]["order"] and games[0]["battlefields"] == games[1]["battlefields"]
+    assert games[2]["order"] == [{"n": seat} for seat in (3, 1, 2, 0)]
+    assert games[2]["decks"][3] == bo1_registration(original[1])
+    ask(live, "undo")
+    assert ask(live, "concede-match 3")["match"]["winner"] == 0
+    interrupted = ask(live, "replay")
+    assert interrupted["input"]["games"][2]["ending"] == "matchEnded"
+    assert interrupted["input"]["ending"] == {"concede": {"seat": {"n": 3}}}
+
+    _, sealed = limited_fixtures(setup)
+    sealed_games = sealed["games"]
+    sealed_setup = {k: sealed[k] for k in ("legalSets", "sealed", "winsRequired")}
+    sealed_setup.update(decks={"limited": {"decks": sealed_games[0]["sealedDecks"]}},
+                        firstChooser=sealed_games[0]["chooser"], order=sealed_games[0]["order"])
+    opened = start_team(sealed_setup)
+    assert opened["teamFormat"] == "sealed"
+    first_win = choose(live, keep(live, opened), "concede", "p3")
+    assert first_win["match"]["wins"] == [1, 0]
+    assert "uses too many copies" in json.loads(live.ask("team-next 1302"))["error"]
+    second = ask(live, f"team-next 1302 {json.dumps(sealed_games[1]['sealedDecks'])}")
+    assert choose(live, keep(live, second), "concede", "p3")["archiveAvailable"]
+    sealed_archive = ask(live, "replay")
+    assert sealed_archive["input"]["games"][1]["sealedDecks"] == sealed_games[1]["sealedDecks"]
+
+    keep(live, start_team({**team, "singleElimination": True}))
+    ask(live, "judge")
+    assert ask(live, "time-between-games")["match"]["timedTiebreaker"]
+    tiebreaker = ask(live, "team-next")
+    assert not tiebreaker["external"]["clock"]
+    ask(live, "concede-match 3")
+    timed = ask(live, "replay")
+    assert timed["input"]["elimination"]["timeAfterGames"] == 1
+    assert timed["input"]["games"][1]["timed"]
+
+    return {"live-team": (completed, [2, 0]), "live-team-interrupted": (interrupted, [1, 0]),
+            "live-team-sealed": (sealed_archive, [2, 0]), "live-team-tiebreaker": (timed, [0, 0])}
+
+
 def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> None:
     originals = setup["decks"]["constructed"]["decks"]
     changed = bo1_registration(originals[1])
@@ -359,7 +431,8 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     command("record", invalid, archive, error="must sideboard from the registered pool")
 
 
-def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict) -> None:
+def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
+              team_matches: dict[str, tuple[dict, list[int]]]) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -519,6 +592,15 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     steps = json.loads(live_trace.read_text(encoding="utf-8"))["games"][0]["steps"]
     assert steps[3]["bo1Initiative"] and steps[3]["action"]["turnOrder"] == [1, 0]
     assert steps[4]["bo1Sideboard"]
+    for label, (team_archive, wins) in team_matches.items():
+        archive = folder / f"{label}-archive.json"
+        archive.write_text(json.dumps(team_archive), encoding="utf-8")
+        team_summary = json.loads(command("verify-team", archive))
+        assert team_summary["exact"] and team_summary["wins"] == wins
+        trace = folder / f"{label}-trace.json"
+        command("view-team", archive, trace)
+        exported = json.loads(trace.read_text(encoding="utf-8"))
+        assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
 
 
 def main() -> None:
@@ -533,15 +615,16 @@ def main() -> None:
         group_move = group_move_match(live, setup)
         elimination = elimination_match(live, setup)
         bo1 = live_bo1_match(live, setup)
+        team_matches = live_team_matches(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move, elimination, bo1)
+        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move, elimination, bo1)
+            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches)
     print("replay smoke: OK")
 
 

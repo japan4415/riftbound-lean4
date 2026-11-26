@@ -110,6 +110,12 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 ### 2v2 の大会記録
 
+ライブで記録する場合は、操作する席を「4席すべて（2v2）」にして、「登録デッキで開始」から [2v2 Constructed の設定例](../data/replay/team-constructed-example.json) を読み込む。設定の型は `LiveTeamSetup`。最初に手番順を選んだチームを `firstChooser` に、選ばれた手番順を `order` に入れる。ゲームに勝敗がつくと負けたチームが次の手番順を選び、引き分けなら直前の手番順と Battlefield を引き継ぐ。
+
+Sealed では `tournament` に代えて `sealed` に両チームの共有プールを入れ、`decks.limited.decks` に最初の4席の登録を入れる。2ゲーム目以降はサイドボードを使えるときに4席の `LimitedDeck` をまとめて読み込める。次のゲームを始めるときに、共有プールの枚数と Battlefield の使用履歴を照合する。
+
+対局終了後に「マッチの記録を保存」を押し、`riftbound-replay verify-team riftbound-match.json` で照合する。標準入力から操作する場合は `start-team-json SEED HUMANS SETUP`、`team-next [ORDER|- [SEALED_DECKS]]`、`replay` を使う。たとえば `team-next 1302` は P1、P3、P0、P2 の順に次のゲームを始める。
+
 `riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。
 
 操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。

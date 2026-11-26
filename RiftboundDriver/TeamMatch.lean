@@ -24,13 +24,27 @@ structure TeamSeats where
   team1 : PlayerId × PlayerId
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- Fixed engine seat numbering for both teams' A and B players. -/
+def TeamSeats.standard : TeamSeats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩
+
 private def TeamSeats.players (seats : TeamSeats) : List PlayerId :=
   [seats.team0.1, seats.team0.2, seats.team1.1, seats.team1.2]
 
-private def TeamSeats.teamOf (seats : TeamSeats) (seat : PlayerId) : Option PlayerId :=
+/-- The team containing this player's seat. -/
+def TeamSeats.teamOf (seats : TeamSeats) (seat : PlayerId) : Option PlayerId :=
   if seat == seats.team0.1 || seat == seats.team0.2 then some ⟨0⟩
   else if seat == seats.team1.1 || seat == seats.team1.2 then some ⟨1⟩
   else none
+
+/-- Convert a result naming both winning seats into a result naming the winning team. -/
+def TeamSeats.normalizeResult (seats : TeamSeats) : GameResult → Except String GameResult
+  | .draw => pure .draw
+  | .won (first :: rest) => do
+    let some team := seats.teamOf first | throw "the winner seat is not registered"
+    let roster := if team.n == 0 then seats.team0 else seats.team1
+    unless decide ((first :: rest).Perm [roster.1, roster.2]) do throw "both winning seats must be teammates"
+    pure (.won [team])
+  | .won [] => throw "a win requires a winning team"
 
 /-- The eight opened booster packs per team, with copies retained (TR 603.6). -/
 structure TeamSealedPools where
@@ -229,18 +243,30 @@ def TeamMatchRecord.replayConfig (input : TeamMatchRecord) : Except String GameC
     | _, _ => throw "provide either Constructed event metadata or the Sealed pools"
   return { ruleSet := .tournament format, mode := .teamDuel, formatLegality := some env }
 
-private def TeamSealedPools.check (pools : TeamSealedPools) (db : CardDB) : Except String Unit := do
+/-- Validate the recorded packs before allocating their cards. -/
+def TeamSealedPools.check (pools : TeamSealedPools) (db : CardDB) : Except String Unit := do
   for packs in [pools.team0, pools.team1] do
     unless packs.length == 8 && packs.all (!·.isEmpty) do
       throw "each Sealed team needs its eight opened booster packs"
     checkLimitedPool db packs.flatten
 
-private def TeamSealedPools.useBattlefields (pools : TeamSealedPools) (seats : TeamSeats)
+/-- Count each newly contributed physical Battlefield against its team's pool. -/
+def TeamSealedPools.useBattlefields (pools : TeamSealedPools) (seats : TeamSeats)
     (used : List CardId × List CardId) (selected : List (PlayerId × CardId)) (reuse : Bool) :
     Except String (List CardId × List CardId) := do
   let forTeam (n : Nat) := (selected.filter (fun (p, _) => seats.teamOf p == some ⟨n⟩)).map Prod.snd
   return (← useLimitedBattlefields pools.team0.flatten used.1 (forTeam 0) reuse,
     ← useLimitedBattlefields pools.team1.flatten used.2 (forTeam 1) reuse)
+
+/-- Validate the next four registrations using the event's format and card pool. -/
+def TeamMatchRecord.checkRegistrations (input : TeamMatchRecord) (decks : ReplayDecks)
+    (order : List PlayerId) (db : CardDB) (env : LegalityEnv) : Except String Unit := do
+  match decks, input.sealed? with
+  | .constructed ds, none => checkConstructedTeamDecks ds input.seats db env
+  | .limited ds, some pools =>
+    checkSealedTeamDecks ds input.seats db env pools
+    checkLimitedBattlefieldCount db.withLimitedBlank ds (order.drop 1) (input.winsRequired == 2)
+  | _, _ => throw "the four registrations must use the tournament format"
 
 private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
     (readGame : GameConfig → Nat → TeamGameRecord → ReplayDecks →
@@ -265,15 +291,11 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
       let config := replayGameConfig baseConfig state input.elimination?.isSome afterTime
       if afterTime && !game.timed then throw "a tiebreaker game starts with time already called"
       let decks ← game.registrations
-      let used ← match decks, input.sealed? with
-        | .constructed ds, none => do
-          checkConstructedTeamDecks ds input.seats db env
-          pure used
-        | .limited ds, some pools => do
-          checkSealedTeamDecks ds input.seats db env pools
-          checkLimitedBattlefieldCount db ds (game.order.drop 1) (input.winsRequired == 2)
+      input.checkRegistrations decks game.order db env
+      let used ← match input.sealed? with
+        | none => pure used
+        | some pools =>
           pools.useBattlefields input.seats used game.battlefields state.reuseBattlefields
-        | _, _ => throw "the four registrations must use the tournament format"
       let first ← checkTeamSetup input.seats game state decks previous
       let (result, evidence) ← readGame config index game decks
       if let some finished := result then
@@ -340,20 +362,13 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
             | _ => false)) &&
           !(endingAction.any (fun a => a.kind == .concede || a.kind == .declareDraw)) do
         throw "the last answer did not score the stated sudden-death point"
-  let normalized ← match result with
-    | .draw => pure GameResult.draw
-    | .won (first :: rest) => do
-      let some team := seats.teamOf first | throw "the winner seat is not registered"
-      let roster := if team.n == 0 then seats.team0 else seats.team1
-      unless decide ((first :: rest).Perm [roster.1, roster.2]) do throw "both winning seats must be teammates"
-      pure (.won [team])
-    | .won [] => throw "a win requires a winning team"
+  let normalized ← seats.normalizeResult result
   if some normalized != expected then throw "the replayed game outcome differs"
   return some normalized
 
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
     (expected : Option (Array RecordedGame)) : Except String RecordedTeamMatch := do
-  if input.seats != { team0 := (⟨0⟩, ⟨1⟩), team1 := (⟨2⟩, ⟨3⟩) } then
+  if input.seats != TeamSeats.standard then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
   if expected.any (fun games => games.size != input.games.size) then throw "the game count differs"
   let (summary, games) ← runTeamMatch input db fun config index game decks => do
@@ -375,6 +390,11 @@ private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
 def TeamMatchRecord.record (input : TeamMatchRecord) (db : CardDB := RiftboundCards.db) :
     Except String RecordedTeamMatch :=
   playTeamMatch input db none
+
+/-- Verify and package the checkpoints captured by a live team match. -/
+def TeamMatchRecord.recordPlayed (input : TeamMatchRecord) (games : Array RecordedGame) :
+    Except String RecordedTeamMatch :=
+  playTeamMatch input RiftboundCards.db (some games)
 
 /-- Verify team game inputs against the saved checkpoints and the match outcome. -/
 def RecordedTeamMatch.verify (saved : RecordedTeamMatch) (db : CardDB := RiftboundCards.db) :
