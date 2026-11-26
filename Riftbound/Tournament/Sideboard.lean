@@ -90,27 +90,24 @@ theorem Resolved.constructedValid_swap {env : LegalityEnv} {r : Resolved}
     (hid : IdentityOk (r.withMain main' champion')) (hty2 : MainTypesOk side')
     (hdom : DomainsIn r.legend.domains side') :
     (r.withMain main' champion').ConstructedValid env side' := by
-  obtain ⟨hl, -, hsz, -, hcp, -, -, hrune, hbf, hside, -, -, hlegal⟩ := h
-  have hmem : ∀ c, c ∈ main' ++ side' → c ∈ r.main ++ side :=
-    fun c hc => hs.pool.mem_iff.mp hc
-  refine ⟨hl, hchosen, ?_, hty, ?_, hsig, hid, hrune, hbf, ?_, hty2, hdom, ?_⟩
+  obtain ⟨hl, -, hsz, -, hcp, -, -, hrune, hbf, hside, -, -, hlegal, hreserve⟩ := h
+  refine ⟨hl, hchosen, ?_, hty, ?_, hsig, hid, hrune, hbf, ?_, hty2, hdom, ?_, ?_⟩
   · show main'.length = 40
     rw [hs.main_length]; exact hsz
   · exact copyLimitOk_perm hs.pool.symm hcp
   · rw [hs.side_length]; exact hside
   · intro c hc
     apply hlegal
-    simp only [Resolved.withMain, List.mem_cons, List.mem_append] at hc ⊢
-    rcases hc with hc | ((hc | hc) | hc) | hc
-    · exact Or.inl hc
-    · rcases List.mem_append.mp (hmem c (List.mem_append.mpr (Or.inl hc))) with h1 | h1
-      · exact Or.inr (Or.inl (Or.inl (Or.inl h1)))
-      · exact Or.inr (Or.inl (Or.inl (Or.inr h1)))
-    · rcases List.mem_append.mp (hmem c (List.mem_append.mpr (Or.inr hc))) with h1 | h1
-      · exact Or.inr (Or.inl (Or.inl (Or.inl h1)))
-      · exact Or.inr (Or.inl (Or.inl (Or.inr h1)))
-    · exact Or.inr (Or.inl (Or.inr hc))
-    · exact Or.inr (Or.inr hc)
+    let rest := r.runes ++ r.battlefields ++ r.reserveLegends
+    have hp := (hs.pool.append_right rest).cons r.legend
+    have hm : c ∈ r.legend :: ((main' ++ side') ++ rest) := by
+      simpa only [Resolved.withMain, rest, List.append_assoc] using hc
+    simpa only [rest, List.append_assoc] using hp.mem_iff.mp hm
+  · obtain ⟨hbound, htypes, hnames⟩ := hreserve
+    refine ⟨?_, htypes, hnames⟩
+    rcases hbound with he | ⟨c, hc, hmax⟩
+    · exact Or.inl he
+    · exact Or.inr ⟨c, hs.pool.mem_iff.mpr hc, hmax⟩
 
 end Deck
 

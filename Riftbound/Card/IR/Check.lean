@@ -351,6 +351,8 @@ mutual
 
 /-- An effect refers only to what is there, and a mode is chosen only where modes were declared. -/
 def Effect.ok (c : Ctx) : Effect → Bool
+  | .addReservedLegend => true
+  | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
   | .nop => true
   | .markTriggeredAdd _ => false

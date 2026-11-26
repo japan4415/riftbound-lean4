@@ -904,6 +904,8 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
          exact Or.inl rfl)
     | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
     | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
+    | (obtain rfl := List.mem_singleton.mp h
+       exact Or.inl (addReservedLegendFrame_play _ _ _ _ _))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
     | exact Or.inl (castInlineStep_mem h)

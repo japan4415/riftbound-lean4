@@ -3863,6 +3863,7 @@ def Effect.pickTargets (e : Effect) : Bool :=
   match e with
   | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ |
       .prim (.castInline _) | .prim (.createAt ..) | .recordRuneRecycle .. |
+      .addReservedLegendPicked |
       .playOfferedCard .. => false
   | _ => !e.isLinkedCost
 
@@ -4542,6 +4543,53 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
   | _ => none
 
+/-- A Legend registered for this player and left outside the game can enter while its
+source is on the Board. The move preserves the physical card (CR 103.1). -/
+def addReservedLegend (s : GameState) (p : PlayerId) (src legend : ObjId) :
+    GameState × List Event :=
+  let reserve := Zone.player p .reserveLegends
+  let destination := Zone.player p .legendZone
+  if s.inPlay.contains src && (s.zone reserve).contains legend &&
+      (s.cardDef? legend).any (·.hasType .legend) then
+    match moveObj s legend destination .bottom with
+    | some (t, added) =>
+      (t.modObj added (fun o => { o with reservedBy := some src }),
+        [.moved legend added destination])
+    | none => (s, [])
+  else (s, [])
+
+/-- Bringing a registered Legend into the game preserves the state's invariants. -/
+theorem addReservedLegend_safe (s : GameState) (p : PlayerId) (src legend : ObjId) :
+    Safe s (addReservedLegend s p src legend).1 := by
+  unfold addReservedLegend
+  dsimp only
+  split
+  · split
+    · rename_i t id h
+      exact (Safe.moveObj h).trans (Safe.modObj t id (fun _ => rfl) (fun _ => rfl))
+    · exact Safe.refl s
+  · exact Safe.refl s
+
+/-- The activation can choose an available registered Legend only while the Unit is on the Board. -/
+def addReservedLegendFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (rest : EffectList) : Frame :=
+  if s.inPlay.contains src then
+    let candidates := (s.zone (.player p .reserveLegends)).filter (fun card =>
+      (s.cardDef? card).any (·.hasType .legend))
+    match candidates with
+    | [] => .run p src env rest
+    | [legend] => .run p src env (.cons (.addReservedLegendChosen legend) rest)
+    | first :: more => .pickDo p src env first more .addReservedLegendPicked rest
+  else .run p src env rest
+
+theorem addReservedLegendFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (rest : EffectList) : (addReservedLegendFrame s p src env rest).isPlay = true := by
+  unfold addReservedLegendFrame
+  split
+  · dsimp only
+    split <;> rfl
+  · rfl
+
 /-- Use the shared finalization choices for optional costs, battlefield fees, and mandatory
 locations (CR 355.1.a, 355.17). -/
 def permanentPlayEffects (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -5128,6 +5176,14 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (r.1, [.run p src env (if r.2.1 then .cons body es else es)], r.2.2)
   match e with
   | .nop => (s, [.run p src env es], [])
+  | .addReservedLegend => (s, [addReservedLegendFrame s p src env es], [])
+  | .addReservedLegendPicked =>
+    match env.lookup pickVar with
+    | some (.obj legend) => (s, [.run p src env (.cons (.addReservedLegendChosen legend) es)], [])
+    | _ => skip
+  | .addReservedLegendChosen legend =>
+    let result := addReservedLegend s p src legend
+    (result.1, [.run p src env es], result.2)
   | .planUnitTokenEntries batch remaining chosen =>
     let next := unitTokenEntryPlan s p batch remaining chosen funding
     (s, [.run p src env (.cons next es)], [])
@@ -5516,6 +5572,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact Safe.refl s
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+    | exact addReservedLegend_safe s p src _
     | exact castInlineStep_safe s p src env _ es funding
     | exact castLimitedStep_safe s p src env _ _ _ es funding
     | exact finalizeLimitedStep_safe s p src env _ es funding

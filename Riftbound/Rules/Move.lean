@@ -98,6 +98,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  loc := if dst = .player o.owner .trash then o.loc else none,
                  baseMightThisTurn := none, mightMods := [], tempKws := [], tempActivations := [],
                  attached := none, attachedTurn := none, attachmentCopyStamp := none,
+                 reservedBy := none,
                  attachmentTextStamp := none,
                  attachmentTextCopies := if src.isBoard then s.activeAttachmentText id else [],
                  attachmentCopies := [],

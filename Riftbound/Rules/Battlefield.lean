@@ -417,6 +417,28 @@ def GameState.looseGear (s : GameState) : Option ObjId :=
 def detachStep (s : GameState) : Option (GameState × List Event) :=
   s.looseGear.map (fun g => (s.modObj g (fun o => { o with attached := none }), []))
 
+/-- Additional Legends whose source left the Board return to their owner's reserve. -/
+def GameState.expiredReservedLegend (s : GameState) : Option (PlayerId × ObjId) :=
+  s.players.findSome? (fun p =>
+    ((s.zone (.player p .legendZone)).find? (fun id =>
+      (s.obj? id).any (fun o => o.reservedBy.any (fun src => !s.inPlay.contains src)))).map (p, ·))
+
+/-- Return an additional Legend when the duration that keeps it in the game ends. -/
+def returnReservedLegendStep (s : GameState) : Option (GameState × List Event) := do
+  let (p, id) ← s.expiredReservedLegend
+  let dest := Zone.player p .reserveLegends
+  let (t, next) ← moveObj s id dest
+  return (t, [.moved id next dest])
+
+theorem returnReservedLegendStep_safe {s t : GameState} {events : List Event}
+    (h : returnReservedLegendStep s = some (t, events)) : Safe s t := by
+  unfold returnReservedLegendStep at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨p, id⟩, -, ⟨result, next⟩, moved, resultEq⟩ := h
+  have he : result = t := (Prod.mk.inj (Option.some.inj resultEq)).1
+  subst t
+  exact Safe.moveObj moved
+
 /-- One step of the Cleanup (CR 323): a token off the Board ceases to exist (CR 183), an Equipment
 whose Unit is gone is detached (CR 137), or else the first step of `cleanupStep0`. `none` if none
 applies. -/
@@ -426,7 +448,7 @@ def cleanupStep (s : GameState) : Option (GameState × List Event) :=
   | none =>
     match detachStep s with
     | some r => some r
-    | none => cleanupStep0 s
+    | none => (returnReservedLegendStep s).orElse (fun _ => cleanupStep0 s)
 
 /-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
 player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
@@ -482,7 +504,7 @@ def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × L
 /-- A pending lethal death can require a replacement choice before the automatic kill.
 Off-board tokens and unattached Equipment are still handled first (CR 323, 372). -/
 def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
-  if s.offBoardToken.isSome || s.looseGear.isSome then none else
+  if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then none else
     (s.inPlay.find? (fun u => s.isUnit u && s.lethal u)).bind s.deathBanishChoice
 
 /-- The step of the `cleanup` frame (CR 322-323): declare a winner, or do a step, or start a
@@ -625,7 +647,7 @@ theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :
   · simp at h
   · split at h
     · simp at h
-    · exact h
+    · cases hr : returnReservedLegendStep s <;> simp_all [Option.orElse]
 
 /-- The token that is found is a token, which has no physical card. -/
 theorem offBoardToken_spec {s : GameState} {id : ObjId} (h : s.offBoardToken = some id) :
@@ -700,7 +722,9 @@ theorem cleanupStep_safe {s s' : GameState} {es : List Event}
       simp only [Prod.mk.injEq] at hg
       rw [← hg.1]
       exact Safe.modObj s g (fun _ => rfl) (fun _ => rfl)
-    · exact cleanupStep0_safe h
+    · cases hreturn : returnReservedLegendStep s with
+      | none => exact cleanupStep0_safe (by simpa [hreturn, Option.orElse] using h)
+      | some result => exact returnReservedLegendStep_safe (by simpa [hreturn, Option.orElse] using h)
 
 /-- Scoring a Battlefield is a safe change, then points. -/
 theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
@@ -948,9 +972,8 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
   obtain ⟨hw, hs⟩ := h
   have hchoice : cleanupDeathBanishChoice s = none := by
     cases ht : s.offBoardToken <;> cases hg : s.looseGear <;>
-      simp [cleanupDeathBanishChoice, ht, hg]
-    have hs0 : cleanupStep0 s = none := by
-      simpa [cleanupStep, tokenStep, detachStep, ht, hg] using hs
+      cases hl : s.expiredReservedLegend <;> simp [cleanupDeathBanishChoice, ht, hg, hl]
+    have hs0 := cleanupStep0_of_none hs
     unfold cleanupStep0 at hs0
     split at hs0
     · contradiction

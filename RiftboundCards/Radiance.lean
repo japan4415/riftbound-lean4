@@ -4517,8 +4517,12 @@ def RAD_167.meta : CardDef :=
     sets := [⟨"RAD"⟩] }  -- Power domains unknown
 -- END GENERATED
 
-/-- Neeko, Blending In: the effect is not written yet. -/
-def RAD_167 : CardDef := RAD_167.meta
+/-- Neeko adds a Legend registered at deckbuilding for as long as she stays on the Board. -/
+def RAD_167 : CardDef :=
+  { RAD_167.meta with
+    reserveLegendLimit := 3,
+    abilities := [.triggered (.onSelf .play) (.of [] .addReservedLegend) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-SP1
 /--

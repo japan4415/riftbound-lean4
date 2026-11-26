@@ -1340,7 +1340,9 @@ namespace GameState
 
 /-- The objects whose passive abilities apply: those in play, and the Legends (CR 363). -/
 def passiveSources (s : GameState) : List ObjId :=
-  s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
+  s.inPlay ++ s.players.flatMap (fun p =>
+    (s.zone (.player p .legendZone)).filter (fun id =>
+      (s.obj? id).any (fun o => o.reservedBy.all (s.inPlay.contains))))
 
 /-- The changes the passive abilities of `src` make now: those of the abilities whose condition
 holds. -/

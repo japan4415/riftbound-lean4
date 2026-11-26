@@ -389,6 +389,8 @@ mutual
 
 /-- An effect that is understood. -/
 def Effect.understood : Effect → Bool
+  | .addReservedLegend => true
+  | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .nop => true
   | .seq es => EffectList.understood es
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e

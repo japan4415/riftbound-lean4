@@ -134,6 +134,8 @@ structure CardDef where
   empowerLimit : Nat := 1
   /-- The card's text waives the number of copies allowed in a deck (CR 002, 103.3.b). -/
   unlimitedCopies : Bool := false
+  /-- How many additional Legends this card permits its player to register (CR 103.1). -/
+  reserveLegendLimit : Nat := 0
   /-- The sets the card has been printed in. -/
   sets : List SetCode := []
   /-- The implementation status. -/

@@ -9,7 +9,7 @@ The Cleanup (CR 323) does one step at a time until none applies: it removes a to
 Board (CR 183), detaches an Equipment whose Unit is gone (CR 137), kills a Unit with lethal damage
 (CR 323.4), and settles the Control and the Contested state of the Battlefields (CR 323.5, 323.10).
 A step of the Cleanup goes down a measure, a tuple of six numbers compared one after the other:
-the objects in play, the tokens off the Board, the loose Equipment, the Battlefields that lost
+the objects in play and Legends, the tokens off the Board, the loose Equipment, the Battlefields that lost
 their Control, the stale Contests and the new Contests. So the steps cannot go on for ever
 (`cleanup_terminates`).
 
@@ -122,14 +122,46 @@ theorem inPlay_modObj : (s.modObj b f).inPlay = s.inPlay := by
   simp only [GameState.zone_modObj]
   rfl
 
-/-- What goes down when a unit dies or is recalled from a Battlefield: the objects in play, and the
-objects on the Battlefield Zone (counted twice, as a unit on it is also in play). -/
+/-- The Legend Zones for the players in this game. -/
+def GameState.legendZones (s : GameState) : List Zone :=
+  s.players.map (fun p => .player p .legendZone)
+
+theorem GameState.legendZones_nodup (s : GameState) : s.legendZones.Nodup := by
+  unfold GameState.legendZones GameState.players
+  refine List.Pairwise.map (S := fun a b : Zone => a ≠ b)
+    (fun p : PlayerId => Zone.player p .legendZone) ?_
+    (List.Pairwise.map (S := fun a b : PlayerId => a ≠ b)
+      (fun i : Nat => (⟨i⟩ : PlayerId)) ?_ List.nodup_range)
+  · intro a b hab h
+    simp only [Zone.player.injEq, and_true] at h
+    exact hab h
+  · intro a b hab h
+    simp only [PlayerId.mk.injEq] at h
+    exact hab h
+
+/-- Count Legends that are on the Board. -/
+def GameState.legendCount (s : GameState) : Nat :=
+  (s.legendZones.flatMap s.zone).length
+
+theorem legendCount_eq {s t : GameState} (hc : t.config = s.config)
+    (hz : ∀ p, t.zone (.player p .legendZone) = s.zone (.player p .legendZone)) :
+    t.legendCount = s.legendCount := by
+  unfold GameState.legendCount GameState.legendZones GameState.players GameState.playerCount
+  rw [hc]
+  simp only [List.flatMap_map]
+  have h : (fun n : Nat => t.zone (.player ⟨n⟩ .legendZone)) =
+      (fun n : Nat => s.zone (.player ⟨n⟩ .legendZone)) := funext (fun n => hz ⟨n⟩)
+  rw [h]
+
+/-- The first cleanup measure counts Legends and objects in play, counting Battlefield Zone
+objects a second time so that recalling them also lowers the measure. -/
 def GameState.pot (s : GameState) : Nat :=
-  s.inPlay.length + (s.zone Zone.battlefieldZone).length
+  s.inPlay.length + (s.zone Zone.battlefieldZone).length + s.legendCount
 
 theorem pot_modObj : (s.modObj b f).pot = s.pot := by
   unfold GameState.pot
-  rw [inPlay_modObj]
+  rw [inPlay_modObj, legendCount_eq (s := s) (t := s.modObj b f) rfl
+    (fun z => GameState.zone_modObj s b f (.player z .legendZone))]
   simp only [GameState.zone_modObj]
 
 theorem unitsAt_modObj (hf : ∀ o, (f o).kind = o.kind) (hl : ∀ o, (f o).loc = o.loc)
@@ -736,8 +768,20 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
     split
     · rfl
     · exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+  have hkillLegends : (killObj s u).1.legendCount = s'.legendCount :=
+    legendCount_eq ((killObj_safe s u).same.config.trans hs.config.symm) (fun p => hkillz _)
+  have hmoveLegends : s'.legendCount = s.legendCount := by
+    apply legendCount_eq hs.config
+    intro p
+    apply hs.zone_other
+    · intro e
+      rw [← e] at hz0
+      simp [GameState.inPlayZones] at hz0
+    · rw [hd]
+      rcases hk with rfl | rfl <;> simp [Zone.normalize, Zone.isBoard]
   unfold GameState.pot
-  rw [hkillz, hkill, GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
+  rw [hkillLegends, hmoveLegends, hkillz, hkill, GameState.inPlay_eq_flatMap,
+    GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)
     subst this
@@ -919,7 +963,17 @@ theorem sendHome_core {s : GameState} (hwf : s.WF) {u : ObjId} (hu : u ∈ s.inP
     rw [hdn]
     intro e
     cases e
+  have hLegend : s'.legendCount = s.legendCount := by
+    apply legendCount_eq hs.config
+    intro p
+    apply hs.zone_other
+    · intro e
+      rw [← e] at hz0
+      simp [GameState.inPlayZones] at hz0
+    · rw [hdn]
+      simp
   unfold GameState.pot
+  rw [hLegend]
   by_cases hb : Zone.battlefieldZone = src
   · have hub : u ∈ s.zone Zone.battlefieldZone := by rw [hb]; exact huz
     rw [if_pos hub, hb, hs.zone_src, List.length_erase_of_mem huz]
@@ -1176,7 +1230,16 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
         GameState).tokC + ({ s.setZone z' ((s.zone z').erase id) with
           objects := s.objects.erase id.n } : GameState).dmgC < s.tokC + s.dmgC := by
       rw [hdm]; omega
-    exact MeasLt.at2 (by unfold GameState.pot; rw [hin, hbf]) hlt2
+    have hl : ({ s.setZone z' ((s.zone z').erase id) with
+        objects := s.objects.erase id.n } : GameState).legendCount = s.legendCount := by
+      refine legendCount_eq (s := s)
+        (t := { s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n }) rfl ?_
+      intro p
+      apply GameState.zone_setZone_ne
+      intro e
+      rw [← e] at hnb
+      simp [Zone.isBoard] at hnb
+    exact MeasLt.at2 (by unfold GameState.pot; rw [hin, hbf, hl]) hlt2
 
 /-- The Battlefield the Cleanup makes Contested is one of the game's, newly Contested. -/
 theorem findSome_newContest {s : GameState} {b : ObjId} {q : PlayerId}
@@ -1248,6 +1311,64 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
           exact newContest_lt hmem hq
         · exact absurd h (by simp)
 
+/-- Returning an additional Legend decreases the first part of the cleanup measure. -/
+theorem returnReservedLegendStep_lt {s t : GameState} {es : List Event} (hwf : s.WF)
+    (h : returnReservedLegendStep s = some (t, es)) : t.pot < s.pot := by
+  unfold returnReservedLegendStep at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨p, id⟩, hexpired, ⟨result, next⟩, hmove, hresult⟩ := h
+  have ht : result = t := (Prod.mk.inj (Option.some.inj hresult)).1
+  subst result
+  unfold GameState.expiredReservedLegend at hexpired
+  obtain ⟨q, hq, hfound⟩ := List.exists_of_findSome?_eq_some hexpired
+  simp only [Option.map_eq_some_iff, Prod.mk.injEq] at hfound
+  obtain ⟨found, hfind, rfl, rfl⟩ := hfound
+  have hmem := List.mem_of_find?_eq_some hfind
+  have hz : Zone.player q .legendZone ∈ s.legendZones :=
+    List.mem_map.mpr ⟨q, hq, rfl⟩
+  obtain ⟨src, dst, hm, o, _, hd⟩ := moveObj_spec_dst hmove
+  have hloc := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hmem) hmem
+  have hsrc : src = .player q .legendZone := Option.some.inj (hm.locate.symm.trans hloc)
+  subst src
+  have hdst : dst = .player o.owner .reserveLegends := by
+    rw [hd]
+    rfl
+  have hLegendZones : t.legendZones = s.legendZones := by
+    unfold GameState.legendZones GameState.players GameState.playerCount
+    rw [hm.config]
+  have hInPlayZones : t.inPlayZones = s.inPlayZones := by
+    unfold GameState.inPlayZones GameState.players GameState.playerCount
+    rw [hm.config]
+  have hInPlay : t.inPlay = s.inPlay := by
+    rw [GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap, hInPlayZones]
+    apply flatMap_congr_mem
+    intro z hzone
+    apply hm.zone_other
+    · intro eq
+      subst z
+      simp [GameState.inPlayZones] at hzone
+    · intro eq
+      subst z
+      rw [hdst] at hzone
+      simp [GameState.inPlayZones] at hzone
+  have hBattlefield : t.zone .battlefieldZone = s.zone .battlefieldZone := by
+    apply hm.zone_other
+    · simp
+    · simp [hdst]
+  have hCount : t.legendCount + 1 = s.legendCount := by
+    unfold GameState.legendCount
+    rw [hLegendZones]
+    apply length_flatMap_erase_one s.legendZones_nodup _ _ _ hz found hmem hm.zone_src
+    intro z hm' hne
+    apply hm.zone_other hne
+    intro he
+    subst z
+    rw [hdst] at hm'
+    simp [GameState.legendZones] at hm'
+  unfold GameState.pot
+  rw [hInPlay, hBattlefield]
+  omega
+
 /-- Every step of the Cleanup makes the measure go down (I12a). -/
 theorem cleanupStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     (h : cleanupStep s = some (s', es)) : MeasLt s'.cleanupMeasure s.cleanupMeasure := by
@@ -1260,7 +1381,13 @@ theorem cleanupStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     · rename_i r hr
       obtain rfl : s' = r.1 := (congrArg Prod.fst (Option.some.inj h)).symm
       exact detachStep_lt hr
-    · exact cleanupStep0_lt hwf h
+    · cases hr : returnReservedLegendStep s with
+      | none => exact cleanupStep0_lt hwf (by simpa [hr, Option.orElse] using h)
+      | some r =>
+        obtain ⟨next, events⟩ := r
+        have returned : returnReservedLegendStep s = some (s', es) := by
+          simpa [hr, Option.orElse] using h
+        exact MeasLt.at1 (returnReservedLegendStep_lt hwf returned)
 
 /-- The Cleanup moves from a state to the next one. -/
 def CleanupRel (s' s : GameState) : Prop := ∃ es, cleanupStep s = some (s', es)

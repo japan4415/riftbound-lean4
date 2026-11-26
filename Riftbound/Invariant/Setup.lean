@@ -85,13 +85,14 @@ theorem GameState.addDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId} 
     Grows s s' ∧ d.battlefields.length ≤ (s'.zone (.player p .outOfGame)).length := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
   obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
-  exact ⟨(((g1.trans g2).trans g3).trans g4).trans g5, by omega⟩
+  exact ⟨((((g0.trans g1).trans g2).trans g3).trans g4).trans g5, by omega⟩
 
 /-- Adding the decks grows the state, and the player in seat `i + k` has the Battlefields of the
 `k`-th deck out of the game. -/
@@ -126,13 +127,14 @@ theorem GameState.addLimitedDeck_grows {db : CardDB} {s s' : GameState} {p : Pla
     Grows s s' ∧ d.battlefields.length ≤ (s'.zone (.player p .outOfGame)).length := by
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
+  obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
   obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
-  exact ⟨(((g1.trans g2).trans g3).trans g4).trans g5, by omega⟩
+  exact ⟨((((g0.trans g1).trans g2).trans g3).trans g4).trans g5, by omega⟩
 
 /-- Adding the Limited decks grows the state, and the player in seat `i + k` has the Battlefields
 of the `k`-th deck out of the game. -/
@@ -185,11 +187,11 @@ theorem DeckValid.battlefields_length {db : CardDB} {mode : Mode} {d : Deck}
   obtain ⟨r, hr, hv⟩ := h.exists_resolved
   unfold Deck.resolve at hr
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at hr
-  obtain ⟨l, -, m, -, ma, -, ru, -, bf, hbf, hfin⟩ := hr
+  obtain ⟨l, -, m, -, ma, -, ru, -, bf, hbf, reserve, -, hfin⟩ := hr
   simp only [Option.pure_def, Option.some.injEq] at hfin
   subst hfin
   rw [← mapM_find_length db _ hbf]
-  exact hv.2.2.2.2.2.2.2.2.1
+  exact hv.2.2.2.2.2.2.2.2.1.1
 
 /-- **A game set up from legal decks.** It has at least two players, and every player has a
 Battlefield out of the game, waiting for the random pick (CR 487.5). -/

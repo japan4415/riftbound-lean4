@@ -127,6 +127,12 @@ mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
 inductive Effect where
+  /-- Choose a previously registered additional Legend to add while the source is on the Board. -/
+  | addReservedLegend
+  /-- Capture the answer to the registered Legend choice. -/
+  | addReservedLegendPicked
+  /-- Add one available registered Legend. -/
+  | addReservedLegendChosen (legend : ObjId)
   /-- Choose the replacements for the tokens before the group is placed. -/
   | planUnitTokenEntries (batch : UnitTokenBatch) (remaining chosen : List (CardId × Bool))
   /-- Choose resources and add funding for the token's optional Accelerate. -/
