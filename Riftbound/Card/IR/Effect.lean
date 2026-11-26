@@ -69,7 +69,22 @@ structure ReducedPermanentPlay where
   gearDiscounts : List ObjId := []
   /-- The card revealed or friendly object picked for Show Off (CR 832). -/
   showOff : Option ObjId := none
-deriving DecidableEq, Repr, Hashable
+  /-- Whether the player elects the card's additional XP cost. -/
+  spendXP : Bool := false
+deriving DecidableEq, Hashable
+
+/-- Preserve the fingerprints of old plans that did not elect XP without an object. -/
+instance : Repr ReducedPermanentPlay where
+  reprPrec p _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [field "cost" (repr p.cost), field "battlefield" (repr p.battlefield),
+      field "extraObject" (repr p.extraObject), field "discard" (repr p.discard),
+      field "additionalPaid" (repr p.additionalPaid), field "accelerated" (repr p.accelerated),
+      field "battlefieldFees" (repr p.battlefieldFees), field "gearDiscounts" (repr p.gearDiscounts),
+      field "showOff" (repr p.showOff)]
+    let fields := if p.spendXP then fields ++ [field "spendXP" (repr true)] else fields
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- One activation that provides resources for an effect's play (CR 357.1.a). -/
 inductive EffectAdd where

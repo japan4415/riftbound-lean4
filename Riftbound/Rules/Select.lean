@@ -129,6 +129,7 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env :
     if s.active.any s.departures.seats.contains then some s.pickOrder
     else some (s.pickOrder.drop 1 ++ s.pickOrder.take 1)
   | .eachOpponent => some (opponents ())
+  | .eachOtherPlayer => some (s.pickOrder.erase self)
   | .combatSides => s.combat.map (fun c =>
       [c.attacker, c.defender].filter (fun p => !s.departures.seats.contains p))
   | .chosen i => (env.playerTargets[i]?.filter s.participates).map (fun p => [p])

@@ -4740,10 +4740,10 @@ def UNL_164 : CardDef :=
   { UNL_164.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.ifThen .paid
-        (.eachPlayer .eachOpponent (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit]))))
-        (.eachPlayer .eachPlayer (.prim (.kill (Selector.one .friendly .anywhere [.ofType .unit])))))) .unlimited],
+        (.eachPlayer .eachOtherPlayer (.prim (.kill (Selector.one .you .anywhere [.ofType .unit]))))
+        (.eachPlayer .eachPlayer (.prim (.kill (Selector.one .you .anywhere [.ofType .unit])))))) .unlimited],
     playExtra := some (.spendXP 3, false),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-165
 /--
@@ -5154,7 +5154,7 @@ def UNL_178 : CardDef :=
     -- the additional cost: spend 3 XP, and the card costs 3 Energy less
     playExtra := some (.spendXP 3, false),
     paidCut := some (.energy 3),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-179
 /--

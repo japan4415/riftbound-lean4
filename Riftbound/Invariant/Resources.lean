@@ -111,7 +111,7 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : castable s p c pay targets flow pick = true)
     (h : applyCast s p c pay targets flow pick = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
-      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.targetCosts p c d b targets pick ∧
+      b ∈ s.cutOptionsOf p c cost targets pick ∧ c' ∈ s.targetCosts p c d b targets pick ∧
       (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp

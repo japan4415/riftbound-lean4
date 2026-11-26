@@ -52,7 +52,7 @@ inductive PlayExtra where
   /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
   a friendly Unit). -/
   | killUnit
-  /-- The player spends this much XP (the object it is done to is their Legend). -/
+  /-- The player spends this much of their own XP. -/
   | spendXP (n : Nat)
   /-- For a Spell: the player spends this much XP if the first object it chooses has more Might than
   the cap (Conscription: with the XP it can choose any unit). Nothing is chosen for the cost. -/

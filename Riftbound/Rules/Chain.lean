@@ -1096,7 +1096,7 @@ def reactSpell (s : GameState) (c : ObjId) : Bool :=
 def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (flow : Option Cost := none) (pick : SpellPick := .plain) : Bool :=
   ((castable s p c pay ts flow pick ||
-      (flow.isNone && ts.isEmpty && s.extraOk p c ts && playable s p c pay none ts pick) ||
+      (flow.isNone && ts.isEmpty && s.extraOk p c ts pick && playable s p c pay none ts pick) ||
       (flow.isNone && bfPlayOk s p c pay ts pick)) &&
     reactSpell s c) || ((flow.isNone && bfPlayOk s p c pay ts pick) && ambushPick s c ts)
 
@@ -1225,7 +1225,7 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {ts : List ObjId} {flow : Option Cost} {pick : SpellPick} : reactable s p c pay ts flow pick = true ↔
       (((castable s p c pay ts flow pick = true ∨
-        (flow = none ∧ ts = [] ∧ s.extraOk p c ts = true ∧ playable s p c pay none ts pick = true)) ∨
+        (flow = none ∧ ts = [] ∧ s.extraOk p c ts pick = true ∧ playable s p c pay none ts pick = true)) ∨
         (flow = none ∧ bfPlayOk s p c pay ts pick = true)) ∧
         reactSpell s c = true) ∨
         ((flow = none ∧ bfPlayOk s p c pay ts pick = true) ∧ ambushPick s c ts = true) := by
@@ -1451,7 +1451,7 @@ def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     (ts : List ObjId) (new : List Frame) (flow : Option Cost := none)
     (pick : SpellPick := .plain) : Option (GameState × List Event) :=
   if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick
-  else ((applyPlay s p c pay pick).bind (fun r => payExtra s c ts r)).map
+  else ((applyPlay s p c pay pick).bind (fun r => payExtra s c ts r (pick.xpPayer p))).map
     (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- What answering with a card does. -/
@@ -1461,7 +1461,7 @@ theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
       s' = { (castPay s c ts (s2, es2)).1 with pending := new }) ∨
     (∃ s1 es1 s2 es2, applyPlay s p c pay pick = some (s1, es1) ∧
-      payExtra s c ts (s1, es1) = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
+      payExtra s c ts (s1, es1) (pick.xpPayer p) = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
   split at h
   · exact Or.inl (castStep_cases h)
@@ -1560,7 +1560,7 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     · exact absurd h hk
     · obtain ⟨r, hr⟩ := applyPlay_isSome hwf
         (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h (applied := pick)
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r
+      obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r (pick.xpPayer p)
       refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
       simp [hr, hr']
 

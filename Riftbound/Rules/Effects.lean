@@ -1244,16 +1244,19 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
   let some base := terms.price.baseCost s p id d | return []
   let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
     s.extraCandidates p k)).map some)
+  let extras := extraObjects.map (·, SpellPick.plain) ++
+    (if (s.zone (.player p .legendZone)).isEmpty && (s.playXPCost p d).isSome
+      then [(none, .withXP .plain)] else [])
   let discardOptions := s.playDiscards p id
   let showOffOptions := none :: (s.showOffOptions p id d).map some
   let mut plans := []
   for battlefieldFees in [] :: s.battlefieldFeeChoices p id d do
     let requirements := terms.requirements ++ battlefieldFees.map (fun b => [some b])
     for battlefield in effectPlayLocations s p id d requirements do
-      for extraObject in extraObjects do
+      for (extraObject, extraPick) in extras do
         let extra := extraObject.toList
-        if !s.extraOk p id extra then continue
-        for cost in s.cutOptionsOf p id base extra do
+        if !s.extraOk p id extra extraPick then continue
+        for cost in s.cutOptionsOf p id base extra extraPick do
           for (total, picked) in s.playCostPlans p id d cost do
             let additionalPaid := d.additionalCost.isSome && picked.contains 0
             let accelerated := s.accelerateForPlay p d &&
@@ -1276,7 +1279,8 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
                           accelerated
                           battlefieldFees
                           gearDiscounts
-                          showOff }
+                          showOff
+                          spendXP := extraPick.paysXP }
                         plans := plan :: plans
   return plans.reverse.eraseDups
 
@@ -1305,6 +1309,7 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
   let pick := if plan.battlefieldFees.isEmpty then SpellPick.plain
     else .payForBattlefield plan.battlefieldFees ownCosts
   let pick := if plan.gearDiscounts.isEmpty then pick else .withGearDiscounts pick plan.gearDiscounts
+  let pick := if plan.spendXP then .withXP pick else pick
   let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
     paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
     extraPaid := ownCosts.length
@@ -1314,7 +1319,7 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
   let spent := spendGearDiscounts onBoard p plan.gearDiscounts
   let moved := (enterBase p d mark ready spent new, [Event.moved id new zone])
   let placed := placeAtBf s plan.battlefield.toList moved
-  let extra ← payExtra0 s id plan.extraObject.toList placed
+  let extra ← payExtra0 s id plan.extraObject.toList placed (if plan.spendXP then some p else none)
   let result := payPlayDiscard p id plan.discard extra
   some (result.1, new, s.showOffEvents p plan.showOff ++ paid.2 ++ result.2 ++ [Event.played p new])
 

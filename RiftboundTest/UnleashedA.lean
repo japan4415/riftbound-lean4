@@ -865,6 +865,75 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     (cast (s1.setXP s.me 2 |>.rich s.me) s.me c less [leg]).isNone &&
     paid.tired pu == some true && free.tired fu == some true
 
+-- In Limited, spending XP is an explicit choice independent of the destination and Ambush.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let empty := GameState.empty { ruleSet := .tournament .draft, mode := .duel } labState.cards
+  let s := { empty with
+    phase := .main, turn := 2, active := some p, pending := [.priority p], turnOrder := [p, q] }
+  let (s, c) ← put s p "UNL-178" .hand
+  let (s, bf) ← putBf s p "OGN-275"
+  let (s, _) ← putAt s p "OGN-051" bf
+  let funded := (s.fund p 6 (order := 1)).setXP p 4
+  let xp := SpellPick.withXP .plain
+  let paid : Action := ⟨.player p, .playCard c ⟨3, [.order]⟩ [] none none xp⟩
+  let full : Action := ⟨.player p, .playCard c ⟨6, [.order]⟩ []⟩
+  let (atBase, _) ← (step 100 funded paid).toOption
+  let (free, _) ← (step 100 funded full).toOption
+  let new ← atBase.firstOf p .base "UNL-178"
+  let (closed, _) ← onChain funded q "OGN-004"
+  let closed := { closed with pending := [.chainPass p 0, .priority p] }
+  let ambush : Action := ⟨.player p, .playCard c ⟨3, [.order]⟩ [bf] none none xp⟩
+  let (atBattlefield, _) ← (step 100 closed ambush).toOption
+  let there ← (atBattlefield.zone .battlefieldZone).find? (fun id =>
+    (atBattlefield.cardDef? id).any (·.id == cid "UNL-178"))
+  let terms : EffectPlayTerms := { price := .reduceEnergy 1 }
+  let plan ← (permanentPlayOptions funded p c terms).find? (fun plan =>
+    plan.spendXP && plan.battlefield == some bf)
+  let (fromEffect, effectCard, _) ← applyReducedPermanent funded p c plan
+  let (otherHand, borrowed) ← put (funded.setXP q 7) q "UNL-178" .hand
+  let borrowedPlan ← (permanentPlayOptions otherHand p borrowed terms).find? (fun plan =>
+    plan.spendXP && plan.battlefield == some bf)
+  let (playedBorrowed, _, _) ← applyReducedPermanent otherHand p borrowed borrowedPlan
+  return (funded.zone (.player p .legendZone)).isEmpty &&
+    (legalFrameActions funded).contains paid && (legalFrameActions funded).contains full &&
+    !(legalFrameActions (funded.setXP p 2)).contains paid &&
+    !(legalFrameActions (funded.setXP p 2)).contains ⟨.player p, .playCard c ⟨3, [.order]⟩ []⟩ &&
+    atBase.xpOf p == 1 && free.xpOf p == 4 && atBase.tired new == some true &&
+    (legalFrameActions closed).contains ambush && !(legalFrameActions closed).contains paid &&
+    atBattlefield.xpOf p == 1 && atBattlefield.tired there == some true &&
+    (atBattlefield.obj? there).any (·.loc == some bf) &&
+    plan.extraObject.isNone && plan.cost.energy == 2 && fromEffect.xpOf p == 1 &&
+    (fromEffect.obj? effectCard).any (fun o => o.exhausted && o.loc == some bf) &&
+    playedBorrowed.xpOf p == 1 && playedBorrowed.xpOf q == 7
+
+-- When the cost is paid, only the player who paid skips the Kill instruction in 2v2.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let opp : PlayerId := ⟨2⟩
+  let last : PlayerId := ⟨3⟩
+  let empty := GameState.empty { ruleSet := .tournament .sealed, mode := .teamDuel } labState.cards
+  let s := { empty with
+    phase := .main, turn := 2, active := some p, pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, c) ← put s p "UNL-164" .hand
+  let (s, own) ← put s p "OGN-135" .base
+  let (s, allyFirst) ← put s teammate "OGN-135" .base
+  let (s, allySecond) ← put s teammate "OGN-135" .base
+  let (s, foe) ← put s opp "OGN-135" .base
+  let (s, foeMate) ← put s last "OGN-135" .base
+  let s := ((s.rich p).setXP p 3).setXP teammate 5
+  let xp := SpellPick.withXP .plain
+  let says : Says := { obj := fun id => id == own || id == allySecond }
+  let paid ← cast s p c (payOf s c) [] says xp
+  let free ← cast s p c (payOf s c) [] says
+  return (paid.obj? own).isSome && (free.obj? own).isNone &&
+    (paid.obj? allyFirst).isSome && (paid.obj? allySecond).isNone &&
+    (paid.obj? foe).isNone && (paid.obj? foeMate).isNone &&
+    paid.xpOf p == 0 && paid.xpOf teammate == 5 && free.xpOf p == 3 &&
+    (cast (s.setXP p 2) p c (payOf s c) [] says xp).isNone
+
 -- Atakhan (UNL-170): killing a friendly unit as the additional cost makes it cost that unit's Energy
 -- and Power less
 #guard tun fun s => do

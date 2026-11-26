@@ -65,7 +65,19 @@ inductive SpellPick where
   | withSpellExhausts (pick : SpellPick) (groups : List (ObjId × List ObjId))
   /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
+  /-- Elect the card's printed additional XP cost. This choice names no object. -/
+  | withXP (pick : SpellPick)
 deriving DecidableEq, Repr, Hashable
+
+/-- Whether the play elects the printed XP cost. -/
+def SpellPick.paysXP : SpellPick → Bool
+  | .withXP _ => true
+  | _ => false
+
+/-- Remove the XP payment before inspecting the remaining finalization choices. -/
+def SpellPick.withoutXP : SpellPick → SpellPick
+  | .withXP pick => pick
+  | pick => pick
 
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
@@ -77,7 +89,7 @@ def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
-  | .withShowOff pick _ | .withGearDiscounts pick _ => pick.permanentCosts
+  | .withShowOff pick _ | .withGearDiscounts pick _ | .withXP pick => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
@@ -114,7 +126,7 @@ def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
   | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
       .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
-      .withSpellExhausts pick _ => pick.showOffObject
+      .withSpellExhausts pick _ | .withXP pick => pick.showOffObject
   | _ => none
 
 /-- The declared amount of a variable Power cost for this play. -/
@@ -131,6 +143,7 @@ def SpellPick.addVariablePower (pick : SpellPick) (amount : Option Nat) : SpellP
 /-- Passive sources whose optional Gear discount was elected. -/
 def SpellPick.gearDiscounts : SpellPick → List ObjId
   | .withGearDiscounts _ sources => sources
+  | .withXP pick => pick.gearDiscounts
   | _ => []
 
 /-- Remove the Gear discount declaration before inspecting other costs. -/
@@ -278,6 +291,8 @@ inductive PlayerSel where
   | eachPlayerFromNext
   /-- The owner of the object held in an effect's slot. -/
   | ownerOf (slot : Nat)
+  /-- Every player except the player the effect belongs to, including any teammate. -/
+  | eachOtherPlayer
 deriving DecidableEq, Repr, Hashable
 
 /-- A replacement still available for one damage event. Turn notes use their positions in

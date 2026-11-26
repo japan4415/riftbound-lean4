@@ -99,6 +99,7 @@ def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (Strin
     ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
     ("additionalPaid", if plan.additionalPaid then "true" else "false"),
     ("accelerated", if plan.accelerated then "true" else "false")] ++
+    (if plan.spendXP then [("xpPaid", "true")] else []) ++
     (if plan.battlefieldFees.isEmpty then [] else
       [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
     (if plan.gearDiscounts.isEmpty then [] else
@@ -179,6 +180,7 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
       permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
+  | .withXP pick => spellPickFields state c pick
   | .withGearDiscounts pick sources =>
     spellPickFields state c pick ++ [("gearDiscounts", jarr (sources.map (fun id => toString id.n)))]
   | .withPlayer pick player =>
@@ -414,14 +416,19 @@ def actionJson (a : Action) (frame : Option Frame := none)
         if (s.cardDef? played).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
       let hidden := state.any (fun s =>
         (s.obj? played).any (fun o => o.fromHidden || s.playingFromHidden o.owner c))
+      let hasXP := (state.bind (fun s => (s.cardDef? played).bind (·.playExtra))).any
+        (fun | (.spendXP _, _) => true | _ => false)
+      let legacyXP := hasXP && ts.length == 1 && battlefield.isNone
+      let xp := if hasXP || pick.paysXP then [("xpPaid", toString (pick.paysXP || legacyXP))] else []
+      let targets := if legacyXP then [] else ts
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
-        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+        ("targets", jarr (targets.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
-        spellPickFields state played pick ++ spellExecutionFields state played pick ts
+        xp ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
     | .standardMove u d pay => [("unit", toString u.n)] ++ moveFields d pay
     | .startGroupMove d pay => moveFields d pay
     | .assignPick u => [("unit", toString u.n)]
@@ -812,6 +819,9 @@ def cardJson (c : CardDef) : String :=
     ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
     ("ir", jstr (irText c))] ++
     c.additionalCost.toList.map (fun cost => ("optionalCost", costJson cost)) ++
+    (match c.playExtra with
+    | some (.spendXP n, _) => [("optionalXP", toString n)]
+    | _ => []) ++
     c.spellObjectCost.toList.map (fun cost => ("spellObjectCost", jstr (ctorName cost.1))) ++
     (if c.discardToPlay then [("discardToPlay", "true")] else []))
 

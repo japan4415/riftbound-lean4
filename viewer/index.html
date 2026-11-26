@@ -421,6 +421,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
   const boardCardLabel = (id) => visibleCardLabel(id, boardIds);
   const paymentChoices = (choice) => {
     const details = [];
+    const xp = typeof choice.card === 'number' ? cards[cardCode(choice.card, state)]?.optionalXP : undefined;
+    if (typeof xp === 'number') {
+      const paid = choice.xpPaid ?? (choice.extraObject != null);
+      details.push(paid ? xp + ' XP を払う' : 'XP を払わない');
+    }
     if (typeof choice.variablePower === 'number') details.push('追加 Power ' + choice.variablePower);
     if (choice.gearDiscounts?.length) {
       details.push(choice.gearDiscounts.map(boardCardLabel).join('、') + ' の割引を使う');
@@ -560,7 +565,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
         if (plan.accelerated || def?.keywords?.some(({ k }) => k === 'accelerate')) {
           parts.push(plan.accelerated ? 'Accelerate を使う' : 'Accelerate を見送る');
         }
-        if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        if (plan.extraObject != null && typeof def?.optionalXP !== 'number') {
+          parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        }
         if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
         const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
         return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
@@ -1004,7 +1011,8 @@ function renderStatic(i, st, prev, animate) {
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
   seatBox.forEach((e, p) => e.classList.toggle('active', active === p));
   for (let p = 0; p < trace.players; p++) {
-    pointsBox[p].textContent = st.points[p] + ' 点';
+    const xp = st.xp?.[p];
+    pointsBox[p].textContent = st.points[p] + ' 点' + (typeof xp === 'number' ? ' ・ ' + xp + ' XP' : '');
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
     const add = (key, label, usage) => {
       if (key !== 'energy' && !pool[key]) return;
@@ -1234,8 +1242,8 @@ function setLive(j) {
     let choice;
     if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
     else if (a.unitEnergyAdded != null) choice = [a.source, a.index, a.energy];
-    else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
-      a.accelerated, a.additionalCostPaid, a.discards, a.showOff];
+    else if (a.battlefieldFees?.length || a.xpPaid === true) choice = [a.card, a.playDestination, a.battlefieldFees,
+      a.accelerated, a.additionalCostPaid, a.xpPaid, a.discards, a.showOff];
     else return true;
     const payment = JSON.stringify([a.actor, a.kind, choice, a.pay, [...a.power].sort()]);
     if (shownPayments.has(payment)) return false;
@@ -1332,7 +1340,7 @@ function showMenu(list, title, x, y) {
   const f = m.querySelector('button'); if (f) f.focus();
 }
 function showsPayment(a) {
-  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
+  return a.xpPaid === true || Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
     typeof a.banishCostCard === 'number' || typeof a.variablePower === 'number' ||
     Boolean(a.gearDiscounts?.length || a.spellExhaustPayers?.length);
 }
