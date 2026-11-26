@@ -99,7 +99,7 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 外部の対局から記録を起こす場合は、アーカイブの `input` と同じ形の JSON を作り、`riftbound-replay record INPUT.json ARCHIVE.json` で照合用の記録を作る。`answers` にはシャッフル後のオブジェクト順、選択、支払い、時計やジャッジの決定を、適用された順に入れる。`observed` は直接観測した答え、`inferred` は根拠付きの推定、`unknown` は答えを確定できない箇所。推定を含むマッチは `exact: false` になり、`unknown` では該当する手で止まる。
 
-ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
+ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作と2v2の初期手番順の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
 
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 
@@ -115,13 +115,15 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 先手は交互に並んだ A/B の順序上のどの席からでも選べる（TR 603.7.c）。たとえば、第1チームの B が先手で第2チームの B が次なら `order` は 1、3、0、2。引き分け後は同じ4席の順序を使う。
 
+初期手番順を推定した場合は、`order` に推定した順を、`openingOrderEvidence` に `{"inferred":{"evidence":"映像は2人目の手番から始まり、以後の手番から推定"}}` のように根拠を記録する。この場合は `exact: false` になる。順序を確定できない場合は、`order: []` と `{"unknown":{"description":"初期手番が映っていない"}}` を記録する。照合は該当ゲームの開始前で止まる。直接観測した場合は `openingOrderEvidence` を省略する。
+
 2v2 Sealed の場合は `sealed.team0` と `sealed.team1` に、各チームが開封した8パックの中身を記録する（TR 603.6）。各ゲームの `sealedDecks` に4席の Limited デッキを入れる。プールにあるカードの枚数をチーム内で合算し、サイドボードの利用可否と Battlefield の使用履歴を確認する。Bo1 では各席に3枚の候補を登録する。Bo3 では Battlefield を出す席が選んだ1枚だけを登録し、操作列にはその候補を確定する `pick 0` を入れる。Bo3 の先手席は候補を空にできる。
 
 ゲーム途中にマッチ投了や合意の引き分けで終了した場合、最後のゲームの `ending` を `"matchEnded"` にする。そこまでの操作と終了時点の得点を照合し、そのゲームはマッチのゲーム勝数に加えない。
 
 2v2 のシングルエリミネーションも `elimination` で指定する。サドンデスで決まったゲームは `ending` に `{"suddenDeath":{"team":{"n":0}}}` の形で得点したチームを記録する。
 
-`record-team` と `verify-team` の出力には `exact` と `cardsFullyChecked` が含まれる。`exact` は推定された操作があるかどうかを示し、カードの実装状況は `cardsFullyChecked` と席別の `uncheckedCards` で確認する。
+`record-team` と `verify-team` の出力には `exact` と `cardsFullyChecked` が含まれる。`exact` は操作と初期手番順をすべて直接観測した場合に `true` になる。カードの実装状況は `cardsFullyChecked` と席別の `uncheckedCards` で確認する。
 
 `riftbound-replay view-team ARCHIVE.json TRACE.json` で検証済みの対局を閲覧用に変換できる。既存ビューアの「閲覧用 JSON」から `TRACE.json` を開くと、チームの所属、ゲーム勝数、招待や Battlefield の選択を追える。
 

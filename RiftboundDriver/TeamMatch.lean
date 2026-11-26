@@ -68,6 +68,8 @@ structure TeamGameRecord where
   chooser : Option PlayerId := none
   /-- All four seats in their actual turn order. -/
   order : List PlayerId
+  /-- Evidence when the starting order was not observed directly. -/
+  openingOrderEvidence? : Option ReplayOpeningOrderEvidence := none
   /-- The three Battlefield selections, keyed by the contributing seat (CR 491.5). -/
   battlefields : List (PlayerId × CardId)
   /-- The final shared points, for team 0 and team 1. -/
@@ -258,6 +260,7 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
   let mut used := ([], [])
   for (game, index) in input.games.toList.zipIdx do
     let next := do
+      if let some evidence := game.openingOrderEvidence? then evidence.check
       let afterTime ← gameStartsAfterTime state timed input.elimination?
       let config := replayGameConfig baseConfig state input.elimination?.isSome afterTime
       if afterTime && !game.timed then throw "a tiebreaker game starts with time already called"
@@ -356,7 +359,8 @@ private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
   let (summary, games) ← runTeamMatch input db fun config index game decks => do
     let replay : GameInputs := {
       decks, answers := game.answers,
-      chooser := game.chooser, openingOrder := some game.order }
+      chooser := game.chooser, openingOrder := some game.order,
+      openingOrderEvidence? := game.openingOrderEvidence? }
     let recorded ← match expected.bind (·[index]?) with
       | none => replay.record db config
       | some saved => do

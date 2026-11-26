@@ -49,16 +49,34 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
 
+/-- Evidence for the starting turn order supplied before a team game's answer stream. -/
+inductive ReplayOpeningOrderEvidence where
+  /-- The order was reconstructed from indirect evidence. -/
+  | inferred (evidence : String)
+  /-- The order could not be determined. -/
+  | unknown (description : String)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- Reject an undocumented inference or a starting order that could not be established. -/
+def ReplayOpeningOrderEvidence.check : ReplayOpeningOrderEvidence → Except String Unit
+  | .inferred evidence =>
+    if evidence.trimAscii.toString.isEmpty then
+      throw "an inferred starting turn order needs an explanation"
+    else pure ()
+  | .unknown description => throw s!"starting turn order is unobserved: {description}"
+
 /-- The data required to set up and replay one game. -/
 structure GameInputs where
   /-- The submitted decks for all seats, in seat order. -/
   decks : ReplayDecks
-  /-- Exact answers in the order they were applied. -/
+  /-- Recorded answers in the order they were applied. -/
   answers : Array ReplayAnswer
   /-- The seat entitled to choose first or second, when the match made such a choice. -/
   chooser : Option PlayerId := none
   /-- Four-seat tournament turn order determined before the engine shuffles the decks. -/
   openingOrder : Option (List PlayerId) := none
+  /-- Evidence when the team starting order was not observed directly. -/
+  openingOrderEvidence? : Option ReplayOpeningOrderEvidence := none
   /-- The original registrations when the event uses the optional Constructed Best of 1 setup.
   The game decks describe the configuration after the initial sideboard window (TR 406.1.h). -/
   bo1Setup? : Option (List ConstructedDeck) := none
@@ -102,7 +120,7 @@ structure ReplayGameResult where
   timed : Bool
   /-- The last turn number when play continued beyond the scheduled turns (TR 408.4.c.3). -/
   suddenDeathTurn? : Option Nat := none
-  /-- Whether all answers were directly observed. -/
+  /-- Whether all answers and the supplied starting turn order were directly observed. -/
   exact : Bool
   /-- Registered cards below `full`, in seat order. -/
   uncheckedCards : List (List (CardId × ImplStatus))
@@ -161,6 +179,9 @@ def sameRegisteredPool (old new : ConstructedDeck) : Bool :=
 put out the Legends and Battlefield candidates before committing the cards from the closed decks. -/
 def GameInputs.initial (input : GameInputs) (db : CardDB) (config : GameConfig) :
     Except String GameState := do
+  if let some evidence := input.openingOrderEvidence? then
+    unless config.mode.isTeamDuel do throw "starting turn order evidence requires a team game"
+    evidence.check
   let some registered := input.bo1Setup? | return ← input.decks.initial db config input.openingOrder
   unless config.mode == Mode.duel && config.ruleSet.tournamentFormat == some .constructed &&
       input.openingOrder.isNone do
@@ -285,7 +306,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
   let mut fields : List (PlayerId × CardId) := []
-  let mut exact := true
+  let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
     if let .inferred .. := answer then exact := false
     let (action, next, events) ← input.applyAnswer s answer (index + 1) fuel

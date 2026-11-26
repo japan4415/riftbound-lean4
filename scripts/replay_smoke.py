@@ -409,6 +409,28 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     steps = exported["games"][0]["steps"]
     assert any((row["action"] or {}).get("kind") == "inviteTeammate" for row in steps)
 
+    order_input = folder / "team-opening-order.json"
+    order_archive = folder / "team-opening-order-archive.json"
+    order_trace = folder / "team-opening-order-trace.json"
+    order_game = {**team_game, "openingOrderEvidence": {"inferred": {"evidence": "later turns show the order"}}}
+    order_record = {**team_record, "games": [order_game]}
+    order_input.write_text(json.dumps(order_record), encoding="utf-8")
+    order_summary = json.loads(command("record-team", order_input, order_archive))
+    assert order_summary == {**summary, "exact": False}
+    assert json.loads(command("verify-team", order_archive)) == order_summary
+    recorded_order = json.loads(order_archive.read_text(encoding="utf-8"))
+    recorded_direct = json.loads(team_archive.read_text(encoding="utf-8"))
+    assert recorded_order["games"][0]["checkpoints"] == recorded_direct["games"][0]["checkpoints"]
+    command("view-team", order_archive, order_trace)
+    assert not json.loads(order_trace.read_text(encoding="utf-8"))["exact"]
+    order_game["openingOrderEvidence"] = {"inferred": {"evidence": "  "}}
+    order_input.write_text(json.dumps(order_record), encoding="utf-8")
+    command("record-team", order_input, order_archive, error="an inferred starting turn order needs an explanation")
+    order_game.update(order=[], openingOrderEvidence={"unknown": {"description": "the opening was hidden"}})
+    order_input.write_text(json.dumps(order_record), encoding="utf-8")
+    command("record-team", order_input, order_archive,
+            error="team game 1: starting turn order is unobserved: the opening was hidden")
+
     last = team_game["answers"][-1]["observed"]["action"]
     team_game["answers"][-1] = {"inferred": {"action": last, "evidence": "team reported the concession"}}
     team_game["decks"] = [{**decks[0], "sideboard": [*decks[0]["sideboard"], {"code": "OGN-001"}]},
