@@ -64,6 +64,7 @@ public import Riftbound.Invariant.Resources
 public import Riftbound.Invariant.Clock
 public import Riftbound.Invariant.ClockRun
 public import Riftbound.Invariant.Cleanup
+public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.Draw
 public import Riftbound.Invariant.LimitedDraw
 public import Riftbound.Tournament.Format
