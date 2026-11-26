@@ -1783,28 +1783,66 @@ meta def t (f : GameState → Option Bool) : Bool :=
     return done.kwAmount u .shield == 3 && done.countIn s.me .trash "OGN-057" == 1
   | .error _ => none
 
--- Vi (OGN-036): recycle 1 from my Trash: +1 Might this turn; with an empty Trash nothing happens
+-- Vi's Recycle is paid before the Chain resolves. A second use needs another card,
+-- and its Might bonus stacks with the first for the turn.
 #guard t fun s => do
-  let (s1, v) ← put s s.me "OGN-036" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
-  let a ← activate s2 s.me v 0
-  -- with an empty Trash the ability cannot be used
-  return trash a + 1 == trash s2 && a.mightNow v == (s2.mightNow v).map (· + 1) &&
-    (activate (s1.setZone (.player s.me .trash) []) s.me v 0).isNone
+  let p := s.me
+  let q := s.you
+  let (s, vi) ← put s p "OGN-036" .base
+  let (s, enemy) ← put s q "OGN-004" .trash
+  let act : Action := ⟨.player p, .activate vi 0 ⟨0, []⟩ []⟩
+  let (s1, own) ← put s p "OGN-136" .trash
+  let (paying, declared) ← (step 100 s1 act).toOption
+  let (paid, events) ← (step 100 paying ⟨.player p, .choose own⟩).toOption
+  let done := settleChain {} 12 paid
+  let (more, _) ← put done p "OGN-001" .trash
+  let twice ← activate more p vi 0
+  return !(step 100 s act).isOk && !(step 100 paying ⟨.player p, .choose enemy⟩).isOk &&
+    declared.isEmpty && paid.zone (.player p .trash) == [] &&
+    !(paid.zone .chain).isEmpty && events.contains (.recycled p) &&
+    events.contains (.activated p vi 0 (some 0)) && !events.contains (.chosenByAbility p own) &&
+    paid.mightNow vi == s1.mightNow vi && !(step 100 done act).isOk &&
+    done.mightNow vi == (s1.mightNow vi).map (· + 1) &&
+    twice.mightNow vi == (s1.mightNow vi).map (· + 2)
 
--- Garbage Grabber (OGN-099): for 1 Energy and exhausting it, recycle 3 from my Trash and draw 1
+-- Garbage Grabber pays 1 Energy, exhausts, and recycles exactly 3 cards before anyone can
+-- respond. The random decision records the order, not any additional target or player action.
 #guard t fun s => do
-  let (s1, g) ← put s s.me "OGN-099" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-001" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
-  let a ← activate s4 s.me g 0 [] ⟨1, []⟩
-  let two := s3
-  -- with fewer than 3 cards in the Trash the ability cannot be used
-  return trash a == trash s4 - 3 && a.handN s.me == s4.handN s.me + 1 && a.tired g == some true &&
-    (activate two s.me g 0 [] ⟨1, []⟩).isNone && (activate a s.me g 0 [] ⟨1, []⟩).isNone
+  let p := s.me
+  let q := s.you
+  let (s, g) ← put s p "OGN-099" .base
+  let (s, enemy) ← put s q "OGN-016" .trash
+  let (s, a) ← put s p "OGN-136" .trash
+  let (s, b) ← put s p "OGN-001" .trash
+  let two := s.fund p 1
+  let (s, c) ← put s p "OGN-004" .trash
+  let (s, keep) ← put s p "OGN-010" .trash
+  let s := s.fund p 1
+  let act : Action := ⟨.player p, .activate g 0 ⟨1, []⟩ []⟩
+  let pick (state : GameState) (id : ObjId) := step 100 state ⟨.player p, .choose id⟩
+  let (paying, declared) ← (step 100 s act).toOption
+  let (one, selected) ← (pick paying a).toOption
+  let (twoPicked, _) ← (pick one b).toOption
+  let (waiting, _) ← (pick twoPicked c).toOption
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (paid, events) ← (step 100 waiting ⟨.chance, .arrange [c, a, b]⟩).toOption
+  let done := settleChain {} 12 paid
+  let deck := Zone.player p .mainDeck
+  let bottom := ((paid.zone deck).drop (s.zone deck).length).filterMap (fun id =>
+    (paid.cardDef? id).map (·.id))
+  let sequence := events.filter (fun | .recycled .. | .activated .. => true | _ => false)
+  return !(step 100 two act).isOk && !((legalFrameActions two).contains act) &&
+    (legalFrameActions s).contains act && !(step 100 paying ⟨.player q, .pass⟩).isOk &&
+    !(pick paying enemy).isOk && !(pick one a).isOk && selected.isEmpty &&
+    !declared.contains (.activated p g 0 (some 1)) && cards == [a, b, c] &&
+    !(step 100 waiting ⟨.player p, .arrange [c, a, b]⟩).isOk &&
+    !(step 100 waiting ⟨.chance, .arrange [c, a, keep]⟩).isOk &&
+    waiting.zone deck == s.zone deck && waiting.zone (.player p .trash) == s.zone (.player p .trash) &&
+    paid.pending.head?.any (fun | .chainPass .. => true | _ => false) &&
+    sequence == [.recycled p, .activated p g 0 (some 1)] && paid.tired g == some true &&
+    (paid.poolOf p).energy == 0 && paid.handN p == s.handN p &&
+    paid.zone (.player p .trash) == [keep] && paid.zone (.player q .trash) == [enemy] &&
+    bottom == [cid "OGN-004", cid "OGN-136", cid "OGN-001"] && done.handN p == s.handN p + 1
 
 -- Sett (OGN-164): buffed when played; spend the buff for +4 Might this turn (nothing without one)
 #guard t fun s => do

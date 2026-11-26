@@ -243,6 +243,10 @@ inductive Effect where
   | chooseTrashRecycle (side : Side) (count : Nat) (picked : List ObjId)
   /-- Continue a group Recycle with the chosen card still in its Trash. -/
   | recordTrashRecycle (side : Side) (count : Nat) (upTo : Bool) (picked : List ObjId)
+  /-- Report activation after paying its Recycle cost. Until then, the declared targets and
+  filters constrain which Trash cards may pay that cost (CR 357.3, 401.1). -/
+  | completeActivation (source : ObjId) (index : Nat) (baseEnergy : Option Nat)
+      (targets : List ObjId) (filters : FilterList)
   /-- Recycle an exact group selected during resolution. -/
   | finishTrashRecycle (picked : List ObjId)
   /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/

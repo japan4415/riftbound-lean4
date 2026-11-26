@@ -532,12 +532,10 @@ def SFD_019.meta : CardDef :=
 def SFD_019 : CardDef :=
   { SFD_019.meta with
 
-    abilities := [.activated [.pay ⟨1, [.domain .fury]⟩, .exhaustSelf] .normal
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [.ofType .unit]))
-          (.const 1))
-        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [.ofType .unit])),
-          .prim (.create "Mech" (.const 1) .atBase false)]) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.pay ⟨1, [.domain .fury]⟩,
+        .recycleFromTrash 1 (FilterList.ofList [.ofType .unit]), .exhaustSelf] .normal
+      (.of [] (.prim (.create "Mech" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-020
 /--
@@ -4424,18 +4422,16 @@ def SFD_150.meta : CardDef :=
 def SFD_150 : CardDef :=
   { SFD_150.meta with
 
-    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩] .normal
+    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩, .recycleFromTrash 2] .normal
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 2))
-          (.seqOf [.repeatN (.const 2) (.prim (.recycle (Selector.one .friendly .inTrash []))),
-            .prim (.attach .self (.slot 0))]) .nop)) .unlimited],
+        (.prim (.attach .self (.slot 0)))) .unlimited],
     grants := [.triggered (.onSelf .conquer)
         (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
           (.const 0) none)))) .unlimited,
       .triggered (.onSelf .hold)
         (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
           (.const 0) none)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-151
 /--

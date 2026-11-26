@@ -538,6 +538,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.groupMove ..) => [("choiceContext", jstr "groupMove")]
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.recordBanishReplay ..) _) => [("choiceContext", jstr "banishReplay")]
+        | some (.pickDo _ _ _ _ _ (.recordTrashRecycle ..) (.cons (.completeActivation ..) _)) =>
+          [("choiceContext", jstr "recycleTrashCost")]
         | some (.pickDo _ _ _ _ _ (.recordTrashRecycle ..) _) => [("choiceContext", jstr "recycleTrash")]
         | some (.pickDo _ _ _ _ _ .addReservedLegendPicked _) => [("choiceContext", jstr "reserveLegend")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]

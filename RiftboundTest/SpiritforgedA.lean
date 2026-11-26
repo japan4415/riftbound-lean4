@@ -1935,19 +1935,27 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let r3 := (killObj r2 u).1
   let r4 := settleChain {} 12 r3
   return r4.countIn s.me .base "SFD-062" == 0 && r4.countIn s.me .trash "SFD-062" == 1
--- Assembly Rig (SFD-019): pay 1 Fury, exhaust, recycle a unit from the Trash: a 3 Might Mech token
+-- Assembly Rig recycles an eligible Unit during payment, then plays a Mech when it resolves.
 #guard tsf fun s => do
-  let (s1, rig) ← put s s.me "SFD-019" .base
-  let (s2, _) ← put s1 s.me "OGN-051" .trash
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let a ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
-  let n ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
-  let tr (x : GameState) := (x.zone (.player s.me .trash)).length
-  return a.countNamed s.me .base "Mech" == 1 && a.countIn s.me .trash "OGN-051" == 0 &&
-    a.countIn s.me .trash "OGN-004" == 1 && a.tired rig == some true && tr a + 1 == tr s3 &&
-    a.deckN s.me == s3.deckN s.me + 1 && n.countNamed s.me .base "Mech" == 1 &&
-    (activate (s3.tire rig) s.me rig 0 [] ⟨1, [.fury]⟩).isNone &&
-    (activate (s1.fund s.me 5 5) s.me rig 0 [] ⟨1, [.fury]⟩).isNone && s2.deckN s.me > 0
+  let p := s.me
+  let (s, rig) ← put s p "SFD-019" .base
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, other) ← put s s.you "OGN-051" .trash
+  let act : Action := ⟨.player p, .activate rig 0 ⟨1, [.fury]⟩ []⟩
+  let funded := s.fund p 1 1
+  let (paying, _) ← (step 100 funded act).toOption
+  let pick (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let (paid, events) ← (step 100 paying (pick unit)).toOption
+  let done := settleChain {} 12 paid
+  let mech ← (done.zone (.player p .base)).find?
+    (fun id => (done.cardDef? id).any (·.name == "Mech"))
+  return (legalFrameActions paying).contains (pick unit) &&
+    !(step 100 paying (pick spell)).isOk && !(step 100 paying (pick other)).isOk &&
+    paid.zone (.player p .trash) == [spell] && events.contains (.recycled p) &&
+    paid.countNamed p .base "Mech" == 0 && paid.tired rig == some true &&
+    paid.deckN p == s.deckN p + 1 && done.mightNow mech == some 3 && done.tired mech == some true &&
+    (done.poolOf p).energy == 0 && (done.poolOf p).fury == 0
 
 -- Poro Snax (SFD-046): draw 1 when played; pay 1 Calm, exhaust, kill it: draw 1
 #guard tsf fun s => do
@@ -2069,7 +2077,7 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   return a.countIn s.me .base "SFD-T03" == 2 && a.countIn s.you .base "SFD-T03" == 1 &&
     n.countIn s.me .base "SFD-T03" == 0 && n.countIn s.you .base "SFD-T03" == 0
 
--- (review) Assembly Rig: with no unit in the Trash the ability cannot be used at all (a guard)
+-- Assembly Rig cannot be activated when its Trash lacks an eligible Unit.
 #guard tsf fun s => do
   let (s1, rig) ← put s s.me "SFD-019" .base
   let (s2, _) ← put s1 s.me "OGN-004" .trash
@@ -2712,10 +2720,16 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-150" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let r ← activate s4 s.me g 0 [u] ⟨0, [.chaos]⟩
-  return (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&
+  let (s3, first) ← put s2 s.me "OGN-004" .trash
+  let (s4, second) ← put s3 s.me "OGN-010" .trash
+  let waiting ← activate s4 s.me g 0 [u] ⟨0, [.chaos]⟩
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (paid, events) ← (step 100 waiting ⟨.chance, .arrange [second, first]⟩).toOption
+  let r := settleChain {} 12 paid
+  return cards.length == 2 && paid.zone (.player s.me .trash) == [] &&
+    (paid.obj? g).any (·.attached == none) &&
+    events.contains (.recycled s.me) && events.contains (.activated s.me g 0 (some 0)) &&
+    (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&
     (activate s3 s.me g 0 [u] ⟨0, [.chaos]⟩).isNone
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-216"

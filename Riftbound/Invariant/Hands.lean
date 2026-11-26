@@ -371,6 +371,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
+      have hm := (List.mem_append.mp hm).resolve_left
+        (fun h => nomatch activationRecycleFrames_play h)
       simp only [List.mem_cons] at hm
       rw [hp]
       rcases hm with h1 | h1
@@ -390,6 +392,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
+      have hm := (List.mem_append.mp hm).resolve_left
+        (fun h => nomatch activationRecycleFrames_play h)
       simp only [List.mem_cons] at hm
       rw [hp]
       rcases hm with h1 | h1 | h1
@@ -673,6 +677,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨d, costs, sp, body, lim, pc, grant, hturn, -⟩ := activatable_spec hl.2.1.1
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
     · rw [hpend] at hm
+      have hm := (List.mem_append.mp hm).resolve_left
+        (fun h => nomatch activationRecycleFrames_play h)
       simp only [List.mem_cons] at hm
       rw [hp]
       rcases hm with h1 | h1 | h1
@@ -786,6 +792,8 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
     rw [hpend] at hm
+    have hm := (List.mem_append.mp hm).resolve_left
+      (fun h => nomatch activationRecycleFrames_play h)
     rw [hp]
     simpa only [List.mem_cons, reduceCtorEq, false_or] using hm
   · rename_i guest rest c ab hp hk

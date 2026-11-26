@@ -328,6 +328,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
 def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
   | .killFriendly _ fs | .discardMatching _ fs | .exhaustFriendly fs
   | .killFriendlyPermanent fs | .banishFromTrash fs => FilterList.ok c fs
+  | .recycleFromTrash _ filters => FilterList.ok c filters
   | .energyDiscount cond amount => Condition.ok c cond && Amount.ok c amount
   | _ => true
 
@@ -394,7 +395,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .recycleFromTrash _ _ _ picked => picked.isEmpty
   | .playCard sel _ _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
-  | .chooseTrashRecycle .. | .recordTrashRecycle .. | .finishTrashRecycle .. |
+  | .chooseTrashRecycle .. | .recordTrashRecycle .. | .finishTrashRecycle .. | .completeActivation .. |
       .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |

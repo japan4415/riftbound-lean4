@@ -972,11 +972,9 @@ def OGN_036.meta : CardDef :=
 /-- Vi, Destructive. -/
 def OGN_036 : CardDef :=
   { OGN_036.meta with
-    abilities := [.activated [] .normal
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 1))
-        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [])), .grant .self (.mightPlus .it (.const 1)) .thisTurn]) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.activated [.recycleFromTrash 1] .normal
+      (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-037
 /--
@@ -2661,11 +2659,9 @@ def OGN_099.meta : CardDef :=
 /-- Garbage Grabber. -/
 def OGN_099 : CardDef :=
   { OGN_099.meta with
-    abilities := [.activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 3))
-        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [])), .prim (.recycle (Selector.one .friendly .inTrash [])), .prim (.recycle (Selector.one .friendly .inTrash [])),
-          .prim (.draw .you (.const 1))]) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.recycleFromTrash 3, .pay ⟨1, []⟩, .exhaustSelf] .normal
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-100
 /--

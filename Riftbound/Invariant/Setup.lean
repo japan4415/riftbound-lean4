@@ -573,7 +573,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s p src idx ts ++ [Frame.chainPass p 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp_all [Frame.isSetup])
   · rename_i p n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -581,7 +586,13 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s p src idx ts ++ [Frame.chainPass p 0, Frame.priority p])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hframe
+          rcases hframe with rfl | rfl <;> rfl)
   · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -710,7 +721,13 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s q src idx ts ++ [Frame.chainPass q 0, Frame.showdown bf q 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hframe
+          rcases hframe with rfl | rfl <;> rfl)
   · rename_i bf q n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -781,7 +798,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass guest 0]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s guest src idx ts ++ [Frame.chainPass guest 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp_all [Frame.isSetup])
   · rename_i guest rest c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])

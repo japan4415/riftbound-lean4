@@ -205,7 +205,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]
-    exact hb.swap rfl [Frame.chainPass p 0]
+    exact (hb.swap rfl [Frame.chainPass p 0]).prepend _
   · rename_i p n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
@@ -214,6 +214,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]
+    apply BottomOk.prepend _ _
     exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
       (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
   · rename_i p t more others funding rest i ts payment hp hk
@@ -369,7 +370,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]
-    exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
+    exact (hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]).prepend _
   · rename_i q c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
@@ -442,7 +443,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rw [hpend]
-    exact hb.swap rfl [Frame.chainPass guest 0]
+    exact (hb.swap rfl [Frame.chainPass guest 0]).prepend _
   · have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h

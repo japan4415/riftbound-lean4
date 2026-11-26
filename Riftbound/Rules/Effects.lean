@@ -5013,9 +5013,16 @@ theorem recycleTrashStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
 
 /-- Cards still eligible for a group Recycle without targeting (CR 417.6). -/
 def GameState.trashRecycleCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (side : Side) (picked : List ObjId) : List ObjId :=
-  let candidates := (s.pickCandidates p src env side .inTrash (.cons .physicalCard .nil) false).getD []
-  candidates.filter (fun id => !picked.contains id)
+    (side : Side) (excluded : List ObjId) (filters : FilterList) : List ObjId :=
+  let candidates :=
+    (s.pickCandidates p src env side .inTrash (.cons .physicalCard filters) false).getD []
+  candidates.filter (fun id => !excluded.contains id)
+
+/-- A pending activation keeps its target exclusions and filters through each Recycle choice.
+An ordinary resolution has no payment restrictions. -/
+def EffectList.trashPaymentRestrictions : EffectList → List ObjId × FilterList
+  | .cons (.completeActivation _ _ _ targets filters) _ => (targets, filters)
+  | _ => ([], .nil)
 
 /-- Mandatory locations imposed by resolving a Hidden spell or the play effect of a Unit
 that was played from hiding (CR 811.1.d.5). -/
@@ -6376,7 +6383,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .finishTrashRecycle picked => recycleTrashStep s p src env es picked.reverse
   | .recycleFromTrash side count upTo picked =>
     let done := Effect.finishTrashRecycle picked
-    match count, s.trashRecycleCandidates p src env side picked with
+    let (targets, filters) := es.trashPaymentRestrictions
+    match count, s.trashRecycleCandidates p src env side (picked ++ targets) filters with
     | 0, _ | _, [] => (s, [.run p src env (.cons done es)], [])
     | n + 1, first :: more =>
       if upTo then
@@ -6384,7 +6392,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       else
         (s, [.pickDo p src env first more (.recordTrashRecycle side n false picked) es], [])
   | .chooseTrashRecycle side count picked =>
-    match s.trashRecycleCandidates p src env side picked with
+    let (targets, filters) := es.trashPaymentRestrictions
+    match s.trashRecycleCandidates p src env side (picked ++ targets) filters with
     | [] => (s, [.run p src env (.cons (.finishTrashRecycle picked) es)], [])
     | first :: more =>
       (s, [.pickDo p src env first more (.recordTrashRecycle side count true picked) es], [])
@@ -6396,6 +6405,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
           (.cons (.recycleFromTrash side count upTo (id :: picked)) es)], [])
       else skip
     | _ => skip
+  | .completeActivation source index baseEnergy _ _ =>
+    (s, [.run p src env es], [.activated p source index baseEnergy])
   | .recycleRunes =>
     let runes := s.inPlay.filter (fun id =>
       (s.cardDef? id).any (·.hasType .rune) && (s.obj? id).any (·.controller == p))

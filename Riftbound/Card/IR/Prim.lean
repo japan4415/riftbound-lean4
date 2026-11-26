@@ -651,8 +651,8 @@ inductive AbilityCost where
   | exhaustFriendly (filters : FilterList)
   /-- Pay Energy and Power. -/
   | pay (c : Cost)
-  /-- Recycle cards from the Trash. -/
-  | recycleFromTrash (n : Nat)
+  /-- Recycle exactly this many matching cards from the controller's Trash (CR 417.3, 417.6). -/
+  | recycleFromTrash (count : Nat) (filters : FilterList := .nil)
   /-- Discard cards. -/
   | discard (n : Nat)
   /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/

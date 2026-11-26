@@ -11,8 +11,8 @@ Chain holds Spells and abilities in the order they were put there (CR 337, 340).
 an item, the players can answer it with a Reaction: a Spell with Reaction (CR 813), or an activated
 ability with the speed Reaction, and the Basic Rune abilities (CR 164.2, 430).
 
-The costs this model can pay are the exhaustion of the object and Energy with Power. An ability
-with any other cost cannot be used yet.
+Costs can include resources and supported Limited Actions, such as exhausting a permanent
+or recycling cards during finalization.
 -/
 
 @[expose] public section
@@ -81,10 +81,20 @@ def permanentCost : List AbilityCost → Option (PermanentCostKind × FilterList
 def costKills (costs : List AbilityCost) : Bool :=
   costs.any (fun c => match c with | .killFriendly _ _ => true | _ => false)
 
-/-- The objects eligible to pay a cost, which does not choose a target (CR 355.10.c). -/
+/-- The exact quantity and card filters of a Trash Recycle cost (CR 417.3). -/
+def activationRecycleCost (costs : List AbilityCost) : Option (Nat × FilterList) :=
+  costs.findSome? (fun
+    | .recycleFromTrash count filters => some (count, filters)
+    | _ => none)
+
+/-- The objects eligible to pay a cost, which does not choose a target (CR 355.10.c).
+An activation with a Trash Recycle cost also needs enough cards that can pay it (CR 417.3).
+Cards already chosen as targets cannot be moved away to pay a cost (CR 357.3). -/
 def GameState.activationCostObjects (s : GameState) (p : PlayerId) (src : ObjId)
-    (costs : List AbilityCost) : List (Option ObjId) :=
-  if costs.contains .killSelf then
+    (costs : List AbilityCost) (targets : List ObjId) : List (Option ObjId) :=
+  if (activationRecycleCost costs).any (fun (count, filters) =>
+      (s.trashRecycleCandidates p src {} .you targets filters).length < count) then []
+  else if costs.contains .killSelf then
     if s.inPlay.contains src then [none] else []
   else
     match permanentCost costs with
@@ -125,6 +135,8 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
     else none
   | .discard _ :: cs | .discardMatching _ _ :: cs =>
     if (discardCost cs).isNone then costPlan cs else none
+  | .recycleFromTrash .. :: cs =>
+    if (activationRecycleCost cs).isSome then none else costPlan cs
   | .disempowerSelf :: cs => costPlan cs
   | .energyDiscount _ _ :: cs => costPlan cs
   | _ :: _ => none
@@ -517,10 +529,8 @@ def GameState.usesAbilitiesOf (s : GameState) (p : PlayerId) (src : ObjId) : Boo
   (s.zone (.player p .base)).contains src || (s.zone (.player p .legendZone)).contains src ||
     (s.zone .battlefieldZone).contains src
 
-/-- The cost an ability pays when it resolves ("Recycle 3 from your trash: ...") is written as the
-first part of the effect, guarded by a condition: the ability cannot be used while the condition is
-false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
-cannot be answered yet, and does not stop the use. An ability that only plays a card to a
+/-- Check an ability's guard before use. A condition about the chosen objects cannot be answered
+yet, and does not stop the use. An ability that only plays a card to a
 Battlefield cannot be used while the opponents of its player play Units only to their Base (the
 play by a triggered ability goes to the Base instead). Also check explicit location restrictions
 whether a hidden card can be revealed, and whether the ability's text is active (CR 720). -/
@@ -747,7 +757,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
                 targetsOk s p src s.mightTable body.choices ts &&
                 (s.discardCostOk p src costs discards &&
                   ((s.playerTargetOptions p body.playerTarget).contains targetPlayer &&
-                    (s.activationCostObjects p src costs).contains costObject))
+                    (s.activationCostObjects p src costs ts).contains costObject))
           | none => false
         | _ => false
     | _, _ => false
@@ -806,21 +816,25 @@ theorem finalizeHiddenSpell_spec {s s' : GameState} {p : PlayerId} {src id : Obj
       simpa only [Pos.insert] using hs.zone_dst
   · simp at h
 
-/-- Put the finalized card or activated ability above the other Chain items. -/
+/-- Put the card or activated ability above the other Chain items. For an ability with a pending
+Recycle payment, its activation event will be emitted when the cost is paid (CR 401.1). -/
 def finalizeActivation (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (ts : List ObjId) (targetPlayer : Option PlayerId) (hiddenSpell : Bool)
-    (item : Object) (baseEnergy : Option Nat) : Option (GameState × List Event) :=
+    (item : Object) (baseEnergy : Option Nat) (recyclePending : Bool) :
+    Option (GameState × List Event) :=
   match finalizeHiddenSpell s p src ts targetPlayer hiddenSpell with
   | some (t, id) =>
     some (t, [Event.moved src id .chain, Event.played p id] ++ ts.map (Event.chosenBySpell p))
   | none => (addObject s item .chain).map (fun (t, _) =>
-    (t, [Event.activated p src idx baseEnergy]))
+    (t, if recyclePending then [] else [.activated p src idx baseEnergy]))
 
 /-- Finalization preserves the hands and the tracked game invariants. -/
 theorem finalizeActivation_spec {s s' : GameState} {p : PlayerId} {src : ObjId}
     {idx : Nat} {ts : List ObjId} {targetPlayer : Option PlayerId} {hiddenSpell : Bool}
-    {item : Object} {baseEnergy : Option Nat} {es : List Event} (hk : item.kind.phys? = none)
-    (h : finalizeActivation s p src idx ts targetPlayer hiddenSpell item baseEnergy = some (s', es)) :
+    {item : Object} {baseEnergy : Option Nat} {recyclePending : Bool} {es : List Event}
+    (hk : item.kind.phys? = none)
+    (h : finalizeActivation s p src idx ts targetPlayer hiddenSpell item baseEnergy recyclePending =
+      some (s', es)) :
     Safe s s' ∧ (∀ q, s'.zone (.player q .hand) = s.zone (.player q .hand)) ∧
       ∃ id, s'.zone .chain = id :: s.zone .chain := by
   unfold finalizeActivation at h
@@ -844,8 +858,8 @@ theorem finalizeActivation_spec {s s' : GameState} {p : PlayerId} {src : ObjId}
 /-- Finalizing a paid activation can always put an item in the Chain zone. -/
 theorem finalizeActivation_isSome (s : GameState) (p : PlayerId) (src : ObjId)
     (idx : Nat) (ts : List ObjId) (target : Option PlayerId) (hiddenSpell : Bool)
-    (item : Object) (baseEnergy : Option Nat) :
-    ∃ r, finalizeActivation s p src idx ts target hiddenSpell item baseEnergy = some r := by
+    (item : Object) (baseEnergy : Option Nat) (recyclePending : Bool) :
+    ∃ r, finalizeActivation s p src idx ts target hiddenSpell item baseEnergy recyclePending = some r := by
   unfold finalizeActivation
   split
   · exact ⟨_, rfl⟩
@@ -854,8 +868,8 @@ theorem finalizeActivation_isSome (s : GameState) (p : PlayerId) (src : ObjId)
     unfold addObject
     simp [hv]
 
-/-- Use an activated ability (CR 361, 363): pay, exhaust the object if the cost says so, and put
-the ability on the Chain with the objects chosen. -/
+/-- Pay the declared resources and other immediate costs of an ability and put its item on
+the Chain (CR 400, 401). The Recycle decision, if any, is handled by `activateStep`. -/
 def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := [])
     (targetPlayer : Option PlayerId := none) (costObject : Option ObjId := none) :
@@ -871,13 +885,15 @@ def applyActivate (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
       let paidState := (noted.modObj src used).setPool p pool
       let item := { abilityItem d.id idx src p ts with
         activationGrant := grant, abilityCopyStamp := copy, targetPlayer }
+      let recyclePending := (activationRecycleCost costs).any (fun (count, _) => count != 0)
       (finalizeActivation paidState p src idx ts targetPlayer
-        (costs.contains .fromHidden && d.hasType .spell) item (baseActivationEnergy costs)).map
+        (costs.contains .fromHidden && d.hasType .spell) item (baseActivationEnergy costs)
+        recyclePending).map
         (fun r => (r.1, paid.2 ++ r.2))
     | _ => none
   | _, _ => none
 
-/-- An activation pays its costs and then finalizes the item on the Chain. -/
+/-- The immediate payment and Chain placement preserve the tracked game properties. -/
 theorem applyActivate_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {costObject : Option ObjId} {es : List Event}
     (h : applyActivate s p src idx pay ts discards targetPlayer costObject = some (s', es)) :
@@ -1016,7 +1032,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
               change ∃ r, applyActivate paid p src idx pay ts discards targetPlayer costObject = some r
               unfold applyActivate
               simp only [hd', hs', ha']
-              obtain ⟨⟨t, events⟩, hf⟩ := finalizeActivation_isSome _ p src idx ts targetPlayer _ _ _
+              obtain ⟨⟨t, events⟩, hf⟩ := finalizeActivation_isSome _ p src idx ts targetPlayer _ _ _ _
               rw [hf]
               exact ⟨_, rfl⟩
         | passive _ _ => simp [ha] at h
@@ -1036,7 +1052,7 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
             targetsOk s p src s.mightTable body.choices ts = true ∧
             s.discardCostOk p src costs discards = true ∧
             targetPlayer ∈ s.playerTargetOptions p body.playerTarget ∧
-            costObject ∈ s.activationCostObjects p src costs ∧ ∃ o, s.obj? src = some o ∧
+            costObject ∈ s.activationCostObjects p src costs ts ∧ ∃ o, s.obj? src = some o ∧
               s.canUseAbilityOf p src o d = true := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
@@ -1116,7 +1132,7 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
                 | some (_, cs) => (cs.flatMap (Cost.payments d.domains)).eraseDups
                 | none => []).flatMap (fun pay =>
                   (s.playerTargetOptions p body.playerTarget).flatMap (fun targetPlayer =>
-                    (s.activationCostObjects p src costs).flatMap (fun costObject =>
+                    (s.activationCostObjects p src costs ts).flatMap (fun costObject =>
                       ((s.discardPayments p src costs).filter
                         (fun ds => activatable s p src idx pay ts open_ ds targetPlayer costObject)).flatMap
                           (fun ds => (activationBanisherOptions s src idx ts costObject).map
@@ -1306,12 +1322,46 @@ theorem mem_legalShowdownActivates (s : GameState) (p : PlayerId) (a : Action) :
     simp only [activatableSD, Bool.and_eq_true] at hact
     exact ⟨⟨src, idx, pay, ts, discards, targetPlayer, banisher, costObject, rfl, hact.1, hbanisher⟩, hact.2⟩
 
-/-- Use an ability, and put `new` on the stack in place of the frame that was answered. -/
+/-- A declared ability occupies the Chain as a pending item while its Recycle cost is paid.
+The player chooses the cards, then any required random ordering is recorded before the item's
+finalization and before anyone can respond (CR 401, 417.3, 417.5, 417.6). -/
+def activationRecycleFrames (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (ts : List ObjId) : List Frame :=
+  match s.activationAt src idx with
+  | some (_, .activated costs _ _ _) =>
+    match activationRecycleCost costs with
+    | some (n + 1, filters) =>
+      [.run p src {} (.cons (.recycleFromTrash .you (n + 1) false)
+        (.cons (.completeActivation src idx (baseActivationEnergy costs) ts filters) .nil))]
+    | _ => []
+  | _ => []
+
+theorem activationRecycleFrames_play {s : GameState} {p : PlayerId} {src : ObjId}
+    {idx : Nat} {ts : List ObjId} {f : Frame} (h : f ∈ activationRecycleFrames s p src idx ts) :
+    f.isPlay = true := by
+  unfold activationRecycleFrames at h
+  split at h
+  · split at h
+    · obtain rfl := List.mem_singleton.mp h
+      rfl
+    · simp at h
+  · simp at h
+
+theorem activationRecycleFrames_nonsetup {s : GameState} {p : PlayerId} {src : ObjId}
+    {idx : Nat} {ts : List ObjId} {f : Frame} (h : f ∈ activationRecycleFrames s p src idx ts) :
+    f.isSetup = false := by
+  have play := activationRecycleFrames_play h
+  cases f <;> simp_all [Frame.isPlay, Frame.isSetup]
+
+/-- Use an ability, and put `new` on the stack in place of the frame that was answered.
+A pending Recycle payment has its own decisions before priority resumes. -/
 def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
     (ts : List ObjId) (new : List Frame) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
     (banisher : Option PlayerId := none) (costObject : Option ObjId := none) :
     Option (GameState × List Event) :=
-  (applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject).map (fun r => ({ r.1 with pending := new }, r.2))
+  (applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher)
+    p src idx pay ts discards targetPlayer costObject).map
+    (fun r => ({ r.1 with pending := activationRecycleFrames s p src idx ts ++ new }, r.2))
 
 /-- Cast a Spell in answer to the Chain, and put `new` on the stack in place of the frame that was
 answered. -/
@@ -1327,7 +1377,7 @@ theorem activateStep_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {new : List Frame} {es : List Event}
     (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) :
     ∃ s2 es2, applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject = some (s2, es2) ∧
-      s' = { s2 with pending := new } := by
+      s' = { s2 with pending := activationRecycleFrames s p src idx ts ++ new } := by
   unfold activateStep at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -1363,7 +1413,8 @@ theorem activateStep_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {new : List Frame} {es : List Event}
     (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
+      s'.result = s.result ∧ s'.cards = s.cards ∧
+      s'.pending = activationRecycleFrames s p src idx ts ++ new := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
   have hs := ((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).trans (applyActivate_safe hm)).same
   have hc : (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher).cards = s.cards := by
