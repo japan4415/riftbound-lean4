@@ -181,5 +181,5 @@ Riftbound の公式 Tournament Rules のうち、形式化の対象にする部�
 5. **TR 505.6 を判断する主体**: 「誰もループを断たない」「維持するプレイヤーがいない」は、プレイヤーの宣言とジャッジの判断で決まる。モデルでは、ジャッジを行為者とする `Action` として外から受け取る（§5）。
 6. **有効なモードとフォーマットの組**: どの組に TR が手続きを定めているかは、TR 600 番台で確かめる（`GameConfig.Valid` の中身になる）。
 7. **Core Rules の 1v1 Match（CR 488）と TR のマッチ（TR 404）の関係**: 先手の決め方や Battlefield の扱いが両者でどう違うかは、マッチを実装するときに原文で確かめる。
-8. **Sealed と Draft の Domain Identity**: 実装は「宣言した任意の 3 ドメイン」だけにした（TR 602.4.a.3 の「任意の 1 ドメイン + Legend のドメイン」は未対応）。Legend の `domains` と宣言の関係は、原文で確かめてから足す。
+8. **Sealed と Draft の Domain Identity**: 任意の異なる 3 ドメイン、または Legend のドメインと任意の 1 ドメインの和集合を宣言できる。Legend がすでに持つドメインを選んだ場合、宣言にはそのドメインを 1 回だけ含める。 [公式 Tournament Rules 602.4.a.3・602.4.b.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/861752822d217edf37d9febaeaf77a7d924c1bb6.pdf#page=27)
 9. **Limited の Main Deck の枚数の数え方**: Chosen Champion を含めて数えた（Constructed と同じ）。原文で確かめる。Limited の Battlefield の枚数と「blank」Battlefield（TR 602.3.d）、Rune Deck の枚数（CR 103.4 の 12 枚を仮定した）も未確認。

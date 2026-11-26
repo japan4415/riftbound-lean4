@@ -44,6 +44,7 @@ def manaPlan : List AbilityCost → Option ManaCostPlan
     if plan.banish.isSome then none else some { plan with banish := some filters }
   | .pay cost :: cs =>
     (manaPlan cs).map (fun plan => { plan with cost := cost.plus plan.cost })
+  | .fromBattlefield :: cs => manaPlan cs
   | _ :: _ => none
 
 /-- Kill an object at once; a token that dies ceases to exist (CR 183): the step of the Cleanup that
@@ -81,7 +82,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
           | some plan =>
             timing && (!plan.exhaust || !o.exhausted) && (manaKind body).isSome &&
               limitOk s src (activationUseIndex idx grant) lim (s.activationCopyStamp src grant) &&
-              guardOk s p src body
+              guardOk s p src costs body
           | none => false
         | _ => false
     | _, _ => false

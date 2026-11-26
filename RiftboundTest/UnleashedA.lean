@@ -409,6 +409,43 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s4 ← activate s3 s.me l (firstAct s3 l) [] ⟨3, [.fury]⟩
   return before.isNone && s4.countIn s.me .trash "UNL-025" == 0 && s4.countIn s.me .base "UNL-025" == 1
 
+-- Xerath, Freed (UNL-026): activate at a Battlefield with Fury Power and damage a Unit
+-- at either location, even if Xerath is moved to Base before resolution.
+#guard tun fun s => do
+  let (s1, xerath) ← putAt s s.me "UNL-026" s.bf0
+  let (s2, home) ← put s1 s.me "UNL-026" .base
+  let (s3, foe) ← put s2 s.you "OGN-088" .base
+  let (s4, flash) ← put s3 s.me "OGS-011" .hand
+  let funded := s4.fund s.me 2 1
+  let pay : RunePool.Payment := ⟨0, [.fury]⟩
+  let (queued, _) ← (step 100 funded ⟨.player s.me, .activate xerath 0 pay [foe]⟩).toOption
+  let resolved ← cast queued s.me flash (payOf queued flash) [xerath]
+  return !(activatable funded s.me home 0 pay [foe] true) &&
+    !(activatable funded s.me xerath 0 ⟨0, []⟩ [foe] true) &&
+    (queued.poolOf s.me).fury == 0 && queued.tired xerath == some true &&
+    resolved.where? xerath == some (.player s.me .base) &&
+    (resolved.obj? foe).any (·.damage == 3)
+
+-- Ultrasoft Poro (UNL-160): both Deflect Birds have a normal Unit token destination,
+-- even when the Poro moves to Base in response.
+#guard tun fun s => do
+  let (s1, bf) ← putBf s s.me "OGN-275"
+  let (s2, _) ← putAt (s1.control s.me bf) s.me "OGN-088" bf
+  let (s3, poro) ← putAt s2 s.me "UNL-160" s.bf0
+  let (s4, home) ← put s3 s.me "UNL-160" .base
+  let (s5, flash) ← put s4 s.me "OGS-011" .hand
+  let (queued, _) ← (step 100 (s5.rich s.me) ⟨.player s.me, .activate poro 0 ⟨0, []⟩ []⟩).toOption
+  let atBase ← play queued s.me flash [poro]
+  let atField ← play queued s.me flash [poro] { yes := false }
+  let birds := (atField.zone .battlefieldZone).filter (fun id =>
+    (atField.cardDef? id).any (·.name == "Bird"))
+  return !(activatable s5 s.me home 0 ⟨0, []⟩ [] true) &&
+    atBase.where? poro == some (.player s.me .base) &&
+    atBase.countNamed s.me .base "Bird" == 2 && birds.length == 2 &&
+    birds.all (fun bird => (atField.obj? bird).any (·.loc == some bf) &&
+      atField.mightNow bird == some 1 && atField.deflectCost s.you [bird] == 1 &&
+      atField.tired bird == some true)
+
 -- Virtuoso (UNL-181): four spells banished with it go to the Trash, and its player channels
 -- and draws
 #guard tun fun s => do

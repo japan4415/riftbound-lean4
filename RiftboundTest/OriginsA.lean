@@ -3827,8 +3827,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     match a.kind with | .assignPick u => some u | _ => none)
   let hit ← activate s3 s.me cait 1 [foe] ⟨0, []⟩
   let (h1, home) ← put s s.me "OGN-068" .base
-  let (h2, _) ← putAt h1 s.you "OGN-088" bf
-  let away := activate h2 s.me home 1 [] ⟨0, []⟩
+  let (h2, homeTarget) ← putAt h1 s.you "OGN-088" bf
+  let away := activate h2 s.me home 1 [homeTarget] ⟨0, []⟩
   -- a Tank (Blitzcrank, OGN-067) is first, then the others, Caitlyn last; she can be the only one
   let (k1, tank) ← putAt s2 s.me "OGN-067" bf
   let order (acc : List ObjId) := (legalAssigns k1 bf s.you acc).filterMap (fun a =>
@@ -3847,6 +3847,22 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     order [] == [tank] && (order [tank]).contains other && !(order [tank]).contains cait &&
     lone == [.assignPick only] && hit.tired cait == some true &&
     (away.map (·.tired home)) != some (some true)
+
+-- The source's location is checked at activation. The target's is also checked at
+-- resolution (CR 381, 399, 359.3.e).
+#guard t fun s => do
+  let (s1, cait) ← putAt s s.me "OGN-068" s.bf0
+  let (s2, foe) ← putAt s1 s.you "OGN-088" s.bf0
+  let (s3, flash) ← put s2 s.me "OGS-011" .hand
+  let (s4, theirFlash) ← put s3 s.you "OGS-011" .hand
+  let (queued, _) ← (step 100 (s4.rich s.me) ⟨.player s.me, .activate cait 1 ⟨0, []⟩ [foe]⟩).toOption
+  let sourceMoves ← play queued s.me flash [cait]
+  let (passed, _) ← (step 100 queued ⟨.player s.me, .pass⟩).toOption
+  let targetMoves ← play passed s.you theirFlash [foe]
+  return sourceMoves.where? cait == some (.player s.me .base) &&
+    (sourceMoves.obj? foe).any (·.damage == 3) &&
+    targetMoves.where? foe == some (.player s.you .base) &&
+    (targetMoves.obj? foe).any (·.damage == 0)
 
 -- Tryndamere, Barbarian (OGN-034): when he conquers, if I assigned 5 or more excess damage to
 -- enemy units, I score 1 point (the damage beyond what is lethal, counted for the enemy units of

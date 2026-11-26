@@ -834,11 +834,11 @@ def UNL_026.meta : CardDef :=
 /-- Xerath. -/
 def UNL_026 : CardDef :=
   { UNL_026.meta with
-    abilities := [.activated [.pay ⟨0, [.domain .fury]⟩, .exhaustSelf] .normal
+    abilities := [.activated [.pay ⟨0, [.domain .fury]⟩, .exhaustSelf, .fromBattlefield] .normal
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-        (.ifThen (.matches .self .onBattlefield) (.prim (.deal (.slot 0) (.const 3))) .nop))
+        (.prim (.deal (.slot 0) (.const 3))))
         .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-027
 /--
@@ -4635,10 +4635,9 @@ def UNL_160.meta : CardDef :=
 /-- Ultrasoft Poro. -/
 def UNL_160 : CardDef :=
   { UNL_160.meta with
-    abilities := [.activated [.exhaustSelf] .normal
-      (.of [] (.ifThen (.matches .self .onBattlefield)
-        (.prim (.create "Bird" (.const 2) .atBase false)) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.exhaustSelf, .fromBattlefield] .normal
+      (.of [] (.repeatN (.const 2) (.prim (.playUnitToken "Bird")))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-161
 /--
@@ -6337,7 +6336,7 @@ def UNL_T02.meta : CardDef :=
 /-- Bird. -/
 def UNL_T02 : CardDef :=
   { UNL_T02.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-T03
 /--

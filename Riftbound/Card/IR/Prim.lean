@@ -680,6 +680,8 @@ inductive AbilityCost where
   | recycleSelf
   /-- Kill the object the ability belongs to ("Kill this"). -/
   | killSelf
+  /-- The source must be at a Battlefield when the ability is activated (CR 381, 399). -/
+  | fromBattlefield
 deriving DecidableEq, Repr, Hashable
 
 /-- A cost paid before a triggered ability becomes a finalized Chain item (CR 383.3.b). -/

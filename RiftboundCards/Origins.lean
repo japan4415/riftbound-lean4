@@ -1841,11 +1841,10 @@ def OGN_068.meta : CardDef :=
 def OGN_068 : CardDef :=
   { OGN_068.meta with
     abilities := [.passive .always [.assignedLast],
-      .activated [.exhaustSelf] .normal
+      .activated [.exhaustSelf, .fromBattlefield] .normal
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-          (.ifThen (.matches .self .onBattlefield)
-            (.prim (.deal (.slot 0) (.mightOf .self))) .nop)) .unlimited],
-    status := .drafted }
+          (.prim (.deal (.slot 0) (.mightOf .self)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-069
 /--

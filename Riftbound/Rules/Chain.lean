@@ -106,6 +106,7 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .fromHidden :: cs => costPlan cs
   | .fromChampionZone :: cs => costPlan cs
   | .fromTrash :: cs => costPlan cs
+  | .fromBattlefield :: cs => costPlan cs
   | .killFriendly _ _ :: cs => if (permanentCost cs).isNone then costPlan cs else none
   | .exhaustFriendly _ :: cs | .killFriendlyPermanent _ :: cs =>
     if (permanentCost cs).isNone && !cs.any (fun | .killFriendly .. => true | _ => false) then
@@ -500,12 +501,14 @@ first part of the effect, guarded by a condition: the ability cannot be used whi
 false, as an ability whose cost cannot be paid cannot be used. A condition about the chosen objects
 cannot be answered yet, and does not stop the use. An ability that only plays a card to a
 Battlefield cannot be used while the opponents of its player play Units only to their Base (the
-play by a triggered ability goes to the Base instead). A hidden card that cannot be revealed
-stops its ability, too. -/
-def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (body : EffectDef) : Bool :=
-  (match body.body with
-    | .ifThen c _ .nop => c.eval s p src {} != some false
-    | _ => true) && !s.hiddenBlocked p src &&
+play by a triggered ability goes to the Base instead). Also check explicit location restrictions
+and whether a hidden card can be revealed. -/
+def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCost)
+    (body : EffectDef) : Bool :=
+  (!costs.contains .fromBattlefield || Filter.holds s src {} src .onBattlefield == some true) &&
+    (match body.body with
+      | .ifThen c _ .nop => c.eval s p src {} != some false
+      | _ => true) && !s.hiddenBlocked p src &&
     -- the opponents of a Warden play Units only to their Base
     (match body.body with
       | .prim (.playTo _ _) => !s.oppHas p .oppsPlayToBaseOnly
@@ -519,7 +522,7 @@ only while the guard holds. -/
 def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
   match s.activationAt src idx with
   | some (_, .activated costs _ body _) =>
-    (guardOk s p src body && (!costs.contains .disempowerSelf ||
+    (guardOk s p src costs body && (!costs.contains .disempowerSelf ||
       (s.obj? src).any (fun o => 0 < o.empowerCount))) &&
       (if costs.contains .fromHand then
         -- an ability that plays the card to a Battlefield is a play: "can't play" stops it
