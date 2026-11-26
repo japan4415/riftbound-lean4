@@ -134,6 +134,8 @@ structure GameState where
   combat : Option CombatParticipation := none
   /-- Seat withdrawals do not change zone numbering or the original turn order (CR 652.5). -/
   departures : SeatDepartures := {}
+  /-- Public XP by seat. A missing player has 0 (CR 729, 732). -/
+  experience : Std.ExtTreeMap Nat Nat := {}
 deriving DecidableEq
 
 /-- Game archives hashed the printed state before withdrawals were added. Preserve that format
@@ -156,6 +158,8 @@ instance : Repr GameState where
       field "extraTurnsTaken" (repr s.extraTurnsTaken), field "combat" (repr s.combat)]
     let fields := if s.departures.seats.isEmpty && s.departures.skippedTurns == 0 then fields
       else fields ++ [field "departures" (repr s.departures)]
+    let fields := if s.experience.isEmpty then fields
+      else fields ++ [field "experience" (repr s.experience)]
     Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Every zone of a game with `n` players. -/

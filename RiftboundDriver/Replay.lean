@@ -435,10 +435,20 @@ def ReplayDecks.uncheckedCards (decks : ReplayDecks) (db : CardDB) :
     let card ← db.find? id
     if card.status == .full then none else some (id, card.status)))
 
+/-- Encode XP in the old legend field when the seat has a Legend, preserving existing
+checkpoints for games where XP was tracked correctly. Seats without a Legend keep the XP field. -/
+private def replayXP (s : GameState) : GameState :=
+  if s.experience.isEmpty then s else
+    s.players.foldl (fun state p =>
+      match s.xpOf p, (s.zone (.player p .legendZone)).head? with
+      | n + 1, some legend =>
+        (state.modObj legend (fun o => { o with xp := n + 1 })).setXP p 0
+      | _, _ => state) s
+
 /-- Capture the state fingerprint and the events that the engine actually returned. -/
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
-  ⟨toString (hash (reprStr { s with cards := ⟨[]⟩ })), events⟩
+  ⟨toString (hash (reprStr (replayXP { s with cards := ⟨[]⟩ }))), events⟩
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=

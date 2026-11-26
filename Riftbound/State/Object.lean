@@ -174,8 +174,7 @@ structure Object where
   empowerCount : Nat := 0
   /-- Whether this object was Empowered before it last left the Board (CR 828). -/
   leftEmpowered : Bool := false
-  /-- For a Legend: the XP of its player (CR 728). XP is not an object; the model keeps it with the
-  player's Legend. -/
+  /-- Legacy replay fingerprint field. Live XP is stored by seat in `GameState`. -/
   xp : Nat := 0
   /-- Whether an additional cost was paid when the card was played: Repeat does the effect of a
   Spell twice (CR 820), Accelerate lets a Unit enter ready (CR 805), and a card can ask "if you

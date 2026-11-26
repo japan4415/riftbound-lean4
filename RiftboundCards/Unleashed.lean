@@ -44,14 +44,8 @@ def ivernLook : Effect :=
 /-- Predict 1: look at the top card of the Main Deck, and may recycle it. -/
 def predict1 : Effect := .seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]
 
-/-- Predict 2: look at the top two cards; recycle any of them, and put the rest back in any order
-(the player picks one of the five outcomes). -/
-def predict2 : Effect :=
-  .seqOf [.prim (.lookTop 2),
-    .eitherOf (EffectList.ofList
-      [.nop, .prim (.swapTop .you), .prim (.recycleTop .you),
-       .seqOf [.prim (.swapTop .you), .prim (.recycleTop .you)],
-       .seqOf [.prim (.recycleTop .you), .prim (.recycleTop .you)]])]
+/-- Open the private Predict decision and resolve the kept and recycled cards. -/
+def predict2 : Effect := .prim (.predict (.const 2))
 
 /-- "Spend `n` XP>" then the effect: it cannot be used without the XP. -/
 def spendXpThen (n : Nat) (e : Effect) : Effect :=
@@ -1878,7 +1872,7 @@ def UNL_062.meta : CardDef :=
 def UNL_062 : CardDef :=
   { UNL_062.meta with
     abilities := [.triggered (.onSelf .die) (.of [] predict2) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-063
 /--
@@ -3938,10 +3932,10 @@ def UNL_136.meta : CardDef :=
 def UNL_136 : CardDef :=
   { UNL_136.meta with
     abilities := [.passive .always [.entersExhausted],
-      .activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
-        (.of [] (.seqOf [.prim (.kill .self), predict2, .prim (.draw .you (.const 1)),
+      .activated [.pay ⟨1, []⟩, .exhaustSelf, .killSelf] .normal
+        (.of [] (.seqOf [predict2, .prim (.draw .you (.const 1)),
           .prim (.gainXP .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-137
 /--

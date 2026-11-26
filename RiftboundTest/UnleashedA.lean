@@ -44,12 +44,6 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   let toBase ← play s2 s.me c [] { pick := fun ts => ts == [e] }
   return (toBf.obj? e).any (·.damage == 2) && (toBase.obj? e).any (·.damage == 0)
 
-/-- The state where the legend of the player has `n` XP. -/
-meta def withXPOf (s : GameState) (p : PlayerId) (n : Nat) : Option GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ => some (s.modObj l (fun o => { o with xp := n }))
-  | [] => none
-
 /-- The place of the first activated ability of the card. -/
 meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   ((s.cardDef? u).map (fun d => d.fullAbilities.findIdx (fun a =>
@@ -77,12 +71,74 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let g ← s2.firstOf s.me .base "UNL-136"
   return s2.tired g == some true
 
+-- Bloom pays Kill and Exhaust during finalization. Predict is private, and
+-- choosing the kept cards in reverse order changes which card is drawn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bloom) ← put s p "UNL-136" .base
+  let deck := Zone.player p .mainDeck
+  let cards := s.zone deck
+  let first ← cards[0]?
+  let second ← cards[1]?
+  let third ← cards[2]?
+  let index := firstAct s bloom
+  let action : Action := ⟨.player p, .activate bloom index ⟨1, []⟩ []⟩
+  let spent := s.fund p 1
+  let (used, events) ← (step 100 spent action).toOption
+  let item ← (used.zone .chain).head?
+  let destroyed ← used.firstOf p .trash "UNL-136"
+  let countered := (counterObj used item).1
+  let (passed, _) ← (step 100 used ⟨.player p, .pass⟩).toOption
+  let ((predicting, looked), disclosures) ← (stepWithDisclosures 100 passed ⟨.player q, .pass⟩).toOption
+  let (keepSecond, _) ← (step 100 predicting ⟨.player p, .predictPick second false⟩).toOption
+  let (kept, draws) ← (step 100 keepSecond ⟨.player p, .predictPick first false⟩).toOption
+  let (recycleFirst, _) ← (step 100 predicting ⟨.player p, .predictPick first true⟩).toOption
+  let (shuffling, _) ← (step 100 recycleFirst ⟨.player p, .predictPick second true⟩).toOption
+  let (recycled, afterShuffle) ← (step 100 shuffling ⟨.chance, .arrange [second, first]⟩).toOption
+  let drew (es : List Event) (id : ObjId) := es.any (fun
+    | .moved old _ (.player player .hand) => old == id && player == p
+    | _ => false)
+  return (legalFrameActions spent).contains action &&
+    !(legalFrameActions (spent.tire bloom)).contains action &&
+    !(legalFrameActions (s.fund p 0)).contains action &&
+    (used.obj? bloom).isNone && used.countIn p .trash "UNL-136" == 1 &&
+    events.contains (.moved bloom destroyed (.player p .trash)) &&
+    events.contains (.died destroyed p) &&
+    (used.poolOf p).energy == 0 && used.xpOf p == s.xpOf p &&
+    countered.countIn p .trash "UNL-136" == 1 && countered.handN p == s.handN p &&
+    looked == [Event.lookedAt p first, Event.lookedAt p second] &&
+    disclosures.length == 2 && disclosures.all (fun d => d.visibleTo p && !d.visibleTo q) &&
+    drew draws second && (kept.zone deck).head? == some first && kept.xpOf p == s.xpOf p + 1 &&
+    shuffling.handN p == s.handN p && shuffling.xpOf p == s.xpOf p &&
+    (step 100 shuffling ⟨.chance, .arrange [first, first]⟩).toOption.isNone &&
+    drew afterShuffle third && (recycled.zone deck).reverse.take 2 == [first, second] &&
+    recycled.handN p == s.handN p + 1 && recycled.xpOf p == s.xpOf p + 1
+
+-- Dramatic Visionary's Deathknell presents the same private two-card decision.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← put s p "UNL-062" .base
+  let deck := Zone.player p .mainDeck
+  let first ← (s.zone deck)[0]?
+  let second ← (s.zone deck)[1]?
+  let (dead, events) := killOrSave s unit
+  let predicting ← fire dead events
+  let (keepSecond, _) ← (step 100 predicting ⟨.player p, .predictPick second false⟩).toOption
+  let (done, _) ← (step 100 keepSecond ⟨.player p, .predictPick first false⟩).toOption
+  return (predicting.resolutionZoneCardFaces p deck).any (fun faces =>
+    (faces.take 2).all Option.isSome) &&
+    predicting.zoneView q deck == dead.zoneView q deck &&
+    predicting.countIn p .trash "UNL-062" == 1 && done.handN p == s.handN p &&
+    (done.zone deck).take 2 == [second, first]
+
 -- Crowd Favorite (UNL-102): spend 2 XP to buff it; not without the XP
 #guard tun fun s => do
   let (s1, u) ← put s s.me "UNL-102" .base
-  let s2 ← withXPOf s1 s.me 2
+  let s2 := s1.setXP s.me 2
   let s3 ← activate s2 s.me u (firstAct s2 u)
-  let s4 ← withXPOf s1 s.me 1
+  let s4 := s1.setXP s.me 1
   let s5 := activate s4 s.me u (firstAct s4 u)
   return ((s3.obj? u).any (·.buffed)) && s3.xpOf s.me == 0 &&
     (match s5 with | none => true | some t => !((t.obj? u).any (·.buffed)))
@@ -664,8 +720,8 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s1, u) ← put s s.me "OGN-135" .base
   let (s2, g) ← put s1 s.me "UNL-039" .base
   let s3 := s2.modObj g (fun o => { o with attached := some u })
-  let lo ← withXPOf s3 s.me 2
-  let hi ← withXPOf s3 s.me 3
+  let lo := s3.setXP s.me 2
+  let hi := s3.setXP s.me 3
   return lo.mightNow u == (s2.mightNow u).map (· + 1) && hi.mightNow u == (s2.mightNow u).map (· + 2)
 
 -- Ivern (UNL-051): when the unit it draws is a Poro (or another pet), a friendly unit is buffed
@@ -783,7 +839,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s1, c) ← put s s.me "UNL-164" .hand
   let (s2, u) ← put s1 s.me "OGN-135" .base
   let (s3, e) ← put s2 s.you "OGN-135" .base
-  let s4 ← withXPOf s3 s.me 3
+  let s4 := s3.setXP s.me 3
   let leg ← (s4.zone (.player s.me .legendZone)).head?
   let paid ← play s4 s.me c [leg]
   let free ← play s4 s.me c []
@@ -796,7 +852,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
 -- (and only then); not paid, the full cost, and no XP is spent
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-178" .hand
-  let s2 ← withXPOf s1 s.me 3
+  let s2 := s1.setXP s.me 3
   let leg ← (s2.zone (.player s.me .legendZone)).head?
   let less : RunePool.Payment := ⟨3, [.order]⟩
   let full : RunePool.Payment := ⟨6, [.order]⟩
@@ -806,7 +862,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let fu ← free.firstOf s.me .base "UNL-178"
   return paid.xpOf s.me == 0 && free.xpOf s.me == 3 &&
     (cast (s2.rich s.me) s.me c less []).isNone &&
-    (cast ((withXPOf s1 s.me 2).getD s1 |>.rich s.me) s.me c less [leg]).isNone &&
+    (cast (s1.setXP s.me 2 |>.rich s.me) s.me c less [leg]).isNone &&
     paid.tired pu == some true && free.tired fu == some true
 
 -- Atakhan (UNL-170): killing a friendly unit as the additional cost makes it cost that unit's Energy
@@ -832,8 +888,8 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s1, c) ← put s s.me "UNL-140" .hand
   let (s2, small) ← putAt s1 s.you "OGN-135" s.bf0
   let (s3, big) ← putAt s2 s.you "UNL-170" s.bf0
-  let rich ← withXPOf s3 s.me 5
-  let poor ← withXPOf s3 s.me 4
+  let rich := s3.setXP s.me 5
+  let poor := s3.setXP s.me 4
   let a ← play rich s.me c [small]
   let b ← play rich s.me c [big]
   let bigMightIsOver := (s3.mightNow big).getD 0 > 3
@@ -966,7 +1022,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (s, second) ← put s p "OGN-135" .base
   let (s, sword) ← put s p "UNL-039" .base
   let equipped ← activate s p sword 0 [first] ⟨0, [.calm]⟩
-  let leveled ← withXPOf equipped p 3
+  let leveled := equipped.setXP p 3
   return equipped.mightNow first == (s.mightNow first).map (· + 1) &&
     leveled.mightNow first == (s.mightNow first).map (· + 2) &&
     leveled.mightNow second == s.mightNow second &&

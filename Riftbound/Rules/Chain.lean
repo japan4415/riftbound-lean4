@@ -77,18 +77,25 @@ def permanentCost : List AbilityCost → Option (PermanentCostKind × FilterList
     | .killFriendlyPermanent filters => some (.kill, filters)
     | _ => none)
 
+/-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
+def costKills (costs : List AbilityCost) : Bool :=
+  costs.any (fun c => match c with | .killFriendly _ _ => true | _ => false)
+
 /-- The objects eligible to pay a cost, which does not choose a target (CR 355.10.c). -/
 def GameState.activationCostObjects (s : GameState) (p : PlayerId) (src : ObjId)
     (costs : List AbilityCost) : List (Option ObjId) :=
-  match permanentCost costs with
-  | none => [none]
-  | some (kind, filters) =>
-    let env : Env := { passMight := s.mightTable }
-    let objects := (s.pickCandidates p src env .friendly .anywhere filters false).getD []
-    (objects.filter (fun id => match kind with
-      | .kill => true
-      | .exhaust => (!costs.contains .exhaustSelf || src != id) &&
-          (s.obj? id).any (fun o => !o.exhausted))).map some
+  if costs.contains .killSelf then
+    if s.inPlay.contains src then [none] else []
+  else
+    match permanentCost costs with
+    | none => [none]
+    | some (kind, filters) =>
+      let env : Env := { passMight := s.mightTable }
+      let objects := (s.pickCandidates p src env .friendly .anywhere filters false).getD []
+      (objects.filter (fun id => match kind with
+        | .kill => true
+        | .exhaust => (!costs.contains .exhaustSelf || src != id) &&
+            (s.obj? id).any (fun o => !o.exhausted))).map some
 
 /-- The costs of an ability the model can pay: whether to exhaust the object, and the Energy and
 Power to pay. `none` for unsupported costs or multiple clauses of the same payment kind. -/
@@ -107,9 +114,13 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
   | .fromChampionZone :: cs => costPlan cs
   | .fromTrash :: cs => costPlan cs
   | .fromBattlefield :: cs => costPlan cs
-  | .killFriendly _ _ :: cs => if (permanentCost cs).isNone then costPlan cs else none
+  | .killSelf :: cs =>
+    if (permanentCost cs).isNone && !costKills cs && !cs.contains .killSelf then costPlan cs
+    else none
+  | .killFriendly _ _ :: cs =>
+    if (permanentCost cs).isNone && !cs.contains .killSelf then costPlan cs else none
   | .exhaustFriendly _ :: cs | .killFriendlyPermanent _ :: cs =>
-    if (permanentCost cs).isNone && !cs.any (fun | .killFriendly .. => true | _ => false) then
+    if (permanentCost cs).isNone && !costKills cs && !cs.contains .killSelf then
       costPlan cs
     else none
   | .discard _ :: cs | .discardMatching _ _ :: cs =>
@@ -202,19 +213,29 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
           s.nextUnitDiscount p != (0, 0) then s.targetCostOptions p src targets adjusted
       else [adjusted])))
 
-/-- Whether the costs kill a friendly unit: the last object chosen is the one. -/
-def costKills (costs : List AbilityCost) : Bool :=
-  costs.any (fun c => match c with | .killFriendly _ _ => true | _ => false)
+/-- Identify the fixed or selected permanent that pays this cost. -/
+def activationPermanentPayment (costs : List AbilityCost) (src : ObjId) (choice : Option ObjId) :
+    Option (PermanentCostKind × ObjId) :=
+  if costs.contains .killSelf then some (.kill, src)
+  else do
+    let (kind, _) ← permanentCost costs
+    let id ← choice
+    pure (kind, id)
 
-/-- The Banish replacement choices for the friendly Unit selected as the activation's cost. -/
-def activationBanisherOptions (s : GameState) (src : ObjId) (idx : Nat)
-    (ts : List ObjId) (costObject : Option ObjId := none) : List (Option PlayerId) :=
+/-- The activation's Kill cost, for replacement choices before committing payment. -/
+def activationKillVictim (s : GameState) (src : ObjId) (idx : Nat)
+    (ts : List ObjId) (costObject : Option ObjId) : Option ObjId :=
   match s.activationAt src idx with
   | some (_, .activated costs _ _ _) =>
-    let victim := if (permanentCost costs).any (fun x => decide (x.1 = .kill)) then costObject
-      else if costKills costs then ts.getLast? else none
-    victim.elim [none] s.deathBanisherOptions
-  | _ => [none]
+    match activationPermanentPayment costs src costObject with
+    | some (.kill, id) => some id
+    | _ => if costKills costs then ts.getLast? else none
+  | _ => none
+
+/-- The Banish replacement choices for a permanent killed as an activation cost. -/
+def activationBanisherOptions (s : GameState) (src : ObjId) (idx : Nat)
+    (ts : List ObjId) (costObject : Option ObjId := none) : List (Option PlayerId) :=
+  (activationKillVictim s src idx ts costObject).elim [none] s.deathBanisherOptions
 
 /-- Carry a declared choice into cost payment without changing the board or resources. -/
 def noteActivationBanisher (s : GameState) (ts : List ObjId) (banisher : Option PlayerId) : GameState :=
@@ -396,10 +417,10 @@ theorem killForActivation_zone {s : GameState} (hwf : s.WF) (p : PlayerId)
 /-- Pay the action on the selected permanent at the start of the activation. -/
 def payActivationObject (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCost)
     (id : Option ObjId) : GameState × List Event :=
-  match permanentCost costs, id with
-  | some (.exhaust, _), some id => setExhausted true s id
-  | some (.kill, _), some id => killForActivation s p src id (costs.contains .exhaustSelf)
-  | _, _ => (s, [])
+  match activationPermanentPayment costs src id with
+  | some (.exhaust, id) => setExhausted true s id
+  | some (.kill, id) => killForActivation s p src id (costs.contains .exhaustSelf)
+  | none => (s, [])
 
 /-- The separate permanent cost preserves invariants. -/
 theorem payActivationObject_safe (s : GameState) (p : PlayerId) (src : ObjId)
@@ -950,7 +971,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
     {pay : RunePool.Payment} {ts discards : List ObjId}
     {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards targetPlayer costObject = true) :
-    ∃ r, applyActivate (noteActivationBanisher s (ts ++ costObject.toList) banisher) p src idx pay ts discards targetPlayer costObject = some r := by
+    ∃ r, applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject = some r := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨-, h⟩ := h
@@ -982,7 +1003,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
             | none => rw [hsf] at hpool; simp at hpool
             | some pool =>
               have hs := GameState.spendFor_eq_some hsf
-              let paid := noteActivationBanisher s (ts ++ costObject.toList) banisher
+              let paid := noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher
               have hd' : paid.cardDef? src = some d := by
                 unfold paid noteActivationBanisher
                 split <;> exact hd
@@ -1290,7 +1311,7 @@ def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay :
     (ts : List ObjId) (new : List Frame) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
     (banisher : Option PlayerId := none) (costObject : Option ObjId := none) :
     Option (GameState × List Event) :=
-  (applyActivate (noteActivationBanisher s (ts ++ costObject.toList) banisher) p src idx pay ts discards targetPlayer costObject).map (fun r => ({ r.1 with pending := new }, r.2))
+  (applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject).map (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- Cast a Spell in answer to the Chain, and put `new` on the stack in place of the frame that was
 answered. -/
@@ -1305,7 +1326,7 @@ def castStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
 theorem activateStep_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {new : List Frame} {es : List Event}
     (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) :
-    ∃ s2 es2, applyActivate (noteActivationBanisher s (ts ++ costObject.toList) banisher) p src idx pay ts discards targetPlayer costObject = some (s2, es2) ∧
+    ∃ s2 es2, applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject = some (s2, es2) ∧
       s' = { s2 with pending := new } := by
   unfold activateStep at h
   simp only [Option.map_eq_some_iff] at h
@@ -1318,7 +1339,7 @@ theorem activateStep_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {new : List Frame} {es : List Event}
     (hwf : s.WF) (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) : s'.WF := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact (((noteActivationBanisher_safe s (ts ++ costObject.toList) banisher).trans (applyActivate_safe hm)).wf hwf).congr rfl rfl rfl rfl
+  exact (((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).trans (applyActivate_safe hm)).wf hwf).congr rfl rfl rfl rfl
 
 /-- Using an ability keeps the physical cards. -/
 theorem activateStep_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -1326,7 +1347,7 @@ theorem activateStep_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {id
     (hwf : s.WF) (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) :
     s'.physIds.Perm s.physIds := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact ((noteActivationBanisher_safe s (ts ++ costObject.toList) banisher).trans (applyActivate_safe hm)).phys hwf
+  exact ((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).trans (applyActivate_safe hm)).phys hwf
 
 /-- Using an ability keeps `OwnerOk`. -/
 theorem activateStep_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
@@ -1334,7 +1355,7 @@ theorem activateStep_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {id
     (hwf : s.WF) (hown : s.OwnerOk) (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) :
     s'.OwnerOk := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact (((noteActivationBanisher_safe s (ts ++ costObject.toList) banisher).trans (applyActivate_safe hm)).own hwf hown).congr rfl rfl
+  exact (((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).trans (applyActivate_safe hm)).own hwf hown).congr rfl rfl
 
 /-- Using an ability changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
@@ -1344,8 +1365,8 @@ theorem activateStep_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  have hs := ((noteActivationBanisher_safe s (ts ++ costObject.toList) banisher).trans (applyActivate_safe hm)).same
-  have hc : (noteActivationBanisher s (ts ++ costObject.toList) banisher).cards = s.cards := by
+  have hs := ((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).trans (applyActivate_safe hm)).same
+  have hc : (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher).cards = s.cards := by
     unfold noteActivationBanisher
     split <;> rfl
   exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, (applyActivate_meta hm).2.2.2.2.2.trans hc, rfl⟩
@@ -1356,8 +1377,8 @@ theorem activateStep_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
     (hwf : s.WF) (h : activateStep s p src idx pay ts new [] targetPlayer banisher costObject = some (s', es)) (q : PlayerId) :
     s'.zone (.player q .hand) = s.zone (.player q .hand) := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact (applyActivate_hand ((noteActivationBanisher_safe s (ts ++ costObject.toList) banisher).wf hwf) hm q).trans
-    (noteActivationBanisher_zone s (ts ++ costObject.toList) banisher _)
+  exact (applyActivate_hand ((noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher).wf hwf) hm q).trans
+    (noteActivationBanisher_zone s (activationKillVictim s src idx ts costObject).toList banisher _)
 
 /-- A usable ability can be used, with any new stack. -/
 theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}

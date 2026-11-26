@@ -638,6 +638,7 @@ def Ability.runs : Ability → Bool
   | .activated costs _ body _ =>
     (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
+      | .killSelf => (manaKind body).isNone
       | .exhaustFriendly filters | .killFriendlyPermanent filters =>
         FilterList.understood filters && (manaKind body).isNone
       | _ => true) && (costPlan costs).isSome &&

@@ -294,25 +294,15 @@ def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
   Safe.modObj s id (fun _ => by split <;> rfl) (fun _ => by split <;> rfl)
 
-/-- The player gains XP (CR 728): it goes to their Legend, and the turn notes that they gained XP. -/
+/-- The player gains XP and the turn records that gain (CR 730.1). -/
 def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ =>
-    let s1 := s.modObj l (fun o => { o with xp := o.xp + n })
-    if 0 < n then s1.addTurnFx p .gainedXP else s1
-  | [] => s
+  if 0 < n then (s.setXP p (s.xpOf p + n)).addTurnFx p .gainedXP else s
 
 /-- Gaining XP is a safe change. -/
 theorem gainXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (gainXPOf n s p) := by
   unfold gainXPOf
   split
-  · rename_i l tl hl
-    have h1 : Safe s (s.modObj l (fun o => { o with xp := o.xp + n })) :=
-      Safe.modObj s l (fun _ => rfl) (fun _ => rfl)
-    dsimp only
-    split
-    · exact h1.trans (addTurnFx_safe _ p _)
-    · exact h1
+  · exact (Safe.setXP s p _).trans (addTurnFx_safe _ p _)
   · exact Safe.refl s
 
 /-- The players gain XP, one after the other. -/
@@ -326,29 +316,16 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
 
-/-- The player spends XP: it goes down, to 0 at the least. -/
-def spendXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ => s.modObj l (fun o => { o with xp := o.xp - n })
-  | [] => s
-
-/-- Spending XP is a safe change. -/
-theorem spendXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (spendXPOf n s p) := by
-  unfold spendXPOf
-  split
-  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
-  · exact Safe.refl s
-
 /-- The players spend XP, one after the other. -/
 def spendXPAll (n : Nat) : GameState → List PlayerId → GameState
   | s, [] => s
-  | s, p :: ps => spendXPAll n (spendXPOf n s p) ps
+  | s, p :: ps => spendXPAll n (s.spendXP p n) ps
 
 /-- Spending XP is a safe change, for any players. -/
 theorem spendXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
     Safe s (spendXPAll n s ps)
   | [], s => Safe.refl s
-  | p :: ps, s => (spendXPOf_safe n s p).trans (spendXPAll_safe n ps _)
+  | p :: ps, s => (Safe.spendXP s p n).trans (spendXPAll_safe n ps _)
 
 /-- The player recycles the top card of their Main Deck: it goes to the bottom (CR 417). -/
 def recycleTopOf (q : PlayerId) (s : GameState) : GameState :=

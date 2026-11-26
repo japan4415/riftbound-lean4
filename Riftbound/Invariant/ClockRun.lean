@@ -108,7 +108,7 @@ theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
     {costObject : Option ObjId}
     (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact ((TC.of_safe (noteActivationBanisher_safe s (ts ++ costObject.toList) banisher)).trans
+  exact ((TC.of_safe (noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher)).trans
     (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}

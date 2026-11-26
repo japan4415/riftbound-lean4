@@ -568,7 +568,7 @@ def LiveGame.archive (g : LiveGame) : Except String RecordedMatch := do
     config := setup.config, tournament := setup.tournament,
     elimination? := if g.singleElimination then some { timeAfterGames? := g.timeAfterGames } else none,
     winsRequired := setup.winsRequired, fuel := setup.fuel, games := games.map (·.input), ending }
-    games g.s.cards
+    games RiftboundCards.db
 
 /-- Package the four-seat match in the same format consumed by `verify-team`. -/
 def LiveGame.teamArchive (g : LiveGame) : Except String RecordedTeamMatch := do

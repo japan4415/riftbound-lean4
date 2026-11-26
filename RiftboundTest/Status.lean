@@ -103,25 +103,34 @@ meta def statScene (spell : String) : Option (GameState × PlayerId × ObjId × 
     | none => false
   | none => false
 
--- XP goes to the Legend of the player and is read as an amount (CR 728)
+-- XP belongs to the player. Gaining, spending and reading it also work without a Legend.
 #guard match statScene "T-XPG" with
-  | some (s, p, u, c, l) =>
-    match castS s p c [u] with
-    | some s1 => s.xpOf p == 0 && s1.xpOf p == 2 && s1.xpOf (otherS p) == 0 &&
-        (s1.obj? l).any (·.xp == 2) && (Amount.xp.evalS s1 p u {} == some 2)
-    | none => false
+  | some (s, p, u, c, _) =>
+    let removeLegends (state : GameState) := (state.zone (.player p .legendZone)).foldlM
+      (fun current id => (moveObj current id (.player p .banishment)).map Prod.fst) state
+    match castS s p c [u], removeLegends s with
+    | some s1, some legendless =>
+      match castS legendless p c [u], removeLegends s1 with
+      | some gained, some afterMove =>
+        s.xpOf p == 0 && s1.xpOf p == 2 && s1.xpOf (otherS p) == 0 &&
+        (Amount.xp.evalS s1 p u {} == some 2) &&
+        (gained.zone (.player p .legendZone)).isEmpty && gained.xpOf p == 2 &&
+        afterMove.xpOf p == 2 && gained.xpOf (otherS p) == 0 &&
+        (gained.spendXP p 1).xpOf p == 1 && (gained.spendXP p 2).experience.isEmpty
+      | _, _ => false
+    | _, _ => false
   | none => false
 
 -- Hunt gains XP when the Unit conquers or holds; Level turns on an ability with enough XP
 -- (CR 823, 824)
 #guard match statScene "T-XPG" with
-  | some (s, p, u, _, l) =>
+  | some (s, p, u, _, _) =>
     hunter.keywordAbilities.length == 2 &&
     (match putS s p "T-HNT" .base with
       | some (s1, h) =>
         s1.mightNow h == some 2 &&
-        (s1.modObj l (fun o => { o with xp := 3 })).mightNow h == some 5 &&
-        (s1.modObj l (fun o => { o with xp := 2 })).mightNow h == some 2 &&
+        (s1.setXP p 3).mightNow h == some 5 &&
+        (s1.setXP p 2).mightNow h == some 2 &&
         (triggersOf s1 h p .conquer).length == 1 && (triggersOf s1 h p .hold).length == 1 &&
         (triggersOf s1 h p .die).isEmpty && (let _ := u; true)
       | none => false)

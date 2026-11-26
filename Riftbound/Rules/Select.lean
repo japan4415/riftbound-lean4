@@ -71,9 +71,17 @@ def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (f
 def inPlay (s : GameState) : List ObjId :=
   s.players.flatMap (fun p => s.zone (.player p .base)) ++ s.zone .battlefieldZone
 
-/-- The XP of a player (CR 728): kept with their Legend. -/
+/-- The public XP of a player, whether or not they have a Legend (CR 729). -/
 def xpOf (s : GameState) (p : PlayerId) : Nat :=
-  ((s.zone (.player p .legendZone)).map (fun l => ((s.obj? l).map (·.xp)).getD 0)).sum
+  s.experience.getD p.n 0
+
+/-- Set a player's XP, omitting zero entries from the state. -/
+def setXP (s : GameState) (p : PlayerId) (n : Nat) : GameState :=
+  { s with experience := if n = 0 then s.experience.erase p.n else s.experience.insert p.n n }
+
+/-- Remove XP from this player's balance, with a minimum of zero (CR 730.2). -/
+def spendXP (s : GameState) (p : PlayerId) (n : Nat) : GameState :=
+  s.setXP p (s.xpOf p - n)
 
 /-- Might before the passive, buff and Equipment adjustments. Trait changes set the base
 before lasting increases and decreases are added (CR 143.2.a, 479.2, 479.4). -/
@@ -1887,6 +1895,15 @@ theorem refl (s : GameState) : Safe s s :=
 theorem trans {s s' s'' : GameState} (h1 : Safe s s') (h2 : Safe s' s'') : Safe s s'' :=
   ⟨fun h => h2.wf (h1.wf h), fun h => (h2.phys (h1.wf h)).trans (h1.phys h),
     fun h ho => h2.own (h1.wf h) (h1.own h ho), h1.same.trans h2.same⟩
+
+/-- XP changes leave the rules, objects and zones intact. -/
+theorem setXP (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.setXP p n) :=
+  ⟨fun h => h.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ h => h.congr rfl rfl, rfl⟩
+
+/-- Spending XP leaves the rules, objects and zones intact. -/
+theorem spendXP (s : GameState) (p : PlayerId) (n : Nat) : Safe s (s.spendXP p n) :=
+  setXP s p _
 
 /-- A change of one object that keeps its kind and its owner. -/
 theorem modObj (s : GameState) (id : ObjId) {f : Object → Object}

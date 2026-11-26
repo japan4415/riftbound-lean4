@@ -271,7 +271,7 @@ def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
             nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
             turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-            turnShift := s.turnShift, drawLog := s.drawLog } = s
+            turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience } = s
 
 namespace SameMeta
 
@@ -286,7 +286,7 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
               nextTimestamp := s.nextTimestamp, points := s.points,
               turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-              turnShift := s.turnShift, drawLog := s.drawLog } : GameState)) h2
+              turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this

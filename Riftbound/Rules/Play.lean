@@ -1615,7 +1615,7 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
   | .killUnitOrGear | .killGear | .killUnit | .killPet =>
     -- A replaced death still pays the selected cost (CR 357.2.a).
     if (s.locate t).isSome then some (killOrSave s t) else none
-  | .spendXP n => some (s.modObj t (fun o => { o with xp := o.xp - n }), [])
+  | .spendXP n => (s.obj? t).map (fun legend => (s.spendXP legend.owner n, []))
   | .spendXPOver _ _ => some (s, [])
   | .returnGear | .returnUnit =>
     (s.obj? t).bind (fun o => (moveObj s t (.player o.owner .hand)).map (fun r =>
@@ -1765,9 +1765,10 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact Safe.moveObj hm
   | spendXP n =>
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact Safe.modObj s t (fun _ => rfl) (fun _ => rfl)
+    obtain ⟨legend, _, paid⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at paid
+    obtain ⟨rfl, _⟩ := paid
+    exact Safe.spendXP s legend.owner n
   | spendXPOver n cap =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -1792,20 +1793,6 @@ theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId}
     subst h
     exact Safe.refl _
 
-/-- The player spends XP: it goes down, to 0 at the least. -/
-def spendLegendXP (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ => s.modObj l (fun o => { o with xp := o.xp - n })
-  | [] => s
-
-/-- Spending XP is a safe change. -/
-theorem spendLegendXP_safe (n : Nat) (s : GameState) (p : PlayerId) :
-    Safe s (spendLegendXP n s p) := by
-  unfold spendLegendXP
-  split
-  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
-  · exact Safe.refl s
-
 /-- The object declared as a Kill cost is the same for a regular or a limited play. -/
 def GameState.playDeathCost (s : GameState) (card : ObjId) (targets : List ObjId)
     (pick : SpellPick) : Option ObjId := do
@@ -1826,7 +1813,7 @@ def castPayOnTarget (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameState
     -- the XP is spent only for an object with more Might than the cap
     match s.obj? c with
     | some o =>
-      if decide (((cap : Nat) : Int) < (s.mightNow t).getD 0) then (spendLegendXP n r.1 o.owner, r.2)
+      if decide (((cap : Nat) : Int) < (s.mightNow t).getD 0) then (r.1.spendXP o.owner n, r.2)
       else r
     | none => r
   | some (k, _), t :: rest, some n =>
@@ -1848,7 +1835,7 @@ theorem castPayOnTarget_safe (s : GameState) (c : ObjId) (ts : List ObjId)
   split
   · split
     · split
-      · exact spendLegendXP_safe _ _ _
+      · exact Safe.spendXP _ _ _
       · exact Safe.refl _
     · exact Safe.refl _
   · split

@@ -232,6 +232,22 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
         assert exported["winner"] == 0 and len(exported["games"]) == 2
         assert exported["cards"]["TKN-LimitedBlank"]["name"] == "Blank Battlefield"
 
+    draft_setup = {**setup, "config": duel["config"], "decks": duel["games"][0]["decks"],
+                   "tournament": None, "winsRequired": 1}
+    live = Lean(ROOT / ".lake/build/bin/riftbound-live")
+    try:
+        opened = ask(live, f"start-json 1 01 {json.dumps(draft_setup)}")
+        assert "TKN-LimitedBlank" in opened["cards"]
+        assert ask(live, "judge-game-loss 1")["archiveAvailable"]
+        saved = ask(live, "replay")
+    finally:
+        live.close()
+        live.proc.wait()
+    archive = folder / "live-draft-archive.json"
+    archive.write_text(json.dumps(saved), encoding="utf-8")
+    assert json.loads(command("verify", archive)) == saved["summary"]
+    command("view-seat", archive, "0", folder / "live-draft-seat.json")
+
 
 def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     source = ROOT / "data/replay/war-concession-example.json"

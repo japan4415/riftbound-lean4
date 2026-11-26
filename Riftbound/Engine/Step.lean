@@ -41,14 +41,7 @@ def GameState.actionKillCosts (s : GameState) (a : Action) : List ObjId :=
   | .teamInvitation _ :: _, .activate source index _ targets _ _ _ object
   | .chainPass .. :: _, .activate source index _ targets _ _ _ object
   | .showdown .. :: _, .activate source index _ targets _ _ _ object =>
-    match s.activationAt source index with
-    | some (_, .activated costs _ _ _) =>
-      let last := if costKills costs then targets.getLast?.toList else []
-      let selected := match permanentCost costs with
-        | some (.kill, _) => object.toList
-        | _ => []
-      last ++ selected
-    | _ => []
+    (activationKillVictim s source index targets object).toList
   | _, _ => []
 
 /-- Check that the declaration came from a play decision before interrupting it for replacement
