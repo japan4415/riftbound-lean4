@@ -631,7 +631,7 @@ def SFD_022.meta : CardDef :=
 /-- Long Sword. -/
 def SFD_022 : CardDef :=
   { SFD_022.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-023
 /--
@@ -1653,7 +1653,7 @@ def SFD_056.meta : CardDef :=
 /-- Sterak's Gage. -/
 def SFD_056 : CardDef :=
   { SFD_056.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-057
 /--
@@ -2814,7 +2814,7 @@ def SFD_095.meta : CardDef :=
 /-- Doran's Blade. -/
 def SFD_095 : CardDef :=
   { SFD_095.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-096
 /--
@@ -4741,7 +4741,7 @@ def SFD_161.meta : CardDef :=
 /-- B.F. Sword. -/
 def SFD_161 : CardDef :=
   { SFD_161.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-162
 /--
@@ -5477,7 +5477,7 @@ def SFD_186.meta : CardDef :=
 /-- Spinning Axe. -/
 def SFD_186 : CardDef :=
   { SFD_186.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-187
 /--

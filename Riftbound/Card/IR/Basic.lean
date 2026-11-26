@@ -178,12 +178,14 @@ deriving DecidableEq, Repr, Hashable
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where
-  /-- Friendly: controlled by the player. -/
+  /-- Friendly: controlled by the player or their teammate. -/
   | friendly
   /-- Enemy: controlled by an opponent. -/
   | enemy
   /-- Either side. -/
   | any
+  /-- Controlled by the player making the choice (CR 491.8). -/
+  | you
 deriving DecidableEq, Repr, Hashable
 
 /-- Where an object is. -/

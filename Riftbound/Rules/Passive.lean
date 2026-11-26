@@ -226,6 +226,12 @@ def grantedKws (s : GameState) (id : ObjId) : List KeywordInst :=
   (s.attachmentTextDefs id).flatMap (·.1.keywords) ++ s.equipKws id ++ s.passiveKws id ++
     (((s.obj? id).map (·.tempKws)).getD []).map (·.1)
 
+/-- Keywords whose abilities apply now. Inactive printed keywords are still referenceable
+by cards that ask whether an object has a keyword (CR 720). -/
+def activeKeywords (s : GameState) (id : ObjId) : List KeywordInst :=
+  (if s.rulesTextActive id then ((s.cardDef? id).map (·.keywords)).getD [] else []) ++
+    s.grantedKws id
+
 /-- Whether the object has a printed or granted keyword (CR 479.3). -/
 def hasKw (s : GameState) (id : ObjId) (k : Keyword) : Bool :=
   (s.cardDef? id).any (·.hasKeyword k) || (s.grantedKws id).any (·.keyword == k) ||

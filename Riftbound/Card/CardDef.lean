@@ -214,7 +214,7 @@ fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def printedKeywordAbilities (c : CardDef) : List Ability :=
   let equipAbility (cost : AbilityCost) : Ability :=
     .activated [cost] .normal
-      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+      (EffectDef.of [Choice.targetOf .one .you .anywhere [.ofType .unit]]
         (.prim (.attach .self (.slot 0)))) .unlimited
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
@@ -233,13 +233,13 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (EffectDef.of [Choice.targetOf .one .you .anywhere [.ofType .unit]]
           (.prim (.attach .self (.slot 0)))) .unlimited]
     -- Weaponmaster: when the Unit is played, its player may Equip one of their Equipment to it
     -- for one Power less, even if it is attached already (CR 821)
     | .weaponmaster, _ =>
       [.triggered (Trigger.onSelf .play)
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
+        (EffectDef.of [Choice.targetOf .one .you .anywhere [.tag ⟨"Equipment"⟩]]
           (.may (.equipWithCost (.slot 0) .self 1))) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;

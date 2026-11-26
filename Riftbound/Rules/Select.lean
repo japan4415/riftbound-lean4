@@ -41,6 +41,10 @@ def cardDef? (s : GameState) (c : ObjId) : Option CardDef := do
   let d ← s.cards.find? id
   return (o.unitGearEffects.head?.map Prod.snd).elim d d.withUnitGearMight
 
+/-- Printed Rules Text is inactive while a card is attached (CR 135.4, 718.2). -/
+def rulesTextActive (s : GameState) (id : ObjId) : Bool :=
+  (s.obj? id).any (·.attached.isNone)
+
 /-- Read last known Unit Gear traits while collecting a death's triggers (CR 429.1.a). -/
 def deathSubject (s : GameState) (id : ObjId) : GameState :=
   match (s.obj? id).bind (·.leftUnitGearMight) with
@@ -653,6 +657,7 @@ def Side.admits (p : PlayerId) (side : Side) (o : Object) (mode : Mode := .duel)
   | .friendly => mode.sameSide p o.controller
   | .enemy => !mode.sameSide p o.controller
   | .any => true
+  | .you => o.controller == p
 
 /-- The Battlefield an object is "here" at: its own, for a Battlefield, and the one a Unit is at
 (CR 106). -/
@@ -723,7 +728,7 @@ def Place.zoneKind? : Place → Option ZoneKind
 belong to that player. -/
 def Side.admitsPlayer (p : PlayerId) (side : Side) (q : PlayerId) (mode : Mode := .duel) : Bool :=
   match side with
-  | .friendly => q == p
+  | .friendly | .you => q == p
   | .enemy => !mode.sameSide p q
   | .any => true
 

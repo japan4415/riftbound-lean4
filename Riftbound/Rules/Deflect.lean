@@ -87,14 +87,11 @@ def Action.spellSource (a : Action) : Option ObjId :=
 
 namespace GameState
 
-/-- The X of the Deflect of an object: its card prints it, or an Equipment gives it. A Deflect with
-no number is Deflect 1 (CR 809). -/
+/-- The total active Deflect of an object. A Deflect without a number is Deflect 1 (CR 809). -/
 def deflectOf (s : GameState) (u : ObjId) : Nat :=
   let amount (i : KeywordInst) : Nat :=
     if i.keyword == .deflect then (match i.arg with | .amount n => n | _ => 1) else 0
-  (match s.cardDef? u with
-    | some d => (d.keywords.map amount).sum
-    | none => 0) + ((s.grantedKws u).map amount).sum
+  ((s.activeKeywords u).map amount).sum
 
 /-- The Deflect surcharge for the entire spell or ability. Heisho waives it when any target
 is there (CR 766-767, 809). -/

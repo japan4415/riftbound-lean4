@@ -6,7 +6,7 @@ public import Riftbound.Rules.Battlefield
 /-!
 # Temporary
 
-A unit with Temporary is killed at the start of its controller's Beginning Phase, before Scoring
+A permanent with active Temporary is killed at the start of its controller's Beginning Phase, before Scoring
 (CR 816, 315.2.a). Here that is a step of the Beginning Phase that runs before the Hold points are
 scored: `beginStep`.
 -/
@@ -28,10 +28,11 @@ def GameState.ignoresTemporary (s : GameState) (u : ObjId) : Bool :=
           | _ => false)))
   | none => false
 
-/-- The units of the player that have Temporary, on their Base and at the Battlefields. -/
+/-- The permanents the player controls with active Temporary at their Base or a Battlefield. -/
 def tempUnits (s : GameState) (tp : PlayerId) : List ObjId :=
   (s.zone (.player tp .base) ++ s.zone .battlefieldZone).filter
-    (fun u => (s.obj? u).any (·.controller == tp) && s.hasKw u .temporary &&
+    (fun u => (s.obj? u).any (·.controller == tp) &&
+      (s.activeKeywords u).any (·.keyword == .temporary) &&
       !s.ignoresTemporary u)
 
 /-- Kill the objects, one after the other. -/
@@ -47,7 +48,7 @@ theorem killAll_safe : ∀ (us : List ObjId) (s : GameState) (es : List Event),
   | [], s, _ => Safe.refl s
   | u :: us, s, _ => (killOrSave_safe s u).trans (killAll_safe us _ _)
 
-/-- The Beginning Step kills the turn player's Temporary Units (CR 315.2.a, 816). -/
+/-- The Beginning Step kills the turn player's Temporary Permanents (CR 315.2.a, 816). -/
 def beginStep (s : GameState) (tp : PlayerId) : GameState × List Event :=
   resolveDeathGroupWith s (tempUnits s tp) (killOrSaveInGroup s)
 

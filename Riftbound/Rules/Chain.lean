@@ -502,10 +502,11 @@ false, as an ability whose cost cannot be paid cannot be used. A condition about
 cannot be answered yet, and does not stop the use. An ability that only plays a card to a
 Battlefield cannot be used while the opponents of its player play Units only to their Base (the
 play by a triggered ability goes to the Base instead). Also check explicit location restrictions
-and whether a hidden card can be revealed. -/
+whether a hidden card can be revealed, and whether the ability's text is active (CR 720). -/
 def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCost)
-    (body : EffectDef) : Bool :=
-  (!costs.contains .fromBattlefield || Filter.holds s src {} src .onBattlefield == some true) &&
+    (body : EffectDef) (grant : Option AbilityGrant) : Bool :=
+  (s.rulesTextActive src || grant.isSome) &&
+    (!costs.contains .fromBattlefield || Filter.holds s src {} src .onBattlefield == some true) &&
     (match body.body with
       | .ifThen c _ .nop => c.eval s p src {} != some false
       | _ => true) && !s.hiddenBlocked p src &&
@@ -521,8 +522,8 @@ hidden; the others, where the player uses abilities of objects. An ability with 
 only while the guard holds. -/
 def GameState.abilityZoneOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
   match s.activationAt src idx with
-  | some (_, .activated costs _ body _) =>
-    (guardOk s p src costs body && (!costs.contains .disempowerSelf ||
+  | some (grant, .activated costs _ body _) =>
+    (guardOk s p src costs body grant && (!costs.contains .disempowerSelf ||
       (s.obj? src).any (fun o => 0 < o.empowerCount))) &&
       (if costs.contains .fromHand then
         -- an ability that plays the card to a Battlefield is a play: "can't play" stops it

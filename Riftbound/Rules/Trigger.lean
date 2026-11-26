@@ -137,7 +137,7 @@ base) is not understood yet: it never holds. -/
 def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (who : PlayerId) :
     Selector → Bool
   | .pick .all side .anywhere fs =>
-    (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
+    (match side with | .friendly | .you => who == c | .enemy => who != c | .any => true) &&
       (fs.holds s src (Env.empty.withMight s.mightTable) subj == some true)
   | _ => false
 

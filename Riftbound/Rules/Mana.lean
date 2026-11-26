@@ -82,7 +82,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
           | some plan =>
             timing && (!plan.exhaust || !o.exhausted) && (manaKind body).isSome &&
               limitOk s src (activationUseIndex idx grant) lim (s.activationCopyStamp src grant) &&
-              guardOk s p src costs body
+              guardOk s p src costs body grant
           | none => false
         | _ => false
     | _, _ => false

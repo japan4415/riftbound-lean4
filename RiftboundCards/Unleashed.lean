@@ -2082,7 +2082,7 @@ def UNL_070 : CardDef :=
   { UNL_070.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
       (.grant (.slot 0) (.keyword .it { keyword := .temporary }) .permanent)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-071
 /--

@@ -43,6 +43,7 @@ public import RiftboundTest.Live
 public import RiftboundTest.Fuel
 public import RiftboundTest.CardLab
 public import RiftboundTest.PrintedUnits
+public import RiftboundTest.EquipmentText
 public import RiftboundTest.OriginsA
 public import RiftboundTest.SpiritforgedA
 public import RiftboundTest.UnleashedA

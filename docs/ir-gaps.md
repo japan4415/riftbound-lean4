@@ -64,8 +64,9 @@
 | （他の弾）呪文を、タダでプレイする | `Prim.play` は、対象を選ばない呪文だけを、チェーンを開かずに、すぐに解決する。対象のある呪文は、プレイしない |
 | Kai'Sa, Evolutionary | 墓地から唱えられるのは、対象を選ばない呪文だけ。チェーンを使わず、すぐに解決し、「呪文をプレイしたとき」の誘発は、働かない |
 | Promising Future | 山札の上 5 枚から、選べるのは、ユニットとギアだけ（呪文を、エネルギーなしで、プレイする手段が、まだ無い）。プレイは、各プレイヤーが、続けて行う（呪文をかけた人が先。見る・選ぶ・プレイ・リサイクルを、プレイヤーごとに続ける）。払えないカードを選ぶと、そのカードも、リサイクルされる |
-| Quick-Draw（Spiritforged） | Reaction の速さを持つギアとユニットを、Chain への応答としてプレイすることは、まだできない（メインフェイズに、Chain が空のときだけ）。付けるのは、場に出たときの誘発 |
-| Weaponmaster（Spiritforged） | Equip コストから Power 1 つを引く（先頭の 1 つ）。付けてもよい Equipment は、味方のもの。払うのは、解決のとき、Rune Pool にあるものだけ（足りなければ付かない）。解決のとき、ユニットが場に無ければ、何もしない。Equip コストが、読めていない Equipment（コストが Kill や Recycle のもの）を選ぶと、何も起きない（選ぶ候補から外す手段が、まだ無い）。「Equipment」のタグが無いカード（RAD-123）は、選べない |
+| Quick-Draw（Spiritforged、解決済み） | Chain への応答で Gear をプレイでき、プレイ時の誘発は自分が支配する Unit を選ぶ。2v2 で味方だけが支配する Unit は対象に含めない。 |
+| Spinning Axe・Turn to Dust（解決済み） | 装備中は印刷された Temporary の能力が停止する。付与された Temporary は有効で、その Gear を支配するプレイヤーの次の Beginning Phase に死亡する。対象条件からは印刷されたキーワードを参照できる。 [公式 Unleashed FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/) |
+| Weaponmaster（Spiritforged） | Equip コストから Power 1 つを引く（先頭の 1 つ）。対象は能力のコントローラーが支配する Equipment。払うのは、解決のとき、Rune Pool にあるものだけ（足りなければ付かない）。解決のとき、ユニットが場に無ければ、何もしない。Equip コストが、読めていない Equipment（コストが Kill や Recycle のもの）を選ぶと、何も起きない（選ぶ候補から外す手段が、まだ無い）。「Equipment」のタグが無いカード（RAD-123）は、選べない |
 | 戦闘に勝つ（Spiritforged） | 「勝つ」は、戦闘の終わりに、Recall のあとで、その Battlefield に残る Unit が、1 人のプレイヤーのものだけであること。攻撃側は、防御側が残ると Recall されるので、防御側が勝つ。規則の原文（CR 468）では、Recall の前で数える読み方も、ありうる（未確認） |
 | 解決のときに払う（Spiritforged） | 「you may pay X. If you do, ...」は、解決のときに、Rune Pool にあるものから払う。Draven, Vanquisher、Sunken Temple、Treasure Hoard、Emperor's Dais、Power Nexus がそう。相手のターン（Draven の防御側の誘発）は、Rune Pool が空なので、払えない。Sunken Temple の「Mighty」は、解決のときに調べる |
 | Emperor's Dais・Piercing Light・Emperor's Divide（Spiritforged） | 返すユニットと 2 つ目の対象を、解決のときに選ぶ（Deflect の追加支払いが掛からず、「選んだとき」の誘発も働かない） |
