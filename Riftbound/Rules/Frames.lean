@@ -456,6 +456,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     activateStep s guest src idx pay ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
   | .teamInvitation guest :: _, .runeAbility c ab => applyRune s guest c ab
   | .teamInvitation guest :: _, .manaAbility src idx pay chosen => applyMana s guest src idx pay chosen
+  | .chooseShowdown _ first more :: rest, .choose bf =>
+    ((first :: more).lookup bf).map (fun q => continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest))
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set
@@ -567,11 +569,12 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
       rw [e]
     · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact (hr.wf hwf).congr rfl rfl rfl rfl
+    · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
     · exact hwf.congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -672,11 +675,12 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
       rw [e]
     · exact List.Perm.refl _
     · exact List.Perm.refl _
     · exact hr.phys hwf
+    · exact List.Perm.refl _
     · exact List.Perm.refl _
     · exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h

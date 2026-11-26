@@ -176,6 +176,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player guest ∧ c ∈ s.zone (.player guest .base) ∧ runeUsable s guest c ab = true
   | .teamInvitation guest :: _, .manaAbility src idx pay chosen =>
     a.actor = .player guest ∧ manaOk s guest src idx pay chosen = true
+  | .chooseShowdown p first more :: _, .choose bf =>
+    a.actor = .player p ∧ ((first :: more).lookup bf).isSome = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

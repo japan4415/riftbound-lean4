@@ -712,6 +712,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.teamInvitation guest]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p first more rest bf hp hk
+    obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl
+      (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
@@ -886,7 +892,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨p, first, more, e⟩ | e <;>
       rw [e]
     · exact ⟨hinv.1, Or.inr (fun g hg => by cases hg)⟩
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
@@ -896,6 +902,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
         (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp rfl rfl (new := [Frame.chooseShowdown p first more]) rfl
+        (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h

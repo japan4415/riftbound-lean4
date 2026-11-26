@@ -284,6 +284,8 @@ def legalFrameActions (s : GameState) : List Action :=
   | .teamInvitation guest :: _ =>
     ⟨.player guest, .pass⟩ :: (legalRunes s guest ++ legalManas s guest ++
       legalInvitedSpells s guest ++ legalActivates s guest true)
+  | .chooseShowdown p first more :: _ =>
+    (first :: more).map (fun (bf, _) => ⟨.player p, .choose bf⟩)
   | .chainPass p _ :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
       legalActivates s p false)

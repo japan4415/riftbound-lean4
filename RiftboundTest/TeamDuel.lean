@@ -216,4 +216,31 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
   let pending := [⟨3⟩, ⟨0⟩, ⟨1⟩, ⟨2⟩].map trigger
   (s.detect [] pending).map PendTrigger.controller == ([⟨2⟩, ⟨1⟩, ⟨3⟩, ⟨0⟩] : List PlayerId)
 
+-- A staged non-combat Showdown precedes a Combat. With two Combats, the turn player can
+-- open either Battlefield, including the second one on the board.
+#guard (do
+  let current : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let s := { teamState with
+    phase := .main, active := some current, turn := 1, turnOrder := Mode.teamTurnOrder true }
+  let (s, a) ← addObject s { newCard db s current (cid "B0") with contested := some current } .battlefieldZone
+  let (s, b) ← addObject s { newCard db s opponent (cid "B1") with contested := some opponent } .battlefieldZone
+  let put (s : GameState) (p : PlayerId) (bf : ObjId) :=
+    (addObject s { newCard db s p (cid "V0") with loc := some bf } .battlefieldZone).map Prod.fst
+  let s ← put s current a
+  let s ← put s opponent a
+  let s ← put s opponent b
+  let onlyNoncombat := s.stagedShowdowns [.priority current]
+  let s ← put s ally b
+  let (choice, opening) := cleanupFrame s [.priority current]
+  let select (p : PlayerId) (field : ObjId) : Action := ⟨.player p, .choose field⟩
+  let (resolved, events) ← (step 100 choice (select current b)).toOption
+  return onlyNoncombat == [(b, opponent)] && opening.isEmpty &&
+    (legalFrameActions choice).contains (select current a) &&
+    (legalFrameActions choice).contains (select current b) &&
+    (step 100 choice (select ally b)).toOption.isNone &&
+    (resolved.combat.any (fun fight : CombatParticipation => fight.battlefield == b)) &&
+    events.contains (Event.combatStarted b opponent)).getD false
+
 end RiftboundTest

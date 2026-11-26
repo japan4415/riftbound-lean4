@@ -394,6 +394,13 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i p first more rest bf hp hk
+    obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.showdown bf q 0, Frame.cleanup]
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -575,7 +582,7 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨p, first, more, e⟩ | e <;>
       rw [e]
     · intro hres
       exact absurd hres (by simp)
@@ -588,6 +595,9 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.swap rfl [Frame.showdown bf q 0, Frame.cleanup]
+    · refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.chooseShowdown p first more]
     · refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
       exact hb.pop rfl
@@ -980,6 +990,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | chooseShowdown p first more =>
+    left
+    refine ⟨⟨.player p, .choose first.1⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | resolveChain | resumeCost _ => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
@@ -1093,6 +1109,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | expireTurn => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
   | teamInvitation guest => exact absurd hc (by simp [Frame.isChance])
+  | chooseShowdown p first more => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
   | resolveChain | resumeCost _ => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])

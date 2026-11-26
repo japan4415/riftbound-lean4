@@ -156,10 +156,11 @@ theorem tc_paySurcharge (s : GameState) (a : Action) (s2 : GameState) :
 
 theorem tc_cleanupFrame (s : GameState) (rest : List Frame) :
     TC s (cleanupFrame s rest).1 := by
-  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;> rw [e]
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
+  · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
 
@@ -345,6 +346,10 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ⟨rfl, rfl⟩
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the

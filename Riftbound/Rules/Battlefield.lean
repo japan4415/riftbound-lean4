@@ -499,14 +499,21 @@ def cleanupStep (s : GameState) : Option (GameState × List Event) :=
     | some r => some r
     | none => (returnReservedLegendStep s).orElse (fun _ => cleanupStep0 s)
 
-/-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
-player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
-priority with nothing else going on, so the frame below is the `priority` frame. -/
-def GameState.startShowdown (s : GameState) (rest : List Frame) : Option (ObjId × PlayerId) :=
+/-- Staged Showdowns in a Neutral Open state, with the player who made each Battlefield Contested.
+In team play, non-combat Showdowns are chosen and opened before Combat (CR 323.11, 323.12). -/
+def GameState.stagedShowdowns (s : GameState) (rest : List Frame) : List (ObjId × PlayerId) :=
   match rest with
   | .priority _ :: _ =>
-    s.battlefields.findSome? (fun b => ((s.obj? b).bind (·.contested)).map (b, ·))
-  | _ => none
+    let candidates := s.battlefields.filterMap (fun b => ((s.obj? b).bind (·.contested)).map (b, ·))
+    if s.config.mode.isTeamDuel then
+      let openFields := candidates.filter (fun (b, _) => (s.combatantsAt b).isNone)
+      if openFields.isEmpty then candidates else openFields
+    else candidates
+  | _ => []
+
+/-- The first staged Showdown, when there is one. -/
+def GameState.startShowdown (s : GameState) (rest : List Frame) : Option (ObjId × PlayerId) :=
+  (s.stagedShowdowns rest).head?
 
 /-- A state is settled when the Cleanup has nothing left to do (CR 322): there is no winner to
 declare and no step applies. -/
@@ -609,10 +616,12 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
         match cleanupStep s with
         | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
         | none =>
-          match s.startShowdown rest with
-          | some (bf, q) =>
-            continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
-          | none => continueAfterCleanup s rest
+          match s.stagedShowdowns rest with
+          | (bf, q) :: more =>
+            if s.config.mode.isTeamDuel && !more.isEmpty then
+              ({ s with pending := .chooseShowdown (s.active.getD q) (bf, q) more :: rest }, [])
+            else continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+          | [] => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -933,6 +942,7 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
       { s with
         pending := .showdown bf q 0 :: .cleanup :: rest,
         combat := (s.observeCombat (.showdown bf q 0 :: .cleanup :: rest)).1 }) ∨
+    (∃ p first more, (cleanupFrame s rest).1 = { s with pending := .chooseShowdown p first more :: rest }) ∨
     (cleanupFrame s rest).1 = { s with pending := rest, combat := (s.observeCombat rest).1 } := by
   unfold cleanupFrame
   split
@@ -947,9 +957,10 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
         · rename_i r hr
           exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
         · split
-          · rename_i bf q hq
-            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
-          · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
+          · split
+            · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))))
+            · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, rfl⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))
 
 /-- A winning seat reaches the Victory Score and leads every opposing seat. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
@@ -1081,7 +1092,11 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
   have noGroup : cleanupDeathGroup s = [] := by
     have hfilter := List.filter_eq_nil_iff.mpr (List.find?_eq_none.mp noneLethal)
     simp [cleanupDeathGroup, hfilter]
-  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, hn]
+  have noShowdowns : s.stagedShowdowns rest = [] := by
+    cases staged : s.stagedShowdowns rest with
+    | nil => rfl
+    | cons first more => simp [GameState.startShowdown, staged] at hn
+  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, noShowdowns]
 
 end Riftbound
 

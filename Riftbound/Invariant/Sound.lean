@@ -212,6 +212,9 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i guest src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
+  · rename_i p first more rest bf hp hk
+    rw [hp, hk] at hl
+    exact Option.isSome_iff_exists.mp (by simpa only [Option.isSome_map] using hl.2)
   · exact absurd hl (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
@@ -424,6 +427,10 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · exact activateStep_ownerOk hwf hown h
   · exact applyRune_ownerOk hwf hown h
   · exact applyMana_ownerOk hwf hown h
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact hown.congr rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer to the open question keeps `OwnerOk`. -/
@@ -521,11 +528,12 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
       rw [e]
     · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact (hr.own hwf hown).congr rfl rfl
+    · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
     · exact hown.congr rfl rfl
   · rename_i bf att rest hp

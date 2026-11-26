@@ -762,6 +762,14 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
     rwa [hpend] at hm
+  · rename_i p first more rest bf hp hk
+    obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    have hphase := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play hphase rfl rfl (fun hm => ?_)
+    rw [hp]
+    simpa [continueAfterCleanup] using hm
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put
@@ -1272,12 +1280,13 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     have hsub : Frame.setupHands ∈ rest → Frame.setupHands ∈ s.pending := fun hm => by
       rw [hp]
       exact List.mem_cons_of_mem _ hm
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;>
       rw [e]
     · exact hinv.of_play hph0 rfl rfl (fun hm => absurd hm (by simp))
     · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play (by show r.phase ≠ .setup; rw [hr.same.phase]; exact hph0)
         hr.same.turnOrder hr.same.config (fun hm => hsub (by simpa using hm))
+    · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play hph0 rfl rfl (fun hm => hsub (by simpa using hm))
     · exact hinv.of_play hph0 rfl rfl (fun hm => hsub hm)
   · rename_i bf att rest hp

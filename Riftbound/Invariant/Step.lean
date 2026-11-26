@@ -209,6 +209,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
   · exact activateStep_wf hwf h
   · exact applyRune_wf hwf h
   · exact applyMana_wf hwf h
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact hwf.congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -544,6 +548,10 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
   · exact activateStep_physIds hwf h
   · exact applyRune_physIds hwf h
   · exact applyMana_physIds hwf h
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact List.Perm.refl _
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/

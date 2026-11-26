@@ -113,7 +113,7 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 4席のセットアップ、手番、チームの共有得点、時間切れや投了まで再実行できる。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方がいる Battlefield への移動を制限し、Combat の参加者やカード効果の対象を判定するときはチームを区別する。
 
-Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。同時に始まる Combat の順序選択は [ロードマップの M9](roadmap.md) に残っている。
+Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。開始できる Showdown や Combat が複数ある場合は、手番プレイヤーが `choose` で Battlefield のオブジェクト ID を指定する。
 
 ## カードの詳細と画像
 

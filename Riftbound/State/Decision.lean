@@ -296,6 +296,9 @@ inductive Frame where
   /-- Choice: this player can cast a spell, activate an ability, or decline. The turn player's
   normal priority frame is next on the stack (CR 491.8.a). -/
   | teamInvitation (guest : PlayerId)
+  /-- Choice: where to open the next staged Showdown. Each option pairs its Battlefield with
+  the player who contested it (CR 323.11, 323.12, 463.1). -/
+  | chooseShowdown (p : PlayerId) (first : ObjId × PlayerId) (more : List (ObjId × PlayerId))
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/
@@ -332,7 +335,7 @@ def Frame.isPlay : Frame → Bool
   | .pickDo .. => true
   | .nameCard .. | .guessCardType .. => true
   | .predict .. | .chancePredict .. => true
-  | .teamInvitation _ => true
+  | .teamInvitation _ | .chooseShowdown .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
