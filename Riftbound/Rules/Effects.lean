@@ -793,69 +793,67 @@ theorem applyRunes_safe {p : PlayerId} :
     obtain ⟨rfl, -⟩ := hr
     exact (applyRune_safe hx).trans (applyRunes_safe rest hy)
 
-/-- Set the Pool of the player after paying for the object `src`: the Power of Any domain that a
-Gear spent is no longer noted as Power that only pays for Gear (that Power is spent first). -/
-def GameState.setPoolFor (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool) :
-    GameState :=
+/-- Set the Pool and settle any eligible restricted Power spent on this payment. -/
+def GameState.setPoolFor (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool)
+    (permanent : Bool := false) : GameState :=
   let t := s.setPool p pool
-  if (s.cardDef? src).any (·.hasType .gear) then
+  let gear := (s.cardDef? src).any (·.hasType .gear)
+  if gear || permanent then
     let spent := (s.poolOf p).any - pool.any
-    { t with turnFx := dropGearFx s.turn p spent t.turnFx }
+    { t with turnFx := s.spendPowerNotes p gear permanent spent t.turnFx }
   else t
 
 /-- Setting the Pool after paying is a safe change. -/
-theorem setPoolFor_safe (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool) :
-    Safe s (s.setPoolFor p src pool) := by
+theorem setPoolFor_safe (s : GameState) (p : PlayerId) (src : ObjId) (pool : RunePool)
+    (permanent : Bool := false) : Safe s (s.setPoolFor p src pool permanent) := by
   unfold GameState.setPoolFor
+  dsimp only
   split
   · exact (setPool_safe s p pool).trans
       ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
         fun _ hown => hown.congr rfl rfl, rfl⟩
   · exact setPool_safe s p pool
 
-/-- Pay the cost `c` for the object `src`: from the Pool, or, if it falls short, with Runes (exhaust a
-ready Rune for each Energy missing, recycle a Rune of the domain for each Power missing). `none` if
-it cannot be paid. -/
+/-- Pay the cost `c` from eligible Pool resources, with Basic Runes if the Pool falls short. -/
 def payByRunes (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) :
-    Option (GameState × List Event) :=
-  match s.payNow p src c unit with
-  | some pool => some (s.setPoolFor p src pool, [])
+    (unit : Bool := false) (permanent : Bool := false) : Option (GameState × List Event) :=
+  match s.payNow p src c unit permanent with
+  | some pool => some (s.setPoolFor p src pool permanent, [])
   | none =>
-    match s.runePlan p src c unit with
+    match s.runePlan p src c unit permanent with
     | some plan =>
       (applyRunes s p plan).bind (fun r =>
-        (r.1.payNow p src c unit).map (fun pool => (r.1.setPoolFor p src pool, r.2)))
+        (r.1.payNow p src c unit permanent).map (fun pool => (r.1.setPoolFor p src pool permanent, r.2)))
     | none => none
 
 /-- Paying is a safe change. -/
 theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
-    {unit : Bool} {r : GameState × List Event} (h : payByRunes s p src c unit = some r) :
-    Safe s r.1 := by
+    {unit permanent : Bool} {r : GameState × List Event}
+    (h : payByRunes s p src c unit permanent = some r) : Safe s r.1 := by
   unfold payByRunes at h
-  cases hp : s.payNow p src c unit with
+  cases hp : s.payNow p src c unit permanent with
   | some pool =>
     simp only [hp, Option.some.injEq] at h
     rw [← h]
-    exact setPoolFor_safe s p src pool
+    exact setPoolFor_safe s p src pool permanent
   | none =>
     simp only [hp] at h
-    cases hq : s.runePlan p src c unit with
+    cases hq : s.runePlan p src c unit permanent with
     | none => simp [hq] at h
     | some plan =>
       simp only [hq, Option.bind_eq_some_iff] at h
       obtain ⟨x, hx, hr⟩ := h
-      cases hy : x.1.payNow p src c unit with
+      cases hy : x.1.payNow p src c unit permanent with
       | none => simp [hy] at hr
       | some pool =>
         simp only [hy, Option.map_some, Option.some.injEq] at hr
         rw [← hr]
-        exact (applyRunes_safe plan hx).trans (setPoolFor_safe _ _ _ _)
+        exact (applyRunes_safe plan hx).trans (setPoolFor_safe _ _ _ _ permanent)
 
 /-- Paying the first affordable cost option preserves the same invariants as the payment itself. -/
 theorem payPlayOption_safe {s : GameState} {p : PlayerId} {id : ObjId} {costs : List Cost}
-    {unit : Bool} {r : GameState × List Event}
-    (h : costs.findSome? (fun c => payByRunes s p id c unit) = some r) :
+    {unit permanent : Bool} {r : GameState × List Event}
+    (h : costs.findSome? (fun c => payByRunes s p id c unit permanent) = some r) :
     Safe s r.1 := by
   obtain ⟨_, _, _, _, paid, _⟩ := List.findSome?_eq_some_iff.mp h
   exact payByRunes_safe paid
@@ -867,7 +865,7 @@ def playPaying (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List E
       (d.hasType .unit || d.hasType .gear) && !s.blocksPlay p id d)) then (s, []) else
   match (s.cardDef? id).bind (·.cost) with
   | some c =>
-    match (s.targetCostOptions p id [] ⟨0, s.adjustPower id c.power⟩).findSome? (payByRunes s p id) with
+    match (s.targetCostOptions p id [] ⟨0, s.adjustPower id c.power⟩).findSome? (fun price => payByRunes s p id price (permanent := true)) with
     | some r => ((playFree p r.1 id).1, r.2 ++ (playFree p r.1 id).2)
     | none => (s, [])
   | none => playFree p s id
@@ -1188,7 +1186,7 @@ def playReducedOne (p : PlayerId) (k : Nat) (dest : Option ObjId) (s : GameState
   match (s.cardDef? id).bind (fun d => s.effCost p id d) with
   | some c =>
     match (s.targetCostOptions p id [] (c.lessEnergy k)).findSome? (fun cost =>
-        payByRunes s p id cost ((s.cardDef? id).any (·.hasType .unit))) with
+        payByRunes s p id cost ((s.cardDef? id).any (·.hasType .unit)) (permanent := true)) with
     | some r =>
       let played := match dest with
         | some bf => playFreeAt p bf r.1 id
@@ -1278,7 +1276,7 @@ def permanentPlayPlans (s : GameState) (p : PlayerId) (id : ObjId) (terms : Effe
     List ReducedPermanentPlay :=
   let unit := (s.cardDef? id).any (·.hasType .unit)
   (permanentPlayOptions s p id terms).filter (fun plan =>
-    (payByRunes s p id plan.cost unit).isSome)
+    (payByRunes s p id plan.cost unit (permanent := true)).isSome)
 
 /-- The possible reduced plays when the effect leaves the destination to the Unit's player. -/
 def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Nat) :
@@ -1290,7 +1288,7 @@ have been paid and return the identifier it acquired when it entered play. -/
 def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
     (plan : ReducedPermanentPlay) : Option (GameState × ObjId × List Event) := do
   let d ← s.cardDef? id
-  let paid ← payByRunes s p id plan.cost (d.hasType .unit)
+  let paid ← payByRunes s p id plan.cost (d.hasType .unit) (permanent := true)
   let zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
   let (onBoard, new) ← moveObj paid.1 id zone
   let ownCosts := (if plan.additionalPaid then [0] else []) ++
@@ -1362,7 +1360,7 @@ structure EffectAddPolicy where
 def permanentPriceInPool (s : GameState) (p : PlayerId) (card : ObjId) (plan : ReducedPermanentPlay) :
     Bool :=
   let unit := (s.cardDef? card).any (·.hasType .unit)
-  (s.payNow p card plan.cost unit).isSome
+  (s.payNow p card plan.cost unit (permanent := true)).isSome
 
 /-- A previously selected finalization is still legal and its payment is in the Pool. -/
 def permanentPlayReady (s : GameState) (p : PlayerId) (card : ObjId) (terms : EffectPlayTerms)
@@ -1374,7 +1372,7 @@ def permanentAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (terms : E
     (plan : ReducedPermanentPlay) (funding : EffectAddPolicy) : List EffectAdd :=
   if plan.cost.total == 0 then [] else
   let unit := (s.cardDef? card).any (·.hasType .unit)
-  funding.choices s p (fun t => (payByRunes t p card plan.cost unit).isSome &&
+  funding.choices s p (fun t => (payByRunes t p card plan.cost unit (permanent := true)).isSome &&
     (permanentPlayOptions t p card terms).contains plan)
 
 /-- The finalizations that can be paid, with a flag for the choice of Add activations. -/
@@ -5042,10 +5040,12 @@ def payUnitTokenAccelerate (s : GameState) (p : PlayerId) (pay : RunePool.Paymen
     Option (GameState × List Event) := do
   if !(s.fxOf p).contains .nextUnitAccelerate ||
       !(unitTokenAccelerateCosts s p).any (fun c => c.paidBy [] pay) then none else
-    let runes ← s.runeCover p pay true (s.restrictedNow p)
+    let runes ← s.runeCover p pay true (s.restrictedFor p false true)
     let (t, events) ← applyRunes s p runes
-    let pool ← t.spendFor p false pay true
-    some (t.setPool p pool, events)
+    let pool ← t.spendFor p false pay true true
+    let paid := t.setPool p pool
+    let spent := (t.poolOf p).any - pool.any
+    some ({ paid with turnFx := t.spendPowerNotes p false true spent paid.turnFx }, events)
 
 /-- Paying for a token preserves the structural invariants. -/
 theorem payUnitTokenAccelerate_safe {s : GameState} {p : PlayerId} {pay : RunePool.Payment}
@@ -5055,7 +5055,9 @@ theorem payUnitTokenAccelerate_safe {s : GameState} {p : PlayerId} {pay : RunePo
   · contradiction
   · simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨_, _, ⟨t, events⟩, ht, pool, _, rfl⟩ := h
-    exact (applyRunes_safe _ ht).trans (setPool_safe t p pool)
+    exact (applyRunes_safe _ ht).trans ((setPool_safe t p pool).trans
+      ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+        fun _ hown => hown.congr rfl rfl, rfl⟩)
 
 /-- Offer optional Accelerate payments that the player can fund. -/
 def GameState.priceUnitToken (s : GameState) (p : PlayerId) (batch : UnitTokenBatch)

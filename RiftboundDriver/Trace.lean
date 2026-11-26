@@ -78,8 +78,9 @@ def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (Strin
 def effectAddJson : EffectAdd → String
   | .rune id recycle => jobj [("source", toString id.n),
     ("rune", jstr (if recycle then "recycle" else "exhaust"))]
-  | .ability id idx energy power => jobj [("source", toString id.n), ("idx", toString idx),
-    ("cost", costJson ⟨energy, power.map PowerSym.domain⟩)]
+  | .ability id idx energy power banish => jobj
+    ([("source", toString id.n), ("idx", toString idx), ("cost", costJson ⟨energy, power.map PowerSym.domain⟩)] ++
+      banish.toList.map (fun card => ("banishCostCard", toString card.n)))
 
 /-- Serialize an Add the player can choose and the activations they have already chosen. -/
 def nextEffectAddFields (cost : Cost) (adds : List EffectAdd) (add : EffectAdd) :
@@ -333,12 +334,14 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (if pay.energy == 0 && pay.power.isEmpty then [] else
         [("movePayment", costJson pay)])
     | .assignPick u => [("unit", toString u.n)]
-    | .manaAbility src idx pay =>
+    | .manaAbility src idx pay banish =>
       let restricted := match state.bind (fun s => s.manaOffer src idx) with
         | some (_, _, .unitEnergy n) => [("unitEnergyAdded", toString n)]
+        | some (_, _, .permanent) => [("permanentPowerAdded", "1")]
         | _ => []
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
-       ("power", jarr (pay.power.map (fun d => jstr (ctorName d))))] ++ restricted
+       ("power", jarr (pay.power.map (fun d => jstr (ctorName d))))] ++ restricted ++
+        banish.toList.map (fun card => ("banishCostCard", toString card.n))
     | .putTrigger i ts payment | .prepareTrigger i ts payment =>
       let trigger : Option PendTrigger := match frame with
         | some (.triggerOrder _ t more _ _) => (t :: more)[i]?

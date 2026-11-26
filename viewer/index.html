@@ -325,9 +325,19 @@ function describeA(a, prev, state = steps[cur]?.state) {
     if (kind === 'returnUnit') return name + ' をオーナーの手札に戻す';
     return '追加コストに ' + name + ' を使う';
   };
+  const banishCostLabel = (id) => {
+    const trash = Object.entries(state?.zones || {}).find(([zone, ids]) =>
+      zone.endsWith('.trash') && ids.includes(id))?.[1] || [];
+    const copies = trash.filter(candidate => cardCode(candidate, state) === cardCode(id, state));
+    const suffix = copies.length > 1 ? '（' + (copies.indexOf(id) + 1) + '枚目）' : '';
+    return cardName(id) + suffix + ' を Banish';
+  };
   const addLabel = (add) => {
     const id = add.source;
-    if (!add.rune) return cardName(id) + ' の Add';
+    if (!add.rune) {
+      const cost = typeof add.banishCostCard === 'number' ? '（' + banishCostLabel(add.banishCostCard) + '）' : '';
+      return cardName(id) + ' の Add' + cost;
+    }
     const runes = (state?.zones['p' + objs[id]?.owner + '.base'] || [])
       .filter(candidate => cardCode(candidate, state) === cardCode(id, state));
     const order = runes.indexOf(id);
@@ -559,6 +569,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
             '確定した能力は最後に Chain に載ったものから解決する')];
     }
     case 'manaAbility': {
+      if (a.permanentPowerAdded != null) {
+        return [who + ': ' + addLabel(a),
+          'Legend を Exhaust し、Unit または Gear のプレイに使える Power を ' + a.permanentPowerAdded + ' 得る'];
+      }
       if (a.unitEnergyAdded != null) {
         const cost = costText({energy: a.energy, power: a.power});
         return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
@@ -1090,7 +1104,7 @@ function showMenu(list, title, x, y) {
   const f = m.querySelector('button'); if (f) f.focus();
 }
 function showsPayment(a) {
-  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number';
+  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' || typeof a.banishCostCard === 'number';
 }
 function stepPick(x, y) {
   const { card, list, chosen } = pick, d = chosen.length;

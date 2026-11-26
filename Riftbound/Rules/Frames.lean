@@ -337,8 +337,8 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .triggerOrder p t more others (some next) :: rest }, [])
   | .triggerOrder p t more others (some _) :: rest, .decide _ =>
     some ({ s with pending := .triggerOrder p t more others :: rest }, [])
-  | .priority p :: _, .manaAbility src idx pay => applyMana s p src idx pay
-  | .chainPass p _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
+  | .priority p :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
+  | .chainPass p _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
   | .discard p n :: rest, .discardPick c =>
     let r := discardObj s c
     some ({ r.1 with
@@ -386,7 +386,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
     activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
-  | .showdown _ q _ :: _, .manaAbility src idx pay => applyMana s q src idx pay
+  | .showdown _ q _ :: _, .manaAbility src idx pay chosen => applyMana s q src idx pay chosen
   | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
   | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
   | .predict p n c cs top bottom :: rest, .predictPick id recycle =>
@@ -405,7 +405,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       | .spell => spell
     some ({ s with pending := .run p src env (.cons branch es) :: rest }, [])
   | .eitherDo p _ _ _ _ _ :: _, .runeAbility c ab => applyRune s p c ab
-  | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay => applyMana s p src idx pay
+  | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

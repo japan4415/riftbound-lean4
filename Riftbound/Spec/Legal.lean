@@ -108,10 +108,10 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .triggerOrder p _ _ _ (some _) :: _, .decide yes =>
     a.actor = .player p ∧ yes = false
   -- an Add ability resolves at once, with the Chain empty or not (CR 430)
-  | .priority p :: _, .manaAbility src idx pay =>
-    a.actor = .player p ∧ manaOk s p src idx pay = true
-  | .chainPass p _ :: _, .manaAbility src idx pay =>
-    a.actor = .player p ∧ manaOk s p src idx pay = true
+  | .priority p :: _, .manaAbility src idx pay chosen =>
+    a.actor = .player p ∧ manaOk s p src idx pay chosen = true
+  | .chainPass p _ :: _, .manaAbility src idx pay chosen =>
+    a.actor = .player p ∧ manaOk s p src idx pay chosen = true
   -- the player with Focus passes in a Showdown (CR 347-348)
   | .showdown _ q _ :: _, .pass => a.actor = .player q
   -- in a Showdown: a Spell with Action, or a card with Reaction (CR 806, 813, 829)
@@ -126,8 +126,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .showdown _ q _ :: _, .runeAbility c ab =>
     a.actor = .player q ∧ c ∈ s.zone (.player q .base) ∧ runeUsable s q c ab = true
   -- in a Showdown: an Add ability resolves at once (CR 430)
-  | .showdown _ q _ :: _, .manaAbility src idx pay =>
-    a.actor = .player q ∧ manaOk s q src idx pay = true
+  | .showdown _ q _ :: _, .manaAbility src idx pay chosen =>
+    a.actor = .player q ∧ manaOk s q src idx pay chosen = true
   -- the next Unit to be given lethal damage, Tank Units first (CR 467.2.c, 815)
   | .assign bf _ side acc _ :: _, .assignPick u =>
     a.actor = .player side ∧ s.pickOk bf side acc u = true
@@ -150,8 +150,8 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   | .eitherDo p _ _ first _ _ :: _, .runeAbility c ab =>
     a.actor = .player p ∧ c ∈ s.zone (.player p .base) ∧ runeUsable s p c ab = true ∧
       first.isPayment = true
-  | .eitherDo p _ _ first _ _ :: _, .manaAbility src idx pay =>
-    a.actor = .player p ∧ manaOk s p src idx pay = true ∧ first.isPayment = true
+  | .eitherDo p _ _ first _ _ :: _, .manaAbility src idx pay chosen =>
+    a.actor = .player p ∧ manaOk s p src idx pay chosen = true ∧ first.isPayment = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

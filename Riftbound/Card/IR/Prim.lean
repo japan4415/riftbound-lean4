@@ -644,6 +644,8 @@ inductive AbilityCost where
   | killFriendly (q : Quantity) (fs : FilterList)
   /-- Kill one friendly permanent selected independently of the ability's targets. -/
   | killFriendlyPermanent (filters : FilterList)
+  /-- Banish one eligible card from the activating player's Trash to pay an Add cost. -/
+  | banishFromTrash (filters : FilterList)
   /-- Spend XP. -/
   | spendXP (n : Nat)
   /-- Spend a buff. -/

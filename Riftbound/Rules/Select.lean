@@ -939,26 +939,45 @@ def GameState.runeCover (s : GameState) (p : PlayerId) (pay : RunePool.Payment)
   return some (exhaust.map (fun r => (r, RuneAbility.exhaust)) ++
     (recycle.reverse.take neededRunes).map (fun r => (r, RuneAbility.recycle)))
 
-/-- Drop the first `n` of the lasting effects of the turn that note Power that pays only for Gear. -/
-def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx
+/-- Remove the notes for the restricted Power that has been spent. -/
+def dropPowerFx (turn : Nat) (p : PlayerId) (restriction : TurnEffect) :
+    Nat → List TurnFx → List TurnFx
   | 0, l => l
   | _ + 1, [] => []
   | n + 1, f :: fs =>
-    if f.turn == turn && f.who == p && f.kind == .gearMana then dropGearFx turn p n fs
-    else f :: dropGearFx turn p (n + 1) fs
+    if f.turn == turn && f.who == p && f.kind == restriction then dropPowerFx turn p restriction n fs
+    else f :: dropPowerFx turn p restriction (n + 1) fs
 
-/-- The Power in the Pool of the player that only pays for Gear this turn (Fire Below the Mountain
-adds one): it is not more than what is in the Pool. -/
+/-- Notes for Gear-only Power that has been spent. -/
+def dropGearFx (turn : Nat) (p : PlayerId) : Nat → List TurnFx → List TurnFx :=
+  dropPowerFx turn p .gearMana
+
+/-- The player's current notes for one category of flexible Power. -/
+def GameState.restrictedPowerNotes (s : GameState) (p : PlayerId) (kind : TurnEffect) : Nat :=
+  s.turnFx.countP (fun f => f.turn == s.turn && f.who == p && f.kind == kind)
+
+/-- The flexible Power reserved for purposes other than this payment. -/
+def GameState.restrictedFor (s : GameState) (p : PlayerId) (gear permanent : Bool) : Nat :=
+  let gearCount := if gear then 0 else s.restrictedPowerNotes p .gearMana
+  let permanentCount := if permanent then 0 else s.restrictedPowerNotes p .permanentMana
+  min (gearCount + permanentCount) (s.poolOf p).any
+
+/-- Flexible Power that cannot be spent on ordinary costs. -/
 def GameState.restrictedNow (s : GameState) (p : PlayerId) : Nat :=
-  min (s.turnFx.filter (fun f => f.turn == s.turn && f.who == p && f.kind == .gearMana)).length
-    (s.poolOf p).any
+  s.restrictedFor p false false
 
-/-- Spend the resources eligible for this cost. Power reserved for Gear stays in the Pool
-when paying for other objects. -/
+/-- Update the payment's notes. Spend the narrower Gear-only allowance before the allowance
+usable for either kind of Permanent. -/
+def GameState.spendPowerNotes (s : GameState) (p : PlayerId) (gear permanent : Bool)
+    (spent : Nat) (notes : List TurnFx) : List TurnFx :=
+  let gearSpent := if gear then min spent (s.restrictedPowerNotes p .gearMana) else 0
+  let withGear := dropGearFx s.turn p gearSpent notes
+  if permanent then dropPowerFx s.turn p .permanentMana (spent - gearSpent) withGear else withGear
+
+/-- Spend resources eligible for the cost. Permanent-only Power pays for the play itself (CR 357). -/
 def GameState.spendFor (s : GameState) (p : PlayerId) (gear : Bool) (pay : RunePool.Payment)
-    (unit : Bool := false) :
-    Option RunePool :=
-  ((s.poolOf p).spend pay unit).filter (fun q => gear || decide (s.restrictedNow p ≤ q.any))
+    (unit : Bool := false) (permanent : Bool := false) : Option RunePool :=
+  ((s.poolOf p).spend pay unit).filter (fun q => decide (s.restrictedFor p gear permanent ≤ q.any))
 
 /-- The kinds of Power in the Pool that can pay each symbol, including flexible Power. -/
 def resolutionPowerChoices (own : List Domain) : List PowerSym → List (List PowerSym)
@@ -978,7 +997,7 @@ def GameState.spendSymbols (s : GameState) (p : PlayerId) (cost : Cost) (gearPow
     | .domain d => if 0 < balance.get d then balance.takePower d else none
     | .any => if 0 < balance.any then some { balance with any := balance.any - 1 } else none
     | .own => none) pool
-  if !gearPower && paid.any < s.restrictedNow p then none
+  if paid.any < s.restrictedFor p gearPower false then none
   else some { paid with spent := paid.spent + cost.power.length }
 
 /-- Resource payments that produce different Rune Pools (CR 445.1). -/
@@ -991,7 +1010,8 @@ def GameState.symbolPayments (s : GameState) (p : PlayerId) (cost : Cost)
 
 /-- A payment that the Pool allows is a payment the Pool makes. -/
 theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
-    {pay : RunePool.Payment} {unit : Bool} {q : RunePool} (h : s.spendFor p g pay unit = some q) :
+    {pay : RunePool.Payment} {unit permanent : Bool} {q : RunePool}
+    (h : s.spendFor p g pay unit permanent = some q) :
     (s.poolOf p).spend pay unit = some q := by
   unfold GameState.spendFor at h
   cases hs : (s.poolOf p).spend pay unit with
@@ -1005,20 +1025,20 @@ theorem GameState.spendFor_eq_some {s : GameState} {p : PlayerId} {g : Bool}
 /-- The Rune Pool of the player after paying the cost `c` for the object `src` (its domains are the
 Power the cost may name), if it can: the first payment that the Pool has. -/
 def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) : Option RunePool :=
+    (unit : Bool := false) (permanent : Bool := false) : Option RunePool :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
   (c.payments own).findSome? (fun pay =>
-    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit)
+    s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit permanent)
 
 /-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
 nothing to do when the Pool pays it already. -/
 def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) : Option (List (ObjId × RuneAbility)) :=
+    (unit : Bool := false) (permanent : Bool := false) : Option (List (ObjId × RuneAbility)) :=
   let d := s.cardDef? src
   let gear := d.any (·.hasType .gear)
   (c.payments ((d.map (·.domains)).getD [])).findSome? (fun pay =>
-    if (s.spendFor p gear pay unit).isSome then some []
-    else s.runeCover p pay unit (if gear then 0 else s.restrictedNow p))
+    if (s.spendFor p gear pay unit permanent).isSome then some []
+    else s.runeCover p pay unit (s.restrictedFor p gear permanent))
 
 /-- The Victory Score as the passive abilities with no condition leave it (CR 194): the mode's, and
 the changes by an amount that is a number. The abilities with a condition are read in

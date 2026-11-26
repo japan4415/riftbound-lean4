@@ -205,10 +205,10 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [_]
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · rename_i p n rest c hp hk
@@ -326,7 +326,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i q c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
-  · rename_i q src idx pay hp hk
+  · rename_i q src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h

@@ -956,7 +956,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | some cost => s.paysForXT p c d cost ts pay pick &&
               s.permanentCostsOk p c d cost ts pay pick
           | none => false) &&
-        (s.spendFor p (d.hasType .gear) pay (d.hasType .unit)).isSome &&
+        (s.spendFor p (d.hasType .gear) pay (d.hasType .unit) (permanent := true)).isSome &&
         (match dest with
           | none => !d.playsOnlyToBattlefield &&
               (pick == .plain || (s.permanentCostPicks p c d).contains pick)
@@ -1705,14 +1705,14 @@ theorem castPay_safe (s : GameState) (c : ObjId) (ts : List ObjId) (r : GameStat
   · exact (castPayOnTarget_safe _ _ _ _).trans (paySpellObject_safe _ _)
   · exact castPayOnTarget_safe _ _ _ _
 
-/-- Power of Any domain that was spent on a Gear is no longer noted as Power that only pays for
-Gear (the Power that only pays for Gear is spent first). -/
+/-- Update restricted Power spent to play a permanent. -/
 def gearSpent (s : GameState) (c : ObjId) (r : GameState × List Event) : GameState × List Event :=
   match s.obj? c with
   | some o =>
-    if (s.cardDef? c).any (·.hasType .gear) then
+    if (s.cardDef? c).any (fun d => d.hasType .unit || d.hasType .gear) then
       let spent := (s.poolOf o.owner).any - (r.1.poolOf o.owner).any
-      ({ r.1 with turnFx := dropGearFx s.turn o.owner spent r.1.turnFx }, r.2)
+      let gear := (s.cardDef? c).any (·.hasType .gear)
+      ({ r.1 with turnFx := s.spendPowerNotes o.owner gear true spent r.1.turnFx }, r.2)
     else r
   | none => r
 

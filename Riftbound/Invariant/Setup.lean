@@ -536,11 +536,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp rfl rfl (new := [_]) rfl (by simp [Frame.isSetup])
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.chainPass p n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
@@ -643,7 +643,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.showdown bf q n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i bf q n tail src idx pay hp hk
+  · rename_i bf q n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.showdown bf q n]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
@@ -683,7 +683,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
-  · rename_i p source env first other es rest src idx pay hp hk
+  · rename_i p source env first other es rest src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])

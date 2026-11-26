@@ -25,6 +25,8 @@ structure ManaCostPlan where
   exhaust : Bool := false
   /-- Kill its source. -/
   kill : Bool := false
+  /-- Select one card in the player's Trash and Banish it as a cost. -/
+  banish : Option FilterList := none
   /-- The fixed Energy and Power to pay. -/
   cost : Cost := Cost.zero
 
@@ -37,6 +39,9 @@ def manaPlan : List AbilityCost → Option ManaCostPlan
   | .killSelf :: cs => do
     let plan ← manaPlan cs
     if plan.kill then none else some { plan with kill := true }
+  | .banishFromTrash filters :: cs => do
+    let plan ← manaPlan cs
+    if plan.banish.isSome then none else some { plan with banish := some filters }
   | .pay cost :: cs =>
     (manaPlan cs).map (fun plan => { plan with cost := cost.plus plan.cost })
   | _ :: _ => none
@@ -135,9 +140,43 @@ def GameState.manaOffer (s : GameState) (src : ObjId) (idx : Nat) :
   let kind ← manaKind body
   return (d, plan, kind)
 
+/-- Valid selections for the part of the Add cost paid with a card in Trash. -/
+def GameState.manaBanishOptions (s : GameState) (p : PlayerId) (src : ObjId)
+    (plan : ManaCostPlan) : List (Option ObjId) :=
+  match plan.banish with
+  | none => [none]
+  | some filters =>
+    ((s.zone (.player p .trash)).filter (fun id =>
+      FilterList.holds s src {} id filters == some true)).map some
+
+/-- The Banish choice is separate from the resource payment and has no spell target. -/
+def GameState.manaBanishPicks (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) :
+    List (Option ObjId) :=
+  (s.manaOffer src idx).elim [] (fun (_, plan, _) => s.manaBanishOptions p src plan)
+
+/-- Validate and pay the declared Banish cost, if the ability has one. -/
+def payManaBanish (s : GameState) (p : PlayerId) (src : ObjId) (plan : ManaCostPlan)
+    (chosen : Option ObjId) : Option (GameState × List Event) :=
+  if (s.manaBanishOptions p src plan).contains chosen then
+    some (chosen.elim (s, []) (banishObj p s))
+  else none
+
+/-- Paying the Banish cost preserves the structural invariants. -/
+theorem payManaBanish_safe {s : GameState} {p : PlayerId} {src : ObjId} {plan : ManaCostPlan}
+    {chosen : Option ObjId} {r : GameState × List Event}
+    (h : payManaBanish s p src plan chosen = some r) : Safe s r.1 := by
+  unfold payManaBanish at h
+  split at h
+  · cases h
+    cases chosen
+    · exact Safe.refl s
+    · exact banishObj_safe _ _ _
+  · contradiction
+
 /-- Use an Add ability: pay (exhaust, kill, and what the Add takes), and the Pool gets what is added
 (CR 430.2). -/
-def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment) :
+def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
+    (chosen : Option ObjId := none) :
     Option (GameState × List Event) :=
   match s.cardDef? src with
   | some d =>
@@ -145,26 +184,28 @@ def applyMana (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : Ru
     | some (grant, .activated costs _ body _) =>
       match manaPlan costs, manaKind body with
       | some plan, some k =>
-        match s.payMana p d k plan.cost pay with
-        | some pool' =>
+        match s.payMana p d k plan.cost pay, payManaBanish s p src plan chosen with
+        | some pool', some (banished, banishEvents) =>
           let use := useOf (activationUseIndex idx grant) plan.exhaust (s.activationCopyStamp src grant)
-          let s1 := s.modObj src use
+          let s1 := banished.modObj src use
           let s2 := if plan.kill then killNow s1 src else s1
-          -- Update the notes with the Power remaining after payment.
           let s2' := (s2.setPool p pool').trimGear p
-          -- the Power that only pays for Gear is noted for the turn
-          let s3 := match k with | .gear _ => s2'.addTurnFx p .gearMana | _ => s2'
+          let s3 := match k with
+            | .gear _ => s2'.addTurnFx p .gearMana
+            | .permanent => s2'.addTurnFx p .permanentMana
+            | _ => s2'
           let noted := s3.noteGearAbility p d costs
           some (noted.setPool p (pool'.addEnergy (s.manaBonus p src)),
-            [Event.activated p src idx (baseActivationEnergy costs)])
-        | none => none
+            banishEvents ++ [Event.activated p src idx (baseActivationEnergy costs)])
+        | _, _ => none
       | _, _ => none
     | _ => none
   | none => none
 
 /-- The shape of an Add being used: a safe change, and the Pool. -/
 theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event} (h : applyMana s p src idx pay = some (s', es)) :
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event}
+    (h : applyMana s p src idx pay chosen = some (s', es)) :
     ∃ s1 pool, Safe s s1 ∧ s' = s1.setPool p pool := by
   unfold applyMana at h
   cases hd : s.cardDef? src with
@@ -186,38 +227,44 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
             cases hap : s.payMana p d k plan.cost pay with
             | none => simp [hp, hk, hap] at h
             | some pool' =>
-              simp only [hp, hk, hap, Option.some.injEq, Prod.mk.injEq] at h
-              let use := useOf (activationUseIndex idx grant) plan.exhaust (s.activationCopyStamp src grant)
-              let used := s.modObj src use
-              have h1 : Safe s used := Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
-              refine ⟨_, _, Safe.trans ?_ (GameState.noteGearAbility_safe _ p d costs), h.1.symm⟩
-              have h2 : Safe s (if plan.kill then killNow used src else used) := by
-                cases plan.kill
-                · exact h1
-                · exact h1.trans (killNow_safe _ src)
-              have h3 := h2.trans ((setPool_safe _ p pool').trans (trimGear_safe _ p))
-              cases k with
-              | gear n => exact h3.trans (addTurnFx_safe _ _ _)
-              | energy n | unitEnergy n => exact h3
-              | power d n => exact h3
-              | any n => exact h3
-              | powerToEnergy => exact h3
-              | energyToPower => exact h3
+              cases hb : payManaBanish s p src plan chosen with
+              | none => simp [hp, hk, hap, hb] at h
+              | some paidCost =>
+                obtain ⟨banished, banishEvents⟩ := paidCost
+                simp only [hp, hk, hap, hb, Option.some.injEq, Prod.mk.injEq] at h
+                let use := useOf (activationUseIndex idx grant) plan.exhaust (s.activationCopyStamp src grant)
+                let used := banished.modObj src use
+                have h1 : Safe s used := (payManaBanish_safe hb).trans
+                  (Safe.modObj banished src (fun _ => rfl) (fun _ => rfl))
+                refine ⟨_, _, Safe.trans ?_ (GameState.noteGearAbility_safe _ p d costs), h.1.symm⟩
+                have h2 : Safe s (if plan.kill then killNow used src else used) := by
+                  cases plan.kill
+                  · exact h1
+                  · exact h1.trans (killNow_safe _ src)
+                have h3 := h2.trans ((setPool_safe _ p pool').trans (trimGear_safe _ p))
+                cases k with
+                | gear n => exact h3.trans (addTurnFx_safe _ _ _)
+                | permanent => exact h3.trans (addTurnFx_safe _ _ _)
+                | energy n | unitEnergy n => exact h3
+                | power d n => exact h3
+                | any n => exact h3
+                | powerToEnergy => exact h3
+                | energyToPower => exact h3
       | passive _ _ => simp [hd, ha] at h
       | replacement _ _ _ => simp [hd, ha] at h
       | triggered _ _ _ => simp [hd, ha] at h
 
 /-- Using an Add keeps the game well formed. -/
 theorem applyMana_wf {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event} (hwf : s.WF)
-    (h : applyMana s p src idx pay = some (s', es)) : s'.WF := by
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event} (hwf : s.WF)
+    (h : applyMana s p src idx pay chosen = some (s', es)) : s'.WF := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
   exact (hs.wf hwf).congr rfl rfl rfl rfl
 
 /-- Using an Add keeps the physical cards. -/
 theorem applyMana_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event} (hwf : s.WF)
-    (h : applyMana s p src idx pay = some (s', es)) : s'.physIds.Perm s.physIds := by
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event} (hwf : s.WF)
+    (h : applyMana s p src idx pay chosen = some (s', es)) : s'.physIds.Perm s.physIds := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
   have h2 : (s1.setPool p pool).physIds = s1.physIds := rfl
   rw [h2]
@@ -225,15 +272,16 @@ theorem applyMana_physIds {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
 
 /-- Using an Add keeps `OwnerOk`. -/
 theorem applyMana_ownerOk {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : applyMana s p src idx pay = some (s', es)) : s'.OwnerOk := by
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : applyMana s p src idx pay chosen = some (s', es)) : s'.OwnerOk := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
   exact (hs.own hwf hown).congr rfl rfl
 
 /-- Using an Add changes nothing of the stack, the turn order, the phase, the result or the
 rules. -/
 theorem applyMana_meta {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {es : List Event} (h : applyMana s p src idx pay = some (s', es)) :
+    {pay : RunePool.Payment} {chosen : Option ObjId} {es : List Event}
+    (h : applyMana s p src idx pay chosen = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending := by
   obtain ⟨s1, pool, hs, rfl⟩ := applyMana_cases h
@@ -271,22 +319,22 @@ def manaPayOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   (s.manaOffer src idx).any (fun (d, plan, kind) => (s.payMana p d kind plan.cost pay).isSome)
 
 /-- The player can use the Add with the payment. -/
-def manaOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment) :
-    Bool :=
-  manaReady s p src idx && manaPayOk s p src idx pay
+def manaOk (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
+    (chosen : Option ObjId := none) : Bool :=
+  manaReady s p src idx && manaPayOk s p src idx pay && (s.manaBanishPicks p src idx).contains chosen
 
 /-- A usable resource ability is used after setup. -/
 theorem manaOk_not_setup {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} (h : manaOk s p src idx pay = true) : s.phase ≠ .setup := by
-  exact manaReady_not_setup (Bool.and_eq_true_iff.mp h).1
+    {pay : RunePool.Payment} {chosen : Option ObjId} (h : manaOk s p src idx pay chosen = true) : s.phase ≠ .setup := by
+  exact manaReady_not_setup (Bool.and_eq_true_iff.mp (Bool.and_eq_true_iff.mp h).1).1
 
 /-- A usable Add can be used. -/
 theorem applyMana_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} (h : manaOk s p src idx pay = true) :
-    ∃ r, applyMana s p src idx pay = some r := by
+    {pay : RunePool.Payment} {chosen : Option ObjId} (h : manaOk s p src idx pay chosen = true) :
+    ∃ r, applyMana s p src idx pay chosen = some r := by
   unfold manaOk at h
   simp only [Bool.and_eq_true] at h
-  obtain ⟨hr, hp⟩ := h
+  obtain ⟨⟨hr, hp⟩, hb⟩ := h
   obtain ⟨d, _grant, ab, hd, ha⟩ := manaReady_ability hr
   unfold manaPayOk GameState.manaOffer at hp
   cases ab with
@@ -300,8 +348,10 @@ theorem applyMana_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         have hs : (s.payMana p d kind plan.cost pay).isSome = true := by
           simpa [hd, ha, hplan, hk, bind] using hp
         obtain ⟨pool, hpool⟩ := Option.isSome_iff_exists.mp hs
-        have canApply : (applyMana s p src idx pay).isSome = true := by
-          simp [applyMana, hd, ha, hplan, hk, hpool]
+        have hchosen : (s.manaBanishOptions p src plan).contains chosen = true := by
+          simpa [GameState.manaBanishPicks, GameState.manaOffer, hd, ha, hplan, hk, bind] using hb
+        have canApply : (applyMana s p src idx pay chosen).isSome = true := by
+          simp [applyMana, hd, ha, hplan, hk, hpool, payManaBanish, List.contains_iff_mem.mp hchosen]
         exact Option.isSome_iff_exists.mp canApply
   | passive _ _ => simp [hd, ha, bind] at hp
   | replacement _ _ _ => simp [hd, ha, bind] at hp
@@ -319,8 +369,9 @@ def legalManas (s : GameState) (p : PlayerId) : List Action :=
       match s.cardDef? src with
       | some d =>
         ((List.range (s.activationList src d).length).filter (fun idx => manaReady s p src idx)).flatMap
-          (fun idx => ((manaPays s p src idx).filter (fun pay => manaPayOk s p src idx pay)).map
-            (fun pay => ⟨.player p, .manaAbility src idx pay⟩))
+          (fun idx => ((manaPays s p src idx).filter (fun pay => manaPayOk s p src idx pay)).flatMap
+            (fun pay => (s.manaBanishPicks p src idx).map
+              (fun chosen => ⟨.player p, .manaAbility src idx pay chosen⟩)))
       | none => [])
 
 /-- Read Add timing as it applies while an effect's play pays its costs (CR 357.1.a). -/
@@ -332,9 +383,9 @@ def EffectAdd.apply (s : GameState) (p : PlayerId) : EffectAdd → Option (GameS
   | .rune id recycle =>
     let ab := if recycle then RuneAbility.recycle else .exhaust
     if (s.runesOf p).contains id && runeUsable s p id ab then applyRune s p id ab else none
-  | .ability src idx energy power =>
+  | .ability src idx energy power chosen =>
     let pay := ⟨energy, power⟩
-    if manaOk (effectAddView s p) p src idx pay then applyMana s p src idx pay else none
+    if manaOk (effectAddView s p) p src idx pay chosen then applyMana s p src idx pay chosen else none
 
 /-- An activation of either kind preserves the structural and ownership invariants. -/
 theorem EffectAdd.apply_safe {s : GameState} {p : PlayerId} {add : EffectAdd}
@@ -343,11 +394,11 @@ theorem EffectAdd.apply_safe {s : GameState} {p : PlayerId} {add : EffectAdd}
   | rune id recycle =>
     cases recycle <;> simp only [EffectAdd.apply, Bool.false_eq_true, ↓reduceIte] at h <;>
       split at h <;> first | exact applyRune_safe h | contradiction
-  | ability src idx energy power =>
+  | ability src idx energy power chosen =>
     simp only [EffectAdd.apply] at h
     split at h
     · obtain ⟨t, pool, ht, hr⟩ := applyMana_cases (s' := r.1) (es := r.2)
-        (show applyMana s p src idx ⟨energy, power⟩ = some (r.1, r.2) from h)
+        (show applyMana s p src idx ⟨energy, power⟩ chosen = some (r.1, r.2) from h)
       rw [hr]
       exact ht.trans (setPool_safe t p pool)
     · contradiction
@@ -399,8 +450,10 @@ def effectAddUses (s : GameState) (p : PlayerId) (includeBasic : Bool := false) 
   let paidAdd := slots.any (fun (src, idx) => (s.manaOffer src idx).any (fun (_, plan, kind) =>
     plan.cost.total != 0 || match kind with | .powerToEnergy | .energyToPower => true | _ => false))
   slots.flatMap (fun (src, idx) =>
-    (manaPays view p src idx).filterMap (fun pay =>
-      if manaPayOk view p src idx pay then some (.ability src idx pay.energy pay.power) else none)) ++
+    (manaPays view p src idx).flatMap (fun pay =>
+      if manaPayOk view p src idx pay then
+        (view.manaBanishPicks p src idx).map (fun chosen => .ability src idx pay.energy pay.power chosen)
+      else [])) ++
     (if includeBasic || paidAdd then effectAddRuneUses s p includeBasic else [])
 
 /-- Check whether the remaining Add activations can fund the play. The search may use automatic
@@ -533,8 +586,8 @@ theorem mem_manaPays {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
 
 /-- The Adds listed are exactly the ones that can be used. -/
 theorem mem_legalManas (s : GameState) (p : PlayerId) (a : Action) :
-    a ∈ legalManas s p ↔ ∃ src idx pay, a = ⟨.player p, .manaAbility src idx pay⟩ ∧
-      manaOk s p src idx pay = true := by
+    a ∈ legalManas s p ↔ ∃ src idx pay chosen, a = ⟨.player p, .manaAbility src idx pay chosen⟩ ∧
+      manaOk s p src idx pay chosen = true := by
   constructor
   · intro ha
     unfold legalManas at ha
@@ -544,12 +597,12 @@ theorem mem_legalManas (s : GameState) (p : PlayerId) (a : Action) :
     | none => simp [hd] at ha
     | some d =>
       simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter] at ha
-      obtain ⟨idx, ⟨-, hr⟩, pay, ⟨-, hp⟩, rfl⟩ := ha
-      exact ⟨src, idx, pay, rfl, by unfold manaOk; simp [hr, hp]⟩
-  · rintro ⟨src, idx, pay, rfl, hok⟩
+      obtain ⟨idx, ⟨-, hr⟩, pay, ⟨-, hp⟩, chosen, hcost, rfl⟩ := ha
+      exact ⟨src, idx, pay, chosen, rfl, by simp [manaOk, hr, hp, hcost]⟩
+  · rintro ⟨src, idx, pay, chosen, rfl, hok⟩
     unfold manaOk at hok
     simp only [Bool.and_eq_true] at hok
-    obtain ⟨hr, hp⟩ := hok
+    obtain ⟨⟨hr, hp⟩, hc⟩ := hok
     unfold legalManas
     simp only [List.mem_flatMap]
     have huse : s.usesAbilitiesOf p src = true := by
@@ -570,7 +623,7 @@ theorem mem_legalManas (s : GameState) (p : PlayerId) (a : Action) :
     · obtain ⟨d, _grant, ab, hd, ha⟩ := manaReady_ability hr
       simp only [hd, List.mem_flatMap, List.mem_map, List.mem_filter]
       exact ⟨idx, ⟨List.mem_range.mpr (List.getElem?_eq_some_iff.mp ha).1, hr⟩, pay,
-        ⟨mem_manaPays hp, hp⟩, rfl⟩
+        ⟨mem_manaPays hp, hp⟩, chosen, List.contains_iff_mem.mp hc, rfl⟩
 
 end Riftbound
 

@@ -414,16 +414,22 @@ theorem payActivationObject_zone {s : GameState} (hwf : s.WF) (p : PlayerId)
   · exact killForActivation_zone hwf _ _ _ _ _ hz hd
   · rfl
 
-/-- Pay the selected non-mana costs, and spend any restricted Power spent on a Gear first. -/
+/-- The action uses a play permission for a Unit or Gear, even though it is implemented as an activation. -/
+def GameState.permanentPlayActivation (s : GameState) (src : ObjId) (costs : List AbilityCost) : Bool :=
+  (costs.contains .fromChampionZone || costs.contains .fromHidden) &&
+    (s.cardDef? src).any (fun d => d.hasType .unit || d.hasType .gear)
+
+/-- Pay the selected non-mana costs, and spend eligible restricted Power first. -/
 def preCost (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCost) (ts : List ObjId)
     (gear : Bool) (pool : RunePool) (discards : List ObjId := [])
     (costObject : Option ObjId := none) : GameState × List Event :=
   let k := payKill s p costs ts
   let exhausted := payActivationObject k.1 p src costs costObject
   let d := payDiscards p exhausted.1 discards
-  let next := if gear then
+  let permanent := s.permanentPlayActivation src costs
+  let next := if gear || permanent then
     let spent := (s.poolOf p).any - pool.any
-    { d.1 with turnFx := dropGearFx s.turn p spent d.1.turnFx }
+    { d.1 with turnFx := s.spendPowerNotes p gear permanent spent d.1.turnFx }
   else d.1
   (next, k.2 ++ exhausted.2 ++ d.2)
 
@@ -434,6 +440,7 @@ theorem preCost_safe (s : GameState) (p : PlayerId) (src : ObjId) (costs : List 
   have h := (payKill_safe s p costs ts).trans
     ((payActivationObject_safe _ p src costs costObject).trans (payDiscards_safe p discards _))
   unfold preCost
+  dsimp only
   split
   · exact h.trans ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
       fun _ hown => hown.congr rfl rfl, rfl⟩
@@ -452,6 +459,7 @@ theorem preCost_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (src : ObjId) 
   have chain := (payActivationObject_zone hs p src costs costObject .chain rfl
     (by simp)).trans h.2
   unfold preCost
+  dsimp only
   split <;> exact ⟨hand, chain⟩
 
 /-- Paying the costs, including discards, preserves the Chain. -/
@@ -465,6 +473,7 @@ theorem preCost_chain {s : GameState} (hwf : s.WF) (p : PlayerId) (src : ObjId) 
     ((payActivationObject_zone (killed.wf hwf) p src costs costObject .chain rfl
       (by simp)).trans (payKill_zones hwf p costs ts).2)
   unfold preCost
+  dsimp only
   split <;> exact h
 
 /-- Whether the costs exhaust the object. -/
@@ -605,6 +614,8 @@ inductive ManaKind where
   | any (n : Nat)
   /-- Power of any domain that only pays for Gear this turn (Fire Below the Mountain). -/
   | gear (n : Nat)
+  /-- Flexible Power that may only be spent playing a Unit or Gear. -/
+  | permanent
   /-- Pay any amount of Power, to add that much Energy (Hextech Anomaly): the payment is chosen. -/
   | powerToEnergy
   /-- Pay any amount of Energy, to add that much Power of any domain (Ancient Henge). -/
@@ -618,6 +629,7 @@ def ManaKind.add : ManaKind → RunePool → RunePool.Payment → RunePool
   | .power d n, p, _ => p.addPower d n
   | .any n, p, _ => p.addAny n
   | .gear n, p, _ => p.addAny n
+  | .permanent, p, _ => p.addAny 1
   | .powerToEnergy, p, payment => p.addEnergy payment.power.length
   | .energyToPower, p, payment => p.addAny payment.energy
 
@@ -631,6 +643,8 @@ def manaKind (body : EffectDef) : Option ManaKind :=
   -- the Power of Fire Below the Mountain: it pays only for Gear
   | [], .seq (.cons (.prim (.addPower .you (.const n) none none))
       (.cons (.prim (.turnEffect .gearMana)) .nil)) => some (.gear n)
+  | [], .seq (.cons (.prim (.addPower .you (.const 1) none none))
+      (.cons (.prim (.turnEffect .permanentMana)) .nil)) => some .permanent
   -- an Add that works only while a condition holds: it is used only then (`guardOk`)
   | [], .ifThen _ (.prim (.addEnergy .you (.const n) none)) .nop => some (.energy n)
   | [], .ifThen _ (.prim (.addPower .you (.const n) (some d) none)) .nop => some (.power d n)
@@ -687,7 +701,7 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
             else
               s.activationTiming open_ speed && (!ex || !o.exhausted) &&
                 pc.any (fun c => c.paidBy d.domains pay) &&
-                (s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx)).any (fun pool =>
+                (s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) (s.permanentPlayActivation src costs)).any (fun pool =>
                   (costs.contains .fromHidden && s.playPowerCut p src ts != 0) ||
                     s.deflectOk p pool ts) &&
                 (match limit with
@@ -949,7 +963,7 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
             · simp [hm] at h
             simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hpool := h.1.1.1.2
-            cases hsf : s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) with
+            cases hsf : s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) (s.permanentPlayActivation src costs) with
             | none => rw [hsf] at hpool; simp at hpool
             | some pool =>
               have hs := GameState.spendFor_eq_some hsf

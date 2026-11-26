@@ -3900,8 +3900,14 @@ def RAD_143.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Iron Revenant: the effect is not written yet. -/
-def RAD_143 : CardDef := RAD_143.meta
+/-- Iron Revenant converts a card in Trash into Power reserved for a Unit or Gear play. -/
+def RAD_143 : CardDef :=
+  { RAD_143.meta with
+    abilities := [.activated [
+        .banishFromTrash (.ofList [.either (.ofType .unit) (.ofType .gear)]), .exhaustSelf] .reaction
+      (.of [] (.seqOf [.prim (.addPower .you (.const 1) none none), .prim (.turnEffect .permanentMana)]))
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-144
 /--

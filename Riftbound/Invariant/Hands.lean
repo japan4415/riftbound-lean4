@@ -422,7 +422,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     rcases List.mem_cons.mp hm' with h1 | h1
     · cases h1
     · exact List.mem_cons_of_mem _ h1
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
@@ -430,7 +430,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       exact manaOk_not_setup hl.2
     · rw [hpend] at hm
       exact hm
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
@@ -659,7 +659,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i q src idx pay hp hk
+  · rename_i q src idx pay _chosen hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play ?_ hto hcfg (fun hm => ?_)
@@ -722,7 +722,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       (fun r => congrArg List.length (hhand r)) (fun q _ => by rw [hmeta.2.2.2.2])
       (fun hm => by rw [hmeta.2.2.2.2] at hm; exact hm)
       (fun f hf hpf => ⟨f, by rw [hmeta.2.2.2.2] at hf; exact hf, hpf⟩)
-  · rename_i src idx pay hp hk
+  · rename_i src idx pay _chosen hp hk
     rw [hp, hk] at hl
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play (by rw [hphase]; exact manaOk_not_setup hl.2.1) hto hcfg (fun hm => ?_)

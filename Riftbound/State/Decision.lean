@@ -132,7 +132,7 @@ inductive ActionKind where
   | triggerAdd (add : EffectAdd)
   /-- Use an Add ability of an object: its Energy or Power is added at once, without the Chain
   (CR 430, 164.2). -/
-  | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment)
+  | manaAbility (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (banish : Option ObjId := none)
   /-- Place the next looked-at card on top in the chosen order, or mark it for Recycle
   (CR 437). -/
   | predictPick (card : ObjId) (recycle : Bool)

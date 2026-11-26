@@ -637,8 +637,9 @@ def Ability.runs : Ability → Bool
       ((discardCost costs).all fun (_, fs) => FilterList.understood fs && (manaKind body).isNone) &&
       (((manaKind body).isSome && manaGuardUnderstood body) ||
         (body.choices.all Choice.simple && body.body.understood))) ||
-    -- an Add that also kills its object ("Kill this, Exhaust: [Add] ...": Gold)
-    ((manaPlan costs).isSome && (manaKind body).isSome && manaGuardUnderstood body))
+    -- Some Adds pay another non-resource cost, such as killing their source or banishing a card.
+    ((manaPlan costs).any (fun plan => plan.banish.all FilterList.understood) &&
+      (manaKind body).isSome && manaGuardUnderstood body))
   | .triggered t body _ =>
     t.runs && body.moveChoice.isNone && body.modes.all (·.moveChoice.isNone) && body.choicesRun
   | .replacement .attach c body =>

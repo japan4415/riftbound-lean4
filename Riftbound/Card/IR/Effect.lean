@@ -74,7 +74,7 @@ inductive EffectAdd where
   /-- Exhaust or Recycle a Basic Rune. -/
   | rune (source : ObjId) (recycle : Bool)
   /-- Use a card's Add ability with its own selected resource cost. -/
-  | ability (source : ObjId) (index energy : Nat) (power : List Domain)
+  | ability (source : ObjId) (index energy : Nat) (power : List Domain) (banish : Option ObjId := none)
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices and resource price of a Spell under a limited play effect. -/

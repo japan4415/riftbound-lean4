@@ -371,6 +371,8 @@ inductive TurnEffect where
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana
+  /-- One flexible Power reserved for playing a Unit or Gear (CR 135, 357). -/
+  | permanentMana
   /-- The next Gear the player plays from their hand this turn, with an Energy cost of no more than
   `n`, costs no Energy (Jayce). -/
   | nextGearFree (n : Nat)

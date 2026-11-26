@@ -125,10 +125,10 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
   · exact ⟨_, rfl⟩
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
   · rename_i p n rest c hp hk
@@ -201,7 +201,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i q c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2
-  · rename_i q src idx pay hp hk
+  · rename_i q src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2
   · exact ⟨_, rfl⟩
@@ -213,7 +213,7 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i c ab hp hk
     rw [hp, hk] at hl
     exact applyRune_isSome hwf hl.2.1 hl.2.2.1
-  · rename_i src idx pay hp hk
+  · rename_i src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2.1
   · exact absurd hl (by simp)
@@ -312,9 +312,9 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
-  · rename_i p tail src idx pay hp hk
+  · rename_i p tail src idx pay _chosen hp hk
     exact applyMana_ownerOk hwf hown h
-  · rename_i p n tail src idx pay hp hk
+  · rename_i p n tail src idx pay _chosen hp hk
     exact applyMana_ownerOk hwf hown h
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -393,7 +393,7 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     exact activateStep_ownerOk hwf hown h
   · rename_i q c ab hp hk
     exact applyRune_ownerOk hwf hown h
-  · rename_i q src idx pay hp hk
+  · rename_i q src idx pay _chosen hp hk
     exact applyMana_ownerOk hwf hown h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
