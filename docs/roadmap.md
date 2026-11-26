@@ -37,7 +37,7 @@
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
-| I16 | **Priority の受け渡し**: Closed でプレイヤーがパスしたら、次の `priority` フレームは手番順で次のプレイヤーのものになる。全員が続けてパスしたら、最も新しい Finalized の項目が解決される（312.2, 339, 340） | L2 | M4 |
+| I16 | **Priority の受け渡し**: [Priority.lean](../Riftbound/Invariant/Priority.lean) で、最後のパスまでは `step` が手番順で次のプレイヤーの `chainPass` に停止し、最後のパスで Chain の先頭を解決するフレームに進むと証明した。席順が全席の並べ替えであれば、一巡で全席を重複なく回る（338.2, 339, 340） | L2 | M4 |
 | I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。M5a では局所版だけ証明（`cleanupFrame_pop_settled`、`Settled.no_lethal`）。全体の形は未 | L2 | M5 |
 | I18 | **任意の選択は必ず問われる**: 解決中の選択は決定フレーム、プレイ時の追加コストなどは `Action` で受け取る（[design.md §3](design.md#3-設計原則) の P4）。[Choices.lean](../Riftbound/Invariant/Choices.lean) で、実行可能な `may`、明示的な対象選択、複数の効果の選択、任意の誘発、印刷された Spell の任意追加コストを局所的に証明した。すべての効果・コスト・誘発を通した証明は残っている | L4 | M4 |
 | I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
