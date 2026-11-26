@@ -18703,6 +18703,9 @@
     "UNL"
    ],
    "subtitle": "Time Mage",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Icathia",
     "Zilean"
@@ -22128,7 +22131,7 @@
     "LeBlanc"
    ],
    "text": [
-    "When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit token there. It becomes a copy of another unit there. Give it [Temporary]."
+    "When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit token there. Then do this: It becomes a copy of another unit there. Give it [Temporary]."
    ],
    "textVariants": 1,
    "types": [

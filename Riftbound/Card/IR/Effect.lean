@@ -137,6 +137,28 @@ structure UnitTokenBatch where
   entries : List (CardId × Bool)
   /-- The ability to queue with the objects that actually enter. -/
   followup : Option UnitTokenFollowup := none
+  /-- Sources whose optional duplication was elected for this play. -/
+  duplicatedBy : List (ObjId × Option Timestamp) := []
+deriving DecidableEq, Repr, Hashable
+
+/-- An available replacement sequence for simultaneous Unit token plays (CR 370-375). -/
+inductive UnitTokenReplacement where
+  /-- Offer substitutions from the available token definitions, one for each entry. -/
+  | substitute (cards : List CardId)
+  /-- Offer one extra copy of a token, from this unused ability instance. -/
+  | duplicate (source : ObjId) (copy : Option Timestamp)
+deriving DecidableEq, Repr, Hashable
+
+/-- The decisions still to complete before finalizing a group of Unit token plays. -/
+inductive UnitTokenPlan where
+  /-- Choose each token's substitution, then continue with the remaining replacements. -/
+  | substitute (cards : List CardId) (remaining chosen : List (CardId × Bool))
+      (after : List UnitTokenReplacement)
+  /-- Apply the next replacement in the elected order. -/
+  | apply (replacement : UnitTokenReplacement) (after : List UnitTokenReplacement)
+  /-- Duplicate the selected entry or decline this use. -/
+  | duplicate (source : ObjId) (copy : Option Timestamp) (entry : Option Nat)
+      (after : List UnitTokenReplacement)
 deriving DecidableEq, Repr, Hashable
 
 mutual
@@ -150,7 +172,7 @@ inductive Effect where
   /-- Add one available registered Legend. -/
   | addReservedLegendChosen (legend : ObjId)
   /-- Choose the replacements for the tokens before the group is placed. -/
-  | planUnitTokenEntries (batch : UnitTokenBatch) (remaining chosen : List (CardId × Bool))
+  | planUnitTokenEntries (batch : UnitTokenBatch) (plan : UnitTokenPlan)
   /-- Choose resources and add funding for the token's optional Accelerate. -/
   | fundTokenAccelerate (batch : UnitTokenBatch) (payment : Nat × List Domain) (adds : List EffectAdd)
   /-- Place the group with the selected additional cost, if any. -/

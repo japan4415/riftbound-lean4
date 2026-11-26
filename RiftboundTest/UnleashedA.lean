@@ -168,7 +168,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let answered ← cast opponentWindow q gust (payOf opponentWindow gust) [other]
   return current == p && (window.obj? ability).any (fun o =>
       o.eventObjects == [token] && o.triggerSubject == some model) &&
-    events.any (fun | .unitTokensFor _ _ _ _ _ [id] => id == token | _ => false) &&
+    events.any (fun | .unitTokensFor _ _ _ _ _ [id] none => id == token | _ => false) &&
     window.tired token == some false && !window.hasKw token .temporary &&
     !(stopped.inPlay.contains token) && stopped.countIn p .base "UNL-111" == 0 &&
     (stopped.zone .chain).isEmpty && !(answered.inPlay.contains other) &&
@@ -185,6 +185,55 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let original ← (finished.obj? copy).bind (·.originalToken)
   return (finished.cards.find? original).any (·.name == "Mech") &&
     finished.hasKw copy .temporary && finished.tired copy == some false
+
+-- Zilean's additional ready Reflection belongs to the same reflexive ability. Turning both
+-- tokens into copies of Zilean does not cause an additional play (CR 375).
+#guard tun fun s => do
+  let p := s.me
+  let (s, zilean) ← putAt (s.control p s.bf0) p "UNL-086" s.bf0
+  let (s, mirror) ← put s p "UNL-200" .hand
+  let resolved ← cast (s.rich p) p mirror ⟨3, [.mind, .order]⟩ [zilean]
+  let copies := (resolved.zone (.player p .base)).filter fun id =>
+    (resolved.obj? id).any (·.originalToken == some (cid "UNL-T06"))
+  return copies.length == 2 && copies.all (fun id =>
+      (resolved.cardDef? id).any (·.id == cid "UNL-086") &&
+      resolved.hasKw id .temporary && resolved.tired id == some false) &&
+    (resolved.zone .chain).isEmpty
+
+-- The Deceiver pays to put her first ability on the Chain, then chooses a copy model at the
+-- Battlefield of this score. A previously scored Battlefield and the new tokens are ineligible.
+#guard tun fun s => do
+  let p := s.me
+  let first := s.bf0
+  let (s, second) ← putBf s p "OGN-275"
+  let (s, legend) ← put s p "UNL-199" .legendZone
+  let (s, pitch) ← put s p "UNL-200" .hand
+  let (s, _) ← putAt s p "UNL-111" first
+  let (s, zilean) ← putAt (s.control p second) p "UNL-086" second
+  let s := s.modObj first fun o => { o with scored := [p] }
+  let chooseCost (conquer : Bool) :=
+    let pending := insertTriggers (s.detect [.scored p second conquer]) [.priority p]
+    (advance 100 { s with pending } []).toOption
+  let (conquer, _) ← chooseCost true
+  let (hold, _) ← chooseCost false
+  let pay := Action.mk (.player p) (.putTrigger 0 [] (.pay [pitch] none none []))
+  let (paid, costEvents) ← (step 100 conquer pay).toOption
+  let (paidHold, _) ← (step 100 hold pay).toOption
+  let (declined, _) ← (step 100 hold ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let .chainPass firstPass _ :: _ := paid.pending | none
+  let (passed, _) ← (step 100 paid ⟨.player firstPass, .pass⟩).toOption
+  let .chainPass secondPass _ :: _ := passed.pending | none
+  let (replacement, _) ← (step 100 passed ⟨.player secondPass, .pass⟩).toOption
+  let (copyChoice, _) ← (step 100 replacement ⟨.player p, .decide true⟩).toOption
+  let result := settleChain { pick := fun targets => targets == [zilean] } 12 copyChoice
+  let fresh := (result.unitsAtOf second p).filter (· != zilean)
+  return paid.tired legend == some true && paidHold.tired legend == some true &&
+    declined.tired legend == some false && (declined.zone (.player p .hand)).contains pitch &&
+    paid.countIn p .trash "UNL-200" == 1 && costEvents.contains (.exhausted legend) &&
+    (paid.unitsAtOf second p) == [zilean] && copyChoice.trigPicks == [zilean] &&
+    fresh.length == 2 && fresh.all (fun id => result.hasKw id .temporary &&
+      result.tired id == some false && (result.cardDef? id).any (·.id == cid "UNL-086")) &&
+    (result.unitsAtOf first p).length == 1
 
 -- Keeper of Masks (UNL-081): two Reflection tokens, copies of it (so with Temporary too)
 #guard tun fun s => do

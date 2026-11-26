@@ -438,6 +438,8 @@ inductive TurnEffect where
   /-- A note of the turn on an object: an ability of the card waits for it ("at the start of your
   next Main Phase, ..."); `n` tells the notes apart. -/
   | armed (n : Nat)
+  /-- A source used its Unit token duplication this turn (CR 371). -/
+  | duplicatedUnitToken (copy : Option Timestamp)
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices limited by an ability's rules text belong to that instance. -/

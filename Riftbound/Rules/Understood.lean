@@ -519,7 +519,7 @@ def StaticMod.runs : StaticMod → Bool
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
   | .diesInsteadGear | .sacrificeToSaveSelf => true
-  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)

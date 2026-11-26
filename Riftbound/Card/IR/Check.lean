@@ -289,7 +289,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear | .sacrificeToSaveSelf => true
-  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)

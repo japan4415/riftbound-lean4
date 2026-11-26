@@ -31,6 +31,9 @@ TEXT_ERRATA = {
         "tokens here. They become copies of me.":
             "tokens here. Then do this: They become copies of me.",
     },
+    "UNL-199": {
+        "token there. It becomes a copy": "token there. Then do this: It becomes a copy",
+    },
     "UNL-200": {
         "to your base. It becomes a copy": "to your base. Then do this: It becomes a copy",
     },
@@ -66,6 +69,7 @@ TEXT_ERRATA = {
 
 # The gallery omits or mislabels these fields. Checked against its card images.
 UNLEASHED_PRINT_METADATA = {
+    "UNL-086": {"supertypes": ["champion"]},
     "UNL-090": {"supertypes": ["champion"]},
     "UNL-172": {"supertypes": ["champion"]},
     "UNL-200": {"supertypes": ["signature"], "powerOwn": True},

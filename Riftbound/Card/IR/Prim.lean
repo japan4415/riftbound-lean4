@@ -478,6 +478,8 @@ inductive StaticMod where
   | rescueWeakerHere
   /-- The player can replace each Unit token play with this Unit token at the same location. -/
   | replaceUnitTokenWith (token : String)
+  /-- Once per turn, the controller may play an additional copy of a Unit token they play. -/
+  | duplicateUnitTokenOnce
   /-- The objects the selector gives add this much more Energy when they Add (Chem-Baroness). -/
   | manaExtraEnergy (s : Selector) (n : Amount)
   /-- The optional additional costs the player pays cost this much less (Ezreal, Prodigy). -/
@@ -693,6 +695,8 @@ inductive TriggerCost where
   | killFriendly (count : Nat) (filters : FilterList)
   /-- Discard exactly this many cards of the controller's choice (CR 423). -/
   | discard (count : Nat)
+  /-- Discard the specified cards and exhaust the source during finalization. -/
+  | discardAndExhaust (count : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

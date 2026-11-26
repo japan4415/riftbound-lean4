@@ -549,10 +549,13 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.cards.find? card with
     | some d => triggersAmong s src p .linkedDiscardType d idx (idx + 1)
     | none => []
-  | .unitTokensFor p src card idx target tokens =>
+  | .unitTokensFor p src card idx target tokens destination =>
     match s.cards.find? card with
     | some d => (triggersAmong s src p (.linkedUnitTokens target.isSome) d idx (idx + 1)).map
-      (fun t => { t with subject := target, eventObjects := tokens })
+      (fun t => { t with
+        subject := target
+        eventObjects := tokens
+        eventBattlefields := some destination.toList })
     | none => []
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
@@ -676,7 +679,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
-    let eff :=
+    let eff := (
       (s.trigUnitsAt bf p).flatMap
         (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
           triggersOf s u p .scored ++
@@ -685,7 +688,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
            else [])) ++
       (s.zone (.player p .legendZone)).flatMap
         (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
-      triggersOf s bf p (if conquer then .youConquer else .youHold)
+      triggersOf s bf p (if conquer then .youConquer else .youHold)).map
+        (fun t => { t with eventBattlefields := some [bf] })
     -- the effects fire one more time if a unit there says so
     eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
     -- what the opponents of the player who scores wait for
@@ -1167,6 +1171,10 @@ def canPayBurn (s : GameState) (p : PlayerId) (count : Nat) : Bool :=
 def canExhaustTriggerSource (s : GameState) (t : PendTrigger) : Bool :=
   (s.locate t.source).any Zone.isBoard && (s.obj? t.source).any (fun o => !o.exhausted)
 
+/-- Choose exactly the printed number of discards from the controller's hand. -/
+def triggerDiscardOptions (s : GameState) (p : PlayerId) (count : Nat) : List (List ObjId) :=
+  (subseqsUpTo count (s.zone (.player p .hand)).eraseDups).filter (·.length == count)
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
@@ -1178,8 +1186,9 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
         (!checkPool || (payByRunes s t.controller t.source cost).isSome) then [[]] else []
   | .exhaustSelf => if canExhaustTriggerSource s t then [[]] else []
   | .burn n => if canPayBurn s t.controller n then [[]] else []
-  | .discard n =>
-    (subseqsUpTo n (s.zone (.player t.controller .hand)).eraseDups).filter (·.length == n)
+  | .discard n => triggerDiscardOptions s t.controller n
+  | .discardAndExhaust n =>
+    if canExhaustTriggerSource s t then triggerDiscardOptions s t.controller n else []
   | .killFriendly n fs =>
     let env : Env := { passMight := s.mightTable }
     let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
@@ -1410,6 +1419,21 @@ theorem noteTriggerBanishers_safe (s : GameState) (banishers : List (ObjId × Pl
   | cons pick rest ih =>
     exact (addTurnFxOn_safe s pick.2 pick.1 .chosenDeathBanisher).trans (ih _)
 
+/-- Discard the selected hand cards only when the complete cost is legal. -/
+def payTriggerDiscards (s : GameState) (p : PlayerId) (ids : List ObjId) (n : Nat) :
+    Option (GameState × List Event) :=
+  if ids.length == n && ids.eraseDups.length == n && ids.all ((s.zone (.player p .hand)).contains) then
+    some (payDiscards p s ids)
+  else none
+
+/-- Discarding cards to finalize a trigger preserves the invariants. -/
+theorem payTriggerDiscards_safe {s : GameState} {p : PlayerId} {ids : List ObjId} {n : Nat}
+    {r : GameState × List Event} (h : payTriggerDiscards s p ids n = some r) : Safe s r.1 := by
+  unfold payTriggerDiscards at h
+  split at h
+  · cases h; exact payDiscards_safe _ _ _
+  · contradiction
+
 /-- Pay a trigger's cost without giving either player a chance to respond (CR 383.3.b.1). -/
 def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
     (banishers : List (ObjId × PlayerId) := []) (resourcesPaid : Bool := false) :
@@ -1433,10 +1457,12 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
     if ids.length == n then
       some (resolveDeathGroupWith (noteTriggerBanishers s banishers) ids (killOrSaveInGroup s))
     else none
-  | .discard n =>
-    if ids.length == n && ids.eraseDups.length == n &&
-        ids.all ((s.zone (.player t.controller .hand)).contains) then
-      some (payDiscards t.controller s ids)
+  | .discard n => payTriggerDiscards s t.controller ids n
+  | .discardAndExhaust n =>
+    if canExhaustTriggerSource s t then do
+      let (discarded, discards) ← payTriggerDiscards s t.controller ids n
+      let (exhausted, exhausts) := setExhausted true discarded t.source
+      some (exhausted, discards ++ exhausts)
     else none
 
 /-- Dismiss a declined or unpayable trigger, or pay for it and finalize it (CR 355, 383.3). -/
@@ -1535,9 +1561,13 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
       exact (noteTriggerBanishers_safe s banishers).trans
         (resolveDeathGroupWith_safe _ ids (killOrSaveInGroup_safe s))
     · simp at h
+  · exact payTriggerDiscards_safe h
   · split at h
-    · cases h; exact payDiscards_safe _ _ _
-    · simp at h
+    · simp only [bind, Option.bind_eq_some_iff] at h
+      obtain ⟨⟨discarded, _⟩, hp, hresult⟩ := h
+      cases hresult
+      exact (payTriggerDiscards_safe hp).trans (setExhausted_safe true discarded t.source)
+    · contradiction
 
 /-- Putting the picked ability on the Chain is a safe change. -/
 theorem finalizePick_safe (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)

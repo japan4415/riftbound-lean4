@@ -2537,6 +2537,7 @@ def UNL_086.meta : CardDef :=
     name := "Zilean",
     subtitle := some "Time Mage",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Icathia"⟩, ⟨"Zilean"⟩],
     domains := [.mind],
     cost := some ⟨5, [.domain .mind]⟩,
@@ -2547,11 +2548,8 @@ def UNL_086.meta : CardDef :=
 /-- Zilean. -/
 def UNL_086 : CardDef :=
   { UNL_086.meta with
-    abilities := [.triggered
-      { subject := Selector.all .friendly .anywhere [.ofType .unit, .token], event := .playToken,
-        condition := .matches .self .onBattlefield }
-      (.of [] (.may (.prim (.cloneToken (.slot 0))))) (.perTurn 1)],
-    status := .drafted }
+    abilities := [.passive (.matches .self .onBattlefield) [.duplicateUnitTokenOnce]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-087
 /--
@@ -5778,7 +5776,7 @@ def UNL_198 : CardDef :=
 Printings: UNL-199/219, UNL-235*/219, UNL-235/219
 
 > When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit
-> token there. It becomes a copy of another unit there. Give it [Temporary].
+> token there. Then do this: It becomes a copy of another unit there. Give it [Temporary].
 -/
 def UNL_199.meta : CardDef :=
   { id := ⟨"UNL-199"⟩,
@@ -5791,26 +5789,17 @@ def UNL_199.meta : CardDef :=
 
 /-- Deceiver. -/
 def UNL_199 : CardDef :=
+  let offer (event : TriggerEvent) : Ability :=
+    .triggered { event, optional := true, cost := .discardAndExhaust 1 }
+      (.of [] (.playUnitTokensThen "Reflection" 1 .here true 2)) .unlimited
   { UNL_199.meta with
     abilities := [
-      .triggered (.onSelf .youConquer)
-        (.of [] (.ifThen (.and .legendReady (.cmp .ge (.handSize .you) (.const 1)))
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.discard .you (.const 1)),
-            .prim (.create "Reflection" (.const 1) .here true),
-            .grant (Selector.all .friendly .here [.ofType .unit, .named "Reflection"])
-              (.keyword .it { keyword := .temporary }) .permanent,
-            .prim (.becomeCopy (Selector.all .friendly .here [.ofType .unit, .named "Reflection"])
-              (Selector.all .any .here [.ofType .unit, .not (.named "Reflection")]))])) .nop))
-        .unlimited,
-      .triggered (.onSelf .youHold)
-        (.of [] (.ifThen (.and .legendReady (.cmp .ge (.handSize .you) (.const 1)))
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.discard .you (.const 1)),
-            .prim (.create "Reflection" (.const 1) .here true),
-            .grant (Selector.all .friendly .here [.ofType .unit, .named "Reflection"])
-              (.keyword .it { keyword := .temporary }) .permanent,
-            .prim (.becomeCopy (Selector.all .friendly .here [.ofType .unit, .named "Reflection"])
-              (Selector.all .any .here [.ofType .unit, .not (.named "Reflection")]))])) .nop))
-        .unlimited],
+      offer .youConquer, offer .youHold,
+      .triggered (.onSelf (.linkedUnitTokens false))
+        (.of [.targetOf .one .any .anywhere
+          [.ofType .unit, .atEventBattlefield none, .not (.inTriggerGroup [])]]
+          (.seqOf [.prim (.becomeCopy .eventObjects (.slot 0)),
+            .grant .eventObjects (.keyword .it { keyword := .temporary }) .permanent])) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-200

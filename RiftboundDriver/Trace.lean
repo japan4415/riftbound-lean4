@@ -62,6 +62,37 @@ def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × St
     | _ => []
   | _ => []
 
+/-- Describe which Unit token replacement was offered or chosen (CR 372-375). -/
+def unitTokenReplacementFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let fields (kind : String) (values : List (String × String) := []) :=
+    [("unitTokenReplacement", jobj (("kind", jstr kind) :: values))]
+  match frame with
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries _ (.apply ..)) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries _ (.apply (.substitute cards) _) =>
+      fields "substituteFirst" [("cards", jarr (cards.map (jstr ∘ CardId.code)))]
+    | .planUnitTokenEntries _ (.apply (.duplicate src _) _) =>
+      fields "duplicateFirst" [("source", toString src.n)]
+    | _ => fields "moreOrder"
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries _ (.duplicate ..)) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries batch (.duplicate src _ (some i) _) =>
+      match batch.entries[i]? with
+      | some (card, _) => fields "duplicate" [("source", toString src.n), ("card", jstr card.code),
+          ("number", toString (i + 1)), ("total", toString batch.entries.length)]
+      | none => []
+    | .planUnitTokenEntries _ (.duplicate src _ none _) => fields "declineDuplicate" [("source", toString src.n)]
+    | _ => fields "moreDuplicates"
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries ..) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries batch (.substitute _ _ ((card, _) :: chosen) _) =>
+      match batch.entries[chosen.length]? with
+      | some (original, _) => fields (if original == card then "keep" else "substitute")
+          [("original", jstr original.code), ("card", jstr card.code)]
+      | none => []
+    | _ => fields "moreSubstitutes"
+  | _ => []
+
 /-- Serialize the destination and costs chosen for a permanent played by an effect. -/
 def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (String × String) :=
   [("card", toString card.n), ("cost", costJson plan.cost),
@@ -403,6 +434,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
                | .energy n => [("energy", toString n)]
                | .burn n => [("burn", toString n)]
                | .exhaustSelf => [("exhaustSource", "true")]
+               | .discardAndExhaust _ => [("exhaustSource", "true"), ("discardCost", "true")]
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
@@ -449,7 +481,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | some (.eitherDo _ _ _ (.prim (.attachPaying ..)) (.doThen (.prim (.exhaust _)) _) _) =>
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
-        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ damageDivisionFields frame yes ++
+        tokenLocationFields frame yes ++ unitTokenReplacementFields frame yes ++
+        damageOrderFields frame yes ++ damageDivisionFields frame yes ++
         deathBanishFields frame yes ++ deathSacrificeFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
@@ -503,9 +536,10 @@ def eventJson : Event → String
   | .discardedTypeFor p source _ idx card =>
     jobj [("t", jstr "discarded_type"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("card", toString card.n)]
-  | .unitTokensFor p source _ idx target tokens =>
+  | .unitTokensFor p source _ idx target tokens destination =>
     jobj [("t", jstr "unit_tokens_for"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("target", target.elim "null" (fun id => toString id.n)),
+      ("battlefield", destination.elim "null" (fun id => toString id.n)),
       ("tokens", jarr (tokens.map (fun id => toString id.n)))]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]

@@ -920,7 +920,37 @@ private theorem moveEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} 
   · dsimp only at h
     split at h <;> obtain rfl := List.mem_singleton.mp h <;> rfl
 
-set_option maxHeartbeats 4000000 in
+set_option maxHeartbeats 2500000 in
+private theorem runPrimEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {pr : Prim} {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (runPrimEffect s p src env pr es funding).2.1) :
+    f.isPlay = true ∨ (∃ q k, f = Frame.draw q k) ∨ ∃ q, f = .chanceBurnOut q := by
+  unfold runPrimEffect at h
+  split at h <;> (try split at h) <;> (try split at h) <;> (try split at h)
+  all_goals first
+    | (simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil, or_false] at h
+       first
+       | (subst h; exact Or.inl rfl)
+       | (rcases h with rfl | rfl <;> exact Or.inl rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl
+          · exact Or.inr (Or.inl ⟨q, _, rfl⟩)
+          · exact Or.inl rfl)
+       | (rcases h with ⟨q, -, rfl⟩ | rfl <;> exact Or.inl rfl))
+    | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
+    | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
+    | exact Or.inl (castInlineStep_mem h)
+    | exact Or.inl (killEffectStep_mem h)
+    | exact Or.inl (unitTokenPrimStep_mem h)
+    | exact Or.inl (moveEffectStep_mem h)
+    | (rcases List.mem_append.mp h with ha | hb
+       · exact Or.inl (attachmentReplacementFrames_play ha)
+       · obtain rfl := List.mem_singleton.mp hb
+         exact Or.inl rfl)
+    | (rcases burnEffect_mem h with hp | hb
+       · exact Or.inl hp
+       · exact Or.inr (Or.inr hb))
+
+set_option maxHeartbeats 6000000 in
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
@@ -974,21 +1004,18 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
          · simp at ha
        · obtain rfl := List.mem_singleton.mp hb
          exact Or.inl rfl)
-    | (rename_i r hr; exact Or.inl (playSpellStep_frames hr h))
-    | (rename_i r hr; exact Or.inl (castReducedStep_frames hr h))
+    | exact runPrimEffect_mem h
     | (obtain rfl := List.mem_singleton.mp h
        exact Or.inl (addReservedLegendFrame_play _ _ _ _ _))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
     | exact Or.inl (orderBanishReplayFrames_mem h)
-    | exact Or.inl (castInlineStep_mem h)
     | exact Or.inl (castLimitedStep_mem h)
     | exact Or.inl (finalizeLimitedStep_mem h)
     | exact Or.inl (cancelLimitedStep_mem h)
     | exact Or.inl (resolveEffectDamageStep_mem h)
     | exact Or.inl (orderCombatDamageStep_mem h)
     | exact Or.inl (killEffectStep_mem h)
-    | exact Or.inl (unitTokenPrimStep_mem h)
     | exact Or.inl (moveEffectStep_mem h)
     | (unfold banishLookedStep at h
        split at h
@@ -1003,9 +1030,6 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        all_goals first
        | (subst h; exact Or.inl rfl)
        | (rcases h with rfl | rfl <;> exact Or.inl rfl))
-    | (rcases burnEffect_mem h with hp | hb
-       · exact Or.inl hp
-       · exact Or.inr (Or.inr hb))
 
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}

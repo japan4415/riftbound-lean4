@@ -46,11 +46,12 @@
 | カード | 文 | 足りないもの |
 |---|---|---|
 | Recruit the Vanguard（解決済み） | "Play four 1 Might Recruit unit tokens." | 各トークンの配置先を `Prim.playUnitToken` で順に選ぶ |
-| Mirror Image、Keeper of Masks | Reflection のプレイ後に、別の誘発型能力でコピーにする | `playUnitTokensThen` は実際に入ったトークンの ID を誘発に渡す。Heimerdinger による置換後も、その ID がコピーの対象になる（CR 375、388–389）。Zilean の追加トークンを同じ指示の結果として扱う処理は残っている。 [Unleashed 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) |
+| Mirror Image、Keeper of Masks、Deceiver | Reflection のプレイ後に、別の誘発型能力でコピーにする | `playUnitTokensThen` は Heimerdinger の置換や Zilean の追加を含め、実際に入ったトークンの ID を誘発に渡す。Deceiver は得点した Battlefield を記録し、捨て札と Exhaust を支払ってから、その Battlefield の別の Unit を選ぶ（CR 375、388–389）。 [Unleashed 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) |
+| Zilean, Time Mage（解決済み） | トークンをプレイする前に、ターンに一度だけ追加トークンを選ぶ | 置換を選んだ場合に使用を記録する。元の指示の場所、Ready、後続の誘発を引き継ぎ、他の置換との適用順を選べる（CR 370–375）。 [Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/) |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間。**近似して書いた**（`StaticMod.copiesUnitText`: 付いたユニットが、自分のカードの誘発する能力を、もう一度持つ。起動する能力、パッシブ、死ぬときの誘発（死ぬと、Equipment が外れた新しい物になる）は、複製しない）。 |
 | Whirlwind（解決済み） | "Starting with the next player, each player may return a unit ..." | `eachPlayerFromNext` で現手番の次の席から全員を順に回る。2v2 で味方を含む4席の選択と手札への帰還を確認した |
 | Spiritforged 22 の近似（[roadmap.md](roadmap.md) 『Spiritforged 22』） | 山札から公開（Undertitan）、公開の置き換え（Void Hatchling）、手札以外から遊ぶときの Accelerate（Rek'Sai）、選ぶ呪文の費用（Irelia）、追放したユニットの記録（The Zero Drive）、Akshan の『離れるまで支配』 | `Prim.reveal` を使うカードだけが `Event.revealed` を出す。置き換えは、公開のあとの誘発で近似する。費用は、Energy の払い戻しで近似する。ほかは、書いていない |
-| Heimerdinger, Academy Instructor | "If you would play a unit token to a location ... play a 3 Might Mech unit token to that same location instead." | トークンのプレイを置換すること、置換前の場所を参照すること |
+| Heimerdinger, Academy Instructor（解決済み） | 同じ場所に Mech をプレイする置換 | 出る前にどのトークンを置き換えるか選び、元のプレイ先と着地時の状態を引き継ぐ。Zilean との適用順も選べる |
 
 ## 4. 書けたが、近似したもの
 

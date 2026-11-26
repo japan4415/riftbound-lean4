@@ -131,7 +131,7 @@ inductive Event where
   | combatWon (bf : ObjId) (winner : PlayerId)
   /-- A linked Unit token instruction played these specific objects (CR 375, 388-389). -/
   | unitTokensFor (p : PlayerId) (source : ObjId) (card : CardId) (index : Nat)
-      (target : Option ObjId) (tokens : List ObjId)
+      (target : Option ObjId) (tokens : List ObjId) (destination : Option ObjId)
 deriving DecidableEq, Repr
 
 end Riftbound

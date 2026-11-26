@@ -5324,8 +5324,16 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
 def linkedUnitTokenBatch (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (name : String) (count : Nat) (place : Place) (ready : Bool) (index : Nat)
     (target : Option Selector) : Option UnitTokenBatch := do
-  let batch ← unitTokenBatchOf s p src env (.create name (.const count) place ready)
   let card ← env.sourceCard <|> (s.cardDef? src).map (·.id)
+  let batch ← if place == .here && (s.cards.find? card).any (·.hasType .legend) then do
+    let [field] ← env.eventBattlefields.getD [] | none
+    let token ← (s.tokenCard name).filter (fun d => CardDef.hasType d .unit)
+    if !s.battlefields.contains field || count == 0 then none
+    else some {
+      destination := some field
+      contest := false
+      entries := List.replicate count (token.id, ready) }
+  else unitTokenBatchOf s p src env (.create name (.const count) place ready)
   let targetId ← match target with
     | none => some none
     | some sel => do
@@ -5333,13 +5341,34 @@ def linkedUnitTokenBatch (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
       some (some id)
   some { batch with followup := some ⟨src, card, index, targetId⟩ }
 
-/-- The Unit token replacements currently offered by this player's effects. -/
-def GameState.unitTokenReplacements (s : GameState) (p : PlayerId) : List CardId :=
-  (s.passiveSources.flatMap (fun id =>
-    if !(s.obj? id).any (·.controller == p) then [] else
-      (s.activeMods id).filterMap (fun
-        | .replaceUnitTokenWith name => ((s.tokenCard name).filter (·.hasType .unit)).map (·.id)
-        | _ => none))).eraseDups
+/-- The Unit token replacements currently offered by this player's effects (CR 370-371). -/
+def GameState.unitTokenReplacements (s : GameState) (p : PlayerId) : List UnitTokenReplacement :=
+  let sources := s.passiveSources.flatMap fun id =>
+    if (s.obj? id).any (·.controller == p) then (s.activeMods id).map (id, ·) else []
+  let substitutes := (sources.filterMap fun (_, mod) =>
+    match mod with
+    | .replaceUnitTokenWith name => ((s.tokenCard name).filter (·.hasType .unit)).map (·.id)
+    | _ => none).eraseDups
+  let duplicates := (sources.filterMap fun (src, mod) =>
+    match mod with
+    | .duplicateUnitTokenOnce =>
+      let copy := s.copyStamp? src
+      if s.turnFx.any (·.appliesTo s.turn src (.duplicatedUnitToken copy)) then none
+      else some (UnitTokenReplacement.duplicate src copy)
+    | _ => none).eraseDups
+  (if substitutes.isEmpty then [] else [.substitute substitutes]) ++ duplicates
+
+/-- Charge each elected replacement to the source that supplied it (CR 371). -/
+def noteUnitTokenDuplicates (p : PlayerId) (s : GameState)
+    (sources : List (ObjId × Option Timestamp)) : GameState :=
+  sources.foldl (fun t (id, copy) => t.addTurnFxOn p id (.duplicatedUnitToken copy)) s
+
+/-- Recording uses leaves the structural invariants intact. -/
+theorem noteUnitTokenDuplicates_safe (p : PlayerId) (s : GameState)
+    (sources : List (ObjId × Option Timestamp)) : Safe s (noteUnitTokenDuplicates p s sources) := by
+  induction sources generalizing s with
+  | nil => exact Safe.refl s
+  | cons x rest ih => exact (addTurnFxOn_safe s p x.1 (.duplicatedUnitToken x.2)).trans (ih _)
 
 /-- Add a chosen entry without publishing token plays until the whole group is on the Board. -/
 def enterUnitToken (s : GameState) (p : PlayerId) (dest : Option ObjId) (after : GameState)
@@ -5358,14 +5387,15 @@ theorem enterUnitToken_safe (s : GameState) (p : PlayerId) (dest : Option ObjId)
 /-- Put the chosen group on the Board at once (CR 184.2, 375-376). -/
 def enterUnitTokenBatch (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) :
     GameState × List Event :=
-  let t := batch.entries.foldl (enterUnitToken s p batch.destination) s
+  let marked := noteUnitTokenDuplicates p s batch.duplicatedBy
+  let t := batch.entries.foldl (enterUnitToken s p batch.destination) marked
   let next := if batch.contest then batch.destination.elim t (fun field => contestFor p field t)
     else t
   let played := tokenPlays s next p
   let linked := batch.followup.toList.flatMap fun link =>
     let tokens := played.filterMap (fun | .tokenPlayed _ id => some id | _ => none)
     if tokens.isEmpty then []
-    else [.unitTokensFor p link.source link.card link.index link.target tokens]
+    else [.unitTokensFor p link.source link.card link.index link.target tokens batch.destination]
   (buffNewTokens s next p, played ++ linked)
 
 /-- Placing the whole group preserves the structural invariants. -/
@@ -5373,12 +5403,13 @@ theorem enterUnitTokenBatch_safe (s : GameState) (p : PlayerId) (batch : UnitTok
     Safe s (enterUnitTokenBatch s p batch).1 := by
   unfold enterUnitTokenBatch
   dsimp only
-  refine (enterUnitToken_safe s p batch.destination batch.entries s).trans ?_
-  split
-  · cases batch.destination
-    · exact buffNewTokens_safe _ _ _
-    · exact (contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _)
-  · exact buffNewTokens_safe _ _ _
+  exact (noteUnitTokenDuplicates_safe p s batch.duplicatedBy).trans
+    ((enterUnitToken_safe s p batch.destination batch.entries _).trans (by
+      split
+      · cases batch.destination
+        · exact buffNewTokens_safe _ _ _
+        · exact (contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _)
+      · exact buffNewTokens_safe _ _ _))
 
 /-- Accelerate on a neutral Unit token, after flexible additional-cost reductions and any
 discount on the next Unit play (CR 185.3, 356.4, 805). -/
@@ -5464,38 +5495,76 @@ theorem finishUnitTokenPlay_safe {s : GameState} {p : PlayerId} {batch : UnitTok
   · obtain rfl := Option.some.inj h
     exact enterUnitTokenBatch_safe s p batch
 
-/-- Snapshot the location and let the player make each optional replacement. Original
-instructions such as entering ready are inherited by the replacement (CR 376). -/
+/-- Ask which of the remaining replacement sequences to perform next (CR 372-373). -/
+def beginUnitTokenEntries (batch : UnitTokenBatch) (replacements : List UnitTokenReplacement) : Effect :=
+  match replacements with
+  | [] => .planUnitTokenEntries batch (.substitute [] [] batch.entries.reverse [])
+  | [next] => .planUnitTokenEntries batch (.apply next [])
+  | _ => .eitherOf (EffectList.ofList (replacements.map (fun next =>
+      Effect.planUnitTokenEntries batch (.apply next (replacements.erase next)))))
+
+/-- Run all pending substitution choices as one uninterrupted sequence. The new definition
+inherits the original entry instructions (CR 373.2, 375). -/
 def unitTokenEntryPlan (s : GameState) (p : PlayerId) (batch : UnitTokenBatch)
-    (remaining chosen : List (CardId × Bool)) (funding : EffectAddPolicy) : Effect :=
+    (substitutes : List CardId) (remaining chosen : List (CardId × Bool))
+    (after : List UnitTokenReplacement) (funding : EffectAddPolicy) : Effect :=
   match remaining with
   | [] =>
     let original := batch.entries.head?.map Prod.fst
-    let (replaced, ordinary) := chosen.reverse.partition (fun entry => some entry.1 != original)
-    s.priceUnitToken p { batch with entries := replaced ++ ordinary } funding
+    let entries := if substitutes.isEmpty then chosen.reverse else
+      let (replaced, ordinary) := chosen.reverse.partition (fun entry => some entry.1 != original)
+      replaced ++ ordinary
+    let planned := { batch with entries }
+    if after.isEmpty then s.priceUnitToken p planned funding else beginUnitTokenEntries planned after
   | entry :: tail =>
-    let replacements := (s.unitTokenReplacements p).filter (· != entry.1)
+    let replacements := substitutes.filter (· != entry.1)
     if replacements.isEmpty then
-      .planUnitTokenEntries batch tail (entry :: chosen)
+      .planUnitTokenEntries batch (.substitute substitutes tail (entry :: chosen) after)
     else
       let opts := (entry.1 :: replacements).map (fun card =>
-        Effect.planUnitTokenEntries batch tail ((card, entry.2) :: chosen))
+        Effect.planUnitTokenEntries batch (.substitute substitutes tail ((card, entry.2) :: chosen) after))
       .eitherOf (EffectList.ofList opts)
 
-/-- Open the usual Unit token play, with any available replacement and optional costs. -/
-def beginUnitTokenEntries (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) : Effect :=
-  if (s.unitTokenReplacements p).isEmpty then
-    .planUnitTokenEntries batch [] batch.entries.reverse
-  else .planUnitTokenEntries batch batch.entries []
+/-- The replacement currently being applied can select an eligible entry or be declined. -/
+def applyUnitTokenReplacement (batch : UnitTokenBatch) (replacement : UnitTokenReplacement)
+    (after : List UnitTokenReplacement) : Effect :=
+  match replacement with
+  | .substitute cards => .planUnitTokenEntries batch (.substitute cards batch.entries [] after)
+  | .duplicate src copy =>
+    let options := (List.range batch.entries.length).map (fun i =>
+      Effect.planUnitTokenEntries batch (.duplicate src copy (some i) after))
+    let decline := Effect.planUnitTokenEntries batch (.duplicate src copy none after)
+    .eitherOf (EffectList.ofList (options ++ [decline]))
+
+/-- Add an extra play of the selected token, inheriting its destination, ready instruction and
+linked follow-up. Both plays belonging to the replacement precede unaffected entries (CR 373.1, 375). -/
+def duplicateUnitTokenEntry (batch : UnitTokenBatch) (src : ObjId) (copy : Option Timestamp)
+    (entry : Option Nat) : UnitTokenBatch :=
+  match entry.bind (fun i => (batch.entries[i]?).map (i, ·)) with
+  | some (i, token) =>
+    { batch with
+      entries := token :: token :: batch.entries.eraseIdx i
+      duplicatedBy := (src, copy) :: batch.duplicatedBy }
+  | none => batch
+
+/-- Resolve a decision in the token replacement plan before committing entry. -/
+def nextUnitTokenPlan (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) (funding : EffectAddPolicy) :
+    UnitTokenPlan → Effect
+  | .substitute cards remaining chosen after => unitTokenEntryPlan s p batch cards remaining chosen after funding
+  | .apply replacement after => applyUnitTokenReplacement batch replacement after
+  | .duplicate source copy entry after =>
+    let planned := duplicateUnitTokenEntry batch source copy entry
+    if after.isEmpty then s.priceUnitToken p planned funding else beginUnitTokenEntries planned after
 
 /-- The legacy paths handle Gear and effects without a token replacement or new optional cost. -/
 def unitTokenPrimStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) (es : EffectList) : GameState × List Frame × List Event :=
-  let planned := if !(s.unitTokenReplacements p).isEmpty || (s.fxOf p).contains .nextUnitAccelerate then
+  let replacements := s.unitTokenReplacements p
+  let planned := if !replacements.isEmpty || (s.fxOf p).contains .nextUnitAccelerate then
     unitTokenBatchOf s p src env pr else none
   match planned with
   | some batch =>
-    (s, [.run p src env (.cons (beginUnitTokenEntries s p batch) es)], [])
+    (s, [.run p src env (.cons (beginUnitTokenEntries batch replacements) es)], [])
   | none =>
     match applyPrim s p src env pr with
     | some (t, events) => (t, [.run p src env es], events)
@@ -5532,6 +5601,112 @@ def permanentDeathCostChoice (s : GameState) (card : ObjId) (plan : ReducedPerma
   let unit ← plan.extraObject
   if cost.kills then s.deathReplacementChoice unit else none
 
+/-- Execute a primitive instruction that may schedule further resolution or a decision. -/
+def runPrimEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
+  match pr with
+  | move@(.move ..) | move@(.swapPlaces ..) =>
+    moveEffectStep s p src env move .nop es
+  | .playUnitToken name =>
+    match s.tokenCard name with
+    | some c =>
+      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
+    | none => skip
+  | .burn who n => burnEffect s p src env who n es
+  | .burnWithUnitTrigger n idx => burnEffect s p src env .you n es (some idx)
+  | .predict n =>
+    match n.evalS s p src env with
+    | some count =>
+      match (s.zone (.player p .mainDeck)).take count with
+      | [] => (s, [.run p src env es], [])
+      | c :: cs =>
+        (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
+    | none => skip
+  | .draw sel n =>
+    match sel.resolve s p env, n.evalS s p src env with
+    | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
+    | _, _ => skip
+  | .reveal sel =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.lookFirst p env sel then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealNow sel)) es)))], [])
+    else
+      match applyPrim s p src env (.reveal sel) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
+  | .revealTop n =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+        (s.activeMods g).contains .lookBeforeReveal) then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealTopNow n)) es)))], [])
+    else
+      match applyPrim s p src env (.revealTop n) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
+  | .castInline sel => castInlineStep s p src env sel es funding
+  | pr@(.create ..) | pr@(.createAt ..) | pr@(.createAtPrev ..) |
+    pr@(.playUnitTokenAt ..) | pr@(.cloneToken ..) =>
+    unitTokenPrimStep s p src env pr es
+  | .kill sel => killEffectStep s p src env sel none es
+  | .banishReplay sel replay =>
+    let units := (sel.eval s p src env).getD []
+    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
+    (s, [.run p src env (replays.append es)], [])
+  | .playReduced sel less dest =>
+    match castReducedStep s p src env sel less dest es funding with
+    | some r => r
+    | none =>
+      match permanentPlayEffects s p src env (.playReduced sel less dest) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.playReduced sel less dest) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
+  | .play sel =>
+    match playSpellStep s p src env sel es funding with
+    | some r => r
+    | none =>
+      match permanentPlayEffects s p src env (.play sel) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.play sel) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
+  | .discard sel n =>
+    match sel.resolve s p env, n.evalS s p src env with
+    | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
+    | _, _ => skip
+  | pr =>
+    match effectDamageBatch? s p src env pr with
+    | some batch => (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
+    | none =>
+      match permanentPlayEffects s p src env pr with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env pr with
+        | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
+        | none => skip
+
+set_option maxHeartbeats 1200000 in
+/-- Executing a primitive instruction preserves the structural invariants. -/
+theorem runPrimEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
+    (es : EffectList) (funding : EffectAddPolicy) : Safe s (runPrimEffect s p src env pr es funding).1 := by
+  unfold runPrimEffect
+  split <;> (try split) <;> (try split) <;> (try split) <;> first
+    | exact Safe.refl s
+    | exact moveEffectStep_safe s p src env _ _ es _
+    | exact burnEffect_safe s p src env _ _ es _
+    | exact castInlineStep_safe s p src env _ es funding
+    | exact unitTokenPrimStep_safe s p src env _ es
+    | exact killEffectStep_safe s p src env _ _ es
+    | exact playSpellStep_safe (by assumption)
+    | exact castReducedStep_safe (by assumption)
+    | exact applyPrim_safe (by assumption)
+
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
@@ -5555,11 +5730,10 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | _ => skip
   | .playUnitTokensThen name count place ready index target =>
     match linkedUnitTokenBatch s p src env name count place ready index target with
-    | some batch => (s, [.run p src env (.cons (beginUnitTokenEntries s p batch) es)], [])
+    | some batch => (s, [.run p src env (.cons (beginUnitTokenEntries batch (s.unitTokenReplacements p)) es)], [])
     | none => skip
-  | .planUnitTokenEntries batch remaining chosen =>
-    let next := unitTokenEntryPlan s p batch remaining chosen funding
-    (s, [.run p src env (.cons next es)], [])
+  | .planUnitTokenEntries batch plan =>
+    (s, [.run p src env (.cons (nextUnitTokenPlan s p batch funding plan) es)], [])
   | .fundTokenAccelerate batch payment adds =>
     let opts := fundUnitTokenOptions s p batch ⟨payment.1, payment.2⟩ adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList opts)) es)], [])
@@ -5816,15 +5990,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .doThen (.prim (.exhaust sel)) body => linked (.exhaust sel) body
   | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
   | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es
-  | .prim (move@(.move ..)) | .prim (move@(.swapPlaces ..)) =>
-    moveEffectStep s p src env move .nop es
   | .moveAfterFee move body => moveEffectStep s p src env move body es true
-  | .prim (.playUnitToken name) =>
-    match s.tokenCard name with
-    | some c =>
-      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
-      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
-    | none => skip
   | .payThen cost body gearPower =>
     match resolutionPayments s p src cost gearPower with
     | [] => skip
@@ -5847,40 +6013,6 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | .nil => (s, [.run p src env (.cons a es)], [])
     | .cons b .nil => (s, [.eitherDo p src env a b es], [])
     | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
-  | .prim (.burn who n) => burnEffect s p src env who n es
-  | .prim (.burnWithUnitTrigger n idx) => burnEffect s p src env .you n es (some idx)
-  | .prim (.predict n) =>
-    match n.evalS s p src env with
-    | some count =>
-      match (s.zone (.player p .mainDeck)).take count with
-      | [] => (s, [.run p src env es], [])
-      | c :: cs =>
-        (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
-    | none => skip
-  | .prim (.draw sel n) =>
-    match sel.resolve s p env, n.evalS s p src env with
-    | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
-    | _, _ => skip
-  | .prim (.reveal sel) =>
-    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
-    if s.lookFirst p env sel then
-      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
-        (.cons (.prim (.revealNow sel)) es)))], [])
-    else
-      match applyPrim s p src env (.reveal sel) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
-  | .prim (.revealTop n) =>
-    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
-    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
-        (s.activeMods g).contains .lookBeforeReveal) then
-      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
-        (.cons (.prim (.revealTopNow n)) es)))], [])
-    else
-      match applyPrim s p src env (.revealTop n) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
-  | .prim (.castInline sel) => castInlineStep s p src env sel es funding
   | .finalizeLimitedSpell card => finalizeLimitedStep s p src env card es funding
   | .fundLimitedSpell card plan adds =>
     let choices := fundLimitedOptions s p card plan adds funding
@@ -5921,80 +6053,37 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s.addTurnFxOn p unit (.deathOrder group), [.run p src env es], [])
   | .endCombatDamage excess =>
     (recordCombatDamage s p excess, [.run p src env es], [])
-  | .prim (pr@(.create ..)) | .prim (pr@(.createAt ..)) | .prim (pr@(.createAtPrev ..)) |
-    .prim (pr@(.playUnitTokenAt ..)) | .prim (pr@(.cloneToken ..)) =>
-    unitTokenPrimStep s p src env pr es
-  | .prim (.kill sel) => killEffectStep s p src env sel none es
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
-  | .prim (.banishReplay sel replay) =>
-    let units := (sel.eval s p src env).getD []
-    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
-    (s, [.run p src env (replays.append es)], [])
-  | .prim (.playReduced sel less dest) =>
-    match castReducedStep s p src env sel less dest es funding with
-    | some r => r
-    | none =>
-      match permanentPlayEffects s p src env (.playReduced sel less dest) with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env (.playReduced sel less dest) with
-        | some r => (r.1, [.run p src env es], r.2)
-        | none => skip
-  | .prim (.play sel) =>
-    match playSpellStep s p src env sel es funding with
-    | some r => r
-    | none =>
-      match permanentPlayEffects s p src env (.play sel) with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env (.play sel) with
-        | some r => (r.1, [.run p src env es], r.2)
-        | none => skip
-  | .prim (.discard sel n) =>
-    match sel.resolve s p env, n.evalS s p src env with
-    | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
-    | _, _ => skip
-  | .prim pr =>
-    match effectDamageBatch? s p src env pr with
-    | some batch => (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
-    | none =>
-      match permanentPlayEffects s p src env pr with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env pr with
-        | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
-        | none => skip
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)
     | none => skip
+  | .prim pr => runPrimEffect s p src env pr es funding
   | _ => skip
 
-set_option maxHeartbeats 800000 in
+set_option maxHeartbeats 2400000 in
 /-- Doing an effect, but not a choice, is a safe change of the state. -/
 theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : Safe s (runEffect1 s p src env e es funding).1 := by
   unfold runEffect1
   split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
+    | exact runPrimEffect_safe s p src env _ es funding
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
     | exact addReservedLegend_safe s p src _
-    | exact castInlineStep_safe s p src env _ es funding
     | exact castLimitedStep_safe s p src env _ _ _ es funding
     | exact finalizeLimitedStep_safe s p src env _ es funding
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
     | exact killEffectStep_safe s p src env _ _ es
-    | exact unitTokenPrimStep_safe s p src env _ es
     | exact animateGearObject_safe s p src _
     | exact finishUnitTokenPlay_safe (by assumption)
     | exact moveEffectStep_safe s p src env _ _ es _
     | exact recordCombatDamage_safe s p _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
-    | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _
     | exact banishReplayGroup_safe p _ s
@@ -6008,9 +6097,6 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact setPool_safe s p _
     | (exact applyReducedPermanent_safe (by assumption))
     | (exact finishFundedPermanentPlay_safe (by assumption))
-    | exact playSpellStep_safe (by assumption)
-    | exact castReducedStep_safe (by assumption)
-    | exact applyPrim_safe (by assumption)
     | exact applyGrant_safe (by assumption)
 
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and

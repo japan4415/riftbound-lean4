@@ -39,6 +39,78 @@ private meta def playedTokens (s : GameState) (p : PlayerId) : List ObjId :=
     tokens.any (fun id => (formed.cardDef? id).any (·.name == "Recruit")) &&
     (playedTokens unmodified p).all (fun id => (unmodified.cardDef? id).any (·.name == "Recruit"))
 
+-- Zilean's decision is before entry. Declining leaves the use available, accepting uses it
+-- for the rest of the turn, and the same object can use it again on a later turn.
+#guard radianceCase fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, zilean) ← putAt (s.control p s.bf0) p "UNL-086" s.bf0
+  let play (t : GameState) (who : PlayerId) :=
+    let effect := Effect.prim (.create "Recruit" (.const 1) .atBase true)
+    (advance 100 { t with pending := [.run who zilean {} (.cons effect .nil), .priority who] } []).toOption
+  let (asked, firstEvents) ← play s p
+  let (declined, declineEvents) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
+  let (again, _) ← play declined p
+  let (accepted, playEvents) ← (step 100 again ⟨.player p, .decide true⟩).toOption
+  let (used, usedEvents) ← play accepted p
+  let (later, _) ← play { used with turn := used.turn + 1 } p
+  let (outside, _) ← play s q
+  let (atBase, _) ← play (s.modObj zilean fun o => { o with loc := none }) p
+  let tokens (events : List Event) := events.filter (fun | .tokenPlayed .. => true | _ => false)
+  return (playedTokens asked p).isEmpty && (tokens firstEvents).isEmpty &&
+    (tokens declineEvents).length == 1 && (tokens playEvents).length == 2 &&
+    (tokens usedEvents).length == 1 && (playedTokens used p).length == 4 &&
+    (playedTokens used p).all (fun id => used.tired id == some false) &&
+    (match later.pending with | .eitherDo .. :: _ => true | _ => false) &&
+    (playedTokens outside q).length == 1 && (playedTokens atBase p).length == 1
+
+-- Both orderings of Heimerdinger and Zilean are offered. A copy made after substitution is
+-- a Mech, while substitution after duplication can change only one of the Recruit plays.
+#guard radianceCase fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, heimer) ← putAt (s.control p field) p "RAD-132" field
+  let (s, _) ← putAt s p "UNL-086" field
+  let body := Effect.prim (.create "Recruit" (.const 1) .atBase true)
+  let (offer, _) ← (advance 100 { s with pending := [.run p heimer {} (.cons body .nil), .priority p] } []).toOption
+  let decide (t : GameState) (yes : Bool) := (step 100 t ⟨.player p, .decide yes⟩).toOption
+  let (substituteFirst, _) ← decide offer true
+  let (substituted, _) ← decide substituteFirst false
+  let (bothMechs, _) ← decide substituted true
+  let (duplicateFirst, _) ← decide offer false
+  let (duplicated, _) ← decide duplicateFirst true
+  let (firstKept, _) ← decide duplicated true
+  let (mixed, _) ← decide firstKept false
+  return (playedTokens substituted p).isEmpty && (playedTokens firstKept p).isEmpty &&
+    bothMechs.countNamed p .base "Mech" == 2 && mixed.countNamed p .base "Mech" == 1 &&
+    mixed.countNamed p .base "Recruit" == 1 &&
+    (playedTokens mixed p).all (fun id => mixed.tired id == some false)
+
+-- In 2v2 the teammate cannot use these replacements. Two Zileans controlled by the same
+-- player each have their own use, and still produce a single simultaneous group.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } RiftboundCards.db
+  let s := { s with phase := .main, turn := 1, active := some p }
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, first) ← putAt (s.control p field) p "UNL-086" field
+  let (s, second) ← putAt s p "UNL-086" field
+  let play (who : PlayerId) :=
+    let body := Effect.prim (.create "Recruit" (.const 1) .atBase false)
+    (advance 100 { s with pending := [.run who first {} (.cons body .nil), .priority who] } []).toOption
+  let (other, _) ← play teammate
+  let (offered, _) ← play p
+  let decide (t : GameState) := (step 100 t ⟨.player p, .decide true⟩).toOption
+  let (ordered, _) ← decide offered
+  let (firstUse, _) ← decide ordered
+  let (both, events) ← decide firstUse
+  return s.config.mode.sameSide p teammate && (playedTokens other teammate).length == 1 &&
+    (playedTokens firstUse p).isEmpty && (playedTokens both p).length == 3 &&
+    (events.filter (fun | .tokenPlayed .. => true | _ => false)).length == 3 &&
+    [first, second].all (fun id => both.turnFx.any (·.appliesTo both.turn id (.duplicatedUnitToken none)))
+  : Option Bool).getD false
+
 -- The next token Unit can pay one Energy and any Power to enter ready. A second token in
 -- the same group enters normally, and declining still uses the next-play effect.
 #guard radianceCase fun s => do
