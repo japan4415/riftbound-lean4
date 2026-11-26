@@ -1806,7 +1806,7 @@ def GameState.deathOrderController (s : GameState) (id : ObjId) : Option PlayerI
       | some (some rescuer) => (s.obj? rescuer).map (·.controller)
       | some none => (s.tacticalRetreatFor id).map (·.who)
       | none => none
-    | none => s.chosenDeathBanisher id <|> (s.deathBanishers id).head?
+    | none => s.chosenDeathBanisher id
   source <|> (s.obj? id).map (·.controller)
 
 /-- A decision orders the applications of the controller who made it (CR 373). -/
