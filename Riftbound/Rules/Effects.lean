@@ -1127,7 +1127,7 @@ def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameSt
     match movedNew r.2 with
     | n :: _ =>
       -- The card enters there directly, without any move events, state or triggers.
-      (((sendToBf bf r.1 n).1.modObj n (fun x => { x with moves := 0, movesTurn := none })), r.2)
+      (enterAtBattlefield s r.1 bf n, r.2)
     | [] => r
 
 /-- Playing a card to a Battlefield is a safe change. -/
@@ -1140,8 +1140,7 @@ theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId)
   · cases movedNew (playFree p s id).2 with
     | nil => exact playFree_safe p s id
     | cons n _ =>
-      exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
-        (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
+      exact (playFree_safe p s id).trans (enterAtBattlefield_safe s _ bf n)
 
 
 /-- A Unit cannot be replayed by its owner to another player's Base (CR 419.4). -/

@@ -861,6 +861,26 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return (r.obj? e).any (·.stunned) && back && inList c && !inList d &&
     (cast rich s.me d (payOf rich d) [e]).isNone
 
+-- Shadow is already Ready at the instant of its Battlefield play. Paying,
+-- effect-driven play and placement at Base use their respective entry states.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, shadow) ← put (s.control p field) p "UNL-194" .hand
+  let ready := s.rich p
+  let payment := payOf ready shadow
+  let (entered, events) ← (step 100 ready ⟨.player p, .playCard shadow payment [field]⟩).toOption
+  let (base, _) ← (step 100 ready ⟨.player p, .playCard shadow payment []⟩).toOption
+  let (free, freeEvents) := playFreeAt p field s shadow
+  let played (es : List Event) := es.findSome? (fun | .played _ unit => some unit | _ => none)
+  let fieldId ← played events
+  let freeId ← played freeEvents
+  let baseId ← base.firstOf p .base "UNL-194"
+  return entered.tired fieldId == some false && (entered.zone .chain).isEmpty &&
+    (entered.obj? fieldId).any (·.loc == some field) &&
+    free.tired freeId == some false && (free.obj? freeId).any (·.loc == some field) &&
+    base.tired baseId == some true
+
 -- Shadow (UNL-194): in a Showdown, the defender stuns an attacking enemy unit with its Action ability
 #guard tun fun s => do
   let (s1, sh) ← putAt s s.you "UNL-194" s.bf0

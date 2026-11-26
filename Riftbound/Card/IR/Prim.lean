@@ -457,6 +457,8 @@ inductive StaticMod where
   | allUnitsEnterReady
   /-- Neither player's Units ready during the Awaken Phase. -/
   | skipUnitAwaken
+  /-- This Unit enters ready when played to a Battlefield. -/
+  | entersReadyAtBattlefield
   /-- The controller's Units enter ready when played to a Battlefield they control. -/
   | unitsEnterReadyAtControlledBattlefields
   /-- Each player can use this Battlefield's activated ability during their own turn. -/

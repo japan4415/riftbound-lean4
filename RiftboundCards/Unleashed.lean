@@ -5639,12 +5639,11 @@ def UNL_194.meta : CardDef :=
 def UNL_194 : CardDef :=
   { UNL_194.meta with
     abilities := [
-      .triggered { condition := .matches .self .onBattlefield, event := .play }
-        (.of [] (.prim (.ready .self))) .unlimited,
+      .passive .always [.entersReadyAtBattlefield],
       .activated [.pay ⟨1, [.any]⟩, .exhaustSelf] .action
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .attacker, .at_ .self]]
           (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-195
 /--

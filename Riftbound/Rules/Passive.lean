@@ -26,6 +26,13 @@ def CardDef.entersReady (d : CardDef) : Bool :=
     | Ability.passive .always mods => mods.contains (.entersReady .self)
     | _ => false)
 
+/-- The card's printed ability makes it enter ready when played to a Battlefield. -/
+def CardDef.entersReadyAtBattlefield (d : CardDef) : Bool :=
+  d.abilities.any (fun ab =>
+    match ab with
+    | .passive .always mods => mods.contains .entersReadyAtBattlefield
+    | _ => false)
+
 /-- The card enters play exhausted, whatever it is (Honeyfruit). -/
 def CardDef.entersExhausted (d : CardDef) : Bool :=
   d.abilities.any (fun ab =>

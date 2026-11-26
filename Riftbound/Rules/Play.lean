@@ -1990,6 +1990,22 @@ theorem finishReadyEntry_safe (s : GameState) (id : ObjId) : Safe s (finishReady
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Finish a permanent's entry at a Battlefield as part of the same play (CR 359, 447).
+Use the pre-play state to read destination effects controlled by the player. -/
+def enterAtBattlefield (before s : GameState) (bf id : ObjId) : GameState :=
+  let d := s.cardDef? id
+  let readies := d.any (fun defn => defn.hasType .unit && !defn.entersExhausted)
+  (sendToBf bf s id).1.modObj id (fun o => { o with
+    moves := 0, movesTurn := none
+    exhausted := o.exhausted && !(readies && (d.any CardDef.entersReadyAtBattlefield ||
+      before.readyAtDestination o.controller (some bf))) })
+
+/-- Entering at a Battlefield preserves well-formedness, physical cards and their owners. -/
+theorem enterAtBattlefield_safe (before s : GameState) (bf id : ObjId) :
+    Safe s (enterAtBattlefield before s bf id) := by
+  unfold enterAtBattlefield
+  exact (sendToBf_safe _ _ _).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+
 /-- Put the permanent at the selected destination and finish applying its entry replacements.
 Entering at a Battlefield does not cause a Move (CR 447). -/
 def placeAtBf (s : GameState) (ts : List ObjId) (r : GameState × List Event) :
@@ -1998,11 +2014,7 @@ def placeAtBf (s : GameState) (ts : List ObjId) (r : GameState × List Event) :
   | some n =>
     let placed := match s.bfPick ts with
       | none => r.1
-      | some b =>
-        let isUnit := (r.1.cardDef? n).any (fun d => d.hasType .unit && !d.entersExhausted)
-        (sendToBf b r.1 n).1.modObj n (fun o => { o with
-          moves := 0, movesTurn := none
-          exhausted := o.exhausted && !(isUnit && s.readyAtDestination o.controller (some b)) })
+      | some b => enterAtBattlefield s r.1 b n
     (finishReadyEntry placed n, r.2)
   | none => r
 
@@ -2014,7 +2026,7 @@ theorem placeAtBf_safe (s : GameState) (ts : List ObjId) (r : GameState × List 
   · refine Safe.trans ?_ (finishReadyEntry_safe _ _)
     split
     · exact Safe.refl _
-    · exact (sendToBf_safe _ _ _).trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+    · exact enterAtBattlefield_safe _ _ _ _
   · exact Safe.refl _
 
 /-- A Unit or a Gear has been played (`r`, from `s`): the Power spent on a Gear is noted, a Unit
