@@ -458,6 +458,13 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .teamInvitation guest :: _, .manaAbility src idx pay chosen => applyMana s guest src idx pay chosen
   | .chooseShowdown _ first more :: rest, .choose bf =>
     ((first :: more).lookup bf).map (fun q => continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest))
+  | .priority p :: rest, .startGroupMove dest pay =>
+    some ({ s with pending := .groupMove p dest pay [] :: .priority p :: rest }, [])
+  | .groupMove p dest pay units :: rest, .choose u =>
+    some ({ s with pending := .groupMove p dest pay (units ++ [u]) :: rest }, [])
+  | .groupMove _ _ _ _ :: rest, .decide false => some ({ s with pending := rest }, [])
+  | .groupMove p dest pay units :: rest, .decide true =>
+    (applyGroupMove s p dest pay units).map (fun r => ({ r.1 with pending := .cleanup :: rest }, r.2))
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

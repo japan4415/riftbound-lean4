@@ -178,6 +178,15 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
     a.actor = .player guest ∧ manaOk s guest src idx pay chosen = true
   | .chooseShowdown p first more :: _, .choose bf =>
     a.actor = .player p ∧ ((first :: more).lookup bf).isSome = true
+  -- A group has one destination and at least two distinct Units (CR 144.3).
+  | .priority p :: _, .startGroupMove dest pay =>
+    a.actor = .player p ∧ dest ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p dest).length ∧
+      pay ∈ s.standardMovePayments p dest
+  | .groupMove p dest _ units :: _, .choose u =>
+    a.actor = .player p ∧ u ∈ s.groupMoveChoices p dest ∧ u ∉ units
+  | .groupMove p _ _ _ :: _, .decide false => a.actor = .player p
+  | .groupMove p dest pay units :: _, .decide true =>
+    a.actor = .player p ∧ s.groupMoveReady p dest pay units = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

@@ -397,7 +397,9 @@ def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Even
   | .chainPass .. :: _, .pass => []
   | _, kind =>
     let who := match a.actor with | .player p => some p | _ => none
-    let beforeMove := match kind with | .standardMove .. => true | _ => false
+    let beforeMove := match s.pending, kind with
+      | _, .standardMove .. | .groupMove .. :: _, .decide true => true
+      | _, _ => false
     s.exhaustionEvents s' who beforeMove ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
 
 /-- The marked Unit's death sets off the effects that were created by a spell or ability.

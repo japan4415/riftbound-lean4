@@ -213,6 +213,16 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((applyGroupMove_safe hm).wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -552,6 +562,16 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (applyGroupMove_safe hm).phys hwf
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/
@@ -655,7 +675,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
       cases kind <;> cases actor <;>
         simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
           mem_legalActivates, mem_legalReactions, mem_legalManas,
-          mem_legalShowdownPlays, mem_legalShowdownActivates, mem_legalInvitedSpells]
+          mem_legalShowdownPlays, mem_legalShowdownActivates, mem_legalInvitedSpells,
+          mem_legalGroupMoveStarts, List.mem_filter]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

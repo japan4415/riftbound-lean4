@@ -107,7 +107,30 @@ def check_match_endings(live: Lean, setup: dict) -> None:
     assert archive["games"][0]["summary"]["result"] is None
 
 
-def check_cli(folder: Path, saved: dict, setup: dict) -> None:
+def group_move_match(live: Lean, setup: dict) -> dict:
+    response = keep(live, start(live, setup))
+    for _ in range(70):
+        if any(item["a"]["kind"] == "startGroupMove" for item in response["legal"]):
+            break
+        legal = [item for item in response["legal"] if item["a"]["kind"] != "concede"]
+        choice = next((item for kind in ("runeAbility", "playCard", "pass") for item in legal
+                       if item["a"]["kind"] == kind and (kind != "runeAbility" or
+                       item["a"]["ability"] == "exhaust")), legal[0])
+        response = ask(live, f"act {choice['k']}")
+    else:
+        raise AssertionError("no simultaneous Standard Move was offered")
+    response = choose(live, response, "startGroupMove")
+    response = choose(live, response, "choose")
+    response = choose(live, response, "choose")
+    finish = next(item for item in response["legal"] if item["a"].get("yes") is True)
+    units = finish["a"]["groupMoveUnits"]
+    response = ask(live, f"act {finish['k']}")
+    assert [e["unit"] for e in response["steps"][-1]["events"] if e["t"] == "moved_unit"] == units
+    ask(live, "concede-match 1")
+    return ask(live, "replay")
+
+
+def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -137,6 +160,16 @@ def check_cli(folder: Path, saved: dict, setup: dict) -> None:
     view = json.loads(trace.read_text(encoding="utf-8"))
     assert len(view["games"]) == 3 and view["wins"] == [2, 0] and view["exact"]
     assert not view["cardsFullyChecked"] and saved["games"][0]["summary"]["uncheckedCards"][0]
+
+    group_archive = folder / "group-move-archive.json"
+    group_archive.write_text(json.dumps(group_move), encoding="utf-8")
+    assert json.loads(command("verify", group_archive)) == group_move["summary"]
+    group_trace = folder / "group-move-trace.json"
+    command("view", group_archive, group_trace)
+    group_steps = json.loads(group_trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+    checked_move = next(row for row in group_steps if (row["action"] or {}).get("groupMoveUnits"))
+    assert len(checked_move["action"]["groupMoveUnits"]) == 2
+    assert len([event for event in checked_move["events"] if event["t"] == "moved_unit"]) == 2
 
     witness = saved["games"][0]["checkpoints"][2]
     witness["state"] = "0"
@@ -225,15 +258,16 @@ def main() -> None:
     try:
         saved = played_match(live, setup)
         check_match_endings(live, setup)
+        group_move = group_move_match(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup)
+        check_cli(args.output, saved, setup, group_move)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup)
+            check_cli(Path(folder), saved, setup, group_move)
     print("replay smoke: OK")
 
 

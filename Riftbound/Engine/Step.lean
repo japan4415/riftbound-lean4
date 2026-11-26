@@ -279,8 +279,12 @@ def legalFrameActions (s : GameState) : List Action :=
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
-      legalMoves s p ++ legalActivates s p true ++
+      legalMoves s p ++ legalActivates s p true ++ legalGroupMoveStarts s p ++
       ((s.teamInvitee p).toList.map (fun guest => ⟨.player p, .inviteTeammate guest⟩)))
+  | .groupMove p dest pay units :: _ =>
+    ⟨.player p, .decide false⟩ ::
+    ((if s.groupMoveReady p dest pay units then [⟨.player p, .decide true⟩] else []) ++
+      ((s.groupMoveChoices p dest).filter (fun u => !units.contains u)).map (fun u => ⟨.player p, .choose u⟩))
   | .teamInvitation guest :: _ =>
     ⟨.player guest, .pass⟩ :: (legalRunes s guest ++ legalManas s guest ++
       legalInvitedSpells s guest ++ legalActivates s guest true)

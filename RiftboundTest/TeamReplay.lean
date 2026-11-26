@@ -37,6 +37,41 @@ private meta def collect (turn : Nat) :
     let (next, _) ← (step 100 state action).mapError (fun e => reprStr e)
     collect turn n nextRng next (answers.push (.observed action))
 
+private meta def recordGroupMove (start : GameState) (answers : Array ReplayAnswer) :
+    Except String (GameState × Array ReplayAnswer) := do
+  let player : PlayerId := ⟨0⟩
+  let answer (state : GameState) (tape : Array ReplayAnswer) (kind : ActionKind) := do
+    let action := Action.mk (.player player) kind
+    let (next, _) ← (step 100 state action).mapError reprStr
+    pure (next, tape.push (.observed action))
+  let mut state := start
+  let mut tape := answers
+  let runes := (state.zone (.player player .base)).filter (fun id => state.hasType id .rune)
+  for rune in runes.take 2 do
+    let next ← answer state tape (.runeAbility rune .exhaust)
+    state := next.1
+    tape := next.2
+  for _ in [:2] do
+    let some play := (legalPlays state player).head? | throw "no Unit available for the group"
+    let next ← answer state tape play.kind
+    state := next.1
+    tape := next.2
+  let (lastSeat, tapeAtFour) ← collect 4 25 (Rng.ofSeed 22) state tape
+  unless lastSeat.active == some ⟨3⟩ && (lastSeat.zone (.player ⟨3⟩ .runeDeck)).length == 9 do
+    throw "the last seat did not get the extra Rune"
+  let (nextTurn, tapeAtFive) ← collect 5 10 (Rng.ofSeed 23) lastSeat tapeAtFour
+  state := nextTurn
+  tape := tapeAtFive
+  let some field := state.battlefields.head? | throw "no destination for the group"
+  let [first, second] := state.groupMoveChoices player (.battlefield field) | throw "expected two ready Units"
+  for kind in [ActionKind.startGroupMove (.battlefield field) Cost.zero, .choose first, .choose second, .decide true] do
+    let next ← answer state tape kind
+    state := next.1
+    tape := next.2
+  unless state.unitsOf player field == [second, first] || state.unitsOf player field == [first, second] do
+    throw "the group was not moved together"
+  return (state, tape)
+
 private meta def exampleMatch : Except String Unit := do
   let order := Mode.teamTurnOrder true
   let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
@@ -50,13 +85,13 @@ private meta def exampleMatch : Except String Unit := do
   let (invited, _) ← (step 100 first invite).mapError (fun e => reprStr e)
   let (resumed, _) ← (step 100 invited decline).mapError (fun e => reprStr e)
   let earlyAnswers := earlyAnswers.push (.observed invite) |>.push (.observed decline)
-  let (lastSeat, answers) ← collect 4 20 (Rng.ofSeed 22) resumed earlyAnswers
-  unless lastSeat.active == some ⟨3⟩ && (lastSeat.zone (.player ⟨3⟩ .runeDeck)).length == 9 do
-    throw "the last seat did not get the extra Rune"
+  let (moved, groupAnswers) ← recordGroupMove resumed earlyAnswers
+  let (afterShowdown, answers) ← collect 6 15 (Rng.ofSeed 24) moved groupAnswers
   let game : TeamGameRecord := {
     decks := teamRegistrations, chooser := some ⟨0⟩, order,
     battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
-    points := (0, 0), ending := .draw, answers := answers.push (.observed ⟨.judge, .declareDraw⟩) }
+    points := (afterShowdown.pointsOf ⟨0⟩, afterShowdown.pointsOf ⟨2⟩), ending := .draw,
+    answers := answers.push (.observed ⟨.judge, .declareDraw⟩) }
   let win : TeamGameRecord := { game with
     chooser := none, ending := .concede ⟨1⟩, answers := answers.push (.observed ⟨.player ⟨1⟩, .concede⟩) }
   let recorded ← TeamMatchRecord.record {

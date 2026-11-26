@@ -96,6 +96,7 @@ def playAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .priority p :: _ => some (⟨.player p, .pass⟩, r)
   | .teamInvitation guest :: _ => some (⟨.player guest, .pass⟩, r)
   | .chooseShowdown p first _ :: _ => some (⟨.player p, .choose first.1⟩, r)
+  | .groupMove p .. :: _ => some (⟨.player p, .decide false⟩, r)
   | _ => autoAnswer r s
 
 /-- Play until `turns` turns have begun and the turn player has priority in the Main Phase, or

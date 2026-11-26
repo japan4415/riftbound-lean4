@@ -330,6 +330,11 @@ def triggerCostBanishes (state : Option GameState) (ids : List ObjId)
         s.banishOnDeathBy id <|> ((s.obj? id).filter (s.replacesTrash id)).map (·.owner))
     (applied <|> declared <|> automatic).map (costBanishJson id))
 
+/-- JSON fields shared by individual and simultaneous Standard Moves. -/
+def moveFields (dest : MoveDest) (pay : Cost) : List (String × String) :=
+  [("dest", match dest with | .base => "null" | .battlefield bf => toString bf.n)] ++
+    (if pay == Cost.zero then [] else [("movePayment", costJson pay)])
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) (events : List Event := []) : String :=
@@ -357,11 +362,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
         spellPickFields state played pick ++ spellExecutionFields state played pick ts
-    | .standardMove u d pay =>
-      [("unit", toString u.n),
-       ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)] ++
-      (if pay.energy == 0 && pay.power.isEmpty then [] else
-        [("movePayment", costJson pay)])
+    | .standardMove u d pay => [("unit", toString u.n)] ++ moveFields d pay
+    | .startGroupMove d pay => moveFields d pay
     | .assignPick u => [("unit", toString u.n)]
     | .manaAbility src idx pay banish =>
       let restricted := match state.bind (fun s => s.manaOffer src idx) with
@@ -436,6 +438,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         (match frame with
+        | some (.groupMove _ dest pay units) =>
+          [("groupMoveUnits", jarr (units.map (fun u => toString u.n)))] ++ moveFields dest pay
         | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
         | some (.eitherDo _ _ _ (.prim (.attachPaying ..)) (.doThen (.prim (.exhaust _)) _) _) =>
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
@@ -448,6 +452,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
+        | some (.groupMove ..) => [("choiceContext", jstr "groupMove")]
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.recordBanishReplay ..) _) => [("choiceContext", jstr "banishReplay")]
         | some (.pickDo _ _ _ _ _ .addReservedLegendPicked _) => [("choiceContext", jstr "reserveLegend")]

@@ -350,6 +350,16 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((TC.of_safe (applyGroupMove_safe hm)).trans ⟨rfl, rfl⟩)
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the

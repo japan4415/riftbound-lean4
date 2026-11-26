@@ -106,7 +106,7 @@ inductive ActionKind where
   | playCard (card : ObjId) (pay : RunePool.Payment) (targets : List ObjId)
       (flowCost : Option Cost := none) (discard : Option ObjId := none) (spellPick : SpellPick := .plain)
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
-  back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
+  back to the Base (CR 144). -/
   | standardMove (unit : ObjId) (dest : MoveDest) (pay : Cost := Cost.zero)
   /-- In Combat Damage: the next Unit, among those of the other side, to be given lethal damage
   (CR 467.2.c). Tank Units come first (CR 815). -/
@@ -138,6 +138,8 @@ inductive ActionKind where
   | predictPick (card : ObjId) (recycle : Bool)
   /-- Offer the teammate one spell or ability using the turn player's priority (CR 316.5.b.1). -/
   | inviteTeammate (guest : PlayerId)
+  /-- Declare the shared destination and any fee before choosing Units to move together (CR 144.3). -/
+  | startGroupMove (dest : MoveDest) (pay : Cost)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -299,6 +301,9 @@ inductive Frame where
   /-- Choice: where to open the next staged Showdown. Each option pairs its Battlefield with
   the player who contested it (CR 323.11, 323.12, 463.1). -/
   | chooseShowdown (p : PlayerId) (first : ObjId × PlayerId) (more : List (ObjId × PlayerId))
+  /-- Choice: select the moving Units, then confirm or cancel. The board and fee stay untouched
+  while the group is selected (CR 144.3). -/
+  | groupMove (p : PlayerId) (dest : MoveDest) (fee : Cost) (units : List ObjId)
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/
@@ -335,7 +340,7 @@ def Frame.isPlay : Frame → Bool
   | .pickDo .. => true
   | .nameCard .. | .guessCardType .. => true
   | .predict .. | .chancePredict .. => true
-  | .teamInvitation _ | .chooseShowdown .. => true
+  | .teamInvitation _ | .chooseShowdown .. | .groupMove .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/

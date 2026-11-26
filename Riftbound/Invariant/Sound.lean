@@ -215,6 +215,13 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i p first more rest bf hp hk
     rw [hp, hk] at hl
     exact Option.isSome_iff_exists.mp (by simpa only [Option.isSome_map] using hl.2)
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · rename_i p dest pay units rest hp hk
+    rw [hp, hk] at hl
+    simp only [GameState.groupMoveReady, Bool.and_eq_true] at hl
+    exact Option.isSome_iff_exists.mp (by simpa only [Option.isSome_map] using hl.2.2)
   · exact absurd hl (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
@@ -431,6 +438,16 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
     have hout : _ = s' := congrArg Prod.fst he
     rw [← hout]
     exact hown.congr rfl rfl
+  · cases h
+    exact hown.congr rfl rfl
+  · cases h
+    exact hown.congr rfl rfl
+  · cases h
+    exact hown.congr rfl rfl
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((applyGroupMove_safe hm).own hwf hown).congr rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer to the open question keeps `OwnerOk`. -/

@@ -401,6 +401,29 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl [Frame.showdown bf q 0, Frame.cleanup]
+  · rename_i p rest dest pay hp hk
+    cases h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.replace (new := [Frame.groupMove p dest pay [], Frame.priority p])
+      (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
+  · rename_i p dest pay units rest u hp hk
+    cases h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.groupMove p dest pay (units ++ [u])]
+  · rename_i p dest pay units rest hp hk
+    cases h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.pop rfl
+  · rename_i p dest pay units rest hp hk
+    obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    refine hinv.of_next (applyGroupMove_safe hm).same.result (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.cleanup]
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -996,6 +1019,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | groupMove p dest pay units =>
+    left
+    refine ⟨⟨.player p, .decide false⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | resolveChain | resumeCost _ => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
@@ -1110,6 +1139,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | priority p => exact absurd hc (by simp [Frame.isChance])
   | teamInvitation guest => exact absurd hc (by simp [Frame.isChance])
   | chooseShowdown p first more => exact absurd hc (by simp [Frame.isChance])
+  | groupMove p dest pay units => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
   | resolveChain | resumeCost _ => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])

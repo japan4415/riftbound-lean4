@@ -442,6 +442,12 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
+      if (a.groupMoveUnits) {
+        if (!a.yes) return [who + ': 同時移動を取り消す', 'ユニットは移動せず、優先権に戻る'];
+        const names = a.groupMoveUnits.map(boardCardLabel).join('、');
+        const destination = a.dest === null ? 'Base' : cardName(a.dest);
+        return [who + ': ' + a.groupMoveUnits.length + '体を ' + destination + ' へ同時に移動', names];
+      }
       if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
       if (a.equipPayment) return [who + ': ' + (a.equipPayment === 'resources'
         ? '割引後の Equip コストを支払う' : '味方のユニットを Exhaust して支払う'), ''];
@@ -553,6 +559,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
     }
     case 'choose': {
       const card = cardName(a.obj);
+      if (a.choiceContext === 'groupMove') return [who + ': ' + boardCardLabel(a.obj) + ' を同時移動に加える', ''];
       if (prev === 'chooseShowdown') return [who + ': ' + card + ' から始める', 'Showdown または Combat を開始'];
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
       if (a.choiceContext === 'banishReplay') {
@@ -584,6 +591,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
       return [who + ': ' + cardName(a.unit) + ' に先にダメージを割り当てる', 'Combat Damage: 致死ダメージを与える順に、相手の Unit を選ぶ（Tank が先）'];
     case 'assignDone':
       return [who + ': 割り当てを確定', '選んだ順に致死ダメージを割り当て、残りは最後の Unit へ。両陣営が終えると同時に与える'];
+    case 'startGroupMove': {
+      const destination = a.dest === null ? 'Base' : cardName(a.dest);
+      const payment = a.movePayment ? '（' + costText(a.movePayment) + '）' : '';
+      return [who + ': ' + destination + ' への同時移動を選ぶ' + payment, '移動するユニットを2体以上選ぶ'];
+    }
     case 'standardMove': {
       const destination = a.dest === null ? 'Base' : cardName(a.dest);
       const move = a.movePayment
@@ -1356,8 +1368,10 @@ function renderLegal(i) {
   const banishChoices = liveLegal.filter(({ a }) => a.banishDeathUnit != null);
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
   const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
+  const groupMove = liveLegal.find(({ a }) => a.groupMoveUnits)?.a;
   const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
     : guessing ? 'P' + guessing.a.actor.slice(1) + ' がカードの種別を予想する'
+    : groupMove ? `同時に移動するユニットを選ぶ。${groupMove.groupMoveUnits.length}体選択中`
     : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'equipExhaust' ? 'Equip コストで Exhaust するユニットを選ぶ'

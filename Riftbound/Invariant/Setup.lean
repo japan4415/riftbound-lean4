@@ -718,6 +718,24 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     rw [← hout]
     exact hinv.of_nonsetup hp rfl rfl (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl
       (by simp [Frame.isSetup])
+  · rename_i p rest dest pay hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.groupMove p dest pay [], Frame.priority p]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p dest pay units rest u hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.groupMove p dest pay (units ++ [u])]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p dest pay units rest hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
+  · rename_i p dest pay units rest hp hk
+    obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    have hmeta := (applyGroupMove_safe hm).same
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.config])
+      (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while

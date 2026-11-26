@@ -138,6 +138,22 @@ def applyMove (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
         (contestBy p bf (r.1.modObj r.2 (moveUnitOf s.turn (some bf))),
           [Event.standardMoved r.2 (some bf)]))
 
+/-- Relocate all the declared Units in a single transition. Cleanup and triggers run only after
+the group is in place (CR 144.3). -/
+def applyGroupMoves (p : PlayerId) (d : MoveDest) : List ObjId → GameState →
+    Option (GameState × List Event)
+  | [], s => some (s, [])
+  | u :: us, s => do
+    let (next, events) ← applyMove s p u d
+    let (final, laterEvents) ← applyGroupMoves p d us next
+    pure (final, events ++ laterEvents)
+
+/-- Commit the whole move and pay the destination fee once (CR 144.3.c, 203). -/
+def applyGroupMove (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : Option (GameState × List Event) :=
+  (if pay == Cost.zero then some s else (s.spendSymbols p pay false).map (s.setPool p)).bind
+    (applyGroupMoves p d units)
+
 /-- The Units a player might move: those on their Base and those at Battlefields. -/
 def GameState.movable (s : GameState) (p : PlayerId) : List ObjId :=
   s.zone (.player p .base) ++ s.zone .battlefieldZone
@@ -145,6 +161,46 @@ def GameState.movable (s : GameState) (p : PlayerId) : List ObjId :=
 /-- The destinations a Unit might be moved to: the Base and each Battlefield. -/
 def GameState.destinations (s : GameState) : List MoveDest :=
   .base :: s.battlefields.map MoveDest.battlefield
+
+/-- Eligible Units for a shared Standard Move destination. Origins may differ (CR 144.3.b). -/
+def GameState.groupMoveChoices (s : GameState) (p : PlayerId) (d : MoveDest) : List ObjId :=
+  ((s.movable p).filter (fun u => moveOk s p u d)).eraseDups
+
+theorem GameState.groupMoveChoices_main {s : GameState} {p : PlayerId} {d : MoveDest}
+    (h : 2 ≤ (s.groupMoveChoices p d).length) : s.phase = .main := by
+  cases hc : s.groupMoveChoices p d with
+  | nil => simp [hc] at h
+  | cons u us =>
+    have hu : u ∈ s.groupMoveChoices p d := by simp [hc]
+    have ok := (List.mem_filter.mp (List.mem_eraseDups.mp hu)).2
+    unfold moveOk at ok
+    split at ok
+    · contradiction
+    · simp only [Bool.and_eq_true, decide_eq_true_eq] at ok
+      exact ok.1.1.1.1.2
+
+/-- A proposed group can make the Standard Move. Check the whole group before paying the fee or
+running any effects (CR 144.3). -/
+def GameState.groupMoveReady (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : Bool :=
+  decide (2 ≤ units.length ∧ units.Nodup ∧ pay ∈ s.standardMovePayments p d) &&
+    units.all (fun u => moveOk s p u d) && (applyGroupMove s p d pay units).isSome
+
+/-- A Standard Move can be declared with a common destination and fee, without enumerating every
+subset of eligible Units. -/
+def legalGroupMoveStarts (s : GameState) (p : PlayerId) : List Action :=
+  ((s.destinations).filter (fun d => 2 ≤ (s.groupMoveChoices p d).length)).flatMap (fun d =>
+    (s.standardMovePayments p d).map (fun pay => ⟨.player p, .startGroupMove d pay⟩))
+
+theorem mem_legalGroupMoveStarts {s : GameState} {p : PlayerId} {a : Action} :
+    a ∈ legalGroupMoveStarts s p ↔ ∃ d pay, a = ⟨.player p, .startGroupMove d pay⟩ ∧
+      d ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p d).length ∧ pay ∈ s.standardMovePayments p d := by
+  simp only [legalGroupMoveStarts, List.mem_flatMap, List.mem_filter, List.mem_map, decide_eq_true_eq]
+  constructor
+  · rintro ⟨d, ⟨hd, hn⟩, pay, hp, rfl⟩
+    exact ⟨d, pay, rfl, hd, hn, hp⟩
+  · rintro ⟨d, pay, rfl, hd, hn, hp⟩
+    exact ⟨d, ⟨hd, hn⟩, pay, hp, rfl⟩
 
 /-- The Standard Moves a player can make. -/
 def legalMoves (s : GameState) (p : PlayerId) : List Action :=
@@ -736,6 +792,31 @@ theorem applyMove_safe {s s' : GameState} {p : PlayerId} {u : ObjId} {d : MoveDe
       have h2 : Safe s1 (s1.modObj id' (moveUnitOf s.turn (some bf))) :=
         Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
       exact (h1.trans h2).trans (contestBy_safe p bf _)
+
+theorem applyGroupMoves_safe (p : PlayerId) (d : MoveDest) :
+    ∀ (units : List ObjId) {s s' : GameState} {events : List Event},
+      applyGroupMoves p d units s = some (s', events) → Safe s s'
+  | [], _, _, _, h => by
+    cases h
+    exact Safe.refl _
+  | u :: us, s, s', events, h => by
+    simp only [applyGroupMoves, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+    obtain ⟨⟨mid, first⟩, moved, ⟨final, last⟩, remaining, result⟩ := h
+    cases result
+    exact (applyMove_safe moved).trans (applyGroupMoves_safe p d us remaining)
+
+theorem applyGroupMove_safe {s s' : GameState} {p : PlayerId} {d : MoveDest}
+    {pay : Cost} {units : List ObjId} {events : List Event}
+    (h : applyGroupMove s p d pay units = some (s', events)) : Safe s s' := by
+  simp only [applyGroupMove, Option.bind_eq_some_iff] at h
+  obtain ⟨paid, hp, hd⟩ := h
+  have paidSafe : Safe s paid := by
+    split at hp
+    · cases hp
+      exact Safe.refl s
+    · obtain ⟨pool, -, rfl⟩ := Option.map_eq_some_iff.mp hp
+      exact setPool_safe s p pool
+  exact paidSafe.trans (applyGroupMoves_safe p d units hd)
 
 /-- When no step applies, the steps of `cleanupStep0` do not apply either. -/
 theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :

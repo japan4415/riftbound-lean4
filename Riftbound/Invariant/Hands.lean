@@ -770,6 +770,32 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_play hphase rfl rfl (fun hm => ?_)
     rw [hp]
     simpa [continueAfterCleanup] using hm
+  · rename_i p rest dest pay hp hk
+    rw [hp, hk] at hl
+    have hphase := GameState.groupMoveChoices_main hl.2.2.1
+    cases h
+    refine hinv.of_play (by change s.phase ≠ .setup; rw [hphase]; decide) rfl rfl (fun hm => ?_)
+    simpa only [hp, List.mem_cons, reduceCtorEq, false_or] using hm
+  · rename_i p dest pay units rest u hp hk
+    have hphase := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    cases h
+    refine hinv.of_play hphase rfl rfl (fun hm => ?_)
+    simpa only [hp, List.mem_cons, reduceCtorEq, false_or] using hm
+  · rename_i p dest pay units rest hp hk
+    have hphase := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    cases h
+    refine hinv.of_play hphase rfl rfl (fun hm => ?_)
+    rw [hp]
+    exact List.mem_cons_of_mem _ hm
+  · rename_i p dest pay units rest hp hk
+    have hphase := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    have hmeta := (applyGroupMove_safe hm).same
+    refine hinv.of_play (hmeta.phase ▸ hphase) hmeta.turnOrder hmeta.config (fun hsetup => ?_)
+    rw [hp]
+    simpa only [List.mem_cons, reduceCtorEq, false_or] using hsetup
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put

@@ -117,6 +117,8 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。開始できる Showdown や Combat が複数ある場合は、手番プレイヤーが `choose` で Battlefield のオブジェクト ID を指定する。
 
+複数のユニットを同じ場所へ Standard Move で動かすときは、`startGroupMove` に移動先と支払いを指定し、各ユニットの ID を `choose` で記録する。最後の `decide true` で全員が同時に移動し、移動先の追加コストがあれば1回分を支払う。`decide false` で取り消せる。
+
 ## カードの詳細と画像
 
 - カードを右クリックすると、詳細（コスト・Might・キーワード・場所・状態・Lean の定義）が出る。
