@@ -41,7 +41,7 @@ def OGS_001.meta : CardDef :=
 def OGS_001 : CardDef :=
   { OGS_001.meta with
     abilities := [.passive .always [.bonusDamage (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-002
 /--
@@ -93,7 +93,7 @@ def OGS_003 : CardDef :=
   { OGS_003.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
     (.prim (.deal (.slot 0) (.const 2)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-004
 /--
@@ -118,9 +118,9 @@ def OGS_004.meta : CardDef :=
 def OGS_004 : CardDef :=
   { OGS_004.meta with
     abilities := [.passive
-      (.cmp .ge (.count (.all .friendly .anywhere [.ofType .rune])) (.const 8))
+      (.cmp .ge (.count (.all .you .anywhere [.ofType .rune])) (.const 8))
       [.mightPlus .self (.const 4)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-005
 /--
@@ -594,7 +594,7 @@ def OGS_022 : CardDef :=
   { OGS_022.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
     (.prim (.deal (.slot 0) (.const 8)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGS-023
 /--

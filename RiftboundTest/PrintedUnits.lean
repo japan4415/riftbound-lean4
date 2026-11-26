@@ -4,10 +4,9 @@ import RiftboundTest.CardLab
 meta import RiftboundTest.CardLab
 
 /-!
-# Tests for printed Units with no effects beyond their keywords
+# Tests for printed cards
 
-Exercise the printed card IDs through ordinary play, combat, targeting, and movement. This
-checks the base stats and keyword arguments as well as their interpretation by the engine.
+Exercise the printed card IDs through ordinary play, combat, targeting, and movement.
 -/
 
 namespace RiftboundTest
@@ -209,5 +208,51 @@ private meta def printedRecruit (code : String) : Bool := inLab fun s => do
     (moved.obj? bladekeeper).any (·.loc == some dest) &&
     moved.tired bladekeeper == some true &&
     events.contains (Event.standardMoved bladekeeper (some dest))
+
+-- Master Yi counts controlled Runes on the Board, including exhausted Runes.
+#guard inLab fun labState => do
+  let s := GameState.empty { ruleSet := .coreOnly, mode := .teamDuel } labState.cards
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let (s, yi) ← put s p "OGS-004" .base
+  let (s, _) ← put s teammate "OGN-042" .base
+  let mut seven := s
+  for _ in [:7] do
+    let (next, rune) ← put seven p "OGN-042" .base
+    seven := next.modObj rune (fun o => { o with exhausted := true })
+  let (registered, candidate) ← put seven p "OGN-042" .runeDeck
+  let (eight, channeled) ← moveObj registered candidate (.player p .base)
+  let (recycled, _) ← moveObj eight channeled (.player p .runeDeck)
+  return registered.mightNow yi == some 4 && eight.mightNow yi == some 8 &&
+    recycled.mightNow yi == some 4
+
+-- In team play, Annie gives Bonus Damage to her controller's spells and abilities.
+#guard inLab fun labState => do
+  let s := GameState.empty { ruleSet := .coreOnly, mode := .teamDuel } labState.cards
+  let p : PlayerId := ⟨0⟩
+  let (board, _) ← put s p "OGS-001" .base
+  return board.passiveBonus p == 1 && board.passiveBonus ⟨1⟩ == 0 &&
+    board.passiveBonus ⟨2⟩ == 0
+
+-- Incinerate can damage either player's Unit at a Battlefield, and cannot choose one at a Base.
+#guard inLab fun s => do
+  let (s, spell) ← put s s.me "OGS-003" .hand
+  let (s, friendly) ← putAt s s.me "OGN-142" s.bf0
+  let (s, enemy) ← putAt s s.you "OGN-142" s.bf0
+  let (s, atBase) ← put s s.you "OGN-142" .base
+  let allyHit ← play s s.me spell [friendly]
+  let enemyHit ← play s s.me spell [enemy]
+  return (allyHit.obj? friendly).any (·.damage == 2) &&
+    (enemyHit.obj? enemy).any (·.damage == 2) &&
+    (play s s.me spell [atBase]).isNone
+
+-- Final Spark can hit a Unit at a Base and leaves a larger Unit with eight damage.
+#guard inLab fun s => do
+  let (s, spell) ← put s s.me "OGS-022" .hand
+  let (s, target) ← put s s.you "OGN-142" .base
+  let (s, other) ← put s s.you "OGN-142" .base
+  let after ← cast (s.fund s.me 8) s.me spell ⟨8, []⟩ [target]
+  return (after.obj? target).any (·.damage == 8) && (after.obj? other).any (·.damage == 0) &&
+    (after.poolOf s.me).energy == 0 && (cast (s.fund s.me 7) s.me spell ⟨8, []⟩ [target]).isNone
 
 end RiftboundTest
