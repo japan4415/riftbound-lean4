@@ -46,6 +46,27 @@ structure JudgeShuffle where
   order : List ObjId
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The judge's candidate set and the observed result of undoing one private draw (TR 701.5.d.3). -/
+structure JudgeDrawReturn where
+  /-- The hand object's ID created by the recorded draw. -/
+  drawn : ObjId
+  /-- Candidate physical cards, identified by their object IDs at the rewind target. -/
+  candidates : List ObjId
+  /-- The candidate the judge returned to the deck. -/
+  returned : ObjId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A rewind with observed private draws and any subsequent remedy shuffles. -/
+structure JudgePrivateRewind where
+  /-- The game checkpoint to restore. -/
+  target : Nat
+  /-- The judge's recorded random selections, keyed by the corresponding draw. -/
+  returns : List JudgeDrawReturn
+  /-- Optional remedy shuffles before play resumes. Order IDs refer to the rewind target
+  (TR 701.5.d.4). -/
+  shuffles? : Option (List JudgeShuffle) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -62,6 +83,8 @@ inductive ReplayAnswer where
   | judgeRewind (target : Nat)
   /-- The judge reorders a private deck's randomized portion (TR 701.4). -/
   | judgeShuffle (shuffle : JudgeShuffle)
+  /-- Rewind with the judge's observed selections for private draws. -/
+  | judgePrivateRewind (rewind : JudgePrivateRewind)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
@@ -75,17 +98,21 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
-  | .judgeRewind _ | .judgeShuffle _ => throw s!"answer {index}: a correction is a judge ruling"
+  | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ =>
+    throw s!"answer {index}: a correction is a judge ruling"
 
 /-- Additional trace metadata for a judge correction, independent of in-game actions. -/
 def ReplayAnswer.correctionJson : ReplayAnswer → List (String × String)
   | .judgeRewind target => [("judgeRewind", toString target)]
   | .judgeShuffle shuffle => [("judgeShuffle", (toJson shuffle).compress)]
+  | .judgePrivateRewind rewind =>
+    [("judgeRewind", toString rewind.target), ("privateDrawReturns", toString rewind.returns.length),
+     ("rewindShuffles", toString (rewind.shuffles?.getD []).length)]
   | _ => []
 
 /-- Whether a trace row needs to rescan object metadata after restoring an earlier state. -/
 def ReplayAnswer.rewinds : ReplayAnswer → Bool
-  | .judgeRewind _ => true
+  | .judgeRewind _ | .judgePrivateRewind _ => true
   | _ => false
 
 /-- A Game Loss affects the whole side; if neither side remains, the game is a draw (TR 701.2.b). -/
@@ -402,26 +429,128 @@ structure ReplayPosition where
   state : GameState
   /-- Setup observations made by this checkpoint, newest first. -/
   fields : List (PlayerId × CardId) := []
+  /-- Events in the action that produced this checkpoint. -/
+  events : List Event := []
   /-- Whether the action that produced this checkpoint can be reversed in play. -/
   reversible : Bool := false
+
+/-- One draw from a position in the deck at the rewind target. -/
+private structure DrawSlot where
+  seat : PlayerId
+  source : ObjId
+  drawn : ObjId
+  index : Nat
+
+private def drawSlots (base : GameState) : List Event → List DrawSlot
+  | .moved source drawn (.player seat .hand) :: .drew p :: rest =>
+    let more := drawSlots base rest
+    if seat != p then more else
+    match (base.zone (.player seat .mainDeck)).findIdx? (· == source) with
+    | some index => ⟨seat, source, drawn, index⟩ :: more
+    | none => more
+  | _ :: rest => drawSlots base rest
+  | [] => []
+
+private def physicalCard (s : GameState) (id : ObjId) : Option PhysId :=
+  (s.obj? id).bind (·.kind.phys?)
+
+private def shuffleAfterRewind (base current : GameState) (shuffle : JudgeShuffle) :
+    Except String GameState := do
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let cards := current.zone (.player shuffle.seat kind)
+  let order ← shuffle.order.mapM (fun ref => do
+    let some phys := physicalCard base ref | throw "a rewind shuffle must name a card at the rewind target"
+    let some id := cards.find? (fun id => physicalCard current id == some phys)
+      | throw "a rewind shuffle card is not in the restored deck"
+    pure id)
+  ({ shuffle with order }).apply current
+
+private def exchangeDrawSlot (s : GameState) (draw : DrawSlot) (returned : ObjId) :
+    Except String GameState := do
+  let deck := Zone.player draw.seat .mainDeck
+  let hand := Zone.player draw.seat .hand
+  let some slot := (s.zone deck)[draw.index]? | throw "the original draw position is missing"
+  if slot == returned then return s
+  if (s.zone deck).contains returned then
+    return s.reorder deck ((s.zone deck).map (fun id =>
+      if id == slot then returned else if id == returned then slot else id))
+  let some place := (s.zone hand).findIdx? (· == returned)
+    | throw "the selected card is no longer in the hand"
+  let some (afterDraw, _) := moveObj s slot hand (.atIndex place)
+    | throw "the drawn card could not be kept in the hand"
+  let some (restored, _) := moveObj afterDraw returned deck (.atIndex draw.index)
+    | throw "the selected card could not be returned to the deck"
+  return restored
+
+private def applyDrawReturns (base : GameState) (returns : List JudgeDrawReturn) :
+    List DrawSlot → GameState → Except String GameState
+  | [], s => pure s
+  | draw :: more, s => do
+    let deck := s.zone (.player draw.seat .mainDeck)
+    -- Earlier draws are still in the hand at this stage of reversing the actions.
+    let drawCards := (draw :: more).filterMap (fun slot =>
+      if slot.seat == draw.seat then deck[slot.index]? else none)
+    let available := s.zone (.player draw.seat .hand) ++ drawCards
+    let findAvailable (ref : ObjId) : Option ObjId := do
+      let phys ← physicalCard base ref
+      available.find? (fun id => physicalCard s id == some phys)
+    let ref ← match returns.find? (·.drawn == draw.drawn) with
+      | none => pure draw.source
+      | some choice => do
+        unless decide choice.candidates.Nodup && choice.candidates.contains choice.returned &&
+            choice.candidates.all (fun id => (findAvailable id).isSome) do
+          throw "private draw candidates must be distinct cards available in the affected hand"
+        pure choice.returned
+    let some chosen := findAvailable ref
+      | throw "the card being returned is no longer available for this draw"
+    let next ← exchangeDrawSlot s draw chosen
+    applyDrawReturns base returns more next
+
+private def applyPrivateRewind (rewind : JudgePrivateRewind) (target : GameState)
+    (undone : List ReplayPosition) : Except String GameState := do
+  let draws := undone.flatMap (fun pos => (drawSlots target pos.events).reverse)
+  let named : List ObjId := rewind.returns.map (·.drawn)
+  unless !named.isEmpty && decide named.Nodup && named.all (fun id => draws.any (·.drawn == id)) do
+    throw "each private return needs a distinct undone draw from the target deck"
+  unless decide ((draws.map (·.source)).Nodup) do
+    throw "the rewind contains repeated draws from the same original slot"
+  let restored ← applyDrawReturns target rewind.returns draws target
+  (rewind.shuffles?.getD []).foldlM (shuffleAfterRewind target) restored
+
+private def rewindTarget (history : List ReplayPosition) (target index : Nat) :
+    Except String (List ReplayPosition × ReplayPosition) := do
+  let some prior := history.head? | throw "the initial checkpoint is missing"
+  unless prior.state.config.ruleSet.isTournament && prior.state.result.isNone &&
+      prior.state.phase != .setup do
+    throw "rewinding requires ongoing tournament play"
+  let distance := index - (target + 1)
+  let undone := history.take distance
+  unless target + 1 < index && undone.all (·.reversible) do
+    throw "a rewind must target an earlier checkpoint within play without crossing a ruling or clock call"
+  let some position := history[distance]? | throw "rewind checkpoint not found"
+  return (undone, position)
 
 /-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
 def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     (answer : ReplayAnswer) (index fuel : Nat) : Except String (Option Action × ReplayPosition × List Event) := do
   let some prior := history.head? | throw "the initial checkpoint is missing"
-  if let .judgeRewind target := answer then
-    unless prior.state.config.ruleSet.isTournament && prior.state.result.isNone &&
-        prior.state.phase != .setup do
-      throw s!"answer {index}: rewinding requires ongoing tournament play"
-    let distance := index - (target + 1)
-    unless target + 1 < index && (history.take distance).all (·.reversible) do
-      throw s!"answer {index}: a rewind must target an earlier checkpoint within play without crossing a ruling or clock call"
-    let some position := history[distance]? | throw s!"answer {index}: rewind checkpoint not found"
-    return (none, { position with reversible := false }, [])
+  let restore (target : Nat) := rewindTarget history target index
+  let correction : Option (Except String ReplayPosition) := match answer with
+    | .judgeRewind target => some (do
+      let (_, pos) ← restore target
+      pure pos)
+    | .judgePrivateRewind rewind => some (do
+      let (undone, pos) ← restore rewind.target
+      let state ← applyPrivateRewind rewind pos.state undone
+      pure { pos with state })
+    | _ => none
+  if let some result := correction then
+    let pos ← result.mapError (fun error => s!"answer {index}: {error}")
+    return (none, { pos with reversible := false, events := [] }, [])
   let (action, state, events) ← input.applyAnswer prior.state answer index fuel
   let reversible := prior.state.phase != .setup && action.any (fun a => a.actor != .clock && a.actor != .judge)
   let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
-  return (action, { state, fields, reversible }, events)
+  return (action, { state, fields, reversible, events }, events)
 
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do

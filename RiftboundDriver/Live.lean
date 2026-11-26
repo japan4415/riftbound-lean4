@@ -623,7 +623,7 @@ def liveExternal (g : LiveGame) (a : Action) : Except String (LiveGame × String
 def liveJudgeCorrection (g : LiveGame) (answer : ReplayAnswer) :
     Except String (LiveGame × String) :=
   match answer with
-  | .judgeRewind _ | .judgeShuffle _ => LiveGame.runAfterAnswer (g.applyReplay answer)
+  | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ => LiveGame.runAfterAnswer (g.applyReplay answer)
   | _ => .error "expected a judge correction"
 
 /-- Apply an in-game Game Loss or schedule one for the next game (TR 701.2.b.1). -/

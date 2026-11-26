@@ -29,7 +29,7 @@ as there are answers in this game), `quit`. For recorded matches: `start-json SE
 `register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
 `time-between-games`, `concede-match SEAT`, `agree-match-draw`, `judge-game-loss SEATS`,
 `judge-match-loss SEAT`, `judge-disqualification SEAT`, `judge-rewind CHECKPOINT`,
-`judge-shuffle SHUFFLE_JSON`, `replay`. For team matches:
+`judge-private-rewind REWIND_JSON`, `judge-shuffle SHUFFLE_JSON`, `replay`. For team matches:
 `start-team-json SEED HUMANS SETUP`, `team-next [ORDER|- [SEALED_DECKS]]`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
@@ -106,6 +106,10 @@ def main : IO UInt32 := do
     | "judge-shuffle" :: shuffle =>
       match ← game.get with
       | some g => goAnswer g ((decodeLine shuffle).bind (fun data => liveJudgeCorrection g (.judgeShuffle data)))
+      | none => fail "no game has been started"
+    | "judge-private-rewind" :: rewind =>
+      match ← game.get with
+      | some g => goAnswer g ((decodeLine rewind).bind (fun data => liveJudgeCorrection g (.judgePrivateRewind data)))
       | none => fail "no game has been started"
     | ["judge-match-loss", seat] | ["judge-disqualification", seat] =>
       match seat.toNat? with

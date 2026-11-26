@@ -481,6 +481,80 @@ def check_judge_corrections(folder: Path, command: Callable[..., str], fixtures:
         assert all(not row["events"] for row in remedies)
 
 
+def live_private_rewinds(live: Lean, setup: dict) -> dict:
+    team = json.loads((ROOT / "data/replay/team-constructed-example.json").read_text(encoding="utf-8"))
+    fixtures = {}
+
+    def obj(ident: int) -> dict:
+        return {"n": ident}
+
+    for label, source, humans, config, suffix in (
+        ("duel", "start-json", "01", {**setup, "winsRequired": 1}, ""),
+        ("team", "start-team-json", "0123", team, "-team"),
+    ):
+        started = ask(live, f"{source} 71 {humans} {json.dumps(config)}")
+        ready = keep(live, started)
+        target = ready["steps"][-1]
+        catalog = {key: data["card"] for step in started["steps"] + ready["steps"]
+                   for key, data in step["state"]["new"].items()}
+        after = choose(live, ready, "pass")
+        seat = after["steps"][-1]["state"]["active"]
+        previous = target["state"]["zones"]
+        deck, hand = (previous[f"p{seat}.{zone}"] for zone in ("mainDeck", "hand"))
+        first_draw = next(event["new"] for step in after["steps"] for event in step["events"]
+                          if event["t"] == "moved" and event["dst"] == f"p{seat}.hand" and event["old"] == deck[0])
+        declared = {"target": target["i"], "returns": [
+            {"drawn": obj(first_draw), "candidates": list(map(obj, [deck[0], hand[0]])), "returned": obj(hand[0])}
+        ]}
+        final_draw = deck[0]
+        expected_deck = [hand[0], *deck[1:]]
+        if not suffix:
+            after = choose(live, choose(live, after, "pass"), "pass")
+            second_draw = next(event["new"] for step in after["steps"] for event in step["events"]
+                               if event["t"] == "moved" and event["dst"] == f"p{seat}.hand" and event["old"] == deck[1])
+            declared["returns"].append({"drawn": obj(second_draw), "candidates": list(map(obj, deck[:2])),
+                                        "returned": obj(deck[0])})
+            # The first drawn card is already back in the deck after reversing the second draw.
+            assert "candidates must be distinct" in json.loads(
+                live.ask(f"judge-private-rewind {json.dumps(declared)}"))["error"]
+            declared["returns"][0]["candidates"][0] = obj(deck[1])
+            declared["shuffles"] = [{"seat": obj(seat), "deck": "mainDeck", "positions": [0, 2],
+                                     "order": [obj(deck[2]), obj(hand[0])]}]
+            final_draw = deck[1]
+            expected_deck = [deck[2], deck[0], hand[0], *deck[3:]]
+
+        illegal = {**declared, "returns": [{**declared["returns"][0], "drawn": obj(99999)}]}
+        assert "distinct undone draw" in json.loads(live.ask(f"judge-private-rewind {json.dumps(illegal)}"))["error"]
+        illegal = {**declared, "returns": [{**declared["returns"][0], "candidates": [obj(deck[3])]}]}
+        assert "candidates must be distinct" in json.loads(live.ask(f"judge-private-rewind {json.dumps(illegal)}"))["error"]
+        corrected = ask(live, f"judge-private-rewind {json.dumps(declared)}")
+        row = corrected["steps"][0]
+        assert row["judgeRewind"] == target["i"] and row["privateDrawReturns"] == len(declared["returns"])
+        assert row["rewindShuffles"] == len(declared.get("shuffles", [])) and row["events"] == []
+        assert row["state"]["turn"] == target["state"]["turn"]
+        actual = row["state"]["zones"]
+        fresh = row["state"]["new"]
+        for zone, expected in (("mainDeck", expected_deck), ("hand", [final_draw, *hand[1:]])):
+            assert [fresh[str(i)]["card"] for i in actual[f"p{seat}.{zone}"]] == [
+                catalog[str(i)] for i in expected
+            ]
+        end = "judge-match-loss 3" if suffix else "judge-game-loss 1"
+        assert ask(live, end)["archiveAvailable"]
+        fixtures[label] = (ask(live, "replay"), suffix, row)
+    return fixtures
+
+
+def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
+    for label, (archive, suffix, live_row) in fixtures.items():
+        path = folder / f"judge-{label}-private-rewind-archive.json"
+        path.write_text(json.dumps(archive), encoding="utf-8")
+        assert json.loads(command("verify" + suffix, path))["exact"]
+        trace = folder / f"judge-{label}-private-rewind-trace.json"
+        command("view" + suffix, path, trace)
+        steps = json.loads(trace.read_text(encoding="utf-8"))["games"][0]["steps"]
+        assert steps[live_row["i"]] == live_row
+
+
 def check_judge_penalties(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix) in fixtures.items():
         path = folder / f"{label}-archive.json"
@@ -565,7 +639,8 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
 
 
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
-              team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict) -> None:
+              team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
+              private_rewinds: dict) -> None:
     tool = ROOT / ".lake/build/bin/riftbound-replay"
     source = folder / "inputs.json"
     archive = folder / "archive.json"
@@ -736,6 +811,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
     check_judge_penalties(folder, command, penalties)
     check_judge_corrections(folder, command, corrections)
+    check_private_rewinds(folder, command, private_rewinds)
 
 
 def main() -> None:
@@ -753,15 +829,18 @@ def main() -> None:
         team_matches = live_team_matches(live, setup)
         penalties = live_judge_penalties(live, setup)
         corrections = live_judge_corrections(live, setup)
+        private_rewinds = live_private_rewinds(live, setup)
     finally:
         live.close()
         live.proc.wait()
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
-        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties, corrections)
+        check_cli(args.output, saved, setup, group_move, elimination, bo1, team_matches, penalties,
+                  corrections, private_rewinds)
     else:
         with TemporaryDirectory() as folder:
-            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties, corrections)
+            check_cli(Path(folder), saved, setup, group_move, elimination, bo1, team_matches, penalties,
+                      corrections, private_rewinds)
     print("replay smoke: OK")
 
 

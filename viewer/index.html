@@ -210,6 +210,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     <input type="file" id="registrationFile" accept=".json,application/json" hidden aria-label="変更後のデッキ登録 JSON">
     <input type="file" id="sealedTeamFile" accept=".json,application/json" hidden aria-label="変更後の4席の Sealed デッキ JSON">
     <input type="file" id="judgeShuffleFile" accept=".json,application/json" hidden aria-label="ジャッジが混ぜ直した山札の JSON">
+    <input type="file" id="judgePrivateRewindFile" accept=".json,application/json" hidden aria-label="非公開カードを選び直した巻き戻しの JSON">
     <div class="choices" id="choices" aria-live="polite"></div>
   </section>
   <div id="result" class="banner" hidden></div>
@@ -376,7 +377,12 @@ function buildBoard() {
 
 function describe(i) {
   const step = steps[i];
-  if (step.judgeRewind != null) return ['ジャッジが巻き戻す', `${step.judgeRewind} 手目の状態に戻す`];
+  if (step.judgeRewind != null) {
+    const detail = [`${step.judgeRewind} 手目の状態に戻す`];
+    if (step.privateDrawReturns) detail.push(`非公開のドローを ${step.privateDrawReturns} 件戻す`);
+    if (step.rewindShuffles) detail.push(`山札を ${step.rewindShuffles} 件混ぜ直す`);
+    return ['ジャッジが巻き戻す', detail.join(' ・ ')];
+  }
   if (step.judgeShuffle) {
     const { seat, deck, positions } = step.judgeShuffle;
     const zone = deck === 'runeDeck' ? 'Rune Deck' : 'Main Deck';
@@ -1401,7 +1407,9 @@ function renderJudgePenalties(box, button) {
     const updateTarget = () => { rewind.disabled = !target.validity.valid || !Number.isInteger(target.valueAsNumber); };
     target.addEventListener('input', updateTarget); updateTarget();
     corrections.append(label, rewind, button('裁定シャッフルを読み込む', '混ぜ直した部分の順序を記録した JSON',
-      () => $('judgeShuffleFile').click()));
+      () => $('judgeShuffleFile').click()),
+      button('非公開カードの巻き戻しを読み込む', '裁定で選んだカードを記録した JSON',
+        () => $('judgePrivateRewindFile').click()));
     details.append(corrections);
   }
   if (liveExt.queuedGameLoss.length) {
@@ -1597,7 +1605,7 @@ async function startWith(path, body, fresh) {
     const initialEdit = liveBo1?.sideboards.length && (path === '/api/swap' || path === '/api/register');
     if (fresh) { undoCount = 0; bo1SideSeat = null; teamNextDecks = null; }
     else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/judge-game-loss', '/api/judge-rewind',
-      '/api/judge-shuffle', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
+      '/api/judge-shuffle', '/api/judge-private-rewind', '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
     else undoCount = 0;
     setLive(j);
     if (fresh) {
@@ -1720,6 +1728,12 @@ $('judgeShuffleFile').addEventListener('change', async (e) => {
   const file = e.target.files[0]; e.target.value = '';
   if (!file) return;
   try { await liveExternal('judge-shuffle', { shuffle: JSON.parse(await file.text()) }); }
+  catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
+$('judgePrivateRewindFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try { await liveExternal('judge-private-rewind', { rewind: JSON.parse(await file.text()) }); }
   catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
 });
 async function detectLive() {
