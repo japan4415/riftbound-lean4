@@ -51,6 +51,27 @@ Riftbound の公式 Tournament Rules のうち、形式化の対象にする部�
 - Battlefield の枚数は、Core Rules ではモードが決める（CR 103.5）。Constructed は 3 枚に固定している。だからこの定理は、Battlefield を 3 枚求めるモード（1v1 Duel など）に限って述べる。
 - Core Rules のデッキにサイドボードは無いので、サイドボードを除いた部分について述べる。同名の枚数制限は、大会では Main Deck とサイドボードの合計にかかる（TR 601.1.c）。制限の枚数が Core Rules（CR 103.3.b）と同じであることは、実装のときに原文で確かめる。
 
+#### 禁止改定の選択
+
+`RiftboundCards.constructedLegality` に大会のフォーマット、適用する期間、使用可能なセットを
+渡すと、`ConstructedDeckValid` と `GameState.initialConstructed` で使う `LegalityEnv` が得られる。
+禁止リストは論理カードの ID で管理するため、同じカードの別印刷にも適用する。
+
+- グローバル日程を使う大会では `.global ⟨2026, 11, 23⟩` のように開催地の日付を渡す。
+  2026年3月31日、7月24日、9月18日、11月23日の施行日を収録している。
+  [3月の告知](https://playriftbound.com/en-us/news/announcements/announcing-riftbounds-first-bans/)
+  [7月の告知](https://playriftbound.com/en-us/news/announcements/july-ban-list-updates/)
+  [9月の告知](https://playriftbound.com/en-us/news/announcements/september-ban-list-updates-effective-september-18-2026/)
+  [11月の告知](https://playriftbound.com/en-us/news/announcements/radiance-ban-list-updates-effective-november-23-2026/)
+- Standard と Constructed 2v2 は別々のリストを使う。11月23日版の Rules Hub は
+  Fight or Flight を Standard に、Master Yi, Wuju Bladesman を Constructed 2v2 に掲載している。
+  [公式 Rules Hub](https://playriftbound.com/en-us/rules-hub/)
+- 韓国・繁体字中国語圏で地域別の方針が発効した大会では、主催者が指定したセットシーズンを
+  `.regional` に渡す。たとえば2026年11月23日以降の韓国の Origins シーズンでは
+  `.regional .origins` を指定すると禁止リストが空になる。各地域の発売日や個別大会の施行日は
+  主催者の告知に従う。 [地域別の方針](https://playriftbound.com/en-us/news/announcements/radiance-ban-list-updates-effective-november-23-2026/)
+  [韓国の11月改定](https://playriftbound.com/ko-kr/news/announcements/kr-ban-list-nov-14/)
+
 ### 2.2 Limited（TR 602）
 
 | 規則 | Sealed | Draft |

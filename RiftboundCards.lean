@@ -1,6 +1,7 @@
 module
 
 public import RiftboundCards.Registry
+public import RiftboundCards.BanList
 
 /-!
 # RiftboundCards
