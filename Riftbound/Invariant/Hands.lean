@@ -727,6 +727,41 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
     refine hinv.of_play (by rw [hphase]; exact manaOk_not_setup hl.2.1) hto hcfg (fun hm => ?_)
     rwa [hpend] at hm
+  · rename_i inviter rest guest hp hk
+    rw [hp, hk] at hl
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hphase := GameState.teamInvitee_phase hl.2
+    refine hinv.of_play (by change s.phase ≠ .setup; rw [hphase]; decide) rfl rfl (fun hm => ?_)
+    simpa only [hp, List.mem_cons, reduceCtorEq, false_or] using hm
+  · rename_i guest rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_pop hp (fun _ => rfl) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
+  · rename_i guest rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
+    rw [hpend] at hm
+    rw [hp]
+    simpa only [List.mem_cons, reduceCtorEq, false_or] using hm
+  · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
+    have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
+    rw [hpend] at hm
+    rw [hp]
+    simpa only [List.mem_cons, reduceCtorEq, false_or] using hm
+  · rename_i guest rest c ab hp hk
+    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyRune_meta h
+    have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
+    rwa [hpend] at hm
+  · rename_i guest rest src idx pay _chosen hp hk
+    obtain ⟨hcfg, hto, hphase, -, hpend⟩ := applyMana_meta h
+    have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
+    refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
+    rwa [hpend] at hm
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the hand invariant: only `triggers` frames are put

@@ -332,6 +332,19 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((tc_reactStep hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
+  · exact Or.inl (tc_activateStep h)
+  · exact Or.inl (tc_applyRune h)
+  · exact Or.inl (tc_applyMana h)
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the

@@ -34,6 +34,11 @@ private def matchTrace (saved : RecordedMatch) : Except String String := do
     ("wins", jarr [toString summary.wins.1, toString summary.wins.2]), ("exact", toString summary.exact),
     ("cardsFullyChecked", toString summary.cardsFullyChecked)]
 
+private def teamVerificationJson (saved : RecordedTeamMatch) (summary : TeamMatchResult) : Json :=
+  (toJson summary)
+    |>.setObjValAs! "exact" (saved.games.all (·.summary.exact))
+    |>.setObjValAs! "cardsFullyChecked" (summary.uncheckedCards.all (·.all List.isEmpty))
+
 /-- Record, verify or generate a viewer trace from all the inputs of a saved match. -/
 def main (args : List String) : IO UInt32 := do
   try
@@ -63,12 +68,12 @@ def main (args : List String) : IO UInt32 := do
       let observed : TeamMatchRecord ← IO.ofExcept (fromJson? (← readJson input))
       let saved ← IO.ofExcept observed.record
       writeJson output (toJson saved)
-      IO.println (toJson saved.summary).compress
+      IO.println (teamVerificationJson saved saved.summary).compress
       return 0
     | ["verify-team", input] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
       let result ← IO.ofExcept saved.verify
-      IO.println (toJson result).compress
+      IO.println (teamVerificationJson saved result).compress
       return 0
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json"

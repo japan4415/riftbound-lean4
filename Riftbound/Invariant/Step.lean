@@ -196,6 +196,19 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
   · exact applyMana_wf hwf h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
+  · exact activateStep_wf hwf h
+  · exact applyRune_wf hwf h
+  · exact applyMana_wf hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -517,6 +530,20 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
   · exact applyMana_physIds hwf h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans
+      (reactStep_physIds hwf hr)
+  · exact activateStep_physIds hwf h
+  · exact applyRune_physIds hwf h
+  · exact applyMana_physIds hwf h
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/
@@ -620,7 +647,7 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
       cases kind <;> cases actor <;>
         simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
           mem_legalActivates, mem_legalReactions, mem_legalManas,
-          mem_legalShowdownPlays, mem_legalShowdownActivates]
+          mem_legalShowdownPlays, mem_legalShowdownActivates, mem_legalInvitedSpells]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

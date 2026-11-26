@@ -94,6 +94,7 @@ priority. -/
 def playAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   match s.pending with
   | .priority p :: _ => some (⟨.player p, .pass⟩, r)
+  | .teamInvitation guest :: _ => some (⟨.player guest, .pass⟩, r)
   | _ => autoAnswer r s
 
 /-- Play until `turns` turns have begun and the turn player has priority in the Main Phase, or

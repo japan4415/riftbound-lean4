@@ -20,7 +20,9 @@ theorem applyFrame0_declareDraw (s : GameState) (actor : Actor) :
     applyFrame0 s ⟨actor, .declareDraw⟩ =
       some ({ s with result := some .draw, pending := [] }, []) := by
   unfold applyFrame0
-  split <;> simp_all
+  cases s.pending with
+  | nil => rfl
+  | cons frame _ => cases frame <;> rfl
 
 /-- **A declared draw is a draw** (TR 410.1, 505.6): the result is a draw, and no frame is left. -/
 theorem declareDraw_draws {s s' : GameState} {es : List Event} {actor : Actor}
@@ -31,13 +33,12 @@ theorem declareDraw_draws {s s' : GameState} {es : List Event} {actor : Actor}
   obtain ⟨rfl, -⟩ := h
   exact ⟨rfl, rfl⟩
 
-set_option maxHeartbeats 800000 in
 /-- A legal declaration of a draw is the judge's, under the Tournament Rules. -/
 theorem legal_declareDraw {s : GameState} {a : Action} (hk : a.kind = .declareDraw)
     (h : LegalFrame s a) : a.actor = .judge ∧ s.config.ruleSet.isTournament = true := by
-  unfold LegalFrame at h
-  rw [hk] at h
-  split at h <;> first | exact h | (simp_all; done)
+  rcases hp : s.pending with _ | ⟨frame, rest⟩
+  · simpa only [LegalFrame, hp, hk] using h
+  · cases frame <;> simpa only [LegalFrame, hp, hk] using h
 
 /-- **When the game is over nothing is legal** (TR 410.1, 505.6): after a draw, or any result,
 no answer is accepted. -/

@@ -687,6 +687,31 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i inviter rest guest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl
+      (new := [Frame.teamInvitation guest, Frame.priority inviter]) rfl (by simp [Frame.isSetup])
+  · rename_i guest rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
+  · rename_i guest rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.chainPass guest 0]) hpend (by simp [Frame.isSetup])
+  · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+      (new := [Frame.chainPass guest 0]) hpend (by simp [Frame.isSetup])
+  · rename_i guest rest c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.teamInvitation guest]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i guest rest src idx pay _chosen hp hk
+    have hmeta := applyMana_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.teamInvitation guest]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while

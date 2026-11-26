@@ -471,6 +471,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .nameCard card => [("cardCode", jstr card.code)]
     | .guessCardType guess => [("cardType", jstr (ctorName guess))]
     | .burnOutTarget o => [("opponent", toString o.n)]
+    | .inviteTeammate guest => [("guest", toString guest.n)]
     | .pick i => [("index", toString i)]
     | _ => []
   jobj ([("actor", jstr who), ("kind", jstr kind)] ++ extra)

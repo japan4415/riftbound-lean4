@@ -45,7 +45,12 @@ private meta def exampleMatch : Except String Unit := do
   unless first.turnOrder == order && first.active == some ⟨0⟩ && first.battlefields.length == 3 &&
       (first.zone (.player ⟨0⟩ .outOfGame)).length == 3 &&
       (first.zone (.player ⟨0⟩ .hand)).length == 4 do throw "incorrect starting seat or Battlefield setup"
-  let (lastSeat, answers) ← collect 4 20 (Rng.ofSeed 22) first earlyAnswers
+  let invite : Action := ⟨.player ⟨0⟩, .inviteTeammate ⟨1⟩⟩
+  let decline : Action := ⟨.player ⟨1⟩, .pass⟩
+  let (invited, _) ← (step 100 first invite).mapError (fun e => reprStr e)
+  let (resumed, _) ← (step 100 invited decline).mapError (fun e => reprStr e)
+  let earlyAnswers := earlyAnswers.push (.observed invite) |>.push (.observed decline)
+  let (lastSeat, answers) ← collect 4 20 (Rng.ofSeed 22) resumed earlyAnswers
   unless lastSeat.active == some ⟨3⟩ && (lastSeat.zone (.player ⟨3⟩ .runeDeck)).length == 9 do
     throw "the last seat did not get the extra Rune"
   let game : TeamGameRecord := {

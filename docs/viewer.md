@@ -109,7 +109,11 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 ゲーム途中にマッチ投了や合意の引き分けで終了した場合、最後のゲームの `ending` を `"matchEnded"` にする。そこまでの操作と終了時点の得点を照合し、そのゲームはマッチのゲーム勝数に加えない。
 
-4席のセットアップ、手番、チームの共有得点、時間切れや投了まで再実行できる。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方がいる Battlefield への移動を制限し、Combat の参加者やカード効果の対象を判定するときはチームを区別する。味方への招待と、同時に始まる Combat の順序選択は [ロードマップの M9](roadmap.md) に残っている。
+`record-team` と `verify-team` の出力には `exact` と `cardsFullyChecked` が含まれる。`exact` は推定された操作があるかどうかを示し、カードの実装状況は `cardsFullyChecked` と席別の `uncheckedCards` で確認する。
+
+4席のセットアップ、手番、チームの共有得点、時間切れや投了まで再実行できる。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方がいる Battlefield への移動を制限し、Combat の参加者やカード効果の対象を判定するときはチームを区別する。
+
+Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。同時に始まる Combat の順序選択は [ロードマップの M9](roadmap.md) に残っている。
 
 ## カードの詳細と画像
 

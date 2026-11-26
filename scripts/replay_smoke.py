@@ -189,13 +189,24 @@ def check_cli(folder: Path, saved: dict, setup: dict) -> None:
         answers=[*first_shuffles, *other_shuffles,
                  *[observed("chance", {"pick": {"index": 0}}) for _ in range(3)],
                  *[observed({"player": {"p": seat}}, "mulliganDone") for seat in team_order],
+                 observed({"player": {"p": p0}}, {"inviteTeammate": {"guest": p1}}),
+                 observed({"player": {"p": p1}}, "pass"),
                  observed({"player": {"p": p1}}, "concede")],
     )
     team_record["winsRequired"] = 1
     team_input.write_text(json.dumps(team_record), encoding="utf-8")
     team_archive = folder / "team-archive.json"
-    assert json.loads(command("record-team", team_input, team_archive))["wins"] == [0, 1]
-    assert json.loads(command("verify-team", team_archive))["wins"] == [0, 1]
+    summary = json.loads(command("record-team", team_input, team_archive))
+    assert summary["wins"] == [0, 1] and summary["exact"] and not summary["cardsFullyChecked"]
+    assert json.loads(command("verify-team", team_archive)) == summary
+
+    last = team_game["answers"][-1]["observed"]["action"]
+    team_game["answers"][-1] = {"inferred": {"action": last, "evidence": "team reported the concession"}}
+    inferred_team = folder / "team-inferred.json"
+    inferred_team.write_text(json.dumps(team_record), encoding="utf-8")
+    inferred_archive = folder / "team-inferred-archive.json"
+    assert not json.loads(command("record-team", inferred_team, inferred_archive))["exact"]
+    assert not json.loads(command("verify-team", inferred_archive))["exact"]
 
 
 def main() -> None:

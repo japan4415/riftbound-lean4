@@ -367,6 +367,33 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · have hmeta := applyMana_meta h
     exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · rename_i inviter rest guest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.replace (new := [Frame.teamInvitation guest, Frame.priority inviter])
+      (fun _ => ⟨Frame.priority inviter, by simp, rfl⟩)
+  · rename_i guest rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_next rfl (fun hb => by rw [hp] at hb; exact hb.pop rfl)
+  · rename_i guest rest c pay ts flow discard pick hp hk
+    obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_discard_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass guest 0]
+  · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
+    obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
+    refine hinv.of_next hres (fun hb => ?_)
+    rw [hp] at hb
+    rw [hpend]
+    exact hb.swap rfl [Frame.chainPass guest 0]
+  · have hmeta := applyRune_meta h
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
+  · have hmeta := applyMana_meta h
+    exact hinv.of_next hmeta.2.2.2.1 (fun hb => by rw [hmeta.2.2.2.2]; exact hb)
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the stack invariant: `triggers` frames go beneath the
@@ -947,6 +974,12 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
+  | teamInvitation guest =>
+    left
+    refine ⟨⟨.player guest, .pass⟩, ?_, by simp⟩
+    rw [hla]
+    apply List.mem_append_left
+    simp [legalFrameActions, hp]
   | resolveChain | resumeCost _ => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
@@ -1059,6 +1092,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | scoreHolds => exact absurd hc (by simp [Frame.isChance])
   | expireTurn => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
+  | teamInvitation guest => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
   | resolveChain | resumeCost _ => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])

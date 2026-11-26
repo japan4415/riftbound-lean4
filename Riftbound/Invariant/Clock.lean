@@ -24,7 +24,9 @@ namespace Riftbound
 theorem applyFrame0_timeCalled (s : GameState) (actor : Actor) :
     applyFrame0 s ⟨actor, .timeCalled⟩ = some ({ s with clock := some (s.turn + 3) }, []) := by
   unfold applyFrame0
-  split <;> simp_all
+  cases s.pending with
+  | nil => rfl
+  | cons frame _ => cases frame <;> rfl
 
 /-- **Calling time sets the last turn** (TR 408.2): the game ends after 3 more turns than the one
 that is going on. Nothing else changes: not the turn, not the result, not the stack. -/
@@ -37,16 +39,15 @@ theorem timeCalled_sets_clock {s s' : GameState} {es : List Event} {actor : Acto
   obtain ⟨rfl, -⟩ := h
   exact ⟨rfl, rfl, rfl, rfl⟩
 
-set_option maxHeartbeats 800000 in
 /-- A legal call of time is the clock's, once, in a two-sided Tournament game after the
 first turn has begun (TR 408.2). -/
 theorem legal_timeCalled {s : GameState} {a : Action} (hk : a.kind = .timeCalled)
     (h : LegalFrame s a) :
     a.actor = .clock ∧ s.config.ruleSet.isTournament = true ∧ s.config.mode.hasTwoSides = true ∧
       s.clock = none ∧ s.active.isSome = true := by
-  unfold LegalFrame at h
-  rw [hk] at h
-  split at h <;> first | exact h | (simp_all; done)
+  rcases hp : s.pending with _ | ⟨frame, rest⟩
+  · simpa only [LegalFrame, hp, hk] using h
+  · cases frame <;> simpa only [LegalFrame, hp, hk] using h
 
 /-- The clock has run out exactly when the turn that began last is the one the clock named or a
 later one. -/

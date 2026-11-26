@@ -33,10 +33,12 @@ def GameState.actionKillCosts (s : GameState) (a : Action) : List ObjId :=
     | some t => match trigCost s t with | .killFriendly .. => ids | _ => []
     | none => []
   | .priority _ :: _, .playCard card _ targets _ _ pick
+  | .teamInvitation _ :: _, .playCard card _ targets _ _ pick
   | .chainPass .. :: _, .playCard card _ targets _ _ pick
   | .showdown .. :: _, .playCard card _ targets _ _ pick =>
     (s.playDeathCost card targets pick).toList
   | .priority _ :: _, .activate source index _ targets _ _ _ object
+  | .teamInvitation _ :: _, .activate source index _ targets _ _ _ object
   | .chainPass .. :: _, .activate source index _ targets _ _ _ object
   | .showdown .. :: _, .activate source index _ targets _ _ _ object =>
     match s.activationAt source index with
@@ -54,7 +56,7 @@ choices. No part of the declared payment has been committed yet. -/
 def GameState.actionDeathCostChoice (s : GameState) (a : Action) :
     Option (ObjId × PlayerId × Effect × Effect) :=
   match s.pending with
-  | .priority _ :: _ | .chainPass .. :: _ | .showdown .. :: _ | .triggerOrder .. :: _ =>
+  | .priority _ :: _ | .teamInvitation _ :: _ | .chainPass .. :: _ | .showdown .. :: _ | .triggerOrder .. :: _ =>
     if s.phase == .setup then none
     else s.deathGroupChoice (s.actionKillCosts a) false
   | _ => none
@@ -232,6 +234,25 @@ def legalTriggerFunding (s : GameState) (p : PlayerId) (group : List PendTrigger
     (triggerFundingAdds s group plan).map (fun a => ⟨.player p, .triggerAdd a⟩) ++
     [⟨.player p, .decide false⟩]
 
+/-- Invitation grants spell timing without allowing a permanent to be played. -/
+def legalInvitedSpells (s : GameState) (p : PlayerId) : List Action :=
+  (legalPlays s p).filter (fun a =>
+    match a.kind with
+    | .playCard c pay targets flow _ pick => castable s p c pay targets flow pick
+    | _ => false)
+
+theorem mem_legalInvitedSpells (s : GameState) (p : PlayerId) (a : Action) :
+    a ∈ legalInvitedSpells s p ↔ ∃ c pay targets flow discard pick,
+      a = ⟨.player p, .playCard c pay targets flow discard pick⟩ ∧
+      c ∈ s.playSources p ∧ castable s p c pay targets flow pick = true ∧
+      s.playDiscardOk p c discard = true := by
+  simp only [legalInvitedSpells, List.mem_filter, mem_legalPlays]
+  constructor
+  · rintro ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, -, hd⟩, cast⟩
+    exact ⟨c, pay, ts, flow, discard, pick, rfl, hc, cast, hd⟩
+  · rintro ⟨c, pay, ts, flow, discard, pick, rfl, hc, cast, hd⟩
+    exact ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, .inr (.inl cast), hd⟩, cast⟩
+
 /-- The answers of the players to the open question. Chance answers are not listed. -/
 def legalFrameActions (s : GameState) : List Action :=
   match s.pending with
@@ -258,7 +279,11 @@ def legalFrameActions (s : GameState) : List Action :=
       (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
-      legalMoves s p ++ legalActivates s p true)
+      legalMoves s p ++ legalActivates s p true ++
+      ((s.teamInvitee p).toList.map (fun guest => ⟨.player p, .inviteTeammate guest⟩)))
+  | .teamInvitation guest :: _ =>
+    ⟨.player guest, .pass⟩ :: (legalRunes s guest ++ legalManas s guest ++
+      legalInvitedSpells s guest ++ legalActivates s guest true)
   | .chainPass p _ :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
       legalActivates s p false)

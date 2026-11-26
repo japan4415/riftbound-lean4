@@ -137,4 +137,53 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     (s.pickCandidates actor field {} .friendly .inHand .nil) == some [own] &&
     PlayerSel.resolve s actor .eachOpponent == (some [⟨2⟩, ⟨3⟩] : Option (List PlayerId))).getD false
 
+-- An invited teammate funds and casts an ordinary spell. The turn player stays active and
+-- takes back priority when the spell finishes. Declining also gives back priority.
+#guard (do
+  let turnPlayer : PlayerId := ⟨0⟩
+  let guest : PlayerId := ⟨1⟩
+  let start := { teamState with
+    phase := .main, turn := 1, active := some turnPlayer,
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority turnPlayer] }
+  let (s, rune) ← addObject start (newCard db start guest (cid "R1")) (.player guest .base)
+  let (s, spell) ← addObject s (newCard db s guest (cid "SP0")) (.player guest .hand)
+  let (s, unit) ← addObject s (newCard db s guest (cid "V0")) (.player guest .hand)
+  let (s, _) ← addObject s (newCard db s guest (cid "V1")) (.player guest .mainDeck)
+  let invite : Action := ⟨.player turnPlayer, .inviteTeammate guest⟩
+  let decline : Action := ⟨.player guest, .pass⟩
+  let pay : RunePool.Payment := { energy := 1, power := [] }
+  let cast : Action := ⟨.player guest, .playCard spell pay []⟩
+  let playUnit : Action := ⟨.player guest, .playCard unit pay []⟩
+  let (offered, _) ← (step 100 s invite).toOption
+  let (returned, _) ← (step 100 offered decline).toOption
+  let (funded, _) ← (step 100 offered ⟨.player guest, .runeAbility rune .exhaust⟩).toOption
+  let (chained, _) ← (step 100 funded cast).toOption
+  let finished ← ([(⟨1⟩ : PlayerId), ⟨3⟩, ⟨0⟩, ⟨2⟩].foldlM (m := Option) (fun state seat =>
+    ((step 100 state ⟨.player seat, .pass⟩).toOption).map Prod.fst) chained)
+  return (legalFrameActions s).contains invite && !(legalFrameActions s).contains cast &&
+    (step 100 s ⟨.player turnPlayer, .inviteTeammate ⟨2⟩⟩).toOption.isNone &&
+    offered.pending == [Frame.teamInvitation guest, Frame.priority turnPlayer] &&
+    returned.pending == [Frame.priority turnPlayer] && (legalFrameActions funded).contains cast &&
+    !(legalFrameActions funded).contains playUnit && (step 100 funded playUnit).toOption.isNone &&
+    chained.pending == [Frame.chainPass guest 0, Frame.priority turnPlayer] &&
+    finished.pending == [Frame.priority turnPlayer] && finished.active == some turnPlayer &&
+    (finished.zone (.player guest .mainDeck)).isEmpty).getD false
+
+#guard (do
+  let turnPlayer : PlayerId := ⟨0⟩
+  let guest : PlayerId := ⟨1⟩
+  let abilityCard := { vanilla 0 with
+    id := cid "Invitation Ability",
+    abilities := [.activated [.exhaustSelf] .normal (EffectDef.of [] (.prim (.draw .you (.const 1)))) .unlimited] }
+  let testDB : CardDB := ⟨db.cards ++ [abilityCard]⟩
+  let s := GameState.empty teamState.config testDB
+  let s := { s with phase := .main, active := some turnPlayer, pending := [.priority turnPlayer] }
+  let (s, src) ← addObject s (newCard testDB s guest abilityCard.id) (.player guest .base)
+  let ability : Action := ⟨.player guest, .activate src 0 ⟨0, []⟩ []⟩
+  let (offered, _) ← (step 100 s ⟨.player turnPlayer, .inviteTeammate guest⟩).toOption
+  let (chained, _) ← (step 100 offered ability).toOption
+  return (legalFrameActions offered).contains ability && !(legalFrameActions s).contains ability &&
+    chained.pending == [Frame.chainPass guest 0, Frame.priority turnPlayer] &&
+    (chained.obj? src).any (fun o : Object => o.exhausted)).getD false
+
 end RiftboundTest

@@ -41,6 +41,21 @@ def GameState.nextTurnPlayer (s : GameState) : PlayerId :=
 def turnFrames (tp : PlayerId) : List Frame :=
   [.phase .awaken, .phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority tp]
 
+/-- The teammate to whom the turn player can offer their Neutral Open priority (CR 316.5.b.1). -/
+def GameState.teamInvitee (s : GameState) (p : PlayerId) : Option PlayerId :=
+  if s.active == some p && s.phase == .main then
+    (s.config.mode.sideSeats p).find? (· != p)
+  else none
+
+theorem GameState.teamInvitee_phase {s : GameState} {p guest : PlayerId}
+    (h : s.teamInvitee p = some guest) : s.phase = .main := by
+  unfold teamInvitee at h
+  split at h
+  · rename_i allowed
+    simp only [Bool.and_eq_true, beq_iff_eq] at allowed
+    exact allowed.2
+  · cases h
+
 /-- The last seat in the starting order gets an extra Rune on its first regular turn
 in Duel and team play (CR 315.3, 487.7, 491.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
@@ -429,6 +444,15 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .run p src env (.cons branch es) :: rest }, [])
   | .eitherDo p _ _ _ _ _ :: _, .runeAbility c ab => applyRune s p c ab
   | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
+  | .priority p :: rest, .inviteTeammate guest =>
+    some ({ s with pending := .teamInvitation guest :: .priority p :: rest }, [])
+  | .teamInvitation _ :: rest, .pass => some ({ s with pending := rest }, [])
+  | .teamInvitation guest :: rest, .playCard c pay ts flow discard pick =>
+    (reactStep s guest c pay ts (.chainPass guest 0 :: rest) flow pick).map (payPlayDiscard guest c discard)
+  | .teamInvitation guest :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    activateStep s guest src idx pay ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
+  | .teamInvitation guest :: _, .runeAbility c ab => applyRune s guest c ab
+  | .teamInvitation guest :: _, .manaAbility src idx pay chosen => applyMana s guest src idx pay chosen
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set

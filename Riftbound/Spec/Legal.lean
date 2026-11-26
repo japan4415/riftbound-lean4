@@ -163,6 +163,19 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
       first.isPayment = true
   | .eitherDo p _ _ first _ _ :: _, .manaAbility src idx pay chosen =>
     a.actor = .player p ∧ manaOk s p src idx pay chosen = true ∧ first.isPayment = true
+  -- The turn player may invite their teammate to cast a spell or use an ability (CR 316.5.b.1, 491.8.a).
+  | .priority p :: _, .inviteTeammate guest => a.actor = .player p ∧ s.teamInvitee p = some guest
+  | .teamInvitation guest :: _, .pass => a.actor = .player guest
+  | .teamInvitation guest :: _, .playCard c pay ts flow discard pick =>
+    a.actor = .player guest ∧ c ∈ s.playSources guest ∧
+      castable s guest c pay ts flow pick = true ∧ s.playDiscardOk guest c discard = true
+  | .teamInvitation guest :: _, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    a.actor = .player guest ∧ activatable s guest src idx pay ts true discards targetPlayer costObject = true ∧
+      costBanisher ∈ activationBanisherOptions s src idx ts costObject
+  | .teamInvitation guest :: _, .runeAbility c ab =>
+    a.actor = .player guest ∧ c ∈ s.zone (.player guest .base) ∧ runeUsable s guest c ab = true
+  | .teamInvitation guest :: _, .manaAbility src idx pay chosen =>
+    a.actor = .player guest ∧ manaOk s guest src idx pay chosen = true
   | _, _ => False
 
 instance LegalFrame.decidable (s : GameState) (a : Action) : Decidable (LegalFrame s a) := by

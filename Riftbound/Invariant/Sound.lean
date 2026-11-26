@@ -197,6 +197,21 @@ theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.O
   · rename_i src idx pay _chosen hp hk
     rw [hp, hk] at hl
     exact applyMana_isSome hl.2.1
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+  · rename_i guest rest c pay ts flow discard pick hp hk
+    rw [hp, hk] at hl
+    obtain ⟨r, hr⟩ := reactStep_isSome (new := .chainPass guest 0 :: rest) hwf hl.2.1 (.inl hl.2.2.1)
+    exact ⟨_, Option.map_eq_some_iff.mpr ⟨r, hr, rfl⟩⟩
+  · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher hp hk
+    rw [hp, hk] at hl
+    exact activateStep_isSome hl.2.1
+  · rename_i guest c ab hp hk
+    rw [hp, hk] at hl
+    exact applyRune_isSome hwf hl.2.1 hl.2.2
+  · rename_i guest src idx pay _chosen hp hk
+    rw [hp, hk] at hl
+    exact applyMana_isSome hl.2
   · exact absurd hl (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
@@ -394,6 +409,19 @@ theorem applyFrame_ownerOk0 {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
+  · exact applyRune_ownerOk hwf hown h
+  · exact applyMana_ownerOk hwf hown h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
+  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (payPlayDiscard_safe _ _ _ _).own (reactStep_wf hwf hr) (reactStep_ownerOk hwf hown hr)
+  · exact activateStep_ownerOk hwf hown h
   · exact applyRune_ownerOk hwf hown h
   · exact applyMana_ownerOk hwf hown h
   · exact absurd h (by simp)

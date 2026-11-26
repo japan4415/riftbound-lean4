@@ -136,6 +136,8 @@ inductive ActionKind where
   /-- Place the next looked-at card on top in the chosen order, or mark it for Recycle
   (CR 437). -/
   | predictPick (card : ObjId) (recycle : Bool)
+  /-- Offer the teammate one spell or ability using the turn player's priority (CR 316.5.b.1). -/
+  | inviteTeammate (guest : PlayerId)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -291,6 +293,9 @@ inductive Frame where
   /-- Chance: Recycle the selected group from the Main Deck in a random order
   (CR 417.5, 437). `n` is the length of the prefix partitioned into `top` and `bottom`. -/
   | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
+  /-- Choice: this player can cast a spell, activate an ability, or decline. The turn player's
+  normal priority frame is next on the stack (CR 491.8.a). -/
+  | teamInvitation (guest : PlayerId)
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/
@@ -327,6 +332,7 @@ def Frame.isPlay : Frame → Bool
   | .pickDo .. => true
   | .nameCard .. | .guessCardType .. => true
   | .predict .. | .chancePredict .. => true
+  | .teamInvitation _ => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
