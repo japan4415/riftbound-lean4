@@ -45,9 +45,11 @@ inductive TeamGameEnd where
   | concede (seat : PlayerId)
   /-- The last extra turn finished with neither team having won. -/
   | time
+  /-- Match concession or an agreed match draw interrupted the game. -/
+  | matchEnded
 deriving DecidableEq, Repr, ToJson, FromJson
 
-/-- Observations about a completed team game. -/
+/-- Observations about a team game, through its own ending or the end of the match. -/
 structure TeamGameRecord where
   /-- The four registrations, indexed by player ID. -/
   decks : List ConstructedDeck
@@ -77,7 +79,7 @@ structure TeamMatchRecord where
   legalSets : List SetCode
   /-- The number of games needed to win. -/
   winsRequired : Nat
-  /-- The completed games in chronological order. -/
+  /-- The games in chronological order, including an interrupted final game if recorded. -/
   games : Array TeamGameRecord
   /-- The match ending. A concession names an individual seat. -/
   ending : ReplayMatchEnd
@@ -117,24 +119,26 @@ private def checkTeamDecks (game : TeamGameRecord) (seats : TeamSeats) (db : Car
         first.battlefields.any (fun card => second.battlefields.any (·.nameKey == card.nameKey)) then
       throw "teammates share a Champion Legend or Battlefield"
 
-private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) : Except String GameResult := do
+private def teamGameResult (game : TeamGameRecord) (seats : TeamSeats) :
+    Except String (Option GameResult) := do
   let (a, b) := game.points
   let won (team : Nat) := GameResult.won [⟨team⟩]
   match game.ending with
   | .scored =>
-    if a >= 11 && b < 11 then return won 0
-    if b >= 11 && a < 11 then return won 1
+    if a >= 11 && b < 11 then return some (won 0)
+    if b >= 11 && a < 11 then return some (won 1)
     throw "exactly one team must reach the victory score"
   | _ =>
     if a >= 11 || b >= 11 then throw "a team already reached the victory score"
     match game.ending with
-    | .draw => return .draw
+    | .draw => return some .draw
     | .concede seat =>
       let some team := seats.teamOf seat | throw "the concession seat is not in the match"
-      return .won [MatchState.other team]
+      return some (.won [MatchState.other team])
     | .time =>
       if !game.timed then throw "the team game ended on time without a time call"
-      return if a >= b + 2 then won 0 else if b >= a + 2 then won 1 else .draw
+      return some (gameOnTime a b)
+    | .matchEnded => return none
     | .scored => throw "missing victory score"
 
 private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : MatchState)
@@ -164,7 +168,7 @@ private def checkTeamSetup (seats : TeamSeats) (game : TeamGameRecord) (state : 
   return firstTeam
 
 private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
-    (readGame : LegalityEnv → Nat → TeamGameRecord → Except String (GameResult × Option RecordedGame)) :
+    (readGame : LegalityEnv → Nat → TeamGameRecord → Except String (Option GameResult × Option RecordedGame)) :
     Except String (TeamMatchResult × Array RecordedGame) := do
   if !decide (input.seats.players.Perm (allPlayers 4)) then throw "the teams must use four different seats"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
@@ -180,11 +184,17 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
       checkTeamDecks game input.seats db env
       let first ← checkTeamSetup input.seats game state previous
       let (result, evidence) ← readGame env index game
-      pure (state.record result first, evidence)
-    let (m, evidence) ← next.mapError (fun error => s!"team game {index + 1}: {error}")
+      if let some finished := result then
+        pure (state.record finished first, game.timed, evidence)
+      else
+        let matchEnds := match input.ending with | .concede _ | .agreedDraw => true | _ => false
+        unless index + 1 == input.games.size && matchEnds do
+          throw "only a match concession or agreed match draw can interrupt the last game"
+        pure (state, false, evidence)
+    let (m, gameTimed, evidence) ← next.mapError (fun error => s!"team game {index + 1}: {error}")
     state := m
     if let some game := evidence then recorded := recorded.push game
-    timed := game.timed
+    timed := gameTimed
     previous := some game
     uncheckedCards := uncheckedCards.push ((ReplayDecks.constructed game.decks).uncheckedCards db)
   let ending ← match input.ending with
@@ -201,13 +211,17 @@ def TeamMatchRecord.check (input : TeamMatchRecord) (db : CardDB := RiftboundCar
   (runTeamMatch input db fun _ _ game => (teamGameResult game input.seats).map (·, none)).map Prod.fst
 
 private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGame)
-    (seats : TeamSeats) : Except String GameResult := do
+    (seats : TeamSeats) : Except String (Option GameResult) := do
   let actual := played.summary
   if actual.turnOrder != observation.order || !decide (actual.battlefields.Perm observation.battlefields) then
     throw "the replayed setup differs from the observed order or Battlefield choices"
   let (a, b) := observation.points
   if actual.points != [a, a, b, b] || actual.timed != observation.timed then
     throw "the replayed score or clock differs from the observations"
+  let expected ← teamGameResult observation seats
+  if expected.isNone then
+    if actual.result.isSome then throw "a game result precedes the recorded match ending"
+    return none
   let some result := actual.result | throw "the recorded answers do not finish the team game"
   let winningEvents := (played.checkpoints.back?).any (fun w =>
     w.events.any (fun | .won _ => true | _ => false))
@@ -231,20 +245,8 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
       unless decide ((first :: rest).Perm [roster.1, roster.2]) do throw "both winning seats must be teammates"
       pure (.won [team])
     | .won [] => throw "a win requires a winning team"
-  match observation.ending with
-  | .scored => return normalized
-  | _ =>
-    let expected ← match observation.ending with
-      | .draw => pure GameResult.draw
-      | .concede seat =>
-        let some team := seats.teamOf seat | throw "the concession seat is not registered"
-        pure (.won [MatchState.other team])
-      | .time =>
-        if !observation.timed then throw "the game ended on time without a time call"
-        pure (gameOnTime a b)
-      | .scored => pure normalized
-    if normalized != expected then throw "the replayed game outcome differs"
-    return normalized
+  if some normalized != expected then throw "the replayed game outcome differs"
+  return some normalized
 
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
     (expected : Option (Array RecordedGame)) : Except String RecordedTeamMatch := do

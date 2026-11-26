@@ -68,6 +68,21 @@ private meta def exampleMatch : Except String Unit := do
   unless (match { restored with games := changed }.verify matchDB with
       | .error e => e.contains "team game 1: checkpoint 2"
       | .ok _ => false) do throw "a changed team checkpoint was accepted"
+  let interrupted : TeamGameRecord := { game with ending := .matchEnded, answers }
+  let stopped := { restored.input with games := #[interrupted], ending := .concede ⟨3⟩ }
+  let archive ← stopped.record matchDB
+  let summary ← archive.verify matchDB
+  unless summary.wins == (0, 0) && summary.result == .won ⟨0⟩ &&
+      (archive.games[0]?.any (·.summary.result.isNone)) do throw "an interrupted game was counted"
+  let agreed ← ({ stopped with ending := .agreedDraw } : TeamMatchRecord).check matchDB
+  unless agreed == { summary with result := .draw } do throw "an agreed match draw was rejected"
+  if (({ stopped with ending := .finalGame } : TeamMatchRecord).check matchDB).isOk then
+    throw "an unfinished game was accepted as decisive"
+  if (({ stopped with games := #[interrupted, win] } : TeamMatchRecord).check matchDB).isOk then
+    throw "another game was accepted after an interruption"
+  let completed := { interrupted with answers := win.answers }
+  if (({ stopped with games := #[completed] } : TeamMatchRecord).record matchDB).isOk then
+    throw "a completed game was accepted as interrupted"
 
 #guard exampleMatch.toOption.isSome
 
