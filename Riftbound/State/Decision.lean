@@ -214,7 +214,7 @@ inductive Frame where
   | chanceBurnOut (p : PlayerId)
   /-- Choice: the opponent who gains the point of a Burn Out (CR 432.2.c). -/
   | chooseBurnOut (p : PlayerId)
-  /-- Work: lay out the opening hands and the mulligans of all players (CR 116-117). -/
+  /-- Work: lay out the opening hands and mulligans of participating players (CR 116-117). -/
   | setupHands
   /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/
   | draw (p : PlayerId) (n : Nat) (startingHand : Option Nat := none)
@@ -304,6 +304,8 @@ inductive Frame where
   /-- Choice: select the moving Units, then confirm or cancel. The board and fee stay untouched
   while the group is selected (CR 144.3). -/
   | groupMove (p : PlayerId) (dest : MoveDest) (fee : Cost) (units : List ObjId)
+  /-- Work: resolve a Showdown whose remaining participants have passed (CR 652.5.b.2). -/
+  | endShowdown (bf : ObjId)
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/
@@ -326,7 +328,7 @@ def Frame.isPlay : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
-  | .showdown .. => true
+  | .showdown .. | .endShowdown _ => true
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
@@ -355,6 +357,7 @@ def Frame.isWork : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
+  | .endShowdown _ => true
   | .combatDamage .. => true
   | .combatResolve .. => true
   | .combatResult _ | .combatControl _ => true

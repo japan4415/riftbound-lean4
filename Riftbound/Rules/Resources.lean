@@ -129,28 +129,33 @@ theorem applyRune_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : Ru
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- Using a Rune changes nothing of the stack, the turn order, the phase, the result or the
-rules. -/
-theorem applyRune_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
-    {es : List Event} (h : applyRune s p c ab = some (s', es)) :
-    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.pending = s.pending := by
+/-- Using a Rune changes resources and objects while preserving the game metadata. -/
+theorem applyRune_sameMeta {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
+    {es : List Event} (h : applyRune s p c ab = some (s', es)) : SameMeta s s' := by
   unfold applyRune at h
   split at h
   · rename_i o ho
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
-      exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+      rfl
     · simp only [Option.map_eq_some_iff] at h
       obtain ⟨⟨s2, id'⟩, hm, hr⟩ := h
       simp only [Prod.mk.injEq] at hr
       obtain ⟨rfl, -⟩ := hr
       obtain ⟨src, d, hs⟩ := moveObj_spec hm
-      exact ⟨hs.other.config, hs.other.turnOrder, hs.other.phase, hs.other.result,
-        hs.other.pending⟩
+      exact hs.other
     · exact absurd h (by simp)
   · exact absurd h (by simp)
+
+/-- Using a Rune changes nothing of the stack, the turn order, the phase, the result or the
+rules. -/
+theorem applyRune_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}
+    {es : List Event} (h : applyRune s p c ab = some (s', es)) :
+    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
+      s'.result = s.result ∧ s'.pending = s.pending := by
+  have same := applyRune_sameMeta h
+  exact ⟨same.config, same.turnOrder, same.phase, same.result, same.pending⟩
 
 /-- A Rune on the Base that the player can use can be used. -/
 theorem applyRune_isSome {s : GameState} {p : PlayerId} {c : ObjId} {ab : RuneAbility}

@@ -25,7 +25,7 @@ theorem legal_chainPass_iff {s : GameState} {p : PlayerId} {passes : Nat} {rest 
 /-- Declaring a Chain pass changes which frame is pending and emits no event (CR 338.2, 339). -/
 theorem applyDeclaredAction_chainPass {s : GameState} {p : PlayerId} {passes : Nat}
     {rest : List Frame} (pending : s.pending = .chainPass p passes :: rest) :
-    let frame := if passes + 1 < s.playerCount then .chainPass (s.nextPlayer p) (passes + 1)
+    let frame := if passes + 1 < s.participatingCount then .chainPass (s.nextParticipant p) (passes + 1)
       else .resolveChain
     applyDeclaredAction s ⟨.player p, .pass⟩ =
       some (({ s with pending := frame :: rest }).setPool p (s.poolOf p), []) := by
@@ -34,7 +34,7 @@ theorem applyDeclaredAction_chainPass {s : GameState} {p : PlayerId} {passes : N
     GameState.deathGroupChoice, GameState.deathGroupChoiceWith_nil, ite_self]
   unfold applyAction applyFrame applyFrame0
   simp only [pending]
-  by_cases h : passes + 1 < s.playerCount <;>
+  by_cases h : passes + 1 < s.participatingCount <;>
     simp [h, extraEvents, GameState.actionTransitionEvents, pending, withTriggers_nil,
       GameState.paySurcharge, GameState.deflectInPayment, Action.targetsOf, Action.spellSource,
       GameState.deflectCost, RunePool.takeN, GameState.poolOf]
@@ -43,9 +43,9 @@ theorem applyDeclaredAction_chainPass {s : GameState} {p : PlayerId} {passes : N
 using fuel (CR 338.2). -/
 theorem step_chainPass_next {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
     (fuel : Nat) (ongoing : s.result = none) (pending : s.pending = .chainPass p passes :: rest)
-    (beforeLast : passes + 1 < s.playerCount) :
+    (beforeLast : passes + 1 < s.participatingCount) :
     step fuel s ⟨.player p, .pass⟩ = .ok
-      (({ s with pending := .chainPass (s.nextPlayer p) (passes + 1) :: rest }).setPool p (s.poolOf p),
+      (({ s with pending := .chainPass (s.nextParticipant p) (passes + 1) :: rest }).setPool p (s.poolOf p),
         []) := by
   have legal := (legal_chainPass_iff (.player p) pending).mpr ⟨ongoing, rfl⟩
   have applied := applyDeclaredAction_chainPass pending
@@ -57,7 +57,7 @@ theorem step_chainPass_next {s : GameState} {p : PlayerId} {passes : Nat} {rest 
 work frame to read (CR 338.2, 339, 340). -/
 theorem step_chainPass_last {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
     (fuel : Nat) (ongoing : s.result = none) (pending : s.pending = .chainPass p passes :: rest)
-    (last : s.playerCount ≤ passes + 1) :
+    (last : s.participatingCount ≤ passes + 1) :
     step fuel s ⟨.player p, .pass⟩ =
       advance fuel (({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)) [] := by
   have legal := (legal_chainPass_iff (.player p) pending).mpr ⟨ongoing, rfl⟩

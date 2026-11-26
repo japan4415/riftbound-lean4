@@ -293,51 +293,45 @@ theorem startFrames_nodup (n : Nat) : (startFrames n).Nodup := by
     · rcases hx with rfl | rfl <;> cases hy
     · cases hx; cases hy
 
-/-- What follows a frame in the suffix of the setup is the suffix after it. -/
-theorem drop_succ_of_cons {l rest : List Frame} {f : Frame} {k : Nat}
-    (h : l.drop k = f :: rest) : l.drop (k + 1) = rest := by
-  rw [← List.drop_drop, h]
-  rfl
-
 /-- The turn order is the last frame of the setup. -/
-theorem startFrames_turnOrder_last {n k : Nat} {rest : List Frame}
-    (h : (startFrames n).drop k = Frame.chanceTurnOrder :: rest) : rest = [] := by
+theorem startFrames_turnOrder_last {n : Nat} {rest : List Frame}
+    (h : (Frame.chanceTurnOrder :: rest).Sublist (startFrames n)) : rest = [] := by
   have hnd := startFrames_nodup n
-  have hsub : (Frame.chanceTurnOrder :: rest).Nodup := by
-    rw [← h]; exact hnd.sublist (List.drop_sublist _ _)
-  have hlast : (startFrames n).getLast? = some Frame.chanceTurnOrder := by
-    simp [startFrames, List.getLast?_append]
-  have hl : ((startFrames n).drop k).getLast? = some Frame.chanceTurnOrder := by
-    rw [List.getLast?_drop]
-    have hne : ¬ (startFrames n).length ≤ k := by
-      intro hle
-      rw [List.drop_eq_nil_of_le hle] at h
-      exact absurd h (by simp)
-    simp [hne, hlast]
-  rw [h] at hl
-  cases rest with
-  | nil => rfl
-  | cons x xs =>
-    exfalso
-    have hmem : Frame.chanceTurnOrder ∈ x :: xs := by
-      have := List.mem_of_getLast? (by simpa [List.getLast?_cons_cons] using hl)
-      exact this
-    exact (List.nodup_cons.mp hsub).1 hmem
+  unfold startFrames at hnd h
+  obtain ⟨_, _, disjoint⟩ := List.nodup_append.mp hnd
+  obtain ⟨before, after, heq, hbefore, hafter⟩ := List.sublist_append_iff.mp h
+  cases before with
+  | nil =>
+    have hlen := hafter.length_le
+    have heq' : Frame.chanceTurnOrder :: rest = after := by simpa only [List.nil_append] using heq
+    rw [← heq'] at hlen
+    exact List.length_eq_zero_iff.mp (by simpa using hlen)
+  | cons first remaining =>
+    have hfirst : first = Frame.chanceTurnOrder := by simpa using congrArg List.head? heq.symm
+    subst first
+    exact (disjoint _ (hbefore.subset List.mem_cons_self) _ (by simp) rfl).elim
 
-/-- **The setup invariant.** There are at least two players, and either the stack is still a suffix
-of the frames of the setup, in which case every Battlefield that is still to be picked has a card
-to pick from, or no frame of the setup is left. -/
+/-- **The setup invariant.** There are at least two registered seats. The pending setup frames
+follow their original order and each unanswered Battlefield pick has at least one card, or no
+setup frame remains. -/
 def SetupInv (s : GameState) : Prop :=
   2 ≤ s.playerCount ∧
-    ((∃ k, s.pending = (startFrames s.playerCount).drop k ∧
+    ((s.pending.Sublist (startFrames s.playerCount) ∧
         ∀ p, Frame.chanceBattlefield p ∈ s.pending →
           0 < (s.zone (.player p .outOfGame)).length) ∨
       ∀ f ∈ s.pending, f.isSetup = false)
 
-/-- While the stack is a suffix of the setup, its top frame is a frame of the setup. -/
-theorem startFrames_drop_isSetup {n k : Nat} {f : Frame} {rest : List Frame}
-    (h : (startFrames n).drop k = f :: rest) : f.isSetup = true :=
-  startFrames_isSetup n f ((List.drop_sublist _ _).subset (by rw [h]; exact List.mem_cons_self))
+/-- Removing pending frames preserves setup as long as the remaining Battlefield picks
+still have a card to pick. -/
+theorem SetupInv.of_sublist {s s2 : GameState} (hinv : SetupInv s)
+    (hc : s2.playerCount = s.playerCount) (hp : s2.pending.Sublist s.pending)
+    (hbf : ∀ p, Frame.chanceBattlefield p ∈ s2.pending →
+      0 < (s.zone (.player p .outOfGame)).length →
+      0 < (s2.zone (.player p .outOfGame)).length) : SetupInv s2 := by
+  refine ⟨hc ▸ hinv.1, ?_⟩
+  rcases hinv.2 with ⟨setup, picks⟩ | noSetup
+  · exact Or.inl ⟨hc ▸ hp.trans setup, fun p mem => hbf p mem (picks p (hp.subset mem))⟩
+  · exact Or.inr fun f mem => noSetup f (hp.subset mem)
 
 /-- A step that takes a frame which is not a setup frame, and puts frames that are not setup frames
 in its place, keeps the setup invariant. -/
@@ -350,9 +344,9 @@ theorem SetupInv.of_nonsetup {s s2 : GameState} {f : Frame} {rest new : List Fra
   rw [hq] at hg
   rcases List.mem_append.mp hg with h | h
   · exact hnew g h
-  · rcases hcase with ⟨k, hk, -⟩ | hn
-    · rw [hk] at hp
-      rw [startFrames_drop_isSetup hp] at hf
+  · rcases hcase with ⟨hk, -⟩ | hn
+    · rw [hp] at hk
+      rw [startFrames_isSetup _ _ (hk.subset List.mem_cons_self)] at hf
       exact absurd hf (by simp)
     · exact hn g (by rw [hp]; exact List.mem_cons_of_mem _ h)
 
@@ -361,17 +355,9 @@ theorem SetupInv.of_shuffle {s : GameState} {z : Zone} {rest : List Frame} {l : 
     (hinv : SetupInv s) (hp : s.pending = Frame.chanceShuffle z :: rest)
     (hl : l.Perm (s.zone z)) :
     SetupInv { s.reorder z l with pending := rest } := by
-  obtain ⟨h2, hcase⟩ := hinv
-  refine ⟨h2, ?_⟩
-  rcases hcase with ⟨k, hk, hz⟩ | hn
-  · refine Or.inl ⟨k + 1, ?_, fun p hpm => ?_⟩
-    · show rest = (startFrames s.playerCount).drop (k + 1)
-      exact (drop_succ_of_cons (hk ▸ hp)).symm
-    · have := hz p (by rw [hp]; exact List.mem_cons_of_mem _ hpm)
-      show 0 < ((s.reorder z l).zone (.player p .outOfGame)).length
-      rw [GameState.length_reorder hl]
-      exact this
-  · exact absurd (hn _ (by rw [hp]; exact List.mem_cons_self)) (by simp [Frame.isSetup])
+  refine hinv.of_sublist rfl (hp ▸ List.sublist_cons_self _ _) (fun p _ hlen => ?_)
+  show 0 < ((s.reorder z l).zone (.player p .outOfGame)).length
+  rwa [GameState.length_reorder hl]
 
 /-- Answering the turn order on top of the stack keeps the setup invariant: it is the last frame of
 the setup, and the opening hands take its place. -/
@@ -380,8 +366,8 @@ theorem SetupInv.of_turnOrder {s : GameState} {rest : List Frame} {l : List Play
     SetupInv { s with turnOrder := l, pending := Frame.setupHands :: rest } := by
   obtain ⟨h2, hcase⟩ := hinv
   refine ⟨h2, Or.inr (fun f hf => ?_)⟩
-  rcases hcase with ⟨k, hk, -⟩ | hn
-  · have hr : rest = [] := startFrames_turnOrder_last (hk ▸ hp)
+  rcases hcase with ⟨hk, -⟩ | hn
+  · have hr : rest = [] := startFrames_turnOrder_last (hp ▸ hk)
     change f ∈ Frame.setupHands :: rest at hf
     rw [hr] at hf
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
@@ -401,15 +387,14 @@ theorem SetupInv.of_battlefield {s s2 : GameState} {p : PlayerId} {rest : List F
   obtain ⟨h2, hcase⟩ := hinv
   have hcount : s2.playerCount = s.playerCount := by simp [GameState.playerCount, hs.config]
   refine ⟨by show 2 ≤ s2.playerCount; rw [hcount]; exact h2, ?_⟩
-  rcases hcase with ⟨k, hk, hz⟩ | hn
-  · refine Or.inl ⟨k + 1, ?_, fun q hq => ?_⟩
-    · show rest = (startFrames s2.playerCount).drop (k + 1)
+  rcases hcase with ⟨hk, hz⟩ | hn
+  · refine Or.inl ⟨?_, fun q hq => ?_⟩
+    · show rest.Sublist (startFrames s2.playerCount)
       rw [hcount]
-      exact (drop_succ_of_cons (hk ▸ hp)).symm
+      exact (List.sublist_cons_self _ _).trans (hp ▸ hk)
     · have hq' : Frame.chanceBattlefield q ∈ s.pending := by
         rw [hp]; exact List.mem_cons_of_mem _ hq
-      have hnd : s.pending.Nodup := by
-        rw [hk]; exact (startFrames_nodup _).sublist (List.drop_sublist _ _)
+      have hnd : s.pending.Nodup := (startFrames_nodup _).sublist hk
       have hne : q ≠ p := by
         intro e
         subst e
@@ -460,7 +445,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.showdown bf (s.nextPlayer q) (n + 1)]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.showdown bf (s.nextParticipant q) (n + 1)]) rfl (by simp [Frame.isSetup])
     · have hs' : s' = (showdownEnd s bf rest).1 := by
         rw [Option.some.inj h]
       subst hs'
@@ -503,7 +488,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.chainPass (s.nextPlayer p) (n + 1)]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.chainPass (s.nextParticipant p) (n + 1)]) rfl (by simp [Frame.isSetup])
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
@@ -794,8 +779,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-      (new := s.turnOrder.map (fun p => Frame.draw p 4) ++
-        s.turnOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn]) rfl
+      (new := s.participatingOrder.map (fun p => Frame.draw p 4) ++
+        s.participatingOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn]) rfl
       (fun g hg => by
         simp only [List.mem_append, List.mem_map, List.mem_singleton] at hg
         rcases hg with (⟨x, -, rfl⟩ | ⟨x, -, rfl⟩) | rfl <;> rfl)
@@ -978,6 +963,18 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     exact hinv.of_nonsetup hp rfl
       (by simp [GameState.playerCount, (triggersStep_spec s pend rest).1.same.config])
       (new := (triggersStep s pend rest).2) rfl (fun g hg => (triggersStep_frames hg).2)
+  · rename_i bf rest hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    rcases showdownEnd_cases s bf rest with ⟨attacker, closed⟩ | closed <;> rw [closed]
+    · exact hinv.of_nonsetup hp rfl rfl (new := [Frame.combatDamage bf attacker])
+        rfl (by simp [Frame.isSetup])
+    · have safe := endShowdown_safeP s bf
+      exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, safe.config])
+        (new := (endShowdown s bf).2.1) rfl (fun f member => by
+          obtain ⟨remaining, rfl⟩ := endShowdown_frames s bf true f member
+          rfl)
   · exact absurd h (by simp)
 
 /-- A step of work keeps the setup invariant. -/
@@ -1077,7 +1074,7 @@ theorem GameState.initial_setupInv {db : CardDB} {config : GameConfig} {decks : 
     {s : GameState} (h : GameState.initial db config decks = some s) : SetupInv s := by
   obtain ⟨h2, hb⟩ := GameState.initial_setup h
   have hpend := GameState.initial_pending h
-  refine ⟨h2, Or.inl ⟨0, by rw [List.drop_zero]; exact hpend, fun p hp => ?_⟩⟩
+  refine ⟨h2, Or.inl ⟨hpend ▸ List.Sublist.refl _, fun p hp => ?_⟩⟩
   apply hb p
   rw [hpend] at hp
   simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
@@ -1146,7 +1143,7 @@ theorem GameState.initialLimited_setupInv {db : CardDB} {env : LegalityEnv} {con
     (h : GameState.initialLimited db env config decks = some s) : SetupInv s := by
   obtain ⟨h2, hb⟩ := GameState.initialLimited_setup h
   have hpend := GameState.initialLimited_pending h
-  refine ⟨h2, Or.inl ⟨0, by rw [List.drop_zero]; exact hpend, fun p hp => ?_⟩⟩
+  refine ⟨h2, Or.inl ⟨hpend ▸ List.Sublist.refl _, fun p hp => ?_⟩⟩
   apply hb p
   rw [hpend] at hp
   simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
@@ -1178,11 +1175,11 @@ theorem Reachable.progress {s : GameState} (h : Reachable s) (hres : s.result = 
 theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {rest : List Frame}
     (hp : s.pending = f :: rest) (hc : f.isChance = true) : f.chanceReady s := by
   obtain ⟨-, hcase⟩ := h.setup
-  rcases hcase with ⟨k, hk, hz⟩ | hn
+  rcases hcase with ⟨hk, hz⟩ | hn
   · cases f with
     | chanceShuffle z =>
       have hmem : Frame.chanceShuffle z ∈ startFrames s.playerCount := by
-        exact (List.drop_sublist _ _).subset (by rw [← hk, hp]; exact List.mem_cons_self)
+        exact hk.subset (by rw [hp]; exact List.mem_cons_self)
       exact startFrames_valid hmem
     | chanceBattlefield p => exact hz p (by rw [hp]; exact List.mem_cons_self)
     | chanceTurnOrder => trivial

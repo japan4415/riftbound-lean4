@@ -297,6 +297,12 @@ theorem config {s s' : GameState} (h : SameMeta s s') : s'.config = s.config := 
   have h2 := congrArg GameState.config h
   exact h2
 
+/-- A change that keeps the game metadata also keeps its list of departed seats. -/
+theorem departures {s s' : GameState} (h : SameMeta s s') : s'.departures = s.departures := by
+  unfold SameMeta at h
+  have projected := congrArg GameState.departures h
+  exact projected
+
 /-- The stack is as it was. -/
 theorem pending {s s' : GameState} (h : SameMeta s s') : s'.pending = s.pending := by
   unfold SameMeta at h

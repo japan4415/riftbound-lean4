@@ -94,19 +94,19 @@ and five work steps per seat. The bound counts drawing four cards and consuming 
 frame. Exhausting a deck asks for a Burn Out decision within the same bound. -/
 theorem advance_setupHands_bound {s : GameState} {events : List Event} {rest : List Frame}
     (phase : s.phase = .setup) (pending : s.pending = .setupHands :: rest)
-    (seats : s.turnOrder ≠ []) :
-    ∃ result, advance (5 * s.turnOrder.length + 1) s events = .ok result ∧
+    (seats : s.participatingOrder ≠ []) :
+    ∃ result, advance (5 * s.participatingOrder.length + 1) s events = .ok result ∧
       (∃ p frames, result.1.pending = .mulligan p 0 :: frames ∨
         result.1.pending = .chanceBurnOut p :: frames) := by
-  let afterDraws := s.turnOrder.map (fun p => Frame.mulligan p 0) ++ .beginTurn :: rest
-  let next := { s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++ afterDraws }
+  let afterDraws := s.participatingOrder.map (fun p => Frame.mulligan p 0) ++ .beginTurn :: rest
+  let next := { s with pending := s.participatingOrder.map (fun p => Frame.draw p 4) ++ afterDraws }
   have work : workStep s = some (next, []) := by
     simp only [workStep, pending, microStep, microStep0, Option.map_some]
     simp only [List.append_assoc]
     change some (next.withTriggers _, []) = _
     rw [setup_noTriggers (s := next) phase]
   obtain ⟨first, tail, firstMulligan⟩ : ∃ first tail, afterDraws = .mulligan first 0 :: tail := by
-    cases order : s.turnOrder with
+    cases order : s.participatingOrder with
     | nil => exact (seats order).elim
     | cons p ps =>
       exact ⟨p, ps.map (fun q => Frame.mulligan q 0) ++ .beginTurn :: rest, by
@@ -115,7 +115,7 @@ theorem advance_setupHands_bound {s : GameState} {events : List Event} {rest : L
     rw [firstMulligan]
     rfl
   obtain ⟨result, done, choice⟩ :=
-    advance_openingDraws s.turnOrder next events afterDraws phase rfl decision
+    advance_openingDraws s.participatingOrder next events afterDraws phase rfl decision
   refine ⟨result, ?_, ?_⟩
   · simpa only [advance, pending, Frame.isWork, ite_true, work, List.append_nil] using done
   · rcases choice with ⟨p, frames, h⟩ | h

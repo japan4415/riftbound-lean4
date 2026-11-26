@@ -74,6 +74,14 @@ structure CardPlay where
   moment : PlayMoment
 deriving DecidableEq, Repr
 
+/-- Withdrawn seats and the regular turn positions already skipped because of a withdrawal. -/
+structure SeatDepartures where
+  /-- Seats that have already left, in departure order. Their registration and zones remain. -/
+  seats : List PlayerId := []
+  /-- How many regular turn positions were skipped in the original turn order. -/
+  skippedTurns : Nat := 0
+deriving DecidableEq, Repr
+
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
 structure GameState where
   /-- The rules of this game. -/
@@ -124,7 +132,31 @@ structure GameState where
   extraTurnsTaken : List PlayerId := []
   /-- The current Combat, including Units that left its Battlefield (CR 466, 468). -/
   combat : Option CombatParticipation := none
-deriving DecidableEq, Repr
+  /-- Seat withdrawals do not change zone numbering or the original turn order (CR 652.5). -/
+  departures : SeatDepartures := {}
+deriving DecidableEq
+
+/-- Game archives hashed the printed state before withdrawals were added. Preserve that format
+for games before their first withdrawal and include the new state once a seat has left. -/
+instance : Repr GameState where
+  reprPrec s _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [
+      field "config" (repr s.config), field "cards" (repr s.cards),
+      field "objects" (repr s.objects), field "zones" (repr s.zones),
+      field "points" (repr s.points), field "nextId" (repr s.nextId),
+      field "nextTimestamp" (repr s.nextTimestamp), field "pending" (repr s.pending),
+      field "turnOrder" (repr s.turnOrder), field "phase" (repr s.phase),
+      field "turn" (repr s.turn), field "active" (repr s.active),
+      field "result" (repr s.result), field "pools" (repr s.pools),
+      field "clock" (repr s.clock), field "turnFx" (repr s.turnFx),
+      field "drawLog" (repr s.drawLog), field "playLog" (repr s.playLog),
+      field "extraTurns" (repr s.extraTurns), field "turnShift" (repr s.turnShift),
+      field "extraTurnsTaken" (repr s.extraTurnsTaken), field "combat" (repr s.combat)]
+    let fields := if s.departures.seats.isEmpty && s.departures.skippedTurns == 0 then fields
+      else fields ++ [field "departures" (repr s.departures)]
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Every zone of a game with `n` players. -/
 def allZones (n : Nat) : List Zone :=
@@ -181,6 +213,41 @@ namespace GameState
 
 /-- The number of players. -/
 def playerCount (s : GameState) : Nat := s.config.mode.players
+
+/-- A registered seat still taking part in the game (CR 651.3). -/
+def participates (s : GameState) (p : PlayerId) : Bool :=
+  decide (p.n < s.playerCount) && !s.departures.seats.contains p
+
+/-- The seats that still take part, in registration order. -/
+def participatingSeats (s : GameState) : List PlayerId :=
+  ((List.range s.playerCount).map (fun i => (⟨i⟩ : PlayerId))).filter s.participates
+
+/-- The original turn order with departed seats removed (CR 652.5.a). -/
+def participatingOrder (s : GameState) : List PlayerId :=
+  s.turnOrder.filter s.participates
+
+/-- The number of seats whose passes are needed to close a Chain or Showdown. -/
+def participatingCount (s : GameState) : Nat :=
+  if s.departures.seats.isEmpty then s.playerCount else s.participatingSeats.length
+
+/-- Read an established handoff ring from the seat immediately after the holder.
+The current holder is last. -/
+def _root_.Riftbound.seatOrderAfter (order : List PlayerId) (holder : PlayerId) : List PlayerId :=
+  match order.idxOf? holder with
+  | none => []
+  | some index => order.drop (index + 1) ++ order.take (index + 1)
+
+/-- The next regular position in the original turn order. Extra turns do not advance it. -/
+def regularTurnPosition (s : GameState) : Nat :=
+  s.turn - s.turnShift + s.departures.skippedTurns
+
+/-- The original turn-order position with the next eligible turn player and any skipped seats. -/
+def nextRegularTurn (s : GameState) : PlayerId × Nat :=
+  let start := s.regularTurnPosition % s.playerCount
+  if s.departures.seats.isEmpty then (s.turnOrder.getD start ⟨0⟩, 0) else
+    let cycle := s.turnOrder.drop start ++ s.turnOrder.take start
+    let offset := (cycle.findIdx? s.participates).getD 0
+    (cycle.getD offset ⟨0⟩, offset)
 
 /-- The contents of a zone. -/
 def zone (s : GameState) (z : Zone) : List ObjId := s.zones.getD z.key []

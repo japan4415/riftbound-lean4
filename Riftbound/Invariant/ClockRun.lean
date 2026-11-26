@@ -489,6 +489,11 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     have h1 : TC s (triggersStep s pend rest).1 :=
       TC.of_safe (triggersStep_spec s pend rest).1
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact Tick.of_tc (tc_showdownEnd s bf rest)
   · exact absurd h (by simp)
 
 

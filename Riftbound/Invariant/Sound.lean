@@ -43,6 +43,7 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | finishSpell item => exact ⟨_, rfl⟩
   | cleanup => exact ⟨_, rfl⟩
   | combatDamage bf att => exact ⟨_, rfl⟩
+  | endShowdown _ => exact ⟨_, rfl⟩
   | combatResolve bf att => exact ⟨_, rfl⟩
   | combatResult _ => exact ⟨_, rfl⟩
   | combatControl _ => exact ⟨_, rfl⟩
@@ -578,6 +579,11 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (((triggersStep_spec s pend rest).1).own hwf hown).congr rfl rfl
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact (showdownEnd_preservesBoard s bf rest hwf).2.1 hown
   · exact absurd h (by simp)
 
 /-- A step of work keeps `OwnerOk`. -/

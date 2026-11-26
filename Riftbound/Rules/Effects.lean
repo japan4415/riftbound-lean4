@@ -39,6 +39,17 @@ def nextPlayer (s : GameState) (p : PlayerId) : PlayerId :=
   | some i => s.turnOrder.getD ((i + 1) % s.turnOrder.length) p
   | none => p
 
+/-- Pass priority or focus to the next continuing seat (CR 652.5.b, 652.5.c). -/
+def nextParticipant (s : GameState) (p : PlayerId) : PlayerId :=
+  if s.departures.seats.isEmpty then s.nextPlayer p else
+    ((seatOrderAfter s.turnOrder p).find? s.participates <|> s.participatingOrder.head?).getD p
+
+/-- The seat that starts the next round of passes after a Chain item has resolved. -/
+def chainPrioritySeat (s : GameState) : PlayerId :=
+  let turnPlayer := s.active.getD ⟨0⟩
+  if s.departures.seats.isEmpty || s.participates turnPlayer then turnPlayer
+  else s.nextParticipant turnPlayer
+
 end GameState
 
 /-- Put each object of the list through `g`, one after the other: the last state, and all the
@@ -1544,7 +1555,7 @@ def afterItem (s : GameState) : List Frame :=
     if (s.pendingSpell card).isSome then
       let p := ((s.obj? card).map (·.controller)).getD (s.active.getD ⟨0⟩)
       [.run p card {} (.cons (.finalizeLimitedSpell card) .nil)]
-    else [.chainPass (s.active.getD ⟨0⟩) 0]
+    else [.chainPass s.chainPrioritySeat 0]
 
 /-- The frames under Cleanup after a resolution are play frames. -/
 theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) : f.isPlay = true := by
@@ -6145,7 +6156,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | .controllerOf i =>
         -- the controller of the object chosen at the slot
         match env.slots[i]? with
-        | some (.obj o) => (s.obj? o).map (fun (x : Object) => [x.controller])
+        | some (.obj o) =>
+          (s.obj? o).bind fun x =>
+            if s.departures.seats.contains x.controller then none else some [x.controller]
         | _ => none
       | _ => who.resolve s p env : Option (List PlayerId)) with
     | some ps =>

@@ -114,7 +114,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.showdown bf (s.nextPlayer q) (n + 1)]
+      exact hb.swap rfl [Frame.showdown bf (s.nextParticipant q) (n + 1)]
     · have hs' : s' = (showdownEnd s bf rest).1 := by
         rw [Option.some.inj h]
       subst hs'
@@ -154,7 +154,7 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next rfl (fun hb => ?_)
       rw [hp] at hb
-      exact hb.swap rfl [Frame.chainPass (s.nextPlayer p) (n + 1)]
+      exact hb.swap rfl [Frame.chainPass (s.nextParticipant p) (n + 1)]
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       refine hinv.of_next rfl (fun hb => ?_)
@@ -483,8 +483,8 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     obtain ⟨rfl, -⟩ := h
     refine hinv.of_next rfl (fun hb => ?_)
     rw [hp] at hb
-    exact hb.replace (new := s.turnOrder.map (fun p => Frame.draw p 4) ++
-        s.turnOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn])
+    exact hb.replace (new := s.participatingOrder.map (fun p => Frame.draw p 4) ++
+        s.participatingOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn])
       (fun _ => ⟨Frame.beginTurn, by simp, rfl⟩)
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -671,6 +671,17 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     refine hinv.of_next (triggersStep_spec s pend rest).1.same.result (fun hb => ?_)
     rw [hp] at hb
     exact hb.swap rfl (triggersStep s pend rest).2
+  · rename_i bf rest hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    rcases showdownEnd_cases s bf rest with ⟨attacker, closed⟩ | closed <;> rw [closed]
+    · refine hinv.of_next rfl (fun bottom => ?_)
+      rw [hp] at bottom
+      exact bottom.swap rfl [Frame.combatDamage bf attacker]
+    · refine hinv.of_next (endShowdown_safeP s bf).result (fun bottom => ?_)
+      rw [hp] at bottom
+      exact bottom.swap rfl _
   · exact absurd h (by simp)
 
 /-- A step of work keeps the stack invariant. -/
@@ -1040,6 +1051,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
   | triggers pend => exact absurd hw (by simp [Frame.isWork])
   | cleanup => exact absurd hw (by simp [Frame.isWork])
   | combatDamage bf att => exact absurd hw (by simp [Frame.isWork])
+  | endShowdown _ => exact absurd hw (by simp [Frame.isWork])
   | combatResolve bf att => exact absurd hw (by simp [Frame.isWork])
   | combatResult bf => exact absurd hw (by simp [Frame.isWork])
   | combatControl bf => exact absurd hw (by simp [Frame.isWork])
@@ -1156,6 +1168,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | triggers pend => exact absurd hc (by simp [Frame.isChance])
   | cleanup => exact absurd hc (by simp [Frame.isChance])
   | combatDamage bf att => exact absurd hc (by simp [Frame.isChance])
+  | endShowdown _ => exact absurd hc (by simp [Frame.isChance])
   | combatResolve bf att => exact absurd hc (by simp [Frame.isChance])
   | combatResult bf => exact absurd hc (by simp [Frame.isChance])
   | combatControl bf => exact absurd hc (by simp [Frame.isChance])

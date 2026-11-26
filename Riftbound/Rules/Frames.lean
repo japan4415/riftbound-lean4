@@ -35,7 +35,7 @@ namespace Riftbound
 def GameState.nextTurnPlayer (s : GameState) : PlayerId :=
   match s.extraTurns with
   | p :: _ => p
-  | [] => s.turnOrder.getD ((s.turn - s.turnShift) % s.playerCount) ⟨0⟩
+  | [] => s.nextRegularTurn.1
 
 /-- The frames of a turn up to the Main Phase, where the turn player has priority (CR 315-316). -/
 def turnFrames (tp : PlayerId) : List Frame :=
@@ -114,6 +114,8 @@ def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
         active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
         turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+        departures := { s.departures with skippedTurns := s.departures.skippedTurns +
+          (if s.extraTurns.isEmpty then s.nextRegularTurn.2 else 0) },
         extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken }
 
 /-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
@@ -123,6 +125,8 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
             pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
             active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
             turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+            departures := { s.departures with skippedTurns := s.departures.skippedTurns +
+              (if s.extraTurns.isEmpty then s.nextRegularTurn.2 else 0) },
             extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
@@ -233,8 +237,8 @@ found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
   match s.pending with
   | .setupHands :: rest =>
-    some ({ s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++
-                                s.turnOrder.map (fun p => Frame.mulligan p 0) ++
+    some ({ s with pending := s.participatingOrder.map (fun p => Frame.draw p 4) ++
+                                s.participatingOrder.map (fun p => Frame.mulligan p 0) ++
                                 [Frame.beginTurn] ++ rest }, [])
   | .beginTurn :: rest => some (beginTurnStep s rest, [])
   | .phase .awaken :: rest =>
@@ -322,6 +326,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
       [Event.combatEnded bf units])
   | .triggers pend :: rest =>
     some ({ (triggersStep s pend rest).1 with pending := (triggersStep s pend rest).2 ++ rest }, [])
+  | .endShowdown bf :: rest => some (showdownEnd s bf rest)
   | _ => none
 
 /-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
@@ -351,16 +356,16 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     (applyMove s p u d).map
       (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
   | .showdown bf q n :: rest, .pass =>
-    if n + 1 < s.playerCount then
-      some ({ s with pending := .showdown bf (s.nextPlayer q) (n + 1) :: rest }, [])
+    if n + 1 < s.participatingCount then
+      some ({ s with pending := .showdown bf (s.nextParticipant q) (n + 1) :: rest }, [])
     else some (showdownEnd s bf rest)
   | .assign bf att side acc done :: rest, .assignPick u =>
     some ({ s with pending := .assign bf att side (acc ++ [u]) done :: rest }, [])
   | .assign bf att side acc done :: rest, .assignDone =>
     some (assignDoneStep s bf att side acc done rest)
   | .chainPass p n :: rest, .pass =>
-    if n + 1 < s.playerCount then
-      some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
+    if n + 1 < s.participatingCount then
+      some ({ s with pending := .chainPass (s.nextParticipant p) (n + 1) :: rest }, [])
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
     (reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick).map (payPlayDiscard p c discard)
@@ -600,6 +605,11 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((triggersStep_spec s _ _).1.wf hwf).congr rfl rfl rfl rfl
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact (showdownEnd_preservesBoard s bf rest hwf).1
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
@@ -698,6 +708,11 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (triggersStep_spec s _ _).1.phys hwf
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact (showdownEnd_preservesBoard s bf rest hwf).2.2
   · exact absurd h (by simp)
 
 /-- What a step of work does: the step, and the triggers it set off. -/

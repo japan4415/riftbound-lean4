@@ -106,25 +106,30 @@ def GameState.takerKey (s : GameState) (self : ObjId) : ObjId :=
 def GameState.pickOrder (s : GameState) : List PlayerId :=
   let order := if s.turnOrder.isEmpty then s.players else s.turnOrder
   let i := (s.active.bind order.idxOf?).getD 0
-  order.drop i ++ order.take i
+  let rotated := order.drop i ++ order.take i
+  if s.departures.seats.isEmpty then rotated else rotated.filter s.participates
 
 /-- The players a selector of players names, seen by `self`. `none` if it cannot be known yet. -/
 def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env : Env := {}) :
     Option (List PlayerId) :=
   let opponents := fun () => s.pickOrder.filter (fun p => !s.config.mode.sameSide self p)
   match sel with
-  | .you => some [self]
+  | .you => if s.departures.seats.contains self then none else some [self]
   | .opponent => (opponents ()).head?.map (fun o => [o])
   | .eachPlayer => some s.pickOrder
-  | .eachPlayerFromNext => some (s.pickOrder.drop 1 ++ s.pickOrder.take 1)
+  | .eachPlayerFromNext =>
+    if s.active.any s.departures.seats.contains then some s.pickOrder
+    else some (s.pickOrder.drop 1 ++ s.pickOrder.take 1)
   | .eachOpponent => some (opponents ())
-  | .combatSides => s.combat.map (fun c => [c.attacker, c.defender])
-  | .chosen i => (env.playerTargets[i]?.filter s.players.contains).map (fun p => [p])
+  | .combatSides => s.combat.map (fun c =>
+      [c.attacker, c.defender].filter (fun p => !s.departures.seats.contains p))
+  | .chosen i => (env.playerTargets[i]?.filter s.participates).map (fun p => [p])
   | .eventPlayer => none
   | .controllerOf _ => none
   | .ownerOf i =>
     match env.slots[i]? with
-    | some (.obj id) => (s.obj? id).map (fun obj => [obj.owner])
+    | some (.obj id) =>
+      (((s.obj? id).map (·.owner)).filter (fun p => !s.departures.seats.contains p)).map (fun p => [p])
     | _ => none
 
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
@@ -199,7 +204,7 @@ def GameState.unitsAtOf (s : GameState) (bf : ObjId) (p : PlayerId) : List ObjId
 
 /-- The turns of this player that have begun, including extra turns and the current turn (CR 301). -/
 def GameState.turnsTaken (s : GameState) (p : PlayerId) : Nat :=
-  ((List.range (s.turn - s.turnShift)).countP
+  ((List.range s.regularTurnPosition).countP
     (fun k => s.turnOrder.getD (k % s.playerCount) ⟨0⟩ == p)) + s.extraTurnsTaken.count p
 
 /-- The Combat that is going on: its Battlefield and its Attacker. It goes on from the moment it
@@ -207,7 +212,7 @@ starts (CR 466) to its end (CR 468): the frames of the Combat are on the stack. 
 def GameState.combatNow (s : GameState) : Option (ObjId × PlayerId) :=
   (s.combat.map (fun c => (c.battlefield, c.attacker))) <|> s.pending.findSome? (fun f =>
     match f with
-    | .showdown bf _ _ =>
+    | .showdown bf _ _ | .endShowdown bf =>
       -- The attacker is the player who made the Battlefield Contested (CR 466).
       match s.players.filter (fun p => !(s.unitsAtOf bf p).isEmpty) with
       | [a, b] =>
@@ -413,7 +418,9 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
     some (location.any fields.contains)
   | .atShowdown =>
     some ((s.obj? id).any (fun o => s.pending.any (fun f =>
-      match f with | .showdown bf _ _ => o.loc == some bf | _ => false)))
+      match f with
+      | .showdown bf _ _ | .endShowdown bf => o.loc == some bf
+      | _ => false)))
   | .ready => (s.obj? id).map (fun o => !o.exhausted)
   | .damaged => (s.obj? id).map (fun o => decide (0 < o.damage))
   | .damagedThisTurn => (s.obj? id).map (fun o => o.damagedTurn == some s.turn)
@@ -1244,11 +1251,11 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .drewCards n =>
     some ((s.drawLog.filter (fun d => d.2 == s.turn && d.1 == p)).length == n)
   | .showdownNow =>
-    some (s.pending.any (fun f => match f with | .showdown .. => true | _ => false))
+    some (s.pending.any (fun | .showdown .. | .endShowdown _ => true | _ => false))
   | .inShowdown =>
     some (s.pending.any (fun f =>
       match f with
-      | .showdown bf _ _ => (s.obj? self).any (·.loc == some bf)
+      | .showdown bf _ _ | .endShowdown bf => (s.obj? self).any (·.loc == some bf)
       | _ => false))
   | .inCombatHere =>
     some (match s.combatNow, (s.obj? self).bind (·.loc) with

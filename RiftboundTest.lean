@@ -32,6 +32,7 @@ public import RiftboundTest.Deflect
 public import RiftboundTest.Optional
 public import RiftboundTest.Match
 public import RiftboundTest.TeamDuel
+public import RiftboundTest.PlayerRemoval
 public import RiftboundTest.TeamReplay
 public import RiftboundTest.Clock
 public import RiftboundTest.Judge

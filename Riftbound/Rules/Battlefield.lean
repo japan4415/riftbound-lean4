@@ -399,9 +399,10 @@ def endShowdown (s : GameState) (bf : ObjId) (expire : Bool := true) :
 /-- A winner (CR 323.1): the player who has the Victory Score and more points than every
 opponent. -/
 def GameState.winner (s : GameState) : Option PlayerId :=
-  s.players.find? (fun p =>
+  let seats := s.participatingSeats
+  seats.find? (fun p =>
     decide (s.victoryScore ≤ s.pointsOf p) &&
-      s.players.all (fun q => s.config.mode.sameSide p q || decide (s.pointsOf q < s.pointsOf p)))
+      seats.all (fun q => s.config.mode.sameSide p q || decide (s.pointsOf q < s.pointsOf p)))
 
 /-! ### Cleanup -/
 
@@ -411,7 +412,9 @@ namespace GameState
 determines what happens to the Battlefield (CR 190.3.b, 190.4.b). -/
 def fightingAt (s : GameState) (bf : ObjId) : Bool :=
   s.combat.any (·.battlefield == bf) ||
-    s.pending.any (fun | .showdown there .. => there == bf | _ => false)
+    s.pending.any (fun
+      | .showdown there .. | .endShowdown there => there == bf
+      | _ => false)
 
 /-- Whether the Battlefield is controlled by a player with no Unit there (CR 323.5). -/
 def lostControl (s : GameState) (bf : ObjId) : Bool :=
@@ -582,7 +585,7 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
   match s.combat with
   | some c =>
     if pending.any (fun
-        | .showdown bf .. | .combatResolve bf _ | .combatResult bf |
+        | .showdown bf .. | .endShowdown bf | .combatResolve bf _ | .combatResult bf |
           .combatControl bf | .combatFinish bf => bf == c.battlefield
         | _ => false) then
       let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
@@ -1060,7 +1063,7 @@ theorem cleanupFrame_preservesBoard (s : GameState) (rest : List Frame) (hwf : s
 /-- A winning seat reaches the Victory Score and leads every opposing seat. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
     s.victoryScore ≤ s.pointsOf w ∧
-      ∀ q ∈ s.players, s.config.mode.sameSide w q = false → s.pointsOf q < s.pointsOf w := by
+      ∀ q ∈ s.participatingSeats, s.config.mode.sameSide w q = false → s.pointsOf q < s.pointsOf w := by
   unfold GameState.winner at h
   have := List.find?_some h
   simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true] at this

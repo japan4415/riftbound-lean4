@@ -220,7 +220,7 @@ def GameState.cardHasReaction (s : GameState) (c : ObjId) : Bool :=
 /-- Additional Power due from Reaction cards at the ongoing Showdown (CR 341, 356.3). -/
 def GameState.showdownReactionTax (s : GameState) : Nat :=
   let battlefield := s.pending.findSome? (fun
-    | .showdown bf _ _ => some bf
+    | .showdown bf _ _ | .endShowdown bf => some bf
     | _ => none)
   (battlefield.toList.flatMap (fun bf => (s.activeMods bf).filterMap (fun
     | .showdownReactionTax n => some n
@@ -1164,7 +1164,8 @@ def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List Spe
     | none => [])
   base ++ (match d.spellEffect.bind EffectDef.playerTarget with
     | some side =>
-      (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap (fun q => base.map (·.withPlayer q))
+      (s.participatingSeats.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap
+        (fun q => base.map (·.withPlayer q))
     | none => [])
 
 /-- The eligible player targets of an effect, or no choice if it does not declare one
@@ -1172,14 +1173,14 @@ def GameState.spellPicks (s : GameState) (p : PlayerId) (d : CardDef) : List Spe
 def GameState.playerTargetOptions (s : GameState) (p : PlayerId) :
     Option Side → List (Option PlayerId)
   | none => [none]
-  | some side => (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).map some
+  | some side => (s.participatingSeats.filter (fun q => side.admitsPlayer p q s.config.mode)).map some
 
 /-- Check the required player choice independently of any object targets (CR 355.7, 355.9). -/
 def GameState.spellPlayerTargetOk (s : GameState) (p : PlayerId) (e : EffectDef)
     (pick : SpellPick) : Bool :=
   match e.playerTarget, pick.playerTarget with
   | none, none => true
-  | some side, some q => s.players.contains q && side.admitsPlayer p q s.config.mode
+  | some side, some q => s.participates q && side.admitsPlayer p q s.config.mode
   | _, _ => false
 
 /-- Amounts that can be declared as an additional cost before applying total Power reductions.

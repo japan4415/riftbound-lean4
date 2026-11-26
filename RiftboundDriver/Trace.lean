@@ -725,6 +725,8 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
   let clock := match s.clock with
     | some (.elimination deadline _) => [("eliminationDeadline", toString deadline)]
     | _ => []
+  let departures := if s.departures.seats.isEmpty then [] else
+    [("departed", jarr (s.departures.seats.map (fun p => toString p.n)))]
   let json := jobj ([
     ("turn", toString s.turn), ("phase", jstr (ctorName s.phase)),
     ("active", match s.active with | some p => toString p.n | none => "null"),
@@ -741,7 +743,7 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
     ("attached", jarr attached), ("namedCards", jobj named), ("copies", jobj copies),
-    ("stunned", jarr (stunned.map (fun id => toString id.n)))] ++ clock)
+    ("stunned", jarr (stunned.map (fun id => toString id.n)))] ++ clock ++ departures)
   (json, seen')
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
@@ -750,6 +752,10 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (bo1Initiative : Bool := false) (gameLoss : Option (List PlayerId) := none)
     (extra : List (String × String) := []) :
     String × Std.HashSet Nat :=
+  -- A concession can replace a Battlefield in place while its identifier stays the same.
+  let seen := if a.any (fun action => action.kind == .concede) && !s.departures.seats.isEmpty then
+    s.battlefields.foldl (fun known id => known.erase id.n) seen
+  else seen
   let (st, seen') := stateJson s seen
   let penalty := (gameLoss.map (fun seats => ("gameLoss", jarr (seats.map (fun p => toString p.n))))).toList
   (jobj ([("i", toString i),

@@ -128,7 +128,7 @@ def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
 def defenderAt (s : GameState) (bf : ObjId) (att : PlayerId) : PlayerId :=
   let present := (s.combatantsAt bf).bind (fun (a, b) =>
     if att == a then some b else if att == b then some a else none)
-  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (present.getD (s.nextPlayer att))
+  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (present.getD (s.nextParticipant att))
 
 end GameState
 
@@ -660,6 +660,17 @@ theorem showdownEnd_cases (s : GameState) (bf : ObjId) (rest : List Frame) :
   split
   · exact Or.inl ⟨_, rfl⟩
   · exact Or.inr rfl
+
+/-- Closing the Showdown keeps the board's well-formedness, ownership and physical inventory. -/
+theorem showdownEnd_preservesBoard (s : GameState) (bf : ObjId) (rest : List Frame) (hwf : s.WF) :
+    (showdownEnd s bf rest).1.WF ∧
+      (s.OwnerOk → (showdownEnd s bf rest).1.OwnerOk) ∧
+      (showdownEnd s bf rest).1.physIds.Perm s.physIds := by
+  rcases showdownEnd_cases s bf rest with ⟨attacker, next⟩ | next <;> rw [next]
+  · exact ⟨hwf.congr rfl rfl rfl rfl, fun owner => owner.congr rfl rfl, List.Perm.refl _⟩
+  · have safe := endShowdown_safeP s bf
+    exact ⟨(safe.wf hwf).congr rfl rfl rfl rfl,
+      fun owner => (safe.own hwf owner).congr rfl rfl, safe.phys hwf⟩
 
 end Riftbound
 

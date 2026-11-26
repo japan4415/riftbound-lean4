@@ -41,6 +41,7 @@ public import Riftbound.Rules.Chain
 public import Riftbound.Rules.Trigger
 public import Riftbound.Rules.Understood
 public import Riftbound.Rules.Battlefield
+public import Riftbound.Rules.PlayerRemoval
 public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Reorder

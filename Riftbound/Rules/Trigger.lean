@@ -782,10 +782,11 @@ def GameState.triggerSeatOrder (s : GameState) (es : List Event) : List PlayerId
     [c.attacker] ++ order.filter (fun p => p != c.attacker && p != c.defender) ++ [c.defender]
   | none => s.pickOrder
 
-/-- The abilities that fire because of the events of a step. -/
+/-- The continuing players' abilities that fire because of the events of a step (CR 651.3). -/
 def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
     List PendTrigger :=
-  let all := s.trimLimits (es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra)
+  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra).filter
+    (fun t => !s.departures.seats.contains t.controller))
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
     if s.config.mode.isTeamDuel then
@@ -802,6 +803,7 @@ def Frame.isResolution : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .resolveChain => true
+  | .endShowdown _ => true
   | .combatDamage .. => true
   | .combatResolve .. => true
   | .pickDo _ _ _ _ _ (.recordBanishReplay ..) _ => true
@@ -1478,12 +1480,12 @@ def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List O
       | none => (s, [])
   | _, _ => (s, [])
 
-/-- The frames to put beneath the work after the abilities have gone on the Chain: the turn player
-gets priority with the Chain, unless that is already so (CR 340). -/
+/-- The frames to put beneath the work after the abilities go on the Chain. The eligible seat
+that starts a Chain gets priority unless the Chain already has its priority frame (CR 340, 652.5). -/
 def triggerFrames (s : GameState) (rest : List Frame) : List Frame :=
   match rest with
   | .chainPass .. :: _ => []
-  | _ => if (s.zone .chain).isEmpty then [] else [.chainPass (s.active.getD ⟨0⟩) 0]
+  | _ => if (s.zone .chain).isEmpty then [] else [.chainPass s.chainPrioritySeat 0]
 
 /-- The frames put under the work after the triggers are Chain priorities. -/
 theorem triggerFrames_mem {s : GameState} {rest : List Frame} {f : Frame}

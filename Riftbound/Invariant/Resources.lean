@@ -127,12 +127,12 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
 hands the Chain to `resolveChain`. -/
 theorem chainPass_last_resolves0 {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
-    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.participatingCount ≤ n + 1)
     (h : applyFrame0 s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest ∧ es = [] := by
   unfold applyFrame0 at h
   rw [hp] at h
-  simp only [show ¬ n + 1 < s.playerCount by omega, ite_false, Option.some.injEq,
+  simp only [show ¬ n + 1 < s.participatingCount by omega, ite_false, Option.some.injEq,
     Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   exact ⟨rfl, rfl⟩
@@ -140,7 +140,7 @@ theorem chainPass_last_resolves0 {s s' : GameState} {p : PlayerId} {n : Nat} {re
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
 hands the Chain to `resolveChain`. -/
 theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
-    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.participatingCount ≤ n + 1)
     (h : applyFrame s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
