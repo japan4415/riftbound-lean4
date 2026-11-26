@@ -119,6 +119,19 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 時間制限付きシングルエリミネーション（TR 408.4）は、ライブ対局の設定 JSON に `"singleElimination": true`、外部の大会記録に `"elimination": {}` を指定する。ゲームの合間に時間切れとなり、勝数が同じため次のゲームを行う場合は、`elimination.timeAfterGames` に時間切れ時点で終了していたゲーム数を入れる。次のゲームは初手番に加えて5ターンを行い、同点ならサドンデスになる。ビューアでは期限のターンと、サドンデスに入った手を確認できる。
 
+#### 外部対戦を入力している途中で次の手を確認する
+
+```sh
+.lake/build/bin/riftbound-replay inspect INPUT.json 2 next.json
+```
+
+第2ゲームを調べる例。ゲーム番号は1から始まる。2v2 は `inspect-team`、FFA は `inspect-ffa` を使う。FFA のゲーム番号は1。
+指定したゲームより前はゲームの終了まで照合する。指定したゲームでは `answers` が尽きるか、最初の `unknown` に達するまで再生する。調査中はマッチ全体の `ending` を省略できる。2v2 では調べるゲームの `battlefields`、`points`、`ending`、`timed` も省略できる。
+
+- `checkpoint` は適用済みの手番号。初期状態は0。`nextAnswer` は次に入力する手番号で、ゲーム終了時は `null`。`missing` は `unknown` に記録した説明、`exactPrefix` は再生済みの手と初期順序が確定しているかを表す。
+- `state` に盤面とオブジェクトID、`choices` に現在の決定点で入力できる操作が出る。元の対戦で行われた操作を確認し、対応する `answer` を `answers` に入れる。`decision` が `cardOrder` のときは、カードの集合から観測した並びを作る。
+- この出力は転記者向けで、全席の手札や山札を含む。試合全体を照合するときは、結果と未記入の操作をそろえてから `record`、`record-team` または `record-ffa` を実行する。
+
 #### カード定義を更新した後に再照合する
 
 ```sh

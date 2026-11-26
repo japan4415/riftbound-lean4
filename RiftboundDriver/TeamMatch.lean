@@ -285,13 +285,18 @@ def TeamMatchRecord.checkRegistrations (input : TeamMatchRecord) (decks : Replay
     checkLimitedBattlefieldCount db.withLimitedBlank ds (order.drop 1) (input.winsRequired == 2)
   | _, _ => throw "the four registrations must use the tournament format"
 
-private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
+private def TeamGameRecord.replayInputs (game : TeamGameRecord) (decks : ReplayDecks) :
+    GameInputs :=
+  { decks, answers := game.answers, chooser := game.chooser, openingOrder := some game.order,
+    openingOrderEvidence? := game.openingOrderEvidence? }
+
+private def runTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
     (readGame : GameConfig → Nat → TeamGameRecord → ReplayDecks →
-      Except String (Option GameResult × Option RecordedGame)) :
-    Except String (TeamMatchResult × Array RecordedGame) := do
+      Except String (Option GameResult × Option RecordedGame)) (inspectAt : Option Nat) :
+    Except String (Sum ReplayInspection (TeamMatchResult × Array RecordedGame)) := do
   if !decide (input.seats.players.Perm (allPlayers 4)) then throw "the teams must use four different seats"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
-  checkReplayClockBoundary input.elimination? input.games.size input.ending
+  checkReplayClockBoundary input.elimination? input.games.size input.ending inspectAt.isSome
   let baseConfig ← input.replayConfig
   let some env := baseConfig.formatLegality | throw "missing tournament eligibility"
   if let some sealed := input.sealed? then sealed.check db
@@ -307,34 +312,45 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
       if let some evidence := game.openingOrderEvidence? then evidence.check
       let afterTime ← gameStartsAfterTime state timed input.elimination?
       let config := replayGameConfig baseConfig state input.elimination?.isSome afterTime
-      if afterTime && !game.timed then throw "a tiebreaker game starts with time already called"
+      let inspecting := inspectAt == some index
+      if !inspecting && afterTime && !game.timed then
+        throw "a tiebreaker game starts with time already called"
       let decks ← game.registrations
       input.checkRegistrations decks game.order db env
-      checkPenaltyBattlefields penaltyFields game.battlefields
+      let inspection ← if inspecting then
+        some <$> (game.replayInputs decks).inspect db config
+        else pure none
+      let checkedGame := match inspection with
+        | some inspection => { game with battlefields := inspection.position.fields.reverse, ending := .matchEnded }
+        | none => game
+      checkPenaltyBattlefields penaltyFields checkedGame.battlefields
       let reuse := reuseReplayBattlefields state
         (previous.any (fun (prior : TeamGameRecord) => prior.ending.gameLossSeats.isSome))
       let used ← match input.sealed? with
         | none => pure used
         | some pools =>
-          pools.useBattlefields input.seats used game.battlefields reuse
-      let first ← checkTeamSetup input.seats game state decks previous
+          pools.useBattlefields input.seats used checkedGame.battlefields reuse
+      let first ← checkTeamSetup input.seats checkedGame state decks previous
+      if let some inspection := inspection then return Sum.inl inspection
       let (result, evidence) ← readGame config index game decks
       if let some finished := result then
-        pure (state.record finished first, game.timed, evidence, used, decks)
+        pure (.inr (state.record finished first, game.timed, evidence, used, decks))
       else
         unless index + 1 == input.games.size && input.ending.interrupts do
           throw "only a match concession or agreed match draw can interrupt the last game"
-        pure (state, false, evidence, used, decks)
-    let (m, gameTimed, evidence, fields, decks) ←
-      next.mapError (fun error => s!"team game {index + 1}: {error}")
-    state := m
-    if let some game := evidence then recorded := recorded.push game
-    timed := gameTimed
-    used := fields
-    if game.ending.gameLossSeats.isSome then
-      penaltyFields := penaltyFields ++ game.battlefields.filter (·.2 != limitedBlankBattlefield.id)
-    previous := some game
-    uncheckedCards := uncheckedCards.push (decks.uncheckedCards db)
+        pure (.inr (state, false, evidence, used, decks))
+    match ← next.mapError (fun error => s!"team game {index + 1}: {error}") with
+    | .inl inspection =>
+      return .inl { inspection with exact := inspection.exact && recorded.all (·.summary.exact) }
+    | .inr (m, gameTimed, evidence, fields, decks) =>
+      state := m
+      if let some game := evidence then recorded := recorded.push game
+      timed := gameTimed
+      used := fields
+      if game.ending.gameLossSeats.isSome then
+        penaltyFields := penaltyFields ++ game.battlefields.filter (·.2 != limitedBlankBattlefield.id)
+      previous := some game
+      uncheckedCards := uncheckedCards.push (decks.uncheckedCards db)
   let ending ← match input.ending.affectedSeat with
     | some seat =>
       let some team := input.seats.teamOf seat | throw "the ending seat is not in the match"
@@ -342,7 +358,15 @@ private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
     | none => pure input.ending
   checkInterruptedClockBoundary state timed input.elimination? input.games.size
   let result ← concludeReplayMatch state timed ending input.elimination?.isSome
-  return ({ wins := (state.wins0, state.wins1), result, uncheckedCards }, recorded)
+  return .inr ({ wins := (state.wins0, state.wins1), result, uncheckedCards }, recorded)
+
+private def runTeamMatch (input : TeamMatchRecord) (db : CardDB)
+    (readGame : GameConfig → Nat → TeamGameRecord → ReplayDecks →
+      Except String (Option GameResult × Option RecordedGame)) :
+    Except String (TeamMatchResult × Array RecordedGame) := do
+  match ← runTeamMatchProgress input db readGame none with
+  | .inr result => return result
+  | .inl _ => throw "unexpected inspection while recording a team match"
 
 /-- Check the registrations, setup, reported shared scores and match outcome. -/
 def TeamMatchRecord.check (input : TeamMatchRecord) (db : CardDB := RiftboundCards.db) :
@@ -391,25 +415,39 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   if some normalized != expected then throw "the replayed game outcome differs"
   return some normalized
 
-private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
-    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
-    Except String RecordedTeamMatch := do
+private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat) :
+    Except String (Sum ReplayInspection RecordedTeamMatch) := do
   if input.seats != TeamSeats.standard then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
   if expected.any (fun games => games.size != input.games.size) then throw "the game count differs"
-  let (summary, games) ← runTeamMatch input db fun config index game decks => do
-    let replay : GameInputs := {
-      decks, answers := game.answers,
-      chooser := game.chooser, openingOrder := some game.order,
-      openingOrderEvidence? := game.openingOrderEvidence? }
+  let progress ← runTeamMatchProgress input db (fun config index game decks => do
+    let replay := game.replayInputs decks
     let recorded ← match expected.bind (·[index]?) with
       | none => replay.record db config
       | some saved => do
         if saved.input != replay then throw "the saved game inputs differ"
         saved.checkEvidence db config 100 refreshCoverage
     let result ← confirmTeamGame game recorded input.seats config
-    pure (result, some recorded)
-  return { rules := ReplayRules.current db, input, games, summary }
+    pure (result, some recorded)) inspectAt
+  match progress with
+  | .inl inspection => return .inl inspection
+  | .inr (summary, games) => return .inr { rules := ReplayRules.current db, input, games, summary }
+
+private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
+    Except String RecordedTeamMatch := do
+  match ← playTeamMatchProgress input db expected refreshCoverage none with
+  | .inr saved => return saved
+  | .inl _ => throw "unexpected inspection while recording a team match"
+
+/-- Inspect a 1-based team game using its declared seating and the preceding completed games. -/
+def TeamMatchRecord.inspect (input : TeamMatchRecord) (number : Nat)
+    (db : CardDB := RiftboundCards.db) : Except String ReplayInspection := do
+  unless 0 < number && number <= input.games.size do throw "the game number is outside the match"
+  match ← playTeamMatchProgress input db none false (some (number - 1)) with
+  | .inl inspection => return inspection
+  | .inr _ => throw "the requested game was not inspected"
 
 /-- Execute each recorded team game and check it against the observations. -/
 def TeamMatchRecord.record (input : TeamMatchRecord) (db : CardDB := RiftboundCards.db) :

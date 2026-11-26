@@ -4,6 +4,7 @@ import argparse
 import json
 import subprocess
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -49,6 +50,15 @@ def play_to_turn(live: Lean, response: dict, turn: int, move: bool = True) -> di
 
 def start(live: Lean, setup: dict) -> dict:
     return ask(live, f"start-json 71 01 {json.dumps(setup)}")
+
+
+def inspect_game(folder: Path, command: Callable[..., str], inputs: dict, game: int,
+                 suffix: str = "", error: str | None = None) -> dict:
+    source = folder / f"inspect{suffix}-input.json"
+    output = folder / f"inspect{suffix}-result.json"
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("inspect" + suffix, source, str(game), output, error=error)
+    return {} if error is not None else json.loads(output.read_bytes())
 
 
 def played_match(live: Lean, setup: dict) -> dict:
@@ -273,6 +283,13 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     field = next(field["id"] for field in after["battlefields"] if field["control"] == 2)
     assert after["new"][str(field)]["card"] == "TKN-ConcessionBattlefield"
     assert following["turn"] == after["turn"] + 1 and following["active"] == 0
+    inputs = json.loads(source.read_bytes())
+    inputs["game"]["answers"] = inputs["game"]["answers"][:index - 1]
+    inspection = inspect_game(folder, command, inputs, 1, "-ffa")
+    assert inspection["checkpoint"] == index - 1 and inspection["nextAnswer"] == index
+    answers = [choice["answer"] for choice in inspection["choices"]]
+    assert observed({"player": {"p": {"n": 1}}}, "concede") in answers
+    assert {**inspection["state"], "new": before["new"]} == before
     check_seat_disclosures(folder, command, archive, "-ffa", 3, exported["games"])
     seat_steps = check_seat_view(folder, command, archive, "-ffa", 3, exported["games"])["games"][0]["steps"]
     seat_board = seat_steps[index]["state"]["zones"]["battlefield"]
@@ -973,6 +990,16 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     assert steps[3]["state"]["zones"]["battlefield"] == sideboard["zones"]["battlefield"]
     assert steps[5]["action"]["kind"] == "arrange"
 
+    unfinished = {key: value for key, value in inputs.items() if key != "ending"}
+    game["answers"] = tape[:2]
+    inspection = inspect_game(folder, command, unfinished, 1)
+    assert inspection["decision"]["bo1Initiative"] and inspection["decision"]["chooser"] == p0
+    assert initiative in [choice["answer"] for choice in inspection["choices"]]
+    game["answers"] = tape[:3]
+    inspection = inspect_game(folder, command, unfinished, 1)
+    assert inspection["decision"] == {"kind": "bo1Sideboard", "answer": "bo1Sideboard"}
+    assert inspection["nextAnswer"] == 4
+
     code_input = folder / "bo1-by-card-code.json"
     code_archive = folder / "bo1-by-card-code-archive.json"
     raw_archive = json.loads(archive.read_bytes())
@@ -1068,6 +1095,44 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
         assert not bad.exists()
 
 
+def check_duel_inspection(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
+    inputs = deepcopy(saved["input"])
+    first, second, _ = inputs["games"]
+    first_answers = first["answers"]
+    first["answers"] = []
+    initial = inspect_game(folder, command, inputs, 1)
+    assert initial["checkpoint"] == 0 and initial["nextAnswer"] == 1 and initial["exactPrefix"]
+    assert initial["decision"]["kind"] == "cardOrder"
+    initial_cards = initial["decision"]["cards"]
+    shuffled_ids = first_answers[0]["observed"]["action"]["kind"]["arrange"]["order"]
+    assert sorted(card["object"]["n"] for card in initial_cards) == sorted(obj["n"] for obj in shuffled_ids)
+    assert all(card["card"]["code"] for card in initial_cards)
+    inspect_game(folder, command, inputs, 2, error="game 1: the recorded answers do not finish the game")
+    first["answers"] = first_answers
+
+    turn_order_at = next(index for index, answer in enumerate(second["answers"])
+                         if "arrangePlayers" in answer["observed"]["action"]["kind"])
+    second["answers"][turn_order_at] = {"unknown": {"description": "camera cut"}}
+    choice = inspect_game(folder, command, inputs, 2)
+    assert choice["checkpoint"] == turn_order_at and choice["nextAnswer"] == turn_order_at + 1
+    assert choice["exactPrefix"] and choice["missing"] == "camera cut"
+    assert choice["decision"]["kind"] == "turnOrder"
+    forced_first = saved["games"][0]["summary"]["turnOrder"][0]
+    assert choice["decision"]["forcedFirst"] == forced_first
+    orders = [option["answer"]["observed"]["action"]["kind"]["arrangePlayers"]["order"]
+              for option in choice["choices"] if option["detail"]["kind"] == "arrangePlayers"]
+    assert orders == [saved["games"][1]["summary"]["turnOrder"]]
+    previous_board = view["games"][1]["steps"][turn_order_at]["state"]
+    assert {**choice["state"], "new": previous_board["new"]} == previous_board
+
+    first["answers"][0] = {"inferred": {"action": first_answers[0]["observed"]["action"],
+                                        "evidence": "deck camera"}}
+    assert not inspect_game(folder, command, inputs, 2)["exactPrefix"]
+    first["answers"] = saved["input"]["games"][0]["answers"]
+    finished = inspect_game(folder, command, inputs, 1)
+    assert finished["nextAnswer"] is None and finished["decision"] is None and not finished["choices"]
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
               team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
               private_rewinds: dict, timeline_rewinds: dict) -> None:
@@ -1101,6 +1166,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     view = json.loads(trace.read_text(encoding="utf-8"))
     assert len(view["games"]) == 3 and view["wins"] == [2, 0] and view["exact"]
     assert view["cardsFullyChecked"] and not any(saved["games"][0]["summary"]["uncheckedCards"])
+    check_duel_inspection(folder, command, saved, view)
 
     group_archive = folder / "group-move-archive.json"
     group_archive.write_text(json.dumps(group_move), encoding="utf-8")
@@ -1120,6 +1186,14 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     overtime = json.loads(elimination_trace.read_text(encoding="utf-8"))["games"][1]["steps"][-1]
     assert overtime["state"]["turn"] == 7
     assert any(event["t"] == "points" for event in overtime["events"])
+    overtime_inputs = deepcopy(elimination["input"])
+    overtime_inputs["games"][1]["answers"] = []
+    overtime_inspection = inspect_game(folder, command, overtime_inputs, 2)
+    assert overtime_inspection["checkpoint"] == 0 and overtime_inspection["clockCalled"]
+    assert overtime_inspection["state"]["eliminationDeadline"] == 6
+    overtime_inputs["games"].pop()
+    overtime_inputs.pop("ending")
+    assert inspect_game(folder, command, overtime_inputs, 1)["nextAnswer"] is None
 
     witness = saved["games"][0]["checkpoints"][2]
     witness["state"] = "0"
@@ -1189,6 +1263,19 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     steps = exported["games"][0]["steps"]
     assert any((row["action"] or {}).get("kind") == "inviteTeammate" for row in steps)
 
+    partial_game = {key: value for key, value in team_game.items()
+                    if key not in ("ending", "points", "battlefields")}
+    partial_game["answers"] = team_game["answers"][:8]
+    partial = {key: value for key, value in team_record.items() if key != "ending"}
+    partial["games"] = [partial_game]
+    inspection = inspect_game(folder, command, partial, 1, "-team")
+    decision = inspection["decision"]
+    assert inspection["checkpoint"] == 8 and inspection["exactPrefix"]
+    assert decision["kind"] == "battlefield" and decision["seat"] == p2
+    assert decision["cards"][0]["card"] == team_game["battlefields"][0][1]
+    partial_game["answers"].append(decision["cards"][0]["answerByCode"])
+    assert inspect_game(folder, command, partial, 1, "-team")["decision"]["seat"] == p1
+
     order_input = folder / "team-opening-order.json"
     order_archive = folder / "team-opening-order-archive.json"
     order_trace = folder / "team-opening-order-trace.json"
@@ -1243,6 +1330,16 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
         command("view-team", archive, trace)
         exported = json.loads(trace.read_text(encoding="utf-8"))
         assert exported["teams"] == [[0, 1], [2, 3]] and exported["wins"] == wins
+        if label == "live-team-tiebreaker":
+            timed = deepcopy(team_archive["input"])
+            last = timed["games"][1]
+            for field in ("battlefields", "points", "ending", "timed"):
+                last.pop(field)
+            last["answers"] = []
+            inspection = inspect_game(folder, command, timed, 2, "-team")
+            assert inspection["checkpoint"] == 0 and inspection["clockCalled"]
+            assert inspection["state"]["eliminationDeadline"] == 6
+            assert inspection["turnOrder"] == last["order"]
         if label == "live-team":
             check_seat_disclosures(folder, command, archive, "-team", 2, exported["games"])
             seat_view = check_seat_view(folder, command, archive, "-team", 2, exported["games"])

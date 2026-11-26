@@ -154,23 +154,36 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
 private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
   (s.obj? id).bind (·.kind.cardId?)
 
+/-- Data needed to transcribe the currently pending random decision. -/
+inductive ReplayChanceDecision where
+  /-- A permutation of these objects. -/
+  | cardOrder (candidates : List ObjId)
+  /-- A selection from the seat's Battlefield candidates, by index. -/
+  | battlefield (seat : PlayerId) (candidates : List ObjId)
+  /-- A choice of starting turn order. -/
+  | turnOrder
+
+/-- Obtain the candidates used both for inspection and for resolving recorded chance answers. -/
+def ReplayChanceDecision.pending (s : GameState) : Option ReplayChanceDecision :=
+  match s.pending.head? with
+  | some (.chanceShuffle z) => some (.cardOrder (s.zone z))
+  | some (.chanceRecycle p) => some (.cardOrder (s.zone (.player p .setAside)))
+  | some (.chanceBurnOut p) => some (.cardOrder (s.zone (.player p .trash)))
+  | some (.chancePredict _ _ _ bottom) => some (.cardOrder bottom)
+  | some (.chanceRecycleTrash _ _ picked) => some (.cardOrder picked)
+  | some (.chanceBattlefield p) => some (.battlefield p (s.zone (.player p .outOfGame)))
+  | some .chanceTurnOrder => some .turnOrder
+  | _ => none
+
 private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
     Except String (Action × Bool) := do
-  match outcome, s.pending.head? with
-  | .battlefield card, some (.chanceBattlefield seat) =>
-    let candidates := s.zone (.player seat .outOfGame)
+  match outcome, ReplayChanceDecision.pending s with
+  | .battlefield card, some (.battlefield _ candidates) =>
     let matching := candidates.zipIdx.filter (fun (id, _) => replayCardCode s id == some card)
     let some (_, index) := matching.head? | throw s!"Battlefield {card.code} is not a candidate"
     return (⟨.chance, .pick index⟩, matching.length == 1)
   | .battlefield _, _ => throw "no random Battlefield selection is pending"
-  | .cardOrder cards, pending =>
-    let candidates ← match pending with
-      | some (.chanceShuffle z) => pure (s.zone z)
-      | some (.chanceRecycle p) => pure (s.zone (.player p .setAside))
-      | some (.chanceBurnOut p) => pure (s.zone (.player p .trash))
-      | some (.chancePredict _ _ _ bottom) => pure bottom
-      | some (.chanceRecycleTrash _ _ picked) => pure picked
-      | _ => throw "no random card order is pending"
+  | .cardOrder cards, some (.cardOrder candidates) =>
     if cards.length != candidates.length then
       throw s!"the card order has {cards.length} cards but needs {candidates.length}"
     let mut remaining := candidates
@@ -181,6 +194,7 @@ private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
       order := id :: order
       remaining := remaining.erase id
     return (⟨.chance, .arrange order.reverse⟩, decide cards.Nodup)
+  | .cardOrder _, _ => throw "no random card order is pending"
 
 /-- Resolve a replay answer at the decision it answers. The flag records whether the
 input uniquely determines the choice and contains no explicit inference. -/
@@ -1102,6 +1116,53 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
                     knownCards := trackedInPrivateZones state known, knownDeckCards }
   return (action, position, events)
 
+/-- The reproducible prefix up to the first unknown answer, or the end of supplied answers. -/
+structure ReplayInspection where
+  /-- The last successfully applied answer, or 0 for the initial state. -/
+  checkpoint : Nat
+  /-- The source's explanation for the first missing answer, if supplied. -/
+  missing : Option String
+  /-- Whether every answer in the inspected prefix and its setup was uniquely observed. -/
+  exact : Bool
+  /-- The last state on the reconstructed timeline. -/
+  position : ReplayPosition
+  /-- The first-player choice at the optional Best of 1 setup boundary. -/
+  bo1Initiative : Bool
+  /-- Whether registration edits must be finalized before shuffling. -/
+  bo1Sideboard : Bool
+  /-- The seat entitled to choose who takes the first turn, when known. -/
+  chooser : Option PlayerId
+  /-- The seat required to take the first turn following a draw. -/
+  forcedFirst : Option PlayerId := none
+
+/-- Run the recorded prefix without inventing a choice for an unknown answer. -/
+def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (fuel : Nat := 100) : Except String ReplayInspection := do
+  let initial := ReplayPosition.fromState (← input.initial db config)
+  let mut history := [initial]
+  let mut checkpoint := 0
+  let mut missing := none
+  let mut exact := input.openingOrderEvidence?.isNone
+  for answer in input.answers do
+    if let .unknown description := answer then
+      missing := some description
+      break
+    let (_, next, _) ← input.advance history answer (checkpoint + 1) fuel
+    history := next :: history
+    checkpoint := checkpoint + 1
+    exact := exact && next.answerExact
+  let position := history.headD initial
+  return {
+    checkpoint, missing, exact, position, chooser := input.chooser,
+    bo1Initiative := input.awaitsBo1Initiative position.state,
+    bo1Sideboard := input.awaitsBo1Sideboard position.state }
+
+/-- The setup and game result reached by an inspected prefix. -/
+def ReplayInspection.summary (inspection : ReplayInspection) (decks : ReplayDecks) :
+    ReplayGameResult :=
+  ReplayGameResult.fromState inspection.position.state decks inspection.position.fields.reverse
+    inspection.exact
+
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do
   if let some witnesses := expected then
@@ -1181,6 +1242,12 @@ private def freeForAllConfig (mode : Mode) : Except String GameConfig := do
 
 private def requireFinishedFreeForAll (summary : ReplayGameResult) : Except String Unit := do
   unless summary.result.isSome do throw "the free-for-all game has no final result"
+
+/-- Inspect the supplied answers of a Skirmish or War game. -/
+def FreeForAllInputs.inspect (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :
+    Except String ReplayInspection :=
+  (do input.game.inspect db (← freeForAllConfig input.mode) input.fuel).mapError
+    (fun error => s!"game 1: {error}")
 
 /-- Play a complete Skirmish or War game and retain its inputs, outcome and checkpoints. -/
 def FreeForAllInputs.record (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :

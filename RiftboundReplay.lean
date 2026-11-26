@@ -10,6 +10,83 @@ private def readJson (path : String) : IO Json := do
 private def writeJson (path : String) (value : Json) : IO Unit :=
   IO.FS.writeFile path (value.compress ++ "\n")
 
+private def playerOrders : List PlayerId → List (List PlayerId)
+  | [] => [[]]
+  | player :: rest => (playerOrders rest).flatMap fun order =>
+    (List.range (order.length + 1)).map fun index => order.take index ++ [player] ++ order.drop index
+
+private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Except String Json := do
+  let state := inspection.position.state
+  let frame := state.pending.head?
+  let live := state.result.isNone
+  let chance := if live && !inspection.bo1Sideboard then ReplayChanceDecision.pending state else none
+  let turnOrders := match chance with
+    | some .turnOrder => (playerOrders state.participatingSeats).filterMap fun order =>
+      let action : Action := ⟨.chance, .arrangePlayers order⟩
+      if inspection.forcedFirst.any (fun p => order.head? != some p) || !decide (Legal state action) then
+        none else some action
+    | _ => []
+  let external : List Action := [⟨.clock, .timeCalled⟩, ⟨.judge, .declareDraw⟩]
+  let options := if live then legalActions state ++ turnOrders ++ external.filter (fun a => decide (Legal state a))
+    else []
+  let options := if inspection.bo1Sideboard then
+    options.filter (fun a => a.kind == .concede || a.kind == .declareDraw)
+    else options
+  let choices ← options.mapM fun action => do
+    let detail ← Json.parse (actionJson action frame (some state))
+    pure (Json.mkObj [("detail", detail), ("answer", toJson (ReplayAnswer.observed action))])
+  let candidate (id : ObjId) :=
+    [("object", toJson id), ("card", toJson ((state.obj? id).bind (·.kind.cardId?)))]
+  let decision := if !live then Json.null else if inspection.bo1Sideboard then
+    Json.mkObj [("kind", toJson "bo1Sideboard"), ("answer", toJson ReplayAnswer.bo1Sideboard)]
+    else match chance with
+    | some (.cardOrder candidates) =>
+      Json.mkObj [("kind", toJson "cardOrder"), ("cards", toJson (candidates.map (Json.mkObj ∘ candidate)))]
+    | some (.battlefield seat candidates) =>
+      let cards := candidates.zipIdx.map fun (id, index) =>
+        let answer := ReplayAnswer.observed ⟨.chance, .pick index⟩
+        let byCode := ((state.obj? id).bind (·.kind.cardId?)).map fun card =>
+          ("answerByCode", toJson (ReplayAnswer.observedChance (.battlefield card)))
+        Json.mkObj (candidate id ++ [("answer", toJson answer)] ++ byCode.toList)
+      Json.mkObj [("kind", toJson "battlefield"), ("seat", toJson seat), ("cards", toJson cards)]
+    | some .turnOrder =>
+      Json.mkObj [("kind", toJson "turnOrder"), ("chooser", toJson inspection.chooser),
+        ("forcedFirst", toJson inspection.forcedFirst), ("bo1Initiative", toJson inspection.bo1Initiative)]
+    | none =>
+      frame.map (fun next => Json.mkObj [("kind", toJson (ctorName next))]) |>.getD Json.null
+  let board ← Json.parse (stateJson state {}).1
+  return Json.mkObj [
+    ("game", toJson number), ("checkpoint", toJson inspection.checkpoint),
+    ("nextAnswer", toJson (if live then some (inspection.checkpoint + 1) else none)),
+    ("missing", toJson inspection.missing), ("exactPrefix", toJson inspection.exact),
+    ("turnOrder", toJson state.turnOrder), ("clockCalled", toJson state.clock.isSome),
+    ("state", board), ("decision", decision), ("choices", toJson choices)]
+
+private def withInspectionDefaults (input : Json) (defaults : List (String × Json)) : Json :=
+  match input with
+  | .obj _ => defaults.foldl (fun json (field, value) =>
+      if (json.getObjVal? field).isOk then json else json.setObjVal! field value) input
+  | _ => input
+
+private def inspectInput (command : String) (input : Json) (number : Nat) :
+    Except String ReplayInspection := do
+  if command == "inspect-ffa" then
+    unless number == 1 do throw "the game number must be 1 for free-for-all"
+    let script : FreeForAllInputs ← fromJson? input
+    return ← script.inspect
+  let input := withInspectionDefaults input [("ending", toJson ReplayMatchEnd.finalGame)]
+  if command == "inspect" then
+    let script : MatchInputs ← fromJson? input
+    return ← script.inspect number
+  let games ← input.getObjValAs? (Array Json) "games"
+  unless 0 < number && number <= games.size do throw "the game number is outside the match"
+  let index := number - 1
+  let game := withInspectionDefaults games[index]! [
+    ("ending", toJson TeamGameEnd.matchEnded), ("points", toJson ((0, 0) : Nat × Nat)),
+    ("battlefields", Json.arr #[]), ("timed", toJson false)]
+  let script : TeamMatchRecord ← fromJson? (input.setObjVal! "games" (toJson (games.set! index game)))
+  script.inspect number
+
 private def collectGame {α : Type} (input : GameInputs) (config : GameConfig) (fuel : Nat)
     (initial : GameState → α)
     (collect : α → Nat → ReplayAnswer → GameState → Option Action → ReplayPosition →
@@ -178,6 +255,13 @@ private def ffaSeatTrace (saved : RecordedFreeForAll) (seat : String) (includeBo
 def main (args : List String) : IO UInt32 := do
   try
     match args with
+    | [command@"inspect", input, game, output]
+    | [command@"inspect-team", input, game, output]
+    | [command@"inspect-ffa", input, game, output] =>
+      let some number := game.toNat? | throw (IO.userError "the game number must be a positive integer")
+      let inspection ← IO.ofExcept (inspectInput command (← readJson input) number)
+      writeJson output (← IO.ofExcept (inspectionJson number inspection))
+      return 0
     | ["record", input, output] =>
       let script : MatchInputs ← IO.ofExcept (fromJson? (← readJson input))
       let saved ← IO.ofExcept (script.record)
@@ -270,6 +354,7 @@ def main (args : List String) : IO UInt32 := do
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"
       IO.eprintln "       riftbound-replay revalidate[-team|-ffa] ARCHIVE.json UPDATED.json"
+      IO.eprintln "       riftbound-replay inspect[-team|-ffa] INPUT.json GAME OUTPUT.json"
       IO.eprintln "       riftbound-replay disclosures[-team|-ffa] ARCHIVE.json SEAT OUTPUT.json"
       IO.eprintln "       riftbound-replay view[-team|-ffa]-seat ARCHIVE.json SEAT OUTPUT.json"
       return 2
