@@ -67,13 +67,26 @@ inductive SpellPick where
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
   /-- Elect the card's printed additional XP cost. This choice names no object. -/
   | withXP (pick : SpellPick)
+  /-- The object used to pay a Kill cost and its base costs at payment (CR 359.3.e.13).
+  Recorded by the engine after paying the cost. -/
+  | withPaidKill (pick : SpellPick) (object : ObjId) (energy power : Nat)
 deriving DecidableEq, Repr, Hashable
+
+/-- The source and base costs recorded when the Spell paid its Kill cost. -/
+def SpellPick.paidKill : SpellPick → Option (ObjId × Nat × Nat)
+  | .withPaidKill _ object energy power => some (object, energy, power)
+  | .withCosts pick _ _ => pick.paidKill
+  | _ => none
+
+/-- Keep the previously paid Kill cost when assigning new effect choices. -/
+def SpellPick.addPaidKill (pick : SpellPick) (payment : Option (ObjId × Nat × Nat)) : SpellPick :=
+  payment.elim pick (fun (object, energy, power) => .withPaidKill pick object energy power)
 
 /-- Whether the play elects the printed XP cost. -/
 def SpellPick.paysXP : SpellPick → Bool
   | .withXP _ => true
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ => pick.paysXP
+      .withSpellExhausts pick _ | .withPaidKill pick .. => pick.paysXP
   | _ => false
 
 /-- Remove the XP payment before inspecting the remaining finalization choices. -/
@@ -85,7 +98,8 @@ def SpellPick.withoutXP : SpellPick → SpellPick
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
   | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick => pick.optionalCosts
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick |
+      .withPaidKill pick .. => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
@@ -99,21 +113,22 @@ def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
       .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ |
-      .withXP pick => pick.playerTarget
+      .withXP pick | .withPaidKill pick .. => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
   | .withPlayer pick _ | .withShowOff pick _ | .withVariablePower pick _ => pick.effectChoice
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ | .withXP pick => pick.effectChoice
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
   | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick => pick.hasExecutionChoices
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick |
+      .withPaidKill pick .. => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
@@ -123,6 +138,8 @@ def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick 
   | .withVariablePower pick n => (pick.executions targets).map (fun (k, ts) => (.withVariablePower k n, ts))
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
   | .withXP pick => (pick.executions targets).map (fun (k, ts) => (.withXP k, ts))
+  | .withPaidKill pick object energy power =>
+    (pick.executions targets).map (fun (k, ts) => (.withPaidKill k object energy power, ts))
   | pick => [(pick, targets)]
 
 /-- The object shown off for this play. -/
@@ -130,7 +147,7 @@ def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
   | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
       .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
-      .withSpellExhausts pick _ | .withXP pick => pick.showOffObject
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. => pick.showOffObject
   | _ => none
 
 /-- The declared amount of a variable Power cost for this play. -/
@@ -138,7 +155,7 @@ def SpellPick.variablePower : SpellPick → Option Nat
   | .withVariablePower _ n => some n
   | .withCosts pick _ _ | .withPlayer pick _ | .withShowOff pick _ |
       .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ |
-      .withXP pick => pick.variablePower
+      .withXP pick | .withPaidKill pick .. => pick.variablePower
   | _ => none
 
 /-- Decorate a finalization when its additional Power amount is declared. -/
@@ -159,6 +176,7 @@ def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
 /-- The permanent selected to pay the cost for this Spell play. -/
 def SpellPick.extraObject : SpellPick → Option ObjId
   | .withExtraObject _ object => some object
+  | .withPaidKill _ object .. => some object
   | .withSpellExhausts pick _ | .withXP pick => pick.extraObject
   | _ => none
 

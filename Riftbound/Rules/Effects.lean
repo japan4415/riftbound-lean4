@@ -1521,7 +1521,7 @@ def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
               choice)))))
   (priced.flatMap (fun (ts, cost, pick) =>
     (s.spellPaymentPicks p d pick).filterMap (fun choice =>
-      if d.spellObjectPreservesTargets ts choice then
+      if s.spellObjectPickOk p d ts choice then
         some (ts, cost.lessEnergy (s.spellExhaustDiscount p choice), choice)
       else none))).eraseDups
 
@@ -5314,7 +5314,7 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
         d.spellEffect.toList.flatMap (fun effect =>
           if !effect.hasFinalizationChoice then [] else
             let choices := spellChoicesWithShowOff s p id d effect [item.spellPick.showOffObject]
-              item.spellPick.variablePower (some item.spellPick.paysXP)
+              item.spellPick.variablePower (some item.spellPick.paysXP) item.spellPick.paidKill
             let executions := if d.usesRepeatChoices then repeatSpellChoices choices item.extraPaid
               else choices
             executions.map (fun (pick, targets) => .setSpellChoices id pick targets))
@@ -6105,10 +6105,11 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     (s, spellExecutionFrames s p src env pick targets ++ [.run p src env es], [])
   | .setSpellChoices spell pick targets =>
     let updated := s.modObj spell fun o =>
-      let newPick := match o.spellPick.optionalCosts with
+      let newPick : SpellPick := match o.spellPick.optionalCosts with
         | some (printed, repeats) => .withCosts pick printed repeats
         | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
-      { o with targets, spellPick := newPick, targetPlayer := pick.playerTarget }
+      let recorded := newPick.addPaidKill o.spellPick.paidKill
+      { o with targets, spellPick := recorded, targetPlayer := pick.playerTarget }
     (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
   | .moveChoosing unit home fs afterMove afterNegatedMove =>
     let chosen := chosenMove s p src env unit home fs afterMove afterNegatedMove

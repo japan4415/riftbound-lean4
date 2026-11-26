@@ -4105,13 +4105,10 @@ def UNL_142.meta : CardDef :=
 /-- Heedless Resurrection. -/
 def UNL_142 : CardDef :=
   { UNL_142.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.bind ⟨"e"⟩ (.costOf (.slot 0)) (.bind ⟨"w"⟩ (.powerCostOf (.slot 0))
-        (.prim (.play (Selector.one .friendly .inTrash
-          [.ofType .unit, .cost .le (.var ⟨"e"⟩), .powerCost .le (.var ⟨"w"⟩)])))))),
-    -- the unit killed as the additional cost is the first thing the spell chooses
-    playExtra := some (.killUnit, true),
-    status := .drafted }
+    spellEffect := some { EffectDef.of [.targetOf .one .you .inTrash [.ofType .unit]]
+      (.playCard (.slot 0) .ignoreBase) with recheckTargets := true },
+    playExtra := some (.killUnitForTarget, true),
+    status := .full }
 
 -- BEGIN GENERATED UNL-143
 /--

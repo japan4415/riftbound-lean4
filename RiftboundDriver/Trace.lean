@@ -189,6 +189,8 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     spellPickFields state c pick ++ [("showOff", toString object.n)]
   | .withExtraObject pick object =>
     spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
+  | .withPaidKill pick object _ _ =>
+    spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
   | .withSpellExhausts pick groups =>
     let payers := groups.flatMap (fun (legend, units) => legend :: units)
     spellPickFields state c pick ++ [("spellExhaustPayers", jarr (payers.map (fun id => toString id.n)))]

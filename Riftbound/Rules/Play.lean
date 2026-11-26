@@ -518,7 +518,7 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
         (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
           g.name == "Poro")))
   | .returnUnit => controlled && (s.cardDef? t).any (·.hasType .unit)
-  | .killUnit => friendly && (s.cardDef? t).any (·.hasType .unit)
+  | .killUnit | .killUnitForTarget => friendly && (s.cardDef? t).any (·.hasType .unit)
   | .exhaustUnit => controlled &&
       ((s.cardDef? t).any (·.hasType .unit) && (s.obj? t).any (fun o => !o.exhausted))
   | .killUnitOrGear => friendly && (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear)
@@ -536,14 +536,20 @@ def GameState.playXPCost (s : GameState) (p : PlayerId) (d : CardDef) : Option N
   | some (.spendXP n, _) | some (.spendXPOver n _, _) => if n ≤ s.xpOf p then some n else none
   | _ => none
 
-/-- Apply the target restriction belonging to the recorded optional XP choice (CR 355.1.a). -/
+/-- Apply the target restrictions belonging to the recorded payment (CR 355, 359.3.e.13). -/
 def CardDef.spellBranchForPick (d : CardDef) (e : EffectDef) (pick : SpellPick) : Option EffectDef :=
   (e.forPick pick).map (fun branch =>
-    match d.playExtra, branch.choices with
-    | some (.spendXPOver _ cap, _), .target q side place filters :: rest =>
+    match d.playExtra, branch.choices, pick.paidKill with
+    | some (.spendXPOver _ cap, _), .target q side place filters :: rest, _ =>
       if pick.paysXP then branch else
         { branch with choices := .target q side place (.cons (.might .le (.const cap)) filters) :: rest }
-    | _, _ => branch)
+    | some (.killUnitForTarget, _), choices, some (_, energy, power) =>
+      { branch with choices := choices.map (fun
+        | .target q side place filters =>
+          let bounded := .cons (.cost .le (.const energy)) (.cons (.powerCost .le (.const power)) filters)
+          .target q side place bounded
+        | choice => choice) }
+    | _, _, _ => branch)
 
 /-- The Spell's instructions and target requirements for the selected payment. -/
 def CardDef.spellForPick (d : CardDef) (pick : SpellPick) : Option EffectDef :=
@@ -659,11 +665,22 @@ def GameState.spellExhaustDiscount (s : GameState) (p : PlayerId) (pick : SpellP
   (pick.spellExhausts.map (fun (source, _) =>
     ((s.spellExhaustOffer p source).map Prod.snd).getD 0)).sum
 
-/-- Returning the payment Unit to hand must leave the Spell's declared targets legal at
-finalization (CR 357.3, 358.1). Exhausting it leaves its identifier in play. -/
-def CardDef.spellObjectPreservesTargets (d : CardDef) (targets : List ObjId) (pick : SpellPick) : Bool :=
+/-- The base costs of a card being used to pay a Spell's Kill cost (CR 359.3.e.13).
+A costless Unit or token has zero Energy and Power. -/
+def GameState.spellKillCost (s : GameState) (unit : ObjId) : Nat × Nat :=
+  let cost := ((s.cardDef? unit).bind (·.cost)).getD Cost.zero
+  (cost.energy, cost.power.length)
+
+/-- The declared targets remain legal after an object cost is paid (CR 355.16, 357.3).
+A linked Kill cost can also bound the base costs of the target for each execution. -/
+def GameState.spellObjectPreservesTargets (s : GameState) (d : CardDef) (targets : List ObjId)
+    (pick : SpellPick) : Bool :=
   match d.spellObjectCost, pick.extraObject with
   | some (.returnUnit, _), some id => !targets.contains id
+  | some (.killUnitForTarget, _), some id =>
+    let (energy, power) := s.spellKillCost id
+    targets.all (fun target => ((s.cardDef? target).bind (·.cost)).any (fun cost =>
+      decide (cost.energy ≤ energy) && decide (cost.power.length ≤ power)))
   | _, _ => true
 
 /-- The chosen payment is available and will leave the effect's targets legal. -/
@@ -673,8 +690,23 @@ def GameState.spellObjectPickOk (s : GameState) (p : PlayerId) (d : CardDef)
   | none, none => true
   | some (_, required), none => !required
   | some (cost, _), some id =>
-    s.extraTarget p cost id && d.spellObjectPreservesTargets targets pick
+    s.extraTarget p cost id && s.spellObjectPreservesTargets d targets pick
   | none, some _ => false
+
+/-- Every target declared with a linked Kill cost fits both base costs of the chosen Unit. -/
+theorem GameState.spellObjectPickOk_killWithin {s : GameState} {p : PlayerId} {d : CardDef}
+    {targets : List ObjId} {pick : SpellPick} {unit target : ObjId}
+    (kind : d.spellObjectCost = some (.killUnitForTarget, true))
+    (payment : pick.extraObject = some unit) (h : s.spellObjectPickOk p d targets pick = true)
+    (chosen : target ∈ targets) : ∃ cost,
+      (s.cardDef? target).bind (·.cost) = some cost ∧
+        cost.energy ≤ (s.spellKillCost unit).1 ∧ cost.power.length ≤ (s.spellKillCost unit).2 := by
+  simp only [spellObjectPickOk, spellObjectPreservesTargets, kind, payment, Bool.and_eq_true] at h
+  have within := List.all_eq_true.mp h.2 target chosen
+  cases hc : (s.cardDef? target).bind (·.cost) with
+  | none => simp [hc] at within
+  | some cost =>
+    exact ⟨cost, rfl, by simpa [hc] using within⟩
 
 /-- How much less the Spell `c` of the player costs because of the objects it chooses (Irelia). -/
 def GameState.chooseCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
@@ -1292,13 +1324,14 @@ def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : Lis
   | .withPlayer pick _ | .withCosts pick _ _ | .withExtraObject pick _ |
       .withSpellExhausts pick _ => s.moveTargetOk c e ts pick
   | .withShowOff pick _ | .withVariablePower pick _ => s.moveTargetOk c e ts pick
-  | .withXP pick => s.moveTargetOk c e ts pick
+  | .withXP pick | .withPaidKill pick .. => s.moveTargetOk c e ts pick
   | _ => e.moveChoice.isNone
 
-/-- The legal targets and modes for the supplied Show Off selections, without costs. -/
+/-- The legal targets and modes for the supplied Show Off selections and any locked payments. -/
 def spellChoicesWithShowOff (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef) (e : EffectDef)
     (showOffs : List (Option ObjId)) (power : Option Nat := none)
-    (paidXP : Option Bool := none) : List (SpellPick × List ObjId) :=
+    (paidXP : Option Bool := none) (paidKill : Option (ObjId × Nat × Nat) := none) :
+    List (SpellPick × List ObjId) :=
   let ordinary := (s.spellPicks p d).flatMap (fun pick =>
     showOffs.map (fun showOff => (pick.addShowOff showOff).addVariablePower power))
   let choices := match paidXP with
@@ -1306,7 +1339,7 @@ def spellChoicesWithShowOff (s : GameState) (p : PlayerId) (id : ObjId) (d : Car
     | some false => ordinary
     | none => ordinary ++ s.xpPlayPicks p d ordinary
   choices.flatMap (fun pick =>
-    (d.spellBranchForPick e pick).toList.flatMap (fun branch =>
+    (d.spellBranchForPick e (pick.addPaidKill paidKill)).toList.flatMap (fun branch =>
       if s.spellPlayerTargetOk p branch pick then
         ((targetTuples s p id s.mightTable branch.choices).filter
           (fun ts => s.moveTargetOk id branch ts pick)).map (pick, ·)
@@ -1676,7 +1709,7 @@ def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
   match k with
   | .exhaustLegend => some (s.exhaustObj t, [])
   | .exhaustUnit => some (setExhausted true s t)
-  | .killUnitOrGear | .killGear | .killUnit | .killPet =>
+  | .killUnitOrGear | .killGear | .killUnit | .killUnitForTarget | .killPet =>
     -- A replaced death still pays the selected cost (CR 357.2.a).
     if (s.locate t).isSome then some (killOrSave s t) else none
   | .spendXP n => (s.obj? t).map (fun legend => (s.spendXP legend.owner n, []))
@@ -1823,7 +1856,7 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     have hs : (setExhausted true s t).1 = s' := congrArg Prod.fst hr
     rw [← hs]
     exact setExhausted_safe true s t
-  | killUnitOrGear | killGear | killUnit | killPet =>
+  | killUnitOrGear | killGear | killUnit | killUnitForTarget | killPet =>
     change (if (s.locate t).isSome then some (killOrSave s t) else none) = some (s', es) at h
     split at h
     · have hs : (killOrSave s t).1 = s' := congrArg Prod.fst (Option.some.inj h)
@@ -1929,7 +1962,13 @@ def paySpellObject (s : GameState) (card : ObjId) : GameState × List Event :=
   match (s.cardDef? card).bind CardDef.spellObjectCost, (s.obj? card).bind (·.spellPick.extraObject) with
   | some (cost, _), some object =>
     match applyExtra s cost object with
-    | some (paid, events) => (markPaid paid (some card), events)
+    | some (paid, events) =>
+      let marked := markPaid paid (some card)
+      if cost == .killUnitForTarget then
+        let (energy, power) := s.spellKillCost object
+        (marked.modObj card (fun o => { o with spellPick :=
+          o.spellPick.withoutExtraObject.addPaidKill (some (object, energy, power)) }), events)
+      else (marked, events)
     | none => (s, [])
   | _, _ => (s, [])
 
@@ -1939,8 +1978,11 @@ theorem paySpellObject_safe (s : GameState) (card : ObjId) : Safe s (paySpellObj
   split
   · split
     · rename_i paid events h
-      change Safe s (markPaid paid (some card))
-      exact (applyExtra_safe h).trans (markPaid_safe paid (some card))
+      have marked := (applyExtra_safe h).trans (markPaid_safe paid (some card))
+      split
+      · dsimp only
+        exact marked.trans (Safe.modObj _ _ (fun _ => rfl) (fun _ => rfl))
+      · exact marked
     · exact Safe.refl _
   · exact Safe.refl _
 

@@ -474,14 +474,60 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     !(s4.battlefields.any (fun b => (s4.cardDef? b).any (·.name == "Brush"))) &&
     (s4.obj? u).any (fun o => o.loc.any (fun l => (s4.cardDef? l).any (·.id == cid "OGN-275")))
 
--- Heedless Resurrection (UNL-142): kill a friendly unit, play a unit from the Trash that costs no
--- more than it
+-- Heedless Resurrection declares both objects before paying. Each of Energy and Power
+-- independently limits the unit in the player's Trash.
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-142" .hand
-  let (s2, k) ← put s1 s.me "UNL-003" .base
-  let (s3, _) ← put s2 s.me "UNL-111" .trash
-  let s4 ← play s3 s.me c [k] { obj := fun o => (s3.cardDef? o).any (·.id == cid "UNL-111") }
-  return s4.countIn s.me .trash "UNL-003" == 1 && s4.countIn s.me .base "UNL-111" == 1
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-142" .hand
+  let (s, unit) ← put s p "OGN-015" .base
+  let (s, target) ← put s p "OGN-074" .trash
+  let (s, other) ← put s p "UNL-111" .trash
+  let (s, tooMuchEnergy) ← put s p "OGN-088" .trash
+  let (s, tooMuchPower) ← put s p "OGN-150" .trash
+  let (s, opposing) ← put s q "UNL-111" .trash
+  let s := s.rich p
+  let pick := SpellPick.withExtraObject .plain unit
+  let castChoice (target : ObjId) (cost : SpellPick := pick) : Action :=
+    ⟨.player p, .playCard spell (payOf s spell) [target] none none cost⟩
+  let legal := legalFrameActions s
+  let (casted, events) ← (step 100 s (castChoice target)).toOption
+  let item ← (casted.zone .chain).head?
+  let paidUnit ← casted.firstOf p .trash "OGN-015"
+  let d ← casted.cardDef? item
+  let effect ← d.spellEffect
+  let original ← casted.obj? item
+  let retarget := spellChoicesWithShowOff casted p item d effect [none] none (some false)
+    original.spellPick.paidKill
+  let done := settleChain {} 12 casted
+  return legal.contains (castChoice target) && legal.contains (castChoice other) &&
+    !(legal.contains (castChoice target .plain)) &&
+    [unit, opposing, tooMuchEnergy, tooMuchPower].all (fun id => !(legal.contains (castChoice id))) &&
+    original.targets == [target] && original.spellPick.paidKill == some (unit, 4, 1) &&
+    events.contains (.died paidUnit p) && events.contains (.chosenBySpell p target) &&
+    !(events.contains (.chosenBySpell p unit)) &&
+    (casted.zone (.player p .trash)).contains target &&
+    retarget.contains (.plain, [other]) && !retarget.contains (.plain, [tooMuchEnergy]) &&
+    !retarget.contains (.plain, [tooMuchPower]) &&
+    done.countIn p .base "OGN-074" == 1 && done.countIn p .trash "UNL-111" == 1
+
+-- Repeat declares two Trash targets against the same Kill cost and pays it once.
+#guard tun fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "UNL-142" .hand
+  let (s, unit) ← put s p "UNL-003" .base
+  let (s, first) ← put s p "UNL-111" .trash
+  let (s, second) ← put s p "UNL-111" .trash
+  let (s, expensive) ← put s p "OGN-135" .trash
+  let s := (s.rich p).addTurnFx p .nextSpellRepeat
+  let pick := SpellPick.withExtraObject (.withCosts (.thenRepeat .plain 1 .plain) false 1) unit
+  let act (last : ObjId) : Action :=
+    ⟨.player p, .playCard spell ⟨4, [.chaos, .chaos]⟩ [first, last] none none pick⟩
+  let legal := legalFrameActions s
+  let (casted, _) ← (step 100 s (act second)).toOption
+  let done := settleChain {} 16 casted
+  return legal.contains (act second) && !legal.contains (act expensive) &&
+    done.countIn p .base "UNL-111" == 2 && done.countIn p .trash "UNL-003" == 1
 
 -- Blast Cone (UNL-133): when its player moves an enemy unit with an effect, it can stun it
 #guard tun fun s => do
@@ -825,14 +871,46 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     (play s2 s.me c [u]).isNone
 
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-142" .hand
-  let (s2, k) ← put s1 s.me "UNL-003" .base
-  let (s3, _) ← put s2 s.me "UNL-111" .trash
-  let r ← match step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [k]⟩ with
-    | .ok (s4, _) => some s4
-    | .error _ => none
-  return r.countIn s.me .trash "UNL-003" == 1 && r.countIn s.me .base "UNL-111" == 0 &&
-    (play (s3.modObj k (fun o => o)) s.me c []).isNone
+  let p := s.me
+  let (s, spell) ← put s p "UNL-142" .hand
+  let (s, unit) ← put s p "UNL-003" .base
+  let funded := s.rich p
+  let pick := SpellPick.withExtraObject .plain unit
+  let action (target : ObjId) : Action :=
+    ⟨.player p, .playCard spell (payOf funded spell) [target] none none pick⟩
+  let (s, target) ← put funded p "UNL-111" .trash
+  let (s, fallback) ← put s p "UNL-111" .trash
+  let (queued, _) ← (step 100 s (action target)).toOption
+  let item ← (queued.zone .chain).head?
+  let (removed, _) ← moveObj queued target (.player p .mainDeck)
+  let done := settleChain {} 12 removed
+  let countered := settleChain {} 12 (counterObj queued item).1
+  return !(legalFrameActions funded).any (fun act => match act.kind with
+      | .playCard card .. => card == spell
+      | _ => false) &&
+    (done.zone (.player p .trash)).contains fallback && done.countIn p .base "UNL-111" == 0 &&
+    done.countIn p .trash "UNL-003" == 1 && countered.countIn p .trash "UNL-003" == 1 &&
+    countered.countIn p .base "UNL-111" == 0
+
+-- A spell played by another effect uses the same target limit and records the payment.
+-- Its chosen unit can Accelerate during its own finalization.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s q "UNL-142" .hand
+  let (s, unit) ← put s p "OGN-135" .base
+  let (s, target) ← put s p "OGN-010" .trash
+  let (s, tooMuchPower) ← put s p "OGN-150" .trash
+  let price := EffectPlayPrice.ignoreBase
+  let (queued, item) ← queueLimitedSpell (s.fund p 1 1) p spell price .normal
+  let plans := limitedSpellOptions queued p item price
+  let plan ← plans.find? (fun plan => plan.targets == [target] && plan.pick.extraObject == some unit)
+  let (paid, _) ← commitLimitedSpell queued p item plan [] effectAddPolicy
+  let ready := settleChain { yes := false } 12 { paid with pending := [.chainPass p 0] }
+  let revived ← ready.firstOf p .base "OGN-010"
+  return !(plans.any (fun plan => plan.targets == [tooMuchPower])) &&
+    (paid.obj? item).any (fun o => o.spellPick.paidKill == some (unit, 3, 0)) &&
+    ready.tired revived == some false && (ready.poolOf p).energy == 0
 
 -- Safety Inspector (UNL-164): the additional cost is 3 XP; if it is paid, only the opponents kill a unit
 #guard tun fun s => do

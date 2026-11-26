@@ -52,6 +52,8 @@ inductive PlayExtra where
   /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
   a friendly Unit). -/
   | killUnit
+  /-- A friendly Unit is killed as a separate Spell cost. Its base costs bound the Spell's targets. -/
+  | killUnitForTarget
   /-- The player spends this much of their own XP. -/
   | spendXP (n : Nat)
   /-- For a Spell: spending this much XP lifts the first target's Might cap (Conscription). -/
@@ -60,12 +62,12 @@ deriving DecidableEq, Repr, Hashable
 
 /-- The Spell picks the object for this cost separately from its effect's choices (CR 355, 357). -/
 def PlayExtra.separateSpellObject : PlayExtra → Bool
-  | .returnUnit | .exhaustUnit => true
+  | .returnUnit | .exhaustUnit | .killUnitForTarget => true
   | _ => false
 
 /-- Whether this cost asks for a permanent to die. -/
 def PlayExtra.kills : PlayExtra → Bool
-  | .killGear | .killUnitOrGear | .killUnit | .killPet => true
+  | .killGear | .killUnitOrGear | .killUnit | .killUnitForTarget | .killPet => true
   | _ => false
 
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
