@@ -241,7 +241,7 @@ def payKill (s : GameState) (p : PlayerId) (costs : List AbilityCost) (ts : List
   match costKills costs, ts.getLast? with
   | true, some v =>
     if (s.zone (.player p .base)).contains v || (s.zone .battlefieldZone).contains v then
-      killObj s v
+      killOrSave s v
     else (s, [])
   | _, _ => (s, [])
 
@@ -251,7 +251,7 @@ theorem payKill_safe (s : GameState) (p : PlayerId) (costs : List AbilityCost) (
   unfold payKill
   split
   · split
-    · exact killObj_safe s _
+    · exact killOrSave_safe s _
     · exact Safe.refl s
   · exact Safe.refl s
 
@@ -271,16 +271,23 @@ theorem payKill_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (costs : List 
         · exact ⟨_, h, Or.inl rfl⟩
         · exact ⟨_, h, Or.inr rfl⟩
       obtain ⟨z0, hu, hz0⟩ := hz
+      have hin : v ∈ s.inPlay := by
+        unfold GameState.inPlay
+        rcases hz0 with rfl | rfl
+        · have valid := GameState.zone_valid_of_mem hwf hu
+          have seat : p.n < s.playerCount := Zone.lt_of_valid_player valid
+          have player : p ∈ s.players := by
+            exact List.mem_map.mpr ⟨p.n, List.mem_range.mpr seat, by cases p; rfl⟩
+          exact List.mem_append_left _ (List.mem_flatMap.mpr ⟨p, player, hu⟩)
+        · exact List.mem_append_right _ hu
       refine ⟨fun q => ?_, ?_⟩
-      · refine killObj_zone_other hwf hu ?_ ?_
-        · rcases hz0 with rfl | rfl <;> intro h <;> cases h
-        · intro q' k hk h
-          cases h
-          rcases hk with h' | h' <;> cases h'
-      · refine killObj_zone_other hwf hu ?_ ?_
-        · rcases hz0 with rfl | rfl <;> intro h <;> cases h
-        · intro q' k hk h
-          cases h
+      · refine killOrSave_zone_other hwf hin rfl ?_
+        intro who k hk h
+        cases h
+        rcases hk with eq | eq <;> cases eq
+      · refine killOrSave_zone_other hwf hin rfl ?_
+        intro who k hk h
+        cases h
     · exact ⟨fun _ => rfl, rfl⟩
   · exact ⟨fun _ => rfl, rfl⟩
 

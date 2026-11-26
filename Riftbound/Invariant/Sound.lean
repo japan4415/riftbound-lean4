@@ -18,13 +18,18 @@ namespace Riftbound
 
 /-- The work frames always have a step to take. -/
 theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
-    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep0 s = some r := by
+    (hp : s.pending = f :: rest) (hf : f.isCoreWork = true) : ∃ r, microStep0 s = some r := by
   unfold microStep0
   rw [hp]
   cases f with
   | setupHands => exact ⟨_, rfl⟩
   | beginTurn => exact ⟨_, rfl⟩
-  | phase ph => cases ph <;> exact ⟨_, rfl⟩
+  | phase ph =>
+    cases ph
+    case beginning =>
+      dsimp only
+      split <;> exact ⟨_, rfl⟩
+    all_goals exact ⟨_, rfl⟩
   | scoreHolds => exact ⟨_, rfl⟩
   | expireTurn => exact ⟨_, rfl⟩
   | draw p n startingHand =>
@@ -43,37 +48,13 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   | combatControl _ => exact ⟨_, rfl⟩
   | combatFinish _ => exact ⟨_, rfl⟩
   | triggers pend => exact ⟨_, rfl⟩
-  | _ => simp [Frame.isWork] at hf
+  | _ => simp [Frame.isCoreWork, Frame.isWork] at hf
 
 /-- A work frame can be advanced: `microStep` does not fail on it. -/
 theorem microStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
-    (hp : s.pending = f :: rest) (hf : f.isWork = true) : ∃ r, microStep s = some r := by
+    (hp : s.pending = f :: rest) (hf : f.isCoreWork = true) : ∃ r, microStep s = some r := by
   obtain ⟨r, hr⟩ := microStep_isSome0 hp hf
   exact ⟨_, by unfold microStep; rw [hr]; rfl⟩
-
-/-- The automatic work fails for no reason but the fuel. -/
-theorem advance_error :
-    ∀ (n : Nat) {s : GameState} {es : List Event} {e : RuleError},
-      advance n s es = .error e → e = .fuelExhausted
-  | 0, s, es, e, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · simpa using h.symm
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
-  | n + 1, s, es, e, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · rename_i hf
-        obtain ⟨r, hr⟩ := microStep_isSome hp hf
-        obtain ⟨s1, es1⟩ := r
-        simp only [hr] at h
-        exact advance_error n h
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
 
 /-- A legal answer to the open question can be applied: `applyFrame` does not fail on it. -/
 theorem applyFrame_isSome0 {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
@@ -469,9 +450,14 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact ((beginStep_safe s _).own hwf hown).congr rfl rfl
+  · dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact hown.congr rfl rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact ((beginStep_safe s _).own hwf hown).congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((hold_safeP s _).own hwf hown).congr rfl rfl
@@ -543,6 +529,71 @@ theorem microStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (how
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   exact withTriggers_ownerOk _ (microStep_ownerOk0 hwf hown h0)
 
+/-- A replacement question changes only the stack, and ordinary actions preserve ownership. -/
+theorem applyDeclaredAction_ownerOk {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hl : Legal s a)
+    (h : applyDeclaredAction s a = some (s', es)) : s'.OwnerOk := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, _, rfl, _⟩
+  · exact applyAction_ownerOk hwf hown hl ordinary
+  · exact hown.congr rfl rfl
+
+/-- Ownership is preserved by the work of a locked payment as well. -/
+theorem workStep_ownerOk {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : workStep s = some (s', es)) : s'.OwnerOk := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, _, ⟨_, legal, applied⟩ | ⟨rfl, _⟩⟩
+  · exact microStep_ownerOk hwf hown ordinary
+  · exact applyDeclaredAction_ownerOk (s := { s with pending := rest })
+      (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) legal applied
+  · exact hown.congr rfl rfl
+
+/-- A legal declaration either waits for a choice or can apply normally. -/
+theorem applyDeclaredAction_isSome {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
+    (hl : Legal s a) : ∃ r, applyDeclaredAction s a = some r := by
+  unfold applyDeclaredAction
+  split
+  · exact ⟨_, rfl⟩
+  · exact applyAction_isSome hwf hown hl
+
+/-- Every queued work step has a transition, including a restored legal declaration. -/
+theorem workStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
+    (hwf : s.WF) (hown : s.OwnerOk) (hp : s.pending = f :: rest) (hf : f.isWork = true) :
+    ∃ r, workStep s = some r := by
+  unfold workStep
+  rw [hp]
+  cases f with
+  | resumeCost a =>
+    simp only
+    split
+    · rename_i eligible
+      exact applyDeclaredAction_isSome (s := { s with pending := rest })
+        (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) eligible.2
+    · exact ⟨_, rfl⟩
+  | _ => exact microStep_isSome hp hf
+
+/-- The automatic work fails for no reason but the fuel. -/
+theorem advance_error :
+    ∀ (n : Nat) {s : GameState} {es : List Event} {e : RuleError},
+      s.WF → s.OwnerOk → advance n s es = .error e → e = .fuelExhausted
+  | 0, s, es, e, _, _, h => by
+    unfold advance at h
+    split at h
+    · split at h
+      · simpa using h.symm
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  | n + 1, s, es, e, hwf, hown, h => by
+    unfold advance at h
+    split at h
+    · rename_i f rest hp
+      split at h
+      · rename_i hf
+        obtain ⟨r, hr⟩ := workStep_isSome hwf hown hp hf
+        obtain ⟨s1, es1⟩ := r
+        simp only [hr] at h
+        exact advance_error n (workStep_wf hwf hr) (workStep_ownerOk hwf hown hr) h
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+
 /-- The automatic work keeps `OwnerOk`. -/
 theorem advance_ownerOk :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk →
@@ -564,7 +615,7 @@ theorem advance_ownerOk :
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_ownerOk n (microStep_wf hwf hm) (microStep_ownerOk hwf hown hm) h
+          exact advance_ownerOk n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -581,7 +632,7 @@ theorem step_ownerOk {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_ownerOk fuel (applyAction_wf hwf hl ha) (applyAction_ownerOk hwf hown hl ha) h
+      exact advance_ownerOk fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_ownerOk hwf hown hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -590,9 +641,10 @@ fuel. With `step_illegal` and `legal_of_step_ok`, `step` accepts exactly the leg
 that it may run out of fuel. -/
 theorem step_sound {fuel : Nat} {s : GameState} {a : Action} (hwf : s.WF) (hown : s.OwnerOk)
     (hl : Legal s a) {e : RuleError} (h : step fuel s a = .error e) : e = .fuelExhausted := by
-  obtain ⟨⟨s1, es1⟩, ha⟩ := applyAction_isSome hwf hown hl
+  obtain ⟨⟨s1, es1⟩, ha⟩ := applyDeclaredAction_isSome hwf hown hl
   simp only [step, hl, ha, ite_true] at h
-  exact advance_error fuel h
+  exact advance_error fuel (applyDeclaredAction_wf hwf hl ha)
+    (applyDeclaredAction_ownerOk hwf hown hl ha) h
 
 /-- **I4.** A step never fails by the engine's own bookkeeping: in a well-formed game, whatever the
 answer, the error is `illegal` or `fuelExhausted`, never `internal`. -/

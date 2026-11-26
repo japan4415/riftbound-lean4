@@ -308,6 +308,28 @@ function describe(i) {
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
 function describeA(a, prev, state = steps[cur]?.state) {
   const cardName = (id) => cardNameAt(id, state);
+  const visibleCardLabel = (id, selectableIds) => {
+    const name = cardName(id);
+    const code = cardCode(id, state);
+    const copies = selectableIds.filter(candidate => cardCode(candidate, state) === code);
+    return copies.length > 1 ? name + ' #' + id : name;
+  };
+  const zoneEntries = Object.entries(state?.zones || {});
+  const boardIds = zoneEntries
+    .filter(([zone]) => zone === 'battlefield' || zone.endsWith('.base') || zone.endsWith('.legendZone'))
+    .flatMap(([, ids]) => ids);
+  const boardCardLabel = (id) => visibleCardLabel(id, boardIds);
+  const paymentChoices = (choice) => {
+    const details = [];
+    if (typeof choice.variablePower === 'number') details.push('追加 Power ' + choice.variablePower);
+    if (choice.gearDiscounts?.length) {
+      details.push(choice.gearDiscounts.map(boardCardLabel).join('、') + ' の割引を使う');
+    }
+    if (choice.spellExhaustPayers?.length) {
+      details.push(choice.spellExhaustPayers.map(boardCardLabel).join('、') + ' を Exhaust');
+    }
+    return details;
+  };
   const showOffLabel = (choice, card) => {
     if (typeof choice.showOff === 'number') {
       const faceDown = Object.entries(state?.zones || {}).some(([zone, ids]) =>
@@ -398,7 +420,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         if (a.queuedSpell != null) {
           const action = a.chooseSpellPayment ? ' の支払いを選ぶ' : ' をプレイ';
           const finalization = [showOffLabel(a, a.queuedSpell), choices,
-            spellObjectCostLabel(a, a.queuedSpell)].filter(Boolean).join('、');
+            spellObjectCostLabel(a, a.queuedSpell), ...paymentChoices(a)].filter(Boolean).join('、');
           const payment = [costText(a.queuedCost)];
           if (a.playDiscard !== undefined) {
             payment.push(a.playDiscard === null ? '手札を捨てない' : cardName(a.playDiscard) + ' を捨てる');
@@ -422,7 +444,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.reducedPlay) {
         const plan = a.reducedPlay;
         const dest = plan.destination === null ? 'Base' : cardName(plan.destination);
-        const parts = [costText(plan.cost)];
+        const parts = [costText(plan.cost), ...paymentChoices(plan)];
         const showOff = showOffLabel(plan, plan.card);
         if (showOff) parts.push(showOff);
         if (plan.battlefieldFees?.length) parts.push(plan.battlefieldFees.map(cardName).join('、') + ' の追加コストを払う');
@@ -435,6 +457,17 @@ function describeA(a, prev, state = steps[cur]?.state) {
         if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
         const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
         return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
+      }
+      if (typeof a.deathOrderUnit === 'number') {
+        return [who + ': ' + boardCardLabel(a.deathOrderUnit) + ' の死亡置換を次に適用する', ''];
+      }
+      if (a.moreDeathOrders) return [who + ': ほかの死亡置換を選ぶ', ''];
+      if (typeof a.deathSacrificeUnit === 'number') {
+        const unit = boardCardLabel(a.deathSacrificeUnit);
+        if (!('deathSacrificeCost' in a)) return [who + ': ほかの身代わりを選ぶ', unit];
+        if (a.deathSacrificeCost === null) return [who + ': ' + unit + ' の死亡置換を見送る', ''];
+        return [who + ': ' + boardCardLabel(a.deathSacrificeCost) + ' を身代わりにする',
+          unit + ' の死亡を置き換える'];
       }
       if (a.moreDamageReplacements) return [who + ': ほかの置換効果を見る', ''];
       if (a.banishDeathUnit != null) {
@@ -474,6 +507,13 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'choose': {
       const card = cardName(a.obj);
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
+      if (a.choiceContext === 'banishReplay') {
+        const banished = zoneEntries.filter(([zone]) => zone.endsWith('.banishment')).flatMap(([, ids]) => ids);
+        return [who + ': 次にプレイする ' + visibleCardLabel(a.obj, banished) + ' を選ぶ', 'Chronobreak'];
+      }
+      if (a.choiceContext === 'reserveLegend') {
+        return [who + ': ' + card + ' を追加の Legend に選ぶ', '予備枠から Legend Zone に置く'];
+      }
       if (a.choiceContext === 'move') return [who + ': ' + cardName(a.unit) + ' を ' + card + ' へ移動する', ''];
       if (a.choiceContext === 'retain') return [who + ': ' + card + ' を対象に残す', 'もとの対象から効果を受けるカードを選ぶ'];
       if (a.choiceContext === 'equipExhaust') return [who + ': ' + card + ' を Exhaust', 'Equip コストとして支払う'];
@@ -594,7 +634,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const flow = base ? '（Flow ' + base.energy + ' Energy' +
         (base.power.length ? ' + ' + base.power.join('+') + ' Power' : '') + '）' : '';
       const objectCost = spellObjectCostLabel(a, a.card);
-      const cost = fees.length || permanentChoice || a.repeatExecutions || objectCost
+      const namedPayment = paymentChoices(a);
+      const cost = fees.length || permanentChoice || a.repeatExecutions || objectCost || namedPayment.length
         ? '（' + energy + ' Energy）' + flow
         : flow || (printed !== null && a.pay > printed ? '（追加コスト +' + (a.pay - printed) + '）' : '');
       const discard = a.discards?.length ? '（' + a.discards.map(cardName).join('、') + ' を捨てる）'
@@ -613,7 +654,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const showOff = showOffLabel(a, a.card);
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
         discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
-        (objectCost ? '（' + objectCost + '）' : '');
+        (objectCost ? '（' + objectCost + '）' : '') +
+        (namedPayment.length ? '（' + namedPayment.join('、') + '）' : '');
       if (def && def.types.includes('spell')) {
         const targets = (a.targets || []).map(cardName);
         if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
@@ -1104,7 +1146,9 @@ function showMenu(list, title, x, y) {
   const f = m.querySelector('button'); if (f) f.focus();
 }
 function showsPayment(a) {
-  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' || typeof a.banishCostCard === 'number';
+  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
+    typeof a.banishCostCard === 'number' || typeof a.variablePower === 'number' ||
+    Boolean(a.gearDiscounts?.length || a.spellExhaustPayers?.length);
 }
 function stepPick(x, y) {
   const { card, list, chosen } = pick, d = chosen.length;

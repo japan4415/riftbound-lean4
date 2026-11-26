@@ -535,8 +535,11 @@ def RAD_020.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Mordekaiser, Twice Slain: the effect is not written yet. -/
-def RAD_020 : CardDef := RAD_020.meta
+/-- Mordekaiser, Twice Slain may sacrifice a friendly Unit to replace his pending death. -/
+def RAD_020 : CardDef :=
+  { RAD_020.meta with
+    abilities := [.passive .always [.sacrificeToSaveSelf]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-021
 /--
@@ -1836,8 +1839,11 @@ def RAD_068.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Orianna, Mechanical Marvel: the effect is not written yet. -/
-def RAD_068 : CardDef := RAD_068.meta
+/-- Orianna, Mechanical Marvel offers one optional Gear play discount per turn. -/
+def RAD_068 : CardDef :=
+  { RAD_068.meta with
+    abilities := [.passive (.matches .self .onBattlefield) [.gearPlayDiscount 1 1]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-069
 /--
@@ -3824,8 +3830,14 @@ def RAD_140.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Chronobreak: the effect is not written yet. -/
-def RAD_140 : CardDef := RAD_140.meta
+/-- Chronobreak declares the Power and targets, then lets the caster order the replays by their owners. -/
+def RAD_140 : CardDef :=
+  let effect := EffectDef.of [.targetOf .anyNumber .friendly .anywhere [.ofType .unit]]
+    .banishAndReplayGroup
+  { RAD_140.meta with
+    variablePower := true,
+    spellEffect := some { effect with variablePowerTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED RAD-141
 /--
@@ -3957,8 +3969,12 @@ def RAD_145.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Lady of Clockwork: the effect is not written yet. -/
-def RAD_145 : CardDef := RAD_145.meta
+/-- Lady of Clockwork ends its previous animation when its next choice finalizes. -/
+def RAD_145 : CardDef :=
+  { RAD_145.meta with
+    abilities := [.triggered { event := .at_ .startOfMain, optional := true, cost := .energy 1 }
+      (.of [.targetOf .one .friendly .anywhere [.ofType .gear]] .animateGear) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED RAD-146
 /--
@@ -4122,8 +4138,11 @@ def RAD_151.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Starry-Eyed Songstress: the effect is not written yet. -/
-def RAD_151 : CardDef := RAD_151.meta
+/-- Starry-Eyed Songstress can pay part of a Spell's price by exhausting four objects. -/
+def RAD_151 : CardDef :=
+  { RAD_151.meta with
+    abilities := [.passive .always [.spellExhaustDiscount 3 2]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-152
 /--

@@ -129,6 +129,10 @@ structure Object where
   copiedUses : List (Timestamp × Nat) := []
   /-- The base Might set by an effect for this turn, before arithmetic changes (CR 143.2.a, 479.2). -/
   baseMightThisTurn : Option Nat := none
+  /-- Gear animation effects, with the newest source and its base Might first (CR 479). -/
+  unitGearEffects : List (ObjId × Nat) := []
+  /-- The latest animation just before leaving the Board, for its death event. -/
+  leftUnitGearMight : Option Nat := none
   /-- The lasting changes of Might that effects have made to this object (CR 475-478). Leaving the
   Board clears them. -/
   mightMods : List MightMod := []

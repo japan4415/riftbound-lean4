@@ -30,10 +30,22 @@ namespace GameState
 def printedCardDef? (s : GameState) (id : ObjId) : Option CardDef :=
   ((s.obj? id).bind (·.kind.cardId?)).bind s.cards.find?
 
-/-- The definition of the card an object has in the Copy Effects layer (CR 479.1). -/
-def cardDef? (s : GameState) (c : ObjId) : Option CardDef :=
-  (s.obj? c).bind (fun o =>
-    (((s.attachmentCopyOf c o).map (·.card)) <|> o.kind.cardId?).bind s.cards.find?)
+/-- Give an animated Gear the Unit type and its animation's base Might (CR 143, 479). -/
+def _root_.Riftbound.CardDef.withUnitGearMight (d : CardDef) (might : Nat) : CardDef :=
+  { d with types := if d.hasType .unit then d.types else d.types ++ [.unit], might := some might }
+
+/-- Copy effects followed by a Gear's lasting changes to type and base Might (CR 479). -/
+def cardDef? (s : GameState) (c : ObjId) : Option CardDef := do
+  let o ← s.obj? c
+  let id ← ((s.attachmentCopyOf c o).map (·.card)) <|> o.kind.cardId?
+  let d ← s.cards.find? id
+  return (o.unitGearEffects.head?.map Prod.snd).elim d d.withUnitGearMight
+
+/-- Read last known Unit Gear traits while collecting a death's triggers (CR 429.1.a). -/
+def deathSubject (s : GameState) (id : ObjId) : GameState :=
+  match (s.obj? id).bind (·.leftUnitGearMight) with
+  | some might => s.modObj id (fun o => { o with unitGearEffects := [(id, might)] })
+  | none => s
 
 /-- Card definitions captured when Equipment attached, with their distinct ability instances.
 Leave and death events use the last active copies preserved on the object that changed zones. -/
@@ -1027,7 +1039,9 @@ Power the cost may name), if it can: the first payment that the Pool has. -/
 def GameState.payNow (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
     (unit : Bool := false) (permanent : Bool := false) : Option RunePool :=
   let own := ((s.cardDef? src).map (·.domains)).getD []
-  (c.payments own).findSome? (fun pay =>
+  let payments := if c.power.length > 1 && c.power.all (· == .any) then
+    c.flexiblePayments (s.poolOf p) else c.payments own
+  payments.findSome? (fun pay =>
     s.spendFor p ((s.cardDef? src).any (·.hasType .gear)) pay unit permanent)
 
 /-- How the player pays the cost `c` for the object `src` with Runes besides the Pool, if they can:
@@ -1036,7 +1050,12 @@ def GameState.runePlan (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
     (unit : Bool := false) (permanent : Bool := false) : Option (List (ObjId × RuneAbility)) :=
   let d := s.cardDef? src
   let gear := d.any (·.hasType .gear)
-  (c.payments ((d.map (·.domains)).getD [])).findSome? (fun pay =>
+  let payments := if c.power.length > 1 && c.power.all (· == .any) then
+    let available := (s.runesOf p).foldl (fun pool r =>
+      ((s.obj? r).bind (·.runeDomain)).elim pool (fun domain => pool.addPower domain 1)) (s.poolOf p)
+    c.flexiblePayments available
+  else c.payments ((d.map (·.domains)).getD [])
+  payments.findSome? (fun pay =>
     if (s.spendFor p gear pay unit permanent).isSome then some []
     else s.runeCover p pay unit (s.restrictedFor p gear permanent))
 
@@ -1314,7 +1333,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
-  | .anyNumber | .combinedMightAtMost _ => true
+  | .anyNumber | .combinedMightAtMost _ | .exactly _ => true
   | _ => false
 
 /-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
@@ -1452,7 +1471,7 @@ def Choice.simple : Choice → Bool
 
 /-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
-  | .target (.atOneBattlefield _) _ _ _ => false
+  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _ => false
   | .target q _ _ _ => q.pickable && q != .one
   | _ => false
 
@@ -1467,12 +1486,13 @@ and the objects are chosen in the order of the objects, so that a set is chosen 
 def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
   | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
-  | .target (.atOneBattlefield _) _ _ _ => true
+  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
 def Choice.groupLimit : Choice → Nat
-  | .target (.upTo n) _ _ _ | .target (.atOneBattlefield n) _ _ _ => n
+  | .target (.upTo n) _ _ _ | .target (.atOneBattlefield n) _ _ _ |
+      .target (.exactly n) _ _ _ => n
   | .target .anyNumber _ _ _ => 0
   | .target (.combinedMightAtMost limit) _ _ _ => limit
   | _ => 1
@@ -1603,10 +1623,11 @@ def Choice.targetGroupLimit (s : GameState) (p : PlayerId) (self : ObjId)
   | .target (.atOneBattlefield n) _ _ _, first :: _ => n + s.bonusOn p self first none true
   | _, _ => c.groupLimit
 
-/-- A group of targets restricted to a Battlefield must identify at least one target. -/
+/-- Check the minimum or exact number of objects for a target group. -/
 def Choice.groupNonemptyOk (c : Choice) (ids : List ObjId) : Bool :=
   match c with
   | .target (.atOneBattlefield _) _ _ _ => !ids.isEmpty
+  | .target (.exactly n) _ _ _ => ids.length == n
   | _ => true
 
 /-- All chosen targets must fit one candidate group and satisfy its limit. -/

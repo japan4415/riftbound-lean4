@@ -470,9 +470,26 @@ def effectAddChoices (s : GameState) (p : PlayerId) (paid : GameState → Bool) 
   (effectAddUses s p true).filter (fun a =>
     (a.apply s p).any (fun (t, _) => effectAddReachable p paid fuel t))
 
+/-- A funding window cannot add more than this quantity of Power. Each Rune can add Energy
+and Power, fixed Adds increase the total, and resource exchanges preserve it. -/
+def effectAddPowerBudget (s : GameState) (p : PlayerId) : Nat :=
+  let runes := s.runesOf p
+  let limit := (effectAddSlots s p).length + 2 * runes.length + 1
+  let sources := s.zone (.player p .base) ++ s.zone (.player p .legendZone) ++ s.zone .battlefieldZone
+  let maximum := sources.foldl (fun largest src =>
+    let slots := ((s.cardDef? src).map (fun d => (s.activationList src d).length)).getD 0
+    (List.range slots).foldl (fun found idx =>
+      let added := (s.manaOffer src idx).elim 0 (fun (_, _, kind) => match kind with
+        | .energy n | .unitEnergy n | .power _ n | .any n | .gear n => n
+        | .permanent => 1
+        | .powerToEnergy | .energyToPower => 0)
+      max found (added + s.manaBonus p src)) largest) 0
+  (s.poolOf p).total + 2 * runes.length + limit * maximum
+
 /-- Allow effect plays to discover and use the same Add abilities as player actions. -/
 def effectAddPolicy : EffectAddPolicy :=
-  { choices := effectAddChoices, applyAll := applyEffectAdds, safe := applyEffectAdds_safe }
+  { choices := effectAddChoices, powerBudget := effectAddPowerBudget,
+    applyAll := applyEffectAdds, safe := applyEffectAdds_safe }
 
 /-- Check the selected targets, mode and non-resource costs before its resource payment. -/
 def declaredTriggerOk (s : GameState) (t : PendTrigger) (targets : List ObjId) : TriggerPayment → Bool

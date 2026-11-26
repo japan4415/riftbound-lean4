@@ -25,7 +25,107 @@ inductive RuleError where
   | internal (msg : String)
 deriving DecidableEq, Repr
 
-/-- Work through the work frames until the next decision or the end, one `microStep` at a time.
+/-- The declared board objects to be killed to pay for this play or ability (CR 357.2.a). -/
+def GameState.actionKillCosts (s : GameState) (a : Action) : List ObjId :=
+  match s.pending, a.kind with
+  | .triggerOrder _ first more _ _ :: _, .putTrigger i _ (.pay ids ..) =>
+    match (first :: more)[i]? with
+    | some t => match trigCost s t with | .killFriendly .. => ids | _ => []
+    | none => []
+  | .priority _ :: _, .playCard card _ targets _ _ pick
+  | .chainPass .. :: _, .playCard card _ targets _ _ pick
+  | .showdown .. :: _, .playCard card _ targets _ _ pick =>
+    (s.playDeathCost card targets pick).toList
+  | .priority _ :: _, .activate source index _ targets _ _ _ object
+  | .chainPass .. :: _, .activate source index _ targets _ _ _ object
+  | .showdown .. :: _, .activate source index _ targets _ _ _ object =>
+    match s.activationAt source index with
+    | some (_, .activated costs _ _ _) =>
+      let last := if costKills costs then targets.getLast?.toList else []
+      let selected := match permanentCost costs with
+        | some (.kill, _) => object.toList
+        | _ => []
+      last ++ selected
+    | _ => []
+  | _, _ => []
+
+/-- Check that the declaration came from a play decision before interrupting it for replacement
+choices. No part of the declared payment has been committed yet. -/
+def GameState.actionDeathCostChoice (s : GameState) (a : Action) :
+    Option (ObjId × PlayerId × Effect × Effect) :=
+  match s.pending with
+  | .priority _ :: _ | .chainPass .. :: _ | .showdown .. :: _ | .triggerOrder .. :: _ =>
+    if s.phase == .setup then none
+    else s.deathGroupChoice (s.actionKillCosts a) false
+  | _ => none
+
+/-- Preserve every part of the declared answer while the affected controller decides whether
+to replace the Kill. The confirmation is automatic and uses the original answer's events. -/
+def applyDeclaredAction (s : GameState) (a : Action) : Option (GameState × List Event) :=
+  match s.actionDeathCostChoice a with
+  | some (unit, p, first, other) =>
+    some ({ s with pending := .eitherDo p unit {} first other .nil :: .resumeCost a :: s.pending }, [])
+  | none => applyAction s a
+
+/-- Advance a regular work frame or complete a locked declaration. The restored decision is
+checked in the current state, and any further Kill replacement is handled before paying. -/
+def workStep (s : GameState) : Option (GameState × List Event) :=
+  match s.pending with
+  | .resumeCost a :: rest =>
+    let before := { s with pending := rest }
+    if a.kind ≠ .timeCalled ∧ Legal before a then applyDeclaredAction before a
+    else some (before, [])
+  | _ => microStep s
+
+/-- A payment is interrupted only in play and only from a non-setup decision. -/
+theorem GameState.actionDeathCostChoice_context {s : GameState} {a : Action}
+    {choice : ObjId × PlayerId × Effect × Effect} (h : s.actionDeathCostChoice a = some choice) :
+    s.phase ≠ .setup ∧ ∃ frame rest, s.pending = frame :: rest ∧ frame.isSetup = false := by
+  cases hp : s.pending with
+  | nil => simp [GameState.actionDeathCostChoice, hp] at h
+  | cons frame rest =>
+    refine ⟨?_, frame, rest, rfl, ?_⟩
+    · intro phase
+      cases frame <;> simp [GameState.actionDeathCostChoice, hp, phase] at h
+    · cases frame <;>
+        first | rfl | (simp [GameState.actionDeathCostChoice, hp] at h)
+
+/-- Applying a declaration either runs its ordinary transition or only inserts the two frames. -/
+theorem applyDeclaredAction_cases {s s' : GameState} {a : Action} {es : List Event}
+    (h : applyDeclaredAction s a = some (s', es)) :
+    applyAction s a = some (s', es) ∨
+    ∃ unit p first other,
+      s.actionDeathCostChoice a = some (unit, p, first, other) ∧
+      s' = { s with pending := .eitherDo p unit {} first other .nil :: .resumeCost a :: s.pending } ∧
+      es = [] := by
+  cases hh : s.actionDeathCostChoice a with
+  | none => exact Or.inl (by simpa [applyDeclaredAction, hh] using h)
+  | some choice =>
+    obtain ⟨unit, p, first, other⟩ := choice
+    simp only [applyDeclaredAction, hh, Option.some.injEq, Prod.mk.injEq] at h
+    exact Or.inr ⟨unit, p, first, other, rfl, h.1.symm, h.2.symm⟩
+
+/-- A work step either operates on the top frame or removes the work marker and acts in the
+restored decision. -/
+theorem workStep_cases {s s' : GameState} {es : List Event} (h : workStep s = some (s', es)) :
+    microStep s = some (s', es) ∨
+      ∃ a rest, s.pending = .resumeCost a :: rest ∧
+        ((a.kind ≠ .timeCalled ∧ Legal { s with pending := rest } a ∧
+          applyDeclaredAction { s with pending := rest } a = some (s', es)) ∨
+          (s' = { s with pending := rest } ∧ es = [])) := by
+  unfold workStep at h
+  split at h
+  · rename_i a rest hp
+    refine Or.inr ⟨a, rest, hp, ?_⟩
+    dsimp only at h
+    split at h
+    · rename_i allowed
+      exact Or.inl ⟨allowed.1, allowed.2, h⟩
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      exact Or.inr ⟨h.1.symm, h.2.symm⟩
+  · exact Or.inl h
+
+/-- Work through the work frames until the next decision or the end, one `workStep` at a time.
 `fuel` is the number of steps allowed. -/
 def advance : Nat → GameState → List Event → Except RuleError (GameState × List Event)
   | 0, s, es =>
@@ -36,7 +136,7 @@ def advance : Nat → GameState → List Event → Except RuleError (GameState �
     match s.pending with
     | f :: _ =>
       if f.isWork then
-        match microStep s with
+        match workStep s with
         | some (s', es') => advance n s' (es ++ es')
         | none => .error (.internal "microStep")
       else .ok (s, es)
@@ -46,7 +146,7 @@ def advance : Nat → GameState → List Event → Except RuleError (GameState �
 def step (fuel : Nat) (s : GameState) (a : Action) :
     Except RuleError (GameState × List Event) :=
   if Legal s a then
-    match applyAction s a with
+    match applyDeclaredAction s a with
     | some (s1, es) => advance fuel s1 es
     | none => .error (.internal "applyAction")
   else .error .illegal

@@ -38,7 +38,10 @@ theorem microStep_phase0 {s s' : GameState} {es : List Event} {ph : Phase} {rest
   cases ph with
   | setup => exact absurd rfl hne
   | awaken => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
-  | beginning => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
+  | beginning =>
+    dsimp only at h
+    split at h <;>
+      (simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl)
   | channel => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | draw => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | main => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
@@ -67,7 +70,12 @@ theorem step_concede {fuel : Nat} {s : GameState} {a : Action} {p : PlayerId}
     (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p) :
     step fuel s a = .ok ({ s with result := some (.won [otherPlayer p]), pending := [] }, []) := by
   have hc := hl.of_concede hk
-  simp only [step, hl, ite_true, applyAction_concede hk hp]
+  have noCost : s.actionDeathCostChoice a = none := by
+    cases h : s.pending with
+    | nil => simp [GameState.actionDeathCostChoice, h]
+    | cons frame rest =>
+      cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, h, hk]
+  simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp]
   unfold advance
   cases fuel <;> simp
 

@@ -66,13 +66,16 @@ structure EffectDef where
   playerTarget : Option Side := none
   /-- Recheck the declared object targets separately at resolution (CR 355.11, 359.3.e.2). -/
   recheckTargets : Bool := false
+  /-- The unbounded target group requires exactly the declared additional Power (CR 355.5). -/
+  variablePowerTargets : Bool := false
 deriving DecidableEq, Repr, Hashable
 
 /-- The selected mode's instructions and choices, with the declaration's shared rules. -/
 def EffectDef.modeAt (e : EffectDef) (i : Nat) : Option EffectDef :=
   e.modes[i]?.map (fun mode =>
     { choices := mode.choices, body := mode.body, playerTarget := e.playerTarget,
-      recheckTargets := e.recheckTargets, moveChoice := mode.moveChoice })
+      recheckTargets := e.recheckTargets, moveChoice := mode.moveChoice,
+      variablePowerTargets := e.variablePowerTargets })
 
 /-- Get the instructions and target requirements for the choice on the Chain. -/
 def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
@@ -80,11 +83,18 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .modeDestination i _ => (e.modeAt i).filter (·.moveChoice.isSome)
   | .plain => if e.modes.isEmpty && e.moveChoice.isNone then some e else none
   | .destination _ => if e.modes.isEmpty && e.moveChoice.isSome then some e else none
-  | .payForBattlefield .. | .withPermanentCosts .. => none
+  | .payForBattlefield .. | .withPermanentCosts .. | .withGearDiscounts .. => none
   | .withPlayer pick _ => e.forPick pick
   | .withShowOff pick _ => (e.forPick pick).map (fun branch =>
     { branch with choices := branch.choices ++ e.showOffChoices, showOffChoices := [] })
-  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ => e.forPick pick
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
+      .withSpellExhausts pick _ => e.forPick pick
+  | .withVariablePower pick n => (e.forPick pick).map (fun branch =>
+    if branch.variablePowerTargets then
+      { branch with choices := branch.choices.map (fun
+        | .target .anyNumber side place fs => .target (.exactly n) side place fs
+        | choice => choice) }
+    else branch)
 
 /-- Whether the Spell can have distinct modes, targets or destinations in a Repeat (CR 820.2). -/
 def EffectDef.hasFinalizationChoice (e : EffectDef) : Bool :=

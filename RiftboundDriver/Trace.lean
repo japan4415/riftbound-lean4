@@ -70,6 +70,8 @@ def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (Strin
     ("accelerated", if plan.accelerated then "true" else "false")] ++
     (if plan.battlefieldFees.isEmpty then [] else
       [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
+    (if plan.gearDiscounts.isEmpty then [] else
+      [("gearDiscounts", jarr (plan.gearDiscounts.map (fun id => toString id.n)))]) ++
     plan.extraObject.toList.map (fun id => ("extraObject", toString id.n)) ++
     plan.discard.toList.map (fun id => ("discard", toString id.n)) ++
     plan.showOff.toList.map (fun id => ("showOff", toString id.n))
@@ -146,13 +148,20 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
       permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
+  | .withGearDiscounts pick sources =>
+    spellPickFields state c pick ++ [("gearDiscounts", jarr (sources.map (fun id => toString id.n)))]
   | .withPlayer pick player =>
     spellPickFields state c pick ++ [("targetPlayer", toString player.n)]
   | .withShowOff pick object =>
     spellPickFields state c pick ++ [("showOff", toString object.n)]
   | .withExtraObject pick object =>
     spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
+  | .withSpellExhausts pick groups =>
+    let payers := groups.flatMap (fun (legend, units) => legend :: units)
+    spellPickFields state c pick ++ [("spellExhaustPayers", jarr (payers.map (fun id => toString id.n)))]
   | .thenRepeat pick _ _ => spellPickFields state c pick
+  | .withVariablePower pick n =>
+    spellPickFields state c pick ++ [("variablePower", toString n)]
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
@@ -197,6 +206,26 @@ def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × Stri
       (match if yes then first else other with
       | .chooseDeathBanisher _ player => [("banishingPlayer", toString player.n)]
       | _ => [])
+  | _ => []
+
+/-- Identify the affected Unit and the exact sacrifice elected during its death replacement. -/
+def deathSacrificeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ first@(.recordDeathSacrifice unit _) other _) =>
+    [("deathSacrificeUnit", toString unit.n)] ++
+      (match if yes then first else other with
+      | .recordDeathSacrifice _ cost =>
+        [("deathSacrificeCost", cost.elim "null" (fun id => toString id.n))]
+      | _ => [])
+  | _ => []
+
+/-- Identify the replacement that the controller puts next. -/
+def deathOrderFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ first@(.recordDeathOrder ..) other _) =>
+    match if yes then first else other with
+    | .recordDeathOrder _ unit => [("deathOrderUnit", toString unit.n)]
+    | _ => [("moreDeathOrders", "true")]
   | _ => []
 
 /-- Describe a decision about paying during resolution, including individual payments. -/
@@ -412,7 +441,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
         tokenLocationFields frame yes ++ damageOrderFields frame yes ++ damageDivisionFields frame yes ++
-        deathBanishFields frame yes ++
+        deathBanishFields frame yes ++ deathSacrificeFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
         empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes
@@ -420,6 +449,8 @@ def actionJson (a : Action) (frame : Option Frame := none)
       [("obj", toString o.n)] ++
         (match frame with
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
+        | some (.pickDo _ _ _ _ _ (.recordBanishReplay ..) _) => [("choiceContext", jstr "banishReplay")]
+        | some (.pickDo _ _ _ _ _ .addReservedLegendPicked _) => [("choiceContext", jstr "reserveLegend")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.doThen (.prim (.exhaust _)) _) _) =>
           [("choiceContext", jstr "equipExhaust")]

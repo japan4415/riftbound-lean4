@@ -69,8 +69,8 @@ open Riftbound RiftboundCards
 -- The set is present as IR throughout scenario verification (docs/coverage.md).
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
-#guard (Radiance.cards.filter (fun c => c.status == .full)).all CardDef.runs
-#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 1097
+#guard Radiance.cards.all (fun c => c.status == .full && c.runs)
+#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 1102
 
 -- The official image of Bilgewater Tracker shows Fury and the Bilgewater tag.
 #guard match db.find? ⟨"RAD-003"⟩ with
@@ -102,7 +102,7 @@ open Riftbound RiftboundCards
 -- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
 -- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
 -- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 269
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 268
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 270
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 269
 
 end RiftboundTest

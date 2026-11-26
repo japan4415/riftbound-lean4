@@ -34,7 +34,9 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let byGear ← entersReady friendlyDeath
   let byEnemy ← entersReady enemyDeath
   let byUnit ← entersReady unitDeath
-  let byBanish ← entersReady (gone.1.withTriggers gone.2)
+  -- Resolve the Anvil's leave-board ability before playing Animus.
+  let (afterBanish, _) ← (advance 100 (gone.1.withTriggers gone.2) []).toOption
+  let byBanish ← entersReady (settleChain {} 12 afterBanish)
   return byGear && byUnit && !byEnemy && !byBanish
 
 -- A simultaneous kill gives one ability even when the watching Unit also died.

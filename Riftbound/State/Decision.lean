@@ -230,6 +230,8 @@ inductive Frame where
   /-- Work: resolve the item on top of the Chain (CR 340): its effect is run, then it goes to the
   Trash. -/
   | resolveChain
+  /-- Work: finish the declared play or ability after choosing replacements for its Kill costs. -/
+  | resumeCost (action : Action)
   /-- Work: run the effects `todo` of the item `src` for `controller`, with the variables `env`
   (design.md §6.2). -/
   | run (controller : PlayerId) (src : ObjId) (env : Env) (todo : EffectList)
@@ -307,7 +309,7 @@ def Frame.isSetup : Frame → Bool
 def Frame.isPlay : Frame → Bool
   | .expireTurn => true
   | .chainPass .. => true
-  | .resolveChain => true
+  | .resolveChain | .resumeCost _ => true
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
@@ -335,7 +337,7 @@ def Frame.isWork : Frame → Bool
   | .phase _ => true
   | .scoreHolds => true
   | .expireTurn => true
-  | .resolveChain => true
+  | .resolveChain | .resumeCost _ => true
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
@@ -345,6 +347,11 @@ def Frame.isWork : Frame → Bool
   | .combatFinish _ => true
   | .triggers _ => true
   | _ => false
+
+/-- Work handled directly by the rules for an individual frame. -/
+def Frame.isCoreWork : Frame → Bool
+  | .resumeCost _ => false
+  | frame => frame.isWork
 
 end Riftbound
 

@@ -389,9 +389,8 @@ mutual
 
 /-- An effect that is understood. -/
 def Effect.understood : Effect → Bool
-  | .addReservedLegend => true
+  | .nop | .animateGear | .addReservedLegend => true
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
-  | .nop => true
   | .seq es => EffectList.understood es
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e
   | .forEach s body => s.understood && Effect.understood body
@@ -417,7 +416,8 @@ def Effect.understood : Effect → Bool
     who.understood && unit.understood && gear.understood && spell.understood
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true
+  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+      .banishAndReplayGroup => true
   | .banishAndPlayCard sel _ => sel.understood
   | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
@@ -510,10 +510,11 @@ def StaticMod.runs : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ => true
+  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ |
+      .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
-  | .diesInsteadGear => true
+  | .diesInsteadGear | .sacrificeToSaveSelf => true
   | .rescueWeakerHere | .replaceUnitTokenWith _ => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true

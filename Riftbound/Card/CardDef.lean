@@ -64,6 +64,11 @@ def PlayExtra.separateSpellObject : PlayExtra → Bool
   | .returnUnit | .exhaustUnit => true
   | _ => false
 
+/-- Whether this cost asks for a permanent to die. -/
+def PlayExtra.kills : PlayExtra → Bool
+  | .killGear | .killUnitOrGear | .killUnit | .killPet => true
+  | _ => false
+
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
 done as the card is played. -/
 inductive PaidCut where
@@ -119,6 +124,8 @@ structure CardDef where
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
+  /-- This Spell declares an additional cost of any amount of Power (CR 355.1, 356.4.f). -/
+  variablePower : Bool := false
   /-- Electing the zero-resource entry option makes this Unit enter ready and unable to move
   for the rest of the turn. The play's cost choices carry the election. -/
   electReadyEntryNoMove : Bool := false

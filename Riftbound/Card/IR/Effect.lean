@@ -65,6 +65,8 @@ structure ReducedPermanentPlay where
   accelerated : Bool
   /-- The Battlefields whose additional costs the player elected to pay. -/
   battlefieldFees : List ObjId := []
+  /-- The passive sources whose Gear play reductions were elected. -/
+  gearDiscounts : List ObjId := []
   /-- The card revealed or friendly object picked for Show Off (CR 832). -/
   showOff : Option ObjId := none
 deriving DecidableEq, Repr, Hashable
@@ -142,6 +144,8 @@ inductive Effect where
       (adds : List EffectAdd)
   /-- Nothing happens. -/
   | nop
+  /-- Turn the chosen Gear into a Unit Gear until this ability chooses another (CR 143.5, 479). -/
+  | animateGear
   /-- Record a triggered Add's use before its resource effects resolve (CR 430.2). -/
   | markTriggeredAdd (idx : Nat)
   /-- Do the effects in order. -/
@@ -218,6 +222,17 @@ inductive Effect where
   | planPermanentPlay (card : ObjId) (terms : EffectPlayTerms)
   /-- Banish one Unit before its owner finalizes the new play. -/
   | banishForReplay (card : ObjId) (replay : BanishReplay)
+  /-- Banish the chosen group of Units together, then replay each owner's cards. -/
+  | banishAndReplayGroup
+  /-- The owners order their pending plays in turn order before finalization (CR 303.2.a). -/
+  | orderBanishReplays (remaining ordered : List (PlayerId × ObjId × Option ObjId))
+  /-- Record one owner's next play and return to ordering the rest of the group. -/
+  | recordBanishReplay (controller : PlayerId)
+      (remaining ordered : List (PlayerId × ObjId × Option ObjId))
+  /-- Finalize an ordered replay from Banishment once the group is ready. -/
+  | planBanishReplay (card : ObjId) (location : Option ObjId)
+  /-- Return a pending replay to Banishment if it could not finalize. -/
+  | cancelBanishReplay (card : ObjId)
   /-- Apply the selected finalization of a Unit or Gear played by the effect. -/
   | finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms) (plan : ReducedPermanentPlay)
   /-- Continue choosing resource activations for the selected finalization. -/
@@ -249,6 +264,10 @@ inductive Effect where
   | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
   /-- Record which player's Banish replaces the pending death (CR 372). -/
   | chooseDeathBanisher (unit : ObjId) (banisher : PlayerId)
+  /-- Declare the friendly Unit paying for this death replacement, or decline it. -/
+  | recordDeathSacrifice (unit : ObjId) (cost : Option ObjId)
+  /-- Record a controller's next replacement among simultaneous deaths (CR 373). -/
+  | recordDeathOrder (group : List ObjId) (unit : ObjId)
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
   | endCombatDamage (excess : Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following

@@ -154,6 +154,7 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
       -- A Battlefield works for the player whose object it is about.
       let c := if d.hasType .battlefield then who else deadController.getD o.controller
       let copy := (lastCopy <|> s.attachmentCopyOf src o).map (·.stamp)
+      let board := if ev == .die || ev == .firstUnitDeathHere then s.deathSubject subj else s
       let definitions := (d, d.fullAbilities.length, copy) ::
         ((s.attachmentTextDefs src deadController.isSome).map
           (fun (cd, stamp) => (cd, cd.textAbilities.length, some stamp)))
@@ -162,8 +163,8 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
           match cd.allAbilities[j]? with
           | some (Ability.triggered t _ lim) =>
             if t.event == ev && t.subject != .self &&
-                subjectHolds s src c subj who t.subject &&
-                condOkEnv s src c { slots := [.obj subj], passMight := s.mightTable } t.condition &&
+                subjectHolds board src c subj who t.subject &&
+                condOkEnv board src c { slots := [.obj subj], passMight := board.mightTable } t.condition &&
                 t.occurrence == occurrence && limitOk s src j lim stamp then
               some { source := src, card := cd.id, idx := j, controller := c,
                      subject := some subj, copyStamp := stamp }
@@ -780,6 +781,7 @@ def Frame.isResolution : Frame → Bool
   | .resolveChain => true
   | .combatDamage .. => true
   | .combatResolve .. => true
+  | .pickDo _ _ _ _ _ (.recordBanishReplay ..) _ => true
   | .predict .. | .chancePredict .. => true
   | .eitherDo _ _ _ (.fundPermanentFromEffect ..) _ _ => true
   | .eitherDo _ _ _ (.finishFundedPermanent ..) _ _ => true
@@ -790,6 +792,8 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.applySplitDamage _) _ _ => true
   | .eitherDo _ _ _ (.prim (.attachPaying ..)) _ _ => true
   | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
+  | .eitherDo _ _ _ (.recordDeathSacrifice ..) _ _
+  | .eitherDo _ _ _ (.recordDeathOrder ..) _ _ => true
   | .eitherDo _ _ _ (.planUnitTokenEntries ..) _ _
   | .eitherDo _ _ _ (.fundTokenAccelerate ..) _ _
   | .eitherDo _ _ _ (.finishUnitTokens ..) _ _ => true
@@ -975,7 +979,7 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
   | .died id p =>
     if (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear) then
       let known := s.recordTurnFact notes p .permanentDied none s.nextTimestamp
-      match (s.obj? id).filter (·.kind.phys?.isSome), (s.cardDef? id).any (·.hasType .unit) with
+      match (s.obj? id).filter (·.kind.phys?.isSome), ((s.deathSubject id).cardDef? id).any (·.hasType .unit) with
       | some dead, true =>
         dead.loc.elim known (fun field =>
           s.recordTurnFact known p .firstUnitDeathHere (some field) dead.timestamp.n)
@@ -1323,11 +1327,27 @@ theorem recordTriggerMode_safe (s : GameState) (t : PendTrigger) (mode : Option 
     · exact addTurnFxOn_safe _ _ _ _
   · exact Safe.refl s
 
+/-- Finalizing the Legend's target ends its previous animation immediately (CR 355.5). -/
+def prepareGearAnimation (s : GameState) (t : PendTrigger) (targets : List ObjId)
+    (mode : Option Nat) : GameState :=
+  match targets, (triggerAbility s t).bind Ability.effectDef |>.bind
+      (·.forPick (mode.elim .plain SpellPick.mode)) with
+  | [chosen], some { body := .animateGear, .. } => endGearAnimation s t.source chosen
+  | _, _ => s
+
+/-- Preparing the new target changes only the old animation traits. -/
+theorem prepareGearAnimation_safe (s : GameState) (t : PendTrigger) (targets : List ObjId)
+    (mode : Option Nat) : Safe s (prepareGearAnimation s t targets mode) := by
+  unfold prepareGearAnimation
+  split
+  · exact endGearAnimation_safe _ _ _
+  · exact Safe.refl _
+
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none)
     (player : Option PlayerId := none) : GameState :=
-  let s1 := (recordTriggerMode s t mode).modObj t.source
+  let used := (recordTriggerMode s t mode).modObj t.source
     (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)
   let item : Object :=
     { abilityItem t.card t.idx t.source t.controller
@@ -1340,6 +1360,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       shownOff := t.shownOff
       abilityCopyStamp := t.copyStamp
       targetPlayer := player }
+  let s1 := prepareGearAnimation used t ts mode
   match addObject s1 item .chain with
   | some r => r.1
   | none => s1
@@ -1378,7 +1399,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
   | .killFriendly n _ =>
     if ids.length == n then
-      some (applyEach (killOrSaveInGroup s) (noteTriggerBanishers s banishers) ids)
+      some (resolveDeathGroupWith (noteTriggerBanishers s banishers) ids (killOrSaveInGroup s))
     else none
   | .discard n =>
     if ids.length == n && ids.eraseDups.length == n &&
@@ -1441,13 +1462,14 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
   have h1 : Safe s ((recordTriggerMode s t mode).modObj t.source
       (fun o => (o.noteAbilityUse t.idx t.copyStamp).noteChose s.turn ts)) :=
     (recordTriggerMode_safe s t mode).trans (Safe.modObj _ t.source (fun _ => rfl) (fun _ => rfl))
+  have done := h1.trans (prepareGearAnimation_safe _ t ts mode)
   unfold putTrigger
   dsimp only
   split
   · rename_i r hr
-    refine h1.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
+    refine done.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
       fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩
-  · exact h1
+  · exact done
 
 /-- Paying for a trigger preserves structural invariants. -/
 theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
@@ -1479,7 +1501,7 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
   · split at h
     · cases h
       exact (noteTriggerBanishers_safe s banishers).trans
-        (applyEach_safe (killOrSaveInGroup_safe s) ids _)
+        (resolveDeathGroupWith_safe _ ids (killOrSaveInGroup_safe s))
     · simp at h
   · split at h
     · cases h; exact payDiscards_safe _ _ _

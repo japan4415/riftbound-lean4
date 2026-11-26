@@ -849,6 +849,7 @@ private theorem moveEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} 
   · dsimp only at h
     split at h <;> obtain rfl := List.mem_singleton.mp h <;> rfl
 
+set_option maxHeartbeats 4000000 in
 /-- The frames of an effect are play frames, draws, or Burn Out decisions. -/
 theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {e : Effect}
     {es : EffectList} {funding : EffectAddPolicy} {f : Frame}
@@ -908,6 +909,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        exact Or.inl (addReservedLegendFrame_play _ _ _ _ _))
     | exact Or.inl (recycleLookedStep_mem h)
     | exact Or.inl (replayFrames_mem h)
+    | exact Or.inl (orderBanishReplayFrames_mem h)
     | exact Or.inl (castInlineStep_mem h)
     | exact Or.inl (castLimitedStep_mem h)
     | exact Or.inl (finalizeLimitedStep_mem h)
@@ -1089,17 +1091,26 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
   · -- Beginning
     rename_i rest hp
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    have hP := (beginStep_safe s (s.active.getD ⟨0⟩)).same
-    refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
-    have : Frame.setupHands ∈ rest := by simpa using hmem
-    have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-    show (beginStep s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
-      (allPlayers (beginStep s (s.active.getD ⟨0⟩)).1.playerCount)
-    rw [hP.turnOrder, show (beginStep s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
-      simp [GameState.playerCount, hP.config]]
-    exact h1
+    dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_play (by intro phase; cases phase) rfl rfl ?_
+      intro member
+      have inRest : Frame.setupHands ∈ rest := by simpa using member
+      rw [hp]
+      exact List.mem_cons_of_mem _ inRest
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      have hP := (beginStep_safe s (s.active.getD ⟨0⟩)).same
+      refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
+      have : Frame.setupHands ∈ rest := by simpa using hmem
+      have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
+      show (beginStep s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
+        (allPlayers (beginStep s (s.active.getD ⟨0⟩)).1.playerCount)
+      rw [hP.turnOrder, show (beginStep s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
+        simp [GameState.playerCount, hP.config]]
+      exact h1
   · -- Scoring Step
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -1308,6 +1319,28 @@ theorem microStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (how
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   exact (microStep_handInv0 hwf hown hinv h0).withTriggers _
 
+/-- Cost questions account for no cards and are only reached after setup. -/
+theorem applyDeclaredAction_handInv {s s' : GameState} {a : Action} {es : List Event}
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : HandInv s) (hl : Legal s a)
+    (h : applyDeclaredAction s a = some (s', es)) : HandInv s' := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, choice, rfl, _⟩
+  · exact applyAction_handInv hwf hown hinv hl ordinary
+  · refine hinv.of_play (GameState.actionDeathCostChoice_context choice).1 rfl rfl ?_
+    intro member
+    simpa using member
+
+/-- Handling or resuming the question preserves the opening-hand invariant. -/
+theorem workStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (hinv : HandInv s) (h : workStep s = some (s', es)) : HandInv s' := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, pending, resumed⟩
+  · exact microStep_handInv hwf hown hinv ordinary
+  · have before : HandInv { s with pending := rest } :=
+      hinv.of_pop pending (fun _ => rfl) ⟨rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
+    rcases resumed with ⟨_, legal, applied⟩ | ⟨rfl, _⟩
+    · exact applyDeclaredAction_handInv (s := { s with pending := rest })
+        (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) before legal applied
+    · exact before
+
 /-- The automatic work keeps the hand invariant. -/
 theorem advance_handInv :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk → HandInv s →
@@ -1329,8 +1362,8 @@ theorem advance_handInv :
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_handInv n (microStep_wf hwf hm) (microStep_ownerOk hwf hown hm)
-            (microStep_handInv hwf hown hinv hm) h
+          exact advance_handInv n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm)
+            (workStep_handInv hwf hown hinv hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -1348,8 +1381,8 @@ theorem step_handInv {fuel : Nat} {s s' : GameState} {a : Action} {es : List Eve
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_handInv fuel (applyAction_wf hwf hl ha) (applyAction_ownerOk hwf hown hl ha)
-        (applyAction_handInv hwf hown hinv hl ha) h
+      exact advance_handInv fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_ownerOk hwf hown hl ha)
+        (applyDeclaredAction_handInv hwf hown hinv hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -1386,8 +1419,8 @@ theorem GameState.addDeck_hand {db : CardDB} {s s' : GameState} {p : PlayerId} {
     s'.zone (.player r .hand) = s.zone (.player r .hand) := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
-  rw [addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
+  rw [addCards_hand _ _ (fun _ => by simp) _ h6, addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
     addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
     addCards_hand _ _ (fun _ => by simp) _ h1]
 
@@ -1414,8 +1447,8 @@ theorem GameState.addLimitedDeck_hand {db : CardDB} {s s' : GameState} {p : Play
     s'.zone (.player r .hand) = s.zone (.player r .hand) := by
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
-  rw [addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
+  obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
+  rw [addCards_hand _ _ (fun _ => by simp) _ h6, addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
     addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
     addCards_hand _ _ (fun _ => by simp) _ h1]
 

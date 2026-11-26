@@ -33,9 +33,9 @@ def hasType (s : GameState) (id : ObjId) (t : CardType) : Bool :=
   | some d => d.types.contains t
   | none => false
 
-/-- Whether an object occupies a Unit's place on the board. An attachment copies Unit to Unit. -/
+/-- Whether an object occupies a Unit's place, including an animated Gear. -/
 def isUnit (s : GameState) (id : ObjId) : Bool :=
-  (s.printedCardDef? id).any (·.hasType .unit)
+  (s.printedCardDef? id).any (·.hasType .unit) || (s.obj? id).any (fun o => !o.unitGearEffects.isEmpty)
 
 /-- Whether the Unit `u` is at the Battlefield `bf`. -/
 def isAt (s : GameState) (bf u : ObjId) : Bool :=
@@ -351,7 +351,8 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     -- (its Might fell to 0), it dies
     else if !decide (u ∈ s.zone Zone.battlefieldZone) &&
         (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
-      ((s.modObj u (fun o => { o with damage := 0, exhausted := true })).addTurnFxOn
+      let healed := s.modObj u (fun o => { o with damage := 0, exhausted := true })
+      ((closeDeathSacrifice healed u).addTurnFxOn
         (match s.obj? u with | some o => o.controller | none => ⟨0⟩) u .saveUsed, [])
     else killObj s u
   | none => killObj s u
@@ -368,7 +369,8 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
     · exact saveUnit_safe s u none
     · split
       · exact (Safe.modObj s u (f := fun o => { o with damage := 0, exhausted := true })
-        (fun _ => rfl) (fun _ => rfl)).trans (addTurnFxOn_safe _ _ _ _)
+        (fun _ => rfl) (fun _ => rfl)).trans
+          ((closeDeathSacrifice_safe _ u).trans (addTurnFxOn_safe _ _ _ _))
       · exact killObj_safe s u
   · exact killObj_safe s u
 
@@ -405,11 +407,11 @@ def tokenStep (s : GameState) : Option (GameState × List Event) :=
   | some id => (removeObj s id).map (fun s' => (s', []))
   | none => none
 
-/-- An Equipment attached to something that is not a Unit in play (CR 137). -/
+/-- An Equipment whose recipient left the Board (CR 137.3.b). -/
 def GameState.looseGear (s : GameState) : Option ObjId :=
   s.inPlay.find? (fun g => (s.obj? g).any (fun o =>
     match o.attached with
-    | some u => !(s.inPlay.contains u && s.isUnit u)
+    | some u => !(s.inPlay.contains u)
     | none => false))
 
 /-- The step of the Cleanup for an Equipment whose Unit is gone: it is not attached any more
@@ -501,11 +503,46 @@ def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × L
   let r := s.observeCombat pending
   ({ s with pending := pending, combat := r.1 }, r.2)
 
-/-- A pending lethal death can require a replacement choice before the automatic kill.
-Off-board tokens and unattached Equipment are still handled first (CR 323, 372). -/
+/-- Collect simultaneous lethal deaths after higher-priority Cleanup matters (CR 323). -/
+def cleanupDeathGroup (s : GameState) : List ObjId :=
+  if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then [] else
+    s.inPlay.filter (fun u => s.isUnit u && s.lethal u)
+
+/-- Offer decisions associated with the simultaneous deaths (CR 372-373). -/
 def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
-  if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then none else
-    (s.inPlay.find? (fun u => s.isUnit u && s.lethal u)).bind s.deathBanishChoice
+  s.deathGroupChoice (cleanupDeathGroup s)
+
+/-- A survival replacement can itself alter the death that pays for it. -/
+def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
+  (s.deathSaver victim).join.any (fun cost => (s.deathSaveFor cost []).isSome)
+
+/-- The individual death when resolving a Cleanup group. -/
+def cleanupResolveDeath (s : GameState) (victim : ObjId) : GameState × List Event :=
+  if hasNestedDeath s victim then killOrSave s victim else cleanupKill s victim
+
+theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
+    Safe s (cleanupResolveDeath s victim).1 := by
+  unfold cleanupResolveDeath
+  split
+  · exact killOrSave_safe s victim
+  · exact cleanupKill_safe s victim
+
+/-- The automatic Cleanup handles a single death. A simultaneous group or a nested replacement
+must complete all of its decisions together. -/
+def cleanupResolveDeathGroup (s : GameState) : Option (GameState × List Event) :=
+  let ids := cleanupDeathGroup s
+  if 1 < ids.length || ids.any (hasNestedDeath s) then
+    some (resolveDeathGroupWith s ids cleanupResolveDeath)
+  else none
+
+theorem cleanupResolveDeathGroup_safe {s : GameState} {r : GameState × List Event}
+    (h : cleanupResolveDeathGroup s = some r) : Safe s r.1 := by
+  unfold cleanupResolveDeathGroup at h
+  dsimp only at h
+  split at h
+  · cases h
+    exact resolveDeathGroupWith_safe s _ cleanupResolveDeath_safe
+  · contradiction
 
 /-- The step of the `cleanup` frame (CR 322-323): declare a winner, or do a step, or start a
 Showdown, or finish. -/
@@ -517,13 +554,16 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
     | some (u, controller, first, other) =>
       ({ s with pending := .eitherDo controller u {} first other .nil :: .cleanup :: rest }, [])
     | none =>
-      match cleanupStep s with
+      match cleanupResolveDeathGroup s with
       | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
       | none =>
-        match s.startShowdown rest with
-        | some (bf, q) =>
-          continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
-        | none => continueAfterCleanup s rest
+        match cleanupStep s with
+        | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
+        | none =>
+          match s.startShowdown rest with
+          | some (bf, q) =>
+            continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+          | none => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -851,12 +891,15 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
   · split
     · exact Or.inr (Or.inl ⟨_, _, _, _, rfl⟩)
     · split
-      · rename_i r hr
-        exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
+      · rename_i result hr
+        exact Or.inr (Or.inr (Or.inl ⟨result.1, cleanupResolveDeathGroup_safe hr, rfl⟩))
       · split
-        · rename_i bf q hq
-          exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
-        · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
+        · rename_i r hr
+          exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
+        · split
+          · rename_i bf q hq
+            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
 
 /-- What the winner has: the Victory Score and more points than every other player. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
@@ -970,17 +1013,15 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
     (h : s.Settled) (hn : s.startShowdown rest = none) :
     cleanupFrame s rest = continueAfterCleanup s rest := by
   obtain ⟨hw, hs⟩ := h
-  have hchoice : cleanupDeathBanishChoice s = none := by
-    cases ht : s.offBoardToken <;> cases hg : s.looseGear <;>
-      cases hl : s.expiredReservedLegend <;> simp [cleanupDeathBanishChoice, ht, hg, hl]
-    have hs0 := cleanupStep0_of_none hs
-    unfold cleanupStep0 at hs0
-    split at hs0
-    · contradiction
-    · rename_i hfind
-      simp [hfind]
-  unfold cleanupFrame
-  rw [hw, hchoice, hs, hn]
+  have noneLethal : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) = none := by
+    have h0 := cleanupStep0_of_none hs
+    cases hv : s.inPlay.find? (fun u => s.isUnit u && s.lethal u) with
+    | none => rfl
+    | some u => simp [cleanupStep0, hv] at h0
+  have noGroup : cleanupDeathGroup s = [] := by
+    have hfilter := List.filter_eq_nil_iff.mpr (List.find?_eq_none.mp noneLethal)
+    simp [cleanupDeathGroup, hfilter]
+  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, hn]
 
 end Riftbound
 

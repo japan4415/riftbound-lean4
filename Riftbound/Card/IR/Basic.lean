@@ -48,6 +48,8 @@ inductive SpellPick where
   | payForBattlefield (battlefields : List ObjId) (ownCosts : List Nat := [])
   /-- A Unit or Gear's elected optional costs without any Battlefield fees. -/
   | withPermanentCosts (ownCosts : List Nat)
+  /-- The optional discounts declared for this permanent play (CR 355, 356.4). -/
+  | withGearDiscounts (pick : SpellPick) (sources : List ObjId)
   /-- A player targeted during finalization, alongside the other effect choices (CR 355.7). -/
   | withPlayer (pick : SpellPick) (player : PlayerId)
   /-- The object revealed from hand or picked from the Board for Show Off (CR 832). -/
@@ -57,6 +59,10 @@ inductive SpellPick where
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
   /-- A permanent used to pay an additional Spell cost. It is not a target of the Spell. -/
   | withExtraObject (pick : SpellPick) (object : ObjId)
+  /-- The amount of a variable additional Power cost declared for this play. -/
+  | withVariablePower (pick : SpellPick) (amount : Nat)
+  /-- Additional Spell costs that exhaust each named source and its chosen Units (CR 357.2). -/
+  | withSpellExhausts (pick : SpellPick) (groups : List (ObjId × List ObjId))
   /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
 deriving DecidableEq, Repr, Hashable
@@ -64,38 +70,42 @@ deriving DecidableEq, Repr, Hashable
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
-  | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ => pick.optionalCosts
+  | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ |
+      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
-  | .withShowOff pick _ => pick.permanentCosts
+  | .withShowOff pick _ | .withGearDiscounts pick _ => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
-      .withExtraObject pick _ => pick.playerTarget
+      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
-  | .withPlayer pick _ | .withShowOff pick _ => pick.effectChoice
-  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ => pick.effectChoice
+  | .withPlayer pick _ | .withShowOff pick _ | .withVariablePower pick _ => pick.effectChoice
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
+      .withSpellExhausts pick _ => pick.effectChoice
   | pick => pick
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
-  | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ => pick.hasExecutionChoices
+  | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ |
+      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
 def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick × List ObjId)
   | .withCosts pick _ _ => pick.executions targets
-  | .withExtraObject pick _ => pick.executions targets
+  | .withExtraObject pick _ | .withSpellExhausts pick _ => pick.executions targets
+  | .withVariablePower pick n => (pick.executions targets).map (fun (k, ts) => (.withVariablePower k n, ts))
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
   | pick => [(pick, targets)]
 
@@ -103,13 +113,46 @@ def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick 
 def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
   | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
-      .withExtraObject pick _ => pick.showOffObject
+      .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
+      .withSpellExhausts pick _ => pick.showOffObject
   | _ => none
+
+/-- The declared amount of a variable Power cost for this play. -/
+def SpellPick.variablePower : SpellPick → Option Nat
+  | .withVariablePower _ n => some n
+  | .withCosts pick _ _ | .withPlayer pick _ | .withShowOff pick _ |
+      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ => pick.variablePower
+  | _ => none
+
+/-- Decorate a finalization when its additional Power amount is declared. -/
+def SpellPick.addVariablePower (pick : SpellPick) (amount : Option Nat) : SpellPick :=
+  amount.elim pick (.withVariablePower pick)
+
+/-- Passive sources whose optional Gear discount was elected. -/
+def SpellPick.gearDiscounts : SpellPick → List ObjId
+  | .withGearDiscounts _ sources => sources
+  | _ => []
+
+/-- Remove the Gear discount declaration before inspecting other costs. -/
+def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
+  | .withGearDiscounts pick _ => pick
+  | pick => pick
 
 /-- The permanent selected to pay the cost for this Spell play. -/
 def SpellPick.extraObject : SpellPick → Option ObjId
   | .withExtraObject _ object => some object
+  | .withSpellExhausts pick _ => pick.extraObject
   | _ => none
+
+/-- Every source and group of Units elected to exhaust together during the Spell's play. -/
+def SpellPick.spellExhausts : SpellPick → List (ObjId × List ObjId)
+  | .withSpellExhausts _ groups => groups
+  | _ => []
+
+/-- Strip the extra Exhaust cost while preserving any separate object cost. -/
+def SpellPick.withoutSpellExhausts : SpellPick → SpellPick
+  | .withSpellExhausts pick _ => pick
+  | pick => pick
 
 /-- Strip the payment choice from the rest of the Spell's finalization. -/
 def SpellPick.withoutExtraObject : SpellPick → SpellPick
@@ -348,6 +391,12 @@ inductive TurnEffect where
   | banishInstead
   /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
   | chosenDeathBanisher
+  /-- The choice for the death currently being processed. None declines just this event. -/
+  | deathSacrificeChoice (unit : Option ObjId)
+  /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
+  | deathOrder (group : List ObjId)
+  /-- This permanent has used its optional death replacement this turn (CR 371). -/
+  | deathSacrificeUsed
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce
@@ -368,6 +417,8 @@ inductive TurnEffect where
   | choseEnemyUnit
   /-- The player already played an activated ability of a Gear this turn. -/
   | usedGearAbility
+  /-- This passive source supplied its optional Gear play discount this turn. -/
+  | usedGearPlayDiscount
   /-- One unit of the Power in the player's Pool is of Fire Below the Mountain: it can only pay for
   playing a Gear or using an ability of a Gear this turn. -/
   | gearMana

@@ -281,10 +281,11 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .copiesUnitText => true
   | .extraCostLess _ => true
   | .repeatCostLess _ => true
-  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ => true
+  | .firstGearAbilityLess _ | .firstPermanentHereLess _ | .empowerHereLess _ |
+      .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
-  | .diesInsteadGear => true
+  | .diesInsteadGear | .sacrificeToSaveSelf => true
   | .rescueWeakerHere | .replaceUnitTokenWith _ => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
@@ -355,6 +356,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
   | .nop => true
+  | .animateGear => decide (0 < c.slots)
   | .markTriggeredAdd _ => false
   | .seq es => EffectList.ok c es
   | .chooseOne modes => decide (c.modes = some modes.length) && EffectList.ok c modes
@@ -378,17 +380,21 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .killThenAtEnd targets _ => Selector.ok c targets
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. => true
+  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+      .banishAndReplayGroup => true
   | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
   | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
-      .banishForReplay .. | .finishReducedPermanent .. | .fundPermanentFromEffect .. |
+      .banishForReplay .. | .orderBanishReplays .. | .recordBanishReplay .. |
+      .planBanishReplay .. | .cancelBanishReplay .. |
+      .finishReducedPermanent .. | .fundPermanentFromEffect .. |
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
       .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. |
+      .recordDeathSacrifice .. | .recordDeathOrder .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
   | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e

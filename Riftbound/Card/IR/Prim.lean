@@ -469,6 +469,8 @@ inductive StaticMod where
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear
+  /-- Once per turn the controller may kill a friendly Unit to save this one (CR 371). -/
+  | sacrificeToSaveSelf
   /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,
   exhausted and recalled instead (Soraka). -/
   | rescueWeakerHere
@@ -484,6 +486,10 @@ inductive StaticMod where
   | firstGearAbilityLess (n : Nat)
   /-- The first Unit or Gear played here on its player's turn costs less Energy. -/
   | firstPermanentHereLess (n : Nat)
+  /-- Once per turn, its controller can elect this reduction when playing Gear. -/
+  | gearPlayDiscount (energy power : Nat)
+  /-- Exhaust this Legend and this many friendly Units as a Spell cost to reduce its Energy. -/
+  | spellExhaustDiscount (units energy : Nat)
   /-- The controller's Units here pay less for Empower, in Energy or Power per reduction. -/
   | empowerHereLess (n : Nat)
   /-- (Of an Equipment) the Unit it is attached to has the triggered abilities of its own card once

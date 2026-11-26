@@ -473,11 +473,18 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     rw [hp] at hb
     exact hb.pop rfl
   · rename_i rest hp
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
-    rw [hp] at hb
-    exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
+    dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next rfl (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [_, .phase .beginning]
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
+      rw [hp] at hb
+      exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -603,6 +610,30 @@ theorem microStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
   exact (microStep_stack0 hinv h0).withTriggers _
 
+/-- Declaring an action may add frames above the original bottom frame. -/
+theorem applyDeclaredAction_stack {s s' : GameState} {a : Action} {es : List Event}
+    (hinv : StackInv s) (hl : Legal s a) (h : applyDeclaredAction s a = some (s', es)) : StackInv s' := by
+  rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, choice, rfl, _⟩
+  · exact applyAction_stack hinv hl ordinary
+  · refine hinv.of_next rfl (fun bottom => ?_)
+    obtain ⟨old, last, allowed⟩ := bottom
+    obtain ⟨_, frame, rest, pending, _⟩ := GameState.actionDeathCostChoice_context choice
+    refine ⟨old, ?_, allowed⟩
+    simpa only [pending, List.getLast?_cons_cons] using last
+
+/-- Resuming a declaration pops only a non-bottom frame and then applies the action. -/
+theorem workStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
+    (h : workStep s = some (s', es)) : StackInv s' := by
+  rcases workStep_cases h with ordinary | ⟨a, rest, pending, resumed⟩
+  · exact microStep_stack hinv ordinary
+  · have before : StackInv { s with pending := rest } := by
+      refine hinv.of_next rfl (fun bottom => ?_)
+      rw [pending] at bottom
+      exact bottom.pop rfl
+    rcases resumed with ⟨_, legal, applied⟩ | ⟨rfl, _⟩
+    · exact applyDeclaredAction_stack before legal applied
+    · exact before
+
 /-- The automatic work keeps the stack invariant. -/
 theorem advance_stack :
     ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, StackInv s →
@@ -624,7 +655,7 @@ theorem advance_stack :
     · split at h
       · split at h
         · rename_i s1 es1 hm
-          exact advance_stack n (microStep_stack hinv hm) h
+          exact advance_stack n (workStep_stack hinv hm) h
         · exact absurd h (by simp)
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
@@ -641,7 +672,7 @@ theorem step_stack {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_stack fuel (applyAction_stack hinv hl ha) h
+      exact advance_stack fuel (applyDeclaredAction_stack hinv hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -898,7 +929,7 @@ theorem Reachable.progress_of_players {s : GameState} (h : Reachable s)
     rw [hla]
     apply List.mem_append_left
     simp [legalFrameActions, hp]
-  | resolveChain => exact absurd hw (by simp [Frame.isWork])
+  | resolveChain | resumeCost _ => exact absurd hw (by simp [Frame.isWork])
   | run p src env todo => exact absurd hw (by simp [Frame.isWork])
   | finishSpell item => exact absurd hw (by simp [Frame.isWork])
   | triggers pend => exact absurd hw (by simp [Frame.isWork])
@@ -1000,7 +1031,7 @@ theorem chance_answer_exists {s : GameState} {f : Frame} {rest : List Frame}
   | expireTurn => exact absurd hc (by simp [Frame.isChance])
   | priority p => exact absurd hc (by simp [Frame.isChance])
   | chainPass p n => exact absurd hc (by simp [Frame.isChance])
-  | resolveChain => exact absurd hc (by simp [Frame.isChance])
+  | resolveChain | resumeCost _ => exact absurd hc (by simp [Frame.isChance])
   | run p src env todo => exact absurd hc (by simp [Frame.isChance])
   | finishSpell item => exact absurd hc (by simp [Frame.isChance])
   | triggers pend => exact absurd hc (by simp [Frame.isChance])
