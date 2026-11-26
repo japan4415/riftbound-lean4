@@ -285,7 +285,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
   | .diesInsteadGear => true
-  | .rescueWeakerHere => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
@@ -351,6 +351,7 @@ mutual
 
 /-- An effect refers only to what is there, and a mode is chosen only where modes were declared. -/
 def Effect.ok (c : Ctx) : Effect → Bool
+  | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
   | .nop => true
   | .markTriggeredAdd _ => false
   | .seq es => EffectList.ok c es

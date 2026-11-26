@@ -3627,8 +3627,11 @@ def RAD_132.meta : CardDef :=
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
-/-- Heimerdinger, Academy Instructor: the effect is not written yet. -/
-def RAD_132 : CardDef := RAD_132.meta
+/-- Heimerdinger can turn each of the player's Unit token plays into a Mech play at that location. -/
+def RAD_132 : CardDef :=
+  { RAD_132.meta with
+    abilities := [.passive (.matches .self .onBattlefield) [.replaceUnitTokenWith "Mech"]],
+    status := .full }
 
 -- BEGIN GENERATED RAD-133
 /--
@@ -4405,7 +4408,7 @@ def RAD_162 : CardDef :=
   { RAD_162.meta with
     abilities := [.triggered (.onSelf .youConquer)
       (.of [] (.prim (.turnEffect .nextUnitAccelerate))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED RAD-163
 /--

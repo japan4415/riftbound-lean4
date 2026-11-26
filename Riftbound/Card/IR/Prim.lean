@@ -472,6 +472,8 @@ inductive StaticMod where
   /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,
   exhausted and recalled instead (Soraka). -/
   | rescueWeakerHere
+  /-- The player can replace each Unit token play with this Unit token at the same location. -/
+  | replaceUnitTokenWith (token : String)
   /-- The objects the selector gives add this much more Energy when they Add (Chem-Baroness). -/
   | manaExtraEnergy (s : Selector) (n : Amount)
   /-- The optional additional costs the player pays cost this much less (Ezreal, Prodigy). -/

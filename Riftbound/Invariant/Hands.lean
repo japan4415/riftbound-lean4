@@ -913,6 +913,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (resolveEffectDamageStep_mem h)
     | exact Or.inl (orderCombatDamageStep_mem h)
     | exact Or.inl (killEffectStep_mem h)
+    | exact Or.inl (unitTokenPrimStep_mem h)
     | exact Or.inl (moveEffectStep_mem h)
     | (unfold banishLookedStep at h
        split at h

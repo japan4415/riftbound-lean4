@@ -89,6 +89,7 @@ public import RiftboundTest.RadianceAP
 public import RiftboundTest.RadianceAQ
 public import RiftboundTest.RadianceAR
 public import RiftboundTest.RadianceAS
+public import RiftboundTest.RadianceAU
 
 /-!
 # RiftboundTest

@@ -790,6 +790,9 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.applySplitDamage _) _ _ => true
   | .eitherDo _ _ _ (.prim (.attachPaying ..)) _ _ => true
   | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
+  | .eitherDo _ _ _ (.planUnitTokenEntries ..) _ _
+  | .eitherDo _ _ _ (.fundTokenAccelerate ..) _ _
+  | .eitherDo _ _ _ (.finishUnitTokens ..) _ _ => true
   | .eitherDo _ _ _ first _ _ => first.isPayment
   | _ => false
 
@@ -957,7 +960,8 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
       | .tokenPlayed .. =>
         if (s.cardDef? id).any (·.hasType .unit) then
           waiting.filter (fun f =>
-            !(f.who == p && f.turn == s.turn && f.kind == .nextUnitAnywhereBuffed))
+            !(f.who == p && f.turn == s.turn &&
+              (f.kind == .nextUnitAnywhereBuffed || f.kind == .nextUnitAccelerate)))
         else waiting
       | _ => waiting
     match s.battlefieldPlay id with

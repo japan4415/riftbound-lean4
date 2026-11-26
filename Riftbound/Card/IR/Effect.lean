@@ -112,10 +112,28 @@ structure EffectDamageBatch where
   spent : List (Nat × Nat) := []
 deriving DecidableEq, Repr, Hashable
 
+/-- A simultaneous group of Unit token plays at the specified location. Each entry records
+its card and any instruction to enter ready (CR 184.2, 375-376). -/
+structure UnitTokenBatch where
+  /-- The shared Battlefield, or the controller's Base. -/
+  destination : Option ObjId
+  /-- Whether the original instruction explicitly contests its destination. -/
+  contest : Bool
+  /-- The token definitions and their explicit entry-ready flags. -/
+  entries : List (CardId × Bool)
+deriving DecidableEq, Repr, Hashable
+
 mutual
 
 /-- An effect: what happens when a spell resolves or an ability fires. -/
 inductive Effect where
+  /-- Choose the replacements for the tokens before the group is placed. -/
+  | planUnitTokenEntries (batch : UnitTokenBatch) (remaining chosen : List (CardId × Bool))
+  /-- Choose resources and add funding for the token's optional Accelerate. -/
+  | fundTokenAccelerate (batch : UnitTokenBatch) (payment : Nat × List Domain) (adds : List EffectAdd)
+  /-- Place the group with the selected additional cost, if any. -/
+  | finishUnitTokens (batch : UnitTokenBatch) (accelerate : Option (Nat × List Domain))
+      (adds : List EffectAdd)
   /-- Nothing happens. -/
   | nop
   /-- Record a triggered Add's use before its resource effects resolve (CR 430.2). -/
