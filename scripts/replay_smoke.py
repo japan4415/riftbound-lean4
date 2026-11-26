@@ -233,6 +233,31 @@ def check_limited_cli(folder: Path, setup: dict, command: Callable[..., str]) ->
         assert exported["cards"]["TKN-LimitedBlank"]["name"] == "Blank Battlefield"
 
 
+def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
+    source = ROOT / "data/replay/war-concession-example.json"
+    archive = folder / "war-concession-archive.json"
+    trace = folder / "war-concession-trace.json"
+    summary = json.loads(command("record-ffa", source, archive))
+    assert summary["exact"] and summary["cardsFullyChecked"]
+    assert summary["result"] == {"won": {"winners": [{"n": 2}]}}
+    assert summary["points"] == [0, 0, 1, 0]
+    assert json.loads(command("verify-ffa", archive)) == summary
+
+    command("view-ffa", archive, trace)
+    exported = json.loads(trace.read_text(encoding="utf-8"))
+    steps = exported["games"][0]["steps"]
+    index = next(i for i, step in enumerate(steps)
+                 if step["action"] == {"actor": "p1", "kind": "concede"})
+    before, after, following = [step["state"] for step in steps[index - 1:index + 2]]
+    assert before["pending"] == "showdown" and after["pending"] == "priority"
+    assert after["departed"] == [1] and after["points"] == [0, 0, 1, 0]
+    assert [field["id"] for field in before["battlefields"]] == [field["id"] for field in after["battlefields"]]
+    assert before["at"] and after["at"] == before["at"]
+    field = next(field["id"] for field in after["battlefields"] if field["control"] == 2)
+    assert after["new"][str(field)]["card"] == "TKN-ConcessionBattlefield"
+    assert following["turn"] == after["turn"] + 1 and following["active"] == 0
+
+
 def bo1_registration(original: dict) -> dict:
     previous = original["deck"]
     champion = {"code": "RAD-112"}
@@ -937,6 +962,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert not inferred_summary["exact"] and inferred_summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", inferred_archive)) == inferred_summary
     check_limited_cli(folder, setup, command)
+    check_war_concession_cli(folder, command)
     check_bo1_cli(folder, setup, command)
     live_archive = folder / "live-bo1-archive.json"
     live_archive.write_text(json.dumps(bo1), encoding="utf-8")

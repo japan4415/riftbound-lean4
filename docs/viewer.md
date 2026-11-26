@@ -176,7 +176,7 @@ Skirmish（FFA3）と War（FFA4）は Core Rules の1ゲームを `FreeForAllIn
 .lake/build/bin/riftbound-replay view-ffa ARCHIVE.json TRACE.json
 ```
 
-`verify-ffa` では勝者、各席の得点、チェックポイントの一致、観測の確かさ、使用カードの確認状況を調べられる。`TRACE.json` はビューアの「閲覧用 JSON」から開ける。
+`verify-ffa` では勝者、各席の得点、チェックポイントの一致、観測の確かさ、使用カードの確認状況を調べられる。`TRACE.json` はビューアの「閲覧用 JSON」から開ける。上のコマンドは、Showdown 中に投了がある [4人戦の入力例](../data/replay/war-concession-example.json) で試せる。
 
 ## カードの詳細と画像
 
