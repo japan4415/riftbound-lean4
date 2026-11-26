@@ -4857,11 +4857,11 @@ def SFD_165.meta : CardDef :=
 /-- Glasc Mixologist. -/
 def SFD_165 : CardDef :=
   { SFD_165.meta with
-
     abilities := [.triggered (.onSelf .die)
-      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash
-        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]))))) .unlimited],
-    status := .drafted }
+      (.of [] (.mayPlayCard (.one .friendly .inTrash
+        [.physicalCard, .ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)])
+        .ignoreBase)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-166
 /--

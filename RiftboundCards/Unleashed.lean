@@ -18,30 +18,28 @@ namespace RiftboundCards.Unleashed
 open Riftbound
 
 /-- Look at the top `n` cards of the Main Deck, may reveal one that has the properties and draw it,
-and recycle the rest. -/
-def lookDrawThen (n : Nat) (fs : List Filter) (after : Effect) : Effect :=
-  .bind ⟨"d"⟩ (.count (Selector.all .friendly .inMainDeck []))
-    (.seqOf [.prim (.revealTop n),
-      .may (.prim (.returnToHand (Selector.one .friendly .inMainDeck (.top n :: fs)))),
-      after,
-      .repeatN (.sub (.const n) (.sub (.var ⟨"d"⟩) (.count (Selector.all .friendly .inMainDeck []))))
-        (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])
-
-/-- The same, with nothing done after the draw. -/
-def lookDraw (n : Nat) (fs : List Filter) : Effect := lookDrawThen n fs .nop
+and recycle the rest. A bonus for revealing a matching card follows the recycle. -/
+def lookDraw (n : Nat) (fs : List Filter) (bonus : Option (Filter × Effect) := none) : Effect :=
+  let eligible := Filter.lookedAt :: fs
+  let picked := Selector.var pickVar
+  let take := Effect.seqOf [.prim (.reveal picked), .prim (.drawLooked picked), .recycleLooked]
+  let afterPick := match bonus with
+    | none => take
+    | some (property, effect) =>
+      let qualified := Selector.all .friendly .inMainDeck [.sameAs picked, property]
+      .ifThen (.cmp .gt (.count qualified) (.const 0)) (.seqOf [take, effect]) take
+  let choose := Effect.chooseObject .friendly .inMainDeck (.ofList eligible) afterPick
+  .lookAtTop n (.ifThen (.cmp .gt (.count (.all .friendly .inMainDeck eligible)) (.const 0))
+    (.eitherOf (.ofList [choose, .recycleLooked])) .recycleLooked)
 
 /-- The card is a Bird, a Cat, a Dog or a Poro. -/
 def petFilter : Filter :=
   .either (.tag ⟨"Bird"⟩) (.either (.tag ⟨"Cat"⟩) (.either (.tag ⟨"Dog"⟩) (.tag ⟨"Poro"⟩)))
 
-/-- Ivern: look at the top 3, may reveal a unit and draw it; if it is a Bird, Cat, Dog or Poro (a pet
-in the hand that was not there before), buff a friendly unit. The card that is drawn gets a new
-identifier, so it is recognised by the count of pets in the hand. -/
+/-- Ivern buffs a friendly Unit after recycling if the revealed Unit is a pet. -/
 def ivernLook : Effect :=
-  .bind ⟨"h"⟩ (.count (Selector.all .friendly .inHand [petFilter]))
-    (lookDrawThen 3 [.ofType .unit]
-      (.ifThen (.cmp .gt (.count (Selector.all .friendly .inHand [petFilter])) (.var ⟨"h"⟩))
-        (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))) .nop))
+  lookDraw 3 [.ofType .unit]
+    (some (petFilter, .prim (.buff (Selector.one .friendly .anywhere [.ofType .unit]))))
 
 /-- Predict 1: look at the top card of the Main Deck, and may recycle it. -/
 def predict1 : Effect := .seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))]
@@ -2010,7 +2008,7 @@ def UNL_067 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 4)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-068
 /--
@@ -4422,7 +4420,7 @@ def UNL_152 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-153
 /--
@@ -5190,9 +5188,10 @@ def UNL_179 : CardDef :=
       .triggered { condition := .matches .self .onBattlefield, event := .move }
         (.of [] (lookDraw 3 [.ofType .unit])) .unlimited,
       .triggered (.onSelf .die)
-        (.of [] (.prim (.playReduced (Selector.one .friendly .inHand [.ofType .unit])
-          (.const 99) none))) .unlimited],
-    status := .drafted }
+        -- The player may decline to act on a specific card type in their private hand (CR 128.6).
+        (.of [] (.may (.playCard (.one .friendly .inHand [.ofType .unit]) .ignoreEnergy
+          (baseOnly := true)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-180
 /--

@@ -564,6 +564,83 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return (pet.obj? iv).any (·.buffed) && !((plain.obj? iv).any (·.buffed)) &&
     pet.handN s.me == p1.handN s.me + 1
 
+-- Rift Herald's move keeps the Look private, offers only looked-at Units, and draws the one revealed.
+#guard tun fun s => do
+  let p := s.me
+  let z := Zone.player p .mainDeck
+  let (s, herald) ← put s p "UNL-179" .base
+  let (s, outside) ← put s p "OGN-096" .mainDeck
+  let (s, unit) ← put s p "UNL-111" .mainDeck
+  let (s, spell) ← put s p "UNL-007" .mainDeck
+  let (s, other) ← put s p "UNL-152" .mainDeck
+  let seen := [other, spell, unit]
+  let rest := (s.zone z).drop 3
+  let s := s.modObj herald fun o => { o with exhausted := false }
+  let act (t : GameState) (who : PlayerId) (a : ActionKind) := (step 100 t ⟨.player who, a⟩).toOption
+  let (moved, _) ← act s p (.standardMove herald (.battlefield s.bf0))
+  let (passed, _) ← act moved p .pass
+  let (looking, looked) ← act passed s.you .pass
+  let (choosing, _) ← act looking p (.decide true)
+  let (recycling, events) ← act choosing p (.choose unit)
+  let drawn ← recycling.firstOf p .hand "UNL-111"
+  let (done, recycled) ← (step 100 recycling ⟨.chance, .arrange [spell, other]⟩).toOption
+  let (declined, _) ← act looking p (.decide false)
+  let (untaken, _) ← (step 100 declined ⟨.chance, .arrange seen.reverse⟩).toOption
+  return rest.head? == some outside && looked == seen.map (.lookedAt p) &&
+    (legalFrameActions choosing).map Action.kind == [.choose other, .choose unit] &&
+    events.filter (fun | .revealed .. => true | _ => false) == [.revealed p unit] &&
+    events.contains (.moved unit drawn (.player p .hand)) && events.contains (.drew p) &&
+    events.contains (.drewGroup p (s.handN p)) && drawn != unit && done.handN p == s.handN p + 1 &&
+    (act recycling p (.arrange [spell, other])).isNone &&
+    recycled.contains (.recycled p) && done.zone z == rest ++ [spell, other] &&
+    untaken.handN p == s.handN p && untaken.zone z == rest ++ seen.reverse
+
+-- Deathknell can be declined even with a legal Unit. It ignores Energy, pays Power, and plays at the Base.
+#guard tun fun s => do
+  let p := s.me
+  let (s, herald) ← put s p "UNL-179" .base
+  let (s, unit) ← put s p "OGN-234" .hand
+  let (s, _) ← put s p "UNL-007" .hand
+  let s := s.control p s.bf0
+  let funded := s.fund p 0 (order := 2)
+  let (dead, events) := killObj funded herald
+  let accepted ← fire dead events
+  let refused ← fire dead events { yes := false }
+  let poor ← fire (dead.setPool p { order := 1 }) events
+  let entered ← accepted.firstOf p .base "OGN-234"
+  return (accepted.obj? entered).any (fun o => o.loc.isNone && o.energyPaid == 0 && o.exhausted) &&
+    (accepted.poolOf p).order == 0 && !(accepted.zone (.player p .hand)).contains unit &&
+    (refused.zone (.player p .hand)).contains unit && (refused.poolOf p).order == 2 &&
+    (poor.zone (.player p .hand)).contains unit && (poor.poolOf p).order == 1
+
+-- Ruined Rex chooses an enemy Unit and deals exactly four damage to it.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, rex) ← put s p "UNL-067" .base
+  let (s, friendly) ← put s p "OGN-001" .base
+  let (s, base) ← put s q "OGN-001" .base
+  let (s, field) ← putAt s q "OGN-234" s.bf0
+  let (dead, events) := killObj s rex
+  let targets ← firePicks dead events
+  let done ← fire dead events { pick := (· == [field]) }
+  return targets.length == 2 && targets.contains base && targets.contains field &&
+    (done.obj? field).any (·.damage == 4) && (done.obj? base).any (·.damage == 0) &&
+    (done.obj? friendly).any (·.damage == 0)
+
+-- Black Rose Dignitary gets Assault on attack and channels its controller's Rune exhausted on death.
+#guard tun fun s => do
+  let p := s.me
+  let (s, unit) ← putAt s p "UNL-152" s.bf0
+  let (dead, events) := killObj s unit
+  let done ← fire dead events
+  let newRunes := (done.zone (.player p .base)).filter (fun id => !(s.zone (.player p .base)).contains id)
+  return s.combatMight unit true == 3 && s.combatMight unit false == 2 &&
+    newRunes.length == 1 && newRunes.all (fun id =>
+      (done.cardDef? id).any (·.hasType .rune) && done.tired id == some true) &&
+    (done.zone (.player p .runeDeck)).length + 1 == (s.zone (.player p .runeDeck)).length &&
+    done.zone (.player s.you .runeDeck) == s.zone (.player s.you .runeDeck)
+
 -- Additional costs are paid as the card is played (CR 357.2): Sacrifice and Heedless Resurrection kill
 -- the unit while the spell is cast, before it resolves, and cannot be cast without one
 #guard tun fun s => do

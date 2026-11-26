@@ -76,6 +76,40 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, u) ← put s1 s.you "OGN-001" .base
   return (play s2 s.me c [u]).isNone
 
+-- Watchful Sentry draws for its controller; Soaring Scout channels an exhausted Rune instead.
+#guard t fun s => do
+  let p := s.me
+  let (s, sentry) ← put s p "OGN-096" .base
+  let (s, scout) ← put s p "OGN-216" .base
+  let (s, top) ← put s p "UNL-111" .mainDeck
+  let (sentryDead, sentryEvents) := killObj s sentry
+  let (scoutDead, scoutEvents) := killObj s scout
+  let drew ← fire sentryDead sentryEvents
+  let channeled ← fire scoutDead scoutEvents
+  let runes := channeled.zone (.player p .base) |>.filter (fun id =>
+    !(s.zone (.player p .base)).contains id && (channeled.cardDef? id).any (·.hasType .rune))
+  return drew.countIn p .hand "UNL-111" == 1 &&
+    drew.zone (.player p .mainDeck) == (s.zone (.player p .mainDeck)).erase top &&
+    drew.handN s.you == s.handN s.you && drew.zone (.player p .runeDeck) == s.zone (.player p .runeDeck) &&
+    (channeled.zone (.player p .runeDeck)).length + 1 == (s.zone (.player p .runeDeck)).length &&
+    runes.length == 1 && runes.all (fun id => channeled.tired id == some true) &&
+    channeled.handN p == s.handN p && channeled.zone (.player s.you .runeDeck) == s.zone (.player s.you .runeDeck)
+
+-- Harnessed Dragon only offers enemy Units and can be played when the opponent has none.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, dragon) ← put s p "OGN-234" .hand
+  let (s, friendly) ← put s p "UNL-111" .base
+  let empty ← play s p dragon
+  let (s, base) ← put s q "OGN-001" .base
+  let (s, field) ← putAt s q "UNL-111" s.bf0
+  let options ← castStop s p dragon
+  let done ← play s p dragon [] { pick := (· == [field]) }
+  return empty.countIn p .base "OGN-234" == 1 && (empty.obj? friendly).isSome &&
+    options.trigPicks.length == 2 && options.trigPicks.contains base && options.trigPicks.contains field &&
+    done.countIn q .trash "UNL-111" == 1 && (done.obj? base).isSome && (done.obj? friendly).isSome
+
 -- Rune Prison (OGN-050): the unit is stunned
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-050" .hand

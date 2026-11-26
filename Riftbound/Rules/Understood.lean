@@ -158,7 +158,7 @@ def Filter.understood : Filter → Bool
   | .unitsHere _ _ => true
   | .movedFromHere | .movedThisTurn | .notedOn _ => true
   | .hidden => true
-  | .top _ => true
+  | .top _ | .lookedAt => true
   | .openBf => true
   | .scoredByMine => true
   | .conqueredByMine => true
@@ -423,7 +423,7 @@ def Effect.understood : Effect → Bool
   | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
   | .banishAndPlayCard sel _ => sel.understood
-  | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
+  | .playCard sel _ _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
   | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e

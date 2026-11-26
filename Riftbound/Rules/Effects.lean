@@ -4668,9 +4668,10 @@ def Env.hiddenPlayRequirements (env : Env) : List (List (Option ObjId)) :=
   env.hiddenPlayLocation.toList.map (fun b => [some b])
 
 /-- Build an effect play's requirements from its own location instruction and the Hidden effect. -/
-def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Option (List ObjId)) :
-    EffectPlayTerms :=
-  { price, requirements := env.hiddenPlayRequirements ++ places.toList.map (·.map some) }
+def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Option (List ObjId))
+    (baseOnly : Bool := false) : EffectPlayTerms :=
+  let requiredBase := if baseOnly then [[none]] else []
+  { price, requirements := requiredBase ++ env.hiddenPlayRequirements ++ places.toList.map (·.map some) }
 
 /-- The otherwise matching candidates for an effect's optional play. These are play choices,
 rather than targets. -/
@@ -4682,11 +4683,11 @@ def effectPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
 
 /-- The card has at least one legal, fundable finalization through the effect. -/
 def effectCardPlayable (s : GameState) (p : PlayerId) (card : ObjId) (env : Env)
-    (price : EffectPlayPrice) (funding : EffectAddPolicy) : Bool :=
+    (price : EffectPlayPrice) (funding : EffectAddPolicy) (baseOnly : Bool := false) : Bool :=
   (s.locate card).isSome &&
     if (s.cardDef? card).any (·.hasType .spell) then
-      !(limitedSpellChoices s p card price funding).isEmpty
-    else !(fundablePermanentChoices s p card (env.permanentPlayTerms price none) funding).isEmpty
+      !baseOnly && !(limitedSpellChoices s p card price funding).isEmpty
+    else !(fundablePermanentChoices s p card (env.permanentPlayTerms price none baseOnly) funding).isEmpty
 
 /-- Offer each fundable finalization for a permanent. A mandatory Battlefield fee may be
     declined (CR 355.17). -/
@@ -4701,15 +4702,16 @@ def fundedPermanentOptions (s : GameState) (p : PlayerId) (card : ObjId) (terms 
 
 /-- Offer each fundable finalization for this effect's Unit or Gear. -/
 def effectPermanentFinalizations (s : GameState) (p : PlayerId) (card : ObjId) (env : Env)
-    (price : EffectPlayPrice) (funding : EffectAddPolicy) : Effect :=
-  fundedPermanentOptions s p card (env.permanentPlayTerms price none) funding
+    (price : EffectPlayPrice) (funding : EffectAddPolicy) (baseOnly : Bool := false) : Effect :=
+  fundedPermanentOptions s p card (env.permanentPlayTerms price none baseOnly) funding
 
 /-- Continue a required limited Play, choosing only if more than one card is eligible. -/
 def requiredCardPlayFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) : Frame :=
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList)
+    (baseOnly : Bool) : Frame :=
   let cards := (effectPlayCandidates s p src env sel).filter (fun id =>
-    (s.obj? id).any (·.kind.phys?.isSome) && effectCardPlayable s p id env price funding)
-  let play := Effect.playOfferedCard cards 1 price
+    (s.obj? id).any (·.kind.phys?.isSome) && effectCardPlayable s p id env price funding baseOnly)
+  let play := Effect.playOfferedCard cards 1 price baseOnly
   match cards with
   | [] => .run p src env es
   | [card] => .run p src (env.bindPick card false) (.cons play es)
@@ -4717,8 +4719,8 @@ def requiredCardPlayFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : En
 
 /-- Continuing a limited Play keeps the engine in play. -/
 theorem requiredCardPlayFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) :
-    (requiredCardPlayFrame s p src env sel price funding es).isPlay = true := by
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList)
+    (baseOnly : Bool) : (requiredCardPlayFrame s p src env sel price funding es baseOnly).isPlay = true := by
   unfold requiredCardPlayFrame
   dsimp only
   split <;> rfl
@@ -5855,8 +5857,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .mayPlayCard sel price =>
     let cards := effectPlayCandidates s p src env sel
     (s, [.run p src env (.cons (.offerNextCardPlay cards 1 price) es)], [])
-  | .playCard sel price =>
-    (s, [requiredCardPlayFrame s p src env sel price funding es], [])
+  | .playCard sel price baseOnly =>
+    (s, [requiredCardPlayFrame s p src env sel price funding es baseOnly], [])
   | .banishTopForPlay =>
     let result := banishTopForPlay s p
     (result.1, [.run p src env es], result.2)
@@ -5892,14 +5894,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         (s, [.mayDo p src env (.chooseOfferedPlay cards remaining price first others) es], [])
   | .chooseOfferedPlay cards remaining price first others =>
     (s, [.pickDo p src env first others (.playOfferedCard cards remaining price) es], [])
-  | .playOfferedCard cards remaining price =>
+  | .playOfferedCard cards remaining price baseOnly =>
     match env.lookup pickVar with
     | some (.obj card) =>
       if (s.cardDef? card).any (·.hasType .spell) then
         castLimitedStep s p src env card price .normal es funding
       else
-        let options := effectPermanentFinalizations s p card env price funding
-        let next := EffectList.cons (.afterOfferedPlay card (cards.erase card) remaining price) es
+        let options := effectPermanentFinalizations s p card env price funding baseOnly
+        let next := if baseOnly then es else
+          EffectList.cons (.afterOfferedPlay card (cards.erase card) remaining price) es
         (s, [.run p src env (.cons options next)], [])
     | _ => skip
   | .afterOfferedPlay card cards remaining price =>

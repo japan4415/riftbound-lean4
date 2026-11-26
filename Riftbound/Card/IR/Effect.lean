@@ -234,7 +234,7 @@ inductive Effect where
   /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
   | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Play one of the matching physical cards, if it has a legal finalization (CR 420.3). -/
-  | playCard (selector : Selector) (price : EffectPlayPrice)
+  | playCard (selector : Selector) (price : EffectPlayPrice) (baseOnly : Bool := false)
   /-- Banish the selected card and play that physical card from Banishment (CR 420.3). -/
   | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Banish the top Main Deck card and permit its play until the player's next Ending Phase. -/
@@ -252,6 +252,7 @@ inductive Effect where
       (first : ObjId) (others : List ObjId)
   /-- Continue to the selected card's finalization. -/
   | playOfferedCard (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+      (baseOnly : Bool := false)
   /-- Count a successful finalization before offering another play. -/
   | afterOfferedPlay (card : ObjId) (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
   /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/

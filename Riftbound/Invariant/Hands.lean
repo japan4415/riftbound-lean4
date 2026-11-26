@@ -965,7 +965,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
        first
        | (subst h; exact Or.inl rfl)
        | (rcases h with rfl | rfl <;> exact Or.inl rfl)
-       | (subst h; exact Or.inl (requiredCardPlayFrame_play _ _ _ _ _ _ _ _))
+       | (subst h; exact Or.inl (requiredCardPlayFrame_play _ _ _ _ _ _ _ _ _))
        | (subst h; exact Or.inl (equipWithCostFrame_play _ _ _ _ _ _ _ _))
        | (rcases h with rfl
           left

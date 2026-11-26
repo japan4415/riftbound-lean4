@@ -388,7 +388,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
   | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
-  | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
+  | .playCard sel _ _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
   | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false

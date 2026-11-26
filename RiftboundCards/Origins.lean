@@ -2594,7 +2594,7 @@ def OGN_096 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-097
 /--
@@ -5845,7 +5845,7 @@ def OGN_216 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-217
 /--
@@ -6334,7 +6334,7 @@ def OGN_234 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
         (.prim (.kill (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-235
 /--

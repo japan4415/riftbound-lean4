@@ -458,6 +458,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
         (decide ((s.zone (.player o.owner .runeDeck)).idxOf id < n) &&
           (s.zone (.player o.owner .runeDeck)).contains id)
       | none => false)
+  | .lookedAt => some (env.lookedCards.contains id)
   | .inTriggerGroup recorded => some (recorded.contains id)
   | .openBf => some (match s.obj? id with | some b => b.control.isNone | none => false)
   | .unitsPlayable =>

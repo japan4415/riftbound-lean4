@@ -188,6 +188,8 @@ inductive Filter where
   | hidden
   /-- Is among the first `n` cards of the Main Deck or of the Rune Deck of its owner. -/
   | top (n : Nat)
+  /-- Is one of the cards recorded by the current Look. -/
+  | lookedAt
   /-- Is a Battlefield nobody controls: an open Battlefield. -/
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/

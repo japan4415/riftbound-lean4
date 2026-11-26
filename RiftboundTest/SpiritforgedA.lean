@@ -1184,13 +1184,22 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
 -- Glasc Mixologist (SFD-165): when it dies, may play a unit (cost 3 or less, at most 1 Power) from
 -- the Trash for nothing
 #guard tsf fun s => do
-  let (s1, m) ← put s s.me "SFD-165" .trash
-  let (s2, _) ← put s1 s.me "OGN-051" .trash
-  let (s3, big) ← put s2 s.me "OGN-001" .trash
-  let a ← fire s3 [.died m s.me]
-  let b ← fire s3 [.died m s.me] { yes := false }
-  return a.countIn s.me .base "OGN-051" == 1 && a.countIn s.me .base "OGN-001" == 0 &&
-    b.countIn s.me .base "OGN-051" == 0 && (a.obj? big).isSome
+  let p := s.me
+  let (s, mixologist) ← put s p "SFD-165" .base
+  let (s, valid) ← put s p "OGN-218" .trash
+  let (s, energy) ← put s p "OGN-001" .trash
+  let (s, power) ← put s p "OGN-150" .trash
+  let (s, spell) ← put s p "UNL-007" .trash
+  let (s, enemy) ← put s s.you "OGN-218" .trash
+  let (dead, events) := killObj (s.fund p 0) mixologist
+  let accepted ← fire dead events
+  let declined ← fire dead events { yes := false }
+  let entered ← accepted.firstOf p .base "OGN-218"
+  return (accepted.obj? entered).any (fun o => o.energyPaid == 0 && o.exhausted) &&
+    (accepted.poolOf p).total == 0 && !(accepted.zone (.player p .trash)).contains valid &&
+    [energy, power, spell].all (accepted.zone (.player p .trash)).contains &&
+    (accepted.zone (.player s.you .trash)).contains enemy &&
+    (declined.zone (.player p .trash)).contains valid && declined.countIn p .base "OGN-218" == 0
 
 -- Xin Zhao, Vigilant (SFD-176): enters ready if two or more other units of the player are at base
 #guard tsf fun s => do
