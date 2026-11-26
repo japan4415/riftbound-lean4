@@ -393,7 +393,8 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   return some normalized
 
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
-    (expected : Option (Array RecordedGame)) : Except String RecordedTeamMatch := do
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
+    Except String RecordedTeamMatch := do
   if input.seats != TeamSeats.standard then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
   if expected.any (fun games => games.size != input.games.size) then throw "the game count differs"
@@ -406,8 +407,7 @@ private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
       | none => replay.record db config
       | some saved => do
         if saved.input != replay then throw "the saved game inputs differ"
-        let _ ← saved.verify db config
-        pure saved
+        saved.checkEvidence db config 100 refreshCoverage
     let result ← confirmTeamGame game recorded input.seats config
     pure (result, some recorded)
   return { rules := ReplayRules.current db, input, games, summary }
@@ -422,13 +422,28 @@ def TeamMatchRecord.recordPlayed (input : TeamMatchRecord) (games : Array Record
     Except String RecordedTeamMatch :=
   playTeamMatch input RiftboundCards.db (some games)
 
+private def RecordedTeamMatch.checkArchive (saved : RecordedTeamMatch) (db : CardDB)
+    (allowCardUpdate : Bool) : Except String RecordedTeamMatch := do
+  let rules := ReplayRules.current db
+  if allowCardUpdate then saved.rules.checkEditions rules
+  else if saved.rules != rules then throw "the replay format, rules or card definitions differ"
+  let refreshCoverage := saved.rules.cards != rules.cards
+  let replay ← playTeamMatch saved.input db (some saved.games) refreshCoverage
+  let summary := if refreshCoverage then
+    { saved.summary with uncheckedCards := replay.summary.uncheckedCards }
+    else saved.summary
+  if replay.summary != summary then throw "the final team match outcome differs"
+  return replay
+
 /-- Verify team game inputs against the saved checkpoints and the match outcome. -/
 def RecordedTeamMatch.verify (saved : RecordedTeamMatch) (db : CardDB := RiftboundCards.db) :
-    Except String TeamMatchResult := do
-  if saved.rules != ReplayRules.current db then throw "the replay format, rules or card definitions differ"
-  let replay ← playTeamMatch saved.input db (some saved.games)
-  if replay.summary != saved.summary then throw "the final team match outcome differs"
-  return replay.summary
+    Except String TeamMatchResult :=
+  (saved.checkArchive db false).map (·.summary)
+
+/-- Revalidate every checkpoint of an archived team match against the current cards. -/
+def RecordedTeamMatch.revalidate (saved : RecordedTeamMatch) (db : CardDB := RiftboundCards.db) :
+    Except String RecordedTeamMatch :=
+  saved.checkArchive db true
 
 end RiftboundDriver
 

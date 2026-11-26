@@ -111,6 +111,19 @@ private meta def exampleMatch : Except String Unit := do
   unless mixedCoverage.games.all (·.summary.exact) &&
       checkedCoverage.uncheckedCards == #[expected, expected] do
     throw "exact replays should report drafted cards separately for every seat and game"
+  let refreshed ← mixedCoverage.revalidate matchDB
+  unless (mixedCoverage.verify matchDB).isOk == false && refreshed == restored do
+    throw "revalidation did not update coverage while preserving the recorded games"
+  let changedDB : CardDB := ⟨matchDB.cards.map (fun c =>
+    if c.hasType .unit then
+      { c with abilities := .passive .always [.entersReady .self] :: c.abilities }
+    else c)⟩
+  let firstPlay := game.answers.toList.findIdx (fun
+    | .observed a => match a.kind with | .playCard .. => true | _ => false
+    | _ => false)
+  unless (match restored.revalidate changedDB with
+      | .error e => e.contains s!"team game 1: checkpoint {firstPlay + 1}: state fingerprint differs"
+      | .ok _ => false) do throw "a card change affecting the first permanent play was accepted"
   let some checkpoint := restored.games[0]?.bind (·.checkpoints[2]?) | throw "missing checkpoint"
   let changed := restored.games.modify 0 (fun g =>
     { g with checkpoints := g.checkpoints.set! 2 { checkpoint with state := "0" } })

@@ -244,7 +244,8 @@ def concludeReplayMatch (state : MatchState) (timed : Bool) (ending : ReplayMatc
   | _, _, _ => throw "the stated match ending disagrees with the game results"
 
 private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
-    (expected : Option (Array RecordedGame)) : Except String RecordedMatch := do
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
+    Except String RecordedMatch := do
   if input.config.mode != Mode.duel then throw "a replayable Duel match requires the 1v1 mode"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
   if let .tournamentElimination .. := input.config.ruleSet then
@@ -286,8 +287,7 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
       let recorded ← match expected.bind (·[index]?) with
         | some saved =>
           if saved.input != game then throw "the saved game input differs"
-          let _ ← saved.verify db config input.fuel
-          pure saved
+          saved.checkEvidence db config input.fuel refreshCoverage
         | none => game.record db config input.fuel
       checkOrder input.config state game.chooser recorded.summary.turnOrder
       let reuse := reuseReplayBattlefields state (previous.any (fun (prior : RecordedGame) => prior.gameLossSeats.isSome))
@@ -329,14 +329,28 @@ def MatchInputs.recordPlayed (input : MatchInputs) (games : Array RecordedGame) 
     Except String RecordedMatch :=
   runMatch input db (ReplayRules.current db) (some games)
 
+private def RecordedMatch.checkArchive (saved : RecordedMatch) (db : CardDB)
+    (allowCardUpdate : Bool) : Except String RecordedMatch := do
+  let rules := ReplayRules.current db
+  if allowCardUpdate then saved.rules.checkEditions rules
+  else if saved.rules != rules then throw "the replay format, rules edition or card definitions differ"
+  let refreshCoverage := saved.rules.cards != rules.cards
+  let actual ← runMatch saved.input db rules (some saved.games) refreshCoverage
+  let summary := if refreshCoverage then
+    { saved.summary with cardsFullyChecked := actual.summary.cardsFullyChecked }
+    else saved.summary
+  if actual.summary != summary then throw "the final match outcome differs"
+  return actual
+
 /-- Read a saved match, checking its pinned rules, every game and its final outcome. -/
 def RecordedMatch.verify (saved : RecordedMatch) (db : CardDB := RiftboundCards.db) :
-    Except String ReplayMatchResult := do
-  let rules := ReplayRules.current db
-  if saved.rules != rules then throw "the replay format, rules edition or card definitions differ"
-  let actual ← runMatch saved.input db rules (some saved.games)
-  if actual.summary != saved.summary then throw "the final match outcome differs"
-  return actual.summary
+    Except String ReplayMatchResult :=
+  (saved.checkArchive db false).map (·.summary)
+
+/-- Revalidate every checkpoint of an archived Duel against the current cards. -/
+def RecordedMatch.revalidate (saved : RecordedMatch) (db : CardDB := RiftboundCards.db) :
+    Except String RecordedMatch :=
+  saved.checkArchive db true
 
 end RiftboundDriver
 

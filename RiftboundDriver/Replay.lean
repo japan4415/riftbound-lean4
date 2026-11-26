@@ -198,6 +198,12 @@ deriving DecidableEq, Repr, ToJson, FromJson
 def ReplayRules.current (db : CardDB) : ReplayRules :=
   ⟨1, coreRulesVersion, tournamentRulesVersion, toString (hash (reprStr db))⟩
 
+/-- A revalidation can compare fingerprints only within the same format and rule editions. -/
+def ReplayRules.checkEditions (saved current : ReplayRules) : Except String Unit := do
+  unless saved.schema == current.schema && saved.core == current.core &&
+      saved.tournament == current.tournament do
+    throw "the replay format or rules editions differ"
+
 /-- The replay comparison data for the state and events after one answer. -/
 structure ReplayCheckpoint where
   /-- A diagnostic fingerprint of the complete mutable state. -/
@@ -709,8 +715,9 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do
   if let some witnesses := expected then
-    if witnesses[index]? != some actual then
-      throw s!"checkpoint {index}: state or events differ"
+    let some witness := witnesses[index]? | throw s!"checkpoint {index}: missing evidence"
+    if witness.state != actual.state then throw s!"checkpoint {index}: state fingerprint differs"
+    if witness.events != actual.events then throw s!"checkpoint {index}: events differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
@@ -739,14 +746,22 @@ def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String RecordedGame :=
   runGame input db config fuel none
 
-/-- Replay one game and report the first recorded checkpoint that disagrees. -/
-def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfig)
-    (fuel : Nat := 100) : Except String ReplayGameResult := do
+/-- Replay one game against its saved evidence, recomputing coverage when the card table changes. -/
+def RecordedGame.checkEvidence (saved : RecordedGame) (db : CardDB) (config : GameConfig)
+    (fuel : Nat) (refreshCoverage : Bool := false) : Except String RecordedGame := do
   if saved.eliminationConfig? != replayEliminationConfig config then
     throw "the saved single-elimination clock procedure differs"
   let actual ← runGame saved.input db config fuel (some saved.checkpoints)
-  if saved.summary != actual.summary then throw "the final game outcome differs"
-  return actual.summary
+  let summary := if refreshCoverage then
+    { saved.summary with uncheckedCards := actual.summary.uncheckedCards }
+    else saved.summary
+  if summary != actual.summary then throw "the final game outcome differs"
+  return actual
+
+/-- Replay one game and report the first recorded checkpoint that disagrees. -/
+def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfig)
+    (fuel : Nat := 100) : Except String ReplayGameResult :=
+  (saved.checkEvidence db config fuel).map (·.summary)
 
 /-- The recorded inputs to one free-for-all game under the Core Rules. -/
 structure FreeForAllInputs where
@@ -784,14 +799,27 @@ def FreeForAllInputs.record (input : FreeForAllInputs) (db : CardDB := Riftbound
   requireFinishedFreeForAll game.summary
   return { rules := ReplayRules.current db, mode := input.mode, fuel := input.fuel, game }
 
+private def RecordedFreeForAll.checkArchive (saved : RecordedFreeForAll) (db : CardDB)
+    (allowCardUpdate : Bool) : Except String RecordedFreeForAll := do
+  let rules := ReplayRules.current db
+  if allowCardUpdate then saved.rules.checkEditions rules
+  else if saved.rules != rules then throw "the replay format, rules edition or card definitions differ"
+  let game ← (do
+    let game ← saved.game.checkEvidence db (← freeForAllConfig saved.mode) saved.fuel
+      (refreshCoverage := saved.rules.cards != rules.cards)
+    requireFinishedFreeForAll game.summary
+    pure game).mapError (fun error => s!"game 1: {error}")
+  return { saved with rules, game }
+
 /-- Check the outcome and each checkpoint of an archived Skirmish or War game. -/
 def RecordedFreeForAll.verify (saved : RecordedFreeForAll) (db : CardDB := RiftboundCards.db) :
-    Except String ReplayGameResult := do
-  if saved.rules != ReplayRules.current db then
-    throw "the replay format, rules edition or card definitions differ"
-  let summary ← saved.game.verify db (← freeForAllConfig saved.mode) saved.fuel
-  requireFinishedFreeForAll summary
-  return summary
+    Except String ReplayGameResult :=
+  (saved.checkArchive db false).map (·.game.summary)
+
+/-- Revalidate every checkpoint of an archived Skirmish or War game against the current cards. -/
+def RecordedFreeForAll.revalidate (saved : RecordedFreeForAll)
+    (db : CardDB := RiftboundCards.db) : Except String RecordedFreeForAll :=
+  saved.checkArchive db true
 
 end RiftboundDriver
 

@@ -189,6 +189,12 @@ def main (args : List String) : IO UInt32 := do
       let result ← IO.ofExcept (saved.verify)
       IO.println (toJson result).compress
       return 0
+    | ["revalidate", input, output] =>
+      let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let updated ← IO.ofExcept saved.revalidate
+      writeJson output (toJson updated)
+      IO.println (toJson updated.summary).compress
+      return 0
     | ["view", input, output] =>
       let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (matchTrace saved)
@@ -210,6 +216,12 @@ def main (args : List String) : IO UInt32 := do
       let result ← IO.ofExcept saved.verify
       IO.println (teamVerificationJson saved result).compress
       return 0
+    | ["revalidate-team", input, output] =>
+      let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
+      let updated ← IO.ofExcept saved.revalidate
+      writeJson output (toJson updated)
+      IO.println (teamVerificationJson updated updated.summary).compress
+      return 0
     | ["view-team", input, output] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (teamMatchTrace saved)
@@ -225,6 +237,12 @@ def main (args : List String) : IO UInt32 := do
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
       let result ← IO.ofExcept saved.verify
       IO.println (ffaVerificationJson result).compress
+      return 0
+    | ["revalidate-ffa", input, output] =>
+      let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
+      let updated ← IO.ofExcept saved.revalidate
+      writeJson output (toJson updated)
+      IO.println (ffaVerificationJson updated.game.summary).compress
       return 0
     | ["view-ffa", input, output] =>
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
@@ -251,6 +269,7 @@ def main (args : List String) : IO UInt32 := do
       return 0
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"
+      IO.eprintln "       riftbound-replay revalidate[-team|-ffa] ARCHIVE.json UPDATED.json"
       IO.eprintln "       riftbound-replay disclosures[-team|-ffa] ARCHIVE.json SEAT OUTPUT.json"
       IO.eprintln "       riftbound-replay view[-team|-ffa]-seat ARCHIVE.json SEAT OUTPUT.json"
       return 2

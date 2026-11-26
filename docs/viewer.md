@@ -110,6 +110,17 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 時間制限付きシングルエリミネーション（TR 408.4）は、ライブ対局の設定 JSON に `"singleElimination": true`、外部の大会記録に `"elimination": {}` を指定する。ゲームの合間に時間切れとなり、勝数が同じため次のゲームを行う場合は、`elimination.timeAfterGames` に時間切れ時点で終了していたゲーム数を入れる。次のゲームは初手番に加えて5ターンを行い、同点ならサドンデスになる。ビューアでは期限のターンと、サドンデスに入った手を確認できる。
 
+#### カード定義を更新した後に再照合する
+
+```sh
+.lake/build/bin/riftbound-replay revalidate riftbound-match.json checked-match.json
+.lake/build/bin/riftbound-replay verify checked-match.json
+```
+
+カード定義を更新したら、`revalidate` で以前のアーカイブを現在の実行ファイルで照合できる。2v2は `revalidate-team`、FFAは `revalidate-ffa` を使う。保存形式とルールの版が同じ場合に、初期状態と各手の状態ハッシュ、イベント列、勝敗を照合する。一致すれば、現在のカード定義の識別子と実装状況を反映したアーカイブを書き出す。出力には別のファイル名を指定し、元の記録を保管する。
+
+再生内容が変わった場合は、最初に差が出たゲーム番号と手番号が分かる。保存形式やルールの版が異なる場合は、記録時に使った実行ファイルで照合する。
+
 #### 公開・閲覧の履歴を席別に書き出す
 
 ```sh

@@ -242,6 +242,7 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     assert summary["result"] == {"won": {"winners": [{"n": 2}]}}
     assert summary["points"] == [0, 0, 1, 0]
     assert json.loads(command("verify-ffa", archive)) == summary
+    check_revalidation(folder, command, archive, "-ffa", summary)
 
     command("view-ffa", archive, trace)
     exported = json.loads(trace.read_text(encoding="utf-8"))
@@ -907,6 +908,42 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     command("record", invalid, archive, error="must sideboard from the registered pool")
 
 
+def check_revalidation(folder: Path, command: Callable[..., str], archive: Path, suffix: str,
+                       summary: dict) -> None:
+    original = archive.read_bytes()
+    old = json.loads(original)
+    old["rules"]["cards"] = "previous-table"
+    stale = folder / f"{archive.stem}-old-cards.json"
+    renewed = folder / f"{archive.stem}-revalidated.json"
+    stale.write_text(json.dumps(old), encoding="utf-8")
+
+    command("verify" + suffix, stale, error="card definitions differ")
+    assert json.loads(command("revalidate" + suffix, stale, renewed)) == summary
+    assert json.loads(renewed.read_bytes()) == json.loads(original)
+    assert json.loads(command("verify" + suffix, renewed)) == summary
+    assert archive.read_bytes() == original
+
+    game = old["game"] if suffix == "-ffa" else old["games"][0]
+    index, checkpoint = next((index, checkpoint) for index, checkpoint in enumerate(game["checkpoints"])
+                             if checkpoint["events"])
+    checkpoint["events"] = []
+    bad = folder / f"{archive.stem}-revalidate-rejected.json"
+    stale.write_text(json.dumps(old), encoding="utf-8")
+    command("revalidate" + suffix, stale, bad, error=f"checkpoint {index}: events differ")
+    assert not bad.exists()
+    if not suffix:
+        old["rules"]["schema"] += 1
+        stale.write_text(json.dumps(old), encoding="utf-8")
+        command("revalidate", stale, bad, error="the replay format or rules editions differ")
+        assert not bad.exists()
+        old = json.loads(original)
+        old["rules"]["cards"] = "previous-table"
+        old["summary"]["wins"] = [0, 0]
+        stale.write_text(json.dumps(old), encoding="utf-8")
+        command("revalidate", stale, bad, error="the final match outcome differs")
+        assert not bad.exists()
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
               team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
               private_rewinds: dict, timeline_rewinds: dict) -> None:
@@ -927,6 +964,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert json.loads(command("record", source, archive)) == saved["summary"]
     assert json.loads(archive.read_text(encoding="utf-8")) == saved
     assert json.loads(command("verify", archive)) == saved["summary"]
+    check_revalidation(folder, command, archive, "", saved["summary"])
     legacy = json.loads(archive.read_text(encoding="utf-8"))
     for game in legacy["input"]["games"]:
         game.pop("openingOrder", None)
@@ -1018,6 +1056,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     summary = json.loads(command("record-team", team_input, team_archive))
     assert summary["wins"] == [0, 1] and summary["exact"] and summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", team_archive)) == summary
+    check_revalidation(folder, command, team_archive, "-team", summary)
     team_trace = folder / "team-trace.json"
     command("view-team", team_archive, team_trace)
     exported = json.loads(team_trace.read_text(encoding="utf-8"))
