@@ -294,7 +294,8 @@ private def TeamGameRecord.replayInputs (game : TeamGameRecord) (decks : ReplayD
 
 private def runTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
     (readGame : GameConfig → Nat → TeamGameRecord → ReplayDecks →
-      Except String (Option GameResult × Option RecordedGame)) (inspectAt : Option Nat) :
+      Except String (Option GameResult × Option RecordedGame)) (inspectAt : Option Nat)
+    (captureFailure : Bool := false) :
     Except String (Sum ReplayInspection (TeamMatchResult × Array RecordedGame)) := do
   if !decide (input.seats.players.Perm (allPlayers 4)) then throw "the teams must use four different seats"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
@@ -320,7 +321,7 @@ private def runTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
       let decks ← game.registrations
       input.checkRegistrations decks game.order db env
       let inspection ← if inspecting then
-        some <$> (game.replayInputs decks).inspect db config
+        some <$> (game.replayInputs decks).inspect db config (captureFailure := captureFailure)
         else pure none
       let checkedGame := match inspection with
         | some inspection => { game with battlefields := inspection.position.fields.reverse, ending := .matchEnded }
@@ -419,7 +420,7 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
 
 private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
     (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat)
-    (upgradePermanentChoices : Bool := false) :
+    (upgradePermanentChoices : Bool := false) (captureFailure : Bool := false) :
     Except String (Sum ReplayInspection RecordedTeamMatch) := do
   if input.seats != TeamSeats.standard then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
@@ -432,7 +433,7 @@ private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
         if saved.input != replay then throw "the saved game inputs differ"
         saved.checkEvidence db config 100 refreshCoverage upgradePermanentChoices
     let result ← confirmTeamGame game recorded input.seats config
-    pure (result, some recorded)) inspectAt
+    pure (result, some recorded)) inspectAt captureFailure
   match progress with
   | .inl inspection => return .inl inspection
   | .inr (summary, games) => return .inr { rules := ReplayRules.current db, input, games, summary }
@@ -447,9 +448,11 @@ private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
 
 /-- Inspect a 1-based team game using its declared seating and the preceding completed games. -/
 def TeamMatchRecord.inspect (input : TeamMatchRecord) (number : Nat)
-    (db : CardDB := RiftboundCards.db) : Except String ReplayInspection := do
+    (db : CardDB := RiftboundCards.db) (captureFailure : Bool := false) :
+    Except String ReplayInspection := do
   unless 0 < number && number <= input.games.size do throw "the game number is outside the match"
-  match ← playTeamMatchProgress input db none false (some (number - 1)) with
+  match ← playTeamMatchProgress input db none false (some (number - 1))
+      (captureFailure := captureFailure) with
   | .inl inspection => return inspection
   | .inr _ => throw "the requested game was not inspected"
 

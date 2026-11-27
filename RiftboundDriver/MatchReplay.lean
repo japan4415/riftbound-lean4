@@ -246,7 +246,7 @@ def concludeReplayMatch (state : MatchState) (timed : Bool) (ending : ReplayMatc
 
 private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
     (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat)
-    (upgradePermanentChoices : Bool := false) :
+    (upgradePermanentChoices : Bool := false) (captureFailure : Bool := false) :
     Except String (Sum ReplayInspection RecordedMatch) := do
   if input.config.mode != Mode.duel then throw "a replayable Duel match requires the 1v1 mode"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
@@ -288,7 +288,7 @@ private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : Replay
           checkLimitedCopies pool (limitedAllocation [deck]) s!"seat {seat}"
       let played : Sum ReplayInspection RecordedGame ←
         if inspectAt == some index then
-          Sum.inl <$> game.inspect db config input.fuel
+          Sum.inl <$> game.inspect db config input.fuel captureFailure
         else
           Sum.inr <$> (match expected.bind (·[index]?) with
             | some saved => do
@@ -347,10 +347,11 @@ private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
   | .inl _ => throw "unexpected inspection while recording a match"
 
 /-- Inspect a 1-based game, checking earlier games before replaying the supplied prefix. -/
-def MatchInputs.inspect (input : MatchInputs) (number : Nat) (db : CardDB := RiftboundCards.db) :
-    Except String ReplayInspection := do
+def MatchInputs.inspect (input : MatchInputs) (number : Nat) (db : CardDB := RiftboundCards.db)
+    (captureFailure : Bool := false) : Except String ReplayInspection := do
   unless 0 < number && number <= input.games.size do throw "the game number is outside the match"
-  match ← runMatchProgress input db (ReplayRules.current db) none false (some (number - 1)) with
+  match ← runMatchProgress input db (ReplayRules.current db) none false (some (number - 1))
+      (captureFailure := captureFailure) with
   | .inl inspection => return inspection
   | .inr _ => throw "the requested game was not inspected"
 

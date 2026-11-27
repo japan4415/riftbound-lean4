@@ -53,11 +53,12 @@ def start(live: Lean, setup: dict) -> dict:
 
 
 def inspect_game(folder: Path, command: Callable[..., str], inputs: dict, game: int,
-                 suffix: str = "", error: str | None = None) -> dict:
+                 suffix: str = "", error: str | None = None, *, explain: bool = False) -> dict:
     source = folder / f"inspect{suffix}-input.json"
     output = folder / f"inspect{suffix}-result.json"
     source.write_text(json.dumps(inputs), encoding="utf-8")
-    command("inspect" + suffix, source, str(game), output, error=error)
+    flags = ["--explain"] if explain else []
+    command("inspect" + suffix, source, str(game), output, *flags, error=error)
     return {} if error is not None else json.loads(output.read_bytes())
 
 
@@ -290,6 +291,12 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     answers = [choice["answer"] for choice in inspection["choices"]]
     assert observed({"player": {"p": {"n": 1}}}, "concede") in answers
     assert {**inspection["state"], "new": before["new"]} == before
+    invalid_order = {"observedChance": {"outcome": {"cardOrder": {"cards": []}}}}
+    inputs["game"]["answers"].append(invalid_order)
+    failed = inspect_game(folder, command, inputs, 1, "-ffa", explain=True)
+    failure = failed.pop("failure")
+    assert failure["answer"] == index and failure["kind"] == "answer"
+    assert f"answer {index}:" in failure["message"] and failed == inspection
     observation_source = folder / "war-observations.json"
     observation_archive = folder / "war-observations-archive.json"
     inputs = json.loads(source.read_bytes())
@@ -1169,10 +1176,19 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     assert json.loads(code_archive.read_bytes())["games"][0]["checkpoints"] == raw_archive["games"][0]["checkpoints"]
     assert inspect_game(folder, command, inputs, 1)["inexactAnswers"] == []
 
+    game["answers"] = positioned[:4]
+    prefix = inspect_game(folder, command, inputs, 1)
+    assert inspect_game(folder, command, inputs, 1, explain=True) == prefix
+    game["answers"] = positioned
     selection = positioned[4]["observedChance"]["outcome"]["cardOrderByPosition"]["cards"]
     original = selection[0].copy()
     selection[0]["before"] = selection[1]["before"]
     inspect_game(folder, command, inputs, 1, error="answer 5: the recorded card order repeats a source position")
+    failed = inspect_game(folder, command, inputs, 1, explain=True)
+    assert failed.pop("failure") == {
+        "answer": 5, "kind": "answer", "message": "answer 5: the recorded card order repeats a source position",
+    }
+    assert failed == prefix
     selection[0]["before"] = len(selection)
     inspect_game(folder, command, inputs, 1, error="answer 5: source position")
     selection[0] = {**original, "card": {"code": "wrong-card"}}
@@ -1374,6 +1390,7 @@ def check_deck_order_observations(folder: Path, command: Callable[..., str], sav
     other = next(index for index, card in enumerate(main) if card != main[0])
     main[0], main[other] = main[other], main[0]
     inspect_game(folder, command, inputs, 1, error="recorded deck order differs at position 1")
+    inspect_game(folder, command, inputs, 1, error="recorded deck order differs at position 1", explain=True)
     main[0], main[other] = main[other], main[0]
     segment["offset"] = len(runes)
     inspect_game(folder, command, inputs, 1, error="recorded deck slice is outside the replayed deck")
@@ -1422,6 +1439,7 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     inspection = inspect_game(folder, command, pending, 1)
     assert inspection["checkedObservations"] == 1 and inspection["pendingObservations"] == 1
     assert inspection["missing"] == "gap" and inspection["nextAnswer"] == index
+    assert inspect_game(folder, command, pending, 1, explain=True) == inspection
     inspection = inspect_game(folder, command, inputs, 1)
     assert inspection["checkedObservations"] == 2 and inspection["pendingObservations"] == 0
 
@@ -1449,6 +1467,14 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     source.write_text(json.dumps(inputs), encoding="utf-8")
     command("record", source, archive, error=mismatch)
     inspect_game(folder, command, inputs, 1, error=mismatch)
+    short = deepcopy(inputs)
+    short["games"][0]["answers"] = game["answers"][:index - 1]
+    expected = inspect_game(folder, command, short, 1)
+    failed = inspect_game(folder, command, inputs, 1, explain=True)
+    diagnosis = failed.pop("failure")
+    assert diagnosis["answer"] == index and diagnosis["kind"] == "observation"
+    assert mismatch.removeprefix("game 1: ") in diagnosis["message"]
+    assert failed == expected
     for game_input in (recorded["input"]["games"][0], recorded["games"][0]["input"]):
         game_input["observations"][0]["facts"][0]["score"]["points"] = first_score["points"]
     archive.write_text(json.dumps(recorded), encoding="utf-8")
@@ -1654,6 +1680,13 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert inspection["checkpoint"] == 8 and inspection["exactPrefix"]
     assert decision["kind"] == "battlefield" and decision["seat"] == p2
     assert decision["cards"][0]["card"] == team_game["battlefields"][0][1]
+    missing_field = {"observedChance": {"outcome": {"battlefield": {"card": {"code": "absent"}}}}}
+    partial_game["answers"].append(missing_field)
+    failed = inspect_game(folder, command, partial, 1, "-team", explain=True)
+    failure = failed.pop("failure")
+    assert failure["answer"] == 9 and failure["kind"] == "answer"
+    assert "Battlefield absent is not a candidate" in failure["message"] and failed == inspection
+    partial_game["answers"].pop()
     partial_game["answers"].append(decision["cards"][0]["answerByCode"])
     assert inspect_game(folder, command, partial, 1, "-team")["decision"]["seat"] == p1
 

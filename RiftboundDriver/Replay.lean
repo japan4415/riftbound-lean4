@@ -1821,12 +1821,32 @@ structure ReplayUncertainAnswer where
   evidence : Option String
 deriving ToJson
 
-/-- The reproducible prefix up to the first unknown answer, or the end of supplied answers. -/
+/-- Which part of replaying the next answer failed. -/
+inductive ReplayInspectionFailureKind
+  /-- The answer could not be resolved or applied. -/
+  | answer
+  /-- The resulting checkpoint disagreed with a recorded observation. -/
+  | observation
+deriving ToJson
+
+/-- The first error after the last successfully checked checkpoint. -/
+structure ReplayInspectionFailure where
+  /-- The 1-based answer during which the error was detected. -/
+  answer : Nat
+  /-- Whether the answer or the evidence check failed. -/
+  kind : ReplayInspectionFailureKind
+  /-- The diagnostic also used by strict inspection. -/
+  message : String
+deriving ToJson
+
+/-- The reproducible prefix of the supplied answers, with an optional diagnostic at its end. -/
 structure ReplayInspection where
   /-- The last successfully applied answer, or 0 for the initial state. -/
   checkpoint : Nat
   /-- The source's explanation for the first missing answer, if supplied. -/
   missing : Option String
+  /-- The failed answer or checkpoint check, when error capture was requested. -/
+  failure : Option ReplayInspectionFailure := none
   /-- Whether every answer in the inspected prefix and its setup was uniquely observed. -/
   exact : Bool
   /-- Earlier games whose setup or inputs were not uniquely observed. These are 1-based. -/
@@ -1865,30 +1885,41 @@ def ReplayInspection.withEarlierGames (inspection : ReplayInspection) (games : A
 
 /-- Run the recorded prefix without inventing a choice for an unknown answer. -/
 def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
-    (fuel : Nat := 100) : Except String ReplayInspection := do
+    (fuel : Nat := 100) (captureFailure : Bool := false) : Except String ReplayInspection := do
   let initial := ReplayPosition.fromState (← input.initial db config)
   let schedule ← input.observationSchedule
   let mut pending ← ReplayObservation.checkAt schedule 0 initial.state []
-  let mut history := [initial]
+  let mut history : List ReplayPosition := [initial]
   let mut checkpoint := 0
   let mut missing := none
+  let mut failure := none
   let mut inexactAnswers := #[]
   for answer in input.answers do
     if let .unknown description := answer then
       missing := some description
       break
     let index := checkpoint + 1
-    let (_, next, events) ← input.advance history answer index fuel
-      (ReplayObservation.wantsDisclosures pending index)
-    pending ← ReplayObservation.checkAt pending index next.state events next.disclosures
-      (history.head?.map (·.state))
-    history := next :: history
-    checkpoint := checkpoint + 1
-    if !next.answerExact then
-      inexactAnswers := inexactAnswers.push ⟨index, answer.inferenceEvidence⟩
+    let step : Except ReplayInspectionFailure (ReplayPosition × List ReplayObservation) := do
+      let (_, next, events) ← (input.advance history answer index fuel
+        (ReplayObservation.wantsDisclosures pending index)).mapError
+          (ReplayInspectionFailure.mk index .answer)
+      let remaining ← (ReplayObservation.checkAt pending index next.state events next.disclosures
+        (history.head?.map ReplayPosition.state)).mapError (ReplayInspectionFailure.mk index .observation)
+      pure (next, remaining)
+    match step with
+    | .error reason =>
+      unless captureFailure do throw reason.message
+      failure := some reason
+      break
+    | .ok (next, remaining) =>
+      pending := remaining
+      history := next :: history
+      checkpoint := index
+      if !next.answerExact then
+        inexactAnswers := inexactAnswers.push ⟨index, answer.inferenceEvidence⟩
   let position := history.headD initial
   return {
-    checkpoint, missing, position, chooser := input.chooser, inexactAnswers,
+    checkpoint, missing, failure, position, chooser := input.chooser, inexactAnswers,
     exact := input.openingOrderEvidence?.isNone && inexactAnswers.isEmpty,
     openingOrderEvidence := input.openingOrderEvidence?,
     checkedObservations := schedule.length - pending.length,
@@ -2035,9 +2066,9 @@ private def requireFinishedFreeForAll (summary : ReplayGameResult) : Except Stri
   unless summary.result.isSome do throw "the free-for-all game has no final result"
 
 /-- Inspect the supplied answers of a Skirmish or War game. -/
-def FreeForAllInputs.inspect (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :
-    Except String ReplayInspection :=
-  (do input.game.inspect db (← freeForAllConfig input.mode) input.fuel).mapError
+def FreeForAllInputs.inspect (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db)
+    (captureFailure : Bool := false) : Except String ReplayInspection :=
+  (do input.game.inspect db (← freeForAllConfig input.mode) input.fuel captureFailure).mapError
     (fun error => s!"game 1: {error}")
 
 /-- Play a complete Skirmish or War game and retain its inputs, outcome and checkpoints. -/

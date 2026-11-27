@@ -92,7 +92,8 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     | none =>
       frame.map (fun next => Json.mkObj [("kind", toJson (ctorName next))]) |>.getD Json.null
   let board ← Json.parse (stateJson state {}).1
-  return Json.mkObj [
+  let failure := inspection.failure.map (fun value => ("failure", toJson value))
+  return Json.mkObj ([
     ("game", toJson number), ("checkpoint", toJson inspection.checkpoint),
     ("nextAnswer", toJson (if live then some (inspection.checkpoint + 1) else none)),
     ("missing", toJson inspection.missing), ("exactPrefix", toJson inspection.exact),
@@ -102,7 +103,7 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     ("checkedObservations", toJson inspection.checkedObservations),
     ("pendingObservations", toJson inspection.pendingObservations),
     ("turnOrder", toJson state.turnOrder), ("clockCalled", toJson state.clock.isSome),
-    ("state", board), ("decision", decision), ("choices", toJson choices)]
+    ("state", board), ("decision", decision), ("choices", toJson choices)] ++ failure.toList)
 
 private def withInspectionDefaults (input : Json) (defaults : List (String × Json)) : Json :=
   match input with
@@ -110,16 +111,16 @@ private def withInspectionDefaults (input : Json) (defaults : List (String × Js
       if (json.getObjVal? field).isOk then json else json.setObjVal! field value) input
   | _ => input
 
-private def inspectInput (command : String) (input : Json) (number : Nat) :
+private def inspectInput (command : String) (input : Json) (number : Nat) (captureFailure : Bool) :
     Except String ReplayInspection := do
   if command == "inspect-ffa" then
     unless number == 1 do throw "the game number must be 1 for free-for-all"
     let script : FreeForAllInputs ← fromJson? input
-    return ← script.inspect
+    return ← script.inspect (captureFailure := captureFailure)
   let input := withInspectionDefaults input [("ending", toJson ReplayMatchEnd.finalGame)]
   if command == "inspect" then
     let script : MatchInputs ← fromJson? input
-    return ← script.inspect number
+    return ← script.inspect number (captureFailure := captureFailure)
   let games ← input.getObjValAs? (Array Json) "games"
   unless 0 < number && number <= games.size do throw "the game number is outside the match"
   let index := number - 1
@@ -127,7 +128,7 @@ private def inspectInput (command : String) (input : Json) (number : Nat) :
     ("ending", toJson TeamGameEnd.matchEnded), ("points", toJson ((0, 0) : Nat × Nat)),
     ("battlefields", Json.arr #[]), ("timed", toJson false)]
   let script : TeamMatchRecord ← fromJson? (input.setObjVal! "games" (toJson (games.set! index game)))
-  script.inspect number
+  script.inspect number (captureFailure := captureFailure)
 
 private def collectGame {α : Type} (input : GameInputs) (config : GameConfig) (fuel : Nat)
     (initial : GameState → α)
@@ -297,11 +298,13 @@ private def ffaSeatTrace (saved : RecordedFreeForAll) (seat : String) (includeBo
 def main (args : List String) : IO UInt32 := do
   try
     match args with
-    | [command@"inspect", input, game, output]
-    | [command@"inspect-team", input, game, output]
-    | [command@"inspect-ffa", input, game, output] =>
+    | command@"inspect" :: input :: game :: output :: flags
+    | command@"inspect-team" :: input :: game :: output :: flags
+    | command@"inspect-ffa" :: input :: game :: output :: flags =>
+      unless flags.isEmpty || flags == ["--explain"] do
+        throw (IO.userError "inspect accepts only the optional --explain flag after its output file")
       let some number := game.toNat? | throw (IO.userError "the game number must be a positive integer")
-      let inspection ← IO.ofExcept (inspectInput command (← readJson input) number)
+      let inspection ← IO.ofExcept (inspectInput command (← readJson input) number (!flags.isEmpty))
       writeJson input output (← IO.ofExcept (inspectionJson number inspection))
       return 0
     | ["record", input, output] =>
@@ -396,7 +399,7 @@ def main (args : List String) : IO UInt32 := do
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"
       IO.eprintln "       riftbound-replay revalidate[-team|-ffa] ARCHIVE.json UPDATED.json"
-      IO.eprintln "       riftbound-replay inspect[-team|-ffa] INPUT.json GAME OUTPUT.json"
+      IO.eprintln "       riftbound-replay inspect[-team|-ffa] INPUT.json GAME OUTPUT.json [--explain]"
       IO.eprintln "       riftbound-replay disclosures[-team|-ffa] ARCHIVE.json SEAT OUTPUT.json"
       IO.eprintln "       riftbound-replay view[-team|-ffa]-seat ARCHIVE.json SEAT OUTPUT.json"
       return 2
