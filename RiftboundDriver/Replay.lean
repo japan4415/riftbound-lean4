@@ -210,6 +210,38 @@ structure ReplayCardPlay where
   playerTarget? : Option PlayerId := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- Which kind of activation the player declared. -/
+inductive ReplayAbilityKind where
+  /-- A regular activated ability, including Hidden's abilities. -/
+  | activated
+  /-- An immediate Add ability other than the Basic Rune abilities. -/
+  | add
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- An activation transcribed using the source's code and declared objects. -/
+structure ReplayAbilityUse where
+  /-- The seat activating the ability. -/
+  seat : PlayerId
+  /-- Whether the declaration is a regular activation or an immediate Add. -/
+  kind : ReplayAbilityKind
+  /-- The source and its location before the activation. -/
+  source : ReplayCardReference
+  /-- The index of the source's activated ability, as listed by the inspector. -/
+  ability : Nat
+  /-- The object targets, in the order declared. -/
+  targets : List ReplayCardReference
+  /-- The declared Energy and Power, when observed. -/
+  payment? : Option RunePool.Payment := none
+  /-- The cards discarded for the activation, when observed. -/
+  discards? : Option (List ReplayCardReference) := none
+  /-- A targeted player, if recorded. -/
+  playerTarget? : Option PlayerId := none
+  /-- The controller selected to replace a pending Kill cost with Banish, if observed. -/
+  costBanisher? : Option PlayerId := none
+  /-- An object used for a non-resource cost, if recorded. -/
+  costObject? : Option ReplayCardReference := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -232,6 +264,10 @@ inductive ReplayAnswer where
   | observedCardPlay (play : ReplayCardPlay)
   /-- The declaration of a card play was reconstructed from incomplete observations. -/
   | inferredCardPlay (play : ReplayCardPlay) (evidence : String)
+  /-- The source, ability, and the activation's declared object targets were observed. -/
+  | observedAbilityUse (activation : ReplayAbilityUse)
+  /-- The activation was reconstructed from incomplete observations. -/
+  | inferredAbilityUse (activation : ReplayAbilityUse) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -271,6 +307,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     throw s!"answer {index}: a move by card code needs the current game state"
   | .observedCardPlay _ | .inferredCardPlay _ _ =>
     throw s!"answer {index}: a play by card code needs the current game state"
+  | .observedAbilityUse _ | .inferredAbilityUse _ _ =>
+    throw s!"answer {index}: an ability by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
@@ -374,6 +412,11 @@ private def ReplayCardReference.matches (s : GameState) (ref : ReplayCardReferen
       ref.controller?.all (· == object.controller) &&
       ref.exhausted?.all (fun exhausted => s.inPlay.contains id && exhausted == object.exhausted))
 
+private def ReplayCardReference.matchesOrdered (s : GameState)
+    (recorded : List ReplayCardReference) (actual : List ObjId) : Bool :=
+  recorded.length == actual.length &&
+    (recorded.zip actual).all (fun (reference, id) => reference.matches s id)
+
 private def ReplayPlayDiscard.ofObject? (s : GameState) : Option ObjId → Option ReplayPlayDiscard
   | .none => some .none
   | some id => (.card ·) <$> ReplayCardReference.ofObject? s id
@@ -408,8 +451,7 @@ private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
   let matching := (legalFrameActions s).filter fun action =>
     action.actor == .player play.seat && match action.kind with
     | .playCard id payment targets flowCost discard pick =>
-      play.source.matches s id && play.targets.length == targets.length &&
-        (play.targets.zip targets).all (fun (reference, target) => reference.matches s target) &&
+      play.source.matches s id && ReplayCardReference.matchesOrdered s play.targets targets &&
         play.payment?.all (· == payment) && play.flowCost?.all (some · == flowCost) &&
         play.discard?.all (fun declared => declared.matches s discard) &&
         play.choice?.all (fun declared => some declared == ReplayPlayChoice.ofPick? s pick) &&
@@ -417,6 +459,48 @@ private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
     | _ => false
   let some action := matching.head?
     | throw s!"seat {play.seat.n} has no legal play of {play.source.card.code} with the recorded declaration"
+  return (action, matching.length == 1)
+
+/-- Describe a legal Chain activation or an immediate Add using printed card identities. -/
+def ReplayAbilityUse.fromAction? (s : GameState) (action : Action) : Option ReplayAbilityUse := do
+  let .player seat := action.actor | none
+  let reference := ReplayCardReference.ofObject? s
+  match action.kind with
+  | .activate id ability payment targets discards playerTarget? costBanisher? costObject =>
+    let source ← reference id
+    let targets ← targets.mapM reference
+    let discards ← discards.mapM reference
+    return {
+      seat, kind := .activated, source, ability, targets, payment? := some payment
+      discards? := some discards, playerTarget?, costBanisher?, costObject? := costObject.bind reference }
+  | .manaAbility id ability payment costObject =>
+    let source ← reference id
+    return {
+      seat, kind := .add, source, ability, targets := [], payment? := some payment
+      costObject? := costObject.bind reference }
+  | _ => none
+
+private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameState) :
+    Except String (Action × Bool) := do
+  let fitsSourceAndPrice (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) :=
+    activation.kind == kind && activation.ability == ability && activation.source.matches s id &&
+      activation.payment?.all (· == payment) &&
+      activation.costObject?.all (fun reference => costObject.any (reference.matches s))
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player activation.seat && match action.kind with
+    | .activate id ability payment targets discards targetPlayer costBanisher costObject =>
+      fitsSourceAndPrice .activated id ability payment costObject &&
+        ReplayCardReference.matchesOrdered s activation.targets targets &&
+        activation.discards?.all (fun recorded => ReplayCardReference.matchesOrdered s recorded discards) &&
+        activation.playerTarget?.all (some · == targetPlayer) &&
+        activation.costBanisher?.all (some · == costBanisher)
+    | .manaAbility id ability payment costObject =>
+      fitsSourceAndPrice .add id ability payment costObject && activation.targets.isEmpty &&
+        activation.discards?.all List.isEmpty && activation.playerTarget?.isNone && activation.costBanisher?.isNone
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {activation.seat.n} has no legal ability {activation.ability} on {activation.source.card.code} with the recorded declaration"
   return (action, matching.length == 1)
 
 /-- Data needed to transcribe the currently pending random decision. -/
@@ -473,6 +557,8 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolvePlay (play : ReplayCardPlay) :=
     (play.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveAbility (activation : ReplayAbilityUse) :=
+    (activation.resolve s).mapError (fun error => s!"answer {index}: {error}")
   match answer with
   | .observedChance outcome => resolveChance outcome
   | .inferredChance outcome evidence =>
@@ -490,6 +576,10 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
   | .inferredCardPlay play evidence =>
     checkInference index evidence
     return ((← resolvePlay play).1, false)
+  | .observedAbilityUse activation => resolveAbility activation
+  | .inferredAbilityUse activation evidence =>
+    checkInference index evidence
+    return ((← resolveAbility activation).1, false)
   | _ =>
     return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 
