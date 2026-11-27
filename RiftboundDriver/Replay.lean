@@ -116,6 +116,10 @@ inductive ReplayCardPickKind where
   | assignDamage
   /-- Choose one of the objects offered at a decision during play. -/
   | chooseObject
+  /-- Exhaust a Basic Rune to add Energy. -/
+  | runeExhaust
+  /-- Recycle a Basic Rune to add Power. -/
+  | runeRecycle
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A recorded location used to tell two copies of an offered card apart. -/
@@ -136,6 +140,8 @@ structure ReplayCardPick where
   card : CardId
   /-- An observed location that can distinguish otherwise identical codes. -/
   location? : Option ReplayCardLocation := none
+  /-- Whether the card on the Board was exhausted before the answer. -/
+  exhausted? : Option Bool := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A Unit's Standard Move recorded without engine-generated object IDs. -/
@@ -284,6 +290,8 @@ private def ReplayCardPick.fromActionWithObject? (s : GameState) (action : Actio
     | .predictPick id true => some (.predictRecycle, id)
     | .assignPick id => some (.assignDamage, id)
     | .choose id => some (.chooseObject, id)
+    | .runeAbility id .exhaust => some (.runeExhaust, id)
+    | .runeAbility id .recycle => some (.runeRecycle, id)
     | _ => none
   let card ← replayCardCode s id
   return ({ seat, kind, card }, id)
@@ -300,12 +308,13 @@ private def replayCardLocation (s : GameState) (id : ObjId) : Option ReplayCardL
   let code ← field.kind.cardId?
   return .battlefield field.owner code
 
-/-- Describe a pick with its observed zone or Battlefield when that location is known. -/
+/-- Describe a pick with its observed location and, on the Board, its exhaustion status. -/
 def ReplayCardPick.fromActionAtLocation? (s : GameState) (action : Action) :
     Option ReplayCardPick := do
   let (pick, id) ← fromActionWithObject? s action
   let location ← replayCardLocation s id
-  return { pick with location? := some location }
+  let exhausted := if s.inPlay.contains id then (s.obj? id).map (·.exhausted) else none
+  return { pick with location? := some location, exhausted? := exhausted }
 
 private def ReplayCardLocation.matches (s : GameState) (id : ObjId) :
     ReplayCardLocation → Bool
@@ -316,7 +325,10 @@ private def ReplayCardPick.resolve (choice : ReplayCardPick) (s : GameState) :
     Except String (Action × Bool) := do
   let matching := (legalFrameActions s).filter (fun action =>
     (ReplayCardPick.fromActionWithObject? s action).any (fun (pick, id) =>
-      pick == { choice with location? := none } && choice.location?.all (·.matches s id)))
+      pick == { choice with location? := none, exhausted? := none } &&
+        choice.location?.all (·.matches s id) &&
+        choice.exhausted?.all (fun exhausted => s.inPlay.contains id &&
+          (s.obj? id).any (fun object => object.exhausted == exhausted))))
   let some action := matching.head?
     | throw s!"seat {choice.seat.n} has no legal {reprStr choice.kind} pick of {choice.card.code}"
   return (action, matching.length == 1)

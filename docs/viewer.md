@@ -117,6 +117,8 @@ Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"
 
 同じコードのカードが別々の場所にある場合は、`choice` の `location` で区別できる。席1の Base は `{"zone":{"zone":{"player":{"p":{"n":1},"k":"base"}}}}`、席1の Battlefield は `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}` と指定する。場所まで含む候補は `inspect` の `answerByLocation` に出る。同じ場所にも複数の候補があれば、再生結果の `exact` は `false` になる。
 
+Basic Rune は `kind` を `runeExhaust` または `runeRecycle` として、使った Rune のコードを記録できる。盤上のカードには `exhausted` も指定できる。たとえば同じ Rune が Ready と Exhaust の状態で一枚ずつある場合、どちらを Recycle したかを区別できる。
+
 単体の Standard Move は `observedStandardMove` の `move` に `seat`、Unit のコード `unit`、移動先 `destination` を指定できる。移動先は `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}`。観測した出発地は `from`、支払った移動費用は `fee` に入れ、該当する手を絞れる。`inspect` の `answerByCode` から転記できる。推定した移動には `inferredStandardMove` の `move` と `evidence` を使う。
 
 カードのプレイは `observedCardPlay` の `play` に、プレイした `seat`、出したカード `source`、宣言順の対象 `targets` を指定できる。各カードを `{"card":{"code":"OGN-001"}}` で表し、観測できた `location`、`controller`、`exhausted` で候補を絞れる。支払いは `payment`、Flow の費用は `flowCost`、追加コストの捨て札は `discard`、最初のモードや移動先は `choice`、対象のプレイヤーは `playerTarget` で指定できる。入力例は `inspect` の `answerByCode` に出る。一致する合法手が複数なら `exact: false` になる。推定したプレイは `inferredCardPlay` の `play` と `evidence` に記録する。
