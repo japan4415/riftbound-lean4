@@ -2275,6 +2275,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Unit や Gear をプレイする際の Kill・Exhaust・XP の追加コストを盤面に出る前に支払う。効果によるプレイも同じ順序を使う。Firebrand Raider を Kill して Cruel Patron を出すと Exhaust し、Hourglass が Raider を救った場合は Raider の効果が残るので Ready で出る。置換があっても Kill のコストは支払い済みになる（CR 357.2.a、359.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### 味方を選んだときの誘発と防衛への合流
+
+- Spirit Wheel と Blade Dancer は2対2でチームメイトの Unit を選んだときにも誘発する。任意の支払いと Exhaust は確定時に行い、Draw と Ready は解決時に処理する。Loyal Pup の合流も確定時に選ぶ。Ruin Runner と Cleave を含む5枚を `full` とし、全1,103枚中605枚が実装済みとなった。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

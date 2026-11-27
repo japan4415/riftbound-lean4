@@ -121,7 +121,7 @@ def OGN_004 : CardDef :=
   { OGN_004.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.keyword .it ⟨.assault, .amount 3⟩) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-005
 /--

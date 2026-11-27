@@ -1782,6 +1782,31 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     b.handN s.me + 1 == s4.handN s.me && n.handN s.me + 1 == s4.handN s.me &&
     t.handN s.me + 1 == s4.handN s.me && p.tired w == some false
 
+-- The caster's Spirit Wheel may pay for choosing its teammate's Unit. Its teammate's Wheel
+-- does not fire, and the payment happens while Cleave and the draw are still on the Chain.
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, wheel) ← put (s.fund p 2) p "SFD-144" .base
+  let (s, other) ← put s mate "SFD-144" .base
+  let (s, friend) ← put s mate "OGN-051" .base
+  let (s, foe) ← put s enemy "OGN-051" .base
+  let (s, cleave) ← put s p "OGN-004" .hand
+  let castAt (target : ObjId) : Action := ⟨.player p, .playCard cleave ⟨1, []⟩ [target]⟩
+  let (offered, _) ← (step 100 s (castAt friend)).toOption
+  let (enemyCast, _) ← (step 100 s (castAt foe)).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let (paid, _) ← (step 100 offered accept).toOption
+  let done := settleChain {} 20 paid
+  return (legalActions offered).contains accept && !(legalActions enemyCast).contains accept &&
+    paid.tired wheel == some true && paid.tired other == some false && (paid.poolOf p).energy == 0 &&
+    paid.handN p + 1 == s.handN p && done.handN p == s.handN p &&
+    paid.kwAmount friend .assault == 0 && done.kwAmount friend .assault == 3
+
 -- Blade Dancer (SFD-195), a Legend: when its player chooses a friendly unit, exhaust it and pay 1
 -- Power to ready the unit; when they conquer, pay 1 Energy to ready it
 #guard tsf fun s => do
@@ -3144,7 +3169,9 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let a ← fire s4 [.combatStarted bf s.you]
   let b ← fire s4 [.combatStarted bf s.you] { yes := false }
   let c ← fire s4 [.combatStarted bf s.me]
-  return a.hereOf pup == some bf && b.hereOf pup == none && c.hereOf pup == none
+  let (defending, sameField) ← putAt s3 s.me "SFD-126" bf
+  return a.hereOf pup == some bf && b.hereOf pup == none && c.hereOf pup == none &&
+    (defending.detect [.combatStarted bf s.you]).any (fun t => t.source == sameField)
 
 -- Aphelios, Exalted (SFD-049): when an Equipment is attached to it, choose a mode not yet chosen
 -- this turn: ready 2 runes, channel 1 rune exhausted, or buff a friendly unit

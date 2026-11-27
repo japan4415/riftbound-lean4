@@ -221,6 +221,14 @@ def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
   let eventAmount := if ev == .play then s.watchedSpellEnergy who subj else none
   s.passiveSources.flatMap (fun src => watchersAt s subj who ev .every src (eventAmount := eventAmount))
 
+/-- General "when you choose a friendly unit" watchers see teammate targets as well. A Unit's
+own "when you choose me" still requires the Unit's controller to make the choice. -/
+def GameState.chosenAnyTriggers (s : GameState) (p : PlayerId) (target : ObjId) : List PendTrigger :=
+  if (s.obj? target).any (fun o => s.config.mode.sameSide p o.controller) then
+    (if (s.obj? target).any (·.controller == p) then triggersOf s target p .chosenAny else []) ++
+      watchersOf s target p .chosenAny
+  else []
+
 /-- A grouped death fires once per watching ability. Its source may be one of the dead objects. -/
 def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTrigger :=
   let deaths := es.filterMap (fun
@@ -664,15 +672,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .lookedAt p c => triggersOf s c p .seenOnTop
   | .chosenBySpell p t =>
-    -- a unit of the player that is chosen by their spell, and what watches the units they choose
     (if (s.obj? t).any (·.controller == p) then
-      triggersOf s t p .chosen ++ watchersOf s t p .chosen ++
-        triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
-    else [])
-  | .chosenByAbility p t =>
-    if (s.obj? t).any (·.controller == p) then
-      triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
-    else []
+      triggersOf s t p .chosen ++ watchersOf s t p .chosen
+    else []) ++ s.chosenAnyTriggers p t
+  | .chosenByAbility p t => s.chosenAnyTriggers p t
   | .killedBySpell p =>
     (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .killBySpell)
   | .recycled p =>
@@ -822,10 +825,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- the abilities of the Battlefield: for the players who attack and defend there
     (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       triggersOf s bf q (if q == att then TriggerEvent.attack else .defend)) ++
-    -- the units of a defending player that are elsewhere: "when you defend at a battlefield"
+    -- the defending player’s Units, including ones already at this Battlefield
     (s.players.filter (fun q => q != att && !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       s.inPlay.flatMap (fun u =>
-        if (s.obj? u).any (fun o => o.controller == q && o.loc != some bf) &&
+        if (s.obj? u).any (fun o => o.controller == q) &&
             (s.cardDef? u).any (·.hasType .unit) then
           (triggersOf s u q .youDefend).map (fun t => { t with subject := some bf })
         else []))

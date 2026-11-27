@@ -3064,12 +3064,11 @@ def SFD_105.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ruin Runner. -/
+/-- Opponents cannot choose Ruin Runner with spells or abilities. -/
 def SFD_105 : CardDef :=
   { SFD_105.meta with
-
     abilities := [.passive .always [.cant .self .beChosen]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-106
 /--
@@ -3700,13 +3699,12 @@ def SFD_126.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Loyal Pup. -/
+/-- Loyal Pup may join the Battlefield its controller defends. -/
 def SFD_126 : CardDef :=
   { SFD_126.meta with
-
-    abilities := [.triggered (.onSelf .youDefend)
-      (.of [] (.may (.prim (.move .self (.at_ (.slot 0)))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .youDefend with optional := true }
+      (.of [] (.prim (.move .self (.at_ (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-127
 /--
@@ -4211,16 +4209,14 @@ def SFD_144.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Spirit Wheel. -/
+/-- Spirit Wheel pays and exhausts when finalized, then draws on resolution. -/
 def SFD_144 : CardDef :=
   { SFD_144.meta with
-
     abilities := [.triggered
-      { event := .chosenAny, subject := Selector.all .you .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩) (.matches .self .ready))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.exhaust .self),
-          .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .chosenAny, subject := .all .you .anywhere [.ofType .unit]
+        optional := true, cost := .pay ⟨1, []⟩ true }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-145
 /--
@@ -5724,19 +5720,16 @@ def SFD_195.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Blade Dancer. -/
+/-- Blade Dancer may pay to ready a chosen friendly Unit, or to ready itself on Conquer. -/
 def SFD_195 : CardDef :=
   { SFD_195.meta with
-
     abilities := [.triggered
-        { event := .chosenAny, subject := Selector.all .you .anywhere [.ofType .unit] }
-        (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.pay ⟨0, [.any]⟩),
-            .prim (.ready (.slot 0))])) .nop)) .unlimited,
-      .triggered (.onSelf .youConquer)
-        (.of [] (.ifThen (.canPay ⟨1, []⟩)
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.ready .self)])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .chosenAny, subject := .all .you .anywhere [.ofType .unit]
+        optional := true, cost := .pay ⟨0, [.any]⟩ true }
+      (.of [] (.prim (.ready (.slot 0)))) .unlimited,
+      .triggered { Trigger.onSelf .youConquer with optional := true, cost := .energy 1 }
+        (.of [] (.prim (.ready .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-196
 /--
