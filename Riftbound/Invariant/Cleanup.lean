@@ -1248,6 +1248,42 @@ theorem findSome_newContest {s : GameState} {b : ObjId} {q : PlayerId}
     obtain ⟨rfl, rfl⟩ := hf
     exact ⟨ha, hn⟩
 
+/-- A single Cleanup death reduces the measure while its target is still on the Board.
+The owner condition also applies to deaths selected earlier in a simultaneous group. -/
+theorem cleanupKill_lt {s : GameState} {u : ObjId} (hwf : s.WF) (hmem : u ∈ s.inPlay)
+    (ownerValid : ∀ o, s.obj? u = some o → o.owner.n < s.playerCount) :
+    MeasLt (cleanupKill s u).1.cleanupMeasure s.cleanupMeasure := by
+  change MeasLt (cleanupKillCore s u).1.cleanupMeasure s.cleanupMeasure
+  unfold cleanupKillCore
+  split
+  · rename_i g hg
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Option.any_eq_true, decide_eq_true_eq] at hc
+      obtain ⟨hne, o, ho, hlt⟩ := hc
+      exact MeasLt.at1 (saveUnit_pot_lt hwf (Ne.symm hne) hmem (deathSaver_mem hg)
+        (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+    · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+  · split
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq, Option.any_eq_true] at hc
+      obtain ⟨hb, o, ho, hlt⟩ := hc
+      exact MeasLt.at1 (saveUnit_none_pot_lt hwf hb
+        (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+    · split
+      · -- healed where it is (a Base): the damage that was on it is gone
+        rename_i hc
+        simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq, Option.any_eq_true] at hc
+        obtain ⟨-, o, ho, hpos⟩ := hc
+        refine MeasLt.at2 (pot_modObj s u (fun o => { o with damage := 0, exhausted := true })) ?_
+        have h1 : (s.modObj u (fun o => { o with damage := 0, exhausted := true })).tokC = s.tokC :=
+          tokC_modObj s u _ (fun _ => rfl)
+        have h2 := dmgC_heal s u (fun o => { o with damage := 0, exhausted := true })
+          (fun _ => rfl) hmem (by rw [ho]; simpa using hpos)
+        exact Nat.add_lt_add_of_le_of_lt (Nat.le_of_eq h1) h2
+      · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+  · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+
 /-- Every step of the Cleanup makes the measure go down (I12a). -/
 theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     (h : cleanupStep0 s = some (s', es)) : MeasLt s'.cleanupMeasure s.cleanupMeasure := by
@@ -1258,36 +1294,7 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hl := List.find?_some hu
     simp only [Bool.and_eq_true] at hl
     have hmem := List.mem_of_find?_eq_some hu
-    change MeasLt (cleanupKillCore s u).1.cleanupMeasure s.cleanupMeasure
-    unfold cleanupKillCore
-    split
-    · rename_i g hg
-      split
-      · rename_i hc
-        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Option.any_eq_true, decide_eq_true_eq] at hc
-        obtain ⟨hne, o, ho, hlt⟩ := hc
-        exact MeasLt.at1 (saveUnit_pot_lt hwf (Ne.symm hne) hmem (deathSaver_mem hg)
-          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
-      · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
-    · split
-      · rename_i hc
-        simp only [Bool.and_eq_true, decide_eq_true_eq, Option.any_eq_true] at hc
-        obtain ⟨hb, o, ho, hlt⟩ := hc
-        exact MeasLt.at1 (saveUnit_none_pot_lt hwf hb
-          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
-      · split
-        · -- healed where it is (a Base): the damage that was on it is gone
-          rename_i hc
-          simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq, Option.any_eq_true] at hc
-          obtain ⟨-, o, ho, hpos⟩ := hc
-          refine MeasLt.at2 (pot_modObj s u (fun o => { o with damage := 0, exhausted := true })) ?_
-          have h1 : (s.modObj u (fun o => { o with damage := 0, exhausted := true })).tokC = s.tokC :=
-            tokC_modObj s u _ (fun _ => rfl)
-          have h2 := dmgC_heal s u (fun o => { o with damage := 0, exhausted := true })
-            (fun _ => rfl) hmem (by rw [ho]; simpa using hpos)
-          exact Nat.add_lt_add_of_le_of_lt (Nat.le_of_eq h1) h2
-        · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
-    · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
+    exact cleanupKill_lt hwf hmem (lethal_owner hl.2)
   · split at h
     · rename_i b hb
       obtain rfl : s' = s.modObj b (fun o => { o with control := none }) :=
