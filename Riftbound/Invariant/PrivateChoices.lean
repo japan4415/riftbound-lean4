@@ -328,6 +328,58 @@ theorem legalFrameActions_assign_rename {s t : GameState} {before after : ObjId}
   simp only [legalFrameActions, hs, ht]
   exact legalAssigns_rename rename injective targets controller priority
 
+/-- Excluding Units already selected for a Standard Move commutes with renaming the
+public candidates and the selection. The fee is checked for the same group size. -/
+theorem GameState.groupMoveRemaining_rename {s t : GameState} {p : PlayerId}
+    {oldDest newDest : MoveDest} {pay : Cost} {units : List ObjId} (rename : ObjId → ObjId)
+    (injective : Function.Injective rename)
+    (candidates : (t.groupMoveChoices p newDest).Perm ((s.groupMoveChoices p oldDest).map rename))
+    (fee : (t.standardMoveQuotes p newDest (max 2 (units.length + 1))
+      (s.groupMoveChoices p oldDest).length).contains pay =
+      (s.standardMoveQuotes p oldDest (max 2 (units.length + 1))
+        (s.groupMoveChoices p oldDest).length).contains pay) :
+    (t.groupMoveRemaining p newDest pay (units.map rename)).Perm
+      ((s.groupMoveRemaining p oldDest pay units).map rename) := by
+  have count : (t.groupMoveChoices p newDest).length = (s.groupMoveChoices p oldDest).length := by
+    simpa only [List.length_map] using candidates.length_eq
+  have selected (id : ObjId) : (units.map rename).contains (rename id) = units.contains id := by
+    apply Bool.eq_iff_iff.mpr
+    simp only [List.contains_iff_mem, List.mem_map]
+    constructor
+    · rintro ⟨other, present, same⟩
+      exact injective same ▸ present
+    · intro present
+      exact ⟨id, present, rfl⟩
+  unfold GameState.groupMoveRemaining
+  simp only [List.length_map, count, fee]
+  split
+  · have filtered := candidates.filter (fun id => !(units.map rename).contains id)
+    simpa only [List.filter_map, Function.comp_def, selected] using filtered
+  · simp
+
+/-- The open group selection offers corresponding Units and the same accept or cancel
+answers when the public candidates, quoted fee, and validity of the declaration agree. -/
+theorem legalFrameActions_groupMove_rename {s t : GameState} {p : PlayerId}
+    {oldDest newDest : MoveDest} {pay : Cost} {units : List ObjId} {tailS tailT : List Frame}
+    (rename : ObjId → ObjId) (injective : Function.Injective rename)
+    (hs : s.pending = .groupMove p oldDest pay units :: tailS)
+    (ht : t.pending = .groupMove p newDest pay (units.map rename) :: tailT)
+    (candidates : (t.groupMoveChoices p newDest).Perm ((s.groupMoveChoices p oldDest).map rename))
+    (fee : (t.standardMoveQuotes p newDest (max 2 (units.length + 1))
+      (s.groupMoveChoices p oldDest).length).contains pay =
+      (s.standardMoveQuotes p oldDest (max 2 (units.length + 1))
+        (s.groupMoveChoices p oldDest).length).contains pay)
+    (ready : t.groupMoveReady p newDest pay (units.map rename) = s.groupMoveReady p oldDest pay units) :
+    (legalFrameActions t).Perm ((legalFrameActions s).map (Action.renameOfferedChoice rename)) := by
+  have remaining := (GameState.groupMoveRemaining_rename rename injective candidates fee).map
+    (fun id => Action.mk (.player p) (.choose id))
+  cases canAccept : s.groupMoveReady p oldDest pay units
+  · simpa [legalFrameActions, hs, ht, ready, canAccept, List.map_map, Function.comp_def,
+      Action.renameOfferedChoice] using remaining.cons (Action.mk (.player p) (.decide false))
+  · simpa [legalFrameActions, hs, ht, ready, canAccept, List.map_map, Function.comp_def,
+      Action.renameOfferedChoice] using
+        (remaining.cons (Action.mk (.player p) (.decide true))).cons (Action.mk (.player p) (.decide false))
+
 end Riftbound
 
 end
