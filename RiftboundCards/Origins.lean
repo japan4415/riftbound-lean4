@@ -475,7 +475,7 @@ def OGN_018.meta : CardDef :=
 def OGN_018 : CardDef :=
   { OGN_018.meta with
     abilities := [.passive .always [.noHiddenReveal]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-019
 /--
@@ -697,7 +697,7 @@ def OGN_026 : CardDef :=
   { OGN_026.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.prim (.turnEffect .opponentsCantPlay))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-027
 /--

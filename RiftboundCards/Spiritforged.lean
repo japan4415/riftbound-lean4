@@ -2620,10 +2620,10 @@ def SFD_089 : CardDef :=
   { SFD_089.meta with
 
     abilities := [.passive .always
-        [.mightPlus (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]) (.const 1)],
+        [.mightPlus (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]) (.const 1)],
       .triggered (.onSelf .hold)
         (.of [] (.prim (.create "Mech" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-090
 /--

@@ -2421,6 +2421,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Sacred Shears の Deathknell は装備された Unit の能力として働く。死亡直前の装備を参照し、同時に Gear が取り除かれた場合も処理する。Gear だけが死亡した場合と、死亡を追放で置き換えた場合は引かない。[公式総合ルール 429.1.a.1.b、808](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Hidden の制約とカードを使った席
+
+- Noxus Saboteur は同じ Battlefield にある敵の伏せ札の公開を防ぐ。Brynhir Thundersong の効果は敵が伏せ札から Unit や Spell をプレイする場合にも適用する。Basic Rune の起動は許される。
+- Katarina, Reckless は自身の支配者が Hide したときに Ready になり、伏せ札からのプレイが解決したときに敵の Unit にダメージを与える。Rumble, Scrapper は自身の支配者の Mech だけを強化し、自分の Hold で Mech を出す。Sacred Shears と合わせて5枚を確認し、全1,103枚中744枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

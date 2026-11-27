@@ -740,7 +740,7 @@ def UNL_023 : CardDef :=
       .triggered (.onSelf .playHidden)
         (.of [.targetOf .one .enemy .anywhere [.ofType .unit]] (.prim (.deal (.slot 0) (.const 2))))
         .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-024
 /--

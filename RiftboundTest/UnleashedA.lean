@@ -1607,6 +1607,24 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let s4 ← fire s3 [Event.moved c c (.player s.me .hidden)]
   return s3.tired k == some true && s4.tired k == some false
 
+-- Katarina readies on her controller's Hide, and only a resolved own Hidden play deals damage.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, kat) ← put (s.control p field) p "UNL-023" .base
+  let (s, cub) ← put (s.tire kat) p "OGN-135" .hand
+  let (s, foe) ← put s q "OGN-116" .base
+  let hidden ← activate s p cub 0 [field] ⟨0, [.body]⟩
+  let card ← (hidden.zone (.player p .hidden)).head?
+  let later := { hidden with turn := hidden.turn + 1 }
+  let played ← activate later p card 1 [] ⟨0, []⟩ { pick := (· == [foe]) }
+  let fromHand ← play s p cub
+  let opponent ← fire (s.tire kat) [.hiddenPlayed q]
+  return hidden.tired kat == some false && (hidden.obj? foe).any (·.damage == 0) &&
+    (played.obj? foe).any (·.damage == 2) && (fromHand.obj? foe).any (·.damage == 0) &&
+    (opponent.obj? foe).any (·.damage == 0) && opponent.tired kat == some true
+
 -- Tricksy Tentacles (UNL-054): enemy units of total Might 8 or less are moved to one place
 #guard tun fun s => do
   let (s1, c) ← put (s.control s.you s.bf0) s.me "UNL-054" .hand

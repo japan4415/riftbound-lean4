@@ -3948,6 +3948,31 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     !(legalPlays rich s.you).any
       (fun a => match a.kind with | .playCard c _ _ _ _ _ => c == ray | _ => false)
 
+-- Brynhir prohibits card plays from Hidden for both enemy seats, while Rune abilities remain legal.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let other : PlayerId := ⟨3⟩
+  let base := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { base with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s foe "OGN-275"
+  let (s, brynhir) ← put s p "OGN-026" .hand
+  let (s, hidden) ← put (s.control foe field) foe "OGN-135" .hidden
+  let (s, rune) ← put s foe "OGN-126" .base
+  let s := s.modObj hidden (fun card => { card with hiddenAt := some field, hiddenTurn := some 2 })
+  let done ← play s p brynhir
+  let answering := { done with pending := [.chainPass foe 0, .priority p] }
+  let exhaust : Action := ⟨.player foe, .runeAbility rune .exhaust⟩
+  return s.abilityZoneOk foe hidden 1 && !done.abilityZoneOk foe hidden 1 &&
+    done.cantPlay foe && done.cantPlay other && !done.cantPlay partner &&
+    (legalFrameActions answering).contains exhaust
+
 -- The ability that watches an object gets it as its last slot. Pirate's Haven (OGN-143): when I
 -- ready a friendly unit, it gets +1 Might this turn
 #guard t fun s => do

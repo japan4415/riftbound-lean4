@@ -759,6 +759,21 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     broke.handN p == s.handN p && banish.handN p == s.handN p &&
     simultaneous.handN p == s.handN p + 1 && afterCleanup.handN p == s.handN p + 1
 
+-- Rumble strengthens his own Mechs, including himself. Only his own Hold plays the token.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, mine) ← put s p "SFD-062" .base
+  let (s, theirs) ← put s mate "SFD-062" .base
+  let (s, rumble) ← putAt (s.control p field) p "SFD-089" field
+  let held ← fire s [.scored p field false]
+  let conquered ← fire s [.scored p field true]
+  return s.mightNow mine == some 4 && s.mightNow theirs == some 3 &&
+    s.mightNow rumble == (s.cardDef? rumble).bind (fun d => d.might.map (fun m => (m : Int) + 1)) &&
+    held.countNamed p .base "Mech" == 1 && held.countNamed mate .base "Mech" == 0 &&
+    conquered.countNamed p .base "Mech" == 0
+
 -- Buhru Captain (SFD-091): when played, the player may draw 1 or buff it
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-091" .hand
