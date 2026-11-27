@@ -328,6 +328,8 @@ structure ReplayCheckpoint where
   playEnergy? : Option (List Nat) := none
   /-- Physical card numbers in play-log order, with entries only for finalizations. -/
   playPhysical? : Option (List (Option Nat)) := none
+  /-- Timestamps in play-log order, with entries only for finalizations. -/
+  playStamps? : Option (List (Option Nat)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -567,7 +569,7 @@ private def replayXP (s : GameState) : GameState :=
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
   -- Keep the original state fingerprint and record new evidence separately.
-  let playLog := s.playLog.map (fun play => { play with energyPaid := 0, physical := none })
+  let playLog := s.playLog.map (fun play => { play with energyPaid := 0, physical := none, stamp := none })
   let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog }
   { state := toString (hash (reprStr legacy))
     events
@@ -575,7 +577,8 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
     damageMarks? := some (s.damageMarks.toList.map (fun (id, marks) =>
       (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount)))))
     playEnergy? := some (s.playLog.map (·.energyPaid))
-    playPhysical? := some (s.playLog.map (fun play => play.physical.map PhysId.n)) }
+    playPhysical? := some (s.playLog.map (fun play => play.physical.map PhysId.n))
+    playStamps? := some (s.playLog.map (·.stamp)) }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1229,6 +1232,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
       throw s!"checkpoint {index}: Spell Energy payments differ"
     if witness.playPhysical?.any (fun ids => actual.playPhysical? != some ids) then
       throw s!"checkpoint {index}: finalized card identities differ"
+    if witness.playStamps?.any (fun stamps => actual.playStamps? != some stamps) then
+      throw s!"checkpoint {index}: play finalization timestamps differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint))

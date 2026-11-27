@@ -2994,6 +2994,29 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
     cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
     cut on s.you sp == some 6 && cut next s.me sp == some 6
 
+-- A Spell played by an effect spends the caster's next-Spell discount, even when
+-- the Spell belongs to the opponent and goes back to the owner's Trash.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, firebrand) ← put s p "OGN-031" .hand
+  let (s, borrowed) ← put s q "OGN-094" .trash
+  let (s, next) ← put s p "OGN-094" .hand
+  let physical ← (s.obj? borrowed).bind (·.kind.phys?)
+  let on ← play s p firebrand
+  let source ← on.firstOf p .base "OGN-031"
+  let waiting := on.addTurnFx q (.nextSpellCostMinus 3)
+  let castBorrowed := Effect.prim (.play (Selector.one .enemy .inTrash [.ofType .spell]))
+  let (opened, _) ← (advance 100 { waiting with
+    pending := .run p source {} (.cons castBorrowed .nil) :: waiting.pending } []).toOption
+  let resolved := settleChain {} 24 opened
+  let finalization ← resolved.playLog.find? (fun play =>
+    play.moment == .finalized && play.physical == some physical)
+  return waiting.energyCost? p next == some 0 && resolved.energyCost? p next == some 3 &&
+    resolved.spellCutFx q == [3] && resolved.countIn q .trash "OGN-094" == 1 &&
+    resolved.countIn p .base "TKN-Sprite" == 1 && finalization.who == p &&
+    finalization.stamp.any (fun stamp => decide (waiting.nextTimestamp ≤ stamp))
+
 -- ... a card played earlier that is played again counts as the next card: Sun Disc
 #guard t fun s => do
   let (s1, g) ← put s s.me "OGN-021" .base

@@ -2352,6 +2352,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Kadregrin the Infernal はプレイした席が支配する Mighty Unit を数える。Sett, Kingpin は自身が Battlefield にいる場合だけ、同じ Battlefield にいる味方の Buff 付き Unit を数える。Discipline は対象を失っても独立したドローを実行する。Wind Wall、Ahri, Alluring、Thousand-Tailed Watcher、Mobilize、Qiyana, Victorious、Scrapheap、Teemo, Scout を合わせて10枚を `full` とし、全1,103枚中678枚を実装済みとした（CR 359.3.e、491.8.c、491.8.e）。
 
+### 次の Spell を確定した席と時点
+
+- 次の Spell の値引きは、カードのオーナーと別の席が効果でプレイする場合も、実際にプレイを確定した席のものを消費する。プレイの確定時点を履歴に保存し、リプレイでも照合できる。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

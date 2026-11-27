@@ -271,6 +271,11 @@ def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp :
     o.owner == p && (o.playedStamp.any (fun x => decide (stamp ≤ x))) &&
       (s.cardDef? ⟨k⟩).any (·.hasType t))
 
+/-- The player finalized a card of this type since `stamp`, regardless of ownership or later moves. -/
+def GameState.finalizedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp : Nat) : Bool :=
+  s.playLog.any (fun play => play.who == p && play.turn == s.turn &&
+    play.moment == .finalized && play.types.contains t && play.stamp.any (fun played => decide (stamp ≤ played)))
+
 /-- The player finalized a different physical card this turn, even if that card has since moved
 or been countered. A new object identifier does not make the same card count (CR 812.1.c). -/
 def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
@@ -297,7 +302,8 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
     f.turn == s.turn && f.who == p &&
       (match f.kind with
         | .nextCardCostMinus .. => f.playCount == s.finalizedCount p
-        | .nextSpellCostMinus _ | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
+        | .nextSpellCostMinus _ => !s.finalizedSince p .spell f.stamp
+        | .nextUnitReady | .nextUnitBuffed | .nextSpellRepeat
         | .nextGearFree _ | .nextUnitAccelerate | .nextUnitAnywhereBuffed =>
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)

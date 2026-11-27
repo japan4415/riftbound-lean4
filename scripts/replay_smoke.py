@@ -1128,6 +1128,7 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
             for checkpoint in game["checkpoints"]:
                 checkpoint.pop("playEnergy")
                 checkpoint.pop("playPhysical")
+                checkpoint.pop("playStamps")
         stale.write_text(json.dumps(legacy), encoding="utf-8")
         command("verify", stale, error="card definitions differ")
         assert json.loads(command("revalidate", stale, renewed)) == summary
@@ -1146,6 +1147,13 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
         checkpoint["playPhysical"] = [17]
         stale.write_text(json.dumps(changed_identities), encoding="utf-8")
         command("verify", stale, error="checkpoint 0: finalized card identities differ")
+
+        changed_stamps = json.loads(original)
+        checkpoint = changed_stamps["games"][0]["checkpoints"][0]
+        assert checkpoint["playStamps"] == []
+        checkpoint["playStamps"] = [17]
+        stale.write_text(json.dumps(changed_stamps), encoding="utf-8")
+        command("verify", stale, error="checkpoint 0: play finalization timestamps differ")
 
     game = old["game"] if suffix == "-ffa" else old["games"][0]
     index, checkpoint = next((index, checkpoint) for index, checkpoint in enumerate(game["checkpoints"])

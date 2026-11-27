@@ -76,6 +76,8 @@ structure CardPlay where
   energyPaid : Nat := 0
   /-- Physical identity at finalization, which survives any later move to a new object. -/
   physical : Option PhysId := none
+  /-- The play timestamp at finalization, independent of later object allocations. -/
+  stamp : Option Nat := none
 deriving DecidableEq
 
 /-- Preserve the original state representation when supplemental play evidence is absent. -/
@@ -91,6 +93,8 @@ instance : Repr CardPlay where
       else fields ++ [field "energyPaid" (repr play.energyPaid)]
     let fields := if play.physical.isNone then fields
       else fields ++ [field "physical" (repr play.physical)]
+    let fields := if play.stamp.isNone then fields
+      else fields ++ [field "stamp" (repr play.stamp)]
     Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Withdrawn seats and the regular turn positions already skipped because of a withdrawal. -/
