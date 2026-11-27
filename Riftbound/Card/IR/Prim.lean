@@ -417,6 +417,8 @@ inductive TriggerEvent where
   | battlefieldBeginning
   /-- A move whose origin is saved for the ability. An empty field list denotes the Base. -/
   | moveFrom
+  /-- A move whose destination is a Battlefield, recorded for the ability. -/
+  | moveToBattlefield
 deriving DecidableEq, Repr, Hashable
 
 /-- Something that happens in the game that a replacement ability can change (CR 367-375). -/

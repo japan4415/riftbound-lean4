@@ -5254,10 +5254,9 @@ def SFD_179.meta : CardDef :=
 /-- Corina Veraza. -/
 def SFD_179 : CardDef :=
   { SFD_179.meta with
-
-    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+    abilities := [.triggered (.onSelf .moveToBattlefield)
       (.of [] (.prim (.create "Recruit" (.const 3) .here false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-180
 /--

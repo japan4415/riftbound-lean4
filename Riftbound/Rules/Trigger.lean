@@ -642,12 +642,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
       watchersOf s obj p .die ++
       (if s.firstUnitDeathHere obj p then watchersOf s obj p .firstUnitDeathHere else []) ++
       s.delayedDeathTriggers obj
-  | .standardMoved u _ =>
+  | .standardMoved u destination =>
     match s.obj? u with
     | some o =>
       let fields := some (o.prevLoc.toList ++ o.loc.toList)
       (triggersOf s u o.controller .move).map (fun t => { t with eventBattlefields := fields }) ++
         triggersOf s u o.controller .moveFrom (some o.prevLoc.toList) ++
+        (destination.elim [] (fun field =>
+          triggersOf s u o.controller .moveToBattlefield (some [field]))) ++
         watchersOf s u o.controller .move
     | none => []
   | .phaseStarted p .beginning =>

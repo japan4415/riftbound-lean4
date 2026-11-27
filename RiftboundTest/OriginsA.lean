@@ -762,15 +762,21 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.countNamed s.you .base "Recruit" == 1 && a.countNamed s.me .base "Recruit" == 0 &&
     b.countNamed s.me .base "Recruit" == 0 && b.countNamed s.you .base "Recruit" == 0
 
--- Noxian Drummer (OGN-222): a Recruit token comes here when it moves to a battlefield
+-- Noxian Drummer creates one exhausted Recruit after moving to a Battlefield.
+-- Returning to a Base with friendly Units does not trigger it again.
 #guard t fun s => do
-  let (s1, d) ← putAt s s.me "OGN-222" s.bf0
-  let (s2, e) ← put s1 s.me "OGN-222" .base
-  let recruits (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
-    (x.cardDef? o).any (·.name == "Recruit")) |>.length
-  let a ← fire s2 [.standardMoved d (some s.bf0)]
-  let b ← fire s2 [.standardMoved e none]
-  return recruits a == 1 && recruits b == 0 && recruits s2 == 0
+  let p := s.me
+  let field := s.bf0
+  let (s, drummer) ← put (s.control p field) p "OGN-222" .base
+  let (s, _) ← put s p "OGN-049" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove drummer (.battlefield field)⟩).toOption
+  let finished := settleChain {} 12 queued
+  let [recruit] := (finished.unitsAtOf field p).filter (fun id =>
+    (finished.cardDef? id).any (·.name == "Recruit")) | none
+  let returned ← play finished p flash [drummer]
+  return (queued.zone .chain).length == 1 && finished.tired recruit == some true &&
+    returned.unitsAtOf field p == [recruit] && returned.countNamed p .base "Recruit" == 0
 
 -- Bounty Hunter (OGN-267), a Legend: exhaust it, a unit has Ganking this turn
 #guard t fun s => do

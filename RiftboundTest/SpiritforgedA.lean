@@ -1548,15 +1548,31 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   return ready a == some false && ready b == some true && ready c == some true &&
     ready d == some true
 
--- Corina Veraza (SFD-179): when it moves to a battlefield, three Recruit tokens there
+-- Corina may pay an extra Energy and Order Power to enter ready.
 #guard tsf fun s => do
-  let (s1, c) ← putAt s s.me "SFD-179" s.bf0
-  let (s2, d) ← put s1 s.me "SFD-179" .base
-  let a ← fire s2 [.standardMoved c (some s.bf0)]
-  let b ← fire s2 [.standardMoved d none]
-  let recruits (x : GameState) := ((x.zone .battlefieldZone).filter (fun o =>
-    (x.cardDef? o).any (·.name == "Recruit") && (x.obj? o).any (·.loc == some s.bf0))).length
-  return recruits a == 3 && recruits b == 0
+  let p := s.me
+  let (s, corina) ← put (s.rich p) p "SFD-179" .hand
+  let normal ← cast s p corina ⟨7, [.order]⟩
+  let accelerated ← cast s p corina ⟨8, [.order, .order]⟩
+  return (normal.firstOf p .base "SFD-179").bind normal.tired == some true &&
+    (accelerated.firstOf p .base "SFD-179").bind accelerated.tired == some false
+
+-- Corina checks “here” when her triggered ability resolves (CR 359.3.f.2).
+-- Flash can move her back before the Recruit tokens enter. This return does not trigger her.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, corina) ← put (s.control p field) p "SFD-179" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove corina (.battlefield field)⟩).toOption
+  let finished := settleChain {} 12 queued
+  let recruits := (finished.unitsAtOf field p).filter (fun id =>
+    (finished.cardDef? id).any (·.name == "Recruit"))
+  let returned ← play queued p flash [corina]
+  return (queued.zone .chain).length == 1 && recruits.length == 3 &&
+    recruits.all (fun id => finished.tired id == some true) &&
+    (returned.unitsAtOf field p).isEmpty && returned.countIn p .base "SFD-179" == 1 &&
+    returned.countNamed p .base "Recruit" == 3
 
 -- Defiant Dance (SFD-196): one unit +2 Might, another -2 Might this turn
 #guard tsf fun s => do

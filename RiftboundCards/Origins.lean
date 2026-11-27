@@ -5995,11 +5995,9 @@ def OGN_222.meta : CardDef :=
 /-- Noxian Drummer. -/
 def OGN_222 : CardDef :=
   { OGN_222.meta with
-    abilities := [.triggered
-      { Trigger.onSelf .move with
-        condition := .cmp .ge (.count (Selector.all .friendly .here [.ofType .unit])) (.const 1) }
+    abilities := [.triggered (.onSelf .moveToBattlefield)
       (.of [] (.prim (.create "Recruit" (.const 1) .here false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-223
 /--
