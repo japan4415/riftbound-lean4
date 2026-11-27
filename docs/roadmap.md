@@ -2159,6 +2159,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Blood Rose の誘発では、Chain に載せるときに Energy 1 を支払うか選ぶ。Blood Rose と Voidreaver の起動では、対象を選んでから XP と Exhaust を支払う。Megatusk は自身と同じ場所にいる、自分が支配する Unit にそのターンの Ganking を与える。
 - Unleashed の6枚を `full` にし、全1,103枚中553枚を実装済みにした。[カード実装状況](coverage.md)
 
+### XP を支払う誘発能力と手札公開
+
+- Kha'Zix, Evolving Hunter は攻撃時に対象を選び、誘発能力を確定する時点で XP 3 を支払う。解決時の Might でダメージを決める。Icevale Archer と Sinister Poro も攻撃時の対象を確定し、Energy 1 を支払ってから相手の応答に進む（CR 383.3.a、383.3.b、405.1）。
+- Insightful Investigator は誘発を確定するときに相手を1人選ぶ。解決時にその相手の手札を公開し、公開を見てから XP 2 を支払うか決める。支払った場合は、選んだ相手が指定のカードを捨て、1枚引く（CR 204.3.a、383.3.b）。
+- Unleashed の4枚を `full` にし、全1,103枚中557枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

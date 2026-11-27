@@ -1288,6 +1288,7 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
   | .free => [[]]
   | .energy n =>
     if !checkPool || (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
+  | .spendXP n => if n ≤ s.xpOf t.controller then [[]] else []
   | .pay cost exhaustSelf =>
     if (!exhaustSelf || canExhaustTriggerSource s t) &&
         (!checkPool || (payByRunes s t.controller t.source cost).isSome) then [[]] else []
@@ -1550,6 +1551,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
   | .free => some (s, [])
   | .energy n => if resourcesPaid then some (s, []) else
       payByRunes s t.controller t.source ⟨n, []⟩
+  | .spendXP n => if n ≤ s.xpOf t.controller then some (s.spendXP t.controller n, []) else none
   | .pay cost exhaustSelf => do
     let payment := if resourcesPaid then some (s, []) else payByRunes s t.controller t.source cost
     let (paid, events) ← payment
@@ -1650,6 +1652,10 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
   · split at h
     · cases h; exact Safe.refl s
     · exact payByRunes_safe h
+  · rename_i xp _
+    split at h
+    · cases h; exact Safe.spendXP s t.controller xp
+    · simp at h
   · simp only [bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨paid, events⟩, hpay, hfinish⟩ := h
     have hsafe : Safe s paid := by

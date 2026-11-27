@@ -506,6 +506,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
                [("unavailable", "true")]
              else match trigCost s t with
                | .energy n => [("energy", toString n)]
+               | .spendXP n => [("xpCost", toString n)]
                | .burn n => [("burn", toString n)]
                | .exhaustSelf => [("exhaustSource", "true")]
                | .discardAndExhaust _ => [("exhaustSource", "true"), ("discardCost", "true")]

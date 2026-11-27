@@ -704,6 +704,8 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Spend the controller's XP to finalize the ability (CR 383.3.b.1, 730.2). -/
+  | spendXP (amount : Nat)
   /-- Pay Energy or Power, and optionally exhaust the source, during finalization (CR 383.3.b). -/
   | pay (cost : Cost) (exhaustSelf : Bool := false)
   /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/

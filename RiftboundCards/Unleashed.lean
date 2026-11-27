@@ -1943,12 +1943,11 @@ def UNL_065.meta : CardDef :=
 /-- Icevale Archer. -/
 def UNL_065 : CardDef :=
   { UNL_065.meta with
-    abilities := [.triggered (.onSelf .attack)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .grant (Selector.one .any .here [.ofType .unit]) (.mightMinus .it (.const 1)) .thisTurn]))
-        .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .attack with optional := true, cost := .energy 1 }
+      { choices := [.targetOf .one .any .here [.ofType .unit]]
+        recheckTargets := true
+        body := .grant (.slot 0) (.mightMinus .it (.const 1)) .thisTurn } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-066
 /--
@@ -3462,12 +3461,11 @@ def UNL_119.meta : CardDef :=
 /-- Kha'Zix. -/
 def UNL_119 : CardDef :=
   { UNL_119.meta with
-    abilities := [.triggered (.onSelf .attack)
-      (.of [] (.ifThen (.cmp .ge .xp (.const 3))
-        (.may (.seqOf [.prim (.spendXP .you (.const 3)),
-          .prim (.deal (Selector.one .enemy .here [.ofType .unit]) (.mightOf .self))])) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .attack with optional := true, cost := .spendXP 3 }
+      { choices := [.targetOf .one .enemy .here [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.deal (.slot 0) (.mightOf .self)) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-120
 /--
@@ -3900,13 +3898,18 @@ def UNL_135.meta : CardDef :=
 
 /-- Insightful Investigator. -/
 def UNL_135 : CardDef :=
+  let revealed := [Filter.ownedByPlayerTarget 0, .revealedByEffect]
   { UNL_135.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge .xp (.const 2))
-        (.may (.seqOf [.prim (.spendXP .you (.const 2)),
-          .prim (.discardCard (Selector.one .enemy .inHand [])),
-          .eachPlayer .eachOpponent (.prim (.draw .you (.const 1)))])) .nop)) .unlimited],
-    status := .drafted }
+      { playerTarget := some .enemy
+        body := .revealHand (.chosen 0)
+          (.ifThen (.and (.cmp .ge .xp (.const 2))
+              (.cmp .gt (.count (Selector.all .any .inHand revealed)) (.const 0)))
+            (.may (.seqOf [.prim (.spendXP .you (.const 2)),
+              .chooseObject .any .inHand (.ofList revealed)
+                (.eachPlayer (.chosen 0) (.seqOf [.prim (.discardCard (.var pickVar)),
+                  .prim (.draw .you (.const 1))]))])) .nop) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-136
 /--
@@ -3957,11 +3960,11 @@ def UNL_137.meta : CardDef :=
 /-- Sinister Poro. -/
 def UNL_137 : CardDef :=
   { UNL_137.meta with
-    abilities := [.triggered (.onSelf .attack)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .prim (.move (Selector.one .enemy .here [.ofType .unit]) .base)])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .attack with optional := true, cost := .energy 1 }
+      { choices := [.targetOf .one .enemy .here [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.move (.slot 0) .base) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-138
 /--

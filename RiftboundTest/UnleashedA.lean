@@ -264,6 +264,110 @@ private meta def huntBuffCostsXP (code : String) : Bool := tun fun s => do
     queued.tired rose == some true && queued.tired opponent == some true &&
     resolved.tired rose == some true && resolved.tired opponent == some false
 
+-- Kha'Zix chooses an enemy at its battlefield and pays XP when finalizing the attack trigger.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, hunter) ← putAt (s.control q bf) p "UNL-119" bf
+  let (s, victim) ← putAt s q "UNL-179" bf
+  let (s, distant) ← put s q "UNL-179" .base
+  let s := (s.setXP p 3).setXP q 5
+  let event := Event.combatStarted bf p
+  let offer (state : GameState) :=
+    let pending := insertTriggers (state.detect [event]) state.pending
+    (advance 100 { state with pending } []).toOption
+  let (offered, _) ← offer s
+  let (below, _) ← offer (s.setXP p 2)
+  let choose (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id] (.pay [])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (queued, _) ← (step 100 offered (choose victim)).toOption
+  let (skipped, _) ← (step 100 offered skip).toOption
+  let item ← (queued.zone .chain).head?
+  let boosted := settleChain {} 12 (buffObj queued hunter).1
+  let gone := settleChain {} 12 (moveHome queued victim).1
+  let countered := settleChain {} 12 (counterObj queued item).1
+  return (legalFrameActions offered).contains (choose victim) &&
+    !(step 100 below (choose victim)).isOk && !(step 100 offered (choose distant)).isOk &&
+    queued.xpOf p == 0 && queued.xpOf q == 5 && (queued.obj? victim).any (·.damage == 0) &&
+    skipped.xpOf p == 3 && (skipped.zone .chain).isEmpty &&
+    (boosted.obj? victim).any (·.damage == 6) && gone.xpOf p == 0 &&
+    (gone.obj? victim).any (·.damage == 0) && countered.xpOf p == 0 &&
+    (countered.obj? victim).any (·.damage == 0)
+
+-- The Archer and Poro both pay Energy before responding to an attack trigger. Only the Poro
+-- restricts the choice to an enemy, and that Unit must still be here when the ability resolves.
+private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool := tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, attacker) ← putAt (s.control q bf) p code bf
+  let (s, target) ← putAt (s.fund p 1) q "OGN-049" bf
+  let (s, remote) ← put s q "OGN-049" .base
+  let pending := insertTriggers (s.detect [.combatStarted bf p]) s.pending
+  let (offered, _) ← (advance 100 { s with pending } []).toOption
+  let choose (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id] (.pay [])⟩
+  let (queued, _) ← (step 100 offered (choose target)).toOption
+  let (skipped, _) ← (step 100 offered ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let done := settleChain {} 12 queued
+  let out := settleChain {} 12 (moveHome queued target).1
+  let fieldOf (state : GameState) := (state.obj? target).bind (·.loc)
+  let reduced := done.mightNow target == some 4 && fieldOf done == some bf
+  let moved := done.where? target == some (.player q .base) && done.mightNow target == some 5
+  return (step 100 offered (choose attacker)).isOk == !mustBeEnemy &&
+    !(step 100 offered (choose remote)).isOk && (queued.poolOf p).energy == 0 &&
+    queued.mightNow target == some 5 && fieldOf queued == some bf &&
+    (skipped.poolOf p).energy == 1 && (skipped.zone .chain).isEmpty &&
+    out.mightNow target == some 5 && out.where? target == some (.player q .base) &&
+    (if mustBeEnemy then moved else reduced)
+
+#guard paidAttackTarget "UNL-065" false
+#guard paidAttackTarget "UNL-137" true
+
+-- Insightful Investigator reveals the chosen opponent's hand before asking whether to spend XP.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let mode := { s.config.mode with players := 3 }
+  let s := { s with config := { s.config with mode }, turnOrder := [p, q, third] }
+  let (s, investigator) ← put (s.fund p 3) p "UNL-135" .hand
+  let (s, wrong) ← put s q "OGN-049" .hand
+  let (s, discarded) ← put s third "OGN-088" .hand
+  let (s, _) ← put s third "OGN-049" .hand
+  let (s, drawn) ← put s third "OGN-095" .mainDeck
+  let choose (seat : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some seat))⟩
+  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => do
+      match state.pending with
+      | .chainPass seat _ :: _ =>
+        let (next, more) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next (events ++ more)
+      | _ => some (state, events)
+  let openAbility (xp : Nat) : Option (GameState × GameState × List Event) := do
+    let (offered, _) ← (step 100 (s.setXP p xp)
+      ⟨.player p, .playCard investigator ⟨3, []⟩ []⟩).toOption
+    let (queued, _) ← (step 100 offered (choose third)).toOption
+    let (ready, events) ← pass 8 queued []
+    pure (offered, ready, events)
+  let (offered, choice, revealed) ← openAbility 2
+  let (_, short, shortReveals) ← openAbility 1
+  let pay : Action := ⟨.player p, .decide true⟩
+  let (paid, _) ← (step 100 choice pay).toOption
+  let (declined, _) ← (step 100 choice ⟨.player p, .decide false⟩).toOption
+  let take (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let (done, events) ← (step 100 paid (take discarded)).toOption
+  let revealedHand := Event.handRevealed third (s.zone (.player third .hand))
+  return (legalFrameActions offered).contains (choose q) && !(step 100 offered (choose p)).isOk &&
+    revealed == [revealedHand] && shortReveals == [revealedHand] && !(step 100 short pay).isOk &&
+    choice.xpOf p == 2 && paid.xpOf p == 0 && declined.xpOf p == 2 &&
+    !(step 100 paid (take wrong)).isOk && paid.zone (.player third .hand) == s.zone (.player third .hand) &&
+    declined.zone (.player third .hand) == s.zone (.player third .hand) &&
+    done.zone (.player q .hand) == s.zone (.player q .hand) && done.handN third == s.handN third &&
+    done.countIn third .trash "OGN-088" == 1 && !(done.zone (.player third .mainDeck)).contains drawn &&
+    events.contains (.drew third) && !(events.contains (.drew q))
+
 -- Megatusk grants Ganking to its controller's units at its location for the current turn.
 #guard tun fun s => do
   let p := s.me
