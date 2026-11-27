@@ -31,7 +31,188 @@ structure OrderedReferenceBijection (left right : List Nat) where
   /-- All relative ages survive the rename. -/
   order : ∀ {x y}, x ∈ left → y ∈ left → (forward x < forward y ↔ x < y)
 
+/-- Give each reference the number of distinct references that precede it. -/
+def referenceRank (support : List Nat) (reference : Nat) : Nat :=
+  (support.eraseDups.filter (fun earlier => decide (earlier < reference))).length
+
+private theorem eraseDups_nodup (references : List Nat) : references.eraseDups.Nodup := by
+  cases references with
+  | nil => exact List.nodup_nil
+  | cons first rest =>
+    rw [List.eraseDups_cons, List.nodup_cons]
+    refine ⟨?_, eraseDups_nodup _⟩
+    intro contained
+    have filtered := List.mem_filter.mp (List.mem_eraseDups.mp contained)
+    simp at filtered
+termination_by references.length
+decreasing_by exact Nat.lt_succ_of_le List.filter_sublist.length_le
+
+private theorem mem_earlier {support : List Nat} {limit candidate : Nat} :
+    candidate ∈ support.eraseDups.filter (fun earlier => decide (earlier < limit)) ↔
+      candidate ∈ support ∧ candidate < limit := by
+  simp [List.mem_eraseDups]
+
+private theorem referenceRank_strict {support : List Nat} {earlier later : Nat}
+    (member : earlier ∈ support) (order : earlier < later) :
+    referenceRank support earlier < referenceRank support later := by
+  let small := support.eraseDups.filter (fun x => decide (x < earlier))
+  let large := support.eraseDups.filter (fun x => decide (x < later))
+  have filtered : large.filter (fun x => decide (x < earlier)) = small := by
+    dsimp only [small, large]
+    rw [List.filter_filter]
+    apply List.filter_congr
+    intro x _
+    by_cases smaller : x < earlier
+    · simp [smaller, Nat.lt_trans smaller order]
+    · simp [smaller]
+  have subset : small.Sublist large := filtered ▸ List.filter_sublist
+  have extra : earlier ∈ large := mem_earlier.mpr ⟨member, order⟩
+  have absent : earlier ∉ small := fun present => Nat.lt_irrefl _ (mem_earlier.mp present).2
+  have distinct : small.length ≠ large.length := fun same =>
+    absent ((subset.length_eq.mp same).symm ▸ extra)
+  exact Nat.lt_of_le_of_ne subset.length_le distinct
+
+/-- Ranking the supported references preserves and reflects every strict comparison. -/
+theorem referenceRank_lt_iff {support : List Nat} {first second : Nat}
+    (firstMember : first ∈ support) (secondMember : second ∈ support) :
+    referenceRank support first < referenceRank support second ↔ first < second := by
+  refine ⟨?_, referenceRank_strict firstMember⟩
+  intro rankOrder
+  by_cases order : first < second
+  · exact order
+  · rcases Nat.lt_or_eq_of_le (Nat.le_of_not_lt order) with reverse | same
+    · have := referenceRank_strict secondMember reverse
+      omega
+    · simp only [same, Nat.lt_irrefl] at rankOrder
+
+/-- A reference can be recovered uniquely from its rank in the support. -/
+theorem referenceRank_eq_iff {support : List Nat} {first second : Nat}
+    (firstMember : first ∈ support) (secondMember : second ∈ support) :
+    referenceRank support first = referenceRank support second ↔ first = second := by
+  refine ⟨?_, congrArg _⟩
+  intro equal
+  apply Nat.le_antisymm
+  · apply Nat.le_of_not_lt
+    intro reverse
+    have rankOrder := (referenceRank_lt_iff secondMember firstMember).mpr reverse
+    omega
+  · apply Nat.le_of_not_lt
+    intro reverse
+    have rankOrder := (referenceRank_lt_iff firstMember secondMember).mpr reverse
+    omega
+
+/-- Every supported rank is smaller than the number of distinct references. -/
+theorem referenceRank_bounded {support : List Nat} {reference : Nat}
+    (present : reference ∈ support) : referenceRank support reference < support.eraseDups.length := by
+  let earlier := support.eraseDups.filter (fun x => decide (x < reference))
+  have subset : earlier.Sublist support.eraseDups := List.filter_sublist
+  have less := subset.length_le
+  have distinct : earlier.length ≠ support.eraseDups.length := by
+    intro same
+    have earlierMember : reference ∈ earlier :=
+      (subset.length_eq.mp same).symm ▸ List.mem_eraseDups.mpr present
+    exact Nat.lt_irrefl _ (mem_earlier.mp earlierMember).2
+  exact Nat.lt_of_le_of_ne less distinct
+
+private theorem everyReferenceRank {support : List Nat} {rank : Nat}
+    (rankInRange : rank < support.eraseDups.length) :
+    ∃ reference ∈ support, referenceRank support reference = rank := by
+  let ranked := support.eraseDups.map (referenceRank support)
+  have distinct : ranked.Nodup := by
+    change List.Pairwise (· ≠ ·) (support.eraseDups.map (referenceRank support))
+    rw [List.pairwise_map]
+    refine List.Pairwise.imp_of_mem ?_ (eraseDups_nodup support)
+    intro a b aMember bMember different equalRanks
+    exact different ((referenceRank_eq_iff (List.mem_eraseDups.mp aMember)
+      (List.mem_eraseDups.mp bMember)).mp equalRanks)
+  have inRange : ranked ⊆ List.range support.eraseDups.length := by
+    intro value member
+    obtain ⟨reference, present, rfl⟩ := List.mem_map.mp member
+    exact List.mem_range.mpr (referenceRank_bounded (List.mem_eraseDups.mp present))
+  have member : rank ∈ ranked := by
+    by_cases contains : rank ∈ ranked
+    · exact contains
+    · have extended : (rank :: ranked).Nodup := List.nodup_cons.mpr ⟨contains, distinct⟩
+      have subset : rank :: ranked ⊆ List.range support.eraseDups.length := by
+        intro value present
+        rcases List.mem_cons.mp present with rfl | member
+        · exact List.mem_range.mpr rankInRange
+        · exact inRange member
+      have impossible := extended.length_le_of_subset subset
+      simp [ranked] at impossible
+      omega
+  obtain ⟨reference, present, same⟩ := List.mem_map.mp member
+  exact ⟨reference, List.mem_eraseDups.mp present, same⟩
+
+private theorem findReferenceRank {support : List Nat} {rank : Nat}
+    (rankInRange : rank ∈ List.range support.eraseDups.length) :
+    ∃ reference, support.find? (fun x => referenceRank support x == rank) = some reference ∧
+      reference ∈ support ∧ referenceRank support reference = rank := by
+  cases found : support.find? (fun x => referenceRank support x == rank) with
+  | none =>
+    obtain ⟨reference, member, same⟩ := everyReferenceRank (List.mem_range.mp rankInRange)
+    exact ((List.find?_eq_none.mp found) reference member (by simp [same])).elim
+  | some reference =>
+    have equalRank := List.find?_some (p := fun x => referenceRank support x == rank) found
+    exact ⟨reference, rfl, List.mem_of_find?_eq_some found, beq_iff_eq.mp equalRank⟩
+
+/-- Rename supported references to consecutive counters, starting at zero. -/
+def referenceRanking (support : List Nat) :
+    OrderedReferenceBijection support (List.range support.eraseDups.length) where
+  forward := referenceRank support
+  backward value := (support.find? (fun x => referenceRank support x == value)).getD 0
+  forward_mem _ present := List.mem_range.mpr (referenceRank_bounded present)
+  backward_mem _ inRange := by
+    obtain ⟨_, found, present, _⟩ := findReferenceRank inRange
+    simpa only [found, Option.getD_some] using present
+  backward_forward reference present := by
+    obtain ⟨previous, found, known, equal⟩ :=
+      findReferenceRank (List.mem_range.mpr (referenceRank_bounded present))
+    simp only [found, Option.getD_some]
+    exact (referenceRank_eq_iff known present).mp equal
+  forward_backward _ inRange := by
+    obtain ⟨_, found, _, equal⟩ := findReferenceRank inRange
+    simpa only [found, Option.getD_some] using equal
+  order := referenceRank_lt_iff
+
 namespace OrderedReferenceBijection
+
+/-- A reference retains its rank when the correspondence preserves relative order. -/
+theorem rank_preserved {left right : List Nat} (rename : OrderedReferenceBijection left right)
+    {reference : Nat} (member : reference ∈ left) :
+    referenceRank right (rename.forward reference) = referenceRank left reference := by
+  let earlierLeft := left.eraseDups.filter (fun x => decide (x < reference))
+  let earlierRight := right.eraseDups.filter (fun y => decide (y < rename.forward reference))
+  have distinctLeft : earlierLeft.Nodup := (eraseDups_nodup left).filter _
+  have distinctRight : earlierRight.Nodup := (eraseDups_nodup right).filter _
+  have distinctMapped : (earlierLeft.map rename.forward).Nodup := by
+    change List.Pairwise (· ≠ ·) (earlierLeft.map rename.forward)
+    rw [List.pairwise_map]
+    refine List.Pairwise.imp_of_mem ?_ distinctLeft
+    intro a b aEarlier bEarlier different equal
+    have aSource := (mem_earlier.mp aEarlier).1
+    have bSource := (mem_earlier.mp bEarlier).1
+    exact different ((rename.backward_forward a aSource).symm.trans
+      ((congrArg rename.backward equal).trans (rename.backward_forward b bSource)))
+  have sameReferences : earlierRight.Perm (earlierLeft.map rename.forward) := by
+    apply (List.perm_ext_iff_of_nodup distinctRight distinctMapped).mpr
+    intro next
+    rw [List.mem_map]
+    constructor
+    · intro present
+      obtain ⟨present, order⟩ := mem_earlier.mp present
+      let previous := rename.backward next
+      have previousMem := rename.backward_mem next present
+      have pointsTo : rename.forward previous = next := rename.forward_backward next present
+      refine ⟨previous, mem_earlier.mpr ⟨previousMem, ?_⟩, pointsTo⟩
+      have sameOrder : rename.forward (rename.backward next) < rename.forward reference := by
+        rw [rename.forward_backward next present]
+        exact order
+      exact (rename.order previousMem member).mp sameOrder
+    · rintro ⟨previous, earlier, rfl⟩
+      obtain ⟨previousMem, order⟩ := mem_earlier.mp earlier
+      exact mem_earlier.mpr ⟨rename.forward_mem previous previousMem, (rename.order previousMem member).mpr order⟩
+  simpa only [referenceRank, earlierLeft, earlierRight, List.length_map] using sameReferences.length_eq
 
 /-- Add the next allocation in both states. Fresh counters are larger than all
 references in their respective states, so extending the bijection preserves its order. -/
