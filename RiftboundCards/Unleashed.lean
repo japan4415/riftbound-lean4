@@ -4380,7 +4380,7 @@ def UNL_151.meta : CardDef :=
 def UNL_151 : CardDef :=
   { UNL_151.meta with
     abilities := [.passive (.cmp .ge .xp (.const 3)) [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-152
 /--
@@ -4543,7 +4543,7 @@ def UNL_157 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [] (.prim (.gainXP .you (.count (Selector.all .friendly .anywhere [.ofType .unit])))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-158
 /--

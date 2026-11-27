@@ -5186,10 +5186,14 @@ def OGN_192.meta : CardDef :=
 
 /-- Mindsplitter. -/
 def OGN_192 : CardDef :=
+  let revealed := [Filter.ownedByPlayerTarget 0, .revealedByEffect]
   { OGN_192.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.prim (.discardCard (Selector.one .enemy .inHand [])))) .unlimited],
-    status := .drafted }
+      { playerTarget := some .enemy
+        body := .revealHand (.chosen 0)
+          (.chooseObject .any .inHand (.ofList revealed)
+            (.eachPlayer (.chosen 0) (.prim (.discardCard (.var pickVar))))) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-193
 /--
@@ -6459,7 +6463,7 @@ def OGN_239 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Recruit" (.const 3) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-240
 /--

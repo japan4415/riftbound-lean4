@@ -34,6 +34,26 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
     pending := [.priority ⟨0⟩]
     turnOrder := Mode.teamTurnOrder true }
 
+-- Bandle Soldier uses its controller's Level, while Scrutinizing Sergeant counts friendly Units.
+#guard tun fun labState => do
+  let s := unleashedTeamMain labState
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let (s, soldier) ← put s p "UNL-151" .hand
+  let (s, sergeant) ← put s p "UNL-157" .hand
+  let (s, _) ← put s p "OGN-001" .base
+  let (s, _) ← put s mate "OGN-001" .base
+  let (s, _) ← put s enemy "OGN-001" .base
+  let (s, _) ← put s p "SFD-009" .base
+  let short ← play ((s.setXP p 2).setXP mate 5) p soldier
+  let levelled ← play (s.setXP p 3) p soldier
+  let counted ← play s p sergeant
+  let shortUnit ← short.firstOf p .base "UNL-151"
+  let readyUnit ← levelled.firstOf p .base "UNL-151"
+  return short.tired shortUnit == some true && levelled.tired readyUnit == some false &&
+    counted.xpOf p == 3 && counted.xpOf mate == 0 && counted.xpOf enemy == 0
+
 -- Moonlight Affliction resolves as a Reaction. At zero Might, at least one damage is needed
 -- for lethal damage (CR 142.4.b).
 #guard tun fun s => do

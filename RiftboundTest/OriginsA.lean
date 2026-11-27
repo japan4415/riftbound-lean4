@@ -4065,6 +4065,53 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     c.handN s.me == calm.handN s.me && (c.obj? big).map (·.damage) == some 0 &&
     (c.obj? big).map (·.stunned) == some false
 
+-- Mindsplitter offers only the chosen opponent's revealed hand to the caster.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let first : PlayerId := ⟨2⟩
+  let second : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, active := some p, turn := 3
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, mindsplitter) ← put s p "OGN-192" .hand
+  let (s, allyCard) ← put s mate "OGN-049" .hand
+  let (s, wrongEnemy) ← put s first "OGN-049" .hand
+  let (s, chosenCard) ← put s second "OGN-049" .hand
+  let (s, another) ← put s second "OGN-088" .hand
+  let waiting ← castStop s p mindsplitter
+  let pick (enemy : PlayerId) := Action.mk (.player p) (.putTrigger 0 [] (.pay [] (player := some enemy)))
+  let (queued, _) ← (step 100 waiting (pick second)).toOption
+  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => do
+      match state.pending with
+      | .chainPass seat _ :: _ =>
+        let (next, more) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next (events ++ more)
+      | _ => some (state, events)
+  let (offered, revealed) ← pass 12 queued []
+  let take (id : ObjId) := Action.mk (.player p) (.choose id)
+  let (done, _) ← (step 100 offered (take chosenCard)).toOption
+  return (legalFrameActions waiting).contains (pick first) &&
+    !(legalFrameActions waiting).contains (pick mate) &&
+    revealed.contains (.handRevealed second (s.zone (.player second .hand))) &&
+    (legalFrameActions offered).contains (take another) && !(legalFrameActions offered).contains (take wrongEnemy) &&
+    !(legalFrameActions offered).contains (take allyCard) && done.countIn second .trash "OGN-049" == 1 &&
+    (done.zone (.player first .hand)).contains wrongEnemy && (done.zone (.player mate .hand)).contains allyCard
+
+-- Machine Evangel creates exactly three exhausted Recruits in its controller's Base.
+#guard t fun s => do
+  let p := s.me
+  let (s, source) ← putAt s p "OGN-239" s.bf0
+  let (dead, events) := killObj s source
+  let resolved ← fire dead events
+  let recruits := (resolved.zone (.player p .base)).filter (fun id =>
+    (resolved.cardDef? id).any (·.name == "Recruit"))
+  return recruits.length == 3 && recruits.all (fun id => resolved.tired id == some true) &&
+    resolved.countNamed s.you .base "Recruit" == 0
+
 -- Karthus, Eternal (OGN-236): my Deathknell abilities trigger an additional time
 #guard t fun s => do
   let (s1, k) ← putAt s s.me "OGN-190" s.bf0

@@ -2402,6 +2402,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 同時に死亡した各 Unit について、死亡の処理を始める直前に同じ場所に味方がいたかを記録する。この記録を、Loyal Poro と Lonely Poro の Deathknell が使う。Battlefield の味方にはチームメイトの Unit も含まれる。
 - 映像の観測には手番号の範囲を指定できる。Basic Rune の操作はコードと Exhaust の有無で照合できる。Power の処理では、指定された一つの残高から引いた量と、他の残高が変わらないことを証明した。[リプレイの入力形式](viewer.md) [Power の証明](../Riftbound/State/Pool.lean)
 
+### 手札を公開する席とトークンの支配者
+
+- Mindsplitter は誘発の対象にした相手の手札を公開し、その手札から選んだ1枚を捨てさせる。Machine Evangel は自分の Base に Recruit を3体出す。Renata Glasc, Industrialist は自分のトークンを Ready で登場させる。Danger Zone は Repeat を選べて、自分が支配する Mech だけを強化する。
+- Bandle Soldier の追加効果は自分の XP で決まり、Scrutinizing Sergeant は自分自身とチームメイトを含む味方の Unit を数える。6枚を確認し、全1,103枚中730枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

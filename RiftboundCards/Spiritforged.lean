@@ -5012,7 +5012,7 @@ def SFD_171 : CardDef :=
 
     abilities := [.passive .always
       [.entersReady (Selector.all .you .anywhere [.token])]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-172
 /--
@@ -5334,9 +5334,9 @@ def SFD_182 : CardDef :=
   { SFD_182.meta with
 
     spellEffect := some (.of []
-      (.grant (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]) (.mightPlus .it (.const 1))
+      (.grant (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]) (.mightPlus .it (.const 1))
         .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-183
 /--

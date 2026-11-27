@@ -869,7 +869,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play s3 s.me c [f, e]
   return r.dmg f == some 2 && (r.obj? e).isNone && (play s3 s.me c [e, f]).isNone
 
--- Danger Zone (SFD-182): friendly Mechs have +1 Might this turn
+-- Danger Zone (SFD-182): the caster's Mechs have +1 Might this turn
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-182" .hand
   let (s2, m) ← put s1 s.me "SFD-062" .base
@@ -878,6 +878,25 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play s4 s.me c
   return r.mightNow m == (s4.mightNow m).map (· + 1) && r.mightNow o == s4.mightNow o &&
     r.mightNow e == s4.mightNow e
+
+-- Paying Repeat affects the caster's own Mechs twice, including in a team game.
+#guard tsf fun labState => do
+  let s := teamMain labState
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, card) ← put s p "SFD-182" .hand
+  let (s, own) ← put s p "SFD-062" .base
+  let (s, ally) ← put s mate "SFD-062" .base
+  let s := s.rich p
+  let input ← (legalFrameActions s).find? (fun action =>
+    match action.kind with
+    | .playCard id pay _ .. => id == card && pay.energy == 2 && pay.power.length == 2
+    | _ => false)
+  let (queued, _) ← (step 100 s input).toOption
+  let resolved := settleChain {} 16 queued
+  let expired := resolved.mapObjects endTurnObj
+  return resolved.mightNow own == (s.mightNow own).map (· + 2) &&
+    resolved.mightNow ally == s.mightNow ally && expired.mightNow own == s.mightNow own
 
 -- (review) Detonate: if the gear is gone when the spell resolves, nobody draws
 #guard tsf fun s => do
@@ -2040,6 +2059,20 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let mech (x : GameState) :=
     (x.zone (.player s.me .base)).find? (fun o => (x.cardDef? o).any (·.name == "Mech"))
   return (mech a).bind a.tired == some false && (mech b).bind b.tired == some true
+
+-- A teammate's token does not use Renata's enter-ready effect.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, _) ← put (teamMain labState) p "SFD-171" .base
+  let (s, ours) ← put s p "SFD-076" .hand
+  let (s, theirs) ← put s mate "SFD-076" .hand
+  let ready ← play s p ours
+  let exhausted ← play { s with active := some mate, pending := [.priority mate] } mate theirs
+  let mech (state : GameState) (seat : PlayerId) :=
+    (state.zone (.player seat .base)).find? (fun id => (state.cardDef? id).any (·.name == "Mech"))
+  return (mech ready p).bind ready.tired == some false &&
+    (mech exhausted mate).bind exhausted.tired == some true
 
 -- (review) Angle Shot: "detach from that unit": an Equipment attached to another unit stays
 #guard tsf fun s => do
