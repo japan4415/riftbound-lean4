@@ -346,8 +346,10 @@ def Trigger.watched (t : Trigger) : Nat :=
 /-- A trigger refers only to what is there. -/
 def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
   -- the condition may use the object the ability watches (slot 0); the subject may not
+  let watchedPlay := t.event == .play && t.subject != .self
   Selector.ok c t.subject &&
-    Condition.ok { c with slots := t.watched } t.condition &&
+    Condition.ok { c with slots := t.watched, eventAmountOk := c.eventAmountOk || watchedPlay }
+      t.condition &&
     (match t.cost with
      | .killFriendly _ fs | .killControlled _ fs => FilterList.ok c fs
      | _ => true)
