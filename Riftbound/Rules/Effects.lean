@@ -69,31 +69,30 @@ theorem applyEach_safe {α : Type} {g : GameState → α → GameState × List E
   | [], s => Safe.refl s
   | id :: ids, s => (hg s id).trans (applyEach_safe hg ids (g s id).1)
 
-/-- The Chosen Champion of the player: a Unit of the Champion the Legend of the player is about
-(they share a tag). The card data does not tell Champions from other Units, nor the Chosen
-Champion from its copies. -/
+/-- Whether this object is the physical card registered as the player's Chosen Champion. -/
 def GameState.chosenOf (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
-  let tags := (s.zone (.player p .legendZone)).flatMap (fun l =>
-    ((s.cardDef? l).map (·.tags)).getD [])
-  (s.cardDef? id).any (fun d =>
-    d.hasType .unit && d.tags.any (fun t => tags.contains t))
+  match s.chosenChampions[p.n]? with
+  | some chosen => (s.obj? id).any (fun obj => obj.kind.phys? == some chosen)
+  | none => false
+
+/-- The Chosen Champion in this player's Trash is returnable only to an empty Champion Zone. -/
+def GameState.returnChampionTarget (s : GameState) (p : PlayerId) : Option ObjId :=
+  if (s.zone (.player p .championZone)).isEmpty then
+    (s.zone (.player p .trash)).find? (s.chosenOf p)
+  else none
 
 /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if the
 Champion Zone is empty. -/
 def returnChampion (p : PlayerId) (s : GameState) : GameState × List Event :=
-  if (s.zone (.player p .championZone)).isEmpty then
-    match (s.zone (.player p .trash)).find? (fun u => s.chosenOf p u) with
-    | some id => sendObj .championZone s id
-    | none => (s, [])
-  else (s, [])
+  match s.returnChampionTarget p with
+  | some id => sendObj .championZone s id
+  | none => (s, [])
 
 /-- Returning the Chosen Champion is a safe change. -/
 theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChampion p s).1 := by
   unfold returnChampion
   split
-  · split
-    · exact sendObj_safe _ _ _
-    · exact Safe.refl s
+  · exact sendObj_safe _ _ _
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -5325,6 +5324,13 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
   | _ => none
 
+/-- An optional instruction with a required legal destination is offered only when usable. -/
+def mayAvailable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (effect : Effect) (funding : EffectAddPolicy) : Bool :=
+  match effect with
+  | .prim .returnChampion => (s.returnChampionTarget p).isSome
+  | _ => !(requiredPlayCandidates s p src env effect funding).any List.isEmpty
+
 /-- A Legend registered for this player and left outside the game can enter while its
 source is on the Board. The move preserves the physical card (CR 103.1). -/
 def addReservedLegend (s : GameState) (p : PlayerId) (src legend : ObjId) :
@@ -6651,8 +6657,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       else skip
     | _ => skip
   | .may e' =>
-    if (requiredPlayCandidates s p src env e' funding).any List.isEmpty then skip
-    else (s, [.mayDo p src env e' es], [])
+    if mayAvailable s p src env e' funding then (s, [.mayDo p src env e' es], [])
+    else skip
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
   | .doThen (.prim (.exhaust sel)) body => linked (.exhaust sel) body

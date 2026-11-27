@@ -295,14 +295,15 @@ theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env :
 theorem Effect.ObservedFinite.may (body : Effect) : (Effect.may body).ObservedFinite := by
   intro s p src env more rest keeps wf reads pending base inserted
   let live := env.withMight s.mightTable
-  by_cases blocked : (requiredPlayCandidates s p src live body effectAddPolicy).any List.isEmpty = true
-  · apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
-    simp only [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl, blocked, ite_true]
-    exact ⟨live, rest, rfl, base⟩
+  by_cases possible : mayAvailable s p src live body effectAddPolicy = true
   · apply advance_run_decision wf reads pending
     simp only [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl,
-      ite_eq_right blocked]
+      possible, ite_true]
     rfl
+  · apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+    simp only [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl,
+      ite_eq_right possible]
+    exact ⟨live, rest, rfl, base⟩
 
 /-- An empty alternative list is skipped, a singleton runs, and larger lists ask for a decision. -/
 theorem Effect.ObservedFinite.eitherOf {options : EffectList} (finite : options.ObservedFinite) :

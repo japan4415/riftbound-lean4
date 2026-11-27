@@ -61,12 +61,13 @@ meta def start (cfg : GameConfig) (d : LimitedDeck) : Option GameState :=
 #guard match start sealedCfg (limDeck 25 none none) with
   | some s => (s.zone (.player ⟨0⟩ .legendZone)).isEmpty &&
       (s.zone (.player ⟨1⟩ .championZone)).isEmpty &&
-      (s.zone (.player ⟨0⟩ .mainDeck)).length == 25
+      (s.zone (.player ⟨0⟩ .mainDeck)).length == 25 && s.chosenChampions.isEmpty
   | none => false
 #guard match start sealedCfg (limDeck 24 (some "L1") (some "C1")) with
   | some s => (s.zone (.player ⟨0⟩ .legendZone)).length == 1 &&
       (s.zone (.player ⟨0⟩ .championZone)).length == 1 &&
-      (s.zone (.player ⟨0⟩ .mainDeck)).length == 24
+      (s.zone (.player ⟨0⟩ .mainDeck)).length == 24 &&
+      s.players.all (fun p => (s.zone (.player p .championZone)).any (s.chosenOf p))
   | none => false
 
 /-- The hands in the Main Phase of turn `n`. -/

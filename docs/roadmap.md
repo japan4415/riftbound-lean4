@@ -966,7 +966,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `Prim.returnChampion`（Champion Zone が空なら、自分の Chosen Champion を、墓地から Champion Zone へ戻す）。
 - **動くようになったカード**: Hallowed Tomb（281。ここを保持したとき、Chosen Champion を墓地から Champion Zone へ戻してもよい）。
 - **動くカード**: 263 → **264 枚**。
-- **近似として残したこと**: カードのデータに、Champion と Signature の区別が無いので、Chosen Champion は「自分の伝説と同じタグを持つ、墓地の最初のユニット」とする（本物の Chosen Champion と、デッキの同名のコピーは、区別しない）。
+- **当時の近似**: Chosen Champion を Legend と同じタグを持つ最初の Unit として選んでいた。現在は [Chosen Champion の実物カードの追跡](#chosen-champion-の実物カードの追跡2026-11-27) で、登録した1枚を識別する。
 - **レビューで分かったこと**: Origins の 12 枚の伝説は、どれも、同じタグを持つユニットが 2 枚ある（例: Kai'Sa は 039 と 112）。墓地の先頭の方が、戻る。また、Champion Zone のカードを、プレイする経路が、エンジンに無い（`legalPlays` は手札だけ）。
 
 ### M7 の実装の記録（2026-11-23）: 征服の効果を、効果で起動する（1 枚）
@@ -2115,6 +2115,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - The Candlelit Sanctum は Conquer した席だけが山札の上2枚を見て、それぞれを残すか Recycle するか選ぶ。残すカードは選んだ順番で山札の上に置き、2枚とも Recycle するときは下に置く順番を抽選する。Predict と同じエンジンの処理を使う。
 - Fortified Position は防御した席が選んだ Unit に Shield 2 を与える。戦闘終了時に Shield が消えることを、同じターンの状態で確認した。
 - Altar to Unity、Aspirant’s Climb、Grove of the God-Willow、Navori Fighting Pit、Obelisk of Power、Startipped Peak、The Arena’s Greatest、Trifarian War Camp、Windswept Hillock も検証した。Origins の `full` は 298 枚中 69 枚、全体では 1,103 枚中 520 枚。[対戦シナリオ](../RiftboundTest/OriginsA.lean)
+
+### Chosen Champion の実物カードの追跡（2026-11-27）
+
+- 構築戦、Limited、Bo1 の登録で Chosen Champion の物理 ID を記録する。ゾーンを移動して ObjId が変わっても、登録したカードかどうかの判定が変わらないことを Lean で証明した。
+- Hallowed Tomb は、Champion Zone が空で、登録した実物カードが本人の Trash にあるときだけ、戻すかどうかを聞く。同名の別コピーが Trash の先頭にあっても、登録したカードが戻る。
+- Back-Alley Bar は、いずれの席の Unit でも、効果によって戦場から Base に移動したときに Might が上がることを確認した。2枚を `full` とし、全体で1,103枚中522枚になった。[カード実装状況](coverage.md)
 
 ## M10: 完了判定（original.md の最終目的）
 

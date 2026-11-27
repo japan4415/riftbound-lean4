@@ -132,6 +132,13 @@ private meta def exampleMatch : Except String Unit := do
       | .error e => e.contains s!"team game 1: checkpoint {firstPlay + 1}: state fingerprint differs"
       | .ok _ => false) do throw "a card change affecting the first permanent play was accepted"
   let some checkpoint := restored.games[0]?.bind (·.checkpoints[2]?) | throw "missing checkpoint"
+  unless checkpoint.chosenChampions?.any (fun champions => champions.map Prod.fst == [0, 1, 2, 3]) do
+    throw "the archive is missing the four registered Chosen Champions"
+  let mismatchedRegistration := restored.games.modify 0 (fun g =>
+    { g with checkpoints := g.checkpoints.set! 2 { checkpoint with chosenChampions? := some [] } })
+  unless (match { restored with games := mismatchedRegistration }.verify matchDB with
+      | .error e => e.contains "team game 1: checkpoint 2: Chosen Champion identities differ"
+      | .ok _ => false) do throw "a changed Chosen Champion checkpoint was accepted"
   let changed := restored.games.modify 0 (fun g =>
     { g with checkpoints := g.checkpoints.set! 2 { checkpoint with state := "0" } })
   unless (match { restored with games := changed }.verify matchDB with

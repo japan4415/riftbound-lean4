@@ -1668,6 +1668,14 @@ theorem addCards_hand {db : CardDB} (owner : PlayerId) (z : Zone)
       rw [addCards_hand owner z hz cs h' r]
       exact addObject_zone_ne hr (fun e => hz r e.symm)
 
+/-- Registering a Chosen Champion does not add a card to a hand. -/
+theorem addChosenChampion_hand {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (placed : addChosenChampion db p s chosen = some s') (r : PlayerId) :
+    s'.zone (.player r .hand) = s.zone (.player r .hand) := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  have unchanged := addCards_hand _ (.player p .championZone) (fun _ => by simp) _ added r
+  exact unchanged
+
 /-- Adding a deck leaves the hands alone. -/
 theorem GameState.addDeck_hand {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') (r : PlayerId) :
@@ -1676,7 +1684,7 @@ theorem GameState.addDeck_hand {db : CardDB} {s s' : GameState} {p : PlayerId} {
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
   rw [addCards_hand _ _ (fun _ => by simp) _ h6, addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
-    addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
+    addChosenChampion_hand h3, addCards_hand _ _ (fun _ => by simp) _ h2,
     addCards_hand _ _ (fun _ => by simp) _ h1]
 
 /-- Adding the decks leaves the hands alone. -/
@@ -1704,7 +1712,7 @@ theorem GameState.addLimitedDeck_hand {db : CardDB} {s s' : GameState} {p : Play
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
   rw [addCards_hand _ _ (fun _ => by simp) _ h6, addCards_hand _ _ (fun _ => by simp) _ h5, addCards_hand _ _ (fun _ => by simp) _ h4,
-    addCards_hand _ _ (fun _ => by simp) _ h3, addCards_hand _ _ (fun _ => by simp) _ h2,
+    addChosenChampion_hand h3, addCards_hand _ _ (fun _ => by simp) _ h2,
     addCards_hand _ _ (fun _ => by simp) _ h1]
 
 /-- Adding the Limited decks leaves the hands alone. -/

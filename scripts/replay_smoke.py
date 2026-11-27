@@ -397,6 +397,7 @@ def live_bo1_match(live: Lean, setup: dict) -> dict:
     assert confirmed["bo1"] is None and confirmed["steps"][0]["bo1Sideboard"]
     state = confirmed["steps"][0]["state"]
     champion_id = state["zones"]["p1.championZone"][0]
+    champions = [[seat, state["zones"][f"p{seat}.championZone"][0]] for seat in (0, 1)]
     assert state["new"][str(champion_id)]["card"] == changed["deck"]["chosenChampion"]["code"]
     assert all(f"p{seat}.hand" not in state["zones"] for seat in (0, 1))
     assert confirmed["steps"][1]["action"]["kind"] == "arrange"
@@ -406,6 +407,9 @@ def live_bo1_match(live: Lean, setup: dict) -> dict:
     final = choose(live, keep(live, confirmed), "concede", "p0")
     assert final["archiveAvailable"] and final["match"]["winner"] == 1
     archive = ask(live, "replay")
+    checkpoints = archive["games"][0]["checkpoints"]
+    assert all(checkpoint["chosenChampions"] == [] for checkpoint in checkpoints[:4])
+    assert all(checkpoint["chosenChampions"] == champions for checkpoint in checkpoints[4:])
     game = archive["input"]["games"][0]
     assert game["bo1Setup"] == originals and game["answers"][3] == "bo1Sideboard"
     assert game["decks"]["constructed"]["decks"][1] == changed

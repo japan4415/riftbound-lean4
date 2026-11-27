@@ -38,12 +38,19 @@ def addCards (db : CardDB) (owner : PlayerId) (z : Zone) :
     let r ← addObject s (newCard db s owner c) z .bottom
     addCards db owner z r.1 cs
 
+/-- Put the registered Chosen Champion in its starting zone and remember its physical identity. -/
+def addChosenChampion (db : CardDB) (p : PlayerId) (s : GameState) (chosen : Option CardId) :
+    Option GameState :=
+  (addCards db p (.player p .championZone) s chosen.toList).map (fun placed =>
+    { placed with chosenChampions := if chosen.isSome then
+        placed.chosenChampions.insert p.n ⟨s.nextId⟩ else placed.chosenChampions })
+
 /-- Add the cards of one player's deck. -/
 def GameState.addDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : Deck) :
     Option GameState := do
   let s ← addCards db p (.player p .reserveLegends) s d.reserveLegends
   let s ← addCards db p (.player p .legendZone) s [d.legend]
-  let s ← addCards db p (.player p .championZone) s [d.chosenChampion]
+  let s ← addChosenChampion db p s (some d.chosenChampion)
   let s ← addCards db p (.player p .mainDeck) s (d.main.erase d.chosenChampion)
   let s ← addCards db p (.player p .runeDeck) s d.runes
   addCards db p (.player p .outOfGame) s d.battlefields
@@ -61,7 +68,7 @@ def GameState.addLimitedDeck (s : GameState) (db : CardDB) (p : PlayerId) (d : L
     Option GameState := do
   let s ← addCards db p (.player p .reserveLegends) s d.reserveLegends
   let s ← addCards db p (.player p .legendZone) s d.legend.toList
-  let s ← addCards db p (.player p .championZone) s d.chosenChampion.toList
+  let s ← addChosenChampion db p s d.chosenChampion
   let s ← addCards db p (.player p .mainDeck) s
     (match d.chosenChampion with | some c => d.main.erase c | none => d.main)
   let s ← addCards db p (.player p .runeDeck) s d.runes
@@ -121,6 +128,13 @@ theorem addCards_wf {db : CardDB} (owner : PlayerId) (z : Zone) :
       have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact addCards_wf owner z cs (addObject_wf hwf hr) h'
 
+/-- Registering a Chosen Champion leaves the card placement well formed. -/
+theorem addChosenChampion_wf {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (wf : s.WF)
+    (placed : addChosenChampion db p s chosen = some s') : s'.WF := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  exact (addCards_wf _ _ _ wf added).congr rfl rfl rfl rfl
+
 /-- Adding a deck keeps the game well formed. -/
 theorem GameState.addDeck_wf {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck} (hwf : s.WF)
     (h : s.addDeck db p d = some s') : s'.WF := by
@@ -128,7 +142,7 @@ theorem GameState.addDeck_wf {db : CardDB} {s s' : GameState} {p : PlayerId} {d 
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   have initialReserve := addCards_wf _ _ _ hwf h0
-  exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _
+  exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addChosenChampion_wf
     (addCards_wf _ _ _ initialReserve h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps the game well formed. -/
@@ -154,7 +168,7 @@ theorem GameState.addLimitedDeck_wf {db : CardDB} {s s' : GameState} {p : Player
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   have initialReserve := addCards_wf _ _ _ hwf h0
-  exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _
+  exact addCards_wf _ _ _ (addCards_wf _ _ _ (addCards_wf _ _ _ (addChosenChampion_wf
     (addCards_wf _ _ _ initialReserve h1) h2) h3) h4) h5
 
 /-- Adding the Limited decks keeps the game well formed. -/
@@ -225,6 +239,13 @@ theorem addCards_ownerOk {db : CardDB} (owner : PlayerId) (z : Zone) :
       have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact addCards_ownerOk owner z cs (addObject_wf hwf hr) (addObject_ownerOk hwf hown hr) h'
 
+/-- Registering a Chosen Champion keeps its physical card in the owning seat's zone. -/
+theorem addChosenChampion_ownerOk {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (wf : s.WF) (owner : s.OwnerOk)
+    (placed : addChosenChampion db p s chosen = some s') : s'.OwnerOk := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  exact (addCards_ownerOk _ _ _ wf owner added).congr rfl rfl
+
 /-- Adding a deck keeps `OwnerOk`. -/
 theorem GameState.addDeck_ownerOk {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (hwf : s.WF)
@@ -235,12 +256,12 @@ theorem GameState.addDeck_ownerOk {db : CardDB} {s s' : GameState} {p : PlayerId
   have w0 := addCards_wf _ _ _ hwf h0
   have o0 := addCards_ownerOk _ _ _ hwf hown h0
   have w1 := addCards_wf _ _ _ w0 h1
-  have w2 := addCards_wf _ _ _ w1 h2
+  have w2 := addChosenChampion_wf w1 h2
   have w3 := addCards_wf _ _ _ w2 h3
   have w4 := addCards_wf _ _ _ w3 h4
   exact addCards_ownerOk _ _ _ w4
     (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
-      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
+      (addChosenChampion_ownerOk w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
 
 /-- Adding the decks keeps `OwnerOk`. -/
 theorem GameState.addDecks_ownerOk {db : CardDB} :
@@ -269,12 +290,12 @@ theorem GameState.addLimitedDeck_ownerOk {db : CardDB} {s s' : GameState} {p : P
   have w0 := addCards_wf _ _ _ hwf h0
   have o0 := addCards_ownerOk _ _ _ hwf hown h0
   have w1 := addCards_wf _ _ _ w0 h1
-  have w2 := addCards_wf _ _ _ w1 h2
+  have w2 := addChosenChampion_wf w1 h2
   have w3 := addCards_wf _ _ _ w2 h3
   have w4 := addCards_wf _ _ _ w3 h4
   exact addCards_ownerOk _ _ _ w4
     (addCards_ownerOk _ _ _ w3 (addCards_ownerOk _ _ _ w2
-      (addCards_ownerOk _ _ _ w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
+      (addChosenChampion_ownerOk w1 (addCards_ownerOk _ _ _ w0 o0 h1) h2) h3) h4) h5
 
 /-- Adding the Limited decks keeps `OwnerOk`. -/
 theorem GameState.addLimitedDecks_ownerOk {db : CardDB} :

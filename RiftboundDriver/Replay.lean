@@ -315,6 +315,8 @@ structure ReplayCheckpoint where
   state : String
   /-- The events in the order the engine emitted them. -/
   events : List Event
+  /-- Seat numbers and physical Chosen Champion IDs. Earlier archives did not store this. -/
+  chosenChampions? : Option (List (Nat × Nat)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -446,7 +448,7 @@ def GameInputs.initial (input : GameInputs) (db : CardDB) (config : GameConfig) 
 private def addBo1Deck (db : CardDB) (s : GameState) (p : PlayerId) (deck : Deck) :
     Option GameState := do
   let s ← addCards db p (.player p .reserveLegends) s deck.reserveLegends
-  let s ← addCards db p (.player p .championZone) s [deck.chosenChampion]
+  let s ← addChosenChampion db p s (some deck.chosenChampion)
   let s ← addCards db p (.player p .mainDeck) s (deck.main.erase deck.chosenChampion)
   addCards db p (.player p .runeDeck) s deck.runes
 
@@ -553,7 +555,10 @@ private def replayXP (s : GameState) : GameState :=
 /-- Capture the state fingerprint and the events that the engine actually returned. -/
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
-  ⟨toString (hash (reprStr (replayXP { s with cards := ⟨[]⟩ }))), events⟩
+  -- Keep the original state fingerprint and record new registration evidence separately.
+  { state := toString (hash (reprStr (replayXP { s with cards := ⟨[]⟩, chosenChampions := {} })))
+    events
+    chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n))) }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1183,6 +1188,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     let some witness := witnesses[index]? | throw s!"checkpoint {index}: missing evidence"
     if witness.state != actual.state then throw s!"checkpoint {index}: state fingerprint differs"
     if witness.events != actual.events then throw s!"checkpoint {index}: events differ"
+    if witness.chosenChampions?.any (fun registered => actual.chosenChampions? != some registered) then
+      throw s!"checkpoint {index}: Chosen Champion identities differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do

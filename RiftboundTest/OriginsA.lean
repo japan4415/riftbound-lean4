@@ -3511,6 +3511,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
     d'.mightNow foe == some 3 && e'.mightNow there == some 2
 
+-- An effect that moves either player's unit from Back-Alley Bar to Base gives the same bonus.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let elsewhere := s.bf0
+  let (s, bar) ← putBf s q "OGN-277"
+  let (s, own) ← putAt s p "OGN-136" bar
+  let (s, other) ← putAt s q "OGN-116" bar
+  let (s, outside) ← putAt s p "OGN-088" elsewhere
+  let (s, spell) ← put s p "OGN-168" .hand
+  let played (target : ObjId) (whom : PlayerId) (code : String) : Option Bool := do
+    let moved ← play s p spell [target]
+    let after ← moved.firstOf whom .base code
+    let before ← s.mightNow target
+    let result ← moved.mightNow after
+    return result == before + (if target == outside then 0 else 1) &&
+      (moved.mapObjects endTurnObj).mightNow after == some before
+  let a ← played own p "OGN-136"
+  let b ← played other q "OGN-116"
+  let c ← played outside p "OGN-088"
+  return a && b && c
+
+
 -- Stealthy Pursuer (OGN-177): when a friendly unit moves from my location, I may be moved with it
 #guard t fun s => do
   let bf1 ← s.battlefields[1]?
@@ -3687,35 +3710,41 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return a.handN s.me == s5.handN s.me + 2 && a.handN s.you == s5.handN s.you + 1 &&
     b.handN s.me == s5.handN s.me + 2 && c.handN s.me == t2.handN s.me
 
--- Hallowed Tomb (OGN-281): when I hold here, I may return my Chosen Champion (a Unit of my Legend's
--- Champion) from my Trash to my Champion Zone, if it is empty
+-- Hallowed Tomb (OGN-281) returns the original registration even when an identical
+-- copy is the top card of the Trash.
 #guard t fun s => do
-  let empty := s.setZone (.player s.me .championZone) []
-  let (s1, bf) ← putBf empty s.me "OGN-281"
-  let (s2, _) ← put s1 s.me "OGN-247" .legendZone
-  let (s3, _) ← put s2 s.me "OGN-039" .trash
-  let (s4, _) ← put s3 s.me "OGN-136" .trash
-  let zone (g : GameState) (p : PlayerId) := g.zone (.player p .championZone)
-  let a ← fire s4 [.scored s.me bf false] { yes := true }
-  let no ← fire s4 [.scored s.me bf false] { yes := false }
-  let c ← fire s4 [.scored s.me bf true] { yes := true }
-  let (t1, _) ← put s4 s.me "OGN-039" .championZone
-  let full ← fire t1 [.scored s.me bf false] { yes := true }
-  let (u1, _) ← put s1 s.me "OGN-247" .legendZone
-  let (u2, _) ← put u1 s.me "OGN-136" .trash
-  let wrong ← fire u2 [.scored s.me bf false] { yes := true }
-  let (v1, _) ← put s1 s.me "OGN-039" .trash
-  let nolegend ← fire v1 [.scored s.me bf false] { yes := true }
-  let (w1, _) ← put s4 s.you "OGN-039" .trash
-  let theirs ← fire w1 [.scored s.you bf false] { yes := true }
-  let back ← (zone a s.me).head?
-  return (zone a s.me).length == 1 && (a.obj? back).map (·.owner) == some s.me &&
-    (a.cardDef? back).map (·.id) == some ⟨"OGN-039"⟩ &&
-    (a.zone (.player s.me .trash)).length == 1 && (zone no s.me).isEmpty &&
-    (no.zone (.player s.me .trash)).length == 2 && (zone c s.me).isEmpty &&
-    (zone full s.me).length == 1 && (full.zone (.player s.me .trash)).length == 2 &&
-    (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty &&
-    (zone theirs s.you).length == (zone w1 s.you).length
+  let p := s.me
+  let q := s.you
+  let championZone := Zone.player p .championZone
+  let trash := Zone.player p .trash
+  let starting ← (s.zone championZone).head?
+  let (empty, _) ← moveObj s starting (.player p .banishment)
+  let registered ← addChosenChampion s.cards p empty (some (cid "OGN-039"))
+  let original ← (registered.zone championZone).head?
+  let identity ← (registered.obj? original).bind (·.kind.phys?)
+  let (registered, bf) ← putBf registered q "OGN-281"
+  let (registered, _) ← putAt registered p "OGN-136" bf
+  let registered := registered.modObj bf (fun field => { field with control := some p })
+  let (registered, copy) ← put registered p "OGN-039" .hand
+  let (inTrash, originalInTrash) ← moveObj registered original trash
+  let (both, copiedToTrash) ← moveObj inTrash copy trash
+  let (onlyCopy, _) ← moveObj registered copy trash
+  let (removedOriginal, _) ← moveObj onlyCopy original (.player p .banishment)
+  let (held, events) ← (advance 100 { both with pending := [.scoreHolds, .priority p] } []).toOption
+  let yes := settleChain {} 12 held
+  let no := settleChain { yes := false } 12 held
+  let conquered ← fire both [.scored p bf true]
+  let returned ← (yes.zone championZone).head?
+  let offer (board : GameState) : Option Frame := do
+    let (waiting, _) ← (advance 100 { board with pending :=
+      [.run p bf {} (.cons (.may (.prim .returnChampion)) .nil), .priority p] } []).toOption
+    waiting.pending.head?
+  return events.contains (.scored p bf false) && both.zone trash == [copiedToTrash, originalInTrash] &&
+    !both.chosenOf p copiedToTrash && (yes.obj? returned).bind (·.kind.phys?) == some identity &&
+    yes.zone trash == [copiedToTrash] && no.zone championZone == [] &&
+    conquered.zone championZone == [] && (offer both).any (fun frame => match frame with
+      | .mayDo seat .. => seat == p | _ => false) &&
+    offer onlyCopy == some (.priority p) && offer removedOriginal == some (.priority p)
 
 -- The Chosen Champion is played from the Champion Zone: a Unit there is played by paying its cost
 -- (the printed one), and goes to my Base; not for less, not from the hand's ability, not twice

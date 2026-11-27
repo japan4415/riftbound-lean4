@@ -136,6 +136,8 @@ structure GameState where
   departures : SeatDepartures := {}
   /-- Public XP by seat. A missing player has 0 (CR 729, 732). -/
   experience : Std.ExtTreeMap Nat Nat := {}
+  /-- The physical card registered as each seat's Chosen Champion (CR 103.3.a, 112). -/
+  chosenChampions : Std.ExtTreeMap Nat PhysId := {}
 deriving DecidableEq
 
 /-- Game archives hashed the printed state before withdrawals were added. Preserve that format
@@ -160,6 +162,8 @@ instance : Repr GameState where
       else fields ++ [field "departures" (repr s.departures)]
     let fields := if s.experience.isEmpty then fields
       else fields ++ [field "experience" (repr s.experience)]
+    let fields := if s.chosenChampions.isEmpty then fields
+      else fields ++ [field "chosenChampions" (repr s.chosenChampions)]
     Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Every zone of a game with `n` players. -/

@@ -519,12 +519,19 @@ theorem tc_addCards {db : CardDB} (owner : PlayerId) (z : Zone) :
       have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact (TC.of_sameMeta (addObject_sameMeta hr)).trans (tc_addCards owner z cs h')
 
+theorem tc_addChosenChampion {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (placed : addChosenChampion db p s chosen = some s') :
+    TC s s' := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  have unchanged := tc_addCards _ _ _ added
+  exact unchanged
+
 theorem tc_addDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') : TC s s' := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
-  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
+  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addChosenChampion h3).trans
     ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addDecks {db : CardDB} :
@@ -545,7 +552,7 @@ theorem tc_addLimitedDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : L
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
-  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
+  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addChosenChampion h3).trans
     ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addLimitedDecks {db : CardDB} :

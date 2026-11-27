@@ -18,7 +18,7 @@ namespace Riftbound
 /-- A possible `may` instruction asks its controller before changing the game (CR 355.18). -/
 theorem runEffect_may_choice (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (rest : EffectList) (funding : EffectAddPolicy)
-    (possible : (requiredPlayCandidates s p src env e funding).any List.isEmpty = false) :
+    (possible : mayAvailable s p src env e funding = true) :
     runEffect s p src env (.may e) rest funding = (s, [.mayDo p src env e rest], []) := by
   simp [runEffect, Effect.pickSel?, runEffect1, possible]
 

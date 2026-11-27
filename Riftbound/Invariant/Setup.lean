@@ -80,6 +80,14 @@ theorem addCards_grows {db : CardDB} (owner : PlayerId) (z : Zone) :
       simp
       omega
 
+/-- Registering a Chosen Champion grows the initial board like the underlying placement. -/
+theorem addChosenChampion_grows {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (placed : addChosenChampion db p s chosen = some s') :
+    Grows s s' := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  have placement := addCards_grows _ _ _ added
+  exact ⟨placement.1.config, placement.1.zone⟩
+
 /-- Adding a deck grows the state, and the player's Battlefields go out of the game. -/
 theorem GameState.addDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') :
@@ -89,7 +97,7 @@ theorem GameState.addDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId} 
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
-  obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
+  have g2 := addChosenChampion_grows h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
@@ -131,7 +139,7 @@ theorem GameState.addLimitedDeck_grows {db : CardDB} {s s' : GameState} {p : Pla
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
-  obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
+  have g2 := addChosenChampion_grows h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
