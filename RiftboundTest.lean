@@ -26,6 +26,7 @@ public import RiftboundTest.Token
 public import RiftboundTest.Gear
 public import RiftboundTest.Status
 public import RiftboundTest.Mana
+public import RiftboundTest.PrintedAbilitySpeed
 public import RiftboundTest.Discard
 public import RiftboundTest.Temporary
 public import RiftboundTest.Deflect

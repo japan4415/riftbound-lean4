@@ -2638,7 +2638,7 @@ def OGN_098 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addEnergy .you (.const 1) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-099
 /--

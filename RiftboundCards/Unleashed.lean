@@ -1349,7 +1349,6 @@ def UNL_045.meta : CardDef :=
     types := [.gear],
     domains := [.calm],
     cost := some ⟨2, []⟩,
-    keywords := [{ keyword := .action }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
@@ -1466,8 +1465,7 @@ def UNL_049.meta : CardDef :=
     types := [.gear],
     domains := [.calm],
     cost := some ⟨2, []⟩,
-    keywords := [{ keyword := .reaction },
-      { keyword := .level, arg := .amount 6 }],
+    keywords := [{ keyword := .level, arg := .amount 6 }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
@@ -2742,7 +2740,6 @@ def UNL_093.meta : CardDef :=
     domains := [.body],
     cost := some ⟨2, []⟩,
     might := some 1,
-    keywords := [{ keyword := .reaction }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
@@ -2752,7 +2749,7 @@ def UNL_093 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addEnergy .you (.const 1) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-094
 /--
@@ -4651,19 +4648,17 @@ def UNL_161.meta : CardDef :=
     types := [.gear],
     domains := [.order],
     cost := some ⟨2, []⟩,
-    keywords := [{ keyword := .vision },
-      { keyword := .action }],
+    keywords := [{ keyword := .vision }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Divining Shells. -/
+/-- Divining Shells pays its Kill and Exhaust when activating the Might bonus. -/
 def UNL_161 : CardDef :=
   { UNL_161.meta with
-    abilities := [.activated [.exhaustSelf] .action
+    abilities := [.activated [.killSelf, .exhaustSelf] .action
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-        (.seqOf [.prim (.kill .self), .grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn]))
-      .unlimited],
-    status := .drafted }
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-162
 /--
@@ -5639,7 +5634,6 @@ def UNL_194.meta : CardDef :=
     domains := [.calm, .chaos],
     cost := some ⟨3, []⟩,
     might := some 3,
-    keywords := [{ keyword := .action }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
@@ -5731,7 +5725,6 @@ def UNL_197.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Diana"⟩],
     domains := [.mind, .chaos],
-    keywords := [{ keyword := .reaction }],
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 

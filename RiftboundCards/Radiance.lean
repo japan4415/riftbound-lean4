@@ -561,8 +561,7 @@ def RAD_021.meta : CardDef :=
     domains := [.fury],
     cost := some ⟨5, [.domain .fury]⟩,
     might := some 4,
-    keywords := [{ keyword := .assault, arg := .amount 1 },
-      { keyword := .action }],
+    keywords := [{ keyword := .assault, arg := .amount 1 }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 
@@ -3907,7 +3906,6 @@ def RAD_143.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Mordekaiser"⟩],
     domains := [.fury, .order],
-    keywords := [{ keyword := .reaction }],
     sets := [⟨"RAD"⟩] }
 -- END GENERATED
 

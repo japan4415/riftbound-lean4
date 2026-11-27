@@ -37,7 +37,8 @@ private theorem advance_cleanup_to_decision {s : GameState} {rest : List Frame}
     exact ⟨t, elapsed + queued, events, by simpa only [List.append_nil] using path.append finalized,
       stopped.elim id (fun h => h.1.symm ▸ isOrdinaryDecisionTail_boundary decision)⟩
 
-private theorem advance_observed_cleanup_to_decision (raw : GameState) (notices : List Event) {rest : List Frame}
+/-- Follow event observation and Cleanup before returning to a decision. -/
+theorem advance_observed_cleanup_to_decision (raw : GameState) (notices : List Event) {rest : List Frame}
     (wf : raw.WF) (reads : MightRead.database raw.cards)
     (stack : raw.pending = .cleanup :: rest) (decision : isOrdinaryDecisionTail rest = true) :
     ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧

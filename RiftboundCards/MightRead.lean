@@ -3,7 +3,7 @@ module
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.PlayDeclarationWork
-public import Riftbound.Invariant.MovementWork
+public import Riftbound.Invariant.ResourceDecisionWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
@@ -195,6 +195,14 @@ theorem step_playCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : R
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
   Riftbound.step_playCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A legal immediate resource activation with registered cards advances to a decision. -/
+theorem step_resourceActivation_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (resource : a.kind.isResourceActivation = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
+  Riftbound.step_resourceActivation_to_decision wf (mightReads_of_registered cards) legal resource
 
 /-- A registered Standard Move reaches a decision, including through Cleanup and its observers. -/
 theorem step_standardMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {u : Riftbound.ObjId}

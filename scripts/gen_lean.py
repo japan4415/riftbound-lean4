@@ -110,8 +110,11 @@ def keywords_of(lines: list[str]) -> tuple[list[str], int]:
             if not m or m.group(1) not in KEYWORDS:
                 break
             name, n = m.group(1), m.group(2)
-            ctor = KEYWORDS[name]
             pos = m.end()
+            # The arrow marks the timing of the following ability, not of playing the card.
+            if name in {"Action", "Reaction"} and re.match(r"\s*\[>\]", line[pos:]):
+                break
+            ctor = KEYWORDS[name]
             arg = ""
             if name in AMOUNT_KW:
                 arg = f", arg := .amount {int(n) if n else 1}"

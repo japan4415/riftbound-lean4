@@ -202,13 +202,17 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 `cleanupAnswerWorkSupported` は、死亡置換などの回答が積む Run と、それに続く Cleanup を検査する。検査を通る合法手は、選んだ処理を行い、Cleanup に戻って次の判断まで進む。通常の誘発が待っている場合も扱う。登録済みカード用の定理は、必要量以上の fuel で状態とイベント列が一致することを示す。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
+### 3y. 基本 Rune と即時 Add の起動
+
+`step_resourceActivation_to_decision` は、どの合法な入力でも基本 Rune と即時 Add の起動が次の判断に着くことを示す。Chain、Showdown、チーム招待、効果の解決中の任意の支払いでは、起動後も元の選択を追う。通常の優先権での即時 Add は盤面を変えられるため、イベントを観測し、Cleanup を終えてから次の判断に進む。追加の fuel でも結果とイベント列は一致する。[ResourceDecisionWork.lean](../Riftbound/Invariant/ResourceDecisionWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成、観測まで含めた即時 Add、直接・相互・振り分けダメージ、支払い時の Recycle は証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Chain の対応する効果への回答、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。誘発の支払い、カードのプレイと能力起動、および対応する死亡置換の回答も証明済み。通常移動、グループ移動、Showdown の戦場選択、対応する Cleanup への回答も扱う。残る入力や効果と作業フレームの合成が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Chain の対応する効果への回答、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。誘発の支払い、カードのプレイと能力起動、および対応する死亡置換の回答も証明済み。通常移動、グループ移動、Showdown の戦場選択、対応する Cleanup への回答も扱う。基本 Rune と即時 Add の合法な起動も証明済み。残る入力や効果と作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。

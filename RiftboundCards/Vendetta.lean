@@ -2110,8 +2110,7 @@ def VEN_075.meta : CardDef :=
     types := [.gear],
     domains := [.body],
     cost := some ⟨3, []⟩,
-    keywords := [{ keyword := .empower },
-      { keyword := .reaction }],
+    keywords := [{ keyword := .empower }],
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
@@ -3176,7 +3175,6 @@ def VEN_112.meta : CardDef :=
     domains := [.chaos],
     cost := some ⟨5, []⟩,
     might := some 5,
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -3961,8 +3959,7 @@ def VEN_139.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Akali"⟩],
     domains := [.fury, .calm],
-    keywords := [{ keyword := .empower, arg := .cost ⟨3, [.any]⟩ },
-      { keyword := .action }],
+    keywords := [{ keyword := .empower, arg := .cost ⟨3, [.any]⟩ }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4020,7 +4017,6 @@ def VEN_141.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Renekton"⟩],
     domains := [.fury, .body],
-    keywords := [{ keyword := .reaction }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4078,7 +4074,6 @@ def VEN_143.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Zed"⟩],
     domains := [.fury, .chaos],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4194,7 +4189,6 @@ def VEN_147.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Shen"⟩],
     domains := [.calm, .order],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4428,7 +4422,6 @@ def VEN_155.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Yordle"⟩, ⟨"Kennen"⟩],
     domains := [.order, .chaos],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
