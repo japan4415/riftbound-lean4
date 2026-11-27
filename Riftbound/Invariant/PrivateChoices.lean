@@ -170,6 +170,40 @@ theorem legalFrameActions_nameCard_view {s t : GameState} {p : PlayerId} {first 
     legalFrameActions s = legalFrameActions t := by
   simp [legalFrameActions, hs, ht]
 
+/-- Concession eligibility is determined by the mode and the public roster of departed seats.
+This applies to team games and to a free-for-all continuing after earlier concessions
+(CR 649-652). -/
+theorem GameState.canConcede_view {s t : GameState} (mode : s.config.mode = t.config.mode)
+    (departed : s.departures.seats = t.departures.seats) (p : PlayerId) :
+    s.canConcede p ↔ t.canConcede p := by
+  have count : s.playerCount = t.playerCount := congrArg Mode.players mode
+  have participation (q : PlayerId) : s.participates q = t.participates q := by
+    simp only [GameState.participates, count, departed]
+  have roster : s.participatingSeats = t.participatingSeats := by
+    rw [GameState.participatingSeats, GameState.participatingSeats, count]
+    exact List.filter_congr (fun q _ => participation q)
+  simp only [GameState.canConcede, mode, GameState.withdrawSeat_participatingSeats,
+    participation, roster, count]
+
+/-- The answers to the pending decision, together with public participation and game status,
+determine all listed player actions. -/
+theorem legalActions_eq_of_frame_and_roster {s t : GameState}
+    (mode : s.config.mode = t.config.mode) (departed : s.departures.seats = t.departures.seats)
+    (result : s.result = t.result) (frame : legalFrameActions s = legalFrameActions t) :
+    legalActions s = legalActions t := by
+  have concede : concedeActions s = concedeActions t := by
+    have count : s.playerCount = t.playerCount := congrArg Mode.players mode
+    rw [concedeActions, concedeActions, count]
+    congr 1
+    apply List.filter_congr
+    intro p _
+    have eligible := GameState.canConcede_view mode departed p
+    by_cases allowed : s.canConcede p
+    · simp [allowed, eligible.mp allowed]
+    · have other : ¬t.canConcede p := fun legal => allowed (eligible.mpr legal)
+      simp [allowed, other]
+  simp only [legalActions, result, frame, concede]
+
 end Riftbound
 
 end
