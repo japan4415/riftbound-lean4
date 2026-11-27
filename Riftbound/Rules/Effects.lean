@@ -3763,9 +3763,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     onSelected s p src env sel (takeUntil p (some src))
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
-    -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
-    (ps.resolve s p env).map (fun l =>
-      (gainPointsAll s.victoryScore s l, []))
+    -- The step ends as soon as the result is observed, before any remaining instruction (CR 002).
+    (ps.resolve s p env).map (fun candidates =>
+      let winner := candidates.find? s.participatingSeats.contains
+      (s, winner.toList.flatMap (fun q => (s.config.mode.sideSeats q).map Event.won)))
   | .score ps n =>
     -- a player who cannot score gets no point from the effect either (Tianna)
     (ps.resolve s p env).bind (fun l0 => (n.evalS s p src env).map (fun k =>
@@ -4079,7 +4080,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
       rw [← h]
-      exact gainPointsAll_safe _ l s
+      exact Safe.refl s
   | score ps n =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p env with

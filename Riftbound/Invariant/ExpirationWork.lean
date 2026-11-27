@@ -1044,7 +1044,8 @@ private theorem cleanup_cycle_routes (s : GameState) (rest : List Frame) (wf : s
 
 private theorem linkedCleanup_withTriggers_pending (s : GameState) :
     (s.withTriggers [.linkedDamageCleanupDone]).pending = s.pending := by
-  have noScore : s.suddenDeathScorer [.linkedDamageCleanupDone] = none := by
+  have noScore : s.eventWinner [.linkedDamageCleanupDone] = none := by
+    rw [eventWinner_of_noWin s _ rfl]
     cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
   have noDelay : s.delayedPlayTriggers [.linkedDamageCleanupDone] = [] := by
     unfold GameState.delayedPlayTriggers
@@ -1059,14 +1060,16 @@ private theorem linkedCleanup_withTriggers_pending (s : GameState) :
   have plays : recorded.playLog = s.playLog := by
     simp [recorded, GameState.recordTurnEvents, GameState.recordPlayEvent]
   have first : recorded.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers, plays]
-  have detect : recorded.detect [.linkedDamageCleanupDone] [] = [] := by
+  have detect : recorded.detect [.linkedDamageCleanupDone] [] (some s.turnFx) = [] := by
     have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
       List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
-    simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits, detectOne, empty]
+    simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits,
+      GameState.firstSpellFieldTriggers, detectOne, empty]
   unfold GameState.withTriggers
   rw [noScore]
   change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
-      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone]) with
+      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone])
+      (some s.turnFx) with
       | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })
     else recorded).pending = s.pending
   simp only [first, noDelay, List.nil_append, detect, ite_self]

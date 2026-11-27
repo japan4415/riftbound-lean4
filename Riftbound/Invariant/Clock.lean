@@ -105,7 +105,7 @@ theorem suddenDeath_ends {s : GameState} {es : List Event} {p : PlayerId}
     (scored : s.suddenDeathScorer es = some p) :
     (s.withTriggers es).result = some (.won (s.config.mode.sideSeats p)) ∧
       (s.withTriggers es).pending = [] := by
-  simp [GameState.withTriggers, scored]
+  simp [GameState.withTriggers, GameState.eventWinner, scored]
 
 end Riftbound
 

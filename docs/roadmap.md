@@ -2129,6 +2129,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Vendetta の Jayce, Brilliant Inventor など6枚では、対象を1つ選んで能力を確定するか、能力を辞退する。Mask Mother の Energy は確定前に支払い、Might の上昇は解決時に適用する（CR 383.3.a–b）。
 - Bandle Tree、Reaver's Row、Reckoner's Arena、Vilemaw's Lair、Zaun Warrens も対戦シナリオで確認した。Origins の `full` は298枚中80枚、全体では1,103枚中531枚。[カード実装状況](coverage.md)
 
+### Origins の Battlefield の検証完了
+
+- The Dreaming Tree は、Spell が味方 Unit を対象にした時点で、対象を選んだ席と Battlefield ごとにそのターンの初回を記録する。複数の Unit を一度に選んでも誘発は1回で、誘発が解決する前に対象を選び直しても初回の記録が残る。2対2ではチームメイトが支配する Unit も味方として扱う（CR 383.4.b、740.1.a）。[Origins 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)
+- The Grand Plaza を Hold した席がそこに7体以上の Unit を支配していると、その誘発の解決時に勝つ。カードから得た勝利は得点を変えず、残りの処理を打ち切る。通常の Hold の得点はそれまでに処理する。2対2では同じチームの2席が勝者になる（CR 002、383.4.d）。
+- Origins の Battlefield は24枚すべて `full`。Origins は298枚中82枚、全体では1,103枚中533枚が `full`。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

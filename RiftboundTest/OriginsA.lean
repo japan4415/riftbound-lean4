@@ -1323,8 +1323,40 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let six ← units 6 s1
   let a ← fire seven [.scored s.me bf false]
   let b ← fire six [.scored s.me bf false]
-  let v := s.config.mode.victoryScore
-  return v ≤ a.pointsOf s.me && b.pointsOf s.me < v
+  let conquer ← fire seven [.scored s.me bf true]
+  return a.result == some (.won [s.me]) && a.pointsOf s.me == seven.pointsOf s.me &&
+    a.pending.isEmpty && b.result.isNone && conquer.result.isNone
+
+-- A Hold at The Grand Plaza can win War even when two opponents tie above the threshold.
+#guard t fun s => do
+  let p := s.me
+  let others := (allPlayers 4).filter (· != p)
+  let config := { s.config with mode := Mode.ffa4 }
+  let (s, plaza) ← putBf { s with config, turnOrder := p :: others } s.you "OGN-293"
+  let s ← (List.range 7).foldlM (fun g _ => (putAt g p "OGN-136" plaza).map Prod.fst) s
+  let tied := (others.take 2).foldl (fun g q => g.gainPoints q 20) (s.gainPoints p 1)
+  let start := { tied.control p plaza with phase := .beginning, pending := [.scoreHolds, .priority p] }
+  let (holding, events) ← (advance 100 start []).toOption
+  let pass (state : GameState × List Event) (_ : Nat) : Option (GameState × List Event) := do
+    let .chainPass player _ :: _ := state.1.pending | none
+    let (next, observed) ← (step 100 state.1 ⟨.player player, .pass⟩).toOption
+    return (next, state.2 ++ observed)
+  let (done, logs) ← (List.range 4).foldlM pass (holding, [])
+  return holding.result.isNone && events.contains (.scored p plaza false) &&
+    done.result == some (.won [p]) && done.pending.isEmpty && logs == [.won p] &&
+    done.pointsOf p == start.pointsOf p + 1 &&
+    others.all (fun q => done.pointsOf q == start.pointsOf q)
+
+-- A card-awarded win ends a team game before later instructions in the effect are run.
+#guard t fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let config := { s.config with mode := Mode.teamDuel }
+  let effect := EffectList.ofList [.prim (.win .you), .prim (.draw .you (.const 1))]
+  let start := { s with config, pending := [.run p s.bf0 {} effect, .priority p] }
+  let (done, events) ← (advance 100 start []).toOption
+  return done.result == some (.won [p, ally]) && done.pending.isEmpty &&
+    done.points == start.points && done.handN p == start.handN p && events == [.won p, .won ally]
 
 -- Possession keeps the damage and the status of the unit it takes (Ready stays Ready, Exhausted
 -- stays Exhausted)
@@ -1351,8 +1383,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let elsewhere ← add 4 s.me bf s1 >>= add 3 s.me other
   let a ← fire mixed [.scored s.me bf false]
   let b ← fire elsewhere [.scored s.me bf false]
-  let v := s.config.mode.victoryScore
-  return a.pointsOf s.me < v && b.pointsOf s.me < v
+  return a.result.isNone && b.result.isNone
 
 -- Mystic Poro (OGN-171), [Vision]: when I play it, I may recycle the top card of my Main Deck
 #guard t fun s => do
@@ -4952,6 +4983,51 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return hit.handN s.me == s5.handN s.me && enemy.handN s.me + 1 == s5.handN s.me &&
     elsewhere.handN s.me + 1 == s5.handN s.me && twice.handN s.me == s5.handN s.me + 1 &&
     theirs.handN s.you == s5.handN s.you + 1
+
+-- A second Spell played in response to the Tree gets no second trigger.
+#guard t fun s => do
+  let p := s.me
+  let (s, tree) ← putBf s s.you "OGN-292"
+  let (s, first) ← putAt s p "OGN-136" tree
+  let (s, second) ← putAt s p "OGN-136" tree
+  let (s, cleave) ← put s p "OGN-004" .hand
+  let (s, flash) ← put s p "OGS-011" .hand
+  let start := (s.control p tree).rich p
+  let (casting, _) ← (step 100 start ⟨.player p, .playCard cleave (payOf start cleave) [first]⟩).toOption
+  let (responding, events) ←
+    (step 100 casting ⟨.player p, .playCard flash (payOf casting flash) [first, second]⟩).toOption
+  let treeItems (g : GameState) := (g.zone .chain).countP (fun id =>
+    (g.obj? id).any (fun o => match o.kind with
+      | .chainAbility card _ source => card == cid "OGN-292" && source == tree
+      | _ => false))
+  let done := settleChain {} 16 responding
+  return treeItems casting == 1 && treeItems responding == 1 &&
+    events.contains (.chosenBySpell p second) && done.handN p + 1 == start.handN p &&
+    done.locate first == some (.player p .base) && done.locate second == some (.player p .base)
+
+-- The first choice is keyed to this seat, Battlefield and turn, even if the trigger disappears.
+-- A teammate's Unit qualifies as friendly in a team game.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let init := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { init with phase := .main, turn := 3, active := some p, turnOrder := Mode.teamTurnOrder true }
+  let (s, tree) ← putBf s opponent "OGN-292"
+  let (s, otherTree) ← putBf s ally "OGN-292"
+  let (s, first) ← putAt s ally "OGN-136" tree
+  let (s, second) ← putAt s ally "OGN-136" tree
+  let (s, other) ← putAt s p "OGN-136" otherTree
+  let target := Event.chosenBySpell p first
+  let chosen := s.withTriggers [target, .chosenBySpell p second]
+  let unqueued := { chosen with pending := [] }
+  let next := { unqueued with turn := unqueued.turn + 1 }
+  return (s.detect [target, .chosenBySpell p second]).length == 1 &&
+    unqueued.turnFx.length == 1 && (unqueued.detect [target]).isEmpty &&
+    (unqueued.detect [.chosenByAbility p first]).isEmpty &&
+    (unqueued.detect [.chosenBySpell opponent first]).isEmpty &&
+    (unqueued.detect [.chosenBySpell ally first]).length == 1 &&
+    (unqueued.detect [.chosenBySpell p other]).length == 1 && (next.detect [target]).length == 1
 
 -- Swift Scout (OGN-263): I may hide a card with Hidden for one Energy instead of one Power; one
 -- Energy, exhaust: put a Teemo unit I own into my hand from the Champion Zone or the board

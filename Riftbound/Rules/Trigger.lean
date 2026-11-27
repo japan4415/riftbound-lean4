@@ -619,12 +619,6 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .lookedAt p c => triggersOf s c p .seenOnTop
   | .chosenBySpell p t =>
-    -- a Battlefield waits for its player's chosen unit at it
-    (s.zone .battlefieldZone).flatMap (fun bf =>
-      if (s.cardDef? t).any (·.hasType .unit) &&
-          (s.obj? t).any (fun o => o.controller == p && o.loc == some bf) then
-        triggersOf s bf p .chosenHere
-      else []) ++
     -- a unit of the player that is chosen by their spell, and what watches the units they choose
     (if (s.obj? t).any (·.controller == p) then
       triggersOf s t p .chosen ++ watchersOf s t p .chosen ++
@@ -813,10 +807,35 @@ def GameState.triggerSeatOrder (s : GameState) (es : List Event) : List PlayerId
     [c.attacker] ++ order.filter (fun p => p != c.attacker && p != c.defender) ++ [c.defender]
   | none => s.pickOrder
 
-/-- The continuing players' abilities that fire because of the events of a step (CR 651.3). -/
-def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
+/-- The Battlefield of a friendly Unit targeted by this player's Spell (CR 383.4.b, 740.1.a). -/
+def GameState.friendlySpellField (s : GameState) (p : PlayerId) (id : ObjId) : Option ObjId := do
+  let unit ← s.obj? id
+  let field ← unit.loc
+  if (s.zone .battlefieldZone).contains id && (s.cardDef? id).any (·.hasType .unit) &&
+      s.config.mode.sameSide p unit.controller then some field else none
+
+/-- Whether the when-and-where of this fact was already recorded. -/
+def recordedTurnFact (notes : List TurnFx) (turn : Nat) (p : PlayerId) (kind : TurnEffect)
+    (target : Option ObjId) : Bool :=
+  notes.any (fun f => f.turn == turn && f.who == p && f.kind == kind && f.target == target)
+
+/-- Targeting several Units at the same Battlefield completes the first choice there once. -/
+def GameState.firstSpellFieldTriggers (s : GameState) (notes : List TurnFx) (es : List Event) :
     List PendTrigger :=
-  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra).filter
+  let fields := es.filterMap (fun
+    | .chosenBySpell p id => (s.friendlySpellField p id).map (p, ·)
+    | _ => none)
+  fields.eraseDups.flatMap (fun (p, field) =>
+    if recordedTurnFact notes s.turn p .chosenHere (some field) then []
+    else triggersOf s field p .chosenHere)
+
+/-- The continuing players' abilities that fire because of the events of a step (CR 651.3).
+First-choice triggers compare against the facts from before the event batch. -/
+def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := [])
+    (beforeFacts : Option (List TurnFx) := none) :
+    List PendTrigger :=
+  let choices := s.firstSpellFieldTriggers (beforeFacts.getD s.turnFx) es
+  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ choices ++ extra).filter
     (fun t => !s.departures.seats.contains t.controller))
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
@@ -985,9 +1004,16 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
 /-- Save the first fact of a kind this turn for a player and optional object. -/
 def GameState.recordTurnFact (s : GameState) (notes : List TurnFx)
     (p : PlayerId) (kind : TurnEffect) (target : Option ObjId) (stamp : Nat) : List TurnFx :=
-  if notes.any (fun f => f.turn == s.turn && f.who == p && f.kind == kind && f.target == target)
-  then notes
+  if recordedTurnFact notes s.turn p kind target then notes
   else { who := p, turn := s.turn, stamp, kind, target } :: notes
+
+/-- An enemy Unit was targeted by this player's Spell or ability. -/
+def GameState.recordEnemyChoice (s : GameState) (notes : List TurnFx) (p : PlayerId)
+    (id : ObjId) : List TurnFx :=
+  if s.inPlay.contains id && (s.obj? id).any (fun o => !s.config.mode.sameSide p o.controller) &&
+      (s.cardDef? id).any (·.hasType .unit) then
+    s.recordTurnFact notes p .choseEnemyUnit none s.nextTimestamp
+  else notes
 
 /-- Register only successful plays by the instructed player, including Unit and Gear tokens. -/
 def GameState.matchesDelayedPlay (s : GameState) (who : PlayerId) (kind : CardType) : Event → Bool
@@ -1032,11 +1058,13 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
     match s.battlefieldPlay id with
     | some (field, stamp) => s.recordTurnFact waiting p .playedToBattlefield (some field) stamp
     | none => waiting
-  | .chosenBySpell p id | .chosenByAbility p id =>
-    if s.inPlay.contains id && (s.obj? id).any (fun o => !s.config.mode.sameSide p o.controller) &&
-        (s.cardDef? id).any (·.hasType .unit) then
-      s.recordTurnFact notes p .choseEnemyUnit none s.nextTimestamp
-    else notes
+  | .chosenBySpell p id =>
+    match s.friendlySpellField p id with
+    | some field =>
+      if (triggersOf s field p .chosenHere).isEmpty then notes
+      else s.recordTurnFact notes p .chosenHere (some field) s.nextTimestamp
+    | none => s.recordEnemyChoice notes p id
+  | .chosenByAbility p id => s.recordEnemyChoice notes p id
   | .died id p =>
     if (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear) then
       let known := s.recordTurnFact notes p .permanentDied none s.nextTimestamp
@@ -1151,17 +1179,38 @@ def GameState.suddenDeathScorer (s : GameState) (es : List Event) : Option Playe
       | _ => none)
   else none
 
-/-- After a step, finish on the sudden-death point or queue the abilities that fired outside setup. -/
+/-- A card can award a win independently of the scoreboard (CR 002). -/
+def GameState.eventWinner (s : GameState) (es : List Event) : Option PlayerId :=
+  s.suddenDeathScorer es <|>
+    if s.phase == .setup || s.result.isSome then none
+    else es.findSome? (fun | .won p => some p | _ => none)
+
+/-- Events unrelated to a card-awarded win still use the ordinary sudden-death rule. -/
+theorem eventWinner_of_noWin (s : GameState) (es : List Event)
+    (h : es.findSome? (fun | .won p => some p | _ => none) = none) :
+    s.eventWinner es = s.suddenDeathScorer es := by
+  simp [GameState.eventWinner, h]
+
+/-- After a step, finish a won game or queue the abilities that fired outside setup. -/
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   let next := s.recordTurnEvents es
-  match s.suddenDeathScorer es with
+  match s.eventWinner es with
   | some p => { next with result := some (.won (s.config.mode.sideSeats p)), pending := [] }
   | none =>
     if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) with
+      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) (some s.turnFx) with
       | [] => next
       | pend => { next with pending := insertDetectedTriggers next pend s.pending }
     else next
+
+/-- A card-awarded win clears the remaining work and does not change the score. -/
+theorem withTriggers_win (s : GameState) (p : PlayerId) (ongoing : s.result = none)
+    (playing : s.phase ≠ .setup) :
+    s.withTriggers [.won p] = { s with result := some (.won (s.config.mode.sideSeats p)), pending := [] } := by
+  have noPoint : s.suddenDeathScorer [.won p] = none := by
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
+  simp [GameState.withTriggers, GameState.eventWinner, noPoint, ongoing, playing,
+    GameState.recordTurnEvents, GameState.recordTurnEvent, GameState.recordPlayEvent]
 
 /-- Whether the source already chose this mode of the triggered ability in the current turn. -/
 def PendTrigger.choseMode (t : PendTrigger) (s : GameState) (mode : Nat) : Bool :=
@@ -1665,15 +1714,15 @@ theorem withTriggers_cases (s : GameState) (es : List Event) :
         pending := insertDetectedTriggers (s.recordTurnEvents es) pend s.pending } ∧ s.phase ≠ .setup ∧
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
-  cases hs : s.suddenDeathScorer es with
+  cases hs : s.eventWinner es with
   | some p =>
     refine Or.inl ⟨p, rfl, fun hp => ?_⟩
-    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc, hp] at hs
+    cases hc : s.clock <;> simp [GameState.eventWinner, GameState.suddenDeathScorer, hc, hp] at hs
   | none =>
     right
     by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
     · cases hd : (s.recordTurnEvents es).detect es
-        ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) with
+        ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) (some s.turnFx) with
       | nil => simp [hg, hd]
       | cons x xs =>
         right
@@ -1717,14 +1766,15 @@ theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
     List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
-  have noScore : s.suddenDeathScorer [] = none := by
-    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
+  have noScore : s.eventWinner [] = none := by
+    cases hc : s.clock <;> simp [GameState.eventWinner, GameState.suddenDeathScorer, hc]
   unfold GameState.withTriggers
   rw [noScore]
   dsimp only
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
-      GameState.trimLimits, GameState.firstCardTriggers, GameState.delayedPlayTriggers, empty]
+      GameState.trimLimits, GameState.firstCardTriggers, GameState.firstSpellFieldTriggers,
+      GameState.delayedPlayTriggers, empty]
   · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/

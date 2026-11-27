@@ -236,6 +236,20 @@ private theorem awakenNotices_noSuddenDeath (s : GameState) (events : List Event
       cases notices e mem <;> rfl
     · rfl
 
+private theorem awakenNotices_noWinner (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.eventWinner events = none := by
+  rw [eventWinner_of_noWin, awakenNotices_noSuddenDeath s events notices]
+  exact List.findSome?_eq_none_iff.mpr (fun e mem => by cases notices e mem <;> rfl)
+
+/-- Saving a first-choice fact makes it visible to the next event batch immediately. -/
+theorem recordedTurnFact_after_record (s : GameState) (facts : List TurnFx) (p : PlayerId)
+    (kind : TurnEffect) (target : Option ObjId) (stamp : Nat) :
+    recordedTurnFact (s.recordTurnFact facts p kind target stamp) s.turn p kind target = true := by
+  unfold GameState.recordTurnFact
+  split
+  · assumption
+  · simp [recordedTurnFact]
+
 /-- Awaken notices only insert detected work. They leave play history, turn facts and the clock's
 sudden-death result unchanged. -/
 theorem withAwakenNotices (s : GameState) (events : List Event)
@@ -244,11 +258,13 @@ theorem withAwakenNotices (s : GameState) (events : List Event)
     s.withTriggers events = if s.phase != .setup && s.pending.all (fun f => !f.isSetup) &&
       !detected.isEmpty then { s with pending := insertDetectedTriggers s detected s.pending } else s := by
   unfold GameState.withTriggers
-  rw [recordAwakenNotices s events notices, awakenNotices_noSuddenDeath s events notices]
+  rw [recordAwakenNotices s events notices, awakenNotices_noWinner s events notices]
   dsimp only
   have first : s.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers]
   rw [first, awakenNotices_noDelayedPlay s events notices]
   simp only [List.nil_append]
+  have same : s.detect events [] (some s.turnFx) = s.detect events := rfl
+  rw [same]
   by_cases active : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
   · cases s.detect events <;> simp [active]
   · simp [active]

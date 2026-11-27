@@ -7849,11 +7849,9 @@ def OGN_292.meta : CardDef :=
 /-- The Dreaming Tree. -/
 def OGN_292 : CardDef :=
   { OGN_292.meta with
-    abilities := [.triggered { event := .chosenHere, subject := .self }
-      (.of [] (.ifThen (.not (.noted .chosenHere))
-        (.seqOf [.prim (.turnEffect .chosenHere), .prim (.draw .you (.const 1))]) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered (.onSelf .chosenHere)
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-293
 /--
@@ -7874,9 +7872,9 @@ def OGN_293 : CardDef :=
   { OGN_293.meta with
     abilities := [.triggered
       { event := .youHold,
-        condition := .cmp .ge (.count (.all .friendly .here [.ofType .unit])) (.const 7) }
+        condition := .cmp .ge (.count (.all .you .here [.ofType .unit])) (.const 7) }
       (.of [] (.prim (.win .you))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-294
 /--

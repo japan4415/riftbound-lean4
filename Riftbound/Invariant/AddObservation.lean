@@ -399,7 +399,8 @@ theorem withTriggers_skipped (s : GameState) (source : ObjId) :
     s.withTriggers [.skipped source] = s := by
   have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
     List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
-  have noScore : s.suddenDeathScorer [.skipped source] = none := by
+  have noScore : s.eventWinner [.skipped source] = none := by
+    rw [eventWinner_of_noWin s _ rfl]
     cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
   have noDelay : s.delayedPlayTriggers [.skipped source] = [] := by
     unfold GameState.delayedPlayTriggers
@@ -417,7 +418,7 @@ theorem withTriggers_skipped (s : GameState) (source : ObjId) :
   dsimp only
   split
   · simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits,
-      GameState.firstCardTriggers, detectOne, empty, noDelay]
+      GameState.firstCardTriggers, GameState.firstSpellFieldTriggers, detectOne, empty, noDelay]
   · rfl
 
 end Riftbound
