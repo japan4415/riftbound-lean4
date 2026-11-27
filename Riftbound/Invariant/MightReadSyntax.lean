@@ -58,9 +58,10 @@ def condition : Condition → Bool
 /-- The keywords whose presence or amount can affect the observed Might. -/
 def keyword (k : Keyword) : Bool := [.assault, .shield, .tank].contains k
 
-/-- Whether the modifier can contribute to Might or to a keyword used to compute it. -/
+/-- Whether the modifier affects Might, lethal damage, or the threshold for victory. -/
 def relevant : StaticMod → Bool
-  | .mightPlus .. | .mightPlusWithKeyword .. | .mightMinus .. | .mightMinusMin .. | .assaultCount .. => true
+  | .mightPlus .. | .mightPlusWithKeyword .. | .mightMinus .. | .mightMinusMin .. |
+    .assaultCount .. | .anyDamageKills | .victoryScorePlus .. | .victoryScoreMinus .. => true
   | .keyword _ k | .keywordHere k | .equipEach k => keyword k.keyword
   | _ => false
 
@@ -69,9 +70,10 @@ def modifier : StaticMod → Bool
   | .mightPlus sel a | .mightMinus sel a | .mightMinusMin sel a _ => selector sel && amount a
   | .mightPlusWithKeyword sel k a => selector sel && k == .tank && amount a
   | .assaultCount sel | .keyword sel _ => selector sel
+  | .victoryScorePlus a | .victoryScoreMinus a => amount a
   | _ => true
 
-/-- Only passives that can affect Might need their condition and relevant modifiers checked. -/
+/-- Check the relevant reads of passives that affect Might or Cleanup. -/
 def ability : Ability → Bool
   | .passive c ms => (ms.filter relevant).all modifier && (!(ms.any relevant) || condition c)
   | _ => true
@@ -100,7 +102,7 @@ def card (d : CardDef) : Bool :=
   d.allAbilities.all ability && (d.withUnitGearMight 0).allAbilities.all ability &&
     d.grants.all equipmentAbility
 
-/-- Every registered passive that can affect Might uses the supported read expressions. -/
+/-- Registered passives that affect Might or Cleanup use the supported reads. -/
 def database (db : CardDB) : Prop := db.cards.all card = true
 
 instance (db : CardDB) : Decidable (database db) := by

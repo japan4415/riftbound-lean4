@@ -232,6 +232,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 セットアップの合法なシャッフルと戦場の抽選は、残っているセットアップ入力へ作業ステップなしで進む。参加者が残っている状態で合法な手番順を確定すると、参加席数を `n` として `5n + 1` 作業ステップ以内に、最初のマリガンか、山札が尽きた場合の Burn Out の入力に着く。4席が参加していれば上限は21で、離脱した席のドローは数えない。いずれも実際の `step` に対する定理である。[SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean)
 
+### 3ad. 最後の Cleanup から通常の優先権へ
+
+盤面が Cleanup の不動点に達しているとき、先頭の Cleanup を取り除いてもその条件を保つ。常在効果で致死判定や勝利に必要な点数が変わる場合も、登録カードで使う読み取り条件を確認する。次が通常の優先権だけで、Showdown の開始も連動ダメージの終了通知も残っていなければ、`advance` は1ステップで優先権を返す。Main に入った直後にこの条件が成り立てば、Main 開始のイベントを保ったまま合計2ステップで優先権に着く。盤面が不動点に達する前や、通知によって追加の処理が生じる経路の一般証明は残る。[ObservedCleanupWork.lean](../Riftbound/Invariant/ObservedCleanupWork.lean) [TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

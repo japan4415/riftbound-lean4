@@ -137,6 +137,42 @@ theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
   | resume => exact finish rest stack (Or.inl rfl)
   | queue q nonempty => exact finish _ stack (insertion rest (Or.inl rfl) q nonempty)
 
+/-- When entering Main leaves only a settled Cleanup followed by neutral priority, the
+actual dispatcher returns priority in two work steps and retains Main's phase event. -/
+theorem advance_main_to_priority_of_settled {s : GameState} {p : PlayerId} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = [.phase .main, .priority p]) :
+    let raw := { s with
+      phase := .main
+      pending := [.cleanup, .priority p]
+      pools := {}
+      turnFx := s.mainPhasePowerNotes }
+    let event := Event.phaseStarted (s.active.getD ⟨0⟩) .main
+    let next := raw.withTriggers (event :: s.workTransitionEvents raw)
+    next.pending = [.cleanup, .priority p] → next.Settled →
+      next.stagedShowdowns [.priority p] = [] →
+      next.turnFx.any (fun f => match f.kind with
+        | .linkedDamageDeath .. => true | _ => false) = false →
+      advance 2 s [] = .ok ({ next with pending := [.priority p] }, [event]) := by
+  intro raw event next stack settled noShowdown noLinks
+  have work : workStep s = some (next, [event]) := by
+    simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, event, next,
+      List.cons_append, List.nil_append]
+  have cards : next.cards = s.cards := by
+    obtain ⟨_, _, unchanged⟩ := withTriggers_pending raw (event :: s.workTransitionEvents raw)
+    change (raw.withTriggers _).cards = _
+    rw [unchanged]
+    rfl
+  have noLinked : next.turnFx.any (fun f => match f.kind with
+      | .linkedDamageDeath .. => true | _ => false) = false := by
+    apply List.any_eq_false.mpr
+    intro note member
+    have absent := (List.any_eq_false.mp noLinks) note member
+    cases kind : note.kind <;> simp_all
+  have cleanup := advance_settledCleanup_to_priority (seen := [event])
+    (workStep_wf wf work) (cards ▸ reads) stack settled noShowdown noLinked
+  have prepared := GameState.preparePriority_of_work pending rfl
+  simpa only [advance, prepared, pending, Frame.isWork, ite_true, work, List.nil_append] using cleanup
+
 private def advancesToStack (s : GameState) (rest : List Frame) : Prop :=
   ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
     (t.pending.head?.all (fun f => !f.isWork) = true ∨

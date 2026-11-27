@@ -13,6 +13,192 @@ between iterations. A settled Cleanup leaves its continuation or stages a decisi
 
 namespace Riftbound
 
+private theorem find?_agree {α : Type} (items : List α) (first second : α → Bool)
+    (agree : ∀ x ∈ items, first x = second x) : items.find? first = items.find? second := by
+  induction items with
+  | nil => rfl
+  | cons x xs ih =>
+    simp only [List.find?_cons, agree x List.mem_cons_self,
+      ih (fun y member => agree y (List.mem_cons_of_mem _ member))]
+
+/-- Removing the active Cleanup frame does not make the board unsettled. In particular it
+preserves the lethal test for each unit, including previously attributed damage. -/
+theorem GameState.Settled.pop_cleanup {s : GameState} {rest : List Frame} (settled : s.Settled)
+    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest) :
+    ({ s with pending := rest } : GameState).Settled := by
+  let next := { s with pending := rest }
+  have combat : next.combatNow = s.combatNow := by
+    unfold GameState.combatNow
+    rw [pending]
+    rfl
+  have reads : SameMightReads s next := (SameMightReads.refl s).replacePending rest combat
+  have fights (field : ObjId) : next.fightingAt field = s.fightingAt field := by
+    unfold GameState.fightingAt
+    rw [pending]
+    rfl
+  have agrees (id : ObjId) (onBoard : id ∈ s.inPlay) : next.lethal id = s.lethal id := by
+    have might := reads.mightNow_eq wf database (old_inPlay wf onBoard)
+    have override (p : PlayerId) (target : Object) :
+        next.makesDamageLethal p target = s.makesDamageLethal p target :=
+      reads.makesDamageLethal_eq wf database p target
+    have lookup : next.obj? id = s.obj? id := rfl
+    have players : next.playerCount = s.playerCount := rfl
+    have marks : next.damageMarks = s.damageMarks := rfl
+    simp only [GameState.lethal, GameState.damageWillBeLethal, lookup, players, might, override, marks]
+  have lethalFind : (next.inPlay.find? fun id => next.isUnit id && next.lethal id) =
+      s.inPlay.find? (fun id => s.isUnit id && s.lethal id) := by
+    change (s.inPlay.find? fun id => s.isUnit id && next.lethal id) = _
+    exact find?_agree _ _ _ (fun id atBoard => by rw [agrees id atBoard])
+  have lost : next.lostControl = s.lostControl := by
+    funext field
+    unfold GameState.lostControl
+    rw [fights]
+    rfl
+  have stale : next.staleContest = s.staleContest := by
+    funext field
+    unfold GameState.staleContest
+    rw [fights]
+    rfl
+  have fields : next.battlefields = s.battlefields := rfl
+  have contests : next.newContest = s.newContest := rfl
+  have step0 : cleanupStep0 next = none := by
+    have h := cleanupStep0_of_none settled.2
+    unfold cleanupStep0 at h ⊢
+    rw [lethalFind, fields, lost, stale, contests]
+    cases one : s.inPlay.find? (fun id => s.isUnit id && s.lethal id) <;> simp_all
+    cases one : s.battlefields.find? s.lostControl <;> simp_all
+    cases one : s.battlefields.find? s.staleContest <;> simp_all
+    cases one : s.battlefields.findSome? (fun b => (s.newContest b).map (fun q => (b, q))) <;> simp_all
+  have before := settled.2
+  have oldToken : tokenStep s = none := by
+    cases found : tokenStep s with
+    | none => rfl
+    | some result => simp [cleanupStep, found] at before
+  have oldDetach : detachStep s = none := by
+    cases found : detachStep s with
+    | none => rfl
+    | some result => simp [cleanupStep, oldToken, found] at before
+  have oldLegend : returnReservedLegendStep s = none := by
+    cases found : returnReservedLegendStep s with
+    | none => rfl
+    | some result => simp [cleanupStep, oldToken, oldDetach, found] at before
+  have token : tokenStep next = none := by
+    have offBoard : next.offBoardToken = s.offBoardToken := rfl
+    simp only [tokenStep] at oldToken
+    simp only [tokenStep, offBoard]
+    cases h : s.offBoardToken with
+    | none => rfl
+    | some id =>
+      have located : next.locate id = s.locate id := rfl
+      simp only [removeObj, located] at oldToken ⊢
+      cases found : s.locate id <;> simp_all
+  have detached : detachStep next = none := by
+    have gear : next.looseGear = s.looseGear := rfl
+    simp only [detachStep] at oldDetach
+    simp only [detachStep, gear]
+    cases found : s.looseGear <;> simp_all
+  have legend : returnReservedLegendStep next = none := by
+    have expired : next.expiredReservedLegend = s.expiredReservedLegend := rfl
+    simp only [returnReservedLegendStep] at oldLegend
+    simp only [returnReservedLegendStep, expired]
+    cases selected : s.expiredReservedLegend with
+    | none => rfl
+    | some card =>
+      obtain ⟨p, id⟩ := card
+      have located : next.locate id = s.locate id := rfl
+      have lookup : next.obj? id = s.obj? id := rfl
+      have players : next.playerCount = s.playerCount := rfl
+      simp only [selected, Option.bind_eq_bind, Option.bind_some] at oldLegend
+      simp only [Option.bind_eq_bind, Option.bind_some]
+      have noMove : moveObj s id (.player p .reserveLegends) = none := by
+        cases found : moveObj s id (.player p .reserveLegends) with
+        | none => rfl
+        | some result => simp [found] at oldLegend
+      have noMoveNext : moveObj next id (.player p .reserveLegends) = none := by
+        unfold moveObj at noMove ⊢
+        rw [located, lookup, players]
+        cases origin : s.locate id <;> cases object : s.obj? id <;> simp only [origin, object] at noMove ⊢ <;> try rfl
+        split at noMove
+        · rename_i blocked
+          simp [blocked]
+        · split at noMove <;> contradiction
+      rw [noMoveNext]
+      rfl
+  have winner : next.winner = s.winner := by
+    have score := reads.victoryScore_eq wf database
+    unfold GameState.winner
+    rw [score]
+    rfl
+  refine ⟨winner.trans settled.1, ?_⟩
+  change cleanupStep next = none
+  simp [cleanupStep, token, detached, legend, step0]
+
+/-- When a settled Cleanup has no Showdown or linked-damage notification to dispatch, it
+returns to neutral priority in one work step without preparation scheduling another Cleanup. -/
+theorem advance_settledCleanup_to_priority {s : GameState} {p : PlayerId} {seen : List Event} (wf : s.WF)
+    (database : MightRead.database s.cards) (pending : s.pending = [.cleanup, .priority p])
+    (settled : s.Settled) (noShowdown : s.stagedShowdowns [.priority p] = [])
+    (noLinks : s.turnFx.any (fun f => match f.kind with
+      | .linkedDamageDeath .. => true | _ => false) = false) :
+    advance 1 s seen = .ok ({ s with pending := [.priority p] }, seen) := by
+  let next := { s with pending := [.priority p] }
+  have deathGroup : cleanupDeathGroup s = [] := by
+    unfold cleanupDeathGroup
+    split
+    · rfl
+    · apply List.filter_eq_nil_iff.mpr
+      intro unit onBoard
+      cases isUnit : s.isUnit unit
+      · simp
+      · simpa using Settled.no_lethal settled unit onBoard isUnit
+  have noChoice : cleanupDeathBanishChoice s = none := by
+    simp [cleanupDeathBanishChoice, deathGroup, GameState.deathGroupChoiceWith_nil]
+  have noGroup : cleanupResolveDeathGroup s = none := by
+    simp [cleanupResolveDeathGroup, deathGroup]
+  have observes : s.observeCombat [.priority p] = (s.combat, []) := by
+    unfold GameState.observeCombat
+    cases current : s.combat <;> rfl
+  have raw : cleanupFrame s [.priority p] = (next, []) := by
+    simp [cleanupFrame, settled.1, settled.2, noChoice, noGroup, noShowdown, continueAfterCleanup,
+      observes, GameState.showdownOpeningEvents, next]
+  have combat : next.combatNow = s.combatNow := by
+    unfold GameState.combatNow
+    rw [pending]
+    rfl
+  have reads : SameMightReads s next := (SameMightReads.refl s).replacePending _ combat
+  have mighty : s.mightyEvents next = [] :=
+    mightyEvents_eq_nil_of_mightNow (fun id member =>
+      (reads.mightNow_eq wf database (old_inPlay wf member)).symm)
+  have noExhaust : s.exhaustionEvents next none = [] := by
+    unfold GameState.exhaustionEvents
+    have empty : ((s.inPlay ++ s.players.flatMap (fun q => s.zone (.player q .legendZone))).filter
+        (fun id => (s.obj? id).any (fun o => !o.exhausted) && (next.obj? id).any (·.exhausted))) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro id _
+      have lookup : next.obj? id = s.obj? id := rfl
+      rw [lookup]
+      cases s.obj? id <;> simp
+    dsimp only
+    rw [empty]
+    rfl
+  have notices : s.workTransitionEvents next = [] := by
+    simp [GameState.workTransitionEvents, pending, next, noExhaust, mighty, GameState.mightReductionEvents]
+    intro note member
+    have absent := (List.any_eq_false.mp noLinks) note member
+    cases kind : note.kind <;> simp_all
+  have work : workStep s = some (next, []) := by
+    simp only [workStep, pending, microStep, microStep0, raw, Option.map_some,
+      List.nil_append, notices, withTriggers_nil]
+  have ready : next.Settled := settled.pop_cleanup wf database pending
+  have prepared : next.preparePriority = next := by
+    have nextStack : next.pending = [.priority p] := rfl
+    simp [GameState.preparePriority, nextStack, ready.1, ready.2]
+  have stop : next.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+    rw [prepared]
+    rfl
+  have zero : AdvancePrefix next next 0 [] := by intro fuel before; simp
+  simpa only [List.append_nil] using (zero.prepend pending rfl work).finish stop seen
+
 private theorem cleanupFrame_route (s : GameState) (rest : List Frame) (wf : s.WF)
     (pending : s.pending = .cleanup :: rest) :
     let raw := (cleanupFrame s rest).1

@@ -729,6 +729,68 @@ theorem SameMightReads.mightNow_eq {s t : GameState} (same : SameMightReads s t)
   simp only [GameState.mightWithCombatBonus, combatMightBonus_eq same wf database old, same.mightOf,
     same.equipBonus, same.buffBonus, passive, boardFloors_eq same wf database, equipmentFloors_eq same wf database old]
 
+/-- Matching reads preserve whether an opposing source makes damage lethal, including
+when its passive overrides the usual Might threshold. -/
+theorem SameMightReads.makesDamageLethal_eq {s t : GameState} (same : SameMightReads s t) (wf : s.WF)
+    (database : MightRead.database s.cards) (responsible : PlayerId) (target : Object) :
+    t.makesDamageLethal responsible target = s.makesDamageLethal responsible target := by
+  have member (mods : List StaticMod) :
+      (mods.filter MightRead.relevant).contains .anyDamageKills = mods.contains .anyDamageKills := by
+    apply Bool.eq_iff_iff.mpr
+    simp [MightRead.relevant]
+  let applies (state : GameState) (id : ObjId) :=
+    (state.obj? id).any (·.controller == responsible) &&
+      (state.activeMods id).contains .anyDamageKills
+  have agree (id : ObjId) (onBoard : id ∈ s.inPlay) : applies t id = applies s id := by
+    have old := old_inPlay wf onBoard
+    have controller := same.readObj old (fun obj => obj.any (fun o => o.controller == responsible))
+      (by intro obj; cases obj <;> rfl)
+    have mods := same.activeMods_eq wf database old
+    simp only [applies]
+    rw [controller, ← member (t.activeMods id), mods, member]
+  simp only [GameState.makesDamageLethal, same.config, same.inPlay]
+  suffices s.inPlay.any (applies t) = s.inPlay.any (applies s) by rw [this]
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.any_eq_true]
+  constructor <;> rintro ⟨id, onBoard, test⟩
+  · exact ⟨id, onBoard, agree id onBoard ▸ test⟩
+  · exact ⟨id, onBoard, (agree id onBoard).symm ▸ test⟩
+
+/-- Matching reads also preserve the score required to win. -/
+theorem SameMightReads.victoryScore_eq {s t : GameState} (same : SameMightReads s t) (wf : s.WF)
+    (database : MightRead.database s.cards) : t.victoryScore = s.victoryScore := by
+  let value (state : GameState) (src : ObjId) : StaticMod → Int
+    | .victoryScorePlus a => (a.evalS0 state (state.controllerOf src) src {}).getD 0
+    | .victoryScoreMinus a => -((a.evalS0 state (state.controllerOf src) src {}).getD 0 : Int)
+    | _ => 0
+  have filterSum (state : GameState) (id : ObjId) (mods : List StaticMod) :
+      (mods.map (value state id)).sum = ((mods.filter MightRead.relevant).map (value state id)).sum := by
+    apply sum_filter_zero
+    intro mod _ irrelevant
+    cases mod <;> first | rfl | exact False.elim (by contradiction)
+  have score :
+      (t.passiveSources.flatMap (fun src => (t.activeMods src).map (value t src))).sum =
+        (s.passiveSources.flatMap (fun src => (s.activeMods src).map (value s src))).sum := by
+    rw [passiveSources_eq same wf]
+    apply sum_flatMap_eq_on
+    intro id source
+    have old := passiveSource_old wf source
+    rw [filterSum t id (t.activeMods id), filterSum s id (s.activeMods id),
+      same.activeMods_eq wf database old]
+    apply congrArg List.sum
+    apply List.map_congr_left
+    intro mod active
+    have checked := active_accepted database active
+    have controller : t.controllerOf id = s.controllerOf id :=
+      same.readObj old (fun obj => (obj.map Object.controller).getD ⟨0⟩)
+        (by intro obj; cases obj <;> rfl)
+    cases mod <;> try rfl
+    · simp only [value, controller, same.amount_eq wf _ {} old _ checked]
+    · simp only [value, controller, same.amount_eq wf _ {} old _ checked]
+  unfold GameState.victoryScore
+  rw [same.config]
+  exact congrArg (fun n => ((s.config.mode.victoryScore : Int) + n).toNat) score
+
 /-- With a checked card database, automatic trigger finalization keeps every Board object's Might.
 It creates no new threshold observations, so the actual step follows the raw dispatcher. -/
 theorem workStep_triggers_sameMight (s : GameState) (wf : s.WF) (queue : List PendTrigger)
