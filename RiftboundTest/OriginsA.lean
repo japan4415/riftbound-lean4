@@ -800,6 +800,36 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← fire (s2.tire e) [.combatStarted s.bf0 s.me]
   return a.mightNow d == (s2.mightNow d).map (· + 2) && b.mightNow d == s2.mightNow d
 
+-- Warwick enters ready, then kills damaged enemies at his attacking Battlefield as one group.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-159" .hand
+  let entered ← play s p card
+  let ready ← entered.firstOf p .base "OGN-159"
+  let (s, _) ← putAt s p "OGN-159" s.bf0
+  let (s, first) ← putAt s q "OGN-001" s.bf0
+  let (s, second) ← putAt s q "OGN-001" s.bf0
+  let (s, unhurt) ← putAt s q "OGN-001" s.bf0
+  let (s, home) ← put s q "OGN-001" .base
+  let damaged := [first, second, home].foldl (fun st id => st.modObj id (fun o => { o with damage := 1 })) s
+  let attacked ← fire damaged [.combatStarted s.bf0 p]
+  return entered.tired ready == some false && attacked.countIn q .trash "OGN-001" == 2 &&
+    (attacked.obj? unhurt).isSome && (attacked.obj? home).isSome
+
+-- Trifarian Gloryseeker's Legion sees an earlier card played by the same seat this turn.
+#guard t fun s => do
+  let p := s.me
+  let (s, card) ← put s p "OGN-217" .hand
+  let (s, earlier) ← put s p "OGN-051" .hand
+  let first ← play s p card
+  let before ← play s p earlier
+  let sameTurn ← play before p card
+  let nextTurn ← play { before with turn := before.turn + 1 } p card
+  let buffed (state : GameState) : Bool :=
+    ((state.firstOf p .base "OGN-217").bind state.obj?).any (·.buffed)
+  return !buffed first && buffed sameTurn && !buffed nextTurn
+
 -- Grove of the God-Willow (OGN-280), Zaun Warrens (OGN-298): the holder draws, the conqueror
 -- discards and draws
 #guard t fun s => do

@@ -34,6 +34,25 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
     pending := [.priority ⟨0⟩]
     turnOrder := Mode.teamTurnOrder true }
 
+-- Moonlight Affliction resolves as a Reaction. At zero Might, at least one damage is needed
+-- for lethal damage (CR 142.4.b).
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-066" .hand
+  let (s, target) ← put s q "OGN-001" .base
+  let (s, other) ← put s q "OGN-001" .base
+  let (s, reactionTarget) ← onChain s q "OGN-004"
+  let s := s.modObj reactionTarget (fun object => { object with targets := [target] })
+  let s := { s with pending := [.chainPass p 0] }
+  let result ← play s p spell [target]
+  let damaged := s.modObj target (fun object => { object with damage := 1 })
+  let lethal ← play damaged p spell [target]
+  return result.mightNow target == (s.mightNow target).map (· - 10) &&
+    (result.obj? target).isSome && (result.obj? other).isSome &&
+    result.countIn p .trash "UNL-066" == 1 && lethal.countIn q .trash "OGN-001" == 1 &&
+    (lethal.obj? other).isSome
+
 -- Clash of Giants makes both chosen Units deal damage before Cleanup removes either.
 #guard tun fun s => do
   let p := s.me

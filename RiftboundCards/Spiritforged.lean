@@ -1315,8 +1315,8 @@ def SFD_045.meta : CardDef :=
 def SFD_045 : CardDef :=
   { SFD_045.meta with
 
-    spellEffect := some (.of [.targetOf .one .enemy .onChainAll [.choosesMine]]
-      (.prim (.counter (.slot 0)))),
+    spellEffect := some { EffectDef.of [.targetOf .one .enemy .onChainAll [.choosesFriendly]]
+      (.prim (.counter (.slot 0))) with recheckTargets := true },
     status := .drafted }
 
 -- BEGIN GENERATED SFD-046
@@ -4809,8 +4809,8 @@ def SFD_164 : CardDef :=
     -- costs 2 less to play from anywhere other than the hand
     abilities := [.passive (.not (.matches .self .inHandZone))
       [.costMinus .self (.const 2)]],
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.prim (.kill (.slot 0)))),
+    spellEffect := some { EffectDef.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.kill (.slot 0))) with recheckTargets := true },
     status := .drafted }
 
 -- BEGIN GENERATED SFD-165

@@ -667,10 +667,10 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .token =>
     pure ((s.obj? id).any (fun o => match o.kind with | .token _ => true | _ => false))
   | .fromBattlefield => pure ((s.obj? id).any (·.prevLoc.isSome))
-  | .choosesMine => do
+  | .choosesFriendly => do
     let me ← s.obj? self
     let o ← s.obj? id
-    pure (o.targets.any (fun t => (s.obj? t).any (fun u => u.controller == me.controller &&
+    pure (o.targets.any (fun t => (s.obj? t).any (fun u => s.config.mode.sameSide me.controller u.controller &&
       (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear))))
   | .sharesGainedTag =>
     (s.cardDef? id).map (fun d =>

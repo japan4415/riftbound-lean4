@@ -197,7 +197,7 @@ def Filter.understood : Filter → Bool
   | .isAttached => true
   | .attached => true
   | .token => true
-  | .choosesMine => true
+  | .choosesFriendly => true
   | .sharesGainedTag => true
   | .xpAtLeast _ => true
   | .mightLtOf .self => true

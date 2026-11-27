@@ -251,8 +251,8 @@ inductive Filter where
   | isAttached
   /-- Is a token. -/
   | token
-  /-- Is a spell that chooses a unit or a gear of the player the effect belongs to. -/
-  | choosesMine
+  /-- Is a Chain item that chooses a friendly Unit or Gear. -/
+  | choosesFriendly
   /-- Made its last move from a Battlefield. -/
   | fromBattlefield
   /-- Its Might is less than the Might of the object the selector names (`self`, a chosen object or a

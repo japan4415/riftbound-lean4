@@ -2726,6 +2726,32 @@ meta def effectOf (code : String) : Option EffectDef :=
     | none => false
   return on s4 sp mine && !on s4 sp other
 
+-- Not So Fast can protect a teammate's Unit or Gear, including from either enemy seat.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let (s, unit) ← put (teamMain labState) partner "OGN-051" .base
+  let (s, gear) ← put s partner "SFD-009" .base
+  let (s, foe) ← put s q "OGN-051" .base
+  let (s, counter) ← put s p "SFD-045" .hand
+  let (s, first) ← onChain s q "OGN-004"
+  let (s, second) ← onChain s r "SFD-135"
+  let on (state : GameState) (item target : ObjId) :=
+    state.modObj item (fun object => { object with targets := [target] })
+  let s := { on (on (s.rich p) first unit) second gear with pending := [.chainPass p 0] }
+  let playOn (item : ObjId) : Action := ⟨.player p, .playCard counter ⟨2, [.calm]⟩ [item]⟩
+  let offered := legalFrameActions s
+  let (queued, _) ← (step 100 s (playOn second)).toOption
+  let (escaped, _) ← moveObj s gear (.player partner .trash)
+  let resolved := settleChain {} 16 queued
+  return offered.contains (playOn first) && offered.contains (playOn second) &&
+    !(legalFrameActions (on s first foe)).contains (playOn first) &&
+    !(legalFrameActions escaped).contains (playOn second) &&
+    resolved.countIn r .trash "SFD-135" == 1 && (resolved.obj? second).isNone &&
+    (resolved.zone (.player partner .base)).contains gear
+
 -- Riposte (SFD-206): counter a spell and give a friendly unit +Might equal to its Energy cost
 #guard tsf fun s => do
   let (s1, u) ← put s s.me "OGN-051" .base
@@ -2761,7 +2787,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, v) ← put s2 s.you "OGN-001" .base
   let r ← play s3 s.me c [u]
-  return (r.obj? u).isNone && (play s3 s.me c [v]).isNone
+  let (queued, _) ← (step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [u]⟩).toOption
+  let (escaped, id) ← moveObj queued u (.player s.you .base)
+  let afterResponse := settleChain {} 12 escaped
+  return (r.obj? u).isNone && (play s3 s.me c [v]).isNone &&
+    (afterResponse.zone (.player s.you .base)).contains id
 
 -- (review) Hard Bargain: the opponent's spell only (not one's own); a Repeat does not ask again
 -- once the spell is gone; a spell that left the Chain is not asked about
