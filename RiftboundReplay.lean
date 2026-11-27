@@ -7,8 +7,33 @@ private def readJson (path : String) : IO Json := do
   let text ← IO.FS.readFile path
   IO.ofExcept (Json.parse text)
 
-private def writeJson (path : String) (value : Json) : IO Unit :=
-  IO.FS.writeFile path (value.compress ++ "\n")
+/-- Publish a derived file after writing it completely. Keep the input even when an output name
+is a symbolic or hard link to the recording. -/
+private def writeOutput (input output : System.FilePath) (content : String) : IO Unit := do
+  let source ← IO.FS.realPath input
+  let some name := output.fileName | throw (IO.userError "the replay output needs a file name")
+  let alreadyExists ← output.pathExists
+  let target ← if alreadyExists then IO.FS.realPath output
+    else (· / name) <$> IO.FS.realPath (output.parent.getD ".")
+  if source == target then
+    throw (IO.userError "the replay output must be a different file from the input")
+  if alreadyExists then
+    unless (← target.metadata).type == .file do
+      throw (IO.userError "the replay output must be a regular file")
+  let random ← IO.getRandomBytes 16
+  let suffix := "-".intercalate (random.toList.map toString)
+  let staging := target.parent.getD "." / (".riftbound-replay-" ++ suffix)
+  IO.FS.createDir staging
+  let file := staging / "output"
+  try
+    IO.FS.writeFile file (content ++ "\n")
+    IO.FS.rename file target
+  finally
+    if ← file.pathExists then IO.FS.removeFile file
+    IO.FS.removeDir staging
+
+private def writeJson (input output : System.FilePath) (value : Json) : IO Unit :=
+  writeOutput input output value.compress
 
 private def playerOrders : List PlayerId → List (List PlayerId)
   | [] => [[]]
@@ -272,12 +297,12 @@ def main (args : List String) : IO UInt32 := do
     | [command@"inspect-ffa", input, game, output] =>
       let some number := game.toNat? | throw (IO.userError "the game number must be a positive integer")
       let inspection ← IO.ofExcept (inspectInput command (← readJson input) number)
-      writeJson output (← IO.ofExcept (inspectionJson number inspection))
+      writeJson input output (← IO.ofExcept (inspectionJson number inspection))
       return 0
     | ["record", input, output] =>
       let script : MatchInputs ← IO.ofExcept (fromJson? (← readJson input))
       let saved ← IO.ofExcept (script.record)
-      writeJson output (toJson saved)
+      writeJson input output (toJson saved)
       IO.println (toJson saved.summary).compress
       return 0
     | ["verify", input] =>
@@ -288,13 +313,13 @@ def main (args : List String) : IO UInt32 := do
     | ["revalidate", input, output] =>
       let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
       let updated ← IO.ofExcept saved.revalidate
-      writeJson output (toJson updated)
+      writeJson input output (toJson updated)
       IO.println (toJson updated.summary).compress
       return 0
     | ["view", input, output] =>
       let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (matchTrace saved)
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | ["check-team", input] =>
       let observed : TeamMatchRecord ← IO.ofExcept (fromJson? (← readJson input))
@@ -304,7 +329,7 @@ def main (args : List String) : IO UInt32 := do
     | ["record-team", input, output] =>
       let observed : TeamMatchRecord ← IO.ofExcept (fromJson? (← readJson input))
       let saved ← IO.ofExcept observed.record
-      writeJson output (toJson saved)
+      writeJson input output (toJson saved)
       IO.println (teamVerificationJson saved saved.summary).compress
       return 0
     | ["verify-team", input] =>
@@ -315,18 +340,18 @@ def main (args : List String) : IO UInt32 := do
     | ["revalidate-team", input, output] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
       let updated ← IO.ofExcept saved.revalidate
-      writeJson output (toJson updated)
+      writeJson input output (toJson updated)
       IO.println (teamVerificationJson updated updated.summary).compress
       return 0
     | ["view-team", input, output] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (teamMatchTrace saved)
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | ["record-ffa", input, output] =>
       let script : FreeForAllInputs ← IO.ofExcept (fromJson? (← readJson input))
       let saved ← IO.ofExcept script.record
-      writeJson output (toJson saved)
+      writeJson input output (toJson saved)
       IO.println (ffaVerificationJson saved.game.summary).compress
       return 0
     | ["verify-ffa", input] =>
@@ -337,31 +362,31 @@ def main (args : List String) : IO UInt32 := do
     | ["revalidate-ffa", input, output] =>
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
       let updated ← IO.ofExcept saved.revalidate
-      writeJson output (toJson updated)
+      writeJson input output (toJson updated)
       IO.println (ffaVerificationJson updated.game.summary).compress
       return 0
     | ["view-ffa", input, output] =>
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (ffaTrace saved)
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | [kind@"disclosures", input, seat, output]
     | [kind@"view-seat", input, seat, output] =>
       let saved : RecordedMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (matchSeatTrace saved seat (kind != "disclosures"))
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | [kind@"disclosures-team", input, seat, output]
     | [kind@"view-team-seat", input, seat, output] =>
       let saved : RecordedTeamMatch ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (teamMatchSeatTrace saved seat (kind != "disclosures-team"))
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | [kind@"disclosures-ffa", input, seat, output]
     | [kind@"view-ffa-seat", input, seat, output] =>
       let saved : RecordedFreeForAll ← IO.ofExcept (fromJson? (← readJson input))
       let trace ← IO.ofExcept (ffaSeatTrace saved seat (kind != "disclosures-ffa"))
-      IO.FS.writeFile output (trace ++ "\n")
+      writeOutput input output trace
       return 0
     | _ =>
       IO.eprintln "usage: riftbound-replay record INPUT.json ARCHIVE.json | verify ARCHIVE.json | view ARCHIVE.json TRACE.json | check-team TEAM.json | record-team TEAM.json ARCHIVE.json | verify-team ARCHIVE.json | view-team ARCHIVE.json TRACE.json | record-ffa INPUT.json ARCHIVE.json | verify-ffa ARCHIVE.json | view-ffa ARCHIVE.json TRACE.json"

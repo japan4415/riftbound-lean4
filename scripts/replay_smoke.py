@@ -1192,6 +1192,23 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
     assert json.loads(renewed.read_bytes()) == json.loads(original)
     assert json.loads(command("verify" + suffix, renewed)) == summary
     assert archive.read_bytes() == original
+    stale_data = stale.read_bytes()
+
+    with TemporaryDirectory(dir=folder) as aliases:
+        alias_dir = Path(aliases)
+        symlink = alias_dir / "same-record.json"
+        symlink.symlink_to(stale.resolve())
+        message = "the replay output must be a different file from the input"
+        command("revalidate" + suffix, stale, stale, error=message)
+        command("revalidate" + suffix, stale, symlink, error=message)
+        assert symlink.is_symlink() and stale.read_bytes() == stale_data
+
+        hard_link = alias_dir / "updated-record.json"
+        hard_link.hardlink_to(stale)
+        assert json.loads(command("revalidate" + suffix, stale, hard_link)) == summary
+        assert json.loads(hard_link.read_bytes()) == json.loads(original)
+        assert stale.read_bytes() == stale_data
+        assert not list(alias_dir.glob(".riftbound-replay-*"))
 
     if not suffix:
         legacy = json.loads(original)
