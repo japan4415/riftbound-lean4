@@ -1218,6 +1218,24 @@ meta def passToChoice : Nat → GameState → Option GameState
     events.contains (.activated p sage 0 (some 0)) && events.contains (.chosenByAbility p target) &&
     (done.obj? target).any (·.stunned) && (done.obj? other).any (fun o => !o.stunned)
 
+/-- Accept Fizz while the trigger is pending, resolve that ability, and stop before its Spell's
+own finalization or response window. Keep the events of the transition into that window. -/
+private meta def resolveFizzTrigger (s : GameState) (p : PlayerId) :
+    Option (GameState × List Event) := do
+  let (accepted, events) ← (step 100 s ⟨.player p, .putTrigger 0 [] (.pay [])⟩).toOption
+  finishAbility 8 accepted events
+where
+  finishAbility : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => do
+      let .chainPass player _ :: _ := state.pending | return (state, events)
+      let some item := (state.zone .chain).head? | return (state, events)
+      let some object := state.obj? item | return (state, events)
+      let .chainAbility card _ _ := object.kind | return (state, events)
+      if card.code != "SFD-140" then return (state, events)
+      let (next, emitted) ← (step 100 state ⟨.player player, .pass⟩).toOption
+      finishAbility n next (events ++ emitted)
+
 -- Fizz can play Brittle Steel from the Trash and choose either Gear. The spell
 -- is finalized after the trigger leaves the Chain, and the opponent can respond.
 #guard vendettaCase fun s => do
@@ -1231,8 +1249,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let s := (s.fund p 3 (fury := 1) (chaos := 1)).fund q 1 (chaos := 1)
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let offer ← passToChoice 8 played
-  let (choice, queued) ← act offer (.decide true)
+  let (choice, queued) ← resolveFizzTrigger played p
   let .eitherDo who _ _ (.fundLimitedSpell card first [])
         (.fundLimitedSpell alternative second []) _ :: _ := choice.pending | none
   let (payment, selected) ← act choice (.decide (first.targets == [enemy]))
@@ -1243,7 +1260,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let resolved := settleChain {} 12 waiting
   let countered := settleChain { yes := false } 12 reacted
   let (banned, _) ← act (s.addTurnFx q .opponentsNoSpells) (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let blocked ← passToChoice 8 banned
+  let (blocked, _) ← resolveFizzTrigger banned p
   let steelAtBottom (t : GameState) := ((t.zone (.player p .mainDeck)).getLast?).any (fun id =>
     (t.cardDef? id).any (·.id.code == "VEN-003"))
   return who == p && card == alternative && first.targets != second.targets &&
@@ -1255,8 +1272,8 @@ meta def passToChoice : Nat → GameState → Option GameState
     (waiting.obj? card).any (fun o => o.targets == [enemy] && !o.flowed && o.energyPaid == 0) &&
     (waiting.poolOf p).total == 0 &&
     (resolved.obj? enemy).isNone && (resolved.obj? friendly).isSome &&
-    steelAtBottom resolved && countered.countIn p .trash "VEN-003" == 1 &&
-    (countered.obj? enemy).isSome && !steelAtBottom countered &&
+    steelAtBottom resolved && countered.countIn p .trash "VEN-003" == 0 &&
+    (countered.obj? enemy).isSome && steelAtBottom countered &&
     blocked.countIn p .trash "VEN-003" == 1 && (blocked.zone .chain).isEmpty
 
 -- A queued Brittle Steel can be funded by a Gold or by a Rune. The selected Add
@@ -1270,8 +1287,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let openPay (t : GameState) := do
     let (played, _) ← act t (.playCard fizz ⟨3, [.chaos]⟩ [])
-    let offer ← passToChoice 8 played
-    act offer (.decide true)
+    resolveFizzTrigger played p
   let gold ← s.tokenCard "Gold"
   let goldId : ObjId := ⟨s.nextId⟩
   let (goldPay, queued) ← openPay (createOne gold.id p none true s)
@@ -1314,8 +1330,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let s := createOne gold.id p none true s
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let offer ← passToChoice 8 played
-  let (targeting, _) ← act offer (.decide true)
+  let (targeting, _) ← resolveFizzTrigger played p
   let .eitherDo _ _ _ (.fundLimitedSpell _ first []) (.fundLimitedSpell _ second []) _ :: _ :=
     targeting.pending | none
   let (payment, _) ← act targeting (.decide (first.targets == [target]))
@@ -2972,8 +2987,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let s := (s.fund p 4 (mind := 2) (chaos := 1)).addTurnFx p .nextSpellRepeat
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let offer ← passToChoice 8 played
-  let (choice, queued) ← act offer (.decide true)
+  let (choice, queued) ← resolveFizzTrigger played p
   let item ← (choice.zone .chain).head?
   let expected : List (SpellPick × List ObjId) := [(.mode 0, [ally]), (.mode 1, [enemy])]
   let (casting, events) ← chooseEffectPlay (fun
@@ -3003,8 +3017,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let s := ((s.control q origin).fund p 5 (chaos := 3)).addTurnFx p .nextSpellRepeat
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let (played, _) ← act s (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let offer ← passToChoice 8 played
-  let (choice, _) ← act offer (.decide true)
+  let (choice, _) ← resolveFizzTrigger played p
   let item ← (choice.zone .chain).head?
   let expected : List (SpellPick × List ObjId) :=
     [(.destination none, [first]), (.destination (some away), [second])]
@@ -3108,8 +3121,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let (s, _) ← put s s.you "VEN-047" .hand
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
   let (played, _) ← act (s.fund p 3 (chaos := 1)) (.playCard fizz ⟨3, [.chaos]⟩ [])
-  let offer ← passToChoice 8 played
-  let (choice, queued) ← act offer (.decide true)
+  let (choice, queued) ← resolveFizzTrigger played p
   let item ← (choice.zone .chain).head?
   let cast (t : GameState) (discard : Option ObjId) := chooseEffectPlay (fun
     | .finishLimitedSpell card plan [] =>
