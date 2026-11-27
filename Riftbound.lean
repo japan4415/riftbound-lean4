@@ -71,6 +71,7 @@ public import Riftbound.Invariant.Resources
 public import Riftbound.Invariant.Clock
 public import Riftbound.Invariant.ClockRun
 public import Riftbound.Invariant.Cleanup
+public import Riftbound.Invariant.CleanupDeath
 public import Riftbound.Invariant.CleanupWork
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.DrawWork

@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Invariant.Cleanup
+public import Riftbound.Invariant.CleanupDeath
 public import Riftbound.Invariant.WorkPrefix
 
 /-!
@@ -146,13 +146,14 @@ private theorem continuing_observer (s : GameState) (events : List Event)
 inductive CleanupWorkStop (state : GameState) : Prop where
   /-- The engine returned to a decision, other work, or the end of the game. -/
   | outside (head : state.pending.head? ≠ some .cleanup)
-  /-- A simultaneous group completed while keeping a Cleanup frame at the front, with no
-  decrease in the board measure. -/
+  /-- A simultaneous group kept the Cleanup frame at the front and the Board count
+  unchanged, with no decrease in the rest of the measure. -/
   | deathGroup {before : GameState} {rest : List Frame} {group : GameState × List Event}
       (pending : before.pending = .cleanup :: rest)
       (resolved : cleanupResolveDeathGroup before = some group)
       (step : workStep before = some (state, group.2))
       (head : state.pending.head? = some .cleanup)
+      (boardCount : group.1.pot = before.pot)
       (decrease : ¬ MeasLt state.cleanupMeasure before.cleanupMeasure)
 
 private def cleanupWorkRank (s : GameState) :
@@ -210,7 +211,14 @@ private theorem cleanup_engine_step (s : GameState) (wf : s.WF) (rest : List Fra
           · exact Or.inr ⟨continues, Prod.Lex.right' MeasLt (Nat.le_of_eq sameCount) decreases⟩
           · have actual : workStep s = some (next, r.2) := by
               rw [step, route]
-            exact Or.inl (.deathGroup pending group actual continues decreases)
+            have boardCount := (cleanupResolveDeathGroup_cleanupChange wf group).pot
+            have noLower : ¬ r.1.pot < s.pot := by
+              intro lower
+              apply decreases
+              rw [sameMeasure]
+              exact MeasLt.at1 lower
+            exact Or.inl (.deathGroup pending group actual continues
+              (Nat.le_antisymm boardCount (Nat.le_of_not_gt noLower)) decreases)
         | none =>
           cases single : cleanupStep s with
           | some r =>
@@ -241,10 +249,10 @@ private theorem cleanup_engine_step (s : GameState) (wf : s.WF) (rest : List Fra
   · exact Or.inl (.outside continues)
 
 /-- Starting at a Cleanup frame, the real engine runs to other work, a decision, the end of the
-game, or a simultaneous death group for which the board measure has not decreased. Repeating
-ordinary Cleanup steps consume the board measure even when observers change the turn history
-or schedule ordinary triggers beneath the frame. Finishing one of several Cleanup frames
-decreases their count. -/
+game, or a simultaneous death group that leaves both the Board count and the remaining measure
+without a decrease. Repeating ordinary Cleanup steps consume the board measure even when
+observers change the turn history or schedule ordinary triggers beneath the frame. Finishing one
+of several Cleanup frames decreases their count. -/
 theorem advance_cleanup_work {s : GameState} {rest : List Frame} (wf : s.WF)
     (pending : s.pending = .cleanup :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ CleanupWorkStop t := by

@@ -1903,7 +1903,8 @@ def applyGroupDeath (group : List ObjId) (g : GameState → ObjId → GameState 
   let r := g (entry.prepare group s) entry.unit
   (if entry.closed.isEmpty then r.1 else clearClosedDeathSequences r.1, r.2)
 
-private theorem applyGroupDeath_safe (group : List ObjId)
+/-- Applying a planned root preserves the board invariants when its death resolver does. -/
+theorem applyGroupDeath_safe (group : List ObjId)
     {g : GameState → ObjId → GameState × List Event}
     (h : ∀ t id, Safe t (g t id).1) (s : GameState) (entry : DeathGroupEntry) :
     Safe s (applyGroupDeath group g s entry).1 := by
@@ -1995,7 +1996,7 @@ def chooseOpenDeathSequence (group prior : List ObjId) (offerBanish : Bool)
 
 /-- A sequence continues while its selected effect applies to another root. Once it ends,
 later roots can use other replacements but cannot restart that sequence (CR 373.2). -/
-@[irreducible] def planDeathGroup (group : List ObjId) (offerChoices : Option Bool)
+def planDeathGroup (group : List ObjId) (offerChoices : Option Bool)
     (g : GameState → ObjId → GameState × List Event) :
     Nat → GameState → List ObjId → List ObjId → List ObjId →
     Option DeathSequenceSource → List DeathSequenceSource →
@@ -2034,6 +2035,84 @@ later roots can use other replacements but cannot restart that sequence (CR 373.
         let (entries, choice) := planDeathGroup group offerChoices g fuel next
           (remaining.erase entry.unit) (entry.unit :: prior) fixed.tail chosen.sequence closed
         (entry :: entries, choice)
+
+private theorem deathGroupCandidates_unit {s : GameState} {group remaining : List ObjId}
+    {index : Nat} {closed : List DeathSequenceSource} {candidate : DeathGroupCandidate}
+    (member : candidate ∈ deathGroupCandidates s group remaining index closed) :
+    candidate.unit ∈ remaining := by
+  unfold deathGroupCandidates at member
+  simp only [List.mem_map] at member
+  obtain ⟨unit, inRemaining, rfl⟩ := member
+  exact inRemaining
+
+private theorem selectedOption {α : Type} {first second : Option α} {x : α}
+    (found : (first <|> second) = some x) : first = some x ∨ second = some x := by
+  cases first with
+  | none => exact Or.inr found
+  | some _ => exact Or.inl found
+
+/-- The automatic planner only selects roots supplied by the original death group. -/
+theorem planDeathGroup_entries_mem {group : List ObjId} (g : GameState → ObjId → GameState × List Event)
+    (fuel : Nat) (s : GameState) (remaining prior fixed : List ObjId) (active : Option DeathSequenceSource)
+    (closed : List DeathSequenceSource) (left : remaining ⊆ group) (pinned : fixed ⊆ group)
+    {entry : DeathGroupEntry}
+    (member : entry ∈ (planDeathGroup group none g fuel s remaining prior fixed active closed).1) :
+    entry.unit ∈ group := by
+  induction fuel generalizing s remaining prior fixed active closed entry with
+  | zero => simp [planDeathGroup] at member
+  | succ fuel ih =>
+    rw [planDeathGroup] at member
+    simp only [Option.bind_none, ite_self, Option.isSome_none, Bool.false_eq_true, ite_false] at member
+    let candidates := deathGroupCandidates s group remaining prior.length closed
+    let continuing := candidates.filter fun c => active.isSome && c.sequence == active
+    let next := if active.isSome && continuing.isEmpty then
+        let excluded := active.toList ++ closed
+        (excluded, deathGroupCandidates s group remaining prior.length excluded)
+      else (closed, if continuing.isEmpty then candidates else continuing)
+    let ordered := sortDeathGroupCandidates s next.2
+    let forced := fixed.head?.bind fun unit => next.2.find? (·.unit == unit) <|>
+      (deathGroupCandidates s group [unit] prior.length next.1).head?
+    have fromRemaining {c : DeathGroupCandidate} (found : c ∈ next.2) : c.unit ∈ remaining := by
+      unfold next at found
+      split at found
+      · exact deathGroupCandidates_unit found
+      · dsimp only at found
+        split at found
+        · exact deathGroupCandidates_unit found
+        · exact deathGroupCandidates_unit (List.mem_filter.mp found).1
+    have chosenRoot {c : DeathGroupCandidate} (found : (forced <|> ordered.head?) = some c) :
+        c.unit ∈ group := by
+      rcases selectedOption found with first | sorted
+      · cases head : fixed.head? with
+        | none => simp [forced, head] at first
+        | some unit =>
+          have choice : (next.2.find? (·.unit == unit) <|>
+              (deathGroupCandidates s group [unit] prior.length next.1).head?) = some c := by
+            simpa [forced, head] using first
+          rcases selectedOption choice with searched | singleton
+          · exact left (fromRemaining (List.mem_of_find?_eq_some searched))
+          · have eq : c.unit = unit := by
+              simpa using deathGroupCandidates_unit (List.mem_of_head? singleton)
+            rw [eq]
+            exact pinned (List.mem_of_head? head)
+      · have cand := List.mem_of_head? sorted
+        exact left (fromRemaining (by simpa [ordered, sortDeathGroupCandidates] using cand))
+    generalize selected : (forced <|> ordered.head?) = chosen at member
+    cases chosen with
+    | none => simp at member
+    | some c =>
+      have rootMem := chosenRoot selected
+      by_cases last : (fuel == 0) = true
+      · simp [last] at member
+        exact (congrArg DeathGroupEntry.unit member) ▸ rootMem
+      · simp [last] at member
+        rcases member with equals | later
+        · exact (congrArg DeathGroupEntry.unit equals) ▸ rootMem
+        · exact ih _ _ _ _ _ _ (fun _ h => left (List.mem_of_mem_erase h))
+            (fun _ h => pinned (List.mem_of_mem_tail h)) later
+
+-- Keep the planner opaque to unrelated proofs after generating its equations for membership.
+attribute [irreducible] planDeathGroup
 
 /-- Ask for choices, including any that depend on which earlier replacements can actually apply. -/
 def GameState.deathGroupChoiceWith (s : GameState) (group : List ObjId) (offerBanish : Bool)
