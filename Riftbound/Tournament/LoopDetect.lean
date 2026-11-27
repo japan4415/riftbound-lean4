@@ -145,6 +145,48 @@ theorem forcedAnswer_pickDo_rename {s t : GameState} {p : PlayerId}
       using equal
   rw [injective member otherMember renamed]
 
+/-- An open Predict is never forced because its first offered card can be kept or recycled. -/
+theorem forcedAnswer_predict_none {s : GameState} {p : PlayerId} {count : Nat} {first : ObjId}
+    {more top bottom : List ObjId} {rest : List Frame}
+    (pending : s.pending = .predict p count first more top bottom :: rest) :
+    forcedAnswer s = none := by
+  cases forced : forcedAnswer s with
+  | none => rfl
+  | some answer =>
+    obtain ⟨_, _, _, unique⟩ := forcedAnswer_eq_some_iff.mp forced
+    have keep := unique ⟨.player p, .predictPick first false⟩ (by simp [legalFrameActions, pending])
+    have recycle := unique ⟨.player p, .predictPick first true⟩ (by simp [legalFrameActions, pending])
+    have cannot := keep.trans recycle.symm
+    cases cannot
+
+/-- A forced Combat assignment depends on the corresponding targets and their public facts.
+Renaming the targets preserves both a forced pick and the decision to finish assigning. -/
+theorem forcedAnswer_assign_rename {s t : GameState} {before after : ObjId}
+    {attacker side : PlayerId} {assigned : List ObjId} {oldDamage newDamage : List (ObjId × Nat)}
+    {tailS tailT : List Frame} (rename : ObjId → ObjId) (injective : Function.Injective rename)
+    (hs : s.pending = .assign before attacker side assigned oldDamage :: tailS)
+    (ht : t.pending = .assign after attacker side (assigned.map rename) newDamage :: tailT)
+    (finished : s.result.isSome = t.result.isSome)
+    (targets : t.assignmentTargets after side = (s.assignmentTargets before side).map rename)
+    (controller : ∀ id ∈ s.assignmentTargets before side,
+      t.controllerOf (rename id) = s.controllerOf id)
+    (priority : ∀ id ∈ s.assignmentTargets before side,
+      t.assignmentRank after side (rename id) = s.assignmentRank before side id) :
+    forcedAnswer t = (forcedAnswer s).map (Action.renameAssignPick rename) := by
+  have chance : s.pending.head?.any Frame.isChance = t.pending.head?.any Frame.isChance := by
+    simp [hs, ht, Frame.isChance]
+  refine forcedAnswer_rename_perm (Action.renameAssignPick rename) ?_ finished chance ?_
+  · intro a b ha hb eq
+    simp only [legalFrameActions, hs] at ha hb
+    rcases mem_legalAssigns.mp ha with ⟨first, rfl, _⟩ | ⟨rfl, _⟩ <;>
+      rcases mem_legalAssigns.mp hb with ⟨second, rfl, _⟩ | ⟨rfl, _⟩
+    · simp only [Action.renameAssignPick, Action.mk.injEq, true_and, ActionKind.assignPick.injEq] at eq
+      rw [injective eq]
+    · cases eq
+    · cases eq
+    · rfl
+  · rw [legalFrameActions_assign_rename rename injective hs ht targets controller priority]
+
 /-- Play the recorded answers, stopping if one is optional or fails to advance. -/
 def runForcedAnswers (fuel : Nat) (s : GameState) (answers : List Action) : Option GameState :=
   match answers with
