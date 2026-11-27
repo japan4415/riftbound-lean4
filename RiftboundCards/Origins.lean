@@ -168,10 +168,9 @@ def OGN_006.meta : CardDef :=
 /-- Flame Chompers. -/
 def OGN_006 : CardDef :=
   { OGN_006.meta with
-    abilities := [.triggered (.onSelf .discard)
-      (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-        (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩), .prim (.play .self)])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .discard with optional := true, cost := .pay ⟨0, [.domain .fury]⟩ }
+      (.of [] (.prim (.play .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-007
 /--
@@ -1002,11 +1001,9 @@ def OGN_037.meta : CardDef :=
 /-- Immortal Phoenix. -/
 def OGN_037 : CardDef :=
   { OGN_037.meta with
-    abilities := [.triggered { event := .killBySpell, subject := .self }
-      (.of [] (.ifThen (.canPay ⟨1, [.domain .fury]⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, [.domain .fury]⟩), .prim (.play .self)])) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .killBySpell, subject := .self, optional := true, cost := .pay ⟨1, [.domain .fury]⟩ }
+      (.of [] (.prim (.play .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-038
 /--

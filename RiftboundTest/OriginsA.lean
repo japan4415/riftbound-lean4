@@ -53,6 +53,27 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return cost none == some 5 && cost (some payment) == some 3 &&
     (cost (some buccaneer)).isNone
 
+-- Discarded Flame Chompers is paid for while its ability is finalized, after Brazen enters.
+#guard t fun s => do
+  let p := s.me
+  let (s, buccaneer) ← put s p "OGN-002" .hand
+  let (s, chompers) ← put s p "OGN-006" .hand
+  let s := s.fund p 4 (fury := 1)
+  let playBrazen : Action := ⟨.player p, .playCard buccaneer ⟨4, []⟩ [chompers]⟩
+  let (offered, _) ← (step 100 s playBrazen).toOption
+  let discarded ← offered.firstOf p .trash "OGN-006"
+  let finalize ← (legalFrameActions offered).find? (fun action =>
+    action.actor == .player p && match action.kind with
+      | .putTrigger _ _ (.pay ..) => true
+      | _ => false)
+  let (paid, _) ← (step 100 offered finalize).toOption
+  let resolved := settleChain {} 12 paid
+  let declined := settleChain { yes := false } 12 offered
+  return offered.countIn p .base "OGN-002" == 1 && (offered.poolOf p).fury == 1 &&
+    paid.locate discarded == some (.player p .trash) && (paid.poolOf p).fury == 0 &&
+    resolved.countIn p .base "OGN-006" == 1 && declined.countIn p .trash "OGN-006" == 1 &&
+    (declined.poolOf p).fury == 1
+
 -- Chemtech Enforcer adds its printed Assault and requires a discard when played.
 #guard t fun s => do
   let p := s.me
@@ -3237,8 +3258,7 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     finished.phase == .main && events.any (fun e => match e with
       | .combatEnded bf _ => bf == field | _ => false)
 
--- Paying as an effect resolves. Flame Chompers (OGN-006): when it is discarded, I may pay Fury to
--- play it (with no Fury in the Pool, or if I decline, it stays in the Trash)
+-- Flame Chompers (OGN-006): the discard trigger can be finalized by paying Fury.
 #guard t fun s => do
   let (s1, x) ← put s s.me "OGN-006" .trash
   let funded := s1.fund s.me 0 (fury := 1)
