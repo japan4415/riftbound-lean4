@@ -30,10 +30,10 @@ private theorem channel_head (rest : List Frame) :
 
 /-- Beginning queues the phase triggers, runs Cleanup, and draws the cards due at Beginning
 before handing off to Hold scoring. -/
-theorem advance_beginning_to_holds {s : GameState} {rest : List Frame} (wf : s.WF)
+theorem advance_beginning_to_holds_prepared {s : GameState} {rest : List Frame} (wf : s.WF)
     (reads : MightRead.database s.cards) (pending : s.pending = .phase .beginning :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
         (t.pending = .scoreHolds :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
   let p := s.active.getD ⟨0⟩
   let draw := Frame.draw p (s.extraDraws p)
@@ -51,28 +51,39 @@ theorem advance_beginning_to_holds {s : GameState} {rest : List Frame} (wf : s.W
   have base : keeps (draw :: holds) := ⟨holds, rfl, Or.inl rfl⟩
   have finish (tail : List Frame) (stack : mid.pending = .cleanup :: tail) (tracks : keeps tail) :
       ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-        (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
           (t.pending = .scoreHolds :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
-    obtain ⟨after, elapsed, later, _, cleanup, stop | ⟨⟨waiting, draws, tracked⟩, afterWF, afterCards⟩⟩ :=
-      advance_cleanup_with_adds midWF (cards ▸ reads) stack keeps tracks insertKeeps
+    obtain ⟨after, elapsed, later, _, cleanup, stop | ⟨⟨waiting, draws, tracked⟩, afterWF, afterCards, _⟩⟩ :=
+      advance_cleanup_with_adds_prepared midWF (cards ▸ reads) stack keeps tracks insertKeeps
     · exact ⟨after, used + elapsed, events ++ later, by omega, path.append cleanup, Or.inl stop⟩
     · obtain ⟨t, extra, emitted, _, batch, final⟩ :=
-        advance_draw_with_adds afterWF (afterCards ▸ cards ▸ reads) draws tracked (scoreHolds_head rest)
+        advance_draw_with_adds_prepared afterWF (afterCards ▸ cards ▸ reads) draws tracked (scoreHolds_head rest)
       exact ⟨t, used + elapsed + extra, _, by omega, (path.append cleanup).append batch,
         final.imp_right (fun ⟨atHolds, finalWF, known⟩ => ⟨atHolds, finalWF, known.trans (afterCards.trans cards)⟩)⟩
   change ObservedWorkStack (.cleanup :: draw :: holds) mid.pending at route
   generalize stack : mid.pending = frames at route
   cases route with
-  | empty => exact ⟨mid, used, events, positive, path, Or.inl (by rw [stack]; rfl)⟩
+  | empty => exact ⟨mid, used, events, positive, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   | resume => exact finish _ stack base
   | queue q nonempty => exact finish _ stack (insertKeeps _ base q nonempty)
 
-/-- Hold scoring may replace points with draws. Resolve the draws, Cleanup and any
-leading ordinary triggers before handing off to Channel. -/
-theorem advance_holds_to_channel {s : GameState} {rest : List Frame} (wf : s.WF)
-    (reads : MightRead.database s.cards) (pending : s.pending = .scoreHolds :: .phase .channel :: rest) :
+/-- Resolve Beginning work up to a decision or Hold scoring. -/
+theorem advance_beginning_to_holds {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = .phase .beginning :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (t.pending = .scoreHolds :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
+  obtain ⟨t, used, events, positive, path, ready | continues⟩ := advance_beginning_to_holds_prepared wf reads pending
+  · exact ⟨t, used, events, positive, path,
+      Or.inl (by simpa only [GameState.preparePriority_of_idle ready] using ready)⟩
+  · exact ⟨t, used, events, positive, path, Or.inr continues⟩
+
+/-- Hold scoring may replace points with draws. Resolve the draws, Cleanup and any
+leading ordinary triggers before handing off to Channel. -/
+theorem advance_holds_to_channel_prepared {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = .scoreHolds :: .phase .channel :: rest) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
         (t.pending = .phase .channel :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
   let p := s.active.getD ⟨0⟩
   let result := hold s p
@@ -102,18 +113,18 @@ theorem advance_holds_to_channel {s : GameState} {rest : List Frame} (wf : s.WF)
   have base : keeps (.cleanup :: next) := ⟨next, rfl, Or.inl rfl⟩
   have finish (tail : List Frame) (stack : mid.pending = .draw p count :: tail) (tracks : keeps tail) :
       ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-        (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
           (t.pending = .phase .channel :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
     obtain ⟨after, elapsed, later, _, draws, stop | ⟨⟨waiting, clear, tracked⟩, afterWF, afterCards⟩⟩ :=
-      advance_draw_until midWF (cards ▸ reads) stack keeps tracks insertKeeps
+      advance_draw_until_prepared midWF (cards ▸ reads) stack keeps tracks insertKeeps
     · exact ⟨after, used + elapsed, events ++ later, by omega, path.append draws, Or.inl stop⟩
     · obtain ⟨ready, extra, emitted, _, cleanup, outcome⟩ :=
-        advance_cleanup_with_adds afterWF (afterCards ▸ cards ▸ reads) clear (TriggerWorkTail next) tracked insertNext
+        advance_cleanup_with_adds_prepared afterWF (afterCards ▸ cards ▸ reads) clear (TriggerWorkTail next) tracked insertNext
       have leading := (path.append draws).append cleanup
-      rcases outcome with stop | ⟨cleanupTrack, readyWF, readyCards⟩
+      rcases outcome with stop | ⟨cleanupTrack, readyWF, readyCards, _⟩
       · exact ⟨ready, used + elapsed + extra, _, by omega, leading, Or.inl stop⟩
       · obtain ⟨t, triggers, finalized, final⟩ :=
-          advance_trigger_tail ready next readyWF (readyCards ▸ afterCards ▸ cards ▸ reads) cleanupTrack
+          advance_trigger_tail_prepared ready next readyWF (readyCards ▸ afterCards ▸ cards ▸ reads) cleanupTrack
         exact ⟨t, used + elapsed + extra + triggers, _, by omega,
           by simpa only [List.append_nil] using leading.append finalized,
           final.imp_right (fun ⟨atChannel, finalWF, known⟩ =>
@@ -121,9 +132,20 @@ theorem advance_holds_to_channel {s : GameState} {rest : List Frame} (wf : s.WF)
   change ObservedWorkStack (.draw p count :: .cleanup :: next) mid.pending at route
   generalize stack : mid.pending = frames at route
   cases route with
-  | empty => exact ⟨mid, used, events, positive, path, Or.inl (by rw [stack]; rfl)⟩
+  | empty => exact ⟨mid, used, events, positive, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   | resume => exact finish _ stack base
   | queue q nonempty => exact finish _ stack (insertKeeps _ base q nonempty)
+/-- Resolve Hold scoring up to a decision or Channel. -/
+theorem advance_holds_to_channel {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = .scoreHolds :: .phase .channel :: rest) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (t.pending = .phase .channel :: rest ∧ t.WF ∧ t.cards = s.cards)) := by
+  obtain ⟨t, used, events, positive, path, ready | continues⟩ := advance_holds_to_channel_prepared wf reads pending
+  · exact ⟨t, used, events, positive, path,
+      Or.inl (by simpa only [GameState.preparePriority_of_idle ready] using ready)⟩
+  · exact ⟨t, used, events, positive, path, Or.inr continues⟩
+
 
 end Riftbound
 

@@ -52,6 +52,20 @@ private theorem ordinaryAwaken_of_registered {cards : Riftbound.CardDB}
   · exact h ▸ db_awakenTriggersAreOrdinary
   · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
 
+/-- With the registered cards, confirming an unchanged opening hand returns the next input in finite fuel. -/
+theorem step_emptyMulligan_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} (wf : s.WF) (phase : s.phase = .setup)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .mulligan p 0 :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .mulliganDone⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .mulliganDone⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .mulliganDone⟩ = .ok (t, events) :=
+  Riftbound.step_emptyMulligan_to_preparedDecision wf phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
 /-- Finishing the Mulligan with the registered cards reaches the following decision
 continuation, including after an opening concession. -/
 theorem step_emptyMulligan_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
@@ -64,6 +78,19 @@ theorem step_emptyMulligan_to_decision {s : Riftbound.GameState} {p : Riftbound.
       ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .mulliganDone⟩ =
         Riftbound.advance extra t events :=
   Riftbound.step_emptyMulligan_to_decision wf phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- With the registered cards, returning the Mulligan cards reaches the next input in finite fuel. -/
+theorem step_mulliganRecycle_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} {order : List Riftbound.ObjId} (wf : s.WF) (owners : s.OwnerOk)
+    (phase : s.phase = .setup) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chanceRecycle p :: rest) (legal : Riftbound.Legal s ⟨.chance, .arrange order⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.chance, .arrange order⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.chance, .arrange order⟩ = .ok (t, events) :=
+  Riftbound.step_mulliganRecycle_to_preparedDecision wf owners phase (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
 
 /-- The registered cards support the same continuation after returning the Mulligan cards. -/
@@ -137,6 +164,16 @@ theorem step_priority_pass_through_awaken {s : Riftbound.GameState} {p : Riftbou
       (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   exact Riftbound.step_priority_pass_through_awaken wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, an ordinary Pass succeeds in finite fuel, including through the next turn. -/
+theorem step_priority_pass_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  exact Riftbound.step_priority_pass_to_preparedDecision wf (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
 
 /-- With the registered cards, a legal ordinary Pass reaches the next decision or game end

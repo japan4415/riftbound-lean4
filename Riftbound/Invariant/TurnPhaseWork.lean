@@ -194,35 +194,52 @@ theorem advance_main_to_priority_of_settled {s : GameState} {p : PlayerId} (wf :
 
 private def advancesToStack (s : GameState) (rest : List Frame) : Prop :=
   ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-    (t.pending.head?.all (fun f => !f.isWork) = true ∨
+    (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
       (t.pending = rest ∧ t.WF ∧ t.cards = s.cards))
 
 /-- Execute the normal new turn from Beginning through Hold, Channel, Draw and Main.
 The actual engine reaches a decision or the end of the game in finitely many steps. -/
-theorem advance_beginning_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
+theorem advance_beginning_to_preparedDecision {s : GameState} {p : PlayerId} (wf : s.WF)
     (reads : MightRead.database s.cards) (pending : s.pending = (turnFrames p).drop 1) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      t.pending.head?.all (fun f => !f.isWork) = true := by
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      advance used s [] = .ok (t, events) := by
+  suffices completed : ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true by
+    obtain ⟨t, used, events, positive, path, ready⟩ := completed
+    exact ⟨t, used, events, positive, path, ready,
+      by simpa only [List.nil_append] using path.finish ready []⟩
   have continueFrom {state : GameState} {rest : List Frame}
       (segment : advancesToStack state rest) (known : MightRead.database state.cards)
       (next : ∀ t : GameState, t.pending = rest → t.WF → MightRead.database t.cards →
         ∃ u used events, 0 < used ∧ AdvancePrefix t u used events ∧
-          u.pending.head?.all (fun f => !f.isWork) = true) :
+          u.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
       ∃ u used events, 0 < used ∧ AdvancePrefix state u used events ∧
-        u.pending.head?.all (fun f => !f.isWork) = true := by
+        u.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
     obtain ⟨t, used, events, positive, path, stop | ⟨atRest, tWF, cards⟩⟩ := segment
     · exact ⟨t, used, events, positive, path, stop⟩
     · obtain ⟨u, later, emitted, _, ran, done⟩ := next t atRest tWF (cards ▸ known)
       exact ⟨u, used + later, events ++ emitted, by omega, path.append ran, done⟩
-  refine continueFrom (advance_beginning_to_holds wf reads pending) reads ?_
+  refine continueFrom (advance_beginning_to_holds_prepared wf reads pending) reads ?_
   intro atHolds ready holdsWF holdsReads
-  refine continueFrom (advance_holds_to_channel holdsWF holdsReads ready) holdsReads ?_
+  refine continueFrom (advance_holds_to_channel_prepared holdsWF holdsReads ready) holdsReads ?_
   intro atChannel ready channelWF channelReads
-  refine continueFrom (advance_channel_to_draw channelWF channelReads ready) channelReads ?_
+  refine continueFrom (advance_channel_to_draw_prepared channelWF channelReads ready) channelReads ?_
   intro atDraw ready drawWF drawReads
-  refine continueFrom (advance_draw_phase drawWF drawReads ready) drawReads ?_
+  refine continueFrom (advance_draw_phase_prepared drawWF drawReads ready) drawReads ?_
   intro atMain ready mainWF mainReads
-  exact advance_main_to_decision mainWF mainReads ready
+  obtain ⟨t, used, events, positive, path, boundary, _⟩ :=
+    advance_main_to_preparedDecision mainWF mainReads ready
+  exact ⟨t, used, events, positive, path, boundary⟩
+
+/-- Run the normal automatic turn phases until a decision or the end of the stack. -/
+theorem advance_beginning_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = (turnFrames p).drop 1) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨t, used, events, positive, path, ready, _⟩ := advance_beginning_to_preparedDecision wf reads pending
+  exact ⟨t, used, events, positive, path,
+    by simpa only [GameState.preparePriority_of_idle ready] using ready⟩
 
 end Riftbound
 

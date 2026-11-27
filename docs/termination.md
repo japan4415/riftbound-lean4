@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の選択に続く状態か試合終了まで追える。通常の優先権を提示する直前に盤面処理が残っていれば、残りの fuel で Cleanup を行う。`AdvancePrefix.finish` は、その確認を済ませた選択で停止することを示す。証明の範囲は §3 に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と Expiration を処理してから、次のターンの Main を含めて次の入力か空のスタックまで進む。最後のマリガンから最初のターンに入る場合も、実際の `step` が有限の fuel で成功する。`AdvancePrefix.finish` は、その確認を済ませた選択で停止することを示す。証明の範囲は §3 に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -144,9 +144,9 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 ### 3o. Beginning から次の決定点まで
 
-[`advance_beginning_to_decision`](../Riftbound/Invariant/TurnPhaseWork.lean) は、Beginning の Temporary と死亡置換、追加ドロー、Hold、Channel、Draw、Main を、実際の作業順に追う。Hold の得点がドローに置き換わる場合、Draw を飛ばす効果、山札切れの Burn Out、Main の Cleanup が始める Showdown も含む。即時 Add は観測された時点で解決し、通常の誘発は残っている Cleanup やドローの後ろに積む。
+[`advance_beginning_to_preparedDecision`](../Riftbound/Invariant/TurnPhaseWork.lean) は、Beginning の Temporary と死亡置換、追加ドロー、Hold、Channel、Draw、Main を、実際の作業順に追う。Hold の得点がドローに置き換わる場合、Draw を飛ばす効果、山札切れの Burn Out、Main の Cleanup が始める Showdown も含む。通常の誘発は残っている Cleanup やドローの後ろに積み、入力が必要になった時点で `advance` が状態とイベント列を返す。
 
-[`RiftboundCards.step_priority_pass_to_decision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行うと、有限の fuel で次の選択に続く状態か試合終了に着くことを示す。通常の優先権前に追加の Cleanup が必要な場合は、その状態から残りの fuel で続ける。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
+[`RiftboundCards.step_priority_pass_to_preparedDecision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行うと、有限の fuel で実際の `step` が成功することを示す。Ending と Expiration、次のターンの時計判定と Awaken から Main までを扱い、その途中で入力を求める場合も含む。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
 
 ### 3p. Chain の最後の Pass と先頭項目の解決
 
@@ -224,7 +224,7 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 合法な手札を脇に置くと、同じ席のマリガンの入力に進む。1枚以上を脇に置いて確定すると、引き直す枚数に1を足した作業ステップ以内に、Recycle の順序を決めるか、デッキが尽きた場合の Burn Out の決定点に着く。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean) [SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean)
 
-手札を変えずに確定する場合と、脇に置いたカードを戻す順序を決める場合は、次の席の入力へ進む。最後の席では最初のターンを始め、Awaken から Main まで既存の停止性の証明を使って、次の入力に続く状態か試合終了まで追える。通常の優先権を提示する直前に Cleanup が必要なら、残りの fuel で処理する。登録カードと、セットアップ中の投了で戦場トークンが追加されたカード定義のどちらにも適用できる。[SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
+手札を変えずに確定する場合と、脇に置いたカードを戻す順序を決める場合は、次の席の入力へ進む。最後の席では最初のターンを始め、Awaken から Main までを追う。どちらの場合も、実際の `step` が有限の fuel で成功し、次の入力を待つ状態か空のスタックと、そこまでのイベント列を返す。セットアップ中の投了で戦場トークンが追加されたカード定義にも適用できる。[SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
 
 `advance_beginTurn_through_awaken` は、Beginning に入る前に時計で試合が終わった場合や通常の誘発で入力を待つ場合に、`advance` が追加の Cleanup を挟まず成功することも示す。Beginning まで進んだ場合は、そこまでのイベント列とカード定義を保った状態を返す。通常の誘発キューが空でないか、すでに Chain が開いているときは、元の継続が通常の優先権でも、誘発の処理は先に別の入力を求める。[ExpirationWork.lean](../Riftbound/Invariant/ExpirationWork.lean) [TriggerWork.lean](../Riftbound/Invariant/TriggerWork.lean)
 

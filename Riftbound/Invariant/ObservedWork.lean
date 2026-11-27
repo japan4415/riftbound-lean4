@@ -135,8 +135,34 @@ theorem insertTriggers_front (queue : List PendTrigger) (rest : List Frame)
     · exact False.elim (rules.2 _ rfl)
     · rfl
 
+/-- An empty stack is ready without another preparation step. -/
+theorem GameState.prepared_idle_of_empty {s : GameState} (stack : s.pending = []) :
+    s.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true := by
+  simp [GameState.preparePriority, stack]
+
 /-- A non-resolution continuation either resumes directly or waits while the leading
 nonempty queue opens a decision. -/
+theorem advance_observed_to_prepared_boundary (raw : GameState) (notices : List Event)
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (before : ∀ f, raw.pending.head? = some f →
+      f.isResolution = false ∧ ∀ q, f ≠ .triggers q) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true ∨
+        (t.pending = raw.pending ∧ t.WF ∧ t.cards = raw.cards)) := by
+  obtain ⟨mid, used, events, path, wellFormed, cards, routed⟩ :=
+    advance_observed_work raw notices wf reads
+  generalize stack : mid.pending = frames at routed
+  cases routed with
+  | empty => exact ⟨mid, used, events, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
+  | resume => exact ⟨mid, used, events, path, Or.inr ⟨stack, wellFormed, cards⟩⟩
+  | queue qs nonempty =>
+    have inserted := insertTriggers_front qs raw.pending before
+    obtain ⟨t, elapsed, _, _, _, later, _, _, ready⟩ :=
+      advance_triggers_to_preparedDecision mid wellFormed qs raw.pending (stack.trans inserted) (cards ▸ reads) (Or.inl nonempty)
+    exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append later,
+      Or.inl ready⟩
+
+/-- Resolve an observer queue before resuming its non-resolution continuation. -/
 theorem advance_observed_to_boundary (raw : GameState) (notices : List Event)
     (wf : raw.WF) (reads : MightRead.database raw.cards)
     (before : ∀ f, raw.pending.head? = some f →
@@ -144,18 +170,11 @@ theorem advance_observed_to_boundary (raw : GameState) (notices : List Event)
     ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
       (t.pending.head?.all (fun frame => !frame.isWork) = true ∨
         (t.pending = raw.pending ∧ t.WF ∧ t.cards = raw.cards)) := by
-  obtain ⟨mid, used, events, path, wellFormed, cards, routed⟩ :=
-    advance_observed_work raw notices wf reads
-  generalize stack : mid.pending = frames at routed
-  cases routed with
-  | empty => exact ⟨mid, used, events, path, Or.inl (by rw [stack]; rfl)⟩
-  | resume => exact ⟨mid, used, events, path, Or.inr ⟨stack, wellFormed, cards⟩⟩
-  | queue qs nonempty =>
-    have inserted := insertTriggers_front qs raw.pending before
-    obtain ⟨t, elapsed, _, _, _, later, decisionStack, decision⟩ :=
-      advance_triggers_to_decision mid wellFormed qs raw.pending (stack.trans inserted) (cards ▸ reads) (Or.inl nonempty)
-    exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append later,
-      Or.inl (by simp [decisionStack, decision])⟩
+  obtain ⟨t, used, events, path, ready | continues⟩ :=
+    advance_observed_to_prepared_boundary raw notices wf reads before
+  · exact ⟨t, used, events, path,
+      Or.inl (by simpa only [GameState.preparePriority_of_idle ready] using ready)⟩
+  · exact ⟨t, used, events, path, Or.inr continues⟩
 
 /-- An idle stack that does not start with neutral priority survives preparation as-is. -/
 theorem GameState.prepared_idle_of_nonpriority {s : GameState}
@@ -253,16 +272,26 @@ theorem TriggerWorkTail.insert {rest frames : List Frame} (tail : TriggerWorkTai
   · exact Or.inr ⟨older ++ queue, fun empty => nonempty (List.append_eq_nil_iff.mp empty).2, rfl⟩
 
 /-- Resolve an ordinary queue, when present, before resuming the rest of the stack. -/
+theorem advance_trigger_tail_prepared (s : GameState) (rest : List Frame) (wf : s.WF)
+    (reads : MightRead.database s.cards) (tail : TriggerWorkTail rest s.pending) :
+    ∃ t used, AdvancePrefix s t used [] ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true ∨
+        (t.pending = rest ∧ t.WF ∧ t.cards = s.cards)) := by
+  rcases tail with resumed | ⟨queue, nonempty, waiting⟩
+  · exact ⟨s, 0, by intro fuel past; simp, Or.inr ⟨resumed, wf, rfl⟩⟩
+  · obtain ⟨t, used, _, _, _, run, _, _, ready⟩ :=
+      advance_triggers_to_preparedDecision s wf queue rest waiting reads (Or.inl nonempty)
+    exact ⟨t, used, run, Or.inl ready⟩
+
+/-- Resolve a leading ordinary queue or resume the original stack. -/
 theorem advance_trigger_tail (s : GameState) (rest : List Frame) (wf : s.WF)
     (reads : MightRead.database s.cards) (tail : TriggerWorkTail rest s.pending) :
     ∃ t used, AdvancePrefix s t used [] ∧
       (t.pending.head?.all (fun frame => !frame.isWork) = true ∨
         (t.pending = rest ∧ t.WF ∧ t.cards = s.cards)) := by
-  rcases tail with resumed | ⟨queue, nonempty, waiting⟩
-  · exact ⟨s, 0, by intro fuel past; simp, Or.inr ⟨resumed, wf, rfl⟩⟩
-  · obtain ⟨t, used, _, _, _, run, stack, decision⟩ :=
-      advance_triggers_to_decision s wf queue rest waiting reads (Or.inl nonempty)
-    exact ⟨t, used, run, Or.inl (by simp [stack, decision])⟩
+  obtain ⟨t, used, path, ready | continues⟩ := advance_trigger_tail_prepared s rest wf reads tail
+  · exact ⟨t, used, path, Or.inl (by simpa only [GameState.preparePriority_of_idle ready] using ready)⟩
+  · exact ⟨t, used, path, Or.inr continues⟩
 
 /-- A finite dispatcher run reaches a decision, an empty stack, or the specified continuation. -/
 def AdvanceTo (s : GameState) (keeps : List Frame → Prop) : Prop :=
