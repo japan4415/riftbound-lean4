@@ -2,6 +2,7 @@ module
 
 public import RiftboundDriver.Trace
 public import Riftbound.Tournament.Match
+public import Riftbound.Tournament.LoopDetect
 
 /-!
 # Driver: a match of demo games
@@ -36,28 +37,61 @@ structure GameLog where
   result : GameResult
 deriving Repr
 
-/-- Play the game until it ends. When `cap` turns have begun, the clock calls time (TR 408.2): the
-turn that is going on is played to its end, and 3 turns more, and the engine ends the game. -/
-def playUntilEnd (cap : Nat) (order : List PlayerId) :
-    Nat → Rng → GameState → Except RuleError GameState
-  | 0, _, s => .ok s
-  | n + 1, r, s =>
-    if s.result.isSome then .ok s
-    else if (match s.pending with | .chanceTurnOrder :: _ => true | _ => false) then
-      match step 100 s ⟨.chance, .arrangePlayers order⟩ with
-      | .ok (s', _) => playUntilEnd cap order n r s'
-      | .error e => .error e
-    else if s.clock.isNone && cap ≤ s.turn && s.active.isSome then
-      match step 100 s ⟨.clock, .timeCalled⟩ with
-      | .ok (s', _) => playUntilEnd cap order n r s'
-      | .error e => .error e
-    else
-      match demoAnswer r s with
-      | none => .ok s
-      | some (a, r') =>
-        match step 100 s a with
-        | .ok (s', _) => playUntilEnd cap order n r' s'
+/-- A certified forced loop in tournament play is answered with the ordinary judge ruling
+(TR 505.6). -/
+def forcedLoopRuling (fuel : Nat) (s : GameState) (history : List (GameState × Action)) :
+    Option Action :=
+  if s.config.ruleSet.isTournament then
+    (detectExactForcedLoop fuel s history).map (fun _ => ⟨.judge, .declareDraw⟩)
+  else none
+
+/-- Whenever the driver proposes the ruling, it carries a nonempty forced sequence that can be
+repeated arbitrarily many times. -/
+theorem forcedLoopRuling_sound {fuel : Nat} {s : GameState}
+    {history : List (GameState × Action)} {ruling : Action}
+    (reported : forcedLoopRuling fuel s history = some ruling) :
+    ruling = ⟨.judge, .declareDraw⟩ ∧
+      ∃ cycle, cycle ≠ [] ∧ ∀ rounds,
+        runForcedAnswers fuel s (List.replicate rounds cycle).flatten = some s := by
+  unfold forcedLoopRuling at reported
+  split at reported
+  · cases found : detectExactForcedLoop fuel s history with
+    | none => simp [found] at reported
+    | some cycle =>
+      simp only [found, Option.map_some, Option.some.injEq] at reported
+      exact ⟨reported.symm, cycle, (detectExactForcedLoop_sound found 0).1,
+        fun rounds => (detectExactForcedLoop_sound found rounds).2⟩
+  · simp at reported
+
+/-- Play until the game ends, calling time after `cap` turns have begun (TR 408.2) or applying
+the judge's ruling when a forced cycle is certified (TR 505.6). -/
+def playUntilEnd (cap : Nat) (order : List PlayerId) (steps : Nat) (r : Rng) (s : GameState) :
+    Except RuleError GameState :=
+  go steps r s []
+where
+  go : Nat → Rng → GameState → List (GameState × Action) → Except RuleError GameState
+    | 0, _, s, _ => .ok s
+    | n + 1, r, s, history =>
+      if s.result.isSome then .ok s
+      else if (match s.pending with | .chanceTurnOrder :: _ => true | _ => false) then
+        match step 100 s ⟨.chance, .arrangePlayers order⟩ with
+        | .ok (s', _) => go n r s' []
         | .error e => .error e
+      else if s.clock.isNone && cap ≤ s.turn && s.active.isSome then
+        match step 100 s ⟨.clock, .timeCalled⟩ with
+        | .ok (s', _) => go n r s' []
+        | .error e => .error e
+      else
+        match ((forcedLoopRuling 100 s history).map (fun action => (action, r))).orElse
+          (fun _ => demoAnswer r s) with
+        | none => .ok s
+        | some (a, r') =>
+          match step 100 s a with
+          | .ok (s', _) =>
+            let history' := if s.config.ruleSet.isTournament && forcedAnswer s == some a then
+              (s, a) :: history else []
+            go n r' s' history'
+          | .error e => .error e
 
 /-- The rules of the matches: a Duel under the Tournament Rules, Constructed. -/
 def matchConfig : GameConfig :=

@@ -2,7 +2,9 @@ module
 
 import RiftboundCards
 meta import RiftboundCards
+import RiftboundDriver.Match
 import RiftboundDriver.Run
+meta import RiftboundDriver.Match
 meta import RiftboundDriver.Run
 import RiftboundDriver.Replay
 meta import RiftboundDriver.Replay
@@ -75,6 +77,9 @@ meta def declare : Action := ⟨.judge, .declareDraw⟩
   forcedAnswer waiting == some answer &&
     (runForcedAnswers 100 waiting [answer]).any (fun next => next.pending.isEmpty) &&
     (detectExactForcedLoop 100 waiting [(waiting, answer)]).isNone &&
+    (forcedLoopRuling 100 waiting [(waiting, answer)]).isNone &&
+    (forcedLoopRuling 100 { waiting with config := { waiting.config with ruleSet := .coreOnly } }
+      [(waiting, answer)]).isNone &&
     (forcedAnswer optional).isNone && (forcedAnswer chance).isNone
 
 -- A public Rune Deck reveal requires a remedy if the Rune was not Channeled. A one-card
