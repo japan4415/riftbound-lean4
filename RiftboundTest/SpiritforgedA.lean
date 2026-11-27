@@ -925,11 +925,16 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-003" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s2, rival) ← put s2 s.you "OGN-136" .base
   let pay := payOf s2 c
   let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
-  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
-  let b ← cast (s2.rich s.me) s.me c pay [v]
-  return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
+  let rich := s2.rich s.me
+  let both ← cast rich s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
+  let split ← cast rich s.me c ⟨pay.energy + 1, pay.power⟩ [v, rival] (pick := pick)
+  let single ← cast rich s.me c pay [v]
+  return both.kwAmount v .assault == 4 && single.kwAmount v .assault == 2 &&
+    split.kwAmount v .assault == 2 && split.kwAmount rival .assault == 2 &&
+    (both.mapObjects endTurnObj).kwAmount v .assault == 0
 -- (review) Marching Orders: each unit takes damage equal to the Might of the other
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-114" .hand
@@ -1337,8 +1342,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, c) ← put s s.me "SFD-135" .hand
   let (s2, g) ← put s1 s.you "SFD-030" .base
   let (s3, u) ← put s2 s.you "OGN-051" .base
-  let r ← play s3 s.me c [g]
-  return r.countIn s.you .hand "SFD-030" == 1 && (play s3 s.me c [u]).isNone
+  let attached := (attachTo u s3 g).1
+  let r ← play attached s.me c [g]
+  return r.countIn s.you .hand "SFD-030" == 1 && r.countIn s.me .hand "SFD-030" == 0 &&
+    r.mightNow u == s3.mightNow u && (play s3 s.me c [u]).isNone
 
 -- Windsinger (SFD-138): Hidden; when played, may return another unit at a battlefield with 3 Might
 -- or less
@@ -1399,8 +1406,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, small) ← put s1 s.you "OGN-051" .base
   let (s3, big) ← put s2 s.you "OGN-001" .base
   let (s4, mine) ← put s3 s.me "OGN-051" .base
-  let r ← play s4 s.me c
-  return (r.obj? small).isNone && (r.obj? big).isSome && (r.obj? mine).isSome
+  let threshold := s4.buff small
+  let r ← play threshold s.me c
+  return threshold.mightNow small == some 3 && (r.obj? small).isNone &&
+    (r.obj? big).isSome && (r.obj? mine).isSome
 -- (nothing to kill: the unit is simply played)
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-158" .hand
@@ -2728,7 +2737,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let a ← fire t [.scored s.me bf true]
   let b ← fire (a.tire l) [.scored s.me bf true]
   let c ← fire t [.scored s.me bf false]
-  return a.tired l == some false && b.tired l == some true && c.tired l == some true
+  let next := { (beginTurnStep b []) with pending := b.pending }
+  let later ← fire next [.scored s.me bf true]
+  return a.tired l == some false && b.tired l == some true && c.tired l == some true &&
+    next.turn == b.turn + 1 && next.tired l == some true && later.tired l == some false &&
+    later.hasKw l .weaponmaster
 
 -- Draven, Audacious (SFD-148): the first time it wins a combat each turn, score 1 point; when it
 -- dies in a combat, the opponent scores 1 point
@@ -2754,6 +2767,21 @@ meta def effectOf (code : String) : Option EffectDef :=
   let a ← fire s1 [.hiddenPlayed s.me]
   let b ← fire s1 [.hiddenPlayed s.you]
   return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0
+
+-- Hiding alone and casting the same spell out of hand create no Gold. Casting it
+-- from Hidden creates exactly one Exhausted Gold.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← put s p "SFD-121" .base
+  let (s, spell) ← put (s.control p field) p "OGN-094" .hand
+  let hand ← play s p spell
+  let hidden ← activate s p spell 0 [field] ⟨0, [.fury]⟩
+  let hiddenSpell ← hidden.firstOf p .hidden "OGN-094"
+  let finished ← activate { hidden with turn := hidden.turn + 1 } p hiddenSpell 1
+  let gold ← finished.firstOf p .base "SFD-T03"
+  return hand.countIn p .base "SFD-T03" == 0 && hidden.countIn p .base "SFD-T03" == 0 &&
+    finished.countIn p .base "SFD-T03" == 1 && finished.tired gold == some true
 
 -- Harpoon Squad (SFD-137): when it moves from a battlefield, +2 Might this turn
 #guard tsf fun s => do
@@ -2949,7 +2977,10 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s4, v) ← put s3 s.me "OGN-051" .base
   let t := s4.hook g u
   let r ← play t s.me c
-  return r.mightNow u == (t.mightNow u).map (· + 1) && r.mightNow v == t.mightNow v
+  let (detached, _) ← moveObj t g (.player s.me .hand)
+  let after ← play detached s.me c
+  return r.mightNow u == (t.mightNow u).map (· + 1) && r.mightNow v == t.mightNow v &&
+    after.mightNow u == s4.mightNow u && after.mightNow v == s4.mightNow v
 
 -- Gearhead (SFD-068): each Equipment attached to it gives double its Might bonus
 #guard tsf fun s => do
@@ -3548,6 +3579,22 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   return att a "SFD-042" == some true && att b "OGN-017" != some true &&
     att t "SFD-042" == some false && att qd "SFD-064" == some true && once
 
+-- Quick-Draw and paid Equip both grant Shield to the Unit that wears the Armor.
+-- The Equip ability becomes available again after detaching (CR 818.5.a).
+#guard tsf fun s => do
+  let p := s.me
+  let (s, armor) ← put s p "SFD-064" .hand
+  let (s, first) ← put s p "OGN-136" .base
+  let (s, second) ← put s p "OGN-136" .base
+  let ready ← play s p armor [] { pick := (· == [first]) }
+  let gear ← ready.firstOf p .base "SFD-064"
+  let loose := (detachObj ready gear).1
+  let moved ← activate loose p gear 0 [second] ⟨0, [.mind]⟩
+  return ready.kwAmount first .shield == 2 && ready.kwAmount second .shield == 0 &&
+    moved.kwAmount first .shield == 0 && moved.kwAmount second .shield == 2 &&
+    (activate ready p gear 0 [second] ⟨0, [.mind]⟩).isNone &&
+    (activate loose p gear 0 [second]).isNone
+
 -- Kato the Arm (SFD-112): when I move to a battlefield, a friendly unit gets my keywords and my
 -- Might this turn
 #guard tsf fun s => do
@@ -3726,14 +3773,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, c) ← put s s.me "SFD-194" .hand
   let (s2, u) ← put s1 s.me "OGN-049" .base
   let (s3, v) ← put s2 s.me "OGN-049" .base
+  let (s3, rival) ← put s3 s.you "OGN-049" .base
   let a ← play s3 s.me c [u]
+  let enemy ← play s3 s.me c [rival]
   let first := (dealObj 3 a u).1
   let second := (dealObj 2 first u).1
   let other := (dealObj 3 a v).1
   let zero := (dealObj 0 a u).1
   let later := (dealObj 3 { a with turn := a.turn + 1 } u).1
   return a.handN s.me == s3.handN s.me && first.dmg u == some 0 && second.dmg u == some 2 &&
-    other.dmg v == some 3 && (dealObj 3 zero u).1.dmg u == some 0 && later.dmg u == some 3
+    other.dmg v == some 3 && (dealObj 3 zero u).1.dmg u == some 0 && later.dmg u == some 3 &&
+    (dealObj 3 enemy rival).1.dmg rival == some 0 && enemy.handN s.me == s3.handN s.me
 
 -- Ornn's Forge (SFD-213): while its player controls it, their first non-token gear each turn costs
 -- 1 less

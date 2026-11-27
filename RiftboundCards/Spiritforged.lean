@@ -99,7 +99,7 @@ def SFD_003 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-004
 /--
@@ -1875,7 +1875,7 @@ def SFD_064.meta : CardDef :=
 def SFD_064 : CardDef :=
   { SFD_064.meta with
     grants := [.passive .always [.keyword .self { keyword := .shield, arg := .amount 2 }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-065
 /--
@@ -2139,7 +2139,7 @@ def SFD_073 : CardDef :=
   { SFD_073.meta with
 
     grants := [.passive .always [.gainsTag ⟨"Mech"⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-074
 /--
@@ -3315,7 +3315,7 @@ def SFD_113 : CardDef :=
   { SFD_113.meta with
 
     abilities := [.triggered (.onSelf .conquer) (.of [] (.prim (.ready .self))) (.perTurn 1)],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-114
 /--
@@ -3560,7 +3560,7 @@ def SFD_121 : CardDef :=
 
     abilities := [.triggered (.onSelf .playHidden)
       (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-122
 /--
@@ -3958,7 +3958,7 @@ def SFD_135 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
       (.prim (.returnToHand (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-136
 /--
@@ -4634,7 +4634,7 @@ def SFD_158 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .might .le (.const 3)]]
         (.prim (.kill (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-159
 /--
