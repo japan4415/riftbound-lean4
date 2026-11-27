@@ -136,7 +136,7 @@ def UNL_001 : CardDef :=
       .activated [.exhaustSelf] .normal
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-002
 /--
@@ -322,8 +322,8 @@ def UNL_008.meta : CardDef :=
 def UNL_008 : CardDef :=
   { UNL_008.meta with
     -- if a unit died this turn, I enter ready
-    abilities := [.passive (.or (.noted .unitDied) .enemyUnitDied) [.entersReady .self]],
-    status := .drafted }
+    abilities := [.passive (.or (.friendlyNoted .unitDied) .enemyUnitDied) [.entersReady .self]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-009
 /--
@@ -375,7 +375,7 @@ def UNL_010 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.grant (.slot 0) (.keyword .it { keyword := .assault, arg := .amount 2 }) .thisTurn,
         .grant (.slot 0) (.keyword .it { keyword := .ganking }) .thisTurn])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-011
 /--
@@ -484,7 +484,7 @@ def UNL_014 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.ifThen .hasHidden
         (.prim (.deal (.slot 0) (.const 4))) (.prim (.deal (.slot 0) (.const 2))))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-015
 /--
@@ -506,9 +506,9 @@ def UNL_015.meta : CardDef :=
 def UNL_015 : CardDef :=
   { UNL_015.meta with
     spellEffect := some (.of [] (.seqOf [.prim (.draw .you (.const 1)),
-      .repeatN (.count (Selector.all .any .anywhere [.ofType .battlefield, .controlled]))
+      .repeatN (.count (Selector.all .any .anywhere [.ofType .battlefield, .not .openBf, .not .controlledByOpponent]))
         (.prim (.draw .you (.const 1)))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-016
 /--
@@ -535,7 +535,7 @@ def UNL_016.meta : CardDef :=
 def UNL_016 : CardDef :=
   { UNL_016.meta with
     abilities := [.passive (.cmp .ge .xp (.const 3)) [.mightPlus .self (.const 1), .entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-017
 /--
@@ -710,7 +710,7 @@ def UNL_022 : CardDef :=
     abilities := [.triggered (.onSelf .move)
       (.of [] (.seqOf [.prim (.addEnergy .you (.const 1) none),
         .prim (.addPower .you (.const 1) none none)])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-023
 /--

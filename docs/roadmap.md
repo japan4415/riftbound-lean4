@@ -2328,6 +2328,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Flame Chompers と Immortal Phoenix の支払いは、解決時ではなく誘発を確定するときに行う。Brazen Buccaneer のコストで Flame Chompers を捨てる場合は、Brazen が登場してから Flame Chompers の支払いを選ぶ。2枚を `full` とし、全1,103枚中650枚が実装済みになった。[公式総合ルール 383.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Unleashed のドローと登場条件
+
+- Right of Conquest は自分かチームメイトが支配する Battlefield で枚数を数える。Towering Pairofant は、チームメイトが支配していた Unit が死んだターンにも Ready で登場する。Arena Kingpin、Vault Breaker、Monster Harpoon、Scorchclaw、Jhin, Murderous Artist を合わせて7枚を `full` とし、全1,103枚中657枚を実装済みとした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

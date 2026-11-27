@@ -24,6 +24,135 @@ private meta def testSpell (code : String) (energy : Nat) : CardDef :=
   { id := cid code, name := code, types := [.spell], cost := some ⟨energy, []⟩,
     spellEffect := some (.of [] .nop), status := .full }
 
+/-- Establish a main phase with the team game seat order. -/
+private meta def unleashedTeamMain (labState : GameState) : GameState :=
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  { initial with
+    phase := .main
+    turn := 3
+    active := some ⟨0⟩
+    pending := [.priority ⟨0⟩]
+    turnOrder := Mode.teamTurnOrder true }
+
+-- Arena Kingpin enters ready and can exhaust to give even an opponent's Unit temporary Might.
+#guard tun fun s => do
+  let p := s.me
+  let (s, card) ← put s p "UNL-001" .hand
+  let (s, enemy) ← put s s.you "OGN-051" .base
+  let entered ← play s p card
+  let kingpin ← entered.firstOf p .base "UNL-001"
+  let stronger ← activate entered p kingpin 1 [enemy]
+  let (later, _) ← (advance 100 { stronger with pending := [.expireTurn, .priority p] } []).toOption
+  return entered.tired kingpin == some false && stronger.tired kingpin == some true &&
+    stronger.mightNow enemy == some (5 : Int) && later.mightNow enemy == some (2 : Int)
+
+-- Prepared Neophyte needs four Energy paid for a single Spell.
+#guard tun fun s => do
+  let p := s.me
+  let small := testSpell "TEST-NEOPHYTE-2" 2
+  let large := testSpell "TEST-NEOPHYTE-4" 4
+  let s := { s with cards := { cards := s.cards.cards ++ [small, large] } }
+  let (s, unit) ← put s p "UNL-004" .base
+  let (s, first) ← put s p small.id.code .hand
+  let (s, second) ← put s p small.id.code .hand
+  let (s, expensive) ← put s p large.id.code .hand
+  let afterFirst ← play s p first
+  let afterSecond ← play afterFirst p second
+  let afterExpensive ← play afterSecond p expensive
+  let later := { afterExpensive with turn := afterExpensive.turn + 1 }
+  return afterSecond.mightNow unit == some (1 : Int) && afterExpensive.mightNow unit == some (5 : Int) &&
+    later.mightNow unit == some (1 : Int)
+
+-- Towering Pairofant considers a Unit that its teammate controlled when it died.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, guest) ← put (unleashedTeamMain labState) mate "OGN-051" .base
+  let (s, card) ← put s p "UNL-008" .hand
+  let fresh ← play s p card
+  let afterDeath ← play (killObj s guest).1 p card
+  let ordinary ← fresh.firstOf p .base "UNL-008"
+  let ready ← afterDeath.firstOf p .base "UNL-008"
+  return fresh.tired ordinary == some true && afterDeath.tired ready == some false &&
+    afterDeath.kwAmount ready .assault == 1
+
+-- Vault Breaker legally opens a Battlefield-to-Battlefield Standard Move for this turn.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, destination) ← putBf s s.you "OGN-276"
+  let (s, unit) ← putAt (s.control p field) p "OGN-051" field
+  let (s, spell) ← put s p "UNL-010" .hand
+  let move : Action := ⟨.player p, .standardMove unit (.battlefield destination)⟩
+  let enhanced ← play s p spell [unit]
+  let (moved, _) ← (step 100 enhanced move).toOption
+  let (expired, _) ← (advance 100 { enhanced with pending := [.expireTurn, .priority p] } []).toOption
+  return !(legalActions s).contains move && enhanced.kwAmount unit .assault == 2 &&
+    moved.hereOf unit == some destination && !(legalActions expired).contains move &&
+    expired.kwAmount unit .assault == 0
+
+-- Only the caster's facedown card doubles Monster Harpoon's damage.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let victimField := s.bf0
+  let (s, ownField) ← putBf s p "OGN-276"
+  let (s, victim) ← putAt (s.control q victimField) q "OGN-116" victimField
+  let (s, _) ← putAt (s.control p ownField) p "OGN-051" ownField
+  let (s, spell) ← put s p "UNL-014" .hand
+  let hide (board : GameState) (owner : PlayerId) (field : ObjId) : Option GameState := do
+    let (next, card) ← put board owner "SFD-004" .hidden
+    return next.modObj card (fun object => { object with hiddenAt := some field, hiddenTurn := some 0 })
+  let foe ← hide s q victimField
+  let both ← hide foe p ownField
+  let plain ← play foe p spell [victim]
+  let doubled ← play both p spell [victim]
+  return (plain.obj? victim).any (·.damage == 2) && (doubled.obj? victim).any (·.damage == 4)
+
+-- Right of Conquest draws for its own and its teammate's Battlefields.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, home) ← putBf (unleashedTeamMain labState) p "OGN-275"
+  let (s, ally) ← putBf s mate "OGN-276"
+  let (s, other) ← putBf s foe "OGN-277"
+  let (s, _) ← putBf s foe "OGN-280"
+  let (s, _) ← putAt (s.control p home) p "OGN-051" home
+  let (s, _) ← putAt (s.control mate ally) mate "OGN-051" ally
+  let (s, _) ← putAt (s.control foe other) foe "OGN-051" other
+  let (s, spell) ← put s p "UNL-015" .hand
+  let s ← (List.range 4).foldlM (fun state _ => return (← put state p "OGN-051" .mainDeck).1) s
+  let resolved ← play s p spell
+  return resolved.handN p == s.handN p + 2 &&
+    (resolved.zone (.player p .mainDeck)).length == 1 && resolved.handN mate == s.handN mate
+
+-- Scorchclaw meets its Level at 3 XP and gains 2 XP from holding.
+#guard tun fun s => do
+  let p := s.me
+  let (s, card) ← put s p "UNL-016" .hand
+  let low ← play (s.setXP p 2) p card
+  let high ← play (s.setXP p 3) p card
+  let untrained ← low.firstOf p .base "UNL-016"
+  let trained ← high.firstOf p .base "UNL-016"
+  let field := s.bf0
+  let (s, _) ← putAt (s.control p field) p "UNL-016" field
+  let hunted ← fire (s.setXP p 2) [.scored p field false]
+  return low.tired untrained == some true && high.tired trained == some false &&
+    low.mightNow untrained == some 3 && high.mightNow trained == some 4 && hunted.xpOf p == 4
+
+-- Jhin's Ganking move adds Energy and flexible Power before the next player decision.
+#guard tun fun s => do
+  let p := s.me
+  let origin := s.bf0
+  let (s, destination) ← putBf s s.you "OGN-276"
+  let (s, jhin) ← putAt (s.control p origin) p "UNL-022" origin
+  let ready := (s.fund p 0).modObj jhin (fun object => { object with exhausted := false })
+  let action : Action := ⟨.player p, .standardMove jhin (.battlefield destination)⟩
+  let (moved, _) ← (step 100 ready action).toOption
+  return moved.hereOf jhin == some destination && moved.hasKw jhin .deflect &&
+    (moved.poolOf p).energy == 1 && (moved.poolOf p).any == 1
+
 -- Poppy checks every opponent at entry, including one later in the FFA turn order.
 #guard tun fun labState => do
   let config : GameConfig := { ruleSet := .coreOnly, mode := .ffa4 }
