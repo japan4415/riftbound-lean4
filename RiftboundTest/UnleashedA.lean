@@ -1180,11 +1180,140 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let s4 ← play s3 s.me c [u, e]
   return (s4.obj? e).any (·.stunned) && s4.mightNow u == (s3.mightNow u).map (· + 1)
 
--- Flurry of Feathers (UNL-044): the Bird mode needs no spell on the Chain
+-- Flurry's mode is selected when cast. Its Birds use normal Unit token destinations.
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-044" .hand
-  let s2 ← play s1 s.me c [] { fromEnd := some 0 }
-  return s2.countNamed s.me .base "Bird" == 4
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, spell) ← put (s.control p field) p "UNL-044" .hand
+  let (s, _) ← putAt s p "OGN-013" field
+  let funded := s.rich p
+  let payment := payOf funded spell
+  let make : Action := ⟨.player p, .playCard spell payment [] none none (.mode 1)⟩
+  let (waiting, _) ← (step 100 funded make).toOption
+  let base := settleChain {} 16 waiting
+  let deployed := settleChain { yes := false } 16 waiting
+  let birds := deployed.inPlay.filter (fun id => (deployed.cardDef? id).any (·.id == cid "UNL-T02"))
+  let (s, draw) ← put (funded.rich q) q "UNL-103" .hand
+  let opponentTurn := { s with active := some q, pending := [.priority q] }
+  let (stacked, _) ← (step 100 opponentTurn
+    ⟨.player q, .playCard draw ⟨2, []⟩ [] none none (.mode 1)⟩).toOption
+  let target ← (stacked.zone .chain).head?
+  let (reacting, _) ← (step 100 stacked ⟨.player q, .pass⟩).toOption
+  let counter : Action := ⟨.player p, .playCard spell payment [target] none none (.mode 0)⟩
+  let (casting, _) ← (step 100 reacting counter).toOption
+  let resolved := settleChain {} 16 casting
+  return waiting.countIn p .base "UNL-T02" == 0 && base.countIn p .base "UNL-T02" == 4 &&
+    birds.length == 4 && birds.all (fun id => (deployed.obj? id).any (·.loc == some field) &&
+      deployed.mightNow id == some 1 && deployed.deflectOf id == 1 && deployed.tired id == some true) &&
+    !(step 100 funded ⟨.player p, .playCard spell payment [] none none (.mode 0)⟩).isOk &&
+    !(step 100 reacting ⟨.player p, .playCard spell payment [target] none none (.mode 1)⟩).isOk &&
+    (resolved.zone .chain).isEmpty && resolved.countIn q .trash "UNL-103" == 1 &&
+    resolved.zone (.player q .hand) == reacting.zone (.player q .hand) &&
+    resolved.countIn p .base "UNL-T02" == 0
+
+-- Gutter Palace pays for its activation before anyone can respond.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, palace) ← put (s.control p field) p "UNL-088" .base
+  let (s, _) ← putAt s p "OGN-013" field
+  let noHand := s.setZone (.player p .hand) []
+  let (s, chosen) ← put noHand p "OGN-010" .hand
+  let (s, keep) ← put s p "OGN-013" .hand
+  let activation : Action := ⟨.player p, .activate palace 1 ⟨0, []⟩ [] [chosen]⟩
+  let missing : Action := ⟨.player p, .activate palace 1 ⟨0, []⟩ []⟩
+  let (waiting, events) ← (step 100 s activation).toOption
+  let item ← (waiting.zone .chain).head?
+  let resolved := settleChain { yes := false } 12 waiting
+  let countered := settleChain {} 12 (counterObj waiting item).1
+  let bird ← resolved.inPlay.find? (fun id => (resolved.cardDef? id).any (·.id == cid "UNL-T02"))
+  let discarded ← waiting.firstOf p .trash "OGN-010"
+  return !(step 100 noHand missing).isOk && !(step 100 s missing).isOk &&
+    (legalFrameActions s).contains activation && waiting.tired palace == some true &&
+    waiting.zone (.player p .hand) == [keep] && events.contains (.discarded p discarded true) &&
+    waiting.countIn p .base "UNL-T02" == 0 && (resolved.obj? bird).any (·.loc == some field) &&
+    resolved.deflectOf bird == 1 && resolved.tired bird == some true &&
+    countered.tired palace == some true && countered.zone (.player p .hand) == [keep] &&
+    countered.countIn p .trash "OGN-010" == 1 && countered.countIn p .base "UNL-T02" == 0
+
+-- Gutter Palace wins before Hold or Draw and counts only Units the active seat controls.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let init := GameState.empty { labState.config with mode := Mode.teamDuel } labState.cards
+  let s := { init with
+    turnOrder := Mode.teamTurnOrder true, active := some p,
+    phase := .awaken, pending := [.phase .beginning, .phase .main, .priority p] }
+  let (s, first) ← putBf s p "OGN-275"
+  let (s, second) ← putBf s ally "OGN-275"
+  let (s, palace) ← put (s.control p first |>.control p second) p "UNL-088" .base
+  let (s, _) ← putAt s ally "OGN-013" first
+  let three ← [first, first, second].foldlM (fun g bf => (putAt g p "OGN-013" bf).map Prod.fst) s
+  let (field, _) ← putAt three p "OGN-013" second
+  let (base, _) ← put three p "OGN-013" .base
+  let (fifth, _) ← putAt field p "OGN-013" second
+  let hand (g : GameState) (count : Nat) :=
+    (List.range count).foldlM (fun t _ => (put t p "OGN-010" .hand).map Prod.fst) g
+  let ready ← hand field 4
+  let baseOnly ← hand base 4
+  let fiveUnits ← hand fifth 4
+  let threeCards ← hand field 3
+  let fiveCards ← hand field 5
+  let triggered (g : GameState) (seat : PlayerId) :=
+    (g.timedTriggers seat .beginning).any (·.source == palace)
+  let (waiting, events) ← (advance 100 ready []).toOption
+  let won := settleChain {} 12 waiting
+  return triggered ready p && !triggered ready ally && !triggered baseOnly p &&
+    !triggered fiveUnits p && !triggered threeCards p && !triggered fiveCards p &&
+    events == [.phaseStarted p .beginning] && waiting.result.isNone &&
+    won.result == some (.won [p, ally]) && won.points == ready.points &&
+    won.zone (.player p .hand) == ready.zone (.player p .hand) && won.pending.isEmpty
+
+-- Walking Roost lets its controller target one enemy seat. The selected seat chooses the location.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let firstEnemy : PlayerId := ⟨2⟩
+  let chosen : PlayerId := ⟨3⟩
+  let init := GameState.empty { labState.config with mode := Mode.teamDuel } labState.cards
+  let s := { init with
+    turnOrder := Mode.teamTurnOrder true, active := some p,
+    phase := .main, pending := [.priority p] }
+  let (s, field) ← putBf s chosen "OGN-275"
+  let (s, _) ← putAt (s.control chosen field) chosen "OGN-013" field
+  let (s, roost) ← put (s.fund p 5) p "UNL-130" .hand
+  let (choosing, _) ← (step 100 s ⟨.player p, .playCard roost ⟨5, []⟩ []⟩).toOption
+  let pick (q : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some q))⟩
+  let (waiting, _) ← (step 100 choosing (pick chosen)).toOption
+  let item ← (waiting.zone .chain).head?
+  let rec pass : Nat → GameState → Option GameState
+    | 0, _ => none
+    | n + 1, g => match g.pending with
+      | .chainPass seat _ :: _ => (step 100 g ⟨.player seat, .pass⟩).toOption.bind (pass n ∘ Prod.fst)
+      | _ => some g
+  let placing ← pass 8 waiting
+  let (deployed, _) ← (step 100 placing ⟨.player chosen, .decide false⟩).toOption
+  let bird ← deployed.inPlay.find? (fun id => (deployed.cardDef? id).any (·.id == cid "UNL-T02"))
+  return ((legalFrameActions choosing).contains (pick firstEnemy)) &&
+    !(step 100 choosing (pick ally)).isOk && !(step 100 choosing (pick p)).isOk &&
+    (waiting.obj? item).any (·.targetPlayer == some chosen) &&
+    !(step 100 placing ⟨.player p, .decide false⟩).isOk &&
+    (deployed.obj? bird).any (fun o => o.loc == some field && o.controller == chosen) &&
+    (deployed.inPlay.filter (fun id => (deployed.cardDef? id).any (·.id == cid "UNL-T02"))) == [bird]
+
+-- Carrion Dredger's Deathknell plays the Bird at Base even with an available Battlefield.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "OGN-275"
+  let (s, victim) ← putAt (s.control q field) q "UNL-153" field
+  let (s, kill) ← put s p "OGS-012" .hand
+  let done ← play s p kill [victim]
+  let bird ← done.firstOf q .base "UNL-T02"
+  return done.countIn q .trash "UNL-153" == 1 && done.countIn q .base "UNL-T02" == 1 &&
+    done.mightNow bird == some 1 &&
+    done.deflectOf bird == 1 && done.tired bird == some true && done.where? bird == some (.player q .base)
 
 -- Back Off (UNL-042): played from the hand, it draws 1
 #guard tun fun s => do

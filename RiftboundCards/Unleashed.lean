@@ -1327,13 +1327,14 @@ def UNL_044.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Flurry of Feathers. -/
+/-- Flurry of Feathers chooses a mode and its targets when played. -/
 def UNL_044 : CardDef :=
   { UNL_044.meta with
-    spellEffect := some (.of [.targetOf (.upTo 1) .any .onChain [.ofType .spell]]
-      (.eitherOf (EffectList.ofList
-        [.prim (.counter (.slot 0)), .prim (.create "Bird" (.const 4) .atBase false)]))),
-    status := .drafted }
+    spellEffect := some { body := .nop, modes := [
+      ⟨"Counter a spell", [.targetOf .one .any .onChain [.ofType .spell]],
+        .prim (.counter (.slot 0)), none⟩,
+      ⟨"Play four Birds", [], .repeatN (.const 4) (.prim (.playUnitToken "Bird")), none⟩] },
+    status := .full }
 
 -- BEGIN GENERATED UNL-045
 /--
@@ -2596,20 +2597,18 @@ def UNL_088.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Gutter Palace. -/
+/-- Gutter Palace checks its controller's hand and deployed Units at Beginning. -/
 def UNL_088 : CardDef :=
   { UNL_088.meta with
     abilities := [
       .triggered
         { condition := .and (.cmp .eq (.handSize .you) (.const 4))
-            (.cmp .eq (.count (Selector.all .friendly .atBattlefield [.ofType .unit])) (.const 4)),
+            (.cmp .eq (.count (Selector.all .you .atBattlefield [.ofType .unit])) (.const 4)),
           event := .at_ .beginning }
         (.of [] (.prim (.win .you))) .unlimited,
-      .activated [.exhaustSelf] .normal
-        (.of [] (.ifThen (.cmp .ge (.handSize .you) (.const 1))
-          (.seqOf [.prim (.discard .you (.const 1)), .prim (.create "Bird" (.const 1) .atBase false)])
-          .nop)) .unlimited],
-    status := .drafted }
+      .activated [.discard 1, .exhaustSelf] .normal
+        (.of [] (.prim (.playUnitToken "Bird"))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-089
 /--
@@ -3760,12 +3759,13 @@ def UNL_130.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Walking Roost. -/
+/-- Walking Roost targets one opponent, who chooses where to play the Bird. -/
 def UNL_130 : CardDef :=
   { UNL_130.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.eachPlayer .eachOpponent (.prim (.create "Bird" (.const 1) .atBase false)))) .unlimited],
-    status := .drafted }
+      { playerTarget := some .enemy, body := .eachPlayer (.chosen 0) (.prim (.playUnitToken "Bird")) }
+      .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-131
 /--
@@ -4441,10 +4441,9 @@ def UNL_153.meta : CardDef :=
 /-- Carrion Dredger. -/
 def UNL_153 : CardDef :=
   { UNL_153.meta with
-    abilities := [.triggered (.onSelf .die)
-        (.of []
-        (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered (.onSelf .deathknell)
+      (.of [] (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-154
 /--

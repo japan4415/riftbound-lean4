@@ -2135,6 +2135,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - The Grand Plaza を Hold した席がそこに7体以上の Unit を支配していると、その誘発の解決時に勝つ。カードから得た勝利は得点を変えず、残りの処理を打ち切る。通常の Hold の得点はそれまでに処理する。2対2では同じチームの2席が勝者になる（CR 002、383.4.d）。
 - Origins の Battlefield は24枚すべて `full`。Origins は298枚中82枚、全体では1,103枚中533枚が `full`。[カード実装状況](coverage.md)
 
+### Unleashed の Bird をプレイする4枚
+
+- Gutter Palace は手札の破棄と自身の消耗を起動時に支払う。Beginning Step では手札4枚と自身が支配する Battlefield 上の Unit 4体を確認し、勝利能力が解決すると Scoring Step に進む前にゲームが終わる（CR 315.2.a、423.3）。
+- Flurry of Feathers のモードと対象は Spell の宣言時に選ぶ。Walking Roost は相手1席を対象にし、その席が Bird のプレイ先を選ぶ。Carrion Dredger の Deathknell では指定された Base に Bird を出す（CR 184.2、355.2、355.3、355.9）。
+- Unleashed は225枚中57枚、全体では1,103枚中537枚が `full`。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
