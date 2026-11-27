@@ -171,9 +171,27 @@ theorem mightyEvents_eq_nil_of_mightNow {s t : GameState}
       · rfl
   · rfl
 
-private theorem foldl_mightNotices {α : Type} (update : α → Event → α)
-    (inert : ∀ a e, MightNotice e → update a e = a) (start : α)
-    (events : List Event) (notices : ∀ e ∈ events, MightNotice e) :
+/-- The events Awaken can emit, including Might observations made when the board readies. -/
+inductive AwakenNotice : Event → Prop where
+  /-- The turn player entered Awaken. -/
+  | phaseStarted (p : PlayerId) : AwakenNotice (.phaseStarted p .awaken)
+  /-- An object readied in Awaken. -/
+  | readied (id : ObjId) : AwakenNotice (.readied id)
+  /-- A Unit became Mighty. -/
+  | mighty (id : ObjId) : AwakenNotice (.becameMighty id)
+  /-- A Unit crossed a numeric Might threshold. -/
+  | reached (id : ObjId) (threshold : Nat) : AwakenNotice (.mightReached id threshold)
+
+/-- Any Might crossing the engine reports can be observed during Awaken. -/
+theorem AwakenNotice.of_mightyEvents {before after : GameState} {event : Event}
+    (found : event ∈ before.mightyEvents after) : AwakenNotice event := by
+  cases mightyEvents_notice found with
+  | mighty id => exact .mighty id
+  | reached id threshold => exact .reached id threshold
+
+private theorem foldl_awakenNotices {α : Type} (update : α → Event → α)
+    (inert : ∀ a e, AwakenNotice e → update a e = a) (start : α)
+    (events : List Event) (notices : ∀ e ∈ events, AwakenNotice e) :
     events.foldl update start = start := by
   induction events with
   | nil => rfl
@@ -181,17 +199,17 @@ private theorem foldl_mightNotices {α : Type} (update : α → Event → α)
     rw [List.foldl_cons, inert start first (notices _ List.mem_cons_self)]
     exact ih (fun e mem => notices _ (List.mem_cons_of_mem _ mem))
 
-private theorem recordMightNotices (s : GameState) (events : List Event)
-    (notices : ∀ e ∈ events, MightNotice e) : s.recordTurnEvents events = s := by
-  have keepPlays := foldl_mightNotices s.recordPlayEvent
+private theorem recordAwakenNotices (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.recordTurnEvents events = s := by
+  have keepPlays := foldl_awakenNotices s.recordPlayEvent
     (fun _ _ h => by cases h <;> rfl) s.playLog events notices
-  have keepFacts := foldl_mightNotices s.recordTurnEvent
+  have keepFacts := foldl_awakenNotices s.recordTurnEvent
     (fun _ _ h => by cases h <;> rfl) s.turnFx events notices
   unfold GameState.recordTurnEvents
   simp only [keepPlays, keepFacts, ite_self]
 
-private theorem mightNotices_noDelayedPlay (s : GameState) (events : List Event)
-    (notices : ∀ e ∈ events, MightNotice e) : s.delayedPlayTriggers events = [] := by
+private theorem awakenNotices_noDelayedPlay (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.delayedPlayTriggers events = [] := by
   have noPlays (p : PlayerId) (kind : CardType) : events.filter (s.matchesDelayedPlay p kind) = [] := by
     apply List.filter_eq_nil_iff.mpr
     intro e mem
@@ -205,8 +223,8 @@ private theorem mightNotices_noDelayedPlay (s : GameState) (events : List Event)
     · simp [noPlays]
     · rfl
 
-private theorem mightNotices_noSuddenDeath (s : GameState) (events : List Event)
-    (notices : ∀ e ∈ events, MightNotice e) : s.suddenDeathScorer events = none := by
+private theorem awakenNotices_noSuddenDeath (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.suddenDeathScorer events = none := by
   unfold GameState.suddenDeathScorer
   cases s.clock with
   | none => rfl
@@ -218,16 +236,18 @@ private theorem mightNotices_noSuddenDeath (s : GameState) (events : List Event)
       cases notices e mem <;> rfl
     · rfl
 
-private theorem withMightNotices (s : GameState) (events : List Event)
-    (notices : ∀ e ∈ events, MightNotice e) :
+/-- Awaken notices only insert detected work. They leave play history, turn facts and the clock's
+sudden-death result unchanged. -/
+theorem withAwakenNotices (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e) :
     let detected := s.detect events
     s.withTriggers events = if s.phase != .setup && s.pending.all (fun f => !f.isSetup) &&
       !detected.isEmpty then { s with pending := insertDetectedTriggers s detected s.pending } else s := by
   unfold GameState.withTriggers
-  rw [recordMightNotices s events notices, mightNotices_noSuddenDeath s events notices]
+  rw [recordAwakenNotices s events notices, awakenNotices_noSuddenDeath s events notices]
   dsimp only
   have first : s.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers]
-  rw [first, mightNotices_noDelayedPlay s events notices]
+  rw [first, awakenNotices_noDelayedPlay s events notices]
   simp only [List.nil_append]
   by_cases active : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
   · cases s.detect events <;> simp [active]
@@ -239,7 +259,7 @@ theorem withMightyEvents (before after : GameState) :
     after.withTriggers (before.mightyEvents after) =
       if after.phase != .setup && after.pending.all (fun f => !f.isSetup) && !detected.isEmpty
       then { after with pending := insertDetectedTriggers after detected after.pending } else after :=
-  withMightNotices after _ (fun _ h => mightyEvents_notice h)
+  withAwakenNotices after _ (fun _ h => AwakenNotice.of_mightyEvents h)
 
 private theorem triggersStep_transitionEvents (s : GameState) (wf : s.WF)
     (queue : List PendTrigger) (rest : List Frame) (pending : s.pending = .triggers queue :: rest) :

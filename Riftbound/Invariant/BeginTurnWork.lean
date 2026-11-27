@@ -67,18 +67,20 @@ theorem workStep_beginTurn_mightOrdinary (s : GameState) (rest : List Frame)
   rw [List.nil_append, observation, withMightyEvents_ordinary s next (nextCards ▸ database)]
 
 /-- When the clock allows play to continue, the real engine initializes the turn and reaches its
-Awaken stack or a player decision for any nonempty ordinary queue that came first. -/
-theorem advance_beginTurn {s : GameState} {rest : List Frame} (wf : s.WF)
+Awaken stack with its card database, or a decision for the ordinary queue that came first. -/
+theorem advance_beginTurn_checkpoint {s : GameState} {rest : List Frame} (wf : s.WF)
     (checkedMight : MightRead.database s.cards) (checkedTriggers : s.cards.mightTriggersAreOrdinary)
     (pending : s.pending = .beginTurn :: rest) (clock : s.clockConclusion = none) :
     ∃ t used, 0 < used ∧ AdvancePrefix s t used [] ∧ t.WF ∧
       ((t.pending = turnFrames s.nextTurnPlayer ++ rest ∧ t.active = some s.nextTurnPlayer ∧
-        t.turn = s.turn + 1) ∨
+        t.turn = s.turn + 1 ∧ t.cards = s.cards) ∨
         t.pending.head?.any (fun f => !f.isWork) = true) := by
   let next := beginTurnStep s rest
   let detected := next.detect (s.mightyEvents next)
   have stack : next.pending = turnFrames s.nextTurnPlayer ++ rest := by
     simp [next, beginTurnStep, clock]
+  have cards : next.cards = s.cards := by
+    simp [next, beginTurnStep, clock, GameState.mapObjects, GameState.mapObjectsAt]
   let sees := next.phase != .setup && next.pending.all (fun f => !f.isSetup) && !detected.isEmpty
   have step := workStep_beginTurn_mightOrdinary s rest pending checkedTriggers
   change workStep s = some (if sees then { next with pending := insertTriggers detected next.pending }
@@ -90,15 +92,13 @@ theorem advance_beginTurn {s : GameState} {rest : List Frame} (wf : s.WF)
       change insertTriggers detected next.pending = _
       rw [stack]
       rfl
-    have cards : waiting.cards = s.cards := by
-      change next.cards = _
-      simp [next, beginTurnStep, clock, GameState.mapObjects, GameState.mapObjectsAt]
+    have waitingCards : waiting.cards = s.cards := cards
     have nonempty : detected ≠ [] := by
       intro empty
       have observed := observe
       simp [sees, empty] at observed
     obtain ⟨t, used, f, later, _, path, decision, stop⟩ := advance_triggers_to_decision waiting
-      (workStep_wf wf step) detected _ activeStack (cards ▸ checkedMight) (Or.inl nonempty)
+      (workStep_wf wf step) detected _ activeStack (waitingCards ▸ checkedMight) (Or.inl nonempty)
     have reached : t.WF := by
       have finish := path.finish (by simp [decision, stop]) []
       exact advance_wf used (workStep_wf wf step) (by simpa using finish)
@@ -109,7 +109,21 @@ theorem advance_beginTurn {s : GameState} {rest : List Frame} (wf : s.WF)
     have started : next.active = some s.nextTurnPlayer ∧ next.turn = s.turn + 1 := by
       simp [next, beginTurnStep, clock]
     exact ⟨next, 1, by decide, still.prepend pending rfl step, workStep_wf wf step,
-      Or.inl ⟨stack, started⟩⟩
+      Or.inl ⟨stack, started.1, started.2, cards⟩⟩
+
+/-- When the clock allows play to continue, the real engine initializes the turn and reaches its
+Awaken stack or a player decision for any nonempty ordinary queue that came first. -/
+theorem advance_beginTurn {s : GameState} {rest : List Frame} (wf : s.WF)
+    (checkedMight : MightRead.database s.cards) (checkedTriggers : s.cards.mightTriggersAreOrdinary)
+    (pending : s.pending = .beginTurn :: rest) (clock : s.clockConclusion = none) :
+    ∃ t used, 0 < used ∧ AdvancePrefix s t used [] ∧ t.WF ∧
+      ((t.pending = turnFrames s.nextTurnPlayer ++ rest ∧ t.active = some s.nextTurnPlayer ∧
+        t.turn = s.turn + 1) ∨
+        t.pending.head?.any (fun f => !f.isWork) = true) := by
+  obtain ⟨t, used, positive, trace, wellFormed, stop⟩ :=
+    advance_beginTurn_checkpoint wf checkedMight checkedTriggers pending clock
+  exact ⟨t, used, positive, trace, wellFormed,
+    stop.imp_left (fun awake => ⟨awake.1, awake.2.1, awake.2.2.1⟩)⟩
 
 /-- A clock conclusion on the normal turn boundary ends the game in one work step. -/
 theorem advance_beginTurn_clock {s : GameState} {result : GameResult}

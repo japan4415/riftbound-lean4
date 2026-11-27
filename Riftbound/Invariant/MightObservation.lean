@@ -13,7 +13,8 @@ definitions at that index, because animation can change the list of implicit abi
 
 namespace Riftbound
 
-private def TriggerEvent.isMightThreshold : TriggerEvent → Bool
+/-- The trigger events emitted when Might crosses a threshold. -/
+def TriggerEvent.isMightThreshold : TriggerEvent → Bool
   | .becomeMighty | .mightAtLeast _ => true
   | _ => false
 
@@ -24,16 +25,29 @@ def Ability.isImmediateAdd : Ability → Bool
       effect.moveChoice.isNone && effect.playerTarget.isNone && effect.body.isTriggerAdd
   | _ => false
 
+/-- Whether the ability is triggered by an event in the selected set. -/
+def Ability.triggersOn (select : TriggerEvent → Bool) : Ability → Bool
+  | .triggered rule _ _ => select rule.event
+  | _ => false
+
+/-- Check the resolved abilities at indices selected during trigger detection. -/
+def noImmediateAddAt (select : TriggerEvent → Bool) (observed resolved : List Ability) : Bool :=
+  (List.range observed.length).all fun i =>
+    !((observed[i]?).any (Ability.triggersOn select)) || !((resolved[i]?).any Ability.isImmediateAdd)
+
 /-- Check every Might trigger index against the definition used during resolution. -/
 def noImmediateAddAtMight (observed resolved : List Ability) : Bool :=
-  (List.range observed.length).all fun i =>
-    !((observed[i]?).any (·.mightWatch.isSome)) || !((resolved[i]?).any Ability.isImmediateAdd)
+  noImmediateAddAt TriggerEvent.isMightThreshold observed resolved
+
+/-- Check both printed and animated definitions against the ability lookup at resolution. -/
+def CardDef.triggersAreOrdinary (select : TriggerEvent → Bool) (d : CardDef) : Bool :=
+  noImmediateAddAt select d.allAbilities d.allAbilities &&
+    noImmediateAddAt select (d.withUnitGearMight 0).allAbilities d.allAbilities
 
 /-- At each index that can queue a Might trigger, looking the ability back up cannot resolve an
 immediate Add. The second check covers the ability indices of animated Gear. -/
 def CardDef.mightTriggersAreOrdinary (d : CardDef) : Bool :=
-  noImmediateAddAtMight d.allAbilities d.allAbilities &&
-    noImmediateAddAtMight (d.withUnitGearMight 0).allAbilities d.allAbilities
+  d.triggersAreOrdinary TriggerEvent.isMightThreshold
 
 /-- The database has no Might observation that can enqueue an immediate Add. -/
 def CardDB.mightTriggersAreOrdinary (db : CardDB) : Prop :=
@@ -43,13 +57,30 @@ instance (db : CardDB) : Decidable db.mightTriggersAreOrdinary := by
   unfold CardDB.mightTriggersAreOrdinary
   infer_instance
 
-private theorem noImmediateAddAtMight_of_index {observed resolved : List Ability} {i : Nat}
-    {a : Ability} (checked : noImmediateAddAtMight observed resolved = true)
-    (lookup : observed[i]? = some a) (might : a.mightWatch.isSome = true) :
+/-- Trigger events specific to Awaken timing and readied objects. -/
+def TriggerEvent.isAwakenTrigger : TriggerEvent → Bool
+  | .at_ .startOfTurn | .ready => true
+  | _ => false
+
+/-- Awaken timing and ready events cannot queue immediate Adds through any of these indices. -/
+def CardDef.awakenTriggersAreOrdinary (d : CardDef) : Bool :=
+  d.triggersAreOrdinary TriggerEvent.isAwakenTrigger
+
+/-- The database's Awaken timing and ready triggers always use the ordinary queue. -/
+def CardDB.awakenTriggersAreOrdinary (db : CardDB) : Prop :=
+  db.cards.all CardDef.awakenTriggersAreOrdinary = true
+
+instance (db : CardDB) : Decidable db.awakenTriggersAreOrdinary := by
+  unfold CardDB.awakenTriggersAreOrdinary
+  infer_instance
+
+private theorem noImmediateAddAt_of_index {select : TriggerEvent → Bool} {observed resolved : List Ability}
+    {i : Nat} {a : Ability} (checked : noImmediateAddAt select observed resolved = true)
+    (lookup : observed[i]? = some a) (selected : a.triggersOn select = true) :
     (resolved[i]?).any Ability.isImmediateAdd = false := by
   have bound : i < observed.length := List.getElem?_eq_some_iff.mp lookup |>.1
   have atIndex := List.all_eq_true.mp checked i (List.mem_range.mpr bound)
-  simpa [lookup, might] using atIndex
+  simpa [lookup, selected] using atIndex
 
 private theorem animated_allAbilities (d : CardDef) (n : Nat) :
     (d.withUnitGearMight n).allAbilities = (d.withUnitGearMight 0).allAbilities := by
@@ -101,24 +132,25 @@ private theorem declared_of_sourceLookup {s : GameState} {id : ObjId} {copy : Op
     have eq : printed = d := by simpa [found] using lookup
     exact eq ▸ declared_of_find fromDB
 
-private def QueuedMightAbility (db : CardDB) (trigger : PendTrigger) : Prop :=
+private def QueuedEventAbility (select : TriggerEvent → Bool) (db : CardDB)
+    (trigger : PendTrigger) : Prop :=
   trigger.triggerKeyword = none ∧ ∃ d a, DeclaredDefinition db d ∧
-    d.id = trigger.card ∧ d.allAbilities[trigger.idx]? = some a ∧ a.mightWatch.isSome = true
+    d.id = trigger.card ∧ d.allAbilities[trigger.idx]? = some a ∧ a.triggersOn select = true
 
-private theorem queuedMight_immediate_none {s : GameState} {t : PendTrigger}
-    (database : s.cards.mightTriggersAreOrdinary) (queued : QueuedMightAbility s.cards t) :
-    t.immediateAddFrame s = none := by
-  obtain ⟨noKeyword, seen, a, ⟨d, found, printed | animated, _⟩, id, atIndex, might⟩ := queued
+private theorem queuedEvent_immediate_none {select : TriggerEvent → Bool} {s : GameState} {t : PendTrigger}
+    (database : s.cards.cards.all (CardDef.triggersAreOrdinary select) = true)
+    (queued : QueuedEventAbility select s.cards t) : t.immediateAddFrame s = none := by
+  obtain ⟨noKeyword, seen, a, ⟨d, found, printed | animated, _⟩, id, atIndex, selected⟩ := queued
   all_goals
-    have check : noImmediateAddAtMight d.allAbilities d.allAbilities = true ∧
-        noImmediateAddAtMight (d.withUnitGearMight 0).allAbilities d.allAbilities = true := by
-      simpa only [CardDef.mightTriggersAreOrdinary, Bool.and_eq_true] using
+    have check : noImmediateAddAt select d.allAbilities d.allAbilities = true ∧
+        noImmediateAddAt select (d.withUnitGearMight 0).allAbilities d.allAbilities = true := by
+      simpa only [CardDef.triggersAreOrdinary, Bool.and_eq_true] using
         List.all_eq_true.mp database d (CardDB.find?_mem found)
     rw [id] at found
     have noAdd : (d.allAbilities[t.idx]?).any Ability.isImmediateAdd = false := by
       first
-      | rw [printed] at atIndex; exact noImmediateAddAtMight_of_index check.1 atIndex might
-      | rw [animated] at atIndex; exact noImmediateAddAtMight_of_index check.2 atIndex might
+      | rw [printed] at atIndex; exact noImmediateAddAt_of_index check.1 atIndex selected
+      | rw [animated] at atIndex; exact noImmediateAddAt_of_index check.2 atIndex selected
     unfold PendTrigger.immediateAddFrame triggerAbility abilityAt
     simp only [noKeyword, found, Option.bind_none, Option.bind_some]
     cases ability : d.allAbilities[t.idx]? with
@@ -128,18 +160,13 @@ private theorem queuedMight_immediate_none {s : GameState} {t : PendTrigger}
       cases resolved <;> simp only [Option.any_some, Ability.isImmediateAdd] at noAdd
       all_goals first | rfl | simp [noAdd]
 
-private theorem mightWatch_of_threshold {rule : Trigger} {effect : EffectDef} {limit : Limit}
-    (threshold : rule.event.isMightThreshold = true) :
-    (Ability.triggered rule effect limit).mightWatch.isSome = true := by
-  cases event : rule.event <;> simp [TriggerEvent.isMightThreshold, Ability.mightWatch, event] at *
-
 private theorem triggersAmongMatching_queued {s : GameState} {src : ObjId} {p : PlayerId}
     {d : CardDef} {lo hi : Nat} {copy : Option Timestamp}
-    {fields : Option (List ObjId)} {t : PendTrigger} {matchesEvent : TriggerEvent → Bool}
+    {fields : Option (List ObjId)} {t : PendTrigger} {select matchesEvent : TriggerEvent → Bool}
     (definition : DeclaredDefinition s.cards d)
-    (matchesMight : ∀ e, matchesEvent e = true → e.isMightThreshold = true)
+    (matchesSelected : ∀ e, matchesEvent e = true → select e = true)
     (member : t ∈ triggersAmongMatching s src p matchesEvent d lo hi copy fields) :
-    QueuedMightAbility s.cards t := by
+    QueuedEventAbility select s.cards t := by
   unfold triggersAmongMatching at member
   obtain ⟨j, _, queued⟩ := List.mem_filterMap.mp member
   split at queued
@@ -150,52 +177,50 @@ private theorem triggersAmongMatching_queued {s : GameState} {src : ObjId} {p : 
       subst t
       simp only [Bool.and_eq_true] at conditions
       exact ⟨rfl, d, .triggered rule effect limit, definition, rfl, lookup,
-        mightWatch_of_threshold (matchesMight _ conditions.1.1)⟩
+        matchesSelected _ conditions.1.1⟩
     · contradiction
   · contradiction
 
 private theorem triggersOfMatching_queued {s : GameState} {src : ObjId} {p : PlayerId}
     {copy : Option AttachmentCopy} {fields : Option (List ObjId)} {t : PendTrigger}
-    {matchesEvent : TriggerEvent → Bool}
-    (matchesMight : ∀ e, matchesEvent e = true → e.isMightThreshold = true)
+    {select matchesEvent : TriggerEvent → Bool}
+    (matchesSelected : ∀ e, matchesEvent e = true → select e = true)
     (member : t ∈ triggersOfMatching s src p matchesEvent copy fields) :
-    QueuedMightAbility s.cards t := by
+    QueuedEventAbility select s.cards t := by
   unfold triggersOfMatching at member
   dsimp only at member
   simp only [List.mem_append] at member
   rcases member with (((printed | equipment) | copied) | granted)
   · split at printed
     · rename_i d found
-      exact triggersAmongMatching_queued (declared_of_sourceLookup found) matchesMight printed
+      exact triggersAmongMatching_queued (declared_of_sourceLookup found) matchesSelected printed
     · simp at printed
   · obtain ⟨id, _, fromEquipment⟩ := List.mem_flatMap.mp equipment
     split at fromEquipment
     · rename_i o d lookedObject lookedCard
       split at fromEquipment
-      · exact triggersAmongMatching_queued (declared_of_cardDef lookedCard) matchesMight fromEquipment
+      · exact triggersAmongMatching_queued (declared_of_cardDef lookedCard) matchesSelected fromEquipment
       · simp at fromEquipment
     · simp at fromEquipment
   · obtain ⟨⟨d, stamp⟩, text, fromCopy⟩ := List.mem_flatMap.mp copied
-    exact triggersAmongMatching_queued (declared_of_attachmentText text) matchesMight fromCopy
+    exact triggersAmongMatching_queued (declared_of_attachmentText text) matchesSelected fromCopy
   · obtain ⟨fact, _, fromGrant⟩ := List.mem_flatMap.mp granted
     split at fromGrant
     · split at fromGrant
       · split at fromGrant
         · rename_i d found
-          exact triggersAmongMatching_queued (declared_of_find found) matchesMight fromGrant
+          exact triggersAmongMatching_queued (declared_of_find found) matchesSelected fromGrant
         · simp at fromGrant
       · simp at fromGrant
     · simp at fromGrant
 
 private theorem watchersAt_queued {s : GameState} {src subj : ObjId} {who : PlayerId}
-    {event : TriggerEvent} {t : PendTrigger} {occurrence : Occurrence} {dead : Option PlayerId}
-    (threshold : event.isMightThreshold = true)
+    {select : TriggerEvent → Bool} {event : TriggerEvent} {t : PendTrigger} {occurrence : Occurrence}
+    {dead : Option PlayerId} (observedEvent : select event = true)
+    (notPlay : event ≠ .play) (notToken : event ≠ .playToken)
+    (notDeath : (event == .die || event == .firstUnitDeathHere) = false)
     (member : t ∈ watchersAt s subj who event occurrence src dead) :
-    QueuedMightAbility s.cards t := by
-  have notPlay : event ≠ .play := by rintro rfl; contradiction
-  have notToken : event ≠ .playToken := by rintro rfl; contradiction
-  have notDeath : (event == .die || event == .firstUnitDeathHere) = false := by
-    cases event <;> simp_all [TriggerEvent.isMightThreshold]
+    QueuedEventAbility select s.cards t := by
   unfold watchersAt at member
   split at member
   · rename_i obj foundObject
@@ -230,7 +255,7 @@ private theorem watchersAt_queued {s : GameState} {src subj : ObjId} {who : Play
               · exact False.elim (notPlay (beq_iff_eq.mp played))
               · exact False.elim (notToken (beq_iff_eq.mp playedToken))
           exact ⟨rfl, d, .triggered rule body perTurn, declared, rfl, lookup,
-            mightWatch_of_threshold (matchEvent ▸ threshold)⟩
+            by simpa only [Ability.triggersOn, matchEvent] using observedEvent⟩
         · contradiction
       · contradiction
     · simp at member
@@ -286,14 +311,14 @@ private theorem detect_mem {s : GameState} {events : List Event} {t : PendTrigge
     · exact List.mem_partition.mpr (Or.inr (seatMem _ later))
   simpa only [List.append_nil] using (List.mem_filter.mp (trimLimits_mem trimmed)).1
 
-private theorem mightyEvents_deathGroupWatchers (before after : GameState) :
-    after.deathGroupWatchers (before.mightyEvents after) = [] := by
-  have empty : (before.mightyEvents after).filterMap (fun
+private theorem awakenNotices_noDeathGroups (s : GameState) {events : List Event}
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.deathGroupWatchers events = [] := by
+  have empty : events.filterMap (fun
       | .died object controller => some (object, controller)
       | _ => none) = [] := by
     apply List.filterMap_eq_nil_iff.mpr
     intro e member
-    rcases mightyEvents_cases member with ⟨_, rfl⟩ | ⟨_, _, rfl⟩ <;> rfl
+    cases notices e member <;> rfl
   unfold GameState.deathGroupWatchers
   dsimp only
   rw (config := { transparency := .all }) [empty]
@@ -301,7 +326,7 @@ private theorem mightyEvents_deathGroupWatchers (before after : GameState) :
 
 private theorem mightTriggers_queued {s : GameState} {id : ObjId} {event : TriggerEvent}
     {t : PendTrigger} (threshold : event.isMightThreshold = true)
-    (member : t ∈ s.mightTriggers id event) : QueuedMightAbility s.cards t := by
+    (member : t ∈ s.mightTriggers id event) : QueuedEventAbility TriggerEvent.isMightThreshold s.cards t := by
   unfold GameState.mightTriggers at member
   split at member
   · split at member
@@ -309,7 +334,8 @@ private theorem mightTriggers_queued {s : GameState} {id : ObjId} {event : Trigg
       · exact triggersOfMatching_queued (matchesEvent := (· == event))
           (fun _ h => (beq_iff_eq.mp h) ▸ threshold) own
       · obtain ⟨_, _, watcher⟩ := List.mem_flatMap.mp watched
-        exact watchersAt_queued threshold watcher
+        exact watchersAt_queued threshold (by rintro rfl; contradiction) (by rintro rfl; contradiction)
+          (by cases event <;> simp_all [TriggerEvent.isMightThreshold]) watcher
     · simp at member
   · simp at member
 
@@ -318,10 +344,72 @@ theorem detect_mightyEvents_noImmediateAdd {before after : GameState} {t : PendT
     (database : after.cards.mightTriggersAreOrdinary)
     (member : t ∈ after.detect (before.mightyEvents after)) : t.immediateAddFrame after = none := by
   have candidate := detect_mem member
-  rw [mightyEvents_deathGroupWatchers before after, List.append_nil] at candidate
+  rw [awakenNotices_noDeathGroups after (fun _ h => AwakenNotice.of_mightyEvents h),
+    List.append_nil] at candidate
   obtain ⟨event, found, queued⟩ := List.mem_flatMap.mp candidate
-  apply queuedMight_immediate_none database
+  apply queuedEvent_immediate_none (select := TriggerEvent.isMightThreshold) database
   rcases mightyEvents_cases found with ⟨_, rfl⟩ | ⟨_, _, rfl⟩ <;> exact mightTriggers_queued rfl queued
+
+private theorem timedTriggers_queued {select : TriggerEvent → Bool} {s : GameState} {p : PlayerId}
+    {timing : Timing} {t : PendTrigger} (selected : select (.at_ timing) = true)
+    (member : t ∈ s.timedTriggers p timing) : QueuedEventAbility select s.cards t := by
+  unfold GameState.timedTriggers at member
+  obtain ⟨src, _, found⟩ := List.mem_flatMap.mp member
+  split at found
+  · rename_i object definition foundObj foundCard
+    dsimp only at found
+    generalize (if definition.hasType .battlefield then p else object.controller) = who at found
+    split at found
+    · have selectedEvent (e : TriggerEvent) (eq : (e == .at_ timing) = true) : select e = true :=
+        (beq_iff_eq.mp eq).symm ▸ selected
+      simp only [List.mem_append] at found
+      rcases found with (own | attachedText) | equipment
+      · exact triggersAmongMatching_queued (declared_of_cardDef foundCard) selectedEvent own
+      · obtain ⟨⟨d, stamp⟩, text, added⟩ := List.mem_flatMap.mp attachedText
+        exact triggersAmongMatching_queued (declared_of_attachmentText text) selectedEvent added
+      · obtain ⟨gear, _, added⟩ := List.mem_flatMap.mp equipment
+        split at added
+        · rename_i o d foundGear foundText
+          split at added
+          · exact triggersAmongMatching_queued (declared_of_cardDef foundText) selectedEvent added
+          · simp at added
+        · simp at added
+    · simp at found
+  · simp at found
+
+private theorem readyTriggers_queued {s : GameState} {id : ObjId} {t : PendTrigger}
+    (member : t ∈ detectOne s (.readied id)) : QueuedEventAbility TriggerEvent.isAwakenTrigger s.cards t := by
+  simp only [detectOne] at member
+  split at member
+  · rcases List.mem_append.mp member with own | watched
+    · exact triggersOfMatching_queued (matchesEvent := (· == .ready))
+        (fun _ h => (beq_iff_eq.mp h).symm ▸ rfl) own
+    · obtain ⟨_, _, watcher⟩ := List.mem_flatMap.mp watched
+      exact watchersAt_queued rfl (by intro h; cases h) (by intro h; cases h) rfl watcher
+  · simp at member
+
+/-- Awaken timing, readied objects and Might threshold crossings all use the ordinary trigger
+queue when the two checks hold. -/
+theorem detect_awakenNotices_noImmediateAdd {s : GameState} {events : List Event} {t : PendTrigger}
+    (awaken : s.cards.awakenTriggersAreOrdinary) (might : s.cards.mightTriggersAreOrdinary)
+    (notices : ∀ e ∈ events, AwakenNotice e) (member : t ∈ s.detect events) :
+    t.immediateAddFrame s = none := by
+  have candidate := detect_mem member
+  rw [awakenNotices_noDeathGroups _ notices, List.append_nil] at candidate
+  obtain ⟨event, found, queued⟩ := List.mem_flatMap.mp candidate
+  cases notices event found with
+  | phaseStarted p =>
+    have timed : t ∈ s.timedTriggers p .startOfTurn := by
+      have noDelayed : s.fxTriggers .startOfTurn = [] := rfl
+      simpa only [detectOne, Phase.timing?, noDelayed, List.append_nil] using queued
+    exact queuedEvent_immediate_none (select := TriggerEvent.isAwakenTrigger) awaken
+      (timedTriggers_queued rfl timed)
+  | readied id =>
+    exact queuedEvent_immediate_none (select := TriggerEvent.isAwakenTrigger) awaken (readyTriggers_queued queued)
+  | mighty id =>
+    exact queuedEvent_immediate_none (select := TriggerEvent.isMightThreshold) might (mightTriggers_queued rfl queued)
+  | reached id threshold =>
+    exact queuedEvent_immediate_none (select := TriggerEvent.isMightThreshold) might (mightTriggers_queued rfl queued)
 
 private theorem insertDetectedTriggers_ordinary (s : GameState) (queue : List PendTrigger)
     (rest : List Frame) (ordinary : ∀ t ∈ queue, t.immediateAddFrame s = none) :
@@ -335,6 +423,26 @@ private theorem insertDetectedTriggers_ordinary (s : GameState) (queue : List Pe
   rw [arrivals]
   simp [List.filterMap_map, Function.comp_def]
 
+private theorem withNotices_ordinary (s : GameState) (events : List Event)
+    (notices : ∀ e ∈ events, AwakenNotice e)
+    (ordinary : ∀ t ∈ s.detect events, t.immediateAddFrame s = none) :
+    let detected := s.detect events
+    s.withTriggers events =
+      if s.phase != .setup && s.pending.all (fun f => !f.isSetup) && !detected.isEmpty
+      then { s with pending := insertTriggers detected s.pending } else s := by
+  rw [withAwakenNotices s events notices]
+  dsimp only
+  rw [insertDetectedTriggers_ordinary s _ s.pending ordinary]
+  split <;> rename_i observe
+  · simp only [Bool.and_eq_true] at observe
+    have nonempty : (s.detect events).isEmpty = false := by
+      cases empty : (s.detect events).isEmpty
+      · rfl
+      · rw [empty] at observe
+        exact False.elim (Bool.noConfusion observe.2)
+    simp only [nonempty, Bool.false_eq_true, ↓reduceIte]
+  · rfl
+
 /-- In a checked database, observing Might crossings uses the ordinary trigger stack insertion.
 Existing work stays on the stack and no immediate Add frames are created by the observation. -/
 theorem withMightyEvents_ordinary (before after : GameState)
@@ -342,20 +450,20 @@ theorem withMightyEvents_ordinary (before after : GameState)
     let detected := after.detect (before.mightyEvents after)
     after.withTriggers (before.mightyEvents after) =
       if after.phase != .setup && after.pending.all (fun f => !f.isSetup) && !detected.isEmpty
-      then { after with pending := insertTriggers detected after.pending } else after := by
-  rw [withMightyEvents]
-  dsimp only
-  rw [insertDetectedTriggers_ordinary after _ after.pending
-    (fun _ member => detect_mightyEvents_noImmediateAdd database member)]
-  split <;> rename_i observe
-  · simp only [Bool.and_eq_true] at observe
-    have nonempty : (after.detect (before.mightyEvents after)).isEmpty = false := by
-      cases empty : (after.detect (before.mightyEvents after)).isEmpty
-      · rfl
-      · rw [empty] at observe
-        exact False.elim (Bool.noConfusion observe.2)
-    simp only [nonempty, Bool.false_eq_true, ↓reduceIte]
-  · rfl
+      then { after with pending := insertTriggers detected after.pending } else after :=
+  withNotices_ordinary after _ (fun _ h => AwakenNotice.of_mightyEvents h)
+    (fun _ member => detect_mightyEvents_noImmediateAdd database member)
+
+/-- With checked cards, Awaken notices can add only the ordinary trigger queue. -/
+theorem withAwakenNotices_ordinary (s : GameState) (events : List Event)
+    (awaken : s.cards.awakenTriggersAreOrdinary) (might : s.cards.mightTriggersAreOrdinary)
+    (notices : ∀ e ∈ events, AwakenNotice e) :
+    let detected := s.detect events
+    s.withTriggers events =
+      if s.phase != .setup && s.pending.all (fun f => !f.isSetup) && !detected.isEmpty
+      then { s with pending := insertTriggers detected s.pending } else s :=
+  withNotices_ordinary s events notices
+    (fun _ member => detect_awakenNotices_noImmediateAdd awaken might notices member)
 
 /-- Any new work observed while finalizing an ordinary trigger uses the ordinary trigger queue. -/
 theorem workStep_triggers_mightOrdinary (s : GameState) (wf : s.WF) (queue : List PendTrigger)

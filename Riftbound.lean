@@ -75,6 +75,7 @@ public import Riftbound.Invariant.CleanupDeath
 public import Riftbound.Invariant.CleanupDeathDamage
 public import Riftbound.Invariant.CleanupWork
 public import Riftbound.Invariant.BeginTurnWork
+public import Riftbound.Invariant.AwakenWork
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.DrawWork
