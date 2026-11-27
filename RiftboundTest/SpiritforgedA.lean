@@ -145,6 +145,57 @@ private meta def teamMain (labState : GameState) : GameState :=
   return cost s mate friendly == some (3, 1) && cost s foe enemy == some (3, 1) &&
     cost fight mate friendly == some (2, 0) && cost fight foe enemy == some (4, 2)
 
+-- Serrated Dirk's Assault follows the holder, with its printed Equip payment.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, dirk) ← put s p "SFD-009" .base
+  let (s, first) ← put s p "OGN-051" .base
+  let (s, second) ← put s p "OGN-051" .base
+  let (s, angleShot) ← put s p "SFD-011" .hand
+  let pay : RunePool.Payment := ⟨0, [.fury]⟩
+  let equipped ← activate s p dirk 0 [first] pay
+  let transferred ← play equipped p angleShot [second, dirk] { fromEnd := some 1 }
+  return (activate equipped p dirk 0 [second] pay).isNone &&
+    s.kwAmount first .assault == 0 && equipped.kwAmount first .assault == 2 &&
+    equipped.kwAmount second .assault == 0 && transferred.kwAmount first .assault == 0 &&
+    transferred.kwAmount second .assault == 2
+
+-- Hidden Sudden Storm selects a Unit at the Battlefield where it was hidden.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, _) ← putAt (s.control p field) p "OGN-051" field
+  let (s, beside) ← putAt s q "OGN-116" field
+  let (s, other) ← putBf s q "OGN-276"
+  let (s, away) ← putAt s q "OGN-116" other
+  let (s, hidden) ← put s p "SFD-017" .hidden
+  let s := s.modObj hidden (fun o => { o with hiddenAt := some field, hiddenTurn := some 0 })
+  let waiting := { (s.fund p 0) with turn := 1 }
+  let reveal (targets : List ObjId) := legalFrameActions waiting |>.find? (fun a =>
+    match a.kind with | .activate source _ _ picked .. => source == hidden && picked == targets | _ => false)
+  let answer ← reveal [beside]
+  let (casting, _) ← (step 100 waiting answer).toOption
+  let finished := settleChain {} 12 casting
+  return (finished.obj? beside).any (·.damage == 2) && (reveal [away]).isNone
+
+-- Rengar can join an attack as a Reaction with another item already on the Chain.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "OGN-275"
+  let (s, attacker) ← put s p "OGN-051" .base
+  let (s, _) ← putAt (s.control q field) q "OGN-116" field
+  let (s, rengar) ← put s p "SFD-025" .hand
+  let s := s.modObj attacker (fun o => { o with exhausted := false })
+  let (showdown, _) ← (step 100 s ⟨.player p, .standardMove attacker (.battlefield field)⟩).toOption
+  let (closed, spell) ← onChain showdown q "OGN-004"
+  let ready := { (closed.fund p 3 (fury := 1)) with pending := .chainPass p 0 :: showdown.pending }
+  let (answered, _) ← (step 100 ready ⟨.player p, .playCard rengar ⟨3, [.fury]⟩ [field]⟩).toOption
+  let joined ← (answered.unitsAt field).find? (fun id =>
+    (answered.cardDef? id).any (fun d => d.id == cid "SFD-025"))
+  return answered.kwAmount joined .assault == 2 && (answered.zone .chain).contains spell
+
 -- Quick-Draw (Sterak's Gage, SFD-056): played, it attaches itself to a unit its player controls
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-056" .hand

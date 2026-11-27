@@ -2315,6 +2315,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Bushwhack はそのターンに味方がプレイする Unit と Unit トークンの登場に適用する。Production Surge は使った席が支配する Mech で値引きする。Against the Odds、Eager Drakehound、Blast Corps Cadet、Ferrous Forerunner、Vex, Cheerless と合わせて7枚を `full` とし、全1,103枚中640枚が実装済みとなった。
 - I10 のマリガンと通常のディスカードについて、同じ手札の表示と選択枚数から同じ数の合法手が得られることを証明した。
 
+### Spiritforged の装備・配置・戦闘
+
+- Serrated Dirk、Minotaur Reckoner、Perched Grimwyrm、Sudden Storm、Rengar, Pouncing、Lucian, Gunslinger、Skyfall of Areion を確認した。Rengar はすでに項目がある Chain に Reaction として応答し、自分が攻撃している Battlefield に出られる。全1,103枚中647枚を `full` とした。
+- 自動対戦の Driver は、強制手だけで同じ状態に戻ることを検査した場合に、ジャッジの引き分けを送る。識別子を付け替えた状態を検出する処理は残っている。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

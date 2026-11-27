@@ -257,7 +257,7 @@ def SFD_009.meta : CardDef :=
 def SFD_009 : CardDef :=
   { SFD_009.meta with
     grants := [.passive .always [.keyword .self { keyword := .assault, arg := .amount 2 }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-010
 /--
@@ -394,7 +394,7 @@ def SFD_014 : CardDef :=
   { SFD_014.meta with
 
     abilities := [.passive .always [.noMoveToBaseAny]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-015
 /--
@@ -419,7 +419,7 @@ def SFD_015 : CardDef :=
   { SFD_015.meta with
 
     abilities := [.passive .always [.playToBf [.conqueredByMine], .noPlayToBase]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-016
 /--
@@ -483,7 +483,7 @@ def SFD_017 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.ifThen (.matches (.slot 0) .attacker) (.prim (.deal (.slot 0) (.const 4)))
         (.prim (.deal (.slot 0) (.const 2))))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-018
 /--
@@ -716,7 +716,7 @@ def SFD_025 : CardDef :=
   { SFD_025.meta with
 
     abilities := [.passive .always [.playToBf [.attackedByMine]]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-026
 /--
@@ -814,7 +814,7 @@ def SFD_028 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [.targetOf .one .enemy .here [.ofType .unit]]
         (.prim (.deal (.slot 0) (.kwAmount .self .assault)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-029
 /--
@@ -905,7 +905,7 @@ def SFD_030 : CardDef :=
   { SFD_030.meta with
 
     grants := [.passive .always [.holdIsConquer]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-031
 /--
