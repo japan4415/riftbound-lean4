@@ -1245,7 +1245,7 @@ def OGN_046 : CardDef :=
         .ifThen (.and (.matches (.slot 0) (.sameController .self))
           (.cmp .eq (.count (Selector.all .you .anywhere [.ofType .unit, .at_ (.slot 0)])) (.const 1)))
           (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn) .nop])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-047
 /--
@@ -1536,7 +1536,7 @@ def OGN_057 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.grant (.slot 0) (.keyword .it ⟨.shield, .amount 3⟩) .thisTurn,
         .grant (.slot 0) (.keyword .it ⟨.tank, .none⟩) .thisTurn])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-058
 /--
@@ -2616,7 +2616,7 @@ def OGN_097 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightMinusMin .it (.const 2) 1) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-098
 /--
@@ -3805,7 +3805,7 @@ def OGN_141 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf (.upTo 2) .friendly .anywhere [.ofType .unit, .notSelf]]
         (.prim (.buff (.slotsFrom 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-142
 /--
@@ -4530,7 +4530,7 @@ def OGN_167 : CardDef :=
   { OGN_167.meta with
     abilities := [.triggered { event := .playHidden, subject := .self }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-168
 /--
@@ -5135,7 +5135,7 @@ def OGN_190 : CardDef :=
   { OGN_190.meta with
     abilities := [.triggered (.onSelf .die)
       (.of [] (.prim (.deal (Selector.all .any .here [.ofType .unit]) (.const 4)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-191
 /--

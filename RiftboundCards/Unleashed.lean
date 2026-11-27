@@ -3205,7 +3205,7 @@ def UNL_110 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
         .targetOf .one .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
       (.prim (.exchangeDamage (.slot 0) (.slot 1)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-111
 /--
@@ -5200,7 +5200,7 @@ def UNL_180 : CardDef :=
   { UNL_180.meta with
     spellEffect := some (.of []
       (.prim (.kill (Selector.all .any .anywhere [.ofType .unit])))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-181
 /--

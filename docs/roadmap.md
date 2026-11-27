@@ -2391,6 +2391,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Tricksy Tentacles は、同じ敵が支配する合計 Might 8 以下の Unit と一つの移動先を宣言する。解決時に元の対象を再確認し、条件を満たすまで対象を減らす必要がある場合はプレイヤーが残す対象を選ぶ。宣言した Base が支配者の変更で無効になった場合や、War で移動先の Battlefield が塞がった場合は Recall を適用する。[公式総合ルール 355.4、355.11、449.2.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Radiant Dawn は自身の支配者が一度に複数の敵を Stun しても一度誘発し、味方を Buff する。Solari Chief は敵を指名し、解決時に Stun 済みならキルし、そうでなければ Stun する。3枚を確認し、全1,103枚中709枚を `full` とした。[公式総合ルール 355.4、383.3.a、424](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### チーム戦の対象と同時ダメージ
+
+- En Garde は味方を選べ、追加の +1 Might には術者自身がその場で支配する唯一の Unit を選ぶ必要がある。Kinkou Monk は二体までの対象を誘発の確定時にまとめて選ぶ。Clash of Giants は二体の Unit が互いに同時にダメージを与える。The Ruination は全席の Unit を同時にキルし、死亡置換を適用する。Block、Blastcone Fae、Ember Monk、Kog'Maw, Caustic と合わせて8枚を確認し、全1,103枚中717枚を `full` とした。[公式総合ルール 355、370、418.6.b.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- 可変 Power の支払いでは、残高と指定された記号を満たすドメインの組み合わせが、ドメイン順で列挙されることを証明した。通常のグループ移動では、候補、費用の可否、宣言済みグループを確定できるかが対応していれば、オブジェクトの ID を付け替えても提示される回答が対応する。[可変 Power の証明](../Riftbound/Invariant/FlexiblePaymentChoices.lean) [移動の選択の証明](../Riftbound/Invariant/PrivateChoices.lean)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
