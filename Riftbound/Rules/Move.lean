@@ -294,6 +294,12 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
   rw [← h1]
   exact this
 
+/-- The card definitions are as they were. -/
+theorem cards {s s' : GameState} (h : SameMeta s s') : s'.cards = s.cards := by
+  unfold SameMeta at h
+  have cardsEq := congrArg GameState.cards h
+  exact cardsEq
+
 /-- The rules are as they were. -/
 theorem config {s s' : GameState} (h : SameMeta s s') : s'.config = s.config := by
   unfold SameMeta at h

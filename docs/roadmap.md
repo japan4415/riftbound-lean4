@@ -2263,6 +2263,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Ki Burst と Life from Stone はチームメイトの Ready Unit を Exhaust して支払える。Parallel Convergence と Ekko, Ingenious はチームメイトがコントロールする Unit も選べ、支払い時にオーナーの手札へ戻す。Starry-Eyed Songstress の割引でもチームメイトの Ready Unit を使える。呪文の対象は追加コストとは別に記録する。[公式総合ルール 355.10.c、415.4、740.1.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Unit や Gear を手札に戻す追加コストの順序
+
+- Unit や Gear を戻す追加コストは、プレイするカードが盤面に出る前に支払う。カードを効果によってプレイする場合も同じ順序になる。宣言時に確定した支払いを維持し、Ready で出るかは支払い後の盤面で判定する。Firebrand Raider を戻して Ekko, Ingenious をプレイした場合、Ekko は Exhaust して出る（CR 357、359.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

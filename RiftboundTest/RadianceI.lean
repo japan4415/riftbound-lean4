@@ -76,6 +76,34 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   return unpaid.countIn p .hand "RAD-061" == 1 && unpaid.countIn p .base "RAD-061" == 0 &&
     paid.countIn p .base "RAD-061" == 1 && paid.countIn p .hand "RAD-011" == 1
 
+-- Raider's passive stops when it is returned for Ekko, before Ekko enters (CR 357, 359.2).
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 3) p "RAD-019" .base
+  let (s, other) ← put s p "RAD-011" .base
+  let (s, ekko) ← put s p "RAD-061" .hand
+  let action (cost : ObjId) : Action := ⟨.player p, .playCard ekko ⟨3, []⟩ [cost] none none .plain⟩
+  let (paid, events) ← (step 100 s (action raider)).toOption
+  let (kept, _) ← (step 100 s (action other)).toOption
+  let returned ← paid.firstOf p .hand "RAD-019"
+  let entered ← paid.firstOf p .base "RAD-061"
+  let stillReady ← kept.firstOf p .base "RAD-061"
+  let moves := events.filter (fun | .moved .. => true | _ => false)
+  return paid.tired entered == some true && kept.tired stillReady == some false &&
+    moves == [.moved raider returned (.player p .hand), .moved ekko entered (.player p .base)]
+
+-- A limited play also pays the return before checking the entry effects.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 0) p "RAD-019" .base
+  let (s, ekko) ← put s p "RAD-061" .hand
+  let plans := permanentPlayPlans s p ekko { price := .ignoreBase }
+  let plan ← plans.find? (fun plan => plan.battlefield.isNone && plan.extraObject == some raider)
+  let (result, entered, events) ← applyReducedPermanent s p ekko plan
+  let returned ← result.firstOf p .hand "RAD-019"
+  return result.tired entered == some true &&
+    events == [.moved raider returned (.player p .hand), .moved ekko entered (.player p .base), .played p entered]
+
 -- Spirit reads the returned Gear's printed Energy, excluding both its Power and Spirit's cost.
 #guard radianceCase fun s => do
   let p := s.me

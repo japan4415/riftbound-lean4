@@ -93,8 +93,7 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c targets (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    exact (tc_applyPlay hr).trans (TC.of_sameMeta (payExtra_safe h2).same)
+  · exact TC.of_safe (playPermanent_safe h)
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
@@ -121,10 +120,10 @@ theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
 theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : reactStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
-  · exact ((tc_applyPlay hm).trans (TC.of_sameMeta (payExtra_safe hx).same)).trans ⟨rfl, rfl⟩
+  · exact (TC.of_safe (playPermanent_safe hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_showdownEnd (s : GameState) (bf : ObjId) (rest : List Frame) :
     TC s (showdownEnd s bf rest).1 := by

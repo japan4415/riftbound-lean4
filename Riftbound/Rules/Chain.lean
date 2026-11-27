@@ -1530,7 +1530,7 @@ def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     (ts : List ObjId) (new : List Frame) (flow : Option Cost := none)
     (pick : SpellPick := .plain) : Option (GameState × List Event) :=
   if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick
-  else ((applyPlay s p c pay pick).bind (fun r => payExtra s c ts r (pick.xpPayer p) pick.extraObject)).map
+  else (playPermanent s p c pay ts pick).map
     (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- What answering with a card does. -/
@@ -1539,44 +1539,38 @@ theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (h : reactStep s p c pay ts new flow pick = some (s', es)) :
     (∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
       s' = { (castPay s c ts (s2, es2)).1 with pending := new }) ∨
-    (∃ s1 es1 s2 es2, applyPlay s p c pay pick = some (s1, es1) ∧
-      payExtra s c ts (s1, es1) (pick.xpPayer p) pick.extraObject = some (s2, es2) ∧
-      s' = { s2 with pending := new }) := by
+    (∃ s2 es2, playPermanent s p c pay ts pick = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
   split at h
   · exact Or.inl (castStep_cases h)
-  · simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨s2, es2⟩, ⟨r, hr, h2⟩, hr2⟩ := h
-    simp only [Prod.mk.injEq] at hr2
-    exact Or.inr ⟨r.1, r.2, s2, es2, hr, h2, hr2.1.symm⟩
+  · obtain ⟨⟨s2, es2⟩, hm, eq⟩ := Option.map_eq_some_iff.mp h
+    exact Or.inr ⟨s2, es2, hm, (congrArg Prod.fst eq).symm⟩
 
 /-- Answering the Chain keeps the game well formed. -/
 theorem reactStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.WF := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · exact ((castPay_safe s c ts (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
-  · exact ((payExtra_safe hx).wf (applyPlay_wf hwf hm)).congr rfl rfl rfl rfl
+  · exact ((playPermanent_safe hm).wf hwf).congr rfl rfl rfl rfl
 
 /-- Answering the Chain keeps the physical cards. -/
 theorem reactStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
     (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.physIds.Perm s.physIds := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · have h2 := applyCast_physIds hwf hm
     exact ((castPay_safe s c ts (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
-  · have h2 := applyPlay_physIds hwf hm
-    exact ((payExtra_safe hx).phys (applyPlay_wf hwf hm)).trans h2
+  · exact (playPermanent_safe hm).phys hwf
 
 /-- Answering the Chain keeps `OwnerOk`. -/
 theorem reactStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
     (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.OwnerOk := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · exact ((castPay_safe s c ts (s2, es2)).own (applyCast_wf hwf hm)
       (applyCast_ownerOk hwf hown hm)).congr rfl rfl
-  · exact ((payExtra_safe hx).own (applyPlay_wf hwf hm) (applyPlay_ownerOk hwf hown hm)).congr rfl
-      rfl
+  · exact ((playPermanent_safe hm).own hwf hown).congr rfl rfl
 
 /-- Answering the Chain changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
@@ -1585,15 +1579,13 @@ theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
     (h : reactStep s p c pay ts new flow pick = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
     have hs := (castPay_safe s c ts (s2, es2)).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, rfl⟩
-  · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyPlay_meta hm
-    have hs := (payExtra_safe hx).same
-    exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
-      (congrArg GameState.cards hs).trans h6, rfl⟩
+  · have hs := (playPermanent_safe hm).same
+    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, rfl⟩
 
 /-- An optional discard preserves the rules and the stack produced by a Main Phase play. -/
 theorem applyPlayCard_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
@@ -1638,11 +1630,9 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   · rename_i hk
     rcases h with h | ⟨dest, ts', _, h⟩
     · exact absurd h hk
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf
-        (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h (applied := pick)
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r (pick.xpPayer p) pick.extraObject
-      refine ⟨({ r'.1 with pending := new }, r'.2), ?_⟩
-      simp [hr, hr']
+    · obtain ⟨r, applied⟩ := playPermanent_isSome (ts := ts) (pick := pick) hwf
+        (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
+      exact ⟨({ r.1 with pending := new }, r.2), by rw [applied]; rfl⟩
 
 /-! ### I9: the Chain is last in, first out (CR 340.1) -/
 

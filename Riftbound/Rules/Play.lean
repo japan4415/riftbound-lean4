@@ -1715,25 +1715,26 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
 /-- Play a card (CR 349-359): pay, and put it on the Base, exhausted if it is a Unit (CR 359),
 unless it enters ready or the cost of Accelerate was paid (CR 805). -/
 def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
-    (pick : SpellPick := .plain) :
+    (pick : SpellPick := .plain) (declaration : Option GameState := none) :
     Option (GameState × List Event) :=
-  match s.cardDef? c, (s.poolOf p).spend pay ((s.cardDef? c).any (·.hasType .unit)) with
+  let before := declaration.getD s
+  match before.cardDef? c, (s.poolOf p).spend pay ((before.cardDef? c).any (·.hasType .unit)) with
   | some d, some pool =>
     (moveObj s c (.player p .base)).map (fun r =>
-      let mark := s.playMark p c pay (pick := pick)
+      let mark := { before.playMark p c pay (pick := pick) with stamp := s.nextTimestamp }
       let mark := pick.permanentCosts.elim mark (fun own =>
         { mark with
           paid := if d.additionalCost.isSome then own.contains 0 else !own.isEmpty
           extraPaid := own.length
           spellPick := pick })
-      let accelerated := pick.permanentCosts.elim (s.paidExtra p c d pay pick)
+      let accelerated := pick.permanentCosts.elim (before.paidExtra p c d pay pick)
         (fun own => own.contains (if d.additionalCost.isSome then 1 else 0))
       let s1 := (r.1.modObj r.2 (Object.withPlay [] mark)).setPool p pool
       ((if (d.hasType .unit && !s.readyNow p c d mark.shownOff &&
-            !(s.accelerateForPlay p d && accelerated)) || d.entersExhausted
+            !(before.accelerateForPlay p d && accelerated)) || d.entersExhausted
           then s1.exhaustObj r.2
         else s1),
-        s.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))
+        before.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
 /-- Do the additional cost of the kind to the object. -/
@@ -2199,6 +2200,123 @@ theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId} {xpPayer : O
 def SpellPick.xpPayer (pick : SpellPick) (p : PlayerId) : Option PlayerId :=
   if pick.paysXP then some p else none
 
+/-- A return paid before the card enters play, with the returned Gear's printed Energy if any. -/
+structure PermanentReturn where
+  /-- State after the return. -/
+  state : GameState
+  /-- Moving the returned object to its owner's hand. -/
+  events : List Event
+  /-- Printed Energy when the returned object is Gear. -/
+  energy : Option Nat
+
+/-- An additional cost that returns a permanent is paid while the played card is off the Board. -/
+def payPermanentReturn (before s : GameState) (c : ObjId) (costs : List ObjId) :
+    Option PermanentReturn :=
+  match (before.cardDef? c).bind (·.playExtra), costs with
+  | some (k, _), [target] =>
+    if (k == .returnGear || k == .returnUnit) && s.inPlay.contains target then
+      (s.obj? target).bind fun o =>
+        (moveObj s target (.player o.owner .hand)).map fun (paid, returned) =>
+          let energy := if k == .returnGear then ((before.cardDef? target).bind (·.cost)).map (·.energy)
+            else none
+          ⟨paid, [.moved target returned (.player o.owner .hand)], energy⟩
+    else none
+  | _, _ => none
+
+/-- A successful return is a move from the Board to the object's owner's hand. -/
+theorem payPermanentReturn_move {before s : GameState} {c : ObjId} {costs : List ObjId}
+    {payment : PermanentReturn} (h : payPermanentReturn before s c costs = some payment) :
+    ∃ target returned owner, target ∈ s.inPlay ∧
+      moveObj s target (.player owner .hand) = some (payment.state, returned) := by
+  cases found : (before.cardDef? c).bind (·.playExtra) with
+  | none => simp [payPermanentReturn, found] at h
+  | some cost =>
+    obtain ⟨k, required⟩ := cost
+    cases costs with
+    | nil => simp [payPermanentReturn, found] at h
+    | cons target rest =>
+      cases rest with
+      | nil =>
+        simp only [payPermanentReturn, found] at h
+        split at h
+        · rename_i eligible
+          obtain ⟨o, _, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨⟨paid, returned⟩, hm, h⟩ := Option.map_eq_some_iff.mp h
+          subst payment
+          exact ⟨target, returned, o.owner,
+            List.contains_iff_mem.mp (Bool.and_eq_true_iff.mp eligible).2, hm⟩
+        · contradiction
+      | cons _ _ => simp [payPermanentReturn, found] at h
+
+/-- Paying the return cost preserves all structural invariants. -/
+theorem payPermanentReturn_safe {before s : GameState} {c : ObjId} {costs : List ObjId}
+    {payment : PermanentReturn} (h : payPermanentReturn before s c costs = some payment) :
+    Safe s payment.state := by
+  obtain ⟨_, _, _, _, move⟩ := payPermanentReturn_move h
+  exact Safe.moveObj move
+
+/-- Returning a Board object leaves an already declared off-Board card in its zone and the Pools
+unchanged. Its source and owner can still be used to prove the play can finish. -/
+theorem payPermanentReturn_keepsSource {before s : GameState} {c : ObjId} {costs : List ObjId}
+    {payment : PermanentReturn} (h : payPermanentReturn before s c costs = some payment)
+    (hwf : s.WF) {z : Zone} (hz : z.isBoard = false) (hc : c ∈ s.zone z) :
+    c ∈ payment.state.zone z ∧ payment.state.obj? c = s.obj? c ∧ payment.state.pools = s.pools := by
+  obtain ⟨target, returned, owner, inPlay, hm⟩ := payPermanentReturn_move h
+  obtain ⟨origin, board, there⟩ := GameState.mem_inPlay_zone inPlay
+  obtain ⟨src, dst, spec, o, _, hdst⟩ := moveObj_spec_dst hm
+  have whereTarget := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf there) there
+  have sameSource : src = origin := Option.some.inj (spec.locate.symm.trans whereTarget)
+  have other : z ≠ src := by
+    intro eq
+    rw [eq, sameSource, board] at hz
+    contradiction
+  have distinct : c ≠ target := by
+    intro eq
+    subst eq
+    have whereCard := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hc) hc
+    exact other (Option.some.inj (whereCard.symm.trans spec.locate))
+  have distinctNew : c ≠ returned := by
+    rcases spec.fresh with same | fresh
+    · exact same ▸ distinct
+    · have bound := hwf.lt_nextId c (GameState.mem_zoneIds (GameState.zone_valid_of_mem hwf hc) hc)
+      intro eq
+      rw [eq, fresh] at bound
+      exact Nat.lt_irrefl _ bound
+  refine ⟨?_, spec.objects_other c.n ?_ ?_, spec.pools⟩
+  · by_cases eq : z = dst
+    · rw [eq, spec.zone_dst]
+      exact List.mem_cons_of_mem _ (eq ▸ hc)
+    · exact (spec.zone_other other eq).symm ▸ hc
+  · intro eq
+    exact distinct (by cases c; cases target; simp_all)
+  · intro eq
+    exact distinctNew (by cases c; cases returned; simp_all)
+
+/-- Finish the entered card and emit the return before the entry movement. -/
+def finishReturnedPermanent (before : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)
+    (pick : SpellPick) (payment : PermanentReturn) (r : GameState × List Event) :
+    GameState × List Event :=
+  let placed := placeAtBf payment.state ts (gearSpent before c r)
+  let id := r.2.findSome? (fun | .moved old new _ => if old == c then some new else none | _ => none)
+  let reveal := before.showOffEvents p pick.showOffObject
+  (markPaid placed.1 id false payment.energy, reveal ++ payment.events ++ r.2.drop reveal.length)
+
+/-- Entry and its mark preserve the invariants of the paid state. -/
+theorem finishReturnedPermanent_safe (before : GameState) (p : PlayerId) (c : ObjId)
+    (ts : List ObjId) (pick : SpellPick) (payment : PermanentReturn) (r : GameState × List Event) :
+    Safe r.1 (finishReturnedPermanent before p c ts pick payment r).1 :=
+  ((gearSpent_safe before c r).trans (placeAtBf_safe payment.state ts _)).trans
+    (markPaid_safe _ _ _ _)
+
+/-- Put a permanent on the Board, paying a return cost first if one was declared. -/
+def playPermanent (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
+    (ts : List ObjId) (pick : SpellPick) : Option (GameState × List Event) :=
+  let costs := if (s.bfPick ts).isSome then pick.extraObject.toList else ts
+  match payPermanentReturn s s c costs with
+  | some payment => (applyPlay payment.state p c pay pick (some s)).map
+      (finishReturnedPermanent s p c ts pick payment)
+  | none => (applyPlay s p c pay pick).bind (fun r => payExtra s c ts r (pick.xpPayer p) pick.extraObject)
+
 /-- The Chain is giving a player priority to react (CR 337.4). -/
 def GameState.reactionWindow (s : GameState) : Bool :=
   match s.pending with
@@ -2331,14 +2449,14 @@ theorem bfPlayOk_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
 /-- The shape of a card being played: its definition, the Pool after paying, and the move to the
 Base. -/
 theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) :
-    ∃ d pool s2 id' m exhaust, s.cardDef? c = some d ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool ∧
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event} (h : applyPlay s p c pay pick declaration = some (s', es)) :
+    ∃ d pool s2 id' m exhaust, (declaration.getD s).cardDef? c = some d ∧ (s.poolOf p).spend pay (d.hasType .unit) = some pool ∧
       moveObj s c (.player p .base) = some (s2, id') ∧
       s' = (if exhaust = true
         then ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).exhaustObj id'
         else (s2.modObj id' (Object.withPlay [] m)).setPool p pool) := by
   unfold applyPlay at h
-  cases hd : s.cardDef? c with
+  cases hd : (declaration.getD s).cardDef? c with
   | none => simp [hd] at h
   | some d =>
     cases hs : (s.poolOf p).spend pay (d.hasType .unit) with
@@ -2351,7 +2469,7 @@ theorem applyPlay_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlay_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {pick : SpellPick} {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay pick = some (s', es)) : s'.WF := by
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay pick declaration = some (s', es)) : s'.WF := by
   obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
   have h2 : ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).WF :=
     (GameState.wf_modObj (moveObj_wf hwf hm) id' _).congr rfl rfl rfl rfl
@@ -2361,7 +2479,7 @@ theorem applyPlay_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
 
 /-- Playing a card keeps the physical cards. -/
 theorem applyPlay_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {pick : SpellPick} {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay pick = some (s', es)) :
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event} (hwf : s.WF) (h : applyPlay s p c pay pick declaration = some (s', es)) :
     s'.physIds.Perm s.physIds := by
   obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
   have hp0 := moveObj_physIds hwf hm
@@ -2376,8 +2494,8 @@ theorem applyPlay_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 
 /-- Playing a card keeps `OwnerOk`. -/
 theorem applyPlay_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {pick : SpellPick} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : applyPlay s p c pay pick = some (s', es)) :
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : applyPlay s p c pay pick declaration = some (s', es)) :
     s'.OwnerOk := by
   obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
   have h2 : ((s2.modObj id' (Object.withPlay [] m)).setPool p pool).OwnerOk :=
@@ -2390,7 +2508,7 @@ theorem applyPlay_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
 /-- Playing a card changes nothing of the stack, the turn order, the phase, the result, the rules
 or the cards. -/
 theorem applyPlay_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {pick : SpellPick} {es : List Event} (h : applyPlay s p c pay pick = some (s', es)) :
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event} (h : applyPlay s p c pay pick declaration = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.pending = s.pending ∧ s'.cards = s.cards := by
   obtain ⟨d, pool, s2, id', m, exhaust, -, -, hm, rfl⟩ := applyPlay_cases h
@@ -2407,6 +2525,50 @@ theorem applyPlay_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
   · exact ⟨hc, ht, hph, hr, hpe, hcd⟩
 
+/-- The permanent's move, entry attributes and payment preserve the game invariants. -/
+theorem applyPlay_safe {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {pick : SpellPick} {declaration : Option GameState} {es : List Event}
+    (h : applyPlay s p c pay pick declaration = some (s', es)) : Safe s s' := by
+  refine ⟨fun hwf => applyPlay_wf hwf h, fun hwf => applyPlay_physIds hwf h,
+    fun hwf hown => applyPlay_ownerOk hwf hown h, ?_⟩
+  obtain ⟨_, pool, s2, id', mark, exhaust, -, -, move, rfl⟩ := applyPlay_cases h
+  obtain ⟨_, _, spec⟩ := moveObj_spec move
+  split <;> exact spec.other
+
+/-- Finalizing the permanent preserves the structural and ownership invariants. -/
+theorem playPermanent_safe {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {ts : List ObjId} {pick : SpellPick} {es : List Event}
+    (h : playPermanent s p c pay ts pick = some (s', es)) : Safe s s' := by
+  unfold playPermanent at h
+  dsimp only at h
+  split at h
+  · rename_i payment prepaid
+    obtain ⟨result, entered, eq⟩ := Option.map_eq_some_iff.mp h
+    have finish := finishReturnedPermanent_safe s p c ts pick payment result
+    rw [eq] at finish
+    exact (payPermanentReturn_safe prepaid).trans ((applyPlay_safe entered).trans finish)
+  · obtain ⟨_, entered, finished⟩ := Option.bind_eq_some_iff.mp h
+    exact (applyPlay_safe entered).trans (payExtra_safe finished)
+
+/-- Entry can be completed after payment when the original card and the funds are available. -/
+theorem applyPlay_from_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {pick : SpellPick} {declaration : Option GameState} {o : Object} {d : CardDef}
+    {pool : RunePool} {k : ZoneKind} (hwf : s.WF) (hc : c ∈ s.zone (.player p k)) (hk : k ≠ .base)
+    (ho : s.obj? c = some o) (howner : o.owner = p) (hd : (declaration.getD s).cardDef? c = some d)
+    (hpool : (s.poolOf p).spend pay (d.hasType .unit) = some pool) :
+    ∃ r, applyPlay s p c pay pick declaration = some r := by
+  have hpn : p.n < s.playerCount :=
+    Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hc)
+  obtain ⟨r, hr⟩ := moveObj_isSome hwf hc (.player p .base) .top (fun o' ho' => by
+    have : o' = o := Option.some.inj (ho'.symm.trans ho)
+    subst this
+    rw [howner]
+    simp only [Zone.normalize, Zone.isBoard, ite_true]
+    exact ⟨Zone.valid_player hpn _, by simp [hk]⟩)
+  unfold applyPlay
+  simp only [hd, Option.any_some, hpool, hr, Option.map_some]
+  exact ⟨_, rfl⟩
+
 /-- A playable card from a legal permanent-play zone can be put on the Base. -/
 theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {dest : Option ObjId} (hwf : s.WF)
@@ -2420,18 +2582,35 @@ theorem applyPlay_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     · exact ⟨.hand, h, by simp⟩
     · exact ⟨.trash, h, by simp⟩
     · exact ⟨.banishment, h, by simp⟩
-  have hpn : p.n < s.playerCount :=
-    Zone.lt_of_valid_player (GameState.zone_valid_of_mem hwf hck)
-  obtain ⟨r, hr⟩ := moveObj_isSome hwf hck (.player p .base) .top (fun o' ho' => by
-    have : o' = o := Option.some.inj (ho'.symm.trans ho)
-    subst this
-    rw [howner]
-    simp only [Zone.normalize, Zone.isBoard, ite_true]
-    exact ⟨Zone.valid_player hpn _, by simp [hkb]⟩)
-  unfold applyPlay
-  simp only [hd, Option.any_some, hpool]
-  simp only [hr, Option.map_some]
-  exact ⟨_, rfl⟩
+  exact applyPlay_from_isSome hwf hck hkb ho howner hd hpool
+
+/-- The return preserves the source and payment of a playable card, so entry still succeeds. -/
+theorem playPermanent_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
+    {dest : Option ObjId} {ts declared : List ObjId} {checked pick : SpellPick} (hwf : s.WF)
+    (hc : c ∈ s.zone (.player p .hand) ∨ c ∈ s.zone (.player p .trash) ∨
+      c ∈ s.zone (.player p .banishment))
+    (hp : playable s p c pay dest declared checked = true) :
+    ∃ r, playPermanent s p c pay ts pick = some r := by
+  unfold playPermanent
+  dsimp only
+  split
+  · rename_i payment prepaid
+    obtain ⟨o, d, _, pool, -, ho, hd, howner, -, -, -, funds⟩ := playable_spec hp
+    obtain ⟨k, hck, hkb, hboard⟩ : ∃ k, c ∈ s.zone (.player p k) ∧
+        k ≠ .base ∧ (Zone.player p k).isBoard = false := by
+      rcases hc with member | member | member
+      · exact ⟨.hand, member, by simp, rfl⟩
+      · exact ⟨.trash, member, by simp, rfl⟩
+      · exact ⟨.banishment, member, by simp, rfl⟩
+    obtain ⟨member, sameObject, samePools⟩ := payPermanentReturn_keepsSource prepaid hwf hboard hck
+    have fundsAfter : (payment.state.poolOf p).spend pay (d.hasType .unit) = some pool := by
+      simpa only [GameState.poolOf, samePools] using funds
+    obtain ⟨result, ok⟩ := applyPlay_from_isSome (pick := pick) (declaration := some s)
+      ((payPermanentReturn_safe prepaid).wf hwf) member hkb (sameObject.trans ho) howner hd fundsAfter
+    exact ⟨_, by rw [ok]; rfl⟩
+  · obtain ⟨r, hr⟩ := applyPlay_isSome hwf hc hp (applied := pick)
+    obtain ⟨r', hr'⟩ := payExtra_isSome s c ts r (pick.xpPayer p) pick.extraObject
+    exact ⟨r', by simp [hr, hr']⟩
 
 /-- **Playing a card takes exactly the payment out of the Pool** (I8) (CR 357, 445): the player's
 Pool is what the Pool is left with after paying, and no other Pool changes. -/
@@ -2493,7 +2672,7 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     ∃ id', es = [Event.moved c id' (.player p .base)] ∧
       ∀ d, s.cardDef? c = some d → d.hasType .unit = true → s.readyNow p c d = false →
         s.paidExtra p c d pay = false → ∀ o, s'.obj? id' = some o → o.exhausted = true := by
-  unfold applyPlay at h
+  simp only [applyPlay, Option.getD_none] at h
   cases hd : s.cardDef? c with
   | none => simp [hd] at h
   | some d =>
@@ -2510,6 +2689,8 @@ theorem applyPlay_events {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
       have noShow : (s.playMark p c pay).shownOff = none := rfl
       simp only [noShow, SpellPick.permanentCosts, Option.elim_none, hu, hr, hx0, Bool.and_false,
         Bool.not_false, Bool.and_self, Bool.true_or, ite_true, GameState.obj?_exhaustObj] at ho
+      change Option.map exhaustOf
+        (((s2.modObj id' (Object.withPlay [] (s.playMark p c pay))).setPool p pool).obj? id') = some o at ho
       cases hx : ((s2.modObj id' (Object.withPlay [] (s.playMark p c pay))).setPool p pool).obj?
           id' with
       | none => rw [hx] at ho; simp at ho
@@ -2989,7 +3170,7 @@ def applyPlayCard (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Pay
       (fun r =>
         let r' := castPay s c targets r
         ({ r'.1 with pending := .chainPass p 0 :: .priority p :: rest }, r'.2))
-  else (applyPlay s p c pay pick).bind (fun r => payExtra s c targets r (pick.xpPayer p) pick.extraObject)
+  else playPermanent s p c pay targets pick
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -3002,8 +3183,7 @@ theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact ((castPay_safe s c targets (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    exact (payExtra_safe h2).wf (applyPlay_wf hwf hr)
+  · exact (playPermanent_safe h).wf hwf
 
 /-- Playing a card keeps the physical cards. -/
 theorem applyPlayCard_physIds {s s' : GameState} {p : PlayerId} {c : ObjId}
@@ -3018,8 +3198,7 @@ theorem applyPlayCard_physIds {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     have hp := applyCast_physIds hwf hm
     exact ((castPay_safe s c targets (s2, es2)).phys (applyCast_wf hwf hm)).trans hp
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    exact ((payExtra_safe h2).phys (applyPlay_wf hwf hr)).trans (applyPlay_physIds hwf hr)
+  · exact (playPermanent_safe h).phys hwf
 
 /-- Playing a card keeps `OwnerOk`. -/
 theorem applyPlayCard_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId}
@@ -3034,8 +3213,7 @@ theorem applyPlayCard_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact ((castPay_safe s c targets (s2, es2)).own (applyCast_wf hwf hm)
       (applyCast_ownerOk hwf hown hm)).congr rfl rfl
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    exact (payExtra_safe h2).own (applyPlay_wf hwf hr) (applyPlay_ownerOk hwf hown hr)
+  · exact (playPermanent_safe h).own hwf hown
 
 /-- Playing a card changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is the same, or the Spell's players have to pass above the `priority` frame. -/
@@ -3055,11 +3233,8 @@ theorem applyPlayCard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
     have hs := (castPay_safe s c targets (s2, es2)).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, Or.inr rfl⟩
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨h1, h2', h3, h4, h5, h6⟩ := applyPlay_meta hr
-    have hs := (payExtra_safe h2).same
-    exact ⟨hs.config.trans h1, hs.turnOrder.trans h2', hs.phase.trans h3, hs.result.trans h4,
-      (congrArg GameState.cards hs).trans h6, Or.inl (hs.pending.trans h5)⟩
+  · have hs := (playPermanent_safe h).same
+    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, Or.inl hs.pending⟩
 
 /-- A card that can be played or cast is played after setup. -/
 theorem playOk_not_setup {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -3085,14 +3260,10 @@ theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : R
     exact ⟨_, rfl⟩
   · simp only [hcast]
     rcases hp with ⟨-, h, -⟩ | h | ⟨h, -⟩
-    · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p) pick.extraObject
-      exact ⟨r', by simp [hr, hr']⟩
+    · exact playPermanent_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
     · exact absurd h hcast
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p) pick.extraObject
-      exact ⟨r', by simp [hr, hr']⟩
+      exact playPermanent_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
 
 end Riftbound
 
