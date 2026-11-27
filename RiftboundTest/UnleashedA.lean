@@ -911,6 +911,26 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   return arrived.xpOf p == s.xpOf p + 2 && (arrived.unitsAtOf field p).contains root &&
     returned.xpOf p == arrived.xpOf p && returned.countIn p .base "UNL-127" == 1
 
+-- Nilah can Accelerate and use Ganking. Each move earns XP, while playing her does not.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let other ← s.battlefields[1]?
+  let (s, nilah) ← put (((s.control p field).control p other).rich p) p "UNL-115" .hand
+  let normal ← cast s p nilah ⟨3, [.body]⟩
+  let paid ← cast s p nilah ⟨4, [.body, .body]⟩
+  let original ← normal.firstOf p .base "UNL-115"
+  let accelerated ← paid.firstOf p .base "UNL-115"
+  let (queued, _) ← (step 100 paid ⟨.player p, .standardMove accelerated (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 queued
+  let moved ← (arrived.unitsAtOf field p).find? (fun id => (arrived.cardDef? id).any (·.id == cid "UNL-115"))
+  let ready := (readyEffect arrived moved).1
+  let (queuedAgain, _) ← (step 100 ready ⟨.player p, .standardMove moved (.battlefield other)⟩).toOption
+  let finished := settleChain {} 12 queuedAgain
+  return normal.tired original == some true && paid.tired accelerated == some false && paid.xpOf p == s.xpOf p &&
+    arrived.xpOf p == s.xpOf p + 1 && finished.xpOf p == s.xpOf p + 2 &&
+    (finished.unitsAtOf other p).contains moved && finished.xpOf s.you == s.xpOf s.you
+
 -- Smoke and Mirrors swaps units at distinct locations with Temporary. Both branches draw.
 #guard tun fun s => do
   let p := s.me

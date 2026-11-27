@@ -3341,7 +3341,7 @@ def UNL_115 : CardDef :=
     abilities := [.triggered (.onSelf .move)
         (.of []
         (.prim (.gainXP .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-116
 /--

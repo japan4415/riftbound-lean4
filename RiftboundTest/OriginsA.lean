@@ -3070,6 +3070,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     (no.poolOf s.me).energy == 1 && (no.obj? u).map (·.loc) == some (some s.bf0) &&
     broke.countIn s.me .hand "OGN-035" == 0 && (broke.obj? u).map (·.loc) == some (some s.bf0)
 
+-- Traveling Merchant asks for the discard before drawing after a move.
+#guard t fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, merchant) ← put (s.control p field) p "OGN-185" .base
+  let (s, discarded) ← put s p "OGN-001" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove merchant (.battlefield field)⟩).toOption
+  let passChain (state : GameState) : Option GameState := do
+    let .chainPass actor _ :: _ := state.pending | none
+    (step 100 state ⟨.player actor, .pass⟩).toOption.map Prod.fst
+  let waiting ← (passChain queued).bind passChain
+  let (finished, _) ← (step 100 waiting ⟨.player p, .discardPick discarded⟩).toOption
+  return waiting.zone (.player p .mainDeck) == s.zone (.player p .mainDeck) &&
+    finished.countIn p .trash "OGN-001" == s.countIn p .trash "OGN-001" + 1 &&
+    finished.handN p == s.handN p &&
+    (finished.zone (.player p .mainDeck)).length + 1 == (s.zone (.player p .mainDeck)).length
+
 -- Standard Moves counted in the turn. Yasuo, Windrider (OGN-205): the third time he moves in a
 -- turn, I score 1 point
 /-- Move the unit by a Standard Move; the state and the events. -/

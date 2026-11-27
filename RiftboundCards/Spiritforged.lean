@@ -1203,9 +1203,9 @@ def SFD_041 : CardDef :=
     abilities := [.triggered (.onSelf .move)
       (.of [] (.seqOf [.prim (.revealTop 1), .ifThen
         (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .gear])) (.const 1))
-        (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
+        (.prim (.draw .you (.const 1)))
         (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-042
 /--
@@ -1394,7 +1394,7 @@ def SFD_048 : CardDef :=
     abilities := [.triggered (.onSelf .move)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-049
 /--
@@ -3816,7 +3816,7 @@ def SFD_130 : CardDef :=
     abilities := [.triggered (.onSelf .move)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-131
 /--
@@ -6420,7 +6420,7 @@ def SFD_T03 : CardDef :=
   { SFD_T03.meta with
     abilities := [.activated [.killSelf, .exhaustSelf] .reaction
       (.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Spiritforged. -/

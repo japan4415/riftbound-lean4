@@ -1937,6 +1937,31 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
     q.countIn s.me .hand "OGN-051" == u.countIn s.me .hand "OGN-051" &&
     q.deckN s.me == u.deckN s.me && q.bottomIs s.me 1 "OGN-051"
 
+-- Stellacorn Herder draws for either direction of movement, including a move by Flash.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, herder) ← put (s.control p field) p "SFD-048" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove herder (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 queued
+  let returned ← play arrived p flash [herder]
+  return arrived.deckN p + 1 == s.deckN p && returned.deckN p + 1 == arrived.deckN p &&
+    returned.countIn p .base "SFD-048" == 1 && returned.deckN s.you == s.deckN s.you
+
+-- Treasure Hunter plays a new exhausted Gold each time it moves, even on returning to Base.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, hunter) ← put (s.control p field) p "SFD-130" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove hunter (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 queued
+  let returned ← play arrived p flash [hunter]
+  let gold := (returned.zone (.player p .base)).filter (returned.isCard "SFD-T03")
+  return arrived.countIn p .base "SFD-T03" == 1 && gold.length == 2 &&
+    gold.all (fun id => returned.tired id == some true) && returned.countIn p .base "SFD-130" == 1
+
 -- Ornn, Blacksmith (SFD-058): when played or when it holds, look at the top 4 cards: a gear among
 -- them may be drawn, the rest are recycled
 #guard tsf fun s => do

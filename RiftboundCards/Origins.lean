@@ -5008,7 +5008,7 @@ def OGN_185 : CardDef :=
         (.of []
         (.seqOf [.prim (.discard .you (.const 1)),
           .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-186
 /--
