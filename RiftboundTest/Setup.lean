@@ -113,6 +113,25 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
 
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
 
+-- Repeated copies in a Combat assignment remain ambiguous until only one is legally next.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let s := GameState.empty cfg db
+  let (s, field) ← addObject s (newCard db s p (cid "B0")) .battlefieldZone
+  let add (s : GameState) := addObject s
+    { newCard db s q (cid "V0") with loc := some field } .battlefieldZone .bottom
+  let (s, first) ← add s
+  let (s, second) ← add s
+  let decision (picked : List ObjId) := { s with pending := [.assign field p p picked []] }
+  let answer := ReplayAnswer.observedCardPick ⟨p, .assignDamage, cid "V0"⟩
+  let (a, exactA) ← (answer.resolveAt (decision []) 1).toOption
+  let (b, exactB) ← (answer.resolveAt (decision [first]) 2).toOption
+  return a == ⟨.player p, .assignPick first⟩ && !exactA &&
+    b == ⟨.player p, .assignPick second⟩ && exactB &&
+    ((answer.resolveAt (decision [first, second]) 3).toOption).isNone
+  : Option Bool).getD false
+
 meta def finished (seed : Nat) : Option GameState :=
   match start with
   | none => none

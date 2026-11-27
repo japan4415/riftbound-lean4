@@ -112,6 +112,8 @@ inductive ReplayCardPickKind where
   | predictTop
   /-- Recycle a Predict card. -/
   | predictRecycle
+  /-- Name the next Unit to receive a Combat damage assignment. -/
+  | assignDamage
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A card chosen by a recorded player, identified by its visible card code. -/
@@ -182,7 +184,7 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
 private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
   (s.obj? id).bind (·.kind.cardId?)
 
-/-- Describe a hand or Predict pick in the full replay transcription. -/
+/-- Describe a card or Unit pick in the full replay transcription. -/
 def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option ReplayCardPick := do
   let .player seat := action.actor | none
   let (kind, id) ← match action.kind with
@@ -190,6 +192,7 @@ def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option Replay
     | .discardPick id => some (.discard, id)
     | .predictPick id false => some (.predictTop, id)
     | .predictPick id true => some (.predictRecycle, id)
+    | .assignPick id => some (.assignDamage, id)
     | _ => none
   let card ← replayCardCode s id
   return ⟨seat, kind, card⟩
