@@ -8468,7 +8468,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "When you conquer here, recycle one of your runes."
+    "When you conquer here, you must recycle one of your runes. (This doesn't choose anything.)"
    ],
    "textVariants": 1,
    "types": [
@@ -8522,7 +8522,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "When you conquer here, ready 2 runes at the end of this turn."
+    "When you conquer here, ready up to 2 runes at the end of this turn."
    ],
    "textVariants": 1,
    "types": [
@@ -8711,7 +8711,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "Spells and abilities affecting units here each deal 1 Bonus Damage. (Each instance of damage the spell deals is increased by 1.)"
+    "Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.)"
    ],
    "textVariants": 1,
    "types": [

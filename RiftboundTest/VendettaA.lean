@@ -69,7 +69,7 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
     funded.kwAmount reaper .assault == 0 && (funded.poolOf p).fury == 1 &&
     paid.kwAmount reaper .assault == 2 && paid.tired battery == some true && (paid.poolOf p).total == 0
 
--- When Mask Mother is discarded, its controller can pay with a Reaction Add.
+-- When Mask Mother is discarded, its controller can pay with a Reaction Add at finalization.
 #guard vendettaCase fun s => do
   let p := s.me
   let (s, mother) ← put s p "VEN-094" .hand
@@ -78,16 +78,17 @@ meta def vendettaCase (f : GameState → Option Bool) : Bool :=
   let s := (s.fund p 0).modObj sage (fun o => { o with exhausted := false })
   let waiting := { s with pending := [.discard p 1] }
   let (discarded, _) ← (step 100 waiting ⟨.player p, .discardPick mother⟩).toOption
-  let offer := settleChain { pick := (· == [ally]) } 12 discarded
-  let add : Action := ⟨.player p, .manaAbility sage 0 ⟨0, []⟩⟩
-  let accept : Action := ⟨.player p, .decide true⟩
-  let (skipped, _) ← (step 100 offer ⟨.player p, .decide false⟩).toOption
-  let (funded, _) ← (step 100 offer add).toOption
-  let (paid, _) ← (step 100 funded accept).toOption
-  return !(legalActions offer).contains accept && (legalActions offer).contains add &&
-    skipped.mightNow ally == some 2 && skipped.tired sage == some false &&
-    funded.mightNow ally == some 2 && (funded.poolOf p).energy == 1 &&
-    paid.mightNow ally == some 4 && paid.tired sage == some true && (paid.poolOf p).total == 0
+  let act (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption
+  let accept := ActionKind.putTrigger 0 [ally]
+  let (skipped, _) ← act discarded (.putTrigger 0 [] .skip)
+  let (locked, _) ← act discarded (.prepareTrigger 0 [ally] (.pay []))
+  let (funded, _) ← act locked (.triggerAdd (.ability sage 0 0 []))
+  let (paid, _) ← act funded accept
+  let done := settleChain {} 12 paid
+  return (act discarded accept).isNone && skipped.mightNow ally == some 2 &&
+    skipped.tired sage == some false && (skipped.zone .chain).isEmpty &&
+    funded.tired sage == some false && paid.mightNow ally == some 2 &&
+    paid.tired sage == some true && (paid.poolOf p).total == 0 && done.mightNow ally == some 4
 
 -- Dame snapshots the signed difference on attack or defense, then adds one Might.
 #guard vendettaCase fun s => do
@@ -907,6 +908,30 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     !((firstEvents ++ secondEvents).any (fun
       | .chosenByAbility _ _ | .chosenBySpell _ _ => true
       | _ => false))
+
+-- The team game still asks each seat to choose among the Units that seat controls.
+#guard vendettaCase fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, spell) ← put s p "VEN-090" .hand
+  let (s, mine) ← put s p "VEN-014" .base
+  let (s, another) ← put s p "VEN-014" .base
+  let (s, teammate) ← put s ally "VEN-014" .base
+  let (onChain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨8, [.body, .body, .body]⟩ []⟩).toOption
+  let picking ← (List.range 4).foldlM (fun state _ => do
+    let .chainPass actor _ :: _ := state.pending | none
+    (step 100 state ⟨.player actor, .pass⟩).toOption.map Prod.fst) onChain
+  let choose (unit : ObjId) : Action := ⟨.player p, .choose unit⟩
+  let available := legalFrameActions picking
+  let (done, _) ← (step 100 picking (choose mine)).toOption
+  return available.contains (choose mine) && available.contains (choose another) &&
+    !available.contains (choose teammate) && (done.obj? mine).isSome &&
+    (done.obj? teammate).isSome && (done.obj? another).isNone
 
 -- Jagged Cutlass applies once Equip resolves. The opponent can target the
 -- equipped Unit with Fight or Flight but cannot move it. Friendly moves and Recall still work.
@@ -2815,7 +2840,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let ready := createOne gold.id p none true ready
   let waiting ← castStop (ready.tire legend) p first
   let viaGear := settleChain { pick := (· == [legend]) } 12 waiting
-  let (declined, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 []⟩).toOption
+  let (declined, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
   let noSecond ← play declined p second [] { pick := (· == [legend]) }
   let turn := { declined with turn := declined.turn + 1 }
   let nextFirst ← play turn p second [] { pick := (· == [legend]) }
@@ -4219,7 +4244,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (empowered, events) := empowerObj s.me s matriarch
   let targets ← firePicks empowered events
   let chosen ← fire empowered events { pick := (· == [eligible]) }
-  let declined ← fire empowered events { pick := List.isEmpty }
+  let declined ← fire empowered events { yes := false }
   let unit ← chosen.firstOf s.me .base "VEN-014"
   return targets == [eligible] && (chosen.obj? eligible).isNone &&
     chosen.tired unit == some true && chosen.countIn s.you .trash "VEN-014" == 1 &&

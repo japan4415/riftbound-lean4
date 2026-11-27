@@ -2119,8 +2119,15 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### Chosen Champion の実物カードの追跡（2026-11-27）
 
 - 構築戦、Limited、Bo1 の登録で Chosen Champion の物理 ID を記録する。ゾーンを移動して ObjId が変わっても、登録したカードかどうかの判定が変わらないことを Lean で証明した。
-- Hallowed Tomb は、Champion Zone が空で、登録した実物カードが本人の Trash にあるときだけ、戻すかどうかを聞く。同名の別コピーが Trash の先頭にあっても、登録したカードが戻る。
 - Back-Alley Bar は、いずれの席の Unit でも、効果によって戦場から Base に移動したときに Might が上がることを確認した。2枚を `full` とし、全体で1,103枚中522枚になった。[カード実装状況](coverage.md)
+
+### Battlefield の誘発能力の対象、支払い、解決順（2026-11-27）
+
+- Targon's Peak は Conquer した席を記録する。その席は、そのターンの Ending Phase に予約された能力を Chain に置く際に、任意の席の Rune を0〜2枚対象に取る。解決時にその Rune を Ready にする（CR 355.5.b）。Sigil of the Storm は解決時に自分の Rune 1枚を非対象の選択として Recycle する（CR 355.10.f）。Void Gate の追加ダメージは、その戦場の Unit に与えるダメージに適用する。[Origins の公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)
+- Monastery of Hirana は、Conquer した席が支配する Unit のバフを消費して能力を Chain に置き、解決時に1枚引く（CR 383.3.b、702.2.b.2）。
+- Hallowed Tomb は、登録したカードと同名の Champion Unit を本人の Trash から選ぶ。戻す先の Champion Zone が空いている場合に置ける。登録した実物カードの ID はリプレイで引き続き照合する（CR 103.3.a.3、108.3.c.1）。[公式 Core Rules](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Vendetta の Jayce, Brilliant Inventor など6枚では、対象を1つ選んで能力を確定するか、能力を辞退する。Mask Mother の Energy は確定前に支払い、Might の上昇は解決時に適用する（CR 383.3.a–b）。
+- Bandle Tree、Reaver's Row、Reckoner's Arena、Vilemaw's Lair、Zaun Warrens も対戦シナリオで確認した。Origins の `full` は298枚中80枚、全体では1,103枚中531枚。[カード実装状況](coverage.md)
 
 ## M10: 完了判定（original.md の最終目的）
 

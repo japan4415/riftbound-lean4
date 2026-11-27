@@ -494,14 +494,14 @@ def actionJson (a : Action) (frame : Option Frame := none)
          let costs := match state, trigger with
            | some s, some t =>
              if mode.isNone && player.isNone && ts.isEmpty && !trigOptional s t &&
-                 (!(trigChoices s t).isEmpty || !(trigModes s t).contains none ||
-                   !(trigPlayerOptions s t).contains none) then
+                 (!trigTargetOk s t mode ts || !(trigPlayerOptions s t).contains none) then
                [("unavailable", "true")]
              else match trigCost s t with
                | .energy n => [("energy", toString n)]
                | .burn n => [("burn", toString n)]
                | .exhaustSelf => [("exhaustSource", "true")]
                | .discardAndExhaust _ => [("exhaustSource", "true"), ("discardCost", "true")]
+               | .spendBuff => [("spendBuff", "true")]
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))

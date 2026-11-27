@@ -217,7 +217,7 @@ inductive Prim where
   | turnEffect (e : TurnEffect)
   /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if it is
   empty. -/
-  | returnChampion
+  | returnChampion (candidate : Selector)
   /-- Two Units swap places: each goes to where the other is (a Battlefield or a Base). -/
   | swapPlaces (a b : Selector)
   /-- Look at the top `n` cards of the Main Deck of the player. -/
@@ -712,6 +712,8 @@ inductive TriggerCost where
   | discard (count : Nat)
   /-- Discard the specified cards and exhaust the source during finalization. -/
   | discardAndExhaust (count : Nat)
+  /-- Spend one buff on a Unit the triggered ability's controller controls (CR 702.2.b.2). -/
+  | spendBuff
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

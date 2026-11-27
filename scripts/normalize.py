@@ -33,6 +33,15 @@ TEXT_ERRATA = {
         "The next time a friendly unit would die, kill this instead. Recall that unit exhausted.":
             "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it.",
     },
+    "OGN-287": {
+        "When you conquer here, recycle one of your runes.":
+            "When you conquer here, you must recycle one of your runes. (This doesn't choose anything.)",
+    },
+    "OGN-289": {"ready 2 runes at the end of this turn": "ready up to 2 runes at the end of this turn"},
+    "OGN-296": {
+        "Spells and abilities affecting units here each deal 1 Bonus Damage. (Each instance of damage the spell deals is increased by 1.)":
+            "Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.)",
+    },
     "SFD-163": {
         "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
             "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",

@@ -30,6 +30,18 @@ namespace GameState
 def printedCardDef? (s : GameState) (id : ObjId) : Option CardDef :=
   ((s.obj? id).bind (·.kind.cardId?)).bind s.cards.find?
 
+/-- During play, physical Champion Units with the same printed name as their owner's
+registered Champion are also Chosen Champions (CR 103.3.a.3). -/
+def matchesChosenChampion (s : GameState) (id : ObjId) : Bool := (do
+  let obj ← s.obj? id
+  let candidate ← s.printedCardDef? id
+  if obj.kind.phys?.isNone || !candidate.hasType .unit || !candidate.hasSupertype .champion then
+    return false
+  let registered ← s.chosenChampions[obj.owner.n]?
+  let original ← s.objects.toList.findSome? (fun (entry : Nat × Object) =>
+    if entry.2.kind.phys? == some registered then entry.2.kind.cardId? else none)
+  return (s.cards.find? original).any (fun d : CardDef => d.nameKey == candidate.nameKey)).getD false
+
 /-- Give an animated Gear the Unit type and its animation's base Might (CR 143, 479). -/
 def _root_.Riftbound.CardDef.withUnitGearMight (d : CardDef) (might : Nat) : CardDef :=
   { d with types := if d.hasType .unit then d.types else d.types ++ [.unit], might := some might }
@@ -387,6 +399,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .named n => (s.cardDef? id).map (fun d => d.name == n)
   | .sameNameAsSource =>
     pure ((s.cardDef? self).any (fun src => (s.cardDef? id).any (·.nameKey == src.nameKey)))
+  | .chosenChampion => some (s.matchesChosenChampion id)
   | .hasKeyword k => (s.cardDef? id).map (fun d =>
     d.hasKeyword k || (s.attachmentTextDefs id).any (·.1.hasKeyword k) ||
       (s.obj? id).any (fun o => o.tempKws.any (fun a => a.1.keyword == k)))

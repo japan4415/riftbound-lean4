@@ -475,7 +475,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let possible ← firePicks s [.scored p field true]
   let nowPossible ← firePicks fortified [.scored p field true]
   let result ← fire fortified [.scored p field true] { pick := (· == [expensive]) }
-  let skipped ← fire s [.scored p field true] { pick := List.isEmpty }
+  let skipped ← fire s [.scored p field true] { yes := false }
   let held ← fire s [.scored p field false]
   return fortified.mightNow demo == some 2 && possible == [cheap] && nowPossible.contains expensive &&
     result.countIn p .trash "VEN-062" == 1 && (result.obj? cheap).isSome &&
@@ -675,7 +675,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (waiting, _) ← (step 100 s (playAt field)).toOption
   let chosen := settleChain { pick := (· == [opposing]) } 10 waiting
   let back := settleChain { pick := (· == [friendly]) } 10 waiting
-  let stayed := settleChain { pick := List.isEmpty } 10 waiting
+  let stayed := settleChain { yes := false } 10 waiting
   return !(legalActions s).contains (playAt occupied) && !(waiting.trigPicks.contains dragon) &&
     (waiting.unitsAtOf field p).any (fun id => (waiting.cardDef? id).any (·.id == cid "VEN-115")) &&
     chosen.countIn q .hand "VEN-014" == 1 && back.countIn p .hand "VEN-014" == 1 &&
@@ -1238,7 +1238,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (movingEmpowered, _) ← move powered
   let done := settleChain { pick := (· == [first]) } 8 moving
   let stronger := settleChain { pick := (· == [second]) } 8 movingEmpowered
-  let declined := settleChain { pick := List.isEmpty } 8 moving
+  let declined := settleChain { yes := false } 8 moving
   let damage (t : GameState) (id : ObjId) := (t.obj? id).map (·.damage)
   return s.mightNow akali == some 3 && powered.mightNow akali == some 4 &&
     moving.trigPicks.contains first && moving.trigPicks.contains second &&

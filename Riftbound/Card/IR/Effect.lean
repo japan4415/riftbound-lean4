@@ -381,6 +381,9 @@ inductive Effect where
   /-- Each player chooses one of their own objects. Append the picks to the slots, then run the
   body for the original controller. The picks are not targets (CR 355.10.e). -/
   | pickOwn (place : Place) (filters : FilterList) (body : Effect)
+  /-- The controller must pick one of their own objects during resolution. Append it to the
+  slots without making it a target (CR 355.10.f). -/
+  | pickRequired (place : Place) (filters : FilterList) (body : Effect)
   /-- Move the Unit in the given slot to the location chosen during finalization (CR 355.4).
   If the move happens, run the follow-up with a chosen Battlefield available as the latest pick. -/
   | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)

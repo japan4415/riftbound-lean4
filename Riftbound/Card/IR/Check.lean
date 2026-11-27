@@ -228,7 +228,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .choose s => Selector.ok c s
   | .lookTop _ => true
   | .swapPlaces a b => Selector.ok c a && Selector.ok c b
-  | .returnChampion => true
+  | .returnChampion sel => Selector.ok c sel
   | .pay _ => true
   | .topdeck s => Selector.ok c s
 
@@ -415,7 +415,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .recordNestedDeathDecision .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
-  | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
+  | .pickOwn _ fs e | .pickRequired _ fs e =>
+    FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
   | .forceMoveToBattlefield who destination => PlayerSel.ok c who && Selector.ok c destination
   | .grantNumericKeyword objects _ amount duration =>

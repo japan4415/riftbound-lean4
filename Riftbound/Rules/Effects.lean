@@ -75,21 +75,16 @@ def GameState.chosenOf (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
   | some chosen => (s.obj? id).any (fun obj => obj.kind.phys? == some chosen)
   | none => false
 
-/-- The Chosen Champion in this player's Trash is returnable only to an empty Champion Zone. -/
-def GameState.returnChampionTarget (s : GameState) (p : PlayerId) : Option ObjId :=
-  if (s.zone (.player p .championZone)).isEmpty then
-    (s.zone (.player p .trash)).find? (s.chosenOf p)
-  else none
-
-/-- The player returns their Chosen Champion from their Trash to their Champion Zone, if the
-Champion Zone is empty. -/
-def returnChampion (p : PlayerId) (s : GameState) : GameState × List Event :=
-  match s.returnChampionTarget p with
-  | some id => sendObj .championZone s id
-  | none => (s, [])
+/-- Return the chosen Champion from the player's Trash only if the Champion Zone is empty
+(CR 108.3.c.1). -/
+def returnChampion (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if (s.zone (.player p .championZone)).isEmpty && (s.zone (.player p .trash)).contains id &&
+      s.matchesChosenChampion id then sendObj .championZone s id
+  else (s, [])
 
 /-- Returning the Chosen Champion is a safe change. -/
-theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChampion p s).1 := by
+theorem returnChampion_safe (p : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (returnChampion p s id).1 := by
   unfold returnChampion
   split
   · exact sendObj_safe _ _ _
@@ -3789,7 +3784,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
       onSelected s p src env sel (fun t id =>
         (t.addTurnFxOn p id (.triggerOnDeath src card idx), [])))
-  | .returnChampion => some (returnChampion p s)
+  | .returnChampion sel => onSelected s p src env sel (returnChampion p)
   | .extraTurn ps =>
     (ps.resolve s p env).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
   | .lookTop n => some (s, ((s.zone (.player p .mainDeck)).take n).map (Event.lookedAt p))
@@ -4135,10 +4130,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hs, Option.map_some, Option.some.injEq] at h
       rw [← h]
       exact Safe.refl s
-  | returnChampion =>
-    simp only [applyPrim, Option.some.injEq] at h
-    rw [← h]
-    exact returnChampion_safe p s
+  | returnChampion sel =>
+    exact onSelected_safe (returnChampion_safe p) h
   | swapPlaces a b =>
     simp only [applyPrim] at h
     cases ha : a.eval s p src env with
@@ -4375,6 +4368,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .disempower s => some s
   | .recycle s => some s
   | .spendBuff s => some s
+  | .returnChampion s => some s
   | .bin s => some s
   | .discardCard s | .discardWithTypeTriggers s _ => some s
   | .play s | .playAtBase s => some s
@@ -4419,6 +4413,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .disempower _ => .disempower sel
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
+  | .returnChampion _ => .returnChampion sel
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .discardWithTypeTriggers _ links => .discardWithTypeTriggers sel links
@@ -5051,7 +5046,7 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
   match remaining with
   | [] => .run p src env (.cons body es)
   | q :: qs =>
-    let candidates := (s.pickCandidates q src env .friendly place fs false).getD []
+    let candidates := (s.pickCandidates q src env .you place fs false).getD []
     let next := .cons (.collectOwnPicks p qs place fs body false) es
     match candidates with
     | [] => .run p src env next
@@ -5327,9 +5322,7 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
 /-- An optional instruction with a required legal destination is offered only when usable. -/
 def mayAvailable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (effect : Effect) (funding : EffectAddPolicy) : Bool :=
-  match effect with
-  | .prim .returnChampion => (s.returnChampionTarget p).isSome
-  | _ => !(requiredPlayCandidates s p src env effect funding).any List.isEmpty
+  !(requiredPlayCandidates s p src env effect funding).any List.isEmpty
 
 /-- A Legend registered for this player and left outside the game can enter while its
 source is on the Board. The move preserves the physical card (CR 103.1). -/
@@ -6428,6 +6421,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | none => skip
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
+  | .pickRequired place fs body =>
+    (s, [.run p src env (.cons (.collectOwnPicks p [p] place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
     (s, [collectOwnPicksFrame s controller src env players place fs body capture es], [])
   | .forEach sel body =>

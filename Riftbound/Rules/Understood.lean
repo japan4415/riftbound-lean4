@@ -140,6 +140,7 @@ def Filter.understood : Filter → Bool
   | .tag _ => true
   | .named _ => true
   | .sameNameAsSource => true
+  | .chosenChampion => true
   | .hasKeyword _ => true
   | .domain _ => true
   | .might _ a => Amount.understood a
@@ -317,7 +318,7 @@ def Prim.understood : Prim → Bool
   | .predict n => n.understood
   | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
-  | .returnChampion => true
+  | .returnChampion sel => sel.understood
   | .pay _ => true
   | .addEnergy ps n none | .addUnitEnergy ps n | .addSpellEnergy ps n => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC
@@ -431,7 +432,8 @@ def Effect.understood : Effect → Bool
   | .playCard sel _ _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
-  | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
+  | .pickOwn place fs e | .pickRequired place fs e =>
+    place.understood && FilterList.understood fs && Effect.understood e
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e _ => FilterList.understood fs && Effect.understood e
   | .forceMoveToBattlefield who destination => who.understood && destination.understood

@@ -7543,7 +7543,7 @@ def OGN_278.meta : CardDef :=
 def OGN_278 : CardDef :=
   { OGN_278.meta with
     abilities := [.passive .always [.extraHide]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-279
 /--
@@ -7607,8 +7607,9 @@ def OGN_281.meta : CardDef :=
 /-- Hallowed Tomb. -/
 def OGN_281 : CardDef :=
   { OGN_281.meta with
-    abilities := [.triggered (.onSelf .youHold)
-      (.of [] (.may (.prim .returnChampion))) .unlimited],
+    abilities := [.triggered { event := .youHold, optional := true }
+      (.of [.targetOf .one .you .inTrash [.chosenChampion]]
+        (.prim (.returnChampion (.slot 0)))) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED OGN-282
@@ -7628,11 +7629,9 @@ def OGN_282.meta : CardDef :=
 /-- Monastery of Hirana. -/
 def OGN_282 : CardDef :=
   { OGN_282.meta with
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .buffed]))
-        (.may (.seqOf [.prim (.spendBuff (Selector.one .friendly .anywhere [.ofType .unit, .buffed])),
-          .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youConquer, optional := true, cost := .spendBuff }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-283
 /--
@@ -7695,9 +7694,10 @@ def OGN_285.meta : CardDef :=
 /-- Reaver's Row. -/
 def OGN_285 : CardDef :=
   { OGN_285.meta with
-    abilities := [.triggered (.onSelf .defend)
-      (.of [] (.may (.prim (.move (Selector.one .friendly .here [.ofType .unit]) .base)))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .defend, optional := true }
+      (.of [.targetOf .one .friendly .here [.ofType .unit]]
+        (.prim (.move (.slot 0) .base))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-286
 /--
@@ -7718,14 +7718,14 @@ def OGN_286 : CardDef :=
   { OGN_286.meta with
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.prim (.activateConquer (Selector.all .any .here [.ofType .unit])))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-287
 /--
 **Sigil of the Storm** — Battlefield · Colorless
 Printings: OGN-287/298
 
-> When you conquer here, recycle one of your runes.
+> When you conquer here, you must recycle one of your runes. (This doesn't choose anything.)
 -/
 def OGN_287.meta : CardDef :=
   { id := ⟨"OGN-287"⟩,
@@ -7738,8 +7738,8 @@ def OGN_287.meta : CardDef :=
 def OGN_287 : CardDef :=
   { OGN_287.meta with
     abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.prim (.recycle (Selector.one .friendly .anywhere [.ofType .rune])))) .unlimited],
-    status := .drafted }
+      (.of [] (.pickRequired .atBase (.ofList [.ofType .rune]) (.prim (.recycle (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-288
 /--
@@ -7767,7 +7767,7 @@ def OGN_288 : CardDef :=
 **Targon's Peak** — Battlefield · Colorless
 Printings: OGN-289/298
 
-> When you conquer here, ready 2 runes at the end of this turn.
+> When you conquer here, ready up to 2 runes at the end of this turn.
 -/
 def OGN_289.meta : CardDef :=
   { id := ⟨"OGN-289"⟩,
@@ -7780,12 +7780,12 @@ def OGN_289.meta : CardDef :=
 def OGN_289 : CardDef :=
   { OGN_289.meta with
     abilities := [
-      .triggered (.onSelf .youConquer) (.of [] (.prim (.markOn .self .conqueredHere))) .unlimited,
-      .triggered { event := .at_ .endOfTurn, condition := .marked .conqueredHere }
-        (.of [] (.seqOf [
-          .prim (.ready (Selector.one .friendly .anywhere [.ofType .rune, .exhausted])),
-          .prim (.ready (Selector.one .friendly .anywhere [.ofType .rune, .exhausted]))])) .unlimited],
-    status := .drafted }
+      .triggered (.onSelf .youConquer)
+        (.of [] (.prim (.markOn .self (.endTriggerWithAmount OGN_289.meta.id 1 0)))) .unlimited,
+      .triggered (.onSelf .delayedEnd)
+        (.of [.targetOf (.upTo 2) .any .atBase [.ofType .rune]]
+          (.prim (.ready (.slotsFrom 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-290
 /--
@@ -7917,15 +7917,15 @@ def OGN_295.meta : CardDef :=
 def OGN_295 : CardDef :=
   { OGN_295.meta with
     abilities := [.passive .always [.noMoveToBase]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-296
 /--
 **Void Gate** — Battlefield · Colorless
 Printings: OGN-296/298
 
-> Spells and abilities affecting units here each deal 1 Bonus Damage. (Each instance of damage
-> the spell deals is increased by 1.)
+> Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell
+> deals to a unit here is increased by 1.)
 -/
 def OGN_296.meta : CardDef :=
   { id := ⟨"OGN-296"⟩,
@@ -7938,7 +7938,7 @@ def OGN_296.meta : CardDef :=
 def OGN_296 : CardDef :=
   { OGN_296.meta with
     abilities := [.passive .always [.bonusDamageHere 1]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-297
 /--
@@ -7980,7 +7980,7 @@ def OGN_298 : CardDef :=
   { OGN_298.meta with
     abilities := [.triggered (.onSelf .youConquer)
       (.of [] (.seqOf [.prim (.discard .you (.const 1)), .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Origins. -/

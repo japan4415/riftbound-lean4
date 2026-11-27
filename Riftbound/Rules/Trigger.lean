@@ -1216,6 +1216,11 @@ def canExhaustTriggerSource (s : GameState) (t : PendTrigger) : Bool :=
 def triggerDiscardOptions (s : GameState) (p : PlayerId) (count : Nat) : List (List ObjId) :=
   (subseqsUpTo count (s.zone (.player p .hand)).eraseDups).filter (·.length == count)
 
+/-- Units whose buff the controller can spend as the trigger's base cost (CR 702.2.b). -/
+def triggerBuffOptions (s : GameState) (t : PendTrigger) : List ObjId :=
+  (s.pickCandidates t.controller t.source {} .you .anywhere
+    (.ofList [.ofType .unit, .buffed]) false).getD []
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
@@ -1230,6 +1235,7 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
   | .discard n => triggerDiscardOptions s t.controller n
   | .discardAndExhaust n =>
     if canExhaustTriggerSource s t then triggerDiscardOptions s t.controller n else []
+  | .spendBuff => (triggerBuffOptions s t).map (fun id => [id])
   | .killFriendly n fs =>
     let env : Env := { passMight := s.mightTable }
     let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
@@ -1505,6 +1511,10 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
       let (exhausted, exhausts) := setExhausted true discarded t.source
       some (exhausted, discards ++ exhausts)
     else none
+  | .spendBuff =>
+    match ids with
+    | [id] => if (triggerBuffOptions s t).contains id then some (unbuffObj s id) else none
+    | _ => none
 
 /-- Dismiss a declined or unpayable trigger, or pay for it and finalize it (CR 355, 383.3). -/
 def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
@@ -1512,8 +1522,7 @@ def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List O
   match grp[i]?, payment with
   | some t, .pay ids mode player banishers =>
     if !(trigModes s t).contains mode || !(trigPlayerOptions s t).contains player ||
-        (ts.isEmpty && !(trigChoices s t mode).isEmpty &&
-          !((trigOptional s t || mode.isSome || player.isSome) && trigTargetOk s t mode [])) then (s, [])
+        (ts.isEmpty && !(trigChoices s t mode).isEmpty && !trigTargetOk s t mode []) then (s, [])
     else match payTriggerCost s t ids banishers with
       | some (paid, events) => (putTrigger paid t ts mode player, events)
       | none => (s, [])
@@ -1608,6 +1617,11 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
       obtain ⟨⟨discarded, _⟩, hp, hresult⟩ := h
       cases hresult
       exact (payTriggerDiscards_safe hp).trans (setExhausted_safe true discarded t.source)
+    · contradiction
+  · split at h
+    · split at h
+      · cases h; exact unbuffObj_safe _ _
+      · contradiction
     · contradiction
 
 /-- Putting the picked ability on the Chain is a safe change. -/

@@ -113,6 +113,8 @@ inductive Filter where
   | named (name : String)
   /-- Has the card name of the source, including its subtitle (CR 132). -/
   | sameNameAsSource
+  /-- In its owner's Chosen Champion registration, including same-name copies (CR 103.3.a.3). -/
+  | chosenChampion
   /-- Has the keyword. -/
   | hasKeyword (k : Keyword)
   /-- Has the domain. -/
