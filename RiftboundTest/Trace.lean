@@ -106,6 +106,24 @@ meta def traceOf (seed turns : Nat) : String :=
     !check [.damagedCard (cid "OGN-001") 8] && !check [.died p, .diedCard p code]
   : Option Bool).getD false
 
+-- A token can disappear in the same answer. Its public death still has a visible identity.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let code := tokenId "Recruit"
+  let (before, token) ← addObject s
+    { kind := .token code, owner := p, controller := p, timestamp := ⟨0⟩ } (.player p .base)
+  let (trash, events) := killObj before token
+  let dead ← events.findSome? (fun | .died id _ => some id | _ => none)
+  let after ← removeObj trash dead
+  let evidence : ReplayObservation := { checkpoint := 1, facts := [.eventsInOrder [
+    .damagedCard code 1, .diedCard p code]] }
+  let events := .damaged token 1 :: events
+  return (after.obj? dead).isNone &&
+    (ReplayObservation.checkAt [evidence] 1 after events (before := some before)).isOk &&
+    (ReplayObservation.checkAt [evidence] 1 after events).isOk == false
+  : Option Bool).getD false
+
 -- XP is seat-specific, and marker observations retain all copies of a matching Unit.
 #guard (do
   let s ← lab

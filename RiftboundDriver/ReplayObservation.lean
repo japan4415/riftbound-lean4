@@ -111,23 +111,27 @@ inductive ReplayPublicEvent where
   | pointsGained (seat : PlayerId) (points : Nat)
 deriving DecidableEq, Repr, ToJson, FromJson
 
-private def replayEventCard (s : GameState) (moves : List (ObjId × ObjId)) (id : ObjId) : Option CardId :=
+private def replayEventCard (s : GameState) (before : Option GameState)
+    (moves : List (ObjId × ObjId)) (id : ObjId) : Option CardId :=
   let current := moves.foldl (fun id (old, new) => if id == old then new else id) id
-  (s.obj? current).bind (·.kind.cardId?)
+  (s.obj? current).bind (·.kind.cardId?) <|> (do
+    let earlier ← before
+    let original := moves.foldr (fun (old, new) id => if id == new then old else id) id
+    (earlier.obj? original).bind (·.kind.cardId?))
 
-private def ReplayPublicEvent.ofEngineEvent (s : GameState) (moves : List (ObjId × ObjId)) :
-    Event → Option ReplayPublicEvent
+private def ReplayPublicEvent.ofEngineEvent (s : GameState) (before : Option GameState)
+    (moves : List (ObjId × ObjId)) : Event → Option ReplayPublicEvent
   | .drew p => some (.drew p)
   | .discarded p .. => some (.discarded p)
   | .recycled p => some (.recycled p)
-  | .played p id => some ((replayEventCard s moves id).elim (.playedCard p) (.playedCardCode p))
-  | .tokenPlayed p id => some ((replayEventCard s moves id).elim (.playedToken p) (.playedTokenCode p))
+  | .played p id => some ((replayEventCard s before moves id).elim (.playedCard p) (.playedCardCode p))
+  | .tokenPlayed p id => some ((replayEventCard s before moves id).elim (.playedToken p) (.playedTokenCode p))
   | .buffedBy _ p => some (.buffedUnit p)
   | .stunnedBy _ p => some (.stunnedUnit p)
   | .damaged target amount =>
-    some ((replayEventCard s moves target).elim (.damaged amount) (fun card => .damagedCard card amount))
+    some ((replayEventCard s before moves target).elim (.damaged amount) (fun card => .damagedCard card amount))
   | .died target controller =>
-    some ((replayEventCard s moves target).elim (.died controller) (.diedCard controller))
+    some ((replayEventCard s before moves target).elim (.died controller) (.diedCard controller))
   | .burnedOut p => some (.burnedOut p)
   | .pointsGained p n => some (.pointsGained p n)
   | _ => none
@@ -339,7 +343,8 @@ private def CardDisclosure.covers (actual : CardDisclosure) (expected : ReplayOb
     expected.cards.all (fun card => expected.cards.count card <= actual.cards.count card)
 
 private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState)
-    (events : List Event) (disclosures : List CardDisclosure) : Except String Unit := do
+    (events : List Event) (disclosures : List CardDisclosure) (before : Option GameState) :
+    Except String Unit := do
   match fact with
   | .turn number => checkFactValue "turn" number s.turn
   | .phase expectedPhase => checkFactValue "phase" expectedPhase s.phase
@@ -406,7 +411,7 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     checkFactValue s!"seat {seat.n} Hidden count at Battlefield {field.code} from seat {owner.n}" expected actual
   | .eventsInOrder expected =>
     let moves := events.filterMap (fun | .moved old new _ => some (old, new) | _ => none)
-    let actual := events.filterMap (ReplayPublicEvent.ofEngineEvent s moves)
+    let actual := events.filterMap (ReplayPublicEvent.ofEngineEvent s before moves)
     unless observedInOrder expected actual ReplayPublicEvent.covers do
       throw s!"public events: expected in order {(toJson expected).compress}, replayed {(toJson actual).compress}"
   | .disclosuresInOrder expected =>
@@ -424,7 +429,8 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
 
 /-- Validate the observations at this position and advance an ordered observation schedule. -/
 def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : Nat)
-    (s : GameState) (events : List Event := []) (disclosures : List CardDisclosure := []) :
+    (s : GameState) (events : List Event := []) (disclosures : List CardDisclosure := [])
+    (before : Option GameState := none) :
     Except String (List ReplayObservation) := do
   let (eligible, later) := schedule.span (fun observation => observation.checkpoint <= checkpoint)
   let mut unmatched := []
@@ -433,7 +439,7 @@ def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : 
     let errorPrefix := s!"checkpoint {checkpoint}: observation{source}"
     let last := observation.through?.getD observation.checkpoint
     if last < checkpoint then throw s!"{errorPrefix}: its last eligible checkpoint was {last}"
-    if let .error reason := observation.facts.forM (fun fact => fact.check s events disclosures) then
+    if let .error reason := observation.facts.forM (fun fact => fact.check s events disclosures before) then
       if checkpoint < last then
         unmatched := observation :: unmatched
       else if observation.through?.isSome then

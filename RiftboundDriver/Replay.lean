@@ -1590,6 +1590,7 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     let (_, next, events) ← input.advance history answer index fuel
       (ReplayObservation.wantsDisclosures pending index)
     pending ← ReplayObservation.checkAt pending index next.state events next.disclosures
+      (history.head?.map (·.state))
     history := next :: history
     checkpoint := checkpoint + 1
     exact := exact && next.answerExact
@@ -1663,6 +1664,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     let (action, next, events) ← input.advance history answer (index + 1) fuel
       (ReplayObservation.wantsDisclosures pending (index + 1))
     pending ← ReplayObservation.checkAt pending (index + 1) next.state events next.disclosures
+      (history.head?.map (·.state))
     exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
     let legacyPlays := if upgradePermanentChoices then
