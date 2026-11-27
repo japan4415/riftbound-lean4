@@ -12,11 +12,13 @@ import all Init.Data.List.Control
 
 namespace Riftbound
 
-private theorem old_of_zone {s : GameState} (wf : s.WF) {z : Zone} {id : ObjId}
+/-- An identifier in an occupied zone is older than the next identifier. -/
+theorem old_of_zone {s : GameState} (wf : s.WF) {z : Zone} {id : ObjId}
     (member : id ∈ s.zone z) : id.n < s.nextId :=
   wf.lt_nextId id (GameState.mem_zoneIds (GameState.zone_valid_of_mem wf member) member)
 
-private theorem old_inPlay {s : GameState} (wf : s.WF) {id : ObjId}
+/-- Every object on the Board has an existing identifier. -/
+theorem old_inPlay {s : GameState} (wf : s.WF) {id : ObjId}
     (member : id ∈ s.inPlay) : id.n < s.nextId := by
   simp only [GameState.inPlay, List.mem_append, List.mem_flatMap] at member
   rcases member with ⟨_, _, base⟩ | field
@@ -38,17 +40,19 @@ private theorem eraseReadPair {α : Type} {a b c d : Option Object}
     read a c = read b d := by
   rw [← stable a c, ← stable b d, first, second]
 
-private theorem declared_mightReads {db : CardDB} {d : CardDef}
+/-- A declared definition inherits the ability check from the database. -/
+theorem declared_mightReads {db : CardDB} {d : CardDef}
     (accepted : MightRead.database db) (declared : DeclaredDefinition db d) :
     d.allAbilities.all MightRead.ability = true := by
-  obtain ⟨printed, found, shape⟩ := declared
+  obtain ⟨printed, found, shape, _⟩ := declared
   have check := List.all_eq_true.mp accepted printed (CardDB.find?_mem found)
   simp only [MightRead.card, Bool.and_eq_true] at check
   rcases shape with definition | definition
-  · exact definition ▸ check.1
-  · exact definition ▸ check.2
+  · exact definition ▸ check.1.1
+  · exact definition ▸ check.1.2
 
-private theorem accepted_appendedAbilities {s : GameState} (accepted : MightRead.database s.cards)
+/-- The abilities of a live definition and its attached Effect Text inherit the Might read check. -/
+theorem accepted_appendedAbilities {s : GameState} (accepted : MightRead.database s.cards)
     {source : ObjId} {d : CardDef} (found : s.cardDef? source = some d) :
     ∀ a ∈ s.appendedAbilities source d, MightRead.ability a = true := by
   intro a member
@@ -69,17 +73,21 @@ namespace SameMightReads
 variable {s t : GameState} (same : SameMightReads s t)
 include same
 
-private theorem playerZone (p : PlayerId) (kind : ZoneKind) :
+/-- The contents of a player's zone are shared. -/
+theorem playerZone (p : PlayerId) (kind : ZoneKind) :
     t.zone (.player p kind) = s.zone (.player p kind) :=
   same.zone _ (by intro eq; cases eq)
 
-private theorem fieldZone : t.zone .battlefieldZone = s.zone .battlefieldZone :=
+/-- The contents of the Battlefield Zone are shared. -/
+theorem fieldZone : t.zone .battlefieldZone = s.zone .battlefieldZone :=
   same.zone _ (by decide)
 
-private theorem players : t.players = s.players := by
+/-- The games have the same players. -/
+theorem players : t.players = s.players := by
   simp only [GameState.players, GameState.playerCount, same.config]
 
-private theorem inPlay : t.inPlay = s.inPlay := by
+/-- The games have the same Board object identifiers. -/
+theorem inPlay : t.inPlay = s.inPlay := by
   simp only [GameState.inPlay, same.players, same.playerZone, same.fieldZone]
 
 private theorem hereOf (wf : s.WF) {self : ObjId} (old : self.n < s.nextId) :

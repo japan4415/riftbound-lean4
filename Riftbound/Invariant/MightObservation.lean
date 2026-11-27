@@ -58,11 +58,12 @@ private theorem animated_allAbilities (d : CardDef) (n : Nat) :
 /-- A card definition read during play has the printed or animated abilities from the database. -/
 def DeclaredDefinition (db : CardDB) (seen : CardDef) : Prop :=
   ∃ d, db.find? seen.id = some d ∧
-    (seen.allAbilities = d.allAbilities ∨ seen.allAbilities = (d.withUnitGearMight 0).allAbilities)
+    (seen.allAbilities = d.allAbilities ∨ seen.allAbilities = (d.withUnitGearMight 0).allAbilities) ∧
+    seen.grants = d.grants
 
 private theorem declared_of_find {db : CardDB} {id : CardId} {d : CardDef}
     (found : db.find? id = some d) : DeclaredDefinition db d := by
-  exact ⟨d, (CardDB.find?_id found) ▸ found, Or.inl rfl⟩
+  exact ⟨d, (CardDB.find?_id found) ▸ found, Or.inl rfl, rfl⟩
 
 /-- An object's definition is declared in the database, with Gear animation if applicable. -/
 theorem declared_of_cardDef {s : GameState} {id : ObjId} {d : CardDef}
@@ -78,7 +79,7 @@ theorem declared_of_cardDef {s : GameState} {id : ObjId} {d : CardDef}
   | some n =>
     simp only [animation, Option.elim_some] at equal
     subst d
-    exact ⟨printed, (CardDB.find?_id lookup) ▸ lookup, Or.inr (animated_allAbilities printed n)⟩
+    exact ⟨printed, (CardDB.find?_id lookup) ▸ lookup, Or.inr (animated_allAbilities printed n), rfl⟩
 
 /-- Copied Effect Text comes from a declared definition. -/
 theorem declared_of_attachmentText {s : GameState} {id : ObjId} {last : Bool}
@@ -107,7 +108,7 @@ private def QueuedMightAbility (db : CardDB) (trigger : PendTrigger) : Prop :=
 private theorem queuedMight_immediate_none {s : GameState} {t : PendTrigger}
     (database : s.cards.mightTriggersAreOrdinary) (queued : QueuedMightAbility s.cards t) :
     t.immediateAddFrame s = none := by
-  obtain ⟨noKeyword, seen, a, ⟨d, found, printed | animated⟩, id, atIndex, might⟩ := queued
+  obtain ⟨noKeyword, seen, a, ⟨d, found, printed | animated, _⟩, id, atIndex, might⟩ := queued
   all_goals
     have check : noImmediateAddAtMight d.allAbilities d.allAbilities = true ∧
         noImmediateAddAtMight (d.withUnitGearMight 0).allAbilities d.allAbilities = true := by

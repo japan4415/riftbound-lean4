@@ -75,10 +75,29 @@ def ability : Ability → Bool
   | .passive c ms => (ms.filter relevant).all modifier && (!(ms.any relevant) || condition c)
   | _ => true
 
+/-- A Might adjustment granted by Equipment is evaluated for the wearer alone. -/
+def wearerModifier : StaticMod → Bool
+  | .mightPlus .self _ | .mightPlusWithKeyword .self _ _ | .mightMinus .self _ | .mightMinusMin .self _ _ => true
+  | _ => false
+
+/-- Check the equipment effects used by the Might calculation. A keyword granted to other Units
+at the wearer's location cannot contribute to Might in the registered cards. -/
+def equipmentModifier : StaticMod → Bool
+  | m@(.mightPlus ..) | m@(.mightMinus ..) | m@(.mightPlusWithKeyword ..) | m@(.mightMinusMin ..) =>
+    wearerModifier m
+  | .keywordHere instance_ => !(keyword instance_.keyword)
+  | _ => true
+
+/-- Check the modifiers granted directly by Equipment to its wearer. -/
+def equipmentAbility : Ability → Bool
+  | .passive _ mods => mods.all equipmentModifier
+  | _ => true
+
 /-- Check both the printed and animated types of a card. The animation's Might value does not
 affect which abilities its definition contains. -/
 def card (d : CardDef) : Bool :=
-  d.allAbilities.all ability && (d.withUnitGearMight 0).allAbilities.all ability
+  d.allAbilities.all ability && (d.withUnitGearMight 0).allAbilities.all ability &&
+    d.grants.all equipmentAbility
 
 /-- Every registered passive that can affect Might uses the supported read expressions. -/
 def database (db : CardDB) : Prop := db.cards.all card = true

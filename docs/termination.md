@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3i に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。証明の範囲は §3〜§3j に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -94,7 +94,7 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`db_mightTriggersAreOrdinary`](../RiftboundCards/MightObservation.lean) は、登録済みのカードとトークンすべてについて、Might を監視する能力番号から即時 Add が解決されないことを `decide` で確かめる。Gear がユニットになって能力番号が変わる場合も、解決側が参照する元の定義と照合する。
 
-[`workStep_expireTurn_mightOrdinary` と `workStep_triggers_mightOrdinary`](../Riftbound/Invariant/MightObservation.lean) は、条件を満たすデータベースで、実際の Expiration と通常の誘発確定が Might の観測で積む作業が通常の誘発キューに限られることを示す。Cleanup が別の種類のイベントから積む作業と、通常の誘発が新たな観測を繰り返す場合は、全体の停止証明に残る。
+[`workStep_expireTurn_mightOrdinary` と `workStep_triggers_mightOrdinary`](../Riftbound/Invariant/MightObservation.lean) は、条件を満たすデータベースで、実際の Expiration と通常の誘発確定が Might の観測で積む作業が通常の誘発キューに限られることを示す。通常の誘発確定から再び観測が起きるかは §3j で扱う。
 
 ### 3h. 通常の誘発を Chain に置くときの Might
 
@@ -108,7 +108,13 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`db_mightReads`](../RiftboundCards/MightRead.lean) は、登録済みのカードとトークンで Might や Tank・Assault・Shield に関わる常在型能力の条件と参照式が、証明対象の式に収まることを `decide` で確かめる。印刷された定義とユニット化した Gear の定義を照合する。
 
-[`triggersStep_activeMightMods`](../Riftbound/Invariant/MightRead.lean) は、検査を通ったデータベースでは、通常の誘発を処理しても既存のオブジェクトで有効な Might 関連の常在型補正の一覧が変わらないことを示す。装備でコピーした効果文、Trash の枚数を数える式、今の戦闘で攻撃側や防御側にいるかの判定を含む。補正の量、装備から着用者に付与した効果、Assault と Shield の加算を合成して最終的な Might を保つ証明が残る。
+[`triggersStep_activeMightMods`](../Riftbound/Invariant/MightRead.lean) は、検査を通ったデータベースでは、通常の誘発を処理しても既存のオブジェクトで有効な Might 関連の常在型補正の一覧が変わらないことを示す。装備でコピーした効果文、Trash の枚数を数える式、今の戦闘で攻撃側や防御側にいるかの判定を含む。
+
+### 3j. 登録済みカードの通常の誘発キュー
+
+[`workStep_triggers_sameMight`](../Riftbound/Invariant/MightValue.lean) は、補正の値と下限、装備から着用者への補正、Tank・Assault・Shield を合わせ、通常の誘発処理で盤上の最終的な Might が保たれることを示す。検査は着用者への補正に使う対象の参照と、着用者と同じ場所にある別の Unit に付与するキーワードも対象にする。
+
+[`RiftboundCards.advance_triggers`](../RiftboundCards/MightRead.lean) は、Might のしきい値を監視する能力が場にいても、登録済みカードで実際の `advance` が誘発キューの件数＋1ステップ以内に判断を求めるか、元の処理へ進むことを保証する。全体の停止証明では、Cleanup が積んだ即時 Add など、別の種類の作業へ移った後も追う必要がある。
 
 ## 4. 進め方の案（単位に分ける）
 
