@@ -1,5 +1,8 @@
 module
 
+import all Init.Data.List.Control
+import all Riftbound.Spec.Visibility
+
 public import Riftbound.Engine.Step
 public import Riftbound.Spec.PlayerView
 
@@ -197,6 +200,156 @@ theorem legalFrameActions_pickDo_rename {s t : GameState} {p : PlayerId}
     (legalFrameActions t).Perm ((legalFrameActions s).map (Action.renameOfferedChoice rename)) := by
   simpa [legalFrameActions, hs, ht, List.map_map, Function.comp_def, Action.renameOfferedChoice]
     using offered.map (fun id => Action.mk (.player p) (.choose id))
+
+private theorem optionFilterAux_sound {α : Type} (accept : α → Option Bool)
+    {input initial result : List α} {value : α}
+    (found : List.filterAuxM accept input initial = some result) (member : value ∈ result) :
+    value ∈ initial ∨ (value ∈ input ∧ accept value = some true) := by
+  induction input generalizing initial with
+  | nil =>
+    have equal : initial = result := Option.some.inj found
+    exact Or.inl (equal ▸ member)
+  | cons first rest ih =>
+    cases decision : accept first with
+    | none => simp [List.filterAuxM, decision] at found
+    | some accepted =>
+      cases accepted
+      · have step : List.filterAuxM accept rest initial = some result := by
+          simpa [List.filterAuxM, decision] using found
+        rcases ih step with previous | ⟨remaining, accepted⟩
+        · exact Or.inl previous
+        · exact Or.inr ⟨List.mem_cons_of_mem _ remaining, accepted⟩
+      · have step : List.filterAuxM accept rest (first :: initial) = some result := by
+          simpa [List.filterAuxM, decision] using found
+        rcases ih step with previous | ⟨remaining, accepted⟩
+        · rcases List.mem_cons.mp previous with rfl | member
+          · exact Or.inr ⟨List.mem_cons_self, decision⟩
+          · exact Or.inl member
+        · exact Or.inr ⟨List.mem_cons_of_mem _ remaining, accepted⟩
+
+private theorem optionFilter_sound {α : Type} (accept : α → Option Bool)
+    {input result : List α} {value : α}
+    (found : input.filterM accept = some result) (member : value ∈ result) :
+    value ∈ input ∧ accept value = some true := by
+  cases reduced : List.filterAuxM accept input [] with
+  | none => simp [List.filterM, reduced] at found
+  | some reversed =>
+    have equal : reversed.reverse = result := by simpa [List.filterM, reduced] using found
+    have retained : value ∈ reversed := by simpa [← equal] using member
+    simpa using optionFilterAux_sound accept reduced retained
+
+private theorem collectHands_sound (s : GameState) (accept : ObjId → Option Bool)
+    {seats : List PlayerId} {initial result : List ObjId} {id : ObjId}
+    (found : seats.foldl (fun acc seat =>
+      acc.bind (fun earlier => ((s.zone (.player seat .hand)).filterM accept).map
+        (fun current => earlier ++ current))) (some initial) = some result)
+    (member : id ∈ result) :
+    id ∈ initial ∨ ∃ seat ∈ seats, id ∈ s.zone (.player seat .hand) ∧ accept id = some true := by
+  let collect (acc : Option (List ObjId)) (seat : PlayerId) :=
+    acc.bind (fun earlier => ((s.zone (.player seat .hand)).filterM accept).map
+      (fun current => earlier ++ current))
+  have empty (xs : List PlayerId) : xs.foldl collect none = none := by
+    induction xs with
+    | nil => rfl
+    | cons _ _ ih => exact ih
+  change seats.foldl collect (some initial) = some result at found
+  induction seats generalizing initial with
+  | nil =>
+    have equal : initial = result := Option.some.inj found
+    exact Or.inl (equal ▸ member)
+  | cons seat rest ih =>
+    cases selected : (s.zone (.player seat .hand)).filterM accept with
+    | none => simp [List.foldl, collect, selected, empty] at found
+    | some current =>
+      have next : rest.foldl collect (some (initial ++ current)) = some result := by
+        simpa [List.foldl, collect, selected] using found
+      rcases ih next with added | ⟨other, later, qualifying⟩
+      · rcases List.mem_append.mp added with earlier | chosen
+        · exact Or.inl earlier
+        · exact Or.inr ⟨seat, List.mem_cons_self, optionFilter_sound accept selected chosen⟩
+      · exact Or.inr ⟨other, List.mem_cons_of_mem _ later, qualifying⟩
+
+/-- A hand choice restricted to the targeted player's revealed cards can only offer a revealed
+card from a hand, and the selected player must own it. -/
+theorem GameState.pickCandidates_revealedHand {s : GameState} {p : PlayerId}
+    {source id : ObjId} {env : Env} {side : Side} {index : Nat} {target : Bool}
+    {cards : List ObjId}
+    (found : s.pickCandidates p source env side .inHand
+      (FilterList.ofList [.ownedByPlayerTarget index, .revealedByEffect]) target = some cards)
+    (member : id ∈ cards) :
+    id ∈ env.revealedCards ∧
+      (∃ owner ∈ s.players, side.admitsPlayer p owner s.config.mode = true ∧
+        id ∈ s.zone (.player owner .hand)) ∧
+      ∃ player object, env.playerTargets[index]? = some player ∧
+        s.obj? id = some object ∧ object.owner = player := by
+  simp only [GameState.pickCandidates, Place.zoneKind?] at found
+  rcases collectHands_sound s _ found member with impossible | ⟨owner, seat, hand, accepted⟩
+  · cases impossible
+  · have roster := List.mem_filter.mp seat
+    cases player : env.playerTargets[index]? with
+    | none =>
+      simp [FilterList.ofList, FilterList.holds, Filter.holds, player] at accepted
+    | some playerId =>
+      cases object : s.obj? id with
+      | none =>
+        simp [FilterList.ofList, FilterList.holds, Filter.holds, player, object] at accepted
+      | some card =>
+        simp [FilterList.ofList, FilterList.holds, Filter.holds, player, object] at accepted
+        exact ⟨accepted.2, ⟨owner, roster.1, roster.2, hand⟩,
+          ⟨playerId, card, rfl, rfl, accepted.1⟩⟩
+
+/-- An explicit choice from a targeted hand offers only publicly revealed objects, including
+when one card is the only legal choice. -/
+theorem runEffect_chooseRevealedHand_offers {s : GameState} {p : PlayerId} {source first : ObjId}
+    {env : Env} {side : Side} {index : Nat} {body follow : Effect} {rest : EffectList}
+    {more : List ObjId} {funding : EffectAddPolicy}
+    (offered : (runEffect s p source env
+      (.chooseObject side .inHand (FilterList.ofList [.ownedByPlayerTarget index, .revealedByEffect])
+        body) rest funding).2.1 = [.pickDo p source env first more follow rest]) :
+    ∀ id ∈ first :: more, id ∈ env.revealedCards := by
+  let filters := FilterList.ofList [.ownedByPlayerTarget index, .revealedByEffect]
+  cases choices : s.pickCandidates p source env side .inHand filters with
+  | none => simp [runEffect, Effect.pickSel?, requiredPlayCandidates, Effect.isLinkedCost, filters, choices] at offered
+  | some cards =>
+    cases cards with
+    | nil => simp [runEffect, Effect.pickSel?, requiredPlayCandidates, Effect.isLinkedCost, filters, choices] at offered
+    | cons chosen tail =>
+      have members : first :: more = chosen :: tail := by
+        cases tail with
+        | nil =>
+          simp [runEffect, Effect.pickSel?, requiredPlayCandidates, Effect.isLinkedCost, filters, choices] at offered
+          obtain ⟨rfl, rfl, _⟩ := offered
+          rfl
+        | cons other remaining =>
+          simp [runEffect, Effect.pickSel?, requiredPlayCandidates, Effect.isLinkedCost, filters, choices] at offered
+          obtain ⟨rfl, rfl, _⟩ := offered
+          rfl
+      intro id present
+      rw [members] at present
+      exact (s.pickCandidates_revealedHand choices present).1
+
+/-- A legal answer to the resulting hand choice names a card face disclosed in the acting
+seat's view of the decision. -/
+theorem legalFrameActions_chooseRevealedHand_disclosed {s : GameState} {p : PlayerId}
+    {source first id : ObjId} {env : Env} {side : Side} {index : Nat} {body follow : Effect}
+    {rest : EffectList} {more : List ObjId} {tail : List Frame} {funding : EffectAddPolicy}
+    (offered : (runEffect s p source env
+      (.chooseObject side .inHand (FilterList.ofList [.ownedByPlayerTarget index, .revealedByEffect])
+        body) rest funding).2.1 = [.pickDo p source env first more follow rest])
+    (pending : s.pending = .pickDo p source env first more follow rest :: tail)
+    (legal : Action.mk (.player p) (.choose id) ∈ legalFrameActions s) :
+    id ∈ s.resolutionDisclosedFaces p := by
+  have member : id ∈ first :: more := by
+    simpa [legalFrameActions, pending] using legal
+  have revealed := runEffect_chooseRevealedHand_offers offered id member
+  unfold GameState.resolutionDisclosedFaces
+  apply List.mem_append_left
+  apply List.mem_flatMap.mpr
+  refine ⟨.pickDo p source env first more follow rest, ?_, ?_⟩
+  · rw [pending]
+    exact List.mem_cons_self
+  · change id ∈ env.disclosedFaces (s.zone (.player p .mainDeck))
+    exact Env.mem_disclosedFaces.mpr (Or.inl revealed)
 
 /-- A Showdown selection depends on the offered Battlefields. Which seat opened each
 Showdown is used later and does not change the selection. -/
