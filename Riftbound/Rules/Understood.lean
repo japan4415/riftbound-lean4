@@ -313,6 +313,7 @@ def Prim.understood : Prim → Bool
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
   | .delayUntilDeath s _ => s.understood
+  | .delayUntilDamage _ unit => unit.all Selector.understood
   | .activateConquer s => s.understood
   | .choose s => s.understood
   | .lookTop _ => true

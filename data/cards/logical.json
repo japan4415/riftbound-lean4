@@ -7488,6 +7488,7 @@
    "mightBonus": null,
    "name": "Noxian Guillotine",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "OGN-254/298"
    ],
@@ -7495,6 +7496,9 @@
     "OGN"
    ],
    "subtitle": "Darius",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Darius"
    ],

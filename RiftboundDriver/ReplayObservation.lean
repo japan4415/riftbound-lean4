@@ -105,6 +105,8 @@ inductive ReplayPublicEvent where
   | died (controller : PlayerId)
   /-- The card or token with this code died under this seat's control. -/
   | diedCard (controller : PlayerId) (card : CardId)
+  /-- This seat's Spell was credited with killing at least one Unit. -/
+  | killedBySpell (seat : PlayerId)
   /-- The seat burned out. -/
   | burnedOut (seat : PlayerId)
   /-- The seat gained the given number of points. -/
@@ -132,6 +134,7 @@ private def ReplayPublicEvent.ofEngineEvent (s : GameState) (before : Option Gam
     some ((replayEventCard s before moves target).elim (.damaged amount) (fun card => .damagedCard card amount))
   | .died target controller =>
     some ((replayEventCard s before moves target).elim (.died controller) (.diedCard controller))
+  | .killedBySpell p => some (.killedBySpell p)
   | .burnedOut p => some (.burnedOut p)
   | .pointsGained p n => some (.pointsGained p n)
   | _ => none

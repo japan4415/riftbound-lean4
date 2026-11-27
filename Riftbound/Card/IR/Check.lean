@@ -229,6 +229,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .delayUntilDeath s _ => Selector.ok c s
+  | .delayUntilDamage _ unit => unit.all (Selector.ok c)
   | .activateConquer s => Selector.ok c s
   | .choose s => Selector.ok c s
   | .lookTop _ => true
@@ -343,6 +344,7 @@ def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
 object, and for the player's units elsewhere when they defend (the Battlefield). -/
 def Trigger.watched (t : Trigger) : Nat :=
   match t.event with
+  | .delayedDamage => 1
   | .youDefend => 1
   | .linkedUnitTokens true => 1
   | _ => if t.subject == .self then 0 else 1

@@ -14,6 +14,22 @@ an object. Any new triggers observed after that work come from crossings of Migh
 
 namespace Riftbound
 
+/-- A qualifying hit consumes the trigger registered on this Unit for the current turn. -/
+theorem GameState.recordTurnEvent_damage_consumes (s : GameState) (notes : List TurnFx)
+    (target source : ObjId) (amount index stamp : Nat) (card : CardId) (controller : PlayerId)
+    (hit : s.damageTriggerSubject (.damaged target amount) = some target) :
+    { who := controller, kind := .triggerOnDamage source card index, turn := s.turn, stamp,
+      target := some target : TurnFx } ∉ s.recordTurnEvent notes (.damaged target amount) := by
+  simp [GameState.recordTurnEvent, hit]
+
+/-- Only registrations on a particular Unit can be consumed by a single hit. -/
+theorem GameState.recordTurnEvent_damage_keeps_global (s : GameState) (notes : List TurnFx)
+    (target : ObjId) (amount : Nat) (note : TurnFx) (global : note.target = none)
+    (hit : s.damageTriggerSubject (.damaged target amount) = some target) :
+    note ∈ s.recordTurnEvent notes (.damaged target amount) ↔ note ∈ notes := by
+  simp only [GameState.recordTurnEvent, hit, List.mem_filter]
+  cases nk : note.kind <;> simp [global]
+
 private def boardObserved (s : GameState) : List ObjId :=
   s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
 
@@ -261,7 +277,9 @@ theorem withAwakenNotices (s : GameState) (events : List Event)
   rw [recordAwakenNotices s events notices, awakenNotices_noWinner s events notices]
   dsimp only
   have first : s.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers]
-  rw [first, awakenNotices_noDelayedPlay s events notices]
+  have noDamage := s.delayedDamageTriggers_noDamage events
+    (fun e member => by cases notices e member <;> rfl)
+  rw [first, awakenNotices_noDelayedPlay s events notices, noDamage]
   simp only [List.nil_append]
   have same : s.detect events [] (some s.turnFx) = s.detect events := rfl
   rw [same]

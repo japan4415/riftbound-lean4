@@ -1138,6 +1138,36 @@ def GameState.delayedPlayTriggers (s : GameState) (es : List Event) : List PendT
             (fun d => triggersAmong s src note.who .delayedPlay d idx (idx + 1)))
     | _, _ => [])
 
+/-- The Unit that took positive damage. The damaged object can already have left the Board. -/
+def GameState.damageTriggerSubject (s : GameState) : Event → Option ObjId
+  | .damaged id amount =>
+    if amount > 0 && (s.cardDef? id).all (·.hasType .unit) then some id else none
+  | _ => none
+
+/-- Registered damage abilities retain the original controller and include the hit Unit as their
+subject. A registration on a particular Unit is consumed by its first qualifying hit (CR 391-393). -/
+def GameState.delayedDamageTriggers (s : GameState) (es : List Event) : List PendTrigger :=
+  let damaged := es.filterMap s.damageTriggerSubject
+  if damaged.isEmpty then [] else
+  s.turnFx.flatMap (fun note =>
+    match note.kind with
+    | .triggerOnDamage src card idx =>
+      if note.turn != s.turn then [] else
+        let subjects := match note.target with
+          | none => damaged
+          | some id => (damaged.find? (· == id)).toList
+        let declared := (s.cards.find? card).toList.flatMap (fun d =>
+          triggersAmong s src note.who .delayedDamage d idx (idx + 1))
+        subjects.flatMap (fun id => declared.map (fun t => { t with subject := some id }))
+    | _ => [])
+
+/-- Events that dealt no positive damage cannot start a registered damage ability. -/
+theorem GameState.delayedDamageTriggers_noDamage (s : GameState) (events : List Event)
+    (noDamage : ∀ event ∈ events, s.damageTriggerSubject event = none) :
+    s.delayedDamageTriggers events = [] := by
+  have empty := List.filterMap_eq_nil_iff.mpr noDamage
+  simp [delayedDamageTriggers, empty]
+
 /-- Remember facts about choices, plays and deaths for the rest of the turn. -/
 def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → List TurnFx
   | event@(.played p id) | event@(.tokenPlayed p id) =>
@@ -1182,6 +1212,12 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
   | .linkedDamageCleanupDone => notes.filter (fun f => match f.kind with
       | .linkedDamageDeath .. => false
       | _ => true)
+  | event@(.damaged ..) =>
+    match s.damageTriggerSubject event with
+    | none => notes
+    | some id => notes.filter (fun f => match f.kind with
+        | .triggerOnDamage .. => !(f.turn == s.turn && f.target == some id)
+        | _ => true)
   | _ => notes
 
 /-- Update the play and choice history before evaluating triggers. Ignore events during setup. -/
@@ -1303,7 +1339,8 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   | some p => { next with result := some (.won (s.config.mode.sideSeats p)), pending := [] }
   | none =>
     if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) (some s.turnFx) with
+      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es ++ s.delayedDamageTriggers es)
+          (some s.turnFx) with
       | [] => next
       | pend => { next with pending := insertDetectedTriggers next pend s.pending }
     else next
@@ -1912,7 +1949,8 @@ theorem withTriggers_cases (s : GameState) (es : List Event) :
     right
     by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
     · cases hd : (s.recordTurnEvents es).detect es
-        ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) (some s.turnFx) with
+        ((s.recordTurnEvents es).firstCardTriggers s ++ (s.delayedPlayTriggers es ++ s.delayedDamageTriggers es))
+        (some s.turnFx) with
       | nil => simp [hg, hd]
       | cons x xs =>
         right
@@ -1964,7 +2002,7 @@ theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
       GameState.stunGroupWatchers, GameState.trimLimits, GameState.firstCardTriggers, GameState.firstSpellFieldTriggers,
-      GameState.delayedPlayTriggers, empty]
+      GameState.delayedPlayTriggers, GameState.delayedDamageTriggers, empty]
   · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/

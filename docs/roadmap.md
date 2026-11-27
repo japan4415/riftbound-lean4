@@ -2451,6 +2451,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Stacked Deck は見た3枚から1枚を手札に入れ、残り2枚をランダムな順序で山札の下に戻す。Called Shot は見た2枚から1枚をドローしてもう一方を戻し、Repeat を払った場合はその時点の山札から新たに2枚を見る。Buff と XP Tracker と合わせて4枚を確認し、全1,103枚中769枚を `full` とした。[公式総合ルール 417.5、432.1.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### ダメージ後の誘発と撃破の帰属
+
+- Imperial Decree は、ダメージを受けた Unit ごとに撃破の能力を Chain に積む。Noxian Guillotine は指定 Unit の最初のダメージで誘発し、Legion ではすぐに撃破する。単発の登録だけが消費されることを Lean で証明した。[公式総合ルール 391–393](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Imperial Decree で撃破した席に Immortal Phoenix が反応することを確認した。リプレイではダメージ、Chain、撃破の帰属を照合できる。[公式 Vendetta FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Noxian Guillotine の Power は Fury または Order で払う。Find Your Center と Leona, Zealot は FFA で全対戦相手の得点を個別に確認する。Seal of Rage の Reaction Add を含む5枚を確認し、774枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

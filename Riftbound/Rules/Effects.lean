@@ -3867,7 +3867,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
     (sel.eval s p src env).map (fun ids =>
-      if (s.cardDef? src).any (·.hasType .spell) then
+      if ((s.cardDef? src) <|> env.sourceCard.bind s.cards.find?).any (·.hasType .spell) then
         let (next, events) := resolveDeathGroupWith s ids (killSpellTarget p s)
         let credit := Event.killedBySpell p
         (next, events.filter (· != credit) ++ (if events.contains credit then [credit] else []))
@@ -4030,6 +4030,12 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
       onSelected s p src env sel (fun t id =>
         (t.addTurnFxOn p id (.triggerOnDeath src card idx), [])))
+  | .delayUntilDamage idx unit =>
+    (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
+      let effect := TurnEffect.triggerOnDamage src card idx
+      match unit with
+      | none => some (s.addTurnFx p effect, [])
+      | some sel => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id effect, [])))
   | .returnChampion sel => onSelected s p src env sel (returnChampion p)
   | .extraTurn ps =>
     (ps.resolve s p env).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
@@ -4418,6 +4424,13 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.bind_eq_some_iff] at h
     obtain ⟨card, -, h⟩ := h
     exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (.triggerOnDeath src card idx)) h
+  | delayUntilDamage idx unit =>
+    simp only [applyPrim, Option.bind_eq_some_iff] at h
+    obtain ⟨card, -, h⟩ := h
+    cases unit with
+    | none => cases h; exact addTurnFx_safe s p (.triggerOnDamage src card idx)
+    | some sel =>
+      exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (.triggerOnDamage src card idx)) h
   | turnEffect e =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
@@ -4646,6 +4659,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .castInline s => some s
   | .markOn s _ => some s
   | .delayUntilDeath s _ => some s
+  | .delayUntilDamage _ unit => unit
   | .playTo s _ => some s
   | .banishWith s => some s
   | .counterToHand s => some s
@@ -4694,6 +4708,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .delayUntilDeath _ idx => .delayUntilDeath sel idx
+  | .delayUntilDamage idx _ => .delayUntilDamage idx (some sel)
   | .playTo _ bf => .playTo sel bf
   | .banishWith _ => .banishWith sel
   | .counterToHand _ => .counterToHand sel

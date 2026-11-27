@@ -3556,6 +3556,24 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     st.mightNow big == some 1 && st.mightNow small == some 1 && st.mightNow far == some 7 &&
     t4.mightNow big == some 7
 
+-- These two cards check every opponent's score in a free-for-all.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let r : PlayerId := ⟨2⟩
+  let s := { s with
+    config := { s.config with mode := { s.config.mode with players := 3 } }
+    turnOrder := [p, q, r] }
+  let (s, spell) ← put s p "OGN-047" .hand
+  let (s, leona) ← put s p "OGN-079" .hand
+  let goal := s.config.mode.victoryScore
+  let threatened := s.gainPoints r (goal - 3)
+  let distant := (s.gainPoints q (goal - 4)).gainPoints r (goal - 4)
+  let ready ← play threatened p leona
+  let exhausted ← play distant p leona
+  return energyNow threatened p spell == some 1 && energyNow distant p spell == some 3 &&
+    readyUnits ready p == readyUnits threatened p + 1 && readyUnits exhausted p == readyUnits distant p
+
 -- ... the Victory Score the passive abilities leave is the one it reads (Aspirant's Climb adds 1),
 -- and a Magma Wurm helps a second Wurm that is played, not itself
 #guard t fun s => do
@@ -3990,20 +4008,26 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return !has s3 .assault && !has s3 .ganking && has mine .assault && has mine .ganking &&
     !has theirs .assault && !has later .ganking && has limit .ganking
 
--- Imperial Decree (OGN-221): a unit that takes damage this turn is killed
+-- Imperial Decree (OGN-221) puts a separate kill ability on the Chain for each Unit hit.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-221" .hand
   let (s2, u) ← put s1 s.me "OGN-001" .base
   let (s3, v) ← put s2 s.you "OGN-001" .base
   let on ← play s3 s.me c
-  let hit := (dealObj 1 on u).1
-  let hitFoe := (dealObj 1 on v).1
-  let none_ := (dealObj 1 s3 u).1
-  let zero := (dealObj 0 on u).1
-  let later := (dealObj 1 { on with turn := on.turn + 1 } u).1
-  return (hit.obj? u).isNone && hit.countIn s.me .trash "OGN-001" == 1 && (hitFoe.obj? v).isNone &&
-    (none_.obj? u).map (·.damage) == some 1 && (zero.obj? u).map (·.damage) == some 0 &&
-    (later.obj? u).map (·.damage) == some 1
+  let (hit, hitEvents) := dealObj 1 on u
+  let (hitFoe, foeEvents) := dealObj 1 on v
+  let (plain, plainEvents) := dealObj 1 s3 u
+  let (zero, zeroEvents) := dealObj 0 on u
+  let (later, laterEvents) := dealObj 1 { on with turn := on.turn + 1 } u
+  let (waiting, _) ← (advance 100 (hit.withTriggers hitEvents) []).toOption
+  let (waitingFoe, _) ← (advance 100 (hitFoe.withTriggers foeEvents) []).toOption
+  let done := settleChain {} 12 waiting
+  let doneFoe := settleChain {} 12 waitingFoe
+  return (waiting.obj? u).any (·.damage == 1) && (waiting.zone .chain).length == 1 &&
+    (done.obj? u).isNone && done.countIn s.me .trash "OGN-001" == 1 &&
+    (doneFoe.obj? v).isNone && (plain.delayedDamageTriggers plainEvents).isEmpty &&
+    (zero.delayedDamageTriggers zeroEvents).isEmpty &&
+    (later.delayedDamageTriggers laterEvents).isEmpty
 
 -- Noxian Guillotine (OGN-254): the chosen unit is killed the next time it takes damage this turn;
 -- with Legion, it is killed now
@@ -4012,24 +4036,60 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, w) ← put s2 s.you "OGN-001" .base
   let (s4, other) ← put s3 s.me "OGN-136" .base
+  let funded := s4.fund s.me 4 (fury := 1) (mind := 1) (order := 1)
   let marked ← play s4 s.me c [u]
+  let paidOrder ← cast funded s.me c ⟨4, [.order]⟩ [u]
   let legion ← play (s4.recordTurnEvents [.played s.me other]) s.me c [u]
-  return (marked.obj? u).isSome && ((dealObj 1 marked u).1.obj? u).isNone &&
-    ((dealObj 1 marked w).1.obj? w).map (·.damage) == some 1 && (legion.obj? u).isNone &&
-    ((dealObj 0 marked u).1.obj? u).isSome
+  let (zero, zeroEvents) := dealObj 0 marked u
+  let (otherHit, otherEvents) := dealObj 1 (zero.withTriggers zeroEvents) w
+  let (hit, events) := dealObj 1 (otherHit.withTriggers otherEvents) u
+  let (waiting, _) ← (advance 100 (hit.withTriggers events) []).toOption
+  let (secondHit, secondEvents) := dealObj 1 waiting u
+  let done := settleChain {} 12 (secondHit.withTriggers secondEvents)
+  return (zero.delayedDamageTriggers zeroEvents).isEmpty &&
+    (otherHit.delayedDamageTriggers otherEvents).isEmpty &&
+    (waiting.obj? u).any (·.damage == 1) && (waiting.zone .chain).length == 1 &&
+    (secondHit.delayedDamageTriggers secondEvents).isEmpty &&
+    (done.obj? u).isNone && (done.obj? w).isSome && (legion.obj? u).isNone &&
+    (paidOrder.poolOf s.me).order == 0 && (paidOrder.poolOf s.me).fury == 1 &&
+    (cast funded s.me c ⟨4, [.mind]⟩ [u]).isNone
 
--- ... also for the damage of a combat (`dealAll`), which sets off the deaths; a unit that takes no
--- damage is not killed
+-- Simultaneous damage queues both abilities. The controller orders them before they resolve.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-221" .hand
-  let (s2, a) ← put s1 s.me "OGN-190" .base
+  let (s2, a) ← put s1 s.me "OGN-001" .base
   let (s3, b) ← put s2 s.you "OGN-116" .base
   let on ← play s3 s.me c
-  let (done, evs) := dealAll on [(a, 1), (b, 2)]
+  let (damaged, events) := dealAll on [(a, 1), (b, 2)]
   let (plain, _) := dealAll s3 [(a, 1), (b, 2)]
-  let died := evs.filterMap (fun e => match e with | .died n _ => some n | _ => none)
-  return (done.obj? a).isNone && (done.obj? b).isNone && died.length == 2 &&
+  let (waiting, _) ← (advance 100 (damaged.withTriggers events) []).toOption
+  let done := settleChain {} 12 waiting
+  let subjects := (damaged.delayedDamageTriggers events).filterMap (·.subject)
+  return (damaged.obj? a).isSome && (damaged.obj? b).isSome &&
+    subjects.length == 2 && subjects.contains a && subjects.contains b &&
+    (done.obj? a).isNone && (done.obj? b).isNone &&
     (plain.obj? a).isSome && (plain.obj? b).map (·.damage) == some 2
+
+-- Vendetta FAQ: Imperial Decree's delayed ability credits the Spell's controller with the kill.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, decree) ← put s p "OGN-221" .hand
+  let (s, ray) ← put s p "OGN-009" .hand
+  let (s, dragon) ← putAt (s.control q s.bf0) q "UNL-118" s.bf0
+  let (s, _) ← put s p "OGN-037" .trash
+  let (s, _) ← put s q "OGN-037" .trash
+  let on ← play s p decree
+  let official ← play on p ray [dragon]
+  -- The recipient of kill credit is independent of which seat supplied the damage.
+  let (damaged, events) := dealObj 3 on dragon (some q)
+  let (waiting, _) ← (advance 100 (damaged.withTriggers events) []).toOption
+  let done := settleChain {} 16 waiting
+  let decline := settleChain { yes := false } 16 waiting
+  return (waiting.obj? dragon).any (·.damage == 3) &&
+    official.countIn q .trash "UNL-118" == 1 && official.countIn p .base "OGN-037" == 1 &&
+    done.countIn q .trash "UNL-118" == 1 && done.countIn p .base "OGN-037" == 1 &&
+    done.countIn q .trash "OGN-037" == 1 && decline.countIn p .trash "OGN-037" == 1
 
 -- Bonus Damage. Ravenborn Tome (OGN-032): the next spell I play this turn deals 1 more with each
 -- instance of damage (Hextech Ray deals 3)

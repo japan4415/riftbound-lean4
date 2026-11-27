@@ -376,7 +376,8 @@ theorem withTriggers_skipped (s : GameState) (source : ObjId) :
   dsimp only
   split
   · simp [GameState.detect, GameState.deathGroupWatchers, GameState.stunGroupWatchers, GameState.trimLimits,
-      GameState.firstCardTriggers, GameState.firstSpellFieldTriggers, detectOne, empty, noDelay]
+      GameState.firstCardTriggers, GameState.firstSpellFieldTriggers, detectOne, empty, noDelay,
+      GameState.delayedDamageTriggers, GameState.damageTriggerSubject]
   · rfl
 
 end Riftbound

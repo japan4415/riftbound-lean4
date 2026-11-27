@@ -1084,11 +1084,13 @@ private theorem linkedCleanup_withTriggers_pending (s : GameState) :
   unfold GameState.withTriggers
   rw [noScore]
   change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
-      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone])
+      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone] ++
+        s.delayedDamageTriggers [.linkedDamageCleanupDone])
       (some s.turnFx) with
       | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })
     else recorded).pending = s.pending
-  simp only [first, noDelay, List.nil_append, detect, ite_self]
+  have noDamage : s.delayedDamageTriggers [.linkedDamageCleanupDone] = [] := rfl
+  simp only [first, noDelay, noDamage, List.nil_append, detect, ite_self]
   rfl
 
 private theorem settled_cleanup_pending (s : GameState) (rest : List Frame) (wf : s.WF)

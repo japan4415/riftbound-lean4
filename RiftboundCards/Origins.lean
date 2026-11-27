@@ -1085,7 +1085,7 @@ def OGN_040 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .fury) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-041
 /--
@@ -1269,12 +1269,11 @@ def OGN_047.meta : CardDef :=
 /-- Find Your Center. -/
 def OGN_047 : CardDef :=
   { OGN_047.meta with
-    abilities := [.passive
-      (.cmp .ge (.points .opponent) (.sub .victoryScore (.const 3)))
+    abilities := [.passive (.opponentNearVictory 3)
       [.costMinus .self (.const 2)]],
     spellEffect := some (.of []
       (.seqOf [.prim (.draw .you (.const 1)), .prim (.channel .you (.const 0) (.const 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-048
 /--
@@ -2149,11 +2148,10 @@ def OGN_079.meta : CardDef :=
 /-- Leona, Zealot. -/
 def OGN_079 : CardDef :=
   { OGN_079.meta with
-    abilities := [.passive
-      (.cmp .ge (.points .opponent) (.sub .victoryScore (.const 3))) [.entersReady .self],
+    abilities := [.passive (.opponentNearVictory 3) [.entersReady .self],
       .passive .always
       [.mightMinusMin (Selector.all .enemy .here [.ofType .unit, .stunned]) (.const 8) 1]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-080
 /--
@@ -5965,8 +5963,9 @@ def OGN_221.meta : CardDef :=
 /-- Imperial Decree. -/
 def OGN_221 : CardDef :=
   { OGN_221.meta with
-    spellEffect := some (.of [] (.prim (.turnEffect .killOnDamage))),
-    status := .drafted }
+    spellEffect := some (.of [] (.prim (.delayUntilDamage 0))),
+    abilities := [.triggered (.onSelf .delayedDamage) (.of [] (.prim (.kill (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-222
 /--
@@ -6889,20 +6888,22 @@ def OGN_254.meta : CardDef :=
     name := "Noxian Guillotine",
     subtitle := some "Darius",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Darius"⟩],
     domains := [.fury, .order],
-    cost := some ⟨4, [.any]⟩,
+    cost := some ⟨4, [.own]⟩,
     keywords := [{ keyword := .action },
       { keyword := .legion }],
-    sets := [⟨"OGN"⟩] }  -- Power domains unknown
+    sets := [⟨"OGN"⟩] }
 -- END GENERATED
 
 /-- Noxian Guillotine, Darius. -/
 def OGN_254 : CardDef :=
   { OGN_254.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-      (.ifThen .legion (.prim (.kill (.slot 0))) (.prim (.markOn (.slot 0) .killOnDamage)))),
-    status := .drafted }
+      (.ifThen .legion (.prim (.kill (.slot 0))) (.prim (.delayUntilDamage 0 (some (.slot 0)))))),
+    abilities := [.triggered (.onSelf .delayedDamage) (.of [] (.prim (.kill (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-255
 /--

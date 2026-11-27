@@ -109,11 +109,13 @@ TEXT_ERRATA = {
     },
 }
 
-# The gallery omits the Champion supertype. Riot's Houston report lists both as Chosen Champions.
+# The gallery omits some printed supertypes and split-domain Power symbols.
 # https://playriftbound.com/en-us/news/announcements/from-garen-to-annie-rq-houstons-top-decks/
+# https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/57f646b0393b58b657cfabf66357d9fc4a34e046-744x1039.png
 ORIGINS_PRINT_METADATA = {
     "OGN-151": {"supertypes": ["champion"]},
     "OGN-238": {"supertypes": ["champion"]},
+    "OGN-254": {"supertypes": ["signature"], "powerOwn": True},
 }
 
 # Signature marks and split-domain Power symbols on Riot's Proving Grounds card images.

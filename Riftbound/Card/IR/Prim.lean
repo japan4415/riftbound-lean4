@@ -239,6 +239,9 @@ inductive Prim where
   | markOn (s : Selector) (e : TurnEffect)
   /-- Create the source's delayed trigger for when a selected Unit dies this turn (CR 391-393). -/
   | delayUntilDeath (s : Selector) (idx : Nat)
+  /-- Register the indicated ability after a selected Unit's next damage, or whenever any Unit
+  takes damage if there is no selector (CR 391-393). -/
+  | delayUntilDamage (idx : Nat) (unit : Option Selector := none)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
   /-- Put cards on the top of their owners' Main Decks. -/
@@ -291,6 +294,8 @@ inductive TriggerEvent where
   | firstPermanentHere
   /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/
   | delayedPlay
+  /-- A delayed ability registered for Unit damage, with the affected Unit in its subject slot. -/
+  | delayedDamage
   /-- A registered ability fires at the end of the current turn with its captured amount. -/
   | delayedEnd
   /-- The object enters play. -/

@@ -188,6 +188,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `hiddenAt` は、`seat` の伏せ札のうち、`owner` が持ち込んだコード `field` の Battlefield にある枚数 `count` を照合する。公開された伏せ札の位置と枚数から記録できる。
 - `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`buffedUnit`、`stunnedUnit`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。
 - ダメージは `damaged` の `amount`、死亡は `died` の `controller` で照合できる。対象のカードコードも分かる場合は `damagedCard` または `diedCard` に `card` を加える。ダメージを受けた Unit がその手のうちに Trash に移ってもコードを照合できる。 手を始めた時点で盤面にいたトークンは、その手で消えても死亡時のコードをたどれる。
+- Spell による撃破がどの席に帰属したかは `{"killedBySpell":{"seat":{"n":0}}}` で照合できる。たとえば Imperial Decree が解決したダメージ誘発で Unit を倒すと、その Spell を使った席が記録される。
 - プレイしたカードのコードも観測できた場合は `playedCardCode` または `playedTokenCode` に `seat` と `card` を入れる。たとえば `{"playedCardCode":{"seat":{"n":0},"card":{"code":"OGN-001"}}}` で、席0がそのカードをプレイしたことを照合できる。
 
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。

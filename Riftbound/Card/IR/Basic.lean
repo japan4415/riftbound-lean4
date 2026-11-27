@@ -445,6 +445,9 @@ inductive TurnEffect where
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
+  /-- A spell or ability created a delayed trigger for Unit damage this turn (CR 391-393).
+  A note on a specific Unit waits for its next hit. A note without a target waits for every hit. -/
+  | triggerOnDamage (source : ObjId) (card : CardId) (idx : Nat)
   /-- Positive damage from the referenced instruction can fire a reflexive ability
   if the Unit dies during that Chain item's Cleanup (CR 389, 429.5.c). -/
   | linkedDamageDeath (source : ObjId) (card : CardId) (idx : Nat)
