@@ -245,7 +245,7 @@ def UNL_005.meta : CardDef :=
 def UNL_005 : CardDef :=
   { UNL_005.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .spell],
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .spell],
         condition := .spentOnSpell 4 }
       (.of [] (.prim (.ready .self))) .unlimited],
     status := .drafted }
@@ -399,13 +399,14 @@ def UNL_011.meta : CardDef :=
 
 /-- Fresh Beans. -/
 def UNL_011 : CardDef :=
+  let drawOn (event : TriggerEvent) : Ability :=
+    .triggered {
+      event, subject := Selector.all .you .anywhere [.ofType .unit],
+      condition := .showdownNow, optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited
   { UNL_011.meta with
-    abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit],
-        condition := .showdownNow }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [drawOn .play, drawOn .playToken],
+    status := .full }
 
 -- BEGIN GENERATED UNL-012
 /--
@@ -1746,7 +1747,7 @@ def UNL_058.meta : CardDef :=
 def UNL_058 : CardDef :=
   { UNL_058.meta with
     abilities := [.triggered
-        { event := .playToken, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+        { event := .playToken, subject := Selector.all .you .anywhere [.ofType .unit] }
         (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited,
       .passive .always
         [.keyword (Selector.all .friendly .anywhere [.ofType .unit, .token]) { keyword := .tank }]],
@@ -3177,7 +3178,7 @@ def UNL_109.meta : CardDef :=
 def UNL_109 : CardDef :=
   { UNL_109.meta with
     abilities := [
-      .triggered { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      .triggered { event := .play, subject := Selector.all .you .anywhere [.ofType .unit] }
         (.of [] (.ifThen (.canPay ⟨1, []⟩)
           (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.gainXP .you (.const 1))])) .nop)) .unlimited,
       .activated [.exhaustSelf] .normal
@@ -4324,7 +4325,7 @@ def UNL_149.meta : CardDef :=
 def UNL_149 : CardDef :=
   { UNL_149.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .spell] }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .spell] }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
     status := .drafted }
 
@@ -5233,7 +5234,7 @@ def UNL_181 : CardDef :=
   { UNL_181.meta with
     abilities := [.triggered
       { condition := .spentOnSpell 4,
-        subject := Selector.all .friendly .anywhere [.ofType .spell], event := .play }
+        subject := Selector.all .you .anywhere [.ofType .spell], event := .play }
       (.of [] (.may (.seqOf [.prim (.banishWith (.slot 0)),
         .ifThen (.cmp .ge (.count (Selector.all .friendly .inBanishment
           [.ofType .spell, .banishedWithMe])) (.const 4))
@@ -5298,11 +5299,11 @@ def UNL_183.meta : CardDef :=
 def UNL_183 : CardDef :=
   { UNL_183.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited,
       .triggered
-      { event := .playToken, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .playToken, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
     status := .drafted }
@@ -6101,7 +6102,7 @@ def UNL_211 : CardDef :=
   { UNL_211.meta with
     abilities := [.triggered
       { condition := .and .iControlHere (.spentOnSpell 4),
-        subject := Selector.all .friendly .anywhere [.ofType .spell], event := .play }
+        subject := Selector.all .you .anywhere [.ofType .spell], event := .play }
       (.of [] predict1) .unlimited],
     status := .drafted }
 

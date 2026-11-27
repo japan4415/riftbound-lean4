@@ -1919,7 +1919,7 @@ def VEN_068 : CardDef :=
     abilities := [.triggered (.onSelf .play) ready .unlimited,
       .triggered
         { event := .play,
-          subject := .all .friendly .anywhere [.ofType .gear, .not .token, .notSelf],
+          subject := .all .you .anywhere [.ofType .gear, .not .token, .notSelf],
           condition := .firstResolvedType .gear (.slot 0) }
         ready .unlimited],
     status := .full }
@@ -3441,7 +3441,7 @@ def VEN_121.meta : CardDef :=
 /-- Reluctant Leader. -/
 def VEN_121 : CardDef :=
   let watch (event : TriggerEvent) : Ability :=
-    .triggered { event, subject := .all .friendly .anywhere [.ofType .unit, .notSelf] }
+    .triggered { event, subject := .all .you .anywhere [.ofType .unit, .notSelf] }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
   { VEN_121.meta with
     abilities := [watch .play, watch .playToken],
@@ -4317,7 +4317,7 @@ def VEN_151.meta : CardDef :=
 def VEN_151 : CardDef :=
   { VEN_151.meta with
     abilities := [.triggered
-      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      { event := .becomeEmpowered, subject := .all .you .anywhere [.notSelf] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .exhaustSelf] .normal
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
@@ -4378,7 +4378,7 @@ def VEN_153.meta : CardDef :=
 def VEN_153 : CardDef :=
   { VEN_153.meta with
     abilities := [.triggered
-      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      { event := .becomeEmpowered, subject := .all .you .anywhere [.notSelf] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .pay ⟨0, [.any]⟩, .exhaustSelf] .normal
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
@@ -4436,7 +4436,7 @@ def VEN_155.meta : CardDef :=
 def VEN_155 : CardDef :=
   { VEN_155.meta with
     abilities := [.triggered
-      { event := .play, subject := .all .friendly .anywhere [.playedFromElsewhere] }
+      { event := .play, subject := .all .you .anywhere [.playedFromElsewhere] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .exhaustSelf] .action
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]

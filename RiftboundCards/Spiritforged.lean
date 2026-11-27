@@ -1587,7 +1587,7 @@ def SFD_054 : CardDef :=
   { SFD_054.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere
+      { event := .play, subject := Selector.all .you .anywhere
           [.tag ⟨"Equipment"⟩, .not (.hasKeyword .quickDraw)] }
       (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
         (.prim (.attach (.slot 1) (.slot 0)))) .unlimited],
@@ -1845,14 +1845,11 @@ def SFD_063.meta : CardDef :=
 /-- Chemtech Cask. -/
 def SFD_063 : CardDef :=
   { SFD_063.meta with
-
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .spell],
-        condition := .not .yourTurn }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-        .nop)) .unlimited],
-    status := .drafted }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .spell],
+        condition := .opponentTurn, optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-064
 /--
@@ -1911,11 +1908,11 @@ def SFD_065 : CardDef :=
 
     -- a Mech token that is played counts too
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere
+      { event := .play, subject := Selector.all .you .anywhere
           [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited,
       .triggered
-      { event := .playToken, subject := Selector.all .friendly .anywhere
+      { event := .playToken, subject := Selector.all .you .anywhere
           [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
     status := .drafted }
@@ -2937,7 +2934,7 @@ def SFD_100 : CardDef :=
   { SFD_100.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.powerCost .ge (.const 2)] }
+      { event := .play, subject := Selector.all .you .anywhere [.powerCost .ge (.const 2)] }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
     status := .drafted }
 
@@ -4232,7 +4229,7 @@ def SFD_144 : CardDef :=
   { SFD_144.meta with
 
     abilities := [.triggered
-      { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .chosenAny, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [] (.ifThen (.and (.canPay ⟨1, []⟩) (.matches .self .ready))
         (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.exhaust .self),
           .prim (.draw .you (.const 1))])) .nop)) .unlimited],
@@ -4963,15 +4960,14 @@ def SFD_169.meta : CardDef :=
 /-- Altar of Memories. -/
 def SFD_169 : CardDef :=
   { SFD_169.meta with
-
     abilities := [.triggered
-      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.draw .you (.const 1)),
-          .eitherOf (EffectList.ofList
-            [.prim (.topdeck (Selector.one .friendly .inHand [])),
-             .prim (.recycle (Selector.one .friendly .inHand []))])])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+        optional := true, cost := .exhaustSelf }
+      (.of [] (.seqOf [.prim (.draw .you (.const 1)),
+        .eitherOf (EffectList.ofList
+          [.prim (.topdeck (Selector.one .you .inHand [])),
+           .prim (.recycle (Selector.one .you .inHand []))])])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-170
 /--
@@ -5299,7 +5295,7 @@ def SFD_180 : CardDef :=
   { SFD_180.meta with
 
     abilities := [.triggered
-      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .becomeMighty, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [] (.ifThen (.canPay ⟨0, [.domain .order]⟩)
         (.may (.seqOf [.prim (.pay ⟨0, [.domain .order]⟩), .prim (.ready (.slot 0))])) .nop))
       .unlimited],
@@ -5747,7 +5743,7 @@ def SFD_195 : CardDef :=
   { SFD_195.meta with
 
     abilities := [.triggered
-        { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+        { event := .chosenAny, subject := Selector.all .you .anywhere [.ofType .unit] }
         (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
           (.may (.seqOf [.prim (.exhaust .self), .prim (.pay ⟨0, [.any]⟩),
             .prim (.ready (.slot 0))])) .nop)) .unlimited,
@@ -5814,7 +5810,7 @@ def SFD_197 : CardDef :=
       -- for 1 less, even if it is attached already
       .triggered
         { event := .playToken,
-          subject := Selector.all .friendly .anywhere [.named "Sand Soldier"] }
+          subject := Selector.all .you .anywhere [.named "Sand Soldier"] }
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
           (.may (.equipWithCost (.slot 0) (.slot 1) 1))) .unlimited],
     status := .drafted }
@@ -5988,14 +5984,13 @@ def SFD_203.meta : CardDef :=
 /-- Battle Mistress. -/
 def SFD_203 : CardDef :=
   { SFD_203.meta with
-
-    abilities := [.triggered (.onSelf .recycleRune)
-        (.of [] (.ifThen (.matches .self .ready)
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-          .nop)) .unlimited,
-      .triggered { event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+    abilities := [.triggered { event := .recycleRune, optional := true, cost := .exhaustSelf }
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
+      .triggered {
+        event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit],
+        occurrence := .deathGroup }
         (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-204
 /--
@@ -6042,13 +6037,11 @@ def SFD_205.meta : CardDef :=
 /-- Grand Duelist. -/
 def SFD_205 : CardDef :=
   { SFD_205.meta with
-
     abilities := [.triggered
-      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.channel .you (.const 0) (.const 1))])) .nop))
-      .unlimited],
-    status := .drafted }
+      { event := .becomeMighty, subject := Selector.all .you .anywhere [.ofType .unit],
+        optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-206
 /--

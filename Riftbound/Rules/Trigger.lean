@@ -143,11 +143,16 @@ def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
 a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
 may have left the game, as a Spell on its way to the Chain has. A subject at a place (here, at a
-base) is not understood yet: it never holds. -/
+base) is not understood yet: it never holds. Friendly and enemy use the side of the event's player
+(CR 491.8.e, 740.1). -/
 def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (who : PlayerId) :
     Selector → Bool
   | .pick .all side .anywhere fs =>
-    (match side with | .friendly | .you => who == c | .enemy => who != c | .any => true) &&
+    (match side with
+      | .friendly => s.config.mode.sameSide c who
+      | .enemy => !s.config.mode.sameSide c who
+      | .you => who == c
+      | .any => true) &&
       (fs.holds s src (Env.empty.withMight s.mightTable) subj == some true)
   | _ => false
 

@@ -364,6 +364,8 @@ inductive Condition where
   | discardedThisTurn
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
+  /-- It is the turn of an opponent of the player the effect belongs to (CR 491.8). -/
+  | opponentTurn
   /-- A combat is going on. -/
   | inCombat
   /-- A combat is going on at the place `self` is (or was, if it has died there). -/

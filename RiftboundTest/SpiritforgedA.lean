@@ -970,6 +970,23 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
     gold b == 0 && gold c == 0 && gold d == 0 && gold e == 0
 
+-- An ally's cast and an ally's turn are distinct from the Cask controller's cast on an enemy turn.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let start ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) start).toOption
+  let p := s.me
+  let ally ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, cask) ← put s p "SFD-063" .base
+  let (s, mine) ← put s p "OGN-004" .trash
+  let (s, theirs) ← put s ally "OGN-004" .trash
+  let allyTurn ← fire { s with active := some ally } [.spellResolved p mine]
+  let allySpell ← fire { s with active := some enemy } [.spellResolved ally theirs]
+  let payForMine ← fire { s with active := some enemy } [.spellResolved p mine]
+  return allyTurn.tired cask == some false && allySpell.tired cask == some false &&
+    payForMine.tired cask == some true && payForMine.countIn p .base "SFD-T03" == 1
+
 -- Pickpocket (SFD-074): kill a gear with Energy cost 1 or less, then a Gold token
 #guard tsf fun s => do
   let (s1, p) ← put s s.me "SFD-074" .hand
@@ -2606,11 +2623,44 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let bottom ← die s4 u { pick with fromEnd := some 2 }
   let enemy ← die s4 foe
   let tired ← die (s4.tire altar) u
+  let (dead, events) := killObj s4 u
+  let (waiting, _) ← (advance 100
+    { dead with pending := insertTriggers (dead.detect events) dead.pending } []).toOption
+  let pay : Action := ⟨.player s.me, .putTrigger 0 [] (.pay [])⟩
+  let decline : Action := ⟨.player s.me, .putTrigger 0 [] .skip⟩
+  let (paid, paymentEvents) ← (step 100 waiting pay).toOption
+  let (declined, _) ← (step 100 waiting decline).toOption
   return top.tired altar == some true && top.handN s.me == s4.handN s.me &&
     top.deckN s.me == s4.deckN s.me && top.countIn s.me .hand "OGN-001" == 0 &&
     (top.topCard s.me).any (top.isCard "OGN-001") && bottom.bottomIs s.me 1 "OGN-001" &&
     bottom.deckN s.me == s4.deckN s.me && enemy.tired altar == some false &&
-    tired.handN s.me == s4.handN s.me
+    tired.handN s.me == s4.handN s.me &&
+    paid.tired altar == some true && paymentEvents.contains (.exhausted altar) &&
+    (paid.zone .chain).length == 1 && paid.handN s.me == waiting.handN s.me &&
+    declined.tired altar == some false && (declined.zone .chain).isEmpty &&
+    declined.handN s.me == waiting.handN s.me
+
+-- A teammate's death triggers Altar, while the draw and the hand choice belong to its controller.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let start ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) start).toOption
+  let p := s.me
+  let ally ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, altar) ← put s p "SFD-169" .base
+  let (s, watched) ← put s ally "OGN-051" .base
+  let (s, excluded) ← put s enemy "OGN-051" .base
+  let (s, own) ← put s p "OGN-001" .hand
+  let (s, allyCard) ← put s ally "OGN-051" .hand
+  let choices : Says := { obj := (· == own), fromEnd := some 1 }
+  let (allyDied, events) := killObj s watched
+  let (enemyDied, enemyEvents) := killObj s excluded
+  let after ← fire allyDied events choices
+  let afterEnemy ← fire enemyDied enemyEvents choices
+  return after.tired altar == some true && (after.topCard p).any (after.isCard "OGN-001") &&
+    (after.zone (.player ally .hand)).contains allyCard && after.handN ally == s.handN ally &&
+    afterEnemy.tired altar == some false
 
 -- Fae Dragon (SFD-101): buff up to four friendly units when played; when a buff is spent, a Gold
 #guard tsf fun s => do
@@ -3343,9 +3393,13 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let e ← fire (t1.tire l) [.died dead s.you]
   let (t2, mine) ← put s1 s.me "OGN-051" .trash
   let f ← fire (t2.tire l) [.died mine s.me]
+  let (t3, other) ← put t1 s.you "OGN-051" .trash
+  let both := [Event.died dead s.you, Event.died other s.you]
   return a.countIn s.me .base "SFD-T03" == 1 && a.tired l == some true &&
+    (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
     b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
-    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true
+    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true &&
+    ((t3.tire l).detect both).countP (fun triggered => triggered.source == l) == 1
 
 -- (review) Rell plays the Equipment for free: its Power is not paid either
 #guard tsf fun s => do

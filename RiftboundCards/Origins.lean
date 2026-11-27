@@ -722,7 +722,7 @@ def OGN_027.meta : CardDef :=
 def OGN_027 : CardDef :=
   { OGN_027.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [],
+      { event := .play, subject := Selector.all .you .anywhere [],
         condition := .cmp .eq .cardsPlayed (.const 2) }
       (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn, .prim (.ready .self)]))
       .unlimited],
@@ -2451,7 +2451,7 @@ def OGN_091.meta : CardDef :=
 def OGN_091 : CardDef :=
   { OGN_091.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .gear] }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .gear] }
       (.of [] (.prim (.ready .self))) .unlimited],
     status := .drafted }
 
@@ -2765,7 +2765,7 @@ def OGN_103.meta : CardDef :=
 def OGN_103 : CardDef :=
   { OGN_103.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .spell] }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .spell] }
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
     status := .drafted }
 
@@ -3172,8 +3172,8 @@ def OGN_117.meta : CardDef :=
 def OGN_117 : CardDef :=
   { OGN_117.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [],
-        condition := .not .yourTurn }
+      { event := .play, subject := Selector.all .you .anywhere [],
+        condition := .opponentTurn }
       (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
 
@@ -3748,7 +3748,7 @@ def OGN_139.meta : CardDef :=
 def OGN_139 : CardDef :=
   { OGN_139.meta with
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf] }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .unit, .notSelf] }
       (.of [] (.prim (.buff .self))) .unlimited],
     status := .drafted }
 
@@ -3848,7 +3848,7 @@ def OGN_143.meta : CardDef :=
 def OGN_143 : CardDef :=
   { OGN_143.meta with
     abilities := [.triggered
-      { event := .ready, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .ready, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [] (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
     status := .drafted }
 
@@ -4103,7 +4103,7 @@ def OGN_152.meta : CardDef :=
 def OGN_152 : CardDef :=
   { OGN_152.meta with
     abilities := [.triggered
-      { event := .buff, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .buff, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [] (.ifThen (.matches .self .ready)
         (.ifThen (.canPay ⟨0, [.domain .body]⟩)
           (.may (.seqOf [.prim (.pay ⟨0, [.domain .body]⟩), .prim (.exhaust .self),
@@ -5466,7 +5466,7 @@ def OGN_202.meta : CardDef :=
 def OGN_202 : CardDef :=
   { OGN_202.meta with
     abilities := [.triggered
-      { event := .discard, subject := Selector.all .friendly .anywhere [] }
+      { event := .discard, subject := Selector.all .you .anywhere [] }
       (.of [] (.seqOf [.prim (.ready .self), .grant .self (.mightPlus .it (.const 1)) .thisTurn]))
       .unlimited],
     status := .drafted }
@@ -6670,7 +6670,7 @@ def OGN_246 : CardDef :=
   { OGN_246.meta with
     abilities := [.triggered
       { event := .die,
-        subject := Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .not (.tag ⟨"Recruit"⟩)] }
+        subject := Selector.all .you .anywhere [.ofType .unit, .notSelf, .not (.tag ⟨"Recruit"⟩)] }
       (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
     status := .drafted }
 
@@ -6759,13 +6759,14 @@ def OGN_249.meta : CardDef :=
 
 /-- Relentless Storm. -/
 def OGN_249 : CardDef :=
+  let channelOn (event : TriggerEvent) : Ability :=
+    .triggered {
+      event, subject := Selector.all .you .anywhere [.ofType .unit, .mighty],
+      optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited
   { OGN_249.meta with
-    abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .unit, .mighty] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.channel .you (.const 0) (.const 1))])) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [channelOn .play, channelOn .playToken],
+    status := .full }
 
 -- BEGIN GENERATED OGN-250
 /--
@@ -7339,7 +7340,7 @@ def OGN_269 : CardDef :=
   { OGN_269.meta with
     abilities := [
       .triggered
-        { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+        { event := .die, subject := Selector.all .you .anywhere [.ofType .unit],
           condition := .diedWith .buffedUnitDied }
         (.of [] (.ifThen (.and (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
             (.cmp .ge (.count (Selector.all .friendly .inTrash [.sameAs (.slot 0)])) (.const 1)))

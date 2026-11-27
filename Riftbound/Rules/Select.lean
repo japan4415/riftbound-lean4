@@ -1262,6 +1262,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
       !ids.isEmpty && ids.all (fun id => (s.obj? id).any (·.empowerCount > 0)))
   | .leftEmpowered => some ((s.obj? self).any (·.leftEmpowered))
   | .yourTurn => some (decide (s.active = some p))
+  | .opponentTurn => some (s.active.any (fun active => !s.config.mode.sameSide p active))
   | .inCombat => some s.combatNow.isSome
   | .drewCards n =>
     some ((s.drawLog.filter (fun d => d.2 == s.turn && d.1 == p)).length == n)

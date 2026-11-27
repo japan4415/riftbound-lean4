@@ -250,7 +250,7 @@ def Condition.understood : Condition → Bool
   | .cmp _ a b => a.understoodC && b.understoodC
   | .exists s => s.understood
   | .matches s f => s.understood && f.understood
-  | .yourTurn => true
+  | .yourTurn | .opponentTurn => true
   | .inCombat => true
   | .inCombatHere => true
   | .legendReady => true

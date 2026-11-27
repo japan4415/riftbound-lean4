@@ -20,6 +20,21 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Fresh Beans asks on finalization for a Unit or Unit token played during a Showdown.
+#guard tun fun s => do
+  let (s, beans) ← put s s.me "UNL-011" .base
+  let (s, unit) ← put s s.me "OGN-051" .base
+  let openBoard ← fire s [.played s.me unit]
+  let showdown := { s with pending := [.showdown s.bf0 s.me 0] }
+  let chosen ← fire showdown [.played s.me unit]
+  let skipped ← fire showdown [.played s.me unit] { yes := false }
+  let (withToken, events) := playUnitTokenAt showdown s.me "Recruit" none
+  let withDraw ← fire withToken events
+  return openBoard.tired beans == some false && chosen.tired beans == some true &&
+    chosen.handN s.me == s.handN s.me + 1 && skipped.tired beans == some false &&
+    skipped.handN s.me == s.handN s.me && withDraw.tired beans == some true &&
+    withDraw.handN s.me == s.handN s.me + 1
+
 -- Inferna (UNL-002): Ambush: it can be played as a Reaction to a Battlefield where its player has
 -- units, and not to the Base or to a Battlefield without units of that player
 #guard tun fun s => do

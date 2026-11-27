@@ -1432,8 +1432,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← play s3 s.me small
   let c ← play (s3.tire l) s.me big
   let d ← play s3 s.me big [] { yes := false }
+  let (s4, draven) ← put s3 s.me "OGN-028" .hand
+  let passive ← play (s4.gainPoints s.me 2) s.me draven
+  let (withToken, events) := playUnitTokenAt s3 s.me "Recruit" none
+  let token ← events.findSome? (fun | .tokenPlayed _ id => some id | _ => none)
+  let mightyToken ← fire (setBaseMight 5 withToken token).1 events
   return a.tired l == some true && runes a + 1 == runes s3 && b.tired l == some false &&
-    runes b == runes s3 && runes c == runes s3 && d.tired l == some false
+    runes b == runes s3 && runes c == runes s3 && d.tired l == some false &&
+    passive.tired l == some true && runes passive + 1 == runes s4 &&
+    mightyToken.tired l == some true && runes mightyToken + 1 == runes withToken
 
 -- Dr. Mundo (OGN-109): his Might is increased by the cards in my Trash; at the start of my
 -- Beginning Phase I recycle 3 from it

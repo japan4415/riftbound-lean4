@@ -818,7 +818,7 @@ def RAD_030 : CardDef :=
   { RAD_030.meta with
     abilities := [.triggered {
         event := .play
-        subject := .all .friendly .anywhere [.cost .ge (.const 7)] }
+        subject := .all .you .anywhere [.cost .ge (.const 7)] }
       (.of [] (.prim (.ready .self))) .unlimited],
     status := .full }
 
@@ -1049,7 +1049,7 @@ def RAD_039.meta : CardDef :=
 def RAD_039 : CardDef :=
   { RAD_039.meta with
     abilities := [.passive .always [.mightPlus (.all .friendly .anywhere [.ofType .unit]) (.const 2)],
-      .triggered { event := .play, subject := .all .friendly .anywhere [.ofType .unit] }
+      .triggered { event := .play, subject := .all .you .anywhere [.ofType .unit] }
         (.of [] (.prim (.kill .self))) .unlimited],
     status := .full }
 
@@ -1551,7 +1551,7 @@ def RAD_057.meta : CardDef :=
 /-- Piltovan Guidebot may take the Energy cost of a card its controller played as base Might. -/
 def RAD_057 : CardDef :=
   { RAD_057.meta with
-    abilities := [.triggered { event := .play, subject := .all .friendly .anywhere [], optional := true }
+    abilities := [.triggered { event := .play, subject := .all .you .anywhere [], optional := true }
       (.of [] (.prim (.setBaseMight .self (.costOf (.slot 0))))) .unlimited],
     status := .full }
 
@@ -1867,7 +1867,7 @@ def RAD_069.meta : CardDef :=
 def RAD_069 : CardDef :=
   { RAD_069.meta with
     abilities := [
-      .triggered { event := .play, subject := .all .friendly .anywhere [.physicalCard] }
+      .triggered { event := .play, subject := .all .you .anywhere [.physicalCard] }
         (.of [] (.prim (.draw .you (.const 2)))) .unlimited,
       .triggered (.onSelf (.drawGroupWithHand 9))
         { playerTarget := some .enemy
@@ -2432,7 +2432,7 @@ def RAD_089 : CardDef :=
   { RAD_089.meta with
     abilities := [.triggered
       { event := .play
-        subject := .all .friendly .anywhere [.ofType .unit]
+        subject := .all .you .anywhere [.ofType .unit]
         condition := .not (.exists (.all .any .anywhere
           [.ofType .unit, .not (.sameAs (.slot 0)), .not (.mightLtOf (.slot 0))]))
         optional := true
@@ -4258,7 +4258,7 @@ def RAD_155 : CardDef :=
   { RAD_155.meta with
     abilities := [.triggered
       { event := .play
-        subject := .all .friendly .anywhere [.ofType .gear, .hasKeyword .deploy, .onBattlefield]
+        subject := .all .you .anywhere [.ofType .gear, .hasKeyword .deploy, .onBattlefield]
         optional := true
         cost := .pay ⟨0, [.any]⟩ true }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]

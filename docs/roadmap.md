@@ -2144,6 +2144,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 **キーワードだけのカード**（効果の文が無いもの）は、2 と 4 を免除する。持っているキーワードすべてに意味の補題とテストがあれば、生成だけで `full` にしてよい。
 
+### 誘発能力の確定と2v2での味方判定（2026-11-27）
+
+- 誘発の冒頭で選べる消耗コストは、能力を確定して Chain に載せるときに払う（CR 383.3.a, 383.3.b.1, 740.4.a.2）。Altar of Memories、Chemtech Cask、Battle Mistress、Grand Duelist、Relentless Storm、Fresh Beans をこの方式で実装し、各シナリオを検証して `full` にした。
+- 誘発は、イベントに記録された席をもとに陣営を判定する。「味方」は2v2のチームメイトも含み、「敵」は相手チームに限る。「あなた」が行う操作を条件とするカードは本人に限る（CR 491.8.e, 740.1）。Chemtech Cask は本人が対戦相手のターンに呪文をプレイしたときに誘発する。
+- Altar of Memories は消耗を済ませてから、解決時に引いたカードも含めて自分の手札から戻すカードを選ぶ。Battle Mistress は同時に複数の敵 Unit が死んだ場合に1回だけ誘発する。Relentless Storm と Fresh Beans は条件を満たす Unit トークンのプレイも見る。
+
 ### M8a の実装の記録（2026-11-24）: Spiritforged 27 — 対象の選びを、選ぶ時点で絞る
 
 - **あとの選びは、前の選びを見る**: `Choice.candidatesAfter` / `targetsOkAfter` / `targetTuplesAfter`。2 つ目の対象の候補は、1 つ目の対象を `slot 0` として読める（`Filter.sameAs (.slot 0)` など）。以前は、違反する組を選ぶと、何も起きなかった。いまは、遊べない（`targetsOk` が偽）。
