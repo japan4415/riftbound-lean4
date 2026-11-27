@@ -148,6 +148,14 @@ theorem GameState.resolutionZoneCardFaces_of_disjoint (s : GameState) (viewer : 
           simp [hidden id (List.of_mem_zip member).1]
         _ = faces := List.map_snd_zip (Nat.le_of_eq (s.zoneCardFaces_length h))
 
+/-- Disclosures preserve the number of slots in the viewing player's hand. -/
+theorem GameState.resolutionZoneCardFaces_ownHand_length (s : GameState) (p : PlayerId) :
+    (s.resolutionZoneCardFaces p (.player p .hand)).map List.length =
+      some (s.zone (.player p .hand)).length := by
+  unfold GameState.resolutionZoneCardFaces
+  dsimp only
+  split <;> simp [GameState.zoneCardFaces]
+
 /-- Only the predicting player sees the faces from the Predict decision (CR 437.1). -/
 theorem Frame.disclosedFaces_predict_other {viewer p : PlayerId} (h : viewer ≠ p)
     (deck : List ObjId) (n : Nat) (first : ObjId) (more top bottom : List ObjId) :

@@ -25,6 +25,126 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+/-- A neutral main-phase fixture with all four seats available. -/
+private meta def teamMain (labState : GameState) : GameState :=
+  let game := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  { game with
+    phase := .main
+    turn := 3
+    active := some ⟨0⟩
+    pending := [.priority ⟨0⟩]
+    turnOrder := Mode.teamTurnOrder true }
+
+-- Against the Odds can target a teammate's Unit and counts only enemy Units at that Battlefield.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, other) ← putBf s foe "OGN-276"
+  let (s, ally) ← putAt s mate "OGN-051" field
+  let (s, _) ← putAt s p "OGN-051" field
+  let (s, _) ← putAt s foe "OGN-116" field
+  let (s, _) ← putAt s foe "OGN-116" other
+  let (s, spell) ← put s p "SFD-001" .hand
+  let finished ← play s p spell [ally]
+  return finished.mightNow ally == (s.mightNow ally).map (· + 2)
+
+-- Bushwhack applies to friendly Units, including those played by a teammate as tokens.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, spell) ← put (teamMain labState) p "SFD-004" .hand
+  let casted ← play s p spell
+  let ready (q : PlayerId) : Option Bool := do
+    let card ← casted.tokenCard "Mech"
+    let (next, _) := playInstructedTokens casted q card none 1 false
+    let token ← next.firstOf q .base card.id.code
+    next.tired token
+  let gold ← casted.firstOf p .base "SFD-T03"
+  return ready p == some false && ready mate == some false &&
+    ready foe == some true && casted.tired gold == some true &&
+    !({ casted with turn := casted.turn + 1 }).friendlyUnitsReady mate
+
+-- Bushwhack can be played from Hidden on a later turn without paying its printed cost.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt s p "OGN-051" field
+  let (s, card) ← put (s.control p field) p "SFD-004" .hidden
+  let hiddenOn (turn : Nat) :=
+    s.modObj card (fun o => { o with hiddenAt := some field, hiddenTurn := some turn })
+  let older := { (hiddenOn 0).fund p 0 with turn := 1 }
+  let sameTurn := { (hiddenOn 1).fund p 0 with turn := 1 }
+  let reveal (state : GameState) := legalFrameActions state |>.find? (fun a =>
+    match a.kind with | .activate source .. => source == card | _ => false)
+  let answer ← reveal older
+  let (casting, _) ← (step 100 older answer).toOption
+  let resolved := settleChain {} 12 casting
+  let gold ← resolved.firstOf p .base "SFD-T03"
+  return (reveal sameTurn).isNone && resolved.friendlyUnitsReady p &&
+    resolved.tired gold == some true && (resolved.poolOf p).total == 0
+
+-- Eager Drakehound needs no Accelerate payment to enter ready.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-006" .hand
+  let resolved ← cast (s.fund p 3 (fury := 1)) p card ⟨3, [.fury]⟩
+  let entered ← resolved.firstOf p .base "SFD-006"
+  return resolved.tired entered == some false && (resolved.poolOf p).total == 0
+
+-- Blast Corps Cadet chooses a Unit at a Battlefield only if the additional cost was paid.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "SFD-013" .hand
+  let (s, victim) ← putAt s q "OGN-116" s.bf0
+  let (s, outside) ← put s q "OGN-116" .base
+  let plain ← cast (s.rich p) p card ⟨2, []⟩
+  let paid ← cast (s.rich p) p card ⟨3, [.fury]⟩ [] { pick := (· == [victim]) }
+  return (plain.obj? victim).any (·.damage == 0) &&
+    (paid.obj? victim).any (·.damage == 2) && (paid.obj? outside).any (·.damage == 0)
+
+-- Ferrous Forerunner creates two exhausted 3-Might Mechs at its controller's Base.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-021" .hand
+  let resolved ← play s p card
+  let source ← resolved.firstOf p .base "SFD-021"
+  let (dead, events) := killObj resolved source
+  let finished ← fire dead events
+  let mechs := (finished.zone (.player p .base)).filter
+    (fun id => (finished.cardDef? id).any (·.name == "Mech"))
+  return mechs.length == 2 &&
+    mechs.all (fun id => finished.tired id == some true && finished.mightNow id == some 3) &&
+    finished.countIn p .trash "SFD-021" == 1
+
+-- Production Surge's discount requires a Mech controlled by the caster.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, spell) ← put (teamMain labState) p "SFD-076" .hand
+  let (s, _) ← put s mate "SFD-062" .base
+  let (both, _) ← put s p "SFD-062" .base
+  return s.energyCost? p spell == some 4 && both.energyCost? p spell == some 2
+
+-- Vex treats her teammate's spells as friendly for both Energy and Power in Combat.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, _) ← putAt s p "SFD-146" field
+  let (s, _) ← putAt s foe "OGN-051" field
+  let (s, friendly) ← put s mate "OGN-024" .hand
+  let (s, enemy) ← put s foe "OGN-024" .hand
+  let fight := s.inShowdownAt field p
+  let cost (state : GameState) (q : PlayerId) (card : ObjId) :=
+    ((state.cardDef? card).bind (state.effCost q card)).map (fun c => (c.energy, c.power.length))
+  return cost s mate friendly == some (3, 1) && cost s foe enemy == some (3, 1) &&
+    cost fight mate friendly == some (2, 0) && cost fight foe enemy == some (4, 2)
+
 -- Quick-Draw (Sterak's Gage, SFD-056): played, it attaches itself to a unit its player controls
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-056" .hand

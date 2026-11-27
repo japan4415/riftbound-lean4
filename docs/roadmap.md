@@ -2310,6 +2310,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Magma Wurm は2対2でチームメイトの Unit が登場するときにも適用される。カードとトークンの両方で確認した。「あなたの」と書かれた Renata Glasc、Wuju Master の対象は各カードの支配者に限る。Chemtech Enforcer、Sky Splitter、Dangerous Duo、Raging Soul、Scrapyard Champion、Confront と合わせて7枚を `full` とし、全1,103枚中633枚が実装済みとなった。
 - `applyFrame0_permanentPlay_cleanup` により、フレームの処理が Unit・Gear の直接プレイを受理したときに、次の処理が Cleanup になることを証明した。通常の優先権、Chain、Showdown を含む。
 
+### Spiritforged の味方と支配者
+
+- Bushwhack はそのターンに味方がプレイする Unit と Unit トークンの登場に適用する。Production Surge は使った席が支配する Mech で値引きする。Against the Odds、Eager Drakehound、Blast Corps Cadet、Ferrous Forerunner、Vex, Cheerless と合わせて7枚を `full` とし、全1,103枚中640枚が実装済みとなった。
+- I10 のマリガンと通常のディスカードについて、同じ手札の表示と選択枚数から同じ数の合法手が得られることを証明した。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

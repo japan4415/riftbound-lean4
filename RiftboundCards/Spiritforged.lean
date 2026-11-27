@@ -43,7 +43,7 @@ def SFD_001 : CardDef :=
       (.grant (.slot 0) (.mightPlus .it (.mul (.const 2)
         (.count (Selector.all .enemy .atBattlefield [.ofType .unit, .at_ (.slot 0)]))))
         .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-002
 /--
@@ -123,9 +123,9 @@ def SFD_004.meta : CardDef :=
 def SFD_004 : CardDef :=
   { SFD_004.meta with
 
-    spellEffect := some (.of [] (.seqOf [.prim (.turnEffect .unitsReady),
+    spellEffect := some (.of [] (.seqOf [.prim (.turnEffect .friendlyUnitsReady),
       .prim (.create "Gold" (.const 1) .atBase false)])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-005
 /--
@@ -174,7 +174,7 @@ def SFD_006.meta : CardDef :=
 def SFD_006 : CardDef :=
   { SFD_006.meta with
     abilities := [.passive .always [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-007
 /--
@@ -369,7 +369,7 @@ def SFD_013 : CardDef :=
     abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-014
 /--
@@ -595,7 +595,7 @@ def SFD_021 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Mech" (.const 2) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-022
 /--
@@ -2219,11 +2219,11 @@ def SFD_076.meta : CardDef :=
 def SFD_076 : CardDef :=
   { SFD_076.meta with
 
-    abilities := [.passive (.exists (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]))
+    abilities := [.passive (.exists (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]))
       [.costMinus .self (.const 2)]],
     spellEffect := some (.of [] (.seqOf [.prim (.create "Mech" (.const 1) .atBase false),
       .prim (.draw .you (.const 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-077
 /--
@@ -4284,7 +4284,7 @@ def SFD_146 : CardDef :=
        .costPower (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) none false,
        .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1),
        .costPower (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1) none true]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-147
 /--

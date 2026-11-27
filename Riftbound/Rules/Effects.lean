@@ -3146,7 +3146,7 @@ applies. The preview supplies its type, controller, and destination to the selec
 def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef)
     (dest : Option ObjId := none) : Bool :=
   c.hasType .unit && ((s.fxOf p).any (fun k => k == .unitsReady) ||
-    s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
+    s.friendlyUnitsReady p || s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
     s.passiveSources.any (fun source =>
       (s.obj? source).any (fun object =>
         (s.activeMods source).any (fun

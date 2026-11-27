@@ -197,6 +197,21 @@ theorem GameState.zoneView_otherHand {s : GameState} {viewer owner : PlayerId}
       some (List.replicate (s.zone (.player owner .hand)).length (.plain none)) :=
   s.zoneView_otherHand_of_disjoint different (by simp [h])
 
+/-- Hand sorting and suppression of unknown faces preserve the number of slots. -/
+theorem handView_length (faces : List (Option CardId)) :
+    (handView faces).length = faces.length := by
+  simp only [handView, List.length_append, List.length_map, List.length_mergeSort,
+    List.length_replicate]
+  exact Nat.add_sub_of_le (List.length_filterMap_le _ _)
+
+/-- The acting seat's hand view has one position for each card. -/
+theorem GameState.zoneView_ownHand_length (s : GameState) (p : PlayerId) :
+    (s.zoneView p (.player p .hand)).map List.length = some (s.zone (.player p .hand)).length := by
+  have length := s.resolutionZoneCardFaces_ownHand_length p
+  cases faces : s.resolutionZoneCardFaces p (.player p .hand) with
+  | none => simp [faces] at length
+  | some visible => simpa [GameState.zoneView, faces, handView_length] using length
+
 end Riftbound
 
 end

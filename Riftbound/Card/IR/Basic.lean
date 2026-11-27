@@ -545,6 +545,8 @@ inductive TurnEffect where
   | armed (n : Nat)
   /-- A source used its Unit token duplication this turn (CR 371). -/
   | duplicatedUnitToken (copy : Option Timestamp)
+  /-- Friendly Units enter ready for the rest of the turn. -/
+  | friendlyUnitsReady
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices limited by an ability's rules text belong to that instance. -/

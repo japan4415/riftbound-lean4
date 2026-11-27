@@ -296,9 +296,14 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
+/-- A turn effect readies entering Units played by the source's side (CR 491.8.e). -/
+def GameState.friendlyUnitsReady (s : GameState) (p : PlayerId) : Bool :=
+  s.turnFx.any (fun note =>
+    note.turn == s.turn && note.kind == .friendlyUnitsReady && s.config.mode.sameSide note.who p)
+
 /-- Units the player plays now enter ready, by an effect of the turn. -/
 def GameState.readyByFx (s : GameState) (p : PlayerId) : Bool :=
-  (s.fxOf p).any (fun k => k == .nextUnitReady || k == .unitsReady)
+  (s.fxOf p).any (fun k => k == .nextUnitReady || k == .unitsReady) || s.friendlyUnitsReady p
 
 /-- The Energy less the next spell of the player costs, by the effects of the turn. -/
 def GameState.spellCutFx (s : GameState) (p : PlayerId) : List Nat :=
