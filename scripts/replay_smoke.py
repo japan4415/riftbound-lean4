@@ -358,6 +358,29 @@ def check_lux_spell_energy_cli(folder: Path, command: Callable[..., str]) -> Non
     assert spent["action"]["kind"] == "playCard" and spent["action"]["pay"] == 2
     assert spent["state"]["pools"][0].get("spellEnergy", 0) == 0
 
+    inputs = json.loads(source.read_bytes())
+    game = inputs["games"][0]
+    tape = game["answers"]
+    game["answers"] = tape[:add_index]
+    inspection = inspect_game(folder, command, inputs, 1)
+    coded, = (choice["answerByCode"] for choice in inspection["choices"]
+              if choice["answer"] == tape[add_index])
+    play = coded["observedCardPlay"]["play"]
+    assert play["source"]["card"]["code"] == "RAD-010" and len(play["targets"]) == 1
+    game["answers"] = [*tape[:add_index], coded, *tape[add_index + 1:]]
+    transcription = folder / "lux-spell-by-code-input.json"
+    recoded = folder / "lux-spell-by-code-archive.json"
+    transcription.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", transcription, recoded)) == summary
+    assert json.loads(recoded.read_bytes())["games"][0]["checkpoints"] == (
+        json.loads(archive.read_bytes())["games"][0]["checkpoints"]
+    )
+    game["answers"][add_index] = {"inferredCardPlay": {"play": play, "evidence": "recorded Rune Pool"}}
+    assert not inspect_game(folder, command, inputs, 1)["exactPrefix"]
+    wrong = {**play, "payment": {**play["payment"], "energy": 3}}
+    game["answers"][add_index] = {"observedCardPlay": {"play": wrong}}
+    inspect_game(folder, command, inputs, 1, error="no legal play of RAD-010")
+
 
 def bo1_registration(original: dict) -> dict:
     previous = original["deck"]
