@@ -675,16 +675,9 @@ theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
   exact h.1.1
 
 /-- Noting that a unit died alone leaves the objects in play as they are. -/
-theorem noteAlone_inPlay (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
-    (noteAlone s o moved alone).inPlay = s.inPlay := by
-  unfold noteAlone
-  cases moved with
-  | none => rfl
-  | some n =>
-    unfold noteIf
-    by_cases h : alone = true
-    · simp only [h, ite_true]; rfl
-    · simp [h]
+theorem noteAlone_inPlay (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) : (noteAlone s o moved recorded alone).inPlay = s.inPlay := by
+  cases moved <;> rfl
 
 /-- Noting a death leaves the objects in play as they are. -/
 theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bool)
@@ -761,7 +754,7 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    · exact (noteAlone_inPlay _ _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   have hkillz : ∀ z, (killObj s u).1.zone z = s'.zone z := by
     intro z
     unfold killObj sendObj
@@ -773,7 +766,7 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+    · exact (noteAlone_zone _ _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
   have hkillLegends : (killObj s u).1.legendCount = s'.legendCount :=
     legendCount_eq ((killObj_safe s u).same.config.trans hs.config.symm) (fun p => hkillz _)
   have hmoveLegends : s'.legendCount = s.legendCount := by
@@ -866,7 +859,7 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    · exact (noteAlone_inPlay _ _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   rw [hkill, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)

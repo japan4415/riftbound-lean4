@@ -489,6 +489,8 @@ inductive TurnEffect where
   /-- A unit died with no other unit of its player where it was: the note is about the dead
   card (Lonely Poro). -/
   | diedAlone
+  /-- The actual company at death when it differs from the historical replay note. -/
+  | deathCompany (alone : Bool)
   /-- A stunned unit died: the note is about the dead card. -/
   | stunnedUnitDied
   /-- A Mighty unit died (its Might was 5 or more as it died): the note is about the dead card. -/

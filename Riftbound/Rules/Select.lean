@@ -592,7 +592,7 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | none => false)
   | .movedThisTurn => (s.obj? id).map (fun o => o.movesTurn == some s.turn)
   | .notedOn kind =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.target == some id && f.kind == kind))
+    some (s.hasTurnMark id kind)
   | .movedFromHere =>
     some (match s.obj? id with
       | some o =>
@@ -1391,8 +1391,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .excessAtLeast n => some (env.eventAmount.any (fun k => decide (n ≤ k)))
   | .marked e =>
     let kind := e.forCopy env.abilityCopyStamp
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == kind && f.who == p &&
-      f.target == some self))
+    some (s.hasTurnMark self kind (some p))
   | .enemyUnitDied =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == .unitDied && !s.config.mode.sameSide p f.who))
   | .discardedThisTurn =>

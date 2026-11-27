@@ -246,6 +246,20 @@ theorem Zone.valid_chain (n : Nat) : Zone.chain.Valid n := by
 
 namespace GameState
 
+/-- Test an object mark, using the company's shared observation point for simultaneous deaths. -/
+def hasTurnMark (s : GameState) (id : ObjId) (kind : TurnEffect)
+    (who : Option PlayerId := none) : Bool :=
+  let applies := fun note : TurnFx =>
+    note.turn == s.turn && note.target == some id && who.all (· == note.who)
+  let recorded := fun () => s.turnFx.any (fun note => applies note && note.kind == kind)
+  if kind == .diedAlone then
+    (s.turnFx.findSome? (fun note => do
+      if !applies note then none else
+      match note.kind with
+      | .deathCompany alone => some alone
+      | _ => none)).getD (recorded ())
+  else recorded ()
+
 /-- The number of players. -/
 def playerCount (s : GameState) : Nat := s.config.mode.players
 

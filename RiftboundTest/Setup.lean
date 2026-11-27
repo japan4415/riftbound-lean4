@@ -113,7 +113,7 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
   let state := s.modObj facedown (fun o => { o with hiddenAt := some field })
   let ordered : List ReplayChainItem := [.ability p source, .spell q spell]
   let check (state : GameState) (facts : List ReplayObservationFact) :=
-    (ReplayObservation.checkAt [⟨7, some "broadcast", facts⟩] 7 state).isOk
+    (ReplayObservation.checkAt [{ checkpoint := 7, source? := some "broadcast", facts }] 7 state).isOk
   return check state [.chainOrder ordered, .hiddenAt p q battle 1, .hiddenAt q q battle 0] &&
     !(check state [.chainOrder ordered.reverse]) && !(check state [.hiddenAt p q battle 0]) &&
     !(check state [.hiddenAt p p battle 1]) &&

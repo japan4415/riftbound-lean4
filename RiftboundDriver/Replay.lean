@@ -619,6 +619,8 @@ structure ReplayCheckpoint where
   buffAttributions? : Option (List (Nat × PlayerId)) := none
   /-- Zero-based event positions and the seats responsible for recorded stuns. -/
   stunAttributions? : Option (List (Nat × PlayerId)) := none
+  /-- Victim, controller, turn, stamp, and actual company when the historical mark differs. -/
+  deathCompany? : Option (List (Nat × PlayerId × Nat × Nat × Bool)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -859,7 +861,15 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
   -- Keep the original state fingerprint and record new evidence separately.
   let playLog := s.playLog.map (fun play => { play with energyPaid := 0, physical := none, stamp := none })
-  let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog }
+  let turnFx := s.turnFx.filter (fun note => match note.kind with
+    | .deathCompany _ => false
+    | _ => true)
+  let company := s.turnFx.filterMap (fun note => do
+    let target ← note.target
+    match note.kind with
+    | .deathCompany alone => some (target.n, note.who, note.turn, note.stamp, alone)
+    | _ => none)
+  let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog, turnFx }
   let buffs := events.zipIdx.filterMap fun (event, index) =>
     match event with
     | .buffedBy _ p => some (index, p)
@@ -880,7 +890,8 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
     playPhysical? := some (s.playLog.map (fun play => play.physical.map PhysId.n))
     playStamps? := some (s.playLog.map (·.stamp))
     buffAttributions? := some buffs
-    stunAttributions? := if stuns.isEmpty then none else some stuns }
+    stunAttributions? := if stuns.isEmpty then none else some stuns
+    deathCompany? := if company.isEmpty then none else some company }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1540,6 +1551,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
       throw s!"checkpoint {index}: buff responsibilities differ"
     if witness.stunAttributions?.any (fun stuns => actual.stunAttributions?.getD [] != stuns) then
       throw s!"checkpoint {index}: stun responsibilities differ"
+    if witness.deathCompany?.any (fun company => actual.deathCompany?.getD [] != company) then
+      throw s!"checkpoint {index}: company at death differs"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint))

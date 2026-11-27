@@ -199,10 +199,8 @@ private theorem noteDeath_nextId (s : GameState) (o : Object) (isUnit marked mig
     repeat (rw [noteIf_nextId] <;> first | rfl | exact count | exact fun _ => rfl | skip)
 
 private theorem noteAlone_nextId (s : GameState) (o : Object) (moved : Option ObjId)
-    (alone : Bool) : (noteAlone s o moved alone).nextId = s.nextId := by
-  cases moved with
-  | none => rfl
-  | some id => exact noteIf_nextId _ _ _ (fun _ => rfl)
+    (recorded alone : Bool) : (noteAlone s o moved recorded alone).nextId = s.nextId := by
+  cases moved <;> rfl
 
 private theorem killObj_send_positions (s : GameState) (id : ObjId) :
     let sent := (sendObj (if s.banishedOnDeath id then .banishment else .trash) s id).1

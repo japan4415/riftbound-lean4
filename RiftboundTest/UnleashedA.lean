@@ -2443,7 +2443,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let (afterCleanup, _) ← cleanupResolveDeathGroup dealt
   let alone (st : GameState) (owner : PlayerId) (code : String) : Option Bool := do
     let id ← st.firstOf owner .trash code
-    return st.turnFx.any (fun note => note.appliesTo st.turn id .diedAlone)
+    return st.hasTurnMark id .diedAlone
   let observes (st : GameState) : Bool :=
     alone st p "UNL-156" == some false && alone st partner "SFD-036" == some false &&
     alone st enemy "UNL-156" == some true

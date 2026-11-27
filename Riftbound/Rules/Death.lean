@@ -207,19 +207,29 @@ def GameState.unitIsAloneAt (s : GameState) (id : ObjId) : Bool :=
           | some field => companion.loc == some field
           | none => s.locate other == s.locate id)))
 
-/-- The note that a Unit died with no other friendly Unit at its location. -/
-def noteAlone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) : GameState :=
+/-- Append the authoritative answer if the pre-existing replay mark would give a different one. -/
+def recordDeathCompany (notes : List TurnFx) (who : PlayerId) (dead : ObjId)
+    (turn stamp : Nat) (recorded alone : Bool) : List TurnFx :=
+  if recorded == alone then notes else
+    notes ++ [{ who, turn, stamp, kind := .deathCompany alone, target := some dead }]
+
+/-- Record whether a Unit died alone and preserve the historical checkpoint representation. -/
+def noteAlone (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) : GameState :=
   match moved with
-  | some n => noteIf alone (fun t => t.addTurnFxOn o.controller n .diedAlone) s
   | none => s
+  | some id =>
+    let notes := if recorded then (s.addTurnFxOn o.controller id .diedAlone).turnFx else s.turnFx
+    { s with turnFx := recordDeathCompany notes o.controller id s.turn s.nextTimestamp recorded alone }
 
 /-- Noting that a unit died alone is a safe change. -/
-theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
-    Safe s (noteAlone s o moved alone) := by
-  unfold noteAlone
+theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (recorded alone : Bool) :
+    Safe s (noteAlone s o moved recorded alone) := by
   cases moved with
   | none => exact Safe.refl s
-  | some n => exact noteIf_safe _ _ (fun t => addTurnFxOn_safe t _ _ _) s
+  | some id =>
+    exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ owners => owners.congr rfl rfl, rfl⟩
 
 /-- A kill sends a Permanent to its owner's Trash. Replacing it with Banish suppresses the
 death event and attributes the Banish to the selected effect (CR 370.1.a.1, 428.2.a, 429.1). -/
@@ -239,6 +249,10 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
           (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
           (s.banisherOf id))
         o (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
+        ((s.cardDef? id).any (·.hasType .unit) &&
+          !s.inPlay.any (fun u => u != id && (s.cardDef? u).any (·.hasType .unit) &&
+            (s.obj? u).any (fun companion => companion.controller == o.controller &&
+              companion.loc == o.loc)))
         (s.unitIsAloneAt id),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
@@ -254,7 +268,7 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
     split
     · exact sendObj_safe dest s id
     · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
-        (noteAlone_safe _ _ _ _)
+        (noteAlone_safe _ _ _ _ _)
   · exact sendObj_safe dest s id
 
 /-- What the zone of an object in a well-formed game says: no other zone holds it. -/
@@ -267,16 +281,9 @@ theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : O
   exact hxz (Option.some.inj (h2.symm.trans h1))
 
 /-- Noting that a unit died alone leaves the zones as they are. -/
-theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool)
-    (z : Zone) : (noteAlone s o moved alone).zone z = s.zone z := by
-  unfold noteAlone
-  cases moved with
-  | none => rfl
-  | some n =>
-    unfold noteIf
-    by_cases h : alone = true
-    · simp only [h, ite_true]; rfl
-    · simp [h]
+theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (z : Zone) : (noteAlone s o moved recorded alone).zone z = s.zone z := by
+  cases moved <;> rfl
 
 /-- Noting a death leaves the zones as they are. -/
 theorem noteDeath_zone (s : GameState) (o : Object) (isUnit marked mighty : Bool)
@@ -919,12 +926,9 @@ theorem noteDeath_retains {s : GameState} {z : Zone} {c : ObjId} (hc : c ∈ s.z
     exact first.trans (buffs.trans (stun.trans (big.trans (recalled.trans banish))))
 
 private theorem retains_noteAlone {s t : GameState} {z : Zone} {c : ObjId}
-    (keep : RetainsCard s t z c) (o : Object) (moved : Option ObjId) (alone : Bool) :
-    RetainsCard s (noteAlone t o moved alone) z c := by
-  cases moved with
-  | none => exact keep
-  | some n =>
-    cases alone <;> exact ⟨keep.member, keep.object, keep.pools⟩
+    (keep : RetainsCard s t z c) (o : Object) (moved : Option ObjId) (recorded alone : Bool) :
+    RetainsCard s (noteAlone t o moved recorded alone) z c := by
+  cases moved <;> exact ⟨keep.member, keep.object, keep.pools⟩
 
 /-- Killing another object keeps the card in its zone, including when the victim goes to that zone. -/
 theorem killObj_retains {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}

@@ -2239,14 +2239,12 @@ def deathGroupCompanyNotes (before after : GameState) (group : List ObjId) (even
       match controller with
       | none => notes
       | some who =>
-        let applies := fun note => note.appliesTo after.turn dead .diedAlone
-        let alone := before.unitIsAloneAt old
-        if alone == notes.any applies then notes
-        else if alone then
-          notes ++ [{
-            who, turn := after.turn, stamp := after.nextTimestamp
-            kind := .diedAlone, target := some dead }]
-        else notes.filter (fun note => !applies note)
+        let retained := notes.filter (fun note => match note.kind with
+          | .deathCompany _ => note.target != some dead || note.turn != after.turn
+          | _ => true)
+        let recorded := retained.any (·.appliesTo after.turn dead .diedAlone)
+        recordDeathCompany retained who dead after.turn after.nextTimestamp recorded
+          (before.unitIsAloneAt old)
     | _ => notes) after.turnFx
 
 /-- Apply all of the chosen replacements and deaths in one group. -/
