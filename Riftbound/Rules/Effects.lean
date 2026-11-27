@@ -2281,9 +2281,10 @@ def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option 
 
 /-- Record applied damage, then process effects that react directly to it (CR 418). -/
 def dealRemaining (n : Nat) (s : GameState) (id : ObjId)
-    (responsible : Option PlayerId := none) : GameState × List Event :=
+    (responsible : Option PlayerId := none) (deferLethal : Bool := false) : GameState × List Event :=
   let damagingUnit := decide (0 < n) && (s.cardDef? id).any (·.hasType .unit)
-  let saver := if damagingUnit && s.damageWillBeLethal id n responsible then s.deathSaver id else none
+  let saver := if !deferLethal && damagingUnit && s.damageWillBeLethal id n responsible then
+    s.deathSaver id else none
   let damaged := s.markDamage id n responsible
   let event := Event.damaged id n
   match saver with
@@ -2298,7 +2299,8 @@ def dealRemaining (n : Nat) (s : GameState) (id : ObjId)
 
 /-- Recording damage and applying direct reactions preserve the structural invariants. -/
 theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId)
-    (responsible : Option PlayerId := none) : Safe s (dealRemaining n s id responsible).1 := by
+    (responsible : Option PlayerId := none) (deferLethal : Bool := false) :
+    Safe s (dealRemaining n s id responsible deferLethal).1 := by
   have damaged := s.markDamage_safe id n responsible
   unfold dealRemaining
   dsimp only
@@ -2502,7 +2504,8 @@ def applyEffectDamageAmounts (batch : EffectDamageBatch) (s : GameState) :
   | [] => (s, [])
   | (id, amount) :: rest =>
     let r := if (s.obj? id).isSome then
-        linkDamageHit (dealRemaining amount s id (batch.responsible id)) id amount batch.onKill
+        linkDamageHit (dealRemaining amount s id (batch.responsible id) batch.combatDamage)
+          id amount batch.onKill
       else (s, [])
     let later := applyEffectDamageAmounts batch r.1 rest
     (later.1, r.2 ++ later.2)
@@ -2516,7 +2519,8 @@ theorem applyEffectDamageAmounts_safe (batch : EffectDamageBatch) (s : GameState
     obtain ⟨id, amount⟩ := hit
     simp only [applyEffectDamageAmounts]
     split
-    · exact (dealRemaining_safe amount s id _).trans ((linkDamageHit_safe _ _ _ _).trans (ih _))
+    · exact (dealRemaining_safe amount s id _ batch.combatDamage).trans
+        ((linkDamageHit_safe _ _ _ _).trans (ih _))
     · exact ih s
 
 /-- Commit the spent effects and the damage in one step, after all replacement decisions. -/
@@ -2546,7 +2550,8 @@ def damageDeathChoice (s : GameState) (batch : EffectDamageBatch) (hit : ObjId �
     Option (ObjId × PlayerId × Effect × Effect) :=
   let (id, amount) := hit
   if amount != 0 && (s.killOnHit id ||
-      (s.damageWillBeLethal id amount (batch.responsible id) && (s.deathSaver id).isSome)) then
+      (!batch.combatDamage && s.damageWillBeLethal id amount (batch.responsible id) &&
+        (s.deathSaver id).isSome)) then
     s.deathReplacementChoice id
   else none
 

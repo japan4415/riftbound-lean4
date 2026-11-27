@@ -3533,6 +3533,27 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted) &&
     events == [.healed unit 3, .exhausted unit]
 
+-- Combat Damage is marked on both sides before Guardian Angel's Cleanup replacement (CR 468.1).
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, defender) ← putAt (s.control p field) p "OGN-006" field
+  let (s, gear) ← put s p "SFD-051" .base
+  let (s, attacker) ← putAt (attachTo defender s gear).1 q "OGN-001" field
+  let contested := s.modObj field (fun o => { o with contested := some q })
+  let assigning := { contested with active := some q,
+    combat := some { battlefield := field, attacker := q, defender := p,
+      units := [attacker, defender] },
+    pending := [.assign field q p [attacker] [(defender, 5)], .priority q] }
+  let (saved, events) ← (step 100 assigning ⟨.player p, .assignDone⟩).toOption
+  let dead ← saved.firstOf p .trash "SFD-051"
+  return events.filter (fun
+      | .damaged .. | .died .. | .healed .. | .exhausted .. | .recalled .. => true | _ => false) ==
+        [.damaged defender 5, .damaged attacker 4, .died dead p, .healed defender 5,
+          .exhausted defender, .recalled defender] &&
+    saved.where? defender == some (.player p .base) && saved.controlOf field == some q
+
 -- The Angel also saves the attached Unit from a direct Kill, but stays attached after a nonlethal hit.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"

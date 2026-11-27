@@ -2206,6 +2206,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### Guardian Angel の身代わりと回復順
 
 - Guardian Angel を装備した Unit が死ぬ場合、その Gear が代わりに死ぬ。Unit は回復、消耗、Recall の順に処理される。実際に取り除いたダメージ量を記録し、Recall では Standard Move のイベントを発生させない（CR 373、419、456、825）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Combat では両軍の割り当て済みダメージを記録してから、Combat Cleanup で致死と身代わりを処理する（CR 323.4、467.2.d、468.1）。
 - Soraka などで Base にいる Unit を救った場合は、回復と消耗を記録する。Guardian Angel を `full` とし、全1,103枚中565枚を実装済みにした。[カード実装状況](coverage.md)
 
 ### Origins のダメージ呪文の対象確認

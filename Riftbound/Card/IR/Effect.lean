@@ -149,6 +149,8 @@ structure EffectDamageBatch extends EffectDamageProgress where
   damageSources : List (ObjId × PlayerId) := []
   /-- An optional reflexive ability tied to actual deaths from the damage. -/
   onKill : Option DamageKillLink := none
+  /-- Combat marks all assigned damage before its Cleanup handles lethal Units (CR 468.1). -/
+  combatDamage : Bool := false
 deriving DecidableEq, Hashable
 
 /-- Keep the established checkpoint representation for damage without a linked ability. -/

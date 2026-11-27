@@ -377,7 +377,7 @@ def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat))
   let damageSources := combatants.toList.flatMap fun (attacker, defender) =>
     hits.filterMap fun (unit, _) => (s.obj? unit).map fun target =>
       (unit, if s.config.mode.sameSide attacker target.controller then defender else attacker)
-  let batch : EffectDamageBatch := { controller := none, incoming := [], damageSources }
+  let batch : EffectDamageBatch := { controller := none, incoming := [], damageSources, combatDamage := true }
   hits.foldl (fun now (u, raw) =>
     match s.obj? u with
     | none => now
