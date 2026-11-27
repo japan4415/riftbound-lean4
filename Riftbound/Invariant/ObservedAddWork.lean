@@ -95,11 +95,18 @@ def SameCleanupMeasure (before after : GameState) : Prop :=
   ∀ stack, ({ after with pending := stack } : GameState).cleanupMeasure =
     ({ before with pending := stack } : GameState).cleanupMeasure
 
-private theorem SameCleanupMeasure.refl (s : GameState) : SameCleanupMeasure s s := fun _ => rfl
+/-- Immediate Adds leave zone contents and the Cleanup measure intact. -/
+structure AddGeometry (before after : GameState) : Prop where
+  /-- No objects change zones. -/
+  zones : after.zones = before.zones
+  /-- The unchanged board contributes the same Cleanup measure. -/
+  measure : SameCleanupMeasure before after
 
-private theorem SameCleanupMeasure.trans {s t u : GameState}
-    (first : SameCleanupMeasure s t) (second : SameCleanupMeasure t u) :
-    SameCleanupMeasure s u := fun stack => (second stack).trans (first stack)
+private theorem AddGeometry.refl (s : GameState) : AddGeometry s s := ⟨rfl, fun _ => rfl⟩
+
+private theorem AddGeometry.trans {s t u : GameState}
+    (first : AddGeometry s t) (second : AddGeometry t u) : AddGeometry s u :=
+  ⟨second.zones.trans first.zones, fun stack => (second.measure stack).trans (first.measure stack)⟩
 
 private theorem sameCleanupMeasure_of_geometry {s t : GameState} (reads : SameMightReads s t)
     (cards : t.cards = s.cards) (objects : t.objects = s.objects) (zones : t.zones = s.zones) :
@@ -117,7 +124,7 @@ private def AddEffectTerminates (e : Effect) : Prop :=
     ∃ (t : GameState) (n : Nat) (events : List Event) (might : List (ObjId × Int)),
       AdvancePrefix { s with pending := .run p src env (.cons e more) :: rest }
         { t with pending := .run p src (env.withMight might) more :: rest } n events ∧
-      t.WF ∧ t.cards = s.cards ∧ SameCleanupMeasure s t
+      t.WF ∧ t.cards = s.cards ∧ AddGeometry s t
 
 private def AddSequenceTerminates (program : EffectList) : Prop :=
   ∀ (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (more : EffectList) (rest : List Frame),
@@ -125,7 +132,7 @@ private def AddSequenceTerminates (program : EffectList) : Prop :=
     ∃ (t : GameState) (n : Nat) (events : List Event) (might : List (ObjId × Int)),
       AdvancePrefix { s with pending := .run p src env (program.append more) :: rest }
         { t with pending := .run p src (env.withMight might) more :: rest } n events ∧
-      t.WF ∧ t.cards = s.cards ∧ SameCleanupMeasure s t
+      t.WF ∧ t.cards = s.cards ∧ AddGeometry s t
 
 private theorem addSequence_nil : AddSequenceTerminates .nil := by
   intro s p src env more rest wf _
@@ -148,7 +155,7 @@ private theorem addSequence_cons {e : Effect} {later : EffectList}
 private theorem addEffect_single {e : Effect}
     (resolve : ∀ start p src env more, ∃ t events,
       runEffect start p src env e more effectAddPolicy = (t, [.run p src env more], events) ∧
-      t.pending = start.pending ∧ SameMightReads start t ∧ t.cards = start.cards ∧ SameCleanupMeasure start t ∧
+      t.pending = start.pending ∧ SameMightReads start t ∧ t.cards = start.cards ∧ AddGeometry start t ∧
       (events = [] ∨ events = [.skipped src])) :
     AddEffectTerminates e := by
   intro s p src env more rest wf checked
@@ -157,7 +164,7 @@ private theorem addEffect_single {e : Effect}
   obtain ⟨t, events, rule, stack, reads, cards, board, onlySkip⟩ := resolve start p src refreshed more
   have step := runSingle_observed (s := start) (wf.congr rfl rfl rfl rfl) checked rfl stack reads rule onlySkip
   exact ⟨t, 1, events, start.mightTable, runPrefix rfl step,
-    (workStep_wf (s := start) (wf.congr rfl rfl rfl rfl) step).congr rfl rfl rfl rfl, cards, board⟩
+    (workStep_wf (s := start) (wf.congr rfl rfl rfl rfl) step).congr rfl rfl rfl rfl, cards, ⟨board.zones, board.measure⟩⟩
 
 private theorem addEffect_prim (pr : Prim) (allowed : (Effect.prim pr).isTriggerAdd = true) :
     AddEffectTerminates (.prim pr) := by
@@ -171,13 +178,13 @@ private theorem addEffect_prim (pr : Prim) (allowed : (Effect.prim pr).isTrigger
     obtain ⟨t, events⟩ := answer
     obtain ⟨reads, cards, objects, zones, noEvents⟩ := applyPrim_add_geometry allowed applied
     exact ⟨t, events, by simpa only [applied] using rule, (applyPrim_safe applied).same.pending,
-      reads, cards, sameCleanupMeasure_of_geometry reads cards objects zones, Or.inl noEvents⟩
+      reads, cards, ⟨zones, sameCleanupMeasure_of_geometry reads cards objects zones⟩, Or.inl noEvents⟩
 
 private theorem addEffect_marker (index : Nat) : AddEffectTerminates (.markTriggeredAdd index) := by
   apply addEffect_single
   intro s p src env more
   refine ⟨s.modObj src (fun o => o.noteAbilityUse index env.abilityCopyStamp), [], rfl, rfl,
-    noteAbilityUse_sameMightReads s src index env.abilityCopyStamp, rfl, ?_, Or.inl rfl⟩
+    noteAbilityUse_sameMightReads s src index env.abilityCopyStamp, rfl, ⟨rfl, ?_⟩, Or.inl rfl⟩
   intro stack
   exact noteAbilityUse_cleanupMeasure { s with pending := stack } src index env.abilityCopyStamp stack (fun _ => rfl)
 
@@ -264,12 +271,12 @@ end
 /-- The actual engine finishes a scheduled immediate Add, including its use marker and any skipped
 instructions, leaving the supplied continuation. Evaluating a condition may read the current state
 even when the trigger was scheduled in an earlier state. -/
-theorem PendTrigger.advance_immediateAddFrame_measured {detected : GameState} {trigger : PendTrigger}
+theorem PendTrigger.advance_immediateAddFrame_geometry {detected : GameState} {trigger : PendTrigger}
     {frame : Frame} (scheduled : trigger.immediateAddFrame detected = some frame)
     (current : GameState) (rest : List Frame) (wf : current.WF) (checked : MightRead.database current.cards) :
     ∃ (t : GameState) (used : Nat) (events : List Event), 0 < used ∧
       AdvancePrefix { current with pending := frame :: rest } { t with pending := rest } used events ∧
-      t.WF ∧ t.cards = current.cards ∧ SameCleanupMeasure current t := by
+      t.WF ∧ t.cards = current.cards ∧ AddGeometry current t := by
   unfold PendTrigger.immediateAddFrame at scheduled
   split at scheduled
   · split at scheduled
@@ -293,6 +300,17 @@ theorem PendTrigger.advance_immediateAddFrame_measured {detected : GameState} {t
     · contradiction
   · contradiction
 
+/-- A scheduled immediate Add leaves the original Cleanup measure. -/
+theorem PendTrigger.advance_immediateAddFrame_measured {detected : GameState} {trigger : PendTrigger}
+    {frame : Frame} (scheduled : trigger.immediateAddFrame detected = some frame)
+    (current : GameState) (rest : List Frame) (wf : current.WF) (checked : MightRead.database current.cards) :
+    ∃ (t : GameState) (used : Nat) (events : List Event), 0 < used ∧
+      AdvancePrefix { current with pending := frame :: rest } { t with pending := rest } used events ∧
+      t.WF ∧ t.cards = current.cards ∧ SameCleanupMeasure current t := by
+  obtain ⟨t, used, events, positive, path, wellFormed, cards, board⟩ :=
+    trigger.advance_immediateAddFrame_geometry scheduled current rest wf checked
+  exact ⟨t, used, events, positive, path, wellFormed, cards, board.measure⟩
+
 /-- A scheduled immediate Add resolves through the actual engine and restores its continuation. -/
 theorem PendTrigger.advance_immediateAddFrame {detected : GameState} {trigger : PendTrigger}
     {frame : Frame} (scheduled : trigger.immediateAddFrame detected = some frame)
@@ -301,14 +319,14 @@ theorem PendTrigger.advance_immediateAddFrame {detected : GameState} {trigger : 
       AdvancePrefix { current with pending := frame :: rest } { t with pending := rest } used events ∧
       t.WF ∧ t.cards = current.cards := by
   obtain ⟨t, used, events, positive, path, wellFormed, cards, _⟩ :=
-    trigger.advance_immediateAddFrame_measured scheduled current rest wf checked
+    trigger.advance_immediateAddFrame_geometry scheduled current rest wf checked
   exact ⟨t, used, events, positive, path, wellFormed, cards⟩
 
 private theorem advance_immediateAdds (detected : GameState) (triggers : List PendTrigger) (current : GameState)
     (rest : List Frame) (wf : current.WF) (checked : MightRead.database current.cards) :
     ∃ (t : GameState) (used : Nat) (events : List Event), AdvancePrefix
       { current with pending := triggers.filterMap (·.immediateAddFrame detected) ++ rest }
-      { t with pending := rest } used events ∧ t.WF ∧ t.cards = current.cards ∧ SameCleanupMeasure current t := by
+      { t with pending := rest } used events ∧ t.WF ∧ t.cards = current.cards ∧ AddGeometry current t := by
   induction triggers generalizing current with
   | nil =>
     exact ⟨current, 0, [], by intro fuel events; simp, wf, rfl, .refl _⟩
@@ -319,7 +337,7 @@ private theorem advance_immediateAdds (detected : GameState) (triggers : List Pe
     | some frame =>
       let tail := triggers.filterMap (·.immediateAddFrame detected) ++ rest
       obtain ⟨t, used, events, _, ran, wellFormed, cards, board⟩ :=
-        first.advance_immediateAddFrame_measured scheduled current tail wf checked
+        first.advance_immediateAddFrame_geometry scheduled current tail wf checked
       obtain ⟨u, later, extra, stopped, finalWF, finalCards, finalBoard⟩ := ih t wellFormed (cards ▸ checked)
       exact ⟨u, used + later, events ++ extra,
         by simpa only [List.filterMap_cons, scheduled, List.cons_append] using ran.append stopped,
@@ -327,14 +345,25 @@ private theorem advance_immediateAdds (detected : GameState) (triggers : List Pe
 
 /-- Through the real engine, every immediate Add in a detected batch runs before the ordinary
 queue and the original continuation. The events remain in their emitted order. -/
-theorem advance_insertDetectedTriggers_adds_measured (s : GameState) (triggers : List PendTrigger)
+theorem advance_insertDetectedTriggers_adds_geometry (s : GameState) (triggers : List PendTrigger)
     (rest : List Frame) (wf : s.WF) (checked : MightRead.database s.cards) :
     ∃ (t : GameState) (used : Nat) (events : List Event), AdvancePrefix { s with pending := insertDetectedTriggers s triggers rest }
       { t with pending := ordinaryTriggerContinuation s triggers rest } used events ∧
-      t.WF ∧ t.cards = s.cards ∧ SameCleanupMeasure s t := by
+      t.WF ∧ t.cards = s.cards ∧ AddGeometry s t := by
   unfold ordinaryTriggerContinuation insertDetectedTriggers
   simp only [List.filterMap_map, Function.comp_def]
   exact advance_immediateAdds s triggers s _ wf checked
+
+/-- An observed batch of immediate Adds preserves the Cleanup measure. -/
+theorem advance_insertDetectedTriggers_adds_measured (s : GameState) (triggers : List PendTrigger)
+    (rest : List Frame) (wf : s.WF) (checked : MightRead.database s.cards) :
+    ∃ (t : GameState) (used : Nat) (events : List Event),
+      AdvancePrefix { s with pending := insertDetectedTriggers s triggers rest }
+        { t with pending := ordinaryTriggerContinuation s triggers rest } used events ∧
+      t.WF ∧ t.cards = s.cards ∧ SameCleanupMeasure s t := by
+  obtain ⟨t, used, events, path, wellFormed, cards, board⟩ :=
+    advance_insertDetectedTriggers_adds_geometry s triggers rest wf checked
+  exact ⟨t, used, events, path, wellFormed, cards, board.measure⟩
 
 /-- The actual engine resolves a batch of immediate Adds before its ordinary continuation. -/
 theorem advance_insertDetectedTriggers_adds (s : GameState) (triggers : List PendTrigger)
@@ -343,7 +372,7 @@ theorem advance_insertDetectedTriggers_adds (s : GameState) (triggers : List Pen
       { t with pending := ordinaryTriggerContinuation s triggers rest } used events ∧
       t.WF ∧ t.cards = s.cards := by
   obtain ⟨t, used, events, path, wellFormed, cards, _⟩ :=
-    advance_insertDetectedTriggers_adds_measured s triggers rest wf checked
+    advance_insertDetectedTriggers_adds_geometry s triggers rest wf checked
   exact ⟨t, used, events, path, wellFormed, cards⟩
 
 private theorem advance_leadingTriggers_checked (s : GameState) (wf : s.WF)

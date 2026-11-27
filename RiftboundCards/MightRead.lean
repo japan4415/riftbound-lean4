@@ -106,7 +106,7 @@ theorem step_priority_pass_to_decision {s : Riftbound.GameState} {p : Riftbound.
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
 
 /-- For registered cards, check the top item's actual Run programs and follow the final
-Chain Pass to a decision or a deferred limited Spell declaration. -/
+Chain Pass through deferred limited Spell declarations to a decision. -/
 theorem step_chainPass_last_checked {s : Riftbound.GameState} {p : Riftbound.PlayerId}
     {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
     (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
@@ -119,6 +119,23 @@ theorem step_chainPass_last_checked {s : Riftbound.GameState} {p : Riftbound.Pla
       (t.pending.head?.all (fun f => !f.isWork) = true →
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
   Riftbound.step_chainPass_last_checked wf (mightReads_of_registered cards) ongoing pending last checked front decision
+
+/-- A checked final Chain Pass reaches a decision after resolving deferred declarations,
+and any extra fuel gives the same state and events. -/
+theorem step_chainPass_last_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  obtain ⟨t, used, events, positive, stopped, _, finished⟩ :=
+    Riftbound.step_chainPass_last_checked_to_decision wf (mightReads_of_registered cards)
+      ongoing pending last checked front decision
+  exact ⟨t, used, events, positive, stopped,
+    fun extra => Riftbound.step_mono finished (Nat.le_add_right _ extra)⟩
 
 /-- For registered cards, a last Chain Pass follows each supported Repeat execution using
 the definition and targets that are available when it starts. -/

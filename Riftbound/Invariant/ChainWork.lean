@@ -2,7 +2,7 @@ module
 
 public import Riftbound.Invariant.ObservedCleanupWork
 public import Riftbound.Invariant.Priority
-public import Riftbound.Invariant.RunWork
+public import Riftbound.Invariant.LimitedSpellWork
 
 /-!
 # Observed Chain resolution work (I12)
@@ -136,24 +136,24 @@ inductive ChainWorkEnd (s : GameState) : Prop where
   | limited (p : PlayerId) (card : ObjId) (rest : List Frame) :
       s.pending = .run p card {} (.cons (.finalizeLimitedSpell card) .nil) :: rest → ChainWorkEnd s
 
-/-- Finish an item above its decision continuation and any ordinary trigger queue. -/
-theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
+/-- Finish an item and resolve deferred declarations before reaching the next decision. -/
+theorem advance_finish_chain_to_decision {s : GameState} {item : ObjId}
     {rest original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .finishSpell item :: rest) (tracks : TriggerWorkTail original rest)
     (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
     (waits : original.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+    ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
   let finished := (finishItem s item).1
   have reaches (base : List Frame) (waiting : TriggerWorkTail base (afterItem finished ++ rest))
       (nonresolution : ∀ f, base.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
       (decision : base.head?.all (fun f => !f.isWork) = true) :
-      ∃ t used events, AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+      ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
     obtain ⟨mid, used, events, path, stop | ⟨queued, midWF, cards⟩⟩ :=
       advance_finished_item_until wf reads pending (TriggerWorkTail base) waiting
         (fun _ route q ne => route.insert nonresolution q ne)
-    · exact ⟨mid, used, events, path, .decision stop⟩
+    · exact ⟨mid, used, events, path, stop⟩
     · obtain ⟨t, elapsed, resolved, outcome⟩ := advance_trigger_tail mid base midWF (cards ▸ reads) queued
-      refine ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append resolved, .decision ?_⟩
+      refine ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append resolved, ?_⟩
       rcases outcome with choice | ⟨resume, _, _⟩
       · exact choice
       · exact resume.symm ▸ decision
@@ -165,15 +165,18 @@ theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
     by_cases deferred : (finished.pendingSpell card).isSome = true
     · let p := ((finished.obj? card).map (·.controller)).getD (finished.active.getD ⟨0⟩)
       let frame := Frame.run p card {} (.cons (.finalizeLimitedSpell card) .nil)
-      let keeps := ResolutionPrefix [frame] (fun _ => True)
+      let keeps := ResolutionPrefix [frame] (TriggerWorkTail original)
       have base : keeps (afterItem finished ++ rest) := by
-        refine ⟨rest, ?_, trivial⟩
+        refine ⟨rest, ?_, tracks⟩
         simp only [afterItem, nextCard, deferred, ite_true, frame, p]
-      obtain ⟨t, used, events, path, stop | ⟨⟨tail, stack, _⟩, _, _⟩⟩ :=
+      obtain ⟨t, used, events, path, stop | ⟨⟨tail, stack, queued⟩, tWF, cards⟩⟩ :=
         advance_finished_item_until wf reads pending keeps base (fun _ route q ne => route.insert
-          (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) (fun _ _ _ _ => trivial) q ne)
-      · exact ⟨t, used, events, path, .decision stop⟩
-      · exact ⟨t, used, events, path, .limited p card tail stack⟩
+          (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
+          (fun _ waiting added ne' => waiting.insert front added ne') q ne)
+      · exact ⟨t, used, events, path, stop⟩
+      · obtain ⟨u, later, emitted, done, stop⟩ :=
+          advance_limited_to_decision tWF (cards ▸ reads) stack queued front waits
+        exact ⟨u, used + later, events ++ emitted, path.append done, stop⟩
     · let base := .chainPass finished.chainPrioritySeat 0 :: rest
       have exactBase : afterItem finished ++ rest = base := by
         simp only [afterItem, nextCard, ite_eq_right deferred, base, List.cons_append, List.nil_append]
@@ -182,16 +185,27 @@ theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
       obtain rfl := Option.some.inj head
       exact ⟨rfl, by intro q h; cases h⟩
 
+/-- Finish an item above its decision continuation and any ordinary trigger queue. -/
+theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
+    {rest original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .finishSpell item :: rest) (tracks : TriggerWorkTail original rest)
+    (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (waits : original.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+  obtain ⟨t, used, events, path, stop⟩ :=
+    advance_finish_chain_to_decision wf reads pending tracks front waits
+  exact ⟨t, used, events, path, .decision stop⟩
+
 /-- The top item's effects, Finish, optional Recycle and Cleanup are finite when its Run frames
-terminate under observation. Earlier decisions and deferred Spell declarations remain explicit. -/
-theorem advance_chain_resolution {s : GameState} {item : ObjId} {rest : List Frame}
+terminate under observation. Resolve subsequent deferred declarations before returning. -/
+theorem advance_chain_resolution_to_decision {s : GameState} {item : ObjId} {rest : List Frame}
     (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .resolveChain :: rest)
     (finite : ∃ body, resolveFrames s rest = body ++ (Frame.finishSpell item :: rest) ∧
       ∀ f ∈ body, Frame.FiniteRun f)
     (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
   obtain ⟨body, frames, runs⟩ := finite
   let raw := { s with pending := body ++ (Frame.finishSpell item :: rest) }
   have step : microStep0 s = some (raw, []) := by simp only [microStep0, pending, frames, raw]
@@ -204,19 +218,56 @@ theorem advance_chain_resolution {s : GameState} {item : ObjId} {rest : List Fra
       (fun _ kept q' ne' => kept.insert front q' ne') q ne
   have base : ResolutionPrefix body finishes raw.pending := ⟨_, rfl, ⟨rest, rfl, Or.inl rfl⟩⟩
   have finish (tracks : ResolutionPrefix body finishes mid.pending) :
-      ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+      ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
     obtain ⟨t, more, emitted, resolved, stop | ⟨⟨tail, finishStack, seen⟩, tWF, tCards⟩⟩ :=
       advance_run_frames midWF (cards ▸ reads) tracks runs inserts
-    · exact ⟨t, used + more, events ++ emitted, by omega, path.append resolved, .decision stop⟩
+    · exact ⟨t, used + more, events ++ emitted, by omega, path.append resolved, stop⟩
     · obtain ⟨u, elapsed, _, settled, stop⟩ :=
-        advance_finish_chain_to_boundary tWF (tCards ▸ cards ▸ reads) finishStack seen front decision
+        advance_finish_chain_to_decision tWF (tCards ▸ cards ▸ reads) finishStack seen front decision
       exact ⟨u, used + more + elapsed, _, by omega, (path.append resolved).append settled, stop⟩
   generalize stack : mid.pending = pendingFrames at route
   cases route with
-  | empty => exact ⟨mid, used, events, positive, path, .decision (by rw [stack]; rfl)⟩
+  | empty => exact ⟨mid, used, events, positive, path, by rw [stack]; rfl⟩
   | resume => exact finish (stack.symm ▸ base)
   | queue q ne =>
     exact finish (stack.symm ▸ base.insert (fun f member => (runs f member).isResolution) inserts q ne)
+
+/-- The top item's effects, Finish, optional Recycle and Cleanup are finite when its Run frames
+terminate under observation. Earlier decisions and deferred Spell declarations remain explicit. -/
+theorem advance_chain_resolution {s : GameState} {item : ObjId} {rest : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .resolveChain :: rest)
+    (finite : ∃ body, resolveFrames s rest = body ++ (Frame.finishSpell item :: rest) ∧
+      ∀ f ∈ body, Frame.FiniteRun f)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ ChainWorkEnd t := by
+  obtain ⟨t, used, events, positive, path, stop⟩ :=
+    advance_chain_resolution_to_decision wf reads pending finite front decision
+  exact ⟨t, used, events, positive, path, .decision stop⟩
+
+/-- Lift certified Chain resolution to the actual final Pass. The amount of fuel used suffices for a
+successful step at the decision. -/
+theorem step_chainPass_last_certified_to_decision {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
+    {item : ObjId} (wf : s.WF) (reads : MightRead.database s.cards) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (finite : let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
+      ∃ body, resolveFrames initial rest = body ++ (Frame.finishSpell item :: rest) ∧
+        ∀ f ∈ body, Frame.FiniteRun f)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
+      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
+  obtain ⟨t, used, events, positive, path, stop⟩ :=
+    advance_chain_resolution_to_decision (s := initial) (wf.congr rfl rfl rfl rfl) reads rfl finite front decision
+  refine ⟨t, used, events, positive, stop, ?_, ?_⟩
+  · intro fuel
+    rw [step_chainPass_last _ ongoing pending last]
+    simpa only [List.nil_append] using path fuel []
+  · rw [step_chainPass_last _ ongoing pending last]
+    simpa only [List.nil_append] using path.finish stop []
 
 /-- Lift certified Chain resolution to the actual final Pass. At a decision the amount of
 fuel used suffices for a successful step. -/
@@ -232,16 +283,9 @@ theorem step_chainPass_last_certified {s : GameState} {p : PlayerId} {passes : N
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
       (t.pending.head?.all (fun f => !f.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
-  let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
-  obtain ⟨t, used, events, positive, path, stop⟩ :=
-    advance_chain_resolution (s := initial) (wf.congr rfl rfl rfl rfl) reads rfl finite front decision
-  refine ⟨t, used, events, positive, stop, ?_, ?_⟩
-  · intro fuel
-    rw [step_chainPass_last _ ongoing pending last]
-    simpa only [List.nil_append] using path fuel []
-  · intro reached
-    rw [step_chainPass_last _ ongoing pending last]
-    simpa only [List.nil_append] using path.finish reached []
+  obtain ⟨t, used, events, positive, stopped, continues, finishes⟩ :=
+    step_chainPass_last_certified_to_decision wf reads ongoing pending last finite front decision
+  exact ⟨t, used, events, positive, .decision stopped, continues, fun _ => finishes⟩
 
 /-- Whether the frame contains a Run program. -/
 def isRunFrame : Frame → Bool
@@ -274,17 +318,16 @@ private theorem takeWhile_ChainRuns (body : List Frame) (item : ObjId) (rest : L
       ih (fun f member => onlyRuns f (List.mem_cons_of_mem _ member))]
 
 /-- A final Chain Pass checks the current program only, then follows the observed dispatcher
-to the next decision or a queued limited Spell. -/
-theorem step_chainPass_last_checked {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
+through deferred declarations to the next decision. -/
+theorem step_chainPass_last_checked_to_decision {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
     (wf : s.WF) (reads : MightRead.database s.cards) (ongoing : s.result = none)
     (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
     (checked : chainPassWorkSupported s p rest = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, 0 < used ∧ ChainWorkEnd t ∧
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true →
-        step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   cases chain : s.zone .chain with
   | cons item older =>
@@ -294,7 +337,7 @@ theorem step_chainPass_last_checked {s : GameState} {p : PlayerId} {passes : Nat
       change ((resolveFrames initial rest).takeWhile isRunFrame).all runFrameSupported = true at checked
       rw [frames, takeWhile_ChainRuns body item rest onlyRuns] at checked
       exact checked
-    exact step_chainPass_last_certified wf reads ongoing pending last
+    exact step_chainPass_last_certified_to_decision wf reads ongoing pending last
       ⟨body, frames, fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member)⟩ front decision
   | nil =>
     let raw := { initial with pending := rest }
@@ -308,13 +351,28 @@ theorem step_chainPass_last_checked {s : GameState} {p : PlayerId} {passes : Nat
     obtain ⟨t, more, resolved, stop⟩ := advance_observed_decision mid rest midWF (cards ▸ reads) route decision
     have full : AdvancePrefix initial t (used + more) events := by
       simpa only [List.append_nil] using path.append resolved
-    refine ⟨t, used + more, events, by omega, .decision stop, ?_, ?_⟩
+    refine ⟨t, used + more, events, by omega, stop, ?_, ?_⟩
     · intro fuel
       rw [step_chainPass_last _ ongoing pending last]
       simpa only [List.nil_append] using full fuel []
-    · intro _
-      rw [step_chainPass_last _ ongoing pending last]
+    · rw [step_chainPass_last _ ongoing pending last]
       simpa only [List.nil_append] using full.finish stop []
+
+/-- A final Chain Pass checks the current program only, then follows the observed dispatcher
+to the next decision or a queued limited Spell. -/
+theorem step_chainPass_last_checked {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ ChainWorkEnd t ∧
+      (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true →
+        step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  obtain ⟨t, used, events, positive, stopped, continues, finishes⟩ :=
+    step_chainPass_last_checked_to_decision wf reads ongoing pending last checked front decision
+  exact ⟨t, used, events, positive, .decision stopped, continues, fun _ => finishes⟩
 
 end Riftbound
 

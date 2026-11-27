@@ -153,8 +153,8 @@ theorem advance_repeated_chain_resolution {s : GameState} {item : ObjId} {older 
       advance_repeated_executions executions midWF (cards ▸ reads) tracks insertFinish
     · exact ⟨t, used + elapsed, events ++ later, by omega, path.append work, stop⟩
     · obtain ⟨u, closing, _, completed, stop⟩ :=
-        advance_finish_chain_to_boundary tWF (tCards ▸ cards ▸ reads) ready tailRoute front decision
-      exact ⟨u, used + elapsed + closing, _, by omega, (path.append work).append completed, .chain stop⟩
+        advance_finish_chain_to_decision tWF (tCards ▸ cards ▸ reads) ready tailRoute front decision
+      exact ⟨u, used + elapsed + closing, _, by omega, (path.append work).append completed, .chain (.decision stop)⟩
   generalize stack : mid.pending = framesAfter at route
   cases route with
   | empty => exact ⟨mid, used, events, positive, path, .chain (.decision (by rw [stack]; rfl))⟩

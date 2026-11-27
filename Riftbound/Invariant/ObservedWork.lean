@@ -25,32 +25,36 @@ inductive ObservedWorkStack (rest : List Frame) : List Frame → Prop where
 
 /-- Consume all observed immediate Adds. If the stack survives observation, its Cleanup
 measure is preserved along with the continuation up to ordinary trigger insertion. -/
-theorem advance_observed_work_measured (raw : GameState) (notices : List Event)
+theorem advance_observed_work_geometry (raw : GameState) (notices : List Event)
     (wf : raw.WF) (reads : MightRead.database raw.cards) :
     ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
       t.WF ∧ t.cards = raw.cards ∧ ObservedWorkStack raw.pending t.pending ∧
-      (t.pending ≠ [] → t.cleanupMeasure = raw.cleanupMeasure) := by
+      (t.pending ≠ [] → t.cleanupMeasure = raw.cleanupMeasure) ∧ t.zones = raw.zones := by
   have observedCards : (raw.withTriggers notices).cards = raw.cards := by
     obtain ⟨_, _, updated⟩ := withTriggers_pending raw notices
     rw [updated]
     rfl
   rcases withTriggers_cases raw notices with ⟨winner, finished, _⟩ | unchanged | ⟨queue, woven, _⟩
-  · refine ⟨raw.withTriggers notices, 0, [], by intro fuel past; simp, withTriggers_wf notices wf, observedCards, ?_, ?_⟩
+  · refine ⟨raw.withTriggers notices, 0, [], by intro fuel past; simp, withTriggers_wf notices wf, observedCards, ?_, ?_, ?_⟩
     · rw [finished]
       exact .empty
     · simp [finished]
-  · refine ⟨raw.withTriggers notices, 0, [], by intro fuel past; simp, withTriggers_wf notices wf, observedCards, ?_, ?_⟩
+    · rw [finished]
+      rfl
+  · refine ⟨raw.withTriggers notices, 0, [], by intro fuel past; simp, withTriggers_wf notices wf, observedCards, ?_, ?_, ?_⟩
     · rw [unchanged]
       exact .resume
     · intro _
       rw [unchanged]
       rfl
+    · rw [unchanged]
+      rfl
   · let ready := raw.recordTurnEvents notices
     let continuation := ordinaryTriggerContinuation ready queue raw.pending
-    obtain ⟨board, used, events, path, wellFormed, cards, measure⟩ :=
-      advance_insertDetectedTriggers_adds_measured ready queue raw.pending (wf.congr rfl rfl rfl rfl) reads
+    obtain ⟨board, used, events, path, wellFormed, cards, geometry⟩ :=
+      advance_insertDetectedTriggers_adds_geometry ready queue raw.pending (wf.congr rfl rfl rfl rfl) reads
     refine ⟨{ board with pending := continuation }, used, events, by rw [woven]; exact path,
-      wellFormed.congr rfl rfl rfl rfl, cards, ?_, ?_⟩
+      wellFormed.congr rfl rfl rfl rfl, cards, ?_, ?_, geometry.zones⟩
     · change ObservedWorkStack raw.pending continuation
       unfold continuation ordinaryTriggerContinuation
       dsimp only
@@ -59,12 +63,22 @@ theorem advance_observed_work_measured (raw : GameState) (notices : List Event)
       · rename_i nonempty
         exact .queue _ (fun h => nonempty (by rw [h]; rfl))
     · intro _
-      refine (measure continuation).trans ?_
+      refine (geometry.measure continuation).trans ?_
       unfold continuation ordinaryTriggerContinuation
       dsimp only
       split
       · rfl
       · exact cleanupMeasure_eq rfl rfl rfl rfl (insertTriggers_fightingAt raw _)
+
+/-- Immediate Adds preserve the Cleanup measure when the continuation survives. -/
+theorem advance_observed_work_measured (raw : GameState) (notices : List Event)
+    (wf : raw.WF) (reads : MightRead.database raw.cards) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.WF ∧ t.cards = raw.cards ∧ ObservedWorkStack raw.pending t.pending ∧
+      (t.pending ≠ [] → t.cleanupMeasure = raw.cleanupMeasure) := by
+  obtain ⟨t, used, events, path, wellFormed, cards, route, measure, _⟩ :=
+    advance_observed_work_geometry raw notices wf reads
+  exact ⟨t, used, events, path, wellFormed, cards, route, measure⟩
 
 /-- Consume all immediate Adds that the engine observed and preserve the rule continuation,
 apart from a standard trigger insertion or a sudden-death finish. -/
@@ -77,12 +91,12 @@ theorem advance_observed_work (raw : GameState) (notices : List Event)
   exact ⟨t, used, events, path, wellFormed, cards, route⟩
 
 /-- Take a real work step and resolve the immediate Adds it observed. -/
-theorem advance_rule_with_adds {s raw : GameState} {f : Frame} {rest : List Frame}
+theorem advance_rule_with_adds_geometry {s raw : GameState} {f : Frame} {rest : List Frame}
     {emitted : List Event} (pending : s.pending = f :: rest) (automatic : f.isWork = true)
     (step : microStep0 s = some (raw, emitted)) (wf : raw.WF)
     (known : raw.cards = s.cards) (reads : MightRead.database s.cards) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      t.WF ∧ t.cards = s.cards ∧ ObservedWorkStack raw.pending t.pending := by
+      t.WF ∧ t.cards = s.cards ∧ ObservedWorkStack raw.pending t.pending ∧ t.zones = raw.zones := by
   let notices := emitted ++ s.workTransitionEvents raw
   have actual : workStep s = some (raw.withTriggers notices, emitted) := by
     unfold workStep
@@ -91,10 +105,21 @@ theorem advance_rule_with_adds {s raw : GameState} {f : Frame} {rest : List Fram
       simp only [microStep0, priority] at step
       contradiction
     · simp only [microStep, step, Option.map_some, notices]
-  obtain ⟨t, used, events, path, afterWF, cards, route⟩ :=
-    advance_observed_work raw notices wf (known ▸ reads)
+  obtain ⟨t, used, events, path, afterWF, cards, route, _, zones⟩ :=
+    advance_observed_work_geometry raw notices wf (known ▸ reads)
   exact ⟨t, used + 1, emitted ++ events, by omega, path.prepend pending automatic actual,
-    afterWF, cards.trans known, route⟩
+    afterWF, cards.trans known, route, zones⟩
+
+/-- Take a real work step and resolve the immediate Adds it observed. -/
+theorem advance_rule_with_adds {s raw : GameState} {f : Frame} {rest : List Frame}
+    {emitted : List Event} (pending : s.pending = f :: rest) (automatic : f.isWork = true)
+    (step : microStep0 s = some (raw, emitted)) (wf : raw.WF)
+    (known : raw.cards = s.cards) (reads : MightRead.database s.cards) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.WF ∧ t.cards = s.cards ∧ ObservedWorkStack raw.pending t.pending := by
+  obtain ⟨t, used, events, positive, path, afterWF, cards, route, _⟩ :=
+    advance_rule_with_adds_geometry pending automatic step wf known reads
+  exact ⟨t, used, events, positive, path, afterWF, cards, route⟩
 
 /-- Inserting a queue ahead of a non-resolution frame cannot move work behind that frame. -/
 theorem insertTriggers_front (queue : List PendTrigger) (rest : List Frame)
