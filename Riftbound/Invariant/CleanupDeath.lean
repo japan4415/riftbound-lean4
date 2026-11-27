@@ -27,7 +27,8 @@ structure CleanupDeathChange (s t : GameState) : Prop where
   /-- Any later allocation uses an identifier at or above the old counter. -/
   next : s.nextId ≤ t.nextId
 
-private theorem original_board_id {s : GameState} (wf : s.WF) {id : ObjId}
+/-- Objects on the Board have identifiers below the fresh-identifier counter. -/
+theorem GameState.inPlay_lt_nextId {s : GameState} (wf : s.WF) {id : ObjId}
     (live : id ∈ s.inPlay) : id.n < s.nextId := by
   obtain ⟨zone, _, mem⟩ := GameState.mem_inPlay_zone live
   exact wf.lt_nextId id (GameState.mem_zoneIds (GameState.zone_valid_of_mem wf mem) mem)
@@ -73,7 +74,7 @@ theorem trans {s t u : GameState} (wf : s.WF)
     · obtain ⟨gone, drop⟩ := second.retired id there notLive
       exact ⟨gone, Nat.lt_of_lt_of_le drop first.pot⟩
     · obtain ⟨gone, drop⟩ := first.retired id was there
-      exact ⟨second.absent id (Nat.lt_of_lt_of_le (original_board_id wf was) first.next) gone,
+      exact ⟨second.absent id (Nat.lt_of_lt_of_le (GameState.inPlay_lt_nextId wf was) first.next) gone,
         Nat.lt_of_le_of_lt second.pot drop⟩
   · intro id below absent
     exact second.absent id (Nat.lt_of_lt_of_le below first.next) (first.absent id below absent)
@@ -137,7 +138,7 @@ private theorem move_remove_old {s t : GameState} {id id' : ObjId} {pos : Pos}
   · exact h rfl
   · exact fresh h.symm
 
-private theorem move_board_objects {s t : GameState} {id id' : ObjId} {pos : Pos}
+theorem move_board_objects {s t : GameState} {id id' : ObjId} {pos : Pos}
     {src dst : Zone} (step : moveObj s id dst pos = some (t, id'))
     (origin : s.locate id = some src) (sourceBoard : src.isBoard = true)
     (destBoard : dst.isBoard = true) : t.objects = s.objects ∧ t.nextId = s.nextId := by
@@ -384,7 +385,7 @@ private theorem setExhausted_cleanupChange (s : GameState) (id : ObjId) :
   · exact modObj_cleanupChange s id _
   · exact CleanupDeathChange.refl s
 
-private theorem completeDeathSave_cleanupChange {s : GameState} (wf : s.WF) {id : ObjId}
+theorem completeDeathSave_cleanupChange {s : GameState} (wf : s.WF) {id : ObjId}
     (target : id ∈ s.inPlay ∨ s.obj? id = none) (mark : Option TurnEffect)
     (p : PlayerId) (clear : Bool) : CleanupDeathChange s (completeDeathSave s id mark p clear).1 := by
   let heal := fun o : Object => { o with damage := 0 }
@@ -498,7 +499,7 @@ theorem cleanupResolveDeath_cleanupChange {s : GameState} (wf : s.WF) {id : ObjI
         · exact killObj_cleanupChange wf target
     · exact killObj_cleanupChange wf target
 
-private theorem DeathGroupEntry.prepare_board (entry : DeathGroupEntry) (group : List ObjId)
+theorem DeathGroupEntry.prepare_board (entry : DeathGroupEntry) (group : List ObjId)
     (s : GameState) :
     let t := entry.prepare group s
     t.config = s.config ∧ t.zones = s.zones ∧ t.objects = s.objects ∧ t.nextId = s.nextId := by
@@ -537,7 +538,7 @@ private theorem applyCleanupDeaths_change {before s : GameState} (beforeWf : bef
   | nil => exact applied
   | cons entry rest ih =>
     have live := roots entry (by simp)
-    have older := Nat.lt_of_lt_of_le (original_board_id beforeWf live) applied.next
+    have older := Nat.lt_of_lt_of_le (GameState.inPlay_lt_nextId beforeWf live) applied.next
     have advance := applyGroupDeath_cleanupChange wf group entry (applied.inPlay_or_absent live) older
     have appliedSafe := applyGroupDeath_safe group cleanupResolveDeath_safe s entry
     exact ih (appliedSafe.wf wf) (applied.trans beforeWf advance)
