@@ -307,6 +307,26 @@ def effectPaymentFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreEffectPayments", "true")]
   | _ => []
 
+/-- Identify selected Add activations, confirmation or a decline for a movement fee. -/
+def movementFeeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ first other _) =>
+    let recognizable := match first with
+      | .fundMoveFee .. | .payThen _ (.moveAfterFee ..) _ => true
+      | .eitherOf (.cons (.fundMoveFee ..) _) |
+          .eitherOf (.cons (.payThen _ (.moveAfterFee ..) _) _) => true
+      | _ => false
+    if !recognizable then [] else
+      match if yes then first else other with
+      | .fundMoveFee _ _ adds true => [("confirmMoveFee", "true"),
+          ("preparedMoveAdds", jarr (adds.map effectAddJson))]
+      | .fundMoveFee _ _ adds false =>
+        adds.getLast?.toList.map (fun add => ("moveFeeAdd", effectAddJson add))
+      | .nop => [("declineMoveFee", "true")]
+      | .eitherOf _ => [("chooseMoveFeePayment", "true")]
+      | _ => []
+  | _ => []
+
 /-- Encode the targets together with their controllers for the viewer. -/
 def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (String × String) :=
   let controllers := targets.map (fun id =>
@@ -530,7 +550,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         damageOrderFields frame yes ++ combatPriorityFields frame yes ++ damageDivisionFields frame yes ++
         deathReplacementFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
-        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
+        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++ movementFeeFields frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes
     | .choose o =>
       [("obj", toString o.n)] ++

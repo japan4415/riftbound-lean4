@@ -1074,10 +1074,29 @@ def GameState.spendSymbols (s : GameState) (p : PlayerId) (cost : Cost) (gearPow
   if paid.any < s.restrictedFor p gearPower false then none
   else some { paid with spent := paid.spent + cost.power.length }
 
+/-- Divide unrestricted Power among its available kinds. Each allocation appears once,
+in the order of the first corresponding payment sequence. -/
+def unrestrictedPowerChoices (needed : Nat) :
+    List (PowerSym × Nat) → List (List PowerSym)
+  | [] => if needed == 0 then [[]] else []
+  | (symbol, available) :: rest =>
+    let first := needed - (rest.foldl (fun sum (_, n) => sum + n) 0)
+    let last := min needed available
+    ((List.range (last + 1 - first)).reverse).flatMap (fun i =>
+      let paid := first + i
+      (unrestrictedPowerChoices (needed - paid) rest).map (List.replicate paid symbol ++ ·))
+
 /-- Resource payments that produce different Rune Pools (CR 445.1). -/
 def GameState.symbolPayments (s : GameState) (p : PlayerId) (cost : Cost)
     (own : List Domain) (gearPower : Bool) : List (Cost × RunePool) :=
-  let paid := (resolutionPowerChoices own cost.power).filterMap (fun power =>
+  let pool := s.poolOf p
+  if pool.energy < cost.energy || pool.totalPower < cost.power.length then [] else
+  let powers := if 1 < cost.power.length && cost.power.all (· == .any) then
+      let balances := (PowerSym.any.choices own).map (fun d => (PowerSym.domain d, pool.get d))
+      unrestrictedPowerChoices cost.power.length
+        (balances ++ [(.any, pool.any - s.restrictedFor p gearPower false)])
+    else resolutionPowerChoices own cost.power
+  let paid := powers.filterMap (fun power =>
     let resources : Cost := ⟨cost.energy, power⟩
     (s.spendSymbols p resources gearPower).map (fun pool => (resources, pool)))
   paid.eraseDupsBy (fun a b => a.2 == b.2)

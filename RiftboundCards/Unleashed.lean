@@ -4706,11 +4706,11 @@ def UNL_163.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Mageseeker Investigator. -/
+/-- Mageseeker Investigator charges opponents one Power per extra Unit in a simultaneous arrival. -/
 def UNL_163 : CardDef :=
   { UNL_163.meta with
-    abilities := [.passive .always []],
-    status := .drafted }
+    abilities := [.passive .always [.moveExtraUnitPowerHere 1]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-164
 /--
@@ -6008,13 +6008,14 @@ def UNL_207.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Amateur Recital. -/
+/-- Amateur Recital chooses a Unit at a Battlefield when the Hold ability is finalized. -/
 def UNL_207 : CardDef :=
   { UNL_207.meta with
-    abilities := [.triggered (.onSelf .youHold)
-      (.of [] (.may (.prim (.move (Selector.one .any .anywhere [.ofType .unit, .onBattlefield]) .base))))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youHold, optional := true }
+      { choices := [.targetOf .one .any .anywhere [.ofType .unit, .onBattlefield]]
+        body := .prim (.move (.slot 0) .base)
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-208
 /--

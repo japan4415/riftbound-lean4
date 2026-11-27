@@ -527,6 +527,7 @@ def StaticMod.runs : StaticMod → Bool
   | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
+  | .moveExtraUnitPowerHere _ => true
   | .playToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .playHereFor _ _ => true

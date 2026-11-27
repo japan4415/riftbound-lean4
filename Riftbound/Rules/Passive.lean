@@ -142,25 +142,55 @@ Unit itself says it cannot (Determined Sentry). -/
 def homeForbiddenFor (s : GameState) (u bf : ObjId) : Bool :=
   s.homeForbidden bf || (s.activeMods u).contains .noMoveToBase
 
-/-- The total fee for one Move to these Battlefields, paid by the player instructed to move.
-Several Units moving to the same Battlefield in one instruction incur each fee once. -/
+/-- The fixed fee for arriving at a Battlefield and the Power fee for each extra Unit. -/
+structure MoveFees where
+  /-- Charged once if any Unit arrives. -/
+  fixed : Cost := Cost.zero
+  /-- Charged for each Unit after the first. -/
+  additionalPower : Nat := 0
+
+/-- The fee for this many arrivals from a single move instruction. -/
+def MoveFees.cost (fees : MoveFees) (units : Nat) : Cost :=
+  if units == 0 then Cost.zero
+  else fees.fixed.plus ⟨0, List.replicate (fees.additionalPower * (units - 1)) .any⟩
+
+theorem MoveFees.cost_power (fees : MoveFees) (extra : Nat) :
+    (fees.cost (extra + 1)).power.length = fees.fixed.power.length + fees.additionalPower * extra := by
+  simp [MoveFees.cost, Cost.plus]
+
+/-- Fees charged to the moving player by opposing permanents at the destination. -/
+def moveFeesAt (s : GameState) (p : PlayerId) (bf : ObjId) : MoveFees :=
+  (s.zone .battlefieldZone).foldl (fun total id =>
+    if (s.obj? id).any (fun o => o.loc == some bf && !s.config.mode.sameSide p o.controller) then
+      (s.activeMods id).foldl (fun fees mod => match mod with
+        | .moveFeeHere fee => { fees with fixed := fees.fixed.plus fee }
+        | .moveExtraUnitPowerHere power => { fees with additionalPower := fees.additionalPower + power }
+        | _ => fees) total
+    else total) {}
+
+/-- Charge each destination for the Units that actually arrive in one move (CR 204.4, 447). -/
 def movementFee (s : GameState) (p : PlayerId) (fields : List ObjId) : Cost :=
-  if fields.isEmpty then Cost.zero else
-    (s.zone .battlefieldZone).foldl (fun total id =>
-      if (s.obj? id).any (fun o => o.controller != p && o.loc.any fields.contains) then
-        (s.activeMods id).foldl (fun c mod => match mod with
-          | .moveFeeHere fee => c.plus fee
-          | _ => c) total
-      else total) Cost.zero
+  fields.eraseDups.foldl (fun total bf =>
+    total.plus ((s.moveFeesAt p bf).cost (fields.count bf))) Cost.zero
+
+/-- Payments for a destination and a range of possible Standard Move group sizes.
+Fixed fees give the same quote for every size. -/
+def standardMoveQuotes (s : GameState) (p : PlayerId) (dest : MoveDest)
+    (minimum maximum : Nat) : List Cost :=
+  let minimum := max 1 minimum
+  if maximum < minimum then [] else
+  let fees : MoveFees := match dest with
+    | .base => {}
+    | .battlefield bf => s.moveFeesAt p bf
+  let payments (units : Nat) :=
+    let fee := fees.cost units
+    if fee == Cost.zero then [Cost.zero] else (s.symbolPayments p fee [] false).map Prod.fst
+  if fees.additionalPower == 0 then payments minimum
+  else (List.range (maximum + 1 - minimum)).flatMap (fun i => payments (minimum + i))
 
 /-- The resource payments available for a Standard Move, independent of the Unit's Exhaust cost. -/
 def standardMovePayments (s : GameState) (p : PlayerId) (dest : MoveDest) :
-    List Cost :=
-  let fee := match dest with
-    | .base => Cost.zero
-    | .battlefield bf => s.movementFee p [bf]
-  if fee == Cost.zero then [Cost.zero]
-  else (s.symbolPayments p fee [] false).map Prod.fst
+    List Cost := s.standardMoveQuotes p dest 1 1
 
 /-- The controller of an object (the first player if it is gone). -/
 def controllerOf (s : GameState) (src : ObjId) : PlayerId :=

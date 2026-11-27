@@ -360,6 +360,8 @@ inductive Effect where
   | forceMoveToBattlefield (who : PlayerSel) (destination : Selector)
   /-- Carry out the Move after its fee was paid. Its follow-up runs only if a Unit moved. -/
   | moveAfterFee (move : Prim) (afterMove : Effect)
+  /-- Plan or commit Add activations for a fee on an instructed Move (CR 204.4.b.1). -/
+  | fundMoveFee (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
   /-- Grant a numbered keyword whose amount is determined as the effect resolves. -/
   | grantNumericKeyword (objects : Selector) (keyword : Keyword) (amount : Amount)
       (duration : Duration)

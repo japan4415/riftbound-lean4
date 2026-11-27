@@ -148,7 +148,7 @@ def applyGroupMoves (p : PlayerId) (d : MoveDest) : List ObjId → GameState →
     let (final, laterEvents) ← applyGroupMoves p d us next
     pure (final, events ++ laterEvents)
 
-/-- Commit the whole move and pay the destination fee once (CR 144.3.c, 203). -/
+/-- Commit the whole move and pay the quoted destination fees (CR 144.3.c, 203). -/
 def applyGroupMove (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
     (units : List ObjId) : Option (GameState × List Event) :=
   (if pay == Cost.zero then some s else (s.spendSymbols p pay false).map (s.setPool p)).bind
@@ -179,22 +179,45 @@ theorem GameState.groupMoveChoices_main {s : GameState} {p : PlayerId} {d : Move
     · simp only [Bool.and_eq_true, decide_eq_true_eq] at ok
       exact ok.1.1.1.1.2
 
+/-- Payments that can fund a group of eligible Units at the chosen destination. -/
+def GameState.groupMovePayments (s : GameState) (p : PlayerId) (d : MoveDest) : List Cost :=
+  s.standardMoveQuotes p d 2 (s.groupMoveChoices p d).length
+
+/-- Eligible Units that can be added without making the chosen payment impossible. -/
+def GameState.groupMoveRemaining (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : List ObjId :=
+  let choices := s.groupMoveChoices p d
+  if (s.standardMoveQuotes p d (max 2 (units.length + 1)) choices.length).contains pay then
+    choices.filter (fun u => !units.contains u)
+  else []
+
+theorem mem_groupMoveRemaining {s : GameState} {p : PlayerId} {d : MoveDest} {pay : Cost}
+    {units : List ObjId} {u : ObjId} :
+    u ∈ s.groupMoveRemaining p d pay units ↔
+      u ∈ s.groupMoveChoices p d ∧ u ∉ units ∧
+      pay ∈ s.standardMoveQuotes p d (max 2 (units.length + 1)) (s.groupMoveChoices p d).length := by
+  by_cases covered :
+      pay ∈ s.standardMoveQuotes p d (max 2 (units.length + 1)) (s.groupMoveChoices p d).length
+  · simp [GameState.groupMoveRemaining, covered]
+  · simp [GameState.groupMoveRemaining, covered]
+
 /-- A proposed group can make the Standard Move. Check the whole group before paying the fee or
 running any effects (CR 144.3). -/
 def GameState.groupMoveReady (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
     (units : List ObjId) : Bool :=
-  decide (2 ≤ units.length ∧ units.Nodup ∧ pay ∈ s.standardMovePayments p d) &&
+  decide (2 ≤ units.length ∧ units.Nodup ∧
+    pay ∈ s.standardMoveQuotes p d units.length units.length) &&
     units.all (fun u => moveOk s p u d) && (applyGroupMove s p d pay units).isSome
 
 /-- A Standard Move can be declared with a common destination and fee, without enumerating every
 subset of eligible Units. -/
 def legalGroupMoveStarts (s : GameState) (p : PlayerId) : List Action :=
   ((s.destinations).filter (fun d => 2 ≤ (s.groupMoveChoices p d).length)).flatMap (fun d =>
-    (s.standardMovePayments p d).map (fun pay => ⟨.player p, .startGroupMove d pay⟩))
+    (s.groupMovePayments p d).map (fun pay => ⟨.player p, .startGroupMove d pay⟩))
 
 theorem mem_legalGroupMoveStarts {s : GameState} {p : PlayerId} {a : Action} :
     a ∈ legalGroupMoveStarts s p ↔ ∃ d pay, a = ⟨.player p, .startGroupMove d pay⟩ ∧
-      d ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p d).length ∧ pay ∈ s.standardMovePayments p d := by
+      d ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p d).length ∧ pay ∈ s.groupMovePayments p d := by
   simp only [legalGroupMoveStarts, List.mem_flatMap, List.mem_filter, List.mem_map, decide_eq_true_eq]
   constructor
   · rintro ⟨d, ⟨hd, hn⟩, pay, hp, rfl⟩

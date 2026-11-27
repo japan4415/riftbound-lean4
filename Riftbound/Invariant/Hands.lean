@@ -1035,14 +1035,23 @@ theorem burnEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     exact Or.inl rfl
 
 private theorem moveEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {a : Prim} {body : Effect} {es : EffectList} {paid : Bool} {f : Frame}
-    (h : f ∈ (moveEffectStep s p src env a body es paid).2.1) : f.isPlay = true := by
+    {a : Prim} {body : Effect} {es : EffectList} {funding : EffectAddPolicy} {paid : Bool} {f : Frame}
+    (h : f ∈ (moveEffectStep s p src env a body es funding paid).2.1) : f.isPlay = true := by
   unfold moveEffectStep at h
   split at h
   · obtain rfl := List.mem_singleton.mp h
     rfl
   · dsimp only at h
     split at h <;> obtain rfl := List.mem_singleton.mp h <;> rfl
+
+private theorem fundMoveFeeStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {a : Prim} {body : Effect} {adds : List EffectAdd} {commit : Bool} {es : EffectList}
+    {funding : EffectAddPolicy} {f : Frame}
+    (h : f ∈ (fundMoveFeeStep s p src env a body adds commit es funding).2.1) :
+    f.isPlay = true := by
+  unfold fundMoveFeeStep at h
+  split at h <;> (try split at h) <;> (try split at h) <;> (try dsimp only at h) <;>
+    (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> rfl
 
 set_option maxHeartbeats 2500000 in
 private theorem runPrimEffect_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
@@ -1142,6 +1151,7 @@ theorem runEffect1_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | exact Or.inl (orderCombatDamageStep_mem h)
     | exact Or.inl (killEffectStep_mem h)
     | exact Or.inl (moveEffectStep_mem h)
+    | exact Or.inl (fundMoveFeeStep_mem h)
     | (unfold banishLookedStep at h
        split at h
        all_goals (try split at h) <;> obtain rfl := List.mem_singleton.mp h <;> exact Or.inl rfl)

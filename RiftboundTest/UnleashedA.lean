@@ -775,6 +775,155 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
       done.moveBlockedFor enemy id && !done.moveBlockedFor other id) &&
     fresh != unit && !reentered.moveBlockedFor enemy fresh
 
+-- Mageseeker Investigator (UNL-163): a Standard Move pays one Power for each arriving Unit
+-- after the first. The declaration and selection do not spend or exhaust anything.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let dest := MoveDest.battlefield field
+  let (s, _) ← putAt (s.control q field) q "UNL-163" field
+  let (s, first) ← put s p "OGN-052" .base
+  let (s, second) ← put s p "OGN-052" .base
+  let (s, third) ← put s p "OGN-052" .base
+  let (s, left) ← putBf s p "OGN-276"
+  let s := s.fund p 1 2
+  let onePower : Cost := ⟨0, [.domain .fury]⟩
+  let twoPower : Cost := ⟨0, [.domain .fury, .domain .fury]⟩
+  let send (t : GameState) (kind : ActionKind) := (step 100 t ⟨.player p, kind⟩).toOption
+  let (one, _) ← send s (.standardMove first dest)
+  let (quote, _) ← send s (.startGroupMove dest onePower)
+  let (selectOne, _) ← send quote (.choose first)
+  let (selectTwo, _) ← send selectOne (.choose second)
+  let (cancelled, _) ← send selectTwo (.decide false)
+  let (pair, _) ← send selectTwo (.decide true)
+  let (quoteAll, _) ← send s (.startGroupMove dest twoPower)
+  let (pickedFirst, _) ← send quoteAll (.choose first)
+  let (pickedSecond, _) ← send pickedFirst (.choose second)
+  let (pickedThird, _) ← send pickedSecond (.choose third)
+  let (group, events) ← send pickedThird (.decide true)
+  let (fixed, _) ← putAt s q "RAD-062" field
+  return (one.poolOf p).fury == 2 && (one.obj? first).any (·.loc == some field) &&
+    (send s (.startGroupMove dest Cost.zero)).isNone &&
+    (send (s.fund p 1 1) (.startGroupMove dest twoPower)).isNone &&
+    (send selectTwo (.choose third)).isNone && (send pickedSecond (.decide true)).isNone &&
+    (selectTwo.poolOf p).fury == 2 && selectTwo.tired first == some false &&
+    cancelled.pending == s.pending && cancelled.tired second == some false &&
+    (pair.poolOf p).fury == 1 && (pair.obj? third).any (·.loc.isNone) &&
+    (group.poolOf p).fury == 0 &&
+    events.filterMap (fun | .standardMoved id _ => some id | _ => none) == [first, second, third] &&
+    [first, second, third].all (fun id => (group.obj? id).any (fun o =>
+      o.loc == some field && o.exhausted)) &&
+    fixed.movementFee p [field, field, left, left] == ⟨1, [.any, .any]⟩
+
+-- An instructed group can fund its fee with a Rune. Declining the projected payment leaves
+-- resources and the Board alone, and a Unit whose move was prevented incurs no extra cost.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, _) ← putAt (s.control q bf) q "UNL-163" bf
+  let (s, first) ← put s p "OGN-052" .base
+  let (s, second) ← put s p "OGN-052" .base
+  let (s, rune) ← put (s.fund p 0) p "OGN-007" .base
+  let s := s.modObj rune (fun o => { o with runeDomain := some .fury, exhausted := false })
+  let env : Env := { slots := [.obj bf] }
+  let body := Effect.prim (.move (Selector.all .you .atBase [.ofType .unit]) (.at_ (.slot 0)))
+  let resolve (t : GameState) := (advance 100 { t with
+    pending := [.run p first env (.cons body .nil)] } []).toOption
+  let answer (t : GameState) (yes : Bool) := (step 100 t ⟨.player p, .decide yes⟩).toOption
+  let (question, _) ← resolve s
+  let (choices, _) ← answer question true
+  let .eitherDo _ _ _ (.fundMoveFee _ _ [.rune _ false] false)
+    (.fundMoveFee _ _ [.rune _ true] false) _ :: _ := choices.pending | none
+  let (staged, _) ← answer choices false
+  let (declined, _) ← answer staged false
+  let (moved, _) ← answer staged true
+  let (prevented, _) ← resolve (s.addTurnFxOn p second .cannotMove)
+  return (staged.poolOf p).total == 0 && (staged.zone (.player p .base)).contains rune &&
+    declined.zone (.player p .base) == s.zone (.player p .base) &&
+    (moved.poolOf p).spent == 1 && !(moved.zone (.player p .base)).contains rune &&
+    [first, second].all (fun id => (moved.obj? id).any (fun o => o.loc == some bf && !o.exhausted)) &&
+    (prevented.obj? first).any (·.loc == some bf) && (prevented.obj? second).any (·.loc.isNone) &&
+    (prevented.zone (.player p .base)).contains rune
+
+-- An allied Investigator never taxes its teammate's move, but an opposing one does.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s mate "OGN-275"
+  let (s, watcher) ← putAt s mate "UNL-163" field
+  let (s, _) ← putAt s mate "RAD-062" field
+  let opposing := (setController opponent s watcher).1
+  return s.movementFee p [field, field, field] == Cost.zero &&
+    opposing.movementFee p [field, field, field] == ⟨0, [.any, .any]⟩
+
+-- Azir, Sovereign (SFD-177) finalizes the group. The Vendetta FAQ uses Azir's
+-- current Battlefield on resolution, which can change after finalization.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, azir) ← putAt s p "SFD-177" field
+  let (s, _) ← putAt s s.you "UNL-163" field
+  let (s, other) ← putBf s p "OGN-276"
+  let add (t : GameState) := playUnitTokenAt t p "Recruit" none
+  let (s, [.tokenPlayed _ first]) := add s | none
+  let (s, [.tokenPlayed _ second]) := add s | none
+  let (s, [.tokenPlayed _ spare]) := add s | none
+  let ready := s.fund p 0 1
+  let events := [Event.combatStarted field p]
+  let launched ← fire ready events {
+    pick := fun ids => ids.length == 2 && ids.contains first && ids.contains second }
+  let single ← fire ready events { pick := (· == [spare]) }
+  let skipped ← fire ready events { yes := false }
+  let (waiting, _) ← (advance 100 (ready.withTriggers events) []).toOption
+  let (queued, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [first, second] (.pay [])⟩).toOption
+  let rerouted := settleChain {} 12 (moveByEffect p (some other) queued azir).1
+  let stayed := settleChain {} 12 (recallFx false queued azir).1
+  return [first, second].all (fun id => (launched.obj? id).any (·.loc == some field)) &&
+    (launched.obj? spare).any (·.loc.isNone) && (launched.poolOf p).fury == 0 &&
+    (single.obj? spare).any (·.loc == some field) && (single.poolOf p).fury == 1 &&
+    (skipped.obj? first).any (·.loc.isNone) && (skipped.poolOf p).fury == 1 &&
+    [first, second].all (fun id => (rerouted.obj? id).any (·.loc == some other)) &&
+    (rerouted.poolOf p).fury == 1 && (stayed.obj? first).any (·.loc.isNone)
+
+-- Amateur Recital (UNL-207) targets during finalization. Deflect is due then,
+-- and the selected Unit is only moved after the Chain resolves.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, recital) ← putBf s p "UNL-207"
+  let (s, target) ← putAt s q "UNL-150" s.bf0
+  let (s, home) ← put s q "OGN-052" .base
+  let s := (s.control p recital).fund p 0 1
+  let before := s.withTriggers [.scored p recital false]
+  let (waiting, _) ← (advance 100 before []).toOption
+  let place : Action := ⟨.player p, .putTrigger 0 [target] (.pay [])⟩
+  let invalid : Action := ⟨.player p, .putTrigger 0 [home] (.pay [])⟩
+  let (declined, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let (queued, events) ← (step 100 waiting place).toOption
+  return (step 100 (waiting.fund p 0) place).toOption.isNone &&
+    (step 100 waiting invalid).toOption.isNone && (queued.poolOf p).fury == 0 &&
+    (queued.obj? target).any (·.loc.isSome) && (declined.obj? target).any (·.loc.isSome) &&
+    events.contains (.chosenByAbility p target) &&
+    ((settleChain {} 12 queued).obj? target).any (·.loc.isNone)
+
+-- Comparing a small unrestricted payment with the direct enumeration checks canonical payment
+-- order. A large fee with enough Power of only one kind has one allocation.
+#guard tun fun s => do
+  let p := s.me
+  let rich := (s.fund p 1 2 1).setPool p { energy := 1, fury := 2, calm := 1, any := 1 }
+  let price : Cost := ⟨1, [.any, .any, .any]⟩
+  let original := ((resolutionPowerChoices [] price.power).filterMap (fun power =>
+    let pay : Cost := ⟨price.energy, power⟩
+    (rich.spendSymbols p pay false).map (fun pool => (pay, pool)))).eraseDupsBy (fun a b => a.2 == b.2)
+  let large := s.fund p 0 20
+  let due : Cost := ⟨0, List.replicate 19 .any⟩
+  return rich.symbolPayments p price [] false == original &&
+    (large.symbolPayments p due [] false).map (fun (_, pool) => pool.fury) == [1]
+
 -- Undying Legion (UNL-025): with another card played this turn, it is played from the Trash
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-111" .hand

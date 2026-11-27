@@ -706,7 +706,7 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
         simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
           mem_legalActivates, mem_legalReactions, mem_legalManas,
           mem_legalShowdownPlays, mem_legalShowdownActivates, mem_legalInvitedSpells,
-          mem_legalGroupMoveStarts, List.mem_filter]
+          mem_legalGroupMoveStarts, mem_groupMoveRemaining, List.mem_filter]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 

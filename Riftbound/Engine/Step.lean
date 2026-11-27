@@ -279,7 +279,7 @@ def legalFrameActions (s : GameState) : List Action :=
   | .groupMove p dest pay units :: _ =>
     ⟨.player p, .decide false⟩ ::
     ((if s.groupMoveReady p dest pay units then [⟨.player p, .decide true⟩] else []) ++
-      ((s.groupMoveChoices p dest).filter (fun u => !units.contains u)).map (fun u => ⟨.player p, .choose u⟩))
+      (s.groupMoveRemaining p dest pay units).map (fun u => ⟨.player p, .choose u⟩))
   | .teamInvitation guest :: _ =>
     ⟨.player guest, .pass⟩ :: (legalRunes s guest ++ legalManas s guest ++
       legalInvitedSpells s guest ++ legalActivates s guest true)

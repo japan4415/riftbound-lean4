@@ -185,9 +185,11 @@ def LegalFrame (s : GameState) (a : Action) : Prop :=
   -- A group has one destination and at least two distinct Units (CR 144.3).
   | .priority p :: _, .startGroupMove dest pay =>
     a.actor = .player p ∧ dest ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p dest).length ∧
-      pay ∈ s.standardMovePayments p dest
-  | .groupMove p dest _ units :: _, .choose u =>
-    a.actor = .player p ∧ u ∈ s.groupMoveChoices p dest ∧ u ∉ units
+      pay ∈ s.groupMovePayments p dest
+  | .groupMove p dest pay units :: _, .choose u =>
+    a.actor = .player p ∧ u ∈ s.groupMoveChoices p dest ∧ u ∉ units ∧
+      pay ∈ s.standardMoveQuotes p dest (max 2 (units.length + 1))
+        (s.groupMoveChoices p dest).length
   | .groupMove p _ _ _ :: _, .decide false => a.actor = .player p
   | .groupMove p dest pay units :: _, .decide true =>
     a.actor = .player p ∧ s.groupMoveReady p dest pay units = true

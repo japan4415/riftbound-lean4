@@ -1648,7 +1648,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let tok := (s3.zone (.player s.me .base)).find? (fun o =>
     (s3.cardDef? o).any (·.name == "Sand Soldier"))
   let t ← tok
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := (· == [t]) }
   let n ← fire s3 [.combatStarted s.bf0 s.me] { yes := false }
   let d ← fire s3 [.combatStarted s.bf0 s.you]
   return (r.obj? t).any (·.loc == some s.bf0) && (r.obj? plain).any (·.loc.isNone) &&
@@ -1731,14 +1731,18 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
 
 -- (review) Azir: tokens at another battlefield come too; the opponent's tokens do not
 #guard tsf fun s => do
+  let other ← s.battlefields.find? (· != s.bf0)
   let (s1, a) ← putAt s s.me "SFD-177" s.bf0
   let (s2, _) ← applyCreate s1 s.me a {} "Sand Soldier" (.const 2) .atBase false
-  let (s3, _) ← applyCreate s2 s.you a {} "Sand Soldier" (.const 1) .atBase false
+  let offsite ← s2.firstOf s.me .base "TKN-Sand Soldier"
+  let spread := (moveByEffect s.me (some other) s2 offsite).1
+  let (s3, _) ← applyCreate spread s.you a {} "Sand Soldier" (.const 1) .atBase false
   let mine (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
     (x.cardDef? o).any (·.name == "Sand Soldier") &&
       (x.obj? o).any (fun ob => ob.loc == some s.bf0 && ob.controller == s.me))
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
-  return (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ids => ids.length == 2 }
+  return (spread.obj? offsite).any (·.loc == some other) &&
+    (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
     (s3.zone (.player s.you .base)).length
 /-- Put the cards on top of the player's Main Deck, the first of the list on top; their ids. -/
 meta def _root_.Riftbound.GameState.stackTop (s : GameState) (p : PlayerId) (cards : List String) :

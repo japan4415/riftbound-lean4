@@ -294,6 +294,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
+  | .moveExtraUnitPowerHere _ => true
   | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .playHereFor _ _ => true
@@ -372,7 +373,7 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .eitherOf modes => EffectList.ok c modes
   | .equipWithCost gear recipient _ => gear.ok c && recipient.ok c
   | .payThen _ body _ => Effect.ok c body
-  | .paySelected .. | .moveAfterFee .. => false
+  | .paySelected .. | .moveAfterFee .. | .fundMoveFee .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s

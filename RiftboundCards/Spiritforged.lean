@@ -5198,15 +5198,15 @@ def SFD_177.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Azir, Sovereign. -/
+/-- Azir moves the chosen tokens together to his Battlefield when the ability resolves. -/
 def SFD_177 : CardDef :=
   { SFD_177.meta with
-
-    abilities := [.triggered (.onSelf .attack)
-      (.of [] (.forEach (Selector.all .friendly .anywhere
-          [.ofType .unit, .token, .not (.at_ .self)])
-        (.may (.seqOf [.prim (.choose .it), .prim (.move .it (.at_ .self))])))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .attack, optional := true }
+      { choices := [.targetOf .anyNumber .you .anywhere
+          [.ofType .unit, .token]]
+        body := .prim (.move (.slotsFrom 0) (.at_ (.locationOf .self)))
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-178
 /--

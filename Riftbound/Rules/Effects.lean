@@ -4786,21 +4786,95 @@ theorem linkedAction_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : En
   · rename_i r h
     exact applyPrim_safe h
 
+/-- Charge only the Unit arrivals actually produced by the Move. -/
+def effectMoveFee (s next : GameState) (p : PlayerId) (events : List Event) : Cost :=
+  let fields := events.filterMap (fun
+    | .standardMoved id field =>
+      if (next.printedCardDef? id).any (·.hasType .unit) ||
+          (next.obj? id).any (fun o => !o.unitGearEffects.isEmpty) then field else none
+    | _ => none)
+  s.movementFee p fields
+
+/-- Basic Runes can exhaust and then recycle during the same fee payment (CR 204.4.b.1, 164.2). -/
+def moveFeeReachable (s : GameState) (p : PlayerId) (cost : Cost) : Bool :=
+  let runes := (s.runesOf p).filterMap s.obj?
+  let pool := s.poolOf p
+  if cost.power.all (· == .any) then
+    cost.energy ≤ pool.energy + runes.countP (! ·.exhausted) &&
+      cost.power.length ≤ pool.totalPower - s.restrictedFor p false false + runes.length
+  else
+    let available := runes.foldl (fun balance rune =>
+      let balance := if rune.exhausted then balance else balance.addEnergy 1
+      rune.runeDomain.elim balance (fun d => balance.addPower d 1)) pool
+    !((s.setPool p available).symbolPayments p cost [] false).isEmpty
+
+/-- The payable fee and individual Adds that can supply it. -/
+def moveFeeOptions (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (fee : Cost) (funding : EffectAddPolicy)
+    (adds : List EffectAdd) : List Effect :=
+  let ready := !(s.symbolPayments p fee [] false).isEmpty
+  let payment := if adds.isEmpty then Effect.payThen fee (.moveAfterFee move afterMove) false
+    else .fundMoveFee move afterMove adds true
+  let next := if fee.total == 0 then [] else
+    funding.choices s p (fun t => (applyPrim t p src env move).any (fun (preview, es) =>
+      let changed := effectMoveFee t preview p es
+      es.any (fun | .standardMoved .. => true | _ => false) && moveFeeReachable t p changed))
+  (if ready then [payment] else []) ++
+    next.map (fun add => .fundMoveFee move afterMove (adds ++ [add]) false)
+
+/-- Project Add activations until a payment is selected, then commit the chosen Adds and pay. -/
+def fundMoveFeeStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  let skip := (s, [.run p src env es], [])
+  match funding.applyAll s p adds with
+  | none => skip
+  | some (funded, events) =>
+    match applyPrim funded p src env move with
+    | none => skip
+    | some (preview, arrivals) =>
+      let fee := effectMoveFee funded preview p arrivals
+      if commit then
+        if (funded.symbolPayments p fee [] false).isEmpty then skip else
+          let payment := Effect.payThen fee (.moveAfterFee move afterMove) false
+          (funded, [.run p src env (.cons payment es)], events)
+      else
+        let options := moveFeeOptions funded p src env move afterMove fee funding adds
+        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList (options ++ [.nop]))) es)], [])
+
+/-- Planning or committing the selected Adds preserves the structural invariants. -/
+theorem fundMoveFeeStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
+    (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (fundMoveFeeStep s p src env move afterMove adds commit es funding).1 := by
+  unfold fundMoveFeeStep
+  split
+  · exact Safe.refl s
+  · rename_i funded events h
+    split
+    · exact Safe.refl s
+    · split
+      · dsimp only
+        split
+        · exact Safe.refl s
+        · exact funding.safe h
+      · exact Safe.refl s
+
 /-- Prepare an effect Move and inspect its actual arrivals before committing.
-Each Battlefield charges once, and the mover can decline the fee (CR 204.4, 412, 447).
+The mover can decline the destination fees (CR 204.4, 412, 447).
 Prevented moves and corrective Recalls create no charge. -/
 def moveEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim)
-    (afterMove : Effect) (es : EffectList) (feePaid : Bool := false) :
+    (afterMove : Effect) (es : EffectList) (funding : EffectAddPolicy) (feePaid : Bool := false) :
     GameState × List Frame × List Event :=
   match applyPrim s p src env a with
   | none => (s, [Frame.run p src env es], if afterMove == .nop then [.skipped src] else [])
   | some (next, events) =>
-    let fields := events.filterMap (fun
-      | .standardMoved id field => if (next.cardDef? id).any (·.hasType .unit) then field else none
-      | _ => none)
-    let fee := s.movementFee p fields
+    let fee := effectMoveFee s next p events
     if !feePaid && fee.total != 0 then
-      let accept := Effect.payThen fee (.moveAfterFee a afterMove) false
+      let accept := match moveFeeOptions s p src env a afterMove fee funding [] with
+        | [] => Effect.payThen fee (.moveAfterFee a afterMove) false
+        | [only] => only
+        | options => Effect.eitherOf (EffectList.ofList options)
       (s, [.eitherDo p src env accept .nop es], [])
     else
       let follow := if afterMove != .nop && events.any (fun | .standardMoved .. => true | _ => false)
@@ -4809,8 +4883,8 @@ def moveEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a :
 
 /-- The Move or the payment question preserves the game invariants. -/
 theorem moveEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (a : Prim) (afterMove : Effect) (es : EffectList) (paid : Bool) :
-    Safe s (moveEffectStep s p src env a afterMove es paid).1 := by
+    (a : Prim) (afterMove : Effect) (es : EffectList) (funding : EffectAddPolicy) (paid : Bool) :
+    Safe s (moveEffectStep s p src env a afterMove es funding paid).1 := by
   unfold moveEffectStep
   split
   · exact Safe.refl s
@@ -6026,7 +6100,7 @@ def runPrimEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr :
   let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
   match pr with
   | move@(.move ..) | move@(.swapPlaces ..) =>
-    moveEffectStep s p src env move .nop es
+    moveEffectStep s p src env move .nop es funding
   | .playUnitToken name =>
     match s.tokenCard name with
     | some c =>
@@ -6117,7 +6191,7 @@ theorem runPrimEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : E
   unfold runPrimEffect
   split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
-    | exact moveEffectStep_safe s p src env _ _ es _
+    | exact moveEffectStep_safe s p src env _ _ es funding _
     | exact burnEffect_safe s p src env _ _ es _
     | exact castInlineStep_safe s p src env _ es funding
     | exact unitTokenPrimStep_safe s p src env _ es
@@ -6441,8 +6515,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
   | .doThen (.prim (.exhaust sel)) body => linked (.exhaust sel) body
   | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
-  | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es
-  | .moveAfterFee move body => moveEffectStep s p src env move body es true
+  | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es funding
+  | .moveAfterFee move body => moveEffectStep s p src env move body es funding true
+  | .fundMoveFee move body adds commit => fundMoveFeeStep s p src env move body adds commit es funding
   | .payThen cost body gearPower =>
     match resolutionPayments s p src cost gearPower with
     | [] => skip
@@ -6544,7 +6619,8 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact killEffectStep_safe s p src env _ _ es
     | exact animateGearObject_safe s p src _
     | exact finishUnitTokenPlay_safe (by assumption)
-    | exact moveEffectStep_safe s p src env _ _ es _
+    | exact moveEffectStep_safe s p src env _ _ es funding _
+    | exact fundMoveFeeStep_safe s p src env _ _ _ _ es funding
     | exact recordCombatDamage_safe s p _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)

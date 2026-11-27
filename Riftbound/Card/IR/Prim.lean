@@ -530,6 +530,8 @@ inductive StaticMod where
   | noMoveToBaseAny
   /-- An opponent who moves Units to this Battlefield pays this once for the move instruction. -/
   | moveFeeHere (cost : Cost)
+  /-- An opponent pays this much unrestricted Power for each Unit after the first in one arrival. -/
+  | moveExtraUnitPowerHere (power : Nat)
   /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is
   attacking), as an ability. -/
   | playToBf (fs : List Filter)
