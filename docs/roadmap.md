@@ -2219,6 +2219,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Falling Star は2回のダメージそれぞれの対象を確定し、解決時に対象を再確認する。同じ Unit を選び、その Unit が有効な対象であれば、3ダメージを2回与える（CR 359.3.e、758.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Rocket Barrage の Repeat はモードと対象を実行ごとに確定する。同じ Gear が2回選ばれた場合は1回目に死に、2回目は解決時の対象確認で処理を省く（CR 820.2.a）。以上2枚を `full` とし、全1,103枚中571枚を実装済みにした。[カード実装状況](coverage.md)
 
+### Bellows Breath の同じ場所と Piercing Light の2つの対象
+
+- Bellows Breath は1つの Base または Battlefield から異なる Unit を最大3体選べる。対象が複数の場所に分かれた場合は、解決時に元の対象がいる場所を1つ選ぶ（CR 355.11、355.13、359.3.e.8）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Piercing Light の1体目が Battlefield を離れた場合、2体目へのダメージは対象が有効であれば実行する。以上2枚を `full` とし、全1,103枚中573枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

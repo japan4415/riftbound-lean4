@@ -300,6 +300,21 @@ meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat
   let s3 ← play s2 s.me c [u]
   return s3.dmg u == some 2
 
+-- When Flash moves the first target away, Piercing Light still deals its second hit.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, first) ← putAt (s.control q s.bf0) q "OGN-001" s.bf0
+  let (s, second) ← put s q "OGN-001" .base
+  let (s, spell) ← put s p "SFD-023" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨2, [.fury]⟩ [first, second]⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let settled ← play response q flash [first]
+  return settled.where? first == some (.player q .base) && settled.dmg first == some 0 &&
+    settled.dmg second == some 2
+
 /-- The player has `n` points. -/
 meta def _root_.Riftbound.GameState.setPoints (s : GameState) (p : PlayerId) (n : Nat) :
     GameState :=
@@ -3721,11 +3736,39 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let r ← play s5 s.me c [a, b, d]
   let one ← play s5 s.me c [a]
   let two ← play s5 s.me c [a, d]
+  let empty ← play s5 s.me c []
   return r.dmg a == some 1 && r.dmg b == some 1 && r.dmg d == some 1 && r.dmg e == some 0 &&
     one.dmg a == some 1 && one.dmg b == some 0 && one.dmg d == some 0 &&
     two.dmg a == some 1 && two.dmg b == some 0 && two.dmg d == some 1 &&
+    [a, b, d, e].all (fun u => empty.dmg u == some 0) &&
     (play s5 s.me c [a, b, b]).isNone && (play s5 s.me c [a, e]).isNone &&
     (play s5 s.me c [a, a]).isNone
+
+-- The specific Base matters. Flash splits an original group and offers either resulting location.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, a) ← putAt (s.control q field) q "OGN-001" field
+  let (s, b) ← putAt s q "OGN-001" field
+  let (s, c) ← putAt s q "OGN-001" field
+  let (s, home) ← put s p "OGN-001" .base
+  let (s, spell) ← put s p "SFD-080" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨1, [.mind]⟩ [a, b, c]⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let (withFlash, _) ← (step 100 (response.rich q)
+    ⟨.player q, .playCard flash ⟨2, []⟩ [c]⟩).toOption
+  let choosing := settleChain {} 4 withFlash
+  let atField : Action := ⟨.player p, .choose a⟩
+  let atBase : Action := ⟨.player p, .choose c⟩
+  let (fieldOnly, _) ← (step 100 choosing atField).toOption
+  let (baseOnly, _) ← (step 100 choosing atBase).toOption
+  let separated := (moveHome s c).1
+  return (play separated p spell [c, home]).isNone && fieldOnly.dmg a == some 1 &&
+    fieldOnly.dmg b == some 1 && fieldOnly.dmg c == some 0 && baseOnly.dmg a == some 0 &&
+    baseOnly.dmg b == some 0 && baseOnly.dmg c == some 1 && baseOnly.dmg home == some 0
 
 -- Relentless Pursuit (SFD-184): move a friendly unit; this turn it may go home when it conquers
 #guard tsf fun s => do

@@ -1432,7 +1432,8 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
-  | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ | .onePerLocation => true
+  | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ | .onePerLocation
+  | .atOneLocation _ => true
   | _ => false
 
 /-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
@@ -1587,13 +1588,14 @@ def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
   | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
   | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _
-  | .target (.splitByMight _) _ _ _ | .target .onePerLocation _ _ _ => true
+  | .target (.splitByMight _) _ _ _ | .target .onePerLocation _ _ _
+  | .target (.atOneLocation _) _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
 def Choice.groupLimit : Choice → Nat
   | .target (.upTo n) _ _ _ | .target (.atOneBattlefield n) _ _ _ |
-      .target (.exactly n) _ _ _ => n
+      .target (.exactly n) _ _ _ | .target (.atOneLocation n) _ _ _ => n
   | .target .anyNumber _ _ _ => 0
   | .target (.combinedMightAtMost limit) _ _ _ => limit
   | _ => 1
@@ -1703,6 +1705,11 @@ def GameState.boardLocationOf (s : GameState) (id : ObjId) : Option BoardLocatio
   | some .battlefieldZone => ((s.obj? id).bind (·.loc)).map .battlefield
   | _ => none
 
+/-- Split candidates by their specific Base or Battlefield, retaining their order. -/
+def GameState.targetsByLocation (s : GameState) (ids : List ObjId) : List (List ObjId) :=
+  (ids.filterMap s.boardLocationOf).eraseDups.map (fun place =>
+    ids.filter (fun id => s.boardLocationOf id == some place))
+
 /-- The combinations obtained by taking zero or one member of each location's candidates. -/
 def locationSelections : List (List ObjId) → List (List ObjId)
   | [] => [[]]
@@ -1758,6 +1765,9 @@ def Choice.sortedTargetGroups (s : GameState) (p : PlayerId) (self : ObjId)
   let candidates := c.sortedCands s p self pm acc
   match c with
   | .target (.atOneBattlefield _) _ _ _ => s.targetsByBattlefield candidates
+  | .target (.atOneLocation _) _ _ _ =>
+    let groups := s.targetsByLocation candidates
+    if groups.isEmpty then [[]] else groups
   | _ => [candidates]
 
 /-- Grouping restricts the sorted candidates but does not add eligible targets. -/
@@ -1770,6 +1780,12 @@ theorem Choice.mem_sortedTargetGroups {s : GameState} {p : PlayerId} {self : Obj
   · simp only [GameState.targetsByBattlefield, List.mem_map] at hg
     obtain ⟨_, _, rfl⟩ := hg
     exact (List.mem_filter.mp hi).1
+  · split at hg
+    · obtain rfl := List.mem_singleton.mp hg
+      contradiction
+    · simp only [GameState.targetsByLocation, List.mem_map] at hg
+      obtain ⟨_, _, rfl⟩ := hg
+      exact (List.mem_filter.mp hi).1
   · obtain rfl := List.mem_singleton.mp hg
     exact hi
 
@@ -1803,7 +1819,7 @@ def Choice.groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
   if c.recordsLocations then s.targetsOnePerLocation (c.sortedCands s p self pm acc)
   else ((c.sortedTargetGroups s p self pm acc).flatMap (fun group =>
       subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self pm acc group) group)).filter
-        c.groupNonemptyOk
+        c.groupNonemptyOk |>.eraseDups
 
 /-- Enumerating grouped targets agrees with checking the selected targets. -/
 theorem Choice.mem_groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
@@ -1812,7 +1828,7 @@ theorem Choice.mem_groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
   unfold Choice.groupTuples Choice.groupTargetsOk
   split
   · simp_all
-  simp only [List.mem_filter, List.mem_flatMap,
+  simp only [List.mem_eraseDups, List.mem_filter, List.mem_flatMap,
     mem_subseqsWithin, Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq]
   constructor
   · rintro ⟨⟨group, hg, hsub, hsum⟩, hcount⟩

@@ -290,6 +290,8 @@ inductive Quantity where
   | exactly (n : Nat)
   /-- Every one that matches. -/
   | all
+  /-- Up to `limit` targets together at one specific Base or Battlefield (CR 355.11). -/
+  | atOneLocation (limit : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- A comparison. -/

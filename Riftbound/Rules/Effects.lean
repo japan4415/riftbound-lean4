@@ -5804,6 +5804,13 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
             (subseqsUpTo total group).filter (fun subset => subset.length == total))
       let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
       .cons (.retainTargetSet remaining) body
+    | .target (.atOneLocation _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let legal := c.candidatesAfter s p src s.mightTable fixed
+      let original := (targets.drop fixed.length).filter legal.contains
+      let groups := s.targetsByLocation original
+      let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
+      .cons (.retainTargetSet remaining) body
     | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ |
         .target (.exactly _) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
