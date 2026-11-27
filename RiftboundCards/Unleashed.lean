@@ -6346,10 +6346,10 @@ def UNL_T04.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Buff. -/
+/-- The printed marker for a Unit's Buff counters (CR 702). -/
 def UNL_T04 : CardDef :=
   { UNL_T04.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-T06
 /--
@@ -6387,10 +6387,10 @@ def UNL_T08.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- XP Tracker. -/
+/-- The printed marker for each player's public XP balance (CR 729-730). -/
 def UNL_T08 : CardDef :=
   { UNL_T08.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Unleashed. -/
