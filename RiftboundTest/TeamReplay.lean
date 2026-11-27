@@ -46,8 +46,20 @@ private meta def recordGroupMove (start : GameState) (answers : Array ReplayAnsw
   let player : PlayerId := ⟨0⟩
   let answer (state : GameState) (tape : Array ReplayAnswer) (kind : ActionKind) := do
     let action := Action.mk (.player player) kind
+    let recorded ← match kind with
+      | .startGroupMove .. => do
+        let some move := ReplayGroupMove.fromAction? state action
+          | throw "group move has no code-based declaration"
+        let encoded := ReplayAnswer.observedGroupMove move
+        unless (← encoded.resolveAt state (tape.size + 1)) == (action, true) do
+          throw "group move did not resolve uniquely to the observed action"
+        let wrongFee := ReplayAnswer.observedGroupMove { move with fee? := some ⟨1, []⟩ }
+        unless (wrongFee.resolveAt state (tape.size + 1)).isOk == false do
+          throw "group move accepted a different fee"
+        pure encoded
+      | _ => pure (ReplayAnswer.observed action)
     let (next, _) ← (step 100 state action).mapError reprStr
-    pure (next, tape.push (.observed action))
+    pure (next, tape.push recorded)
   let mut state := start
   let mut tape := answers
   let runes := (state.zone (.player player .base)).filter (fun id => state.hasType id .rune)

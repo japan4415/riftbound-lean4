@@ -121,6 +121,8 @@ Basic Rune は `kind` を `runeExhaust` または `runeRecycle` として、使�
 
 単体の Standard Move は `observedStandardMove` の `move` に `seat`、Unit のコード `unit`、移動先 `destination` を指定できる。移動先は `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}`。観測した出発地は `from`、支払った移動費用は `fee` に入れ、該当する手を絞れる。`inspect` の `answerByCode` から転記できる。推定した移動には `inferredStandardMove` の `move` と `evidence` を使う。
 
+グループで Standard Move する場合、最初の宣言は `observedGroupMove` の `move` に `seat`、`destination`、観測した `fee` を指定する。後に選ぶ Unit は `observedCardPick` の `chooseObject`、最後の確定か取り消しは `decide` で記録する。最初の宣言を推定した場合は `inferredGroupMove` の `move` と `evidence` を使う。
+
 カードのプレイは `observedCardPlay` の `play` に、プレイした `seat`、出したカード `source`、宣言順の対象 `targets` を指定できる。各カードを `{"card":{"code":"OGN-001"}}` で表し、観測できた `location`、`controller`、`exhausted` で候補を絞れる。支払いは `payment`、Flow の費用は `flowCost`、追加コストの捨て札は `discard`、最初のモードや移動先は `choice`、対象のプレイヤーは `playerTarget` で指定できる。入力例は `inspect` の `answerByCode` に出る。一致する合法手が複数なら `exact: false` になる。推定したプレイは `inferredCardPlay` の `play` と `evidence` に記録する。
 
 呪文や起動型能力の Deflect を別に支払った場合は、使った Power を `deflectPayment` に指定できる。例えば `[{"domain":{"value":"calm"}},"flexible"]` は Calm と虹 Power を1ずつ使った記録。支払いの候補が複数あれば、ビューアで対象を選んだ後に内訳から選ぶ。`inspect` で入力例を確認できる。

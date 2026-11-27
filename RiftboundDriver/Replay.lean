@@ -162,6 +162,16 @@ structure ReplayStandardMove where
   fee? : Option Cost := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The destination and fee declared before choosing Units for a group Standard Move. -/
+structure ReplayGroupMove where
+  /-- The seat that declared the group move. -/
+  seat : PlayerId
+  /-- The shared destination, identified without an object ID. -/
+  destination : ReplayUnitPlace
+  /-- The fee selected for the group, when observed. -/
+  fee? : Option Cost := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A physical card described by its printed code and, when observed, its location. -/
 structure ReplayCardReference where
   /-- The printed identity of the card. -/
@@ -314,6 +324,10 @@ inductive ReplayAnswer where
   | observedStandardMove (move : ReplayStandardMove)
   /-- A Standard Move was inferred from incomplete observations. -/
   | inferredStandardMove (move : ReplayStandardMove) (evidence : String)
+  /-- The destination and fee declared for a group Standard Move were observed. -/
+  | observedGroupMove (move : ReplayGroupMove)
+  /-- A group Standard Move declaration was inferred from incomplete observations. -/
+  | inferredGroupMove (move : ReplayGroupMove) (evidence : String)
   /-- The card played and its declared targets were observed. -/
   | observedCardPlay (play : ReplayCardPlay)
   /-- The declaration of a card play was reconstructed from incomplete observations. -/
@@ -363,6 +377,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     throw s!"answer {index}: a card pick by code needs the current game state"
   | .observedStandardMove _ | .inferredStandardMove _ _ =>
     throw s!"answer {index}: a move by card code needs the current game state"
+  | .observedGroupMove _ | .inferredGroupMove _ _ =>
+    throw s!"answer {index}: a group move by card code needs the current game state"
   | .observedCardPlay _ | .inferredCardPlay _ _ =>
     throw s!"answer {index}: a play by card code needs the current game state"
   | .observedAbilityUse _ | .inferredAbilityUse _ _ =>
@@ -458,6 +474,24 @@ private def ReplayStandardMove.resolve (move : ReplayStandardMove) (s : GameStat
     | _ => false
   let some action := matching.head?
     | throw s!"seat {move.seat.n} has no legal Standard Move of {move.unit.code} to {(toJson move.destination).compress}"
+  return (action, matching.length == 1)
+
+/-- Describe the first declaration of a group Standard Move by Battlefield code and fee. -/
+def ReplayGroupMove.fromAction? (s : GameState) (action : Action) : Option ReplayGroupMove := do
+  let .player seat := action.actor | none
+  let .startGroupMove dest fee := action.kind | none
+  let destination ← replayMoveDestination s dest
+  return { seat, destination, fee? := some fee }
+
+private def ReplayGroupMove.resolve (move : ReplayGroupMove) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player move.seat && match action.kind with
+    | .startGroupMove dest fee =>
+      replayMoveDestination s dest == some move.destination && move.fee?.all (· == fee)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {move.seat.n} has no legal group move to {(toJson move.destination).compress} for the recorded fee"
   return (action, matching.length == 1)
 
 private def ReplayCardReference.ofObject? (s : GameState) (id : ObjId) :
@@ -693,6 +727,8 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     (choice.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolveMove (move : ReplayStandardMove) :=
     (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveGroupMove (move : ReplayGroupMove) :=
+    (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolvePlay (play : ReplayCardPlay) :=
     (play.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolveAbility (activation : ReplayAbilityUse) :=
@@ -712,6 +748,10 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
   | .inferredStandardMove move evidence =>
     checkInference index evidence
     return ((← resolveMove move).1, false)
+  | .observedGroupMove move => resolveGroupMove move
+  | .inferredGroupMove move evidence =>
+    checkInference index evidence
+    return ((← resolveGroupMove move).1, false)
   | .observedCardPlay play => resolvePlay play
   | .inferredCardPlay play evidence =>
     checkInference index evidence

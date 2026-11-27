@@ -36,6 +36,7 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     let detail ← Json.parse (actionJson action frame (some state))
     let coded := (ReplayCardPick.fromAction? state action).map ReplayAnswer.observedCardPick <|>
       (ReplayStandardMove.fromAction? state action).map ReplayAnswer.observedStandardMove <|>
+      (ReplayGroupMove.fromAction? state action).map ReplayAnswer.observedGroupMove <|>
       (ReplayCardPlay.fromAction? state action).map ReplayAnswer.observedCardPlay <|>
       (ReplayAbilityUse.fromAction? state action).map ReplayAnswer.observedAbilityUse <|>
       (ReplayTriggerUse.fromAction? state action).map ReplayAnswer.observedTriggerUse
