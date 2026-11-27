@@ -1,7 +1,7 @@
 module
 
 public import Riftbound.Invariant.CleanupWork
-public import Riftbound.Invariant.TriggerWork
+public import Riftbound.Invariant.BeginTurnWork
 
 /-!
 # Finite turn Expiration and Cleanup work
@@ -479,87 +479,112 @@ private inductive EndingFrame : Frame → Prop where
   | queued (q : List PendTrigger) : q ≠ [] → EndingFrame (.triggers q)
   | stop {frame} : EndingWorkStop (some frame) → EndingFrame frame
 
-private theorem insertTriggers_ending (queue : List PendTrigger) (nonempty : queue ≠ [])
-    (stack : List Frame) (allowed : ∀ f ∈ stack, EndingFrame f) :
-    ∀ f ∈ insertTriggers queue stack, EndingFrame f := by
-  induction stack with
-  | nil =>
-    intro f member
-    obtain rfl := List.mem_singleton.mp member
-    exact .queued _ nonempty
-  | cons head rest ih =>
-    have oldRest (f) (member : f ∈ rest) := allowed f (List.mem_cons_of_mem _ member)
-    intro f member
-    unfold insertTriggers at member
-    split at member
-    · rcases List.mem_cons.mp member with eq | later
-      · exact allowed f (List.mem_cons.mpr (Or.inl eq))
-      · exact ih oldRest f later
-    · split at member
-      · rcases List.mem_cons.mp member with rfl | later
-        · exact .queued _ (fun h => nonempty (List.append_eq_nil_iff.mp h).2)
-        · exact oldRest f later
-      · rcases List.mem_cons.mp member with rfl | later
-        · exact .queued _ nonempty
-        · exact allowed f later
+/-- The generated frames are tracked together with the position of the original Begin Turn.
+Generic continuations can omit the latter check. -/
+private structure EndingStack (checkTurn : Bool) (frames : List Frame) : Prop where
+  allowed : ∀ f ∈ frames, EndingFrame f
+  turnLast : checkTurn = true → frames.Pairwise (fun f _ => f ≠ .beginTurn)
 
-private theorem insertDetectedTriggers_ending (s : GameState) (queue : List PendTrigger)
-    (stack : List Frame) (allowed : ∀ f ∈ stack, EndingFrame f) :
-    ∀ f ∈ insertDetectedTriggers s queue stack, EndingFrame f := by
-  intro f member
-  unfold insertDetectedTriggers at member
-  dsimp only at member
-  rcases List.mem_append.mp member with add | ordinary
-  · obtain ⟨⟨_, _⟩, found, eq⟩ := List.mem_filterMap.mp add
-    obtain ⟨trigger, _, candidateEq⟩ := List.mem_map.mp found
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj candidateEq
-    exact .stop (.immediateAdd s trigger eq)
-  · split at ordinary
-    · exact allowed f ordinary
+private theorem EndingStack.empty (checkTurn : Bool) : EndingStack checkTurn [] :=
+  ⟨(fun _ member => nomatch member), fun _ => List.Pairwise.nil⟩
+
+private theorem EndingStack.tail {checkTurn : Bool} {f : Frame} {rest : List Frame}
+    (stack : EndingStack checkTurn (f :: rest)) : EndingStack checkTurn rest :=
+  ⟨fun task h => stack.allowed task (List.mem_cons_of_mem _ h),
+    fun check => (stack.turnLast check).tail⟩
+
+private theorem EndingStack.push {checkTurn : Bool} {f : Frame} {rest : List Frame}
+    (stack : EndingStack checkTurn rest) (allowed : EndingFrame f) (other : f ≠ .beginTurn) :
+    EndingStack checkTurn (f :: rest) := by
+  constructor
+  · intro task member
+    rcases List.mem_cons.mp member with rfl | inRest
+    · exact allowed
+    · exact stack.allowed _ inRest
+  · intro check
+    exact .cons (fun _ _ => other) (stack.turnLast check)
+
+private theorem EndingStack.prepend {checkTurn : Bool} (addedFrames : List Frame) {rest : List Frame}
+    (stack : EndingStack checkTurn rest)
+    (added : ∀ f ∈ addedFrames, EndingFrame f ∧ f ≠ .beginTurn) :
+    EndingStack checkTurn (addedFrames ++ rest) := by
+  induction addedFrames with
+  | nil => exact stack
+  | cons first later ih =>
+    have head := added first List.mem_cons_self
+    exact (ih (fun f member => added f (List.mem_cons_of_mem _ member))).push head.1 head.2
+
+private theorem insertTriggers_ending {checkTurn : Bool} (queue : List PendTrigger) (nonempty : queue ≠ [])
+    (stack : List Frame) (allowed : EndingStack checkTurn stack) :
+    EndingStack checkTurn (insertTriggers queue stack) := by
+  induction stack with
+  | nil => exact allowed.push (.queued _ nonempty) (by intro h; cases h)
+  | cons head rest ih =>
+    unfold insertTriggers
+    split
+    · rename_i resolution
+      have other : head ≠ .beginTurn := by
+        rintro rfl
+        contradiction
+      exact (ih allowed.tail).push (allowed.allowed _ List.mem_cons_self) other
+    · split
+      · exact allowed.tail.push (.queued _ (fun h => nonempty (List.append_eq_nil_iff.mp h).2))
+          (by intro h; cases h)
+      · exact allowed.push (.queued _ nonempty) (by intro h; cases h)
+
+private theorem insertDetectedTriggers_ending {checkTurn : Bool} (s : GameState) (queue : List PendTrigger)
+    (stack : List Frame) (allowed : EndingStack checkTurn stack) :
+    EndingStack checkTurn (insertDetectedTriggers s queue stack) := by
+  unfold insertDetectedTriggers
+  dsimp only
+  apply EndingStack.prepend
+  · split
+    · exact allowed
     · rename_i scheduled
-      refine insertTriggers_ending _ ?_ stack allowed f ordinary
+      refine insertTriggers_ending _ ?_ stack allowed
       intro empty
       rw [empty] at scheduled
       exact scheduled rfl
+  · intro f add
+    obtain ⟨⟨_, _⟩, found, eq⟩ := List.mem_filterMap.mp add
+    obtain ⟨trigger, _, candidateEq⟩ := List.mem_map.mp found
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj candidateEq
+    refine ⟨.stop (.immediateAdd s trigger eq), ?_⟩
+    obtain ⟨_, _, _, _, rfl⟩ := PendTrigger.immediateAddFrame_run eq
+    intro h
+    cases h
 
-private theorem withTriggers_ending (s : GameState) (events : List Event)
-    (allowed : ∀ f ∈ s.pending, EndingFrame f) : ∀ f ∈ (s.withTriggers events).pending, EndingFrame f := by
+private theorem withTriggers_ending {checkTurn : Bool} (s : GameState) (events : List Event)
+    (allowed : EndingStack checkTurn s.pending) : EndingStack checkTurn (s.withTriggers events).pending := by
   rcases withTriggers_cases s events with ⟨_, eq, _⟩ | eq | ⟨queue, eq, _⟩
   · rw [eq]
-    intro _ impossible
-    contradiction
+    exact .empty _
   · rw [eq]
     exact allowed
   · rw [eq]
     exact insertDetectedTriggers_ending _ queue _ allowed
 
-private theorem ending_cons {f : Frame} {rest : List Frame} (top : EndingFrame f)
-    (later : ∀ task ∈ rest, EndingFrame task) : ∀ task ∈ f :: rest, EndingFrame task := by
-  intro task member
-  rcases List.mem_cons.mp member with rfl | inRest
-  · exact top
-  · exact later _ inRest
-
-private theorem cleanupFrame_ending (s : GameState) (rest : List Frame)
-    (allowed : ∀ f ∈ rest, EndingFrame f) : ∀ f ∈ (cleanupFrame s rest).1.pending, EndingFrame f := by
+private theorem cleanupFrame_ending {checkTurn : Bool} (s : GameState) (rest : List Frame)
+    (allowed : EndingStack checkTurn rest) : EndingStack checkTurn (cleanupFrame s rest).1.pending := by
+  have cleanup : EndingStack checkTurn (.cleanup :: rest) :=
+    allowed.push .cleanup (by intro h; cases h)
   rcases cleanupFrame_cases s rest with ⟨_, eq⟩ | ⟨_, _, _, _, eq⟩ | ⟨_, _, eq⟩ | ⟨_, _, eq⟩ | ⟨_, _, _, eq⟩ | eq <;>
     rw [eq]
-  · intro _ member; contradiction
-  · exact ending_cons (.stop (.decision rfl)) (ending_cons .cleanup allowed)
-  · exact ending_cons .cleanup allowed
-  · exact ending_cons (.stop (.decision rfl)) (ending_cons .cleanup allowed)
-  · exact ending_cons (.stop (.decision rfl)) allowed
+  · exact .empty _
+  · exact cleanup.push (.stop (.decision rfl)) (by intro h; cases h)
+  · exact cleanup
+  · exact cleanup.push (.stop (.decision rfl)) (by intro h; cases h)
+  · exact allowed.push (.stop (.decision rfl)) (by intro h; cases h)
   · exact allowed
 
-private theorem expirationStep_ending {s t : GameState} {events : List Event}
+private theorem expirationStep_ending {checkTurn : Bool} {s t : GameState} {events : List Event}
     (tracked : inExpirationWork s) (step : workStep s = some (t, events))
-    (allowed : ∀ f ∈ s.pending, EndingFrame f) : ∀ f ∈ t.pending, EndingFrame f := by
+    (allowed : EndingStack checkTurn s.pending) : EndingStack checkTurn t.pending := by
   cases stack : s.pending with
   | nil => simp [inExpirationWork, stack] at tracked
   | cons head rest =>
     have kind : head = .cleanup ∨ head = .expireTurn := by simpa [inExpirationWork, stack] using tracked
-    have restAllowed (f) (member : f ∈ rest) : EndingFrame f :=
-      allowed f (stack ▸ List.mem_cons_of_mem head member)
+    have restAllowed : EndingStack checkTurn rest := (stack ▸ allowed).tail
     rcases kind with rfl | rfl
     · simp only [workStep, stack, microStep, microStep0, Option.map_some] at step
       obtain ⟨rfl, _⟩ := Prod.mk.inj (Option.some.inj step).symm
@@ -567,20 +592,20 @@ private theorem expirationStep_ending {s t : GameState} {events : List Event}
     · simp only [workStep, stack, microStep, microStep0, Option.map_some] at step
       obtain ⟨rfl, _⟩ := Prod.mk.inj (Option.some.inj step).symm
       apply withTriggers_ending
-      change ∀ f ∈ expirationFrames s ++ rest, EndingFrame f
+      change EndingStack checkTurn (expirationFrames s ++ rest)
       unfold expirationFrames
       split
-      · exact ending_cons .cleanup (ending_cons .expire restAllowed)
+      · exact (restAllowed.push .expire (by intro h; cases h)).push .cleanup (by intro h; cases h)
       · exact restAllowed
 
-private theorem advance_expiration_checkpoint {s : GameState} (wf : s.WF) (pending : inExpirationWork s) :
+private theorem advance_expiration_checkpoint (checkTurn : Bool) {s : GameState} (wf : s.WF) (pending : inExpirationWork s) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ t.WF ∧ t.cards = s.cards ∧
       ¬inExpirationWork t ∧
-      ((∀ f ∈ s.pending, EndingFrame f) → ∀ f ∈ t.pending, EndingFrame f) := by
+      (EndingStack checkTurn s.pending → EndingStack checkTurn t.pending) := by
   refine expirationWorkLt_wf.induction s (C := fun state => state.WF → inExpirationWork state →
     ∃ t used events, 0 < used ∧ AdvancePrefix state t used events ∧ t.WF ∧ t.cards = state.cards ∧
       ¬inExpirationWork t ∧
-      ((∀ f ∈ state.pending, EndingFrame f) → ∀ f ∈ t.pending, EndingFrame f)) ?_ wf pending
+      (EndingStack checkTurn state.pending → EndingStack checkTurn t.pending)) ?_ wf pending
   intro state ih well front
   have current : ∃ frame rest, state.pending = frame :: rest ∧ frame.isWork = true := by
     cases stack : state.pending with
@@ -593,7 +618,7 @@ private theorem advance_expiration_checkpoint {s : GameState} (wf : s.WF) (pendi
   obtain ⟨next, events, step, decreases⟩ := expiration_engine_step state well front
   have nextWF := workStep_wf well step
   have cards := expirationStep_cards front step
-  have allowed := expirationStep_ending front step
+  have allowed := expirationStep_ending (checkTurn := checkTurn) front step
   by_cases inside : inExpirationWork next
   · obtain ⟨last, used, later, _, trace, lastWF, lastCards, outside, keep⟩ :=
       ih next (decreases inside) nextWF inside
@@ -610,13 +635,13 @@ theorem advance_expiration_work {s : GameState} (wf : s.WF)
     (pending : s.pending.head? = some .cleanup ∨ s.pending.head? = some .expireTurn) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       t.pending.head? ≠ some .cleanup ∧ t.pending.head? ≠ some .expireTurn := by
-  obtain ⟨t, used, events, positive, path, _, _, outside, _⟩ := advance_expiration_checkpoint wf pending
+  obtain ⟨t, used, events, positive, path, _, _, outside, _⟩ := advance_expiration_checkpoint false wf pending
   exact ⟨t, used, events, positive, path, fun same => outside (Or.inl same), fun same => outside (Or.inr same)⟩
 
-private theorem advance_ending_checkpoint {s : GameState} {rest : List Frame} (wf : s.WF)
+private theorem advance_ending_checkpoint (checkTurn : Bool) {s : GameState} {rest : List Frame} (wf : s.WF)
     (pending : s.pending = .phase .ending :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ t.WF ∧ t.cards = s.cards ∧
-      ¬inExpirationWork t ∧ ((∀ f ∈ rest, EndingFrame f) → ∀ f ∈ t.pending, EndingFrame f) := by
+      ¬inExpirationWork t ∧ (EndingStack checkTurn rest → EndingStack checkTurn t.pending) := by
   let raw := { s with phase := .ending, pending := .cleanup :: .expireTurn :: rest }
   let emitted := [Event.phaseStarted (s.active.getD ⟨0⟩) .ending]
   let next := raw.withTriggers (emitted ++ s.workTransitionEvents raw)
@@ -624,11 +649,12 @@ private theorem advance_ending_checkpoint {s : GameState} {rest : List Frame} (w
     simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, next, emitted]
   have nextWF := workStep_wf wf step
   have nextCards : next.cards = s.cards := withTriggers_cards raw _
-  have allowed (tail : ∀ f ∈ rest, EndingFrame f) : ∀ f ∈ next.pending, EndingFrame f :=
-    withTriggers_ending _ _ (ending_cons .cleanup (ending_cons .expire tail))
+  have allowed (tail : EndingStack checkTurn rest) : EndingStack checkTurn next.pending :=
+    withTriggers_ending _ _
+      ((tail.push .expire (by intro h; cases h)).push .cleanup (by intro h; cases h))
   by_cases inside : inExpirationWork next
   · obtain ⟨t, used, later, _, run, lastWF, lastCards, outside, keep⟩ :=
-      advance_expiration_checkpoint nextWF inside
+      advance_expiration_checkpoint checkTurn nextWF inside
     exact ⟨t, used + 1, emitted ++ later, by omega, run.prepend pending rfl step, lastWF,
       lastCards.trans nextCards, outside, fun valid => keep (allowed valid)⟩
   · have done : AdvancePrefix next next 0 [] := by intro fuel before; simp
@@ -641,8 +667,45 @@ theorem advance_ending_expiration {s : GameState} {rest : List Frame} (wf : s.WF
     (pending : s.pending = .phase .ending :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       t.pending.head? ≠ some .cleanup ∧ t.pending.head? ≠ some .expireTurn := by
-  obtain ⟨t, used, events, positive, path, _, _, outside, _⟩ := advance_ending_checkpoint wf pending
+  obtain ⟨t, used, events, positive, path, _, _, outside, _⟩ := advance_ending_checkpoint false wf pending
   exact ⟨t, used, events, positive, path, fun same => outside (Or.inl same), fun same => outside (Or.inr same)⟩
+
+private theorem advance_ending_handoff {checkTurn : Bool} {s : GameState} {rest : List Frame}
+    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = .phase .ending :: rest)
+    (continuation : EndingStack checkTurn rest) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ EndingWorkStop t.pending.head? ∧
+      (t.pending.head? = some .beginTurn →
+        t.WF ∧ t.cards = s.cards ∧ (checkTurn = true → t.pending = [.beginTurn])) := by
+  obtain ⟨mid, elapsed, events, positive, path, midWF, cards, outside, keep⟩ :=
+    advance_ending_checkpoint checkTurn wf pending
+  cases stack : mid.pending with
+  | nil =>
+    exact ⟨mid, elapsed, events, positive, path, by rw [stack]; exact .empty, by simp [stack]⟩
+  | cons first later =>
+    have tracked := keep continuation
+    have allowed := tracked.allowed first (stack ▸ List.mem_cons_self)
+    cases allowed with
+    | cleanup => exact False.elim (outside (Or.inl (stack ▸ rfl)))
+    | expire => exact False.elim (outside (Or.inr (stack ▸ rfl)))
+    | stop stop =>
+      refine ⟨mid, elapsed, events, positive, path, by rw [stack]; exact stop, ?_⟩
+      intro front
+      have firstIsBegin : first = .beginTurn := by simpa [stack] using front
+      subst first
+      refine ⟨midWF, cards, fun check => ?_⟩
+      have order := List.pairwise_cons.mp (stack ▸ tracked.turnLast check)
+      cases later with
+      | nil => exact stack
+      | cons f fs => exact False.elim (order.1 f List.mem_cons_self rfl)
+    | queued queue nonempty =>
+      obtain ⟨t, used, f, tail, _, observed, done, decision⟩ :=
+        advance_triggers_to_decision mid midWF queue later stack (cards ▸ database) (Or.inl nonempty)
+      refine ⟨t, elapsed + used, events, by omega, by simpa using path.append observed,
+        by rw [done]; exact .decision decision, ?_⟩
+      intro front
+      have isBegin : f = .beginTurn := by simpa [done] using front
+      subst f
+      contradiction
 
 /-- The actual Ending Phase runs its Cleanup and Expiration steps and any leading ordinary
 trigger queue. A nonempty queue reaches a player decision; other routes are the next turn,
@@ -651,22 +714,61 @@ theorem advance_ending_through_triggers {s : GameState} {rest : List Frame} (wf 
     (database : MightRead.database s.cards) (pending : s.pending = .phase .ending :: rest)
     (continuation : ∀ f ∈ rest, EndingWorkStop (some f)) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ EndingWorkStop t.pending.head? := by
-  obtain ⟨mid, elapsed, events, positive, path, midWF, cards, outside, keep⟩ :=
-    advance_ending_checkpoint wf pending
+  obtain ⟨t, used, events, positive, path, stop, _⟩ := advance_ending_handoff wf database pending
+    (checkTurn := false) ⟨fun f member => .stop (continuation f member), by intro h; cases h⟩
+  exact ⟨t, used, events, positive, path, stop⟩
+
+/-- From the Ending Phase, automatic work can finish, ask for a decision, reach the next turn's
+Awaken stack, or enter an immediate Add that was scheduled by event observation. -/
+inductive TurnBoundaryStop (s : GameState) : Prop where
+  /-- The game has no further frames. -/
+  | empty : s.pending = [] → TurnBoundaryStop s
+  /-- The engine needs a player decision. -/
+  | decision {frame : Frame} {rest : List Frame} :
+      s.pending = frame :: rest → frame.isWork = false → TurnBoundaryStop s
+  /-- The next turn has been initialized, including its active player and phase frames. -/
+  | awaken (p : PlayerId) :
+      s.pending = turnFrames p → s.active = some p → TurnBoundaryStop s
+  /-- A triggered Add still needs to resolve. -/
+  | immediateAdd {frame : Frame} {rest : List Frame} (observed : GameState) (trigger : PendTrigger) :
+      s.pending = frame :: rest → trigger.immediateAddFrame observed = some frame → TurnBoundaryStop s
+
+/-- Follow the real Ending Phase across the normal turn boundary. If there was no earlier
+decision or immediate Add, the engine processes the clock and any ordinary triggers before Awaken. -/
+theorem advance_ending_to_awaken {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ TurnBoundaryStop t := by
+  have continuation : EndingStack true [.beginTurn] :=
+    ⟨fun f member => (List.mem_singleton.mp member).symm ▸ EndingFrame.stop .beginTurn,
+      fun _ => .cons (fun _ impossible => nomatch impossible) .nil⟩
+  obtain ⟨mid, used, events, positive, path, stop, recover⟩ :=
+    advance_ending_handoff wf database pending continuation
   cases stack : mid.pending with
-  | nil => exact ⟨mid, elapsed, events, positive, path, by rw [stack]; exact .empty⟩
-  | cons first later =>
-    have allowed := keep (fun f member => .stop (continuation f member)) first
-      (stack ▸ List.mem_cons_self)
-    cases allowed with
-    | cleanup => exact False.elim (outside (Or.inl (stack ▸ rfl)))
-    | expire => exact False.elim (outside (Or.inr (stack ▸ rfl)))
-    | stop stop => exact ⟨mid, elapsed, events, positive, path, by rw [stack]; exact stop⟩
-    | queued queue nonempty =>
-      obtain ⟨t, used, f, tail, _, observed, done, decision⟩ :=
-        advance_triggers_to_decision mid midWF queue later stack (cards ▸ database) (Or.inl nonempty)
-      exact ⟨t, elapsed + used, events, by omega, by simpa using path.append observed,
-        by rw [done]; exact .decision decision⟩
+  | nil => exact ⟨mid, used, events, positive, path, .empty stack⟩
+  | cons frame rest =>
+    have top : EndingWorkStop (some frame) := by simpa [stack] using stop
+    cases top with
+    | decision decision => exact ⟨mid, used, events, positive, path, .decision stack decision⟩
+    | immediateAdd observed trigger scheduled =>
+      exact ⟨mid, used, events, positive, path, .immediateAdd observed trigger stack scheduled⟩
+    | beginTurn =>
+      obtain ⟨midWF, cards, singleton⟩ := recover (by rw [stack]; rfl)
+      have normal := singleton rfl
+      cases clock : mid.clockConclusion with
+      | some result =>
+        obtain ⟨finish, _⟩ := advance_beginTurn_clock midWF (cards ▸ database) normal clock
+        exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, .empty rfl⟩
+      | none =>
+        obtain ⟨t, elapsed, _, start, _, boundary⟩ :=
+          advance_beginTurn midWF (cards ▸ database) (cards ▸ ordinaryMight) normal clock
+        refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_⟩
+        rcases boundary with awakened | choice
+        · exact .awaken _ (by simpa only [List.append_nil] using awakened.1) awakened.2.1
+        · cases next : t.pending with
+          | nil => simp [next] at choice
+          | cons first later =>
+            have decision : first.isWork = false := by simpa [next] using choice
+            exact .decision next decision
 
 private theorem priorityPass_reads {s : GameState} {p : PlayerId} {rest : List Frame}
     (before : s.pending = .priority p :: rest) :
@@ -736,6 +838,21 @@ theorem applyDeclaredAction_priorityPass {s : GameState} {p : PlayerId} {rest : 
   change next.withTriggers (s.actionTransitionEvents next ⟨.player p, .pass⟩) = next
   rw [events, withTriggers_nil]
 
+private theorem priority_pass_prefix {s initial t : GameState} {p : PlayerId} {used : Nat}
+    {events : List Event} (legal : Legal s ⟨.player p, .pass⟩)
+    (applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []))
+    (path : AdvancePrefix initial t used events) :
+    (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+        step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  constructor
+  · intro fuel
+    simp only [step, ite_eq_left legal, applyPass]
+    simpa only [List.nil_append] using path fuel []
+  · intro boundary
+    simp only [step, ite_eq_left legal, applyPass]
+    simpa only [List.nil_append] using path.finish boundary []
+
 /-- Starting from the normal single priority frame, the player's Pass reaches the next Ending
 boundary, even when Cleanup queues ordinary triggers before the next turn. The remaining fuel
 continues from that boundary with all the events emitted so far. If there is no further automatic
@@ -755,13 +872,23 @@ theorem step_priority_pass_ending {s : GameState} {p : PlayerId}
       intro f member
       obtain rfl := List.mem_singleton.mp member
       exact .beginTurn)
-  refine ⟨t, used, events, positive, stop, ?_, ?_⟩
-  · intro fuel
-    simp only [step, ite_eq_left legal, applyPass]
-    simpa only [List.nil_append] using path fuel []
-  · intro boundary
-    simp only [step, ite_eq_left legal, applyPass]
-    simpa only [List.nil_append] using path.finish boundary []
+  exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
+
+/-- The ordinary Pass advances through the turn boundary when Ending reaches it. The remaining
+fuel resumes at Awaken or at the work or decision introduced before it. -/
+theorem step_priority_pass_to_awaken {s : GameState} {p : PlayerId}
+    (wf : s.WF) (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ TurnBoundaryStop t ∧
+      (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+        step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
+  have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
+    applyDeclaredAction_priorityPass wf database pending
+  obtain ⟨t, used, events, positive, path, stop⟩ :=
+    advance_ending_to_awaken (s := initial) (wf.congr rfl rfl rfl rfl) database ordinaryMight rfl
+  exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
 
 end Riftbound
 
