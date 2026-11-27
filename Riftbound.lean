@@ -59,6 +59,7 @@ public import Riftbound.Rules.TeamSetup
 public import Riftbound.Engine.Step
 public import Riftbound.Engine.Observe
 public import Riftbound.Invariant.Choices
+public import Riftbound.Invariant.FlexiblePaymentChoices
 public import Riftbound.Invariant.ChosenChampion
 public import Riftbound.Invariant.PrivateChoices
 public import Riftbound.Invariant.Step
