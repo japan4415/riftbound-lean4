@@ -4945,12 +4945,10 @@ def OGN_183.meta : CardDef :=
 /-- Stacked Deck. -/
 def OGN_183 : CardDef :=
   { OGN_183.meta with
-    spellEffect := some (.of []
-      (.seqOf [.prim (.lookTop 3),
-        .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 3])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 2])),
-        .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
-    status := .drafted }
+    spellEffect := some (.of [] (.lookAtTop 3 (.seqOf [
+      .prim (.returnToHand (Selector.one .you .inMainDeck [.top 3])),
+      .recycleLooked]))),
+    status := .full }
 
 -- BEGIN GENERATED OGN-184
 /--

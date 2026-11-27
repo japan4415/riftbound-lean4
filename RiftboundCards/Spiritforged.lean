@@ -3586,10 +3586,10 @@ def SFD_122.meta : CardDef :=
 def SFD_122 : CardDef :=
   { SFD_122.meta with
 
-    spellEffect := some (.of [] (.seqOf [
-      .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 2])),
-      .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
-    status := .drafted }
+    spellEffect := some (.of [] (.lookAtTop 2 (.seqOf [
+      .chooseObject .you .inMainDeck (.ofList [.top 2]) (.prim (.drawLooked (.var pickVar))),
+      .recycleLooked]))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-123
 /--

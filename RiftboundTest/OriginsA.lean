@@ -2825,12 +2825,17 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b0 ← d[1]?
   let c0 ← d[2]?
   let d4 ← d[3]?
-  let r ← play s1 s.me c [] { obj := fun o => o == b0 }
-  let tail2 := (deck r).reverse.take 2
+  let waiting ← play s1 s.me c [] { obj := fun o => o == b0 }
+  let .chancePredict p _ _ recycled :: _ := waiting.pending | none
+  let (r, events) ← (step 100 waiting ⟨.chance, .arrange [a0, c0]⟩).toOption
+  let (reverse, _) ← (step 100 waiting ⟨.chance, .arrange [c0, a0]⟩).toOption
   -- the played card leaves the hand and one card of the deck comes into it
-  return r.handN s.me == s1.handN s.me && (deck r).length == d.length - 1 &&
+  return p == s.me && recycled == [a0, c0] && events.contains (.recycled s.me) &&
+    !(step 100 waiting ⟨.chance, .arrange [a0, b0]⟩).isOk &&
+    r.handN s.me == s1.handN s.me && (deck r).length == d.length - 1 &&
     !(deck r).contains b0 &&
-    (deck r).head? == some d4 && tail2.contains a0 && tail2.contains c0
+    (deck r).head? == some d4 && (deck r).reverse.take 2 == [c0, a0] &&
+    (deck reverse).reverse.take 2 == [a0, c0]
 
 -- Fading Memories (OGN-180): a unit at a battlefield or a gear gets Temporary
 #guard t fun s => do
@@ -4871,9 +4876,12 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t1, bf) ← putBf s2 s.me "OGN-287"
   let buffs (x : GameState) :=
     ((x.zone (.player s.me .base)).filter (fun v => (x.obj? v).any (·.buffed))).length
-  let a ← play s3 s.me c
+  let waiting ← play s3 s.me c
+  let .chancePredict _ _ _ bottom :: _ := waiting.pending | none
+  let (ordered, events) ← (step 100 waiting ⟨.chance, .arrange bottom⟩).toOption
+  let a := settleChain {} 12 ordered
   let rune ← fire t1 [.scored s.me bf true]
-  return 0 < buffs a && buffs rune == 0
+  return events.count (.recycled s.me) == 1 && buffs a == 1 && buffs rune == 0
 
 -- Hide (CR 811): one hidden card per battlefield; Bandle Tree (OGN-278): one additional card there
 #guard t fun s => do

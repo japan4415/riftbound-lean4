@@ -2314,6 +2314,32 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
     (r.countIn s.me .hand "OGN-051" + r.countIn s.me .hand "SFD-042" ==
       d.countIn s.me .hand "OGN-051" + d.countIn s.me .hand "SFD-042" + 1)
 
+-- Called Shot's first choice is a draw. Repeat looks at a fresh pair and permits a new choice.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "SFD-122" .hand
+  let (s, cards) ← s.stackTop p ["OGN-051", "SFD-042", "OGN-006", "OGN-017"]
+  let [first, second, third, fourth] := cards | none
+  let pass (state : GameState) : Option (GameState × List Event) := do
+    let .chainPass seat _ :: _ := state.pending | none
+    (step 100 state ⟨.player seat, .pass⟩).toOption
+  let (queued, _) ← (step 100 (s.rich p) ⟨.player p, .playCard spell ⟨0, [.chaos]⟩ []⟩).toOption
+  let (next, _) ← pass queued
+  let (offered, looked) ← pass next
+  let choose (card : ObjId) : Action := ⟨.player p, .choose card⟩
+  let (one, drew) ← (step 100 offered (choose second)).toOption
+  let double ← cast (s.rich p) p spell ⟨0, [.chaos, .chaos]⟩ []
+    { obj := fun obj => obj == second || obj == third }
+  return looked.contains (.lookedAt p first) && looked.contains (.lookedAt p second) &&
+    !looked.contains (.lookedAt p third) && (legalFrameActions offered).contains (choose first) &&
+    !(legalFrameActions offered).contains (choose third) &&
+    drew.contains (.drew p) &&
+    one.countIn p .hand "SFD-042" == s.countIn p .hand "SFD-042" + 1 &&
+    (one.zone (.player p .mainDeck)).getLast? == some first &&
+    double.countIn p .hand "SFD-042" == s.countIn p .hand "SFD-042" + 1 &&
+    double.countIn p .hand "OGN-006" == s.countIn p .hand "OGN-006" + 1 &&
+    (double.zone (.player p .mainDeck)).reverse.take 2 == [fourth, first]
+
 -- Ravenbloom Conservatory (SFD-215): when its player defends here, reveal the top card: a spell is
 -- put in the hand, anything else is recycled
 #guard tsf fun s => do

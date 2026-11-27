@@ -2446,6 +2446,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - 通常の Unit に2つ目の Buff を加えようとしても、その Unit の状態は変わらず追加の Buff イベントも発生しない。XP の獲得と支払いは対象の席の残高だけを変える。これらを Lean で証明し、印刷された Buff と XP Tracker を `full` とした。[証明](../Riftbound/Invariant/GameCounters.lean) [公式総合ルール 702.3、729、730](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+
+### 山札を見た後の抽選とドロー
+
+- Stacked Deck は見た3枚から1枚を手札に入れ、残り2枚をランダムな順序で山札の下に戻す。Called Shot は見た2枚から1枚をドローしてもう一方を戻し、Repeat を払った場合はその時点の山札から新たに2枚を見る。Buff と XP Tracker と合わせて4枚を確認し、全1,103枚中769枚を `full` とした。[公式総合ルール 417.5、432.1.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
