@@ -1627,7 +1627,7 @@ def UNL_054 : CardDef :=
       moveChoice := some ⟨0, true, .nil⟩
       recheckTargets := true
       body := .prim (.move (.slotsFrom 0) .declared) },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-055
 /--
