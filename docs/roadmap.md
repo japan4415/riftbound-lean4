@@ -2344,6 +2344,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Upstage Comedy は Repeat の支払いと2回分の対象をプレイ時に選ぶ。Concentrate はプレイした席の XP で費用が決まり、Evershade Stalker と Lunar Boon はカードを捨ててから引く。4枚を `full` とし、全1,103枚中662枚を実装済みとした。
 
+### Origins の得点と戦闘、Hidden、対象の確認
+
+- Draven, Showboat は2v2でチームの得点を参照する。Raging Firebrand の値引きは次の Spell まで残り、Kai'Sa, Survivor は Accelerate を払った場合に Ready で登場し、自身の Battlefield の Conquer で引く。Wielder of Water は単独で攻撃・防御するときに強化される。Sprite Call は Hidden からも Ready の Sprite を Base に出し、Vengeance は両陣営の Unit を対象にできる。6枚を `full` とし、全1,103枚中668枚を実装済みとした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

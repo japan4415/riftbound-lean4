@@ -751,7 +751,7 @@ def OGN_028.meta : CardDef :=
 def OGN_028 : CardDef :=
   { OGN_028.meta with
     abilities := [.passive .always [.mightPlus .self (.points .you)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-029
 /--
@@ -835,7 +835,7 @@ def OGN_031 : CardDef :=
   { OGN_031.meta with
     abilities := [.triggered (.onSelf .play)
       (.of [] (.prim (.turnEffect (.nextSpellCostMinus 5)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-032
 /--
@@ -1060,7 +1060,7 @@ def OGN_039 : CardDef :=
     abilities := [.triggered (.onSelf .conquer)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-040
 /--
@@ -1478,7 +1478,7 @@ def OGN_055.meta : CardDef :=
 def OGN_055 : CardDef :=
   { OGN_055.meta with
     abilities := [.passive (.matches .self .alone) [.mightPlus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-056
 /--
@@ -2534,7 +2534,7 @@ def OGN_094 : CardDef :=
   { OGN_094.meta with
     spellEffect := some (.of []
       (.prim (.create "Sprite" (.const 1) .atBase true))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-095
 /--
@@ -6176,7 +6176,7 @@ def OGN_229 : CardDef :=
   { OGN_229.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.prim (.kill (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-230
 /--

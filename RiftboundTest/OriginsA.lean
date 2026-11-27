@@ -1145,7 +1145,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← putAt s2 s.me "OGN-136" s.bf0
   let b := s3.inCombatAt s.bf0 s.me
   let c := s2.inCombatAt s.bf0 s.you
-  return c.mightNow w == (s2.mightNow w).map (· + 2) && b.mightNow w == s3.mightNow w &&
+  let a := s2.inCombatAt s.bf0 s.me
+  return a.mightNow w == (s2.mightNow w).map (· + 2) &&
+    c.mightNow w == a.mightNow w && b.mightNow w == s3.mightNow w &&
     s2.mightNow w == (s1.mightNow w) && s3.mightNow v == some 2
 
 -- Mask of Foresight (OGN-060): +1 Might for a friendly unit that attacks (a) or defends (b)
@@ -1769,6 +1771,18 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return more.mightNow d == (s1.mightNow d).map (· + 3) &&
     (s1.gainPoints s.you 2).mightNow d == s1.mightNow d
 
+-- In 2v2, Draven reads the shared score of his controller's side.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, draven) ← put s p "OGN-028" .base
+  let ownScore := (s.gainPoints p 1).gainPoints ally 2
+  let rivalScore := s.gainPoints opponent 4
+  return s.mightNow draven == some 3 && ownScore.mightNow draven == some 6 &&
+    rivalScore.mightNow draven == some 3
+
 -- Relentless Storm (OGN-249), a Legend: when I play a Mighty unit, I may exhaust it to channel 1
 -- rune exhausted
 #guard t fun s => do
@@ -2099,6 +2113,23 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let sp ← a.firstOf s.me .base "TKN-Sprite" <|> (a.zone (.player s.me .base)).find? (fun u =>
     (a.cardDef? u).any (·.name == "Sprite"))
   return a.tired sp == some false && a.hasKw sp .temporary && a.mightNow sp == some 3
+
+-- The same spell can be played for zero from Hidden on a later turn. Its Sprite
+-- goes to the Base and expires at its controller's next Beginning Phase.
+#guard t fun s => do
+  let p := s.me
+  let (s, call) ← put s p "OGN-094" .hand
+  let field := s.bf0
+  let controlled := s.control p field
+  let hidden ← activate controlled p call 0 [field] ⟨0, [.fury]⟩
+  let card ← hidden.firstOf p .hidden "OGN-094"
+  let next := { hidden with turn := hidden.turn + 1 }
+  let cast ← activate next p card 1
+  let sprite ← cast.firstOf p .base "TKN-Sprite"
+  let ended ← settleBeginning cast p
+  return (activate hidden p card 1).isNone && cast.tired sprite == some false &&
+    cast.countIn p .trash "OGN-094" == 1 && ended.countIn p .base "TKN-Sprite" == 0
+
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-220" .hand
   let (s2, f) ← putAt s1 s.me "OGN-136" s.bf0
@@ -2903,12 +2934,15 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s2, sp) ← put s1 s.me "OGN-198" .hand
   let (s3, sq) ← put s2 s.me "OGN-198" .hand
   let (board, target) ← put s3 s.me "OGN-136" .trash
+  let (board, normalUnit) ← put board s.me "OGN-136" .hand
   let on ← play board s.me f
+  let afterUnit ← play on s.me normalUnit
   let cut (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
     (x.cardDef? c).bind (fun d => (x.effCost p c d).map (·.energy))
-  let cheap ← cast (on.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩ [target]
+  let cheap ← cast (afterUnit.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩ [target]
   let next := { on with turn := on.turn + 1 }
-  return cut on s.me sp == some 1 && cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
+  return cut on s.me sp == some 1 && cut afterUnit s.me sp == some 1 &&
+    cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
     cut on s.you sp == some 6 && cut next s.me sp == some 6
 
 -- ... a card played earlier that is played again counts as the next card: Sun Disc
@@ -4142,6 +4176,27 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     twice.mightNow wb == (wnext.mightNow wb).map (· + 2) &&
     fromHand.mightNow xm == x2.mightNow xm
 
+-- Kai'Sa can Accelerate when played. Only her controller's Conquer at her own
+-- Battlefield starts the draw in this scenario.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-039" .hand
+  let plain ← play s p card
+  let accelerated ← cast (s.rich p) p card ⟨5, [.fury]⟩
+  let plainUnit ← plain.firstOf p .base "OGN-039"
+  let acceleratedUnit ← accelerated.firstOf p .base "OGN-039"
+  let ownField := s.bf0
+  let otherField ← (s.battlefields.filter (· != ownField)).head?
+  let (board, _) ← putAt s p "OGN-039" ownField
+  let held ← fire board [.scored p ownField false]
+  let elsewhere ← fire board [.scored p otherField true]
+  let rival ← fire board [.scored q ownField true]
+  let conquered ← fire board [.scored p ownField true]
+  return plain.tired plainUnit == some true && accelerated.tired acceleratedUnit == some false &&
+    held.handN p == board.handN p && elsewhere.handN p == board.handN p &&
+    rival.handN p == board.handN p && conquered.handN p == board.handN p + 1
+
 -- Reckoner's Arena (OGN-286): when I hold here, the conquer effects of my units here are activated
 -- (Kai'Sa, Survivor, OGN-039: draw 1 when she conquers); the text says units here, so an enemy
 -- unit's effect is activated for its controller too; not units elsewhere, and not when I conquer
@@ -4387,6 +4442,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     foe.countIn s.me .trash "OGN-252" == 1 && empty.countIn s.me .trash "OGN-252" == 1 &&
     inHand.countIn s.me .trash "OGN-136" == 0 && inBase.countIn s.me .trash "OGN-136" == 0 &&
     theirs.countIn s.you .trash "OGN-252" == 1
+
+-- Vengeance kills either player's Unit, at a Base or a Battlefield. A Gear at the
+-- same Base is outside its legal targets.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "OGN-229" .hand
+  let (s, ally) ← put s p "OGN-136" .base
+  let (s, enemy) ← putAt (s.control q s.bf0) q "OGN-136" s.bf0
+  let (s, gear) ← put s p "OGN-021" .base
+  let friendly ← play s p spell [ally]
+  let opposing ← play s p spell [enemy]
+  return (play s p spell [gear]).isNone &&
+    friendly.countIn p .trash "OGN-136" == 1 && friendly.countIn q .trash "OGN-136" == 0 &&
+    opposing.countIn q .trash "OGN-136" == 1 && opposing.countIn p .trash "OGN-136" == 0
 
 -- Immortal Phoenix (OGN-037): when I kill a unit with a spell, I may pay 1 Energy and Fury to play
 -- it from my Trash (not when I decline, not for the opponent's Trash, not from the hand)
