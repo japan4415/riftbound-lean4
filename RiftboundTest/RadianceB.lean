@@ -221,7 +221,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, gear) ← put s p "RAD-046" .base
   let (s, ally) ← put s p "RAD-011" .base
   let (s, enemy) ← put s s.you "RAD-011" .base
-  let (waiting, _) ← (step 100 s ⟨.player p, .activate gear 0 ⟨0, []⟩ []⟩).toOption
+  let (waiting, _) ← (step 100 s ⟨.player p, .activate gear 0 ⟨0, [], none⟩ []⟩).toOption
   let (stacked, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [ally]⟩).toOption
   let done := settleChain {} 12 stacked
   let fresh ← (done.zone (.player p .base)).find? (fun id => !(s.zone (.player p .base)).contains id)

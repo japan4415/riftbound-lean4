@@ -53,6 +53,37 @@ open Riftbound RiftboundDriver
     ((encode { explicitCode with deflectPayment? := some [.domain .order] }).resolveAt s 1).isOk == false &&
     json.contains "\"deflectPayment\":[\"flexible\"]" : Option Bool).getD false
 
+-- Older raw activations decode without Deflect allocation. Their JSON stays unchanged.
+#guard (do
+  let raw := "{\"actor\":{\"player\":{\"p\":{\"n\":1}}},\"kind\":{\"activate\":{\"costBanisher\":null,\"costObject\":null,\"discards\":[],\"idx\":1,\"pay\":{\"energy\":4,\"power\":[]},\"source\":{\"n\":57},\"targetPlayer\":null,\"targets\":[]}}}"
+  let json ← (Lean.Json.parse raw).toOption
+  let decoded ← (Lean.fromJson? json : Except String Action).toOption
+  return decoded == ⟨.player ⟨1⟩, .activate ⟨57⟩ 1 ⟨4, [], none⟩ []⟩ &&
+    (Lean.toJson decoded).compress == json.compress : Option Bool).getD false
+
+-- Coded activations identify which payment reached the Chain and whether the evidence was unique.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, kingpin) ← put s p "UNL-001" .base
+  let (s, target) ← put s s.you "OGN-013" .base
+  let s := (s.noRunes p).setPool p { fury := 1, any := 1 }
+  let canonical : Action := ⟨.player p, .activate kingpin 1 ⟨0, [], none⟩ [target]⟩
+  let alternate : Action := ⟨.player p, .activate kingpin 1 ⟨0, [], some [.flexible]⟩ [target]⟩
+  let ordinary ← ReplayAbilityUse.fromAction? s canonical
+  let selected ← ReplayAbilityUse.fromAction? s alternate
+  let encoded ← (Lean.fromJson? (Lean.toJson alternate) : Except String Action).toOption
+  let resolve (activation : ReplayAbilityUse) := (ReplayAnswer.observedAbilityUse activation).resolveAt s 1
+  let (next, events) ← (step 100 s alternate).toOption
+  let json := actionJson alternate s.pending.head? (some next) events (some s)
+  return encoded == alternate && ordinary.deflectPayment? == some [.domain .fury] &&
+    selected.deflectPayment? == some [.flexible] &&
+    (resolve ordinary).toOption == some (canonical, true) &&
+    (resolve selected).toOption == some (alternate, true) &&
+    (resolve { selected with deflectPayment? := none }).toOption.any (!·.2) &&
+    !(resolve { selected with deflectPayment? := some [.domain .mind] }).isOk &&
+    json.contains "\"deflectPayment\":[\"flexible\"]" : Option Bool).getD false
+
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=
   match demoTrace seed turns with | .ok j => j | .error e => "ERROR " ++ e

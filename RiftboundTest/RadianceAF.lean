@@ -28,7 +28,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let base := (s.fund p 0 (calm := 2)).modObj existing (fun o => { o with
     hiddenAt := some field, hiddenTurn := some s.turn })
   let hide (id : ObjId) : Action :=
-    ⟨.player p, .activate id 0 ⟨0, [.calm]⟩ [field]⟩
+    ⟨.player p, .activate id 0 ⟨0, [.calm], none⟩ [field]⟩
   let (supported, _) ← putAt base p "RAD-108" field
   let (choosing, _) ← (step 100 supported (hide next)).toOption
   let two := settleChain {} 20 choosing

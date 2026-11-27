@@ -19,9 +19,9 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, ekko) ← putAt s q "RAD-021" s.bf0
   let (s, discard) ← put s p "RAD-011" .hand
   let s := (s.rich p).modObj ekko (fun o => { o with controller := p, exhausted := true })
-  let noDiscard := step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.fury]⟩ []⟩
-  let wrongPower := step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.body]⟩ [] [discard]⟩
-  let (started, _) ← (step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.fury]⟩ [] [discard]⟩).toOption
+  let noDiscard := step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.fury], none⟩ []⟩
+  let wrongPower := step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.body], none⟩ [] [discard]⟩
+  let (started, _) ← (step 100 s ⟨.player p, .activate ekko 0 ⟨1, [.fury], none⟩ [] [discard]⟩).toOption
   let returned := settleChain {} 12 started
   let newEkko ← returned.firstOf p .base "RAD-021"
   let reentered ← returned.obj? newEkko

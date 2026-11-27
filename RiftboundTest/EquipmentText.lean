@@ -113,7 +113,7 @@ private meta def checkGear (code : String) (domain : Domain) (bonus : Int) : Boo
   let (playing, _) ← (step 100 (s.fund p 2) ⟨.player p, .playCard hand ⟨2, []⟩ []⟩).toOption
   let played := settleChain {} 12 playing
   let gear ← played.firstOf p .base "UNL-158"
-  let equip (target : ObjId) : Action := ⟨.player p, .activate gear 1 ⟨0, []⟩ [target]⟩
+  let equip (target : ObjId) : Action := ⟨.player p, .activate gear 1 ⟨0, [], none⟩ [target]⟩
   let (waiting, _) ← (step 100 played (equip host)).toOption
   let attached := settleChain {} 12 waiting
   let (board, chef) ← put (played.fund p 5) p "SFD-092" .hand
@@ -198,7 +198,7 @@ private meta def checkQuickDraw (code : String) (bonus : Int) : Bool :=
   let (s, response) ← put s q "OGN-095" .hand
   let s := ((s.fund p 3 1).fund q 1).modObj zero (fun o => { o with baseMightThisTurn := some 0 })
   let equip (energy : Nat) (target : ObjId) : Action :=
-    ⟨.player p, .activate gear 0 ⟨energy, [.fury]⟩ [target]⟩
+    ⟨.player p, .activate gear 0 ⟨energy, [.fury], none⟩ [target]⟩
   let options := (legalFrameActions s).filter (fun a => match a.kind with
     | .activate source .. => source == gear
     | _ => false)

@@ -155,12 +155,34 @@ meta def canUse (s : GameState) (src : ObjId) (ts : List ObjId) : Bool :=
         let s3 := s2.setPool p { fury := 1 }
         let s4 := s2.setPool p { fury := 2 }
         !(canUse s3 src [foe]) && canUse s4 src [foe] &&
-        (match step 100 s4 ⟨.player p, .activate src 0 ⟨0, []⟩ [foe]⟩ with
+        (match step 100 s4 ⟨.player p, .activate src 0 ⟨0, [], none⟩ [foe]⟩ with
           | .ok (s5, _) => (s5.poolOf p).total == 0
           | .error _ => false)
       | none => false
     | none => false
   | none => false
+
+-- For an activated ability, choose actual domain or universal Power and check the remaining Pool.
+#guard (do
+  let s ← mainDf
+  let p ← s.active
+  let foe : PlayerId := if p == ⟨0⟩ then ⟨1⟩ else ⟨0⟩
+  let (s, guarded) ← putDf s foe "T-DEF" .base
+  let (s, src) ← putDf s p "T-PNG" .base
+  let s := s.setPool p { fury := 1, order := 2, any := 1 }
+  let activate (sources : Option (List PowerBucket)) : Action :=
+    ⟨.player p, .activate src 0 ⟨0, [], sources⟩ [guarded]⟩
+  let orderAndUniversal := some [.domain .order, .flexible]
+  let chosen := activate orderAndUniversal
+  let ordinary := activate none
+  let (after, _) ← (step 100 s chosen).toOption
+  let (defaultPaid, _) ← (step 100 s ordinary).toOption
+  return (legalFrameActions s).contains chosen && (legalFrameActions s).contains ordinary &&
+    !(step 100 s (activate (some [.domain .body, .flexible]))).isOk &&
+    !(step 100 s (activate (some [.flexible]))).isOk &&
+    (after.poolOf p).fury == 1 && (after.poolOf p).order == 1 && (after.poolOf p).any == 0 &&
+    (after.poolOf p).powerSpent == 2 && (defaultPaid.poolOf p).fury == 0 &&
+    (defaultPaid.poolOf p).order == 1 && (defaultPaid.poolOf p).any == 1 : Option Bool) == some true
 
 -- A trigger can choose the guarded Unit when Power is already in the Pool or can be
 -- added from a Rune. An unfunded trigger has no valid target (CR 355, 357.1.a, 809).

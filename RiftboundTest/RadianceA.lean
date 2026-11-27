@@ -775,7 +775,7 @@ private meta def bombsAt (s : GameState) (p : PlayerId) (field : ObjId) : List O
   let s := (((s.control p field).control p away).modObj guardian (hide field)).modObj
     facedown (hide away)
   let d ← s.cardDef? guardian
-  let (queued, _) ← (step 100 s ⟨.player p, .activate guardian 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 s ⟨.player p, .activate guardian 2 ⟨0, [], none⟩ []⟩).toOption
   let revealed := settleChain { fromEnd := some 0 } 14 queued
   let declined := settleChain { fromEnd := some 1 } 14 queued
   let entered ← (revealed.unitsAtOf field p).find? (fun id =>

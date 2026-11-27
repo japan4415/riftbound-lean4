@@ -17,7 +17,7 @@ open Lean Riftbound RiftboundCards
 
 deriving instance ToJson, FromJson for
   CardId, SetCode, PlayerId, ObjId, Domain, PowerBucket, PowerSym, Cost, RunePool.Payment,
-  SpellPick, CardTypeGuess, EffectAdd, Actor, RuneAbility, MoveDest, TriggerPayment,
+  SpellPick, CardTypeGuess, EffectAdd, Actor, RuneAbility, MoveDest, TriggerPayment, ActivationPayment,
   ActionKind, Action, ZoneKind, Zone, Phase, Event, GameResult,
   RulesDate, Mode, Riftbound.Format, EliminationGame, RuleSet, LegalityEnv, GameConfig,
   Deck, ConstructedDeck, LimitedDeck, ImplStatus, ConstructedFormat, RegionalSeason, BanListPeriod,

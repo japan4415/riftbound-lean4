@@ -258,7 +258,7 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
   let s := GameState.empty teamState.config testDB
   let s := { s with phase := .main, active := some turnPlayer, pending := [.priority turnPlayer] }
   let (s, src) ← addObject s (newCard testDB s guest abilityCard.id) (.player guest .base)
-  let ability : Action := ⟨.player guest, .activate src 0 ⟨0, []⟩ []⟩
+  let ability : Action := ⟨.player guest, .activate src 0 ⟨0, [], none⟩ []⟩
   let (offered, _) ← (step 100 s ⟨.player turnPlayer, .inviteTeammate guest⟩).toOption
   let (chained, _) ← (step 100 offered ability).toOption
   return (legalFrameActions offered).contains ability && !(legalFrameActions s).contains ability &&

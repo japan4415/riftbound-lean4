@@ -32,6 +32,17 @@ def takeN (p : RunePool) : Nat → RunePool
   | 0 => p
   | n + 1 => (p.takeOne).takeN n
 
+/-- The physical source buckets consumed by the ordinary ordering. -/
+def canonicalPowerSources (pool : RunePool) (amount : Nat) : List PowerBucket :=
+  let after := pool.takeN amount
+  PowerBucket.all.flatMap (fun source =>
+    List.replicate (pool.powerIn source - after.powerIn source) source)
+
+/-- Every affordable allocation that leaves a different balance from the ordinary ordering. -/
+def alternatePowerAllocations (pool : RunePool) (amount : Nat) : List (List PowerBucket) :=
+  let canonical := pool.takeN amount
+  (pool.allocatedPowerPayments amount).filter (fun sources => pool.takeBuckets sources != some canonical)
+
 private theorem takeOne_paid {p : RunePool} (available : 0 < p.totalPower) :
     ∃ bucket, p.takeBucket bucket 1 = some p.takeOne := by
   unfold takeOne
@@ -169,9 +180,7 @@ def spellDeflectSources (s : GameState) (p : PlayerId) (c : ObjId) (ts : List Ob
   if amount == 0 then none else
     let pool ← s.spendFor p false pay (spell := true)
     if pool.totalPower < amount then none else
-      let after := pool.takeN amount
-      some (pick.deflectPayment.getD (PowerBucket.all.flatMap (fun source =>
-        List.replicate (pool.powerIn source - after.powerIn source) source)))
+      some (pick.deflectPayment.getD (pool.canonicalPowerSources amount))
 
 /-- Offer each affordable alternative to the canonical allocation for a direct Spell's
 separate Deflect cost. The canonical choice already has the ordinary input form. -/
@@ -181,10 +190,7 @@ def spellDeflectPicks (s : GameState) (p : PlayerId) (c : ObjId)
   pick :: (if amount == 0 then [] else
     match s.spendFor p false pay (spell := true) with
     | some pool =>
-      let canonical := pool.takeN amount
-      ((pool.allocatedPowerPayments amount).filter
-        (fun sources => pool.takeBuckets sources != some canonical)).map
-        (SpellPick.withDeflectPayment pick)
+      (pool.alternatePowerAllocations amount).map (SpellPick.withDeflectPayment pick)
     | none => [])
 
 /-- The ordinary submission names the canonical separate payment. -/
@@ -197,6 +203,7 @@ theorem mem_spellDeflectPicks_base (s : GameState) (p : PlayerId) (c : ObjId)
 def paidDeflectPool (pool : RunePool) (a : Action) (amount : Nat) : RunePool :=
   let explicitSources := match a.kind with
     | .playCard _ _ _ _ _ pick => pick.deflectPayment
+    | .activate _ _ pay _ _ _ _ _ => pay.deflectPayment?
     | _ => none
   let paid := (explicitSources.bind pool.takeBuckets).getD (pool.takeN amount)
   pool.recordDeflectDebit paid

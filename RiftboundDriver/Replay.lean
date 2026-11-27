@@ -242,6 +242,8 @@ structure ReplayAbilityUse where
   costBanisher? : Option PlayerId := none
   /-- An object used for a non-resource cost, if recorded. -/
   costObject? : Option ReplayCardReference := none
+  /-- The physical Power sources for a separate Deflect surcharge, if observed. -/
+  deflectPayment? : Option (List PowerBucket) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A recorded answer, including how it was observed. -/
@@ -473,11 +475,13 @@ def ReplayAbilityUse.fromAction? (s : GameState) (action : Action) : Option Repl
   match action.kind with
   | .activate id ability payment targets discards playerTarget? costBanisher? costObject =>
     let source ← reference id
+    let deflect := s.activationDeflectSources seat id ability targets payment
     let targets ← targets.mapM reference
     let discards ← discards.mapM reference
     return {
-      seat, kind := .activated, source, ability, targets, payment? := some payment
-      discards? := some discards, playerTarget?, costBanisher?, costObject? := costObject.bind reference }
+      seat, kind := .activated, source, ability, targets, payment? := some payment.base
+      discards? := some discards, playerTarget?, costBanisher?, costObject? := costObject.bind reference
+      deflectPayment? := deflect }
   | .manaAbility id ability payment costObject =>
     let source ← reference id
     return {
@@ -495,14 +499,16 @@ private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameSt
   let matching := (legalFrameActions s).filter fun action =>
     action.actor == .player activation.seat && match action.kind with
     | .activate id ability payment targets discards targetPlayer costBanisher costObject =>
-      fitsSourceAndPrice .activated id ability payment costObject &&
+      fitsSourceAndPrice .activated id ability payment.base costObject &&
         ReplayCardReference.matchesOrdered s activation.targets targets &&
         activation.discards?.all (fun recorded => ReplayCardReference.matchesOrdered s recorded discards) &&
         activation.playerTarget?.all (some · == targetPlayer) &&
-        activation.costBanisher?.all (some · == costBanisher)
+        activation.costBanisher?.all (some · == costBanisher) &&
+        activation.deflectPayment?.all (some · == s.activationDeflectSources activation.seat id ability targets payment)
     | .manaAbility id ability payment costObject =>
       fitsSourceAndPrice .add id ability payment costObject && activation.targets.isEmpty &&
-        activation.discards?.all List.isEmpty && activation.playerTarget?.isNone && activation.costBanisher?.isNone
+        activation.discards?.all List.isEmpty && activation.playerTarget?.isNone &&
+        activation.costBanisher?.isNone && activation.deflectPayment?.isNone
     | _ => false
   let some action := matching.head?
     | throw s!"seat {activation.seat.n} has no legal ability {activation.ability} on {activation.source.card.code} with the recorded declaration"

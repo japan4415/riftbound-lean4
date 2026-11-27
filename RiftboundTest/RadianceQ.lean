@@ -21,7 +21,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let entered ← play s p bloom [] { pick := (· == [grown]) }
   let gear ← entered.firstOf p .base "RAD-035"
   let act (cost : Option ObjId) := Action.mk (.player p)
-    (.activate gear 1 ⟨0, []⟩ [] [] none none cost)
+    (.activate gear 1 ⟨0, [], none⟩ [] [] none none cost)
   let (paid, events) ← (step 100 entered (act (some grown))).toOption
   let drawn := settleChain {} 12 paid
   return (step 100 entered (act none)).toOption.isNone &&
@@ -40,7 +40,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, foe) ← put s q "RAD-011" .base
   let s := s.tire foe
   let act (paying target : ObjId) := Action.mk (.player p)
-    (.activate riven 1 ⟨0, []⟩ [target] [] none none (some paying))
+    (.activate riven 1 ⟨0, [], none⟩ [target] [] none none (some paying))
   let (paid, events) ← (step 100 s (act ally foe)).toOption
   let resolved := settleChain {} 16 paid
   let (selfPaid, _) ← (step 100 s (act riven riven)).toOption

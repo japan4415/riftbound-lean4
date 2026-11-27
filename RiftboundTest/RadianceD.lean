@@ -129,7 +129,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, grounded) ← put s q "RAD-011" .base
   let s := (s.control p field).addTurnFxOn q grounded .cannotMove
   let useWyrm (g : GameState) (opponent : PlayerId) :=
-    (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, []⟩ [] [] (some opponent)⟩).toOption.map Prod.fst
+    (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, [], none⟩ [] [] (some opponent)⟩).toOption.map Prod.fst
   let queued ← useWyrm s q
   let waiting := settleChain {} 2 queued
   let choices := (legalFrameActions waiting).filterMap (fun a =>
@@ -157,7 +157,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, grounded) ← put s q "RAD-011" .base
   let (s, candidate) ← put s q "RAD-011" .base
   let (queued, _) ← (step 100 s
-    ⟨.player p, .activate wyrm 0 ⟨0, []⟩ [] [] (some q)⟩).toOption
+    ⟨.player p, .activate wyrm 0 ⟨0, [], none⟩ [] [] (some q)⟩).toOption
   let (open_, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
   let reacted ← cast (open_.fund q 1) q hunker ⟨1, []⟩ [grounded]
   return reacted.moveBlocked grounded && (reacted.obj? grounded).any (·.loc.isNone) &&

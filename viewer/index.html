@@ -408,6 +408,8 @@ function describe(i) {
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
 function describeA(a, prev, state = steps[cur]?.state) {
   const cardName = (id) => cardNameAt(id, state);
+  const deflect = a.deflectPayment?.length ? 'Deflect ' +
+    a.deflectPayment.map(source => source === 'flexible' ? '虹' : source).join(' + ') + ' Power' : '';
   const visibleCardLabel = (id, selectableIds) => {
     const name = cardName(id);
     const code = cardCode(id, state);
@@ -717,9 +719,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (typeof a.exhaustCostObject === 'number') costs.push(cardName(a.exhaustCostObject) + ' を Exhaust');
       if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
       else if (typeof a.killCostObject === 'number') costs.push(cardName(a.killCostObject) + ' を Kill');
-      if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
+      if (typeof a.pay === 'number' && (a.pay > 0 || (!costs.length && !deflect))) {
         costs.push(costText({ energy: a.pay - power.length, power }));
       }
+      if (deflect) costs.push(deflect);
       const action = a.abilityEffect === 'readySelf' ? ' を Ready にする能力を起動' : ' の能力を起動';
       return [who + ': ' + cardName(a.source) + action +
         (costs.length ? '（' + costs.join('、') + '）' : '') +
@@ -813,10 +816,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const accelerate = typeof a.accelerated === 'boolean'
         ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
       const showOff = showOffLabel(a, a.card);
-      const deflect = a.deflectPayment?.length ? '（Deflect ' +
-        a.deflectPayment.map(source => source === 'flexible' ? '虹' : source).join(' + ') + ' Power）' : '';
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        deflect + discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
+        (deflect ? '（' + deflect + '）' : '') + discard + extra + repeat + mode + dest + fee + accelerate +
+        (showOff ? '（' + showOff + '）' : '') +
         (objectCost ? '（' + objectCost + '）' : '') +
         (namedPayment.length ? '（' + namedPayment.join('、') + '）' : '');
       if (def && def.types.includes('spell')) {

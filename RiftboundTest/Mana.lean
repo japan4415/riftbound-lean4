@@ -63,7 +63,7 @@ meta def putN (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     match putN s0 p "T-ENG" .base with
     | some (s1, g) =>
       manaReady s1 p g 0 && !manaReady s1 (otherN p) g 0 &&
-      !activatable s1 p g 0 ⟨0, []⟩ [] true &&
+      !activatable s1 p g 0 ⟨0, [], none⟩ [] true &&
       (legalActions s1).contains ⟨.player p, .manaAbility g 0 ⟨0, []⟩⟩ &&
       !(legalActions s1).any (fun a => match a.kind with | .activate .. => true | _ => false)
     | none => false

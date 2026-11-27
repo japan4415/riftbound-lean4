@@ -19,7 +19,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, market) ← putBf s q "RAD-158"
   let (s, _) ← put s p "RAD-011" .mainDeck
   let (s, _) ← put s q "RAD-011" .mainDeck
-  let action (who : PlayerId) : Action := ⟨.player who, .activate market 1 ⟨0, [.fury, .mind]⟩ []⟩
+  let action (who : PlayerId) : Action := ⟨.player who, .activate market 1 ⟨0, [.fury, .mind], none⟩ []⟩
   let money (g : GameState) (who : PlayerId) := g.fund who 0 (fury := 1) (mind := 1)
   let before := money (s.control q market) p
   let (used, _) ← (step 100 before (action p)).toOption
@@ -30,7 +30,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (usedNext, _) ← (step 100 (opponentTurn.control p market) (action q)).toOption
   let nextDone := settleChain {} 12 usedNext
   return (legalFrameActions before).contains (action p) &&
-    !activatable opponentPriority q market 1 ⟨0, [.fury, .mind]⟩ [] true &&
+    !activatable opponentPriority q market 1 ⟨0, [.fury, .mind], none⟩ [] true &&
     !(legalFrameActions (money done p)).contains (action p) &&
     done.drawLog.count (p, done.turn) == before.drawLog.count (p, before.turn) + 1 &&
     nextDone.drawLog.count (q, nextDone.turn) == 1
@@ -53,7 +53,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     ((g.activationList legend d).zipIdx.find? (fun (entry, _) =>
       entry.1.any (·.card == ⟨"RAD-040"⟩))).map Prod.snd
   let index ← grantIndex entered first
-  let (queued, _) ← (step 100 entered ⟨.player p, .activate first index ⟨0, []⟩ [unit]⟩).toOption
+  let (queued, _) ← (step 100 entered ⟨.player p, .activate first index ⟨0, [], none⟩ [unit]⟩).toOption
   let afterKill := (killOrSave queued soul).1
   let resolved := settleChain {} 12 afterKill
   return (entered.obj? first).any (fun o => !o.exhausted) &&

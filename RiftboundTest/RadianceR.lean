@@ -20,7 +20,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, ally) ← putAt s p "RAD-011" s.bf0
   let (s, foe) ← put s q "RAD-011" .base
   let action (index : Nat) (cost : Option ObjId) :=
-    Action.mk (.player p) (.activate gear index ⟨0, []⟩ [] [] none none cost)
+    Action.mk (.player p) (.activate gear index ⟨0, [], none⟩ [] [] none none cost)
   let (buyGold, _) ← (step 100 s (action 0 none)).toOption
   let gold := settleChain {} 12 buyGold
   let goldToken ← (gold.zone (.player p .base)).find? (fun id =>
@@ -33,7 +33,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let mech := settleChain {} 12 mechCost
   let replacing := (s.addTurnFxOn p ally .banishInstead).addTurnFxOn q ally .banishInstead
   let chooseBanish := Action.mk (.player p)
-    (.activate gear 2 ⟨0, []⟩ [] [] none (some q) (some ally))
+    (.activate gear 2 ⟨0, [], none⟩ [] [] none (some q) (some ally))
   let (banished, replacementEvents) ← (step 100 replacing chooseBanish).toOption
   let banishedCard ← banished.firstOf p .banishment "RAD-011"
   return (legalFrameActions s).contains sacrificeGear &&
@@ -64,7 +64,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, foe) ← putAt s q "RAD-067" field
   let s := (s.control p hiddenField).modObj stranger (fun o =>
     { o with hiddenAt := some hiddenField, hiddenTurn := some (s.turn - 1) })
-  let (revealing, _) ← (step 100 s ⟨.player p, .activate stranger 2 ⟨0, []⟩ []⟩).toOption
+  let (revealing, _) ← (step 100 s ⟨.player p, .activate stranger 2 ⟨0, [], none⟩ []⟩).toOption
   let rec passToTrigger : Nat → GameState → Option GameState
     | 0, _ => none
     | steps + 1, state =>

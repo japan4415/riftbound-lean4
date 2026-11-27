@@ -47,7 +47,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, legend) ← put s p "RAD-147" .legendZone
   let (s, unit) ← put s p "RAD-088" .base
   let (queued, _) ← (step 100 (s.fund p 1)
-    ⟨.player p, .activate legend 0 ⟨1, []⟩ [unit]⟩).toOption
+    ⟨.player p, .activate legend 0 ⟨1, [], none⟩ [unit]⟩).toOption
   let buffed := settleChain {} 12 queued
   let extra := (addTempKw ⟨.shield, .amount 3⟩ .turn buffed unit).1
   let (expired, _) ← (advance 100 { extra with pending := [.expireTurn, .priority p] } []).toOption

@@ -327,7 +327,7 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let s := s.modObj unit (fun o => { o with
     damage := 1, exhausted := true, buffed := true, tempKws := [(⟨.ganking, .none⟩, .turn)] })
   let funded := s.fund p 1 (order := 1)
-  let (chain, _) ← (step 100 funded ⟨.player p, .activate gear 1 ⟨1, [.order]⟩ [unit]⟩).toOption
+  let (chain, _) ← (step 100 funded ⟨.player p, .activate gear 1 ⟨1, [.order], none⟩ [unit]⟩).toOption
   let waiting ← awaitCopyChoice 6 chain
   let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
   let legal := legalActions waiting
@@ -356,9 +356,9 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let (s, _) ← put s p "VEN-014" .base
   let s := s.fund p 2 (calm := 1) (order := 1)
   let act (t : GameState) (a : ActionKind) := (step 100 t ⟨.player p, a⟩).toOption
-  let (chain, _) ← act s (.activate svell 1 ⟨1, [.calm]⟩ [host])
+  let (chain, _) ← act s (.activate svell 1 ⟨1, [.calm], none⟩ [host])
   let held := settleChain {} 8 chain
-  let (chain, _) ← act held (.activate curator 1 ⟨1, [.order]⟩ [host])
+  let (chain, _) ← act held (.activate curator 1 ⟨1, [.order], none⟩ [host])
   let choice ← awaitCopyChoice 6 chain
   let (copied, _) ← act choice (.choose model)
   let released := (detachObj copied svell).1
@@ -385,12 +385,12 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let copied := (copyAttachedUnit curator attached model).1.buff udyr
   let d ← copied.cardDef? udyr
   let index := d.fullAbilities.length
-  let action : Action := ⟨.player p, .activate udyr index ⟨0, []⟩ []⟩
+  let action : Action := ⟨.player p, .activate udyr index ⟨0, [], none⟩ []⟩
   let (chain, _) ← (step 100 copied action).toOption
   let loose := (detachObj chain svell).1
   let resolved := settleChain {} 10 loose
   return d.id.code == "VEN-121" && (legalActions copied).contains action &&
-    !(activatable loose p udyr index ⟨0, []⟩ [] true) &&
+    !(activatable loose p udyr index ⟨0, [], none⟩ [] true) &&
     (resolved.obj? target).any (·.damage == 2) && (resolved.obj? udyr).any (fun o => !o.buffed)
 
 -- The copied Add of Dragonsoul Sage remains an immediate resource action through
@@ -465,7 +465,7 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let source : Says := { obj := (· == azir) }
   let copied ← activate s p gear 1 [unit] ⟨1, [.order]⟩ source
   let first ← copied.copyStamp? unit
-  let useAzir : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm]⟩ [azir]⟩
+  let useAzir : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm], none⟩ [azir]⟩
   let (usingAbility, _) ← (step 100 copied useAzir).toOption
   let used := settleChain {} 12 usingAbility
   let detached := (detachObj used gear).1
@@ -677,10 +677,10 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let unavailable : Action := ⟨.player p, .manaAbility legend 0 ⟨0, [.chaos, .order]⟩⟩
   let (funded, events) ← (step 100 s good).toOption
   let unitAct : Action := ⟨.player p, .playCard unit ⟨2, []⟩ []⟩
-  let empowerment : Action := ⟨.player p, .activate mage 0 ⟨2, []⟩ []⟩
+  let empowerment : Action := ⟨.player p, .activate mage 0 ⟨2, [], none⟩ []⟩
   let rejects : List Action := [⟨.player p, .playCard spell ⟨2, [.mind]⟩ [mage]⟩,
     ⟨.player p, .playCard gear ⟨2, [.body]⟩ []⟩,
-    ⟨.player p, .activate unforgiven 0 ⟨2, []⟩ [mage]⟩,
+    ⟨.player p, .activate unforgiven 0 ⟨2, [], none⟩ [mage]⟩,
     ⟨.player p, .manaAbility henge 0 ⟨1, []⟩⟩,
     ⟨.player p, .manaAbility legend 0 ⟨0, [.body, .mind]⟩⟩]
   let (unitPlayed, _) ← (step 100 funded unitAct).toOption
@@ -725,7 +725,7 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let (s, disciple) ← put s p "VEN-117" .hand
   let s := (s.control p field).fund p 0 (calm := 2)
   let (funded, _) ← (step 100 s ⟨.player p, .manaAbility legend 0 ⟨0, [.calm, .calm]⟩⟩).toOption
-  let hide : Action := ⟨.player p, .activate disciple 3 ⟨1, []⟩ [field]⟩
+  let hide : Action := ⟨.player p, .activate disciple 3 ⟨1, [], none⟩ [field]⟩
   let parts := funded.setPool p ((funded.poolOf p).addEnergy 1)
   let (castHide, _) ← (step 100 parts hide).toOption
   let hiddenState := settleChain {} 10 castHide
@@ -788,7 +788,7 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
   let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [target]⟩).toOption
   let (passed, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
   let ending := { passed with phase := .ending }
-  let reveal : Action := ⟨.player q, .activate block 1 ⟨0, []⟩ [defender]⟩
+  let reveal : Action := ⟨.player q, .activate block 1 ⟨0, [], none⟩ [defender]⟩
   let (revealed, _) ← (step 100 ending reveal).toOption
   let hiddenItem ← (revealed.zone .chain).head?
   let (respond, _) ← (step 100 revealed ⟨.player q, .pass⟩).toOption
@@ -1164,7 +1164,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (s, cost) ← put s p "VEN-128" .base
   let s := (s.fund p 0).addTurnFxOn q cost .banishInstead
   let choose (banisher : Option PlayerId) : Action :=
-    ⟨.player p, .activate grayback 0 ⟨0, []⟩ [cost] [] none banisher⟩
+    ⟨.player p, .activate grayback 0 ⟨0, [], none⟩ [cost] [] none banisher⟩
   let verify (who : PlayerId) : Option Bool := do
     let (paid, events) ← (step 100 s (choose (some who))).toOption
     let banished ← paid.firstOf p .banishment "VEN-128"
@@ -1410,7 +1410,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (s, monk) ← put s p "VEN-101" .trash
   let (s, _) ← putAt s p "VEN-014" field
   let s := (s.control p field).fund p 3 (chaos := 1)
-  let (starting, _) ← (step 100 s ⟨.player p, .activate matriarch 1 ⟨2, [.chaos]⟩ []⟩).toOption
+  let (starting, _) ← (step 100 s ⟨.player p, .activate matriarch 1 ⟨2, [.chaos], none⟩ []⟩).toOption
   let taking ← passToChoice 8 starting
   let (queued, _) ← (step 100 taking ⟨.player p, .putTrigger 0 [monk]⟩).toOption
   let choosing ← passToChoice 8 queued
@@ -1528,7 +1528,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let s := (((s.control p site).control p roost).fund p 2 (body := 2)).modObj spell (fun o =>
     { o with hiddenAt := some site, hiddenTurn := some (s.turn - 1) })
   let act (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption.map Prod.fst
-  let cast ← act s (.activate spell 1 ⟨0, []⟩ [])
+  let cast ← act s (.activate spell 1 ⟨0, [], none⟩ [])
   let incoming ← passToChoice 8 cast
   let taking ← act incoming (.decide true)
   let paying ← match taking.pending with
@@ -1820,7 +1820,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
     { o with hiddenAt := some bf, hiddenTurn := some (s.turn - 1) })
   let discounted := s.addTurnFx p (.nextCardCostMinus 2 2)
   let fromTrash : Action := ⟨.player p, .playCard flow ⟨2, []⟩ [ally] none none (.destination none)⟩
-  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ [ally, enemy]⟩
+  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, [], none⟩ [ally, enemy]⟩
   let (flowing, _) ← (step 100 discounted fromTrash).toOption
   let (revealing, _) ← (step 100 discounted reveal).toOption
   let revealed ← passToChoice 8 revealing
@@ -1879,7 +1879,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (s, distractor) ← put s q "VEN-070" .trash
   let s := s.fund p 6 0 0 0 0 2
   let (empowering, _) ←
-    (step 100 s ⟨.player p, .activate kharox 1 ⟨6, [.chaos, .chaos]⟩ []⟩).toOption
+    (step 100 s ⟨.player p, .activate kharox 1 ⟨6, [.chaos, .chaos], none⟩ []⟩).toOption
   let choosing ← passToChoice 10 empowering
   let pick (target : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some target))⟩
   let (waiting, _) ← (step 100 choosing (pick third)).toOption
@@ -2078,7 +2078,7 @@ meta def choosePermanentPlan (p : PlayerId) (accept : ReducedPermanentPlay → B
   let (s, elsewhere) ← put s q "VEN-014" .base
   let s := ((s.control p field).rich p).modObj hidden (fun o =>
     { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
-  let reveal : Action := ⟨.player p, .activate hidden 3 ⟨0, []⟩ []⟩
+  let reveal : Action := ⟨.player p, .activate hidden 3 ⟨0, [], none⟩ []⟩
   let choose (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id]⟩
   let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
   let (revealing, _) ← (step 100 s reveal).toOption
@@ -2653,7 +2653,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let yes ← play s p spell [own]
   let smited ← play s p smite [own]
   let showdown := { yes with pending := [.showdown s.bf0 p 0] }
-  let use : Action := ⟨.player p, .activate zed 1 ⟨0, []⟩ []⟩
+  let use : Action := ⟨.player p, .activate zed 1 ⟨0, [], none⟩ []⟩
   let (used, _) ← (step 100 showdown use).toOption
   let after := settleChain {} 12 used
   return (no.obj? zed).any (·.empowerCount == 0) && (no.obj? enemyZed).any (·.empowerCount == 0) &&
@@ -2719,9 +2719,9 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let (s, second) ← put s p "UNL-136" .base
   let s := ((s.control p field).rich p).modObj first (fun o => { o with exhausted := false })
   let s := s.modObj second (fun o => { o with exhausted := false })
-  let free : Action := ⟨.player p, .activate first 1 ⟨0, []⟩ []⟩
-  let nextFree : Action := ⟨.player p, .activate second 1 ⟨0, []⟩ []⟩
-  let nextPaid : Action := ⟨.player p, .activate second 1 ⟨1, []⟩ []⟩
+  let free : Action := ⟨.player p, .activate first 1 ⟨0, [], none⟩ []⟩
+  let nextFree : Action := ⟨.player p, .activate second 1 ⟨0, [], none⟩ []⟩
+  let nextPaid : Action := ⟨.player p, .activate second 1 ⟨1, [], none⟩ []⟩
   let (used, _) ← (step 100 s free).toOption
   let item ← (used.zone .chain).head?
   let countered := (counterObj used item).1
@@ -2744,8 +2744,8 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let hid ← activate s p hourglass 1 [otherField] ⟨0, [.calm]⟩
   let gold ← hid.tokenCard "Gold"
   let ready := createOne gold.id p none true hid
-  let free : Action := ⟨.player p, .activate gear 1 ⟨0, []⟩ []⟩
-  let paid : Action := ⟨.player p, .activate gear 1 ⟨1, []⟩ []⟩
+  let free : Action := ⟨.player p, .activate gear 1 ⟨0, [], none⟩ []⟩
+  let paid : Action := ⟨.player p, .activate gear 1 ⟨1, [], none⟩ []⟩
   let id : ObjId := ⟨hid.nextId⟩
   let (spent, _) ← (step 100 ready ⟨.player p, .manaAbility id 0 ⟨0, []⟩⟩).toOption
   let claimed := spent.control p field
@@ -2763,9 +2763,9 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let (s, renekton) ← putAt s p "VEN-092" field
   let s := s.fund p 3 1
   let controlled := s.control p field
-  let reducedEnergy : Action := ⟨.player p, .activate fiend 1 ⟨1, [.fury]⟩ []⟩
-  let reducedPower : Action := ⟨.player p, .activate fiend 1 ⟨2, []⟩ []⟩
-  let full : Action := ⟨.player p, .activate fiend 1 ⟨2, [.fury]⟩ []⟩
+  let reducedEnergy : Action := ⟨.player p, .activate fiend 1 ⟨1, [.fury], none⟩ []⟩
+  let reducedPower : Action := ⟨.player p, .activate fiend 1 ⟨2, [], none⟩ []⟩
+  let full : Action := ⟨.player p, .activate fiend 1 ⟨2, [.fury], none⟩ []⟩
   let (energy, _) ← (step 100 controlled reducedEnergy).toOption
   let (power, _) ← (step 100 controlled reducedPower).toOption
   let e := settleChain {} 3 energy
@@ -2773,8 +2773,8 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   return (legalActions controlled).contains reducedEnergy &&
     (legalActions controlled).contains reducedPower && !(legalActions controlled).contains full &&
     (legalActions (s.control s.you field)).contains full && (legalActions s).contains full &&
-    !(legalActions controlled).contains ⟨.player p, .activate base 1 ⟨2, []⟩ []⟩ &&
-    !(legalActions controlled).contains ⟨.player p, .activate renekton 0 ⟨0, []⟩ []⟩ &&
+    !(legalActions controlled).contains ⟨.player p, .activate base 1 ⟨2, [], none⟩ []⟩ &&
+    !(legalActions controlled).contains ⟨.player p, .activate renekton 0 ⟨0, [], none⟩ []⟩ &&
     (e.obj? fiend).any (·.empowerCount == 1) && (w.obj? fiend).any (·.empowerCount == 1) &&
     (e.poolOf p).energy == 2 && (e.poolOf p).get .fury == 0 &&
     (w.poolOf p).energy == 1 && (w.poolOf p).get .fury == 1
@@ -2909,7 +2909,7 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let (s, gear) ← put s q "VEN-011" .base
   let (s, spell) ← put s p "OGN-095" .hand
   let s := (s.tire wolf).rich p
-  let action : Action := ⟨.player p, .activate wolf 0 ⟨0, [.order]⟩ []⟩
+  let action : Action := ⟨.player p, .activate wolf 0 ⟨0, [.order], none⟩ []⟩
   let friendly ← cast s p spell ⟨1, []⟩ [wolf]
   let (casting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨1, []⟩ [enemy]⟩).toOption
   let (left, _) ← moveObj casting enemy (.player q .hand)
@@ -3318,7 +3318,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let withEnemy := createOne (tokenId "Shadow Clone") q none false scored
   let enemy ← withEnemy.firstOf q .base "TKN-Shadow Clone"
   let ready := { withEnemy.rich p with pending := [.priority p] }
-  let action (target : ObjId) : Action := ⟨.player p, .activate zed 1 ⟨1, [.chaos]⟩ [target]⟩
+  let action (target : ObjId) : Action := ⟨.player p, .activate zed 1 ⟨1, [.chaos], none⟩ [target]⟩
   let (waiting, _) ← (step 100 ready (action clone)).toOption
   let swapped := settleChain {} 12 waiting
   return !(legalActions ready).contains (action enemy) &&
@@ -3367,7 +3367,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
     { o with hiddenAt := some vortex, hiddenTurn := some (s.turn - 1) })
   let s := s.rich p
   let showdown : GameState := { s with pending := [.showdown vortex p 0, .priority p] }
-  let action (power : List Domain) : Action := ⟨.player p, .activate hidden 1 ⟨0, power⟩ [ally]⟩
+  let action (power : List Domain) : Action := ⟨.player p, .activate hidden 1 ⟨0, power, none⟩ [ally]⟩
   let (waiting, _) ← (step 100 showdown (action [.calm])).toOption
   let item ← (waiting.zone .chain).head?
   let done := settleChain {} 12 waiting
@@ -3408,7 +3408,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let fresh := showdown.modObj hidden (fun o => { o with hiddenTurn := some showdown.turn })
   let (blocked, _) ← putAt showdown q "OGN-018" vortex
   let paidAgain := cast [enemy, enemy] ⟨2, [.mind, .mind]⟩
-  let free : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ [ally]⟩
+  let free : Action := ⟨.player p, .activate hidden 1 ⟨0, [], none⟩ [ally]⟩
   return (legalActions normal).contains free &&
     (legalActions normal).contains (cast [ally, enemy] ⟨2, [.mind]⟩) &&
     !(legalActions showdown).contains (cast [ally, enemy] ⟨2, [.mind]⟩) &&
@@ -3495,7 +3495,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let s := s.fund p 6
   let targets := [ally, enemy]
   let cast : Action := ⟨.player p, .playCard spell ⟨6, []⟩ targets⟩
-  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, []⟩ targets⟩
+  let reveal : Action := ⟨.player p, .activate hidden 1 ⟨0, [], none⟩ targets⟩
   let (ordinary, _) ← (step 100 s cast).toOption
   let (fromHidden, _) ← (step 100 s reveal).toOption
   return s.deflectCost p targets (some spell) == 1 &&
@@ -4131,7 +4131,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let a ← activate s s.me kayle 2 [] ⟨3, []⟩
   let b ← activate a s.me kayle 2 [] ⟨3, []⟩
   let c ← activate b s.me kayle 2 [] ⟨3, []⟩
-  let atCap : Action := ⟨.player s.me, .activate kayle 2 ⟨3, []⟩ []⟩
+  let atCap : Action := ⟨.player s.me, .activate kayle 2 ⟨3, [], none⟩ []⟩
   let (paid, _) ← (step 100 (c.fund s.me 3) atCap).toOption
   let unchanged := settleChain {} 8 paid
   let d := (disempowerObj unchanged kayle).1
@@ -4148,7 +4148,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (s, tome) ← put s s.me "VEN-054" .base
   let empowered ← activate s s.me tome 0
   let ready := (readyEffect empowered tome).1.rich s.me
-  let draw : Action := ⟨.player s.me, .activate tome 1 ⟨1, []⟩ []⟩
+  let draw : Action := ⟨.player s.me, .activate tome 1 ⟨1, [], none⟩ []⟩
   let (pending, _) ← (step 100 ready draw).toOption
   let resolved := settleChain {} 12 pending
   return !(legalActions (s.rich s.me)).contains draw &&
@@ -4179,8 +4179,8 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (high, _) ← put low s.me "OGN-007" .base
   let low := low.rich s.me
   let high := high.rich s.me
-  let cheap : Action := ⟨.player s.me, .activate unit 0 ⟨2, []⟩ []⟩
-  let printed : Action := ⟨.player s.me, .activate unit 0 ⟨5, []⟩ []⟩
+  let cheap : Action := ⟨.player s.me, .activate unit 0 ⟨2, [], none⟩ []⟩
+  let printed : Action := ⟨.player s.me, .activate unit 0 ⟨5, [], none⟩ []⟩
   return (legalActions low).contains cheap && !(legalActions low).contains printed &&
     !(legalActions high).contains cheap && (legalActions high).contains printed
 
@@ -4616,7 +4616,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (s, poro) ← put s s.me "VEN-007" .base
   let (s, card) ← put s s.me "VEN-014" .hand
   let (s, foe) ← put s s.you "VEN-014" .hand
-  let action (ds : List ObjId) : Action := ⟨.player s.me, .activate poro 0 ⟨0, []⟩ [] ds⟩
+  let action (ds : List ObjId) : Action := ⟨.player s.me, .activate poro 0 ⟨0, [], none⟩ [] ds⟩
   let (onChain, es) ← (step 100 s (action [card])).toOption
   let discarded ← onChain.firstOf s.me .trash "VEN-014"
   let done := settleChain {} 12 onChain
@@ -4636,7 +4636,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (s, baseUnit) ← put s s.you "OGN-088" .base
   let s := s.fund s.me 1
   let action (target discard : ObjId) : Action :=
-    ⟨.player s.me, .activate cruiser 0 ⟨1, []⟩ [target] [discard]⟩
+    ⟨.player s.me, .activate cruiser 0 ⟨1, [], none⟩ [target] [discard]⟩
   let (onChain, _) ← (step 100 s (action victim gear)).toOption
   let item ← (onChain.zone .chain).head?
   let done := settleChain {} 12 onChain
@@ -4655,7 +4655,7 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
   let (s, enemy) ← putAt s s.you "VEN-014" s.bf0
   let (s, big) ← putAt s s.you "OGN-088" s.bf0
   let (s, friendly) ← putAt s s.me "VEN-014" s.bf0
-  let action (d : ObjId) : Action := ⟨.player s.me, .activate mel 0 ⟨0, []⟩ [] [d]⟩
+  let action (d : ObjId) : Action := ⟨.player s.me, .activate mel 0 ⟨0, [], none⟩ [] [d]⟩
   let (onChain, _) ← (step 100 s (action spell)).toOption
   let opts ← firePicks s [.empowered s.me mel]
   let done := settleChain { pick := (· == [enemy]) } 14 onChain
@@ -5096,7 +5096,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let s := s.modObj target (fun o => { o with tempKws := [({ keyword := .deflect, arg := .amount 1 }, .turn)] })
   let s := s.modObj block (fun o => { o with hiddenAt := some bf, hiddenTurn := some 0 })
   let s := { (s.fund p 1 (chaos := 2)) with turn := max s.turn 1, pending := [.priority q] }
-  let hidden (id : ObjId) : Action := ⟨.player q, .activate block 1 ⟨0, []⟩ [id]⟩
+  let hidden (id : ObjId) : Action := ⟨.player q, .activate block 1 ⟨0, [], none⟩ [id]⟩
   let (onChain, played) ← (step 100 s (hidden original)).toOption
   let item ← (onChain.zone .chain).head?
   let (open_, _) ← (step 100 onChain ⟨.player q, .pass⟩).toOption
@@ -5242,7 +5242,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     (boosted.obj? unit).any (·.tempActivations == [grant]) &&
     ((boosted.activationAt unit 0).map Prod.fst) == (d.fullAbilities[0]?.map (fun _ => none)) &&
     !activatable boosted q unit idx payment [] true &&
-    !activatable boosted p unit idx ⟨0, [.fury, .fury]⟩ [] true &&
+    !activatable boosted p unit idx ⟨0, [.fury, .fury], none⟩ [] true &&
     !activatable boosted p unit idx payment [] false &&
     !activatableSD boosted p unit idx payment [] &&
     (queued.poolOf p).fury == 0 && (queued.poolOf p).order == 0 &&
@@ -5290,10 +5290,10 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let empower ← (List.range d.fullAbilities.length).find? (fun i =>
     d.fullAbilities[i]?.any Ability.isEmpower)
   let gift (who : Option PlayerId) : Action :=
-    ⟨.player p, .activate current 0 ⟨0, []⟩ [] [] who⟩
+    ⟨.player p, .activate current 0 ⟨0, [], none⟩ [] [] who⟩
   let funded := playing.fund p 0 1 0 0 0 0 1
   let (empowering, _) ←
-    (step 100 funded ⟨.player p, .activate current empower ⟨0, [.fury, .order]⟩ []⟩).toOption
+    (step 100 funded ⟨.player p, .activate current empower ⟨0, [.fury, .order], none⟩ []⟩).toOption
   let empowered := settleChain {} 12 empowering
   let (sending, _) ← (step 100 empowered (gift (some q))).toOption
   let item ← (sending.zone .chain).head?
@@ -5324,7 +5324,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let (s, fieldUnit) ← putAt s q "VEN-014" field
   let s := (s.control q field).modObj gear (fun o => { o with empowerCount := 1 })
   let (queued, _) ←
-    (step 100 s ⟨.player p, .activate gear 0 ⟨0, []⟩ [] [] (some q)⟩).toOption
+    (step 100 s ⟨.player p, .activate gear 0 ⟨0, [], none⟩ [] [] (some q)⟩).toOption
   let passed := settleChain {} 12 queued
   let ending (who : PlayerId) :=
     (advance 100 { passed with active := some who, pending := [.phase .ending] } []).toOption
@@ -5422,8 +5422,8 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
     Ability.activated [.pay ⟨6, []⟩] .normal body .unlimited]
   let d := { d with abilities }
   let s := { s.fund p 6 with cards := ⟨d :: s.cards.cards⟩ }
-  let (high, es) ← (step 100 s ⟨.player p, .activate gear 0 ⟨6, []⟩ []⟩).toOption
-  let (low, _) ← (step 100 s ⟨.player p, .activate gear 1 ⟨6, []⟩ []⟩).toOption
+  let (high, es) ← (step 100 s ⟨.player p, .activate gear 0 ⟨6, [], none⟩ []⟩).toOption
+  let (low, _) ← (step 100 s ⟨.player p, .activate gear 1 ⟨6, [], none⟩ []⟩).toOption
   let .triggerOrder _ t _ _ _ :: _ := high.pending | none
   let .chainPass .. :: _ := low.pending | none
   return t.source == curator && (high.poolOf p).energy == 0 &&

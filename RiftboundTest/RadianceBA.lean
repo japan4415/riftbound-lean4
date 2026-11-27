@@ -114,7 +114,7 @@ open Riftbound
   let (s, ally) ← put s p "V0" .base
   let (s, gear) ← put s p "RAD-022" .base
   let (s, amplifier) ← put s p "RAD-017" .base
-  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, []⟩ [] [] none none (some mord)⟩
+  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, [], none⟩ [] [] none none (some mord)⟩
   let (askActivation, _) ← (step 100 s ability).toOption
   let (activated, _) ← (step 100 askActivation ⟨.player p, .decide true⟩).toOption
   let trigger : PendTrigger := { source := amplifier, card := ⟨"RAD-017"⟩, idx := 0, controller := p }
@@ -136,7 +136,7 @@ open Riftbound
   let (s, ally) ← put s p "V0" .base
   let (s, gear) ← put s p "RAD-022" .base
   let marked := (s.addTurnFxOn q mord .banishInstead).addTurnFxOn p mord .banishInstead
-  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, []⟩ [] [] none none (some mord)⟩
+  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, [], none⟩ [] [] none none (some mord)⟩
   let (asked, events) ← (step 100 marked ability).toOption
   let .eitherDo chooser _ _ (.chooseDeathBanisher victim banisher) _ _ ::
       .resumeCost locked :: _ := asked.pending | none

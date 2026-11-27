@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Rules.Deflect
+public import Riftbound.Rules.Chain
 
 /-!
 # Canonical flexible payments (CR 356-357)
@@ -129,9 +129,35 @@ theorem GameState.mem_explicitSpellDeflectPicks (s : GameState) (p : PlayerId) (
   · cases s.spendFor p false pay (spell := true) with
     | none => simp [empty, different]
     | some remaining =>
-      simp [empty, different, RunePool.mem_allocatedPowerPayments_iff, and_assoc]
+      simp [empty, different, RunePool.alternatePowerAllocations, RunePool.mem_allocatedPowerPayments_iff, and_assoc]
       exact ⟨fun ⟨_, length, within, afford, debit, rfl⟩ => ⟨length, within, afford, debit⟩,
         fun ⟨length, within, afford, debit⟩ => ⟨sources, length, within, afford, debit, rfl⟩⟩
+
+/-- Separate activation surcharges offer every ordered and affordable allocation that differs
+from the canonical debit, and never offer an allocation when no separate surcharge is due. -/
+theorem GameState.mem_explicitActivationDeflectPayments (s : GameState) (p : PlayerId)
+    (source : ObjId) (idx : Nat) (card : CardDef) (costs : List AbilityCost)
+    (targets : List ObjId) (base : RunePool.Payment) (sources : List PowerBucket) :
+    let amount := s.activationDeflectCost p source costs targets
+    some sources ∈ s.activationDeflectOptions p source idx card costs targets base ↔
+      ∃ pool, s.activationBasePool p source idx card costs base = some pool ∧
+        amount ≠ 0 ∧ amount ≤ pool.totalPower ∧ sources.length = amount ∧
+        PowerBagWithin (PowerBucket.all.map (fun source => (source, pool.powerIn source))) sources ∧
+        (∀ source, sources.count source ≤ pool.powerIn source) ∧
+        pool.takeBuckets sources ≠ some (pool.takeN amount) := by
+  dsimp only
+  unfold activationDeflectOptions
+  cases pool : s.activationBasePool p source idx card costs base with
+  | none => simp
+  | some paid =>
+    by_cases separate : s.activationDeflectCost p source costs targets = 0
+    · simp [separate]
+    by_cases enough : s.activationDeflectCost p source costs targets ≤ paid.totalPower
+    · simp [separate, enough, RunePool.alternatePowerAllocations, RunePool.mem_allocatedPowerPayments_iff,
+        and_assoc]
+      exact ⟨fun ⟨_, length, within, afford, debit, rfl⟩ => ⟨length, within, afford, debit⟩,
+        fun ⟨length, within, afford, debit⟩ => ⟨sources, length, within, afford, debit, rfl⟩⟩
+    · simp [separate, enough]
 
 /-- A flexible payment is offered exactly when its canonical domain bag is payable. The
 aggregate budget check in the enumeration rules out no payable answer. -/

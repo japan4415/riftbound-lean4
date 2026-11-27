@@ -94,7 +94,7 @@ private meta def printedAdd (code : String) (energy : Nat) : Option Bool := do
   let (showdown, _) ← (step 100 s ⟨.player p, .standardMove unit (.battlefield s.bf0)⟩).toOption
   let target ← (showdown.unitsOf p s.bf0).head?
   let might ← showdown.mightNow target
-  let claim : Action := ⟨.player p, .activate fieldSource 0 ⟨0, []⟩ [target]⟩
+  let claim : Action := ⟨.player p, .activate fieldSource 0 ⟨0, [], none⟩ [target]⟩
   let play : Action := ⟨.player p, .playCard inHand ⟨2, []⟩ []⟩
   let (paid, events) ← (step 100 showdown claim).toOption
   let settled := settleChain {} 10 paid

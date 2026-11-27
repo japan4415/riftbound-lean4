@@ -497,7 +497,7 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
   let fruit ← played.firstOf p .base "UNL-049"
   let ordinary : Action := ⟨.player p, .manaAbility fruit 1 ⟨0, []⟩⟩
   let level : Action := ⟨.player p, .manaAbility fruit 2 ⟨0, []⟩⟩
-  let chained : Action := ⟨.player p, .activate fruit 2 ⟨0, []⟩ []⟩
+  let chained : Action := ⟨.player p, .activate fruit 2 ⟨0, [], none⟩ []⟩
   let ready := (readyEffect played fruit).1
   let below := ready.setXP p 5
   let atLevel := ready.setXP p 6
@@ -626,7 +626,7 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let second ← cards[1]?
   let third ← cards[2]?
   let index := firstAct s bloom
-  let action : Action := ⟨.player p, .activate bloom index ⟨1, []⟩ []⟩
+  let action : Action := ⟨.player p, .activate bloom index ⟨1, [], none⟩ []⟩
   let spent := s.fund p 1
   let (used, events) ← (step 100 spent action).toOption
   let item ← (used.zone .chain).head?
@@ -693,7 +693,7 @@ private meta def huntBuffCostsXP (code : String) : Bool := tun fun s => do
   let scored ← fire s [.scored p bf true]
   let below := s.setXP p (scored.xpOf p)
   let exact := s.setXP p 2
-  let action : Action := ⟨.player p, .activate unit 0 ⟨0, []⟩ []⟩
+  let action : Action := ⟨.player p, .activate unit 0 ⟨0, [], none⟩ []⟩
   let (queued, _) ← (step 100 exact action).toOption
   let item ← (queued.zone .chain).head?
   let resolved := settleChain {} 12 queued
@@ -722,7 +722,7 @@ private meta def huntBuffCostsXP (code : String) : Bool := tun fun s => do
   let (bought, _) ← (step 100 offered buy).toOption
   let (skipped, _) ← (step 100 offered skip).toOption
   let funded := settleChain {} 12 bought
-  let ready : Action := ⟨.player p, .activate rose 1 ⟨0, []⟩ [opponent]⟩
+  let ready : Action := ⟨.player p, .activate rose 1 ⟨0, [], none⟩ [opponent]⟩
   let (queued, _) ← (step 100 funded ready).toOption
   let resolved := settleChain {} 12 queued
   return triggers.length == 1 && (s.detect [.played q opponent]).isEmpty &&
@@ -902,7 +902,7 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let (s, other) ← putAt s q "OGN-049" bf
   let (s, distant) ← put s p "OGN-049" .base
   let (s, homeTusk) ← put s p "UNL-126" .base
-  let action : Action := ⟨.player p, .activate tusk 0 ⟨0, []⟩ []⟩
+  let action : Action := ⟨.player p, .activate tusk 0 ⟨0, [], none⟩ []⟩
   let (queued, _) ← (step 100 (s.setXP p 3) action).toOption
   let granted := settleChain {} 12 queued
   let atHome ← activate (s.setXP p 3) p homeTusk 0
@@ -926,8 +926,8 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let s := (setExhausted true s tired).1.setXP p 0
   let won ← fire s [.combatWon bf p]
   let exact := s.setXP p 2
-  let buff : Action := ⟨.player p, .activate legend 1 ⟨0, []⟩ [opponent]⟩
-  let move (target : ObjId) : Action := ⟨.player p, .activate legend 2 ⟨0, []⟩ [target]⟩
+  let buff : Action := ⟨.player p, .activate legend 1 ⟨0, [], none⟩ [opponent]⟩
+  let move (target : ObjId) : Action := ⟨.player p, .activate legend 2 ⟨0, [], none⟩ [target]⟩
   let (buffing, _) ← (step 100 (s.setXP p (won.xpOf p)) buff).toOption
   let (moving, _) ← (step 100 exact (move tired)).toOption
   let buffed := settleChain {} 12 buffing
@@ -948,7 +948,7 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let s := s.setXP p 2
   let held ← fire s [.scored p bf false]
   let conquered ← fire s [.scored p bf true]
-  let draw : Action := ⟨.player p, .activate legend 1 ⟨0, []⟩ []⟩
+  let draw : Action := ⟨.player p, .activate legend 1 ⟨0, [], none⟩ []⟩
   let (queued, _) ← (step 100 (s.setXP p (held.xpOf p)) draw).toOption
   let resolved := settleChain {} 12 queued
   return held.xpOf p == 3 && conquered.xpOf p == 2 && !(step 100 s draw).isOk &&
@@ -2452,7 +2452,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let (queued, _) ← (step 100 funded ⟨.player s.me, .activate xerath 0 pay [foe]⟩).toOption
   let resolved ← cast queued s.me flash (payOf queued flash) [xerath]
   return !(activatable funded s.me home 0 pay [foe] true) &&
-    !(activatable funded s.me xerath 0 ⟨0, []⟩ [foe] true) &&
+    !(activatable funded s.me xerath 0 ⟨0, [], none⟩ [foe] true) &&
     (queued.poolOf s.me).fury == 0 && queued.tired xerath == some true &&
     resolved.where? xerath == some (.player s.me .base) &&
     (resolved.obj? foe).any (·.damage == 3)
@@ -2465,12 +2465,12 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let (s3, poro) ← putAt s2 s.me "UNL-160" s.bf0
   let (s4, home) ← put s3 s.me "UNL-160" .base
   let (s5, flash) ← put s4 s.me "OGS-011" .hand
-  let (queued, _) ← (step 100 (s5.rich s.me) ⟨.player s.me, .activate poro 0 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 (s5.rich s.me) ⟨.player s.me, .activate poro 0 ⟨0, [], none⟩ []⟩).toOption
   let atBase ← play queued s.me flash [poro]
   let atField ← play queued s.me flash [poro] { yes := false }
   let birds := (atField.zone .battlefieldZone).filter (fun id =>
     (atField.cardDef? id).any (·.name == "Bird"))
-  return !(activatable s5 s.me home 0 ⟨0, []⟩ [] true) &&
+  return !(activatable s5 s.me home 0 ⟨0, [], none⟩ [] true) &&
     atBase.where? poro == some (.player s.me .base) &&
     atBase.countNamed s.me .base "Bird" == 2 && birds.length == 2 &&
     birds.all (fun bird => (atField.obj? bird).any (·.loc == some bf) &&
@@ -2581,8 +2581,8 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let noHand := s.setZone (.player p .hand) []
   let (s, chosen) ← put noHand p "OGN-010" .hand
   let (s, keep) ← put s p "OGN-013" .hand
-  let activation : Action := ⟨.player p, .activate palace 1 ⟨0, []⟩ [] [chosen]⟩
-  let missing : Action := ⟨.player p, .activate palace 1 ⟨0, []⟩ []⟩
+  let activation : Action := ⟨.player p, .activate palace 1 ⟨0, [], none⟩ [] [chosen]⟩
+  let missing : Action := ⟨.player p, .activate palace 1 ⟨0, [], none⟩ []⟩
   let (waiting, events) ← (step 100 s activation).toOption
   let item ← (waiting.zone .chain).head?
   let resolved := settleChain { yes := false } 12 waiting
@@ -2765,7 +2765,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let withAlly := createOne (cid "TKN-Sprite") ally none true withEnemy
   let withKeyword := withAlly.modObj marked (fun o =>
     { o with tempKws := (⟨.temporary, .none⟩, .never) :: o.tempKws })
-  let activation (cost : Nat) : Action := ⟨.player p, .activate legend 0 ⟨cost, []⟩ []⟩
+  let activation (cost : Nat) : Action := ⟨.player p, .activate legend 0 ⟨cost, [], none⟩ []⟩
   let paid (g : GameState) (cost : Nat) := (legalFrameActions g).contains (activation cost)
   let many := (List.range 3).foldl (fun g _ => createOne (cid "TKN-Sprite") p none true g) withKeyword
   let (waiting, _) ← (step 100 withKeyword (activation 2)).toOption
@@ -2812,7 +2812,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let (s, spell) ← put (s.control p field) p "UNL-042" .hidden
   let s := s.modObj spell (fun o => { o with hiddenAt := some field, hiddenTurn := some 0 })
   let (s, target) ← putAt s s.you "OGN-088" field
-  let (casting, _) ← (step 100 (s.fund p 0) ⟨.player p, .activate spell 1 ⟨0, []⟩ [target]⟩).toOption
+  let (casting, _) ← (step 100 (s.fund p 0) ⟨.player p, .activate spell 1 ⟨0, [], none⟩ [target]⟩).toOption
   let resolved := settleChain {} 12 casting
   return resolved.handN p == s.handN p && (resolved.obj? target).any (·.stunned)
 

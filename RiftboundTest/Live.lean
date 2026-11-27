@@ -60,7 +60,7 @@ meta def h0 : List PlayerId := [⟨0⟩]
 
 -- The viewer receives the two roles as separate lists.
 #guard
-  let a : Action := ⟨.player ⟨0⟩, .activate ⟨1⟩ 0 ⟨1, []⟩ [⟨2⟩] [⟨3⟩]⟩
+  let a : Action := ⟨.player ⟨0⟩, .activate ⟨1⟩ 0 ⟨1, [], none⟩ [⟨2⟩] [⟨3⟩]⟩
   let json := actionJson a
   json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
 

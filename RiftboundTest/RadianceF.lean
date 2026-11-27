@@ -88,7 +88,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, wyrm) ← putAt s p "RAD-113" field
   let (s, runner) ← put s q "RAD-011" .base
   let start (g : GameState) := do
-    let (queued, _) ← (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, []⟩ [] [] (some q)⟩).toOption
+    let (queued, _) ← (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, [], none⟩ [] [] (some q)⟩).toOption
     return settleChain {} 2 queued
   let noPay := s.fund q 0
   let funded := (s.fund q 1 (chaos := 1)).fund p 3 (body := 3)

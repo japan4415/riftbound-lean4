@@ -22,8 +22,8 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, enemy) ← put s s.you "RAD-011" .base
   let s := s.fund p 0 (fury := 1)
   let d ← s.cardDef? blade
-  let resources := ActionKind.activate blade 0 ⟨0, [.fury]⟩ [target]
-  let exhaust (id : ObjId) := ActionKind.activate blade 1 ⟨0, []⟩ [target] [] none none (some id)
+  let resources := ActionKind.activate blade 0 ⟨0, [.fury], none⟩ [target]
+  let exhaust (id : ObjId) := ActionKind.activate blade 1 ⟨0, [], none⟩ [target] [] none none (some id)
   let (resourceChain, _) ← (step 100 s ⟨.player p, resources⟩).toOption
   let (exhaustChain, _) ← (step 100 s ⟨.player p, exhaust payer⟩).toOption
   let triedEnemy := step 100 s ⟨.player p, exhaust enemy⟩

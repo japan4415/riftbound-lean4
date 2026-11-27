@@ -2554,7 +2554,7 @@ private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId
   let (s, unit) ← put s p "OGN-051" .trash
   let (s, spell) ← put s p "OGN-004" .trash
   let (s, other) ← put s s.you "OGN-051" .trash
-  let act : Action := ⟨.player p, .activate rig 0 ⟨1, [.fury]⟩ []⟩
+  let act : Action := ⟨.player p, .activate rig 0 ⟨1, [.fury], none⟩ []⟩
   let funded := s.fund p 1 1
   let (paying, _) ← (step 100 funded act).toOption
   let pick (id : ObjId) : Action := ⟨.player p, .choose id⟩
@@ -2789,7 +2789,7 @@ private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId
 #guard tsf fun s => do
   let (s1, az) ← put s s.me "SFD-050" .base
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
-  let act : Action := ⟨.player s.me, .activate az 0 ⟨0, [.calm]⟩ [u]⟩
+  let act : Action := ⟨.player s.me, .activate az 0 ⟨0, [.calm], none⟩ [u]⟩
   let s3 ← match step 100 (s2.rich s.me) act with
     | .ok (x, _) => some x
     | .error _ => none
@@ -3538,7 +3538,7 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s3, first) ← put s2 s.me "OGN-004" .trash
   let (s4, second) ← put s3 s.me "OGN-010" .trash
   let ready := s4.rich s.me
-  let activation : Action := ⟨.player s.me, .activate g 0 ⟨0, [.chaos]⟩ [u]⟩
+  let activation : Action := ⟨.player s.me, .activate g 0 ⟨0, [.chaos], none⟩ [u]⟩
   let chooseFirst : Action := ⟨.player s.me, .choose first⟩
   let chooseSecond : Action := ⟨.player s.me, .choose second⟩
   let order : Action := ⟨.chance, .arrange [second, first]⟩
@@ -3590,7 +3590,7 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s1, g) ← put s s.me "SFD-178" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
   let (s3, v) ← put s2 s.me "OGN-136" .base
-  match step 100 (s3.rich s.me) ⟨.player s.me, .activate g 0 ⟨0, [.order]⟩ [u, v]⟩ with
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate g 0 ⟨0, [.order], none⟩ [u, v]⟩ with
   | .ok (a, _) =>
     return (a.obj? v).isNone && (a.obj? g).any (·.attached == none) && !(a.zone .chain).isEmpty
   | .error _ => return false
@@ -3921,7 +3921,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
 the Chain resolve with room for many questions. -/
 meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (says : Says := {}) : Option GameState :=
-  match step 100 s ⟨.player p, .activate src idx ⟨0, []⟩ []⟩ with
+  match step 100 s ⟨.player p, .activate src idx ⟨0, [], none⟩ []⟩ with
   | .ok (s1, _) => some (settleChain says 60 s1)
   | .error _ => none
 
@@ -4849,7 +4849,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let buffed := held.buff udyr
   let loose := s3.buff udyr
   let ok (x : GameState) (idx : Nat) : Bool :=
-    activatable (x.rich s.me) s.me udyr idx ⟨0, []⟩ [] true
+    activatable (x.rich s.me) s.me udyr idx ⟨0, [], none⟩ [] true
   return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
     !ok (s3.buff udyr) copyIdx && copyIdx > 0
 
@@ -5111,7 +5111,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, mine) ← put s s.you "OGN-051" .base
   let (s2, stalker) ← put s1 s.me "RAD-104" .base
   let (s3, nsf) ← put s2 s.you "SFD-045" .hand
-  match step 100 (s3.rich s.me) ⟨.player s.me, .activate stalker 0 ⟨0, []⟩ [mine]⟩ with
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate stalker 0 ⟨0, [], none⟩ [mine]⟩ with
   | .ok (a, _) =>
     let item := (a.zone .chain).head?
     match item with

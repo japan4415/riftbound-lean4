@@ -27,7 +27,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let deck := Zone.player p .mainDeck
   let before := s.zone deck
   let qDeck := s.zone (.player q .mainDeck)
-  let (activated, _) ← (step 100 s ⟨.player p, .activate scope 0 ⟨1, []⟩ [] [] (some r)⟩).toOption
+  let (activated, _) ← (step 100 s ⟨.player p, .activate scope 0 ⟨1, [], none⟩ [] [] (some r)⟩).toOption
   let guessing := settleChain {} 15 activated
   let choices := (legalFrameActions guessing).filterMap (fun a => match a.kind with
     | .guessCardType kind => some (a.actor, kind)

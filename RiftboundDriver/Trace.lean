@@ -436,6 +436,12 @@ def moveFields (dest : MoveDest) (pay : Cost) : List (String × String) :=
   [("dest", match dest with | .base => "null" | .battlefield bf => toString bf.n)] ++
     (if pay == Cost.zero then [] else [("movePayment", costJson pay)])
 
+/-- Display the physical Power sources used for a separate Deflect payment. -/
+def deflectFields (payment : Option (List PowerBucket)) : List (String × String) :=
+  payment.toList.map (fun sources => ("deflectPayment", jarr (sources.map (fun
+    | .domain domain => jstr (ctorName domain)
+    | .flexible => jstr "flexible"))))
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
     (state : Option GameState := none) (events : List Event := [])
@@ -458,10 +464,6 @@ def actionJson (a : Action) (frame : Option Frame := none)
         match a.actor with
         | .player p => s.spellDeflectSources p c ts pay declared
         | _ => none)) <|> declared.deflectPayment
-      let deflectFields := deflect.toList.map (fun sources => ("deflectPayment",
-        jarr (sources.map (fun
-          | .domain domain => jstr (ctorName domain)
-          | .flexible => jstr "flexible"))))
       let played := (events.findSome? (fun
         | .moved before after _ => if before == c then some after else none
         | _ => none)).getD c
@@ -482,7 +484,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
-        xp ++ deflectFields ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
+        xp ++ deflectFields deflect ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
     | .standardMove u d pay => [("unit", toString u.n)] ++ moveFields d pay
     | .startGroupMove d pay => moveFields d pay
     | .assignPick u => [("unit", toString u.n)]
@@ -543,10 +545,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
           [("triggerPreparedAdds", jarr (plan.adds.map effectAddJson))]
         | _ => [])
     | .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+      let deflect := ((before <|> state).bind (fun s =>
+        match a.actor with
+        | .player p => s.activationDeflectSources p src idx ts pay
+        | _ => none)) <|> pay.deflectPayment?
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+      deflectFields deflect ++
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
       targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
       (costBanisher.toList.flatMap (fun who => (costObject <|> ts.getLast?).toList.map (fun unit =>

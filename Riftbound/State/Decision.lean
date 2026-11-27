@@ -62,6 +62,32 @@ inductive TriggerPayment where
   | skip
 deriving DecidableEq, Repr
 
+/-- Resources committed to an activation and, when needed, the separately selected Deflect sources. -/
+structure ActivationPayment where
+  /-- The Energy in the ability's own payment. -/
+  energy : Nat
+  /-- The domains in the ability's own payment. -/
+  power : List Domain
+  /-- Alternative physical Power sources for a separate Deflect surcharge. -/
+  deflectPayment? : Option (List PowerBucket) := none
+deriving DecidableEq
+
+/-- The ability's own payment, due before any separate Deflect surcharge. -/
+def ActivationPayment.base (payment : ActivationPayment) : RunePool.Payment :=
+  ⟨payment.energy, payment.power⟩
+
+/-- An ordinary payment leaves the separate Deflect surcharge at its canonical allocation. -/
+def ActivationPayment.fromBase (pay : RunePool.Payment)
+    (deflectPayment : Option (List PowerBucket) := none) : ActivationPayment :=
+  ⟨pay.energy, pay.power, deflectPayment⟩
+
+instance : Coe RunePool.Payment ActivationPayment := ⟨fun pay => ActivationPayment.fromBase pay⟩
+
+instance : Repr ActivationPayment where
+  reprPrec payment precedence := match payment.deflectPayment? with
+    | none => reprPrec payment.base precedence
+    | some sources => reprPrec (payment.base, sources) precedence
+
 /-- An answer the engine can receive from a player, chance, clock or judge. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
@@ -120,7 +146,7 @@ inductive ActionKind where
   before the ability goes on the Chain (CR 423.3). A declared player target is chosen separately
   from object targets (CR 355.7). The permanent in `costObject` pays a cost and is
   chosen independently of any target (CR 355.10.c). -/
-  | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
+  | activate (source : ObjId) (idx : Nat) (pay : ActivationPayment) (targets : List ObjId)
       (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
       (costBanisher : Option PlayerId := none) (costObject : Option ObjId := none)
   /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it

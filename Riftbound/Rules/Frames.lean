@@ -387,10 +387,10 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
     reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick discard
   | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
+    activateStep s p src idx pay.base ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher costObject
+    activateStep s p src idx pay.base ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher costObject
   | .triggerOrder _ t more others funding :: rest, .putTrigger i ts payment =>
     let r := finishTrigger s (t :: more) funding i ts payment
     some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
@@ -453,7 +453,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .showdown bf q _ :: rest, .playCard c pay ts flow discard pick =>
     reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick discard
   | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
+    activateStep s q src idx pay.base ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay chosen => applyMana s q src idx pay chosen
   | _, .timeCalled => some ({ s with clock := some (s.config.ruleSet.callClock s.turn) }, [])
@@ -484,7 +484,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .teamInvitation guest :: rest, .playCard c pay ts flow discard pick =>
     reactStep s guest c pay ts (.chainPass guest 0 :: rest) flow pick discard
   | .teamInvitation guest :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s guest src idx pay ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
+    activateStep s guest src idx pay.base ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
   | .teamInvitation guest :: _, .runeAbility c ab => applyRune s guest c ab
   | .teamInvitation guest :: _, .manaAbility src idx pay chosen => applyMana s guest src idx pay chosen
   | .chooseShowdown _ first more :: rest, .choose bf =>

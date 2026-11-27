@@ -2442,9 +2442,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
   let next := { hide with turn := hide.turn + 1 }
-  match step 100 (next.rich s.me) ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+  match step 100 (next.rich s.me) ⟨.player s.me, .activate h 1 ⟨0, [], none⟩ [u]⟩ with
   | .ok (a1, _) =>
-    let twice := match step 100 a1 ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+    let twice := match step 100 a1 ⟨.player s.me, .activate h 1 ⟨0, [], none⟩ [u]⟩ with
       | .ok (a2, _) => a2
       | .error _ => a1
     let done := settleChain {} 12 twice
@@ -2458,7 +2458,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let q := s.you
   let (s, vi) ← put s p "OGN-036" .base
   let (s, enemy) ← put s q "OGN-004" .trash
-  let act : Action := ⟨.player p, .activate vi 0 ⟨0, []⟩ []⟩
+  let act : Action := ⟨.player p, .activate vi 0 ⟨0, [], none⟩ []⟩
   let (s1, own) ← put s p "OGN-136" .trash
   let (paying, declared) ← (step 100 s1 act).toOption
   let (paid, events) ← (step 100 paying ⟨.player p, .choose own⟩).toOption
@@ -2486,7 +2486,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s, c) ← put s p "OGN-004" .trash
   let (s, keep) ← put s p "OGN-010" .trash
   let s := s.fund p 1
-  let act : Action := ⟨.player p, .activate g 0 ⟨1, []⟩ []⟩
+  let act : Action := ⟨.player p, .activate g 0 ⟨1, [], none⟩ []⟩
   let pick (state : GameState) (id : ObjId) := step 100 state ⟨.player p, .choose id⟩
   let (paying, declared) ← (step 100 s act).toOption
   let (one, selected) ← (pick paying a).toOption
@@ -2533,7 +2533,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s, f) ← put s p "OGN-212" .base
   let (s, own) ← put s p "OGN-136" .trash
   let (s, enemy) ← put s q "OGN-001" .trash
-  let (queued, events) ← (step 100 s ⟨.player p, .activate f 1 ⟨0, []⟩ []⟩).toOption
+  let (queued, events) ← (step 100 s ⟨.player p, .activate f 1 ⟨0, [], none⟩ []⟩).toOption
   let forge ← queued.firstOf p .trash "OGN-212"
   let waiting := settleChain {} 12 queued
   let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
@@ -2562,7 +2562,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s, third) ← put s q "OGN-004" .trash
   let (s, fourth) ← put s q "OGN-016" .trash
   let (s, fifth) ← put s q "OGN-010" .trash
-  let (queued, _) ← (step 100 s ⟨.player p, .activate forge 1 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 s ⟨.player p, .activate forge 1 ⟨0, [], none⟩ []⟩).toOption
   let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
   let (offer, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
   let (picking, _) ← (step 100 offer ⟨.player p, .decide true⟩).toOption
@@ -5200,7 +5200,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, foe) ← putAt s1 s.you "OGN-088" s.bf0
   let (s3, flash) ← put s2 s.me "OGS-011" .hand
   let (s4, theirFlash) ← put s3 s.you "OGS-011" .hand
-  let (queued, _) ← (step 100 (s4.rich s.me) ⟨.player s.me, .activate cait 1 ⟨0, []⟩ [foe]⟩).toOption
+  let (queued, _) ← (step 100 (s4.rich s.me) ⟨.player s.me, .activate cait 1 ⟨0, [], none⟩ [foe]⟩).toOption
   let sourceMoves ← play queued s.me flash [cait]
   let (passed, _) ← (step 100 queued ⟨.player s.me, .pass⟩).toOption
   let targetMoves ← play passed s.you theirFlash [foe]
@@ -6186,7 +6186,7 @@ private meta def gainedExhaustIndex (s : GameState) (src : ObjId) (code : String
   let (s2, lee) ← put s1 s.me "OGN-078" .base
   let leeIdx ← gainedExhaustIndex s2 hd "OGN-078"
   let used ← activate s2 s.me hd leeIdx [] ⟨0, []⟩
-  let (queued, _) ← (step 100 (s2.rich s.me) ⟨.player s.me, .activate hd leeIdx ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 (s2.rich s.me) ⟨.player s.me, .activate hd leeIdx ⟨0, [], none⟩ []⟩).toOption
   let gone := (sendObj .trash queued lee).1
   let resolved := settleChain {} 8 gone
   let (n1, nhd) ← put s s.me "OGN-111" .base

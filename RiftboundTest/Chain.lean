@@ -100,19 +100,19 @@ meta def stepOk (s : GameState) (a : Action) : Option GameState :=
 -- pay but the exhaustion; not by the other player, not on its own Unit, not outside the Main Phase
 #guard match scene with
   | some (s, p, q, a, e, _) =>
-    activatable s p a 0 ⟨0, []⟩ [e] true &&
-    (legalActions s).contains ⟨.player p, .activate a 0 ⟨0, []⟩ [e]⟩ &&
-    !activatable s q a 0 ⟨0, []⟩ [e] true && !activatable s p a 0 ⟨0, []⟩ [a] true &&
-    !activatable s p a 0 ⟨0, []⟩ [] true && !activatable s p a 1 ⟨0, []⟩ [e] true &&
-    !activatable { s with phase := .draw } p a 0 ⟨0, []⟩ [e] true &&
-    !activatable s p a 0 ⟨1, []⟩ [e] true
+    activatable s p a 0 ⟨0, [], none⟩ [e] true &&
+    (legalActions s).contains ⟨.player p, .activate a 0 ⟨0, [], none⟩ [e]⟩ &&
+    !activatable s q a 0 ⟨0, [], none⟩ [e] true && !activatable s p a 0 ⟨0, [], none⟩ [a] true &&
+    !activatable s p a 0 ⟨0, [], none⟩ [] true && !activatable s p a 1 ⟨0, [], none⟩ [e] true &&
+    !activatable { s with phase := .draw } p a 0 ⟨0, [], none⟩ [e] true &&
+    !activatable s p a 0 ⟨1, [], none⟩ [e] true
   | none => false
 
 /-- The Pinger's ability used on the Vanilla Unit, and what it caused. -/
 meta def afterUse : Option (GameState × List Event) :=
   match scene with
   | some (s, p, _, a, e, _) =>
-    match step 100 s ⟨.player p, .activate a 0 ⟨0, []⟩ [e]⟩ with
+    match step 100 s ⟨.player p, .activate a 0 ⟨0, [], none⟩ [e]⟩ with
     | .ok r => some r
     | .error _ => none
   | none => none
@@ -137,7 +137,7 @@ meta def afterUse : Option (GameState × List Event) :=
 -- physical card: the physical cards are as they were (I1)
 #guard match scene, afterUse with
   | some (s, p, _, a, e, _), some (s1, _) =>
-    !activatable s1 p a 0 ⟨0, []⟩ [e] false && s1.physIds.length == s.physIds.length &&
+    !activatable s1 p a 0 ⟨0, [], none⟩ [e] false && s1.physIds.length == s.physIds.length &&
     s1.zoneIds.length == s.zoneIds.length + 1
   | _, _ => false
 
@@ -167,7 +167,7 @@ meta def afterResolve : Option GameState :=
       && !(legalFrameActions s1).any
         (fun x => match x.kind with | .standardMove .. => true | _ => false) &&
     (match stepOk s1 ⟨.player p, .pass⟩ with
-      | some s2 => (legalFrameActions s2).contains ⟨.player q, .activate r 0 ⟨0, []⟩ [a]⟩
+      | some s2 => (legalFrameActions s2).contains ⟨.player q, .activate r 0 ⟨0, [], none⟩ [a]⟩
       | none => false)
   | _, _ => false
 
@@ -177,7 +177,7 @@ meta def afterReact : Option (GameState × GameState × GameState) :=
   match scene, afterUse with
   | some (_, p, q, a, _, r), some (s1, _) =>
     (stepOk s1 ⟨.player p, .pass⟩).bind fun s2 =>
-    (stepOk s2 ⟨.player q, .activate r 0 ⟨0, []⟩ [a]⟩).bind fun s3 =>
+    (stepOk s2 ⟨.player q, .activate r 0 ⟨0, [], none⟩ [a]⟩).bind fun s3 =>
     (stepOk s3 ⟨.player q, .pass⟩).bind fun s4 =>
     (stepOk s4 ⟨.player p, .pass⟩).bind fun s5 =>
     (stepOk s5 ⟨.player p, .pass⟩).bind fun s6 =>
@@ -188,11 +188,11 @@ meta def afterReact : Option (GameState × GameState × GameState) :=
 #guard ((do
   let (s, p, q, attacker, target, rival) ← scene
   let (s, reply) ← putTok s p "T-REACT" .base
-  let first ← stepOk s ⟨.player p, .activate attacker 0 ⟨0, []⟩ [target]⟩
+  let first ← stepOk s ⟨.player p, .activate attacker 0 ⟨0, [], none⟩ [target]⟩
   let response ← stepOk first ⟨.player p, .pass⟩
-  let middle ← stepOk response ⟨.player q, .activate rival 0 ⟨0, []⟩ [attacker]⟩
+  let middle ← stepOk response ⟨.player q, .activate rival 0 ⟨0, [], none⟩ [attacker]⟩
   let answer ← stepOk middle ⟨.player q, .pass⟩
-  let newest ← stepOk answer ⟨.player p, .activate reply 0 ⟨0, []⟩ [target]⟩
+  let newest ← stepOk answer ⟨.player p, .activate reply 0 ⟨0, [], none⟩ [target]⟩
   let passing ← stepOk newest ⟨.player p, .pass⟩
   let resumed ← stepOk passing ⟨.player q, .pass⟩
   let item ← (resumed.zone .chain).head?.bind resumed.obj?
@@ -284,18 +284,18 @@ meta def afterSpell : Option (GameState × GameState) :=
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
         let s3 := s2.setPool p { energy := 2 }
-        activatable s3 p a 0 ⟨1, []⟩ [e] true && !activatable s3 p a 0 ⟨1, []⟩ [e] false &&
-        !activatable s3 p a 0 ⟨0, []⟩ [e] true &&
-        !activatable s3 p a 0 ⟨2, []⟩ [e] true &&
-        !activatable (s2.setPool p {}) p a 0 ⟨1, []⟩ [e] true &&
-        (match stepOk s3 ⟨.player p, .activate a 0 ⟨1, []⟩ [e]⟩ with
+        activatable s3 p a 0 ⟨1, [], none⟩ [e] true && !activatable s3 p a 0 ⟨1, [], none⟩ [e] false &&
+        !activatable s3 p a 0 ⟨0, [], none⟩ [e] true &&
+        !activatable s3 p a 0 ⟨2, [], none⟩ [e] true &&
+        !activatable (s2.setPool p {}) p a 0 ⟨1, [], none⟩ [e] true &&
+        (match stepOk s3 ⟨.player p, .activate a 0 ⟨1, [], none⟩ [e]⟩ with
           | some s4 =>
             (s4.poolOf p).energy == 1 && !(s4.obj? a).any (·.exhausted) &&
             (s4.obj? a).any (·.used == [0]) &&
             -- the second use needs the first to have resolved, and is not allowed this turn
             (match (stepOk s4 ⟨.player p, .pass⟩).bind
                 (fun s5 => stepOk s5 ⟨.player (otherQ p), .pass⟩) with
-              | some s6 => !activatable s6 p a 0 ⟨1, []⟩ [e] true &&
+              | some s6 => !activatable s6 p a 0 ⟨1, [], none⟩ [e] true &&
                   (s6.obj? a).any (fun o => (clearScored o).used == [])
               | none => false)
           | none => false)
@@ -312,7 +312,7 @@ meta def afterSpell : Option (GameState × GameState) :=
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
         costPlan [.discard 1] == some (false, none) &&
-      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
+      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, [], none⟩ [e] true &&
         costPlan [.exhaustSelf, .pay ⟨1, []⟩] == some (true, some ⟨1, []⟩) &&
         costPlan [.exhaustSelf, .exhaustSelf] == none
       | none => false

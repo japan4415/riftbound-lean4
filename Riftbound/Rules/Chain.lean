@@ -758,9 +758,44 @@ def GameState.canUseAbilityOf (s : GameState) (p : PlayerId) (src : ObjId)
     else o.control == some p
   else o.controller == p
 
+/-- The Pool after the ability's own costs, before any separately paid target surcharge. -/
+def GameState.activationBasePool (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (card : CardDef) (costs : List AbilityCost) (pay : RunePool.Payment) : Option RunePool :=
+  s.spendFor p (card.hasType .gear) pay (s.unitActivationPayment src idx)
+    (s.permanentPlayActivation src costs)
+
+/-- The Deflect payment is separate unless a discount changes the combined Hidden Spell cost. -/
+def GameState.activationDeflectCost (s : GameState) (p : PlayerId) (src : ObjId)
+    (costs : List AbilityCost) (targets : List ObjId) : Nat :=
+  if costs.contains .fromHidden && s.playPowerCut p src targets != 0 then 0
+  else s.deflectCost p targets
+
+/-- List the canonical payment and all physically distinct ways to fund a separate surcharge. -/
+def GameState.activationDeflectOptions (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (card : CardDef) (costs : List AbilityCost) (targets : List ObjId) (pay : RunePool.Payment) :
+    List (Option (List PowerBucket)) :=
+  match s.activationBasePool p src idx card costs pay with
+  | none => []
+  | some pool =>
+    let amount := s.activationDeflectCost p src costs targets
+    if amount == 0 then [none]
+    else if amount ≤ pool.totalPower then none :: (pool.alternatePowerAllocations amount).map some
+    else []
+
+/-- Identify the actual Power source buckets used to finalize the activation. -/
+def GameState.activationDeflectSources (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
+    (targets : List ObjId) (pay : ActivationPayment) : Option (List PowerBucket) := do
+  let card ← s.cardDef? src
+  let some (_, .activated costs _ _ _) := (s.activationList src card)[idx]? | none
+  let amount := s.activationDeflectCost p src costs targets
+  if amount == 0 then none else
+    let pool ← s.activationBasePool p src idx card costs pay.base
+    if pool.totalPower < amount then none else
+      some (pay.deflectPayment?.getD (pool.canonicalPowerSources amount))
+
 /-- The player can use an ability of the object `src` with the payment and targets. `open_`
 indicates whether the Chain is empty (CR 312, 355-357, 361, 813). -/
-def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : RunePool.Payment)
+def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : ActivationPayment)
     (ts : List ObjId) (open_ : Bool) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
     (costObject : Option ObjId := none) : Bool :=
   s.phase != .setup &&
@@ -774,10 +809,8 @@ def activatable (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay : 
             if (manaKind body).isSome then false
             else
               s.activationTiming open_ speed && (!ex || !o.exhausted) &&
-                pc.any (fun c => c.paidBy d.domains pay) &&
-                (s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) (s.permanentPlayActivation src costs)).any (fun pool =>
-                  (costs.contains .fromHidden && s.playPowerCut p src ts != 0) ||
-                    s.deflectOk p pool ts) &&
+                pc.any (fun c => c.paidBy d.domains pay.base) &&
+                (s.activationDeflectOptions p src idx d costs ts pay.base).contains pay.deflectPayment? &&
                 (match limit with
                   | .unlimited => true
                   | .perTurn n =>
@@ -1012,10 +1045,10 @@ theorem applyActivate_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx 
 
 /-- A usable ability can be used. -/
 theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId}
+    {pay : ActivationPayment} {ts discards : List ObjId}
     {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards targetPlayer costObject = true) :
-    ∃ r, applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay ts discards targetPlayer costObject = some r := by
+    ∃ r, applyActivate (noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher) p src idx pay.base ts discards targetPlayer costObject = some r := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨-, h⟩ := h
@@ -1043,10 +1076,10 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
             · simp [hm] at h
             simp only [hm, Bool.false_eq_true, ite_false, Bool.and_eq_true] at h
             have hpool := h.1.1.1.2
-            cases hsf : s.spendFor p (d.hasType .gear) pay (s.unitActivationPayment src idx) (s.permanentPlayActivation src costs) with
-            | none => rw [hsf] at hpool; simp at hpool
+            cases hsf : s.activationBasePool p src idx d costs pay.base with
+            | none => simp [GameState.activationDeflectOptions, hsf] at hpool
             | some pool =>
-              have hs := GameState.spendFor_eq_some hsf
+              have hs := GameState.spendFor_eq_some (show s.spendFor _ _ _ _ _ = some pool from hsf)
               let paid := noteActivationBanisher s (activationKillVictim s src idx ts costObject).toList banisher
               have hd' : paid.cardDef? src = some d := by
                 unfold paid noteActivationBanisher
@@ -1054,10 +1087,10 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
               have ha' : (paid.activationList src d)[idx]? = some (grant, .activated costs sp body lim) := by
                 unfold paid noteActivationBanisher
                 split <;> exact ha
-              have hs' : (paid.poolOf p).spend pay (paid.unitActivationPayment src idx) = some pool := by
+              have hs' : (paid.poolOf p).spend pay.base (paid.unitActivationPayment src idx) = some pool := by
                 unfold paid noteActivationBanisher
                 split <;> exact hs
-              change ∃ r, applyActivate paid p src idx pay ts discards targetPlayer costObject = some r
+              change ∃ r, applyActivate paid p src idx pay.base ts discards targetPlayer costObject = some r
               unfold applyActivate
               simp only [hd', hs', ha']
               obtain ⟨⟨t, events⟩, hf⟩ := finalizeActivation_isSome _ p src idx ts targetPlayer _ _ _ _
@@ -1070,18 +1103,19 @@ theorem applyActivate_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx :
 /-- A usable ability is accessible to the player, its costs and targets are legal, and setup
 has finished. -/
 theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {costObject : Option ObjId} {open_ : Bool}
+    {pay : ActivationPayment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {costObject : Option ObjId} {open_ : Bool}
     (h : activatable s p src idx pay ts open_ discards targetPlayer costObject = true) :
     ∃ d costs sp body lim pc grant, s.phase ≠ .setup ∧ s.abilityZoneOk p src idx = true ∧
       s.cardDef? src = some d ∧
         (s.activationList src d)[idx]? = some (grant, .activated costs sp body lim) ∧
         s.activationPlan p src d idx costs ts = some (costExhausts costs, pc) ∧
-          pc.any (fun c => c.paidBy d.domains pay) = true ∧
+          pc.any (fun c => c.paidBy d.domains pay.base) = true ∧
             targetsOk s p src s.mightTable body.choices ts = true ∧
             s.discardCostOk p src costs discards = true ∧
             targetPlayer ∈ s.playerTargetOptions p body.playerTarget ∧
-            costObject ∈ s.activationCostObjects p src costs ts ∧ ∃ o, s.obj? src = some o ∧
-              s.canUseAbilityOf p src o d = true := by
+            costObject ∈ s.activationCostObjects p src costs ts ∧
+            pay.deflectPayment? ∈ s.activationDeflectOptions p src idx d costs ts pay.base ∧
+            ∃ o, s.obj? src = some o ∧ s.canUseAbilityOf p src o d = true := by
   unfold activatable at h
   simp only [Bool.and_eq_true] at h
   obtain ⟨hph, h⟩ := h
@@ -1118,7 +1152,8 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
                 have he := congrArg (Option.map Prod.fst) hp
                 simpa [GameState.activationPlan, costExhausts, hc] using he
             exact ⟨d, costs, sp, body, lim, pc, grant, hturn, huse, rfl, ha, by rw [hex]; exact hp,
-              h.1.1.1.1.2, h.1.2, h.2.1, List.contains_iff_mem.mp h.2.2.1, List.contains_iff_mem.mp h.2.2.2, o, rfl, hctl⟩
+              h.1.1.1.1.2, h.1.2, h.2.1, List.contains_iff_mem.mp h.2.2.1,
+              List.contains_iff_mem.mp h.2.2.2, List.contains_iff_mem.mp h.1.1.1.2, o, rfl, hctl⟩
         | passive _ _ => simp [ha] at h
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
@@ -1149,7 +1184,9 @@ def legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) : List Action :
             ([] :: (targetTuples s p src s.mightTable body.choices).filter
                 (fun ts => decide (ts ≠ []))).flatMap (fun ts =>
               (match s.activationPlan p src d idx costs ts with
-                | some (_, cs) => (cs.flatMap (Cost.payments d.domains)).eraseDups
+                | some (_, cs) => (cs.flatMap (Cost.payments d.domains)).eraseDups.flatMap (fun base =>
+                    (s.activationDeflectOptions p src idx d costs ts base).map
+                      (fun sources => ActivationPayment.fromBase base sources))
                 | none => []).flatMap (fun pay =>
                   (s.playerTargetOptions p body.playerTarget).flatMap (fun targetPlayer =>
                     (s.activationCostObjects p src costs ts).flatMap (fun costObject =>
@@ -1196,7 +1233,7 @@ def showdownSpeed (s : GameState) (src : ObjId) (idx : Nat) : Bool :=
 /-- The player can use the activated ability in a Showdown (CR 347-348): the Chain is empty, and the
 ability has Action or Reaction speed. -/
 def activatableSD (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
-    (pay : RunePool.Payment) (ts : List ObjId) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
+    (pay : ActivationPayment) (ts : List ObjId) (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
     (costObject : Option ObjId := none) : Bool :=
   activatable s p src idx pay ts true discards targetPlayer costObject && showdownSpeed s src idx
 
@@ -1236,7 +1273,8 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
         | replacement _ _ _ => simp [hab] at ha
         | triggered _ _ _ => simp [hab] at ha
   · rintro ⟨src, idx, pay, ts, discards, targetPlayer, banisher, costObject, rfl, hact, hbanisher⟩
-    obtain ⟨d, costs, sp, body, lim, pc, grant, hph, huse, hd, hab, hplan, hpay, hts, hds, hplayer, hcostObject, o, ho, hctl⟩ :=
+    obtain ⟨d, costs, sp, body, lim, pc, grant, hph, huse, hd, hab, hplan, hpay, hts, hds, hplayer,
+      hcostObject, hdeflect, o, ho, hctl⟩ :=
       activatable_spec hact
     unfold legalActivates
     simp only [List.mem_flatMap]
@@ -1254,8 +1292,11 @@ theorem mem_legalActivates (s : GameState) (p : PlayerId) (open_ : Bool) (a : Ac
           simp only [List.mem_filter, decide_eq_true_eq]
           exact ⟨(mem_targetTuples s p src s.mightTable body.choices ts).mpr hts, hn⟩
       · rw [hplan]
-        simpa only [List.mem_eraseDups, List.mem_flatMap, Cost.mem_payments, List.any_eq_true]
-          using hpay
+        have base : pay.base ∈ (pc.flatMap (Cost.payments d.domains)).eraseDups := by
+          simpa only [List.mem_eraseDups, List.mem_flatMap, Cost.mem_payments, List.any_eq_true]
+            using hpay
+        exact List.mem_flatMap.mpr ⟨pay.base, base,
+          List.mem_map.mpr ⟨pay.deflectPayment?, hdeflect, by cases pay; rfl⟩⟩
 
 /-- A Spell that can be cast in answer to an item of the Chain: it can be cast, and has Reaction. -/
 theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1453,9 +1494,9 @@ theorem activateStep_hand {s s' : GameState} {p : PlayerId} {src : ObjId} {idx :
 
 /-- A usable ability can be used, with any new stack. -/
 theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
-    {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {open_ : Bool} {new : List Frame}
+    {pay : ActivationPayment} {ts discards : List ObjId} {targetPlayer banisher : Option PlayerId} {costObject : Option ObjId} {open_ : Bool} {new : List Frame}
     (h : activatable s p src idx pay ts open_ discards targetPlayer costObject = true) :
-    ∃ r, activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some r := by
+    ∃ r, activateStep s p src idx pay.base ts new discards targetPlayer banisher costObject = some r := by
   obtain ⟨r, hr⟩ := applyActivate_isSome (banisher := banisher) h
   exact ⟨_, by unfold activateStep; rw [hr]; rfl⟩
 
