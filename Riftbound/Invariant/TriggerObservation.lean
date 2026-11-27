@@ -130,6 +130,12 @@ private theorem mightyEvents_notice {s t : GameState} {event : Event}
       · simp at found
     · simp at found
 
+/-- Might threshold notices do not record any turn facts. -/
+theorem mightyEvents_recordTurnEvent {s t : GameState} {event : Event}
+    (member : event ∈ s.mightyEvents t) (current : GameState) (facts : List TurnFx) :
+    current.recordTurnEvent facts event = facts := by
+  cases mightyEvents_notice member <;> rfl
+
 private theorem foldl_mightNotices {α : Type} (update : α → Event → α)
     (inert : ∀ a e, MightNotice e → update a e = a) (start : α)
     (events : List Event) (notices : ∀ e ∈ events, MightNotice e) :

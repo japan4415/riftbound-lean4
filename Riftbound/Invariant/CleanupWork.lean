@@ -14,7 +14,8 @@ uses the board measure through the actual work dispatcher, including event obser
 
 namespace Riftbound
 
-private def isCleanup : Frame → Bool
+/-- Whether the frame is a Cleanup. -/
+def Frame.isCleanup : Frame → Bool
   | .cleanup => true
   | _ => false
 
@@ -34,7 +35,8 @@ private theorem insertTriggers_filter (keep : Frame → Bool)
     · simp only [List.filter_cons, ih]
     · cases head <;> simp [ignores]
 
-private theorem insertDetectedTriggers_filter (keep : Frame → Bool)
+/-- Observing triggers preserves the subsequence of frames distinguished from trigger and Run frames. -/
+theorem insertDetectedTriggers_filter (keep : Frame → Bool)
     (ignoresTriggers : ∀ queue, keep (.triggers queue) = false)
     (ignoresRuns : ∀ p id env effects, keep (.run p id env effects) = false)
     (s : GameState) (queue : List PendTrigger) (stack : List Frame) :
@@ -55,20 +57,25 @@ private theorem insertDetectedTriggers_filter (keep : Frame → Bool)
   · rfl
   · exact insertTriggers_filter keep ignoresTriggers _ _
 
-private theorem insertTriggers_head_cleanup {queue : List PendTrigger} {stack : List Frame}
-    (head : (insertTriggers queue stack).head? = some .cleanup) :
-    stack.head? = some .cleanup := by
+private theorem insertTriggers_head {queue : List PendTrigger} {stack : List Frame}
+    {frame : Frame} (notTrigger : ∀ q, frame ≠ .triggers q)
+    (head : (insertTriggers queue stack).head? = some frame) :
+    stack.head? = some frame := by
   cases stack with
-  | nil => simp [insertTriggers] at head
-  | cons frame rest =>
+  | nil => exact False.elim (notTrigger _ (by simpa [insertTriggers] using head.symm))
+  | cons first rest =>
     simp only [insertTriggers] at head
     split at head
     · simpa using head
-    · cases frame <;> simp at head
+    · split at head <;> exact False.elim (notTrigger _ (by simpa using head.symm))
 
-private theorem insertDetectedTriggers_head_cleanup {s : GameState} {queue : List PendTrigger}
-    {stack : List Frame} (head : (insertDetectedTriggers s queue stack).head? = some .cleanup) :
-    stack.head? = some .cleanup := by
+/-- Observation can leave a pre-existing frame at the head, but cannot introduce there a
+frame other than a Run or a trigger queue. -/
+private theorem insertDetectedTriggers_head {s : GameState} {queue : List PendTrigger}
+    {stack : List Frame} {frame : Frame} (notTrigger : ∀ q, frame ≠ .triggers q)
+    (notRun : ∀ p id env effects, frame ≠ .run p id env effects)
+    (head : (insertDetectedTriggers s queue stack).head? = some frame) :
+    stack.head? = some frame := by
   let arrivals := queue.map (fun t => (t, t.immediateAddFrame s))
   have onlyRuns {f : Frame} (member : f ∈ arrivals.filterMap Prod.snd) :
       ∃ p id env effects, f = .run p id env effects := by
@@ -77,17 +84,17 @@ private theorem insertDetectedTriggers_head_cleanup {s : GameState} {queue : Lis
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj eq
     exact PendTrigger.immediateAddFrame_run got
   unfold insertDetectedTriggers at head
-  change ((arrivals.filterMap Prod.snd ++ _).head?) = some .cleanup at head
+  change ((arrivals.filterMap Prod.snd ++ _).head?) = some frame at head
   cases front : arrivals.filterMap Prod.snd with
   | nil =>
     rw [front, List.nil_append] at head
     split at head
     · exact head
-    · exact insertTriggers_head_cleanup head
-  | cons frame frames =>
-    have member : frame ∈ arrivals.filterMap Prod.snd := by simp [front]
-    obtain ⟨_, _, _, _, rfl⟩ := onlyRuns member
-    simp [front] at head
+    · exact insertTriggers_head notTrigger head
+  | cons first rest =>
+    have member : first ∈ arrivals.filterMap Prod.snd := by simp [front]
+    obtain ⟨p, id, env, effects, rfl⟩ := onlyRuns member
+    exact False.elim (notRun p id env effects (by simpa [front] using head.symm))
 
 private theorem any_eq_of_filter_eq (p : Frame → Bool) {first second : List Frame}
     (eq : first.filter p = second.filter p) : first.any p = second.any p := by
@@ -116,18 +123,20 @@ private theorem cleanupMeasure_eq {s t : GameState} (config : t.config = s.confi
     fighting, config, cards, objects, zone, loose] <;> rfl
 
 private theorem continuing_observer (s : GameState) (events : List Event)
-    (head : (s.withTriggers events).pending.head? = some .cleanup) :
-    s.pending.head? = some .cleanup ∧
+    {frame : Frame} (notTrigger : ∀ q, frame ≠ .triggers q)
+    (notRun : ∀ p id env effects, frame ≠ .run p id env effects)
+    (head : (s.withTriggers events).pending.head? = some frame) :
+    s.pending.head? = some frame ∧
     (s.withTriggers events).cleanupMeasure = s.cleanupMeasure ∧
-    (s.withTriggers events).pending.countP isCleanup = s.pending.countP isCleanup := by
+    (s.withTriggers events).pending.countP Frame.isCleanup = s.pending.countP Frame.isCleanup := by
   rcases withTriggers_cases s events with ⟨player, removed, _⟩ | onlyHistory | ⟨queue, woven, _⟩
   · simp [removed] at head
   · rw [onlyHistory] at head ⊢
     exact ⟨head, rfl, rfl⟩
   · rw [woven] at head ⊢
     let observed := s.recordTurnEvents events
-    change (insertDetectedTriggers observed queue s.pending).head? = some .cleanup at head
-    refine ⟨insertDetectedTriggers_head_cleanup head, cleanupMeasure_eq rfl rfl rfl rfl ?_, ?_⟩
+    change (insertDetectedTriggers observed queue s.pending).head? = some frame at head
+    refine ⟨insertDetectedTriggers_head notTrigger notRun head, cleanupMeasure_eq rfl rfl rfl rfl ?_, ?_⟩
     · intro field
       unfold GameState.fightingAt
       have exactFight := insertDetectedTriggers_filter (isFightAt field) (fun _ => rfl)
@@ -137,94 +146,120 @@ private theorem continuing_observer (s : GameState) (events : List Event)
         (insertDetectedTriggers observed queue s.pending).any (isFightAt field)) =
         (s.combat.any (·.battlefield == field) || s.pending.any (isFightAt field))
       rw [same]
-    · have same := insertDetectedTriggers_filter isCleanup (fun _ => rfl)
+    · have same := insertDetectedTriggers_filter Frame.isCleanup (fun _ => rfl)
         (fun _ _ _ _ => rfl) observed queue s.pending
       simp only [List.countP_eq_length_filter]
       exact congrArg List.length same
 
-private def cleanupWorkRank (s : GameState) :
+/-- Each Cleanup iteration reduces the number of frames or the Board measure. -/
+def cleanupWorkRank (s : GameState) :
     Nat × (Nat × Nat × Nat × Nat × Nat × Nat) :=
-  (s.pending.countP isCleanup, s.cleanupMeasure)
+  (s.pending.countP Frame.isCleanup, s.cleanupMeasure)
 
-private def CleanupWorkLt (next before : GameState) : Prop :=
+/-- A decrease across a consecutive sequence of Cleanup work. -/
+def CleanupWorkLt (next before : GameState) : Prop :=
   Prod.Lex (· < ·) MeasLt (cleanupWorkRank next) (cleanupWorkRank before)
 
 private theorem cleanupWorkLt_wf : WellFounded CleanupWorkLt :=
   InvImage.wf cleanupWorkRank ((Prod.lex ⟨_, Nat.lt_wfRel.wf⟩ ⟨_, MeasLt.wf⟩).wf)
+
+/-- A Cleanup step that keeps processing Cleanup or returns to Expiration decreases the
+Cleanup rank. An observer may append ordinary triggers behind pending Cleanup work. -/
+theorem cleanup_workStep_decreases (s : GameState) (wf : s.WF) (rest : List Frame)
+    (pending : s.pending = .cleanup :: rest) {next : GameState} {events : List Event}
+    (h : workStep s = some (next, events))
+    (continues : next.pending.head? = some .cleanup ∨ next.pending.head? = some .expireTurn) :
+    CleanupWorkLt next s := by
+  let result := cleanupFrame s rest
+  let observed := result.1.withTriggers (result.2 ++ s.workTransitionEvents result.1)
+  have raw : microStep0 s = some result := by simp only [microStep0, pending, result]
+  have step : workStep s = some (observed, result.2) := by
+    simp only [workStep, pending, microStep, raw, Option.map_some, observed]
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj (h.symm.trans step))
+  have facts : (result.1.pending.head? = some .cleanup ∨
+      result.1.pending.head? = some .expireTurn) ∧
+      observed.cleanupMeasure = result.1.cleanupMeasure ∧
+      observed.pending.countP Frame.isCleanup = result.1.pending.countP Frame.isCleanup := by
+    rcases continues with cleanup | expire
+    · obtain ⟨head, measure, count⟩ := continuing_observer result.1
+        (result.2 ++ s.workTransitionEvents result.1) (by simp) (by simp) cleanup
+      exact ⟨Or.inl head, measure, count⟩
+    · obtain ⟨head, measure, count⟩ := continuing_observer result.1
+        (result.2 ++ s.workTransitionEvents result.1) (by simp) (by simp) expire
+      exact ⟨Or.inr head, measure, count⟩
+  obtain ⟨rawHead, measure, count⟩ := facts
+  have repeated (r : GameState × List Event) (safe : Safe s r.1)
+      (route : result = ({ r.1 with pending := .cleanup :: rest }, r.2)) :
+      observed.cleanupMeasure = r.1.cleanupMeasure ∧
+        observed.pending.countP Frame.isCleanup = s.pending.countP Frame.isCleanup := by
+    have original : r.1.pending = .cleanup :: rest := safe.same.pending.trans pending
+    have reinstalled : { r.1 with pending := .cleanup :: rest } = r.1 := by
+      rw [← original]
+    have rawState : result.1 = r.1 := by rw [route, reinstalled]
+    change observed.cleanupMeasure = result.1.cleanupMeasure at measure
+    change observed.pending.countP Frame.isCleanup = result.1.pending.countP Frame.isCleanup at count
+    exact ⟨measure.trans (congrArg GameState.cleanupMeasure rawState),
+      count.trans (congrArg (fun u : GameState => u.pending.countP Frame.isCleanup)
+        rawState) |>.trans
+          (congrArg (List.countP Frame.isCleanup) safe.same.pending)⟩
+  cases winner : s.winner with
+  | some seat => simp [result, cleanupFrame, winner] at rawHead
+  | none =>
+    cases choice : cleanupDeathBanishChoice s with
+    | some decision =>
+      obtain ⟨id, player, first, other⟩ := decision
+      simp [result, cleanupFrame, winner, choice] at rawHead
+    | none =>
+      cases group : cleanupResolveDeathGroup s with
+      | some r =>
+        have route : result = ({ r.1 with pending := .cleanup :: rest }, r.2) := by
+          simp [result, cleanupFrame, winner, choice, group]
+        obtain ⟨sameMeasure, sameCount⟩ := repeated r (cleanupResolveDeathGroup_safe group) route
+        have decreases : MeasLt observed.cleanupMeasure s.cleanupMeasure := by
+          rw [sameMeasure]
+          exact cleanupResolveDeathGroup_decreases wf group
+        exact Prod.Lex.right' MeasLt (Nat.le_of_eq sameCount) decreases
+      | none =>
+        cases single : cleanupStep s with
+        | some r =>
+          obtain ⟨board, events⟩ := r
+          have route : result = ({ board with pending := .cleanup :: rest }, events) := by
+            simp [result, cleanupFrame, winner, choice, group, single]
+          obtain ⟨sameMeasure, sameCount⟩ := repeated (board, events)
+            (cleanupStep_safe (s' := board) (es := events) single) route
+          have decreases : MeasLt observed.cleanupMeasure s.cleanupMeasure := by
+            rw [sameMeasure]
+            exact cleanupStep_lt wf single
+          exact Prod.Lex.right' MeasLt (Nat.le_of_eq sameCount) decreases
+        | none =>
+          cases showdowns : s.stagedShowdowns rest with
+          | nil =>
+            have route : result = continueAfterCleanup s rest := by
+              simp [result, cleanupFrame, winner, choice, group, single, showdowns]
+            have smaller : observed.pending.countP Frame.isCleanup < s.pending.countP Frame.isCleanup := by
+              rw [count, pending, route]
+              change rest.countP Frame.isCleanup < (Frame.cleanup :: rest).countP Frame.isCleanup
+              rw [List.countP_cons_of_pos (show Frame.isCleanup .cleanup = true from rfl)]
+              exact Nat.lt_succ_self _
+            exact Prod.Lex.left _ _ smaller
+          | cons entry others =>
+            obtain ⟨field, player⟩ := entry
+            simp only [result, cleanupFrame, winner, choice, group, single, showdowns] at rawHead
+            split at rawHead <;> simp [continueAfterCleanup] at rawHead
 
 private theorem cleanup_engine_step (s : GameState) (wf : s.WF) (rest : List Frame)
     (pending : s.pending = .cleanup :: rest) :
     ∃ next events, workStep s = some (next, events) ∧
       (next.pending.head? ≠ some .cleanup ∨
         (next.pending.head? = some .cleanup ∧ CleanupWorkLt next s)) := by
-  let result := cleanupFrame s rest
-  let next := result.1.withTriggers (result.2 ++ s.workTransitionEvents result.1)
-  have raw : microStep0 s = some result := by simp only [microStep0, pending, result]
-  have step : workStep s = some (next, result.2) := by
-    simp only [workStep, pending, microStep, raw, Option.map_some, next]
-  refine ⟨next, result.2, step, ?_⟩
-  by_cases continues : next.pending.head? = some .cleanup
-  · obtain ⟨rawHead, measure, count⟩ :=
-      continuing_observer result.1 (result.2 ++ s.workTransitionEvents result.1) continues
-    have repeated (r : GameState × List Event) (safe : Safe s r.1)
-        (route : result = ({ r.1 with pending := .cleanup :: rest }, r.2)) :
-        next.cleanupMeasure = r.1.cleanupMeasure ∧
-          next.pending.countP isCleanup = s.pending.countP isCleanup := by
-      have original : r.1.pending = .cleanup :: rest := safe.same.pending.trans pending
-      have reinstalled : { r.1 with pending := .cleanup :: rest } = r.1 := by
-        rw [← original]
-      have rawState : result.1 = r.1 := by rw [route, reinstalled]
-      change next.cleanupMeasure = result.1.cleanupMeasure at measure
-      change next.pending.countP isCleanup = result.1.pending.countP isCleanup at count
-      exact ⟨measure.trans (congrArg GameState.cleanupMeasure rawState),
-        count.trans (congrArg (fun u : GameState => u.pending.countP isCleanup)
-          rawState) |>.trans
-            (congrArg (List.countP isCleanup) safe.same.pending)⟩
-    cases winner : s.winner with
-    | some seat => simp [result, cleanupFrame, winner] at rawHead
-    | none =>
-      cases choice : cleanupDeathBanishChoice s with
-      | some decision =>
-        obtain ⟨id, player, first, other⟩ := decision
-        simp [result, cleanupFrame, winner, choice] at rawHead
-      | none =>
-        cases group : cleanupResolveDeathGroup s with
-        | some r =>
-          have route : result = ({ r.1 with pending := .cleanup :: rest }, r.2) := by
-            simp [result, cleanupFrame, winner, choice, group]
-          obtain ⟨sameMeasure, sameCount⟩ := repeated r (cleanupResolveDeathGroup_safe group) route
-          have decreases : MeasLt next.cleanupMeasure s.cleanupMeasure := by
-            rw [sameMeasure]
-            exact cleanupResolveDeathGroup_decreases wf group
-          exact Or.inr ⟨continues, Prod.Lex.right' MeasLt (Nat.le_of_eq sameCount) decreases⟩
-        | none =>
-          cases single : cleanupStep s with
-          | some r =>
-            obtain ⟨board, events⟩ := r
-            have route : result = ({ board with pending := .cleanup :: rest }, events) := by
-              simp [result, cleanupFrame, winner, choice, group, single]
-            obtain ⟨sameMeasure, sameCount⟩ := repeated (board, events)
-              (cleanupStep_safe (s' := board) (es := events) single) route
-            have decreases : MeasLt next.cleanupMeasure s.cleanupMeasure := by
-              rw [sameMeasure]
-              exact cleanupStep_lt wf single
-            exact Or.inr ⟨continues, Prod.Lex.right' MeasLt (Nat.le_of_eq sameCount) decreases⟩
-          | none =>
-            cases showdowns : s.stagedShowdowns rest with
-            | nil =>
-              have route : result = continueAfterCleanup s rest := by
-                simp [result, cleanupFrame, winner, choice, group, single, showdowns]
-              have smaller : next.pending.countP isCleanup < s.pending.countP isCleanup := by
-                rw [count, pending, route]
-                change rest.countP isCleanup < (Frame.cleanup :: rest).countP isCleanup
-                rw [List.countP_cons_of_pos (show isCleanup .cleanup = true from rfl)]
-                exact Nat.lt_succ_self _
-              exact Or.inr ⟨continues, Prod.Lex.left _ _ smaller⟩
-            | cons entry others =>
-              obtain ⟨field, player⟩ := entry
-              simp only [result, cleanupFrame, winner, choice, group, single, showdowns] at rawHead
-              split at rawHead <;> simp [continueAfterCleanup] at rawHead
-  · exact Or.inl continues
+  let raw := cleanupFrame s rest
+  let next := raw.1.withTriggers (raw.2 ++ s.workTransitionEvents raw.1)
+  have step : workStep s = some (next, raw.2) := by
+    simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, next]
+  refine ⟨next, raw.2, step, ?_⟩
+  by_cases front : next.pending.head? = some .cleanup
+  · exact Or.inr ⟨front, cleanup_workStep_decreases s wf rest pending step (Or.inl front)⟩
+  · exact Or.inl front
 
 /-- A nonempty segment of consecutive Cleanup work in the real engine always ends.
 Ordinary steps, simultaneous deaths and nested replacements use the Board measure even when
