@@ -162,7 +162,7 @@ theorem step_cancelGroupMove_to_decision {s : GameState} {p : PlayerId}
 
 /-- Check the Run prefix scheduled by a Cleanup answer and the decision after Cleanup. -/
 def cleanupAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
-  isChainEffectAnswer s a && (applyFrame0 s a).any (fun result =>
+  isRunProgramAnswer s a && (applyFrame0 s a).any (fun result =>
     (result.1.pending.takeWhile isRunFrame).all runFrameSupported &&
       match result.1.pending.dropWhile isRunFrame with
       | .cleanup :: tail => (chainAnswerContinuation? tail).isSome
@@ -189,7 +189,7 @@ theorem step_cleanupAnswer_checked_to_decision {s : GameState} {a : Action}
       | none => simp [parsed] at continuation
       | some rest =>
         obtain ⟨tracked, decision⟩ := chainAnswerContinuation_sound parsed
-        obtain ⟨noCost, regular, cards⟩ := chainEffectAnswer_rule answer applied
+        obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule answer applied
         apply step_observed_frame_to_decision legal noCost regular applied
           (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
         intro next observed safe checked stack

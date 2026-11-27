@@ -165,12 +165,16 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let destroyed ← used.firstOf p .trash "UNL-136"
   let countered := (counterObj used item).1
   let (passed, _) ← (step 100 used ⟨.player p, .pass⟩).toOption
+  let .chainPass _ _ :: rest := passed.pending | none
   let ((predicting, looked), disclosures) ← (stepWithDisclosures 100 passed ⟨.player q, .pass⟩).toOption
-  let (keepSecond, _) ← (step 100 predicting ⟨.player p, .predictPick second false⟩).toOption
-  let (kept, draws) ← (step 100 keepSecond ⟨.player p, .predictPick first false⟩).toOption
-  let (recycleFirst, _) ← (step 100 predicting ⟨.player p, .predictPick first true⟩).toOption
-  let (shuffling, _) ← (step 100 recycleFirst ⟨.player p, .predictPick second true⟩).toOption
-  let (recycled, afterShuffle) ← (step 100 shuffling ⟨.chance, .arrange [second, first]⟩).toOption
+  let keep (id : ObjId) : Action := ⟨.player p, .predictPick id false⟩
+  let recycle (id : ObjId) : Action := ⟨.player p, .predictPick id true⟩
+  let arrange : Action := ⟨.chance, .arrange [second, first]⟩
+  let (keepSecond, _) ← (step 100 predicting (keep second)).toOption
+  let (kept, draws) ← (step 100 keepSecond (keep first)).toOption
+  let (recycleFirst, _) ← (step 100 predicting (recycle first)).toOption
+  let (shuffling, _) ← (step 100 recycleFirst (recycle second)).toOption
+  let (recycled, afterShuffle) ← (step 100 shuffling arrange).toOption
   let drew (es : List Event) (id : ObjId) := es.any (fun
     | .moved old _ (.player player .hand) => old == id && player == p
     | _ => false)
@@ -182,6 +186,9 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     events.contains (.died destroyed p) &&
     (used.poolOf p).energy == 0 && used.xpOf p == s.xpOf p &&
     countered.countIn p .trash "UNL-136" == 1 && countered.handN p == s.handN p &&
+    chainPassWorkSupported passed q rest && predictAnswerWaits predicting (keep second) &&
+    chainAnswerWorkSupported keepSecond (keep first) && predictAnswerWaits predicting (recycle first) &&
+    predictAnswerWaits recycleFirst (recycle second) && chainAnswerWorkSupported shuffling arrange &&
     looked == [Event.lookedAt p first, Event.lookedAt p second] &&
     disclosures.length == 2 && disclosures.all (fun d => d.visibleTo p && !d.visibleTo q) &&
     drew draws second && (kept.zone deck).head? == some first && kept.xpOf p == s.xpOf p + 1 &&

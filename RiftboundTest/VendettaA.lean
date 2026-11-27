@@ -5075,7 +5075,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let cat ← (onChain.zone .battlefieldZone).find? (fun u => (onChain.cardDef? u).any (·.id == cid "VEN-132"))
   let .chainPass a _ :: _ := onChain.pending | none
   let (beforeName, _) ← (step 100 onChain ⟨.player a, .pass⟩).toOption
-  let .chainPass b _ :: _ := beforeName.pending | none
+  let .chainPass b _ :: rest := beforeName.pending | none
   let (choice, _) ← (step 100 beforeName ⟨.player b, .pass⟩).toOption
   let .nameCard owner source .. :: _ := choice.pending | none
   let cast (player : PlayerId) (card : ObjId) : Action :=
@@ -5087,6 +5087,7 @@ meta def fightOneEach (s : GameState) (attacker defender : ObjId) :
   let returned := (recallFx false blocked cat).1
   let (gone, newCat) ← moveObj blocked cat (.player p .trash)
   return b == q && owner == p && source == cat &&
+    chainPassWorkSupported beforeName b rest && chainAnswerWorkSupported choice named &&
     (legalActions beforeName).contains (cast q enemySpell) &&
     !(legalActions beforeName).contains named &&
     (legalActions choice).contains named &&

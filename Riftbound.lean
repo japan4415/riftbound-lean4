@@ -66,6 +66,7 @@ public import Riftbound.Invariant.Hands
 public import Riftbound.Invariant.Turn
 public import Riftbound.Invariant.Priority
 public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.DisclosureWork
 public import Riftbound.Invariant.ChainAnswerWork
 public import Riftbound.Invariant.TriggerAnswerWork
 public import Riftbound.Invariant.PlayDeclarationWork

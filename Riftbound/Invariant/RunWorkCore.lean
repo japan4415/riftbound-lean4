@@ -417,12 +417,13 @@ private theorem recycleOne_noAttachments (s : GameState) (id : ObjId) :
     · split <;> simp [noAttachments]
   · simp [noAttachments]
 
-private theorem recycleEach_noAttachments (s : GameState) (ids : List ObjId) :
-    noAttachments (applyEach recycleOne s ids).2 := by
+private theorem applyEach_noAttachments (f : GameState → ObjId → GameState × List Event)
+    (noAttachmentsOne : ∀ s id, noAttachments (f s id).2) (s : GameState) (ids : List ObjId) :
+    noAttachments (applyEach f s ids).2 := by
   induction ids generalizing s with
   | nil => simp [applyEach, noAttachments]
   | cons first more ih =>
-    exact (recycleOne_noAttachments s first).append (ih (recycleOne s first).1)
+    exact (noAttachmentsOne s first).append (ih (f s first).1)
 
 private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (events : List Event) :
     noAttachments (spellCompletion s src events true) := by
@@ -445,7 +446,7 @@ private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : Ob
     have eventsEq := (Prod.mk.inj (Option.some.inj outcome)).2
     rw [← eventsEq]
     apply noAttachments.append
-    · apply (recycleEach_noAttachments s ids).append
+    · apply (applyEach_noAttachments recycleOne recycleOne_noAttachments s ids).append
       split <;> simp [noAttachments]
     · split
       · exact spellCompletion_noAttachments s src _
@@ -459,26 +460,36 @@ private theorem attachments_empty (s : GameState) {events : List Event} (h : noA
   cases event <;> try rfl
   exact False.elim (h _ _ found)
 
-private theorem Effect.SingleRun.directRecycle (sel : Selector)
-    (direct : sel = .self ∨ ∃ i, sel = .slot i) : (Effect.prim (.recycle sel)).SingleRun := by
+private def directPrimResult (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
+    (more : EffectList) : GameState × List Frame × List Event :=
+  match applyPrim s p src env pr with
+  | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env more], r.2)
+  | none => (s, [.run p src env more], [Event.skipped src])
+
+private theorem Effect.SingleRun.directPrim (pr : Prim)
+    (dispatch : ∀ s p src env more,
+      runEffect s p src env (.prim pr) more effectAddPolicy = directPrimResult s p src env pr more)
+    (plainEvents : ∀ {s t p src env events},
+      applyPrim s p src env pr = some (t, events) → noAttachments events) :
+    (Effect.prim pr).SingleRun := by
   intro s p src env more
-  let result : GameState × List Frame × List Event :=
-    match applyPrim s p src env (.recycle sel) with
-    | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env more], r.2)
-    | none => (s, [.run p src env more], [Event.skipped src])
-  have dispatch : runEffect s p src env (.prim (.recycle sel)) more effectAddPolicy = result := by
-    rcases direct with rfl | ⟨i, rfl⟩ <;>
-      simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
-        effectDamageBatch?, permanentPlayEffects] <;>
-      by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
-  have resumes : result.2.1 = [.run p src env more] := by
-    unfold result
-    split
-    · rename_i r applied
-      dsimp only
-      rw [attachments_empty _ (recycle_noAttachments applied), List.nil_append]
-    · rfl
-  exact ⟨result.1, result.2.2, dispatch.trans (Prod.ext rfl (Prod.ext resumes rfl))⟩
+  rw [dispatch]
+  unfold directPrimResult
+  split
+  · rename_i r applied
+    rw [attachments_empty _ (plainEvents applied), List.nil_append]
+    exact ⟨_, _, rfl⟩
+  · exact ⟨_, _, rfl⟩
+
+private theorem Effect.SingleRun.directRecycle (sel : Selector)
+    (direct : sel = .self ∨ (∃ i, sel = .slot i) ∨ ∃ side, sel = .revealedDeck side) :
+    (Effect.prim (.recycle sel)).SingleRun := by
+  refine .directPrim (.recycle sel) ?_ recycle_noAttachments
+  intro s p src env more
+  rcases direct with rfl | ⟨i, rfl⟩ | ⟨side, rfl⟩ <;>
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects] <;>
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
 
 /-- A Limited Spell's recycle instruction creates no attachment-replacement work. -/
 theorem Effect.SingleRun.recycleSelf : (Effect.prim (.recycle .self)).SingleRun :=
@@ -486,7 +497,31 @@ theorem Effect.SingleRun.recycleSelf : (Effect.prim (.recycle .self)).SingleRun 
 
 /-- Recycle uses the previously chosen slot and leaves the remaining instructions. -/
 theorem Effect.SingleRun.recycleSlot (i : Nat) : (Effect.prim (.recycle (.slot i))).SingleRun :=
-  .directRecycle (.slot i) (Or.inr ⟨i, rfl⟩)
+  .directRecycle (.slot i) (Or.inr (Or.inl ⟨i, rfl⟩))
+
+/-- Recycle the selected cards from a reveal, then resume the program. -/
+theorem Effect.SingleRun.recycleRevealed (side : Side) : (Effect.prim (.recycle (.revealedDeck side))).SingleRun :=
+  .directRecycle (.revealedDeck side) (Or.inr (Or.inr ⟨side, rfl⟩))
+
+private theorem drawLookedCard_noAttachments (p : PlayerId) (looked : List ObjId) (s : GameState) (id : ObjId) :
+    noAttachments (drawLookedCard p looked s id).2 := by
+  unfold drawLookedCard
+  split
+  · split <;> simp [noAttachments]
+  · simp [noAttachments]
+
+/-- Draw cards selected from a reveal without generating additional resolution frames. -/
+theorem Effect.SingleRun.drawRevealed (side : Side) : (Effect.prim (.drawLooked (.revealedDeck side))).SingleRun := by
+  apply Effect.SingleRun.directPrim
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim, onSelected] at applied
+    obtain ⟨ids, _, shape⟩ := Option.map_eq_some_iff.mp applied
+    rw [← (Prod.mk.inj shape).2]
+    exact applyEach_noAttachments _ (drawLookedCard_noAttachments p env.lookedCards) s ids
 
 private theorem retainTargetSetFrame_cases (p : PlayerId) (src : ObjId) (env : Env)
     (groups : List (List ObjId)) (more : EffectList) :

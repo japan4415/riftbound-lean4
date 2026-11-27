@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.DamageWork
 public import Riftbound.Invariant.RecyclePaymentWork
+public import Riftbound.Invariant.DisclosureWork
 
 /-!
 # Checking Run programs for termination (I12)
@@ -62,6 +63,9 @@ mutual
 def Effect.observedWorkSupported : Effect → Bool
   | .nop | .retainTargetSet _ | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.discard ..)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
+  | .prim (.lookTop _) | .prim (.recycleTop _) | .prim (.predict _)
+  | .prim (.drawLooked (.revealedDeck _)) | .prim (.recycle (.revealedDeck _))
+  | .nameCard _ | .rememberNamedCard _ | .guessCardType ..
   | .prim (.deal ..) | .prim (.exchangeDamage ..) | .prim (.markOn ..) | .grant ..
   | .splitDamage .. | .splitUnitDamage .. | .applySplitDamage .. | .applyUnitSplitDamage ..
   | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage ..
@@ -74,6 +78,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .eitherOf (.cons only .nil) => only.observedWorkSupported
   | .eitherOf _ => true
   | .ifThen _ yes no => yes.observedWorkSupported && no.observedWorkSupported
+  | .lookAtTop _ body | .revealHand _ body | .revealDeckTops _ body => body.observedWorkSupported
   | .repeatN _ body | .bind _ _ body | .forEach _ body | .eachPlayer _ body => body.observedWorkSupported
   | .prim primitive => (Effect.prim primitive).isTriggerAdd
   | _ => false
@@ -105,17 +110,30 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case nop => exact Effect.SingleRun.nop.observed
   case prim pr =>
     cases pr <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
+    case lookTop count => exact (Effect.SingleRun.lookTop count).observed
+    case recycleTop who => exact (Effect.SingleRun.recycleTop who).observed
+    case predict amount => exact Effect.ObservedFinite.predict amount
     case gainXP who amount => exact (Effect.SingleRun.gainXP who amount).observed
     case deal target amount => exact Effect.ObservedFinite.deal target amount
     case exchangeDamage a b => exact Effect.ObservedFinite.exchangeDamage a b
     case markOn target note => exact Effect.ObservedFinite.markOn target note
     case draw who amount => exact Effect.ObservedFinite.draw who amount
     case discard who amount => exact Effect.ObservedFinite.discard who amount
+    case drawLooked selector =>
+      cases selector <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
+      exact (Effect.SingleRun.drawRevealed _).observed
     case recycle selector =>
       cases selector <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
-      · exact Effect.SingleRun.recycleSelf.observed
-      · exact (Effect.SingleRun.recycleSlot _).observed
+      case self => exact Effect.SingleRun.recycleSelf.observed
+      case slot => exact (Effect.SingleRun.recycleSlot _).observed
+      case revealedDeck => exact (Effect.SingleRun.recycleRevealed _).observed
     all_goals apply Effect.ObservedFinite.addPrimitive <;> exact supported
+  case nameCard kind => exact .nameCard kind
+  case rememberNamedCard card => exact .rememberNamedCard card
+  case guessCardType who unit gear spell => exact .guessCardType who unit gear spell
+  case lookAtTop count body => exact .lookAtTop count (body.observedFinite_of_supported supported)
+  case revealHand who body => exact .revealHand who (body.observedFinite_of_supported supported)
+  case revealDeckTops who body => exact .revealDeckTops who (body.observedFinite_of_supported supported)
   case seq program => exact .seq (program.observedFinite_of_supported supported)
   case eitherOf options =>
     cases options with

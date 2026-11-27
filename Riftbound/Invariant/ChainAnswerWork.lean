@@ -228,15 +228,73 @@ def isTrashRecycleOrderAnswer (s : GameState) (a : Action) : Bool :=
   | some (.chanceRecycleTrash ..), .arrange _ => true
   | _, _ => false
 
-/-- Decisions that resume a possibly empty Run prefix, including chance ordering after Recycle. -/
-def isRunProgramAnswer (s : GameState) (a : Action) : Bool :=
-  isChainEffectAnswer s a || isTrashRecycleOrderAnswer s a
+/-- Predict choices supply a card decision or an order for the cards to be Recycled. -/
+def isPredictionAnswer (s : GameState) (a : Action) : Bool :=
+  match s.pending.head?, a.kind with
+  | some (.predict ..), .predictPick .. | some (.chancePredict ..), .arrange _ => true
+  | _, _ => false
 
-private theorem runProgramAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
+/-- A Predict decision preserves the card database and cannot start a payment replacement. -/
+theorem predictionAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
+    (prediction : isPredictionAnswer s a = true) (applied : applyFrame0 s a = some (raw, events)) :
+    s.actionDeathCostChoice a = none ∧ a.kind ≠ .concede ∧ raw.cards = s.cards := by
+  cases pending : s.pending with
+  | nil => simp [isPredictionAnswer, pending] at prediction
+  | cons frame rest =>
+    cases frame <;> simp [isPredictionAnswer, pending] at prediction
+    all_goals
+      cases kind : a.kind <;> simp [kind] at prediction
+    case predict.predictPick p n first more top bottom id recycle =>
+      simp only [applyFrame0, pending, kind, Option.some.injEq, Prod.mk.injEq] at applied
+      have same := (continuePrediction_safe s p n ((first :: more).erase id)
+        (if recycle then top else top ++ [id]) (if recycle then id :: bottom else bottom)).same
+      unfold SameMeta at same
+      have cards := congrArg GameState.cards same
+      exact ⟨by simp [GameState.actionDeathCostChoice, pending], by simp,
+        (congrArg GameState.cards applied.1.symm).trans cards⟩
+    case chancePredict.arrange p n top _ bottom =>
+      simp only [applyFrame0, pending, kind, Option.some.injEq, Prod.mk.injEq] at applied
+      have same := (completePrediction_safe s p n top bottom).same
+      unfold SameMeta at same
+      have cards := congrArg GameState.cards same
+      exact ⟨by simp [GameState.actionDeathCostChoice, pending], by simp,
+        (congrArg GameState.cards applied.1.symm).trans cards⟩
+
+/-- Name and card-type guesses provide a selection for the remaining Run program. -/
+def isNamedChoiceAnswer (s : GameState) (a : Action) : Bool :=
+  match s.pending.head?, a.kind with
+  | some (.nameCard ..), .nameCard _ | some (.guessCardType ..), .guessCardType _ => true
+  | _, _ => false
+
+/-- A name or guess replaces its decision and preserves the card database. -/
+theorem namedChoiceAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
+    (named : isNamedChoiceAnswer s a = true) (applied : applyFrame0 s a = some (raw, events)) :
+    s.actionDeathCostChoice a = none ∧ a.kind ≠ .concede ∧ raw.cards = s.cards := by
+  cases pending : s.pending with
+  | nil => simp [isNamedChoiceAnswer, pending] at named
+  | cons frame rest =>
+    cases frame <;> simp [isNamedChoiceAnswer, pending] at named
+    all_goals
+      cases kind : a.kind <;> simp [kind] at named
+      refine ⟨by simp [GameState.actionDeathCostChoice, pending], by simp, ?_⟩
+      simp only [applyFrame0, pending, kind, Option.some.injEq, Prod.mk.injEq] at applied
+      rw [← applied.1]
+
+/-- Answers that resume a Run program or continue an existing effect or chance decision. -/
+def isRunProgramAnswer (s : GameState) (a : Action) : Bool :=
+  isChainEffectAnswer s a ||
+    (isPredictionAnswer s a || (isNamedChoiceAnswer s a || isTrashRecycleOrderAnswer s a))
+
+/-- A program answer uses the open frame directly and preserves the card database. -/
+theorem runProgramAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
     (answer : isRunProgramAnswer s a = true) (applied : applyFrame0 s a = some (raw, events)) :
     s.actionDeathCostChoice a = none ∧ a.kind ≠ .concede ∧ raw.cards = s.cards := by
-  rcases Bool.or_eq_true_iff.mp answer with effect | order
+  rcases Bool.or_eq_true_iff.mp answer with effect | other
   · exact chainEffectAnswer_rule effect applied
+  rcases Bool.or_eq_true_iff.mp other with predict | other
+  · exact predictionAnswer_rule predict applied
+  rcases Bool.or_eq_true_iff.mp other with named | order
+  · exact namedChoiceAnswer_rule named applied
   cases stack : s.pending with
   | nil => simp [isTrashRecycleOrderAnswer, stack] at order
   | cons frame rest =>
@@ -251,6 +309,28 @@ private theorem runProgramAnswer_rule {s raw : GameState} {a : Action} {events :
         exact ⟨by simp [GameState.actionDeathCostChoice, stack], by simp,
           (congrArg GameState.cards applied.1.symm).trans cards⟩
 
+/-- Check that the Predict answer leads directly to the next input before leaving Predict. -/
+def predictAnswerWaits (s : GameState) (a : Action) : Bool :=
+  isPredictionAnswer s a && (applyFrame0 s a).any (fun outcome =>
+    outcome.1.pending.head?.all (fun f => !f.isWork))
+
+/-- Continue a Predict decision whose rule output is already waiting for a decision. -/
+theorem step_predictAnswer_waits_to_decision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (checked : predictAnswerWaits s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+  unfold predictAnswerWaits at checked
+  obtain ⟨isPredict, wait⟩ := Bool.and_eq_true_iff.mp checked
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at wait
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some] at wait
+    obtain ⟨noCost, regular, cards⟩ := predictionAnswer_rule isPredict applied
+    exact step_observed_action_waits legal regular noCost applied
+      (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads) wait
+
 /-- Inspect the actual Runs scheduled by a choice on the Chain. The check also recognizes the
 item finish and a waiting decision, with or without an ordinary trigger queue. -/
 def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
@@ -260,7 +340,7 @@ def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
       | .finishSpell _ :: tail => (chainAnswerContinuation? tail).isSome
       | _ => false)
 
-/-- A checked legal answer to an effect or Recycle order on the Chain reaches the next
+/-- A checked legal program answer on the Chain reaches the next
 decision through the actual dispatcher. Additional fuel gives the same state and log. -/
 theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
@@ -298,7 +378,7 @@ def decisionRunAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
     (result.1.pending.takeWhile isRunFrame).all runFrameSupported &&
       (chainAnswerContinuation? (result.1.pending.dropWhile isRunFrame)).isSome)
 
-/-- Run a checked effect or Recycle order answer whose continuation is an ordinary decision,
+/-- Run a checked program answer whose continuation is an ordinary decision,
 possibly preceded by a trigger queue. -/
 theorem step_decisionRunAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)

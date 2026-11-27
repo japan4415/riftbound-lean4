@@ -269,6 +269,14 @@ theorem step_cleanupAnswer_checked_to_decision {s : Riftbound.GameState} {a : Ri
       ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
   Riftbound.step_cleanupAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
 
+/-- A checked Predict answer with the registered cards can stop at the next input. -/
+theorem step_predictAnswer_waits_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.predictAnswerWaits s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
+  Riftbound.step_predictAnswer_waits_to_decision wf (mightReads_of_registered cards) legal checked
+
 /-- A checked choice or chance order can resume straight to an ordinary decision. -/
 theorem step_decisionRunAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
     (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)

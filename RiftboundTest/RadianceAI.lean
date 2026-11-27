@@ -32,9 +32,14 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let choices := (legalFrameActions guessing).filterMap (fun a => match a.kind with
     | .guessCardType kind => some (a.actor, kind)
     | _ => none)
-  let (correct, correctEvents) ← (step 100 guessing ⟨.player r, .guessCardType .gear⟩).toOption
-  let (wrong, wrongEvents) ← (step 100 guessing ⟨.player r, .guessCardType .spell⟩).toOption
-  return choices == [(.player r, .unit), (.player r, .gear), (.player r, .spell)] &&
+  let guess (kind : CardTypeGuess) : Action := ⟨.player r, .guessCardType kind⟩
+  let ((correct, correctEvents), correctDisclosures) ← (stepWithDisclosures 100 guessing (guess .gear)).toOption
+  let ((wrong, wrongEvents), wrongDisclosures) ← (stepWithDisclosures 100 guessing (guess .spell)).toOption
+  let revealedToAll (entries : List CardDisclosure) : Bool :=
+    entries.any (fun entry => entry.cards == [⟨"RAD-024"⟩] && [p, q, r].all entry.visibleTo)
+  return chainAnswerWorkSupported guessing (guess .gear) && chainAnswerWorkSupported guessing (guess .spell) &&
+    revealedToAll correctDisclosures && revealedToAll wrongDisclosures &&
+    choices == [(.player r, .unit), (.player r, .gear), (.player r, .spell)] &&
     (step 100 guessing ⟨.player q, .guessCardType .gear⟩).toOption.isNone &&
     guessing.zone deck == before && (guessing.obj? scope).any (·.exhausted) &&
     correctEvents.contains (.revealed p top) && wrongEvents.contains (.revealed p top) &&
