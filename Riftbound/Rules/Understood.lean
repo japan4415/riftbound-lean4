@@ -596,6 +596,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ | .linkedDamageKill => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
+      | .showdownStart => t.subject == .self
       | .combatStart => t.subject == .self
       | .combatEnd => t.subject == .self
       | .chosen => true

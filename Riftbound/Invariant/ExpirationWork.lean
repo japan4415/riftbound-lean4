@@ -222,7 +222,16 @@ private theorem continueAfterCleanup_clear {s : GameState} (clear : ExpirationCl
       ∀ event ∈ (continueAfterCleanup s pending).2, neutralEvent event := by
   refine ⟨⟨clear.facts, clear.pools, clear.objects⟩, ?_⟩
   intro event member
-  exact observeCombat_neutral member
+  rcases List.mem_append.mp member with member | member
+  · unfold GameState.showdownOpeningEvents at member
+    split at member
+    · split at member
+      · obtain rfl := List.mem_singleton.mp member
+        intro state
+        rfl
+      · simp at member
+    · simp at member
+  · exact observeCombat_neutral member
 
 private theorem cleanupFrame_clear {s : GameState} (clear : ExpirationClear s)
     (rest : List Frame) :
@@ -1036,9 +1045,16 @@ private theorem cleanup_cycle_routes (s : GameState) (rest : List Frame) (wf : s
           dsimp only
           exact ⟨suffix.cleanup, Or.inr (Or.inl ⟨rfl, by rw [keep next safe]; exact cleanupStep_lt wf one⟩)⟩
         | none =>
+          have noOpening : s.showdownOpeningEvents rest = [] := by
+            cases rest with
+            | nil => rfl
+            | cons first _ =>
+              have silent := suffix.noCombat first (by simp)
+              cases first <;> simp [combatObservationFrame, GameState.showdownOpeningEvents] at silent ⊢
           have idle : continueAfterCleanup s rest = ({ s with pending := rest }, []) := by
             unfold continueAfterCleanup
-            rw [observeCombat_idle s rest suffix.noCombat]
+            rw [observeCombat_idle s rest suffix.noCombat, noOpening]
+            simp
           exact ⟨by simpa only [suffix.noPriority (s := s), idle] using suffix,
             Or.inr (Or.inr (by simp only [suffix.noPriority (s := s), idle]))⟩
 

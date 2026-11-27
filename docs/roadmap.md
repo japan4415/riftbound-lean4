@@ -2171,6 +2171,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 登場時の能力では、Base と Battlefield ごとに最大1体を選ぶ。解決時に各対象の場所を照合し、元の場所を離れている対象を除いて同時にダメージを与える（CR 197、359.3.e）。[Unleashed 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
 - リプレイには、これまでの状態指紋に加えて、盤面に残るダメージを与えた席とその量を記録する。Elder Dragon を `full` とし、全1,103枚中558枚を実装済みにした。[カード実装状況](coverage.md)
 
+### Showdown の開始を参照する Diana
+
+- Diana, Lunari は、自身がいる Battlefield で Showdown が始まるたびに1回誘発する。戦闘に移らない Showdown も含む。Chain を解決して同じ Showdown に戻るときは、開始の処理を繰り返さない（CR 341-348）。
+- Vendetta の訂正に従い、誘発を確定するときに Energy 1 を支払う。解決時に非公開の Predict を行い、その後の山札の一番上を公開する。公開したカードが Spell なら引く（CR 383.3.b）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- Diana, Lunari を `full` とし、全1,103枚中559枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

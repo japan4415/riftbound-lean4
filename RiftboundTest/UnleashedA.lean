@@ -791,6 +791,52 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
   return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
 
+-- Diana pays when finalizing the trigger from a non-combat Showdown, then privately Predicts.
+-- The revealed card is the new top, and only a Spell is drawn (Vendetta errata).
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let deck := Zone.player p .mainDeck
+  let (s, diana) ← put (s.fund p 1) p "UNL-079" .base
+  let (s, spell) ← put s p "OGN-095" .mainDeck
+  let (s, unit) ← put s p "OGN-049" .mainDeck
+  let s := (readyEffect s diana).1.setZone deck (spell :: unit :: ((s.zone deck).erase spell).erase unit)
+  let (offered, opened) ← (step 100 s ⟨.player p, .standardMove diana (.battlefield bf)⟩).toOption
+  let pay : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let (queued, _) ← (step 100 offered pay).toOption
+  let (skipped, _) ← (step 100 offered ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (predicting, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (kept, revealedSpell) ← (step 100 predicting ⟨.player p, .predictPick spell false⟩).toOption
+  let (recycled, revealedUnit) ← (step 100 predicting ⟨.player p, .predictPick spell true⟩).toOption
+  return opened.contains (.showdownOpened bf) && !(opened.contains (.combatStarted bf p)) &&
+    (legalFrameActions offered).contains pay && (queued.poolOf p).energy == 0 &&
+    (skipped.poolOf p).energy == 1 && queued.handN p == s.handN p &&
+    (predicting.resolutionZoneCardFaces p deck).any (fun faces => (faces.take 1).all Option.isSome) &&
+    predicting.zoneView q deck == s.zoneView q deck && revealedSpell.contains (.revealed p spell) &&
+    revealedSpell.contains (.drew p) && kept.handN p == s.handN p + 1 &&
+    revealedUnit.contains (.revealed p unit) && !(revealedUnit.contains (.drew p)) &&
+    recycled.handN p == s.handN p && (recycled.zone deck).head? == some unit
+
+-- A defending Diana watches the same opening. Returning to that Showdown after the trigger's
+-- Chain resolves does not open it a second time.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, diana) ← putAt (s.control q bf) q "UNL-079" bf
+  let (s, mover) ← put s p "OGN-049" .base
+  let s := (readyEffect (s.fund q 1) mover).1
+  let (offered, events) ← (step 100 s ⟨.player p, .standardMove mover (.battlefield bf)⟩).toOption
+  let pay : Action := ⟨.player q, .putTrigger 0 [] (.pay [])⟩
+  let .triggerOrder actor trigger others _ _ :: _ := offered.pending | none
+  let (returned, passed) ← (step 100 offered ⟨.player q, .putTrigger 0 [] .skip⟩).toOption
+  return actor == q && trigger.source == diana && others.isEmpty &&
+    (legalFrameActions offered).contains pay && events.contains (.showdownOpened bf) &&
+    events.contains (.combatStarted bf p) && !(passed.contains (.showdownOpened bf)) &&
+    returned.pending.head?.any (fun | .showdown field .. => field == bf | _ => false)
+
 -- Elder Dragon sees its controller's earlier damage, not a third seat's damage. Healing and
 -- prevention both remove the mark that would make the damage lethal.
 #guard tun fun s => do

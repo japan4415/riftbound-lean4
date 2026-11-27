@@ -629,10 +629,27 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
       | none => (none, [])
     | none => (none, [])
 
-/-- Leave a settled Cleanup and update whether Combat has started or gained participants. -/
+/-- Units that watch a Showdown open must be at its location when it starts. -/
+def GameState.watchesShowdownOpening (s : GameState) (bf : ObjId) : Bool :=
+  (s.unitsAt bf).any fun unit =>
+    let text := ((s.cardDef? unit).toList.map CardDef.fullAbilities).flatten ++
+      ((s.attachmentTextDefs unit false).map fun (card, _) => card.textAbilities).flatten
+    text.any fun
+      | .triggered trigger _ _ => trigger.event == .showdownStart && trigger.subject == .self
+      | _ => false
+
+/-- Observe a watched Showdown once, even if the same stack later returns from a Chain. -/
+def GameState.showdownOpeningEvents (s : GameState) (pending : List Frame) : List Event :=
+  match pending with
+  | .showdown bf .. :: _ =>
+    if !s.pending.any (fun | .showdown field .. => field == bf | _ => false) &&
+        s.watchesShowdownOpening bf then [.showdownOpened bf] else []
+  | _ => []
+
+/-- Leave a settled Cleanup and update the Showdown and Combat observations. -/
 def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × List Event :=
   let r := s.observeCombat pending
-  ({ s with pending := pending, combat := r.1 }, r.2)
+  ({ s with pending := pending, combat := r.1 }, s.showdownOpeningEvents pending ++ r.2)
 
 /-- Collect simultaneous lethal deaths after higher-priority Cleanup matters (CR 323). -/
 def cleanupDeathGroup (s : GameState) : List ObjId :=

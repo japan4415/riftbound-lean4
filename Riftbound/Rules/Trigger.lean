@@ -777,6 +777,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
       if s.inPlay.contains u then
         (s.obj? u).toList.flatMap (fun o => triggersOf s u o.controller .combatEnd)
       else [])
+  | .showdownOpened bf =>
+    (s.trigAllUnitsAt bf).flatMap fun unit =>
+      (s.obj? unit).toList.flatMap fun o => triggersOf s unit o.controller .showdownStart
   | .combatStarted bf att =>
     let controller := ((s.obj? bf).bind (·.control)).getD (s.active.getD att)
     triggersOf s bf controller .combatStart ++

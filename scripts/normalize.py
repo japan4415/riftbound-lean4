@@ -46,6 +46,10 @@ TEXT_ERRATA = {
         "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
             "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",
     },
+    "UNL-079": {
+        "When a showdown begins here, you may pay :rb_energy_1:. If you do, [Predict]":
+            "When a showdown begins here, you may pay :rb_energy_1: to [Predict]",
+    },
     "UNL-081": {
         "tokens here. They become copies of me.":
             "tokens here. Then do this: They become copies of me.",

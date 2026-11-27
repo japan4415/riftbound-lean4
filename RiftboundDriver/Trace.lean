@@ -690,6 +690,7 @@ def eventJson : Event → String
   | .died o p => jobj [("t", jstr "died"), ("obj", toString o.n), ("player", toString p.n)]
   | .combatStarted bf att =>
     jobj [("t", jstr "combat"), ("battlefield", toString bf.n), ("attacker", toString att.n)]
+  | .showdownOpened bf => jobj [("t", jstr "showdown_opened"), ("battlefield", toString bf.n)]
   | .combatJoined bf att units =>
     jobj [("t", jstr "combat_joined"), ("battlefield", toString bf.n), ("attacker", toString att.n),
       ("units", jarr (units.map (fun u => toString u.n)))]

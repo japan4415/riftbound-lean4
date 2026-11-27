@@ -2297,9 +2297,9 @@ def UNL_078 : CardDef :=
 **Diana, Lunari** — Unit · Mind · Energy 3 · Might 3
 Printings: UNL-079/219, UNL-079a/219
 
-> When a showdown begins here, you may pay :rb_energy_1:. If you do, [Predict], then reveal the
-> top card of your Main Deck. If it's a spell, draw it. (To Predict, look at the top card of
-> your Main Deck. You may recycle it.)
+> When a showdown begins here, you may pay :rb_energy_1: to [Predict], then reveal the top card
+> of your Main Deck. If it's a spell, draw it. (To Predict, look at the top card of your Main
+> Deck. You may recycle it.)
 -/
 def UNL_079.meta : CardDef :=
   { id := ⟨"UNL-079"⟩,
@@ -2316,17 +2316,12 @@ def UNL_079.meta : CardDef :=
 /-- Diana. -/
 def UNL_079 : CardDef :=
   { UNL_079.meta with
-    abilities := [.triggered (.onSelf .attack)
-        (.of [] (.ifThen (.canPay ⟨1, []⟩)
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩), predict1, .prim (.revealTop 1),
-            .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1, .ofType .spell]))]))
-          .nop)) .unlimited,
-      .triggered (.onSelf .defend)
-        (.of [] (.ifThen (.canPay ⟨1, []⟩)
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩), predict1, .prim (.revealTop 1),
-            .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1, .ofType .spell]))]))
-          .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .showdownStart with optional := true, cost := .energy 1 }
+      (.of [] (.seqOf [.prim (.predict (.const 1)),
+        .revealDeckTops .you
+          (.ifThen (.cmp .gt (.count (Selector.all .you .inMainDeck [.top 1, .ofType .spell])) (.const 0))
+            (.prim (.draw .you (.const 1))) .nop)])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-080
 /--

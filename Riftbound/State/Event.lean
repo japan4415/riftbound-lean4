@@ -126,6 +126,8 @@ inductive Event where
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- A watched Showdown opened at this Battlefield (CR 341-348). -/
+  | showdownOpened (bf : ObjId)
   /-- Units entered a Combat for the first time after it began (CR 462.1). -/
   | combatJoined (bf : ObjId) (attacker : PlayerId) (units : List ObjId)
   /-- The Combat ended (CR 468.7). The list names the Unit objects that participated. -/

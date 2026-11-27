@@ -295,6 +295,8 @@ inductive TriggerEvent where
   | friendlyAttackGroupHere
   /-- The object defends. -/
   | defend
+  /-- A Showdown opens at the object's Battlefield (CR 341-348). -/
+  | showdownStart
   /-- The object conquers a Battlefield. -/
   | conquer
   /-- The object holds a Battlefield. -/
