@@ -142,6 +142,16 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 #### 外部対戦を入力している途中で次の手を確認する
 
+RiftAtlas 本体の History & Replays から取得した JSON は、転記前に次のコマンドで確認できる。
+
+```sh
+uv run --no-project python -B scripts/audit_atlas_replay.py riftatlas-replay.json
+```
+
+`firstMulliganFrame` と `firstInGameFrame` は元ファイル内の0始まりの位置。マリガン時点の手札・山札について、席ごとに記録上の要素数とカードコードがある要素数を出す。元データに該当ゾーンが無ければ `null`、空の配列なら0。マリガンより後から始まった記録では、その時点の情報を使って初期状態を埋めない。出力には参加者名、カードコード、デッキリストを含めない。
+
+リストの文字列や結果欄の有無、山札にカードコードがあることは、登録リストや並び順の完全性を保証しない。元ファイルのフレーム番号は Lean の手番号と別なので、操作と観測を転記してから照合する。対象は `nodes` と `root` を持つ [RiftAtlas 本体の書き出し](https://riftatlas.com/changelog/2026/week/43) で、同じ形式名を持つ [拡張機能のパッチ記録](https://github.com/EagleVee/riftatlas-replay/blob/main/docs/replay-format.md) は読み込まない。
+
 ```sh
 .lake/build/bin/riftbound-replay inspect INPUT.json 2 next.json
 ```

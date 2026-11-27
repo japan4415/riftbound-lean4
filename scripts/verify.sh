@@ -13,6 +13,7 @@ lake build Riftbound RiftboundCards RiftboundDriver RiftboundTest riftbound-trac
 
 step "2/5 test"
 lake test
+uv run --no-project python -B -m unittest discover -s scripts -p test_audit_atlas_replay.py
 uv run --no-project python -B scripts/replay_smoke.py
 
 step "3/5 axiom audit (lake check)"
