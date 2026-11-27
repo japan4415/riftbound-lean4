@@ -132,6 +132,32 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `state` に盤面とオブジェクトID、`choices` に現在の決定点で入力できる操作が出る。元の対戦で行われた操作を確認し、対応する `answer` を `answers` に入れる。`decision` が `cardOrder` のときは、カードの集合から観測した並びを作る。
 - この出力は転記者向けで、全席の手札や山札を含む。試合全体を照合するときは、結果と未記入の操作をそろえてから `record`、`record-team` または `record-ffa` を実行する。
 
+#### 映像や対戦ログで観測した盤面を照合する
+
+ゲームの入力に `observations` を指定する。1対1 と 2v2 は `games[]`、FFA は `game` に置く。`checkpoint` は適用した操作の数で、初期状態は0。映像の時刻やログの行番号は省略可能な `source` に記録できる。
+
+```json
+{
+  "observations": [
+    {
+      "checkpoint": 18,
+      "source": "映像 00:03:21",
+      "facts": [
+        {"turn": {"number": 4}},
+        {"score": {"seat": {"n": 0}, "points": 2}},
+        {"zoneCount": {"zone": {"player": {"p": {"n": 1}, "k": "hand"}}, "count": 3}}
+      ]
+    }
+  ]
+}
+```
+
+- 得点（`score`）、ターン（`turn`）、フェイズ（`phase`）、手番（`active`）、時間切れの宣言（`clockCalled`）、ゲームの結果（`result`）を照合できる。席番号は0から始まる。2v2 の `score` には、その席のチームの得点を入れる。
+- 公開ゾーンにあるカードを全て確認できたときは `zoneCards`、映像に一部だけ映ったときは `zoneContains` を使う。どちらも `zone` と `cards`（`[{"code":"RAD-094"}]` など）を指定する。並び順を問わず、同じコードの枚数を数える。手札・山札・伏せ札は `zoneCount` で枚数を照合できる。
+- `battlefieldControl` は Battlefield の支配者、`battlefieldUnits` はその Battlefield にいる指定プレイヤーの Unit を照合する。どちらも Battlefield を持ち込んだ席を `owner`、現在のカードコードを `field`、確認する席を `controller` に入れる。`battlefieldUnits` では `cards` に全 Unit のコードを入れる。`battlefieldControl` の `controller: null` は支配者なしを表す。
+
+`record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
+
 #### カード定義を更新した後に再照合する
 
 ```sh

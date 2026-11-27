@@ -59,6 +59,8 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     ("game", toJson number), ("checkpoint", toJson inspection.checkpoint),
     ("nextAnswer", toJson (if live then some (inspection.checkpoint + 1) else none)),
     ("missing", toJson inspection.missing), ("exactPrefix", toJson inspection.exact),
+    ("checkedObservations", toJson inspection.checkedObservations),
+    ("pendingObservations", toJson inspection.pendingObservations),
     ("turnOrder", toJson state.turnOrder), ("clockCalled", toJson state.clock.isSome),
     ("state", board), ("decision", decision), ("choices", toJson choices)]
 

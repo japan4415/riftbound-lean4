@@ -101,6 +101,8 @@ structure TeamGameRecord where
   timed : Bool := false
   /-- Observed or inferred answers to replay, in the order the engine applied them. -/
   answers : Array ReplayAnswer := #[]
+  /-- Independently observed facts to check when replaying the answers. -/
+  observations? : Option (List ReplayObservation) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A Constructed or Sealed tournament record for two teams with two players each. -/
@@ -288,7 +290,7 @@ def TeamMatchRecord.checkRegistrations (input : TeamMatchRecord) (decks : Replay
 private def TeamGameRecord.replayInputs (game : TeamGameRecord) (decks : ReplayDecks) :
     GameInputs :=
   { decks, answers := game.answers, chooser := game.chooser, openingOrder := some game.order,
-    openingOrderEvidence? := game.openingOrderEvidence? }
+    openingOrderEvidence? := game.openingOrderEvidence?, observations? := game.observations? }
 
 private def runTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
     (readGame : GameConfig → Nat → TeamGameRecord → ReplayDecks →

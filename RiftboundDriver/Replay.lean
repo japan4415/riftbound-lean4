@@ -1,6 +1,6 @@
 module
 
-public import RiftboundDriver.ReplayCodec
+public import RiftboundDriver.ReplayObservation
 public import RiftboundCards.Registry
 
 /-!
@@ -280,7 +280,12 @@ structure GameInputs where
   /-- The original registrations when the event uses the optional Constructed Best of 1 setup.
   The game decks describe the configuration after the initial sideboard window (TR 406.1.h). -/
   bo1Setup? : Option (List ConstructedDeck) := none
+  /-- Independently observed facts to check against the reconstructed game. -/
+  observations? : Option (List ReplayObservation) := none
 deriving DecidableEq, Repr, ToJson, FromJson
+
+private def GameInputs.observationSchedule (input : GameInputs) : List ReplayObservation :=
+  (input.observations?.getD []).mergeSort (fun a b => a.checkpoint <= b.checkpoint)
 
 /-- Rules pinned by a saved recording. -/
 structure ReplayRules where
@@ -1134,11 +1139,17 @@ structure ReplayInspection where
   chooser : Option PlayerId
   /-- The seat required to take the first turn following a draw. -/
   forcedFirst : Option PlayerId := none
+  /-- The number of observations checked in this game through the last applied answer. -/
+  checkedObservations : Nat
+  /-- The number of observations for later checkpoints in this game. -/
+  pendingObservations : Nat
 
 /-- Run the recorded prefix without inventing a choice for an unknown answer. -/
 def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayInspection := do
   let initial := ReplayPosition.fromState (← input.initial db config)
+  let schedule := input.observationSchedule
+  let mut pending ← ReplayObservation.checkAt schedule 0 initial.state
   let mut history := [initial]
   let mut checkpoint := 0
   let mut missing := none
@@ -1148,12 +1159,15 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
       missing := some description
       break
     let (_, next, _) ← input.advance history answer (checkpoint + 1) fuel
+    pending ← ReplayObservation.checkAt pending (checkpoint + 1) next.state
     history := next :: history
     checkpoint := checkpoint + 1
     exact := exact && next.answerExact
   let position := history.headD initial
   return {
     checkpoint, missing, exact, position, chooser := input.chooser,
+    checkedObservations := schedule.length - pending.length,
+    pendingObservations := pending.length,
     bo1Initiative := input.awaitsBo1Initiative position.state,
     bo1Sideboard := input.awaitsBo1Sideboard position.state }
 
@@ -1175,6 +1189,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
   let s ← input.initial db config
+  let mut pending ← ReplayObservation.checkAt input.observationSchedule 0 s
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
@@ -1182,11 +1197,14 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
     let (_, next, events) ← input.advance history answer (index + 1) fuel
+    pending ← ReplayObservation.checkAt pending (index + 1) next.state
     exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
     checkCheckpoint expected (index + 1) witness
     checkpoints := checkpoints.push witness
     history := next :: history
+  if let some observation := pending.head? then
+    throw s!"checkpoint {observation.checkpoint}: observation is beyond the last answer ({input.answers.size})"
   let some final := history.head? | throw "the final checkpoint is missing"
   return {
     input, eliminationConfig? := replayEliminationConfig config, checkpoints,
@@ -1252,8 +1270,11 @@ def FreeForAllInputs.inspect (input : FreeForAllInputs) (db : CardDB := Riftboun
 /-- Play a complete Skirmish or War game and retain its inputs, outcome and checkpoints. -/
 def FreeForAllInputs.record (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :
     Except String RecordedFreeForAll := do
-  let game ← input.game.record db (← freeForAllConfig input.mode) input.fuel
-  requireFinishedFreeForAll game.summary
+  let config ← freeForAllConfig input.mode
+  let game ← (do
+    let game ← input.game.record db config input.fuel
+    requireFinishedFreeForAll game.summary
+    pure game).mapError (fun error => s!"game 1: {error}")
   return { rules := ReplayRules.current db, mode := input.mode, fuel := input.fuel, game }
 
 private def RecordedFreeForAll.checkArchive (saved : RecordedFreeForAll) (db : CardDB)

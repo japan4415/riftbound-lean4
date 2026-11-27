@@ -290,6 +290,29 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     answers = [choice["answer"] for choice in inspection["choices"]]
     assert observed({"player": {"p": {"n": 1}}}, "concede") in answers
     assert {**inspection["state"], "new": before["new"]} == before
+    observation_source = folder / "war-observations.json"
+    observation_archive = folder / "war-observations-archive.json"
+    inputs = json.loads(source.read_bytes())
+    cards = {obj: info for row in steps[:index + 1] for obj, info in row["state"]["new"].items()}
+    field_owner = {"n": cards[str(field)]["owner"]}
+    unit_cards = [{"code": cards[str(unit)]["card"]} for unit, at in after["at"]
+                  if at == field and cards[str(unit)]["owner"] == 2]
+    assert unit_cards
+    field_ref = {"owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"},
+                 "controller": {"n": 2}}
+    inputs["game"]["observations"] = [{"checkpoint": index, "source": "after the concession",
+                                      "facts": [
+        {"battlefieldControl": field_ref},
+        {"battlefieldUnits": {**field_ref, "cards": unit_cards}},
+        {"score": {"seat": {"n": 2}, "points": 1}},
+    ]}]
+    observation_source.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record-ffa", observation_source, observation_archive)) == summary
+    assert json.loads(command("verify-ffa", observation_archive)) == summary
+    field_ref["controller"] = {"n": 0}
+    observation_source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record-ffa", observation_source, observation_archive,
+            error=f"game 1: checkpoint {index}: observation")
     check_seat_disclosures(folder, command, archive, "-ffa", 3, exported["games"])
     seat_steps = check_seat_view(folder, command, archive, "-ffa", 3, exported["games"])["games"][0]["steps"]
     seat_board = seat_steps[index]["state"]["zones"]["battlefield"]
@@ -1133,6 +1156,72 @@ def check_duel_inspection(folder: Path, command: Callable[..., str], saved: dict
     assert finished["nextAnswer"] is None and finished["decision"] is None and not finished["choices"]
 
 
+def check_duel_observations(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
+    inputs = deepcopy(saved["input"])
+    game = inputs["games"][0]
+    steps = view["games"][0]["steps"]
+    scored = next(row for row in steps if any(row["state"]["points"]))
+    index, state = scored["i"], scored["state"]
+    p0 = {"n": 0}
+    hand = {"player": {"p": p0, "k": "hand"}}
+    base = {"player": {"p": p0, "k": "base"}}
+    public = {obj: info["card"] for row in steps[:index + 1] for obj, info in row["state"]["new"].items()}
+    base_cards = [{"code": public[str(obj)]} for obj in reversed(state["zones"]["p0.base"])]
+    first_score = {"seat": p0, "points": state["points"][0]}
+    assert base_cards and first_score["points"] > 0
+    game["observations"] = [
+        {"checkpoint": index, "source": "00:03:21", "facts": [
+            {"score": first_score}, {"turn": {"number": state["turn"]}},
+            {"phase": {"phase": state["phase"]}}, {"active": {"seat": {"n": state["active"]}}},
+            {"clockCalled": {"called": False}}, {"result": {"result": None}},
+            {"zoneCount": {"zone": hand, "count": len(state["zones"].get("p0.hand", []))}},
+            {"zoneCards": {"zone": base, "cards": base_cards}},
+            {"zoneContains": {"zone": base, "cards": base_cards[:1]}},
+        ]},
+        {"checkpoint": 0, "facts": [{"turn": {"number": 0}}]},
+    ]
+    source = folder / "observations-input.json"
+    archive = folder / "observations-archive.json"
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", source, archive)) == saved["summary"]
+    assert json.loads(command("verify", archive)) == saved["summary"]
+    recorded = json.loads(archive.read_bytes())
+    assert recorded["games"][0]["checkpoints"] == saved["games"][0]["checkpoints"]
+
+    pending = deepcopy(inputs)
+    pending["games"][0]["answers"] = [*game["answers"][:index - 1], {"unknown": {"description": "gap"}}]
+    inspection = inspect_game(folder, command, pending, 1)
+    assert inspection["checkedObservations"] == 1 and inspection["pendingObservations"] == 1
+    assert inspection["missing"] == "gap" and inspection["nextAnswer"] == index
+    inspection = inspect_game(folder, command, inputs, 1)
+    assert inspection["checkedObservations"] == 2 and inspection["pendingObservations"] == 0
+
+    mismatch = f'game 1: checkpoint {index}: observation ("00:03:21"): seat 0 score'
+    first_score["points"] += 1
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error=mismatch)
+    inspect_game(folder, command, inputs, 1, error=mismatch)
+    for game_input in (recorded["input"]["games"][0], recorded["games"][0]["input"]):
+        game_input["observations"][0]["facts"][0]["score"]["points"] = first_score["points"]
+    archive.write_text(json.dumps(recorded), encoding="utf-8")
+    command("verify", archive, error=mismatch)
+    command("revalidate", archive, folder / "bad-revalidated.json", error=mismatch)
+    first_score["points"] -= 1
+
+    facts = game["observations"][0]["facts"]
+    remembered = facts.pop()
+    facts.append({"zoneContains": {"zone": base, "cards": [base_cards[0]] * (base_cards.count(base_cards[0]) + 1)}})
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error="expected at least")
+    facts[-1] = {"zoneCards": {"zone": hand, "cards": []}}
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error="only the count can be observed here")
+    facts[-1] = remembered
+    game["observations"].append({"checkpoint": len(game["answers"]) + 1, "facts": [{"turn": {"number": 0}}]})
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error="observation is beyond the last answer")
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
               team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
               private_rewinds: dict, timeline_rewinds: dict) -> None:
@@ -1167,6 +1256,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert len(view["games"]) == 3 and view["wins"] == [2, 0] and view["exact"]
     assert view["cardsFullyChecked"] and not any(saved["games"][0]["summary"]["uncheckedCards"])
     check_duel_inspection(folder, command, saved, view)
+    check_duel_observations(folder, command, saved, view)
 
     group_archive = folder / "group-move-archive.json"
     group_archive.write_text(json.dumps(group_move), encoding="utf-8")
@@ -1248,12 +1338,18 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
                  observed({"player": {"p": p1}}, "pass"),
                  observed({"player": {"p": p1}}, "concede")],
     )
+    team_game["observations"] = [{"checkpoint": len(team_game["answers"]), "facts": [
+        {"score": {"seat": p3, "points": 0}},
+        {"result": {"result": {"won": {"winners": [p3, p2]}}}},
+    ]}]
     team_record["winsRequired"] = 1
     team_input.write_text(json.dumps(team_record), encoding="utf-8")
     team_archive = folder / "team-archive.json"
     summary = json.loads(command("record-team", team_input, team_archive))
     assert summary["wins"] == [0, 1] and summary["exact"] and summary["cardsFullyChecked"]
     assert json.loads(command("verify-team", team_archive)) == summary
+    actual_team = json.loads(team_archive.read_bytes())
+    assert actual_team["games"][0]["input"]["observations"] == team_game["observations"]
     check_revalidation(folder, command, team_archive, "-team", summary)
     team_trace = folder / "team-trace.json"
     command("view-team", team_archive, team_trace)

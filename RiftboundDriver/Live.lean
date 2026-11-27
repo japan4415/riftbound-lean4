@@ -445,7 +445,8 @@ def RecordedGame.teamObservation (game : RecordedGame) : Except String TeamGameR
   return {
     decks?, sealedDecks?, chooser := game.input.chooser, order := summary.turnOrder,
     openingOrderEvidence? := game.input.openingOrderEvidence?, battlefields := summary.battlefields,
-    points := (a, b), ending, timed := summary.timed, answers := game.input.answers }
+    points := (a, b), ending, timed := summary.timed, answers := game.input.answers,
+    observations? := game.input.observations? }
 
 /-- Check that the declared Battlefields for Sealed Best of 3 still have available copies. -/
 def LiveTeamSetup.checkBattlefieldHistory (setup : LiveTeamSetup) (decks : ReplayDecks)
