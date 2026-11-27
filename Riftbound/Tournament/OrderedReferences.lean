@@ -6,7 +6,7 @@ public import Riftbound.Rules.Remove
 # Ordered references
 
 Object identifiers and timestamps are counters. Renaming them in a loop comparison must
-preserve their order and allow future allocations (design.md §8, TR 505).
+preserve their order and allow future allocations (TR 505). See also design.md §8.
 -/
 
 @[expose] public section
