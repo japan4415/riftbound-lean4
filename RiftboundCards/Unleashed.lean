@@ -4352,14 +4352,15 @@ def UNL_150.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Vex. -/
+/-- Vex stuns units her opponents play and prevents those players from moving them this turn. -/
 def UNL_150 : CardDef :=
   { UNL_150.meta with
     abilities := [.triggered
       { subject := Selector.all .enemy .anywhere [.ofType .unit],
-        condition := .matches .self .onBattlefield, event := .play }
-      (.of [] (.seqOf [.prim (.stun (.slot 0)), .prim (.exhaust (.slot 0))])) .unlimited],
-    status := .drafted }
+        condition := .matches .self .onBattlefield, event := .playIncludingTokens }
+      (.of [] (.seqOf [.prim (.stun (.slot 0)),
+        .eachPlayer (.playedBy 0) (.prim (.markOn (.slot 0) .cannotMoveByPlayer))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-151
 /--

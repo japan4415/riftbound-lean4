@@ -140,6 +140,16 @@ def PlayerSel.resolve (s : GameState) (self : PlayerId) (sel : PlayerSel) (env :
     | some (.obj id) =>
       (((s.obj? id).map (·.owner)).filter (fun p => !s.departures.seats.contains p)).map (fun p => [p])
     | _ => none
+  | .playedBy i => do
+    let .obj id ← env.slots[i]? | none
+    let obj ← s.obj? id
+    let player ← match obj.kind with
+      | .card .. => (s.playLog.find? (fun play => play.turn == s.turn &&
+          play.object == id && play.moment == .resolved)).map (·.who)
+      -- A watched token is created by its player, whose seat remains its owner.
+      | .token _ => some obj.owner
+      | .chainAbility .. => none
+    if s.departures.seats.contains player then none else some [player]
 
 /-- The number an amount stands for, if it can be computed from the variables alone. -/
 def Amount.eval (env : Env) : Amount → Option Nat
@@ -361,6 +371,11 @@ def GameState.mightWithCachedPassives (s : GameState) (env : Env) (id : ObjId) :
 /-- A Turn Effect can prevent all Moves of a Unit. Corrective Recalls are separate (CR 448.1). -/
 def GameState.moveBlocked (s : GameState) (unit : ObjId) : Bool :=
   s.turnFx.any (fun f => f.turn == s.turn && f.target == some unit && f.kind == .cannotMove)
+
+/-- Whether the acting player is prohibited from moving this Unit this turn. -/
+def GameState.moveBlockedFor (s : GameState) (actor : PlayerId) (unit : ObjId) : Bool :=
+  s.turnFx.any (fun f => f.turn == s.turn && f.target == some unit &&
+    (f.kind == .cannotMove || (f.kind == .cannotMoveByPlayer && f.who == actor)))
 
 /-- Whether the object has the property, for the properties that are understood. `self` is the
 object the effect belongs to. -/

@@ -45,6 +45,7 @@ def PlayerSel.understood : PlayerSel → Bool
   | .chosen _ => true
   | .controllerOf _ => true
   | .ownerOf _ => true
+  | .playedBy _ => true
   | _ => false
 
 mutual
@@ -616,6 +617,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
+      | .playIncludingTokens => t.subject != .self
       | .scored => t.subject == .self
       | .conquer | .hold => true
       | .youConquer => t.subject == .self | .youHold => t.subject == .self

@@ -177,7 +177,9 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
         (List.range count).filterMap (fun j =>
           match cd.allAbilities[j]? with
           | some (Ability.triggered t _ lim) =>
-            if t.event == ev && t.subject != .self &&
+            let matchesEvent := t.event == ev ||
+              (t.event == .playIncludingTokens && (ev == .play || ev == .playToken))
+            if matchesEvent && t.subject != .self &&
                 subjectHolds board src c subj who t.subject &&
                 condOkEnv board src c { slots := [.obj subj], passMight := board.mightTable } t.condition &&
                 t.occurrence == occurrence && limitOk s src j lim stamp then

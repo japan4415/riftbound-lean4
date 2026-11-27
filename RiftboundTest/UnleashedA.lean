@@ -721,6 +721,60 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return ((a.obj? e).any (·.stunned)) && !((b.obj? e).any (·.stunned)) &&
     (a.tired g == some true)
 
+-- Vex (UNL-150) stuns a ready Unit without exhausting it. Only the seat that
+-- played it is prevented from moving it, and the restriction expires this turn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, vex) ← putAt s q "UNL-150" bf
+  let (s, card) ← put s p "OGN-052" .hand
+  let ready := s.addTurnFx p .nextUnitReady
+  let played ← play ready p card
+  let unit ← played.firstOf p .base "OGN-052"
+  let (other, _) := moveByEffect p (some bf) played unit q
+  let (recalled, recalls) := recallFx false other unit
+  let expired := { played with turn := played.turn + 1 }
+  let swapped (actor : PlayerId) := swapPlaces played unit vex (some q) (some actor)
+  let inactive ← play (recallFx false ready vex).1 p card
+  let unmarked ← inactive.firstOf p .base "OGN-052"
+  return (played.obj? unit).any (·.stunned) && played.tired unit == some false &&
+    !moveOk played p unit (.battlefield bf) && moveOk expired p unit (.battlefield bf) &&
+    (moveByEffect q (some bf) played unit p).2.isEmpty &&
+    (other.obj? unit).any (·.loc == some bf) &&
+    (swapped p).2.isEmpty && !(swapped q).2.isEmpty &&
+    recalls.contains (.recalled unit) && (recalled.obj? unit).any (·.loc.isNone) &&
+    (inactive.obj? unmarked).any (! ·.stunned) && !inactive.moveBlockedFor p unmarked
+
+-- The restriction remembers the opponent that played the object. A teammate's
+-- play does not fire it, and a Unit token played by an opponent does.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let other : PlayerId := ⟨3⟩
+  let empty := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { empty with
+    phase := .main, turn := 2, active := some enemy,
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority enemy] }
+  let (s, bf) ← putBf s p "OGN-275"
+  let (s, _) ← putAt s p "UNL-150" bf
+  let (s, friend) ← put s ally "OGN-052" .base
+  let (s, unit) ← put s other "OGN-052" .base
+  let (s, tokenEvents) := playUnitTokenAt s enemy "Recruit" none
+  let [Event.tokenPlayed _ token] := tokenEvents | none
+  let events := [.played ally friend, .played enemy unit] ++ tokenEvents
+  let queued := (setController enemy s unit).1.withTriggers events
+  let transferred := (setController other (setController other queued unit).1 token).1
+  let (chain, _) ← (advance 100 transferred []).toOption
+  let done := settleChain {} 12 chain
+  let (left, gone) ← moveObj done unit (.player other .trash)
+  let (reentered, fresh) ← moveObj left gone (.player other .base)
+  return (done.obj? friend).any (! ·.stunned) && !done.moveBlockedFor ally friend &&
+    [unit, token].all (fun id => (done.obj? id).any (·.stunned) &&
+      done.moveBlockedFor enemy id && !done.moveBlockedFor other id) &&
+    fresh != unit && !reentered.moveBlockedFor enemy fresh
+
 -- Undying Legion (UNL-025): with another card played this turn, it is played from the Trash
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-111" .hand

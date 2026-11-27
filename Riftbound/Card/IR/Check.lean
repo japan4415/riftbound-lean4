@@ -45,6 +45,7 @@ deriving DecidableEq, Repr
 /-- The players an effect names can be found. -/
 def PlayerSel.ok (c : Ctx) : PlayerSel → Bool
   | .chosen i => decide (i < c.playerSlots)
+  | .playedBy i => decide (i < c.slots)
   | .eventPlayer => c.eventOk
   | _ => true
 

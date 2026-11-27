@@ -315,6 +315,8 @@ inductive PlayerSel where
   | eachPlayerFromNext
   /-- The owner of the object held in an effect's slot. -/
   | ownerOf (slot : Nat)
+  /-- The player who played the unit held in an effect's slot this turn. -/
+  | playedBy (slot : Nat)
   /-- Every player except the player the effect belongs to, including any teammate. -/
   | eachOtherPlayer
 deriving DecidableEq, Repr, Hashable
@@ -364,6 +366,8 @@ inductive TurnEffect where
   | unchoosableEnemy
   /-- No standard or instructed Move can move this Unit this turn (CR 447). -/
   | cannotMove
+  /-- The player recorded by this note cannot move the Unit this turn (CR 447). -/
+  | cannotMoveByPlayer
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
   /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/

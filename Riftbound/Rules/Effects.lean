@@ -1052,18 +1052,19 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
             | .passive .always mods => mods.contains .noEnemyEffectMove
             | _ => false))))
 
-/-- Apply a move instructed by a spell or ability. In team play, a Unit going to an invalid
-Battlefield is recalled instead (CR 449.2.c). -/
-def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
-    GameState × List Event :=
-  if s.moveBlocked u || s.blocksEnemyMove controller u then (s, [])
+/-- Apply a move instructed by a spell or ability. The instructed actor can differ from the
+effect's controller. In team play, a Unit going to an invalid Battlefield is recalled
+instead (CR 449.2.c). -/
+def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
+    (actor : PlayerId := controller) : GameState × List Event :=
+  if s.moveBlockedFor actor u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
     | none => moveHome s u
     | some bf => moveOrRecall s (some bf) s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
-theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
-    Safe s (moveByEffect p loc s u).1 := by
+theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
+    (actor : PlayerId := p) : Safe s (moveByEffect p loc s u actor).1 := by
   unfold moveByEffect
   split
   · exact Safe.refl s
@@ -1073,11 +1074,12 @@ theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
-def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
-    GameState × List Event :=
+def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := none)
+    (actor : Option PlayerId := controller) : GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  if s.moveBlocked x || s.moveBlocked y ||
+  let blocked := fun u => (actor.map (fun p => s.moveBlockedFor p u)).getD (s.moveBlocked u)
+  if blocked x || blocked y ||
       controller.any (fun p => s.blocksEnemyMove p x || s.blocksEnemyMove p y) ||
       lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
       (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
@@ -1087,8 +1089,8 @@ def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := no
     (r2.1, r1.2 ++ r2.2)
 
 /-- Swapping places is a safe change. -/
-theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
-    Safe s (swapPlaces s x y controller).1 := by
+theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option PlayerId := none)
+    (actor : Option PlayerId := controller) : Safe s (swapPlaces s x y controller actor).1 := by
   unfold swapPlaces
   dsimp only
   split
@@ -3527,7 +3529,8 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base =>
-    (onSelected s p src env sel (moveByEffect (env.effectController.getD p) none)).map (movedEvents p)
+    (onSelected s p src env sel (fun t u => moveByEffect (env.effectController.getD p) none t u p)).map
+      (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -3536,14 +3539,14 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
           else (s.obj? d).bind (·.loc)) with
       | some bf =>
-        (onSelected s p src env sel (moveByEffect (env.effectController.getD p) (some bf))).map
-          (movedEvents p)
+        (onSelected s p src env sel (fun t u =>
+          moveByEffect (env.effectController.getD p) (some bf) t u p)).map (movedEvents p)
       | none => none
     | _ => none
   | .swapPlaces a b =>
     match a.eval s p src env, b.eval s p src env with
     | some (x :: _), some (y :: _) =>
-      some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p))))
+      some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p)) (some p)))
     | _, _ => none
   | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env)
   | .buff sel => onSelected s p src env sel buffObj
@@ -3750,7 +3753,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [applyPrim] at h
       obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
       show Safe s r0.1
-      exact onSelected_safe (moveByEffect_safe _ none) hr0
+      exact onSelected_safe (fun t u => moveByEffect_safe _ none t u p) hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -3763,7 +3766,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           split at h
           · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
             show Safe s r0.1
-            exact onSelected_safe (moveByEffect_safe _ _) hr0
+            exact onSelected_safe (fun t u => moveByEffect_safe _ _ t u p) hr0
           · simp at h
   | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env) h
   | detach sel => exact onSelected_safe detachObj_safe h
@@ -4023,7 +4026,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | cons y _ =>
             simp only [ha, lb, Option.some.injEq] at h
             rw [← h]
-            exact swapPlaces_safe s x y _
+            exact swapPlaces_safe s x y _ _
   | activateConquer sel =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => Safe.refl t) h
@@ -4863,7 +4866,7 @@ def forceMoveToBattlefieldFrame (s : GameState) (p : PlayerId) (src : ObjId) (en
     if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) then
       resume else
     let candidates := s.inPlay.filter (fun id => (s.cardDef? id).any (·.hasType .unit) &&
-      !s.moveBlocked id &&
+      !s.moveBlockedFor actor id &&
       !s.blocksEnemyMove (env.effectController.getD p) id &&
       (s.obj? id).any (fun o => o.controller == actor && s.effectMoveBattlefieldOk o bf))
     let slot := env.slots.length
@@ -4893,12 +4896,13 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     match s.obj? id, dest with
     | some o, none =>
       if !allowBase then resume
-      else if o.loc.isNone || s.moveBlocked id || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else if o.loc.isNone || s.moveBlockedFor p id ||
+          s.blocksEnemyMove (env.effectController.getD p) id then negated
       else (env, thenMove (.prim (.move unit .base)))
     | some o, some bf =>
       if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
           !(FilterList.holds s src env bf fs).getD false then resume
-      else if o.loc == some bf || s.moveBlocked id ||
+      else if o.loc == some bf || s.moveBlockedFor p id ||
           s.blocksEnemyMove (env.effectController.getD p) id then negated
       else if !s.effectObjectMoveBattlefieldOk id o bf then
         let recallEffect : Effect := .prim (.recall unit false)
